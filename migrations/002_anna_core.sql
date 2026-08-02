@@ -1,0 +1,3 @@
+-- Reference migration for production PostgreSQL.
+-- The application also creates missing tables on startup for local development.
+-- For production, use a real migration runner before going live.

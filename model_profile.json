@@ -1,0 +1,10 @@
+{
+  "profile_name": "model_reference",
+  "references": [
+    {"file": "references/face_front.png", "role": "face_front"},
+    {"file": "references/face_profile.png", "role": "face_profile"},
+    {"file": "references/body_front.png", "role": "body_front"},
+    {"file": "references/body_side.png", "role": "body_side"}
+  ],
+  "usage": "Use all four images as the model identity/reference set when the image API supports multiple references."
+}
