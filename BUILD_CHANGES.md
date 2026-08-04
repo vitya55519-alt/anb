@@ -33,3 +33,10 @@
 ## Railway variables
 Минимум: `TELEGRAM_TOKEN`, `OPENAI_API_KEY`, `DATABASE_URL`.
 Рекомендуется также задать `ADMIN_TELEGRAM_IDS`.
+
+
+## V3.1 image safety reliability
+- The `lingerie` preset now uses a fully clothed identity reference instead of a lingerie reference.
+- The image prompt avoids unnecessary sexual terms and requests mainstream fully covered fashion styling.
+- `moderation_blocked` from the OpenAI image endpoint is caught and retried once with a conservative fully covered fashion edit.
+- This retry is a safety downgrade, not a moderation bypass.

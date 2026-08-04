@@ -24,7 +24,7 @@ logger=logging.getLogger('annabot')
 bot=Bot(token=TELEGRAM_TOKEN)
 dp=Dispatcher()
 
-PHOTO_LABELS={'selfie':'📸 Селфи','home':'🏠 Дома','park':'🌿 В парке','cafe':'☕ В кафе','outfit':'👗 Образ','mirror':'🪞 Зеркало','evening':'✨ Вечер','fashion':'💎 Fashion','lingerie':'🖤 Бельевой fashion'}
+PHOTO_LABELS={'selfie':'📸 Селфи','home':'🏠 Дома','park':'🌿 В парке','cafe':'☕ В кафе','outfit':'👗 Образ','mirror':'🪞 Зеркало','evening':'✨ Вечер','fashion':'💎 Fashion','lingerie':'🖤 Смелый fashion'}
 
 def photo_keyboard():
     rows=[]; items=list(PHOTO_LABELS.items())

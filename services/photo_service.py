@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 from aiogram import Bot
 from aiogram.types import BufferedInputFile
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
 from sqlalchemy import select
 from config import CHARACTER_ID, IMAGE_API_KEY, IMAGE_BASE_URL, IMAGE_MODEL, IMAGE_SIZE, IMAGE_QUALITY, FREE_PHOTOS_PER_DAY, PREMIUM_PHOTOS_PER_DAY, PHOTO_COST_STARS
 from models.app_models import User
@@ -31,7 +31,7 @@ SCENES={
  'outfit':'full-body smartphone photo focused on the outfit',
  'evening':'stylish evening portrait in a tasteful outfit',
  'fashion':'premium fashion-editorial portrait, elegant and non-explicit',
- 'lingerie':'tasteful adult lingerie fashion editorial, non-explicit, no nudity or transparent exposure',
+ 'lingerie':'premium fashion editorial in an elegant fitted black evening outfit with opaque full coverage',
 }
 SCENE_LEVELS={'selfie':1,'home':1,'park':1,'cafe':1,'outfit':1,'mirror':2,'evening':2,'fashion':2,'lingerie':4}
 STAGE_INDEX={'stranger':0,'acquaintance':1,'close':2,'intimate':3,'deeply_connected':4,'committed':5}
@@ -44,7 +44,7 @@ AUTO_CAPTIONS={
  'outfit':('ты же хотел посмотреть образ 😌','вот что выбрала','ну как тебе сегодняшний вариант?'),
  'evening':('сегодня решила выглядеть вот так ✨','вечерний вариант','мне самой этот образ нравится'),
  'fashion':('сегодня у меня настроение на красивый кадр','немного журнального вайба 😌'),
- 'lingerie':('сегодня я немного смелее 😏','ладно, этот образ покажу','вот такой fashion-настрой сегодня'),
+ 'lingerie':('сегодня выбрала более смелый fashion-образ 😏','ладно, этот образ покажу','вот такой fashion-настрой сегодня'),
 }
 
 @dataclass(frozen=True)
@@ -149,7 +149,7 @@ def parse_photo_request(text:str)->Optional[PhotoRequest]:
 
 def _reference_path(character:dict,scene:str)->Path:
     identity=character.get('visual_identity',{}); folder=Path(__file__).resolve().parents[1]/identity.get('reference_folder','data/references/anna')
-    pref={'selfie':'01_face_front_white_top.png','cafe':'01_face_front_white_top.png','park':'02_full_body_white_top.png','home':'04_lying_hair_down.png','evening':'02_full_body_white_top.png','mirror':'02_full_body_white_top.png','outfit':'02_full_body_white_top.png','fashion':'02_full_body_white_top.png','lingerie':'06_front_black_lingerie.jpg'}
+    pref={'selfie':'01_face_front_white_top.png','cafe':'01_face_front_white_top.png','park':'02_full_body_white_top.png','home':'04_lying_hair_down.png','evening':'02_full_body_white_top.png','mirror':'02_full_body_white_top.png','outfit':'02_full_body_white_top.png','fashion':'02_full_body_white_top.png','lingerie':'02_full_body_white_top.png'}
     p=folder/pref.get(scene,'01_face_front_white_top.png')
     if not p.exists():
         refs=[folder/x for x in identity.get('reference_assets',[]) if (folder/x).exists()]
@@ -160,7 +160,7 @@ def _reference_path(character:dict,scene:str)->Path:
 def _prompt(character:dict,req:PhotoRequest,telegram_id:int)->str:
     state=get_state(telegram_id)
     scene=SCENES.get(req.scene,SCENES['selfie'])
-    clothing=req.clothing or state.outfit or ('elegant non-explicit lingerie fashion look with opaque coverage' if req.scene=='lingerie' else 'natural stylish everyday outfit')
+    clothing=req.clothing or state.outfit or ('elegant fitted black fashion outfit with opaque full coverage' if req.scene=='lingerie' else 'natural stylish everyday outfit')
     hairstyle=req.hairstyle or state.hairstyle or 'keep the hairstyle from the reference unless the scene naturally requires a small styling adjustment'
     location=req.location or state.location or scene
     angle=req.angle or 'natural flattering camera angle appropriate for the scene'
@@ -180,11 +180,38 @@ def _extract(result):
     if raw: return GeneratedPhoto(data=base64.b64decode(raw))
     raise RuntimeError('Image API returned no image')
 
-async def generate_photo(telegram_id:int,request:PhotoRequest)->GeneratedPhoto:
-    character=get_anna(); ref=_reference_path(character,request.scene); prompt=_prompt(character,request,telegram_id)
+def _safe_fallback_request(request:PhotoRequest)->PhotoRequest:
+    # A moderation-safe retry is intentionally conservative: it does not try to bypass
+    # safety systems; it converts the request to a mainstream, fully covered fashion edit.
+    return PhotoRequest(
+        scene='fashion',
+        clothing='elegant fitted black evening outfit with opaque full coverage',
+        hairstyle=request.hairstyle,
+        location=request.location,
+        angle=request.angle,
+        mood='warm, natural, polished fashion catalog',
+    )
+
+async def _run_edit(character:dict, telegram_id:int, request:PhotoRequest)->GeneratedPhoto:
+    ref=_reference_path(character,request.scene); prompt=_prompt(character,request,telegram_id)
     with ref.open('rb') as image_file:
         result=await client.images.edit(model=IMAGE_MODEL,image=image_file,prompt=prompt,size=IMAGE_SIZE,quality=IMAGE_QUALITY,n=1)
     return _extract(result)
+
+async def generate_photo(telegram_id:int,request:PhotoRequest)->GeneratedPhoto:
+    character=get_anna()
+    try:
+        return await _run_edit(character,telegram_id,request)
+    except BadRequestError as exc:
+        body=getattr(exc,'body',None) or {}
+        err=body.get('error',body) if isinstance(body,dict) else {}
+        code=err.get('code') if isinstance(err,dict) else None
+        msg=str(err.get('message','')) if isinstance(err,dict) else str(exc)
+        if code!='moderation_blocked' and 'safety' not in msg.lower() and 'moderation' not in msg.lower():
+            raise
+        logger.warning('image request blocked by safety; retrying once with fully covered fashion fallback user=%s scene=%s',telegram_id,request.scene)
+        fallback=_safe_fallback_request(request)
+        return await _run_edit(character,telegram_id,fallback)
 
 def _record(telegram_id:int,scene:str,delivery_type:str,file_id=None,url=None):
     uid=ensure_user(telegram_id)
