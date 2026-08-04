@@ -1,523 +1,258 @@
-import asyncio
-import logging
-
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, StateFilter
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
+import asyncio, logging
+from aiogram import Bot, Dispatcher, F, types
+from aiogram.filters import Command, CommandStart
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, BufferedInputFile
 from aiogram.utils.chat_action import ChatActionSender
 
-from helpers import (
-    keep_alive,
-    search_user, new_user, update_user,
-    update_user_waifu_name, update_user_waifu_role,
-    get_waifu_role_descriptions, get_waifu_role_descriptions_with_id,
-    chat_openai_waifu,
-    delete_chat_log_user, delete_memory_summaries,
-    is_rate_limited,
-    update_user_last_active, toggle_user_voice, update_user_voice_style,
-    update_user_appearance, toggle_user_proactive,
-    transcribe_voice, generate_voice, VALID_VOICE_STYLES,
-    generate_selfie,
-    start_scheduler,
-    set_timezone, create_wake_from_text, get_character_state, update_character_state,
-    delete_memory_facts, delete_reminders,
-)
-from config import TELEGRAM_TOKEN, KEEP_ALIVE, ADMIN_TELEGRAM_IDS, CHARACTER_ID
-from services.chat_service import reply as anna_reply, ensure_user as ensure_anna_user
-from services.access_service import can_send_message
+from config import TELEGRAM_TOKEN, PREMIUM_MONTHLY_STARS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, ADMIN_TELEGRAM_IDS, CHARACTER_ID
+from services.user_service import ensure_user, get_user, update_user_settings, touch_user
+from services.chat_service import reply as anna_reply
+from services.access_service import can_send_message, is_premium
+from services.photo_service import PhotoRequest, parse_photo_request, deliver_photo, has_free_photo, build_photo_menu, create_offer, consume_offer, scene_allowed_for_stage, get_relationship_stage
+from services.payments import record_payment, get_photo_credits
+from services.reminder_service import set_timezone, create_from_text, cancel_active_wake
+from services.scheduler_service import start_scheduler
+from services.memory_service import reset_conversation as reset_memory
+from services.db import SessionLocal
+from models.relationship_models import UserCharacterRelationship, RelationshipEvent
+from models.app_models import CharacterState, Reminder
+from services.test_mode import STAGES, STAGE_LABELS, set_stage, clear_stage, get_stage
+from services.voice_service import transcribe, synthesize_bytes, VALID_VOICES
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+logger=logging.getLogger('annabot')
+bot=Bot(token=TELEGRAM_TOKEN)
+dp=Dispatcher()
 
-bot = Bot(token=TELEGRAM_TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
+PHOTO_LABELS={'selfie':'📸 Селфи','home':'🏠 Дома','park':'🌿 В парке','cafe':'☕ В кафе','outfit':'👗 Образ','mirror':'🪞 Зеркало','evening':'✨ Вечер','fashion':'💎 Fashion','lingerie':'🖤 Бельевой fashion'}
 
+def photo_keyboard():
+    rows=[]; items=list(PHOTO_LABELS.items())
+    for i in range(0,len(items),2): rows.append([InlineKeyboardButton(text=label,callback_data=f'photo:{scene}') for scene,label in items[i:i+2]])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
-class Form(StatesGroup):
-    get_user_name = State()
-    get_girlfriend_name = State()
-    get_girlfriend_model = State()
-    get_appearance = State()
+def premium_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars / 30 дней',callback_data='buy:premium')]])
 
+async def send_stars_invoice(chat_id:int,title:str,description:str,payload:str,stars:int):
+    await bot.send_invoice(chat_id=chat_id,title=title,description=description,payload=payload,currency='XTR',prices=[LabeledPrice(label=title,amount=stars)],provider_token='')
 
-# CONFIGURATION FUNCTIONALITY
-
-@dp.message(Command('start', 'help'))
-async def send_welcome(message: types.Message, state: FSMContext):
-    # Anna is ready immediately. Legacy /config remains available but is no longer
-    # a gate in front of the actual Anna conversation engine.
-    display_name = message.from_user.first_name or message.from_user.username or "друг"
-    ensure_anna_user(message.from_user.id, display_name)
-
-    # Keep the legacy user row alive for old voice/reminder/photo commands, but
-    # give it sane Anna defaults so /start never launches the old Spanish setup.
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if user_db is None:
-        await asyncio.to_thread(new_user, message.from_user.id, display_name)
-        user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if user_db and not user_db.waifu_name:
-        await asyncio.to_thread(update_user_waifu_name, message.from_user.id, "Анна")
-    if user_db and not user_db.selected_waifu_role:
-        roles = await asyncio.to_thread(get_waifu_role_descriptions_with_id)
-        if roles:
-            await asyncio.to_thread(update_user_waifu_role, message.from_user.id, roles[0][1])
-
-    await message.answer(
-        f"Привет, {display_name} 🙂 Я Анна. Не надо ничего настраивать — просто пиши мне.\n\n"
-        "Если захочешь поменять имя, голос, часовой пояс или другие настройки — они всё ещё доступны через /config и команды.\n\n"
-        "Ну что, о чём будем болтать?",
-    )
-
-
-@dp.message(Command('config_actual'))
-async def actual_config(message: types.Message):
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    waifu_roles = await asyncio.to_thread(get_waifu_role_descriptions_with_id)
-
-    if user_db:
-        markup = types.ReplyKeyboardMarkup(
-            keyboard=[
-                [types.KeyboardButton(text="/my_name"), types.KeyboardButton(text="/waifu_name"), types.KeyboardButton(text="/waifu_role")],
-                [types.KeyboardButton(text="/finalizar")],
-            ],
-            resize_keyboard=True,
-        )
-        role_desc = waifu_roles[user_db.selected_waifu_role - 1][0] if user_db.selected_waifu_role else "Sin configurar"
-        voice_status = f"{'✅' if user_db.voice_enabled else '❌'} ({user_db.voice_style or 'nova'})"
-        proactive_status = "✅" if user_db.proactive_enabled else "❌"
-        await message.answer(
-            f"Tu configuracion actual es:\n"
-            f"Tu nombre: <b>{user_db.name}</b>\n"
-            f"Mi nombre: <b>{user_db.waifu_name}</b>\n"
-            f"Rol: <b>{role_desc}</b>\n"
-            f"Voz: {voice_status}\n"
-            f"Mensajes proactivos: {proactive_status}\n\n"
-            f"Comandos: /voice · /selfie · /notifications · /reset",
-            parse_mode="HTML",
-            reply_markup=markup,
-        )
-
-
-@dp.message(Command('config'))
-async def general_configuration(message: types.Message, state: FSMContext):
-    markup = types.ReplyKeyboardRemove()
-    await message.answer("Vamos a revisar tu configuracion", reply_markup=markup)
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-
-    if user_db:
-        await actual_config(message)
-    else:
-        await config_user_name(message, state)
-
-
-@dp.message(StateFilter('*'), Command('cancel', 'finalizar'))
-@dp.message(StateFilter('*'), F.text.casefold() == 'cancel')
-async def cancel_handler(message: types.Message, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state is None:
-        markup = types.ReplyKeyboardRemove()
-        await message.answer('Podemos platicar si gustas', reply_markup=markup)
+async def send_photo_or_offer(message:types.Message, req:PhotoRequest):
+    tid=message.from_user.id; stage=get_relationship_stage(tid)
+    free_ok=has_free_photo(tid) and scene_allowed_for_stage(req.scene,stage)
+    credits=get_photo_credits(tid)
+    try:
+        async with ChatActionSender.upload_photo(bot=bot,chat_id=message.chat.id):
+            if free_ok:
+                await deliver_photo(bot,message.chat.id,tid,req,'free')
+                return
+            if credits>0:
+                await deliver_photo(bot,message.chat.id,tid,req,'credit')
+                return
+    except Exception:
+        logger.exception('photo generation failed user=%s',tid)
+        await message.answer('фото сейчас не получилось 😕 попробуй ещё раз чуть позже')
         return
-    await state.clear()
-    await message.reply('Accion cancelada')
+    offer_id=create_offer(tid,req)
+    await message.answer('бесплатный лимит/доступ для этого образа сейчас закончился. Могу сделать отдельное фото за Stars ✨')
+    price=CUSTOM_PHOTO_COST_STARS if any((req.clothing,req.hairstyle,req.location,req.angle)) else PHOTO_COST_STARS
+    await send_stars_invoice(message.chat.id,'Фото Анны',f'Новое фото: {PHOTO_LABELS.get(req.scene,req.scene)}',f'photo:{offer_id}',price)
 
+@dp.message(CommandStart())
+async def start(message:types.Message):
+    name=message.from_user.first_name or message.from_user.username or 'ты'
+    ensure_user(message.from_user.id,name)
+    await message.answer(f'привет, {name} 🙂 я Анна. ничего настраивать не надо — просто пиши мне.\n\nФото: /photo · Premium: /premium · настройки: /settings')
 
-@dp.message(Command('my_name'))
-async def config_user_name(message: types.Message, state: FSMContext):
-    if await asyncio.to_thread(search_user, message.from_user.id):
-        await message.answer("Ya nos conocemos, pero si gustas puedo llamarte de otra forma.\n¿Cómo quieres que te llame ahora?")
-    else:
-        await message.answer("Primero quiero conocerte, dime tu nombre por favor:")
-    await state.set_state(Form.get_user_name)
+@dp.message(Command('help'))
+async def help_cmd(message:types.Message):
+    await message.answer('просто пиши мне как обычно 🙂\n/photo — фото\n/premium — Premium\n/settings — настройки\n/wake 08:00 — разбудить\n/timezone Europe/Moscow — часовой пояс\n/reset — очистить нашу переписку и память')
 
+@dp.message(Command('settings'))
+async def settings(message:types.Message):
+    ensure_user(message.from_user.id,message.from_user.first_name)
+    u=get_user(message.from_user.id); credits=get_photo_credits(message.from_user.id)
+    await message.answer(f'Настройки Анны\n\nЧасовой пояс: {u.timezone}\nГолосовые ответы: {"вкл" if u.voice_enabled else "выкл"}\nИнициативные сообщения: {"вкл" if u.proactive_enabled else "выкл"}\nPremium: {"активен" if is_premium(message.from_user.id) else "нет"}\nФото-кредиты: {credits}\n\n/voice · /notifications · /timezone')
 
-@dp.message(Form.get_user_name)
-async def process_name(message: types.Message, state: FSMContext):
-    user_name = message.text
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if user_db:
-        await asyncio.to_thread(update_user, message.from_user.id, user_name)
-    else:
-        await asyncio.to_thread(new_user, message.from_user.id, user_name)
-
-    await state.clear()
-    await message.reply(f"Genial, ahora te llamaré {user_name}")
-
-    if user_db is None:
-        await config_waifu_name(message, state)
-    else:
-        await actual_config(message)
-
-
-@dp.message(Command('waifu_name'))
-async def config_waifu_name(message: types.Message, state: FSMContext):
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if user_db is None:
-        await message.answer("Primero tengo que saber como te llamas")
-        await config_user_name(message, state)
-    else:
-        await message.answer("Dime como quieres que me llame:")
-    await state.set_state(Form.get_girlfriend_name)
-
-
-@dp.message(Form.get_girlfriend_name)
-async def process_waifu_name(message: types.Message, state: FSMContext):
-    waifu_name = message.text
-    if await asyncio.to_thread(search_user, message.from_user.id):
-        await asyncio.to_thread(update_user_waifu_name, message.from_user.id, waifu_name)
-    else:
-        await asyncio.to_thread(new_user, message.from_user.id, waifu_name)
-
-    await state.clear()
-    await message.reply(f"Genial, ahora me llamaré {waifu_name}")
-
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if user_db.selected_waifu_role is None:
-        await config_waifu_role(message, state)
-    else:
-        await actual_config(message)
-
-
-@dp.message(Command('waifu_role'))
-async def config_waifu_role(message: types.Message, state: FSMContext):
-    available_roles = await asyncio.to_thread(get_waifu_role_descriptions)
-    keyboard = [[types.KeyboardButton(text=role)] for role in available_roles]
-    markup = types.ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, selective=True)
-    await message.answer("¿Qué rol quieres que tenga?", reply_markup=markup)
-    await state.set_state(Form.get_girlfriend_model)
-
-
-@dp.message(Form.get_girlfriend_model)
-async def process_waifu_role(message: types.Message, state: FSMContext):
-    available_roles = await asyncio.to_thread(get_waifu_role_descriptions)
-    if message.text not in available_roles:
-        return await message.reply("Rol invalido. Elige un rol de la lista.")
-
-    waifu_roles_with_id = await asyncio.to_thread(get_waifu_role_descriptions_with_id)
-    for description, role_id in waifu_roles_with_id:
-        if description == message.text:
-            await asyncio.to_thread(update_user_waifu_role, message.from_user.id, role_id)
-            break
-
-    markup = types.ReplyKeyboardRemove()
-    await message.answer("Rol actualizado!", reply_markup=markup)
-    await state.clear()
-    await actual_config(message)
-
-
-@dp.message(Command('reset'))
-async def reset_conversation(message: types.Message):
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if not user_db:
-        await message.answer("Aún no tenemos conversaciones guardadas 😊")
+@dp.message(Command('premium'))
+async def premium(message:types.Message):
+    ensure_user(message.from_user.id,message.from_user.first_name)
+    if is_premium(message.from_user.id):
+        await message.answer(f'Premium уже активен ✨\nФото-кредиты: {get_photo_credits(message.from_user.id)}')
         return
-    await asyncio.to_thread(delete_chat_log_user, message.from_user.id)
-    await asyncio.to_thread(delete_memory_summaries, message.from_user.id)
-    await asyncio.to_thread(delete_memory_facts, message.from_user.id)
-    await asyncio.to_thread(delete_reminders, message.from_user.id)
-    await message.answer("Listo, borré nuestros recuerdos guardados 🥺 Empecemos de cero...")
+    await message.answer('Premium на 30 дней:\n• расширенная память и полный лимит сообщений\n• до 4 обычных фото в день\n• 12 дополнительных photo credits\n• больше инициативных сообщений/continuity\n• приоритетные визуальные функции\n\nОтношения не покупаются — они развиваются из общения.',reply_markup=premium_keyboard())
 
+@dp.callback_query(F.data=='buy:premium')
+async def buy_premium(cq:types.CallbackQuery):
+    ensure_user(cq.from_user.id,cq.from_user.first_name)
+    await cq.answer()
+    await send_stars_invoice(cq.message.chat.id,'Anna Premium','Premium-доступ на 30 дней','premium_month',PREMIUM_MONTHLY_STARS)
 
-# VOICE COMMANDS
+@dp.pre_checkout_query()
+async def pre_checkout(query:types.PreCheckoutQuery):
+    await query.answer(ok=True)
+
+@dp.message(F.successful_payment)
+async def successful_payment(message:types.Message):
+    p=message.successful_payment; payload=p.invoice_payload; charge=p.telegram_payment_charge_id
+    if payload=='premium_month':
+        record_payment(message.from_user.id,'premium_month',p.total_amount,charge)
+        await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits')
+        return
+    if payload.startswith('photo:'):
+        try: offer_id=int(payload.split(':',1)[1])
+        except ValueError: return
+        req=consume_offer(message.from_user.id,offer_id)
+        if not req:
+            await message.answer('оплата прошла, но запрос фото уже устарел. Напиши /photo — кредит я сохраню.')
+            record_payment(message.from_user.id,'photo',p.total_amount,charge); return
+        record_payment(message.from_user.id,'photo',p.total_amount,charge)
+        try:
+            async with ChatActionSender.upload_photo(bot=bot,chat_id=message.chat.id):
+                await deliver_photo(bot,message.chat.id,message.from_user.id,req,'credit')
+        except Exception:
+            logger.exception('paid photo generation failed user=%s',message.from_user.id)
+            await message.answer('оплата сохранена как photo credit. фото сейчас не получилось — попробуй /photo позже, кредит не пропадёт.')
+
+@dp.message(Command('photo','selfie'))
+async def photo_menu(message:types.Message):
+    ensure_user(message.from_user.id,message.from_user.first_name)
+    info=build_photo_menu(message.from_user.id)
+    await message.answer(f'что показать? 😌\nСегодня: {info["free_left"]} включённых фото · credits: {info["credits"]}',reply_markup=photo_keyboard())
+
+@dp.callback_query(F.data.startswith('photo:'))
+async def photo_callback(cq:types.CallbackQuery):
+    await cq.answer(); scene=cq.data.split(':',1)[1]
+    fake=cq.message
+    # callback sender is the user; message.from_user is the bot, so generate directly with cq.from_user id
+    tid=cq.from_user.id; ensure_user(tid,cq.from_user.first_name)
+    req=PhotoRequest(scene=scene); stage=get_relationship_stage(tid)
+    try:
+        async with ChatActionSender.upload_photo(bot=bot,chat_id=cq.message.chat.id):
+            if has_free_photo(tid) and scene_allowed_for_stage(scene,stage):
+                await deliver_photo(bot,cq.message.chat.id,tid,req,'free'); return
+            if get_photo_credits(tid)>0:
+                await deliver_photo(bot,cq.message.chat.id,tid,req,'credit'); return
+    except Exception:
+        logger.exception('callback photo failed'); await cq.message.answer('с фото сейчас что-то не вышло 😕 попробуй ещё раз позже'); return
+    offer_id=create_offer(tid,req)
+    await send_stars_invoice(cq.message.chat.id,'Фото Анны',f'Новое фото: {PHOTO_LABELS.get(scene,scene)}',f'photo:{offer_id}',PHOTO_COST_STARS)
 
 @dp.message(Command('voice'))
-async def toggle_voice(message: types.Message):
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if not user_db:
-        await message.answer("Primero necesito conocerte. Usa /start")
-        return
-
-    new_state = not (user_db.voice_enabled or False)
-    await asyncio.to_thread(toggle_user_voice, message.from_user.id, new_state)
-
-    if new_state:
-        styles_list = " · ".join(VALID_VOICE_STYLES)
-        await message.answer(
-            f"🔊 Respuestas de voz activadas con estilo <b>{user_db.voice_style or 'nova'}</b>.\n"
-            f"Estilos disponibles: {styles_list}\n"
-            f"Cambia el estilo con: <code>/voice_style nova</code>",
-            parse_mode="HTML",
-        )
-    else:
-        await message.answer("🔇 Respuestas de voz desactivadas.")
-
+async def voice_toggle(message:types.Message):
+    ensure_user(message.from_user.id,message.from_user.first_name); u=get_user(message.from_user.id); new=not u.voice_enabled
+    update_user_settings(message.from_user.id,voice_enabled=new)
+    await message.answer('голосовые ответы включены 🎙️' if new else 'голосовые ответы выключены')
 
 @dp.message(Command('voice_style'))
-async def set_voice_style(message: types.Message):
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2 or parts[1].strip() not in VALID_VOICE_STYLES:
-        await message.answer(f"Estilos válidos: {' · '.join(VALID_VOICE_STYLES)}")
-        return
-    style = parts[1].strip()
-    await asyncio.to_thread(update_user_voice_style, message.from_user.id, style)
-    await message.answer(f"Voz cambiada a <b>{style}</b> 🎙️", parse_mode="HTML")
-
-
-# VOICE MESSAGE HANDLER
-
-@dp.message(F.voice)
-async def handle_voice_message(message: types.Message, state: FSMContext):
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if user_db is None or user_db.name is None or user_db.waifu_name is None or user_db.selected_waifu_role is None:
-        await general_configuration(message, state)
-        return
-
-    if is_rate_limited(message.from_user.id):
-        await message.answer("Dame un respiro, estoy un poco abrumada 💕")
-        return
-
-    try:
-        async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            voice_bytes = await bot.download(message.voice)
-            transcribed = await transcribe_voice(voice_bytes)
-
-        await message.answer(f"🎤 _{transcribed}_", parse_mode="Markdown")
-
-        async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            response_txt = await anna_reply(
-                message.from_user.id, user_db.name or message.from_user.first_name or "друг", transcribed
-            )
-
-        # Natural photo request becomes part of the conversation, not only /selfie.
-        if _photo_request(message.text):
-            try:
-                async with ChatActionSender.upload_photo(bot=bot, chat_id=message.chat.id):
-                    image_url = await generate_selfie(
-                        user_db.waifu_name,
-                        next((desc for desc, rid in await asyncio.to_thread(get_waifu_role_descriptions_with_id) if rid == user_db.selected_waifu_role), ""),
-                        user_db.appearance_description,
-                    )
-                await _send_chat_result(message, response_txt, user_db)
-                await message.answer_photo(image_url, caption="😌")
-            except Exception:
-                await _send_chat_result(message, response_txt, user_db)
-        else:
-            await _send_chat_result(message, response_txt, user_db)
-
-        # Natural reminder/wake request is parsed after the normal conversational response.
-        if any(k in message.text.lower() for k in ('разбуди', 'wake me', 'despierta', 'despertarme', 'напомни', 'remind me', 'recuérdame', 'recuerdame')):
-            try:
-                rid = await asyncio.to_thread(create_wake_from_text, message.from_user.id, message.text)
-                if rid:
-                    await message.answer("запомнила 😌")
-            except Exception:
-                logger.exception("Failed to create natural reminder")
-
-        await asyncio.to_thread(update_user_last_active, message.from_user.id)
-
-    except Exception as e:
-        logger.error("Error in voice handler for user %s: %s", message.from_user.id, e)
-        await message.answer("Tuve problemas con el audio, intenta de nuevo 🥺")
-
-
-# SELFIE COMMANDS
-
-@dp.message(Command('selfie'))
-async def send_selfie(message: types.Message):
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if not user_db or not user_db.waifu_name or not user_db.selected_waifu_role:
-        await message.answer("Primero completa la configuración con /start")
-        return
-
-    waifu_roles = await asyncio.to_thread(get_waifu_role_descriptions_with_id)
-    role_desc = next(
-        (desc for desc, rid in waifu_roles if rid == user_db.selected_waifu_role),
-        ""
-    )
-
-    await message.answer("Un momento, me estoy arreglando para la foto... 📸")
-    try:
-        async with ChatActionSender.upload_photo(bot=bot, chat_id=message.chat.id):
-            image_url = await generate_selfie(
-                user_db.waifu_name,
-                role_desc,
-                user_db.appearance_description,
-            )
-        await message.answer_photo(image_url, caption=f"¿Te gusta? 😊")
-    except Exception as e:
-        logger.error("Selfie generation failed for user %s: %s", message.from_user.id, e)
-        await message.answer("No pude tomar la foto ahora mismo 🥺 Intenta más tarde.")
-
-
-@dp.message(Command('appearance'))
-async def set_appearance(message: types.Message, state: FSMContext):
-    await message.answer(
-        "Descríbeme cómo quieres que me vea en las fotos. Por ejemplo:\n"
-        "<i>'cabello largo negro, ojos verdes, estilo casual elegante'</i>",
-        parse_mode="HTML",
-    )
-    await state.set_state(Form.get_appearance)
-
-
-@dp.message(Form.get_appearance)
-async def process_appearance(message: types.Message, state: FSMContext):
-    await asyncio.to_thread(update_user_appearance, message.from_user.id, message.text)
-    await state.clear()
-    await message.answer("Guardado ✅ Usa /selfie para verme así 📸")
-
-
-
-# REMINDERS / WAKE-UP
-
-@dp.message(Command('timezone'))
-async def timezone_command(message: types.Message):
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
-        state_db = await asyncio.to_thread(get_character_state, message.from_user.id)
-        await message.answer(f"Tu zona horaria actual es <code>{state_db.timezone}</code>. Ejemplo: /timezone Europe/Madrid", parse_mode="HTML")
-        return
-    try:
-        await asyncio.to_thread(set_timezone, message.from_user.id, parts[1].strip())
-        await message.answer(f"listo 😌 usaré <code>{parts[1].strip()}</code> para tus horarios", parse_mode="HTML")
-    except Exception:
-        await message.answer("Esa zona horaria no me suena 😅 Usa una como Europe/Madrid, America/New_York o Asia/Kolkata.")
-
-@dp.message(Command('wake'))
-async def wake_command(message: types.Message):
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if not user_db:
-        await message.answer("Primero haz /start 😌")
-        return
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
-        await message.answer("Dime la hora, por ejemplo: /wake 08:00")
-        return
-    reminder_id = await asyncio.to_thread(create_wake_from_text, message.from_user.id, f"wake me at {parts[1]}")
-    if reminder_id:
-        await message.answer("hecho 😌 a esa hora te despierto. y sí, voy a insistir un poquito 😂")
-    else:
-        await message.answer("No entendí la hora 😅 prueba /wake 08:00")
-
-@dp.message(Command('relationship_test'))
-async def relationship_test(message: types.Message):
-    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
-        await message.answer("No tienes acceso a esa función.")
-        return
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2 or not parts[1].isdigit():
-        await message.answer("Uso: /relationship_test 0|10|50|200|500|1000")
-        return
-    n = int(parts[1])
-    # Deliberately only for testing: relationship count is set directly for the configured admin.
-    from helpers.db_connection import SessionLocal
-    from models.waifu_models import RelationshipState
-    def _set():
-        with SessionLocal() as session:
-            row = session.query(RelationshipState).filter(RelationshipState.relIdUser == message.from_user.id).first()
-            if not row:
-                row = RelationshipState(relIdUser=message.from_user.id)
-                session.add(row)
-            row.total_messages = n
-            session.commit()
-    await asyncio.to_thread(_set)
-    await message.answer(f"🧪 Уровень отношений выставлен на тестовое значение {n} сообщений.")
-
-# NOTIFICATIONS
+async def voice_style(message:types.Message):
+    parts=(message.text or '').split(maxsplit=1)
+    if len(parts)<2 or parts[1] not in VALID_VOICES:
+        await message.answer('Доступно: '+', '.join(VALID_VOICES)); return
+    update_user_settings(message.from_user.id,voice_style=parts[1]); await message.answer(f'голос: {parts[1]} 🎙️')
 
 @dp.message(Command('notifications'))
-async def toggle_notifications(message: types.Message):
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if not user_db:
-        await message.answer("Primero necesito conocerte. Usa /start")
-        return
+async def notifications(message:types.Message):
+    ensure_user(message.from_user.id,message.from_user.first_name); u=get_user(message.from_user.id); new=not u.proactive_enabled
+    update_user_settings(message.from_user.id,proactive_enabled=new)
+    await message.answer('иногда буду писать первой 😌' if new else 'хорошо, первой писать не буду')
 
-    new_state = not (user_db.proactive_enabled if user_db.proactive_enabled is not None else True)
-    await asyncio.to_thread(toggle_user_proactive, message.from_user.id, new_state)
+@dp.message(Command('timezone'))
+async def timezone_cmd(message:types.Message):
+    parts=(message.text or '').split(maxsplit=1)
+    if len(parts)<2:
+        ensure_user(message.from_user.id); await message.answer(f'Сейчас: {get_user(message.from_user.id).timezone}\nПример: /timezone Europe/Moscow'); return
+    try: set_timezone(message.from_user.id,parts[1].strip()); await message.answer('готово, запомнила часовой пояс')
+    except Exception: await message.answer('не узнаю такой часовой пояс. пример: Europe/Moscow')
 
-    if new_state:
-        await message.answer("🔔 Te voy a escribir cuando te extrañe 💕")
-    else:
-        await message.answer("🔕 De acuerdo, no te molestaré si no me escribes primero.")
+@dp.message(Command('wake'))
+async def wake_cmd(message:types.Message):
+    rid=create_from_text(message.from_user.id,message.text or '')
+    await message.answer('запомнила 😌 разбужу и немного понастойчивее, если не ответишь' if rid else 'напиши время, например /wake 08:00')
 
+@dp.message(Command('reset'))
+async def reset_cmd(message:types.Message):
+    uid=ensure_user(message.from_user.id,message.from_user.first_name)
+    reset_memory(uid,CHARACTER_ID)
+    with SessionLocal() as s:
+        rel=s.query(UserCharacterRelationship).filter_by(user_id=uid,character_id=CHARACTER_ID).first()
+        if rel:
+            s.query(RelationshipEvent).filter(RelationshipEvent.user_character_id==rel.id).delete(synchronize_session=False)
+            s.delete(rel)
+        st=s.query(CharacterState).filter_by(user_id=uid,character_id=CHARACTER_ID).first()
+        if st:
+            st.mood='neutral'; st.energy=.65; st.affection=.45; st.playfulness=.55; st.irritation=0; st.pending_hook=None
+        s.query(Reminder).filter_by(user_id=uid).delete(synchronize_session=False); s.commit()
+    clear_stage(message.from_user.id)
+    await message.answer('готово. нашу переписку, память и развитие отношений начала заново.')
 
+@dp.message(Command('testlevel','relationship_test'))
+async def testlevel(message:types.Message):
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await message.answer('эта команда только для владельца'); return
+    parts=(message.text or '').split(maxsplit=1)
+    if len(parts)<2:
+        await message.answer('Использование: /testlevel 1..6 или /testlevel off'); return
+    arg=parts[1].strip().lower()
+    if arg=='off': clear_stage(message.from_user.id); await message.answer('тестовый уровень выключен'); return
+    if not arg.isdigit() or not 1<=int(arg)<=6:
+        await message.answer('нужен уровень от 1 до 6'); return
+    stage=STAGES[int(arg)-1]; set_stage(message.from_user.id,stage); await message.answer(f'тест: {STAGE_LABELS[stage]}')
 
-def _photo_request(text: str) -> bool:
-    t = text.lower()
-    keys = ('фото', 'фотку', 'селфи', 'покажись', 'покажи себя', 'picture', 'photo', 'selfie', 'pic', 'foto', 'muéstrate')
-    return any(k in t for k in keys)
+async def send_answer(message:types.Message,text:str):
+    u=get_user(message.from_user.id)
+    if u and u.voice_enabled:
+        try:
+            audio=await synthesize_bytes(text,u.voice_style); await message.answer_voice(BufferedInputFile(audio,filename='anna.ogg'))
+            return
+        except Exception: logger.exception('tts failed')
+    await message.answer(text)
 
-async def _send_chat_result(message: types.Message, response_txt: str, user_db):
-    # Optional natural multi-message bursts: the model may use ||| when it genuinely helps.
-    chunks = [x.strip() for x in response_txt.split('|||') if x.strip()]
-    for chunk in chunks[:3]:
-        if user_db.voice_enabled:
-            audio_bytes = await generate_voice(chunk, user_db.voice_style or 'nova')
-            await message.answer_voice(types.BufferedInputFile(audio_bytes, "response.ogg"))
-        else:
-            await message.answer(chunk)
-
-# CHATGPT FUNCTIONALITY
-
-@dp.message()
-async def gpt(message: types.Message, state: FSMContext):
-    if not message.text:
-        await message.answer("Por ahora solo puedo leer mensajes de texto 😊")
-        return
-    if len(message.text) > 2000:
-        await message.answer("Tu mensaje es muy largo, ¿puedes resumirlo un poco? 🥺")
-        return
-
-    if is_rate_limited(message.from_user.id):
-        await message.answer("Dame un respiro, estoy un poco abrumada 💕")
-        return
-
-    user_db = await asyncio.to_thread(search_user, message.from_user.id)
-    if user_db is None:
-        display_name = message.from_user.first_name or message.from_user.username or "друг"
-        ensure_anna_user(message.from_user.id, display_name)
-        await asyncio.to_thread(new_user, message.from_user.id, display_name)
-        user_db = await asyncio.to_thread(search_user, message.from_user.id)
-
-    if not await asyncio.to_thread(can_send_message, message.from_user.id):
-        await message.answer("Я сегодня уже много болтала 😅 Давай продолжим завтра или подключи Premium.")
-        return
-
+@dp.message(F.voice)
+async def voice_message(message:types.Message):
+    ensure_user(message.from_user.id,message.from_user.first_name); cancel_active_wake(message.from_user.id)
+    if not can_send_message(message.from_user.id): await message.answer('на сегодня бесплатный лимит сообщений закончился. /premium'); return
     try:
-        async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            response_txt = await anna_reply(
-                message.from_user.id, user_db.name or message.from_user.first_name or "друг", message.text
-            )
+        data=await bot.download(message.voice); text=await transcribe(data)
+        async with ChatActionSender.typing(bot=bot,chat_id=message.chat.id): answer=await anna_reply(message.from_user.id,message.from_user.first_name or 'ты',text)
+        await send_answer(message,answer)
+        req=parse_photo_request(text)
+        if req: await send_photo_or_offer(message,req)
+        if create_from_text(message.from_user.id,text): await message.answer('и время тоже запомнила 😌')
+        touch_user(message.from_user.id)
+    except Exception:
+        logger.exception('voice handler'); await message.answer('голосовое сейчас не получилось разобрать 😕')
 
-        if user_db.voice_enabled:
-            audio_bytes = await generate_voice(response_txt, user_db.voice_style or 'nova')
-            await message.answer_voice(types.BufferedInputFile(audio_bytes, "response.ogg"))
-        else:
-            await message.answer(response_txt)
-
-        await asyncio.to_thread(update_user_last_active, message.from_user.id)
-
-    except Exception as e:
-        logger.error("Unhandled error in gpt handler for user %s: %s", message.from_user.id, e)
-        await message.answer("Algo salió mal, intenta de nuevo 💕")
-
+@dp.message(F.text)
+async def text_message(message:types.Message):
+    if (message.text or '').startswith('/'): return
+    ensure_user(message.from_user.id,message.from_user.first_name); cancel_active_wake(message.from_user.id)
+    if not can_send_message(message.from_user.id): await message.answer('на сегодня бесплатный лимит сообщений закончился. Premium: /premium'); return
+    text=message.text or ''
+    try:
+        async with ChatActionSender.typing(bot=bot,chat_id=message.chat.id): answer=await anna_reply(message.from_user.id,message.from_user.first_name or 'ты',text)
+        await send_answer(message,answer)
+        req=parse_photo_request(text)
+        if req: await send_photo_or_offer(message,req)
+        rid=create_from_text(message.from_user.id,text)
+        if rid: await message.answer('запомнила 😌')
+        touch_user(message.from_user.id)
+    except Exception:
+        logger.exception('chat handler user=%s',message.from_user.id); await message.answer('я сейчас немного зависла 😅 напиши ещё раз')
 
 async def main():
-    if KEEP_ALIVE:
-        keep_alive()
-    start_scheduler(bot)
-
     await bot.set_my_commands([
-        types.BotCommand(command="start",         description="Bienvenida e inicio"),
-        types.BotCommand(command="config_actual", description="Ver tu configuración actual"),
-        types.BotCommand(command="config",        description="Editar configuración"),
-        types.BotCommand(command="selfie",        description="📸 Genera una foto de tu waifu"),
-        types.BotCommand(command="voice",         description="🔊 Activar/desactivar respuestas de voz"),
-        types.BotCommand(command="voice_style",   description="🎙️ Cambiar estilo de voz (ej: /voice_style nova)"),
-        types.BotCommand(command="appearance",    description="🎨 Describir apariencia para las fotos"),
-        types.BotCommand(command="notifications", description="🔔 Activar/desactivar mensajes proactivos"),
-        types.BotCommand(command="wake",          description="⏰ Despertarme a una hora"),
-        types.BotCommand(command="timezone",      description="🌍 Configurar zona horaria"),
-        types.BotCommand(command="reset",         description="🗑️ Borrar historial de conversación"),
-        types.BotCommand(command="my_name",       description="Cambiar tu nombre"),
-        types.BotCommand(command="waifu_name",    description="Cambiar el nombre de tu waifu"),
-        types.BotCommand(command="waifu_role",    description="Cambiar personalidad"),
-        types.BotCommand(command="finalizar",     description="Cancelar acción actual"),
+        types.BotCommand(command='start',description='Начать общение'),
+        types.BotCommand(command='photo',description='📸 Фото Анны'),
+        types.BotCommand(command='premium',description='⭐ Premium'),
+        types.BotCommand(command='settings',description='Настройки'),
+        types.BotCommand(command='voice',description='Голосовые ответы'),
+        types.BotCommand(command='notifications',description='Инициативные сообщения'),
+        types.BotCommand(command='wake',description='Будильник: /wake 08:00'),
+        types.BotCommand(command='reset',description='Очистить память и историю'),
     ])
+    start_scheduler(bot)
+    logger.info('AnnaBot started')
+    await dp.start_polling(bot)
 
-    await dp.start_polling(bot, skip_updates=True)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__=='__main__': asyncio.run(main())

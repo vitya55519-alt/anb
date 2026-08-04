@@ -1,0 +1,9 @@
+{
+  "face_anchor": "01_face_front_white_top.png",
+  "body_front": "02_full_body_white_top.png",
+  "body_side": "03_side_black_lingerie.png",
+  "home_hair_down": "04_lying_hair_down.png",
+  "home_hair_up": "05_lying_hair_up.png",
+  "fashion_anchor": "06_front_black_lingerie.jpg",
+  "policy": "Reference images anchor identity only. Generated outputs remain non-explicit. Clothing, location, pose, camera angle and hairstyle may change."
+}

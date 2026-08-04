@@ -1,0 +1,51 @@
+from datetime import datetime, timezone
+from sqlalchemy import select
+from services.db import SessionLocal
+from models.app_models import User, CharacterState
+from config import CHARACTER_ID, DEFAULT_TIMEZONE
+
+def now(): return datetime.now(timezone.utc).replace(tzinfo=None)
+
+def ensure_user(telegram_id: int, name: str | None = None) -> int:
+    with SessionLocal() as s:
+        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+        if not user:
+            user = User(telegram_id=str(telegram_id), name=name or "", timezone=DEFAULT_TIMEZONE)
+            s.add(user); s.flush()
+        elif name:
+            user.name = name
+        state = s.scalar(select(CharacterState).where(CharacterState.user_id == user.id, CharacterState.character_id == CHARACTER_ID))
+        if not state:
+            s.add(CharacterState(user_id=user.id, character_id=CHARACTER_ID))
+        s.commit(); return user.id
+
+def get_user(telegram_id: int):
+    with SessionLocal() as s:
+        return s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+
+def touch_user(telegram_id: int):
+    with SessionLocal() as s:
+        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+        if user:
+            user.last_active_at = now(); s.commit()
+
+def get_state(telegram_id: int):
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as s:
+        return s.scalar(select(CharacterState).where(CharacterState.user_id == uid, CharacterState.character_id == CHARACTER_ID))
+
+def update_user_settings(telegram_id: int, **kwargs):
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        for k,v in kwargs.items():
+            if hasattr(user,k): setattr(user,k,v)
+        s.commit()
+
+def update_state(telegram_id: int, **kwargs):
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as s:
+        state = s.scalar(select(CharacterState).where(CharacterState.user_id == uid, CharacterState.character_id == CHARACTER_ID))
+        for k,v in kwargs.items():
+            if hasattr(state,k): setattr(state,k,v)
+        s.commit()
