@@ -41,3 +41,10 @@ IMAGE_MODEL=gpt-image-2
 ```
 
 Important: older deployments may still have `PHOTO_ROUTER_MODE=seedream`. Change it to `hybrid`, otherwise all photos will continue to use Seedream.
+
+
+## V3.7.2 routing correction
+- `selfie`, `home`, `park`, `cafe`, `outfit`, `mirror`, `evening`, and mainstream `fashion` stay on GPT Image 2 in hybrid mode.
+- `personal` (relationship level 4) and `lingerie` (level 5+) route to Seedream 4.5.
+- This avoids repeated OpenAI `moderation_blocked [sexual]` failures for the more private `personal` scene while preserving GPT Image 2 for ordinary photos.
+- Seedream safety checking remains enabled. Failed generation does not consume the free daily request or paid credit.

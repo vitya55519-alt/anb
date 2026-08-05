@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
 import mimetypes
 import random
 import re
+import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -21,7 +23,9 @@ from config import (
     CHARACTER_ID,
     IMAGE_API_KEY, IMAGE_BASE_URL, IMAGE_MODEL, IMAGE_SIZE, IMAGE_QUALITY,
     FREE_PHOTOS_LEVEL_1_2, FREE_PHOTOS_LEVEL_3_6, PHOTO_COST_STARS,
-    FAL_KEY, FAL_MODEL, FAL_IMAGE_SIZE, FAL_TIMEOUT_SECONDS, FAL_ESTIMATED_COST_USD,
+    FAL_KEY, FAL_MODEL, FAL_IMAGE_SIZE, FAL_TIMEOUT_SECONDS,
+    FAL_CONNECT_TIMEOUT_SECONDS, FAL_WRITE_TIMEOUT_SECONDS, FAL_POOL_TIMEOUT_SECONDS,
+    FAL_RETRIES, FAL_RETRY_BACKOFF_SECONDS, FAL_ESTIMATED_COST_USD,
     PHOTO_ROUTER_MODE, PHOTO_SET_SIZE,
 )
 from models.app_models import User
@@ -82,63 +86,65 @@ INTIMATE_STYLE = re.compile(
 # Stable wardrobe/hair pools. The resolver avoids the immediately previous state,
 # so the model does not keep returning the same beige outfit and hairstyle.
 OUTFIT_POOLS = {
+    # Ordinary scenes use general-audience wardrobe wording for GPT Image 2.
+    # Identity comes from the reference image, not anatomy-emphasizing adjectives.
     'selfie': [
-        'a fitted black long-sleeve top with dark blue jeans',
-        'a burgundy fitted turtleneck with black trousers',
-        'a soft gray fitted knit top with blue jeans',
-        'a dark green fitted sweater with black jeans',
-        'a navy fitted top with a midi skirt',
+        'a black crew-neck sweater with straight blue jeans',
+        'a burgundy turtleneck with tailored black trousers',
+        'a soft gray knit sweater with blue jeans',
+        'a dark green sweater with black jeans',
+        'a navy long-sleeve top with a midi skirt',
     ],
     'home': [
         'an oversized soft gray hoodie with black leggings',
-        'a fitted black long-sleeve top with comfortable gray lounge trousers',
+        'a black long-sleeve top with comfortable gray lounge trousers',
         'a soft knit lounge set in muted blue',
         'a casual burgundy sweatshirt with dark leggings',
-        'a cream cardigan over a dark fitted top with jeans',
+        'a cream cardigan over a dark top with jeans',
     ],
     'park': [
-        'a fitted white t-shirt with blue jeans and a light denim jacket',
+        'a white crew-neck t-shirt with blue jeans and a light denim jacket',
         'a black athletic top with dark leggings and casual sneakers',
-        'a burgundy fitted top with blue jeans',
+        'a burgundy long-sleeve top with blue jeans',
         'a light casual summer dress with a denim jacket',
         'a gray hoodie with black leggings and white sneakers',
     ],
     'cafe': [
-        'a fitted dark burgundy turtleneck with tailored dark trousers',
-        'a black fitted long-sleeve top with blue high-waisted jeans',
-        'a cream cardigan over a fitted black top with a midi skirt',
-        'a deep green knit top with dark jeans',
-        'a navy fitted sweater with a beige midi skirt',
+        'a dark burgundy turtleneck with tailored dark trousers',
+        'a black crew-neck long-sleeve top with blue high-waisted jeans',
+        'a cream cardigan over a black top with a midi skirt',
+        'a deep green knit sweater with dark jeans',
+        'a navy sweater with a beige midi skirt',
     ],
     'mirror': [
-        'a fitted black midi dress',
-        'a white fitted long-sleeve top with black high-waisted trousers',
-        'a burgundy fitted dress',
-        'a dark green fitted top with tailored black trousers',
+        'a black long-sleeve midi dress with an ordinary neckline',
+        'a white crew-neck long-sleeve top with black high-waisted trousers',
+        'a burgundy long-sleeve midi dress',
+        'a dark green long-sleeve top with tailored black trousers',
     ],
     'outfit': [
-        'a fitted elegant black dress',
-        'a burgundy fitted dress',
-        'a white fitted long-sleeve top with black high-waisted trousers',
+        'an elegant black long-sleeve midi dress',
+        'a burgundy long-sleeve midi dress',
+        'a white crew-neck long-sleeve top with black high-waisted trousers',
         'a dark green top with a black midi skirt',
         'a tailored monochrome navy outfit',
     ],
     'evening': [
-        'an elegant fitted black evening dress',
-        'a deep burgundy evening dress',
-        'a dark emerald fitted evening dress',
+        'an elegant black long-sleeve evening dress with an ordinary neckline',
+        'a deep burgundy evening dress with long sleeves',
+        'a dark emerald long-sleeve evening dress',
         'a navy elegant long-sleeve dress',
     ],
     'fashion': [
-        'a fitted black fashion dress with opaque fabric',
+        'a black long-sleeve fashion dress with opaque fabric and an ordinary neckline',
         'a tailored burgundy fashion look with opaque fabric',
-        'a white fitted top with black tailored trousers',
-        'a deep green fitted fashion outfit with opaque fabric',
+        'a white crew-neck top with black tailored trousers',
+        'a deep green fashion outfit with opaque fabric',
     ],
     'personal': [
-        'a soft fitted dark long-sleeve top with comfortable high-waisted trousers',
-        'a fitted burgundy knit top with dark trousers',
-        'a black fitted dress with long sleeves',
+        'a soft dark long-sleeve top with comfortable high-waisted trousers',
+        'a burgundy knit sweater with dark trousers',
+        'a black long-sleeve midi dress with an ordinary neckline',
     ],
     'lingerie': [
         'an elegant black lingerie fashion set with opaque coverage and polished catalog styling',
@@ -199,7 +205,7 @@ SHOT_VARIANTS = {
     'personal': [
         'warm handheld personal portrait made specifically to send to someone',
         'slightly high-angle personal selfie with direct eye contact',
-        'relaxed indoor self-timer portrait with intimate but non-explicit personal mood',
+        'relaxed indoor self-timer portrait with warm personal lifestyle mood',
     ],
     'lingerie': [
         'tasteful adult glamour portrait, three-quarter framing, non-explicit',
@@ -208,21 +214,33 @@ SHOT_VARIANTS = {
     ],
 }
 
-IDENTITY_LOCK = (
+OPENAI_IDENTITY_LOCK = (
+    'The supplied fully clothed reference defines Anna’s current face identity. '
+    'Create the same fictional adult woman, Anna, age 26. Preserve stable identity traits: '
+    'recognizable oval face, defined cheekbones, almond-shaped brown eyes and spacing, dark shaped eyebrows, '
+    'straight refined nose, full lips, jawline, warm light-to-medium skin tone, and dark brunette hair color. '
+    'Keep her overall appearance recognizable and realistic. Do not change age or ethnicity and do not substitute another woman.'
+)
+SEEDREAM_IDENTITY_LOCK = (
     'The supplied reference defines Anna’s permanent NEW identity. '
     'Create the SAME fictional adult woman, Anna, age 26. Identity preservation has absolute priority. '
     'Preserve her oval face, defined cheekbones, almond-shaped brown eyes and spacing, dark shaped eyebrows, '
     'straight refined nose, full lips, jawline, warm light-to-medium skin tone, dark brunette hair color, '
-    'and stable curvy body proportions. Do not drift back to the previous Anna face, do not substitute another woman, '
-    'do not change age or ethnicity, and do not redesign her facial proportions.'
+    'and stable body proportions matching the supplied reference. Do not drift back to the previous Anna face, '
+    'do not substitute another woman, do not change age or ethnicity, and do not redesign her facial proportions.'
 )
 QUALITY_BLOCK = (
-    'Photorealistic smartphone/lifestyle photography, realistic skin pores and texture, realistic hands and anatomy, '
+    'Photorealistic smartphone/lifestyle photography, realistic skin texture, realistic hands and anatomy, '
     'natural hair strands, coherent perspective, premium photographic detail, soft cinematic realism, shallow depth of field where appropriate.'
+)
+OPENAI_GENERAL_AUDIENCE_BLOCK = (
+    'Mainstream general-audience lifestyle photograph. The woman remains fully clothed in opaque everyday clothing. '
+    'Use an ordinary neckline and a relaxed natural pose. Keep the composition focused on the scene, face, outfit, and environment rather than anatomy. '
+    'The image should read as an everyday social-media or personal travel/lifestyle photo, not glamour or boudoir photography.'
 )
 NEGATIVE_BLOCK = (
     'Avoid identity drift, generic doll-like face, plastic skin, asymmetrical eyes, warped hands, extra fingers, '
-    'duplicate limbs, distorted anatomy, inconsistent body proportions, text, watermark, random accessories, and overprocessed beauty filters.'
+    'duplicate limbs, distorted anatomy, text, watermark, random accessories, and overprocessed beauty filters.'
 )
 
 
@@ -468,15 +486,11 @@ def _reference_folder(character: dict) -> Path:
 
 def _reference_path(character: dict, scene: str) -> Path:
     folder = _reference_folder(character)
-    # Face-led scenes use the new face anchor; full-body scenes use the new fully-clothed body anchor.
-    filename = '01_face_front_white_top.png' if scene in {'selfie', 'cafe', 'personal'} else '02_full_body_white_top.png'
-    path = folder / filename
-    if path.exists():
-        return path
-    for candidate in ('00_identity_face_new.png', '00_seedream_face_safe.png'):
-        cp = folder / candidate
-        if cp.exists():
-            return cp
+    # GPT Image 2 gets a neutral, fully clothed identity anchor for ordinary scenes.
+    for candidate in ('00_openai_safe_fullbody.png', '00_identity_face_new.png', '01_face_front_white_top.png'):
+        path = folder / candidate
+        if path.exists():
+            return path
     raise FileNotFoundError('У Анны нет доступных reference-фото')
 
 
@@ -513,27 +527,34 @@ def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
 def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False) -> str:
     scene = SCENES.get(request.scene, SCENES['selfie'])
     angle = _shot_variant(request.scene, shot_index, request.angle)
-    personal = (
-        'This should feel like a personal photo Anna has just taken herself specifically to send to someone she is chatting with. '
-        'It must feel spontaneous and believable, not like a professional photographer is standing in front of her. '
-        'Use a realistic smartphone-camera perspective and slightly imperfect real-life framing.'
-    )
-    bold = ''
     if seedream:
-        bold = (
-            'Use tasteful adult glamour/editorial styling. Keep it non-explicit: no nudity, no exposed nipples or genitals, '
-            'and the lingerie garment must provide opaque coverage. Preserve identity above styling.'
+        identity = SEEDREAM_IDENTITY_LOCK
+        personal = (
+            'This is a tasteful adult glamour/fashion photo made specifically to send to someone she is chatting with. '
+            'Keep the styling polished and personal while remaining non-explicit.'
         )
+        safety = (
+            'Tasteful adult glamour/editorial styling only. No nudity, no exposed nipples or genitals. '
+            'Any lingerie garment must provide opaque coverage. Preserve identity above styling.'
+        )
+    else:
+        identity = OPENAI_IDENTITY_LOCK
+        personal = (
+            'This should feel like a normal personal photo Anna has just taken herself to send to someone she is chatting with. '
+            'Use believable smartphone framing and a relaxed everyday expression. '
+            'It should look like an ordinary lifestyle snapshot rather than a professional glamour shoot.'
+        )
+        safety = OPENAI_GENERAL_AUDIENCE_BLOCK
     return (
-        f'{IDENTITY_LOCK}\n'
+        f'{identity}\n'
         f'SCENE: {scene}. {request.location}.\n'
-        f'WARDROBE: {request.clothing}. Do not reuse the previous outfit if a different one is specified.\n'
+        f'WARDROBE: {request.clothing}.\n'
         f'HAIRSTYLE: {request.hairstyle}.\n'
         f'SHOT {shot_index + 1}/{PHOTO_SET_SIZE}: {angle}.\n'
         f'MOOD: {request.mood}.\n'
         f'{personal}\n'
         'LIGHTING: soft natural window light where appropriate, realistic shadows, cinematic but believable contrast.\n'
-        f'{bold}\n'
+        f'{safety}\n'
         f'{QUALITY_BLOCK}\n'
         f'{NEGATIVE_BLOCK}'
     )
@@ -559,9 +580,21 @@ def _file_data_uri(path: Path) -> str:
     return f'data:{mime};base64,{encoded}'
 
 
-async def _seedream_request(prompt: str, image_urls: list[str], num_images: int = 1) -> dict:
+async def _seedream_request(
+    prompt: str,
+    image_urls: list[str],
+    num_images: int = 1,
+    request_label: str = '',
+) -> dict:
+    """Call fal/Seedream with explicit phase timeouts and bounded retry.
+
+    Seedream can legitimately take longer than a normal HTTP request.  We retry
+    only transport timeouts and transient HTTP errors.  Policy/validation 4xx
+    responses are returned immediately so we never try to bypass provider safety.
+    """
     if not FAL_KEY:
         raise PhotoGenerationError('seedream45', 'FAL_KEY is not configured')
+
     endpoint = f"https://fal.run/{FAL_MODEL.strip('/')}"
     payload = {
         'prompt': prompt,
@@ -572,22 +605,61 @@ async def _seedream_request(prompt: str, image_urls: list[str], num_images: int 
         'enable_safety_checker': True,
     }
     headers = {'Authorization': f'Key {FAL_KEY}', 'Content-Type': 'application/json'}
-    timeout = httpx.Timeout(float(FAL_TIMEOUT_SECONDS), connect=20.0)
+    timeout = httpx.Timeout(
+        connect=float(FAL_CONNECT_TIMEOUT_SECONDS),
+        read=float(FAL_TIMEOUT_SECONDS),
+        write=float(FAL_WRITE_TIMEOUT_SECONDS),
+        pool=float(FAL_POOL_TIMEOUT_SECONDS),
+    )
+    max_attempts = FAL_RETRIES + 1
+    transient_statuses = {408, 425, 429, 500, 502, 503, 504}
+
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        response = await client.post(endpoint, headers=headers, json=payload)
-    if response.status_code >= 400:
-        body = response.text[:1600]
-        logger.error('Seedream HTTP error status=%s body=%s', response.status_code, body)
-        raise PhotoGenerationError('seedream45', f'HTTP {response.status_code}')
-    try:
-        return response.json()
-    except Exception as exc:
-        logger.error('Seedream returned non-JSON response: %s', response.text[:1200])
-        raise PhotoGenerationError('seedream45', 'invalid_json') from exc
+        for attempt in range(1, max_attempts + 1):
+            started = time.monotonic()
+            try:
+                response = await client.post(endpoint, headers=headers, json=payload)
+            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
+                elapsed = time.monotonic() - started
+                logger.warning(
+                    'Seedream timeout label=%s attempt=%s/%s elapsed=%.1fs type=%s',
+                    request_label or '-', attempt, max_attempts, elapsed, type(exc).__name__,
+                )
+                if attempt >= max_attempts:
+                    raise PhotoGenerationError('seedream45', 'timeout') from exc
+                await asyncio.sleep(FAL_RETRY_BACKOFF_SECONDS * attempt)
+                continue
+
+            elapsed = time.monotonic() - started
+            logger.info(
+                'Seedream response label=%s attempt=%s/%s status=%s elapsed=%.1fs',
+                request_label or '-', attempt, max_attempts, response.status_code, elapsed,
+            )
+
+            if response.status_code >= 400:
+                body = response.text[:1600]
+                if response.status_code in transient_statuses and attempt < max_attempts:
+                    logger.warning(
+                        'Seedream transient HTTP status=%s label=%s attempt=%s/%s body=%s',
+                        response.status_code, request_label or '-', attempt, max_attempts, body[:500],
+                    )
+                    await asyncio.sleep(FAL_RETRY_BACKOFF_SECONDS * attempt)
+                    continue
+                logger.error('Seedream HTTP error status=%s body=%s', response.status_code, body)
+                raise PhotoGenerationError('seedream45', f'HTTP {response.status_code}')
+
+            try:
+                return response.json()
+            except Exception as exc:
+                logger.error('Seedream returned non-JSON response: %s', response.text[:1200])
+                raise PhotoGenerationError('seedream45', 'invalid_json') from exc
+
+    raise PhotoGenerationError('seedream45', 'request_failed')
 
 
 async def _run_openai_set(character: dict, telegram_id: int, request: PhotoRequest) -> list[GeneratedPhoto]:
     ref = _reference_path(character, request.scene)
+    logger.info('OpenAI normal-photo set request user=%s scene=%s reference=%s count=%s safe_prompt=true', telegram_id, request.scene, ref.name, PHOTO_SET_SIZE)
     outputs=[]
     # Three independent edits give us controlled angle variation while preserving the same resolved outfit/hair.
     for i in range(PHOTO_SET_SIZE):
@@ -607,25 +679,61 @@ async def _run_openai_set(character: dict, telegram_id: int, request: PhotoReque
 
 async def _run_seedream_set(character: dict, telegram_id: int, request: PhotoRequest) -> list[GeneratedPhoto]:
     ref = _seedream_reference_path(character)
-    # One prompt requests a coherent 3-image mini-set. Fal returns multiple images in one response when available.
-    prompt = _build_prompt(request, 0, seedream=True) + (
-        f'\nGenerate {PHOTO_SET_SIZE} coherent but clearly different photos of the SAME moment: '
-        'vary camera angle/framing between handheld selfie, mirror/self-timer style, and a wider personal portrait; '
-        'keep the exact same outfit, hairstyle, location, face identity, and body proportions across the set.'
+    reference_uri = _file_data_uri(ref)
+    out: list[GeneratedPhoto] = []
+
+    # Reliability rule: request ONE Seedream image at a time.  A three-image
+    # request was observed taking the full old 150s timeout and then failing.
+    # We still deliver up to PHOTO_SET_SIZE images as one user-visible set, but
+    # each provider request has its own timeout/retry budget and its own angle.
+    logger.info(
+        'Seedream set request user=%s scene=%s reference=%s target_count=%s per_request=1 timeout=%ss retries=%s',
+        telegram_id, request.scene, ref.name, PHOTO_SET_SIZE, FAL_TIMEOUT_SECONDS, FAL_RETRIES,
     )
-    logger.info('Seedream set request user=%s scene=%s reference=%s count=%s', telegram_id, request.scene, ref.name, PHOTO_SET_SIZE)
-    result = await _seedream_request(prompt, [_file_data_uri(ref)], PHOTO_SET_SIZE)
-    images = result.get('images') if isinstance(result, dict) else None
-    if not images:
-        logger.error('Seedream response missing image URLs: %r', result)
-        raise PhotoGenerationError('seedream45', 'no_image_url')
-    out=[]
-    for item in images[:PHOTO_SET_SIZE]:
+
+    for i in range(PHOTO_SET_SIZE):
+        prompt = _build_prompt(request, i, seedream=True) + (
+            '\nCreate exactly ONE photo for this shot. Keep the exact same outfit, hairstyle, location, '
+            'face identity and body proportions as the other photos in this set. '
+            'Make this framing clearly different from the previous shot while staying in the same moment.'
+        )
+        try:
+            result = await _seedream_request(
+                prompt,
+                [reference_uri],
+                1,
+                request_label=f'{request.scene}:{i + 1}/{PHOTO_SET_SIZE}',
+            )
+        except PhotoGenerationError as exc:
+            if out:
+                logger.warning(
+                    'Seedream partial set user=%s scene=%s delivered=%s/%s stopped_reason=%s',
+                    telegram_id, request.scene, len(out), PHOTO_SET_SIZE, exc.reason,
+                )
+                break
+            raise
+
+        images = result.get('images') if isinstance(result, dict) else None
+        if not images:
+            logger.error('Seedream response missing image URLs shot=%s result=%r', i + 1, result)
+            if out:
+                break
+            raise PhotoGenerationError('seedream45', 'no_image_url')
+
+        item = images[0]
         if isinstance(item, dict) and item.get('url'):
-            out.append(GeneratedPhoto(url=item['url'], provider='seedream45', estimated_cost_usd=FAL_ESTIMATED_COST_USD))
+            out.append(GeneratedPhoto(
+                url=item['url'],
+                provider='seedream45',
+                estimated_cost_usd=FAL_ESTIMATED_COST_USD,
+            ))
+        elif not out:
+            raise PhotoGenerationError('seedream45', 'no_image_url')
+        else:
+            break
+
     if not out:
         raise PhotoGenerationError('seedream45', 'no_image_url')
-    # If provider returns fewer than requested, treat it as a valid partial set; quota still counts one request.
     return out
 
 
@@ -636,11 +744,17 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
     if mode in {'fal', 'seedream', 'seedream45'}:
         return 'seedream45'
 
-    # HYBRID: ordinary fully-clothed photos -> GPT Image 2; bold lingerie/boudoir -> Seedream.
-    # This is content-based routing, not relationship-level routing.
+    # HYBRID routing:
+    # - ordinary fully-clothed lifestyle/fashion scenes -> GPT Image 2
+    # - intentionally more private/bold scenes -> Seedream
+    # `personal` is level-4 content and is deliberately kept off the OpenAI image
+    # path because even fully-clothed personal prompts can be classified as sexual
+    # when combined with identity-preserving image edits.
     combined = ' '.join([request.scene, request.clothing, request.location, request.angle]).lower()
-    if request.scene == 'lingerie' or INTIMATE_STYLE.search(combined):
+    if request.scene in {'personal', 'lingerie'} or INTIMATE_STYLE.search(combined):
+        logger.info('Hybrid photo route scene=%s -> seedream45', request.scene)
         return 'seedream45'
+    logger.info('Hybrid photo route scene=%s -> openai', request.scene)
     return 'openai'
 
 

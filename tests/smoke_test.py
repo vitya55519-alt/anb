@@ -9,7 +9,7 @@ assert character['id']=='anna_01'
 assert character['visual_identity']['identity_version']=='anna_v2_new_face_2026_08'
 for ref in character['visual_identity']['reference_assets']:
     assert (ROOT/character['visual_identity']['reference_folder']/ref).exists(), ref
-for ref in ('00_identity_face_new.png','00_seedream_face_safe.png','02_full_body_white_top.png'):
+for ref in ('00_identity_face_new.png','00_seedream_face_safe.png','00_openai_safe_fullbody.png','02_full_body_white_top.png'):
     assert (ROOT/character['visual_identity']['reference_folder']/ref).exists(), ref
 cfg=(ROOT/'config.py').read_text(encoding='utf-8')
 assert 'gpt-image-2' in cfg
@@ -20,13 +20,14 @@ assert 'PHOTO_SET_SIZE' in cfg
 photo=(ROOT/'services/photo_service.py').read_text(encoding='utf-8')
 main=(ROOT/'main.py').read_text(encoding='utf-8')
 assert 'https://fal.run/' in photo
-assert "request.scene == 'lingerie'" in photo
+assert "request.scene in {'personal', 'lingerie'}" in photo
 assert "return 'openai'" in photo
 assert 'OUTFIT_POOLS' in photo and 'HAIRSTYLE_POOL' in photo and 'SHOT_VARIANTS' in photo
-assert 'IDENTITY_LOCK' in photo and 'NEGATIVE_BLOCK' in photo
+assert 'OPENAI_IDENTITY_LOCK' in photo and 'SEEDREAM_IDENTITY_LOCK' in photo and 'OPENAI_GENERAL_AUDIENCE_BLOCK' in photo and 'NEGATIVE_BLOCK' in photo
 assert 'generate_photo_set' in photo
 assert 'static fallback' not in photo.lower()
 assert "'personal': 4" in photo
+assert "request.scene in {'personal', 'lingerie'}" in photo
 assert 'locked:' in main and 'retry_photo:' in main
 assert 'ReplyKeyboardMarkup' in main
 assert 'FREE_PHOTOS_LEVEL_1_2' in cfg and 'FREE_PHOTOS_LEVEL_3_6' in cfg
@@ -35,3 +36,13 @@ active='\n'.join(p.read_text(encoding='utf-8',errors='ignore') for p in ROOT.rgl
 legacy=[r'Quiero que actúes',r'Tu configuracion',r'Accion cancelada',r'/finalizar',r'Algo salió']
 assert not any(re.search(x,active,re.I) for x in legacy)
 print('STATIC_SMOKE_OK')
+
+assert '00_openai_safe_fullbody.png' in photo
+assert 'safe_prompt=true' in photo
+
+# V3.7.3 reliability checks
+assert 'FAL_RETRIES' in cfg and 'FAL_CONNECT_TIMEOUT_SECONDS' in cfg
+assert "request_label=f'{request.scene}:{i + 1}/{PHOTO_SET_SIZE}'" in photo
+assert 'per_request=1' in photo
+assert 'httpx.ReadTimeout' in photo
+assert "num_images': num_images" in photo

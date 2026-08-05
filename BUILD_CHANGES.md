@@ -1,3 +1,11 @@
+# V3.7.1 OpenAI normal-photo moderation fix
+
+- Ordinary GPT Image 2 scenes use a neutral fully-clothed identity anchor: `00_openai_safe_fullbody.png`.
+- GPT prompts avoid anatomy-emphasis wording and use general-audience wardrobe language.
+- GPT normal-photo prompt explicitly requests ordinary lifestyle photography.
+- Seedream keeps the stronger identity/body lock for higher-level non-explicit glamour/lingerie fashion.
+- Railway logs show `OpenAI normal-photo set request ... safe_prompt=true` before generation.
+
 # V3.6 — Seedream input-validation fix
 
 - Added `00_seedream_face_safe.png`, a neutral face-only identity anchor.
@@ -64,3 +72,20 @@
 - Reworked structured prompts with identity lock, scene, outfit, hair, shot, lighting, quality, negative blocks.
 - Outfit and hairstyle pools avoid immediate repetition.
 - Each request can deliver up to 3 photos while consuming one free request/credit.
+
+
+## V3.7.2 routing correction
+- `selfie`, `home`, `park`, `cafe`, `outfit`, `mirror`, `evening`, and mainstream `fashion` stay on GPT Image 2 in hybrid mode.
+- `personal` (relationship level 4) and `lingerie` (level 5+) route to Seedream 4.5.
+- This avoids repeated OpenAI `moderation_blocked [sexual]` failures for the more private `personal` scene while preserving GPT Image 2 for ordinary photos.
+- Seedream safety checking remains enabled. Failed generation does not consume the free daily request or paid credit.
+
+
+## V3.7.3 — Seedream timeout/retry reliability
+
+- Seedream set generation now requests one image per provider call instead of 3 images in one long request.
+- Read timeout increased to 210s by default, with separate connect/write/pool timeouts.
+- Added bounded retry for transport timeouts and transient 408/429/5xx responses.
+- Provider policy/validation 4xx responses are not retried. Safety checker remains enabled.
+- If at least one image in a 3-photo Seedream set succeeds and a later image fails, the successful partial set is delivered and the request counts once.
+- Added elapsed-time and retry diagnostics to Railway logs.
