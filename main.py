@@ -3,7 +3,7 @@ import logging
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandStart
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, BufferedInputFile
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, BufferedInputFile, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.chat_action import ChatActionSender
 
 from config import (
@@ -20,6 +20,7 @@ from services.photo_service import (
     PhotoRequest, parse_photo_request, deliver_photo, has_free_photo, build_photo_menu,
     create_offer, consume_offer, scene_allowed_for_stage, get_relationship_stage,
     get_relationship_level, is_custom_request, requires_adult_confirmation,
+    SCENE_LEVELS, PhotoGenerationError,
 )
 from services.payments import record_payment, get_photo_credits
 from services.reminder_service import set_timezone, create_from_text, cancel_active_wake
@@ -45,13 +46,36 @@ PHOTO_LABELS = {
     'mirror': '🪞 Зеркало',
     'evening': '✨ Вечер',
     'fashion': '💎 Fashion',
+    'personal': '💌 Личное фото',
     'lingerie': '🖤 Приватный fashion',
+}
+
+PHOTO_MENU_ORDER = ['selfie', 'home', 'park', 'cafe', 'outfit', 'mirror', 'evening', 'fashion', 'personal', 'lingerie']
+RELATIONSHIP_LEVEL_NAMES = {
+    1: 'Знакомство',
+    2: 'Симпатия',
+    3: 'Близкое общение',
+    4: 'Доверие',
+    5: 'Очень близки',
+    6: 'Связь',
 }
 
 # Short-lived UI state only. Paid offers themselves are persisted in PostgreSQL.
 _custom_drafts: dict[int, dict] = {}
 _pending_adult_photo: dict[int, PhotoRequest] = {}
 _pending_adult_custom: set[int] = set()
+
+
+def main_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text='💬 Общение'), KeyboardButton(text='📸 Фото')],
+            [KeyboardButton(text='🎭 Образы'), KeyboardButton(text='🚀 Премиум')],
+            [KeyboardButton(text='👤 Профиль'), KeyboardButton(text='⚙️ Настройки')],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
 
 
 def premium_keyboard():
@@ -68,17 +92,66 @@ def adult_keyboard():
 
 
 def photo_keyboard(telegram_id: int):
-    stage = get_relationship_stage(telegram_id)
-    items = [(scene, label) for scene, label in PHOTO_LABELS.items() if scene_allowed_for_stage(scene, stage)]
+    level = get_relationship_level(telegram_id)
+    unlocked = [scene for scene in PHOTO_MENU_ORDER if SCENE_LEVELS.get(scene, 99) <= level]
     rows = []
-    for i in range(0, len(items), 2):
+    for i in range(0, len(unlocked), 2):
         rows.append([
-            InlineKeyboardButton(text=label, callback_data=f'photo:{scene}')
-            for scene, label in items[i:i + 2]
+            InlineKeyboardButton(text=PHOTO_LABELS[scene], callback_data=f'photo:{scene}')
+            for scene in unlocked[i:i + 2]
         ])
-    if get_relationship_level(telegram_id) >= 5:
+
+    # Show the NEXT unlock instead of hiding progression. This gives users a
+    # concrete reason to continue the relationship without turning it into a paywall.
+    future_levels = sorted({SCENE_LEVELS[s] for s in PHOTO_MENU_ORDER if SCENE_LEVELS.get(s, 99) > level})
+    if future_levels:
+        next_level = future_levels[0]
+        locked = [s for s in PHOTO_MENU_ORDER if SCENE_LEVELS.get(s) == next_level]
+        if level == 4 and next_level == 5:
+            # Preview private fashion + paid customization together at the threshold.
+            locked = locked[:1]
+            rows.append([InlineKeyboardButton(
+                text=f'🔒 {PHOTO_LABELS[locked[0]].replace("🖤 ", "")} · ур.{next_level}',
+                callback_data=f'locked:{locked[0]}',
+            )])
+            rows.append([InlineKeyboardButton(
+                text='🔒 ✨ Кастомное фото · ур.5',
+                callback_data='locked:custom',
+            )])
+        else:
+            for i in range(0, len(locked), 2):
+                rows.append([
+                    InlineKeyboardButton(
+                        text=f'🔒 {PHOTO_LABELS[scene]} · ур.{next_level}',
+                        callback_data=f'locked:{scene}',
+                    )
+                    for scene in locked[i:i + 2]
+                ])
+
+    if level >= 5:
         rows.append([InlineKeyboardButton(text=f'✨ Кастомное фото — {CUSTOM_PHOTO_COST_STARS}⭐', callback_data='custom:start')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def photo_retry_keyboard(scene: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='🔄 Повторить', callback_data=f'retry_photo:{scene}')],
+        [InlineKeyboardButton(text='📸 Другой сюжет', callback_data='photo_menu:open')],
+    ])
+
+
+def photo_menu_text(telegram_id: int) -> str:
+    info = build_photo_menu(telegram_id)
+    level = info['level']
+    name = RELATIONSHIP_LEVEL_NAMES.get(level, '')
+    future = sorted({required for required in SCENE_LEVELS.values() if required > level})
+    next_line = f'\n🔒 Следующие фото откроются на уровне {future[0]}/6' if future else '\n✨ Все уровни фото уже открыты'
+    return (
+        f'что показать? 😌\n'
+        f'❤️ Близость: {level}/6 · {name}\n'
+        f'🎁 Бесплатно сегодня: {info["free_left"]}/{info["limit"]} · credits: {info["credits"]}'
+        f'{next_line}'
+    )
 
 
 def custom_color_keyboard():
@@ -161,9 +234,12 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
         try:
             async with ChatActionSender.upload_photo(bot=bot, chat_id=chat_id):
                 await deliver_photo(bot, chat_id, telegram_id, request, 'admin')
+        except PhotoGenerationError as exc:
+            logger.warning('admin photo generation failed provider=%s reason=%s user=%s', exc.provider, exc.reason, telegram_id)
+            await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан.', reply_markup=photo_retry_keyboard(request.scene))
         except Exception:
             logger.exception('admin photo generation failed user=%s', telegram_id)
-            await bot.send_message(chat_id, 'с фото сейчас что-то не вышло 😕')
+            await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан.', reply_markup=photo_retry_keyboard(request.scene))
         return
 
     # Personal changes are monetized as customization; relationship level itself is never sold.
@@ -184,13 +260,17 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
         logger.info('photo denied user=%s reason=%s', telegram_id, exc)
         await bot.send_message(chat_id, 'этот вариант сейчас недоступен 😌')
         return
+    except PhotoGenerationError as exc:
+        logger.warning('photo generation failed provider=%s reason=%s user=%s scene=%s', exc.provider, exc.reason, telegram_id, request.scene)
+        await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
+        return
     except Exception:
         logger.exception('photo generation failed user=%s', telegram_id)
-        await bot.send_message(chat_id, 'фото сейчас не получилось 😕 попробуй чуть позже')
+        await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
         return
 
     offer_id = create_offer(telegram_id, request)
-    await bot.send_message(chat_id, 'дневной лимит закончился. Могу сделать ещё одно фото за Stars ✨')
+    await bot.send_message(chat_id, f'бесплатный лимит на сегодня использован. следующее фото — {PHOTO_COST_STARS}⭐ ✨')
     await send_stars_invoice(
         chat_id,
         'Фото Анны',
@@ -205,8 +285,8 @@ async def start(message: types.Message):
     name = message.from_user.first_name or message.from_user.username or 'ты'
     ensure_user(message.from_user.id, name)
     await message.answer(
-        f'привет, {name} 🙂 я Анна. ничего настраивать не надо — просто пиши.\n\n'
-        'Фото: /photo · Premium: /premium · настройки: /settings'
+        f'привет, {name} 🙂 я Анна. ничего настраивать не надо — просто пиши.',
+        reply_markup=main_keyboard(),
     )
 
 
@@ -269,8 +349,9 @@ async def premium(message: types.Message):
         await message.answer(f'Premium уже активен ✨\nФото-кредиты: {get_photo_credits(message.from_user.id)}')
         return
     await message.answer(
-        'Premium на 30 дней:\n• расширенная память и полный лимит сообщений\n• до 4 обычных фото в день\n'
+        'Premium на 30 дней:\n• расширенная память и полный лимит сообщений\n'
         '• 12 дополнительных photo credits\n• больше continuity и инициативных сообщений\n\n'
+        'Бесплатные фото зависят от близости: 1–2 уровень — 1/день, 3–6 — 2/день.\n'
         'Отношения не покупаются — они развиваются из общения. Кастомные фото оплачиваются отдельно.',
         reply_markup=premium_keyboard(),
     )
@@ -315,19 +396,46 @@ async def successful_payment(message: types.Message):
         except PermissionError as exc:
             logger.info('paid photo denied user=%s reason=%s', message.from_user.id, exc)
             await message.answer('оплата сохранена как photo credit. этот образ сейчас недоступен, кредит не пропадёт.')
+        except PhotoGenerationError as exc:
+            logger.warning('paid photo generation failed provider=%s reason=%s user=%s', exc.provider, exc.reason, message.from_user.id)
+            await message.answer('фото сейчас не получилось, но оплаченный photo credit сохранён.', reply_markup=photo_retry_keyboard(request.scene))
         except Exception:
             logger.exception('paid photo generation failed user=%s', message.from_user.id)
-            await message.answer('оплата сохранена как photo credit. фото сейчас не получилось — кредит не пропадёт.')
+            await message.answer('фото сейчас не получилось, но оплаченный photo credit сохранён.', reply_markup=photo_retry_keyboard(request.scene))
 
 
 @dp.message(Command('photo', 'selfie'))
 async def photo_menu(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name)
-    info = build_photo_menu(message.from_user.id)
     await message.answer(
-        f'что показать? 😌\nУровень близости: {info["level"]}/6 · сегодня включённых фото: {info["free_left"]} · credits: {info["credits"]}',
+        photo_menu_text(message.from_user.id),
         reply_markup=photo_keyboard(message.from_user.id),
     )
+
+
+@dp.callback_query(F.data.startswith('locked:'))
+async def locked_photo_callback(cq: types.CallbackQuery):
+    item = cq.data.split(':', 1)[1]
+    required = 5 if item == 'custom' else SCENE_LEVELS.get(item, 6)
+    current = get_relationship_level(cq.from_user.id)
+    await cq.answer(
+        f'🔒 Откроется на уровне {required}/6. Сейчас {current}/6. Близость растёт от общения — купить уровень нельзя.',
+        show_alert=True,
+    )
+
+
+@dp.callback_query(F.data == 'photo_menu:open')
+async def photo_menu_callback(cq: types.CallbackQuery):
+    ensure_user(cq.from_user.id, cq.from_user.first_name)
+    await cq.answer()
+    await cq.message.answer(photo_menu_text(cq.from_user.id), reply_markup=photo_keyboard(cq.from_user.id))
+
+
+@dp.callback_query(F.data.startswith('retry_photo:'))
+async def retry_photo_callback(cq: types.CallbackQuery):
+    await cq.answer('пробую ещё раз')
+    scene = cq.data.split(':', 1)[1]
+    await handle_photo_request(cq.message.chat.id, cq.from_user.id, PhotoRequest(scene=scene))
 
 
 @dp.callback_query(F.data.startswith('photo:'))
@@ -524,6 +632,46 @@ async def send_answer(message: types.Message, text: str):
                 await asyncio.sleep(0.35)
             return
     await message.answer(text)
+
+
+@dp.message(F.text == '💬 Общение')
+async def chat_button(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name)
+    await message.answer('я здесь 🙂 просто пиши мне как обычно')
+
+
+@dp.message(F.text == '📸 Фото')
+async def photo_button(message: types.Message):
+    await photo_menu(message)
+
+
+@dp.message(F.text == '🎭 Образы')
+async def looks_button(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name)
+    await message.answer(photo_menu_text(message.from_user.id), reply_markup=photo_keyboard(message.from_user.id))
+
+
+@dp.message(F.text == '🚀 Премиум')
+async def premium_button(message: types.Message):
+    await premium(message)
+
+
+@dp.message(F.text == '👤 Профиль')
+async def profile_button(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name)
+    info = build_photo_menu(message.from_user.id)
+    await message.answer(
+        f'👤 Твой профиль\n\n'
+        f'❤️ Близость: {info["level"]}/6 · {RELATIONSHIP_LEVEL_NAMES.get(info["level"], "")}\n'
+        f'⭐ Premium: {"активен" if info["premium"] else "нет"}\n'
+        f'📸 Фото сегодня: {info["free_left"]} включено\n'
+        f'🎟 Photo credits: {info["credits"]}'
+    )
+
+
+@dp.message(F.text == '⚙️ Настройки')
+async def settings_button(message: types.Message):
+    await settings(message)
 
 
 @dp.message(F.voice)

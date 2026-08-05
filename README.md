@@ -1,4 +1,4 @@
-# AnnaBot V3.3 Hybrid
+# AnnaBot V3.4 V3.3 Hybrid
 
 Telegram AI-companion MVP with one persistent Anna identity, long-term memory, six relationship stages, reminders, proactive messaging, Telegram Stars, voice, PostgreSQL, and a hybrid reference-based photo engine.
 
@@ -19,3 +19,14 @@ Anna is intentionally not written as an assistant. Replies vary in length and in
 ## Railway variables
 
 See `DEPLOY.md` and `.env.example`.
+
+
+## V3.4 photo UX
+
+Seedream 4.5 is the default image editor. The photo menu previews the next locked relationship-level photo category. Failed generation is reported honestly and never replaced with a repeated static image; free quota and paid credits are only consumed after successful delivery.
+
+
+### Daily photo allowance
+- Relationship levels 1–2: 1 free generated photo per day.
+- Relationship levels 3–6: 2 free generated photos per day.
+- Extra standard photos use prepaid photo credits or a Telegram Stars invoice (`PHOTO_COST_STARS`, default 25⭐).

@@ -28,3 +28,23 @@
 - Failed generations do not overwrite visual state.
 - Higher-level sensitive-style requests do not loop through multiple providers.
 - PostgreSQL migration adds `users.adult_confirmed`, `photo_deliveries.provider`, and `photo_deliveries.estimated_cost_usd`.
+
+## V3.4 — photo progression + Seedream transport fix
+
+- Added persistent Telegram main menu: Chat / Photos / Looks / Premium / Profile / Settings.
+- Photo menu now shows the next locked photo category with a lock and required relationship level.
+- Added level-4 `personal` photo category and level-5 private fashion preview.
+- Locked categories cannot be bought with Stars; tapping them explains the required relationship level.
+- Seedream 4.5 is now the default photo provider in production. OpenAI remains the chat provider and optional explicit image mode.
+- Replaced the `fal-client` wrapper path with a direct authenticated `fal.run` HTTP request using the documented Seedream 4.5 schema.
+- Generation uses neutral fully-clothed Anna anchors only, reducing moderation noise.
+- Removed fake/static image fallback. A provider failure now returns Retry / Other scene buttons and consumes no free quota or paid credit.
+- Added clearer provider error logging for Railway diagnosis.
+
+
+## V3.5 — relationship-based daily photo quota
+- Relationship levels 1–2: 1 free generated photo per UTC day.
+- Relationship levels 3–6: 2 free generated photos per UTC day.
+- After the free quota, a standard photo costs `PHOTO_COST_STARS` (25 Stars by default) or consumes an already purchased photo credit.
+- Failed generations do not consume the daily free allowance or a photo credit.
+- Premium no longer overrides the relationship-based free quota; its monthly photo credits remain prepaid extra generations.

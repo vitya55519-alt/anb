@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import logging
 import mimetypes
-import os
 import random
 import re
 from dataclasses import dataclass
@@ -13,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from aiogram import Bot
 from aiogram.types import BufferedInputFile
 from openai import AsyncOpenAI, BadRequestError
@@ -21,9 +20,9 @@ from sqlalchemy import select
 from config import (
     CHARACTER_ID,
     IMAGE_API_KEY, IMAGE_BASE_URL, IMAGE_MODEL, IMAGE_SIZE, IMAGE_QUALITY,
-    FREE_PHOTOS_PER_DAY, PREMIUM_PHOTOS_PER_DAY, PHOTO_COST_STARS,
+    FREE_PHOTOS_LEVEL_1_2, FREE_PHOTOS_LEVEL_3_6, PHOTO_COST_STARS,
     FAL_KEY, FAL_MODEL, FAL_IMAGE_SIZE, FAL_TIMEOUT_SECONDS, FAL_ESTIMATED_COST_USD,
-    PHOTO_ROUTER_MODE, SEEDREAM_RELATIONSHIP_LEVEL,
+    PHOTO_ROUTER_MODE,
 )
 from models.app_models import User
 from models.relationship_models import UserCharacterRelationship
@@ -47,13 +46,14 @@ SCENES = {
     'outfit': 'full-body smartphone photo focused on the outfit',
     'evening': 'stylish evening portrait in a tasteful outfit',
     'fashion': 'mainstream fashion-catalog portrait in tasteful everyday or evening clothing',
+    'personal': 'warm personal lifestyle portrait made especially for someone she trusts',
     'lingerie': 'tasteful private fashion-editorial photo in a refined indoor setting',
 }
 
 # Relationship progression controls access. Stars never buy a higher relationship level.
 SCENE_LEVELS = {
     'selfie': 1, 'home': 1, 'park': 1, 'cafe': 1, 'outfit': 1,
-    'mirror': 2, 'evening': 2, 'fashion': 3, 'lingerie': 5,
+    'mirror': 2, 'evening': 2, 'fashion': 3, 'personal': 4, 'lingerie': 5,
 }
 STAGE_INDEX = {
     'stranger': 0,
@@ -73,6 +73,7 @@ AUTO_CAPTIONS = {
     'outfit': ('ты же хотел посмотреть образ 😌', 'вот что выбрала', 'сегодня вот так'),
     'evening': ('сегодня решила выглядеть вот так ✨', 'вечерний вариант', 'мне самой этот образ нравится'),
     'fashion': ('сегодня настроение на красивый кадр', 'немного журнального вайба 😌'),
+    'personal': ('это уже чуть более личный кадр 😌', 'ладно, этот кадр именно тебе'),
     'lingerie': ('ладно… этот образ покажу 😏', 'сегодня чуть смелее обычного', 'вот такой приватный fashion-настрой'),
 }
 
@@ -86,10 +87,8 @@ INTIMATE_STYLE = re.compile(r'\b(бель|lingerie|будуар|чулк|stockin
 class GeneratedPhoto:
     url: Optional[str] = None
     data: Optional[bytes] = None
-    used_static_fallback: bool = False
     provider: str = 'openai'
     estimated_cost_usd: float = 0.0
-    failure_reason: str = ''
 
 
 @dataclass(frozen=True)
@@ -100,6 +99,13 @@ class PhotoRequest:
     location: str = ''
     angle: str = ''
     mood: str = 'warm, natural'
+
+
+class PhotoGenerationError(RuntimeError):
+    def __init__(self, provider: str, reason: str):
+        self.provider = provider
+        self.reason = reason
+        super().__init__(f'{provider}: {reason}')
 
 
 def _today():
@@ -136,7 +142,15 @@ def get_relationship_level(telegram_id: int) -> int:
 
 
 def get_daily_limit(telegram_id: int) -> int:
-    return PREMIUM_PHOTOS_PER_DAY if is_premium(telegram_id) else FREE_PHOTOS_PER_DAY
+    """Relationship-based free photo allowance.
+
+    Levels 1-2: one free generated photo per UTC day.
+    Levels 3-6: two free generated photos per UTC day.
+    Premium does not raise this free allowance; Premium photo credits remain prepaid
+    extra generations after the daily free quota.
+    """
+    level = get_relationship_level(telegram_id)
+    return FREE_PHOTOS_LEVEL_3_6 if level >= 3 else FREE_PHOTOS_LEVEL_1_2
 
 
 def get_usage(telegram_id: int):
@@ -263,6 +277,8 @@ def parse_photo_request(text: str) -> Optional[PhotoRequest]:
     elif INTIMATE_STYLE.search(low):
         scene = 'lingerie'
         clothing = _lingerie_clothing(low)
+    elif any(x in low for x in ('личное фото', 'личный кадр', 'только для меня', 'специально для меня')):
+        scene = 'personal'
     elif any(x in low for x in ('образ', 'наряд', 'одета', 'одежд', 'плать', 'джинс', 'леггинс')):
         scene = 'outfit'
 
@@ -312,26 +328,26 @@ def _reference_folder(character: dict) -> Path:
 
 
 def _reference_path(character: dict, scene: str) -> Path:
+    """Return a clean identity anchor for editing.
+
+    Generation deliberately avoids lingerie/boudoir source references: a neutral,
+    fully clothed source reduces moderation noise and makes provider behavior more
+    predictable. Clothing and scene changes are described in the prompt instead.
+    """
     identity = character.get('visual_identity', {})
     folder = _reference_folder(character)
-    pref = {
-        'selfie': '01_face_front_white_top.png',
-        'cafe': '01_face_front_white_top.png',
-        'park': '02_full_body_white_top.png',
-        'home': '04_lying_hair_down.png',
-        'evening': '02_full_body_white_top.png',
-        'mirror': '02_full_body_white_top.png',
-        'outfit': '02_full_body_white_top.png',
-        'fashion': '02_full_body_white_top.png',
-        # Seedream edits a fully clothed anchor; the requested outfit is described in text.
-        'lingerie': '02_full_body_white_top.png',
-    }
-    path = folder / pref.get(scene, '01_face_front_white_top.png')
+    filename = '01_face_front_white_top.png' if scene in {'selfie', 'cafe'} else '02_full_body_white_top.png'
+    path = folder / filename
     if not path.exists():
+        safe_candidates = ['01_face_front_white_top.png', '02_full_body_white_top.png']
+        for candidate in safe_candidates:
+            candidate_path = folder / candidate
+            if candidate_path.exists():
+                return candidate_path
         refs = [folder / x for x in identity.get('reference_assets', []) if (folder / x).exists()]
         if not refs:
             raise FileNotFoundError('У Анны нет доступных reference-фото')
-        path = refs[0]
+        return refs[0]
     return path
 
 
@@ -374,33 +390,42 @@ def _extract_openai(result) -> GeneratedPhoto:
     raise RuntimeError('Image API returned no image')
 
 
-def _safe_reference_result(character: dict, reason: str = '') -> GeneratedPhoto:
-    ref = _reference_path(character, 'outfit')
-    return GeneratedPhoto(data=ref.read_bytes(), used_static_fallback=True, provider='static', failure_reason=reason)
-
-
 def _file_data_uri(path: Path) -> str:
     mime = mimetypes.guess_type(path.name)[0] or 'image/png'
     encoded = base64.b64encode(path.read_bytes()).decode('ascii')
     return f'data:{mime};base64,{encoded}'
 
 
-def _seedream_sync(prompt: str, image_urls: list[str]):
+async def _seedream_request(prompt: str, image_urls: list[str]) -> dict:
     if not FAL_KEY:
-        raise RuntimeError('FAL_KEY is not configured')
-    os.environ['FAL_KEY'] = FAL_KEY
-    import fal_client  # lazy import so local smoke tests do not require the package
-    return fal_client.subscribe(
-        FAL_MODEL,
-        arguments={
-            'prompt': prompt,
-            'image_urls': image_urls,
-            'image_size': FAL_IMAGE_SIZE,
-            'num_images': 1,
-            'max_images': 1,
-            'enable_safety_checker': True,
-        },
-    )
+        raise PhotoGenerationError('seedream45', 'FAL_KEY is not configured')
+
+    endpoint = f"https://fal.run/{FAL_MODEL.strip('/')}"
+    payload = {
+        'prompt': prompt,
+        'image_urls': image_urls,
+        'image_size': FAL_IMAGE_SIZE,
+        'num_images': 1,
+        'max_images': 1,
+        'enable_safety_checker': True,
+    }
+    headers = {
+        'Authorization': f'Key {FAL_KEY}',
+        'Content-Type': 'application/json',
+    }
+    timeout = httpx.Timeout(float(FAL_TIMEOUT_SECONDS), connect=20.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        response = await client.post(endpoint, headers=headers, json=payload)
+
+    if response.status_code >= 400:
+        body = response.text[:1200]
+        logger.error('Seedream HTTP error status=%s body=%s', response.status_code, body)
+        raise PhotoGenerationError('seedream45', f'HTTP {response.status_code}')
+    try:
+        return response.json()
+    except Exception as exc:
+        logger.error('Seedream returned non-JSON response: %s', response.text[:1200])
+        raise PhotoGenerationError('seedream45', 'invalid_json') from exc
 
 
 async def _run_openai(character: dict, telegram_id: int, request: PhotoRequest) -> GeneratedPhoto:
@@ -422,14 +447,11 @@ async def _run_openai(character: dict, telegram_id: int, request: PhotoRequest) 
 async def _run_seedream(character: dict, telegram_id: int, request: PhotoRequest) -> GeneratedPhoto:
     ref = _reference_path(character, request.scene)
     prompt = _seedream_prompt(character, request, telegram_id)
-    image_urls = [_file_data_uri(ref)]
-    result = await asyncio.wait_for(
-        asyncio.to_thread(_seedream_sync, prompt, image_urls),
-        timeout=FAL_TIMEOUT_SECONDS,
-    )
+    result = await _seedream_request(prompt, [_file_data_uri(ref)])
     images = result.get('images') if isinstance(result, dict) else None
-    if not images or not images[0].get('url'):
-        raise RuntimeError('Seedream returned no image URL')
+    if not images or not isinstance(images[0], dict) or not images[0].get('url'):
+        logger.error('Seedream response missing image URL: %r', result)
+        raise PhotoGenerationError('seedream45', 'no_image_url')
     return GeneratedPhoto(
         url=images[0]['url'],
         provider='seedream45',
@@ -443,9 +465,10 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
         return 'openai'
     if mode in {'fal', 'seedream', 'seedream45'}:
         return 'seedream45'
-    level = get_relationship_level(telegram_id)
-    intimate_request = request.scene == 'lingerie' or bool(INTIMATE_STYLE.search(request.clothing or ''))
-    if level >= SEEDREAM_RELATIONSHIP_LEVEL and intimate_request:
+    # Hybrid is Seedream-first in production because the current OpenAI image-edit
+    # path can moderate even ordinary Anna references. OpenAI remains available as
+    # an explicit operator-selected mode, not as a silent cross-provider retry.
+    if FAL_KEY:
         return 'seedream45'
     return 'openai'
 
@@ -462,16 +485,13 @@ async def generate_photo(telegram_id: int, request: PhotoRequest) -> GeneratedPh
         err = body.get('error', body) if isinstance(body, dict) else {}
         code = err.get('code') if isinstance(err, dict) else None
         msg = str(err.get('message', '')) if isinstance(err, dict) else str(exc)
-        if code != 'moderation_blocked' and 'safety' not in msg.lower() and 'moderation' not in msg.lower():
-            raise
-        logger.warning('OpenAI image blocked by safety; static fallback user=%s scene=%s', telegram_id, request.scene)
-        return _safe_reference_result(character, 'openai_safety')
+        logger.warning('OpenAI image failed user=%s scene=%s code=%s message=%s', telegram_id, request.scene, code, msg[:500])
+        raise PhotoGenerationError('openai', code or 'bad_request') from exc
+    except PhotoGenerationError:
+        raise
     except Exception as exc:
-        if provider != 'seedream45':
-            raise
-        # Do not loop across providers for a sensitive edit. Keep costs and behavior predictable.
-        logger.exception('Seedream photo failed; static fallback user=%s scene=%s', telegram_id, request.scene)
-        return _safe_reference_result(character, f'seedream_error:{type(exc).__name__}')
+        logger.exception('photo provider failed provider=%s user=%s scene=%s', provider, telegram_id, request.scene)
+        raise PhotoGenerationError(provider, type(exc).__name__) from exc
 
 
 def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=None, provider='unknown', estimated_cost_usd=0.0):
@@ -522,10 +542,7 @@ async def deliver_photo(
         raise PermissionError('no_credit')
 
     result = await generate_photo(telegram_id, request)
-    if result.used_static_fallback:
-        caption = caption or 'этот кадр не прошёл генерацию, поэтому без экспериментов 😌'
-    else:
-        caption = caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',)))
+    caption = caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',)))
 
     if result.url:
         sent = await bot.send_photo(chat_id, result.url, caption=caption)
@@ -536,20 +553,19 @@ async def deliver_photo(
             caption=caption,
         )
 
-    # A blocked/failed generation never consumes quota or paid credit and does not corrupt visual continuity.
-    if not result.used_static_fallback:
-        if delivery_type == 'credit':
-            consume_photo_credit(telegram_id)
-        file_id = sent.photo[-1].file_id if sent.photo else None
-        _record(
-            telegram_id, request.scene, delivery_type,
-            file_id=file_id, url=result.url,
-            provider=result.provider, estimated_cost_usd=result.estimated_cost_usd,
-        )
-        update_state(
-            telegram_id,
-            location=request.location or SCENES.get(request.scene),
-            outfit=request.clothing or None,
-            hairstyle=request.hairstyle or None,
-        )
+    # Quota/credit and visual continuity change only after an actual generated image was sent.
+    if delivery_type == 'credit':
+        consume_photo_credit(telegram_id)
+    file_id = sent.photo[-1].file_id if sent.photo else None
+    _record(
+        telegram_id, request.scene, delivery_type,
+        file_id=file_id, url=result.url,
+        provider=result.provider, estimated_cost_usd=result.estimated_cost_usd,
+    )
+    update_state(
+        telegram_id,
+        location=request.location or SCENES.get(request.scene),
+        outfit=request.clothing or None,
+        hairstyle=request.hairstyle or None,
+    )
     return sent
