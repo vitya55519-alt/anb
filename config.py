@@ -31,6 +31,7 @@ IMAGE_BASE_URL = os.getenv("IMAGE_BASE_URL") or AI_BASE_URL
 IMAGE_MODEL = os.getenv("IMAGE_MODEL", "gpt-image-2")
 IMAGE_SIZE = os.getenv("IMAGE_SIZE", "1024x1536")
 IMAGE_QUALITY = os.getenv("IMAGE_QUALITY", "medium")
+OPENAI_IMAGE_ESTIMATED_COST_USD = float(os.getenv("OPENAI_IMAGE_ESTIMATED_COST_USD", "0"))
 IMAGE_REFERENCE_MODE = os.getenv("IMAGE_REFERENCE_MODE", "edit").lower()
 
 # fal.ai / Seedream 4.5 is used by the hybrid photo router for higher-intimacy,
@@ -62,6 +63,11 @@ PREMIUM_MONTHLY_STARS = int(os.getenv("PREMIUM_MONTHLY_STARS", "500"))
 PREMIUM_MONTHLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_MONTHLY_PHOTO_CREDITS", "12"))
 PHOTO_COST_STARS = int(os.getenv("PHOTO_COST_STARS", "25"))
 CUSTOM_PHOTO_COST_STARS = int(os.getenv("CUSTOM_PHOTO_COST_STARS", "40"))
+
+# Commercial guardrails. 0 disables a guard; set real values in Railway for beta.
+DAILY_IMAGE_BUDGET_USD = float(os.getenv("DAILY_IMAGE_BUDGET_USD", "0"))
+MONTHLY_IMAGE_BUDGET_USD = float(os.getenv("MONTHLY_IMAGE_BUDGET_USD", "0"))
+PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS = float(os.getenv("PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS", "18"))
 
 TTS_API_KEY = (os.getenv("TTS_API_KEY") or AI_KEY).strip()
 TTS_MODEL = os.getenv("TTS_MODEL", "tts-1")

@@ -51,4 +51,16 @@ assert "request_label=f'{request.scene}:{i + 1}/{PHOTO_SET_SIZE}'" in photo
 assert 'per_request=1' in photo
 assert 'httpx.ReadTimeout' in photo
 assert "num_images': num_images" in photo
+# V3.9 Commercial Core
+analytics=(ROOT/'services/analytics_service.py').read_text(encoding='utf-8')
+state=(ROOT/'services/state_service.py').read_text(encoding='utf-8')
+assert 'onboard:abilities' in main and 'onboard:meet' in main
+assert '_photo_jobs' in main and 'asyncio.create_task(_run_photo_background' in main
+assert 'photo_feedback:' in main
+assert 'SAFE RETRY' in photo and 'on_frame' in photo and 'photo_partial' in photo
+assert 'OPENAI_LEVEL_VISUAL_RULES' in photo
+assert 'ProductEvent' in models and 'budget_allows_photo' in analytics
+assert 'd1_retention' in analytics and 'photo_first_frame_ready' in analytics
+assert 'DAILY_IMAGE_BUDGET_USD' in cfg and 'MONTHLY_IMAGE_BUDGET_USD' in cfg
+assert 'ensure_life_state' in state and 'pending_hook' in state
 print('STATIC_SMOKE_OK')

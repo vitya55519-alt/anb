@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandStart
@@ -8,10 +9,10 @@ from aiogram.utils.chat_action import ChatActionSender
 
 from config import (
     TELEGRAM_TOKEN, PREMIUM_MONTHLY_STARS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS,
-    ADMIN_TELEGRAM_IDS, CHARACTER_ID,
+    ADMIN_TELEGRAM_IDS, CHARACTER_ID, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS,
 )
 from services.user_service import (
-    ensure_user, get_user, update_user_settings, touch_user,
+    ensure_user, get_user, get_state, update_user_settings, touch_user,
     set_adult_confirmed, is_adult_confirmed,
 )
 from services.chat_service import reply as anna_reply
@@ -31,7 +32,8 @@ from models.relationship_models import UserCharacterRelationship, RelationshipEv
 from models.app_models import CharacterState, Reminder
 from services.test_mode import STAGES, STAGE_LABELS, set_stage, clear_stage
 from services.voice_service import transcribe, synthesize_bytes, VALID_VOICES
-from services.adaptation_service import get_profile, observe_photo_preference
+from services.adaptation_service import get_profile, observe_photo_preference, observe_photo_feedback
+from services.analytics_service import track_event, admin_snapshot, budget_allows_photo
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 logger = logging.getLogger('annabot')
@@ -84,6 +86,12 @@ _custom_drafts: dict[int, dict] = {}
 _pending_adult_photo: dict[int, PhotoRequest] = {}
 _pending_adult_custom: set[int] = set()
 
+# Background photo jobs: Telegram handlers return immediately, so normal chat remains responsive.
+# A persistent DB queue is a later scaling step; for the closed beta one active job per user
+# is enough to prevent duplicate spending and double taps.
+_photo_jobs: dict[int, asyncio.Task] = {}
+_photo_job_reservations: set[int] = set()
+
 
 def main_keyboard():
     return ReplyKeyboardMarkup(
@@ -95,6 +103,13 @@ def main_keyboard():
         resize_keyboard=True,
         is_persistent=True,
     )
+
+
+def onboarding_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='💬 Познакомиться', callback_data='onboard:meet')],
+        [InlineKeyboardButton(text='📸 Что ты умеешь?', callback_data='onboard:abilities')],
+    ])
 
 
 def premium_keyboard():
@@ -152,6 +167,13 @@ def photo_retry_keyboard(scene: str):
     ])
 
 
+def photo_feedback_keyboard(scene: str):
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text='🔥 Нравится', callback_data=f'photo_feedback:like:{scene}'),
+        InlineKeyboardButton(text='Не мой стиль', callback_data=f'photo_feedback:dislike:{scene}'),
+    ]])
+
+
 def photo_menu_text(telegram_id: int) -> str:
     info = build_photo_menu(telegram_id)
     level = info['level']
@@ -204,6 +226,16 @@ def custom_place_keyboard():
     ])
 
 
+def _track_proactive_reply_if_any(telegram_id: int, uid: int):
+    try:
+        user = get_user(telegram_id)
+        state = get_state(telegram_id)
+        if user and state and state.last_nudge_at and user.last_active_at and state.last_nudge_at >= user.last_active_at:
+            track_event(uid, 'proactive_replied')
+    except Exception:
+        pass
+
+
 async def send_stars_invoice(chat_id: int, title: str, description: str, payload: str, stars: int):
     await bot.send_invoice(
         chat_id=chat_id,
@@ -227,81 +259,143 @@ async def _offer_custom_photo(chat_id: int, telegram_id: int, request: PhotoRequ
     )
 
 
+async def _photo_progress_ping(chat_id: int, telegram_id: int):
+    try:
+        await asyncio.sleep(max(5.0, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS))
+        task = _photo_jobs.get(telegram_id)
+        if task and not task.done():
+            await bot.send_message(chat_id, 'ещё сек 🙂 докручиваю остальные кадры')
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        pass
+
+
+async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str):
+    uid = ensure_user(telegram_id)
+    ping = asyncio.create_task(_photo_progress_ping(chat_id, telegram_id))
+    try:
+        track_event(uid, 'photo_generation_started', metadata={'scene': request.scene, 'delivery_type': delivery_type})
+        async with ChatActionSender.upload_photo(bot=bot, chat_id=chat_id):
+            sent = await deliver_photo(bot, chat_id, telegram_id, request, delivery_type)
+        track_event(uid, 'photo_job_completed', metadata={'scene': request.scene, 'count': len(sent), 'delivery_type': delivery_type})
+        if len(sent) >= 2 and random.random() < 0.30:
+            await bot.send_message(chat_id, 'кстати, такой стиль тебе заходит?', reply_markup=photo_feedback_keyboard(request.scene))
+    except PermissionError as exc:
+        logger.info('photo denied user=%s reason=%s', telegram_id, exc)
+        track_event(uid, 'photo_failed', metadata={'scene': request.scene, 'reason': str(exc), 'provider': 'access'})
+        await bot.send_message(chat_id, 'этот вариант сейчас недоступен 😌')
+    except PhotoGenerationError as exc:
+        logger.warning('photo generation failed provider=%s reason=%s user=%s scene=%s', exc.provider, exc.reason, telegram_id, request.scene)
+        track_event(uid, 'photo_failed', metadata={'scene': request.scene, 'reason': exc.reason, 'provider': exc.provider})
+        await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
+    except Exception as exc:
+        logger.exception('photo generation failed user=%s', telegram_id)
+        track_event(uid, 'photo_failed', metadata={'scene': request.scene, 'reason': type(exc).__name__, 'provider': 'unknown'})
+        await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
+    finally:
+        ping.cancel()
+        _photo_jobs.pop(telegram_id, None)
+
+
+async def _start_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str):
+    active = _photo_jobs.get(telegram_id)
+    if (active and not active.done()) or telegram_id in _photo_job_reservations:
+        await bot.send_message(chat_id, 'я уже делаю тебе один сет 😄 сначала закончу его')
+        return False
+    _photo_job_reservations.add(telegram_id)
+    try:
+        allowed, reason = budget_allows_photo()
+        if not allowed:
+            logger.error('image budget guard blocked generation reason=%s user=%s', reason, telegram_id)
+            track_event(ensure_user(telegram_id), 'photo_budget_blocked', metadata={'scene': request.scene, 'reason': reason})
+            await bot.send_message(chat_id, 'с фото сейчас техническая пауза 😕 попробуй чуть позже. лимит не списан.')
+            return False
+        await bot.send_message(chat_id, random.choice((
+            'сек 😄 сейчас выберу нормальные кадры',
+            'погоди чуть-чуть 😌 хочу сделать красиво',
+            'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
+        )))
+        task = asyncio.create_task(_run_photo_background(chat_id, telegram_id, request, delivery_type))
+        _photo_jobs[telegram_id] = task
+        return True
+    finally:
+        _photo_job_reservations.discard(telegram_id)
+
+
 async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoRequest):
     db_uid = ensure_user(telegram_id)
+    track_event(db_uid, 'photo_requested', metadata={'scene': request.scene, 'customized': bool(request.customized)})
     observe_photo_preference(db_uid, request.scene, request.clothing, request.hairstyle, request.location, CHARACTER_ID)
     stage = get_relationship_stage(telegram_id)
     if not scene_allowed_for_stage(request.scene, stage):
+        track_event(db_uid, 'photo_locked_view', metadata={'scene': request.scene, 'level': get_relationship_level(telegram_id)})
         await bot.send_message(chat_id, 'такой образ я пока оставлю при себе 😏')
         return
 
     if requires_adult_confirmation(request) and not is_adult_confirmed(telegram_id):
         _pending_adult_photo[telegram_id] = request
-        await bot.send_message(
-            chat_id,
-            'для более смелых fashion-образов нужно один раз подтвердить, что тебе 18+.',
-            reply_markup=adult_keyboard(),
-        )
+        await bot.send_message(chat_id, 'для более смелых fashion-образов нужно один раз подтвердить, что тебе 18+.', reply_markup=adult_keyboard())
         return
 
-    # Owner can test all relationship levels without purchasing every test frame.
     if telegram_id in ADMIN_TELEGRAM_IDS:
-        try:
-            async with ChatActionSender.upload_photo(bot=bot, chat_id=chat_id):
-                await deliver_photo(bot, chat_id, telegram_id, request, 'admin')
-        except PhotoGenerationError as exc:
-            logger.warning('admin photo generation failed provider=%s reason=%s user=%s', exc.provider, exc.reason, telegram_id)
-            await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан.', reply_markup=photo_retry_keyboard(request.scene))
-        except Exception:
-            logger.exception('admin photo generation failed user=%s', telegram_id)
-            await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан.', reply_markup=photo_retry_keyboard(request.scene))
+        await _start_photo_background(chat_id, telegram_id, request, 'admin')
         return
 
-    # Personal changes are monetized as customization; relationship level itself is never sold.
     if is_custom_request(request):
+        track_event(db_uid, 'paywall_view', metadata={'product': 'custom_photo', 'scene': request.scene})
         await _offer_custom_photo(chat_id, telegram_id, request)
         return
 
     credits = get_photo_credits(telegram_id)
-    try:
-        async with ChatActionSender.upload_photo(bot=bot, chat_id=chat_id):
-            if has_free_photo(telegram_id):
-                await deliver_photo(bot, chat_id, telegram_id, request, 'free')
-                return
-            if credits > 0:
-                await deliver_photo(bot, chat_id, telegram_id, request, 'credit')
-                return
-    except PermissionError as exc:
-        logger.info('photo denied user=%s reason=%s', telegram_id, exc)
-        await bot.send_message(chat_id, 'этот вариант сейчас недоступен 😌')
+    if has_free_photo(telegram_id):
+        await _start_photo_background(chat_id, telegram_id, request, 'free')
         return
-    except PhotoGenerationError as exc:
-        logger.warning('photo generation failed provider=%s reason=%s user=%s scene=%s', exc.provider, exc.reason, telegram_id, request.scene)
-        await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
-        return
-    except Exception:
-        logger.exception('photo generation failed user=%s', telegram_id)
-        await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
+    if credits > 0:
+        await _start_photo_background(chat_id, telegram_id, request, 'credit')
         return
 
     offer_id = create_offer(telegram_id, request)
+    track_event(db_uid, 'paywall_view', metadata={'product': 'photo', 'scene': request.scene, 'stars': PHOTO_COST_STARS})
     await bot.send_message(chat_id, f'бесплатный лимит на сегодня использован. следующее фото — {PHOTO_COST_STARS}⭐ ✨')
-    await send_stars_invoice(
-        chat_id,
-        'Фото Анны',
-        f'Новый сет до 3 фото: {PHOTO_LABELS.get(request.scene, request.scene)}',
-        f'photo:{offer_id}',
-        PHOTO_COST_STARS,
-    )
+    await send_stars_invoice(chat_id, 'Фото Анны', f'Новый сет до 3 фото: {PHOTO_LABELS.get(request.scene, request.scene)}', f'photo:{offer_id}', PHOTO_COST_STARS)
 
 
 @dp.message(CommandStart())
 async def start(message: types.Message):
     name = message.from_user.first_name or message.from_user.username or 'ты'
-    ensure_user(message.from_user.id, name)
+    uid = ensure_user(message.from_user.id, name)
+    track_event(uid, 'onboarding_started')
     await message.answer(
-        f'привет, {name} 🙂 я Анна. ничего настраивать не надо — просто пиши.',
-        reply_markup=main_keyboard(),
+        f'привет, {name} 🙂 я Анна. я запоминаю наши разговоры, постепенно узнаю твой характер и манеру общения — так что со временем у нас появляются свои темы, шутки и история.\n\n'
+        'могу присылать фото из разных мест и образов, а новые варианты открываются по мере того, как мы становимся ближе. иногда могу и сама написать первой 😌',
+        reply_markup=onboarding_keyboard(),
+    )
+    await message.answer('главное меню всегда будет внизу 👇', reply_markup=main_keyboard())
+
+
+@dp.callback_query(F.data == 'onboard:meet')
+async def onboarding_meet(cq: types.CallbackQuery):
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    track_event(uid, 'onboarding_meet')
+    await cq.answer()
+    await cq.message.answer('тогда без анкеты 😄 как тебя лучше называть — и что мне про тебя стоит знать первым?')
+
+
+@dp.callback_query(F.data == 'onboard:abilities')
+async def onboarding_abilities(cq: types.CallbackQuery):
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    track_event(uid, 'onboarding_abilities')
+    await cq.answer()
+    await cq.message.answer(
+        'если коротко:\n\n'
+        '🧠 помню важное из наших разговоров\n'
+        '💬 постепенно подхватываю твою манеру общения и знакомый сленг\n'
+        '❤️ близость развивается от общения, а не от оплаты\n'
+        '📸 делаю progression-сеты: базовый → стильный → premium\n'
+        '🌆 открываются новые места и образы\n'
+        '💌 могу сама вернуться к незаконченной теме\n\n'
+        'но проще не читать инструкцию 🙂 просто напиши мне что-нибудь.'
     )
 
 
@@ -363,7 +457,8 @@ async def age_no(cq: types.CallbackQuery):
 
 @dp.message(Command('premium'))
 async def premium(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    uid = ensure_user(message.from_user.id, message.from_user.first_name)
+    track_event(uid, 'paywall_view', metadata={'product': 'premium_month', 'stars': PREMIUM_MONTHLY_STARS})
     if is_premium(message.from_user.id):
         await message.answer(f'Premium уже активен ✨\nФото-кредиты: {get_photo_credits(message.from_user.id)}')
         return
@@ -395,6 +490,7 @@ async def successful_payment(message: types.Message):
     charge = payment.telegram_payment_charge_id
     if payload == 'premium_month':
         record_payment(message.from_user.id, 'premium_month', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_month'})
         await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits')
         return
 
@@ -409,18 +505,8 @@ async def successful_payment(message: types.Message):
         if not request:
             await message.answer('оплата прошла, а запрос уже устарел. Photo credit сохранён — он не пропадёт.')
             return
-        try:
-            async with ChatActionSender.upload_photo(bot=bot, chat_id=message.chat.id):
-                await deliver_photo(bot, message.chat.id, message.from_user.id, request, 'credit')
-        except PermissionError as exc:
-            logger.info('paid photo denied user=%s reason=%s', message.from_user.id, exc)
-            await message.answer('оплата сохранена как photo credit. этот образ сейчас недоступен, кредит не пропадёт.')
-        except PhotoGenerationError as exc:
-            logger.warning('paid photo generation failed provider=%s reason=%s user=%s', exc.provider, exc.reason, message.from_user.id)
-            await message.answer('фото сейчас не получилось, но оплаченный photo credit сохранён.', reply_markup=photo_retry_keyboard(request.scene))
-        except Exception:
-            logger.exception('paid photo generation failed user=%s', message.from_user.id)
-            await message.answer('фото сейчас не получилось, но оплаченный photo credit сохранён.', reply_markup=photo_retry_keyboard(request.scene))
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': product})
+        await _start_photo_background(message.chat.id, message.from_user.id, request, 'credit')
 
 
 @dp.message(Command('photo', 'selfie'))
@@ -448,6 +534,21 @@ async def photo_menu_callback(cq: types.CallbackQuery):
     ensure_user(cq.from_user.id, cq.from_user.first_name)
     await cq.answer()
     await cq.message.answer(photo_menu_text(cq.from_user.id), reply_markup=photo_keyboard(cq.from_user.id))
+
+
+@dp.callback_query(F.data.startswith('photo_feedback:'))
+async def photo_feedback_callback(cq: types.CallbackQuery):
+    _, action, scene = cq.data.split(':', 2)
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    state = get_state(cq.from_user.id)
+    liked = action == 'like'
+    observe_photo_feedback(uid, liked, scene, getattr(state, 'outfit', '') or '', getattr(state, 'hairstyle', '') or '', CHARACTER_ID)
+    track_event(uid, 'photo_feedback_like' if liked else 'photo_feedback_dislike', metadata={'scene': scene})
+    await cq.answer('запомнила 😌' if liked else 'поняла, буду менять стиль')
+    try:
+        await cq.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
 
 
 @dp.callback_query(F.data.startswith('retry_photo:'))
@@ -700,7 +801,9 @@ async def settings_button(message: types.Message):
 
 @dp.message(F.voice)
 async def voice_message(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    uid = ensure_user(message.from_user.id, message.from_user.first_name)
+    track_event(uid, 'chat_user_message', metadata={'kind': 'voice'})
+    _track_proactive_reply_if_any(message.from_user.id, uid)
     cancel_active_wake(message.from_user.id)
     if not can_send_message(message.from_user.id):
         await message.answer('на сегодня бесплатный лимит сообщений закончился. /premium')
@@ -724,11 +827,32 @@ async def voice_message(message: types.Message):
         await message.answer('голосовое сейчас не получилось разобрать 😕')
 
 
+@dp.message(Command('stats', 'adminstats'))
+async def admin_stats_cmd(message: types.Message):
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    snap = admin_snapshot()
+    await message.answer(
+        '📊 Anna beta stats\n\n'
+        f'Users: {snap["users_total"]} · active 24h: {snap["users_24h"]} · active 7d: {snap["users_7d"]}\n'
+        f'New 7d: {snap["new_7d"]} · messages 24h: {snap["messages_24h"]}\n'
+        f'Retention D1/D3/D7: {snap["d1_retention"]:.1f}% / {snap["d3_retention"]:.1f}% / {snap["d7_retention"]:.1f}%\n'
+        f'Photo requests 24h: {snap["photo_requests_24h"]} · delivered sets: {snap["photos_24h"]}\n'
+        f'Failures: {snap["photo_failures_24h"]} ({snap["photo_failure_rate"]:.1f}%) · partial: {snap["photo_partial_24h"]}\n'
+        f'Avg first photo: {snap["first_frame_avg_seconds"]:.1f}s\n'
+        f'Proactive 7d: {snap["proactive_replied_7d"]}/{snap["proactive_sent_7d"]} replies ({snap["proactive_reply_rate"]:.1f}%)\n'
+        f'Photo feedback 7d: 🔥 {snap["feedback_like_7d"]} · 👎 {snap["feedback_dislike_7d"]}\n'
+        f'Image cost: ${snap["photo_cost_24h"]:.2f}/24h · ${snap["photo_cost_30d"]:.2f}/30d\n'
+        f'Stars 30d: {snap["stars_30d"]}'
+    )
+
 @dp.message(F.text)
 async def text_message(message: types.Message):
     if (message.text or '').startswith('/'):
         return
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    uid = ensure_user(message.from_user.id, message.from_user.first_name)
+    track_event(uid, 'chat_user_message', metadata={'kind': 'text'})
+    _track_proactive_reply_if_any(message.from_user.id, uid)
     cancel_active_wake(message.from_user.id)
     if not can_send_message(message.from_user.id):
         await message.answer('на сегодня бесплатный лимит сообщений закончился. Premium: /premium')

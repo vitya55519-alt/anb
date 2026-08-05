@@ -56,3 +56,16 @@ At startup `services.db.init_db()` creates the new `communication_profiles` tabl
 7. Check a level-5 Personal/Private scene routes to Seedream and returns up to 3 images.
 
 `FAL_KEY`, Telegram token and OpenAI key must remain Railway secrets and must never be committed.
+
+## V3.9 optional guardrails
+
+These are optional and default to disabled/zero:
+
+```text
+DAILY_IMAGE_BUDGET_USD=0
+MONTHLY_IMAGE_BUDGET_USD=0
+OPENAI_IMAGE_ESTIMATED_COST_USD=0
+PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS=18
+```
+
+Set the image cost estimate to your effective provider cost if you want meaningful internal cost totals. Keep a single Railway replica while Telegram uses long polling; multiple replicas can cause `Conflict: terminated by other getUpdates request`.

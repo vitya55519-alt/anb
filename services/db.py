@@ -2,7 +2,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from models.waifu_models import Base
 from models.relationship_models import UserCharacterRelationship, RelationshipEvent  # noqa
-from models.app_models import User, Message, Memory, CommunicationProfile, CharacterState, Reminder, Subscription, StarTransaction  # noqa
+from models.app_models import User, Message, Memory, CommunicationProfile, CharacterState, Reminder, Subscription, StarTransaction, ProductEvent  # noqa
 from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer  # noqa
 from config import DATABASE_URL
 

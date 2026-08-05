@@ -311,3 +311,53 @@ def observe_photo_preference(user_id: int, scene: str, clothing: str = '', hairs
 def get_visual_preferences(user_id: int, character_id: str = CHARACTER_ID) -> dict:
     row = get_profile(user_id, character_id)
     return _load_json(getattr(row, 'visual_json', '{}'), {}) if row else {}
+
+
+
+def observe_photo_feedback(
+    user_id: int,
+    liked: bool,
+    scene: str,
+    clothing: str = '',
+    hairstyle: str = '',
+    character_id: str = CHARACTER_ID,
+) -> None:
+    """Weight explicit visual feedback more strongly than an ordinary request.
+
+    Positive feedback boosts recurring choices. Negative feedback gently lowers
+    the corresponding counters instead of permanently banning a style.
+    """
+    if not ADAPTATION_ENABLED:
+        return
+    with SessionLocal() as db:
+        row = db.scalar(select(CommunicationProfile).where(
+            CommunicationProfile.user_id == user_id,
+            CommunicationProfile.character_id == character_id,
+        ))
+        if not row:
+            row = CommunicationProfile(user_id=user_id, character_id=character_id)
+            db.add(row); db.flush()
+        data = _load_json(getattr(row, 'visual_json', '{}'), {})
+        delta = 3 if liked else -1
+        scenes = data.setdefault('scenes', {})
+        scenes[scene] = max(0, min(500, int(scenes.get(scene, 0)) + delta))
+        if hairstyle:
+            hairs = data.setdefault('hairstyles', {})
+            hairs[hairstyle] = max(0, min(200, int(hairs.get(hairstyle, 0)) + delta))
+        low = clothing.lower()
+        colors = data.setdefault('colors', {})
+        for color, markers in {
+            'black': ('black','черн'), 'white': ('white','бел'), 'burgundy': ('burgundy','красн'),
+            'green': ('green','зел'), 'navy': ('navy','син'), 'pink': ('pink','розов'),
+        }.items():
+            if any(m in low for m in markers):
+                colors[color] = max(0, min(200, int(colors.get(color, 0)) + delta))
+        feedback = data.setdefault('feedback', {'likes': 0, 'dislikes': 0})
+        key = 'likes' if liked else 'dislikes'
+        feedback[key] = int(feedback.get(key, 0)) + 1
+        for key2 in ('scenes','hairstyles','colors'):
+            bucket = {k:v for k,v in data.get(key2, {}).items() if int(v) > 0}
+            data[key2] = dict(sorted(bucket.items(), key=lambda kv: kv[1], reverse=True)[:12])
+        row.visual_json = json.dumps(data, ensure_ascii=False)
+        row.updated_at = _now()
+        db.commit()

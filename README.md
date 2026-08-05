@@ -105,3 +105,7 @@ ADAPTATION_MAX_EXPRESSIONS=12
 ```
 
 See `DEPLOY.md` and `RAILWAY_CHECK.md`.
+
+## V3.9 Commercial Core
+
+V3.9 adds a commercial-beta reliability layer: onboarding, background photo jobs, immediate per-frame delivery, OpenAI safe retry/partial-pack preservation, product analytics, `/stats`, optional image budget guards, and a lightweight Anna life/pending-topic state for better proactive continuity. See `BUILD_CHANGES.md` and `V3_9_CHECKLIST.md`.

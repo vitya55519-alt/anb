@@ -122,3 +122,14 @@ class StarTransaction(Base):
     stars: Mapped[int] = mapped_column(Integer, nullable=False)
     telegram_charge_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ProductEvent(Base):
+    __tablename__ = "product_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    character_id: Mapped[str] = mapped_column(String(64), index=True, default="anna_01")
+    event_name: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    value: Mapped[float] = mapped_column(Float, default=0.0)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

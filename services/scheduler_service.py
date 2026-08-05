@@ -6,6 +6,7 @@ from services.db import SessionLocal
 from models.app_models import User, CharacterState
 from services.reminder_service import due_reminders, mark_after_send
 from services.chat_service import proactive_reply
+from services.analytics_service import track_event
 
 logger=logging.getLogger(__name__); scheduler=AsyncIOScheduler()
 
@@ -37,9 +38,14 @@ async def _proactive(bot):
                 if state and state.last_nudge_at and state.last_nudge_at>=u.last_active_at: continue
                 telegram_id=int(u.telegram_id); name=u.name or 'ты'; hours=max(PROACTIVE_MIN_HOURS,int((now-u.last_active_at).total_seconds()/3600))
             msg=await proactive_reply(telegram_id,name,hours); await bot.send_message(telegram_id,msg)
+            track_event(uid, 'proactive_sent', metadata={'hours_inactive': hours})
             with SessionLocal() as s:
                 st=s.scalar(select(CharacterState).where(CharacterState.user_id==uid,CharacterState.character_id==CHARACTER_ID))
-                if st: st.last_nudge_at=now; s.commit()
+                if st:
+                    st.last_nudge_at=now
+                    # A pending hook is consumed by one proactive follow-up so Anna does not repeat it forever.
+                    st.pending_hook=None
+                    s.commit()
         except Exception: logger.exception('proactive failed user=%s',uid)
 
 def start_scheduler(bot):

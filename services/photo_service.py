@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Awaitable, Callable
 
 import httpx
 from aiogram import Bot
@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from config import (
     CHARACTER_ID,
-    IMAGE_API_KEY, IMAGE_BASE_URL, IMAGE_MODEL, IMAGE_SIZE, IMAGE_QUALITY,
+    IMAGE_API_KEY, IMAGE_BASE_URL, IMAGE_MODEL, IMAGE_SIZE, IMAGE_QUALITY, OPENAI_IMAGE_ESTIMATED_COST_USD,
     FREE_PHOTOS_LEVEL_1_2, FREE_PHOTOS_LEVEL_3_6, PHOTO_COST_STARS,
     FAL_KEY, FAL_MODEL, FAL_IMAGE_SIZE, FAL_TIMEOUT_SECONDS,
     FAL_CONNECT_TIMEOUT_SECONDS, FAL_WRITE_TIMEOUT_SECONDS, FAL_POOL_TIMEOUT_SECONDS,
@@ -38,6 +38,8 @@ from services.access_service import is_premium
 from services.user_service import ensure_user, get_state, update_state, is_adult_confirmed
 from services.payments import consume_photo_credit, get_photo_credits
 from services.adaptation_service import get_visual_preferences
+from services.analytics_service import track_event
+from services.state_service import ensure_life_state
 
 logger = logging.getLogger(__name__)
 openai_client = AsyncOpenAI(api_key=IMAGE_API_KEY, base_url=IMAGE_BASE_URL)
@@ -232,6 +234,15 @@ LEVEL_VISUAL_RULES = {
     5: 'Relationship visual level 5/6: glamorous personalized styling and more private-feeling fashion; keep ordinary scenes fully clothed and tasteful.',
     6: 'Relationship visual level 6/6: premium personalized styling, strongest confident fashion presentation and clear exclusivity; remain non-explicit.',
 }
+OPENAI_LEVEL_VISUAL_RULES = {
+    1: 'Relationship visual level 1/6: simple casual styling, natural pose, everyday social-media feel.',
+    2: 'Relationship visual level 2/6: more coordinated clothing, cleaner styling and a little more confidence, fully clothed.',
+    3: 'Relationship visual level 3/6: noticeably more fashionable outfit, better accessories and stronger composition, fully clothed.',
+    4: 'Relationship visual level 4/6: polished personal fashion, confident lifestyle pose and more intentional styling, fully clothed.',
+    5: 'Relationship visual level 5/6: premium personalized styling, richer venue details and more exclusive-feeling composition, fully clothed.',
+    6: 'Relationship visual level 6/6: strongest premium styling, best accessories, lighting and composition; sophisticated and exclusive while fully clothed and general-audience.',
+}
+
 SEASON_RULES = {
     'summer': 'Warm summer weather. Use breathable summer clothing. No sweaters, hoodies, coats, thick knitwear or winter styling unless explicitly requested.',
     'spring': 'Mild spring weather. Use light layers and season-appropriate clothing; avoid heavy winter garments.',
@@ -652,7 +663,7 @@ def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season:
 
 
 def _resolve_request(telegram_id: int, request: PhotoRequest) -> PhotoRequest:
-    state = get_state(telegram_id)
+    state = ensure_life_state(telegram_id)
     season = request.season or _default_season()
     pack_outfits = tuple(request.pack_outfits) if request.pack_outfits else _choose_progression_outfits(telegram_id, request, season)
     clothing = pack_outfits[-1] if pack_outfits else request.clothing
@@ -671,7 +682,13 @@ def _resolve_request(telegram_id: int, request: PhotoRequest) -> PhotoRequest:
             hairstyle = preferred_hair
         else:
             hairstyle = random.choice(hair_pool)
-    location = request.location or SCENES.get(request.scene, SCENES['selfie'])
+    if request.location:
+        location = request.location
+    elif request.scene == 'selfie' and getattr(state, 'location', None):
+        activity = getattr(state, 'activity', None) or 'having a normal day'
+        location = f"{SCENES['selfie']}; keep it consistent with Anna's current fictional day context: location={state.location}, activity={activity}"
+    else:
+        location = SCENES.get(request.scene, SCENES['selfie'])
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season, pack_outfits=pack_outfits)
 
 
@@ -687,8 +704,16 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     angle = _shot_variant(request.scene, shot_index, request.angle)
     outfits = tuple(request.pack_outfits) if request.pack_outfits else (request.clothing,)
     wardrobe = outfits[min(shot_index, len(outfits) - 1)] if outfits else request.clothing
+    if not seedream:
+        # Normal OpenAI lifestyle route stays clearly general-audience while still looking styled.
+        wardrobe = (wardrobe
+                    .replace('body-skimming', 'well-fitted')
+                    .replace('figure-flattering', 'polished')
+                    .replace('strong waist-defined silhouette', 'clean tailored silhouette')
+                    .replace('glamorous', 'stylish'))
     tier_rule = PACK_TIER_RULES[min(shot_index, len(PACK_TIER_RULES) - 1)]
-    visual_rule = LEVEL_VISUAL_RULES.get(max(1, min(6, relationship_level)), LEVEL_VISUAL_RULES[1])
+    level_key = max(1, min(6, relationship_level))
+    visual_rule = (LEVEL_VISUAL_RULES if seedream else OPENAI_LEVEL_VISUAL_RULES).get(level_key, LEVEL_VISUAL_RULES[1])
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
     if seedream:
@@ -717,7 +742,10 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'SEASON/WEATHER: {season}. {season_rule}\n'
         f'RELATIONSHIP VISUAL PROGRESSION: {visual_rule}\n'
         f'PROGRESSION PACK FRAME {shot_index + 1}/{PHOTO_SET_SIZE}: {tier_rule}\n'
-        f'WARDROBE: {wardrobe}. The outfit must flatter the silhouette through fit and waist definition while preserving the underlying body proportions. '
+        f'WARDROBE: {wardrobe}. ' + (
+            'Use tasteful fashion fit and waist definition while preserving the underlying body proportions. ' if seedream else
+            'Use a polished, well-fitted, general-audience outfit; preserve the underlying body proportions and do not emphasize chest, hips, buttocks or other body parts. '
+        ) +
         'The outfit must be believable for this exact venue, weather and time of day. Do not reuse a heavy sweater or hoodie in a visibly warm summer scene.\n'
         f'HAIRSTYLE: {request.hairstyle}.\n'
         f'CAMERA/POSE: {angle}.\n'
@@ -827,81 +855,141 @@ async def _seedream_request(
     raise PhotoGenerationError('seedream45', 'request_failed')
 
 
-async def _run_openai_set(character: dict, telegram_id: int, request: PhotoRequest) -> list[GeneratedPhoto]:
+async def _openai_one_frame(character: dict, telegram_id: int, request: PhotoRequest, i: int, *, safe_retry: bool = False) -> GeneratedPhoto:
+    ref = _reference_path(character, request.scene)
+    level = get_relationship_level(telegram_id)
+    if safe_retry:
+        fallback_outfit = (
+            'a simple lightweight summer midi dress with normal coverage and clean everyday styling'
+            if (request.season or _default_season()) == 'summer' else
+            'a simple season-appropriate midi dress with normal coverage and clean everyday styling'
+        )
+        safe_request = replace(request, clothing=fallback_outfit, pack_outfits=tuple(fallback_outfit for _ in range(PHOTO_SET_SIZE)), mood='natural, relaxed')
+        prompt = _build_prompt(safe_request, i, seedream=False, relationship_level=min(level, 3)) + (
+            '\nSAFE RETRY: Strictly general-audience, fully clothed everyday lifestyle fashion. Neutral pose, ordinary neckline, no body-part emphasis, no glamour cues.'
+        )
+    else:
+        prompt = _build_prompt(request, i, seedream=False, relationship_level=level)
+    started = time.monotonic()
+    with ref.open('rb') as image_file:
+        result = await openai_client.images.edit(
+            model=IMAGE_MODEL,
+            image=image_file,
+            prompt=prompt,
+            size=IMAGE_SIZE,
+            quality=IMAGE_QUALITY,
+            n=1,
+        )
+    elapsed = time.monotonic() - started
+    photo = replace(_extract_openai_many(result)[0], estimated_cost_usd=OPENAI_IMAGE_ESTIMATED_COST_USD)
+    logger.info('OpenAI frame success user=%s scene=%s frame=%s/%s safe_retry=%s elapsed=%.1fs', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, safe_retry, elapsed)
+    return photo
+
+
+async def _run_openai_set(
+    character: dict,
+    telegram_id: int,
+    request: PhotoRequest,
+    on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
+) -> list[GeneratedPhoto]:
     ref = _reference_path(character, request.scene)
     logger.info('OpenAI normal-photo set request user=%s scene=%s reference=%s count=%s safe_prompt=true', telegram_id, request.scene, ref.name, PHOTO_SET_SIZE)
-    outputs=[]
-    # Three independent edits give us controlled angle variation while preserving the same resolved outfit/hair.
+    outputs: list[GeneratedPhoto] = []
     for i in range(PHOTO_SET_SIZE):
-        prompt = _build_prompt(request, i, seedream=False, relationship_level=get_relationship_level(telegram_id))
-        with ref.open('rb') as image_file:
-            result = await openai_client.images.edit(
-                model=IMAGE_MODEL,
-                image=image_file,
-                prompt=prompt,
-                size=IMAGE_SIZE,
-                quality=IMAGE_QUALITY,
-                n=1,
-            )
-        outputs.extend(_extract_openai_many(result))
-    return outputs[:PHOTO_SET_SIZE]
+        try:
+            photo = await _openai_one_frame(character, telegram_id, request, i)
+        except BadRequestError as exc:
+            body = getattr(exc, 'body', None) or {}
+            err = body.get('error', body) if isinstance(body, dict) else {}
+            code = err.get('code') if isinstance(err, dict) else None
+            msg = str(err.get('message', '')) if isinstance(err, dict) else str(exc)
+            logger.warning('OpenAI frame failed user=%s scene=%s frame=%s/%s code=%s message=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, code, msg[:700])
+            track_event(ensure_user(telegram_id), 'photo_frame_blocked' if code == 'moderation_blocked' else 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'openai', 'reason': code or 'bad_request'})
+            if code == 'moderation_blocked':
+                try:
+                    logger.info('OpenAI safe retry user=%s scene=%s frame=%s/%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE)
+                    photo = await _openai_one_frame(character, telegram_id, request, i, safe_retry=True)
+                    track_event(ensure_user(telegram_id), 'photo_safe_retry_success', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'openai'})
+                except BadRequestError as retry_exc:
+                    retry_body = getattr(retry_exc, 'body', None) or {}
+                    retry_err = retry_body.get('error', retry_body) if isinstance(retry_body, dict) else {}
+                    retry_code = retry_err.get('code') if isinstance(retry_err, dict) else None
+                    logger.warning('OpenAI safe retry failed user=%s scene=%s frame=%s/%s code=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, retry_code)
+                    if outputs:
+                        break
+                    raise PhotoGenerationError('openai', retry_code or code or 'bad_request') from retry_exc
+                except Exception as retry_exc:
+                    logger.warning('OpenAI safe retry transport failure user=%s scene=%s frame=%s/%s type=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, type(retry_exc).__name__)
+                    if outputs:
+                        break
+                    raise PhotoGenerationError('openai', type(retry_exc).__name__) from retry_exc
+            elif outputs:
+                break
+            else:
+                raise PhotoGenerationError('openai', code or 'bad_request') from exc
+        except Exception as exc:
+            if outputs:
+                logger.warning('OpenAI partial set user=%s scene=%s delivered=%s/%s stopped_reason=%s', telegram_id, request.scene, len(outputs), PHOTO_SET_SIZE, type(exc).__name__)
+                break
+            raise
+
+        outputs.append(photo)
+        track_event(ensure_user(telegram_id), 'photo_frame_ready', value=elapsed, metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'openai'})
+        if i == 0:
+            track_event(ensure_user(telegram_id), 'photo_first_frame_ready', value=elapsed, metadata={'scene': request.scene, 'provider': 'openai'})
+        if on_frame:
+            await on_frame(photo, i)
+    if not outputs:
+        raise PhotoGenerationError('openai', 'no_image')
+    return outputs
 
 
-async def _run_seedream_set(character: dict, telegram_id: int, request: PhotoRequest) -> list[GeneratedPhoto]:
+async def _run_seedream_set(
+    character: dict,
+    telegram_id: int,
+    request: PhotoRequest,
+    on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
+) -> list[GeneratedPhoto]:
     ref = _seedream_reference_path(character)
     reference_uri = _file_data_uri(ref)
     out: list[GeneratedPhoto] = []
-
-    # Reliability rule: request ONE Seedream image at a time.  A three-image
-    # request was observed taking the full old 150s timeout and then failing.
-    # We still deliver up to PHOTO_SET_SIZE images as one user-visible set, but
-    # each provider request has its own timeout/retry budget and its own angle.
     logger.info(
         'Seedream set request user=%s scene=%s reference=%s target_count=%s per_request=1 timeout=%ss retries=%s',
         telegram_id, request.scene, ref.name, PHOTO_SET_SIZE, FAL_TIMEOUT_SECONDS, FAL_RETRIES,
     )
-
     for i in range(PHOTO_SET_SIZE):
         prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id)) + (
             '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location, '
             'face identity and body proportions as the other photos in this set. '
             'Make this framing clearly different from the previous shot while staying in the same photo session.'
         )
+        frame_started = time.monotonic()
         try:
-            result = await _seedream_request(
-                prompt,
-                [reference_uri],
-                1,
-                request_label=f'{request.scene}:{i + 1}/{PHOTO_SET_SIZE}',
-            )
+            result = await _seedream_request(prompt, [reference_uri], 1, request_label=f'{request.scene}:{i + 1}/{PHOTO_SET_SIZE}')
         except PhotoGenerationError as exc:
+            track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'seedream45', 'reason': exc.reason})
             if out:
-                logger.warning(
-                    'Seedream partial set user=%s scene=%s delivered=%s/%s stopped_reason=%s',
-                    telegram_id, request.scene, len(out), PHOTO_SET_SIZE, exc.reason,
-                )
+                logger.warning('Seedream partial set user=%s scene=%s delivered=%s/%s stopped_reason=%s', telegram_id, request.scene, len(out), PHOTO_SET_SIZE, exc.reason)
                 break
             raise
-
         images = result.get('images') if isinstance(result, dict) else None
         if not images:
-            logger.error('Seedream response missing image URLs shot=%s result=%r', i + 1, result)
             if out:
                 break
             raise PhotoGenerationError('seedream45', 'no_image_url')
-
         item = images[0]
-        if isinstance(item, dict) and item.get('url'):
-            out.append(GeneratedPhoto(
-                url=item['url'],
-                provider='seedream45',
-                estimated_cost_usd=FAL_ESTIMATED_COST_USD,
-            ))
-        elif not out:
+        if not (isinstance(item, dict) and item.get('url')):
+            if out:
+                break
             raise PhotoGenerationError('seedream45', 'no_image_url')
-        else:
-            break
-
+        photo = GeneratedPhoto(url=item['url'], provider='seedream45', estimated_cost_usd=FAL_ESTIMATED_COST_USD)
+        out.append(photo)
+        frame_elapsed = time.monotonic() - frame_started
+        track_event(ensure_user(telegram_id), 'photo_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'seedream45'})
+        if i == 0:
+            track_event(ensure_user(telegram_id), 'photo_first_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'provider': 'seedream45'})
+        if on_frame:
+            await on_frame(photo, i)
     if not out:
         raise PhotoGenerationError('seedream45', 'no_image_url')
     return out
@@ -928,14 +1016,14 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
     return 'openai'
 
 
-async def generate_photo_set(telegram_id: int, request: PhotoRequest) -> tuple[list[GeneratedPhoto], PhotoRequest]:
+async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None) -> tuple[list[GeneratedPhoto], PhotoRequest]:
     character = get_anna()
     resolved = _resolve_request(telegram_id, request)
     provider = choose_photo_provider(telegram_id, resolved)
     try:
         if provider == 'seedream45':
-            return await _run_seedream_set(character, telegram_id, resolved), resolved
-        return await _run_openai_set(character, telegram_id, resolved), resolved
+            return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame), resolved
+        return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame), resolved
     except BadRequestError as exc:
         body = getattr(exc, 'body', None) or {}
         err = body.get('error', body) if isinstance(body, dict) else {}
@@ -1004,10 +1092,10 @@ async def deliver_photo(
     if delivery_type == 'credit' and get_photo_credits(telegram_id) <= 0:
         raise PermissionError('no_credit')
 
-    results, resolved = await generate_photo_set(telegram_id, request)
     caption = caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',)))
-    sent_messages=[]
-    for idx, result in enumerate(results):
+    sent_messages = []
+
+    async def _send_frame(result: GeneratedPhoto, idx: int):
         item_caption = caption if idx == 0 else None
         if result.url:
             sent = await bot.send_photo(chat_id, result.url, caption=item_caption)
@@ -1018,16 +1106,25 @@ async def deliver_photo(
                 caption=item_caption,
             )
         sent_messages.append(sent)
+        logger.info('photo frame delivered user=%s scene=%s frame=%s/%s provider=%s', telegram_id, request.scene, idx + 1, PHOTO_SET_SIZE, result.provider)
 
-    # Quota/credit changes only after generated photos were actually sent.
-    if delivery_type == 'credit':
+    results, resolved = await generate_photo_set(telegram_id, request, on_frame=_send_frame)
+    if not sent_messages:
+        raise PhotoGenerationError(results[0].provider if results else 'unknown', 'send_failed')
+
+    # Commercial fairness: a paid photo credit is consumed only for a complete pack.
+    # A one-frame free partial also does not burn the daily request; 2/3 is considered a usable free set.
+    complete = len(results) >= PHOTO_SET_SIZE
+    charge_free_partial = delivery_type == 'free' and len(results) >= 2
+    if delivery_type == 'credit' and complete:
         consume_photo_credit(telegram_id)
+    record_delivery_type = delivery_type if complete or charge_free_partial or delivery_type == 'admin' else f'partial_{delivery_type}'
     first = sent_messages[0]
     first_result = results[0]
     file_id = first.photo[-1].file_id if first.photo else None
     total_cost = sum(x.estimated_cost_usd for x in results)
     _record(
-        telegram_id, request.scene, delivery_type,
+        telegram_id, request.scene, record_delivery_type,
         file_id=file_id, url=first_result.url,
         provider=first_result.provider, estimated_cost_usd=total_cost,
     )
@@ -1036,12 +1133,26 @@ async def deliver_photo(
     recent_hair = (_json_list(getattr(current_state, 'recent_hairstyles_json', '[]')) + [resolved.hairstyle])[-4:]
     update_state(
         telegram_id,
-        location=resolved.location,
         outfit=resolved.clothing,
         hairstyle=resolved.hairstyle,
         recent_outfits_json=json.dumps(recent_outfits, ensure_ascii=False),
         recent_hairstyles_json=json.dumps(recent_hair, ensure_ascii=False),
     )
+    uid = ensure_user(telegram_id)
+    if len(results) < PHOTO_SET_SIZE:
+        track_event(uid, 'photo_partial', value=total_cost, metadata={'scene': request.scene, 'provider': first_result.provider, 'count': len(results), 'target': PHOTO_SET_SIZE})
+        try:
+            extra = ''
+            if delivery_type == 'credit':
+                extra = ' photo credit сохранила — спишу только за полный сет.'
+            elif delivery_type == 'free' and len(results) < 2:
+                extra = ' бесплатный запрос тоже не списала.'
+            await bot.send_message(chat_id, f'часть сета уже есть 🙂 получилось {len(results)} из {PHOTO_SET_SIZE}.{extra}')
+        except Exception:
+            pass
+    else:
+        track_event(uid, 'photo_delivered', value=total_cost, metadata={'scene': request.scene, 'provider': first_result.provider, 'count': len(results)})
     logger.info('photo set delivered user=%s scene=%s provider=%s count=%s outfit=%s hair=%s',
                 telegram_id, request.scene, first_result.provider, len(results), ' | '.join(resolved.pack_outfits) if resolved.pack_outfits else resolved.clothing, resolved.hairstyle)
     return sent_messages
+
