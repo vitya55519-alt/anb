@@ -30,3 +30,17 @@ Seedream 4.5 is the default image editor. The photo menu previews the next locke
 - Relationship levels 1–2: 1 free generated photo per day.
 - Relationship levels 3–6: 2 free generated photos per day.
 - Extra standard photos use prepaid photo credits or a Telegram Stars invoice (`PHOTO_COST_STARS`, default 25⭐).
+
+
+### Seedream safety anchor
+Seedream requests use a neutral face-only Anna identity crop to avoid upstream partner validation on suggestive framing. The provider safety checker remains enabled.
+
+
+## V3.7 hybrid photo routing
+- Ordinary fully clothed photos use `gpt-image-2`.
+- `lingerie` / boudoir-style non-explicit glamour uses Seedream 4.5.
+- Set `PHOTO_ROUTER_MODE=hybrid` in Railway.
+- One photo request returns up to 3 images (`PHOTO_SET_SIZE=3`) and counts as one daily request.
+- Levels 1–2: 1 free request/day. Levels 3–6: 2 free requests/day.
+- New Anna identity is locked to `data/references/anna/00_identity_face_new.png`.
+- Failed generation does not consume the daily quota or a paid photo credit.

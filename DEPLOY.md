@@ -26,3 +26,18 @@ Photo routing in production:
 Seedream safety checking stays enabled.
 
 After deploy, verify logs contain `AnnaBot started` and `Start polling`, then test `/testlevel 1..6` as the owner.
+
+
+## Required Railway variables for V3.7
+```text
+TELEGRAM_TOKEN=...
+OPENAI_API_KEY=...
+FAL_KEY=...
+FAL_MODEL=fal-ai/bytedance/seedream/v4.5/edit
+PHOTO_ROUTER_MODE=hybrid
+PHOTO_SET_SIZE=3
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+IMAGE_MODEL=gpt-image-2
+```
+
+Important: older deployments may still have `PHOTO_ROUTER_MODE=seedream`. Change it to `hybrid`, otherwise all photos will continue to use Seedream.

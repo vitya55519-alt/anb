@@ -149,7 +149,8 @@ def photo_menu_text(telegram_id: int) -> str:
     return (
         f'что показать? 😌\n'
         f'❤️ Близость: {level}/6 · {name}\n'
-        f'🎁 Бесплатно сегодня: {info["free_left"]}/{info["limit"]} · credits: {info["credits"]}'
+        f'🎁 Бесплатно сегодня: {info["free_left"]}/{info["limit"]} · credits: {info["credits"]}\n'
+        f'📷 Один запрос = до {info["set_size"]} фото'
         f'{next_line}'
     )
 
@@ -274,7 +275,7 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
     await send_stars_invoice(
         chat_id,
         'Фото Анны',
-        f'Новое фото: {PHOTO_LABELS.get(request.scene, request.scene)}',
+        f'Новый сет до 3 фото: {PHOTO_LABELS.get(request.scene, request.scene)}',
         f'photo:{offer_id}',
         PHOTO_COST_STARS,
     )

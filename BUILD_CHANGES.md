@@ -1,3 +1,11 @@
+# V3.6 — Seedream input-validation fix
+
+- Added `00_seedream_face_safe.png`, a neutral face-only identity anchor.
+- Seedream now uses the neutral anchor instead of the white-top source that fal partner validation rejected with HTTP 422.
+- Kept `enable_safety_checker=True`; this is a compliance fix, not a safety bypass.
+- Simplified the Seedream prompt for ordinary photo generation and added reference-name logging.
+- Failed generations still do not consume free quota or photo credits.
+
 # AnnaBot V3.3 Hybrid — changes
 
 ## Added
@@ -48,3 +56,11 @@
 - After the free quota, a standard photo costs `PHOTO_COST_STARS` (25 Stars by default) or consumes an already purchased photo credit.
 - Failed generations do not consume the daily free allowance or a photo credit.
 - Premium no longer overrides the relationship-based free quota; its monthly photo credits remain prepaid extra generations.
+
+
+## V3.7
+- New Anna identity anchors.
+- Hybrid routing restored: ordinary -> GPT Image 2, bold non-explicit lingerie/boudoir -> Seedream.
+- Reworked structured prompts with identity lock, scene, outfit, hair, shot, lighting, quality, negative blocks.
+- Outfit and hairstyle pools avoid immediate repetition.
+- Each request can deliver up to 3 photos while consuming one free request/credit.

@@ -17,3 +17,8 @@ Scene variables:
 - mood
 
 For production image generation, use these as reference inputs with an image model that supports image conditioning/editing. The current `photo_service.py` is deliberately provider-neutral at the architecture level; its simple text-only fallback does not guarantee identity consistency.
+
+
+## Seedream safety anchor
+
+`00_seedream_face_safe.png` is a face-only crop used for fal/Seedream edit requests. It intentionally excludes chest/body framing that can trigger upstream partner image validation. Safety checking remains enabled.
