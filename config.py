@@ -33,6 +33,16 @@ IMAGE_SIZE = os.getenv("IMAGE_SIZE", "1024x1536")
 IMAGE_QUALITY = os.getenv("IMAGE_QUALITY", "medium")
 IMAGE_REFERENCE_MODE = os.getenv("IMAGE_REFERENCE_MODE", "edit").lower()
 
+# fal.ai / Seedream 4.5 is used by the hybrid photo router for higher-intimacy,
+# still non-explicit fashion edits. Keep the key server-side in Railway.
+FAL_KEY = os.getenv("FAL_KEY", "").strip()
+FAL_MODEL = os.getenv("FAL_MODEL", "fal-ai/bytedance/seedream/v4.5/edit").strip()
+FAL_IMAGE_SIZE = os.getenv("FAL_IMAGE_SIZE", "portrait_4_3").strip()
+FAL_TIMEOUT_SECONDS = int(os.getenv("FAL_TIMEOUT_SECONDS", "110"))
+FAL_ESTIMATED_COST_USD = float(os.getenv("FAL_ESTIMATED_COST_USD", "0.04"))
+PHOTO_ROUTER_MODE = os.getenv("PHOTO_ROUTER_MODE", "hybrid").strip().lower()
+SEEDREAM_RELATIONSHIP_LEVEL = int(os.getenv("SEEDREAM_RELATIONSHIP_LEVEL", "5"))
+
 FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "80"))
 FREE_PHOTOS_PER_DAY = int(os.getenv("FREE_PHOTOS_PER_DAY", "1"))
 PREMIUM_PHOTOS_PER_DAY = int(os.getenv("PREMIUM_PHOTOS_PER_DAY", "4"))

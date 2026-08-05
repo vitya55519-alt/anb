@@ -49,3 +49,11 @@ def update_state(telegram_id: int, **kwargs):
         for k,v in kwargs.items():
             if hasattr(state,k): setattr(state,k,v)
         s.commit()
+
+
+def set_adult_confirmed(telegram_id: int, confirmed: bool = True):
+    update_user_settings(telegram_id, adult_confirmed=bool(confirmed))
+
+def is_adult_confirmed(telegram_id: int) -> bool:
+    u = get_user(telegram_id)
+    return bool(u and getattr(u, 'adult_confirmed', False))

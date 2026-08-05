@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .waifu_models import Base
 
@@ -24,6 +24,8 @@ class PhotoDelivery(Base):
     delivery_type:Mapped[str]=mapped_column(String(16),nullable=False)
     telegram_file_id:Mapped[str|None]=mapped_column(String(512),nullable=True)
     image_url:Mapped[str|None]=mapped_column(Text,nullable=True)
+    provider:Mapped[str|None]=mapped_column(String(32),nullable=True)
+    estimated_cost_usd:Mapped[float]=mapped_column(Float,default=0.0,nullable=False)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=utcnow,nullable=False,index=True)
 
 class PhotoOffer(Base):

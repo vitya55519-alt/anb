@@ -20,6 +20,7 @@ class User(Base):
     proactive_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     appearance_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     photo_credits: Mapped[int] = mapped_column(Integer, default=0)
+    adult_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 class Message(Base):
     __tablename__ = "messages"

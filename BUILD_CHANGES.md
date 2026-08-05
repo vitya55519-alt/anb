@@ -1,42 +1,30 @@
-# AnnaBot V3 — что изменено
+# AnnaBot V3.3 Hybrid — changes
 
-1. Удалена старая параллельная архитектура и неиспользуемые legacy helpers.
-2. Удалены старые тексты интерфейса; пользовательский интерфейс теперь единый и русскоязычный, а ответы Анны автоматически следуют языку сообщения.
-3. `/start` запускает общение сразу — обязательной конфигурации больше нет.
-4. Исправлен путь профиля персонажа: используется `data/characters/anna.json` при `CHARACTER_ID=anna_01`.
-5. Чат идёт только через `services/chat_service.py` и одну каноническую память/отношения.
-6. Добавлен behavior engine: короткие реакции, собственное мнение, подколы, поддержка, флирт, смена темы и меньшая склонность заканчивать всё вопросом.
-7. Добавлено устойчивое состояние Анны: настроение, энергия, текущий образ, локация, причёска, незакрытые темы.
-8. Память хранит устойчивые факты, предпочтения, обещания, pending-темы и внутренние шутки; чувствительные данные специально исключаются.
-9. Premium использует более глубокий контекст памяти/истории, а бесплатный режим — более короткий.
-10. Уровни отношений остаются 1–6 и влияют на стиль общения; `/testlevel 1..6` доступен только владельцу и не портит реальные баллы.
-11. Фото полностью переведены на `gpt-image-2` через `images.edits` с reference-фото Анны.
-12. Удалён prompt-only fallback: при ошибке identity-edit бот не отправляет случайную другую девушку.
-13. Фото умеют менять одежду, локацию, причёску и ракурс, сохраняя инструкцию identity lock для лица и пропорций тела.
-14. Добавлен `reference_manifest.json`; production reference-pack хранится только в `data/references/anna/`.
-15. Запросы на явную наготу не отправляются в генератор: они нормализуются в неэксплицитный fashion-образ.
-16. Естественные запросы «покажись», «сделай селфи», «фото в парке», «в платье», «с хвостом», «со спины» распознаются внутри обычного диалога.
-17. Фото имеют бесплатный дневной лимит, Premium-лимит и photo credits.
-18. Внедрены Telegram Stars: Premium на 30 дней и покупка дополнительных фото.
-19. Premium по умолчанию: 500 Stars / 30 дней + 12 photo credits; значения меняются через ENV без переписывания кода.
-20. Обычное платное фото и кастомный запрос имеют раздельные цены через ENV.
-21. Будильник хранится в основной БД, повторяет сообщения ограниченное число раз и прекращает пинги после ответа пользователя.
-22. Инициативное сообщение отправляется не чаще одного раза после периода отсутствия, вместо повторного спама каждые несколько часов.
-23. Голосовой вход использует тот же чат/память/отношения, что и текстовый; исправлена ошибка обращения к `message.text` у voice-сообщений.
-24. `/reset` очищает именно новую историю, память, отношения, состояние и напоминания, не затрагивая оплату Premium.
-25. Railway: добавлен PostgreSQL-драйвер `psycopg`, нормализация `postgres://`/`postgresql://`, сохранена поддержка MySQL и локального SQLite.
-26. Добавлена совместимая миграция недостающих колонок существующей таблицы `users` и `photo_offers`, чтобы redeploy не требовал ручного удаления БД.
-27. Убраны Flask keepalive и ненужные зависимости/кэши/дубли изображений.
-28. `railway.toml` и `Procfile` запускают `python main.py`.
-29. Добавлены smoke-проверки структуры, reference-файлов и отсутствия legacy-текстов.
+## Added
 
-## Railway variables
-Минимум: `TELEGRAM_TOKEN`, `OPENAI_API_KEY`, `DATABASE_URL`.
-Рекомендуется также задать `ADMIN_TELEGRAM_IDS`.
+- fal.ai Seedream 4.5 Edit integration (`fal-ai/bytedance/seedream/v4.5/edit`).
+- Hybrid provider router: GPT Image 2 for normal photos, Seedream for level 5–6 private non-explicit fashion requests.
+- `FAL_KEY`, `FAL_MODEL`, `FAL_IMAGE_SIZE`, timeout, estimated cost and routing configuration.
+- Seedream calls run off the asyncio event loop and have a hard timeout.
+- fal safety checker remains enabled.
+- One-time 18+ confirmation for adult-style fashion categories.
+- Custom Stars flow: color -> optional stockings -> hairstyle -> location -> paid offer.
+- Provider and estimated image cost telemetry in `photo_deliveries`.
+- Relationship-gated photo access applies to free and paid requests; Stars cannot buy a higher relationship stage.
+- Owner/admin photo testing without paying for every test frame.
 
+## Conversation improvements
 
-## V3.1 image safety reliability
-- The `lingerie` preset now uses a fully clothed identity reference instead of a lingerie reference.
-- The image prompt avoids unnecessary sexual terms and requests mainstream fully covered fashion styling.
-- `moderation_blocked` from the OpenAI image endpoint is caught and retried once with a conservative fully covered fashion edit.
-- This retry is a safety downgrade, not a moderation bypass.
+- Stronger anti-assistant persona rules.
+- Six distinct relationship communication styles.
+- Direct meta identity questions are answered honestly but briefly.
+- Technical/coding requests are answered directly without turning into a flirting menu.
+- One regeneration pass when a draft contains assistant-like phrases, excessive questions or unnecessary AI self-description.
+- Short multi-paragraph replies can be sent as natural Telegram bubbles.
+
+## Reliability
+
+- Image moderation/technical failures do not consume quota or photo credits.
+- Failed generations do not overwrite visual state.
+- Higher-level sensitive-style requests do not loop through multiple providers.
+- PostgreSQL migration adds `users.adult_confirmed`, `photo_deliveries.provider`, and `photo_deliveries.estimated_cost_usd`.

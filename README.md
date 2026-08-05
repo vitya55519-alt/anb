@@ -1,39 +1,21 @@
-# AnnaBot V3
+# AnnaBot V3.3 Hybrid
 
-Telegram AI companion with one canonical architecture for chat, memory, relationship progression, reminders, voice, Telegram Stars payments and reference-based photos.
-
-## Required Railway variables
-
-- `TELEGRAM_TOKEN`
-- `OPENAI_API_KEY`
-- `DATABASE_URL` (recommended: Railway PostgreSQL; local fallback is SQLite)
-- `ADMIN_TELEGRAM_IDS` for `/testlevel`
-
-Useful optional variables are listed in `.env.example`.
+Telegram AI-companion MVP with one persistent Anna identity, long-term memory, six relationship stages, reminders, proactive messaging, Telegram Stars, voice, PostgreSQL, and a hybrid reference-based photo engine.
 
 ## Photo engine
 
-The default image model is `gpt-image-2`. Photos use `images.edits` with an Anna reference image; there is no prompt-only fallback that can silently create a different character. Clothing, location, hairstyle and camera angle may change while the prompt explicitly asks to preserve identity and body proportions.
+- `gpt-image-2` handles ordinary edits: outfit, hairstyle, place, selfie, mirror, park, cafe and angle changes.
+- `fal-ai/bytedance/seedream/v4.5/edit` handles higher-level non-explicit private fashion edits from relationship level 5 onward.
+- The same Anna reference pack is used to preserve face and body proportions.
+- Adult-style fashion categories require a one-time 18+ confirmation.
+- Stars buy customization, not relationship progression.
+- Custom paid flow supports color, stockings, hairstyle and location.
+- Safety/technical failures do not consume paid credits or corrupt visual state.
 
-Reference files are in `data/references/anna/` and selected by requested scene.
+## Conversation
 
-## Product behavior
+Anna is intentionally not written as an assistant. Replies vary in length and intent, do not end every turn with a question, can include opinions/disagreement/callbacks, and use a one-pass quality rewrite when the draft sounds assistant-like. Direct questions about whether Anna is real are answered honestly and briefly.
 
-- `/start` starts chat immediately; no setup wizard.
-- `/photo` opens scene presets.
-- Natural photo requests such as “покажись”, “сделай селфи”, “фото в парке” are recognized in chat.
-- `/premium` sells 30 days of Premium through Telegram Stars.
-- Extra photos can be bought with Stars after included limits/credits are exhausted.
-- `/voice` toggles voice answers.
-- `/wake 08:00` creates a persistent wake-up reminder and stops repeated nudges when the user replies.
-- `/timezone Europe/Moscow` sets local reminder time.
-- `/testlevel 1..6` is owner-only and does not overwrite real relationship data.
+## Railway variables
 
-## Local smoke test
-
-```bash
-python -m compileall .
-python tests/smoke_test.py
-```
-
-Do not commit `.env`, local database files or API keys.
+See `DEPLOY.md` and `.env.example`.

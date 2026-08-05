@@ -28,6 +28,7 @@ def _migrate_existing_users():
         'proactive_enabled': f"BOOLEAN DEFAULT {bool_true}",
         'appearance_description': 'TEXT',
         'photo_credits': 'INTEGER DEFAULT 0',
+        'adult_confirmed': f"BOOLEAN DEFAULT {bool_false}",
     }
     _add_missing_columns('users', wanted)
 
@@ -35,5 +36,9 @@ def init_db():
     Base.metadata.create_all(engine)
     _migrate_existing_users()
     _add_missing_columns('photo_offers', {'request_json': 'TEXT'})
+    _add_missing_columns('photo_deliveries', {
+        'provider': 'VARCHAR(32)',
+        'estimated_cost_usd': 'FLOAT DEFAULT 0',
+    })
 
 init_db()
