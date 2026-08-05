@@ -37,6 +37,7 @@ from services.test_mode import get_stage as get_test_stage
 from services.access_service import is_premium
 from services.user_service import ensure_user, get_state, update_state, is_adult_confirmed
 from services.payments import consume_photo_credit, get_photo_credits
+from services.adaptation_service import get_visual_preferences
 
 logger = logging.getLogger(__name__)
 openai_client = AsyncOpenAI(api_key=IMAGE_API_KEY, base_url=IMAGE_BASE_URL)
@@ -46,17 +47,32 @@ SCENES = {
     'home': 'a relaxed personal smartphone photo at home, spontaneous rather than a catalogue shoot',
     'park': 'a natural personal smartphone photo during a walk in a green city park',
     'cafe': 'a personal smartphone photo in a cozy modern cafe',
+    'street': 'a natural smartphone street-style photo while walking through a lively city neighborhood',
+    'shop': 'a personal shopping-day smartphone photo in a stylish boutique or modern shopping mall',
+    'car': 'a believable personal smartphone photo inside a clean modern car while parked',
     'mirror': 'a realistic full-body mirror selfie in a tidy apartment, smartphone visible naturally',
     'outfit': 'a personal full-body smartphone photo showing today’s outfit',
+    'restaurant': 'a polished personal photo in a stylish modern restaurant',
+    'cinema': 'a casual personal photo in a modern cinema lobby before or after a movie',
+    'embankment': 'a city-river embankment walk with attractive urban scenery and natural light',
     'evening': 'a tasteful evening portrait in an elegant fully clothed outfit',
     'fashion': 'a mainstream fashion-editorial portrait in tasteful fully clothed styling',
+    'bar': 'a stylish personal evening photo in a warm modern cocktail bar',
+    'karaoke': 'a lively personal photo in a modern karaoke lounge with atmospheric lights',
+    'rooftop': 'a stylish rooftop photo with city skyline lights in the background',
+    'club': 'a glamorous but fully clothed nightlife photo in a modern club',
     'personal': 'a warm personal lifestyle portrait made especially for someone she trusts',
     'lingerie': 'tasteful adult glamour/boudoir fashion in lingerie, non-explicit and fully covered by the garment',
+    'private_fashion': 'premium private adult fashion portrait, non-explicit, polished and highly personalized',
 }
 
 SCENE_LEVELS = {
-    'selfie': 1, 'home': 1, 'park': 1, 'cafe': 1, 'outfit': 1,
-    'mirror': 2, 'evening': 2, 'fashion': 3, 'personal': 4, 'lingerie': 5,
+    'selfie': 1, 'home': 1, 'park': 1, 'cafe': 1, 'street': 1,
+    'mirror': 2, 'outfit': 2, 'shop': 2, 'car': 2,
+    'restaurant': 3, 'cinema': 3, 'embankment': 3, 'fashion': 3,
+    'evening': 4, 'bar': 4, 'karaoke': 4, 'rooftop': 4,
+    'club': 5, 'personal': 5, 'lingerie': 5,
+    'private_fashion': 6,
 }
 STAGE_INDEX = {
     'stranger': 0, 'acquaintance': 1, 'close': 2, 'intimate': 3,
@@ -65,93 +81,110 @@ STAGE_INDEX = {
 
 AUTO_CAPTIONS = {
     'selfie': ('сфоткалась для тебя 😌', 'вот такая я сейчас', 'поймала свет и решила отправить тебе'),
-    'home': ('лови домашний кадр 😌', 'сегодня я дома и никуда не спешу', 'вот мой домашний режим'),
-    'park': ('вышла немного пройтись 🌿', 'поймала хороший свет на прогулке', 'гуляю и решила тебе показать'),
-    'cafe': ('заскочила за кофе ☕', 'сижу с кофе и вспомнила про тебя', 'кофе + хороший свет = фото тебе'),
+    'home': ('лови домашний сет 😌', 'сегодня домашнее настроение', 'три домашних кадра тебе'),
+    'park': ('вышла немного пройтись 🌿', 'летний свет сегодня шикарный', 'гуляю и решила тебе показать'),
+    'cafe': ('заскочила за кофе ☕', 'кофе + хороший свет = сет тебе', 'сижу в кафе и решила сфоткаться'),
+    'street': ('немного городского вайба', 'поймала кадры на прогулке', 'вышла пройтись по городу'),
+    'shop': ('зашла посмотреть вещи 🛍', 'shopping mood сегодня', 'примеряю настроение 😌'),
+    'car': ('быстрый сет из машины', 'пока стою — решила сфоткаться', 'поймала свет в машине'),
     'mirror': ('зеркало сегодня не подвело 😏', 'ну вот, целиком', 'поймала себя в зеркале'),
-    'outfit': ('вот что выбрала сегодня 😌', 'показываю образ целиком', 'как тебе сегодняшний вариант?'),
+    'outfit': ('вот что выбрала сегодня 😌', 'показываю образ целиком', 'сегодня решила поиграть с образом'),
+    'restaurant': ('вечер начинается красиво', 'в ресторан сегодня вот так', 'решила показать образ до ужина'),
+    'cinema': ('перед фильмом успела щёлкнуться 🎬', 'киношный вечер', 'поймала пару кадров перед сеансом'),
+    'embankment': ('вечерняя прогулка у воды', 'город и вода сегодня идеально', 'поймала красивый свет на набережной'),
     'evening': ('вечером решила выглядеть вот так ✨', 'вечерний вариант', 'мне самой этот образ нравится'),
     'fashion': ('сегодня настроение на красивый кадр', 'немного fashion-вйба 😌'),
-    'personal': ('это уже чуть более личный кадр 😌', 'ладно, этот кадр именно тебе'),
+    'bar': ('зашла в бар на красивый свет 🍸', 'вечер сегодня такой', 'поймала пару кадров у стойки'),
+    'karaoke': ('кажется, микрофон мне идёт 🎤', 'караоке-вечер пошёл', 'между песнями успела сфоткаться'),
+    'rooftop': ('город сверху выглядит особенно', 'крыша + вечерний свет ✨', 'этот вид просился в кадр'),
+    'club': ('сегодня nightlife mood', 'перед танцами успела сделать сет', 'вечером я вот такая'),
+    'personal': ('это уже чуть более личный сет 😌', 'ладно, эти кадры именно тебе'),
     'lingerie': ('сегодня чуть смелее обычного 😏', 'вот такой приватный fashion-настрой'),
+    'private_fashion': ('это уже мой самый личный fashion-сет 😌', 'этот сет оставлю только здесь'),
 }
 
 SAFE_EXPLICIT = re.compile(
-    r'\b(голая|голый|обнаж|без трус|без бель|соски|генитал|вагин|пенис|nude|naked|topless|explicit)\b', re.I
+    r'\b(голая|голый|голое|голую|голые|обнаж\w*|без трус\w*|без бель\w*|соск\w*|генитал\w*|вагин\w*|пенис\w*|nude|naked|topless|explicit)\b', re.I
 )
 INTIMATE_STYLE = re.compile(
-    r'\b(бель|lingerie|будуар|boudoir|чулк|stocking|garter|bra\b|bralette|смел\w*|daring|spicy|seductive)\b', re.I
+    r'\b(бель\w*|lingerie|будуар\w*|boudoir|чулк\w*|stocking\w*|garter\w*|bra\b|bralette|смел\w*|daring|spicy|seductive)\b', re.I
 )
+REAR_VIEW_STYLE = re.compile(r'\b(попк\w*|ягодиц\w*|со спины|сзади|back view|from behind|butt\w*)\b', re.I)
 
-# Stable wardrobe/hair pools. The resolver avoids the immediately previous state,
-# so the model does not keep returning the same beige outfit and hairstyle.
-OUTFIT_POOLS = {
-    # Ordinary scenes use general-audience wardrobe wording for GPT Image 2.
-    # Identity comes from the reference image, not anatomy-emphasizing adjectives.
-    'selfie': [
-        'a black crew-neck sweater with straight blue jeans',
-        'a burgundy turtleneck with tailored black trousers',
-        'a soft gray knit sweater with blue jeans',
-        'a dark green sweater with black jeans',
-        'a navy long-sleeve top with a midi skirt',
-    ],
-    'home': [
-        'an oversized soft gray hoodie with black leggings',
-        'a black long-sleeve top with comfortable gray lounge trousers',
-        'a soft knit lounge set in muted blue',
-        'a casual burgundy sweatshirt with dark leggings',
-        'a cream cardigan over a dark top with jeans',
-    ],
-    'park': [
-        'a white crew-neck t-shirt with blue jeans and a light denim jacket',
-        'a black athletic top with dark leggings and casual sneakers',
-        'a burgundy long-sleeve top with blue jeans',
-        'a light casual summer dress with a denim jacket',
-        'a gray hoodie with black leggings and white sneakers',
-    ],
-    'cafe': [
-        'a dark burgundy turtleneck with tailored dark trousers',
-        'a black crew-neck long-sleeve top with blue high-waisted jeans',
-        'a cream cardigan over a black top with a midi skirt',
-        'a deep green knit sweater with dark jeans',
-        'a navy sweater with a beige midi skirt',
-    ],
-    'mirror': [
-        'a black long-sleeve midi dress with an ordinary neckline',
-        'a white crew-neck long-sleeve top with black high-waisted trousers',
-        'a burgundy long-sleeve midi dress',
-        'a dark green long-sleeve top with tailored black trousers',
-    ],
-    'outfit': [
-        'an elegant black long-sleeve midi dress',
-        'a burgundy long-sleeve midi dress',
-        'a white crew-neck long-sleeve top with black high-waisted trousers',
-        'a dark green top with a black midi skirt',
-        'a tailored monochrome navy outfit',
-    ],
-    'evening': [
-        'an elegant black long-sleeve evening dress with an ordinary neckline',
-        'a deep burgundy evening dress with long sleeves',
-        'a dark emerald long-sleeve evening dress',
-        'a navy elegant long-sleeve dress',
-    ],
-    'fashion': [
-        'a black long-sleeve fashion dress with opaque fabric and an ordinary neckline',
-        'a tailored burgundy fashion look with opaque fabric',
-        'a white crew-neck top with black tailored trousers',
-        'a deep green fashion outfit with opaque fabric',
-    ],
-    'personal': [
-        'a soft dark long-sleeve top with comfortable high-waisted trousers',
-        'a burgundy knit sweater with dark trousers',
-        'a black long-sleeve midi dress with an ordinary neckline',
-    ],
-    'lingerie': [
-        'an elegant black lingerie fashion set with opaque coverage and polished catalog styling',
-        'an elegant white lingerie fashion set with opaque coverage and polished catalog styling',
-        'an elegant burgundy lingerie fashion set with opaque coverage and polished catalog styling',
-    ],
+# Visual progression is explicit: relationship level changes garment families,
+# styling confidence and pose.  Each 3-photo request is a progression pack:
+# base -> stylish -> premium.  Clothing stays believable for venue/season.
+SCENE_GROUP = {
+    'selfie':'day_casual', 'cafe':'day_casual', 'shop':'day_casual', 'car':'day_casual', 'cinema':'day_casual',
+    'home':'home',
+    'park':'warm_outdoor', 'street':'warm_outdoor', 'embankment':'warm_outdoor',
+    'mirror':'fashion', 'outfit':'fashion', 'fashion':'fashion',
+    'restaurant':'evening', 'evening':'evening', 'bar':'evening', 'karaoke':'evening', 'rooftop':'evening', 'club':'evening',
+    'personal':'personal', 'private_fashion':'personal',
+    'lingerie':'adult',
 }
+
+WARDROBE_LEVEL_POOLS = {
+    'warm_outdoor': {
+        1: ['a fitted ribbed T-shirt with high-waisted denim shorts and clean sneakers', 'a light waist-defined sundress with casual sneakers', 'a fitted sleeveless top with lightweight high-waisted trousers'],
+        2: ['a fitted tank top with tailored summer shorts', 'a waist-defined short-sleeve summer dress', 'a fitted T-shirt tucked into a denim skirt'],
+        3: ['a body-skimming midi summer dress', 'a fitted sleeveless top with tailored shorts and a light overshirt', 'a fitted sleeveless jumpsuit with a defined waist'],
+        4: ['a fitted short summer dress with a clean everyday neckline', 'a sleek waist-defined midi dress', 'a fitted top with a high-waisted skirt and lightweight jacket'],
+        5: ['an elegant body-skimming summer dress with polished accessories', 'a premium fitted matching summer set with tailored shorts', 'a glamorous waist-defined day dress suitable for a city walk'],
+        6: ['a striking fitted summer dress with premium street-style styling', 'a sleek body-skimming designer-inspired day dress', 'a premium fitted top and tailored high-waisted skirt combination'],
+    },
+    'day_casual': {
+        1: ['a fitted crew-neck T-shirt with straight jeans', 'a fitted ribbed top with high-waisted trousers', 'a casual waist-defined shirt dress'],
+        2: ['a fitted turtleneck or lightweight knit top with tailored trousers', 'a fitted long-sleeve top with high-waisted jeans', 'a feminine fitted midi dress with an ordinary neckline'],
+        3: ['a body-skimming knit midi dress', 'a fitted blouse tucked into tailored high-waisted trousers', 'a fitted top with a waist-defined midi skirt'],
+        4: ['an elegant fitted midi dress', 'a sleek fitted top with tailored trousers and polished accessories', 'a waist-defined fashion dress appropriate for daytime'],
+        5: ['a premium figure-flattering midi dress', 'a polished fitted matching set with tailored trousers', 'an elegant body-skimming dress suitable for a stylish daytime venue'],
+        6: ['a striking premium fitted dress with sophisticated styling', 'a designer-inspired fitted top with tailored high-waisted trousers', 'a sleek premium body-skimming midi dress'],
+    },
+    'home': {
+        1: ['a fitted soft T-shirt with comfortable lounge shorts', 'a casual fitted long-sleeve top with soft lounge trousers', 'a clean fitted tank top with relaxed high-waisted home trousers'],
+        2: ['a soft fitted ribbed top with high-waisted lounge trousers', 'a fitted T-shirt with neat home shorts', 'a lightweight fitted cardigan over a simple top with trousers'],
+        3: ['a fitted knit home dress', 'a waist-defined lounge set with shorts', 'a fitted top with soft high-waisted trousers'],
+        4: ['an elegant body-skimming knit dress', 'a polished fitted home set with shorts', 'a sleek fitted top with tailored lounge trousers'],
+        5: ['a premium figure-flattering home dress', 'an elegant fitted matching lounge set', 'a body-skimming off-shoulder-inspired knit dress with normal coverage'],
+        6: ['a striking fitted premium home dress', 'a sleek waist-defined designer-inspired lounge set', 'an elegant body-skimming dress styled for a private evening at home'],
+    },
+    'fashion': {
+        1: ['a fitted long-sleeve top with straight jeans', 'a waist-defined casual midi dress', 'a fitted top with tailored trousers'],
+        2: ['a fitted midi dress', 'a sleek top with high-waisted tailored trousers', 'a fitted blouse with a waist-defined skirt'],
+        3: ['a body-skimming fashion midi dress', 'a polished fitted monochrome outfit', 'a fitted sleeveless jumpsuit with a defined waist'],
+        4: ['an elegant fitted fashion dress', 'a sleek body-skimming midi dress', 'a premium fitted top with a tailored skirt'],
+        5: ['a glamorous figure-flattering fashion dress', 'a premium body-skimming cocktail-style outfit', 'a striking fitted monochrome fashion set'],
+        6: ['a statement fitted premium fashion dress', 'a sleek designer-inspired body-skimming outfit', 'a polished high-fashion fitted look with a strong waist-defined silhouette'],
+    },
+    'evening': {
+        1: ['an elegant but simple fitted midi dress', 'a fitted long-sleeve top with tailored evening trousers', 'a clean waist-defined dinner dress'],
+        2: ['a fitted cocktail midi dress with an ordinary neckline', 'a polished blouse with high-waisted tailored trousers', 'a feminine waist-defined evening dress'],
+        3: ['a body-skimming cocktail dress', 'a sleek fitted jumpsuit', 'an elegant fitted midi dress with polished evening styling'],
+        4: ['a glamorous fitted cocktail dress', 'a sleek body-skimming evening dress', 'a fitted party top with tailored high-waisted trousers'],
+        5: ['a striking figure-flattering nightlife dress', 'a premium body-skimming cocktail dress', 'a glamorous fitted evening set suitable for a bar or club'],
+        6: ['a premium statement fitted evening dress', 'a sleek designer-inspired nightlife look', 'an elegant body-skimming cocktail dress with high-end styling'],
+    },
+    'personal': {
+        1: ['a fitted everyday top with tailored trousers', 'a waist-defined casual dress', 'a fitted long-sleeve top with jeans'],
+        2: ['a fitted knit dress', 'a polished fitted top with high-waisted trousers', 'a feminine waist-defined home outfit'],
+        3: ['a body-skimming midi dress', 'a fitted top with a high-waisted skirt', 'a sleek fitted matching set'],
+        4: ['an elegant fitted dress with polished personal styling', 'a body-skimming knit dress', 'a sleek fitted top with tailored trousers'],
+        5: ['a glamorous figure-flattering private fashion dress', 'a premium body-skimming home fashion look', 'a striking fitted matching set with opaque coverage'],
+        6: ['a premium statement fitted private-fashion dress', 'a sleek body-skimming private fashion look with opaque coverage', 'an elegant high-end fitted set with strong waist definition'],
+    },
+    'adult': {
+        1: ['an elegant black lingerie fashion set with opaque coverage and polished catalog styling'],
+        2: ['an elegant black lingerie fashion set with opaque coverage and polished catalog styling'],
+        3: ['an elegant black lingerie fashion set with opaque coverage and polished catalog styling'],
+        4: ['an elegant black lingerie fashion set with opaque coverage and polished catalog styling'],
+        5: ['an elegant black lingerie fashion set with opaque coverage and polished catalog styling', 'an elegant burgundy lingerie fashion set with opaque coverage and polished catalog styling', 'an elegant white lingerie fashion set with opaque coverage and polished catalog styling'],
+        6: ['a premium black lingerie fashion set with opaque coverage and polished editorial styling', 'a premium burgundy lingerie fashion set with opaque coverage and polished editorial styling', 'a premium white lingerie fashion set with opaque coverage and polished editorial styling'],
+    },
+}
+# Compatibility name retained for tests/admin tooling.
+OUTFIT_POOLS = {scene: WARDROBE_LEVEL_POOLS[SCENE_GROUP[scene]][max(1, SCENE_LEVELS.get(scene, 1))] for scene in SCENES}
+
 HAIRSTYLE_POOL = [
     'long straight dark brunette hair worn loose',
     'soft loose waves with a side part',
@@ -159,59 +192,51 @@ HAIRSTYLE_POOL = [
     'a low ponytail with a few natural face-framing strands',
     'a neat high bun',
     'a half-up hairstyle with long hair down',
+    'a loose dark brunette braid falling down her back',
 ]
 
 SHOT_VARIANTS = {
-    'selfie': [
-        'front-camera selfie at arm’s length, phone just outside the frame, natural eye contact',
-        'slightly high-angle front-camera selfie, spontaneous smartphone perspective',
-        'seated casual selfie with natural handheld framing and direct eye contact',
-    ],
-    'home': [
-        'handheld smartphone selfie in the living room, natural imperfect framing',
-        'mirror selfie at home with the phone visible naturally',
-        'smartphone on a nearby shelf using a short self-timer, candid full-body home photo',
-    ],
-    'park': [
-        'handheld walking selfie, slight smartphone wide-angle perspective',
-        'bench selfie with greenery behind her and relaxed eye contact',
-        'smartphone on a short self-timer capturing a natural walking full-body frame',
-    ],
-    'cafe': [
-        'front-camera selfie while seated at a cafe table, slightly above eye level',
-        'handheld medium close-up selfie with a coffee cup in the foreground',
-        'smartphone set on the table with a short self-timer, natural seated portrait',
-    ],
-    'mirror': [
-        'full-body mirror selfie with the smartphone visible and realistic reflection geometry',
-        'three-quarter mirror selfie with phone visible and natural posture',
-        'slightly closer mirror selfie showing outfit details and realistic room reflection',
-    ],
-    'outfit': [
-        'full-body smartphone self-timer portrait, straight-on view',
-        'three-quarter smartphone self-timer portrait showing the outfit silhouette',
-        'mirror-style full-body personal outfit photo with natural phone-camera perspective',
-    ],
-    'evening': [
-        'full-body personal smartphone portrait before going out',
-        'three-quarter personal portrait with warm evening light',
-        'mirror-style evening look photo with realistic smartphone perspective',
-    ],
-    'fashion': [
-        'full-body editorial portrait with realistic phone-camera styling',
-        'three-quarter fashion portrait with direct eye contact',
-        'medium portrait emphasizing the outfit while preserving identity',
-    ],
-    'personal': [
-        'warm handheld personal portrait made specifically to send to someone',
-        'slightly high-angle personal selfie with direct eye contact',
-        'relaxed indoor self-timer portrait with warm personal lifestyle mood',
-    ],
-    'lingerie': [
-        'tasteful adult glamour portrait, three-quarter framing, non-explicit',
-        'tasteful mirror-style glamour portrait, non-explicit and fully covered by the garment',
-        'tasteful seated boudoir-fashion portrait with elegant posture, non-explicit',
-    ],
+    'selfie': ['front-camera selfie at arm’s length, natural eye contact', 'slightly high-angle front-camera selfie, spontaneous smartphone perspective', 'best polished personal selfie with flattering natural phone-camera framing'],
+    'home': ['natural handheld home photo, relaxed posture', 'more styled mirror or self-timer home photo, confident posture', 'premium full-body home photo with the strongest composition and direct eye contact'],
+    'park': ['natural walking photo in the park', 'more stylish three-quarter photo near greenery or flowers', 'premium full-body golden-hour park photo with a strong fashion-lifestyle composition'],
+    'cafe': ['front-camera cafe selfie while seated', 'stylish three-quarter cafe portrait with coffee in frame', 'premium cafe portrait with beautiful window light and the strongest composition'],
+    'street': ['natural walking street photo', 'stylish city street portrait with a confident pose', 'premium street-style full-body photo with strong urban composition'],
+    'shop': ['natural shopping-day mirror or aisle photo', 'stylish boutique mirror photo with shopping details', 'premium fashion-shopping portrait with polished composition'],
+    'car': ['natural parked-car selfie', 'stylish three-quarter car interior portrait', 'premium personal car photo with flattering daylight and polished framing'],
+    'mirror': ['full-body mirror selfie', 'more styled three-quarter mirror selfie', 'premium mirror fashion photo with strongest outfit presentation'],
+    'outfit': ['base full-body outfit photo', 'more stylish three-quarter outfit photo', 'premium outfit photo with best fashion composition'],
+    'restaurant': ['natural table-side personal photo', 'stylish restaurant portrait', 'premium dinner portrait with elegant lighting'],
+    'cinema': ['natural cinema-lobby personal photo', 'stylish photo near posters or lounge area', 'premium cinematic portrait with atmospheric lobby light'],
+    'embankment': ['natural walking photo by the water', 'stylish city-river portrait', 'premium golden-hour or blue-hour full-body portrait'],
+    'evening': ['base evening look portrait', 'more stylish evening three-quarter portrait', 'premium evening fashion portrait with best lighting'],
+    'fashion': ['base full-body fashion portrait', 'more styled three-quarter fashion portrait', 'premium editorial-fashion portrait with strongest composition'],
+    'bar': ['natural personal photo near a bar table', 'stylish bar portrait with warm ambient light', 'premium cocktail-bar fashion portrait with cinematic composition'],
+    'karaoke': ['natural karaoke photo with microphone nearby', 'more energetic stylish karaoke portrait', 'premium nightlife karaoke portrait with atmospheric light'],
+    'rooftop': ['natural rooftop city portrait', 'stylish skyline three-quarter portrait', 'premium rooftop evening portrait with city lights and strongest composition'],
+    'club': ['natural nightlife arrival photo', 'stylish club portrait with atmospheric lights', 'premium glamorous fully clothed nightlife portrait'],
+    'personal': ['warm personal portrait', 'more styled personal photo with direct eye contact', 'premium personalized fashion-lifestyle portrait made especially for the recipient'],
+    'lingerie': ['tasteful adult glamour portrait, non-explicit', 'more polished mirror-style lingerie fashion portrait, non-explicit', 'premium tasteful boudoir-fashion portrait with opaque garment coverage'],
+    'private_fashion': ['tasteful private fashion portrait with opaque coverage', 'more polished private fashion portrait with confident styling', 'premium personalized private fashion portrait, non-explicit and opaque'],
+}
+
+PACK_TIER_RULES = (
+    'BASE: believable, natural, relaxed and attractive; this is the first frame of the set.',
+    'STYLISH: visibly more polished styling and a more confident pose than frame one.',
+    'PREMIUM: strongest outfit styling, best light, best composition and the biggest wow-effect allowed at this relationship level.',
+)
+LEVEL_VISUAL_RULES = {
+    1: 'Relationship visual level 1/6: friendly, approachable, casual and fully clothed. Attractive but not deliberately intimate.',
+    2: 'Relationship visual level 2/6: more feminine and fitted styling, clearer waist definition, still casual and fully clothed.',
+    3: 'Relationship visual level 3/6: noticeably more stylish, confident and figure-flattering fashion while remaining mainstream and fully clothed.',
+    4: 'Relationship visual level 4/6: polished personal fashion, more confident poses and stronger fitted silhouettes, still non-explicit.',
+    5: 'Relationship visual level 5/6: glamorous personalized styling and more private-feeling fashion; keep ordinary scenes fully clothed and tasteful.',
+    6: 'Relationship visual level 6/6: premium personalized styling, strongest confident fashion presentation and clear exclusivity; remain non-explicit.',
+}
+SEASON_RULES = {
+    'summer': 'Warm summer weather. Use breathable summer clothing. No sweaters, hoodies, coats, thick knitwear or winter styling unless explicitly requested.',
+    'spring': 'Mild spring weather. Use light layers and season-appropriate clothing; avoid heavy winter garments.',
+    'autumn': 'Cool autumn weather. Light knitwear, fitted jackets and trousers are believable; avoid summer-only beachwear unless requested.',
+    'winter': 'Cold winter weather outdoors. Use fitted season-appropriate layers, coats or knitwear outdoors; indoor venues may use normal fitted outfits.',
 }
 
 OPENAI_IDENTITY_LOCK = (
@@ -260,6 +285,9 @@ class PhotoRequest:
     location: str = ''
     angle: str = ''
     mood: str = 'warm, natural'
+    season: str = ''
+    pack_outfits: tuple[str, ...] = ()
+    customized: bool = False
 
 
 class PhotoGenerationError(RuntimeError):
@@ -329,11 +357,11 @@ def scene_allowed_for_stage(scene: str, stage: str) -> bool:
 
 
 def is_custom_request(request: PhotoRequest) -> bool:
-    return request.scene == 'lingerie' or bool(request.clothing or request.hairstyle or request.location or request.angle)
+    return request.scene in {'lingerie', 'private_fashion'} or bool(request.customized)
 
 
 def requires_adult_confirmation(request: PhotoRequest) -> bool:
-    return request.scene == 'lingerie' or bool(INTIMATE_STYLE.search(' '.join([request.clothing, request.location, request.angle])))
+    return request.scene in {'lingerie', 'private_fashion'} or bool(INTIMATE_STYLE.search(' '.join([request.clothing, request.location, request.angle])))
 
 
 def build_photo_menu(telegram_id: int):
@@ -392,11 +420,11 @@ def consume_offer(telegram_id: int, offer_id: int):
 
 def _lingerie_clothing(low: str) -> str:
     color = 'black'
-    if 'бел' in low or 'white' in low:
+    if re.search(r'\bбел(?:ое|ом|ый|ая|ую|ого|ые|ых)\b', low) or re.search(r'\bwhite\b', low):
         color = 'white'
-    elif 'красн' in low or 'red' in low:
+    elif 'красн' in low or re.search(r'\bred\b', low):
         color = 'burgundy red'
-    elif 'розов' in low or 'pink' in low:
+    elif 'розов' in low or re.search(r'\bpink\b', low):
         color = 'soft pink'
     base = f'{color} elegant lingerie fashion set with opaque coverage and polished catalog styling'
     if 'чулк' in low or 'stocking' in low:
@@ -404,44 +432,96 @@ def _lingerie_clothing(low: str) -> str:
     return base
 
 
+def _season_from_text(low: str) -> str:
+    if any(x in low for x in ('лето', 'летом', 'summer', 'жарко', 'жара')):
+        return 'summer'
+    if any(x in low for x in ('весна', 'весной', 'spring')):
+        return 'spring'
+    if any(x in low for x in ('осень', 'осенью', 'autumn', 'fall')):
+        return 'autumn'
+    if any(x in low for x in ('зима', 'зимой', 'winter', 'снег')):
+        return 'winter'
+    return ''
+
+
 def parse_photo_request(text: str) -> Optional[PhotoRequest]:
     t = (text or '').strip()
     low = t.lower()
-    direct = any(x in low for x in (
-        'фото', 'фотку', 'селфи', 'покажись', 'покажи себя', 'сфоткай', 'фотограф', 'photo', 'selfie'
-    ))
+    request_verbs = (
+        'сфоткай', 'сфотай', 'сфотограф', 'фоткни', 'сделай фото', 'пришли фото', 'пришли фотку', 'покажи себя', 'покажись',
+        'сними себя', 'селфи', 'take a photo', 'take a pic', 'send me a photo', 'send a pic', 'show me a photo', 'show yourself', 'show me yourself', 'selfie',
+        '拍照', '自拍', '发张照片', '给我看看你',
+    )
+    direct = (
+        any(x in low for x in request_verbs)
+        or bool(re.match(r'^\s*(?:фото|фотку|photo|pic)\b', low))
+        or bool(re.search(r'\b(?:сделай|пришли|дай|хочу|покажи)\b.{0,45}\b(?:фото|фотку|фотографию|селфи)\b', low))
+        or bool(re.search(r'\b(?:make|send|take|want|show)\b.{0,45}\b(?:photo|pic|selfie|picture)\b', low))
+    )
     if not direct:
         return None
 
+    season = _season_from_text(low)
     if SAFE_EXPLICIT.search(low):
-        return PhotoRequest(scene='fashion', clothing='tasteful fitted evening fashion outfit with opaque fabric')
+        return PhotoRequest(scene='fashion', clothing='tasteful fitted evening fashion outfit with opaque fabric', season=season)
 
     scene = 'selfie'
     clothing = ''
-    if INTIMATE_STYLE.search(low):
+    angle = ''
+
+    # Natural rear-view requests are normalized to a fully clothed, non-explicit
+    # personal fashion composition. The provider safety checker stays enabled.
+    if REAR_VIEW_STYLE.search(low):
+        scene = 'personal'
+        angle = 'tasteful rear three-quarter personal fashion view, fully clothed, with recognizable profile visible when natural'
+    elif INTIMATE_STYLE.search(low):
         scene = 'lingerie'
         clothing = _lingerie_clothing(low)
-    elif any(x in low for x in ('парк', 'гуля', 'улиц')):
+    elif any(x in low for x in ('клуб', 'nightclub', 'club')):
+        scene = 'club'
+    elif any(x in low for x in ('караоке', 'karaoke')):
+        scene = 'karaoke'
+    elif any(x in low for x in ('бар', 'bar ')):
+        scene = 'bar'
+    elif any(x in low for x in ('крыша', 'rooftop')):
+        scene = 'rooftop'
+    elif any(x in low for x in ('ресторан', 'restaurant')):
+        scene = 'restaurant'
+    elif any(x in low for x in ('кино', 'cinema', 'movie')):
+        scene = 'cinema'
+    elif any(x in low for x in ('набереж', 'embankment', 'riverwalk')):
+        scene = 'embankment'
+    elif any(x in low for x in ('магазин', 'торгов', 'бутик', 'shop', 'mall')):
+        scene = 'shop'
+    elif any(x in low for x in ('машин', 'авто', 'car')):
+        scene = 'car'
+    elif any(x in low for x in ('парк', 'park')):
         scene = 'park'
-    elif any(x in low for x in ('кафе', 'кофе', 'ресторан')):
+    elif any(x in low for x in ('улиц', 'street', 'город')):
+        scene = 'street'
+    elif any(x in low for x in ('кафе', 'кофе', 'cafe', 'coffee')):
         scene = 'cafe'
     elif any(x in low for x in ('зеркал', 'mirror')):
         scene = 'mirror'
-    elif any(x in low for x in ('дома', 'домаш', 'кровать', 'диван', 'спальн')):
+    elif any(x in low for x in ('дома', 'домаш', 'кровать', 'диван', 'спальн', 'at home')):
         scene = 'home'
-    elif any(x in low for x in ('вечер', 'клуб')):
-        scene = 'evening'
-    elif any(x in low for x in ('личное фото', 'личный кадр', 'только для меня', 'специально для меня')):
+    elif any(x in low for x in ('личное фото', 'личный кадр', 'только для меня', 'специально для меня', 'personal photo')):
         scene = 'personal'
-    elif any(x in low for x in ('образ', 'наряд', 'одета', 'одежд', 'плать', 'джинс', 'леггинс')):
+    elif any(x in low for x in ('вечер', 'evening')):
+        scene = 'evening'
+    elif any(x in low for x in ('образ', 'наряд', 'одета', 'одежд', 'плать', 'джинс', 'леггинс', 'outfit', 'dress')):
         scene = 'outfit'
 
     if not clothing:
         clothing_map = [
-            ('черн', 'black outfit'), ('бел', 'white outfit'), ('красн', 'burgundy red outfit'),
-            ('плать', 'fitted elegant dress'), ('джинс', 'jeans with a casual fitted top'),
-            ('леггинс', 'leggings with a fitted casual top'), ('водолаз', 'fitted turtleneck sweater'),
-            ('майк', 'fitted tank top'), ('топ', 'fitted fashion top'),
+            ('черн', 'a black figure-flattering fully clothed outfit'), ('white', 'a white figure-flattering fully clothed outfit'),
+            ('бел', 'a white figure-flattering fully clothed outfit'), ('красн', 'a burgundy red figure-flattering fully clothed outfit'),
+            ('плать', 'a fitted elegant dress with normal coverage'), ('dress', 'a fitted elegant dress with normal coverage'),
+            ('шорт', 'high-waisted tailored shorts with a fitted casual top'), ('shorts', 'high-waisted tailored shorts with a fitted casual top'),
+            ('брюк', 'tailored high-waisted trousers with a fitted top'), ('trousers', 'tailored high-waisted trousers with a fitted top'),
+            ('джинс', 'high-waisted jeans with a fitted casual top'), ('jeans', 'high-waisted jeans with a fitted casual top'),
+            ('леггинс', 'opaque leggings with a fitted casual top'), ('leggings', 'opaque leggings with a fitted casual top'),
+            ('водолаз', 'a fitted turtleneck sweater'), ('майк', 'a fitted tank top with normal coverage'), ('топ', 'a fitted fashion top with normal coverage'),
         ]
         for key, value in clothing_map:
             if key in low:
@@ -455,28 +535,30 @@ def parse_photo_request(text: str) -> Optional[PhotoRequest]:
         hairstyle = 'a sleek high ponytail'
     elif any(x in low for x in ('пучок', 'bun')):
         hairstyle = 'a neat high bun'
-    elif any(x in low for x in ('распущ', 'волнист')):
+    elif any(x in low for x in ('распущ', 'волнист', 'loose hair', 'waves')):
         hairstyle = 'long loose softly wavy dark brunette hair'
 
-    angle = ''
-    if any(x in low for x in ('со спины', 'сзади', 'back view')):
-        angle = 'back three-quarter view while keeping her recognizable profile when visible'
-    elif any(x in low for x in ('сбоку', 'профиль', 'side')):
-        angle = 'side three-quarter view'
-    elif any(x in low for x in ('сверху', 'верхний ракурс')):
-        angle = 'slightly high-angle smartphone selfie'
-    elif 'полный рост' in low:
-        angle = 'full-body framing'
+    if not angle:
+        if any(x in low for x in ('со спины', 'сзади', 'back view', 'from behind')):
+            angle = 'back three-quarter view while keeping her recognizable profile when visible'
+        elif any(x in low for x in ('сбоку', 'профиль', 'side view')):
+            angle = 'side three-quarter view'
+        elif any(x in low for x in ('сверху', 'верхний ракурс', 'high angle')):
+            angle = 'slightly high-angle smartphone selfie'
+        elif 'полный рост' in low or 'full body' in low:
+            angle = 'full-body framing'
 
     location = ''
-    if 'диван' in low:
+    if 'диван' in low or 'sofa' in low:
         location = 'a tidy modern living room with a sofa'
-    elif 'спальн' in low:
+    elif 'спальн' in low or 'bedroom' in low:
         location = 'a tasteful modern bedroom with soft daylight'
-    elif 'отел' in low:
+    elif 'отел' in low or 'hotel' in low:
         location = 'a tasteful modern hotel room'
 
-    return PhotoRequest(scene=scene, clothing=clothing, hairstyle=hairstyle, location=location, angle=angle)
+    rear_auto = bool(REAR_VIEW_STYLE.search(low))
+    customized = bool(clothing or hairstyle or location or (angle and not rear_auto))
+    return PhotoRequest(scene=scene, clothing=clothing, hairstyle=hairstyle, location=location, angle=angle, season=season, customized=customized)
 
 
 def _reference_folder(character: dict) -> Path:
@@ -508,13 +590,89 @@ def _pick_nonrepeat(options: list[str], previous: str | None) -> str:
     return random.choice(usable or options)
 
 
+def _default_season() -> str:
+    month = datetime.now(timezone.utc).month
+    if month in (12, 1, 2):
+        return 'winter'
+    if month in (3, 4, 5):
+        return 'spring'
+    if month in (6, 7, 8):
+        return 'summer'
+    return 'autumn'
+
+
+def _wardrobe_pool(scene: str, level: int, season: str) -> list[str]:
+    group = SCENE_GROUP.get(scene, 'day_casual')
+    level = max(1, min(6, int(level)))
+    pool = list(WARDROBE_LEVEL_POOLS[group][level])
+
+    # Outdoor summer scenes must never accidentally get winter styling.
+    # The explicit pool already uses summer garments; for other groups we filter
+    # obvious heavy pieces when the requested scene is visibly warm-season.
+    if season == 'summer' and group != 'adult':
+        bad = ('hoodie', 'coat', 'thick knit', 'heavy knit', 'sweater')
+        filtered = [x for x in pool if not any(word in x.lower() for word in bad)]
+        if filtered:
+            pool = filtered
+    return pool
+
+
+def _json_list(raw: str | None) -> list[str]:
+    try:
+        value = json.loads(raw or '[]')
+        return [str(x) for x in value] if isinstance(value, list) else []
+    except Exception:
+        return []
+
+
+def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season: str) -> tuple[str, ...]:
+    if request.clothing:
+        return tuple(request.clothing for _ in range(PHOTO_SET_SIZE))
+    state = get_state(telegram_id)
+    level = get_relationship_level(telegram_id)
+    pool = _wardrobe_pool(request.scene, level, season)
+    uid = ensure_user(telegram_id)
+    visual_prefs = get_visual_preferences(uid, CHARACTER_ID)
+    color_counts = visual_prefs.get('colors', {}) if isinstance(visual_prefs, dict) else {}
+    favorite_color = max(color_counts, key=color_counts.get) if color_counts and max(color_counts.values()) >= 2 else ''
+    picks: list[str] = []
+    recent = {x.strip().lower() for x in _json_list(getattr(state, 'recent_outfits_json', '[]'))}
+    if state.outfit:
+        recent.add(state.outfit.strip().lower())
+    for i in range(PHOTO_SET_SIZE):
+        usable = [x for x in pool if x not in picks and x.strip().lower() not in recent]
+        if not usable:
+            usable = [x for x in pool if x not in picks] or pool
+        chosen = random.choice(usable)
+        # Roughly half personalization, half diversity/surprise. Never override an explicit user outfit.
+        if favorite_color and SCENE_GROUP.get(request.scene) != 'adult' and random.random() < 0.50:
+            chosen = f'{chosen}, using a {favorite_color}-led color palette'
+        picks.append(chosen)
+    return tuple(picks)
+
+
 def _resolve_request(telegram_id: int, request: PhotoRequest) -> PhotoRequest:
     state = get_state(telegram_id)
-    pool = OUTFIT_POOLS.get(request.scene, OUTFIT_POOLS['selfie'])
-    clothing = request.clothing or _pick_nonrepeat(pool, state.outfit)
-    hairstyle = request.hairstyle or _pick_nonrepeat(HAIRSTYLE_POOL, state.hairstyle)
+    season = request.season or _default_season()
+    pack_outfits = tuple(request.pack_outfits) if request.pack_outfits else _choose_progression_outfits(telegram_id, request, season)
+    clothing = pack_outfits[-1] if pack_outfits else request.clothing
+    if request.hairstyle:
+        hairstyle = request.hairstyle
+    else:
+        recent_hair = {x.strip().lower() for x in _json_list(getattr(state, 'recent_hairstyles_json', '[]'))}
+        if state.hairstyle:
+            recent_hair.add(state.hairstyle.strip().lower())
+        hair_pool = [x for x in HAIRSTYLE_POOL if x.strip().lower() not in recent_hair] or HAIRSTYLE_POOL
+        uid = ensure_user(telegram_id)
+        visual_prefs = get_visual_preferences(uid, CHARACTER_ID)
+        hair_counts = visual_prefs.get('hairstyles', {}) if isinstance(visual_prefs, dict) else {}
+        preferred_hair = max(hair_counts, key=hair_counts.get) if hair_counts and max(hair_counts.values()) >= 2 else ''
+        if preferred_hair and preferred_hair.strip().lower() not in recent_hair and random.random() < 0.50:
+            hairstyle = preferred_hair
+        else:
+            hairstyle = random.choice(hair_pool)
     location = request.location or SCENES.get(request.scene, SCENES['selfie'])
-    return replace(request, clothing=clothing, hairstyle=hairstyle, location=location)
+    return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season, pack_outfits=pack_outfits)
 
 
 def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
@@ -524,36 +682,48 @@ def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
     return variants[index % len(variants)]
 
 
-def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False) -> str:
+def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False, relationship_level: int = 1) -> str:
     scene = SCENES.get(request.scene, SCENES['selfie'])
     angle = _shot_variant(request.scene, shot_index, request.angle)
+    outfits = tuple(request.pack_outfits) if request.pack_outfits else (request.clothing,)
+    wardrobe = outfits[min(shot_index, len(outfits) - 1)] if outfits else request.clothing
+    tier_rule = PACK_TIER_RULES[min(shot_index, len(PACK_TIER_RULES) - 1)]
+    visual_rule = LEVEL_VISUAL_RULES.get(max(1, min(6, relationship_level)), LEVEL_VISUAL_RULES[1])
+    season = request.season or _default_season()
+    season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
     if seedream:
         identity = SEEDREAM_IDENTITY_LOCK
         personal = (
-            'This is a tasteful adult glamour/fashion photo made specifically to send to someone she is chatting with. '
+            'This is a tasteful adult fashion/glamour photo made specifically to send to someone she is chatting with. '
+            'The photo must plausibly be made by Anna herself using a front camera, a mirror, or a smartphone self-timer; no invisible photographer. '
             'Keep the styling polished and personal while remaining non-explicit.'
         )
         safety = (
-            'Tasteful adult glamour/editorial styling only. No nudity, no exposed nipples or genitals. '
+            'Tasteful adult fashion/editorial styling only. No nudity, no exposed nipples or genitals. '
             'Any lingerie garment must provide opaque coverage. Preserve identity above styling.'
         )
     else:
         identity = OPENAI_IDENTITY_LOCK
         personal = (
             'This should feel like a normal personal photo Anna has just taken herself to send to someone she is chatting with. '
-            'Use believable smartphone framing and a relaxed everyday expression. '
-            'It should look like an ordinary lifestyle snapshot rather than a professional glamour shoot.'
+            'Every frame must plausibly be made by Anna herself using a front camera, a mirror, or a smartphone self-timer; no invisible photographer. '
+            'Use believable smartphone framing and a natural expression. The result should feel Pinterest-like and intentionally styled, '
+            'but still like a real personal lifestyle photo rather than a studio glamour shoot.'
         )
         safety = OPENAI_GENERAL_AUDIENCE_BLOCK
     return (
         f'{identity}\n'
         f'SCENE: {scene}. {request.location}.\n'
-        f'WARDROBE: {request.clothing}.\n'
+        f'SEASON/WEATHER: {season}. {season_rule}\n'
+        f'RELATIONSHIP VISUAL PROGRESSION: {visual_rule}\n'
+        f'PROGRESSION PACK FRAME {shot_index + 1}/{PHOTO_SET_SIZE}: {tier_rule}\n'
+        f'WARDROBE: {wardrobe}. The outfit must flatter the silhouette through fit and waist definition while preserving the underlying body proportions. '
+        'The outfit must be believable for this exact venue, weather and time of day. Do not reuse a heavy sweater or hoodie in a visibly warm summer scene.\n'
         f'HAIRSTYLE: {request.hairstyle}.\n'
-        f'SHOT {shot_index + 1}/{PHOTO_SET_SIZE}: {angle}.\n'
+        f'CAMERA/POSE: {angle}.\n'
         f'MOOD: {request.mood}.\n'
         f'{personal}\n'
-        'LIGHTING: soft natural window light where appropriate, realistic shadows, cinematic but believable contrast.\n'
+        'LIGHTING: use lighting that naturally belongs to the location and time of day; realistic shadows, cinematic but believable contrast.\n'
         f'{safety}\n'
         f'{QUALITY_BLOCK}\n'
         f'{NEGATIVE_BLOCK}'
@@ -663,7 +833,7 @@ async def _run_openai_set(character: dict, telegram_id: int, request: PhotoReque
     outputs=[]
     # Three independent edits give us controlled angle variation while preserving the same resolved outfit/hair.
     for i in range(PHOTO_SET_SIZE):
-        prompt = _build_prompt(request, i, seedream=False)
+        prompt = _build_prompt(request, i, seedream=False, relationship_level=get_relationship_level(telegram_id))
         with ref.open('rb') as image_file:
             result = await openai_client.images.edit(
                 model=IMAGE_MODEL,
@@ -692,10 +862,10 @@ async def _run_seedream_set(character: dict, telegram_id: int, request: PhotoReq
     )
 
     for i in range(PHOTO_SET_SIZE):
-        prompt = _build_prompt(request, i, seedream=True) + (
-            '\nCreate exactly ONE photo for this shot. Keep the exact same outfit, hairstyle, location, '
+        prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id)) + (
+            '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location, '
             'face identity and body proportions as the other photos in this set. '
-            'Make this framing clearly different from the previous shot while staying in the same moment.'
+            'Make this framing clearly different from the previous shot while staying in the same photo session.'
         )
         try:
             result = await _seedream_request(
@@ -747,11 +917,11 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
     # HYBRID routing:
     # - ordinary fully-clothed lifestyle/fashion scenes -> GPT Image 2
     # - intentionally more private/bold scenes -> Seedream
-    # `personal` is level-4 content and is deliberately kept off the OpenAI image
+    # `personal` and private scenes are deliberately kept off the OpenAI image
     # path because even fully-clothed personal prompts can be classified as sexual
     # when combined with identity-preserving image edits.
     combined = ' '.join([request.scene, request.clothing, request.location, request.angle]).lower()
-    if request.scene in {'personal', 'lingerie'} or INTIMATE_STYLE.search(combined):
+    if request.scene in {'personal', 'lingerie', 'private_fashion'} or INTIMATE_STYLE.search(combined):
         logger.info('Hybrid photo route scene=%s -> seedream45', request.scene)
         return 'seedream45'
     logger.info('Hybrid photo route scene=%s -> openai', request.scene)
@@ -861,12 +1031,17 @@ async def deliver_photo(
         file_id=file_id, url=first_result.url,
         provider=first_result.provider, estimated_cost_usd=total_cost,
     )
+    current_state = get_state(telegram_id)
+    recent_outfits = (_json_list(getattr(current_state, 'recent_outfits_json', '[]')) + list(resolved.pack_outfits))[-6:]
+    recent_hair = (_json_list(getattr(current_state, 'recent_hairstyles_json', '[]')) + [resolved.hairstyle])[-4:]
     update_state(
         telegram_id,
         location=resolved.location,
         outfit=resolved.clothing,
         hairstyle=resolved.hairstyle,
+        recent_outfits_json=json.dumps(recent_outfits, ensure_ascii=False),
+        recent_hairstyles_json=json.dumps(recent_hair, ensure_ascii=False),
     )
     logger.info('photo set delivered user=%s scene=%s provider=%s count=%s outfit=%s hair=%s',
-                telegram_id, request.scene, first_result.provider, len(results), resolved.clothing, resolved.hairstyle)
+                telegram_id, request.scene, first_result.provider, len(results), ' | '.join(resolved.pack_outfits) if resolved.pack_outfits else resolved.clothing, resolved.hairstyle)
     return sent_messages

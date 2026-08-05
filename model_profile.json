@@ -1,10 +1,12 @@
 {
-  "profile_name": "model_reference",
-  "references": [
-    {"file": "references/face_front.png", "role": "face_front"},
-    {"file": "references/face_profile.png", "role": "face_profile"},
-    {"file": "references/body_front.png", "role": "body_front"},
-    {"file": "references/body_side.png", "role": "body_side"}
-  ],
-  "usage": "Use all four images as the model identity/reference set when the image API supports multiple references."
+  "profile_name": "anna_v2_new_face_2026_08",
+  "identity_reference": "data/references/anna/00_identity_face_new.png",
+  "openai_safe_reference": "data/references/anna/00_openai_safe_fullbody.png",
+  "seedream_safe_reference": "data/references/anna/00_seedream_face_safe.png",
+  "routing": {
+    "ordinary_fully_clothed": "gpt-image-2",
+    "personal_private_non_explicit": "fal-ai/bytedance/seedream/v4.5/edit"
+  },
+  "photo_pack": "base -> stylish -> premium",
+  "identity_rule": "Preserve the new Anna face identity; scene, outfit, pose, lighting and hairstyle may vary."
 }

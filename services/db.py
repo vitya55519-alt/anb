@@ -2,7 +2,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from models.waifu_models import Base
 from models.relationship_models import UserCharacterRelationship, RelationshipEvent  # noqa
-from models.app_models import User, Message, Memory, CharacterState, Reminder, Subscription, StarTransaction  # noqa
+from models.app_models import User, Message, Memory, CommunicationProfile, CharacterState, Reminder, Subscription, StarTransaction  # noqa
 from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer  # noqa
 from config import DATABASE_URL
 
@@ -35,6 +35,11 @@ def _migrate_existing_users():
 def init_db():
     Base.metadata.create_all(engine)
     _migrate_existing_users()
+    _add_missing_columns('character_states', {
+        'recent_outfits_json': "TEXT DEFAULT '[]'",
+        'recent_hairstyles_json': "TEXT DEFAULT '[]'",
+    })
+    _add_missing_columns('communication_profiles', {'visual_json': "TEXT DEFAULT '{}'"})
     _add_missing_columns('photo_offers', {'request_json': 'TEXT'})
     _add_missing_columns('photo_deliveries', {
         'provider': 'VARCHAR(32)',

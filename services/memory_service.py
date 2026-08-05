@@ -2,7 +2,7 @@ import json, re
 from datetime import datetime, timezone
 from sqlalchemy import select, delete
 from services.db import SessionLocal
-from models.app_models import Memory, Message, User
+from models.app_models import Memory, Message, User, CommunicationProfile
 from config import AI_KEY, AI_MODEL, AI_BASE_URL
 from openai import AsyncOpenAI
 
@@ -31,6 +31,7 @@ def reset_conversation(user_id:int, character_id:str):
     with SessionLocal() as s:
         s.execute(delete(Message).where(Message.user_id==user_id,Message.character_id==character_id))
         s.execute(delete(Memory).where(Memory.user_id==user_id,Memory.character_id==character_id))
+        s.execute(delete(CommunicationProfile).where(CommunicationProfile.user_id==user_id,CommunicationProfile.character_id==character_id))
         s.commit()
 
 def _extract_json(text):

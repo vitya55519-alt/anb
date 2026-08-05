@@ -31,6 +31,7 @@ from models.relationship_models import UserCharacterRelationship, RelationshipEv
 from models.app_models import CharacterState, Reminder
 from services.test_mode import STAGES, STAGE_LABELS, set_stage, clear_stage
 from services.voice_service import transcribe, synthesize_bytes, VALID_VOICES
+from services.adaptation_service import get_profile, observe_photo_preference
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 logger = logging.getLogger('annabot')
@@ -40,17 +41,35 @@ dp = Dispatcher()
 PHOTO_LABELS = {
     'selfie': '📸 Селфи',
     'home': '🏠 Дома',
-    'park': '🌿 В парке',
-    'cafe': '☕ В кафе',
-    'outfit': '👗 Образ',
+    'park': '🌿 Парк',
+    'cafe': '☕ Кафе',
+    'street': '🌆 Улица',
     'mirror': '🪞 Зеркало',
-    'evening': '✨ Вечер',
+    'outfit': '👗 Образ',
+    'shop': '🛍 Магазин',
+    'car': '🚗 В машине',
+    'restaurant': '🍽 Ресторан',
+    'cinema': '🎬 Кино',
+    'embankment': '🌊 Набережная',
     'fashion': '💎 Fashion',
+    'evening': '✨ Вечер',
+    'bar': '🍸 Бар',
+    'karaoke': '🎤 Караоке',
+    'rooftop': '🌃 Крыша',
+    'club': '💃 Клуб',
     'personal': '💌 Личное фото',
     'lingerie': '🖤 Приватный fashion',
+    'private_fashion': '🔐 Premium private',
 }
 
-PHOTO_MENU_ORDER = ['selfie', 'home', 'park', 'cafe', 'outfit', 'mirror', 'evening', 'fashion', 'personal', 'lingerie']
+PHOTO_MENU_ORDER = [
+    'selfie', 'home', 'park', 'cafe', 'street',
+    'mirror', 'outfit', 'shop', 'car',
+    'restaurant', 'cinema', 'embankment', 'fashion',
+    'evening', 'bar', 'karaoke', 'rooftop',
+    'club', 'personal', 'lingerie', 'private_fashion',
+]
+
 RELATIONSHIP_LEVEL_NAMES = {
     1: 'Знакомство',
     2: 'Симпатия',
@@ -107,26 +126,19 @@ def photo_keyboard(telegram_id: int):
     if future_levels:
         next_level = future_levels[0]
         locked = [s for s in PHOTO_MENU_ORDER if SCENE_LEVELS.get(s) == next_level]
+        for i in range(0, len(locked), 2):
+            rows.append([
+                InlineKeyboardButton(
+                    text=f'🔒 {PHOTO_LABELS[scene]} · ур.{next_level}',
+                    callback_data=f'locked:{scene}',
+                )
+                for scene in locked[i:i + 2]
+            ])
         if level == 4 and next_level == 5:
-            # Preview private fashion + paid customization together at the threshold.
-            locked = locked[:1]
-            rows.append([InlineKeyboardButton(
-                text=f'🔒 {PHOTO_LABELS[locked[0]].replace("🖤 ", "")} · ур.{next_level}',
-                callback_data=f'locked:{locked[0]}',
-            )])
             rows.append([InlineKeyboardButton(
                 text='🔒 ✨ Кастомное фото · ур.5',
                 callback_data='locked:custom',
             )])
-        else:
-            for i in range(0, len(locked), 2):
-                rows.append([
-                    InlineKeyboardButton(
-                        text=f'🔒 {PHOTO_LABELS[scene]} · ур.{next_level}',
-                        callback_data=f'locked:{scene}',
-                    )
-                    for scene in locked[i:i + 2]
-                ])
 
     if level >= 5:
         rows.append([InlineKeyboardButton(text=f'✨ Кастомное фото — {CUSTOM_PHOTO_COST_STARS}⭐', callback_data='custom:start')])
@@ -150,7 +162,7 @@ def photo_menu_text(telegram_id: int) -> str:
         f'что показать? 😌\n'
         f'❤️ Близость: {level}/6 · {name}\n'
         f'🎁 Бесплатно сегодня: {info["free_left"]}/{info["limit"]} · credits: {info["credits"]}\n'
-        f'📷 Один запрос = до {info["set_size"]} фото'
+        f'📷 Progression pack: базовый → стильный → premium · до {info["set_size"]} фото'
         f'{next_line}'
     )
 
@@ -216,6 +228,8 @@ async def _offer_custom_photo(chat_id: int, telegram_id: int, request: PhotoRequ
 
 
 async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoRequest):
+    db_uid = ensure_user(telegram_id)
+    observe_photo_preference(db_uid, request.scene, request.clothing, request.hairstyle, request.location, CHARACTER_ID)
     stage = get_relationship_stage(telegram_id)
     if not scene_allowed_for_stage(request.scene, stage):
         await bot.send_message(chat_id, 'такой образ я пока оставлю при себе 😏')
@@ -304,12 +318,16 @@ async def settings(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name)
     user = get_user(message.from_user.id)
     credits = get_photo_credits(message.from_user.id)
+    profile = get_profile(user.id, CHARACTER_ID) if user else None
+    language = {'ru':'Русский','en':'English','zh':'中文','es':'Español','de':'Deutsch','fr':'Français','it':'Italiano','pt':'Português','uk':'Українська','ja':'日本語','ko':'한국어'}.get(getattr(profile, 'preferred_language', 'auto'), getattr(profile, 'preferred_language', 'Авто') if profile else 'Авто')
     await message.answer(
         f'Настройки Анны\n\nЧасовой пояс: {user.timezone}\n'
+        f'Язык общения: {language} · адаптируется автоматически\n'
         f'Голосовые ответы: {"вкл" if user.voice_enabled else "выкл"}\n'
         f'Инициативные сообщения: {"вкл" if user.proactive_enabled else "выкл"}\n'
         f'Premium: {"активен" if is_premium(message.from_user.id) else "нет"}\n'
         f'Фото-кредиты: {credits}\n18+: {"подтверждено" if is_adult_confirmed(message.from_user.id) else "не подтверждено"}\n\n'
+        'Стиль общения и знакомые выражения Анна постепенно подхватывает сама.\n'
         '/voice · /notifications · /timezone'
     )
 
@@ -585,6 +603,11 @@ async def reset_cmd(message: types.Message):
             state.affection = .45
             state.playfulness = .55
             state.irritation = 0
+            state.location = None
+            state.outfit = None
+            state.hairstyle = None
+            state.recent_outfits_json = '[]'
+            state.recent_hairstyles_json = '[]'
             state.pending_hook = None
         session.query(Reminder).filter_by(user_id=uid).delete(synchronize_session=False)
         session.commit()
@@ -685,12 +708,14 @@ async def voice_message(message: types.Message):
     try:
         data = await bot.download(message.voice)
         text = await transcribe(data)
-        async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text)
-        await send_answer(message, answer)
         request = parse_photo_request(text)
         if request:
             await handle_photo_request(message.chat.id, message.from_user.id, request)
+            touch_user(message.from_user.id)
+            return
+        async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
+            answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text)
+        await send_answer(message, answer)
         if create_from_text(message.from_user.id, text):
             await message.answer('и время тоже запомнила 😌')
         touch_user(message.from_user.id)
@@ -710,12 +735,16 @@ async def text_message(message: types.Message):
         return
     text = message.text or ''
     try:
-        async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text)
-        await send_answer(message, answer)
+        # Natural photo requests are routed before the chat model, so Anna does not
+        # first refuse/chat about the photo and only then start generation.
         request = parse_photo_request(text)
         if request:
             await handle_photo_request(message.chat.id, message.from_user.id, request)
+            touch_user(message.from_user.id)
+            return
+        async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
+            answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text)
+        await send_answer(message, answer)
         rid = create_from_text(message.from_user.id, text)
         if rid:
             await message.answer('запомнила 😌')

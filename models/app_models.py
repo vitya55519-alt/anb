@@ -45,6 +45,29 @@ class Memory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
+
+class CommunicationProfile(Base):
+    __tablename__ = "communication_profiles"
+    __table_args__ = (UniqueConstraint("user_id", "character_id", name="uq_communication_profile"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    preferred_language: Mapped[str] = mapped_column(String(16), default="auto")
+    language_confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    avg_message_length: Mapped[float] = mapped_column(Float, default=0.0)
+    emoji_rate: Mapped[float] = mapped_column(Float, default=0.0)
+    question_rate: Mapped[float] = mapped_column(Float, default=0.0)
+    uppercase_rate: Mapped[float] = mapped_column(Float, default=0.0)
+    slang_level: Mapped[float] = mapped_column(Float, default=0.0)
+    style_json: Mapped[str] = mapped_column(Text, default="{}")
+    slang_json: Mapped[str] = mapped_column(Text, default="[]")
+    token_counts_json: Mapped[str] = mapped_column(Text, default="{}")
+    visual_json: Mapped[str] = mapped_column(Text, default="{}")
+    last_analyzed_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
 class CharacterState(Base):
     __tablename__ = "character_states"
     __table_args__ = (UniqueConstraint("user_id", "character_id", name="uq_character_state"),)
@@ -60,6 +83,8 @@ class CharacterState(Base):
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     outfit: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hairstyle: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    recent_outfits_json: Mapped[str] = mapped_column(Text, default='[]')
+    recent_hairstyles_json: Mapped[str] = mapped_column(Text, default='[]')
     pending_hook: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_nudge_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

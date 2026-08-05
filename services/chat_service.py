@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import re
 from openai import AsyncOpenAI
 from config import AI_KEY, AI_MODEL, AI_BASE_URL, CHARACTER_ID
@@ -11,6 +12,7 @@ from services.behavior_service import behavior_context
 from services.state_service import state_context, softly_evolve_state
 from services.user_service import ensure_user
 from services.access_service import is_premium
+from services.adaptation_service import observe_message, maybe_analyze_profile, build_adaptation_context
 
 client = AsyncOpenAI(api_key=AI_KEY, base_url=AI_BASE_URL)
 
@@ -61,6 +63,7 @@ async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str) 
 
 async def reply(user_id: int, user_name: str, user_text: str) -> str:
     db_user_id = ensure_user(user_id, user_name)
+    observe_message(db_user_id, user_text, CHARACTER_ID)
     delta = infer_delta(user_text)
     test_stage = get_test_stage(user_id)
     if test_stage:
@@ -89,8 +92,17 @@ async def reply(user_id: int, user_name: str, user_text: str) -> str:
     premium = is_premium(user_id)
     memories = get_memories(db_user_id, CHARACTER_ID, 40 if premium else 14)
     history = get_recent_messages(db_user_id, CHARACTER_ID, 30 if premium else 16)
+    stage_to_level = {'stranger':1,'acquaintance':2,'close':3,'intimate':4,'deeply_connected':5,'committed':6}
+    adaptation = build_adaptation_context(db_user_id, stage_to_level.get(test_stage or '', 0) or 1, CHARACTER_ID)
+    if not test_stage:
+        # Relationship context itself is authoritative; adaptation strength still grows conservatively with history.
+        try:
+            from services.photo_service import get_relationship_level
+            adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id), CHARACTER_ID)
+        except Exception:
+            pass
     system = build_system_prompt(
-        character, rel_context, [m.content for m in memories], behavior_context(user_text), state_context(user_id)
+        character, rel_context, [m.content for m in memories], behavior_context(user_text), state_context(user_id), adaptation
     )
     messages = [{"role": "system", "content": system}]
     messages += [{"role": m.role, "content": m.content} for m in history]
@@ -100,7 +112,10 @@ async def reply(user_id: int, user_name: str, user_text: str) -> str:
     answer = await _rewrite_if_needed(messages, user_text, answer)
     save_message(db_user_id, CHARACTER_ID, "user", user_text)
     save_message(db_user_id, CHARACTER_ID, "assistant", answer)
-    await extract_memory(db_user_id, CHARACTER_ID, user_text)
+    await asyncio.gather(
+        extract_memory(db_user_id, CHARACTER_ID, user_text),
+        maybe_analyze_profile(db_user_id, CHARACTER_ID),
+    )
     softly_evolve_state(user_id, user_text)
     return answer
 
@@ -112,10 +127,15 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int) -> 
     history = get_recent_messages(db_user_id, CHARACTER_ID, 8)
     from services.relationship_service import get_context
     rel_context = await get_context(user_id) or "Отношения только начинаются."
+    try:
+        from services.photo_service import get_relationship_level
+        adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id), CHARACTER_ID)
+    except Exception:
+        adaptation = build_adaptation_context(db_user_id, 1, CHARACTER_ID)
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories],
         "Напиши одну короткую спонтанную реплику первой. Не объясняй, зачем пишешь, и не обязательно задавай вопрос.",
-        state_context(user_id),
+        state_context(user_id), adaptation,
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": f"Пользователь не писал около {hours_inactive} часов. Напиши естественно первой, не упоминая отслеживание активности."})

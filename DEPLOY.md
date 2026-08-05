@@ -1,50 +1,58 @@
-# Railway deploy — AnnaBot V3.3 Hybrid
+# Railway deployment — AnnaBot V3.8
 
-Required service variables:
+## Required variables on Railway `web`
 
-```env
-TELEGRAM_TOKEN=...
-OPENAI_API_KEY=...
-DATABASE_URL=${{Postgres.DATABASE_URL}}
-IMAGE_MODEL=gpt-image-2
-FAL_KEY=...
-FAL_MODEL=fal-ai/bytedance/seedream/v4.5/edit
-PHOTO_ROUTER_MODE=seedream
-SEEDREAM_RELATIONSHIP_LEVEL=5
-ADMIN_TELEGRAM_IDS=...
-```
-
-`FAL_KEY` must be created in the fal.ai dashboard and stored only in Railway Variables. Never commit it to GitHub.
-
-Photo routing in production:
-
-- `PHOTO_ROUTER_MODE=seedream` sends all Anna photo edits to fal.ai Seedream 4.5 Edit;
-- OpenAI remains the chat model and can be selected explicitly for images only by setting `PHOTO_ROUTER_MODE=openai`;
-- Seedream receives a neutral fully-clothed Anna identity anchor; clothing/location/hair/angle are edit instructions;
-- a provider failure never sends a fake static result and never consumes quota or photo credit; the user gets Retry / Other scene buttons.
-
-Seedream safety checking stays enabled.
-
-After deploy, verify logs contain `AnnaBot started` and `Start polling`, then test `/testlevel 1..6` as the owner.
-
-
-## Required Railway variables for V3.7
 ```text
 TELEGRAM_TOKEN=...
 OPENAI_API_KEY=...
 FAL_KEY=...
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+IMAGE_MODEL=gpt-image-2
 FAL_MODEL=fal-ai/bytedance/seedream/v4.5/edit
 PHOTO_ROUTER_MODE=hybrid
 PHOTO_SET_SIZE=3
-DATABASE_URL=${{Postgres.DATABASE_URL}}
-IMAGE_MODEL=gpt-image-2
+ADMIN_TELEGRAM_IDS=...
 ```
 
-Important: older deployments may still have `PHOTO_ROUTER_MODE=seedream`. Change it to `hybrid`, otherwise all photos will continue to use Seedream.
+Do **not** leave `PHOTO_ROUTER_MODE=seedream` from an older deployment, because that would force all ordinary photos through Seedream.
 
+Optional/defaulted:
 
-## V3.7.2 routing correction
-- `selfie`, `home`, `park`, `cafe`, `outfit`, `mirror`, `evening`, and mainstream `fashion` stay on GPT Image 2 in hybrid mode.
-- `personal` (relationship level 4) and `lingerie` (level 5+) route to Seedream 4.5.
-- This avoids repeated OpenAI `moderation_blocked [sexual]` failures for the more private `personal` scene while preserving GPT Image 2 for ordinary photos.
-- Seedream safety checking remains enabled. Failed generation does not consume the free daily request or paid credit.
+```text
+FAL_IMAGE_SIZE=portrait_4_3
+FAL_TIMEOUT_SECONDS=210
+FAL_CONNECT_TIMEOUT_SECONDS=20
+FAL_WRITE_TIMEOUT_SECONDS=60
+FAL_POOL_TIMEOUT_SECONDS=30
+FAL_RETRIES=2
+FAL_RETRY_BACKOFF_SECONDS=2
+ADAPTATION_ENABLED=true
+ADAPTATION_ANALYZE_EVERY=5
+ADAPTATION_MAX_EXPRESSIONS=12
+FREE_PHOTOS_LEVEL_1_2=1
+FREE_PHOTOS_LEVEL_3_6=2
+PHOTO_COST_STARS=25
+CUSTOM_PHOTO_COST_STARS=40
+```
+
+## Deploy behavior
+
+`railway.toml` starts:
+
+```text
+python main.py
+```
+
+At startup `services.db.init_db()` creates the new `communication_profiles` table and adds missing recent-outfit/recent-hairstyle columns automatically. Existing user data is preserved.
+
+## First live checks
+
+1. Look for `AnnaBot started` and `Start polling`.
+2. Chat for several messages; after ~5 messages the communication profile can be refined automatically.
+3. `/testlevel 1` -> Park/Home: verify context-appropriate casual fitted wardrobe.
+4. `/testlevel 6` -> same scene: verify visibly more premium/styled wardrobe.
+5. In August/summer Park: verify no heavy sweater/hoodie unless explicitly requested.
+6. Check a standard scene routes to OpenAI.
+7. Check a level-5 Personal/Private scene routes to Seedream and returns up to 3 images.
+
+`FAL_KEY`, Telegram token and OpenAI key must remain Railway secrets and must never be committed.

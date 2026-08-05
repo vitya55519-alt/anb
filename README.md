@@ -1,65 +1,107 @@
-# V3.7.1 OpenAI normal-photo moderation fix
+# AnnaBot V3.8 — Adaptive Persona + Visual Progression
 
-- Ordinary GPT Image 2 scenes use a neutral fully-clothed identity anchor: `00_openai_safe_fullbody.png`.
-- GPT prompts avoid anatomy-emphasis wording and use general-audience wardrobe language.
-- GPT normal-photo prompt explicitly requests ordinary lifestyle photography.
-- Seedream keeps the stronger identity/body lock for higher-level non-explicit glamour/lingerie fashion.
-- Railway logs show `OpenAI normal-photo set request ... safe_prompt=true` before generation.
+Railway-ready Telegram AI companion with persistent memory, six relationship levels, adaptive conversation style, proactive messaging, Telegram Stars, PostgreSQL and a hybrid photo engine.
 
-# AnnaBot V3.4 V3.3 Hybrid
+## V3.8: Anna adapts to each user
 
-Telegram AI-companion MVP with one persistent Anna identity, long-term memory, six relationship stages, reminders, proactive messaging, Telegram Stars, voice, PostgreSQL, and a hybrid reference-based photo engine.
+Anna does **not** rewrite her own code or system prompt. Instead, every user gets a bounded `CommunicationProfile` stored in PostgreSQL.
 
-## Photo engine
+The profile learns gradually:
+- preferred/current language;
+- usual message length;
+- formality;
+- humor and sarcasm level;
+- emoji/question habits;
+- recurring slang and conversational expressions;
+- confidence for learned expressions.
 
-- `gpt-image-2` handles ordinary edits: outfit, hairstyle, place, selfie, mirror, park, cafe and angle changes.
-- `fal-ai/bytedance/seedream/v4.5/edit` handles higher-level non-explicit private fashion edits from relationship level 5 onward.
-- The same Anna reference pack is used to preserve face and body proportions.
-- Adult-style fashion categories require a one-time 18+ confirmation.
-- Stars buy customization, not relationship progression.
-- Custom paid flow supports color, stockings, hairstyle and location.
-- Safety/technical failures do not consume paid credits or corrupt visual state.
+Cheap local signals are updated on every message. Every `ADAPTATION_ANALYZE_EVERY` messages (default 5), the chat model refines the style/slang profile. Anna may occasionally use one familiar expression when it naturally fits, but her base personality always remains stronger than mirroring.
 
-## Conversation
+Sensitive categories are explicitly excluded from style extraction. `/reset` deletes messages, memories, relationship progress **and** the learned communication profile.
 
-Anna is intentionally not written as an assistant. Replies vary in length and intent, do not end every turn with a question, can include opinions/disagreement/callbacks, and use a one-pass quality rewrite when the draft sounds assistant-like. Direct questions about whether Anna is real are answered honestly and briefly.
+Anna also learns lightweight **photo preferences** from actual choices: favorite scenes, repeatedly requested colors and hairstyles. These are used softly (roughly half personalization / half diversity and surprise), so the photo feed does not collapse into the same look every time.
 
-## Railway variables
+Language detection supports Russian, English, Chinese, Spanish, German, French, Italian, Portuguese, Ukrainian, Japanese and Korean, while the main chat prompt can still answer in other languages by following the user's latest message.
 
-See `DEPLOY.md` and `.env.example`.
+## V3.8: photo progression pack
 
+One photo request returns up to 3 images as a progression pack:
+1. **Base** — natural believable frame;
+2. **Stylish** — more polished styling/pose;
+3. **Premium** — strongest composition and outfit allowed at the current relationship level.
 
-## V3.4 photo UX
+The relationship level now materially affects wardrobe and styling:
+- level 1: friendly fitted casual;
+- level 2: more feminine/waist-defined;
+- level 3: clearly more stylish and confident;
+- level 4: polished personal fashion;
+- level 5: glamorous personalized styling;
+- level 6: premium exclusive styling, still non-explicit.
 
-Seedream 4.5 is the default image editor. The photo menu previews the next locked relationship-level photo category. Failed generation is reported honestly and never replaced with a repeated static image; free quota and paid credits are only consumed after successful delivery.
+### Context-aware wardrobe
 
+Wardrobe is selected from scene + season + relationship level. A visible summer park/street scene will not receive a winter sweater/hoodie unless explicitly requested. Summer pools include fitted tops, shorts, skirts, sundresses, tailored trousers and fitted summer dresses. Higher levels progressively add stronger figure-flattering dresses and premium fitted looks without changing Anna's underlying body proportions.
 
-### Daily photo allowance
-- Relationship levels 1–2: 1 free generated photo per day.
-- Relationship levels 3–6: 2 free generated photos per day.
-- Extra standard photos use prepaid photo credits or a Telegram Stars invoice (`PHOTO_COST_STARS`, default 25⭐).
+Recent outfits (last 6) and hairstyles (last 4) are stored in `CharacterState` to reduce repetition.
 
+### Photo locations / unlocks
 
-### Seedream safety anchor
-Seedream requests use a neutral face-only Anna identity crop to avoid upstream partner validation on suggestive framing. The provider safety checker remains enabled.
+Level 1:
+- Selfie, Home, Park, Cafe, Street
 
+Level 2:
+- Mirror, Outfit, Shop, Car
 
-## V3.7 hybrid photo routing
-- Ordinary fully clothed photos use `gpt-image-2`.
-- `lingerie` / boudoir-style non-explicit glamour uses Seedream 4.5.
-- Set `PHOTO_ROUTER_MODE=hybrid` in Railway.
-- One photo request returns up to 3 images (`PHOTO_SET_SIZE=3`) and counts as one daily request.
-- Levels 1–2: 1 free request/day. Levels 3–6: 2 free requests/day.
-- New Anna identity is locked to `data/references/anna/00_identity_face_new.png`.
-- Failed generation does not consume the daily quota or a paid photo credit.
+Level 3:
+- Restaurant, Cinema, Embankment, Fashion
 
+Level 4:
+- Evening, Bar, Karaoke, Rooftop
 
-## V3.7.2 routing correction
-- `selfie`, `home`, `park`, `cafe`, `outfit`, `mirror`, `evening`, and mainstream `fashion` stay on GPT Image 2 in hybrid mode.
-- `personal` (relationship level 4) and `lingerie` (level 5+) route to Seedream 4.5.
-- This avoids repeated OpenAI `moderation_blocked [sexual]` failures for the more private `personal` scene while preserving GPT Image 2 for ordinary photos.
-- Seedream safety checking remains enabled. Failed generation does not consume the free daily request or paid credit.
+Level 5:
+- Club, Personal, Private fashion/lingerie category
 
+Level 6:
+- Premium private fashion
 
-### Seedream reliability (V3.7.3)
-Seedream private/photo sets are generated one image per provider request with retry and extended timeouts. Configure with `FAL_TIMEOUT_SECONDS`, `FAL_RETRIES`, and related timeout variables from `.env.example`.
+Locked categories remain visible in the menu as progression hints.
+
+## Hybrid photo routing
+
+- Ordinary fully clothed lifestyle/fashion scenes -> `gpt-image-2`.
+- `personal`, `lingerie`, and `private_fashion` -> Seedream 4.5.
+- Seedream safety checking remains enabled.
+- Seedream generates one image per provider call with timeout/retry, but up to 3 images are delivered as one user-visible set.
+- Failed generation does not consume free quota or photo credit.
+
+Natural photo commands are intercepted **before** normal chat generation. For example, a natural request to photograph herself from behind is normalized into a fully clothed, non-explicit personal fashion composition rather than producing a text refusal first.
+
+## Daily photo allowance
+
+- Relationship levels 1–2: 1 free photo request/day (up to 3 images).
+- Relationship levels 3–6: 2 free photo requests/day (up to 3 images each).
+- Extra standard request: `PHOTO_COST_STARS` (default 25⭐).
+- Custom photo: `CUSTOM_PHOTO_COST_STARS` (default 40⭐).
+
+## Required Railway variables
+
+```text
+TELEGRAM_TOKEN=...
+OPENAI_API_KEY=...
+FAL_KEY=...
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+IMAGE_MODEL=gpt-image-2
+FAL_MODEL=fal-ai/bytedance/seedream/v4.5/edit
+PHOTO_ROUTER_MODE=hybrid
+PHOTO_SET_SIZE=3
+```
+
+Adaptive communication defaults require no new secret:
+
+```text
+ADAPTATION_ENABLED=true
+ADAPTATION_ANALYZE_EVERY=5
+ADAPTATION_MAX_EXPRESSIONS=12
+```
+
+See `DEPLOY.md` and `RAILWAY_CHECK.md`.
