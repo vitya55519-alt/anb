@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from services.db import SessionLocal
-from services.relationship_engine import RelationshipDelta, apply_delta, build_relationship_context, get_state
+from services.relationship_engine import RelationshipDelta, apply_delta, build_relationship_context, get_state, get_milestones
 from models.relationship_models import UserCharacterRelationship
 from models.app_models import User
 from config import CHARACTER_ID
@@ -23,7 +23,7 @@ async def record_user_message(user_id, user_name, relationship=0, trust=0, intim
             relationship=relationship, trust=trust, intimacy=intimacy,
             event_type=event_type, reason=reason
         ))
-        context = build_relationship_context(row)
+        context = build_relationship_context(row, get_milestones(s, row))
         if row.stage != old_stage:
             track_event(user.id, 'relationship_level_up', metadata={'from': old_stage, 'to': row.stage})
             context += ' Отношения только что перешли на новый этап: пусть в этой или ближайшей реплике это слегка чувствуется через большее узнавание, тепло или уверенность, но не называй номер уровня и не объявляй системное событие.'
@@ -35,4 +35,4 @@ async def get_context(user_id, character_id=CHARACTER_ID):
         if not user:
             return None
         row = get_state(s, user.id, character_id)
-        return build_relationship_context(row)
+        return build_relationship_context(row, get_milestones(s, row))

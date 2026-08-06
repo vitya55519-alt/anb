@@ -101,3 +101,21 @@ def softly_evolve_state(telegram_id: int, user_text: str):
         kwargs['energy'] = max(.25, min(.95, s.energy + random.uniform(-.12,.12)))
     if kwargs:
         update_state(telegram_id, **kwargs)
+
+LIFE_CHOICE_PRESETS = {
+    'cafe': ('кафе', 'решила выбраться за кофе', 'лёгкое'),
+    'park': ('парк', 'вышла немного пройтись', 'спокойное'),
+    'shop': ('магазин', 'зашла посмотреть одежду', 'любопытное'),
+    'street': ('на улице', 'гуляю по городу без спешки', 'бодрое'),
+    'bar': ('бар', 'решила ненадолго выбраться вечером', 'игривое'),
+}
+
+
+def apply_life_choice(telegram_id: int, choice: str):
+    """Let the user influence a small fictional life-state choice for continuity."""
+    preset = LIFE_CHOICE_PRESETS.get(choice)
+    if not preset:
+        return ensure_life_state(telegram_id)
+    location, activity, mood = preset
+    update_state(telegram_id, location=location, activity=activity, mood=mood)
+    return get_state(telegram_id)

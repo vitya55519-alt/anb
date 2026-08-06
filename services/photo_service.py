@@ -39,6 +39,7 @@ from services.user_service import ensure_user, get_state, update_state, is_adult
 from services.payments import consume_photo_credit, get_photo_credits
 from services.adaptation_service import get_visual_preferences
 from services.analytics_service import track_event
+from services.photo_library_service import choose_unseen_pack, mark_pack_seen
 from services.state_service import ensure_life_state
 
 logger = logging.getLogger(__name__)
@@ -896,6 +897,7 @@ async def _run_openai_set(
     logger.info('OpenAI normal-photo set request user=%s scene=%s reference=%s count=%s safe_prompt=true', telegram_id, request.scene, ref.name, PHOTO_SET_SIZE)
     outputs: list[GeneratedPhoto] = []
     for i in range(PHOTO_SET_SIZE):
+        frame_started = time.monotonic()
         try:
             photo = await _openai_one_frame(character, telegram_id, request, i)
         except BadRequestError as exc:
@@ -934,14 +936,35 @@ async def _run_openai_set(
             raise
 
         outputs.append(photo)
-        track_event(ensure_user(telegram_id), 'photo_frame_ready', value=elapsed, metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'openai'})
+        frame_elapsed = time.monotonic() - frame_started
+        track_event(ensure_user(telegram_id), 'photo_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'openai'})
         if i == 0:
-            track_event(ensure_user(telegram_id), 'photo_first_frame_ready', value=elapsed, metadata={'scene': request.scene, 'provider': 'openai'})
+            track_event(ensure_user(telegram_id), 'photo_first_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'provider': 'openai'})
         if on_frame:
             await on_frame(photo, i)
     if not outputs:
         raise PhotoGenerationError('openai', 'no_image')
     return outputs
+
+
+def _seedream_safe_retry_request(request: PhotoRequest) -> PhotoRequest:
+    """Make one moderation-safe retry without disabling or bypassing provider safety.
+
+    The retry removes high-intensity glamour wording and uses opaque, fully covered fashion.
+    """
+    season = request.season or _default_season()
+    outfit = (
+        'an elegant opaque fitted midi dress with tasteful mainstream fashion styling'
+        if season != 'summer' else
+        'an elegant lightweight opaque summer midi dress with tasteful mainstream fashion styling'
+    )
+    return replace(
+        request,
+        clothing=outfit,
+        pack_outfits=tuple(outfit for _ in range(PHOTO_SET_SIZE)),
+        mood='natural, confident, tasteful',
+        angle='neutral three-quarter or full-body fashion framing',
+    )
 
 
 async def _run_seedream_set(
@@ -967,11 +990,28 @@ async def _run_seedream_set(
         try:
             result = await _seedream_request(prompt, [reference_uri], 1, request_label=f'{request.scene}:{i + 1}/{PHOTO_SET_SIZE}')
         except PhotoGenerationError as exc:
-            track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'seedream45', 'reason': exc.reason})
-            if out:
-                logger.warning('Seedream partial set user=%s scene=%s delivered=%s/%s stopped_reason=%s', telegram_id, request.scene, len(out), PHOTO_SET_SIZE, exc.reason)
-                break
-            raise
+            # One safe retry on provider content validation. This simplifies the prompt; it does not disable safety.
+            if exc.reason == 'HTTP 422':
+                retry_request = _seedream_safe_retry_request(request)
+                retry_prompt = _build_prompt(retry_request, i, seedream=True, relationship_level=min(get_relationship_level(telegram_id), 4)) + (
+                    '\nSAFE RETRY: mainstream fully covered fashion, opaque garment, neutral pose, no boudoir wording, no body-part emphasis. Create exactly ONE photo.'
+                )
+                try:
+                    logger.info('Seedream safe retry user=%s scene=%s frame=%s/%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE)
+                    result = await _seedream_request(retry_prompt, [reference_uri], 1, request_label=f'{request.scene}:{i + 1}/{PHOTO_SET_SIZE}:safe')
+                    track_event(ensure_user(telegram_id), 'photo_safe_retry_success', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'seedream45'})
+                except PhotoGenerationError as retry_exc:
+                    track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'seedream45', 'reason': retry_exc.reason})
+                    if out:
+                        logger.warning('Seedream partial set user=%s scene=%s delivered=%s/%s stopped_reason=%s', telegram_id, request.scene, len(out), PHOTO_SET_SIZE, retry_exc.reason)
+                        break
+                    raise
+            else:
+                track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'seedream45', 'reason': exc.reason})
+                if out:
+                    logger.warning('Seedream partial set user=%s scene=%s delivered=%s/%s stopped_reason=%s', telegram_id, request.scene, len(out), PHOTO_SET_SIZE, exc.reason)
+                    break
+                raise
         images = result.get('images') if isinstance(result, dict) else None
         if not images:
             if out:
@@ -1094,6 +1134,25 @@ async def deliver_photo(
 
     caption = caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',)))
     sent_messages = []
+
+    # Cost-first routing for beta: ordinary free requests use a curated Telegram file_id library first.
+    # Custom/paid-credit/admin requests still exercise AI generation so the user gets bespoke output.
+    if delivery_type == 'free':
+        library_pack = choose_unseen_pack(telegram_id, CHARACTER_ID, request.scene, get_relationship_level(telegram_id))
+        if library_pack and library_pack.photos:
+            for idx, item in enumerate(library_pack.photos):
+                sent = await bot.send_photo(chat_id, item.file_id, caption=caption if idx == 0 else None)
+                sent_messages.append(sent)
+                logger.info('library photo frame delivered user=%s scene=%s pack=%s frame=%s/%s', telegram_id, request.scene, library_pack.pack_key, idx + 1, len(library_pack.photos))
+            mark_pack_seen(telegram_id, library_pack.id)
+            first = sent_messages[0]
+            file_id = first.photo[-1].file_id if first.photo else library_pack.photos[0].file_id
+            _record(telegram_id, request.scene, 'free', file_id=file_id, provider='telegram_library', estimated_cost_usd=0.0)
+            uid = ensure_user(telegram_id)
+            track_event(uid, 'photo_delivered', value=0.0, metadata={'scene': request.scene, 'provider': 'telegram_library', 'count': len(sent_messages), 'pack_key': library_pack.pack_key})
+            track_event(uid, 'photo_library_served', metadata={'scene': request.scene, 'pack_key': library_pack.pack_key, 'level': library_pack.relationship_level})
+            logger.info('library photo set delivered user=%s scene=%s pack=%s count=%s', telegram_id, request.scene, library_pack.pack_key, len(sent_messages))
+            return sent_messages
 
     async def _send_frame(result: GeneratedPhoto, idx: int):
         item_caption = caption if idx == 0 else None

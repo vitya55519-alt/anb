@@ -1,4 +1,4 @@
-# AnnaBot V3.8 — Adaptive Persona + Visual Progression
+# AnnaBot V3.9.1 — Relationship + Telegram Photo Library
 
 Railway-ready Telegram AI companion with persistent memory, six relationship levels, adaptive conversation style, proactive messaging, Telegram Stars, PostgreSQL and a hybrid photo engine.
 
@@ -109,3 +109,16 @@ See `DEPLOY.md` and `RAILWAY_CHECK.md`.
 ## V3.9 Commercial Core
 
 V3.9 adds a commercial-beta reliability layer: onboarding, background photo jobs, immediate per-frame delivery, OpenAI safe retry/partial-pack preservation, product analytics, `/stats`, optional image budget guards, and a lightweight Anna life/pending-topic state for better proactive continuity. See `BUILD_CHANGES.md` and `V3_9_CHECKLIST.md`.
+
+
+## V3.9.1 Relationship + Telegram Photo Library
+
+- Six natural relationship stages: Знакомство → Симпатия → Доверие → Близость → Особая связь → Наша история.
+- Hidden dimensions add familiarity, continuity and connection; relationship milestones are persisted and can appear in the profile/chat context. Earned relationship level is not reduced by absence.
+- Free ordinary photos use the curated Telegram `file_id` library first. If no matching pack exists, the normal AI generator is used. Custom/credit/admin photo generation remains AI-based.
+- Owner import flow: `/libraryimport` → character → scene → level → progression/collection → upload up to 30 Telegram photos → preview/save. No manual renaming is required.
+- `/library` shows coverage by character / scene / relationship level.
+- `👩 Персонажи` contains an Alena fake-door; the public second character remains disabled until an original stable identity is finalized.
+- `/today` or `/plans` lets the user influence a small fictional life-state choice; vague requests like “покажись” can then use the current story location.
+- `PHOTO_LIBRARY_SEEDREAM5_PROMPTS.md` contains the offline prompt pack for producing curated library content.
+- OpenAI `elapsed` crash is fixed; Seedream 422 receives one safety-preserving neutral retry before partial delivery.

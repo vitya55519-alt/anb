@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+from dataclasses import replace
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandStart
@@ -28,12 +29,14 @@ from services.reminder_service import set_timezone, create_from_text, cancel_act
 from services.scheduler_service import start_scheduler
 from services.memory_service import reset_conversation as reset_memory
 from services.db import SessionLocal
-from models.relationship_models import UserCharacterRelationship, RelationshipEvent
+from models.relationship_models import UserCharacterRelationship, RelationshipEvent, RelationshipMilestone
 from models.app_models import CharacterState, Reminder
 from services.test_mode import STAGES, STAGE_LABELS, set_stage, clear_stage
 from services.voice_service import transcribe, synthesize_bytes, VALID_VOICES
 from services.adaptation_service import get_profile, observe_photo_preference, observe_photo_feedback
 from services.analytics_service import track_event, admin_snapshot, budget_allows_photo
+from services.photo_library_service import import_buffered_photos, library_stats, choose_unseen_pack
+from services.state_service import ensure_life_state, apply_life_choice
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 logger = logging.getLogger('annabot')
@@ -75,10 +78,10 @@ PHOTO_MENU_ORDER = [
 RELATIONSHIP_LEVEL_NAMES = {
     1: 'Знакомство',
     2: 'Симпатия',
-    3: 'Близкое общение',
-    4: 'Доверие',
-    5: 'Очень близки',
-    6: 'Связь',
+    3: 'Доверие',
+    4: 'Близость',
+    5: 'Особая связь',
+    6: 'Наша история',
 }
 
 # Short-lived UI state only. Paid offers themselves are persisted in PostgreSQL.
@@ -92,6 +95,20 @@ _pending_adult_custom: set[int] = set()
 _photo_jobs: dict[int, asyncio.Task] = {}
 _photo_job_reservations: set[int] = set()
 
+# Owner-only Telegram photo-library importer. Images stay on Telegram; only file_id metadata is persisted.
+_library_import_sessions: dict[int, dict] = {}
+
+LIBRARY_CHARACTERS = {
+    'anna_01': '👩🏻 Анна',
+    'alena_01': '👱‍♀️ Алёна',
+}
+
+LIBRARY_SCENES = [
+    'selfie', 'home', 'park', 'cafe', 'street', 'shop', 'car', 'mirror', 'outfit',
+    'restaurant', 'cinema', 'embankment', 'evening', 'fashion', 'bar', 'karaoke', 'rooftop', 'club',
+    'personal', 'private_fashion',
+]
+
 
 def main_keyboard():
     return ReplyKeyboardMarkup(
@@ -99,6 +116,7 @@ def main_keyboard():
             [KeyboardButton(text='💬 Общение'), KeyboardButton(text='📸 Фото')],
             [KeyboardButton(text='🎭 Образы'), KeyboardButton(text='🚀 Премиум')],
             [KeyboardButton(text='👤 Профиль'), KeyboardButton(text='⚙️ Настройки')],
+            [KeyboardButton(text='👩 Персонажи')],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -110,6 +128,81 @@ def onboarding_keyboard():
         [InlineKeyboardButton(text='💬 Познакомиться', callback_data='onboard:meet')],
         [InlineKeyboardButton(text='📸 Что ты умеешь?', callback_data='onboard:abilities')],
     ])
+
+
+def characters_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='👩🏻 Анна · активна', callback_data='character:anna')],
+        [InlineKeyboardButton(text='👱‍♀️ Алёна · скоро', callback_data='character:alena_soon')],
+    ])
+
+
+def library_character_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=label, callback_data=f'libchar:{cid}')]
+        for cid, label in LIBRARY_CHARACTERS.items()
+    ])
+
+
+def library_scene_keyboard(character_id: str):
+    buttons = [InlineKeyboardButton(text=PHOTO_LABELS.get(scene, scene), callback_data=f'libscene:{character_id}:{scene}') for scene in LIBRARY_SCENES]
+    return InlineKeyboardMarkup(inline_keyboard=[buttons[i:i+2] for i in range(0, len(buttons), 2)])
+
+
+def library_level_keyboard(character_id: str, scene: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f'❤️ {i}', callback_data=f'liblevel:{character_id}:{scene}:{i}') for i in range(1, 4)],
+        [InlineKeyboardButton(text=f'❤️ {i}', callback_data=f'liblevel:{character_id}:{scene}:{i}') for i in range(4, 7)],
+    ])
+
+
+def library_mode_keyboard(character_id: str, scene: str, level: int):
+    base = f'{character_id}:{scene}:{level}'
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='🎞 Готовые сеты по 3', callback_data=f'libmode:{base}:progression')],
+        [InlineKeyboardButton(text='🖼 Просто коллекция', callback_data=f'libmode:{base}:collection')],
+    ])
+
+
+def library_import_controls(preview: bool = False):
+    if preview:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='✅ Сохранить всё', callback_data='libimp:save')],
+            [InlineKeyboardButton(text='➕ Продолжить загрузку', callback_data='libimp:continue')],
+            [InlineKeyboardButton(text='🗑 Очистить', callback_data='libimp:clear')],
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='✅ Закончить загрузку', callback_data='libimp:finish')],
+        [InlineKeyboardButton(text='↩️ Удалить последнее', callback_data='libimp:undo')],
+        [InlineKeyboardButton(text='❌ Отмена', callback_data='libimp:cancel')],
+    ])
+
+
+def life_choice_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='☕ Кафе', callback_data='life:cafe'), InlineKeyboardButton(text='🌿 Парк', callback_data='life:park')],
+        [InlineKeyboardButton(text='🛍 Магазин', callback_data='life:shop'), InlineKeyboardButton(text='🌆 Прогулка', callback_data='life:street')],
+        [InlineKeyboardButton(text='🍸 Бар', callback_data='life:bar')],
+    ])
+
+
+def _contextualize_vague_photo(telegram_id: int, text: str, request: PhotoRequest | None):
+    if not request or request.scene != 'selfie':
+        return request
+    low = (text or '').lower().strip()
+    vague = any(x in low for x in ('покажись', 'покажи себя', 'сфоткайся', 'пришли фото', 'фото сейчас'))
+    if not vague:
+        return request
+    state = get_state(telegram_id)
+    location = (getattr(state, 'location', '') or '').lower()
+    mapping = {
+        'кафе': 'cafe', 'парк': 'park', 'магазин': 'shop', 'ресторан': 'restaurant',
+        'бар': 'bar', 'набереж': 'embankment', 'город': 'street', 'улиц': 'street', 'дома': 'home',
+    }
+    for token, scene in mapping.items():
+        if token in location:
+            return replace(request, scene=scene, location=location)
+    return request
 
 
 def premium_keyboard():
@@ -305,17 +398,21 @@ async def _start_photo_background(chat_id: int, telegram_id: int, request: Photo
         return False
     _photo_job_reservations.add(telegram_id)
     try:
-        allowed, reason = budget_allows_photo()
-        if not allowed:
-            logger.error('image budget guard blocked generation reason=%s user=%s', reason, telegram_id)
-            track_event(ensure_user(telegram_id), 'photo_budget_blocked', metadata={'scene': request.scene, 'reason': reason})
-            await bot.send_message(chat_id, 'с фото сейчас техническая пауза 😕 попробуй чуть позже. лимит не списан.')
-            return False
-        await bot.send_message(chat_id, random.choice((
-            'сек 😄 сейчас выберу нормальные кадры',
-            'погоди чуть-чуть 😌 хочу сделать красиво',
-            'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
-        )))
+        library_fast = False
+        if delivery_type == 'free':
+            library_fast = choose_unseen_pack(telegram_id, CHARACTER_ID, request.scene, get_relationship_level(telegram_id)) is not None
+        if not library_fast:
+            allowed, reason = budget_allows_photo()
+            if not allowed:
+                logger.error('image budget guard blocked generation reason=%s user=%s', reason, telegram_id)
+                track_event(ensure_user(telegram_id), 'photo_budget_blocked', metadata={'scene': request.scene, 'reason': reason})
+                await bot.send_message(chat_id, 'с фото сейчас техническая пауза 😕 попробуй чуть позже. лимит не списан.')
+                return False
+            await bot.send_message(chat_id, random.choice((
+                'сек 😄 сейчас выберу нормальные кадры',
+                'погоди чуть-чуть 😌 хочу сделать красиво',
+                'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
+            )))
         task = asyncio.create_task(_run_photo_background(chat_id, telegram_id, request, delivery_type))
         _photo_jobs[telegram_id] = task
         return True
@@ -397,6 +494,198 @@ async def onboarding_abilities(cq: types.CallbackQuery):
         '💌 могу сама вернуться к незаконченной теме\n\n'
         'но проще не читать инструкцию 🙂 просто напиши мне что-нибудь.'
     )
+
+
+@dp.message(F.text == '👩 Персонажи')
+async def characters_button(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name)
+    await message.answer('персонажи:', reply_markup=characters_keyboard())
+
+
+@dp.callback_query(F.data == 'character:anna')
+async def character_anna(cq: types.CallbackQuery):
+    await cq.answer('Анна уже здесь 🙂')
+
+
+@dp.callback_query(F.data == 'character:alena_soon')
+async def character_alena_soon(cq: types.CallbackQuery):
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    track_event(uid, 'fake_door_click', metadata={'feature': 'alena_character'})
+    await cq.answer()
+    await cq.message.answer('Алёна ещё собирается 😄 я отмечу, что ты бы хотел её увидеть.')
+
+
+@dp.message(Command('plans', 'today'))
+async def plans_cmd(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name)
+    state = ensure_life_state(message.from_user.id)
+    await message.answer(
+        f'сейчас по нашей истории я {state.activity or "занята своими делами"}. можешь немного повлиять на мой следующий план 😄',
+        reply_markup=life_choice_keyboard(),
+    )
+
+
+@dp.callback_query(F.data.startswith('life:'))
+async def life_choice_cb(cq: types.CallbackQuery):
+    choice = cq.data.split(':', 1)[1]
+    state = apply_life_choice(cq.from_user.id, choice)
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    track_event(uid, 'life_choice', metadata={'choice': choice, 'location': state.location})
+    await cq.answer('уговорил 😄')
+    await cq.message.answer(f'ладно 😄 {state.activity}')
+
+
+@dp.message(Command('libraryimport'))
+async def library_import_start(message: types.Message):
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _library_import_sessions.pop(message.from_user.id, None)
+    await message.answer('📚 Кого загружаем?', reply_markup=library_character_keyboard())
+
+
+@dp.callback_query(F.data.startswith('libchar:'))
+async def library_choose_character(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer('только для владельца', show_alert=True)
+        return
+    character_id = cq.data.split(':', 1)[1]
+    await cq.answer()
+    await cq.message.answer(f'{LIBRARY_CHARACTERS.get(character_id, character_id)} → выбери сцену:', reply_markup=library_scene_keyboard(character_id))
+
+
+@dp.callback_query(F.data.startswith('libscene:'))
+async def library_choose_scene(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _, character_id, scene = cq.data.split(':', 2)
+    await cq.answer()
+    await cq.message.answer(f'{LIBRARY_CHARACTERS.get(character_id, character_id)} · {PHOTO_LABELS.get(scene, scene)}\nКакой уровень отношений?', reply_markup=library_level_keyboard(character_id, scene))
+
+
+@dp.callback_query(F.data.startswith('liblevel:'))
+async def library_choose_level(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _, character_id, scene, level = cq.data.split(':', 3)
+    await cq.answer()
+    await cq.message.answer('Как импортировать?', reply_markup=library_mode_keyboard(character_id, scene, int(level)))
+
+
+@dp.callback_query(F.data.startswith('libmode:'))
+async def library_choose_mode(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _, character_id, scene, level, mode = cq.data.split(':', 4)
+    _library_import_sessions[cq.from_user.id] = {
+        'character_id': character_id,
+        'scene': scene,
+        'level': int(level),
+        'mode': mode,
+        'photos': [],
+        'preview': False,
+    }
+    await cq.answer()
+    mode_text = 'сеты по 3: Base → Stylish → Premium' if mode == 'progression' else 'обычная коллекция'
+    await cq.message.answer(
+        f'📚 {LIBRARY_CHARACTERS.get(character_id, character_id)} → {PHOTO_LABELS.get(scene, scene)} → ❤️ {level}\n'
+        f'Режим: {mode_text}.\n\nОтправляй фото или Telegram-альбомы. До 30 изображений за одну сессию.\n0 / 30',
+        reply_markup=library_import_controls(),
+    )
+
+
+@dp.callback_query(F.data == 'libimp:undo')
+async def library_import_undo(cq: types.CallbackQuery):
+    sess = _library_import_sessions.get(cq.from_user.id)
+    if not sess:
+        await cq.answer('нет активной загрузки', show_alert=True)
+        return
+    if sess['photos']:
+        sess['photos'].pop()
+    await cq.answer('последнее убрала')
+    await cq.message.answer(f'Получено: {len(sess["photos"])} / 30', reply_markup=library_import_controls())
+
+
+@dp.callback_query(F.data == 'libimp:finish')
+async def library_import_finish(cq: types.CallbackQuery):
+    sess = _library_import_sessions.get(cq.from_user.id)
+    if not sess:
+        await cq.answer('нет активной загрузки', show_alert=True)
+        return
+    count = len(sess['photos'])
+    if count == 0:
+        await cq.answer('сначала пришли фото', show_alert=True)
+        return
+    sess['preview'] = True
+    if sess['mode'] == 'progression':
+        packs, tail = divmod(count, 3)
+        detail = f'{packs} полных progression packs' + (f' + {tail} фото без полного сета' if tail else '')
+    else:
+        detail = f'{count} отдельных фото-паков'
+    await cq.answer()
+    await cq.message.answer(
+        f'Предпросмотр:\n{LIBRARY_CHARACTERS.get(sess["character_id"], sess["character_id"])} · {PHOTO_LABELS.get(sess["scene"], sess["scene"])} · ❤️ {sess["level"]}\n'
+        f'Получено: {count}\nБудет сохранено: {detail}\n\nСохранить?',
+        reply_markup=library_import_controls(preview=True),
+    )
+
+
+@dp.callback_query(F.data == 'libimp:continue')
+async def library_import_continue(cq: types.CallbackQuery):
+    sess = _library_import_sessions.get(cq.from_user.id)
+    if not sess:
+        return
+    sess['preview'] = False
+    await cq.answer()
+    await cq.message.answer(f'продолжаем. Получено: {len(sess["photos"])} / 30', reply_markup=library_import_controls())
+
+
+@dp.callback_query(F.data == 'libimp:clear')
+async def library_import_clear(cq: types.CallbackQuery):
+    sess = _library_import_sessions.pop(cq.from_user.id, None)
+    await cq.answer('очищено')
+    await cq.message.answer('загрузка отменена. /libraryimport — начать заново')
+
+
+@dp.callback_query(F.data == 'libimp:cancel')
+async def library_import_cancel(cq: types.CallbackQuery):
+    _library_import_sessions.pop(cq.from_user.id, None)
+    await cq.answer('отменено')
+    await cq.message.answer('загрузка отменена')
+
+
+@dp.callback_query(F.data == 'libimp:save')
+async def library_import_save(cq: types.CallbackQuery):
+    sess = _library_import_sessions.get(cq.from_user.id)
+    if not sess:
+        await cq.answer('нет активной загрузки', show_alert=True)
+        return
+    result = import_buffered_photos(
+        sess['character_id'], sess['scene'], sess['level'], sess['mode'], sess['photos'],
+    )
+    _library_import_sessions.pop(cq.from_user.id, None)
+    await cq.answer('сохранено')
+    tail = f'\n⚠️ Не сохранён хвост: {result["tail_unsaved"]} фото — нужен полный сет из 3.' if result['tail_unsaved'] else ''
+    await cq.message.answer(
+        f'✅ Библиотека обновлена\nПаков: {result["packs_created"]}\nФото: {result["photos_saved"]}{tail}\n\n/library — статистика'
+    )
+
+
+@dp.message(Command('library'))
+async def library_stats_cmd(message: types.Message):
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    snap = library_stats()
+    lines = [f'📚 Библиотека: {snap["total_photos"]} фото · {snap["total_packs"]} паков']
+    grouped = {}
+    for (char_id, scene, level), values in snap['by_scene'].items():
+        grouped.setdefault(char_id, []).append((scene, level, values))
+    for char_id, rows in grouped.items():
+        lines.append(f'\n{LIBRARY_CHARACTERS.get(char_id, char_id)}')
+        for scene, level, values in sorted(rows, key=lambda x: (x[0], x[1])):
+            lines.append(f'{PHOTO_LABELS.get(scene, scene)} · L{level}: {values["photos"]} фото / {values["packs"]} паков')
+    if snap['total_photos'] == 0:
+        lines.append('\nПока пусто. /libraryimport')
+    await message.answer('\n'.join(lines[:80]))
 
 
 @dp.message(Command('help'))
@@ -696,6 +985,7 @@ async def reset_cmd(message: types.Message):
         rel = session.query(UserCharacterRelationship).filter_by(user_id=uid, character_id=CHARACTER_ID).first()
         if rel:
             session.query(RelationshipEvent).filter(RelationshipEvent.user_character_id == rel.id).delete(synchronize_session=False)
+            session.query(RelationshipMilestone).filter(RelationshipMilestone.user_character_id == rel.id).delete(synchronize_session=False)
             session.delete(rel)
         state = session.query(CharacterState).filter_by(user_id=uid, character_id=CHARACTER_ID).first()
         if state:
@@ -785,18 +1075,51 @@ async def premium_button(message: types.Message):
 async def profile_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name)
     info = build_photo_menu(message.from_user.id)
+    uid = ensure_user(message.from_user.id, message.from_user.first_name)
+    milestone_text = ''
+    with SessionLocal() as session:
+        rel = session.query(UserCharacterRelationship).filter_by(user_id=uid, character_id=CHARACTER_ID).first()
+        if rel:
+            milestones = session.query(RelationshipMilestone).filter_by(user_character_id=rel.id).order_by(RelationshipMilestone.achieved_at.desc()).limit(3).all()
+            if milestones:
+                milestone_text = '\n🏷 ' + '\n🏷 '.join(m.title for m in reversed(milestones))
     await message.answer(
         f'👤 Твой профиль\n\n'
-        f'❤️ Близость: {info["level"]}/6 · {RELATIONSHIP_LEVEL_NAMES.get(info["level"], "")}\n'
+        f'❤️ {RELATIONSHIP_LEVEL_NAMES.get(info["level"], "Знакомство")}\n'
         f'⭐ Premium: {"активен" if info["premium"] else "нет"}\n'
         f'📸 Фото сегодня: {info["free_left"]} включено\n'
         f'🎟 Photo credits: {info["credits"]}'
+        f'{milestone_text}'
     )
 
 
 @dp.message(F.text == '⚙️ Настройки')
 async def settings_button(message: types.Message):
     await settings(message)
+
+
+@dp.message(F.photo)
+async def library_photo_upload(message: types.Message):
+    sess = _library_import_sessions.get(message.from_user.id)
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS or not sess:
+        return
+    if sess.get('preview'):
+        await message.answer('сначала нажми «Продолжить загрузку» или «Сохранить всё».')
+        return
+    if len(sess['photos']) >= 30:
+        await message.answer('уже 30 / 30. нажми «Закончить загрузку».', reply_markup=library_import_controls())
+        return
+    ph = message.photo[-1]
+    sess['photos'].append({
+        'file_id': ph.file_id,
+        'unique_id': ph.file_unique_id,
+        'caption': message.caption,
+    })
+    count = len(sess['photos'])
+    # Do not spam one reply for every image in a Telegram album: acknowledge milestones and completion.
+    if count in {1, 3, 10, 20, 30} or count % 5 == 0:
+        suffix = '\n✅ Можно сохранять.' if count == 30 else ''
+        await message.answer(f'Получено: {count} / 30{suffix}', reply_markup=library_import_controls())
 
 
 @dp.message(F.voice)
@@ -811,7 +1134,7 @@ async def voice_message(message: types.Message):
     try:
         data = await bot.download(message.voice)
         text = await transcribe(data)
-        request = parse_photo_request(text)
+        request = _contextualize_vague_photo(message.from_user.id, text, parse_photo_request(text))
         if request:
             await handle_photo_request(message.chat.id, message.from_user.id, request)
             touch_user(message.from_user.id)
@@ -861,7 +1184,7 @@ async def text_message(message: types.Message):
     try:
         # Natural photo requests are routed before the chat model, so Anna does not
         # first refuse/chat about the photo and only then start generation.
-        request = parse_photo_request(text)
+        request = _contextualize_vague_photo(message.from_user.id, text, parse_photo_request(text))
         if request:
             await handle_photo_request(message.chat.id, message.from_user.id, request)
             touch_user(message.from_user.id)

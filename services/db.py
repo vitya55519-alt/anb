@@ -1,9 +1,9 @@
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from models.waifu_models import Base
-from models.relationship_models import UserCharacterRelationship, RelationshipEvent  # noqa
+from models.relationship_models import UserCharacterRelationship, RelationshipEvent, RelationshipMilestone  # noqa
 from models.app_models import User, Message, Memory, CommunicationProfile, CharacterState, Reminder, Subscription, StarTransaction, ProductEvent  # noqa
-from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer  # noqa
+from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer, PhotoLibraryPack, PhotoLibraryItem, UserSeenPhotoPack  # noqa
 from config import DATABASE_URL
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
@@ -44,6 +44,13 @@ def init_db():
     _add_missing_columns('photo_deliveries', {
         'provider': 'VARCHAR(32)',
         'estimated_cost_usd': 'FLOAT DEFAULT 0',
+    })
+    _add_missing_columns('user_character_relationships', {
+        'familiarity_score': 'FLOAT DEFAULT 0',
+        'continuity_score': 'FLOAT DEFAULT 0',
+        'connection_score': 'FLOAT DEFAULT 0',
+        'last_distinct_day': 'TIMESTAMP',
+        'active_days': 'INTEGER DEFAULT 0',
     })
 
 init_db()

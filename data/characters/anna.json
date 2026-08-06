@@ -33,7 +33,10 @@
     "dimensions": [
       "relationship",
       "trust",
-      "intimacy"
+      "intimacy",
+      "familiarity",
+      "continuity",
+      "connection"
     ]
   },
   "boundaries": {
