@@ -79,6 +79,7 @@ async def generate_text(
 ) -> LLMResult:
     """Provider chain: primary → fallback_gimini → fallback_openai."""
     primary = CHAT_PROVIDER
+    errors = []
 
     # ── OpenRouter primary ─────────────────────────────────────────────
     if primary == 'openrouter' and _openrouter:
@@ -87,7 +88,9 @@ async def generate_text(
             logger.info('LLM success provider=openrouter model=%s purpose=%s', result.model, purpose)
             return result
         except Exception as exc:
-            logger.warning('OpenRouter failed purpose=%s error=%s', purpose, type(exc).__name__)
+            err_detail = f'openrouter/{OPENROUTER_MODEL}: {type(exc).__name__}: {exc}'
+            errors.append(err_detail)
+            logger.warning('OpenRouter failed purpose=%s error=%s detail=%s', purpose, type(exc).__name__, exc)
             # fall through to Gemini / OpenAI
 
     # ── Gemini ─────────────────────────────────────────────────────────
@@ -97,17 +100,24 @@ async def generate_text(
             logger.info('LLM success provider=gemini model=%s purpose=%s', result.model, purpose)
             return result
         except Exception as exc:
-            logger.warning('Gemini failed purpose=%s error=%s', purpose, type(exc).__name__)
+            err_detail = f'gemini/{GEMINI_CHAT_MODEL}: {type(exc).__name__}: {exc}'
+            errors.append(err_detail)
+            logger.warning('Gemini failed purpose=%s error=%s detail=%s', purpose, type(exc).__name__, exc)
             if not CHAT_FALLBACK_OPENAI:
-                raise
+                raise RuntimeError(f'All LLM providers failed. Errors: {"; ".join(errors)}') from exc
 
     # ── OpenAI (legacy fallback, only if key present) ─────────────────
     if _openai and CHAT_FALLBACK_OPENAI:
-        result = await _call_openai(messages, max_tokens=max_tokens, temperature=temperature)
-        logger.info('LLM fallback success provider=openai model=%s purpose=%s', result.model, purpose)
-        return result
+        try:
+            result = await _call_openai(messages, max_tokens=max_tokens, temperature=temperature)
+            logger.info('LLM fallback success provider=openai model=%s purpose=%s', result.model, purpose)
+            return result
+        except Exception as exc:
+            err_detail = f'openai/{AI_MODEL}: {type(exc).__name__}: {exc}'
+            errors.append(err_detail)
+            logger.warning('OpenAI fallback failed purpose=%s error=%s detail=%s', purpose, type(exc).__name__, exc)
 
-    raise RuntimeError('All LLM providers failed')
+    raise RuntimeError(f'All LLM providers failed. Errors: {"; ".join(errors)}')
 
 
 def provider_status() -> dict:
