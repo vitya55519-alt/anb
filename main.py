@@ -176,7 +176,7 @@ def abilities_text() -> str:
         '🖼 коллекция открытых фотографий по уровням отношений\n'
         '💌 Анна иногда может написать первой и вернуться к незаконченной теме\n'
         '🎙 понимает голосовые сообщения, а голосовые ответы можно включить в настройках\n'
-        '⏰ умеет запоминать напоминания и время пользователя\n\n'
+        '⏰ будильник и напоминания — Premium-функция: Анна разбудит вовремя и запомнит твой часовой пояс\n\n'
         '🎯 Первая история уже доступна — можешь начать её сразу или просто написать Анне.'
     )
 
@@ -2104,6 +2104,9 @@ async def timezone_cmd(message: types.Message):
 
 @dp.message(Command('wake'))
 async def wake_cmd(message: types.Message):
+    if not is_premium(message.from_user.id):
+        await message.answer('⏰ Будильник — Premium-функция. /premium — подключить')
+        return
     rid = create_from_text(message.from_user.id, message.text or '')
     if rid:
         user = get_user(message.from_user.id)
@@ -2246,6 +2249,17 @@ async def profile_button(message: types.Message):
 @dp.message(F.text == '⏰ Будильник')
 async def alarm_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name)
+    premium = is_premium(message.from_user.id)
+    if not premium:
+        await message.answer(
+            '⏰ Будильник и напоминания — Premium-функция\n\n'
+            'С Premium Анна будет будить тебя утром, напоминать о делах и всегда помнить твой часовой пояс.\n\n'
+            '/premium — подключить',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='⭐ Получить Premium', callback_data='premium:view')]
+            ]),
+        )
+        return
     user = get_user(message.from_user.id)
     tz = user.timezone or 'UTC'
     # Fetch active reminders
@@ -2459,7 +2473,7 @@ async def voice_message(message: types.Message):
             answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text)
         await send_answer(message, answer)
         await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id))
-        if create_from_text(message.from_user.id, text):
+        if is_premium(message.from_user.id) and create_from_text(message.from_user.id, text):
             user = get_user(message.from_user.id)
             tz = user.timezone or 'UTC' if user else 'UTC'
             await message.answer(f'и время тоже запомнила 😌 пояс: {tz}')
@@ -2623,7 +2637,7 @@ async def text_message(message: types.Message):
     text = message.text or ''
     try:
         # Natural photo requests are routed before the chat model, so Anna does not
-        # first refuse/chat about the photo and only then start generation.
+        # first refuse/chat about the photo and only then start generating.
         request = _contextualize_vague_photo(message.from_user.id, text, parse_photo_request(text))
         if request:
             await handle_photo_request(message.chat.id, message.from_user.id, request)
@@ -2634,15 +2648,17 @@ async def text_message(message: types.Message):
             answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text)
         await send_answer(message, answer)
         await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id))
-        rid = create_from_text(message.from_user.id, text)
-        if rid:
-            user = get_user(message.from_user.id)
-            tz = user.timezone or 'UTC' if user else 'UTC'
-            await message.answer(f'и время тоже запомнила 😌 пояс: {tz}')
+        if is_premium(message.from_user.id):
+            rid = create_from_text(message.from_user.id, text)
+            if rid:
+                user = get_user(message.from_user.id)
+                tz = user.timezone or 'UTC' if user else 'UTC'
+                await message.answer(f'и время тоже запомнила 😌 пояс: {tz}')
         touch_user(message.from_user.id)
-    except Exception:
-        logger.exception('chat handler user=%s', message.from_user.id)
-        await message.answer('я сейчас немного зависла 😅 напиши ещё раз')
+    except Exception as exc:
+        logger.exception('chat handler user=%s error=%s', message.from_user.id, type(exc).__name__)
+        err_msg = str(exc)[:200] if exc else 'unknown'
+        await message.answer(f'я сейчас немного зависла 😅 попробуй ещё раз\n\n💡 если повторяется — напиши /support')
 
 
 async def main():
