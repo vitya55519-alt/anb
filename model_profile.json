@@ -1,0 +1,13 @@
+{
+  "profile_name": "anna_v2_new_face_2026_08",
+  "identity_reference": "data/references/anna/00_anna_canonical_face_v3.png",
+  "openai_safe_reference": "data/references/anna/01_anna_canonical_look_v3.png",
+  "seedream_safe_reference": "data/references/anna/01_anna_canonical_look_v3.png",
+  "routing": {
+    "ordinary_fully_clothed": "gpt-image-2",
+    "personal_private_non_explicit": "fal-ai/bytedance/seedream/v4.5/edit"
+  },
+  "photo_pack": "base -> stylish -> premium",
+  "identity_rule": "Preserve the new Anna face identity; scene, outfit, pose, lighting and hairstyle may vary.",
+  "identity_secondary_reference": "data/references/anna/01_anna_canonical_look_v3.png"
+}

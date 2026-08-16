@@ -1,0 +1,8 @@
+{
+  "identity_version": "anna_v4_two_cafe_canonical_2026_08_14",
+  "face_anchor": "00_anna_canonical_face_v3.png",
+  "secondary_identity_anchor": "01_anna_canonical_look_v3.png",
+  "openai_body_anchor": "01_anna_canonical_look_v3.png",
+  "seedream_identity_anchor": "01_anna_canonical_look_v3.png",
+  "note": "The two approved cafe images are the active canonical Anna identity. Legacy reference files may remain in the folder for rollback only and must not be selected by active routing."
+}
