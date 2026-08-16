@@ -23,6 +23,9 @@ _EDGE_VOICE_MAP = {
     'shimmer': 'en-US-AriaNeural',
 }
 
+# Public constant used by main.py for /voice_style command validation.
+VALID_VOICES = tuple(_EDGE_VOICE_MAP.keys())
+
 # ── OpenAI client (optional, only if key is present) ──────────────────────
 _openai_client = None
 if OPENAI_VOICE_AVAILABLE:
