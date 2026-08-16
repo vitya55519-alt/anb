@@ -12,6 +12,14 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+
+def _safe(s: str) -> str:
+    """Make string safe for ASCII-only log outputs."""
+    try:
+        return s.encode('ascii', errors='replace').decode('ascii')
+    except Exception:
+        return repr(s)
+
 # ── Provider clients (chat: OpenRouter primary, Gemini fallback) ─────────
 _openrouter = (
     AsyncOpenAI(api_key=OPENROUTER_API_KEY, base_url=OPENROUTER_BASE_URL)
@@ -20,6 +28,14 @@ _openrouter = (
 _gemini = (
     AsyncOpenAI(api_key=GEMINI_API_KEY, base_url=GEMINI_OPENAI_BASE_URL)
     if GEMINI_API_KEY else None
+)
+
+logger.info(
+    'LLM providers: OpenRouter=%s model=%s | Gemini=%s model=%s',
+    'READY' if _openrouter else 'NO KEY',
+    OPENROUTER_MODEL,
+    'READY' if _gemini else 'NO KEY',
+    GEMINI_CHAT_MODEL,
 )
 
 
@@ -56,7 +72,7 @@ async def generate_text(
             logger.info('LLM ok provider=openrouter model=%s purpose=%s len=%d', OPENROUTER_MODEL, purpose, len(text))
             return LLMResult(text, 'openrouter', OPENROUTER_MODEL)
         except Exception as exc:
-            detail = f'OpenRouter({OPENROUTER_MODEL}): {type(exc).__name__}: {exc}'
+            detail = f'OpenRouter({OPENROUTER_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
             errors.append(detail)
             logger.warning('OpenRouter FAILED purpose=%s %s', purpose, detail)
 
@@ -72,7 +88,7 @@ async def generate_text(
             logger.info('LLM ok provider=gemini model=%s purpose=%s len=%d', GEMINI_CHAT_MODEL, purpose, len(text))
             return LLMResult(text, 'gemini', GEMINI_CHAT_MODEL)
         except Exception as exc:
-            detail = f'Gemini({GEMINI_CHAT_MODEL}): {type(exc).__name__}: {exc}'
+            detail = f'Gemini({GEMINI_CHAT_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
             errors.append(detail)
             logger.warning('Gemini FAILED purpose=%s %s', purpose, detail)
 

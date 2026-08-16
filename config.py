@@ -19,9 +19,22 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 TELEGRAM_BOT_NAME = os.getenv("TELEGRAM_BOT_NAME", "Anna")
 
 # ── OpenRouter (primary chat / memory / adaptation provider) ──────────────
-OPENROUTER_API_KEY = os.getenv("OPENEROUTER_API_KEY", "").strip()
-OPENROUTER_BASE_URL = os.getenv("OPENEROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip().rstrip("/")
-OPENROUTER_MODEL = os.getenv("OPENEROUTER_MODEL", "minimax/minimax-m3").strip()
+# Support both correct spelling and legacy typo (OPENEROUTER_API_KEY)
+OPENROUTER_API_KEY = (
+    os.getenv("OPENROUTER_API_KEY")
+    or os.getenv("OPENEROUTER_API_KEY")
+    or ""
+).strip()
+OPENROUTER_BASE_URL = (
+    os.getenv("OPENROUTER_BASE_URL")
+    or os.getenv("OPENEROUTER_BASE_URL")
+    or "https://openrouter.ai/api/v1"
+).strip().rstrip("/")
+OPENROUTER_MODEL = (
+    os.getenv("OPENROUTER_MODEL")
+    or os.getenv("OPENEROUTER_MODEL")
+    or "minimax/minimax-m3"
+).strip()
 
 # Legacy OpenAI key — kept ONLY for optional TTS/Whisper/moderation.
 # No longer required for chat or image generation.
