@@ -725,7 +725,8 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
     except PhotoGenerationError as exc:
         logger.warning('photo generation failed provider=%s reason=%s user=%s scene=%s', exc.provider, exc.reason, telegram_id, request.scene)
         track_event(uid, 'photo_failed', metadata={'scene': request.scene, 'reason': exc.reason, 'provider': exc.provider})
-        await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
+        debug_hint = f' ({exc.provider}/{exc.reason})' if exc.reason else ''
+        await bot.send_message(chat_id, f'фото сейчас не получилось 😕{debug_hint}\nлимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
     except Exception as exc:
         logger.exception('photo generation failed user=%s', telegram_id)
         track_event(uid, 'photo_failed', metadata={'scene': request.scene, 'reason': type(exc).__name__, 'provider': 'unknown'})

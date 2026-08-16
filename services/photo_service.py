@@ -56,6 +56,16 @@ def _linked_video_markup(item):
     ]])
 openai_client = AsyncOpenAI(api_key=IMAGE_API_KEY, base_url=IMAGE_BASE_URL) if OPENAI_IMAGE_AVAILABLE else None
 
+# Startup diagnostic — visible in Railway logs immediately
+logger.info(
+    'PHOTO PROVIDERS: Gemini=%s (model=%s) | OpenAI=%s | fal.ai/Seedream=%s | mode=%s',
+    'READY' if GEMINI_IMAGE_ENABLED else 'NO KEY/DISABLED',
+    GEMINI_IMAGE_MODEL if GEMINI_IMAGE_ENABLED else '-',
+    'READY' if OPENAI_IMAGE_AVAILABLE else 'NO KEY',
+    'READY' if FAL_KEY else 'NO KEY',
+    PHOTO_ROUTER_MODE,
+)
+
 SCENES = {
     'selfie': 'a believable personal smartphone selfie made specifically to send to the person she is chatting with',
     'home': 'a relaxed personal smartphone photo at home, spontaneous rather than a catalogue shoot',
