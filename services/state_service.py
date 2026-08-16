@@ -76,13 +76,20 @@ def ensure_life_state(telegram_id: int, *, force: bool = False):
 
 def state_context(telegram_id: int) -> str:
     s = ensure_life_state(telegram_id)
-    parts = [f"настроение: {s.mood}", f"энергия: {'низкая' if s.energy < .4 else 'обычная' if s.energy < .75 else 'высокая'}"]
+    # User's local time — so Anna knows if it's night, morning, etc.
+    local = _local_now(telegram_id)
+    part = _daypart(local.hour)
+    part_ru = {'morning': 'утро', 'afternoon': 'день', 'evening': 'вечер', 'night': 'ночь'}[part]
+    time_str = local.strftime('%H:%M')
+    parts = [f"у пользователя сейчас {time_str} ({part_ru})"]
+    parts.append(f"настроение Анны: {s.mood}")
+    parts.append(f"энергия: {'низкая' if s.energy < .4 else 'обычная' if s.energy < .75 else 'высокая'}")
     if s.activity: parts.append(f"сейчас по условной истории Анны: {s.activity}")
     if s.location: parts.append(f"текущая локация истории: {s.location}")
     if s.outfit: parts.append(f"последний показанный образ: {s.outfit}")
     if s.hairstyle: parts.append(f"последняя причёска: {s.hairstyle}")
     if s.pending_hook: parts.append(f"незакрытая тема пользователя, к которой можно естественно вернуться: {s.pending_hook}")
-    return '; '.join(parts) + '. Используй только когда уместно; не перечисляй это пользователю списком и не утверждай, что это реальные внешние события.'
+    return '; '.join(parts) + '. Используй время естественно: ночью можно спросить «чего не спишь?», утром — «доброе утро», вечером — предложить что-то. Не перечисляй это пользователю списком и не утверждай, что это реальные внешние события.'
 
 
 def softly_evolve_state(telegram_id: int, user_text: str):
