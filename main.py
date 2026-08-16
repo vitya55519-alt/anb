@@ -3,6 +3,8 @@ import base64
 import io
 import logging
 import random
+import re
+import time as _time
 from pathlib import Path
 
 import httpx
@@ -114,6 +116,29 @@ _pending_adult_custom: set[int] = set()
 # is enough to prevent duplicate spending and double taps.
 _photo_jobs: dict[int, asyncio.Task] = {}
 _photo_job_reservations: set[int] = set()
+
+# Track when Anna offers a photo in chat — next user "yes" triggers photo flow
+_photo_offer_pending: dict[int, float] = {}  # telegram_id -> timestamp of offer
+_PHOTO_OFFER_TTL = 120  # offer expires after 2 minutes
+
+# Regex: Anna offered a photo in her response
+_PHOTO_OFFER_DETECT = re.compile(
+    r'(хочешь.*(?:фот|фото|скин|покаж|увид)|'
+    r'(?:скин|покаж|присл|отправ).*тебе.*(?:фот|фото|кое-что|что-нибудь)|'
+    r'(?:могу|хочу).*(?:показать|скинуть|прислать)|'
+    r'а хочешь (?:увидеть|посмотреть)|'
+    r'скинуть тебе|показать тебе|прислать тебе)',
+    re.I
+)
+
+# Regex: user accepts a photo offer
+_PHOTO_ACCEPT = re.compile(
+    r'^(да|давай|даа|дааа|ок|окей|хочу|конечно|скинь|кинь|кидай|'
+    r'покажи|показывай|присылай|давай да|ну давай|ага|угу|ес|yep|yes|sure)$',
+    re.I
+)
+
+from config import CHAT_PHOTO_OFFER_STARS
 
 # Gemini/Veo video jobs are intentionally limited to one per user. They can
 # take minutes during peak load, so generation always runs in background.
@@ -2468,6 +2493,10 @@ async def voice_message(message: types.Message):
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text)
         await send_answer(message, answer)
+        # Detect if Anna offered a photo in her voice response
+        if _PHOTO_OFFER_DETECT.search(answer):
+            _photo_offer_pending[message.from_user.id] = _time.time()
+            logger.info('photo_offer_detected user=%s source=voice', message.from_user.id)
         await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id))
         if is_premium(message.from_user.id) and create_from_text(message.from_user.id, text):
             user = get_user(message.from_user.id)
@@ -2632,6 +2661,30 @@ async def text_message(message: types.Message):
         return
     text = message.text or ''
     try:
+        # Check if user is accepting a photo offer from Anna
+        offer_ts = _photo_offer_pending.get(message.from_user.id, 0)
+        offer_active = offer_ts and (_time.time() - offer_ts < _PHOTO_OFFER_TTL)
+        if offer_active and _PHOTO_ACCEPT.match(text.strip().lower()):
+            _photo_offer_pending.pop(message.from_user.id, None)
+            # User accepted Anna's photo offer
+            if has_free_photo(message.from_user.id):
+                req = PhotoRequest(scene='selfie')
+                await _start_photo_background(message.chat.id, message.from_user.id, req, 'free')
+            else:
+                # Offer cheap photo for 5 stars instead of full price
+                req = PhotoRequest(scene='selfie')
+                offer_id = create_offer(message.from_user.id, req)
+                await bot.send_message(
+                    message.chat.id,
+                    f'бесплатный лимит на сегодня кончился, но для тебя сейчас — {CHAT_PHOTO_OFFER_STARS}⭐ \u2728'
+                )
+                await send_stars_invoice(
+                    message.chat.id, 'Фото от Анны', 'Персональное фото прямо сейчас',
+                    f'photo:{offer_id}', CHAT_PHOTO_OFFER_STARS,
+                )
+            touch_user(message.from_user.id)
+            return
+
         # Natural photo requests are routed before the chat model, so Anna does not
         # first refuse/chat about the photo and only then start generating.
         request = _contextualize_vague_photo(message.from_user.id, text, parse_photo_request(text))
@@ -2643,6 +2696,10 @@ async def text_message(message: types.Message):
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text)
         await send_answer(message, answer)
+        # Detect if Anna offered a photo in her response
+        if _PHOTO_OFFER_DETECT.search(answer):
+            _photo_offer_pending[message.from_user.id] = _time.time()
+            logger.info('photo_offer_detected user=%s', message.from_user.id)
         await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id))
         if is_premium(message.from_user.id):
             rid = create_from_text(message.from_user.id, text)
