@@ -1790,14 +1790,9 @@ async def gemini_status_cmd(message: types.Message):
     st = provider_status()
     await message.answer(
         '🧠 LLM status\n\n'
-        f'Chat provider: {st["configured_provider"]}\n'
-        f'OpenRouter key: {"✅" if st["openrouter_key_present"] else "❌"}\n'
-        f'OpenRouter model: {st["openrouter_model"]}\n'
-        f'Gemini key: {"✅" if st["gemini_key_present"] else "❌"}\n'
-        f'Gemini model: {st["gemini_model"]}\n'
-        f'Thinking: {st["thinking_level"]}\n'
-        f'Fallback Gemini: {"✅" if st["fallback_gemini"] else "❌"}\n'
-        f'Fallback OpenAI: {"✅" if st["fallback_openai"] else "❌"}\n'
+        f'OpenRouter: {"✅" if st["openrouter_key_present"] else "❌"} model: {st["openrouter_model"]}\n'
+        f'OpenRouter URL: {st["openrouter_base_url"]}\n'
+        f'Gemini (fallback): {"✅" if st["gemini_key_present"] else "❌"} model: {st["gemini_model"]}\n'
         f'Gemini Video: {"✅" if video_available() else "❌"}'
     )
 
@@ -2694,9 +2689,9 @@ async def main():
     start_scheduler(bot)
     st = provider_status()
     logger.info(
-        'LLM configured provider=%s openrouter_model=%s gemini_model=%s gemini_key=%s fallback_gemini=%s fallback_openai=%s gemini_video=%s',
-        st['configured_provider'], st['openrouter_model'], st['gemini_model'], st['gemini_key_present'],
-        st['fallback_gemini'], st['fallback_openai'], video_available(),
+        'LLM status: openrouter=%s model=%s gemini=%s gemini_model=%s video=%s',
+        st['openrouter_key_present'], st['openrouter_model'], st['gemini_key_present'],
+        st['gemini_model'], video_available(),
     )
     logger.info('AnnaBot started')
     await dp.start_polling(bot)
