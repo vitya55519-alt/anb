@@ -292,15 +292,16 @@ ANNA_FACE_IDENTITY = (
 )
 ANNA_BODY_IDENTITY = (
     'BODY/LOOK IDENTITY — permanent and non-negotiable. Reference image 2 is the NEW canonical overall look and upper-body silhouette anchor. '
-    'Preserve the same distinctly curvy feminine silhouette, full bust-to-waist relationship, narrow waist impression, shoulder proportions, and overall visual presence. '
-    'These proportions are part of Anna’s identity, not a wardrobe effect. Clothing may change, but it must fit the same underlying physique. '
-    'Do not flatten, slim away, genericize, enlarge beyond the reference, or otherwise redesign her established proportions. '
+    'Preserve the same distinctly curvy feminine silhouette with a full, voluminous bust, narrow waist, and pronounced hourglass figure exactly as shown in the reference. '
+    'Anna has a naturally large bust and curvy proportions — this is a core part of her identity. '
+    'These proportions are part of Anna\u2019s identity, not a wardrobe effect. Clothing may change, but it must fit the same underlying physique and preserve the full bust volume. '
+    'Do not flatten, slim down, or reduce her bust or curves. Keep the same generous proportions visible in the canonical reference. '
     'Wardrobe, cafe background, pose and accessories from the reference are not permanent traits unless the requested scene calls for them.'
 )
 OPENAI_REFERENCE_PROTOCOL = (
-    'REFERENCE PROTOCOL: image 1 controls Anna’s exact face and hair identity; image 2 reinforces the same appearance and stable curvy upper-body silhouette. '
+    'REFERENCE PROTOCOL: image 1 controls Anna\u2019s exact face and hair identity; image 2 reinforces the same appearance, stable curvy silhouette and full bust volume. '
     'The two images depict the same canonical Anna. Use requested scene, outfit, hairstyle and camera instructions for everything else. '
-    'Never blend in facial traits from legacy references.'
+    'Never blend in facial traits from legacy references. Always preserve the same curvy body proportions and bust volume from image 2.'
 )
 # V3.14.1: ordinary-photo prompts intentionally use neutral identity language.
 # Legacy regression wording retained: safety must do not flatten, reduce, enlarge identity geometry.
@@ -308,18 +309,21 @@ OPENAI_REFERENCE_PROTOCOL = (
 # The references still preserve Anna's exact appearance without repeatedly naming
 # sexualized anatomy in prompts sent to general-audience image providers.
 ORDINARY_BODY_IDENTITY = (
-    'ORDINARY PHOTO IDENTITY: reference image 2 defines Anna’s exact overall physique, proportions and silhouette. '
-    'Preserve the same body geometry, shoulder-to-waist balance and overall visual presence exactly as shown. '
-    'Do not slim, flatten, enlarge, exaggerate or redesign her physique. Clothing changes coverage and styling only; identity stays fixed.'
+    'ORDINARY PHOTO IDENTITY: reference image 2 defines Anna\u2019s exact overall physique, proportions and silhouette. '
+    'Preserve the same full, curvy body geometry with a naturally large bust, defined waist and feminine hourglass shape exactly as shown. '
+    'Do not reduce, flatten or slim her bust or curves — keep the same generous voluminous proportions from the reference. '
+    'Clothing changes coverage and styling only; the underlying body identity stays fixed and curvy.'
 )
 ORDINARY_REFERENCE_PROTOCOL = (
-    'ORDINARY REFERENCE PROTOCOL: image 1 controls Anna’s exact recognizable face and hair identity; image 2 controls the same overall physique and proportions. '
-    'Use the requested scene, outfit, hairstyle, pose, camera and lighting for everything else. Keep the result natural, fully clothed and general-audience.'
+    'ORDINARY REFERENCE PROTOCOL: image 1 controls Anna\u2019s exact recognizable face and hair identity; image 2 controls the same overall physique, full bust volume and curvy proportions. '
+    'Use the requested scene, outfit, hairstyle, pose, camera and lighting for everything else. '
+    'Keep the result natural and general-audience but always preserve Anna\u2019s naturally curvy figure and bust size.'
 )
 ORDINARY_IDENTITY_LOCK = ANNA_FACE_IDENTITY + ' ' + ORDINARY_BODY_IDENTITY + ' ' + ORDINARY_REFERENCE_PROTOCOL
 BODY_REINFORCEMENT = (
-    'BODY CONSISTENCY CHECK: keep Anna’s overall physique, proportions and silhouette visually consistent with reference image 2, '
-    'including mirror, seated, athletic, full-body and loose-clothing scenes. Do not average her toward a generic different physique. '
+    'BODY CONSISTENCY CHECK: keep Anna\u2019s overall physique, bust volume and proportions visually consistent with reference image 2. '
+    'Her bust is naturally full and curvy — do NOT reduce, flatten or minimize it in any pose, angle, clothing or scene. '
+    'Including mirror, seated, athletic, full-body and loose-clothing scenes: preserve the same generous curves. '
     'Keep anatomy realistic, clothing scene-appropriate and the pose natural.'
 )
 EXPRESSION_IDENTITY = (
@@ -328,10 +332,10 @@ EXPRESSION_IDENTITY = (
 )
 OPENAI_IDENTITY_LOCK = ORDINARY_IDENTITY_LOCK
 SEEDREAM_IDENTITY_LOCK = (
-    'The supplied reference defines Anna’s NEW permanent canonical identity. Create the SAME fictional adult woman, Anna, age 26. '
+    'The supplied reference defines Anna\u2019s NEW permanent canonical identity. Create the SAME fictional adult woman, Anna, age 26. '
     'Identity preservation has absolute priority. Preserve the exact face, eye shape and spacing, dark defined eyebrows, refined nose, full lips, cheekbones, jawline, '
-    'warm light-to-medium skin tone, long dark-brown brunette hair, and the same curvy feminine proportions visible in the supplied canonical reference. '
-    'Do not drift back to any previous Anna face, do not substitute another woman, and do not redesign her proportions.'
+    'warm light-to-medium skin tone, long dark-brown brunette hair, and the same full curvy feminine proportions with a naturally large bust visible in the supplied canonical reference. '
+    'Do not drift back to any previous Anna face, do not substitute another woman, and do not reduce or redesign her curvy proportions.'
 )
 BODY_REINFORCEMENT_SCENES = {'mirror', 'gym', 'cafe', 'restaurant', 'home', 'outfit', 'selfie'}
 
@@ -342,7 +346,7 @@ QUALITY_BLOCK = (
 OPENAI_GENERAL_AUDIENCE_BLOCK = (
     'Mainstream general-audience lifestyle photograph. Anna remains fully clothed in opaque, scene-appropriate clothing. '
     'Use a natural everyday pose and composition centered on the person, outfit and environment. Avoid glamour or suggestive posing. '
-    'Preserve the same person and overall proportions from the references while keeping the visual focus on the scene and outfit. '
+    'Preserve the same person, full bust volume and curvy hourglass proportions from the references. Do not flatten or reduce her figure. '
     'The image should read as an everyday social-media or personal travel/lifestyle photo, not boudoir photography.'
 )
 NEGATIVE_BLOCK = (
@@ -854,8 +858,8 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'RELATIONSHIP VISUAL PROGRESSION: {visual_rule}\n'
         f'PROGRESSION PACK FRAME {shot_index + 1}/{PHOTO_SET_SIZE}: {tier_rule}\n'
         f'WARDROBE: {wardrobe}. ' + (
-            'Use tasteful fashion fit and waist definition while preserving the underlying body proportions. ' if seedream else
-            'Use a polished, well-fitted, general-audience outfit. Preserve Anna’s overall physique and proportions exactly as shown by the references. Do not redesign her body geometry. Use a natural everyday pose with the visual focus on the person, outfit and environment. '
+            'Use tasteful fashion fit and waist definition while preserving the underlying body proportions and full bust volume. ' if seedream else
+            'Use a well-fitted outfit that preserves Anna\u2019s curvy physique, full bust and hourglass proportions exactly as shown by the references. Do not reduce or flatten her figure. Use a natural everyday pose with the visual focus on the person, outfit and environment. '
         ) +
         'The outfit must be believable for this exact venue, weather and time of day. Do not reuse a heavy sweater or hoodie in a visibly warm summer scene.\n'
         f'HAIRSTYLE: {request.hairstyle}.\n'
