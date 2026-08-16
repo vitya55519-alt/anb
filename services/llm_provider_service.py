@@ -59,15 +59,20 @@ async def generate_text(
     """
     errors: list[str] = []
 
-    # ── 1. OpenRouter (MiniMax M2) ────────────────────────────────────
+    # ── 1. OpenRouter (MiniMax M3 with reasoning) ─────────────────────
     if _openrouter:
         try:
-            r = await _openrouter.chat.completions.create(
+            # MiniMax M3 supports reasoning mode for more natural responses
+            extra = {'reasoning': {'enabled': True}} if purpose == 'dialogue' else None
+            kwargs = dict(
                 model=OPENROUTER_MODEL,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+            if extra:
+                kwargs['extra_body'] = extra
+            r = await _openrouter.chat.completions.create(**kwargs)
             text = (r.choices[0].message.content or '').strip()
             logger.info('LLM ok provider=openrouter model=%s purpose=%s len=%d', OPENROUTER_MODEL, purpose, len(text))
             return LLMResult(text, 'openrouter', OPENROUTER_MODEL)

@@ -27,7 +27,9 @@ ASSISTANTY = re.compile(
 
 def _clean(answer: str) -> str:
     answer = (answer or "хм… я зависла на секунду 🙈").strip()
-    answer = re.sub(r"^(Конечно|Разумеется|Понимаю тебя)[,!:。\.\s]+", "", answer, flags=re.I)
+    answer = re.sub(r"^(Конечно|Разумеется|Понимаю тебя|Хорошо,? |Да,? (?:конечно|разумеется))[,!:。.\.\s]+", "", answer, flags=re.I)
+    answer = re.sub(r"\n[-*•]\s", "\n", answer)  # strip markdown lists
+    answer = re.sub(r"\*\*(.+?)\*\*", r"\1", answer)  # strip bold
     answer = re.sub(r"\n{3,}", "\n\n", answer)
     return answer.strip() or "хм… я зависла на секунду 🙈"
 
@@ -35,13 +37,13 @@ def _clean(answer: str) -> str:
 def _needs_rewrite(user_text: str, answer: str) -> bool:
     if ASSISTANTY.search(answer):
         return True
-    if answer.count("?") > 1:
+    if answer.count("?") > 2:  # tolerate more questions in natural conversation
         return True
     if not META.search(user_text) and re.search(r"\b(виртуалк|искусственн(?:ый|ая) интеллект|я (?:бот|AI|ИИ))\b", answer, re.I):
         return True
-    if not TECH.search(user_text) and len(answer) > 650:
+    if not TECH.search(user_text) and len(answer) > 800:  # allow longer natural responses
         return True
-    if META.search(user_text) and len(answer) > 260:
+    if META.search(user_text) and len(answer) > 350:
         return True
     return False
 
@@ -52,13 +54,13 @@ async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str) 
     rewrite_messages = messages + [
         {"role": "assistant", "content": answer},
         {"role": "user", "content": (
-            "[Редактор персонажа] Перепиши предыдущий ответ Анны. Сохрани смысл, но сделай его естественным личным сообщением. "
-            "Убери ассистентский тон, меню вариантов, самопрезентацию и лишние вопросы. Обычно 1–3 короткие фразы. "
-            "Если пользователь прямо спросил, реальна ли Анна, честно скажи, что физически нет и что Анна — AI-персонаж, "
-            "но не разворачивай лекцию и не используй слово «виртуалка». Если это код/задача — не сокращай полезную часть."
+            "[Редактор] Перепиши как живая девушка в личке. Сохрани смысл, но убирай структуру AI-ответа. "
+            "Пиши как в переписке: коротко, небрежно, с эмоциями. Можно сленг, можно с середины мысли. "
+            "Убери «Конечно», «Разумеется», списки, нумерацию и лишние вопросы. "
+            "Если спрошено про AI/реальность — коротко скажи что нет, но без лекций."
         )},
     ]
-    r = await generate_text(rewrite_messages, max_tokens=280, temperature=0.65, purpose='rewrite')
+    r = await generate_text(rewrite_messages, max_tokens=280, temperature=0.8, purpose='rewrite')
     return _clean(r.text)
 
 
