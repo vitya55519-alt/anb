@@ -12,17 +12,24 @@ logger=logging.getLogger(__name__); scheduler=AsyncIOScheduler()
 
 async def _reminders(bot):
     rows=await asyncio.to_thread(due_reminders)
+    if rows:
+        logger.info('scheduler checking reminders count=%s ids=%s', len(rows), [r.id for r in rows])
     wake_msgs=['доброе утро ☀️ подъём','эй, ты там проснулся? 😂','соня, вставай уже','я всё ещё здесь 🙄','ну всё, последний шанс 😌','ладно, сдаюсь 😂']
     for r in rows:
         try:
             with SessionLocal() as s: user=s.get(User,r.user_id)
-            if not user: await asyncio.to_thread(mark_after_send,r.id,True); continue
+            if not user:
+                logger.warning('reminder user missing id=%s', r.id)
+                await asyncio.to_thread(mark_after_send,r.id,True); continue
+            telegram_id=int(user.telegram_id)
+            logger.info('sending reminder id=%s type=%s user=%s attempts=%s/%s due=%s tz=%s',
+                        r.id, r.reminder_type, telegram_id, r.attempts, r.max_attempts, r.due_at_utc, r.timezone)
             if r.reminder_type=='wake':
-                idx=min(r.attempts,len(wake_msgs)-1); await bot.send_message(int(user.telegram_id),wake_msgs[idx]); delays=[2,3,5,7,10,10]
+                idx=min(r.attempts,len(wake_msgs)-1); await bot.send_message(telegram_id,wake_msgs[idx]); delays=[2,3,5,7,10,10]
                 await asyncio.to_thread(mark_after_send,r.id,idx==len(wake_msgs)-1,delays[idx])
             else:
-                await bot.send_message(int(user.telegram_id),f"напоминаю: {r.text}"); await asyncio.to_thread(mark_after_send,r.id,True)
-        except Exception: logger.exception('reminder failed')
+                await bot.send_message(telegram_id,f"напоминаю: {r.text}"); await asyncio.to_thread(mark_after_send,r.id,True)
+        except Exception: logger.exception('reminder failed id=%s', r.id if r else None)
 
 async def _proactive(bot):
     now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None); cutoff=now-dt.timedelta(hours=PROACTIVE_MIN_HOURS)

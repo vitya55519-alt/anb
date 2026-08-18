@@ -1,11 +1,13 @@
 import asyncio
 import base64
+import datetime as dt
 import io
 import logging
 import random
 import re
 import time as _time
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 from dataclasses import replace
@@ -13,6 +15,7 @@ from dataclasses import replace
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, BufferedInputFile, FSInputFile, ReplyKeyboardMarkup, KeyboardButton
+from sqlalchemy import select
 from aiogram.utils.chat_action import ChatActionSender
 
 from config import (
@@ -36,7 +39,7 @@ from services.photo_service import (
 from services.payments import record_payment, get_photo_credits, record_refund
 from services.gemini_video_service import animate_image, GeminiVideoError, video_available
 from services.llm_provider_service import provider_status
-from services.reminder_service import set_timezone, create_from_text, cancel_active_wake
+from services.reminder_service import set_timezone, create_from_text, cancel_active_wake, due_reminders
 from services.scheduler_service import start_scheduler
 from services.memory_service import reset_conversation as reset_memory
 from services.db import SessionLocal
@@ -49,7 +52,7 @@ from services.analytics_service import track_event, admin_snapshot, budget_allow
 from services.photo_library_service import import_buffered_photos, library_stats, choose_unseen_pack, regroup_collection_packs, get_linked_video
 from services.state_service import ensure_life_state, apply_life_choice
 from services.character_card_service import (
-    get_card, list_cards, update_card, reset_card, ensure_default_cards,
+    get_card, list_cards, update_card, reset_card, ensure_default_cards, create_card, delete_card,
 )
 from services.consent_service import has_accepted, accept as accept_consent, delete_user_data, TERMS_VERSION, PRIVACY_VERSION
 from services.collection_service import collection_progress
@@ -282,12 +285,13 @@ def admin_keyboard():
 
 def admin_cards_keyboard():
     rows = [[InlineKeyboardButton(text=card.button_text, callback_data=f'admin:card:{card.character_id}')] for card in list_cards()]
+    rows.append([InlineKeyboardButton(text='➕ Добавить девушку', callback_data='admin:cardadd:start')])
     rows.append([InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def admin_card_keyboard(character_id: str):
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text='👁 Предпросмотр', callback_data=f'admin:preview:{character_id}')],
         [InlineKeyboardButton(text='✏️ Имя', callback_data=f'admin:cardedit:{character_id}:display_name'),
          InlineKeyboardButton(text='🎂 Возраст', callback_data=f'admin:cardedit:{character_id}:age')],
@@ -297,8 +301,12 @@ def admin_card_keyboard(character_id: str):
         [InlineKeyboardButton(text='👁 Видимость', callback_data=f'admin:toggle:{character_id}'),
          InlineKeyboardButton(text='🗑 Убрать фото', callback_data=f'admin:clearphoto:{character_id}')],
         [InlineKeyboardButton(text='↩️ Сбросить карточку', callback_data=f'admin:reset:{character_id}')],
-        [InlineKeyboardButton(text='⬅️ Все девушки', callback_data='admin:cards')],
-    ])
+    ]
+    from services.character_card_service import DEFAULT_CARDS
+    if character_id not in DEFAULT_CARDS:
+        rows.append([InlineKeyboardButton(text='🗑 Удалить персонажа', callback_data=f'admin:carddelete:{character_id}')])
+    rows.append([InlineKeyboardButton(text='⬅️ Все девушки', callback_data='admin:cards')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def admin_status_keyboard(character_id: str):
@@ -339,7 +347,8 @@ def admin_payment_keyboard(method_id: int):
             InlineKeyboardButton(text='📝 Инструкция', callback_data=f'admin:paymentedit:{method_id}:instructions'),
         ])
         if method.method_type == 'qr':
-            rows.append([InlineKeyboardButton(text='🖼 Заменить QR', callback_data=f'admin:paymentedit:{method_id}:qr')])
+            rows.append([InlineKeyboardButton(text='🖼 Заменить QR', callback_data=f'admin:paymentedit:{method_id}:qr'),
+                         InlineKeyboardButton(text='🔗 Ссылка на QR', callback_data=f'admin:paymentedit:{method_id}:url')])
         elif method.method_type == 'link':
             rows.append([InlineKeyboardButton(text='🔗 Изменить ссылку', callback_data=f'admin:paymentedit:{method_id}:url')])
         rows.append([InlineKeyboardButton(text='🏷 Статус', callback_data=f'admin:paymentstatus:{method_id}')])
@@ -364,7 +373,12 @@ def _admin_payment_summary(method_id: int) -> str:
         return 'Способ оплаты не найден.'
     value = '—'
     if method.method_type == 'qr':
-        value = 'QR загружен' if method.qr_photo_file_id else 'QR не загружен'
+        parts = []
+        if method.qr_photo_file_id:
+            parts.append('QR загружен')
+        if method.external_url:
+            parts.append(f'ссылка: {method.external_url}')
+        value = ' · '.join(parts) if parts else 'QR не загружен'
     elif method.method_type == 'link':
         value = method.external_url or 'ссылка не указана'
     elif method.method_type == 'stars':
@@ -389,6 +403,8 @@ async def _send_payment_preview(chat_id: int, method_id: int):
     text_value = _admin_payment_summary(method_id)
     if method.method_type == 'qr' and method.qr_photo_file_id:
         await bot.send_photo(chat_id, method.qr_photo_file_id, caption=text_value)
+    elif method.method_type == 'qr' and method.external_url:
+        await bot.send_message(chat_id, f'{text_value}\n\n🔗 QR-ссылка: {method.external_url}')
     else:
         await bot.send_message(chat_id, text_value)
 
@@ -1101,6 +1117,36 @@ async def admin_card_reset(cq: types.CallbackQuery):
     await cq.message.answer(_admin_card_summary(character_id), reply_markup=admin_card_keyboard(character_id))
 
 
+@dp.callback_query(F.data == 'admin:cardadd:start')
+async def admin_card_add_start(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _character_card_edit_sessions[cq.from_user.id] = {'mode': 'add', 'step': 'id'}
+    await cq.answer()
+    await cq.message.answer(
+        'Добавляем новую девушку.\n\n'
+        'Шаг 1/4: отправь уникальный ID маленькими латинскими буквами, например «maria_01» или «luna».\n\n'
+        '/cancel — отменить'
+    )
+
+
+@dp.callback_query(F.data.startswith('admin:carddelete:'))
+async def admin_card_delete(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    character_id = cq.data.split(':', 2)[2]
+    try:
+        if delete_card(character_id):
+            await cq.answer('удалено')
+        else:
+            await cq.answer('не найдена', show_alert=True)
+    except ValueError as exc:
+        await cq.answer(str(exc), show_alert=True)
+        return
+    _character_card_edit_sessions.pop(cq.from_user.id, None)
+    await cq.message.answer('👩 Карточки девушек', reply_markup=admin_cards_keyboard())
+
+
 @dp.callback_query(F.data == 'admin:payments')
 async def admin_payments(cq: types.CallbackQuery):
     if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
@@ -1273,7 +1319,10 @@ async def admin_stats_button(cq: types.CallbackQuery):
 async def cancel_admin_edit(message: types.Message):
     if message.from_user.id in _character_card_edit_sessions:
         sess = _character_card_edit_sessions.pop(message.from_user.id)
-        await message.answer('редактирование отменено', reply_markup=admin_card_keyboard(sess['character_id']))
+        if sess.get('mode') == 'add':
+            await message.answer('добавление отменено', reply_markup=admin_cards_keyboard())
+        else:
+            await message.answer('редактирование отменено', reply_markup=admin_card_keyboard(sess['character_id']))
         return
     if message.from_user.id in _payment_method_edit_sessions:
         sess = _payment_method_edit_sessions.pop(message.from_user.id)
@@ -2137,6 +2186,32 @@ async def wake_cmd(message: types.Message):
         await message.answer('напиши время, например /wake 08:00')
 
 
+@dp.message(Command('myreminders'))
+async def myreminders_cmd(message: types.Message):
+    user = get_user(message.from_user.id)
+    if not user:
+        await message.answer('сначала /start')
+        return
+    with SessionLocal() as s:
+        rows = s.scalars(
+            select(Reminder).where(Reminder.user_id == user.id, Reminder.active == True).order_by(Reminder.due_at_utc)
+        ).all()
+    if not rows:
+        await message.answer('у тебя нет активных будильников/напоминаний')
+        return
+    lines = ['⏰ активные:']
+    for r in rows:
+        local = r.due_at_utc
+        try:
+            local = r.due_at_utc.replace(tzinfo=dt.timezone.utc).astimezone(ZoneInfo(r.timezone or 'UTC'))
+            time_str = local.strftime('%d.%m %H:%M')
+        except Exception:
+            time_str = r.due_at_utc.strftime('%d.%m %H:%M UTC')
+        kind = '🔔' if r.reminder_type == 'wake' else '📝'
+        lines.append(f'{kind} {time_str} — {r.text} (попыток {r.attempts}/{r.max_attempts})')
+    await message.answer('\n'.join(lines))
+
+
 @dp.message(Command('reset'))
 async def reset_cmd(message: types.Message):
     uid = ensure_user(message.from_user.id, message.from_user.first_name)
@@ -2624,9 +2699,57 @@ async def text_message(message: types.Message):
 
     card_edit = _character_card_edit_sessions.get(message.from_user.id)
     if message.from_user.id in ADMIN_TELEGRAM_IDS and card_edit:
+        value = (message.text or '').strip()
+        # Add-new-character flow
+        if card_edit.get('mode') == 'add':
+            step = card_edit.get('step')
+            draft = card_edit.setdefault('draft', {})
+            try:
+                if step == 'id':
+                    cid = value.lower()
+                    if not re.match(r'^[a-z0-9_]+$', cid):
+                        raise ValueError('ID только маленькие латинские буквы, цифры и подчёркивание.')
+                    if get_card(cid):
+                        raise ValueError('Такой ID уже есть.')
+                    draft['character_id'] = cid
+                    card_edit['step'] = 'display_name'
+                    await message.answer('Шаг 2/4: отправь имя девушки.\n\n/cancel — отменить')
+                    return
+                elif step == 'display_name':
+                    if not 1 <= len(value) <= 48:
+                        raise ValueError('Имя должно быть от 1 до 48 символов.')
+                    draft['display_name'] = value
+                    card_edit['step'] = 'age'
+                    await message.answer('Шаг 3/4: отправь возраст числом (18–99).\n\n/cancel — отменить')
+                    return
+                elif step == 'age':
+                    if not value.isdigit() or not 18 <= int(value) <= 99:
+                        raise ValueError('Возраст должен быть числом от 18 до 99.')
+                    draft['age'] = int(value)
+                    card_edit['step'] = 'short_bio'
+                    await message.answer('Шаг 4/4: отправь короткое описание.\n\n/cancel — отменить')
+                    return
+                elif step == 'short_bio':
+                    if not 1 <= len(value) <= 900:
+                        raise ValueError('Описание должно быть от 1 до 900 символов.')
+                    card = create_card(
+                        draft['character_id'], draft['display_name'],
+                        draft['age'], value, draft.get('button_emoji', '👩')
+                    )
+                    _character_card_edit_sessions.pop(message.from_user.id, None)
+                    await message.answer(
+                        '✅ Карточка создана.\n\n' + _admin_card_summary(card.character_id),
+                        reply_markup=admin_card_keyboard(card.character_id)
+                    )
+                    return
+                else:
+                    raise ValueError('Неизвестный шаг.')
+            except ValueError as exc:
+                await message.answer(str(exc))
+                return
+        # Existing edit flow
         character_id = card_edit['character_id']
         field = card_edit['field']
-        value = (message.text or '').strip()
         try:
             if field == 'display_name':
                 if not 1 <= len(value) <= 48:
@@ -2745,6 +2868,11 @@ async def main():
     ensure_default_cards()
     ensure_default_payment_methods()
     start_scheduler(bot)
+    try:
+        active_reminders = due_reminders()
+        logger.info('startup active_reminders=%s ids=%s', len(active_reminders), [r.id for r in active_reminders])
+    except Exception:
+        logger.exception('startup reminder check failed')
     st = provider_status()
     logger.info(
         'LLM status: openrouter=%s model=%s gemini=%s gemini_model=%s video=%s',

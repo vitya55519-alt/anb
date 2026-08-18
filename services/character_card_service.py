@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -138,3 +139,42 @@ def reset_card(character_id: str) -> CharacterCardView:
     if not defaults:
         raise ValueError("no defaults for character")
     return update_card(character_id, **defaults, card_photo_file_id=None)
+
+
+def create_card(character_id: str, display_name: str, age: int, short_bio: str, button_emoji: str = "👩") -> CharacterCardView:
+    character_id = (character_id or '').strip().lower()
+    display_name = (display_name or '').strip()
+    if not character_id or not display_name:
+        raise ValueError("id и имя обязательны")
+    if not re.match(r'^[a-z0-9_]+$', character_id):
+        raise ValueError("id только маленькие латинские буквы, цифры и подчёркивание")
+    if not 18 <= age <= 99:
+        raise ValueError("возраст 18–99")
+    with SessionLocal() as session:
+        if session.get(CharacterCard, character_id):
+            raise ValueError("такой id уже есть")
+        row = CharacterCard(
+            character_id=character_id,
+            display_name=display_name,
+            age=age,
+            short_bio=short_bio or "",
+            status="soon",
+            button_emoji=button_emoji or "👩",
+            is_visible=True,
+        )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        return _to_view(row)
+
+
+def delete_card(character_id: str) -> bool:
+    if character_id in DEFAULT_CARDS:
+        raise ValueError("стандартных персонажей нельзя удалить")
+    with SessionLocal() as session:
+        row = session.get(CharacterCard, character_id)
+        if not row:
+            return False
+        session.delete(row)
+        session.commit()
+        return True

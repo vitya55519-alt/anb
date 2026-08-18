@@ -24,20 +24,25 @@ _LANG_TZ_DEFAULTS = {
 }
 
 
-def _resolve_timezone(telegram_id: int, user) -> str:
+def _resolve_timezone(telegram_id: int, user, hint_text: str | None = None) -> str:
     """Return user's timezone, auto-detecting from language if still default UTC."""
     tz = getattr(user, 'timezone', None) or 'UTC'
     if tz != 'UTC':
         return tz
     # Timezone is still default — try to infer from detected language.
     try:
-        from services.adaptation_service import get_profile
+        from services.adaptation_service import get_profile, detect_language
         profile = get_profile(telegram_id)
+        lang = None
         if profile and profile.preferred_language and profile.preferred_language != 'auto':
-            detected_tz = _LANG_TZ_DEFAULTS.get(profile.preferred_language)
+            lang = profile.preferred_language
+        elif hint_text:
+            lang, _ = detect_language(hint_text)
+        if lang and lang != 'auto':
+            detected_tz = _LANG_TZ_DEFAULTS.get(lang)
             if detected_tz:
                 update_user_settings(telegram_id, timezone=detected_tz)
-                logger.info('auto-set timezone=%s for user=%s (lang=%s)', detected_tz, telegram_id, profile.preferred_language)
+                logger.info('auto-set timezone=%s for user=%s (lang=%s)', detected_tz, telegram_id, lang)
                 return detected_tz
     except Exception:
         pass
@@ -61,7 +66,7 @@ def create_from_text(telegram_id:int,text:str):
     parsed=parse_time_request(text)
     if not parsed: return None
     uid=ensure_user(telegram_id); user=get_user(telegram_id)
-    resolved_tz = _resolve_timezone(telegram_id, user)
+    resolved_tz = _resolve_timezone(telegram_id, user, hint_text=text)
     try: tz=ZoneInfo(resolved_tz)
     except Exception: tz=ZoneInfo('UTC')
     h,m,days=parsed; now=dt.datetime.now(tz); target=now.replace(hour=h,minute=m,second=0,microsecond=0)+dt.timedelta(days=days)
