@@ -20,6 +20,48 @@ def _add_missing_columns(table, wanted):
             if name not in existing:
                 conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}'))
 
+def _auto_migrate_all_tables():
+    """Catch-all schema repair: add any model columns that are missing from existing tables.
+
+    `Base.metadata.create_all()` only creates missing tables; it never alters existing
+    tables. This function inspects every table that already exists in the DB, compares
+    its columns to the SQLAlchemy model, and runs `ALTER TABLE ... ADD COLUMN` for any
+    missing field. Scalar defaults are preserved as DB-level DEFAULTs so existing rows
+    get sensible values; non-scalar/callable defaults are skipped and the column is
+    added nullable.
+    """
+    from sqlalchemy import inspect as sa_inspect
+    inspector = sa_inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    type_compiler = engine.dialect.type_compiler
+
+    def _default_clause(col):
+        d = col.default
+        if d is None or not getattr(d, 'is_scalar', False):
+            return ''
+        val = d.arg
+        if isinstance(val, bool):
+            return ' DEFAULT TRUE' if val else ' DEFAULT FALSE'
+        if isinstance(val, (int, float)):
+            return f' DEFAULT {val}'
+        if isinstance(val, str):
+            escaped = val.replace("'", "''")
+            return f" DEFAULT '{escaped}'"
+        return ''
+
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+        existing = {c['name'] for c in inspector.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in existing:
+                continue
+            ddl_type = type_compiler.process(col.type)
+            default = _default_clause(col)
+            stmt = f'ALTER TABLE {table.name} ADD COLUMN {col.name} {ddl_type}{default}'
+            with engine.begin() as conn:
+                conn.execute(text(stmt))
+
 def _migrate_existing_users():
     bool_false='FALSE'; bool_true='TRUE'
     wanted={
@@ -30,6 +72,10 @@ def _migrate_existing_users():
         'appearance_description': 'TEXT',
         'photo_credits': 'INTEGER DEFAULT 0',
         'adult_confirmed': f"BOOLEAN DEFAULT {bool_false}",
+        'voice_anon_mode': f"BOOLEAN DEFAULT {bool_false}",
+        'attention_points': 'INTEGER DEFAULT 0',
+        'streak_count': 'INTEGER DEFAULT 0',
+        'streak_last_date': 'TIMESTAMP',
     }
     _add_missing_columns('users', wanted)
 
@@ -58,5 +104,16 @@ def init_db():
         'last_distinct_day': 'TIMESTAMP',
         'active_days': 'INTEGER DEFAULT 0',
     })
+    # V3.13+ card fields were added to the model after the table already existed
+    # in production; create_all never alters existing tables, so add them here.
+    _add_missing_columns('character_cards', {
+        'gender': 'VARCHAR(16)',
+        'age': 'INTEGER',
+        'short_bio': 'TEXT',
+    })
+    # Final safety net: any model column missing from an existing table gets added
+    # automatically. This prevents future "UndefinedColumn" crashes when new fields
+    # are added to models but forgotten in explicit migrations.
+    _auto_migrate_all_tables()
 
 init_db()

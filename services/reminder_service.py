@@ -4,24 +4,9 @@ from sqlalchemy import select
 from services.db import SessionLocal
 from models.app_models import Reminder, User
 from services.user_service import ensure_user, get_user, update_user_settings
+from config import LANG_TZ_DEFAULTS
 
 logger = logging.getLogger(__name__)
-
-# Auto-detect timezone from communication language when user hasn't set one explicitly.
-# Prevents the common bug where Russian speakers get reminders 3 hours late (UTC vs MSK).
-_LANG_TZ_DEFAULTS = {
-    'ru': 'Europe/Moscow',
-    'uk': 'Europe/Kyiv',
-    'en': 'America/New_York',
-    'es': 'Europe/Madrid',
-    'de': 'Europe/Berlin',
-    'fr': 'Europe/Paris',
-    'it': 'Europe/Rome',
-    'pt': 'Europe/Lisbon',
-    'zh': 'Asia/Shanghai',
-    'ja': 'Asia/Tokyo',
-    'ko': 'Asia/Seoul',
-}
 
 
 def _resolve_timezone(telegram_id: int, user, hint_text: str | None = None) -> str:
@@ -39,7 +24,7 @@ def _resolve_timezone(telegram_id: int, user, hint_text: str | None = None) -> s
         elif hint_text:
             lang, _ = detect_language(hint_text)
         if lang and lang != 'auto':
-            detected_tz = _LANG_TZ_DEFAULTS.get(lang)
+            detected_tz = LANG_TZ_DEFAULTS.get(lang)
             if detected_tz:
                 update_user_settings(telegram_id, timezone=detected_tz)
                 logger.info('auto-set timezone=%s for user=%s (lang=%s)', detected_tz, telegram_id, lang)

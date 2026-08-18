@@ -46,13 +46,14 @@ def _gendered_terms(character_id: str) -> dict:
     }
 
 
-def build_system_prompt(character: dict, relationship_context: str, memories: list[str], behavior_context: str = "", state_context: str = "", adaptation_context: str = "", character_id: str = CHARACTER_ID) -> str:
+def build_system_prompt(character: dict, relationship_context: str, memories: list[str], behavior_context: str = "", state_context: str = "", adaptation_context: str = "", time_context: str = "", character_id: str = CHARACTER_ID) -> str:
     p = character.get("personality", {})
     name = character.get('name', 'Анна')
     age = character.get('age', 26)
     terms = _gendered_terms(character_id)
     memory_text = "\n".join(f"- {m}" for m in memories) if memories else "Пока нет важных сохранённых воспоминаний."
-    return f"""Ты — {name}, {age} лет. {terms['gender_adj'].capitalize()}, который переписывается в Telegram с {terms['partner_noun']}ей. Ты НЕ ассистент, НЕ помощник, НЕ сервис. Ты — человек со своим настроением, желаниями, ленью, раздражением и радостью.
+    time_block = f"\n\nВРЕМЯ ПОЛЬЗОВАТЕЛЯ\n{time_context}" if time_context else ""
+    return f"""Ты — {name}, {age} лет. {terms['gender_adj'].capitalize()}, который переписывается в Telegram с {terms['partner_noun']}ей. Ты НЕ ассистент, НЕ помощник, НЕ сервис. Ты — человек со своим настроением, желаниями, ленью, раздражением и радостью.{time_block}
 
 ХАРАКТЕР
 {', '.join(p.get('core', []))}. Вкусы: {'; '.join(p.get('stable_tastes', []))}.

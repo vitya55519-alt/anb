@@ -276,7 +276,7 @@ def characters_keyboard():
 
 def admin_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='🎭 Карточки персонажей', callback_data='admin:cards')]
+        [InlineKeyboardButton(text='🎭 Карточки персонажей', callback_data='admin:cards')],
         [InlineKeyboardButton(text='💳 Способы оплаты', callback_data='admin:payments')],
         [InlineKeyboardButton(text='📚 Библиотека фото', callback_data='admin:library_help')],
         [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats')],
@@ -854,7 +854,7 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
 @dp.message(CommandStart())
 async def start(message: types.Message):
     name = message.from_user.first_name or message.from_user.username or 'ты'
-    uid = ensure_user(message.from_user.id, name)
+    uid = ensure_user(message.from_user.id, name, language_code=message.from_user.language_code)
     track_event(uid, 'onboarding_started')
     if not has_accepted(message.from_user.id):
         await message.answer(
@@ -916,7 +916,7 @@ async def onboarding_character_select(cq: types.CallbackQuery):
     if not card or not card.is_visible:
         await cq.answer('персонаж сейчас недоступен', show_alert=True)
         return
-    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     if character_id != CHARACTER_ID or card.status != 'active':
         track_event(uid, 'fake_door_click', metadata={'feature': f'{character_id}_onboarding'})
         await cq.answer('эта девушка пока закрыта', show_alert=True)
@@ -932,7 +932,7 @@ async def onboarding_character_select(cq: types.CallbackQuery):
 
 @dp.callback_query(F.data == 'onboard:meet')
 async def onboarding_meet(cq: types.CallbackQuery):
-    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     track_event(uid, 'onboarding_meet')
     await cq.answer()
     await cq.message.answer('тогда без анкеты 😄 как тебя лучше называть — и что мне про тебя стоит знать первым?')
@@ -940,7 +940,7 @@ async def onboarding_meet(cq: types.CallbackQuery):
 
 @dp.callback_query(F.data == 'onboard:abilities')
 async def onboarding_abilities(cq: types.CallbackQuery):
-    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     track_event(uid, 'onboarding_abilities')
     await cq.answer()
     await cq.message.answer(abilities_text(), reply_markup=abilities_inline_keyboard())
@@ -948,7 +948,7 @@ async def onboarding_abilities(cq: types.CallbackQuery):
 
 @dp.message(Command('features', 'abilities'))
 async def features_cmd(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     await message.answer(abilities_text(), reply_markup=abilities_inline_keyboard())
 
 
@@ -959,7 +959,7 @@ async def features_button(message: types.Message):
 
 @dp.message(F.text == '👩 Персонажи')
 async def characters_button(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     await message.answer('выбери персонажа 👇', reply_markup=characters_keyboard())
 
 
@@ -970,7 +970,7 @@ async def character_view(cq: types.CallbackQuery):
     if not card or not card.is_visible:
         await cq.answer('карточка сейчас недоступна', show_alert=True)
         return
-    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     if card.status in {'soon', 'locked'} and character_id != CHARACTER_ID:
         track_event(uid, 'fake_door_click', metadata={'feature': f'{character_id}_character_card'})
     await cq.answer()
@@ -986,7 +986,7 @@ async def character_anna(cq: types.CallbackQuery):
 
 @dp.callback_query(F.data == 'character:alena_soon')
 async def character_alena_soon(cq: types.CallbackQuery):
-    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     track_event(uid, 'fake_door_click', metadata={'feature': 'alena_character_card'})
     await cq.answer()
     await _send_character_card(cq.message.chat.id, 'alena_01', viewer_id=cq.from_user.id)
@@ -1382,7 +1382,7 @@ async def cancel_admin_edit(message: types.Message):
 
 @dp.message(Command('plans', 'today'))
 async def plans_cmd(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     state = ensure_life_state(message.from_user.id)
     await message.answer(
         f'сейчас по нашей истории я {state.activity or "занята своими делами"}. можешь немного повлиять на мой следующий план 😄',
@@ -1394,7 +1394,7 @@ async def plans_cmd(message: types.Message):
 async def life_choice_cb(cq: types.CallbackQuery):
     choice = cq.data.split(':', 1)[1]
     state = apply_life_choice(cq.from_user.id, choice)
-    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     track_event(uid, 'life_choice', metadata={'choice': choice, 'location': state.location})
     await cq.answer('уговорил 😄')
     await cq.message.answer(f'ладно 😄 {state.activity}')
@@ -1655,7 +1655,7 @@ async def help_cmd(message: types.Message):
 
 @dp.message(Command('settings'))
 async def settings(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     user = get_user(message.from_user.id)
     credits = get_photo_credits(message.from_user.id)
     profile = get_profile(user.id, CHARACTER_ID) if user else None
@@ -1675,7 +1675,7 @@ async def settings(message: types.Message):
 
 @dp.message(Command('profile'))
 async def profile_cmd(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     from services.gamification_service import get_profile_summary, format_profile_summary
     summary = get_profile_summary(message.from_user.id)
     await message.answer(format_profile_summary(summary))
@@ -1683,7 +1683,7 @@ async def profile_cmd(message: types.Message):
 
 @dp.message(Command('adult'))
 async def adult_cmd(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     await message.answer('подтверди возраст для более смелых fashion-категорий:', reply_markup=adult_keyboard())
 
 
@@ -1763,7 +1763,7 @@ async def delete_cancel(cq: types.CallbackQuery):
 
 @dp.message(Command('paysupport'))
 async def pay_support(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     parts = (message.text or '').split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
         await message.answer('Напиши одним сообщением: /paysupport что случилось с оплатой. Я передам это владельцу.')
@@ -1799,7 +1799,7 @@ async def collection_cmd(message: types.Message):
 
 @dp.message(Command('stories', 'quests'))
 async def stories_cmd(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     if not has_accepted(message.from_user.id):
         await message.answer('Сначала /start и подтверждение 18+.'); return
     await message.answer('🎯 Истории с Анной\n\n🟢 доступно — можно начать сейчас\n🔒 закрыто — откроется с новым уровнем отношений\n✅ пройдено — выбор уже стал частью вашей истории\n\nПервый выбор становится каноном. Альтернативную ветку можно посмотреть позже, не переписывая основной сюжет.', reply_markup=stories_keyboard(message.from_user.id))
@@ -1959,7 +1959,7 @@ async def premium(message: types.Message):
 
 @dp.callback_query(F.data == 'buy:premium')
 async def buy_premium(cq: types.CallbackQuery):
-    ensure_user(cq.from_user.id, cq.from_user.first_name)
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     if not has_accepted(cq.from_user.id):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
     await cq.answer()
@@ -1968,7 +1968,7 @@ async def buy_premium(cq: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith('walletpay:'))
 async def walletpay_callback(cq: types.CallbackQuery):
-    ensure_user(cq.from_user.id, cq.from_user.first_name)
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     if not has_accepted(cq.from_user.id):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
     if not WALLET_PAY_ENABLED:
@@ -2107,7 +2107,7 @@ async def successful_payment(message: types.Message):
 
 @dp.message(Command('photo', 'selfie'))
 async def photo_menu(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     if not has_accepted(message.from_user.id):
         await message.answer('Сначала подтверди 18+ и условия через /start.', reply_markup=consent_keyboard()); return
     await message.answer(
@@ -2129,7 +2129,7 @@ async def locked_photo_callback(cq: types.CallbackQuery):
 
 @dp.callback_query(F.data == 'photo_menu:open')
 async def photo_menu_callback(cq: types.CallbackQuery):
-    ensure_user(cq.from_user.id, cq.from_user.first_name)
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     await cq.answer()
     await cq.message.answer(photo_menu_text(cq.from_user.id), reply_markup=photo_keyboard(cq.from_user.id))
 
@@ -2137,7 +2137,7 @@ async def photo_menu_callback(cq: types.CallbackQuery):
 @dp.callback_query(F.data.startswith('photo_feedback:'))
 async def photo_feedback_callback(cq: types.CallbackQuery):
     _, action, scene = cq.data.split(':', 2)
-    uid = ensure_user(cq.from_user.id, cq.from_user.first_name)
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     state = get_state(cq.from_user.id)
     liked = action == 'like'
     observe_photo_feedback(uid, liked, scene, getattr(state, 'outfit', '') or '', getattr(state, 'hairstyle', '') or '', CHARACTER_ID)
@@ -2240,7 +2240,7 @@ async def custom_place(cq: types.CallbackQuery):
 
 @dp.message(Command('voice'))
 async def voice_toggle(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     user = get_user(message.from_user.id)
     new = not user.voice_enabled
     update_user_settings(message.from_user.id, voice_enabled=new)
@@ -2249,7 +2249,7 @@ async def voice_toggle(message: types.Message):
 
 @dp.message(Command('voice_anon'))
 async def voice_anon_toggle(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     user = get_user(message.from_user.id)
     new = not user.voice_anon_mode
     update_user_settings(message.from_user.id, voice_anon_mode=new)
@@ -2272,7 +2272,7 @@ async def voice_style(message: types.Message):
 
 @dp.message(Command('notifications'))
 async def notifications(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     user = get_user(message.from_user.id)
     new = not user.proactive_enabled
     update_user_settings(message.from_user.id, proactive_enabled=new)
@@ -2408,7 +2408,7 @@ async def send_answer(message: types.Message, text: str):
 
 @dp.message(F.text == '💬 Общение')
 async def chat_button(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     await message.answer('я здесь 🙂 просто пиши мне как обычно')
 
 
@@ -2442,7 +2442,7 @@ async def collection_button(message: types.Message):
 
 @dp.message(F.text == '👤 Профиль')
 async def profile_button(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     info = build_photo_menu(message.from_user.id)
     uid = ensure_user(message.from_user.id, message.from_user.first_name)
     milestone_text = ''
@@ -2466,7 +2466,7 @@ async def profile_button(message: types.Message):
 
 @dp.message(F.text == '⏰ Будильник')
 async def alarm_button(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name)
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     premium = is_premium(message.from_user.id)
     if not premium:
         await message.answer(
@@ -2689,7 +2689,7 @@ async def voice_message(message: types.Message):
         before_level = get_relationship_level(message.from_user.id)
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             display_name = 'ты' if (user and user.voice_anon_mode) else (message.from_user.first_name or 'ты')
-            answer = await anna_reply(message.from_user.id, display_name, text)
+            answer = await anna_reply(message.from_user.id, display_name, text, language_code=message.from_user.language_code)
         await send_answer(message, answer)
         try:
             from services.gamification_service import unlock_achievement
@@ -2952,7 +2952,7 @@ async def text_message(message: types.Message):
             return
         before_level = get_relationship_level(message.from_user.id)
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text)
+            answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text, language_code=message.from_user.language_code)
         await send_answer(message, answer)
         # Detect if Anna offered a photo in her response
         if _PHOTO_OFFER_DETECT.search(answer):
@@ -2994,6 +2994,9 @@ async def main():
         types.BotCommand(command='reset', description='Очистить память и историю'),
     ]
     await bot.set_my_commands(public_commands)
+    logger.info('startup admin_ids_count=%s', len(ADMIN_TELEGRAM_IDS))
+    if not ADMIN_TELEGRAM_IDS:
+        logger.warning('ADMIN_TELEGRAM_IDS is empty; /admin will be inaccessible')
     for admin_id in ADMIN_TELEGRAM_IDS:
         try:
             await bot.set_my_commands(

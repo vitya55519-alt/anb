@@ -1,6 +1,8 @@
 from __future__ import annotations
 import asyncio
+import datetime as dt
 import re
+from zoneinfo import ZoneInfo
 from config import CHARACTER_ID
 from services.llm_provider_service import generate_text
 from services.character_service import get_character, build_system_prompt
@@ -12,9 +14,32 @@ from services.behavior_service import behavior_context, choose_behavior
 from services.dialogue_guard_service import build_repetition_guard
 from services.character_dna_service import competency_context, character_dna_context
 from services.state_service import state_context, softly_evolve_state
-from services.user_service import ensure_user
+from services.user_service import ensure_user, get_user
 from services.access_service import is_premium
 from services.adaptation_service import observe_message, maybe_analyze_profile, build_adaptation_context
+
+
+def _time_context(telegram_id: int) -> str:
+    user = get_user(telegram_id)
+    if not user or not user.timezone:
+        return ""
+    try:
+        now_local = dt.datetime.now(ZoneInfo(user.timezone))
+        hour = now_local.hour
+        if 5 <= hour < 12:
+            tod = "утро"
+        elif 12 <= hour < 18:
+            tod = "день"
+        elif 18 <= hour < 23:
+            tod = "вечер"
+        else:
+            tod = "ночь"
+        return (
+            f"Сейчас у пользователя {now_local.strftime('%H:%M')} ({user.timezone}), "
+            f"время суток: {tod}. Используй это для уместных приветствий и реплик."
+        )
+    except Exception:
+        return ""
 
 
 META = re.compile(r"\b(ты настоящ|ты реальн|ты человек|ты бот|ты ии|ты ai|искусственн|виртуальн)\b", re.I)
@@ -64,8 +89,8 @@ async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str) 
     return _clean(r.text)
 
 
-async def reply(user_id: int, user_name: str, user_text: str) -> str:
-    db_user_id = ensure_user(user_id, user_name)
+async def reply(user_id: int, user_name: str, user_text: str, language_code: str | None = None) -> str:
+    db_user_id = ensure_user(user_id, user_name, language_code=language_code)
     observe_message(db_user_id, user_text, CHARACTER_ID)
     delta = infer_delta(user_text)
     test_stage = get_test_stage(user_id)
@@ -111,6 +136,7 @@ async def reply(user_id: int, user_name: str, user_text: str) -> str:
     diversity = build_repetition_guard(history, user_text)
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories], behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation,
+        time_context=_time_context(user_id),
         character_id=CHARACTER_ID,
     )
     messages = [{"role": "system", "content": system}]
@@ -131,8 +157,8 @@ async def reply(user_id: int, user_name: str, user_text: str) -> str:
     return answer
 
 
-async def proactive_reply(user_id: int, user_name: str, hours_inactive: int) -> str:
-    db_user_id = ensure_user(user_id, user_name)
+async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, language_code: str | None = None) -> str:
+    db_user_id = ensure_user(user_id, user_name, language_code=language_code)
     character = get_character(CHARACTER_ID)
     memories = get_memories(db_user_id, CHARACTER_ID, 10)
     history = get_recent_messages(db_user_id, CHARACTER_ID, 8)
@@ -147,6 +173,7 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int) -> 
         character, rel_context, [m.content for m in memories],
         "Напиши одну короткую спонтанную реплику первой. Не объясняй, зачем пишешь, и не обязательно задавай вопрос.",
         state_context(user_id), adaptation,
+        time_context=_time_context(user_id),
         character_id=CHARACTER_ID,
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]

@@ -2,18 +2,30 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from services.db import SessionLocal
 from models.app_models import User, CharacterState
-from config import CHARACTER_ID, DEFAULT_TIMEZONE
+from config import CHARACTER_ID, DEFAULT_TIMEZONE, LANG_TZ_DEFAULTS
 
 def now(): return datetime.now(timezone.utc).replace(tzinfo=None)
 
-def ensure_user(telegram_id: int, name: str | None = None) -> int:
+def _timezone_from_language(language_code: str | None) -> str:
+    if not language_code:
+        return DEFAULT_TIMEZONE
+    lang = language_code.lower().split('-')[0].split('_')[0]
+    return LANG_TZ_DEFAULTS.get(lang, DEFAULT_TIMEZONE)
+
+def ensure_user(telegram_id: int, name: str | None = None, language_code: str | None = None) -> int:
     with SessionLocal() as s:
         user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
         if not user:
-            user = User(telegram_id=str(telegram_id), name=name or "", timezone=DEFAULT_TIMEZONE)
+            tz = _timezone_from_language(language_code)
+            user = User(telegram_id=str(telegram_id), name=name or "", timezone=tz)
             s.add(user); s.flush()
         elif name:
             user.name = name
+        # If the user still has the default UTC, try to auto-detect from language on any contact.
+        if user.timezone == DEFAULT_TIMEZONE and language_code:
+            detected = _timezone_from_language(language_code)
+            if detected != DEFAULT_TIMEZONE:
+                user.timezone = detected
         state = s.scalar(select(CharacterState).where(CharacterState.user_id == user.id, CharacterState.character_id == CHARACTER_ID))
         if not state:
             s.add(CharacterState(user_id=user.id, character_id=CHARACTER_ID))

@@ -106,6 +106,12 @@ def ensure_default_cards() -> None:
                 if not row.short_bio or "street fashion" in row.short_bio:
                     row.short_bio = defaults["short_bio"]
                 changed = True
+            # One-time backfill for rows created before gender/age/short_bio existed
+            # in the DB schema. Only fills NULLs, never overwrites admin edits.
+            for field in ("gender", "age", "short_bio"):
+                if getattr(row, field) is None:
+                    setattr(row, field, defaults[field])
+                    changed = True
         if changed:
             session.commit()
 
