@@ -30,6 +30,10 @@ def _migrate_existing_users():
         'appearance_description': 'TEXT',
         'photo_credits': 'INTEGER DEFAULT 0',
         'adult_confirmed': f"BOOLEAN DEFAULT {bool_false}",
+        'voice_anon_mode': f"BOOLEAN DEFAULT {bool_false}",
+        'attention_points': 'INTEGER DEFAULT 0',
+        'streak_count': 'INTEGER DEFAULT 0',
+        'streak_last_date': 'TIMESTAMP',
     }
     _add_missing_columns('users', wanted)
 
@@ -57,6 +61,13 @@ def init_db():
         'connection_score': 'FLOAT DEFAULT 0',
         'last_distinct_day': 'TIMESTAMP',
         'active_days': 'INTEGER DEFAULT 0',
+    })
+    # V3.13+ card fields were added to the model after the table already existed
+    # in production; create_all never alters existing tables, so add them here.
+    _add_missing_columns('character_cards', {
+        'gender': 'VARCHAR(16)',
+        'age': 'INTEGER',
+        'short_bio': 'TEXT',
     })
 
 init_db()
