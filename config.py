@@ -42,7 +42,9 @@ AI_KEY = (os.getenv("OPENAI_API_KEY") or os.getenv("AI_KEY") or "").strip()
 AI_MODEL = os.getenv("AI_MODEL", OPENROUTER_MODEL)
 AI_BASE_URL = os.getenv("AI_BASE_URL", OPENROUTER_BASE_URL if OPENROUTER_API_KEY else None)
 
-# Dialogue provider chain: OpenRouter → Gemini → (optional) OpenAI fallback.
+# Dialogue provider chain: OpenRouter primary → Gemini fallback.
+# CHAT_PROVIDER / CHAT_FALLBACK_* variables were removed; the chain is hard-wired
+# in services/llm_provider_service.py for stability.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.5-flash").strip()
 GEMINI_OPENAI_BASE_URL = os.getenv(
@@ -50,16 +52,6 @@ GEMINI_OPENAI_BASE_URL = os.getenv(
     "https://generativelanguage.googleapis.com/v1beta/openai/",
 ).strip()
 GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "minimal").strip().lower()
-
-# Provider priority: openrouter > gemini > openai
-CHAT_PROVIDER = os.getenv(
-    "CHAT_PROVIDER",
-    "openrouter" if OPENROUTER_API_KEY else ("gemini" if GEMINI_API_KEY else "openai"),
-).strip().lower()
-if CHAT_PROVIDER not in {"openrouter", "gemini", "openai"}:
-    CHAT_PROVIDER = "openrouter" if OPENROUTER_API_KEY else "gemini"
-CHAT_FALLBACK_GEMINI = os.getenv("CHAT_FALLBACK_GEMINI", "true").strip().lower() not in {"0", "false", "no", "off"}
-CHAT_FALLBACK_OPENAI = os.getenv("CHAT_FALLBACK_OPENAI", "false").strip().lower() not in {"0", "false", "no", "off"} and bool(AI_KEY)
 
 # Optional Gemini/Veo image-to-video. Kept disabled by default because Veo
 # requires a paid Gemini API tier and each generation has a real per-second cost.

@@ -77,10 +77,8 @@ For the AI Studio key shown as Free tier, add these Railway Variables first:
 
 ```text
 GEMINI_API_KEY=<your full key; never commit it>
-CHAT_PROVIDER=gemini
 GEMINI_CHAT_MODEL=gemini-3.5-flash
 GEMINI_THINKING_LEVEL=minimal
-CHAT_FALLBACK_OPENAI=true
 GEMINI_VIDEO_ENABLED=false
 ```
 
