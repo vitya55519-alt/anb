@@ -157,6 +157,15 @@ OPENAI_VOICE_AVAILABLE = bool(TTS_API_KEY)
 
 PROACTIVE_MIN_HOURS = int(os.getenv("PROACTIVE_MIN_HOURS", "48"))
 DEFAULT_TIMEZONE = os.getenv("DEFAULT_TIMEZONE", "UTC")
+# ── Telegram Wallet Pay (crypto + card on-ramp through Wallet) ────────────
+WALLET_PAY_TOKEN = os.getenv("WALLET_PAY_TOKEN", "").strip()
+WALLET_PAY_ENABLED = bool(WALLET_PAY_TOKEN)
+WALLET_PAY_API_URL = os.getenv("WALLET_PAY_API_URL", "https://pay.wallet.tg/wpay").strip().rstrip("/")
+WALLET_PAY_WEBHOOK_URL = os.getenv("WALLET_PAY_WEBHOOK_URL", "").strip()
+WALLET_PAY_TIMEOUT_SECONDS = max(10, min(120, int(os.getenv("WALLET_PAY_TIMEOUT_SECONDS", "30"))))
+# Fallback conversion: 1 Star ≈ 0.02 USD, used to show fiat price in Wallet Pay invoices.
+STARS_TO_USD = float(os.getenv("STARS_TO_USD", "0.02"))
+
 ADMIN_TELEGRAM_IDS = {int(x.strip()) for x in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if x.strip().isdigit()}
 
 if not TELEGRAM_TOKEN:

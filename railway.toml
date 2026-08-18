@@ -5,3 +5,8 @@ builder = "NIXPACKS"
 startCommand = "PYTHONIOENCODING=utf-8 python main.py"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
+
+# Telegram Wallet Pay environment variables (set real values in Railway dashboard).
+[variables]
+WALLET_PAY_TOKEN = ""
+WALLET_PAY_WEBHOOK_URL = ""

@@ -3,7 +3,7 @@ import asyncio
 import re
 from config import CHARACTER_ID
 from services.llm_provider_service import generate_text
-from services.character_service import get_anna, build_system_prompt
+from services.character_service import get_character, build_system_prompt
 from services.memory_service import get_recent_messages, get_memories, save_message, extract_memory
 from services.relationship_service import record_user_message
 from services.relationship_signals import infer_delta
@@ -54,7 +54,7 @@ async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str) 
     rewrite_messages = messages + [
         {"role": "assistant", "content": answer},
         {"role": "user", "content": (
-            "[Редактор] Перепиши как живая девушка в личке. Сохрани смысл, но убирай структуру AI-ответа. "
+            "[Редактор] Перепиши как живой человек в личке. Сохрани смысл, но убирай структуру AI-ответа. "
             "Пиши как в переписке: коротко, небрежно, с эмоциями. Можно сленг, можно с середины мысли. "
             "Убери «Конечно», «Разумеется», списки, нумерацию и лишние вопросы. "
             "Если спрошено про AI/реальность — коротко скажи что нет, но без лекций."
@@ -91,7 +91,7 @@ async def reply(user_id: int, user_name: str, user_text: str) -> str:
             relationship=delta.relationship, trust=delta.trust, intimacy=delta.intimacy,
             event_type=delta.event_type, reason=delta.reason,
         )
-    character = get_anna()
+    character = get_character(CHARACTER_ID)
     premium = is_premium(user_id)
     memories = get_memories(db_user_id, CHARACTER_ID, 40 if premium else 14)
     history = get_recent_messages(db_user_id, CHARACTER_ID, 30 if premium else 16)
@@ -110,7 +110,8 @@ async def reply(user_id: int, user_name: str, user_text: str) -> str:
     dna = character_dna_context(CHARACTER_ID)
     diversity = build_repetition_guard(history, user_text)
     system = build_system_prompt(
-        character, rel_context, [m.content for m in memories], behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation
+        character, rel_context, [m.content for m in memories], behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation,
+        character_id=CHARACTER_ID,
     )
     messages = [{"role": "system", "content": system}]
     messages += [{"role": m.role, "content": m.content} for m in history]
@@ -132,7 +133,7 @@ async def reply(user_id: int, user_name: str, user_text: str) -> str:
 
 async def proactive_reply(user_id: int, user_name: str, hours_inactive: int) -> str:
     db_user_id = ensure_user(user_id, user_name)
-    character = get_anna()
+    character = get_character(CHARACTER_ID)
     memories = get_memories(db_user_id, CHARACTER_ID, 10)
     history = get_recent_messages(db_user_id, CHARACTER_ID, 8)
     from services.relationship_service import get_context
@@ -146,6 +147,7 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int) -> 
         character, rel_context, [m.content for m in memories],
         "Напиши одну короткую спонтанную реплику первой. Не объясняй, зачем пишешь, и не обязательно задавай вопрос.",
         state_context(user_id), adaptation,
+        character_id=CHARACTER_ID,
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": f"Пользователь не писал около {hours_inactive} часов. Напиши естественно первой, не упоминая отслеживание активности."})

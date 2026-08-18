@@ -6,18 +6,31 @@ from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PHOTO_C
 
 PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"video":VIDEO_COST_STARS}
 
-def record_payment(telegram_id:int, product:str, stars:int, charge_id:str):
+def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provider:str="stars", provider_payload:str|None=None):
     now=datetime.now(timezone.utc).replace(tzinfo=None)
     with SessionLocal() as s:
         if s.scalar(select(StarTransaction).where(StarTransaction.telegram_charge_id==charge_id)): return
         user=s.scalar(select(User).where(User.telegram_id==str(telegram_id)))
         if not user: raise ValueError("user not found")
-        s.add(StarTransaction(user_id=user.id,transaction_type="purchase",product=product,stars=stars,telegram_charge_id=charge_id))
+        s.add(StarTransaction(
+            user_id=user.id,
+            transaction_type="purchase",
+            product=product,
+            stars=stars,
+            telegram_charge_id=charge_id,
+            provider=provider,
+            provider_payload=provider_payload,
+        ))
         if product=="premium_month":
             current=s.scalar(select(Subscription).where(Subscription.user_id==user.id,Subscription.status=="active",Subscription.expires_at>now).order_by(Subscription.expires_at.desc()))
             start=current.expires_at if current and current.expires_at and current.expires_at>now else now
             s.add(Subscription(user_id=user.id,plan="premium",status="active",stars_amount=stars,started_at=now,expires_at=start+timedelta(days=30),telegram_charge_id=charge_id))
             user.photo_credits=(user.photo_credits or 0)+PREMIUM_MONTHLY_PHOTO_CREDITS
+            try:
+                from services.gamification_service import unlock_achievement
+                unlock_achievement(telegram_id, 'premium_member')
+            except Exception:
+                pass
         elif product in {"photo","custom_photo"}:
             user.photo_credits=(user.photo_credits or 0)+1
         s.commit()

@@ -18,6 +18,7 @@ STATUS_LABELS = {
 DEFAULT_CARDS = {
     "anna_01": {
         "display_name": "Анна",
+        "gender": "female",
         "age": 26,
         "short_bio": "Тёплая, общительная, уверенная и немного вредная. Любит вечерний город, музыку, стильные образы и лёгкие подколы.",
         "status": "active",
@@ -26,10 +27,29 @@ DEFAULT_CARDS = {
     },
     "alena_01": {
         "display_name": "Emily",
+        "gender": "female",
         "age": 25,
         "short_bio": "Яркая, уверенная и самостоятельная. Любит street fashion, автомобили, новые места и вечерний город.",
         "status": "soon",
         "button_emoji": "👱‍♀️",
+        "is_visible": True,
+    },
+    "maksim_01": {
+        "display_name": "Максим",
+        "gender": "male",
+        "age": 29,
+        "short_bio": "Заботливый, внимательный и эмоционально умный. Умеет слушать, поддерживать и делать обычный вечер особенным.",
+        "status": "soon",
+        "button_emoji": "👨🏻",
+        "is_visible": True,
+    },
+    "leo_01": {
+        "display_name": "Лео",
+        "gender": "male",
+        "age": 30,
+        "short_bio": "Уверенный, загадочный и с лёгким юмором. Знает, как затянуть разговор и заинтересовать с первых слов.",
+        "status": "soon",
+        "button_emoji": "🧑🏻",
         "is_visible": True,
     },
 }
@@ -39,6 +59,7 @@ DEFAULT_CARDS = {
 class CharacterCardView:
     character_id: str
     display_name: str
+    gender: str
     age: int
     short_bio: str
     status: str
@@ -59,6 +80,7 @@ def _to_view(row: CharacterCard) -> CharacterCardView:
     return CharacterCardView(
         character_id=row.character_id,
         display_name=row.display_name,
+        gender=row.gender or "female",
         age=int(row.age or 18),
         short_bio=row.short_bio or "",
         status=row.status or "soon",
@@ -108,7 +130,7 @@ def get_card(character_id: str) -> CharacterCardView | None:
 def update_card(character_id: str, **changes) -> CharacterCardView:
     ensure_default_cards()
     allowed = {
-        "display_name", "age", "short_bio", "status", "button_emoji",
+        "display_name", "gender", "age", "short_bio", "status", "button_emoji",
         "is_visible", "card_photo_file_id",
     }
     clean = {k: v for k, v in changes.items() if k in allowed}
@@ -119,6 +141,7 @@ def update_card(character_id: str, **changes) -> CharacterCardView:
         if row is None:
             defaults = DEFAULT_CARDS.get(character_id, {
                 "display_name": character_id,
+                "gender": "female",
                 "age": 18,
                 "short_bio": "",
                 "status": "soon",
@@ -141,9 +164,12 @@ def reset_card(character_id: str) -> CharacterCardView:
     return update_card(character_id, **defaults, card_photo_file_id=None)
 
 
-def create_card(character_id: str, display_name: str, age: int, short_bio: str, button_emoji: str = "👩") -> CharacterCardView:
+def create_card(character_id: str, display_name: str, age: int, short_bio: str, button_emoji: str = "👩", gender: str = "female") -> CharacterCardView:
     character_id = (character_id or '').strip().lower()
     display_name = (display_name or '').strip()
+    gender = (gender or "female").strip().lower()
+    if gender not in {"male", "female", "other"}:
+        raise ValueError("пол: male, female или other")
     if not character_id or not display_name:
         raise ValueError("id и имя обязательны")
     if not re.match(r'^[a-z0-9_]+$', character_id):
@@ -156,6 +182,7 @@ def create_card(character_id: str, display_name: str, age: int, short_bio: str, 
         row = CharacterCard(
             character_id=character_id,
             display_name=display_name,
+            gender=gender,
             age=age,
             short_bio=short_bio or "",
             status="soon",

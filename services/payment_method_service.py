@@ -17,6 +17,7 @@ TYPE_LABELS = {
     "stars": "Telegram Stars",
     "qr": "QR-код",
     "link": "Ссылка / провайдер",
+    "wallet_pay": "Wallet Pay (крипта/карта)",
 }
 
 SCOPE_LABELS = {
@@ -32,6 +33,14 @@ DEFAULT_METHODS = {
         "scope": "digital_stars",
         "is_system": True,
         "instructions": "Основной и обязательный способ оплаты цифровых товаров и услуг внутри Telegram.",
+    },
+    "wallet_pay": {
+        "display_name": "Wallet Pay",
+        "method_type": "wallet_pay",
+        "status": "soon",
+        "scope": "external_only",
+        "is_system": True,
+        "instructions": "Оплата криптовалютой (TON/USDT) или картой через встроенный Telegram Wallet. Требует WALLET_PAY_TOKEN.",
     },
     "lava": {
         "display_name": "Lava",
@@ -117,7 +126,7 @@ def get_payment_method(method_id: int) -> PaymentMethodView | None:
 
 
 def create_payment_method(method_type: str, display_name: str) -> PaymentMethodView:
-    if method_type not in {"qr", "link"}:
+    if method_type not in {"qr", "link", "wallet_pay"}:
         raise ValueError("unsupported payment method type")
     name = (display_name or "").strip()
     if not 1 <= len(name) <= 120:

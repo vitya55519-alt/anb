@@ -17,9 +17,13 @@ class User(Base):
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
     voice_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     voice_style: Mapped[str] = mapped_column(String(32), default="nova")
+    voice_anon_mode: Mapped[bool] = mapped_column(Boolean, default=False)
     proactive_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     appearance_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     photo_credits: Mapped[int] = mapped_column(Integer, default=0)
+    attention_points: Mapped[int] = mapped_column(Integer, default=0)
+    streak_count: Mapped[int] = mapped_column(Integer, default=0)
+    streak_last_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     adult_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 class Message(Base):
@@ -79,6 +83,7 @@ class CharacterState(Base):
     affection: Mapped[float] = mapped_column(Float, default=0.45)
     playfulness: Mapped[float] = mapped_column(Float, default=0.55)
     irritation: Mapped[float] = mapped_column(Float, default=0.0)
+    attention_points: Mapped[int] = mapped_column(Integer, default=0)
     activity: Mapped[str | None] = mapped_column(String(255), nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     outfit: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -94,6 +99,7 @@ class CharacterCard(Base):
     __tablename__ = "character_cards"
     character_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     display_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    gender: Mapped[str] = mapped_column(String(16), default="female")
     age: Mapped[int] = mapped_column(Integer, default=18)
     short_bio: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(24), default="soon")
@@ -150,7 +156,34 @@ class StarTransaction(Base):
     product: Mapped[str] = mapped_column(String(64), nullable=False)
     stars: Mapped[int] = mapped_column(Integer, nullable=False)
     telegram_charge_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    provider: Mapped[str] = mapped_column(String(32), default="stars")
+    provider_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class WalletPayTransaction(Base):
+    __tablename__ = "wallet_pay_transactions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    invoice_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    product: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    stars_equivalent: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class Achievement(Base):
+    __tablename__ = "achievements"
+    __table_args__ = (UniqueConstraint("user_id", "achievement_key", name="uq_user_achievement"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    achievement_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    unlocked_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class ProductEvent(Base):

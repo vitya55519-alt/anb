@@ -22,7 +22,7 @@ from config import (
     TELEGRAM_TOKEN, PREMIUM_MONTHLY_STARS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS,
     ADMIN_TELEGRAM_IDS, CHARACTER_ID, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS,
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
-    GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS,
+    GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, WALLET_PAY_ENABLED,
 )
 from services.user_service import (
     ensure_user, get_user, get_state, update_user_settings, touch_user,
@@ -276,7 +276,7 @@ def characters_keyboard():
 
 def admin_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='👩 Карточки девушек', callback_data='admin:cards')],
+        [InlineKeyboardButton(text='🎭 Карточки персонажей', callback_data='admin:cards')]
         [InlineKeyboardButton(text='💳 Способы оплаты', callback_data='admin:payments')],
         [InlineKeyboardButton(text='📚 Библиотека фото', callback_data='admin:library_help')],
         [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats')],
@@ -285,7 +285,7 @@ def admin_keyboard():
 
 def admin_cards_keyboard():
     rows = [[InlineKeyboardButton(text=card.button_text, callback_data=f'admin:card:{card.character_id}')] for card in list_cards()]
-    rows.append([InlineKeyboardButton(text='➕ Добавить девушку', callback_data='admin:cardadd:start')])
+    rows.append([InlineKeyboardButton(text='➕ Добавить персонажа', callback_data='admin:cardadd:start')])
     rows.append([InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -294,7 +294,8 @@ def admin_card_keyboard(character_id: str):
     rows = [
         [InlineKeyboardButton(text='👁 Предпросмотр', callback_data=f'admin:preview:{character_id}')],
         [InlineKeyboardButton(text='✏️ Имя', callback_data=f'admin:cardedit:{character_id}:display_name'),
-         InlineKeyboardButton(text='🎂 Возраст', callback_data=f'admin:cardedit:{character_id}:age')],
+         InlineKeyboardButton(text='⚧ Пол', callback_data=f'admin:cardedit:{character_id}:gender')],
+        [InlineKeyboardButton(text='🎂 Возраст', callback_data=f'admin:cardedit:{character_id}:age')],
         [InlineKeyboardButton(text='📝 Описание', callback_data=f'admin:cardedit:{character_id}:short_bio')],
         [InlineKeyboardButton(text='🏷 Статус', callback_data=f'admin:status:{character_id}'),
          InlineKeyboardButton(text='🖼 Фото', callback_data=f'admin:cardedit:{character_id}:photo')],
@@ -305,7 +306,7 @@ def admin_card_keyboard(character_id: str):
     from services.character_card_service import DEFAULT_CARDS
     if character_id not in DEFAULT_CARDS:
         rows.append([InlineKeyboardButton(text='🗑 Удалить персонажа', callback_data=f'admin:carddelete:{character_id}')])
-    rows.append([InlineKeyboardButton(text='⬅️ Все девушки', callback_data='admin:cards')])
+    rows.append([InlineKeyboardButton(text='⬅️ Все персонажи', callback_data='admin:cards')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -589,11 +590,14 @@ def premium_keyboard():
         if GEMINI_VIDEO_ENABLED
         else InlineKeyboardButton(text='🔒 🎬 Оживить фото · скоро', callback_data='future:animate_photo')
     )
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text=f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars / 30 дней', callback_data='buy:premium')],
-        [video_button],
-        [InlineKeyboardButton(text='🔒 📞 Звонок с Анной · скоро', callback_data='future:anna_call')],
-    ])
+    ]
+    if WALLET_PAY_ENABLED:
+        rows.append([InlineKeyboardButton(text=f'💎 Premium — Wallet Pay (крипта/карта)', callback_data='walletpay:premium')])
+    rows.append([video_button])
+    rows.append([InlineKeyboardButton(text='🔒 📞 Звонок с персонажем · скоро', callback_data='future:anna_call')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def adult_keyboard():
@@ -872,7 +876,7 @@ async def consent_accept(cq: types.CallbackQuery):
     set_adult_confirmed(cq.from_user.id, True)
     track_event(ensure_user(cq.from_user.id, cq.from_user.first_name), 'consent_accepted', metadata={'terms': TERMS_VERSION, 'privacy': PRIVACY_VERSION})
     await cq.answer('готово')
-    await cq.message.answer('Отлично 🙂 теперь выбери девушку:', reply_markup=onboarding_character_keyboard())
+    await cq.message.answer('Отлично 🙂 теперь выбери персонажа:', reply_markup=onboarding_character_keyboard())
 
 
 @dp.callback_query(F.data == 'consent:terms')
@@ -956,7 +960,7 @@ async def features_button(message: types.Message):
 @dp.message(F.text == '👩 Персонажи')
 async def characters_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name)
-    await message.answer('выбери девушку 👇', reply_markup=characters_keyboard())
+    await message.answer('выбери персонажа 👇', reply_markup=characters_keyboard())
 
 
 @dp.callback_query(F.data.startswith('character:view:'))
@@ -1049,8 +1053,12 @@ async def admin_card_edit(cq: types.CallbackQuery):
     if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
     _, _, character_id, field = cq.data.split(':', 3)
-    if field not in {'display_name', 'age', 'short_bio', 'photo'}:
+    if field not in {'display_name', 'age', 'short_bio', 'photo', 'gender'}:
         await cq.answer('неизвестное поле', show_alert=True)
+        return
+    if field == 'gender':
+        await cq.answer()
+        await cq.message.answer('Выбери пол персонажа:', reply_markup=_admin_gender_keyboard(f'admin:cardgender:{character_id}'))
         return
     _character_card_edit_sessions[cq.from_user.id] = {'character_id': character_id, 'field': field}
     prompts = {
@@ -1061,6 +1069,39 @@ async def admin_card_edit(cq: types.CallbackQuery):
     }
     await cq.answer()
     await cq.message.answer(prompts[field] + '\n\n/cancel — отменить редактирование')
+
+
+@dp.callback_query(F.data.startswith('admin:cardadd:gender:'))
+async def admin_card_add_gender(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    gender = cq.data.rsplit(':', 1)[1]
+    sess = _character_card_edit_sessions.get(cq.from_user.id)
+    if not sess or sess.get('mode') != 'add' or sess.get('step') != 'gender':
+        await cq.answer('сессия устарела', show_alert=True)
+        return
+    sess['draft']['gender'] = gender
+    sess['step'] = 'age'
+    await cq.answer()
+    await cq.message.answer('Шаг 4/5: отправь возраст числом (18–99).\n\n/cancel — отменить')
+
+
+@dp.callback_query(F.data.startswith('admin:cardgender:'))
+async def admin_card_set_gender(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    parts = cq.data.split(':', 3)
+    if len(parts) != 3:
+        await cq.answer('неверный формат', show_alert=True)
+        return
+    _, _, character_id, gender = parts
+    try:
+        update_card(character_id, gender=gender)
+    except ValueError as exc:
+        await cq.answer(str(exc), show_alert=True)
+        return
+    await cq.answer('пол обновлён')
+    await cq.message.answer('✅ Карточка обновлена.\n\n' + _admin_card_summary(character_id), reply_markup=admin_card_keyboard(character_id))
 
 
 @dp.callback_query(F.data.startswith('admin:status:'))
@@ -1117,6 +1158,14 @@ async def admin_card_reset(cq: types.CallbackQuery):
     await cq.message.answer(_admin_card_summary(character_id), reply_markup=admin_card_keyboard(character_id))
 
 
+def _admin_gender_keyboard(prefix: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='👨 Мужской', callback_data=f'{prefix}:male'),
+         InlineKeyboardButton(text='👩 Женский', callback_data=f'{prefix}:female')],
+        [InlineKeyboardButton(text='🎭 Другое', callback_data=f'{prefix}:other')],
+    ])
+
+
 @dp.callback_query(F.data == 'admin:cardadd:start')
 async def admin_card_add_start(cq: types.CallbackQuery):
     if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
@@ -1124,8 +1173,8 @@ async def admin_card_add_start(cq: types.CallbackQuery):
     _character_card_edit_sessions[cq.from_user.id] = {'mode': 'add', 'step': 'id'}
     await cq.answer()
     await cq.message.answer(
-        'Добавляем новую девушку.\n\n'
-        'Шаг 1/4: отправь уникальный ID маленькими латинскими буквами, например «maria_01» или «luna».\n\n'
+        'Добавляем нового персонажа.\n\n'
+        'Шаг 1/5: отправь уникальный ID маленькими латинскими буквами, например «maria_01» или «luna».\n\n'
         '/cancel — отменить'
     )
 
@@ -1144,7 +1193,7 @@ async def admin_card_delete(cq: types.CallbackQuery):
         await cq.answer(str(exc), show_alert=True)
         return
     _character_card_edit_sessions.pop(cq.from_user.id, None)
-    await cq.message.answer('👩 Карточки девушек', reply_markup=admin_cards_keyboard())
+    await cq.message.answer('🎭 Карточки персонажей', reply_markup=admin_cards_keyboard())
 
 
 @dp.callback_query(F.data == 'admin:payments')
@@ -1591,8 +1640,16 @@ async def library_regroup_cmd(message: types.Message):
 @dp.message(Command('help'))
 async def help_cmd(message: types.Message):
     await message.answer(
-        'просто пиши мне как обычно 🙂\n/photo — фото\n/premium — Premium\n/settings — настройки\n'
-        '/collection — коллекция\n/stories — истории\n/wake 08:00 — разбудить\n/timezone Europe/Moscow — часовой пояс\n/reset — очистить переписку и память\n/privacy · /terms · /support · /delete_me'
+        'просто пиши мне как обычно 🙂\n'
+        '/photo — фото персонажа\n'
+        '/premium · /buy — Premium и кредиты (Stars + Wallet Pay)\n'
+        '/profile — прогресс, стрик, достижения и кредиты\n'
+        '/collection — коллекция\n/stories — истории\n'
+        '/voice · /voice_anon — голосовые ответы и анонимный режим\n'
+        '/settings — настройки\n'
+        '/wake 08:00 — разбудить\n/timezone Europe/Moscow — часовой пояс\n'
+        '/reset — очистить переписку и память\n'
+        '/privacy · /terms · /support · /delete_me'
     )
 
 
@@ -1604,15 +1661,24 @@ async def settings(message: types.Message):
     profile = get_profile(user.id, CHARACTER_ID) if user else None
     language = {'ru':'Русский','en':'English','zh':'中文','es':'Español','de':'Deutsch','fr':'Français','it':'Italiano','pt':'Português','uk':'Українська','ja':'日本語','ko':'한국어'}.get(getattr(profile, 'preferred_language', 'auto'), getattr(profile, 'preferred_language', 'Авто') if profile else 'Авто')
     await message.answer(
-        f'Настройки Анны\n\nЧасовой пояс: {user.timezone}\n'
+        f'Настройки персонажа\n\nЧасовой пояс: {user.timezone}\n'
         f'Язык общения: {language} · адаптируется автоматически\n'
         f'Голосовые ответы: {"вкл" if user.voice_enabled else "выкл"}\n'
+        f'Голосовой аноним-режим: {"вкл" if user.voice_anon_mode else "выкл"}\n'
         f'Инициативные сообщения: {"вкл" if user.proactive_enabled else "выкл"}\n'
         f'Premium: {"активен" if is_premium(message.from_user.id) else "нет"}\n'
         f'Фото-кредиты: {credits}\n18+: {"подтверждено" if is_adult_confirmed(message.from_user.id) else "не подтверждено"}\n\n'
-        'Стиль общения и знакомые выражения Анна постепенно подхватывает сама.\n'
-        '/voice · /notifications · /timezone'
+        'Стиль общения и знакомые выражения персонаж постепенно подхватывает сам.\n'
+        '/voice · /voice_anon · /notifications · /timezone'
     )
+
+
+@dp.message(Command('profile'))
+async def profile_cmd(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name)
+    from services.gamification_service import get_profile_summary, format_profile_summary
+    summary = get_profile_summary(message.from_user.id)
+    await message.answer(format_profile_summary(summary))
 
 
 @dp.message(Command('adult'))
@@ -1900,6 +1966,48 @@ async def buy_premium(cq: types.CallbackQuery):
     await send_stars_invoice(cq.message.chat.id, 'Anna Premium', 'Premium-доступ на 30 дней', 'premium_month', PREMIUM_MONTHLY_STARS)
 
 
+@dp.callback_query(F.data.startswith('walletpay:'))
+async def walletpay_callback(cq: types.CallbackQuery):
+    ensure_user(cq.from_user.id, cq.from_user.first_name)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    if not WALLET_PAY_ENABLED:
+        await cq.answer('Wallet Pay не настроен', show_alert=True); return
+    product = cq.data.split(':', 1)[1]
+    stars = PREMIUM_MONTHLY_STARS if product == 'premium' else int(product.split(':')[-1])
+    description = 'Anna Premium — 30 дней' if product == 'premium' else f'Пополнение на {stars} Stars'
+    from services.wallet_pay_service import create_invoice
+    invoice = await create_invoice(cq.from_user.id, 'premium_month' if product == 'premium' else 'topup', stars, description)
+    if not invoice:
+        await cq.answer('не удалось создать счёт', show_alert=True)
+        return
+    await cq.answer()
+    await cq.message.answer(
+        f'Счёт на {invoice["amount_usd"]:.2f} USD создан.\n\n'
+        'Оплата криптовалютой (TON/USDT) или картой через Telegram Wallet:',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='💎 Оплатить в Wallet', url=invoice['payment_link'])],
+            [InlineKeyboardButton(text='🔍 Проверить статус', callback_data=f'walletpay_status:{invoice["invoice_id"]}')],
+        ]),
+    )
+
+
+@dp.callback_query(F.data.startswith('walletpay_status:'))
+async def walletpay_status_callback(cq: types.CallbackQuery):
+    invoice_id = cq.data.split(':', 1)[1]
+    from services.wallet_pay_service import get_invoice_status
+    status = await get_invoice_status(invoice_id)
+    if not status:
+        await cq.answer('не удалось получить статус', show_alert=True)
+        return
+    payment_status = status.get('status', status.get('paymentStatus', 'unknown'))
+    await cq.answer(f'статус: {payment_status}')
+    if payment_status in {'PAID', 'COMPLETED', 'paid', 'completed'}:
+        from services.wallet_pay_service import process_webhook
+        process_webhook(status)
+        await cq.message.answer('✅ Оплата получена. Спасибо!')
+
+
 @dp.pre_checkout_query()
 async def pre_checkout(query: types.PreCheckoutQuery):
     payload=query.invoice_payload or ''
@@ -2139,6 +2247,19 @@ async def voice_toggle(message: types.Message):
     await message.answer('голосовые ответы включены 🎙️' if new else 'голосовые ответы выключены')
 
 
+@dp.message(Command('voice_anon'))
+async def voice_anon_toggle(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name)
+    user = get_user(message.from_user.id)
+    new = not user.voice_anon_mode
+    update_user_settings(message.from_user.id, voice_anon_mode=new)
+    await message.answer(
+        'голосовой аноним-режим включён 🔒\nя не буду использовать твоё имя в голосовых ответах'
+        if new else
+        'голосовой аноним-режим выключен'
+    )
+
+
 @dp.message(Command('voice_style'))
 async def voice_style(message: types.Message):
     parts = (message.text or '').split(maxsplit=1)
@@ -2268,7 +2389,8 @@ async def send_answer(message: types.Message, text: str):
     if user and user.voice_enabled:
         try:
             audio = await synthesize_bytes(text, user.voice_style)
-            await message.answer_voice(BufferedInputFile(audio, filename='anna.ogg'))
+            filename = 'voice.ogg' if user.voice_anon_mode else 'anna.ogg'
+            await message.answer_voice(BufferedInputFile(audio, filename=filename))
             return
         except Exception:
             logger.exception('tts failed')
@@ -2566,8 +2688,14 @@ async def voice_message(message: types.Message):
             return
         before_level = get_relationship_level(message.from_user.id)
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text)
+            display_name = 'ты' if (user and user.voice_anon_mode) else (message.from_user.first_name or 'ты')
+            answer = await anna_reply(message.from_user.id, display_name, text)
         await send_answer(message, answer)
+        try:
+            from services.gamification_service import unlock_achievement
+            unlock_achievement(message.from_user.id, 'voice_user')
+        except Exception:
+            pass
         # Detect if Anna offered a photo in her voice response
         if _PHOTO_OFFER_DETECT.search(answer):
             _photo_offer_pending[message.from_user.id] = _time.time()
@@ -2713,28 +2841,29 @@ async def text_message(message: types.Message):
                         raise ValueError('Такой ID уже есть.')
                     draft['character_id'] = cid
                     card_edit['step'] = 'display_name'
-                    await message.answer('Шаг 2/4: отправь имя девушки.\n\n/cancel — отменить')
+                    await message.answer('Шаг 2/5: отправь имя персонажа.\n\n/cancel — отменить')
                     return
                 elif step == 'display_name':
                     if not 1 <= len(value) <= 48:
                         raise ValueError('Имя должно быть от 1 до 48 символов.')
                     draft['display_name'] = value
-                    card_edit['step'] = 'age'
-                    await message.answer('Шаг 3/4: отправь возраст числом (18–99).\n\n/cancel — отменить')
+                    card_edit['step'] = 'gender'
+                    await message.answer('Шаг 3/5: выбери пол персонажа.', reply_markup=_admin_gender_keyboard('admin:cardadd:gender'))
                     return
                 elif step == 'age':
                     if not value.isdigit() or not 18 <= int(value) <= 99:
                         raise ValueError('Возраст должен быть числом от 18 до 99.')
                     draft['age'] = int(value)
                     card_edit['step'] = 'short_bio'
-                    await message.answer('Шаг 4/4: отправь короткое описание.\n\n/cancel — отменить')
+                    await message.answer('Шаг 5/5: отправь короткое описание.\n\n/cancel — отменить')
                     return
                 elif step == 'short_bio':
                     if not 1 <= len(value) <= 900:
                         raise ValueError('Описание должно быть от 1 до 900 символов.')
+                    emoji = {'male': '👨', 'female': '👩', 'other': '🎭'}.get(draft.get('gender', 'female'), '👩')
                     card = create_card(
                         draft['character_id'], draft['display_name'],
-                        draft['age'], value, draft.get('button_emoji', '👩')
+                        draft['age'], value, emoji, draft.get('gender', 'female')
                     )
                     _character_card_edit_sessions.pop(message.from_user.id, None)
                     await message.answer(
@@ -2779,6 +2908,12 @@ async def text_message(message: types.Message):
     track_event(uid, 'chat_user_message', metadata={'kind': 'text'})
     _track_proactive_reply_if_any(message.from_user.id, uid)
     cancel_active_wake(message.from_user.id)
+    try:
+        from services.gamification_service import touch_activity, check_first_message
+        touch_activity(message.from_user.id)
+        check_first_message(message.from_user.id)
+    except Exception:
+        pass
     if not can_send_message(message.from_user.id):
         await message.answer('на сегодня бесплатный лимит сообщений закончился. Premium: /premium')
         return
@@ -2852,6 +2987,8 @@ async def main():
         types.BotCommand(command='delete_me', description='Удалить мои данные'),
         types.BotCommand(command='settings', description='Настройки'),
         types.BotCommand(command='voice', description='Голосовые ответы'),
+        types.BotCommand(command='voice_anon', description='Анонимный голосовой режим'),
+        types.BotCommand(command='profile', description='Прогресс, стрик, достижения'),
         types.BotCommand(command='notifications', description='Инициативные сообщения'),
         types.BotCommand(command='wake', description='Будильник: /wake 08:00'),
         types.BotCommand(command='reset', description='Очистить память и историю'),

@@ -331,6 +331,71 @@ EXPRESSION_IDENTITY = (
     'avoid a blank stern expression and avoid an exaggerated forced grin or unnaturally wide toothy smile.'
 )
 OPENAI_IDENTITY_LOCK = ORDINARY_IDENTITY_LOCK
+
+
+def _character_identity_lock(character_id: str, seedream: bool = False) -> tuple[str, str, str, str]:
+    """Return (identity, personal_note, safety, expression) for a character.
+
+    For Anna the existing reference-based locks are preserved.
+    For other characters a generic lock is built from the character card.
+    """
+    if character_id == 'anna_01':
+        if seedream:
+            return (
+                SEEDREAM_IDENTITY_LOCK,
+                'This is a tasteful adult fashion/glamour photo made specifically to send to someone she is chatting with. '
+                'The photo must plausibly be made by Anna herself using a front camera, a mirror, or a smartphone self-timer; no invisible photographer. '
+                'Keep the styling polished and personal while remaining non-explicit.',
+                'Tasteful adult fashion/editorial styling only. No nudity, no exposed nipples or genitals. '
+                'For personal or lingerie scenes, use elegant adult lingerie with opaque garment coverage; preserve identity above styling.',
+                EXPRESSION_IDENTITY,
+            )
+        return (
+            OPENAI_IDENTITY_LOCK,
+            'This should feel like a normal personal photo Anna has just taken herself to send to someone she is chatting with. '
+            'Every frame must plausibly be made by Anna herself using a front camera, a mirror, or a smartphone self-timer; no invisible photographer. '
+            'Use believable smartphone framing and a natural expression. The result should feel Pinterest-like and intentionally styled, '
+            'but still like a real personal lifestyle photo rather than a studio glamour shoot.',
+            OPENAI_GENERAL_AUDIENCE_BLOCK,
+            EXPRESSION_IDENTITY,
+        )
+
+    from services.character_card_service import get_card
+    card = get_card(character_id)
+    name = card.display_name if card else character_id
+    age = card.age if card else 25
+    bio = card.short_bio if card else ''
+    gender = card.gender if card else 'female'
+    pronoun = 'he' if gender == 'male' else 'she'
+    pronoun_cap = 'He' if gender == 'male' else 'She'
+    figure = (
+        'a fit masculine physique with consistent build and proportions'
+        if gender == 'male' else
+        'a consistent feminine physique, body proportions and silhouette'
+    )
+    identity = (
+        f'PHOTO IDENTITY: Create the SAME fictional adult {gender} character, {name}, age {age}. '
+        f'{bio} '.rstrip() + '. '
+        f'{pronoun_cap} is the same person across all photos. Preserve consistent facial features, hair, and {figure}. '
+        f'Do not substitute another person. Use the requested scene, outfit, pose, camera and lighting for everything else.'
+    )
+    personal = (
+        f'This should feel like a normal personal photo {name} has just taken to send to someone {pronoun} is chatting with. '
+        f'Every frame must plausibly be made by {pronoun} using a front camera, a mirror, or a smartphone self-timer; no invisible photographer. '
+        f'Use believable smartphone framing and a natural expression. Keep it natural and lifestyle-like.'
+    )
+    safety = (
+        'Mainstream general-audience lifestyle photograph. The person remains fully clothed in opaque, scene-appropriate clothing. '
+        'Use a natural everyday pose and composition centered on the person, outfit and environment. '
+        'The image should read as an everyday social-media or personal travel/lifestyle photo.'
+    )
+    expression = (
+        f'EXPRESSION: {name} has a natural warm relaxed expression in generated photos. Keep it subtle, relaxed and believable; '
+        f'avoid a blank stern expression and avoid an exaggerated forced grin or unnaturally wide toothy smile.'
+    )
+    return identity, personal, safety, expression
+
+
 SEEDREAM_IDENTITY_LOCK = (
     'The supplied reference defines Anna\u2019s NEW permanent canonical identity. Create the SAME fictional adult woman, Anna, age 26. '
     'Identity preservation has absolute priority. Preserve the exact face, eye shape and spacing, dark defined eyebrows, refined nose, full lips, cheekbones, jawline, '
@@ -813,7 +878,7 @@ def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
     return variants[index % len(variants)]
 
 
-def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False, relationship_level: int = 1) -> str:
+def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False, relationship_level: int = 1, character_id: str = CHARACTER_ID) -> str:
     scene = SCENES.get(request.scene, SCENES['selfie'])
     angle = _shot_variant(request.scene, shot_index, request.angle)
     outfits = tuple(request.pack_outfits) if request.pack_outfits else (request.clothing,)
@@ -830,43 +895,25 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     visual_rule = (LEVEL_VISUAL_RULES if seedream else OPENAI_LEVEL_VISUAL_RULES).get(level_key, LEVEL_VISUAL_RULES[1])
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
-    if seedream:
-        identity = SEEDREAM_IDENTITY_LOCK
-        personal = (
-            'This is a tasteful adult fashion/glamour photo made specifically to send to someone she is chatting with. '
-            'The photo must plausibly be made by Anna herself using a front camera, a mirror, or a smartphone self-timer; no invisible photographer. '
-            'Keep the styling polished and personal while remaining non-explicit.'
-        )
-        safety = (
-            'Tasteful adult fashion/editorial styling only. No nudity, no exposed nipples or genitals. '
-            'For personal or lingerie scenes, use elegant adult lingerie with opaque garment coverage; preserve identity above styling.'
-        )
-    else:
-        identity = OPENAI_IDENTITY_LOCK
-        personal = (
-            'This should feel like a normal personal photo Anna has just taken herself to send to someone she is chatting with. '
-            'Every frame must plausibly be made by Anna herself using a front camera, a mirror, or a smartphone self-timer; no invisible photographer. '
-            'Use believable smartphone framing and a natural expression. The result should feel Pinterest-like and intentionally styled, '
-            'but still like a real personal lifestyle photo rather than a studio glamour shoot.'
-        )
-        safety = OPENAI_GENERAL_AUDIENCE_BLOCK
-    body_reinforcement = BODY_REINFORCEMENT if (not seedream and request.scene in BODY_REINFORCEMENT_SCENES) else ''
+    identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream)
+    body_reinforcement = BODY_REINFORCEMENT if (character_id == 'anna_01' and not seedream and request.scene in BODY_REINFORCEMENT_SCENES) else ''
+    figure_note = (
+        'Use tasteful fashion fit and waist definition while preserving the underlying body proportions and full bust volume. ' if seedream else
+        'Use a well-fitted outfit that preserves the person\u2019s physique and proportions. Use a natural everyday pose with the visual focus on the person, outfit and environment. '
+    )
     return (
         f'{identity}\n'
         f'SCENE: {scene}. {request.location}.\n'
         f'SEASON/WEATHER: {season}. {season_rule}\n'
         f'RELATIONSHIP VISUAL PROGRESSION: {visual_rule}\n'
         f'PROGRESSION PACK FRAME {shot_index + 1}/{PHOTO_SET_SIZE}: {tier_rule}\n'
-        f'WARDROBE: {wardrobe}. ' + (
-            'Use tasteful fashion fit and waist definition while preserving the underlying body proportions and full bust volume. ' if seedream else
-            'Use a well-fitted outfit that preserves Anna\u2019s curvy physique, full bust and hourglass proportions exactly as shown by the references. Do not reduce or flatten her figure. Use a natural everyday pose with the visual focus on the person, outfit and environment. '
-        ) +
+        f'WARDROBE: {wardrobe}. {figure_note}'
         'The outfit must be believable for this exact venue, weather and time of day. Do not reuse a heavy sweater or hoodie in a visibly warm summer scene.\n'
         f'HAIRSTYLE: {request.hairstyle}.\n'
         f'CAMERA/POSE: {angle}.\n'
         f'{body_reinforcement}\n'
         f'MOOD: {request.mood}.\n'
-        f'{EXPRESSION_IDENTITY}\n'
+        f'{expression_identity}\n'
         f'{personal}\n'
         'LIGHTING: use lighting that naturally belongs to the location and time of day; realistic shadows, cinematic but believable contrast.\n'
         f'{safety}\n'
