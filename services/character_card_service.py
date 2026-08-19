@@ -52,6 +52,15 @@ DEFAULT_CARDS = {
         "button_emoji": "🧑🏻",
         "is_visible": True,
     },
+    "maria_01": {
+        "display_name": "Мария",
+        "gender": "female",
+        "age": 24,
+        "short_bio": "Нежная, заботливая и очень сексуальная. Спрашивает про твой день, слушает, обнимает и создаёт уют, от которого не хочется уходить.",
+        "status": "premium",
+        "button_emoji": "💃",
+        "is_visible": True,
+    },
 }
 
 

@@ -159,6 +159,7 @@ _payment_method_edit_sessions: dict[int, dict] = {}
 LIBRARY_CHARACTERS = {
     'anna_01': '👩🏻 Анна',
     'alena_01': '👱‍♀️ Emily',
+    'maria_01': '💃 Мария',
 }
 
 LIBRARY_SCENES = [
@@ -919,9 +920,25 @@ async def onboarding_character_select(cq: types.CallbackQuery):
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     if character_id != CHARACTER_ID or card.status != 'active':
         track_event(uid, 'fake_door_click', metadata={'feature': f'{character_id}_onboarding'})
-        await cq.answer('эта девушка пока закрыта', show_alert=True)
         await _send_onboarding_character_card(cq.message.chat.id, character_id, cq.from_user.id)
-        await cq.message.answer('Пока полностью доступна Анна 👇', reply_markup=onboarding_character_keyboard())
+        if card.status == 'premium':
+            await cq.answer('⭐ Premium-персонаж')
+            if is_premium(cq.from_user.id):
+                await cq.message.answer(
+                    f'⭐ {card.display_name} — Premium-персонаж. У тебя уже есть Premium, но полный режим для неё скоро откроется.\n'
+                    'Пока полностью доступна Анна 👇',
+                    reply_markup=onboarding_character_keyboard(),
+                )
+            else:
+                await cq.message.answer(
+                    f'⭐ {card.display_name} доступна с Premium.\n\n'
+                    f'Premium — {PREMIUM_MONTHLY_STARS} Stars на 30 дней.\n'
+                    'Нежная, заботливая и очень сексуальная — она будет спрашивать про твой день, слушать и создавать уют.\n',
+                    reply_markup=premium_keyboard(),
+                )
+        else:
+            await cq.answer('эта девушка пока закрыта', show_alert=True)
+            await cq.message.answer('Пока полностью доступна Анна 👇', reply_markup=onboarding_character_keyboard())
         return
     track_event(uid, 'character_selected', metadata={'character_id': character_id})
     await cq.answer('Анна выбрана')
@@ -975,6 +992,12 @@ async def character_view(cq: types.CallbackQuery):
         track_event(uid, 'fake_door_click', metadata={'feature': f'{character_id}_character_card'})
     await cq.answer()
     await _send_character_card(cq.message.chat.id, character_id, viewer_id=cq.from_user.id)
+    if card.status == 'premium' and character_id != CHARACTER_ID and not is_premium(cq.from_user.id):
+        await cq.message.answer(
+            f'⭐ {card.display_name} — Premium-персонаж.\n'
+            f'Открыть за {PREMIUM_MONTHLY_STARS} Stars на 30 дней:',
+            reply_markup=premium_keyboard(),
+        )
 
 
 # Backward compatibility for buttons sent by V3.9.x.
@@ -2540,17 +2563,14 @@ async def library_photo_upload(message: types.Message):
     if message.from_user.id in ADMIN_TELEGRAM_IDS and card_edit and card_edit.get('field') == 'photo':
         ph = message.photo[-1]
         allowed, reason = await _library_photo_is_allowed(ph)
-        if not allowed:
-            await message.answer(
-                'это фото не прошло проверку и не будет установлено в публичную карточку.'
-                if reason != 'moderation_error' else
-                'не удалось проверить фото. карточка не изменена — попробуй ещё раз позже.'
-            )
+        if not allowed and reason not in ('moderation_error', 'disabled'):
+            await message.answer('это фото не прошло проверку и не будет установлено в карточку.')
             return
         character_id = card_edit['character_id']
         update_card(character_id, card_photo_file_id=ph.file_id)
         _character_card_edit_sessions.pop(message.from_user.id, None)
-        await message.answer('🖼 Фото карточки сохранено.', reply_markup=admin_card_keyboard(character_id))
+        warn = ' ⚠️ moderation недоступна — фото сохранено без проверки.' if reason == 'moderation_error' else ''
+        await message.answer(f'🖼 Фото карточки сохранено.{warn}', reply_markup=admin_card_keyboard(character_id))
         return
 
     sess = _library_import_sessions.get(message.from_user.id)
