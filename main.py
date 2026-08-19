@@ -780,7 +780,7 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
     try:
         track_event(uid, 'photo_generation_started', metadata={'scene': request.scene, 'delivery_type': delivery_type})
         async with ChatActionSender.upload_photo(bot=bot, chat_id=chat_id):
-            sent = await deliver_photo(bot, chat_id, telegram_id, request, delivery_type)
+            sent = await deliver_photo(bot, chat_id, telegram_id, request, delivery_type, character_id=get_user_character(telegram_id))
         track_event(uid, 'photo_job_completed', metadata={'scene': request.scene, 'count': len(sent), 'delivery_type': delivery_type})
         if len(sent) >= 2 and random.random() < 0.30:
             await bot.send_message(chat_id, 'кстати, такой стиль тебе заходит?', reply_markup=photo_feedback_keyboard(request.scene))
@@ -811,7 +811,7 @@ async def _start_photo_background(chat_id: int, telegram_id: int, request: Photo
     try:
         library_fast = False
         if delivery_type in {'free', 'story'}:
-            library_fast = choose_unseen_pack(telegram_id, CHARACTER_ID, request.scene, get_relationship_level(telegram_id)) is not None
+            library_fast = choose_unseen_pack(telegram_id, get_user_character(telegram_id), request.scene, get_relationship_level(telegram_id)) is not None
         if not library_fast:
             allowed, reason = budget_allows_photo()
             if not allowed:
@@ -837,7 +837,7 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
         await bot.send_message(chat_id, 'Сначала подтверди 18+ и условия через /start.', reply_markup=consent_keyboard())
         return
     track_event(db_uid, 'photo_requested', metadata={'scene': request.scene, 'customized': bool(request.customized)})
-    observe_photo_preference(db_uid, request.scene, request.clothing, request.hairstyle, request.location, CHARACTER_ID)
+    observe_photo_preference(db_uid, request.scene, request.clothing, request.hairstyle, request.location, get_user_character(telegram_id))
     stage = get_relationship_stage(telegram_id)
     if not scene_allowed_for_stage(request.scene, stage):
         track_event(db_uid, 'photo_locked_view', metadata={'scene': request.scene, 'level': get_relationship_level(telegram_id)})
@@ -1835,7 +1835,7 @@ async def collection_cmd(message: types.Message):
     if not has_accepted(message.from_user.id):
         await message.answer('Сначала /start и подтверждение 18+.'); return
     level=get_relationship_level(message.from_user.id)
-    snap=collection_progress(message.from_user.id, CHARACTER_ID, level)
+    snap=collection_progress(message.from_user.id, get_user_character(message.from_user.id), level)
     lines=[f'📸 Коллекция Анны: {snap["seen"]}/{snap["total"]} открыто']
     for row in snap['per_level']:
         if row['unlocked']:
@@ -2187,7 +2187,7 @@ async def photo_feedback_callback(cq: types.CallbackQuery):
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     state = get_state(cq.from_user.id)
     liked = action == 'like'
-    observe_photo_feedback(uid, liked, scene, getattr(state, 'outfit', '') or '', getattr(state, 'hairstyle', '') or '', CHARACTER_ID)
+    observe_photo_feedback(uid, liked, scene, getattr(state, 'outfit', '') or '', getattr(state, 'hairstyle', '') or '', get_user_character(cq.from_user.id))
     track_event(uid, 'photo_feedback_like' if liked else 'photo_feedback_dislike', metadata={'scene': scene})
     await cq.answer('запомнила 😌' if liked else 'поняла, буду менять стиль')
     try:

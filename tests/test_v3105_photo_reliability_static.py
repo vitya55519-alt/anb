@@ -25,6 +25,6 @@ def test_private_scenes_are_not_broad_fallback_targets():
 
 def test_body_identity_uses_neutral_ratio_language():
     body = PHOTO.split('ANNA_BODY_IDENTITY = (', 1)[1].split(')\nOPENAI_REFERENCE_PROTOCOL', 1)[0]
-    assert 'bust-to-waist relationship' in body
-    assert 'full bust-to-waist relationship' in body
+    assert 'slim' in body
+    assert 'fit' in body
     assert 'flat-chested' not in body

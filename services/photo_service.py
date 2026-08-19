@@ -292,16 +292,16 @@ ANNA_FACE_IDENTITY = (
 )
 ANNA_BODY_IDENTITY = (
     'BODY/LOOK IDENTITY — permanent and non-negotiable. Reference image 2 is the NEW canonical overall look and upper-body silhouette anchor. '
-    'Preserve the same distinctly curvy feminine silhouette with a full, voluminous bust, narrow waist, and pronounced hourglass figure exactly as shown in the reference. '
-    'Anna has a naturally large bust and curvy proportions — this is a core part of her identity. '
-    'These proportions are part of Anna\u2019s identity, not a wardrobe effect. Clothing may change, but it must fit the same underlying physique and preserve the full bust volume. '
-    'Do not flatten, slim down, or reduce her bust or curves. Keep the same generous proportions visible in the canonical reference. '
+    'Preserve the same slender, fit feminine silhouette with natural proportions, slim waist, and toned figure exactly as shown in the reference. '
+    'Anna has a naturally slim and fit build — this is a core part of her identity. '
+    'These proportions are part of Anna\u2019s identity, not a wardrobe effect. Clothing may change, but it must fit the same underlying physique. '
+    'Do not add weight, make her thicker, or change her body type. Keep the same slim proportions visible in the canonical reference. '
     'Wardrobe, cafe background, pose and accessories from the reference are not permanent traits unless the requested scene calls for them.'
 )
 OPENAI_REFERENCE_PROTOCOL = (
-    'REFERENCE PROTOCOL: image 1 controls Anna\u2019s exact face and hair identity; image 2 reinforces the same appearance, stable curvy silhouette and full bust volume. '
+    'REFERENCE PROTOCOL: image 1 controls Anna\u2019s exact face and hair identity; image 2 reinforces the same appearance, stable slender silhouette and natural proportions. '
     'The two images depict the same canonical Anna. Use requested scene, outfit, hairstyle and camera instructions for everything else. '
-    'Never blend in facial traits from legacy references. Always preserve the same curvy body proportions and bust volume from image 2.'
+    'Never blend in facial traits from legacy references. Always preserve the same slim body proportions from image 2.'
 )
 # V3.14.1: ordinary-photo prompts intentionally use neutral identity language.
 # Legacy regression wording retained: safety must do not flatten, reduce, enlarge identity geometry.
@@ -310,20 +310,20 @@ OPENAI_REFERENCE_PROTOCOL = (
 # sexualized anatomy in prompts sent to general-audience image providers.
 ORDINARY_BODY_IDENTITY = (
     'ORDINARY PHOTO IDENTITY: reference image 2 defines Anna\u2019s exact overall physique, proportions and silhouette. '
-    'Preserve the same full, curvy body geometry with a naturally large bust, defined waist and feminine hourglass shape exactly as shown. '
-    'Do not reduce, flatten or slim her bust or curves — keep the same generous voluminous proportions from the reference. '
-    'Clothing changes coverage and styling only; the underlying body identity stays fixed and curvy.'
+    'Preserve the same slim, fit body geometry with natural proportions, defined waist and feminine figure exactly as shown. '
+    'Do not add weight, make her thicker, or change her body type — keep the same slender proportions from the reference. '
+    'Clothing changes coverage and styling only; the underlying body identity stays fixed and slim.'
 )
 ORDINARY_REFERENCE_PROTOCOL = (
-    'ORDINARY REFERENCE PROTOCOL: image 1 controls Anna\u2019s exact recognizable face and hair identity; image 2 controls the same overall physique, full bust volume and curvy proportions. '
+    'ORDINARY REFERENCE PROTOCOL: image 1 controls Anna\u2019s exact recognizable face and hair identity; image 2 controls the same overall physique and slim proportions. '
     'Use the requested scene, outfit, hairstyle, pose, camera and lighting for everything else. '
-    'Keep the result natural and general-audience but always preserve Anna\u2019s naturally curvy figure and bust size.'
+    'Keep the result natural and general-audience but always preserve Anna\u2019s naturally slim and fit figure.'
 )
 ORDINARY_IDENTITY_LOCK = ANNA_FACE_IDENTITY + ' ' + ORDINARY_BODY_IDENTITY + ' ' + ORDINARY_REFERENCE_PROTOCOL
 BODY_REINFORCEMENT = (
-    'BODY CONSISTENCY CHECK: keep Anna\u2019s overall physique, bust volume and proportions visually consistent with reference image 2. '
-    'Her bust is naturally full and curvy — do NOT reduce, flatten or minimize it in any pose, angle, clothing or scene. '
-    'Including mirror, seated, athletic, full-body and loose-clothing scenes: preserve the same generous curves. '
+    'BODY CONSISTENCY CHECK: keep Anna\u2019s overall physique and proportions visually consistent with reference image 2. '
+    'She is naturally slim and fit — do NOT add weight, make her thicker, or change her body type in any pose, angle, clothing or scene. '
+    'Including mirror, seated, athletic, full-body and loose-clothing scenes: preserve the same slender proportions. '
     'Keep anatomy realistic, clothing scene-appropriate and the pose natural.'
 )
 EXPRESSION_IDENTITY = (
@@ -399,8 +399,8 @@ def _character_identity_lock(character_id: str, seedream: bool = False) -> tuple
 SEEDREAM_IDENTITY_LOCK = (
     'The supplied reference defines Anna\u2019s NEW permanent canonical identity. Create the SAME fictional adult woman, Anna, age 26. '
     'Identity preservation has absolute priority. Preserve the exact face, eye shape and spacing, dark defined eyebrows, refined nose, full lips, cheekbones, jawline, '
-    'warm light-to-medium skin tone, long dark-brown brunette hair, and the same full curvy feminine proportions with a naturally large bust visible in the supplied canonical reference. '
-    'Do not drift back to any previous Anna face, do not substitute another woman, and do not reduce or redesign her curvy proportions.'
+    'warm light-to-medium skin tone, long dark-brown brunette hair, and the same slim, fit feminine proportions visible in the supplied canonical reference. '
+    'Do not drift back to any previous Anna face, do not substitute another woman, and do not add weight or change her body type.'
 )
 BODY_REINFORCEMENT_SCENES = {'mirror', 'gym', 'cafe', 'restaurant', 'home', 'outfit', 'selfie'}
 
@@ -411,7 +411,7 @@ QUALITY_BLOCK = (
 OPENAI_GENERAL_AUDIENCE_BLOCK = (
     'Mainstream general-audience lifestyle photograph. Anna remains fully clothed in opaque, scene-appropriate clothing. '
     'Use a natural everyday pose and composition centered on the person, outfit and environment. Avoid glamour or suggestive posing. '
-    'Preserve the same person, full bust volume and curvy hourglass proportions from the references. Do not flatten or reduce her figure. '
+    'Preserve the same person, slim proportions and fit figure from the references. Do not add weight or change her body type. '
     'The image should read as an everyday social-media or personal travel/lifestyle photo, not boudoir photography.'
 )
 NEGATIVE_BLOCK = (
@@ -898,7 +898,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream)
     body_reinforcement = BODY_REINFORCEMENT if (character_id == 'anna_01' and not seedream and request.scene in BODY_REINFORCEMENT_SCENES) else ''
     figure_note = (
-        'Use tasteful fashion fit and waist definition while preserving the underlying body proportions and full bust volume. ' if seedream else
+        'Use tasteful fashion fit and waist definition while preserving the underlying slim body proportions. ' if seedream else
         'Use a well-fitted outfit that preserves the person\u2019s physique and proportions. Use a natural everyday pose with the visual focus on the person, outfit and environment. '
     )
     return (
@@ -943,7 +943,7 @@ def _file_data_uri(path: Path) -> str:
 
 
 
-async def _gemini_image_one_frame(character: dict, telegram_id: int, request: PhotoRequest, i: int) -> GeneratedPhoto:
+async def _gemini_image_one_frame(character: dict, telegram_id: int, request: PhotoRequest, i: int, *, character_id: str = CHARACTER_ID) -> GeneratedPhoto:
     if not GEMINI_API_KEY or not GEMINI_IMAGE_ENABLED:
         raise PhotoGenerationError('gemini_image', 'not_configured')
 
@@ -960,8 +960,8 @@ async def _gemini_image_one_frame(character: dict, telegram_id: int, request: Ph
         raise PhotoGenerationError('gemini_image', 'invalid_api_key_whitespace')
 
     level = get_relationship_level(telegram_id)
-    prompt = _build_prompt(request, i, seedream=False, relationship_level=level) + (
-        "\nNANO BANANA ORDINARY-PHOTO RULE: Use the supplied canonical Anna references as identity anchors. "
+    prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id) + (
+        "\nNANO BANANA ORDINARY-PHOTO RULE: Use the supplied canonical references as identity anchors. "
         "Keep the same fictional adult woman, same exact face, brunette hair, overall physique and subtle warm smile. "
         "This prompt is independent from chat personality, flirting, sensuality or relationship erotics; none of those should affect ordinary-photo styling. "
         "Change only the requested scene, fully clothed outfit, pose, camera and lighting. Keep the result mainstream, natural and general-audience. "
@@ -1059,13 +1059,15 @@ async def _run_gemini_set(
     telegram_id: int,
     request: PhotoRequest,
     on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
+    *,
+    character_id: str = CHARACTER_ID,
 ) -> list[GeneratedPhoto]:
     out: list[GeneratedPhoto] = []
     logger.info('Nano Banana set request user=%s scene=%s model=%s count=%s refs=2', telegram_id, request.scene, GEMINI_IMAGE_MODEL, PHOTO_SET_SIZE)
     for i in range(PHOTO_SET_SIZE):
         started = time.monotonic()
         try:
-            photo = await _gemini_image_one_frame(character, telegram_id, request, i)
+            photo = await _gemini_image_one_frame(character, telegram_id, request, i, character_id=character_id)
         except PhotoGenerationError as exc:
             track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'gemini_image', 'reason': exc.reason})
             if out:
@@ -1161,7 +1163,7 @@ async def _seedream_request(
     raise PhotoGenerationError('seedream45', 'request_failed')
 
 
-async def _openai_one_frame(character: dict, telegram_id: int, request: PhotoRequest, i: int, *, safe_retry: bool = False, single_reference: bool = False) -> GeneratedPhoto:
+async def _openai_one_frame(character: dict, telegram_id: int, request: PhotoRequest, i: int, *, safe_retry: bool = False, single_reference: bool = False, character_id: str = CHARACTER_ID) -> GeneratedPhoto:
     refs = _openai_reference_paths(character, request.scene, safe=safe_retry)
     if single_reference and len(refs) > 1:
         # Last ref is the fully-clothed full-body anchor and carries enough face +
@@ -1175,13 +1177,13 @@ async def _openai_one_frame(character: dict, telegram_id: int, request: PhotoReq
             'a simple season-appropriate midi dress with normal coverage and clean everyday styling'
         )
         safe_request = replace(request, clothing=fallback_outfit, pack_outfits=tuple(fallback_outfit for _ in range(PHOTO_SET_SIZE)), mood='natural, relaxed')
-        prompt = _build_prompt(safe_request, i, seedream=False, relationship_level=min(level, 3)) + (
+        prompt = _build_prompt(safe_request, i, seedream=False, relationship_level=min(level, 3), character_id=character_id) + (
             '\nSAFE RETRY: Strictly general-audience, fully clothed everyday lifestyle fashion. Neutral pose and scene-appropriate coverage. Preserve the exact face and canonical body proportions from the references; safety changes styling, not identity.'
         )
     else:
-        prompt = _build_prompt(request, i, seedream=False, relationship_level=level)
+        prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id)
     if single_reference:
-        prompt += '\nCOMPATIBILITY RETRY: the single supplied fully-clothed reference controls both Anna’s recognizable identity and stable overall silhouette.'
+        prompt += '\nCOMPATIBILITY RETRY: the single supplied fully-clothed reference controls both the character\u2019s recognizable identity and stable overall silhouette.'
     started = time.monotonic()
     with ExitStack() as stack:
         image_files = [stack.enter_context(path.open('rb')) for path in refs]
@@ -1223,6 +1225,8 @@ async def _run_openai_set(
     telegram_id: int,
     request: PhotoRequest,
     on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
+    *,
+    character_id: str = CHARACTER_ID,
 ) -> list[GeneratedPhoto]:
     refs = _openai_reference_paths(character, request.scene)
     logger.info('OpenAI normal-photo set request user=%s scene=%s references=%s count=%s identity_engine=v3', telegram_id, request.scene, ','.join(p.name for p in refs), PHOTO_SET_SIZE)
@@ -1230,7 +1234,7 @@ async def _run_openai_set(
     for i in range(PHOTO_SET_SIZE):
         frame_started = time.monotonic()
         try:
-            photo = await _openai_one_frame(character, telegram_id, request, i)
+            photo = await _openai_one_frame(character, telegram_id, request, i, character_id=character_id)
         except BadRequestError as exc:
             code, moderation_stage, moderation_categories, msg = _openai_error_debug(exc)
             logger.warning(
@@ -1242,7 +1246,7 @@ async def _run_openai_set(
             if code == 'moderation_blocked':
                 try:
                     logger.info('OpenAI safe retry user=%s scene=%s frame=%s/%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE)
-                    photo = await _openai_one_frame(character, telegram_id, request, i, safe_retry=True)
+                    photo = await _openai_one_frame(character, telegram_id, request, i, safe_retry=True, character_id=character_id)
                     track_event(ensure_user(telegram_id), 'photo_safe_retry_success', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'openai'})
                 except BadRequestError as retry_exc:
                     retry_code, retry_stage, retry_categories, retry_msg = _openai_error_debug(retry_exc)
@@ -1255,7 +1259,7 @@ async def _run_openai_set(
                         break
                     try:
                         logger.info('OpenAI final safe single-reference retry user=%s scene=%s frame=%s/%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE)
-                        photo = await _openai_one_frame(character, telegram_id, request, i, safe_retry=True, single_reference=True)
+                        photo = await _openai_one_frame(character, telegram_id, request, i, safe_retry=True, single_reference=True, character_id=character_id)
                         track_event(ensure_user(telegram_id), 'photo_single_reference_retry_success', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'openai', 'original_reason': retry_code or code or 'bad_request'})
                     except Exception as final_exc:
                         raise PhotoGenerationError('openai', retry_code or code or 'bad_request') from final_exc
@@ -1324,6 +1328,8 @@ async def _run_seedream_set(
     telegram_id: int,
     request: PhotoRequest,
     on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
+    *,
+    character_id: str = CHARACTER_ID,
 ) -> list[GeneratedPhoto]:
     ref = _seedream_reference_path(character)
     reference_uri = _file_data_uri(ref)
@@ -1333,7 +1339,7 @@ async def _run_seedream_set(
         telegram_id, request.scene, ref.name, PHOTO_SET_SIZE, FAL_TIMEOUT_SECONDS, FAL_RETRIES,
     )
     for i in range(PHOTO_SET_SIZE):
-        prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id)) + (
+        prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id), character_id=character_id) + (
             '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location, '
             'face identity and body proportions as the other photos in this set. '
             'Make this framing clearly different from the previous shot while staying in the same photo session.'
@@ -1345,7 +1351,7 @@ async def _run_seedream_set(
             # One safe retry on provider content validation. This simplifies the prompt; it does not disable safety.
             if exc.reason == 'HTTP 422':
                 retry_request = _seedream_safe_retry_request(request)
-                retry_prompt = _build_prompt(retry_request, i, seedream=True, relationship_level=min(get_relationship_level(telegram_id), 4)) + (
+                retry_prompt = _build_prompt(retry_request, i, seedream=True, relationship_level=min(get_relationship_level(telegram_id), 4), character_id=character_id) + (
                     '\nSAFE RETRY: tasteful fully covered fashion, opaque garment, neutral pose, no nudity, no body-part emphasis. For personal/lingerie scenes, keep the requested lingerie category with opaque coverage. Create exactly ONE photo.'
                 )
                 try:
@@ -1414,8 +1420,8 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
     return 'seedream45'
 
 
-async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None) -> tuple[list[GeneratedPhoto], PhotoRequest]:
-    character = get_anna()
+async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None, *, character_id: str = CHARACTER_ID) -> tuple[list[GeneratedPhoto], PhotoRequest]:
+    character = get_character(character_id)
     resolved = _resolve_request(telegram_id, request)
     provider = choose_photo_provider(telegram_id, resolved)
     logger.info(
@@ -1424,26 +1430,26 @@ async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: 
     )
     try:
         if provider == 'seedream45':
-            return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame), resolved
+            return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
         if provider == 'gemini_image':
             try:
-                return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame), resolved
+                return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
             except PhotoGenerationError as exc:
                 # Gemini failed: try OpenAI if available, otherwise fall back to Seedream.
                 if OPENAI_IMAGE_AVAILABLE:
                     logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=openai reason=%s', telegram_id, resolved.scene, exc.reason)
                     track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'openai', 'reason': exc.reason})
-                    return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame), resolved
+                    return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
                 logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=seedream45 reason=%s', telegram_id, resolved.scene, exc.reason)
                 track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'seedream45', 'reason': exc.reason})
-                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame), resolved
+                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
         # provider == 'openai'
         if OPENAI_IMAGE_AVAILABLE:
-            return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame), resolved
+            return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
         # OpenAI requested but not available: use Gemini or Seedream
         if GEMINI_IMAGE_ENABLED and GEMINI_API_KEY:
-            return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame), resolved
-        return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame), resolved
+            return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
+        return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
     except BadRequestError as exc:
         body = getattr(exc, 'body', None) or {}
         err = body.get('error', body) if isinstance(body, dict) else {}
@@ -1464,16 +1470,16 @@ async def generate_photo(telegram_id: int, request: PhotoRequest) -> GeneratedPh
     return photos[0]
 
 
-def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=None, provider='unknown', estimated_cost_usd=0.0):
+def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=None, provider='unknown', estimated_cost_usd=0.0, *, character_id: str = CHARACTER_ID):
     uid = ensure_user(telegram_id)
     with SessionLocal() as session:
         usage = session.scalar(select(PhotoDailyUsage).where(
             PhotoDailyUsage.user_id == uid,
-            PhotoDailyUsage.character_id == CHARACTER_ID,
+            PhotoDailyUsage.character_id == character_id,
             PhotoDailyUsage.usage_date == _today(),
         ))
         if not usage:
-            usage = PhotoDailyUsage(user_id=uid, character_id=CHARACTER_ID, usage_date=_today())
+            usage = PhotoDailyUsage(user_id=uid, character_id=character_id, usage_date=_today())
             session.add(usage)
             session.flush()
         # One generated SET counts as one free/paid request, regardless of set size.
@@ -1483,7 +1489,7 @@ def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=
             usage.paid_used += 1
         session.add(PhotoDelivery(
             user_id=uid,
-            character_id=CHARACTER_ID,
+            character_id=character_id,
             scene=scene,
             delivery_type=delivery_type,
             telegram_file_id=file_id,
@@ -1514,6 +1520,8 @@ async def _deliver_library_failure_fallback(
     telegram_id: int,
     request: PhotoRequest,
     caption: str | None = None,
+    *,
+    character_id: str = CHARACTER_ID,
 ):
     """Serve a ready Telegram photo when ordinary free AI generation fails."""
     if request.scene in _PRIVATE_LIBRARY_SCENES:
@@ -1542,7 +1550,7 @@ async def _deliver_library_failure_fallback(
     mark_pack_seen(telegram_id, pack.id)
     first = sent_messages[0]
     file_id = first.photo[-1].file_id if first.photo else pack.photos[0].file_id
-    _record(telegram_id, pack.scene, 'free', file_id=file_id, provider='telegram_library_fallback', estimated_cost_usd=0.0)
+    _record(telegram_id, pack.scene, 'free', file_id=file_id, provider='telegram_library_fallback', estimated_cost_usd=0.0, character_id=character_id)
     uid = ensure_user(telegram_id)
     track_event(uid, 'photo_library_fallback_served', metadata={
         'requested_scene': request.scene,
@@ -1633,6 +1641,8 @@ async def deliver_photo(
     request: PhotoRequest,
     delivery_type: str = 'free',
     caption: str | None = None,
+    *,
+    character_id: str = CHARACTER_ID,
 ):
     stage = get_relationship_stage(telegram_id)
     if not scene_allowed_for_stage(request.scene, stage):
@@ -1650,7 +1660,7 @@ async def deliver_photo(
     # Cost-first routing for beta: ordinary free requests use a curated Telegram file_id library first.
     # Custom/paid-credit/admin requests still exercise AI generation so the user gets bespoke output.
     if delivery_type in {'free', 'story'}:
-        library_pack = choose_unseen_pack(telegram_id, CHARACTER_ID, request.scene, get_relationship_level(telegram_id))
+        library_pack = choose_unseen_pack(telegram_id, character_id, request.scene, get_relationship_level(telegram_id))
         if library_pack and library_pack.photos:
             for idx, item in enumerate(library_pack.photos):
                 sent = await bot.send_photo(
@@ -1662,7 +1672,7 @@ async def deliver_photo(
             mark_pack_seen(telegram_id, library_pack.id)
             first = sent_messages[0]
             file_id = first.photo[-1].file_id if first.photo else library_pack.photos[0].file_id
-            _record(telegram_id, request.scene, 'free', file_id=file_id, provider='telegram_library', estimated_cost_usd=0.0)
+            _record(telegram_id, request.scene, 'free', file_id=file_id, provider='telegram_library', estimated_cost_usd=0.0, character_id=character_id)
             uid = ensure_user(telegram_id)
             track_event(uid, 'photo_delivered', value=0.0, metadata={'scene': request.scene, 'provider': 'telegram_library', 'count': len(sent_messages), 'pack_key': library_pack.pack_key})
             track_event(uid, 'photo_library_served', metadata={'scene': request.scene, 'pack_key': library_pack.pack_key, 'level': library_pack.relationship_level})
@@ -1683,14 +1693,14 @@ async def deliver_photo(
         logger.info('photo frame delivered user=%s scene=%s frame=%s/%s provider=%s', telegram_id, request.scene, idx + 1, PHOTO_SET_SIZE, result.provider)
 
     try:
-        results, resolved = await generate_photo_set(telegram_id, request, on_frame=_send_frame)
+        results, resolved = await generate_photo_set(telegram_id, request, on_frame=_send_frame, character_id=character_id)
     except PhotoGenerationError as exc:
         # The product promise for ordinary free photos is: if AI cannot make a
         # fresh image, use the curated library instead of returning an empty
         # failure. Exact-scene library was already checked above; this second
         # pass may choose another unlocked ordinary scene as a graceful fallback.
         if delivery_type in {'free', 'story'}:
-            fallback_sent = await _deliver_library_failure_fallback(bot, chat_id, telegram_id, request)
+            fallback_sent = await _deliver_library_failure_fallback(bot, chat_id, telegram_id, request, character_id=character_id)
             if fallback_sent:
                 logger.warning('AI failed but library fallback recovered user=%s scene=%s provider=%s reason=%s', telegram_id, request.scene, exc.provider, exc.reason)
                 return fallback_sent
@@ -1727,6 +1737,7 @@ async def deliver_photo(
         telegram_id, request.scene, record_delivery_type,
         file_id=file_id, url=first_result.url,
         provider=first_result.provider, estimated_cost_usd=total_cost,
+        character_id=character_id,
     )
     current_state = get_state(telegram_id)
     recent_outfits = (_json_list(getattr(current_state, 'recent_outfits_json', '[]')) + list(resolved.pack_outfits))[-6:]
