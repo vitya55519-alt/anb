@@ -20,7 +20,7 @@ DEFAULT_CARDS = {
         "display_name": "Анна",
         "gender": "female",
         "age": 26,
-        "short_bio": "Тёплая, общительная, уверенная и немного вредная. Любит вечерний город, музыку, стильные образы и лёгкие подколы.",
+        "short_bio": "Тёплая, очень общительная, соблазнительная и страстная. Любит вечерний город, музыку, стильные образы, дерзкие намёки и сексуальное напряжение.",
         "status": "active",
         "button_emoji": "👩🏻",
         "is_visible": True,
@@ -29,8 +29,8 @@ DEFAULT_CARDS = {
         "display_name": "Emily",
         "gender": "female",
         "age": 25,
-        "short_bio": "Яркая, уверенная и самостоятельная. Любит street fashion, автомобили, новые места и вечерний город.",
-        "status": "soon",
+        "short_bio": "Яркая, дерзкая и очень сексуальная. Любит street fashion, автомобили, спонтанные поездки и провокационные разговоры. Не боится быть откровенной и дразнить.",
+        "status": "active",
         "button_emoji": "👱‍♀️",
         "is_visible": True,
     },
@@ -56,7 +56,7 @@ DEFAULT_CARDS = {
         "display_name": "Мария",
         "gender": "female",
         "age": 24,
-        "short_bio": "Нежная, заботливая и очень сексуальная. Спрашивает про твой день, слушает, обнимает и создаёт уют, от которого не хочется уходить.",
+        "short_bio": "Нежная, заботливая и очень сексуальная. Спрашивает про твой день, слушает, обнимает и создаёт уют, от которого не хочется уходить. Забота как соблазн.",
         "status": "premium",
         "button_emoji": "💃",
         "is_visible": True,
@@ -102,6 +102,12 @@ def _to_view(row: CharacterCard) -> CharacterCardView:
 def ensure_default_cards() -> None:
     with SessionLocal() as session:
         changed = False
+        # Old default bios that should be replaced with updated versions.
+        _old_bios = {
+            "anna_01": "Тёплая, общительная, уверенная и немного вредная. Любит вечерний город, музыку, стильные образы и лёгкие подколы.",
+            "alena_01": "Яркая, уверенная и самостоятельная. Любит street fashion, автомобили, новые места и вечерний город.",
+            "maria_01": "Нежная, заботливая и очень сексуальная. Спрашивает про твой день, слушает, обнимает и создаёт уют, от которого не хочется уходить.",
+        }
         for character_id, defaults in DEFAULT_CARDS.items():
             row = session.get(CharacterCard, character_id)
             if row is None:
@@ -112,8 +118,14 @@ def ensure_default_cards() -> None:
             # photo-library and DB references do not break. Do not overwrite a custom name.
             if character_id == "alena_01" and (row.display_name or "").strip() in {"Алёна", "Алена"}:
                 row.display_name = "Emily"
-                if not row.short_bio or "street fashion" in row.short_bio:
-                    row.short_bio = defaults["short_bio"]
+                changed = True
+            # Update bios that still hold old default text.
+            if row.short_bio and row.short_bio == _old_bios.get(character_id):
+                row.short_bio = defaults["short_bio"]
+                changed = True
+            # Emily defaults to active now; sync if still at old "soon" default.
+            if character_id == "alena_01" and row.status == "soon":
+                row.status = defaults["status"]
                 changed = True
             # One-time backfill for rows created before gender/age/short_bio existed
             # in the DB schema. Only fills NULLs, never overwrites admin edits.
