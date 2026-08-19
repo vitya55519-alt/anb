@@ -53,8 +53,15 @@
   },
   "visual_identity": {
     "age": 24,
-    "reference_folder": "",
-    "reference_assets": [],
+    "reference_folder": "data/references/maria",
+    "reference_assets": [
+      "00_maria_canonical_face.png",
+      "01_maria_canonical_look.png",
+      "02_maria_reference_1.png",
+      "03_maria_reference_2.png",
+      "04_maria_reference_3.png",
+      "05_maria_reference_4.png"
+    ],
     "preserve_identity": [
       "soft feminine features with warm gentle expression",
       "long wavy chestnut hair",
@@ -73,6 +80,12 @@
       "hairstyle"
     ],
     "identity_lock": "Maria is a tender, caring, highly sensual character. Her visual identity should feel warm, approachable and intimate — cozy home settings, soft lighting, comfortable but flattering clothing.",
-    "identity_version": "maria_v1_2026_08_19"
+    "identity_version": "maria_v1_2026_08_19",
+    "openai_face_anchor": "00_maria_canonical_face.png",
+    "openai_body_anchor": "01_maria_canonical_look.png",
+    "openai_safe_body_anchor": "01_maria_canonical_look.png",
+    "openai_secondary_identity_anchor": "01_maria_canonical_look.png",
+    "seedream_body_anchor": "01_maria_canonical_look.png",
+    "seedream_identity_anchor": "01_maria_canonical_look.png"
   }
 }

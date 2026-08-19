@@ -1,0 +1,8 @@
+{
+  "identity_version": "emily_v1_2026_08_19",
+  "face_anchor": "00_emily_canonical_face.png",
+  "secondary_identity_anchor": "01_emily_canonical_look.png",
+  "openai_body_anchor": "01_emily_canonical_look.png",
+  "seedream_identity_anchor": "01_emily_canonical_look.png",
+  "note": "Emily canonical identity references uploaded 2026-08-19. Face and look anchors define her blonde confident modern-glamour visual archetype."
+}

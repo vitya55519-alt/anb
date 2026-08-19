@@ -32,8 +32,39 @@
     "no_nudity_generation": true
   },
   "visual_identity": {
-    "status": "placeholder_until_original_identity_reference_is_approved",
+    "status": "active",
     "description": "original synthetic blonde adult character; confident feminine modern-glamour visual archetype",
-    "reference_assets": []
+    "reference_folder": "data/references/emily",
+    "reference_assets": [
+      "00_emily_canonical_face.png",
+      "01_emily_canonical_look.png",
+      "02_emily_reference_1.png",
+      "03_emily_reference_2.png",
+      "04_emily_reference_3.png"
+    ],
+    "preserve_identity": [
+      "blonde hair with confident modern-glamour styling",
+      "bright expressive eyes",
+      "confident stylish appearance",
+      "fit feminine physique",
+      "natural warm expression in generated photos"
+    ],
+    "variable_scene_attributes": [
+      "clothing",
+      "location",
+      "pose",
+      "camera angle",
+      "lighting",
+      "mood",
+      "hairstyle"
+    ],
+    "identity_lock": "Emily is a confident, bright, modern-glamour blonde character. Preserve her face and body from the canonical references in every photo.",
+    "identity_version": "emily_v1_2026_08_19",
+    "openai_face_anchor": "00_emily_canonical_face.png",
+    "openai_body_anchor": "01_emily_canonical_look.png",
+    "openai_safe_body_anchor": "01_emily_canonical_look.png",
+    "openai_secondary_identity_anchor": "01_emily_canonical_look.png",
+    "seedream_body_anchor": "01_emily_canonical_look.png",
+    "seedream_identity_anchor": "01_emily_canonical_look.png"
   }
 }
