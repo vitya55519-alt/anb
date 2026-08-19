@@ -36,6 +36,7 @@ from models.relationship_models import UserCharacterRelationship
 from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer
 from services.db import SessionLocal
 from services.character_service import get_anna
+from services.character_registry import get_character
 from services.test_mode import get_stage as get_test_stage
 from services.access_service import is_premium
 from services.user_service import ensure_user, get_state, update_state, is_adult_confirmed
@@ -221,13 +222,13 @@ WARDROBE_LEVEL_POOLS = {
 OUTFIT_POOLS = {scene: WARDROBE_LEVEL_POOLS[SCENE_GROUP[scene]][max(1, SCENE_LEVELS.get(scene, 1))] for scene in SCENES}
 
 HAIRSTYLE_POOL = [
-    'long straight dark brunette hair worn loose',
+    'long straight hair worn loose',
     'soft loose waves with a side part',
     'a sleek high ponytail',
     'a low ponytail with a few natural face-framing strands',
     'a neat high bun',
     'a half-up hairstyle with long hair down',
-    'a loose dark brunette braid falling down her back',
+    'a loose braid falling down her back',
 ]
 
 SHOT_VARIANTS = {
@@ -362,12 +363,15 @@ def _character_identity_lock(character_id: str, seedream: bool = False) -> tuple
 
     from services.character_card_service import get_card
     card = get_card(character_id)
+    character = get_character(character_id)
     name = card.display_name if card else character_id
     age = card.age if card else 25
-    bio = card.short_bio if card else ''
     gender = card.gender if card else 'female'
     pronoun = 'he' if gender == 'male' else 'she'
     pronoun_cap = 'He' if gender == 'male' else 'She'
+    visual_identity = character.get('visual_identity', {})
+    preserve = visual_identity.get('preserve_identity', [])
+    preserve_text = '; '.join(preserve) if preserve else 'consistent facial features, hair and body proportions'
     figure = (
         'a fit masculine physique with consistent build and proportions'
         if gender == 'male' else
@@ -375,9 +379,10 @@ def _character_identity_lock(character_id: str, seedream: bool = False) -> tuple
     )
     identity = (
         f'PHOTO IDENTITY: Create the SAME fictional adult {gender} character, {name}, age {age}. '
-        f'{bio} '.rstrip() + '. '
-        f'{pronoun_cap} is the same person across all photos. Preserve consistent facial features, hair, and {figure}. '
-        f'Do not substitute another person. Use the requested scene, outfit, pose, camera and lighting for everything else.'
+        f'Identity preservation is the highest priority. Preserve these exact traits from the canonical references: {preserve_text}. '
+        f'{pronoun_cap} is the same person across all photos. Preserve {figure}. '
+        f'Do not substitute another person, do not change age or ethnicity. '
+        f'Use the requested scene, outfit, pose, camera and lighting for everything else.'
     )
     personal = (
         f'This should feel like a normal personal photo {name} has just taken to send to someone {pronoun} is chatting with. '
@@ -683,13 +688,13 @@ def parse_photo_request(text: str) -> Optional[PhotoRequest]:
 
     hairstyle = ''
     if any(x in low for x in ('кос', 'braid')):
-        hairstyle = 'a long dark brunette braid falling down her back'
+        hairstyle = 'a long braid falling down her back'
     elif any(x in low for x in ('хвост', 'ponytail')):
         hairstyle = 'a sleek high ponytail'
     elif any(x in low for x in ('пучок', 'bun')):
         hairstyle = 'a neat high bun'
     elif any(x in low for x in ('распущ', 'волнист', 'loose hair', 'waves')):
-        hairstyle = 'long loose softly wavy dark brunette hair'
+        hairstyle = 'long loose softly wavy hair'
 
     if not angle:
         if any(x in low for x in ('со спины', 'сзади', 'back view', 'from behind')):
@@ -815,14 +820,14 @@ def _json_list(raw: str | None) -> list[str]:
         return []
 
 
-def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season: str) -> tuple[str, ...]:
+def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season: str, *, character_id: str = CHARACTER_ID) -> tuple[str, ...]:
     if request.clothing:
         return tuple(request.clothing for _ in range(PHOTO_SET_SIZE))
     state = get_state(telegram_id)
     level = get_relationship_level(telegram_id)
     pool = _wardrobe_pool(request.scene, level, season)
     uid = ensure_user(telegram_id)
-    visual_prefs = get_visual_preferences(uid, CHARACTER_ID)
+    visual_prefs = get_visual_preferences(uid, character_id)
     color_counts = visual_prefs.get('colors', {}) if isinstance(visual_prefs, dict) else {}
     favorite_color = max(color_counts, key=color_counts.get) if color_counts and max(color_counts.values()) >= 2 else ''
     picks: list[str] = []
@@ -841,10 +846,10 @@ def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season:
     return tuple(picks)
 
 
-def _resolve_request(telegram_id: int, request: PhotoRequest) -> PhotoRequest:
+def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: str = CHARACTER_ID) -> PhotoRequest:
     state = ensure_life_state(telegram_id)
     season = request.season or _default_season()
-    pack_outfits = tuple(request.pack_outfits) if request.pack_outfits else _choose_progression_outfits(telegram_id, request, season)
+    pack_outfits = tuple(request.pack_outfits) if request.pack_outfits else _choose_progression_outfits(telegram_id, request, season, character_id=character_id)
     clothing = pack_outfits[-1] if pack_outfits else request.clothing
     if request.hairstyle:
         hairstyle = request.hairstyle
@@ -854,7 +859,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest) -> PhotoRequest:
             recent_hair.add(state.hairstyle.strip().lower())
         hair_pool = [x for x in HAIRSTYLE_POOL if x.strip().lower() not in recent_hair] or HAIRSTYLE_POOL
         uid = ensure_user(telegram_id)
-        visual_prefs = get_visual_preferences(uid, CHARACTER_ID)
+        visual_prefs = get_visual_preferences(uid, character_id)
         hair_counts = visual_prefs.get('hairstyles', {}) if isinstance(visual_prefs, dict) else {}
         preferred_hair = max(hair_counts, key=hair_counts.get) if hair_counts and max(hair_counts.values()) >= 2 else ''
         if preferred_hair and preferred_hair.strip().lower() not in recent_hair and random.random() < 0.50:
@@ -865,7 +870,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest) -> PhotoRequest:
         location = request.location
     elif request.scene == 'selfie' and getattr(state, 'location', None):
         activity = getattr(state, 'activity', None) or 'having a normal day'
-        location = f"{SCENES['selfie']}; keep it consistent with Anna's current fictional day context: location={state.location}, activity={activity}"
+        location = f"{SCENES['selfie']}; keep it consistent with the character's current fictional day context: location={state.location}, activity={activity}"
     else:
         location = SCENES.get(request.scene, SCENES['selfie'])
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season, pack_outfits=pack_outfits)
@@ -962,7 +967,7 @@ async def _gemini_image_one_frame(character: dict, telegram_id: int, request: Ph
     level = get_relationship_level(telegram_id)
     prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id) + (
         "\nNANO BANANA ORDINARY-PHOTO RULE: Use the supplied canonical references as identity anchors. "
-        "Keep the same fictional adult woman, same exact face, brunette hair, overall physique and subtle warm smile. "
+        "Keep the same fictional adult person, same exact face, hair color and style, overall physique and subtle warm smile. "
         "This prompt is independent from chat personality, flirting, sensuality or relationship erotics; none of those should affect ordinary-photo styling. "
         "Change only the requested scene, fully clothed outfit, pose, camera and lighting. Keep the result mainstream, natural and general-audience. "
         "Photorealistic personal smartphone-photo aesthetic."
@@ -1422,7 +1427,7 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
 
 async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None, *, character_id: str = CHARACTER_ID) -> tuple[list[GeneratedPhoto], PhotoRequest]:
     character = get_character(character_id)
-    resolved = _resolve_request(telegram_id, request)
+    resolved = _resolve_request(telegram_id, request, character_id=character_id)
     provider = choose_photo_provider(telegram_id, resolved)
     logger.info(
         'PHOTO ROUTE selected user=%s scene=%s provider=%s gemini_enabled=%s gemini_key_present=%s model=%s',
