@@ -156,6 +156,14 @@ _character_card_edit_sessions: dict[int, dict] = {}
 # Owner-only editor state for configurable payment methods. Payment rows live in PostgreSQL.
 _payment_method_edit_sessions: dict[int, dict] = {}
 
+# Per-user selected character (telegram_id -> character_id). Falls back to CHARACTER_ID.
+_user_character: dict[int, str] = {}
+
+
+def get_user_character(telegram_id: int) -> str:
+    """Return the character_id the user currently chats with, or CHARACTER_ID as default."""
+    return _user_character.get(telegram_id, CHARACTER_ID)
+
 LIBRARY_CHARACTERS = {
     'anna_01': '👩🏻 Анна',
     'alena_01': '👱‍♀️ Emily',
@@ -185,7 +193,7 @@ def main_keyboard(is_admin: bool = False):
 def onboarding_character_keyboard():
     rows = []
     for card in list_cards(visible_only=True):
-        if card.character_id == CHARACTER_ID and card.status == 'active':
+        if card.status == 'active':
             text = f'✅ {card.display_name} · выбрать'
         elif card.status == 'premium':
             text = f'⭐ {card.display_name} · Premium'
@@ -267,8 +275,10 @@ def quest_routes_keyboard(telegram_id: int, quest_key: str):
 def characters_keyboard():
     rows = []
     for card in list_cards(visible_only=True):
-        if card.character_id == CHARACTER_ID and card.status == 'active':
+        if card.status == 'active':
             text = f'✅ {card.display_name} · доступна'
+        elif card.status == 'premium':
+            text = f'⭐ {card.display_name} · Premium'
         else:
             text = f'🔒 {card.display_name} · скоро'
         rows.append([InlineKeyboardButton(text=text, callback_data=f'character:view:{card.character_id}')])
@@ -432,6 +442,17 @@ def _character_card_text(card, viewer_id: int | None = None) -> str:
     return '\n'.join(lines)
 
 
+def _character_fallback_photo(character_id: str) -> Path | None:
+    """Return a canonical face reference image for a character, if available."""
+    base = Path(__file__).resolve().parent / 'data' / 'references'
+    candidates = {
+        CHARACTER_ID: base / 'anna' / '00_anna_canonical_face_v3.png',
+        'alena_01': base / 'emily' / '00_emily_canonical_face.png',
+        'maria_01': base / 'maria' / '00_maria_canonical_face.png',
+    }
+    return candidates.get(character_id)
+
+
 async def _send_character_card(chat_id: int, character_id: str, *, viewer_id: int | None = None, admin_preview: bool = False):
     card = get_card(character_id)
     if not card:
@@ -442,11 +463,10 @@ async def _send_character_card(chat_id: int, character_id: str, *, viewer_id: in
     if card.card_photo_file_id:
         await bot.send_photo(chat_id, card.card_photo_file_id, caption=text_value, reply_markup=markup)
         return
-    if character_id == CHARACTER_ID:
-        fallback = Path(__file__).resolve().parent / 'data' / 'references' / 'anna' / '00_anna_canonical_face_v3.png'
-        if fallback.exists():
-            await bot.send_photo(chat_id, FSInputFile(fallback), caption=text_value, reply_markup=markup)
-            return
+    fallback = _character_fallback_photo(character_id)
+    if fallback and fallback.exists():
+        await bot.send_photo(chat_id, FSInputFile(fallback), caption=text_value, reply_markup=markup)
+        return
     await bot.send_message(chat_id, text_value, reply_markup=markup)
 
 
@@ -462,7 +482,7 @@ def _admin_card_summary(character_id: str) -> str:
         f'Видимость: {"да" if card.is_visible else "нет"}\n'
         f'Фото: {"установлено" if card.card_photo_file_id else "нет"}\n\n'
         f'{card.short_bio or "Описание не заполнено."}\n\n'
-        'ℹ️ Статус здесь меняет отображение карточки; активный чат-персонаж в этой версии остаётся Анна.'
+        'ℹ️ Статус «активна» открывает персонажа для выбора в чате. Premium — за платный доступ.'
     )
 
 
@@ -866,7 +886,7 @@ async def start(message: types.Message):
         return
     await message.answer(
         'Кого выбираешь? 👇\n\n'
-        'Сейчас Анна доступна полностью. Остальные девушки будут открываться по мере добавления их собственных характеров и историй.',
+        'Доступные девушки отмечены ✅. Premium-персонажи отмечены ⭐.',
         reply_markup=onboarding_character_keyboard(),
     )
 
@@ -899,14 +919,15 @@ async def _send_onboarding_character_card(chat_id: int, character_id: str, viewe
     text_value = f'{card.button_emoji} {card.display_name}, {card.age}\n\n{card.short_bio or "Описание скоро появится."}'
     if character_id == CHARACTER_ID:
         text_value += '\n\n❤️ Сейчас: знакомство · L1\n🎯 Первая история уже открыта'
+    elif card.status == 'active':
+        text_value += '\n\n❤️ Готова общаться — пиши ей!'
     if card.card_photo_file_id:
         await bot.send_photo(chat_id, card.card_photo_file_id, caption=text_value)
         return
-    if character_id == CHARACTER_ID:
-        fallback = Path(__file__).resolve().parent / 'data' / 'references' / 'anna' / '00_anna_canonical_face_v3.png'
-        if fallback.exists():
-            await bot.send_photo(chat_id, FSInputFile(fallback), caption=text_value)
-            return
+    fallback = _character_fallback_photo(character_id)
+    if fallback and fallback.exists():
+        await bot.send_photo(chat_id, FSInputFile(fallback), caption=text_value)
+        return
     await bot.send_message(chat_id, text_value)
 
 
@@ -918,30 +939,27 @@ async def onboarding_character_select(cq: types.CallbackQuery):
         await cq.answer('персонаж сейчас недоступен', show_alert=True)
         return
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
-    if character_id != CHARACTER_ID or card.status != 'active':
+    if card.status == 'premium' and not is_premium(cq.from_user.id):
         track_event(uid, 'fake_door_click', metadata={'feature': f'{character_id}_onboarding'})
         await _send_onboarding_character_card(cq.message.chat.id, character_id, cq.from_user.id)
-        if card.status == 'premium':
-            await cq.answer('⭐ Premium-персонаж')
-            if is_premium(cq.from_user.id):
-                await cq.message.answer(
-                    f'⭐ {card.display_name} — Premium-персонаж. У тебя уже есть Premium, но полный режим для неё скоро откроется.\n'
-                    'Пока полностью доступна Анна 👇',
-                    reply_markup=onboarding_character_keyboard(),
-                )
-            else:
-                await cq.message.answer(
-                    f'⭐ {card.display_name} доступна с Premium.\n\n'
-                    f'Premium — {PREMIUM_MONTHLY_STARS} Stars на 30 дней.\n'
-                    'Нежная, заботливая и очень сексуальная — она будет спрашивать про твой день, слушать и создавать уют.\n',
-                    reply_markup=premium_keyboard(),
-                )
-        else:
-            await cq.answer('эта девушка пока закрыта', show_alert=True)
-            await cq.message.answer('Пока полностью доступна Анна 👇', reply_markup=onboarding_character_keyboard())
+        await cq.answer('⭐ Premium-персонаж')
+        await cq.message.answer(
+            f'⭐ {card.display_name} доступна с Premium.\n\n'
+            f'Premium — {PREMIUM_MONTHLY_STARS} Stars на 30 дней.\n'
+            'Нежная, заботливая и очень сексуальная — она будет спрашивать про твой день, слушать и создавать уют.\n',
+            reply_markup=premium_keyboard(),
+        )
         return
+    if card.status not in ('active', 'premium'):
+        track_event(uid, 'fake_door_click', metadata={'feature': f'{character_id}_onboarding'})
+        await _send_onboarding_character_card(cq.message.chat.id, character_id, cq.from_user.id)
+        await cq.answer('эта девушка пока закрыта', show_alert=True)
+        await cq.message.answer('Пока полностью доступна Анна 👇', reply_markup=onboarding_character_keyboard())
+        return
+    # Active or premium-unlocked character: allow selection
+    _user_character[cq.from_user.id] = character_id
     track_event(uid, 'character_selected', metadata={'character_id': character_id})
-    await cq.answer('Анна выбрана')
+    await cq.answer(f'{card.display_name} выбрана')
     await _send_onboarding_character_card(cq.message.chat.id, character_id, cq.from_user.id)
     await cq.message.answer(abilities_text(), reply_markup=abilities_inline_keyboard())
     await cq.message.answer('Основное меню всегда внизу 👇', reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS))
@@ -988,11 +1006,17 @@ async def character_view(cq: types.CallbackQuery):
         await cq.answer('карточка сейчас недоступна', show_alert=True)
         return
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
-    if card.status in {'soon', 'locked'} and character_id != CHARACTER_ID:
+    if card.status in {'soon', 'locked'}:
         track_event(uid, 'fake_door_click', metadata={'feature': f'{character_id}_character_card'})
     await cq.answer()
     await _send_character_card(cq.message.chat.id, character_id, viewer_id=cq.from_user.id)
-    if card.status == 'premium' and character_id != CHARACTER_ID and not is_premium(cq.from_user.id):
+    if card.status == 'active':
+        _user_character[cq.from_user.id] = character_id
+        await cq.message.answer(
+            f'✅ {card.display_name} выбрана. Можешь писать ей! 👇',
+            reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS),
+        )
+    elif card.status == 'premium' and not is_premium(cq.from_user.id):
         await cq.message.answer(
             f'⭐ {card.display_name} — Premium-персонаж.\n'
             f'Открыть за {PREMIUM_MONTHLY_STARS} Stars на 30 дней:',
@@ -2709,7 +2733,7 @@ async def voice_message(message: types.Message):
         before_level = get_relationship_level(message.from_user.id)
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             display_name = 'ты' if (user and user.voice_anon_mode) else (message.from_user.first_name or 'ты')
-            answer = await anna_reply(message.from_user.id, display_name, text, language_code=message.from_user.language_code)
+            answer = await anna_reply(message.from_user.id, display_name, text, language_code=message.from_user.language_code, character_id=get_user_character(message.from_user.id))
         await send_answer(message, answer)
         try:
             from services.gamification_service import unlock_achievement
@@ -2972,7 +2996,7 @@ async def text_message(message: types.Message):
             return
         before_level = get_relationship_level(message.from_user.id)
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-            answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text, language_code=message.from_user.language_code)
+            answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text, language_code=message.from_user.language_code, character_id=get_user_character(message.from_user.id))
         await send_answer(message, answer)
         # Detect if Anna offered a photo in her response
         if _PHOTO_OFFER_DETECT.search(answer):

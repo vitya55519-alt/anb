@@ -89,9 +89,9 @@ async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str) 
     return _clean(r.text)
 
 
-async def reply(user_id: int, user_name: str, user_text: str, language_code: str | None = None) -> str:
+async def reply(user_id: int, user_name: str, user_text: str, language_code: str | None = None, character_id: str = CHARACTER_ID) -> str:
     db_user_id = ensure_user(user_id, user_name, language_code=language_code)
-    observe_message(db_user_id, user_text, CHARACTER_ID)
+    observe_message(db_user_id, user_text, character_id)
     delta = infer_delta(user_text)
     test_stage = get_test_stage(user_id)
     if test_stage:
@@ -116,28 +116,28 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             relationship=delta.relationship, trust=delta.trust, intimacy=delta.intimacy,
             event_type=delta.event_type, reason=delta.reason,
         )
-    character = get_character(CHARACTER_ID)
+    character = get_character(character_id)
     premium = is_premium(user_id)
-    memories = get_memories(db_user_id, CHARACTER_ID, 40 if premium else 14)
-    history = get_recent_messages(db_user_id, CHARACTER_ID, 30 if premium else 16)
+    memories = get_memories(db_user_id, character_id, 40 if premium else 14)
+    history = get_recent_messages(db_user_id, character_id, 30 if premium else 16)
     stage_to_level = {'stranger':1,'acquaintance':2,'close':3,'intimate':4,'deeply_connected':5,'committed':6}
-    adaptation = build_adaptation_context(db_user_id, stage_to_level.get(test_stage or '', 0) or 1, CHARACTER_ID)
+    adaptation = build_adaptation_context(db_user_id, stage_to_level.get(test_stage or '', 0) or 1, character_id)
     if not test_stage:
         # Relationship context itself is authoritative; adaptation strength still grows conservatively with history.
         try:
             from services.photo_service import get_relationship_level
-            adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id), CHARACTER_ID)
+            adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id), character_id)
         except Exception:
             pass
     previous_user_text = next((m.content for m in reversed(history) if m.role == 'user'), '')
     behavior = behavior_context(user_text, previous_user_text)
-    competency = competency_context(user_text, CHARACTER_ID)
-    dna = character_dna_context(CHARACTER_ID)
+    competency = competency_context(user_text, character_id)
+    dna = character_dna_context(character_id)
     diversity = build_repetition_guard(history, user_text)
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories], behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation,
         time_context=_time_context(user_id),
-        character_id=CHARACTER_ID,
+        character_id=character_id,
     )
     messages = [{"role": "system", "content": system}]
     messages += [{"role": m.role, "content": m.content} for m in history]
@@ -147,38 +147,38 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     r = await generate_text(messages, max_tokens=token_budget, temperature=0.9, purpose='dialogue')
     answer = _clean(r.text)
     answer = await _rewrite_if_needed(messages, user_text, answer)
-    save_message(db_user_id, CHARACTER_ID, "user", user_text)
-    save_message(db_user_id, CHARACTER_ID, "assistant", answer)
+    save_message(db_user_id, character_id, "user", user_text)
+    save_message(db_user_id, character_id, "assistant", answer)
     await asyncio.gather(
-        extract_memory(db_user_id, CHARACTER_ID, user_text),
-        maybe_analyze_profile(db_user_id, CHARACTER_ID),
+        extract_memory(db_user_id, character_id, user_text),
+        maybe_analyze_profile(db_user_id, character_id),
     )
     softly_evolve_state(user_id, user_text)
     return answer
 
 
-async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, language_code: str | None = None) -> str:
+async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, language_code: str | None = None, character_id: str = CHARACTER_ID) -> str:
     db_user_id = ensure_user(user_id, user_name, language_code=language_code)
-    character = get_character(CHARACTER_ID)
-    memories = get_memories(db_user_id, CHARACTER_ID, 10)
-    history = get_recent_messages(db_user_id, CHARACTER_ID, 8)
+    character = get_character(character_id)
+    memories = get_memories(db_user_id, character_id, 10)
+    history = get_recent_messages(db_user_id, character_id, 8)
     from services.relationship_service import get_context
     rel_context = await get_context(user_id) or "Отношения только начинаются."
     try:
         from services.photo_service import get_relationship_level
-        adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id), CHARACTER_ID)
+        adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id), character_id)
     except Exception:
-        adaptation = build_adaptation_context(db_user_id, 1, CHARACTER_ID)
+        adaptation = build_adaptation_context(db_user_id, 1, character_id)
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories],
         "Напиши одну короткую спонтанную реплику первой. Не объясняй, зачем пишешь, и не обязательно задавай вопрос.",
         state_context(user_id), adaptation,
         time_context=_time_context(user_id),
-        character_id=CHARACTER_ID,
+        character_id=character_id,
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": f"Пользователь не писал около {hours_inactive} часов. Напиши естественно первой, не упоминая отслеживание активности."})
     r = await generate_text(messages, max_tokens=100, temperature=0.95, purpose='proactive')
     answer = _clean(r.text)
-    save_message(db_user_id, CHARACTER_ID, "assistant", answer)
+    save_message(db_user_id, character_id, "assistant", answer)
     return answer
