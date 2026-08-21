@@ -350,12 +350,15 @@ EXPRESSION_IDENTITY = (
 OPENAI_IDENTITY_LOCK = ORDINARY_IDENTITY_LOCK
 
 
-def _character_identity_lock(character_id: str, seedream: bool = False) -> tuple[str, str, str, str]:
+def _character_identity_lock(character_id: str, seedream: bool = False, expression_key: str | None = None) -> tuple[str, str, str, str]:
     """Return (identity, personal_note, safety, expression) for a character.
 
     For Anna the existing reference-based locks are preserved.
     For other characters a generic lock is built from the character card.
+    expression_key (from the user's chat mood) overrides the default warm smile
+    with an emotion-matched facial expression; None keeps the old behavior.
     """
+    from services.photo_expression_service import expression_description
     if character_id == 'anna_01':
         if seedream:
             return (
@@ -365,7 +368,7 @@ def _character_identity_lock(character_id: str, seedream: bool = False) -> tuple
                 'Keep the styling polished and personal while remaining non-explicit.',
                 'Tasteful adult fashion/editorial styling only. No nudity, no exposed nipples or genitals. '
                 'For personal or lingerie scenes, use elegant adult lingerie with opaque garment coverage; preserve identity above styling.',
-                EXPRESSION_IDENTITY,
+                expression_description(expression_key, 'Anna') if expression_key else EXPRESSION_IDENTITY,
             )
         return (
             OPENAI_IDENTITY_LOCK,
@@ -374,7 +377,7 @@ def _character_identity_lock(character_id: str, seedream: bool = False) -> tuple
             'Use believable smartphone framing and a natural expression. The result should feel Pinterest-like and intentionally styled, '
             'but still like a real personal lifestyle photo rather than a studio glamour shoot.',
             OPENAI_GENERAL_AUDIENCE_BLOCK,
-            EXPRESSION_IDENTITY,
+            expression_description(expression_key, 'Anna') if expression_key else EXPRESSION_IDENTITY,
         )
 
     from services.character_card_service import get_card
@@ -410,10 +413,7 @@ def _character_identity_lock(character_id: str, seedream: bool = False) -> tuple
         'Use a natural everyday pose and composition centered on the person, outfit and environment. '
         'The image should read as an everyday social-media or personal travel/lifestyle photo.'
     )
-    expression = (
-        f'EXPRESSION: {name} has a natural warm relaxed expression in generated photos. Keep it subtle, relaxed and believable; '
-        f'avoid a blank stern expression and avoid an exaggerated forced grin or unnaturally wide toothy smile.'
-    )
+    expression = expression_description(expression_key, name)
     return identity, personal, safety, expression
 
 
@@ -458,6 +458,7 @@ class PhotoRequest:
     location: str = ''
     angle: str = ''
     mood: str = 'warm, natural'
+    expression_key: str | None = None  # facial expression from chat mood (smile/upset/concerned/teasing)
     season: str = ''
     pack_outfits: tuple[str, ...] = ()
     customized: bool = False
@@ -917,7 +918,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     visual_rule = (LEVEL_VISUAL_RULES if seedream else OPENAI_LEVEL_VISUAL_RULES).get(level_key, LEVEL_VISUAL_RULES[1])
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
-    identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream)
+    identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key)
     body_reinforcement = BODY_REINFORCEMENT if (character_id == 'anna_01' and not seedream and request.scene in BODY_REINFORCEMENT_SCENES) else ''
     figure_note = (
         'Use tasteful fashion fit and waist definition while preserving the underlying slim body proportions. ' if seedream else

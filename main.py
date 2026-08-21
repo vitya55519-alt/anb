@@ -131,6 +131,7 @@ _photo_job_reservations: set[int] = set()
 
 # Track when Anna offers a photo in chat — next user "yes" triggers photo flow
 _photo_offer_pending: dict[int, float] = {}  # telegram_id -> timestamp of offer
+_photo_offer_expression: dict[int, str | None] = {}  # telegram_id -> chat mood that triggered the offer
 _PHOTO_OFFER_TTL = 120  # offer expires after 2 minutes
 
 # Regex: Anna offered a photo in her response
@@ -200,6 +201,7 @@ def main_keyboard(is_admin: bool = False):
         [KeyboardButton(text='✨ Возможности'), KeyboardButton(text='🚀 Премиум')],
         [KeyboardButton(text='⏰ Будильник'), KeyboardButton(text='👤 Профиль')],
         [KeyboardButton(text='⚙️ Настройки'), KeyboardButton(text='👩 Персонажи')],
+        [KeyboardButton(text='🔗 Пригласить')],
     ]
     if is_admin:
         rows.append([KeyboardButton(text='🛠 Админка')])
@@ -2844,6 +2846,13 @@ async def photo_button(message: types.Message):
     await photo_menu(message)
 
 
+@dp.message(F.text == '🔗 Пригласить')
+async def referral_button(message: types.Message):
+    """Persistent menu button so the referral link is always one tap away,
+    not buried in a one-time consent message that scrolls out of view."""
+    await referral_cmd(message)
+
+
 @dp.message(F.text == '🎭 Образы')
 async def looks_button_legacy(message: types.Message):
     # Old Telegram reply keyboards can remain cached after a deploy. The button is
@@ -3124,6 +3133,11 @@ async def voice_message(message: types.Message):
         # Detect if Anna offered a photo in her voice response
         if _PHOTO_OFFER_DETECT.search(answer):
             _photo_offer_pending[message.from_user.id] = _time.time()
+            try:
+                from services.photo_expression_service import detect_expression_key
+                _photo_offer_expression[message.from_user.id] = detect_expression_key(text)
+            except Exception:
+                _photo_offer_expression.pop(message.from_user.id, None)
             logger.info('photo_offer_detected user=%s source=voice', message.from_user.id)
         await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id, get_user_character(message.from_user.id)))
         if is_premium(message.from_user.id) and create_from_text(message.from_user.id, text):
@@ -3359,13 +3373,18 @@ async def text_message(message: types.Message):
         offer_active = offer_ts and (_time.time() - offer_ts < _PHOTO_OFFER_TTL)
         if offer_active and _PHOTO_ACCEPT.match(text.strip().lower()):
             _photo_offer_pending.pop(message.from_user.id, None)
+            # Match the character's facial expression to the mood of the
+            # conversation. Prefer the mood captured at the moment Anna offered
+            # the photo (e.g. a compliment); fall back to the acceptance message.
+            from services.photo_expression_service import detect_expression_key
+            expr_key = _photo_offer_expression.pop(message.from_user.id, None) or detect_expression_key(text)
             # User accepted Anna's photo offer
             if has_free_photo(message.from_user.id, get_user_character(message.from_user.id)):
-                req = PhotoRequest(scene='selfie')
+                req = PhotoRequest(scene='selfie', expression_key=expr_key)
                 await _start_photo_background(message.chat.id, message.from_user.id, req, 'free')
             else:
                 # Offer cheap photo for 5 stars instead of full price
-                req = PhotoRequest(scene='selfie')
+                req = PhotoRequest(scene='selfie', expression_key=expr_key)
                 offer_id = create_offer(message.from_user.id, req)
                 await bot.send_message(
                     message.chat.id,
@@ -3392,6 +3411,11 @@ async def text_message(message: types.Message):
         # Detect if Anna offered a photo in her response
         if _PHOTO_OFFER_DETECT.search(answer):
             _photo_offer_pending[message.from_user.id] = _time.time()
+            try:
+                from services.photo_expression_service import detect_expression_key
+                _photo_offer_expression[message.from_user.id] = detect_expression_key(text)
+            except Exception:
+                _photo_offer_expression.pop(message.from_user.id, None)
             logger.info('photo_offer_detected user=%s', message.from_user.id)
         await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id, get_user_character(message.from_user.id)))
         if is_premium(message.from_user.id):
@@ -3424,6 +3448,8 @@ async def main():
         types.BotCommand(command='voice', description='Голосовые ответы'),
         types.BotCommand(command='voice_anon', description='Анонимный голосовой режим'),
         types.BotCommand(command='profile', description='Прогресс, стрик, достижения'),
+        types.BotCommand(command='referral', description='🔗 Моя ссылка для приглашения'),
+        types.BotCommand(command='contest', description='🏆 Гонка пригласивших'),
         types.BotCommand(command='notifications', description='Инициативные сообщения'),
         types.BotCommand(command='wake', description='Будильник: /wake 08:00'),
         types.BotCommand(command='reset', description='Очистить память и историю'),
