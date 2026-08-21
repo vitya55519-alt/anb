@@ -65,7 +65,7 @@ GEMINI_VIDEO_DURATION_SECONDS = max(4, min(8, int(os.getenv("GEMINI_VIDEO_DURATI
 GEMINI_VIDEO_RESOLUTION = os.getenv("GEMINI_VIDEO_RESOLUTION", "720p").strip()
 GEMINI_VIDEO_ASPECT_RATIO = os.getenv("GEMINI_VIDEO_ASPECT_RATIO", "9:16").strip()
 GEMINI_VIDEO_TIMEOUT_SECONDS = max(60, min(420, int(os.getenv("GEMINI_VIDEO_TIMEOUT_SECONDS", "360"))))
-VIDEO_COST_STARS = max(1, int(os.getenv("VIDEO_COST_STARS", "100")))
+VIDEO_COST_STARS = max(1, int(os.getenv("VIDEO_COST_STARS", "5")))
 
 # Gemini native image generation / Nano Banana 2.
 # Ordinary fully-clothed scenes can use the same GEMINI_API_KEY as chat.
@@ -120,13 +120,13 @@ POLLINATIONS_TIMEOUT_SECONDS = max(30, min(240, int(os.getenv("POLLINATIONS_TIME
 POLLINATIONS_WIDTH = max(512, min(2048, int(os.getenv("POLLINATIONS_WIDTH", "1024"))))
 POLLINATIONS_HEIGHT = max(512, min(2048, int(os.getenv("POLLINATIONS_HEIGHT", "1280"))))
 
-# Free video generation via a public Hugging Face Gradio space (no payment).
-# Requests queue on public GPU servers, so generation typically takes 1–3 minutes.
-# Used when paid Gemini/Veo video is not enabled; Gemini stays the paid premium route.
+# Paid video generation via a public Hugging Face Gradio space.
+# The backend itself is free, but the feature is sold for VIDEO_COST_STARS;
+# requests queue on public GPU servers, so generation typically takes 1–3 minutes.
+# Gemini/Veo stays the paid premium route when enabled.
 HF_VIDEO_ENABLED = os.getenv("HF_VIDEO_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 HF_VIDEO_SPACE = os.getenv("HF_VIDEO_SPACE", "Wan-AI/Wan2.1").strip()
 HF_VIDEO_TIMEOUT_SECONDS = max(120, min(1800, int(os.getenv("HF_VIDEO_TIMEOUT_SECONDS", "600"))))
-HF_VIDEO_FREE_DAILY_LIMIT = max(1, min(20, int(os.getenv("HF_VIDEO_FREE_DAILY_LIMIT", "3"))))
 
 # Per-user adaptive communication profile. The model never rewrites its own code/prompt;
 # it only learns bounded style signals and recurring expressions into PostgreSQL.

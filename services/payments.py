@@ -55,3 +55,29 @@ def record_refund(telegram_id:int, charge_id:str, stars:int=0, product:str='refu
         if s.scalar(select(StarTransaction).where(StarTransaction.telegram_charge_id==marker)): return True
         s.add(StarTransaction(user_id=user.id,transaction_type='refund',product=product,stars=-abs(int(stars or 0)),telegram_charge_id=marker))
         s.commit(); return True
+
+
+def grant_premium(telegram_id:int, days:int=30)->bool:
+    """Admin tool: activate Premium for testing without a real Stars payment."""
+    now=datetime.now(timezone.utc).replace(tzinfo=None)
+    with SessionLocal() as s:
+        user=s.scalar(select(User).where(User.telegram_id==str(telegram_id)))
+        if not user: return False
+        if s.scalar(select(Subscription).where(Subscription.user_id==user.id,Subscription.status=="active",Subscription.expires_at>now)):
+            return True
+        s.add(Subscription(user_id=user.id,plan="premium",status="active",stars_amount=0,started_at=now,expires_at=now+timedelta(days=days),telegram_charge_id=f"admin_grant:{int(now.timestamp())}"))
+        user.photo_credits=(user.photo_credits or 0)+PREMIUM_MONTHLY_PHOTO_CREDITS
+        s.commit(); return True
+
+
+def revoke_premium(telegram_id:int)->bool:
+    """Admin tool: turn Premium off for testing. Photo credits are kept."""
+    now=datetime.now(timezone.utc).replace(tzinfo=None)
+    with SessionLocal() as s:
+        user=s.scalar(select(User).where(User.telegram_id==str(telegram_id)))
+        if not user: return False
+        active=s.scalars(select(Subscription).where(Subscription.user_id==user.id,Subscription.status=="active",Subscription.expires_at>now)).all()
+        if not active: return False
+        for sub in active:
+            sub.status='cancelled'; sub.expires_at=now
+        s.commit(); return True
