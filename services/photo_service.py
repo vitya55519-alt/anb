@@ -297,15 +297,17 @@ ANNA_FACE_IDENTITY = (
 )
 ANNA_BODY_IDENTITY = (
     'BODY/LOOK IDENTITY — permanent and non-negotiable. Reference image 2 is the NEW canonical overall look and upper-body silhouette anchor. '
-    'Preserve the same slender, fit feminine silhouette with natural proportions, slim waist, and toned figure exactly as shown in the reference. '
+    'Preserve the same slender, fit feminine silhouette with a slim waist and toned figure exactly as shown in the reference. '
+    'Anna has a full feminine bust with silicone implants (Russian size 4, D cup) — this bust size is a permanent part of her identity even if the reference shows a smaller one. '
     'Anna has a naturally slim and fit build — this is a core part of her identity. '
     'These proportions are part of Anna\u2019s identity, not a wardrobe effect. Clothing may change, but it must fit the same underlying physique. '
     'Do not add weight, make her thicker, or change her body type. Keep the same slim proportions visible in the canonical reference. '
     'Wardrobe, cafe background, pose and accessories from the reference are not permanent traits unless the requested scene calls for them.'
 )
 OPENAI_REFERENCE_PROTOCOL = (
-    'REFERENCE PROTOCOL: image 1 controls Anna\u2019s exact face and hair identity; image 2 reinforces the same appearance, stable slender silhouette and natural proportions. '
-    'The two images depict the same canonical Anna. Use requested scene, outfit, hairstyle and camera instructions for everything else. '
+    'REFERENCE PROTOCOL: image 1 controls Anna\u2019s exact face and hair identity; image 2 reinforces the same appearance and stable slender silhouette. '
+    'The two images depict the same canonical Anna. Anna\u2019s bust is always full (silicone implants, Russian size 4, D cup) regardless of how the reference shows it. '
+    'Use requested scene, outfit, hairstyle and camera instructions for everything else. '
     'Never blend in facial traits from legacy references. Always preserve the same slim body proportions from image 2.'
 )
 # V3.14.1: ordinary-photo prompts intentionally use neutral identity language.
@@ -315,7 +317,8 @@ OPENAI_REFERENCE_PROTOCOL = (
 # sexualized anatomy in prompts sent to general-audience image providers.
 ORDINARY_BODY_IDENTITY = (
     'ORDINARY PHOTO IDENTITY: reference image 2 defines Anna\u2019s exact overall physique, proportions and silhouette. '
-    'Preserve the same slim, fit body geometry with natural proportions, defined waist and feminine figure exactly as shown. '
+    'Preserve the same slim, fit body geometry with a defined waist and feminine figure exactly as shown. '
+    'Include Anna\u2019s full bust (silicone implants, Russian size 4, D cup) as a permanent body trait even if the reference shows it smaller; keep the waist slim. '
     'Do not add weight, make her thicker, or change her body type — keep the same slender proportions from the reference. '
     'Clothing changes coverage and styling only; the underlying body identity stays fixed and slim.'
 )
@@ -328,6 +331,7 @@ ORDINARY_IDENTITY_LOCK = ANNA_FACE_IDENTITY + ' ' + ORDINARY_BODY_IDENTITY + ' '
 BODY_REINFORCEMENT = (
     'BODY CONSISTENCY CHECK: keep Anna\u2019s overall physique and proportions visually consistent with reference image 2. '
     'She is naturally slim and fit — do NOT add weight, make her thicker, or change her body type in any pose, angle, clothing or scene. '
+    'Her bust stays full and consistent in every scene (silicone implants, Russian size 4, D cup). '
     'Including mirror, seated, athletic, full-body and loose-clothing scenes: preserve the same slender proportions. '
     'Keep anatomy realistic, clothing scene-appropriate and the pose natural.'
 )
@@ -409,6 +413,7 @@ SEEDREAM_IDENTITY_LOCK = (
     'The supplied reference defines Anna\u2019s NEW permanent canonical identity. Create the SAME fictional adult woman, Anna, age 26. '
     'Identity preservation has absolute priority. Preserve the exact face, eye shape and spacing, dark defined eyebrows, refined nose, full lips, cheekbones, jawline, '
     'warm light-to-medium skin tone, long dark-brown brunette hair, and the same slim, fit feminine proportions visible in the supplied canonical reference. '
+    'Anna has a full bust with silicone implants (Russian size 4, D cup) as a permanent trait even if the reference shows it smaller. '
     'Do not drift back to any previous Anna face, do not substitute another woman, and do not add weight or change her body type.'
 )
 BODY_REINFORCEMENT_SCENES = {'mirror', 'gym', 'cafe', 'restaurant', 'home', 'outfit', 'selfie'}
