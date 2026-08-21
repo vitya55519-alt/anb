@@ -11,6 +11,12 @@ def test_admin_panel_exposes_premium_toggle():
     assert 'admin:premium_toggle' in block.split('\ndef ')[0]
 
 
+def test_admin_keyboard_does_not_index_admin_ids_set():
+    # ADMIN_TELEGRAM_IDS is a set; indexing it ([0]) raises TypeError and
+    # silently breaks /admin rendering.
+    assert 'ADMIN_TELEGRAM_IDS[0]' not in MAIN
+
+
 def test_admin_premium_toggle_handler_is_admin_only():
     block = MAIN[MAIN.index("async def admin_premium_toggle("):MAIN.index("async def admin_cards(")]
     assert 'ADMIN_TELEGRAM_IDS' in block

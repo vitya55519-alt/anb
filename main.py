@@ -296,7 +296,8 @@ def characters_keyboard():
 
 
 def admin_keyboard():
-    premium_state = ('✅ вкл' if is_premium(ADMIN_TELEGRAM_IDS[0]) else '❌ выкл') if ADMIN_TELEGRAM_IDS else '—'
+    # ADMIN_TELEGRAM_IDS is a set, so peek via next(iter(...)) instead of indexing.
+    premium_state = ('✅ вкл' if is_premium(next(iter(ADMIN_TELEGRAM_IDS))) else '❌ выкл') if ADMIN_TELEGRAM_IDS else '—'
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='🎭 Карточки персонажей', callback_data='admin:cards')],
         [InlineKeyboardButton(text='💳 Способы оплаты', callback_data='admin:payments')],
