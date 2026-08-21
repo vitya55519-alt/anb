@@ -44,3 +44,11 @@ def test_pollinations_frame_guard_validates_image_bytes():
     block = PHOTO[PHOTO.index('async def _pollinations_one_frame'):PHOTO.index('async def _run_pollinations_set')]
     assert "data.startswith(b'\\xff\\xd8')" in block
     assert "data.startswith(b'\\x89PNG')" in block
+
+
+def test_pollinations_prompt_is_flattened_single_line():
+    # Pollinations returns 404 for prompts containing newline characters, so
+    # the structured multi-line prompt must be flattened before quoting.
+    block = PHOTO[PHOTO.index('async def _pollinations_one_frame'):PHOTO.index('async def _run_pollinations_set')]
+    flatten_idx = block.index("prompt.split('\\n')")
+    assert block.index('quote(prompt)') > flatten_idx

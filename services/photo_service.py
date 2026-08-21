@@ -1106,11 +1106,14 @@ async def _pollinations_one_frame(character: dict, telegram_id: int, request: Ph
 
     level = get_relationship_level(telegram_id)
     prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id) + (
-        "\nFREE PROVIDER ORDINARY-PHOTO RULE: Keep the same fictional adult person described in PHOTO IDENTITY "
+        " FREE PROVIDER ORDINARY-PHOTO RULE: Keep the same fictional adult person described in PHOTO IDENTITY "
         "across every photo: same face features, hair color and style, overall physique and subtle warm smile. "
         "Change only the requested scene, fully clothed outfit, pose, camera and lighting. "
         "Keep the result mainstream, natural and general-audience. Photorealistic personal smartphone-photo aesthetic."
     )
+    # Pollinations rejects prompts containing newline characters (404), so the
+    # multi-line structured prompt must be flattened into a single line.
+    prompt = ' '.join(line.strip() for line in prompt.split('\n') if line.strip())
     params = {
         'width': str(POLLINATIONS_WIDTH),
         'height': str(POLLINATIONS_HEIGHT),
