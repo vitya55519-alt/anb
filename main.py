@@ -13,7 +13,7 @@ import httpx
 from dataclasses import replace
 
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, BufferedInputFile, FSInputFile, ReplyKeyboardMarkup, KeyboardButton
 from sqlalchemy import select
 from aiogram.utils.chat_action import ChatActionSender
@@ -40,6 +40,10 @@ from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
 )
 from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left
+from services.referral_service import (
+    parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
+    referral_user_lock, pending_referral, remember_referral,
+)
 from services.gemini_video_service import animate_image, GeminiVideoError, video_available
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
 from services.llm_provider_service import provider_status
@@ -146,6 +150,7 @@ _PHOTO_ACCEPT = re.compile(
 )
 
 from config import CHAT_PHOTO_OFFER_STARS
+from config import VIDEO_STATUS_TEXT
 
 # Gemini/Veo video jobs are intentionally limited to one per user. They can
 # take minutes during peak load, so generation always runs in background.
@@ -895,20 +900,48 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
 
 
 @dp.message(CommandStart())
-async def start(message: types.Message):
+async def start(message: types.Message, command: CommandObject):
     name = message.from_user.first_name or message.from_user.username or 'ты'
     uid = ensure_user(message.from_user.id, name, language_code=message.from_user.language_code)
     track_event(uid, 'onboarding_started')
+
+    # Referral: a new user may have arrived via https://t.me/<bot>?start=ref_<referrer_id>.
+    # We only STASH the referrer id here — the bonus itself is granted only after
+    # the invitee accepts the 18+/terms gate, so referral farming via throwaway
+    # accounts that never confirm is impossible and the wow-bonus always lands
+    # at the moment the user is actually allowed to use the bot.
+    referrer_id = parse_referral_payload(command.args)
+    has_referral = bool(referrer_id)
+    if has_referral:
+        remember_referral(message.from_user.id, referrer_id)
+        track_event(uid, 'referral_link_opened', metadata={'referrer_id': str(referrer_id)})
+    track_event(uid, 'onboarding_completed')
+
     if not has_accepted(message.from_user.id):
-        await message.answer(
-            f'привет, {name} 🙂 здесь можно общаться со взрослыми AI-персонажами, развивать отношения, открывать истории и фото.\n\n'
-            'Перед началом подтверди, что тебе 18+, и прими условия использования и политику конфиденциальности.',
-            reply_markup=consent_keyboard(),
+        welcome = (
+            f'привет, {name} 🙂 здесь можно общаться со взрослыми AI-персонажами, '
+            'развивать отношения, открывать истории и фото.\n\n'
         )
+        welcome += '🎁 после подтверждения 18+ ты получишь бесплатные фото-кредиты на первое фото — это наш подарок за знакомство.\n\n'
+        if has_referral:
+            welcome += 'пришёл по приглашению друга — бонусы начислятся вам обоим сразу после подтверждения.\n\n'
+        welcome += 'Перед началом подтверди, что тебе 18+, и прими условия использования и политику конфиденциальности.'
+        await message.answer(welcome, reply_markup=consent_keyboard())
         return
+
+    # Returning user who already accepted: apply any pending referral/bonus now
+    # (idempotent — no-op if already granted). Wrapped in a per-user lock to
+    # avoid double-grants on concurrent /start re-entries.
+    async with referral_user_lock(message.from_user.id):
+        ref = pending_referral(message.from_user.id)
+        if ref:
+            apply_referral(message.from_user.id, ref)
+        first_start = apply_first_start_bonuses(message.from_user.id)
+        if first_start['credits'] or first_start['trial_days']:
+            track_event(uid, 'first_start_bonus_granted', metadata=first_start)
     await message.answer(
-        'Кого выбираешь? 👇\n\n'
-        'Доступные девушки отмечены ✅. Premium-персонажи отмечены ⭐.',
+        f'с возвращением, {name} 🙂 если ещё не забрал — у тебя могут быть бесплатные фото-кредиты на первое фото.\n'
+        'нажми «✅ Возможности» или просто отправь мне сообщение.',
         reply_markup=onboarding_character_keyboard(),
     )
 
@@ -917,9 +950,26 @@ async def start(message: types.Message):
 async def consent_accept(cq: types.CallbackQuery):
     accept_consent(cq.from_user.id)
     set_adult_confirmed(cq.from_user.id, True)
-    track_event(ensure_user(cq.from_user.id, cq.from_user.first_name), 'consent_accepted', metadata={'terms': TERMS_VERSION, 'privacy': PRIVACY_VERSION})
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    track_event(uid, 'consent_accepted', metadata={'terms': TERMS_VERSION, 'privacy': PRIVACY_VERSION})
+    # Wow-effect + referral payout happen HERE, after consent — wrapped in a
+    # per-user lock so a double-tap on the consent button can't double-grant.
+    async with referral_user_lock(cq.from_user.id):
+        ref = pending_referral(cq.from_user.id)
+        if ref:
+            res = apply_referral(cq.from_user.id, ref)
+            if res.get('awarded'):
+                track_event(uid, 'referral_awarded_on_consent', metadata={'referrer_id': str(ref)})
+        first_start = apply_first_start_bonuses(cq.from_user.id)
     await cq.answer('готово')
-    await cq.message.answer('Отлично 🙂 теперь выбери персонажа:', reply_markup=onboarding_character_keyboard())
+    if first_start['credits']:
+        await cq.message.answer(
+            f'🎁 добро пожаловать! подарил тебе {first_start["credits"]} фото-кредитов — попробуй первое фото бесплатно.\n'
+            'Выбери персонажа и начни общаться:',
+            reply_markup=onboarding_character_keyboard(),
+        )
+    else:
+        await cq.message.answer('Отлично 🙂 теперь выбери персонажа:', reply_markup=onboarding_character_keyboard())
 
 
 @dp.callback_query(F.data == 'consent:terms')
@@ -1881,6 +1931,28 @@ async def profile_cmd(message: types.Message):
     await message.answer(format_profile_summary(summary))
 
 
+@dp.message(Command('referral', 'invite'))
+async def referral_cmd(message: types.Message):
+    """Show the user's personal referral link and current invite stats."""
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    count = referral_count(message.from_user.id)
+    try:
+        me = await bot.get_me()
+        link = referral_link(me.username or 'bot', message.from_user.id)
+    except Exception:
+        await message.answer('не удалось получить ссылку прямо сейчас, попробуй позже.')
+        return
+    from config import REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS
+    text = (
+        '🎁 поделись своим приглашением и получай бонусы\n\n'
+        f'твоя ссылка: {link}\n\n'
+        f'приятель, который перейдёт по ней и впервые запустит бота, получит {REFERRAL_INVITEE_CREDITS} фото-кредитов, а ты — {REFERRAL_REFERRER_CREDITS}.\n'
+        f'уже приглашено: {count}\n\n'
+        'отправь ссылку другу в личном сообщении, в свой канал или в сторис — чем больше переходов, тем больше кредитов.'
+    )
+    await message.answer(text)
+
+
 @dp.message(Command('adult'))
 async def adult_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
@@ -2187,7 +2259,7 @@ async def _run_hf_video_background(chat_id: int, telegram_id: int, delivery_id: 
         if not image_bytes:
             raise HfVideoError('telegram_download_empty')
 
-        await bot.send_message(chat_id, 'снимаю видео для тебя 🎬 напишу, когда будет готово')
+        await bot.send_message(chat_id, VIDEO_STATUS_TEXT)
         video_bytes = await animate_image_hf(image_bytes, mime_type='image/jpeg')
         await bot.send_video(
             chat_id,
@@ -2198,10 +2270,10 @@ async def _run_hf_video_background(chat_id: int, telegram_id: int, delivery_id: 
         track_event(
             ensure_user(telegram_id),
             'hf_video_delivered',
-            metadata={'source_delivery_id': delivery_id, 'scene': delivery.get('scene')},
+            metadata={'source_delivery_id': delivery_id, 'scene': delivery.get('scene'), 'charge_id': charge_id or 'free'},
         )
     except Exception as exc:
-        logger.exception('HF video failed user=%s delivery=%s error=%s', telegram_id, delivery_id, type(exc).__name__)
+        logger.exception('HF video failed user=%s delivery=%s charge=%s error=%s: %s', telegram_id, delivery_id, charge_id, type(exc).__name__, str(exc)[:300])
         refunded = False
         if charge_id:
             try:
@@ -2219,6 +2291,11 @@ async def _run_hf_video_background(chat_id: int, telegram_id: int, delivery_id: 
             await bot.send_message(chat_id, 'видео сейчас не получилось 😕 напиши /support — проверим оплату и возврат.')
         else:
             await bot.send_message(chat_id, 'видео сейчас не получилось 😕 попробуй чуть позже.')
+        track_event(
+            ensure_user(telegram_id),
+            'hf_video_failed',
+            metadata={'source_delivery_id': delivery_id, 'error_type': type(exc).__name__, 'error_message': str(exc)[:200], 'charge_id': charge_id or 'free', 'refunded': refunded},
+        )
     finally:
         _video_jobs.pop(telegram_id, None)
 

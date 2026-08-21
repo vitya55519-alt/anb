@@ -79,23 +79,38 @@ def _generate_blocking(image_path: str, prompt: str) -> bytes:
     # Imported lazily: gradio_client is heavy and only needed for video jobs.
     from gradio_client import Client, handle_file
 
-    client = Client(HF_VIDEO_SPACE)
-    endpoint, image_param, prompt_param = _resolve_i2v_endpoint(client)
+    last_error: Exception | None = None
+    # The free public Gradio space is a shared, best-effort resource. A cold
+    # start or a momentarily busy queue is common and usually resolves on a
+    # fresh connection, so we retry the submit-and-wait cycle ONCE — but only
+    # for quick setup/connection failures. A timeout is NOT retried, because
+    # retrying it would double the user's wait beyond the promised 1–3 min.
+    for attempt in range(2):
+        try:
+            client = Client(HF_VIDEO_SPACE)
+            endpoint, image_param, prompt_param = _resolve_i2v_endpoint(client)
 
-    kwargs: dict = {image_param: handle_file(image_path)}
-    if prompt_param:
-        kwargs[prompt_param] = prompt
+            kwargs: dict = {image_param: handle_file(image_path)}
+            if prompt_param:
+                kwargs[prompt_param] = prompt
 
-    try:
-        job = client.submit(**kwargs, api_name=endpoint) if endpoint else client.submit(**kwargs)
-        result = job.result(timeout=HF_VIDEO_TIMEOUT_SECONDS)
-    except HfVideoError:
-        raise
-    except TimeoutError as exc:
-        raise HfVideoError('timeout') from exc
-    except Exception as exc:
-        logger.warning('HF video space call failed space=%s error=%s', HF_VIDEO_SPACE, str(exc)[:400])
-        raise HfVideoError('space_call_failed') from exc
+            job = client.submit(**kwargs, api_name=endpoint) if endpoint else client.submit(**kwargs)
+            result = job.result(timeout=HF_VIDEO_TIMEOUT_SECONDS)
+            break
+        except TimeoutError as exc:
+            last_error = HfVideoError('timeout')
+            logger.warning('HF video attempt %s/2 timed out space=%s (not retrying to avoid doubling wait)', attempt + 1, HF_VIDEO_SPACE)
+            break
+        except HfVideoError as exc:
+            last_error = exc
+            logger.warning('HF video attempt %s/2 failed space=%s error=%s', attempt + 1, HF_VIDEO_SPACE, exc)
+            continue
+        except Exception as exc:
+            last_error = HfVideoError('space_call_failed')
+            logger.warning('HF video attempt %s/2 call failed space=%s error=%s', attempt + 1, HF_VIDEO_SPACE, str(exc)[:400])
+            continue
+    else:
+        raise last_error or HfVideoError('space_call_failed')
 
     video_ref = _extract_video_ref(result)
     if not video_ref:
