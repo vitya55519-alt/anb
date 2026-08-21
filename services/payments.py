@@ -2,7 +2,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from services.db import SessionLocal
 from models.app_models import Subscription, StarTransaction, User
-from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS
+from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY
+from services.access_service import is_premium
 
 PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"video":VIDEO_COST_STARS}
 
@@ -81,3 +82,40 @@ def revoke_premium(telegram_id:int)->bool:
         for sub in active:
             sub.status='cancelled'; sub.expires_at=now
         s.commit(); return True
+
+
+def _today_utc() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def premium_video_free_left(telegram_id: int) -> int:
+    """Free photo-animation slots left today for a Premium user."""
+    if not VIDEO_PREMIUM_FREE_DAILY or not is_premium(telegram_id):
+        return 0
+    with SessionLocal() as s:
+        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+        if not user:
+            return 0
+        if (user.video_free_date or '') != _today_utc():
+            return VIDEO_PREMIUM_FREE_DAILY
+        return max(0, VIDEO_PREMIUM_FREE_DAILY - int(user.video_free_used or 0))
+
+
+def consume_premium_video_free(telegram_id: int) -> bool:
+    """Atomically consume one free Premium animation slot for today."""
+    if not VIDEO_PREMIUM_FREE_DAILY or not is_premium(telegram_id):
+        return False
+    today = _today_utc()
+    with SessionLocal() as s:
+        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+        if not user:
+            return False
+        if (user.video_free_date or '') != today:
+            user.video_free_date = today
+            user.video_free_used = 0
+        if int(user.video_free_used or 0) >= VIDEO_PREMIUM_FREE_DAILY:
+            s.commit()
+            return False
+        user.video_free_used = int(user.video_free_used or 0) + 1
+        s.commit()
+        return True

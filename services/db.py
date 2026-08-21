@@ -76,6 +76,8 @@ def _migrate_existing_users():
         'attention_points': 'INTEGER DEFAULT 0',
         'streak_count': 'INTEGER DEFAULT 0',
         'streak_last_date': 'TIMESTAMP',
+        'video_free_date': "VARCHAR(10) DEFAULT ''",
+        'video_free_used': 'INTEGER DEFAULT 0',
     }
     _add_missing_columns('users', wanted)
 

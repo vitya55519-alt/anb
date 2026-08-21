@@ -66,6 +66,9 @@ GEMINI_VIDEO_RESOLUTION = os.getenv("GEMINI_VIDEO_RESOLUTION", "720p").strip()
 GEMINI_VIDEO_ASPECT_RATIO = os.getenv("GEMINI_VIDEO_ASPECT_RATIO", "9:16").strip()
 GEMINI_VIDEO_TIMEOUT_SECONDS = max(60, min(420, int(os.getenv("GEMINI_VIDEO_TIMEOUT_SECONDS", "360"))))
 VIDEO_COST_STARS = max(1, int(os.getenv("VIDEO_COST_STARS", "5")))
+# Premium perk: this many photo animations per day are free for Premium users;
+# any extra animation on the same day is sold for VIDEO_COST_STARS Stars.
+VIDEO_PREMIUM_FREE_DAILY = max(0, int(os.getenv("VIDEO_PREMIUM_FREE_DAILY", "1")))
 
 # Gemini native image generation / Nano Banana 2.
 # Ordinary fully-clothed scenes can use the same GEMINI_API_KEY as chat.

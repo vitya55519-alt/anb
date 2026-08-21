@@ -24,6 +24,8 @@ class User(Base):
     attention_points: Mapped[int] = mapped_column(Integer, default=0)
     streak_count: Mapped[int] = mapped_column(Integer, default=0)
     streak_last_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    video_free_date: Mapped[str] = mapped_column(String(10), default="")
+    video_free_used: Mapped[int] = mapped_column(Integer, default=0)
     adult_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 class Message(Base):

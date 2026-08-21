@@ -58,6 +58,14 @@ def _linked_video_markup(item):
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text='🎬 Смотреть видео', callback_data=f'libvideo:{item.item_id}')
     ]])
+
+
+def _photo_action_markup(delivery_id: int, item=None):
+    """Buttons under every delivered photo: linked video (if any) + animate."""
+    linked = _linked_video_markup(item) if item is not None else None
+    rows = [list(row) for row in linked.inline_keyboard] if linked else []
+    rows.append([InlineKeyboardButton(text='✨ Оживить это фото', callback_data=f'video:animate:{delivery_id}')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 openai_client = AsyncOpenAI(api_key=IMAGE_API_KEY, base_url=IMAGE_BASE_URL) if OPENAI_IMAGE_AVAILABLE else None
 
 # Startup diagnostic — visible in Railway logs immediately
@@ -1605,7 +1613,8 @@ async def generate_photo(telegram_id: int, request: PhotoRequest) -> GeneratedPh
     return photos[0]
 
 
-def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=None, provider='unknown', estimated_cost_usd=0.0, *, character_id: str = CHARACTER_ID):
+def _bump_photo_usage(telegram_id: int, delivery_type: str, character_id: str = CHARACTER_ID):
+    """Count one set-level request against the daily quota (no delivery row)."""
     uid = ensure_user(telegram_id)
     with SessionLocal() as session:
         usage = session.scalar(select(PhotoDailyUsage).where(
@@ -1622,7 +1631,24 @@ def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=
             usage.free_used += 1
         elif delivery_type in {'credit', 'paid'}:
             usage.paid_used += 1
-        session.add(PhotoDelivery(
+        session.commit()
+
+
+def _insert_delivery_row(
+    telegram_id: int,
+    scene: str,
+    delivery_type: str,
+    *,
+    file_id=None,
+    url=None,
+    provider: str = 'unknown',
+    estimated_cost_usd: float = 0.0,
+    character_id: str = CHARACTER_ID,
+) -> int:
+    """Create a PhotoDelivery row and return its id (button/per-frame anchor)."""
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as session:
+        row = PhotoDelivery(
             user_id=uid,
             character_id=character_id,
             scene=scene,
@@ -1631,8 +1657,30 @@ def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=
             image_url=url,
             provider=provider,
             estimated_cost_usd=estimated_cost_usd,
-        ))
+        )
+        session.add(row)
         session.commit()
+        return int(row.id)
+
+
+def _attach_delivery_file(delivery_id: int, file_id: str | None):
+    """Store the sent Telegram file_id so the animate button works later."""
+    if not file_id:
+        return
+    with SessionLocal() as session:
+        row = session.get(PhotoDelivery, int(delivery_id))
+        if row is not None:
+            row.telegram_file_id = file_id
+            session.commit()
+
+
+def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=None, provider='unknown', estimated_cost_usd=0.0, *, character_id: str = CHARACTER_ID):
+    _bump_photo_usage(telegram_id, delivery_type, character_id)
+    return _insert_delivery_row(
+        telegram_id, scene, delivery_type,
+        file_id=file_id, url=url, provider=provider,
+        estimated_cost_usd=estimated_cost_usd, character_id=character_id,
+    )
 
 
 _PRIVATE_LIBRARY_SCENES = {'personal', 'lingerie', 'private_fashion'}
@@ -1673,19 +1721,19 @@ async def _deliver_library_failure_fallback(
     sent_messages = []
     try:
         for idx, item in enumerate(pack.photos):
+            row_id = _insert_delivery_row(telegram_id, pack.scene, 'free', provider='telegram_library_fallback', estimated_cost_usd=0.0, character_id=character_id)
             sent = await bot.send_photo(
                 chat_id, item.file_id, caption=fallback_caption if idx == 0 else None,
-                reply_markup=_linked_video_markup(item),
+                reply_markup=_photo_action_markup(row_id, item),
             )
+            _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else item.file_id)
             sent_messages.append(sent)
     except Exception:
         logger.exception('library failure fallback send failed user=%s requested_scene=%s pack=%s', telegram_id, request.scene, pack.pack_key)
         return []
 
     mark_pack_seen(telegram_id, pack.id)
-    first = sent_messages[0]
-    file_id = first.photo[-1].file_id if first.photo else pack.photos[0].file_id
-    _record(telegram_id, pack.scene, 'free', file_id=file_id, provider='telegram_library_fallback', estimated_cost_usd=0.0, character_id=character_id)
+    _bump_photo_usage(telegram_id, 'free', character_id=character_id)
     uid = ensure_user(telegram_id)
     track_event(uid, 'photo_library_fallback_served', metadata={
         'requested_scene': request.scene,
@@ -1730,9 +1778,11 @@ async def _deliver_library_partial_topup(
         sent_item_ids: list[int] = []
         try:
             for item in chosen_items:
+                row_id = _insert_delivery_row(telegram_id, request.scene, 'free', provider='telegram_library_topup', estimated_cost_usd=0.0)
                 sent = await bot.send_photo(
-                    chat_id, item.file_id, reply_markup=_linked_video_markup(item),
+                    chat_id, item.file_id, reply_markup=_photo_action_markup(row_id, item),
                 )
+                _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else item.file_id)
                 sent_messages.append(sent)
                 sent_item_ids.append(int(item.item_id))
         except Exception:
@@ -1798,16 +1848,16 @@ async def deliver_photo(
         library_pack = choose_unseen_pack(telegram_id, character_id, request.scene, get_relationship_level(telegram_id))
         if library_pack and library_pack.photos:
             for idx, item in enumerate(library_pack.photos):
+                row_id = _insert_delivery_row(telegram_id, request.scene, 'free', provider='telegram_library', estimated_cost_usd=0.0, character_id=character_id)
                 sent = await bot.send_photo(
                     chat_id, item.file_id, caption=caption if idx == 0 else None,
-                    reply_markup=_linked_video_markup(item),
+                    reply_markup=_photo_action_markup(row_id, item),
                 )
+                _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else item.file_id)
                 sent_messages.append(sent)
                 logger.info('library photo frame delivered user=%s scene=%s pack=%s frame=%s/%s', telegram_id, request.scene, library_pack.pack_key, idx + 1, len(library_pack.photos))
             mark_pack_seen(telegram_id, library_pack.id)
-            first = sent_messages[0]
-            file_id = first.photo[-1].file_id if first.photo else library_pack.photos[0].file_id
-            _record(telegram_id, request.scene, 'free', file_id=file_id, provider='telegram_library', estimated_cost_usd=0.0, character_id=character_id)
+            _bump_photo_usage(telegram_id, 'free', character_id=character_id)
             uid = ensure_user(telegram_id)
             track_event(uid, 'photo_delivered', value=0.0, metadata={'scene': request.scene, 'provider': 'telegram_library', 'count': len(sent_messages), 'pack_key': library_pack.pack_key})
             track_event(uid, 'photo_library_served', metadata={'scene': request.scene, 'pack_key': library_pack.pack_key, 'level': library_pack.relationship_level})
@@ -1816,14 +1866,21 @@ async def deliver_photo(
 
     async def _send_frame(result: GeneratedPhoto, idx: int):
         item_caption = caption if idx == 0 else None
+        row_id = _insert_delivery_row(
+            telegram_id, request.scene, delivery_type,
+            url=result.url, provider=result.provider,
+            estimated_cost_usd=result.estimated_cost_usd, character_id=character_id,
+        )
         if result.url:
-            sent = await bot.send_photo(chat_id, result.url, caption=item_caption)
+            sent = await bot.send_photo(chat_id, result.url, caption=item_caption, reply_markup=_photo_action_markup(row_id))
         else:
             sent = await bot.send_photo(
                 chat_id,
                 BufferedInputFile(result.data, filename=f'anna_{request.scene}_{idx+1}.png'),
                 caption=item_caption,
+                reply_markup=_photo_action_markup(row_id),
             )
+        _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else None)
         sent_messages.append(sent)
         logger.info('photo frame delivered user=%s scene=%s frame=%s/%s provider=%s', telegram_id, request.scene, idx + 1, PHOTO_SET_SIZE, result.provider)
 
@@ -1864,16 +1921,11 @@ async def deliver_photo(
     if delivery_type == 'credit' and ai_complete:
         consume_photo_credit(telegram_id)
     record_delivery_type = delivery_type if user_visible_complete or charge_free_partial or delivery_type == 'admin' else f'partial_{delivery_type}'
-    first = sent_messages[0]
     first_result = results[0]
-    file_id = first.photo[-1].file_id if first.photo else None
     total_cost = sum(x.estimated_cost_usd for x in results)
-    _record(
-        telegram_id, request.scene, record_delivery_type,
-        file_id=file_id, url=first_result.url,
-        provider=first_result.provider, estimated_cost_usd=total_cost,
-        character_id=character_id,
-    )
+    # Per-frame delivery rows were already created inside _send_frame; only the
+    # set-level daily-quota accounting happens here.
+    _bump_photo_usage(telegram_id, record_delivery_type, character_id=character_id)
     current_state = get_state(telegram_id)
     recent_outfits = (_json_list(getattr(current_state, 'recent_outfits_json', '[]')) + list(resolved.pack_outfits))[-6:]
     recent_hair = (_json_list(getattr(current_state, 'recent_hairstyles_json', '[]')) + [resolved.hairstyle])[-4:]

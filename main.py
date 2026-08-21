@@ -39,7 +39,7 @@ from services.photo_service import (
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
 )
-from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium
+from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left
 from services.gemini_video_service import animate_image, GeminiVideoError, video_available
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
 from services.llm_provider_service import provider_status
@@ -2051,7 +2051,7 @@ async def quest_route_cb(cq: types.CallbackQuery):
         # Story reward: generate/deliver without consuming the daily free quota.
         await _start_photo_background(cq.message.chat.id,cq.from_user.id,PhotoRequest(scene=scene),'story')
 
-async def _run_gemini_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str) -> None:
+async def _run_gemini_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None) -> None:
     try:
         delivery = get_photo_delivery_for_user(telegram_id, delivery_id)
         if not delivery or not delivery.get('telegram_file_id'):
@@ -2082,21 +2082,72 @@ async def _run_gemini_video_background(chat_id: int, telegram_id: int, delivery_
     except Exception as exc:
         logger.exception('Gemini video failed user=%s delivery=%s error=%s', telegram_id, delivery_id, type(exc).__name__)
         refunded = False
-        try:
-            await bot.refund_star_payment(
-                user_id=telegram_id,
-                telegram_payment_charge_id=charge_id,
-            )
-            record_refund(telegram_id, charge_id, VIDEO_COST_STARS, product='video')
-            refunded = True
-        except Exception:
-            logger.exception('Automatic video Stars refund failed user=%s charge=%s', telegram_id, charge_id)
+        if charge_id:
+            try:
+                await bot.refund_star_payment(
+                    user_id=telegram_id,
+                    telegram_payment_charge_id=charge_id,
+                )
+                record_refund(telegram_id, charge_id, VIDEO_COST_STARS, product='video')
+                refunded = True
+            except Exception:
+                logger.exception('Automatic video Stars refund failed user=%s charge=%s', telegram_id, charge_id)
         if refunded:
             await bot.send_message(chat_id, 'видео сейчас не получилось 😕 Stars автоматически вернул.')
-        else:
+        elif charge_id:
             await bot.send_message(chat_id, 'видео сейчас не получилось 😕 напиши /support — проверим оплату и возврат.')
+        else:
+            await bot.send_message(chat_id, 'видео сейчас не получилось 😕 попробуй ещё раз чуть позже.')
     finally:
         _video_jobs.pop(telegram_id, None)
+
+
+async def _video_gate(cq: types.CallbackQuery, delivery: dict) -> None:
+    """Start the animation free (Premium daily slot) or invoice Stars."""
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    track_event(uid, 'video_animate_click', metadata={'delivery_id': delivery['id']})
+    if is_premium(cq.from_user.id) and consume_premium_video_free(cq.from_user.id):
+        track_event(uid, 'video_free_used', metadata={'delivery_id': delivery['id']})
+        if video_available():
+            _video_jobs[cq.from_user.id] = asyncio.create_task(
+                _run_gemini_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None)
+            )
+        else:
+            _video_jobs[cq.from_user.id] = asyncio.create_task(
+                _run_hf_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None)
+            )
+        return
+    await send_stars_invoice(
+        cq.message.chat.id,
+        'Оживить фото Анны',
+        'Короткое AI-видео из выбранного фото. Генерация занимает 1–3 минуты.',
+        f'video:{delivery["id"]}',
+        VIDEO_COST_STARS,
+    )
+
+
+@dp.callback_query(F.data.startswith('video:animate:'))
+async def animate_photo_cb(cq: types.CallbackQuery):
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True)
+        return
+    if not (video_available() or hf_video_available()):
+        await cq.answer('Видео пока недоступно.', show_alert=True)
+        return
+    if cq.from_user.id in _video_jobs and not _video_jobs[cq.from_user.id].done():
+        await cq.answer('Одно видео уже создаётся 🎬', show_alert=True)
+        return
+    try:
+        delivery_id = int(cq.data.split(':', 2)[2])
+    except (ValueError, IndexError):
+        await cq.answer()
+        return
+    delivery = get_photo_delivery_for_user(cq.from_user.id, delivery_id)
+    if not delivery or not delivery.get('telegram_file_id'):
+        await cq.answer('Это фото уже не оживить — попроси у меня новое 🙂', show_alert=True)
+        return
+    await cq.answer()
+    await _video_gate(cq, delivery)
 
 
 @dp.callback_query(F.data == 'video:animate_last')
@@ -2115,13 +2166,7 @@ async def animate_last_photo_cb(cq: types.CallbackQuery):
         await cq.answer('Сначала попроси у Анны фото — оживлю последний кадр.', show_alert=True)
         return
     await cq.answer()
-    await send_stars_invoice(
-        cq.message.chat.id,
-        'Оживить фото Анны',
-        'Короткое AI-видео из последнего полученного фото. Генерация занимает 1–3 минуты.',
-        f'video:{delivery["id"]}',
-        VIDEO_COST_STARS,
-    )
+    await _video_gate(cq, delivery)
 
 
 async def _run_hf_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None) -> None:
@@ -2201,7 +2246,7 @@ async def premium(message: types.Message):
         return
     await message.answer(
         'Premium на 30 дней:\n• расширенная память и полный лимит сообщений\n'
-        '• 12 дополнительных photo credits\n• 2 бесплатных replay альтернативных квест-веток в месяц\n• больше continuity и инициативных сообщений\n• ранний доступ к будущим функциям персонажей\n\n'
+        '• 12 дополнительных photo credits\n• 1 бесплатное оживление фото каждый день\n• 2 бесплатных replay альтернативных квест-веток в месяц\n• больше continuity и инициативных сообщений\n• ранний доступ к будущим функциям персонажей\n\n'
         'Бесплатные фото зависят от близости: 1–2 уровень — 1/день, 3–6 — 2/день.\n'
         'Отношения не покупаются — они развиваются из общения. Кастомные фото оплачиваются отдельно.\n\n'
         '💳 Цифровые покупки внутри Telegram оплачиваются через Telegram Stars.',
@@ -2295,7 +2340,7 @@ async def successful_payment(message: types.Message):
     if payload == 'premium_month':
         record_payment(message.from_user.id, 'premium_month', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_month'})
-        await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits')
+        await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — раз в день сделаю видео бесплатно 🎬')
         return
 
     if payload.startswith('quest_replay:'):
