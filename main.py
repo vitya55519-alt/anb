@@ -43,7 +43,7 @@ from services.photo_idea_service import (
 from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
-    referral_user_lock, pending_referral, remember_referral,
+    referral_user_lock, pending_referral, remember_referral, referral_leaderboard, referral_rank,
 )
 from services.gemini_video_service import animate_image, GeminiVideoError, video_available
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
@@ -1974,6 +1974,30 @@ async def referral_cmd(message: types.Message):
     await message.answer(text)
 
 
+@dp.message(Command('contest'))
+async def contest_cmd(message: types.Message):
+    """Monthly referral race: top inviters over the last 30 days win Premium."""
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    board = referral_leaderboard(limit=10, period_days=30)
+    rank, total = referral_rank(message.from_user.id, period_days=30)
+    lines = ['🏆 гонка пригласивших за 30 дней\n', 'топ-10 лидеров:']
+    if not board:
+        lines.append('пока нет ни одного приглашения — будь первым!')
+    else:
+        medals = {1: '🥇', 2: '🥈', 3: '🥉'}
+        for row in board:
+            medal = medals.get(row['rank'], f"{row['rank']}.")
+            me = ' (это ты!)' if row['telegram_id'] == message.from_user.id else ''
+            lines.append(f"{medal} {row['name']}{me} — {row['count']} пригл.")
+    lines.append('')
+    lines.append('призы: топ-3 получают Premium на месяц. конкурс обновляется каждый месяц.')
+    if rank > 0:
+        lines.append(f'\nты сейчас на {rank} месте из {total} — пригласи ещё друзей командой /referral!')
+    else:
+        lines.append('\nты пока не в гонке — начни с /referral, чтобы получить свою ссылку.')
+    await message.answer('\n'.join(lines))
+
+
 @dp.message(Command('adult'))
 async def adult_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
@@ -3316,8 +3340,13 @@ async def text_message(message: types.Message):
     cancel_active_wake(message.from_user.id)
     try:
         from services.gamification_service import touch_activity, check_first_message
-        touch_activity(message.from_user.id)
+        gam = touch_activity(message.from_user.id)
         check_first_message(message.from_user.id)
+        if gam and gam.get('streak_reward_credits'):
+            await message.answer(
+                f'🔥 {gam["streak_count"]} дней подряд! подарил {gam["streak_reward_credits"]} фото-кредитов за постоянство. '
+                'Заходи завтра — серию нельзя прерывать 😊'
+            )
     except Exception:
         pass
     if not can_send_message(message.from_user.id):

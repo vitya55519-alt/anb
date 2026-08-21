@@ -180,6 +180,15 @@ LIBRARY_MODERATION_ENABLED = (
 )
 LIBRARY_MODERATION_MODEL = os.getenv("LIBRARY_MODERATION_MODEL", "omni-moderation-latest").strip()
 
+# Streak reward credits granted once when a streak reaches a milestone.
+# Keys are the streak day count; values are bonus photo credits.
+STREAK_REWARDS = {
+    3: int(os.getenv('STREAK_REWARD_3', '1')),
+    7: int(os.getenv('STREAK_REWARD_7', '2')),
+    14: int(os.getenv('STREAK_REWARD_14', '3')),
+    30: int(os.getenv('STREAK_REWARD_30', '5')),
+}
+
 # Voice: use OpenAI TTS/Whisper only if key is present; otherwise edge-tts + Gemini STT.
 TTS_API_KEY = (os.getenv("TTS_API_KEY") or AI_KEY).strip()
 TTS_MODEL = os.getenv("TTS_MODEL", "tts-1")

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from config import FREE_MESSAGES_PER_DAY, CHARACTER_ID
+from config import FREE_MESSAGES_PER_DAY, CHARACTER_ID, STREAK_REWARDS
 from models.app_models import Achievement, User
 from services.db import SessionLocal
 from services.user_service import ensure_user, get_user
@@ -74,6 +74,24 @@ def touch_activity(telegram_id: int) -> dict:
         unlock_achievement(telegram_id, 'three_day_streak')
     if streak >= 7:
         unlock_achievement(telegram_id, 'seven_day_streak')
+
+    # Streak milestone rewards: grant bonus photo credits once per milestone.
+    # Idempotent via grant_photo_credits' marker, so a re-trigger on the same
+    # day (or a duplicate touch_activity call) never double-credits.
+    reward = STREAK_REWARDS.get(streak, 0)
+    if reward > 0 and summary['new_streak_day']:
+        try:
+            from services.payments import grant_photo_credits
+            granted = grant_photo_credits(telegram_id, reward, reason=f"streak_{streak}")
+            summary['streak_reward_credits'] = reward if granted >= 0 else 0
+            if granted >= 0:
+                try:
+                    from services.analytics_service import track_event
+                    track_event(user.id, 'streak_reward_granted', metadata={'streak': streak, 'credits': reward})
+                except Exception:
+                    pass
+        except Exception:
+            logger.exception('streak reward failed user=%s streak=%s', telegram_id, streak)
 
     return summary
 

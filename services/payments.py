@@ -48,6 +48,25 @@ def get_photo_credits(telegram_id:int)->int:
         return int(user.photo_credits or 0) if user else 0
 
 
+def grant_photo_credits(telegram_id:int, amount:int, reason:str="bonus")->int:
+    """Add bonus photo credits to a user. Idempotent per (reason, user): a second
+    call with the same reason is a no-op and returns -1, so milestone/streak
+    rewards can never be double-granted even if the triggering code runs twice.
+    Returns the new balance, 0 if the user is unknown, or -1 if already granted.
+    """
+    marker=f"credit_grant:{reason}:{telegram_id}"
+    with SessionLocal() as s:
+        if s.scalar(select(StarTransaction).where(StarTransaction.telegram_charge_id==marker)):
+            return -1
+        user=s.scalar(select(User).where(User.telegram_id==str(telegram_id)))
+        if not user:
+            return 0
+        user.photo_credits=(user.photo_credits or 0)+max(0,int(amount))
+        s.add(StarTransaction(user_id=user.id,transaction_type="grant",product=reason,stars=0,telegram_charge_id=marker))
+        s.commit()
+        return int(user.photo_credits or 0)
+
+
 def record_refund(telegram_id:int, charge_id:str, stars:int=0, product:str='refund'):
     with SessionLocal() as s:
         user=s.scalar(select(User).where(User.telegram_id==str(telegram_id)))

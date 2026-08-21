@@ -30,6 +30,18 @@ def setup_module(_module):
     Base.metadata.create_all(engine)
 
 
+def _cleanup_user():
+    """Delete only the Emily relationship row for our test user, so a pre-existing
+    Emily row left in the shared in-memory DB by other tests can't make the
+    `emily_row is None` assertion fail. Anna's row is intentionally left intact
+    because test 2 builds on the Anna progress created in test 1."""
+    uid = ensure_user(TID, "tester")
+    with SessionLocal() as s:
+        s.query(UserCharacterRelationship).filter_by(
+            user_id=uid, character_id=EMILY).delete(synchronize_session=False)
+        s.commit()
+
+
 def _record(character_id: str, times: int = 6) -> None:
     loop = asyncio.new_event_loop()
     try:
@@ -47,6 +59,7 @@ def _record(character_id: str, times: int = 6) -> None:
 
 
 def test_anna_progress_is_isolated_from_emily():
+    _cleanup_user()
     uid = ensure_user(TID, "tester")
     # Record several positive interactions for Anna only.
     _record(ANNA, times=6)
@@ -72,6 +85,7 @@ def test_anna_progress_is_isolated_from_emily():
 
 
 def test_emily_progresses_independently_after_anna():
+    _cleanup_user()
     uid = ensure_user(TID, "tester")
     anna_before = get_relationship_level(TID, ANNA)
 

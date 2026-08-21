@@ -222,5 +222,56 @@ def referral_count(telegram_id: int) -> int:
     return _event_count(uid, "referral_converted")
 
 
+def referral_leaderboard(limit: int = 10, period_days: int | None = 30):
+    """Top inviters by converted referrals within the period (default: last 30 days).
+    period_days=None means all-time. Returns list of dicts: rank, telegram_id,
+    name, count. Used by the /contest command for the monthly referral race.
+    """
+    cutoff = None
+    if period_days is not None:
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=period_days)
+    with SessionLocal() as s:
+        q = (
+            select(
+                ProductEvent.user_id,
+                func.count().label("cnt"),
+            )
+            .where(ProductEvent.event_name == "referral_converted")
+            .group_by(ProductEvent.user_id)
+            .order_by(func.count().desc())
+        )
+        if cutoff is not None:
+            q = q.where(ProductEvent.created_at >= cutoff)
+        rows = s.execute(q.limit(limit)).all()
+        # Resolve names in one pass.
+        uids = [r[0] for r in rows]
+        names: dict[int, str] = {}
+        tgids: dict[int, str] = {}
+        if uids:
+            for u in s.scalars(select(User).where(User.id.in_(uids))).all():
+                names[u.id] = u.name or "ты"
+                tgids[u.id] = u.telegram_id
+        return [
+            {
+                "rank": idx + 1,
+                "telegram_id": int(tgids.get(r[0], "0")) if r[0] in tgids else 0,
+                "name": names.get(r[0], "ты"),
+                "count": int(r[1]),
+            }
+            for idx, r in enumerate(rows)
+        ]
+
+
+def referral_rank(telegram_id: int, period_days: int | None = 30) -> tuple[int, int]:
+    """Return (rank, total_inviters) for the given user in the period. rank=0 if none."""
+    board = referral_leaderboard(limit=100000, period_days=period_days)
+    total = len(board)
+    uid = ensure_user(telegram_id)
+    for i, row in enumerate(board, 1):
+        if row["telegram_id"] == int(telegram_id):
+            return i, total
+    return 0, total
+
+
 def referral_link(bot_username: str, telegram_id: int) -> str:
     return f"https://t.me/{bot_username}?start=ref_{telegram_id}"
