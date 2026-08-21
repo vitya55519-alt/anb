@@ -120,6 +120,14 @@ POLLINATIONS_TIMEOUT_SECONDS = max(30, min(240, int(os.getenv("POLLINATIONS_TIME
 POLLINATIONS_WIDTH = max(512, min(2048, int(os.getenv("POLLINATIONS_WIDTH", "1024"))))
 POLLINATIONS_HEIGHT = max(512, min(2048, int(os.getenv("POLLINATIONS_HEIGHT", "1280"))))
 
+# Free video generation via a public Hugging Face Gradio space (no payment).
+# Requests queue on public GPU servers, so generation typically takes 1–3 minutes.
+# Used when paid Gemini/Veo video is not enabled; Gemini stays the paid premium route.
+HF_VIDEO_ENABLED = os.getenv("HF_VIDEO_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+HF_VIDEO_SPACE = os.getenv("HF_VIDEO_SPACE", "Wan-AI/Wan2.1").strip()
+HF_VIDEO_TIMEOUT_SECONDS = max(120, min(1800, int(os.getenv("HF_VIDEO_TIMEOUT_SECONDS", "600"))))
+HF_VIDEO_FREE_DAILY_LIMIT = max(1, min(20, int(os.getenv("HF_VIDEO_FREE_DAILY_LIMIT", "3"))))
+
 # Per-user adaptive communication profile. The model never rewrites its own code/prompt;
 # it only learns bounded style signals and recurring expressions into PostgreSQL.
 ADAPTATION_ENABLED = os.getenv("ADAPTATION_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}

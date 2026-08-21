@@ -23,6 +23,7 @@ from config import (
     ADMIN_TELEGRAM_IDS, CHARACTER_ID, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS,
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
     GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, WALLET_PAY_ENABLED,
+    HF_VIDEO_FREE_DAILY_LIMIT,
 )
 from services.user_service import (
     ensure_user, get_user, get_state, update_user_settings, touch_user,
@@ -38,6 +39,7 @@ from services.photo_service import (
 )
 from services.payments import record_payment, get_photo_credits, record_refund
 from services.gemini_video_service import animate_image, GeminiVideoError, video_available
+from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
 from services.llm_provider_service import provider_status
 from services.reminder_service import set_timezone, create_from_text, cancel_active_wake, due_reminders
 from services.scheduler_service import start_scheduler
@@ -436,7 +438,7 @@ def _character_card_text(card, viewer_id: int | None = None) -> str:
         except Exception:
             pass
         lines.extend([
-            ('🎬 Оживить фото: ✅ доступно' if GEMINI_VIDEO_ENABLED else '🎬 Оживить фото: 🔒 скоро'),
+            ('🎬 Оживить фото: ✅ доступно' if (GEMINI_VIDEO_ENABLED or hf_video_available()) else '🎬 Оживить фото: 🔒 скоро'),
             '📞 Звонок с Анной: 🔒 скоро',
         ])
     return '\n'.join(lines)
@@ -606,11 +608,12 @@ def _contextualize_vague_photo(telegram_id: int, text: str, request: PhotoReques
 
 
 def premium_keyboard():
-    video_button = (
-        InlineKeyboardButton(text=f'🎬 Оживить последнее фото — {VIDEO_COST_STARS}⭐', callback_data='video:animate_last')
-        if GEMINI_VIDEO_ENABLED
-        else InlineKeyboardButton(text='🔒 🎬 Оживить фото · скоро', callback_data='future:animate_photo')
-    )
+    if GEMINI_VIDEO_ENABLED:
+        video_button = InlineKeyboardButton(text=f'🎬 Оживить последнее фото — {VIDEO_COST_STARS}⭐', callback_data='video:animate_last')
+    elif hf_video_available():
+        video_button = InlineKeyboardButton(text='🎬 Оживить последнее фото — бесплатно', callback_data='video:animate_last_free')
+    else:
+        video_button = InlineKeyboardButton(text='🔒 🎬 Оживить фото · скоро', callback_data='future:animate_photo')
     rows = [
         [InlineKeyboardButton(text=f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars / 30 дней', callback_data='buy:premium')],
     ]
@@ -1971,6 +1974,84 @@ async def animate_last_photo_cb(cq: types.CallbackQuery):
     )
 
 
+# Free HF video route: public GPU spaces queue requests, so keep a modest
+# per-user daily cap. In-memory state is acceptable here: Railway restarts
+# reset it, and the queue itself already rate-limits abuse.
+_hf_video_daily: dict[int, tuple[str, int]] = {}
+
+
+def _hf_video_daily_ok(telegram_id: int) -> bool:
+    today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    day, used = _hf_video_daily.get(telegram_id, ('', 0))
+    return (used if day == today else 0) < HF_VIDEO_FREE_DAILY_LIMIT
+
+
+def _hf_video_daily_consume(telegram_id: int) -> None:
+    today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    day, used = _hf_video_daily.get(telegram_id, ('', 0))
+    _hf_video_daily[telegram_id] = (today, (used if day == today else 0) + 1)
+
+
+async def _run_hf_video_background(chat_id: int, telegram_id: int, delivery_id: int) -> None:
+    try:
+        delivery = get_photo_delivery_for_user(telegram_id, delivery_id)
+        if not delivery or not delivery.get('telegram_file_id'):
+            raise HfVideoError('source_photo_missing')
+
+        tg_file = await bot.get_file(delivery['telegram_file_id'])
+        if not tg_file.file_path:
+            raise HfVideoError('telegram_file_path_missing')
+        source = io.BytesIO()
+        await bot.download_file(tg_file.file_path, destination=source)
+        image_bytes = source.getvalue()
+        if not image_bytes:
+            raise HfVideoError('telegram_download_empty')
+
+        await bot.send_message(chat_id, 'оживляю этот кадр 🎬 бесплатная генерация идёт на публичном сервере, так что обычно занимает 1–3 минуты — напишу, когда будет готово')
+        video_bytes = await animate_image_hf(image_bytes, mime_type='image/jpeg')
+        await bot.send_video(
+            chat_id,
+            BufferedInputFile(video_bytes, filename='animated_photo.mp4'),
+            caption='вот 😌🎬',
+            supports_streaming=True,
+        )
+        track_event(
+            ensure_user(telegram_id),
+            'hf_video_delivered',
+            metadata={'source_delivery_id': delivery_id, 'scene': delivery.get('scene')},
+        )
+    except Exception as exc:
+        logger.exception('HF video failed user=%s delivery=%s error=%s', telegram_id, delivery_id, type(exc).__name__)
+        await bot.send_message(chat_id, 'видео сейчас не получилось 😕 бесплатный сервер перегружен или очередь слишком длинная. Попробуй чуть позже — это ничего не стоило.')
+    finally:
+        _video_jobs.pop(telegram_id, None)
+
+
+@dp.callback_query(F.data == 'video:animate_last_free')
+async def animate_last_photo_free_cb(cq: types.CallbackQuery):
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True)
+        return
+    if not hf_video_available():
+        await cq.answer('Бесплатное видео сейчас недоступно.', show_alert=True)
+        return
+    if cq.from_user.id in _video_jobs and not _video_jobs[cq.from_user.id].done():
+        await cq.answer('Одно видео уже создаётся 🎬', show_alert=True)
+        return
+    if not _hf_video_daily_ok(cq.from_user.id):
+        await cq.answer('Лимит бесплатных видео на сегодня исчерпан — приходи завтра 😌', show_alert=True)
+        return
+    delivery = get_latest_photo_delivery(cq.from_user.id)
+    if not delivery or not delivery.get('telegram_file_id'):
+        await cq.answer('Сначала попроси фото — оживлю последний кадр.', show_alert=True)
+        return
+    await cq.answer()
+    _hf_video_daily_consume(cq.from_user.id)
+    _video_jobs[cq.from_user.id] = asyncio.create_task(
+        _run_hf_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'])
+    )
+
+
 @dp.message(Command('geministatus'))
 async def gemini_status_cmd(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
@@ -1981,7 +2062,8 @@ async def gemini_status_cmd(message: types.Message):
         f'OpenRouter: {"✅" if st["openrouter_key_present"] else "❌"} model: {st["openrouter_model"]}\n'
         f'OpenRouter URL: {st["openrouter_base_url"]}\n'
         f'Gemini (fallback): {"✅" if st["gemini_key_present"] else "❌"} model: {st["gemini_model"]}\n'
-        f'Gemini Video: {"✅" if video_available() else "❌"}'
+        f'Gemini Video: {"✅" if video_available() else "❌"}\n'
+        f'HF Video (free): {"✅" if hf_video_available() else "❌"}'
     )
 
 
