@@ -2184,7 +2184,7 @@ async def _run_hf_video_background(chat_id: int, telegram_id: int, delivery_id: 
         if not image_bytes:
             raise HfVideoError('telegram_download_empty')
 
-        await bot.send_message(chat_id, 'оживляю этот кадр 🎬 генерация идёт на публичном сервере, так что обычно занимает 1–3 минуты — напишу, когда будет готово')
+        await bot.send_message(chat_id, 'снимаю видео для тебя 🎬 напишу, когда будет готово')
         video_bytes = await animate_image_hf(image_bytes, mime_type='image/jpeg')
         await bot.send_video(
             chat_id,
@@ -2211,11 +2211,11 @@ async def _run_hf_video_background(chat_id: int, telegram_id: int, delivery_id: 
             except Exception:
                 logger.exception('Automatic HF video Stars refund failed user=%s charge=%s', telegram_id, charge_id)
         if refunded:
-            await bot.send_message(chat_id, 'видео сейчас не получилось 😕 сервер перегружен. Stars автоматически вернул.')
+            await bot.send_message(chat_id, 'видео сейчас не получилось 😕 Stars автоматически вернул.')
         elif charge_id:
             await bot.send_message(chat_id, 'видео сейчас не получилось 😕 напиши /support — проверим оплату и возврат.')
         else:
-            await bot.send_message(chat_id, 'видео сейчас не получилось 😕 сервер перегружен или очередь слишком длинная. Попробуй чуть позже.')
+            await bot.send_message(chat_id, 'видео сейчас не получилось 😕 попробуй чуть позже.')
     finally:
         _video_jobs.pop(telegram_id, None)
 
