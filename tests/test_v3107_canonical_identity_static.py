@@ -25,7 +25,8 @@ def test_seedream_uses_new_identity_anchor():
 def test_generated_photos_have_smile_instruction():
     assert 'EXPRESSION_IDENTITY' in PHOTO
     assert 'natural warm feminine smile' in PHOTO
-    assert "f'{EXPRESSION_IDENTITY}\\n'" in PHOTO
+    # The identity lock now returns expression text as a tuple value.
+    assert "f'{expression_identity}\\n'" in PHOTO
 
 def test_personal_scene_is_lingerie_and_seedream():
     assert "'personal':'adult'" in PHOTO

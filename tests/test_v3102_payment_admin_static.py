@@ -33,7 +33,8 @@ def test_stars_are_protected_for_digital_checkout():
 
 def test_future_features_are_visible_but_locked():
     assert "🔒 🎬 Оживить фото · скоро" in MAIN
-    assert "🔒 📞 Звонок с Анной · скоро" in MAIN
+    # Renamed from «Звонок с Анной» when multi-character selection was introduced.
+    assert "🔒 📞 Звонок с персонажем · скоро" in MAIN
     assert "future_feature_locked" in MAIN
 
 

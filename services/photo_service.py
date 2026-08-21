@@ -13,6 +13,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Awaitable, Callable
+from urllib.parse import quote
 
 import httpx
 from aiogram import Bot
@@ -30,6 +31,7 @@ from config import (
     FAL_RETRIES, FAL_RETRY_BACKOFF_SECONDS, FAL_ESTIMATED_COST_USD,
     PHOTO_ROUTER_MODE, PHOTO_SET_SIZE,
     GEMINI_API_KEY, GEMINI_IMAGE_ENABLED, GEMINI_IMAGE_MODEL, GEMINI_IMAGE_TIMEOUT_SECONDS, GEMINI_IMAGE_ESTIMATED_COST_USD, GEMINI_IMAGE_ASPECT_RATIO, GEMINI_IMAGE_SIZE,
+    POLLINATIONS_ENABLED, POLLINATIONS_MODEL, POLLINATIONS_TIMEOUT_SECONDS, POLLINATIONS_WIDTH, POLLINATIONS_HEIGHT,
 )
 from models.app_models import User
 from models.relationship_models import UserCharacterRelationship
@@ -59,11 +61,12 @@ openai_client = AsyncOpenAI(api_key=IMAGE_API_KEY, base_url=IMAGE_BASE_URL) if O
 
 # Startup diagnostic — visible in Railway logs immediately
 logger.info(
-    'PHOTO PROVIDERS: Gemini=%s (model=%s) | OpenAI=%s | fal.ai/Seedream=%s | mode=%s',
+    'PHOTO PROVIDERS: Gemini=%s (model=%s) | OpenAI=%s | fal.ai/Seedream=%s | Pollinations(free)=%s | mode=%s',
     'READY' if GEMINI_IMAGE_ENABLED else 'NO KEY/DISABLED',
     GEMINI_IMAGE_MODEL if GEMINI_IMAGE_ENABLED else '-',
     'READY' if OPENAI_IMAGE_AVAILABLE else 'NO KEY',
     'READY' if FAL_KEY else 'NO KEY',
+    'READY' if POLLINATIONS_ENABLED else 'DISABLED',
     PHOTO_ROUTER_MODE,
 )
 
@@ -1091,6 +1094,89 @@ async def _run_gemini_set(
     return out
 
 
+async def _pollinations_one_frame(character: dict, telegram_id: int, request: PhotoRequest, i: int, *, character_id: str = CHARACTER_ID) -> GeneratedPhoto:
+    """Free text-to-image fallback via Pollinations.ai (no API key required).
+
+    Used as the last-resort route for ordinary fully-clothed photos when the
+    primary providers fail or are not configured. The endpoint cannot accept
+    reference image uploads, so identity is reinforced purely by the text lock.
+    """
+    if not POLLINATIONS_ENABLED:
+        raise PhotoGenerationError('pollinations', 'not_configured')
+
+    level = get_relationship_level(telegram_id)
+    prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id) + (
+        "\nFREE PROVIDER ORDINARY-PHOTO RULE: Keep the same fictional adult person described in PHOTO IDENTITY "
+        "across every photo: same face features, hair color and style, overall physique and subtle warm smile. "
+        "Change only the requested scene, fully clothed outfit, pose, camera and lighting. "
+        "Keep the result mainstream, natural and general-audience. Photorealistic personal smartphone-photo aesthetic."
+    )
+    params = {
+        'width': str(POLLINATIONS_WIDTH),
+        'height': str(POLLINATIONS_HEIGHT),
+        'model': POLLINATIONS_MODEL,
+        'seed': str(random.randint(0, 2**31 - 1)),
+        'nologo': 'true',
+        'safe': 'true',
+    }
+    url = f'https://image.pollinations.ai/prompt/{quote(prompt)}'
+    timeout = httpx.Timeout(float(POLLINATIONS_TIMEOUT_SECONDS), connect=20.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            response = await client.get(url, params=params)
+    except httpx.TimeoutException as exc:
+        raise PhotoGenerationError('pollinations', 'timeout') from exc
+    except httpx.HTTPError as exc:
+        logger.warning('Pollinations transport failed user=%s scene=%s frame=%s/%s error=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, type(exc).__name__)
+        raise PhotoGenerationError('pollinations', type(exc).__name__) from exc
+
+    if response.status_code >= 400:
+        logger.warning('Pollinations HTTP failure user=%s scene=%s frame=%s/%s status=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, response.status_code)
+        raise PhotoGenerationError('pollinations', f'http_{response.status_code}')
+
+    data = response.content
+    # The endpoint returns image bytes directly; guard against error pages.
+    if not data or not (data.startswith(b'\xff\xd8') or data.startswith(b'\x89PNG')):
+        raise PhotoGenerationError('pollinations', 'no_image')
+    logger.info(
+        'Pollinations frame success user=%s scene=%s frame=%s/%s model=%s bytes=%s',
+        telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, POLLINATIONS_MODEL, len(data),
+    )
+    return GeneratedPhoto(data=data, provider='pollinations', estimated_cost_usd=0.0)
+
+
+async def _run_pollinations_set(
+    character: dict,
+    telegram_id: int,
+    request: PhotoRequest,
+    on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
+    *,
+    character_id: str = CHARACTER_ID,
+) -> list[GeneratedPhoto]:
+    out: list[GeneratedPhoto] = []
+    logger.info('Pollinations set request user=%s scene=%s model=%s count=%s (free last resort)', telegram_id, request.scene, POLLINATIONS_MODEL, PHOTO_SET_SIZE)
+    for i in range(PHOTO_SET_SIZE):
+        started = time.monotonic()
+        try:
+            photo = await _pollinations_one_frame(character, telegram_id, request, i, character_id=character_id)
+        except PhotoGenerationError as exc:
+            track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'pollinations', 'reason': exc.reason})
+            if out:
+                logger.warning('Pollinations partial set user=%s scene=%s count=%s/%s reason=%s', telegram_id, request.scene, len(out), PHOTO_SET_SIZE, exc.reason)
+                break
+            raise
+        out.append(photo)
+        frame_elapsed = time.monotonic() - started
+        track_event(ensure_user(telegram_id), 'photo_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'pollinations'})
+        if i == 0:
+            track_event(ensure_user(telegram_id), 'photo_first_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'provider': 'pollinations'})
+        if on_frame:
+            await on_frame(photo, i)
+    if not out:
+        raise PhotoGenerationError('pollinations', 'no_image')
+    return out
+
+
 async def _seedream_request(
     prompt: str,
     image_urls: list[str],
@@ -1406,6 +1492,8 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
         return 'seedream45'
     if mode in {'gemini', 'nano', 'nanobanana', 'nano-banana'}:
         return 'gemini_image' if GEMINI_IMAGE_ENABLED else ('openai' if OPENAI_IMAGE_AVAILABLE else 'seedream45')
+    if mode == 'pollinations':
+        return 'pollinations' if POLLINATIONS_ENABLED else ('gemini_image' if GEMINI_IMAGE_ENABLED else 'seedream45')
 
     # HYBRID routing (default):
     # - intimate/private/bold scenes → Seedream
@@ -1420,9 +1508,54 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
     if OPENAI_IMAGE_AVAILABLE:
         logger.info('Hybrid photo route scene=%s -> openai', request.scene)
         return 'openai'
+    if POLLINATIONS_ENABLED:
+        logger.info('Hybrid photo route scene=%s -> pollinations (free, no Gemini/OpenAI)', request.scene)
+        return 'pollinations'
     # Ultimate fallback to Seedream
     logger.info('Hybrid photo route scene=%s -> seedream45 (no Gemini/OpenAI)', request.scene)
     return 'seedream45'
+
+
+async def _run_routed_photo_set(
+    character: dict,
+    telegram_id: int,
+    resolved: PhotoRequest,
+    provider: str,
+    on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
+    *,
+    character_id: str = CHARACTER_ID,
+) -> list[GeneratedPhoto]:
+    try:
+        if provider == 'seedream45':
+            return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+        if provider == 'gemini_image':
+            try:
+                return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+            except PhotoGenerationError as exc:
+                # Gemini failed: try OpenAI if available, otherwise fall back to Seedream.
+                if OPENAI_IMAGE_AVAILABLE:
+                    logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=openai reason=%s', telegram_id, resolved.scene, exc.reason)
+                    track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'openai', 'reason': exc.reason})
+                    return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=seedream45 reason=%s', telegram_id, resolved.scene, exc.reason)
+                track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'seedream45', 'reason': exc.reason})
+                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+        if provider == 'pollinations':
+            return await _run_pollinations_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+        # provider == 'openai'
+        if OPENAI_IMAGE_AVAILABLE:
+            return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+        # OpenAI requested but not available: use Gemini or Seedream
+        if GEMINI_IMAGE_ENABLED and GEMINI_API_KEY:
+            return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+        return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+    except BadRequestError as exc:
+        body = getattr(exc, 'body', None) or {}
+        err = body.get('error', body) if isinstance(body, dict) else {}
+        code = err.get('code') if isinstance(err, dict) else None
+        msg = str(err.get('message', '')) if isinstance(err, dict) else str(exc)
+        logger.warning('OpenAI image failed user=%s scene=%s code=%s message=%s', telegram_id, resolved.scene, code, msg[:700])
+        raise PhotoGenerationError('openai', code or 'bad_request') from exc
 
 
 async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None, *, character_id: str = CHARACTER_ID) -> tuple[list[GeneratedPhoto], PhotoRequest]:
@@ -1434,35 +1567,18 @@ async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: 
         telegram_id, resolved.scene, provider, bool(GEMINI_IMAGE_ENABLED), bool(GEMINI_API_KEY), GEMINI_IMAGE_MODEL if provider == 'gemini_image' else '-',
     )
     try:
-        if provider == 'seedream45':
-            return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
-        if provider == 'gemini_image':
-            try:
-                return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
-            except PhotoGenerationError as exc:
-                # Gemini failed: try OpenAI if available, otherwise fall back to Seedream.
-                if OPENAI_IMAGE_AVAILABLE:
-                    logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=openai reason=%s', telegram_id, resolved.scene, exc.reason)
-                    track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'openai', 'reason': exc.reason})
-                    return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
-                logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=seedream45 reason=%s', telegram_id, resolved.scene, exc.reason)
-                track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'seedream45', 'reason': exc.reason})
-                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
-        # provider == 'openai'
-        if OPENAI_IMAGE_AVAILABLE:
-            return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
-        # OpenAI requested but not available: use Gemini or Seedream
-        if GEMINI_IMAGE_ENABLED and GEMINI_API_KEY:
-            return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
-        return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
-    except BadRequestError as exc:
-        body = getattr(exc, 'body', None) or {}
-        err = body.get('error', body) if isinstance(body, dict) else {}
-        code = err.get('code') if isinstance(err, dict) else None
-        msg = str(err.get('message', '')) if isinstance(err, dict) else str(exc)
-        logger.warning('OpenAI image failed user=%s scene=%s code=%s message=%s', telegram_id, request.scene, code, msg[:700])
-        raise PhotoGenerationError('openai', code or 'bad_request') from exc
-    except PhotoGenerationError:
+        return await _run_routed_photo_set(character, telegram_id, resolved, provider, on_frame=on_frame, character_id=character_id), resolved
+    except PhotoGenerationError as exc:
+        # Free last-resort route: ordinary scenes get a zero-cost Pollinations
+        # frame instead of failing outright. Private scenes never go here.
+        if (
+            POLLINATIONS_ENABLED
+            and provider != 'pollinations'
+            and resolved.scene not in {'personal', 'lingerie', 'private_fashion'}
+        ):
+            logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=%s to=pollinations reason=%s', telegram_id, resolved.scene, provider, exc.reason)
+            track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': provider, 'to': 'pollinations', 'reason': exc.reason})
+            return await _run_pollinations_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
         raise
     except Exception as exc:
         logger.exception('photo provider failed provider=%s user=%s scene=%s', provider, telegram_id, request.scene)

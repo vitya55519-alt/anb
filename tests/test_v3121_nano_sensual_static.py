@@ -12,7 +12,8 @@ def test_v3121_nano_config_and_routing():
     assert '_run_gemini_set' in photo
     assert "return 'gemini_image'" in photo
     assert "request.scene in {'personal', 'lingerie', 'private_fashion'}" in photo
-    assert "falling back to GPT Image 2" in photo
+    # Gemini failure path: OpenAI when available, otherwise Seedream.
+    assert "fall back to Seedream" in photo
 
 def test_v3121_anna_is_more_sensual_but_non_graphic():
     dna=(ROOT/'data/characters/anna_dna.json').read_text(encoding='utf-8')
@@ -20,6 +21,7 @@ def test_v3121_anna_is_more_sensual_but_non_graphic():
     rel=(ROOT/'services/relationship_engine.py').read_text(encoding='utf-8')
     assert 'sensuality' in dna and 'playful_teasing' in dna
     assert 'ФЛИРТ И ЧУВСТВЕННОСТЬ' in prompt
-    assert 'лёгкое эротическое напряжение' in prompt
-    assert 'не описывает графические сексуальные действия' in prompt
+    # Wording was refreshed by the natural/flirty style rewrite.
+    assert 'Лёгкая пошлость — это нормально' in prompt
+    assert 'Без графического секса и анатомических деталей' in prompt
     assert 'заметный чувственный флирт' in rel

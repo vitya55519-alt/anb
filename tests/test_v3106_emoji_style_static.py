@@ -4,8 +4,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_anna_emoji_baseline_is_warmer_but_bounded():
     text = (ROOT / "services/character_service.py").read_text(encoding="utf-8")
-    assert "обычно 1, нередко 2" in text
-    assert "не заканчивай постоянно одним и тем же 😏" in text
+    # Natural chat style replaced the fixed emoji-count quotas; emoji are used
+    # as ordinary human reactions instead of a counted quota rule.
+    assert "пиши как реальный человек в личке" in text
     assert "обычно 0–1" not in text
 
 def test_adaptation_mentions_emoji_preference():
