@@ -120,6 +120,11 @@ POLLINATIONS_TIMEOUT_SECONDS = max(30, min(240, int(os.getenv("POLLINATIONS_TIME
 POLLINATIONS_WIDTH = max(512, min(2048, int(os.getenv("POLLINATIONS_WIDTH", "1024"))))
 POLLINATIONS_HEIGHT = max(512, min(2048, int(os.getenv("POLLINATIONS_HEIGHT", "1280"))))
 
+# Photo idea engine: curated bank (data/photo_ideas.json) + optional LLM variations.
+# Fills underspecified ordinary photo requests with fresh location/camera ideas.
+PHOTO_IDEAS_ENABLED = os.getenv("PHOTO_IDEAS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+PHOTO_IDEA_LLM_CHANCE = max(0.0, min(1.0, float(os.getenv("PHOTO_IDEA_LLM_CHANCE", "0.25"))))
+
 # Paid video generation via a public Hugging Face Gradio space.
 # The backend itself is free, but the feature is sold for VIDEO_COST_STARS;
 # requests queue on public GPU servers, so generation typically takes 1–3 minutes.

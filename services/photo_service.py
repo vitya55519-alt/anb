@@ -37,6 +37,7 @@ from models.app_models import User
 from models.relationship_models import UserCharacterRelationship
 from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer
 from services.db import SessionLocal
+from services.photo_idea_service import enrich_request_with_idea
 from services.character_service import get_anna
 from services.character_registry import get_character
 from services.test_mode import get_stage as get_test_stage
@@ -1563,6 +1564,11 @@ async def _run_routed_photo_set(
 
 async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None, *, character_id: str = CHARACTER_ID) -> tuple[list[GeneratedPhoto], PhotoRequest]:
     character = get_character(character_id)
+    # Pinterest-style variety: underspecified ordinary requests get a fresh
+    # curated/LLM idea (location + camera). Explicit and private requests pass through.
+    request, idea_source = await enrich_request_with_idea(telegram_id, request)
+    if idea_source:
+        track_event(ensure_user(telegram_id), 'photo_idea_applied', metadata={'scene': request.scene, 'source': idea_source})
     resolved = _resolve_request(telegram_id, request, character_id=character_id)
     provider = choose_photo_provider(telegram_id, resolved)
     logger.info(
