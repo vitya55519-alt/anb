@@ -34,7 +34,10 @@ from services.photo_service import (
     PhotoRequest, parse_photo_request, deliver_photo, has_free_photo, build_photo_menu,
     create_offer, consume_offer, scene_allowed_for_stage, get_relationship_stage,
     get_relationship_level, is_custom_request, requires_adult_confirmation,
-    SCENE_LEVELS, PhotoGenerationError, get_latest_photo_delivery, get_photo_delivery_for_user,
+    SCENE_LEVELS, SCENES, PhotoGenerationError, get_latest_photo_delivery, get_photo_delivery_for_user,
+)
+from services.photo_idea_service import (
+    idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
 )
 from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium
 from services.gemini_video_service import animate_image, GeminiVideoError, video_available
@@ -156,6 +159,12 @@ _character_card_edit_sessions: dict[int, dict] = {}
 
 # Owner-only editor state for configurable payment methods. Payment rows live in PostgreSQL.
 _payment_method_edit_sessions: dict[int, dict] = {}
+
+# Owner-only editor state for photo ideas. Idea rows live in PostgreSQL.
+_photo_idea_edit_sessions: dict[int, dict] = {}
+
+# Scenes that admins may attach photo ideas to (private scenes stay untouched).
+ALLOWED_IDEA_SCENES = tuple(sorted(k for k in SCENES if k not in {'personal', 'lingerie', 'private_fashion'}))
 
 # Per-user selected character (telegram_id -> character_id). Falls back to CHARACTER_ID.
 _user_character: dict[int, str] = {}
@@ -292,8 +301,18 @@ def admin_keyboard():
         [InlineKeyboardButton(text='🎭 Карточки персонажей', callback_data='admin:cards')],
         [InlineKeyboardButton(text='💳 Способы оплаты', callback_data='admin:payments')],
         [InlineKeyboardButton(text='📚 Библиотека фото', callback_data='admin:library_help')],
+        [InlineKeyboardButton(text='💡 Идеи для фото', callback_data='admin:ideas')],
         [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats')],
         [InlineKeyboardButton(text=f'⭐ Premium себе (тесты): {premium_state}', callback_data='admin:premium_toggle')],
+    ])
+
+
+def admin_ideas_keyboard():
+    _, db_count = idea_counts()
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='➕ Добавить идею', callback_data='admin:ideaadd:start')],
+        [InlineKeyboardButton(text=f'🗑 Удалить идею ({db_count})', callback_data='admin:ideadel:list')],
+        [InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')],
     ])
 
 
@@ -1047,6 +1066,7 @@ async def admin_panel(message: types.Message):
         return
     _character_card_edit_sessions.pop(message.from_user.id, None)
     _payment_method_edit_sessions.pop(message.from_user.id, None)
+    _photo_idea_edit_sessions.pop(message.from_user.id, None)
     ensure_default_cards()
     await message.answer('⚙️ Админка AnnaBot', reply_markup=admin_keyboard())
 
@@ -1064,6 +1084,7 @@ async def admin_home(cq: types.CallbackQuery):
         return
     _character_card_edit_sessions.pop(cq.from_user.id, None)
     _payment_method_edit_sessions.pop(cq.from_user.id, None)
+    _photo_idea_edit_sessions.pop(cq.from_user.id, None)
     await cq.answer()
     await cq.message.answer('⚙️ Админка AnnaBot', reply_markup=admin_keyboard())
 
@@ -1084,6 +1105,117 @@ async def admin_premium_toggle(cq: types.CallbackQuery):
         await cq.answer('Premium включён на 30 дней', show_alert=False)
         text = f'⭐ Тестовый Premium включён на 30 дней. Photo credits: {get_photo_credits(cq.from_user.id)}.'
     await cq.message.answer(text, reply_markup=admin_keyboard())
+
+
+@dp.callback_query(F.data == 'admin:ideas')
+async def admin_ideas(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _photo_idea_edit_sessions.pop(cq.from_user.id, None)
+    json_count, db_count = idea_counts()
+    await cq.answer()
+    await cq.message.answer(
+        '💡 Идеи для фото\n\n'
+        f'Встроенный банк: {json_count} идей (в коде, пополняется через data/photo_ideas.json)\n'
+        f'Добавлено через админку: {db_count} идей (хранятся в БД, переживают деплой)\n\n'
+        'Идеи автоматически подставляются в обычные фото, квесты и предложения Анны, '
+        'когда пользователь не указал свои детали.',
+        reply_markup=admin_ideas_keyboard(),
+    )
+
+
+@dp.callback_query(F.data == 'admin:ideaadd:start')
+async def admin_idea_add_start(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _photo_idea_edit_sessions[cq.from_user.id] = {'step': 'scene'}
+    await cq.answer()
+    await cq.message.answer(
+        'Добавляем идею для фото.\n\n'
+        'Шаг 1/3: отправь сцену одним словом из списка:\n'
+        f"{', '.join(ALLOWED_IDEA_SCENES)}"
+    )
+
+
+@dp.callback_query(F.data == 'admin:ideadel:list')
+async def admin_idea_delete_list(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    ideas = list_admin_ideas(10)
+    await cq.answer()
+    if not ideas:
+        await cq.message.answer('Через админку пока ничего не добавлено — удалять нечего.', reply_markup=admin_ideas_keyboard())
+        return
+    rows = [
+        [InlineKeyboardButton(text=f"❌ #{idea['id']} {idea['scene']}: {idea['location'][:44]}{'…' if len(idea['location']) > 44 else ''}", callback_data=f"admin:ideadel:{idea['id']}")]
+        for idea in ideas
+    ]
+    rows.append([InlineKeyboardButton(text='⬅️ Идеи', callback_data='admin:ideas')])
+    await cq.message.answer('Последние идеи, добавленные через админку. Нажми, чтобы удалить:', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@dp.callback_query(F.data.startswith('admin:ideadel:'))
+async def admin_idea_delete(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    try:
+        idea_id = int(cq.data.rsplit(':', 1)[1])
+    except ValueError:
+        await cq.answer('сессия устарела', show_alert=True)
+        return
+    deleted = delete_admin_idea(idea_id)
+    await cq.answer('удалено' if deleted else 'уже удалена')
+    _, db_count = idea_counts()
+    await cq.message.answer(
+        f"Идея #{idea_id} удалена. Осталось админ-идей: {db_count}.",
+        reply_markup=admin_ideas_keyboard(),
+    )
+
+
+async def _admin_idea_text_step(message: types.Message, sess: dict) -> None:
+    value = (message.text or '').strip()
+    step = sess.get('step')
+    if step == 'scene':
+        scene = value.lower()
+        if scene not in ALLOWED_IDEA_SCENES:
+            await message.answer(f"Такой сцены нет. Выбери из списка:\n{', '.join(ALLOWED_IDEA_SCENES)}")
+            return
+        sess['scene'] = scene
+        sess['step'] = 'location'
+        await message.answer(
+            f'Сцена: {scene}.\n\n'
+            'Шаг 2/3: опиши место по-английски одним сообщением (что в кадре, свет, атмосфера).\n'
+            'Пример: a warm modern cocktail bar with amber pendant lights and a polished wooden counter'
+        )
+        return
+    if step == 'location':
+        if not (10 <= len(value) <= 400):
+            await message.answer('Описание места должно быть от 10 до 400 символов, по-английски.')
+            return
+        sess['location'] = value
+        sess['step'] = 'angle'
+        await message.answer(
+            'Шаг 3/3: опиши ракурс/позу по-английски (или отправь «-» без кавычек, если не важно).\n'
+            'Пример: a casual photo seated at the bar counter with a colorful mocktail in frame'
+        )
+        return
+    if step == 'angle':
+        angle = '' if value in {'-', '—'} else value
+        if len(angle) > 300:
+            await message.answer('Ракурс до 300 символов.')
+            return
+        _photo_idea_edit_sessions.pop(message.from_user.id, None)
+        idea_id = add_admin_idea(sess['scene'], sess['location'], angle, message.from_user.id)
+        if idea_id is None:
+            await message.answer('не получилось сохранить идею 😕 попробуй ещё раз через Админка → Идеи для фото.')
+            return
+        track_event(ensure_user(message.from_user.id), 'admin_idea_added', metadata={'scene': sess['scene'], 'idea_id': idea_id})
+        await message.answer(
+            f'Идея #{idea_id} добавлена ✅\n\n'
+            f"Сцена: {sess['scene']}\nМесто: {sess['location']}\nРакурс: {angle or '(на усмотрение бота)'}\n\n"
+            'Она сразу участвует в генерации фото.',
+            reply_markup=admin_ideas_keyboard(),
+        )
 
 
 @dp.callback_query(F.data == 'admin:cards')
@@ -2877,6 +3009,11 @@ async def text_message(message: types.Message):
 
     if not has_accepted(message.from_user.id):
         await message.answer('Сначала нужно подтвердить 18+ и принять условия через /start.', reply_markup=consent_keyboard())
+        return
+
+    idea_edit = _photo_idea_edit_sessions.get(message.from_user.id)
+    if message.from_user.id in ADMIN_TELEGRAM_IDS and idea_edit:
+        await _admin_idea_text_step(message, idea_edit)
         return
 
     payment_edit = _payment_method_edit_sessions.get(message.from_user.id)

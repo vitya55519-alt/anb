@@ -88,3 +88,18 @@ class UserSeenPhotoItem(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     times_seen: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+
+class AdminPhotoIdea(Base):
+    """Photo ideas added through the Telegram admin panel.
+
+    The curated JSON bank ships with the code; these rows live in PostgreSQL so
+    admin additions survive Railway redeployments.
+    """
+    __tablename__ = 'admin_photo_ideas'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scene: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    location: Mapped[str] = mapped_column(Text, nullable=False)
+    angle: Mapped[str] = mapped_column(Text, default='', nullable=False)
+    created_by: Mapped[str] = mapped_column(String(32), default='', nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

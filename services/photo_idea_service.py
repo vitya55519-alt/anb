@@ -1,10 +1,11 @@
-"""Photo idea engine: curated bank + LLM variations.
+"""Photo idea engine: curated bank + admin ideas + LLM variations.
 
 Gives ordinary photo requests Pinterest-style variety (gym, bar, park, cafe...)
 without scraping any external site. The curated bank lives in
-``data/photo_ideas.json`` and can be extended manually; the LLM occasionally
-invents fresh variations of a bank seed. Private scenes and explicit user
-requests are never touched.
+``data/photo_ideas.json`` and can be extended manually; admins can add ideas
+through the Telegram admin panel (stored in PostgreSQL); the LLM occasionally
+invents fresh variations of a seed. Private scenes and explicit user requests
+are never touched.
 """
 
 import asyncio
@@ -16,7 +17,11 @@ from collections import deque
 from dataclasses import replace
 from pathlib import Path
 
+from sqlalchemy import select
+
 from config import PHOTO_IDEAS_ENABLED, PHOTO_IDEA_LLM_CHANCE
+from services.db import SessionLocal
+from models.photo_models import AdminPhotoIdea
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +57,23 @@ def _idea_key(idea: dict) -> str:
     return f"{idea.get('scene')}|{idea.get('location')}|{idea.get('angle', '')}"
 
 
+def _load_db_ideas() -> list[dict]:
+    """Admin-added ideas from PostgreSQL (survive Railway redeployments)."""
+    try:
+        with SessionLocal() as session:
+            rows = session.scalars(select(AdminPhotoIdea).order_by(AdminPhotoIdea.id.desc())).all()
+            return [
+                {'scene': row.scene, 'location': row.location, 'angle': row.angle or '', 'id': row.id, 'source': 'admin'}
+                for row in rows
+            ]
+    except Exception:
+        logger.exception('admin photo ideas failed to load')
+        return []
+
+
 def pick_idea(telegram_id: int, scene: str) -> dict | None:
-    """Random bank idea for the scene, preferring ones not used recently."""
-    pool = [item for item in _load_bank() if item.get('scene') == scene]
+    """Random idea for the scene (JSON bank + admin ideas), preferring fresh ones."""
+    pool = [item for item in (_load_bank() + _load_db_ideas()) if item.get('scene') == scene]
     if not pool:
         return None
     recent = _recent_ideas.get(telegram_id)
@@ -65,6 +84,58 @@ def pick_idea(telegram_id: int, scene: str) -> dict | None:
 def _mark_used(telegram_id: int, idea: dict) -> None:
     recent = _recent_ideas.setdefault(telegram_id, deque(maxlen=_RECENT_LIMIT))
     recent.append(_idea_key(idea))
+
+
+# ── Admin panel management (ideas live in PostgreSQL) ─────────────────────
+
+def idea_counts() -> tuple[int, int]:
+    """(curated JSON ideas, admin-added DB ideas)."""
+    return len(_load_bank()), len(_load_db_ideas())
+
+
+def list_admin_ideas(limit: int = 10) -> list[dict]:
+    try:
+        with SessionLocal() as session:
+            rows = session.scalars(
+                select(AdminPhotoIdea).order_by(AdminPhotoIdea.id.desc()).limit(max(1, min(50, limit)))
+            ).all()
+            return [{'id': row.id, 'scene': row.scene, 'location': row.location, 'angle': row.angle or ''} for row in rows]
+    except Exception:
+        logger.exception('admin photo ideas list failed')
+        return []
+
+
+def add_admin_idea(scene: str, location: str, angle: str, created_by: int | str) -> int | None:
+    try:
+        with SessionLocal() as session:
+            row = AdminPhotoIdea(
+                scene=scene.strip().lower(),
+                location=location.strip(),
+                angle=(angle or '').strip(),
+                created_by=str(created_by),
+            )
+            session.add(row)
+            session.commit()
+            logger.info('admin photo idea added id=%s scene=%s by=%s', row.id, row.scene, created_by)
+            return row.id
+    except Exception:
+        logger.exception('admin photo idea add failed scene=%s by=%s', scene, created_by)
+        return None
+
+
+def delete_admin_idea(idea_id: int) -> bool:
+    try:
+        with SessionLocal() as session:
+            row = session.get(AdminPhotoIdea, idea_id)
+            if not row:
+                return False
+            session.delete(row)
+            session.commit()
+            logger.info('admin photo idea deleted id=%s scene=%s', idea_id, row.scene)
+            return True
+    except Exception:
+        logger.exception('admin photo idea delete failed id=%s', idea_id)
+        return False
 
 
 async def _llm_variation(seed: dict) -> dict | None:
