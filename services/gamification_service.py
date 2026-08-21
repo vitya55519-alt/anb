@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from config import FREE_MESSAGES_PER_DAY
+from config import FREE_MESSAGES_PER_DAY, CHARACTER_ID
 from models.app_models import Achievement, User
 from services.db import SessionLocal
 from services.user_service import ensure_user, get_user
@@ -118,7 +118,7 @@ def list_achievements(telegram_id: int) -> list[Achievement]:
         )
 
 
-def get_profile_summary(telegram_id: int) -> dict:
+def get_profile_summary(telegram_id: int, character_id: str = CHARACTER_ID) -> dict:
     from services.access_service import is_premium
     from services.payments import get_photo_credits
     from services.photo_service import get_relationship_level
@@ -135,7 +135,7 @@ def get_profile_summary(telegram_id: int) -> dict:
     return {
         'name': user.name or 'ты',
         'premium': is_premium(telegram_id),
-        'relationship_level': get_relationship_level(telegram_id),
+        'relationship_level': get_relationship_level(telegram_id, character_id),
         'photo_credits': get_photo_credits(telegram_id),
         'streak_count': user.streak_count or 0,
         'attention_points': user.attention_points or 0,

@@ -115,6 +115,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             user_id, user_name,
             relationship=delta.relationship, trust=delta.trust, intimacy=delta.intimacy,
             event_type=delta.event_type, reason=delta.reason,
+            character_id=character_id,
         )
     character = get_character(character_id)
     premium = is_premium(user_id)
@@ -126,7 +127,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         # Relationship context itself is authoritative; adaptation strength still grows conservatively with history.
         try:
             from services.photo_service import get_relationship_level
-            adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id), character_id)
+            adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id, character_id), character_id)
         except Exception:
             pass
     previous_user_text = next((m.content for m in reversed(history) if m.role == 'user'), '')
@@ -163,10 +164,10 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
     memories = get_memories(db_user_id, character_id, 10)
     history = get_recent_messages(db_user_id, character_id, 8)
     from services.relationship_service import get_context
-    rel_context = await get_context(user_id) or "Отношения только начинаются."
+    rel_context = await get_context(user_id, character_id=character_id) or "Отношения только начинаются."
     try:
         from services.photo_service import get_relationship_level
-        adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id), character_id)
+        adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id, character_id), character_id)
     except Exception:
         adaptation = build_adaptation_context(db_user_id, 1, character_id)
     system = build_system_prompt(

@@ -478,50 +478,50 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _user_rel(session, telegram_id: int):
+def _user_rel(session, telegram_id: int, character_id: str = CHARACTER_ID):
     user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
     if not user:
         return None, None
     rel = session.scalar(select(UserCharacterRelationship).where(
         UserCharacterRelationship.user_id == user.id,
-        UserCharacterRelationship.character_id == CHARACTER_ID,
+        UserCharacterRelationship.character_id == character_id,
     ))
     return user, rel
 
 
-def get_relationship_stage(telegram_id: int) -> str:
+def get_relationship_stage(telegram_id: int, character_id: str = CHARACTER_ID) -> str:
     override = get_test_stage(telegram_id)
     if override:
         return override
     ensure_user(telegram_id)
     with SessionLocal() as session:
-        _, rel = _user_rel(session, telegram_id)
+        _, rel = _user_rel(session, telegram_id, character_id)
         return rel.stage if rel else 'stranger'
 
 
-def get_relationship_level(telegram_id: int) -> int:
-    return STAGE_INDEX.get(get_relationship_stage(telegram_id), 0) + 1
+def get_relationship_level(telegram_id: int, character_id: str = CHARACTER_ID) -> int:
+    return STAGE_INDEX.get(get_relationship_stage(telegram_id, character_id), 0) + 1
 
 
-def get_daily_limit(telegram_id: int) -> int:
-    level = get_relationship_level(telegram_id)
+def get_daily_limit(telegram_id: int, character_id: str = CHARACTER_ID) -> int:
+    level = get_relationship_level(telegram_id, character_id)
     return FREE_PHOTOS_LEVEL_3_6 if level >= 3 else FREE_PHOTOS_LEVEL_1_2
 
 
-def get_usage(telegram_id: int):
+def get_usage(telegram_id: int, character_id: str = CHARACTER_ID):
     uid = ensure_user(telegram_id)
     with SessionLocal() as session:
         row = session.scalar(select(PhotoDailyUsage).where(
             PhotoDailyUsage.user_id == uid,
-            PhotoDailyUsage.character_id == CHARACTER_ID,
+            PhotoDailyUsage.character_id == character_id,
             PhotoDailyUsage.usage_date == _today(),
         ))
-        limit = get_daily_limit(telegram_id)
+        limit = get_daily_limit(telegram_id, character_id)
         return (row.free_used if row else 0, row.paid_used if row else 0, limit)
 
 
-def has_free_photo(telegram_id: int) -> bool:
-    used, _, limit = get_usage(telegram_id)
+def has_free_photo(telegram_id: int, character_id: str = CHARACTER_ID) -> bool:
+    used, _, limit = get_usage(telegram_id, character_id)
     return used < limit
 
 
@@ -537,11 +537,11 @@ def requires_adult_confirmation(request: PhotoRequest) -> bool:
     return request.scene in {'lingerie', 'private_fashion'} or bool(INTIMATE_STYLE.search(' '.join([request.clothing, request.location, request.angle])))
 
 
-def build_photo_menu(telegram_id: int):
-    used, paid, limit = get_usage(telegram_id)
+def build_photo_menu(telegram_id: int, character_id: str = CHARACTER_ID):
+    used, paid, limit = get_usage(telegram_id, character_id)
     return {
-        'stage': get_relationship_stage(telegram_id),
-        'level': get_relationship_level(telegram_id),
+        'stage': get_relationship_stage(telegram_id, character_id),
+        'level': get_relationship_level(telegram_id, character_id),
         'free_used': used,
         'paid_used': paid,
         'limit': limit,
@@ -841,7 +841,7 @@ def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season:
     if request.clothing:
         return tuple(request.clothing for _ in range(PHOTO_SET_SIZE))
     state = get_state(telegram_id)
-    level = get_relationship_level(telegram_id)
+    level = get_relationship_level(telegram_id, character_id)
     pool = _wardrobe_pool(request.scene, level, season)
     uid = ensure_user(telegram_id)
     visual_prefs = get_visual_preferences(uid, character_id)
@@ -981,7 +981,7 @@ async def _gemini_image_one_frame(character: dict, telegram_id: int, request: Ph
     if not api_key or any(ch.isspace() for ch in api_key):
         raise PhotoGenerationError('gemini_image', 'invalid_api_key_whitespace')
 
-    level = get_relationship_level(telegram_id)
+    level = get_relationship_level(telegram_id, character_id)
     prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id) + (
         "\nNANO BANANA ORDINARY-PHOTO RULE: Use the supplied canonical references as identity anchors. "
         "Keep the same fictional adult person, same exact face, hair color and style, overall physique and subtle warm smile. "
@@ -1118,7 +1118,7 @@ async def _pollinations_one_frame(character: dict, telegram_id: int, request: Ph
     if not POLLINATIONS_ENABLED:
         raise PhotoGenerationError('pollinations', 'not_configured')
 
-    level = get_relationship_level(telegram_id)
+    level = get_relationship_level(telegram_id, character_id)
     prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id) + (
         " FREE PROVIDER ORDINARY-PHOTO RULE: Keep the same fictional adult person described in PHOTO IDENTITY "
         "across every photo: same face features, hair color and style, overall physique and subtle warm smile. "
@@ -1277,7 +1277,7 @@ async def _openai_one_frame(character: dict, telegram_id: int, request: PhotoReq
         # Last ref is the fully-clothed full-body anchor and carries enough face +
         # silhouette information for providers/proxies that only accept one edit image.
         refs = (refs[-1],)
-    level = get_relationship_level(telegram_id)
+    level = get_relationship_level(telegram_id, character_id)
     if safe_retry:
         fallback_outfit = (
             'a simple lightweight summer midi dress with normal coverage and clean everyday styling'
@@ -1447,7 +1447,7 @@ async def _run_seedream_set(
         telegram_id, request.scene, ref.name, PHOTO_SET_SIZE, FAL_TIMEOUT_SECONDS, FAL_RETRIES,
     )
     for i in range(PHOTO_SET_SIZE):
-        prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id), character_id=character_id) + (
+        prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id, character_id), character_id=character_id) + (
             '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location, '
             'face identity and body proportions as the other photos in this set. '
             'Make this framing clearly different from the previous shot while staying in the same photo session.'
@@ -1459,7 +1459,7 @@ async def _run_seedream_set(
             # One safe retry on provider content validation. This simplifies the prompt; it does not disable safety.
             if exc.reason == 'HTTP 422':
                 retry_request = _seedream_safe_retry_request(request)
-                retry_prompt = _build_prompt(retry_request, i, seedream=True, relationship_level=min(get_relationship_level(telegram_id), 4), character_id=character_id) + (
+                retry_prompt = _build_prompt(retry_request, i, seedream=True, relationship_level=min(get_relationship_level(telegram_id, character_id), 4), character_id=character_id) + (
                     '\nSAFE RETRY: tasteful fully covered fashion, opaque garment, neutral pose, no nudity, no body-part emphasis. For personal/lingerie scenes, keep the requested lingerie category with opaque coverage. Create exactly ONE photo.'
                 )
                 try:
@@ -1709,7 +1709,7 @@ async def _deliver_library_failure_fallback(
     """Serve a ready Telegram photo when ordinary free AI generation fails."""
     if request.scene in _PRIVATE_LIBRARY_SCENES:
         return []
-    level = get_relationship_level(telegram_id)
+    level = get_relationship_level(telegram_id, character_id)
     scene_order = _library_fallback_scene_order(request.scene, level)
     pack = choose_fallback_pack(telegram_id, CHARACTER_ID, level, scene_order)
     if not pack or not pack.photos:
@@ -1763,7 +1763,7 @@ async def _deliver_library_partial_topup(
     """
     if needed <= 0 or request.scene in _PRIVATE_LIBRARY_SCENES:
         return []
-    level = get_relationship_level(telegram_id)
+    level = get_relationship_level(telegram_id, character_id)
     scene_order = _library_fallback_scene_order(request.scene, level)
     sent_messages = []
     used_pack_ids: set[int] = set()
@@ -1829,12 +1829,12 @@ async def deliver_photo(
     *,
     character_id: str = CHARACTER_ID,
 ):
-    stage = get_relationship_stage(telegram_id)
+    stage = get_relationship_stage(telegram_id, character_id)
     if not scene_allowed_for_stage(request.scene, stage):
         raise PermissionError('scene_locked')
     if requires_adult_confirmation(request) and not is_adult_confirmed(telegram_id):
         raise PermissionError('age_gate')
-    if delivery_type == 'free' and not has_free_photo(telegram_id):
+    if delivery_type == 'free' and not has_free_photo(telegram_id, character_id):
         raise PermissionError('quota')
     if delivery_type == 'credit' and get_photo_credits(telegram_id) <= 0:
         raise PermissionError('no_credit')
@@ -1845,7 +1845,7 @@ async def deliver_photo(
     # Cost-first routing for beta: ordinary free requests use a curated Telegram file_id library first.
     # Custom/paid-credit/admin requests still exercise AI generation so the user gets bespoke output.
     if delivery_type in {'free', 'story'}:
-        library_pack = choose_unseen_pack(telegram_id, character_id, request.scene, get_relationship_level(telegram_id))
+        library_pack = choose_unseen_pack(telegram_id, character_id, request.scene, get_relationship_level(telegram_id, character_id))
         if library_pack and library_pack.photos:
             for idx, item in enumerate(library_pack.photos):
                 row_id = _insert_delivery_row(telegram_id, request.scene, 'free', provider='telegram_library', estimated_cost_usd=0.0, character_id=character_id)

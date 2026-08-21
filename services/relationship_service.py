@@ -6,7 +6,7 @@ from models.app_models import User
 from config import CHARACTER_ID
 from services.analytics_service import track_event
 
-async def record_user_message(user_id, user_name, relationship=0, trust=0, intimacy=0, event_type="interaction", reason=""):
+async def record_user_message(user_id, user_name, relationship=0, trust=0, intimacy=0, event_type="interaction", reason="", character_id=CHARACTER_ID):
     with SessionLocal() as s:
         user = s.scalar(select(User).where(User.telegram_id == str(user_id)))
         if not user:
@@ -16,16 +16,16 @@ async def record_user_message(user_id, user_name, relationship=0, trust=0, intim
             user.name = user_name
         existing = s.scalar(select(UserCharacterRelationship).where(
             UserCharacterRelationship.user_id == user.id,
-            UserCharacterRelationship.character_id == CHARACTER_ID,
+            UserCharacterRelationship.character_id == character_id,
         ))
         old_stage = existing.stage if existing else 'stranger'
-        row = apply_delta(s, user.id, CHARACTER_ID, RelationshipDelta(
+        row = apply_delta(s, user.id, character_id, RelationshipDelta(
             relationship=relationship, trust=trust, intimacy=intimacy,
             event_type=event_type, reason=reason
         ))
         context = build_relationship_context(row, get_milestones(s, row))
         if row.stage != old_stage:
-            track_event(user.id, 'relationship_level_up', metadata={'from': old_stage, 'to': row.stage})
+            track_event(user.id, 'relationship_level_up', metadata={'from': old_stage, 'to': row.stage}, character_id=character_id)
             context += ' Отношения только что перешли на новый этап: пусть в этой или ближайшей реплике это слегка чувствуется через большее узнавание, тепло или уверенность, но не называй номер уровня и не объявляй системное событие.'
         return context
 

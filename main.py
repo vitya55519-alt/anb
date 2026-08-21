@@ -23,6 +23,7 @@ from config import (
     ADMIN_TELEGRAM_IDS, CHARACTER_ID, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS,
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
     GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, WALLET_PAY_ENABLED,
+    REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
 )
 from services.user_service import (
     ensure_user, get_user, get_state, update_user_settings, touch_user,
@@ -255,7 +256,7 @@ def delete_confirm_keyboard():
 
 
 def stories_keyboard(telegram_id: int):
-    level = get_relationship_level(telegram_id)
+    level = get_relationship_level(telegram_id, get_user_character(telegram_id))
     rows = []
     for item in story_status(telegram_id, level):
         if item['unlocked']:
@@ -273,7 +274,7 @@ def stories_keyboard(telegram_id: int):
 
 
 def quest_routes_keyboard(telegram_id: int, quest_key: str):
-    q=get_quest(quest_key); status=next((x for x in story_status(telegram_id,get_relationship_level(telegram_id)) if x['key']==quest_key),None)
+    q=get_quest(quest_key); status=next((x for x in story_status(telegram_id,get_relationship_level(telegram_id, get_user_character(telegram_id))) if x['key']==quest_key),None)
     rows=[]
     for key,route in q['routes'].items():
         if key in (status or {}).get('done',[]):
@@ -459,7 +460,7 @@ def _character_card_text(card, viewer_id: int | None = None) -> str:
     ]
     if viewer_id and card.character_id == CHARACTER_ID:
         try:
-            level = get_relationship_level(viewer_id)
+            level = get_relationship_level(viewer_id, get_user_character(viewer_id))
             lines.append(f'❤️ {RELATIONSHIP_LEVEL_NAMES.get(level, "Знакомство")}')
         except Exception:
             pass
@@ -656,7 +657,7 @@ def adult_keyboard():
 
 
 def photo_keyboard(telegram_id: int):
-    level = get_relationship_level(telegram_id)
+    level = get_relationship_level(telegram_id, get_user_character(telegram_id))
     unlocked = [scene for scene in PHOTO_MENU_ORDER if SCENE_LEVELS.get(scene, 99) <= level]
     rows = []
     for i in range(0, len(unlocked), 2):
@@ -705,7 +706,7 @@ def photo_feedback_keyboard(scene: str):
 
 
 def photo_menu_text(telegram_id: int) -> str:
-    info = build_photo_menu(telegram_id)
+    info = build_photo_menu(telegram_id, get_user_character(telegram_id))
     level = info['level']
     name = RELATIONSHIP_LEVEL_NAMES.get(level, '')
     future = sorted({required for required in SCENE_LEVELS.values() if required > level})
@@ -838,7 +839,7 @@ async def _start_photo_background(chat_id: int, telegram_id: int, request: Photo
     try:
         library_fast = False
         if delivery_type in {'free', 'story'}:
-            library_fast = choose_unseen_pack(telegram_id, get_user_character(telegram_id), request.scene, get_relationship_level(telegram_id)) is not None
+            library_fast = choose_unseen_pack(telegram_id, get_user_character(telegram_id), request.scene, get_relationship_level(telegram_id, get_user_character(telegram_id))) is not None
         if not library_fast:
             allowed, reason = budget_allows_photo()
             if not allowed:
@@ -865,9 +866,9 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
         return
     track_event(db_uid, 'photo_requested', metadata={'scene': request.scene, 'customized': bool(request.customized)})
     observe_photo_preference(db_uid, request.scene, request.clothing, request.hairstyle, request.location, get_user_character(telegram_id))
-    stage = get_relationship_stage(telegram_id)
+    stage = get_relationship_stage(telegram_id, get_user_character(telegram_id))
     if not scene_allowed_for_stage(request.scene, stage):
-        track_event(db_uid, 'photo_locked_view', metadata={'scene': request.scene, 'level': get_relationship_level(telegram_id)})
+        track_event(db_uid, 'photo_locked_view', metadata={'scene': request.scene, 'level': get_relationship_level(telegram_id, get_user_character(telegram_id))})
         await bot.send_message(chat_id, 'такой образ я пока оставлю при себе 😏')
         return
 
@@ -886,7 +887,7 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
         return
 
     credits = get_photo_credits(telegram_id)
-    if has_free_photo(telegram_id):
+    if has_free_photo(telegram_id, get_user_character(telegram_id)):
         await _start_photo_background(chat_id, telegram_id, request, 'free')
         return
     if credits > 0:
@@ -939,9 +940,17 @@ async def start(message: types.Message, command: CommandObject):
         first_start = apply_first_start_bonuses(message.from_user.id)
         if first_start['credits'] or first_start['trial_days']:
             track_event(uid, 'first_start_bonus_granted', metadata=first_start)
+    # Surface the user's own referral link so they can invite friends right away.
+    try:
+        me = await message.bot.get_me()
+        ref_link = referral_link(me.username, message.from_user.id)
+        ref_hint = f'\n\n🔗 твоя ссылка для приглашения друзей:\n{ref_link}\nза каждого друга, который подтвердит 18+, ты получишь {REFERRAL_REFERRER_CREDITS}, а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов.'
+    except Exception:
+        ref_hint = '\n\nприглашай друзей командой /referral — бонусы за обоих.'
     await message.answer(
         f'с возвращением, {name} 🙂 если ещё не забрал — у тебя могут быть бесплатные фото-кредиты на первое фото.\n'
-        'нажми «✅ Возможности» или просто отправь мне сообщение.',
+        'нажми «✅ Возможности» или просто отправь мне сообщение.'
+        + ref_hint,
         reply_markup=onboarding_character_keyboard(),
     )
 
@@ -962,14 +971,26 @@ async def consent_accept(cq: types.CallbackQuery):
                 track_event(uid, 'referral_awarded_on_consent', metadata={'referrer_id': str(ref)})
         first_start = apply_first_start_bonuses(cq.from_user.id)
     await cq.answer('готово')
-    if first_start['credits']:
-        await cq.message.answer(
-            f'🎁 добро пожаловать! подарил тебе {first_start["credits"]} фото-кредитов — попробуй первое фото бесплатно.\n'
-            'Выбери персонажа и начни общаться:',
-            reply_markup=onboarding_character_keyboard(),
+    # Show the user their own referral link right after consent so they can
+    # invite friends immediately, and announce the wow-bonus.
+    try:
+        me = await cq.bot.get_me()
+        ref_link = referral_link(me.username, cq.from_user.id)
+    except Exception:
+        ref_link = None
+    bonus_line = (
+        f'🎁 добро пожаловать! подарил тебе {first_start["credits"]} фото-кредитов — '
+        'попробуй первое фото бесплатно.\n'
+        'Выбери персонажа и начни общаться:'
+    ) if first_start['credits'] else 'Отлично 🙂 теперь выбери персонажа:'
+    ref_line = ''
+    if ref_link:
+        ref_line = (
+            f'\n\n🔗 твоя ссылка для приглашения друзей:\n{ref_link}\n'
+            f'за каждого друга, который подтвердит 18+, ты получишь {REFERRAL_REFERRER_CREDITS}, '
+            f'а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов.'
         )
-    else:
-        await cq.message.answer('Отлично 🙂 теперь выбери персонажа:', reply_markup=onboarding_character_keyboard())
+    await cq.message.answer(bonus_line + ref_line, reply_markup=onboarding_character_keyboard())
 
 
 @dp.callback_query(F.data == 'consent:terms')
@@ -1927,7 +1948,7 @@ async def settings(message: types.Message):
 async def profile_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     from services.gamification_service import get_profile_summary, format_profile_summary
-    summary = get_profile_summary(message.from_user.id)
+    summary = get_profile_summary(message.from_user.id, get_user_character(message.from_user.id))
     await message.answer(format_profile_summary(summary))
 
 
@@ -2059,7 +2080,7 @@ async def pay_support(message: types.Message):
 async def collection_cmd(message: types.Message):
     if not has_accepted(message.from_user.id):
         await message.answer('Сначала /start и подтверждение 18+.'); return
-    level=get_relationship_level(message.from_user.id)
+    level=get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
     snap=collection_progress(message.from_user.id, get_user_character(message.from_user.id), level)
     lines=[f'📸 Коллекция Анны: {snap["seen"]}/{snap["total"]} открыто']
     for row in snap['per_level']:
@@ -2096,7 +2117,7 @@ async def quest_done_cb(cq: types.CallbackQuery):
 @dp.callback_query(F.data.startswith('quest:view:'))
 async def quest_view_cb(cq: types.CallbackQuery):
     key=cq.data.split(':',2)[2]; q=get_quest(key)
-    if not q or get_relationship_level(cq.from_user.id)<q['min_level']:
+    if not q or get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))<q['min_level']:
         await cq.answer('пока закрыто', show_alert=True); return
     await cq.answer(); await cq.message.answer(f'🎯 {q["title"]}\n\n{q.get("teaser", "")}\n\n{q["intro"]}\n\nПервый выбор станет частью вашей основной истории.', reply_markup=quest_routes_keyboard(cq.from_user.id,key))
 
@@ -2501,7 +2522,7 @@ async def photo_menu(message: types.Message):
 async def locked_photo_callback(cq: types.CallbackQuery):
     item = cq.data.split(':', 1)[1]
     required = 5 if item == 'custom' else SCENE_LEVELS.get(item, 6)
-    current = get_relationship_level(cq.from_user.id)
+    current = get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
     await cq.answer(
         f'🔒 Откроется на уровне {required}/6. Сейчас {current}/6. Близость растёт от общения — купить уровень нельзя.',
         show_alert=True,
@@ -2547,7 +2568,7 @@ async def photo_callback(cq: types.CallbackQuery):
 
 
 async def start_custom_flow(chat_id: int, telegram_id: int):
-    if get_relationship_level(telegram_id) < 5:
+    if get_relationship_level(telegram_id, get_user_character(telegram_id)) < 5:
         await bot.send_message(chat_id, 'кастомные приватные образы откроются позже — тут Stars уровень отношений не заменяют 😏')
         return
     if not is_adult_confirmed(telegram_id):
@@ -2717,14 +2738,15 @@ async def myreminders_cmd(message: types.Message):
 @dp.message(Command('reset'))
 async def reset_cmd(message: types.Message):
     uid = ensure_user(message.from_user.id, message.from_user.first_name)
-    reset_memory(uid, CHARACTER_ID)
+    char_id = get_user_character(message.from_user.id)
+    reset_memory(uid, char_id)
     with SessionLocal() as session:
-        rel = session.query(UserCharacterRelationship).filter_by(user_id=uid, character_id=CHARACTER_ID).first()
+        rel = session.query(UserCharacterRelationship).filter_by(user_id=uid, character_id=char_id).first()
         if rel:
             session.query(RelationshipEvent).filter(RelationshipEvent.user_character_id == rel.id).delete(synchronize_session=False)
             session.query(RelationshipMilestone).filter(RelationshipMilestone.user_character_id == rel.id).delete(synchronize_session=False)
             session.delete(rel)
-        state = session.query(CharacterState).filter_by(user_id=uid, character_id=CHARACTER_ID).first()
+        state = session.query(CharacterState).filter_by(user_id=uid, character_id=char_id).first()
         if state:
             state.mood = 'neutral'
             state.energy = .65
@@ -2824,11 +2846,12 @@ async def collection_button(message: types.Message):
 @dp.message(F.text == '👤 Профиль')
 async def profile_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
-    info = build_photo_menu(message.from_user.id)
+    char_id = get_user_character(message.from_user.id)
+    info = build_photo_menu(message.from_user.id, char_id)
     uid = ensure_user(message.from_user.id, message.from_user.first_name)
     milestone_text = ''
     with SessionLocal() as session:
-        rel = session.query(UserCharacterRelationship).filter_by(user_id=uid, character_id=CHARACTER_ID).first()
+        rel = session.query(UserCharacterRelationship).filter_by(user_id=uid, character_id=char_id).first()
         if rel:
             milestones = session.query(RelationshipMilestone).filter_by(user_character_id=rel.id).order_by(RelationshipMilestone.achieved_at.desc()).limit(3).all()
             if milestones:
@@ -3010,7 +3033,7 @@ async def linked_library_video(cq: types.CallbackQuery):
         await cq.answer('видео недоступно', show_alert=True)
         return
     linked = get_linked_video(
-        item_id, CHARACTER_ID, get_relationship_level(cq.from_user.id)
+        item_id, CHARACTER_ID, get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
     )
     if not linked:
         await cq.answer('это видео пока недоступно', show_alert=True)
@@ -3064,7 +3087,7 @@ async def voice_message(message: types.Message):
             await handle_photo_request(message.chat.id, message.from_user.id, request)
             touch_user(message.from_user.id)
             return
-        before_level = get_relationship_level(message.from_user.id)
+        before_level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             display_name = 'ты' if (user and user.voice_anon_mode) else (message.from_user.first_name or 'ты')
             answer = await anna_reply(message.from_user.id, display_name, text, language_code=message.from_user.language_code, character_id=get_user_character(message.from_user.id))
@@ -3078,7 +3101,7 @@ async def voice_message(message: types.Message):
         if _PHOTO_OFFER_DETECT.search(answer):
             _photo_offer_pending[message.from_user.id] = _time.time()
             logger.info('photo_offer_detected user=%s source=voice', message.from_user.id)
-        await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id))
+        await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id, get_user_character(message.from_user.id)))
         if is_premium(message.from_user.id) and create_from_text(message.from_user.id, text):
             user = get_user(message.from_user.id)
             tz = user.timezone or 'UTC' if user else 'UTC'
@@ -3308,7 +3331,7 @@ async def text_message(message: types.Message):
         if offer_active and _PHOTO_ACCEPT.match(text.strip().lower()):
             _photo_offer_pending.pop(message.from_user.id, None)
             # User accepted Anna's photo offer
-            if has_free_photo(message.from_user.id):
+            if has_free_photo(message.from_user.id, get_user_character(message.from_user.id)):
                 req = PhotoRequest(scene='selfie')
                 await _start_photo_background(message.chat.id, message.from_user.id, req, 'free')
             else:
@@ -3333,7 +3356,7 @@ async def text_message(message: types.Message):
             await handle_photo_request(message.chat.id, message.from_user.id, request)
             touch_user(message.from_user.id)
             return
-        before_level = get_relationship_level(message.from_user.id)
+        before_level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text, language_code=message.from_user.language_code, character_id=get_user_character(message.from_user.id))
         await send_answer(message, answer)
@@ -3341,7 +3364,7 @@ async def text_message(message: types.Message):
         if _PHOTO_OFFER_DETECT.search(answer):
             _photo_offer_pending[message.from_user.id] = _time.time()
             logger.info('photo_offer_detected user=%s', message.from_user.id)
-        await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id))
+        await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id, get_user_character(message.from_user.id)))
         if is_premium(message.from_user.id):
             rid = create_from_text(message.from_user.id, text)
             if rid:
