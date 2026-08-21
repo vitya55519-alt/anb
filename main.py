@@ -2103,11 +2103,14 @@ async def _run_gemini_video_background(chat_id: int, telegram_id: int, delivery_
 
 
 async def _video_gate(cq: types.CallbackQuery, delivery: dict) -> None:
-    """Start the animation free (Premium daily slot) or invoice Stars."""
+    """Start the animation free (admin or Premium daily slot) or invoice Stars."""
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     track_event(uid, 'video_animate_click', metadata={'delivery_id': delivery['id']})
-    if is_premium(cq.from_user.id) and consume_premium_video_free(cq.from_user.id):
-        track_event(uid, 'video_free_used', metadata={'delivery_id': delivery['id']})
+    free = cq.from_user.id in ADMIN_TELEGRAM_IDS
+    if not free and is_premium(cq.from_user.id):
+        free = consume_premium_video_free(cq.from_user.id)
+    if free:
+        track_event(uid, 'video_free_used', metadata={'delivery_id': delivery['id'], 'admin': cq.from_user.id in ADMIN_TELEGRAM_IDS})
         if video_available():
             _video_jobs[cq.from_user.id] = asyncio.create_task(
                 _run_gemini_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None)

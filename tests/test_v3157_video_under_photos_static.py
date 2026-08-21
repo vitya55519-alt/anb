@@ -32,6 +32,8 @@ def test_animate_photo_callback_guards():
 def test_video_gate_free_premium_then_paid():
     gate = MAIN[MAIN.index('async def _video_gate('):]
     gate = gate.split('\n@dp.', 1)[0]
+    # Admins animate photos for free without limits; Premium gets the daily slot.
+    assert 'ADMIN_TELEGRAM_IDS' in gate
     assert 'is_premium(' in gate
     assert 'consume_premium_video_free(' in gate
     assert 'send_stars_invoice(' in gate
