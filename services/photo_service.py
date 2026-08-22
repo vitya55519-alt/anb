@@ -274,20 +274,20 @@ PACK_TIER_RULES = (
     'PREMIUM: strongest outfit styling, best light, best composition and the biggest wow-effect allowed at this relationship level.',
 )
 LEVEL_VISUAL_RULES = {
-    1: 'Relationship visual level 1/6: friendly, approachable, casual and fully clothed. Attractive but not deliberately intimate.',
-    2: 'Relationship visual level 2/6: more feminine and fitted styling, clearer waist definition, still casual and fully clothed.',
-    3: 'Relationship visual level 3/6: noticeably more stylish, confident and figure-flattering fashion while remaining mainstream and fully clothed.',
-    4: 'Relationship visual level 4/6: polished personal fashion, more confident poses and stronger fitted silhouettes, still non-explicit.',
-    5: 'Relationship visual level 5/6: glamorous personalized styling and more private-feeling fashion; keep ordinary scenes fully clothed and tasteful.',
-    6: 'Relationship visual level 6/6: premium personalized styling, strongest confident fashion presentation and clear exclusivity; remain non-explicit.',
+    1: 'Relationship visual level 1/6: friendly, approachable, casual and fully clothed. Attractive but not deliberately intimate. Fitted clothing may very subtly hint at everyday lingerie underneath, like a soft bra outline under a thin blouse — believable and tasteful, never exposed.',
+    2: 'Relationship visual level 2/6: more feminine and fitted styling, clearer waist definition, still fully clothed. A discreet lingerie outline under fitted fabric is allowed; necklines slightly more feminine.',
+    3: 'Relationship visual level 3/6: noticeably more stylish, confident and figure-flattering fashion, deeper feminine necklines and fitted silhouettes while remaining mainstream; tasteful hints of lace or lingerie under clothing, fully clothed.',
+    4: 'Relationship visual level 4/6: polished personal fashion, more confident poses and stronger fitted silhouettes; more revealing cuts such as open back or off-shoulder are allowed, still no exposure and non-explicit.',
+    5: 'Relationship visual level 5/6: glamorous personalized styling and more private-feeling fashion; elegant daring cuts and visible lace details are allowed, keep it classy and non-explicit.',
+    6: 'Relationship visual level 6/6: premium personalized styling, strongest confident fashion presentation and clear exclusivity; boldest tasteful fashion allowed, remain fully non-explicit.',
 }
 OPENAI_LEVEL_VISUAL_RULES = {
-    1: 'Relationship visual level 1/6: simple casual styling, natural pose, everyday social-media feel.',
-    2: 'Relationship visual level 2/6: more coordinated clothing, cleaner styling and a little more confidence, fully clothed.',
-    3: 'Relationship visual level 3/6: noticeably more fashionable outfit, better accessories and stronger composition, fully clothed.',
-    4: 'Relationship visual level 4/6: polished personal fashion, confident lifestyle pose and more intentional styling, fully clothed.',
-    5: 'Relationship visual level 5/6: premium personalized styling, richer venue details and more exclusive-feeling composition, fully clothed.',
-    6: 'Relationship visual level 6/6: strongest premium styling, best accessories, lighting and composition; sophisticated and exclusive while fully clothed and general-audience.',
+    1: 'Relationship visual level 1/6: simple casual styling, natural pose, everyday social-media feel, fully clothed. A very subtle hint of everyday lingerie under fitted clothing (soft bra outline under a thin blouse) is allowed if natural; never exposed.',
+    2: 'Relationship visual level 2/6: more coordinated clothing, cleaner styling and a little more confidence, fully clothed; a discreet lingerie outline under fitted fabric is allowed.',
+    3: 'Relationship visual level 3/6: noticeably more fashionable outfit, better accessories and stronger composition, fully clothed; deeper feminine necklines and tasteful hints of lace under clothing are allowed.',
+    4: 'Relationship visual level 4/6: polished personal fashion, confident lifestyle pose and more intentional styling, fully clothed; more revealing cuts such as open back or off-shoulder are allowed, no exposure.',
+    5: 'Relationship visual level 5/6: premium personalized styling, richer venue details and more exclusive-feeling composition, fully clothed; elegant daring cuts and visible lace details are allowed.',
+    6: 'Relationship visual level 6/6: strongest premium styling, best accessories, lighting and composition; sophisticated and exclusive, boldest tasteful fashion while fully clothed and general-audience.',
 }
 
 SEASON_RULES = {
@@ -427,8 +427,10 @@ SEEDREAM_IDENTITY_LOCK = (
 BODY_REINFORCEMENT_SCENES = {'mirror', 'gym', 'cafe', 'restaurant', 'home', 'outfit', 'selfie'}
 
 QUALITY_BLOCK = (
-    'Photorealistic smartphone/lifestyle photography, realistic skin texture, realistic hands and anatomy, '
-    'natural hair strands, coherent perspective, premium photographic detail, soft cinematic realism, shallow depth of field where appropriate.'
+    'Photorealistic smartphone/lifestyle photography, authentic candid amateur photo feel, realistic skin texture with natural pores and micro-imperfections, '
+    'realistic fabric texture and clothing wrinkles, realistic hands and anatomy, natural hair strands, coherent perspective, '
+    'premium photographic detail, soft cinematic realism, shallow depth of field where appropriate. '
+    'Absolutely no CGI, 3D render, doll-like or airbrushed look.'
 )
 OPENAI_GENERAL_AUDIENCE_BLOCK = (
     'Mainstream general-audience lifestyle photograph. Anna remains fully clothed in opaque, scene-appropriate clothing. '

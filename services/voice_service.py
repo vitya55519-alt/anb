@@ -26,6 +26,36 @@ _EDGE_VOICE_MAP = {
 # Public constant used by main.py for /voice_style command validation.
 VALID_VOICES = tuple(_EDGE_VOICE_MAP.keys())
 
+# ── per-character cute female voices, one profile per language ─────────────
+# Each girl has her own voice; the language is picked from the text itself
+# (user writes Russian → Russian voice, English → English voice).
+CHARACTER_VOICE_PROFILES = {
+    'anna_01': {
+        'ru': ('ru-RU-SvetlanaNeural', {'rate': '+3%', 'pitch': '+2Hz'}),
+        'en': ('en-US-AriaNeural', {'rate': '+2%', 'pitch': '+2Hz'}),
+    },
+    'alena_01': {
+        'ru': ('ru-RU-DariyaNeural', {'rate': '+4%', 'pitch': '+3Hz'}),
+        'en': ('en-US-JennyNeural', {'rate': '+3%', 'pitch': '+2Hz'}),
+    },
+    'maria_01': {
+        'ru': ('ru-RU-SvetlanaNeural', {'rate': '+1%', 'pitch': '+7Hz'}),
+        'en': ('en-US-MichelleNeural', {'rate': '+1%', 'pitch': '+4Hz'}),
+    },
+}
+_DEFAULT_VOICE_PROFILE = CHARACTER_VOICE_PROFILES['anna_01']
+
+
+def detect_voice_language(text: str) -> str:
+    """Reply voice follows the user's language: Cyrillic text → ru, else en."""
+    return 'ru' if any('\u0400' <= ch <= '\u04FF' for ch in text) else 'en'
+
+
+def pick_edge_voice(text: str, character_id: str | None = None) -> tuple[str, dict]:
+    """Return (edge_voice, edge_kwargs) for a character and the text language."""
+    profile = CHARACTER_VOICE_PROFILES.get(character_id or '', _DEFAULT_VOICE_PROFILE)
+    return profile[detect_voice_language(text)]
+
 # ── OpenAI client (optional, only if key is present) ──────────────────────
 _openai_client = None
 if OPENAI_VOICE_AVAILABLE:
@@ -86,13 +116,17 @@ async def _transcribe_openai(voice_bytes: io.BytesIO) -> str:
     return r.text
 
 
-async def synthesize_bytes(text: str, voice: str | None = None) -> bytes:
-    """Synthesize text to speech audio bytes (opus format)."""
+async def synthesize_bytes(text: str, voice: str | None = None, character_id: str | None = None) -> bytes:
+    """Synthesize text to speech audio bytes (opus format).
+
+    The voice follows the character (each girl has her own cute voice) and the
+    language of the text itself. An explicit legacy `voice` style still wins.
+    """
     v = voice if voice in _EDGE_VOICE_MAP else TTS_VOICE
 
     # Try edge-tts first (free, no API key needed)
     try:
-        return await _tts_edge_tts(text, v)
+        return await _tts_edge_tts(text, v, character_id)
     except ImportError:
         pass
     except Exception as exc:
@@ -105,12 +139,19 @@ async def synthesize_bytes(text: str, voice: str | None = None) -> bytes:
     raise RuntimeError('No TTS provider available. Install edge-tts: pip install edge-tts')
 
 
-async def _tts_edge_tts(text: str, voice: str) -> bytes:
-    """Use edge-tts (free Microsoft TTS) to synthesize speech."""
+async def _tts_edge_tts(text: str, voice: str, character_id: str | None = None) -> bytes:
+    """Use edge-tts (free Microsoft TTS) to synthesize speech.
+
+    A known character uses that girl's own voice in the text's language;
+    an explicit /voice_style choice keeps the legacy single-voice behavior.
+    """
     import edge_tts
 
-    edge_voice = _EDGE_VOICE_MAP.get(voice, 'en-US-JennyNeural')
-    communicate = edge_tts.Communicate(text, edge_voice)
+    if voice in _EDGE_VOICE_MAP and voice != TTS_VOICE:
+        communicate = edge_tts.Communicate(text, _EDGE_VOICE_MAP[voice])
+    else:
+        edge_voice, edge_kwargs = pick_edge_voice(text, character_id)
+        communicate = edge_tts.Communicate(text, edge_voice, **edge_kwargs)
 
     buf = io.BytesIO()
     async for chunk in communicate.stream():
