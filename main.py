@@ -856,21 +856,20 @@ async def _start_photo_background(chat_id: int, telegram_id: int, request: Photo
         return False
     _photo_job_reservations.add(telegram_id)
     try:
-        library_fast = False
+        # Always check budget and show the generating message — AI generation
+        # is the primary route now, library/community are fallbacks only.
         if delivery_type in {'free', 'story'}:
-            library_fast = choose_unseen_pack(telegram_id, get_user_character(telegram_id), request.scene, get_relationship_level(telegram_id, get_user_character(telegram_id))) is not None
-        if not library_fast:
             allowed, reason = budget_allows_photo()
             if not allowed:
                 logger.error('image budget guard blocked generation reason=%s user=%s', reason, telegram_id)
                 track_event(ensure_user(telegram_id), 'photo_budget_blocked', metadata={'scene': request.scene, 'reason': reason})
                 await bot.send_message(chat_id, 'с фото сейчас техническая пауза 😕 попробуй чуть позже. лимит не списан.')
                 return False
-            await bot.send_message(chat_id, random.choice((
-                'сек 😄 сейчас выберу нормальные кадры',
-                'погоди чуть-чуть 😌 хочу сделать красиво',
-                'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
-            )))
+        await bot.send_message(chat_id, random.choice((
+            'сек 😄 сейчас выберу нормальные кадры',
+            'погоди чуть-чуть 😌 хочу сделать красиво',
+            'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
+        )))
         task = asyncio.create_task(_run_photo_background(chat_id, telegram_id, request, delivery_type))
         _photo_jobs[telegram_id] = task
         return True

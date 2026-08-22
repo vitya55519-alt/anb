@@ -2074,60 +2074,9 @@ async def deliver_photo(
     caption = caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',)))
     sent_messages = []
 
-    # Community pool first: re-use AI-generated photos from other users
-    # requesting the same character+scene, saving API cost. When the pool
-    # has unseen content the user gets fresh-to-them photos instantly.
-    if delivery_type in {'free', 'story'} and COMMUNITY_POOL_ENABLED and request.scene not in _PRIVATE_LIBRARY_SCENES:
-        level = get_relationship_level(telegram_id, character_id)
-        community_photos = query_community_photos(telegram_id, character_id, request.scene, level, count=PHOTO_SET_SIZE)
-        if community_photos:
-            for idx, cp in enumerate(community_photos):
-                row_id = _insert_delivery_row(
-                    telegram_id, request.scene, 'free',
-                    provider='community_pool', estimated_cost_usd=0.0,
-                    character_id=character_id,
-                    source_delivery_id=cp['id'],
-                )
-                sent = await bot.send_photo(
-                    chat_id, cp['telegram_file_id'],
-                    caption=caption if idx == 0 else None,
-                    reply_markup=_photo_action_markup(row_id),
-                )
-                _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else cp['telegram_file_id'])
-                sent_messages.append(sent)
-                logger.info('community photo delivered user=%s scene=%s source=%s frame=%s/%s',
-                            telegram_id, request.scene, cp['id'], idx + 1, len(community_photos))
-            _bump_photo_usage(telegram_id, 'free', character_id=character_id)
-            uid = ensure_user(telegram_id)
-            track_event(uid, 'photo_delivered', value=0.0, metadata={
-                'scene': request.scene, 'provider': 'community_pool',
-                'count': len(sent_messages),
-            })
-            logger.info('community pool set delivered user=%s scene=%s count=%s',
-                        telegram_id, request.scene, len(sent_messages))
-            return sent_messages
-
-    # Cost-first routing for beta: ordinary free requests use a curated Telegram file_id library first.
-    # Custom/paid-credit/admin requests still exercise AI generation so the user gets bespoke output.
-    if delivery_type in {'free', 'story'}:
-        library_pack = choose_unseen_pack(telegram_id, character_id, request.scene, get_relationship_level(telegram_id, character_id))
-        if library_pack and library_pack.photos:
-            for idx, item in enumerate(library_pack.photos):
-                row_id = _insert_delivery_row(telegram_id, request.scene, 'free', provider='telegram_library', estimated_cost_usd=0.0, character_id=character_id)
-                sent = await bot.send_photo(
-                    chat_id, item.file_id, caption=caption if idx == 0 else None,
-                    reply_markup=_photo_action_markup(row_id, item),
-                )
-                _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else item.file_id)
-                sent_messages.append(sent)
-                logger.info('library photo frame delivered user=%s scene=%s pack=%s frame=%s/%s', telegram_id, request.scene, library_pack.pack_key, idx + 1, len(library_pack.photos))
-            mark_pack_seen(telegram_id, library_pack.id)
-            _bump_photo_usage(telegram_id, 'free', character_id=character_id)
-            uid = ensure_user(telegram_id)
-            track_event(uid, 'photo_delivered', value=0.0, metadata={'scene': request.scene, 'provider': 'telegram_library', 'count': len(sent_messages), 'pack_key': library_pack.pack_key})
-            track_event(uid, 'photo_library_served', metadata={'scene': request.scene, 'pack_key': library_pack.pack_key, 'level': library_pack.relationship_level})
-            logger.info('library photo set delivered user=%s scene=%s pack=%s count=%s', telegram_id, request.scene, library_pack.pack_key, len(sent_messages))
-            return sent_messages
+    # Always generate fresh AI photos. The community pool and curated library
+    # are safety nets for when AI generation fails — they never take priority.
+    # This ensures every user gets unique photos, not recycled content.
 
     async def _send_frame(result: GeneratedPhoto, idx: int):
         item_caption = caption if idx == 0 else None
@@ -2160,11 +2109,37 @@ async def deliver_photo(
     try:
         results, resolved = await generate_photo_set(telegram_id, request, on_frame=_send_frame, character_id=character_id)
     except PhotoGenerationError as exc:
-        # The product promise for ordinary free photos is: if AI cannot make a
-        # fresh image, use the curated library instead of returning an empty
-        # failure. Exact-scene library was already checked above; this second
-        # pass may choose another unlocked ordinary scene as a graceful fallback.
-        if delivery_type in {'free', 'story'}:
+        # AI failed: try community pool first (other users' fresh generations),
+        # then curated library as last resort. This keeps photos unique while
+        # still recovering gracefully when providers are down.
+        if delivery_type in {'free', 'story'} and request.scene not in _PRIVATE_LIBRARY_SCENES:
+            if COMMUNITY_POOL_ENABLED:
+                level = get_relationship_level(telegram_id, character_id)
+                community_photos = query_community_photos(telegram_id, character_id, request.scene, level, count=PHOTO_SET_SIZE)
+                if community_photos:
+                    for idx, cp in enumerate(community_photos):
+                        row_id = _insert_delivery_row(
+                            telegram_id, request.scene, 'free',
+                            provider='community_pool_fallback', estimated_cost_usd=0.0,
+                            character_id=character_id,
+                            source_delivery_id=cp['id'],
+                        )
+                        sent = await bot.send_photo(
+                            chat_id, cp['telegram_file_id'],
+                            caption=caption if idx == 0 else None,
+                            reply_markup=_photo_action_markup(row_id),
+                        )
+                        _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else cp['telegram_file_id'])
+                        sent_messages.append(sent)
+                    _bump_photo_usage(telegram_id, 'free', character_id=character_id)
+                    uid = ensure_user(telegram_id)
+                    track_event(uid, 'photo_community_fallback_served', metadata={
+                        'scene': request.scene, 'count': len(sent_messages),
+                        'ai_reason': exc.reason,
+                    })
+                    logger.warning('AI failed but community pool recovered user=%s scene=%s provider=%s reason=%s count=%s',
+                                   telegram_id, request.scene, exc.provider, exc.reason, len(sent_messages))
+                    return sent_messages
             fallback_sent = await _deliver_library_failure_fallback(bot, chat_id, telegram_id, request, character_id=character_id)
             if fallback_sent:
                 logger.warning('AI failed but library fallback recovered user=%s scene=%s provider=%s reason=%s', telegram_id, request.scene, exc.provider, exc.reason)

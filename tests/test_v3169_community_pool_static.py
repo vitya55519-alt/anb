@@ -1,11 +1,10 @@
-"""Static regression tests for v3.16.9: community photo pool.
+"""Static regression tests for v3.16.9: community photo pool (fallback only).
 
-AI-generated photos are shared between users requesting the same character+scene.
-New photos are generated only when the community pool has nothing unseen for the
-requesting user. This saves API cost and fixes the Emily repetition bug where
-the curated library served the same photo over and over.
+AI generation ALWAYS takes priority — every user gets fresh unique photos.
+The community pool and curated library are safety nets for when AI providers
+fail. This ensures no recycled content while still recovering gracefully.
 
-Delivery priority: community pool -> curated library -> AI generation -> fallback.
+Delivery priority: AI generation -> community pool fallback -> library fallback.
 """
 from pathlib import Path
 
@@ -51,34 +50,50 @@ def test_query_community_photos_function():
 
 # ── Delivery routing ──────────────────────────────────────────────────────
 
-def test_community_pool_checked_before_curated_library():
-    # The community pool block appears BEFORE the curated library block.
-    community_idx = PHOTO.index('Community pool first')
-    library_idx = PHOTO.index('Cost-first routing for beta')
+def test_ai_generation_always_takes_priority():
+    # The comment block before _send_frame makes the policy explicit:
+    # AI always first, community/library are safety nets only.
+    assert 'Always generate fresh AI photos' in PHOTO
+    assert 'safety nets' in PHOTO
+    # deliver_photo must NOT call query_community_photos or choose_unseen_pack
+    # before the AI generation try block. The function definition is fine above.
+    deliver_fn = PHOTO[PHOTO.index('async def deliver_photo('):PHOTO.index('async def _send_frame(')]
+    assert 'query_community_photos(' not in deliver_fn
+    assert 'choose_unseen_pack(' not in deliver_fn
+
+
+def test_community_pool_is_fallback_only():
+    # Community pool appears in the error handler (except PhotoGenerationError),
+    # NOT before the AI generation try block.
+    deliver_start = PHOTO.index('async def deliver_photo(')
+    except_in_deliver = PHOTO.index('except PhotoGenerationError as exc:', deliver_start)
+    except_block = PHOTO[except_in_deliver:except_in_deliver + 3000]
+    assert 'community_pool_fallback' in except_block
+    assert 'query_community_photos' in except_block
+
+
+def test_fallback_order_community_before_library():
+    # In the error handler, community pool is checked before the curated library.
+    deliver_start = PHOTO.index('async def deliver_photo(')
+    except_in_deliver = PHOTO.index('except PhotoGenerationError as exc:', deliver_start)
+    except_block = PHOTO[except_in_deliver:except_in_deliver + 3000]
+    community_idx = except_block.index('community_pool_fallback')
+    library_idx = except_block.index('_deliver_library_failure_fallback')
     assert community_idx < library_idx
 
 
-def test_community_pool_delivery_uses_source_delivery_id():
-    # Community re-deliveries link back to the original AI generation.
-    assert "source_delivery_id=cp['id']" in PHOTO
-    assert "provider='community_pool'" in PHOTO
-
-
 def test_ai_generated_photos_are_community_shared():
-    # _send_frame sets community_shared=True so the photo enters the pool.
+    # _send_frame sets community_shared=True so the photo enters the pool
+    # for future fallback use by other users.
     assert 'community_shared=True,' in PHOTO
 
 
 def test_community_pool_skips_private_scenes():
-    # Private scenes (personal/lingerie) never use the community pool.
-    community_block = PHOTO[PHOTO.index('Community pool first'):PHOTO.index('Cost-first routing for beta')]
-    assert '_PRIVATE_LIBRARY_SCENES' in community_block
-
-
-def test_community_pool_respects_feature_flag():
-    # The community pool is gated by COMMUNITY_POOL_ENABLED.
-    community_block = PHOTO[PHOTO.index('Community pool first'):PHOTO.index('Cost-first routing for beta')]
-    assert 'COMMUNITY_POOL_ENABLED' in community_block
+    # Private scenes never use community pool even as fallback.
+    deliver_start = PHOTO.index('async def deliver_photo(')
+    except_in_deliver = PHOTO.index('except PhotoGenerationError as exc:', deliver_start)
+    except_block = PHOTO[except_in_deliver:except_in_deliver + 3000]
+    assert '_PRIVATE_LIBRARY_SCENES' in except_block
 
 
 def test_insert_delivery_row_supports_community_params():
