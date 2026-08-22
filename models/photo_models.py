@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .waifu_models import Base
 
@@ -26,6 +26,9 @@ class PhotoDelivery(Base):
     image_url:Mapped[str|None]=mapped_column(Text,nullable=True)
     provider:Mapped[str|None]=mapped_column(String(32),nullable=True)
     estimated_cost_usd:Mapped[float]=mapped_column(Float,default=0.0,nullable=False)
+    # Raw image bytes for paid full-resolution gallery downloads. Nullable so
+    # existing rows (delivered before v3.16.7) keep working.
+    full_resolution_bytes:Mapped[bytes|None]=mapped_column(LargeBinary,nullable=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=utcnow,nullable=False,index=True)
 
 class PhotoOffer(Base):

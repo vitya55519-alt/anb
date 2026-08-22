@@ -98,6 +98,8 @@ def init_db():
     _add_missing_columns('photo_deliveries', {
         'provider': 'VARCHAR(32)',
         'estimated_cost_usd': 'FLOAT DEFAULT 0',
+        # v3.16.7: raw image bytes for paid full-resolution gallery downloads.
+        'full_resolution_bytes': 'BYTEA',
     })
     _add_missing_columns('user_character_relationships', {
         'familiarity_score': 'FLOAT DEFAULT 0',

@@ -1084,6 +1084,30 @@ def _extract_openai_many(result) -> list[GeneratedPhoto]:
     return out
 
 
+async def _download_result_bytes(result: GeneratedPhoto) -> bytes | None:
+    """Fetch the raw image bytes when a provider returned only a URL.
+
+    Returns None on any failure so the gallery simply shows a view-only frame
+    instead of crashing the whole delivery.
+    """
+    if result.data:
+        return result.data
+    if not result.url:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            response = await client.get(result.url)
+        if response.status_code >= 400 or not response.content:
+            logger.warning('gallery capture: URL download failed provider=%s url=%s status=%s',
+                           result.provider, result.url[:120], response.status_code)
+            return None
+        return response.content
+    except Exception as exc:
+        logger.warning('gallery capture: URL download error provider=%s error=%s',
+                       result.provider, type(exc).__name__)
+        return None
+
+
 def _file_data_uri(path: Path) -> str:
     mime = mimetypes.guess_type(path.name)[0] or 'image/png'
     encoded = base64.b64encode(path.read_bytes()).decode('ascii')
@@ -1770,8 +1794,13 @@ def _insert_delivery_row(
     provider: str = 'unknown',
     estimated_cost_usd: float = 0.0,
     character_id: str = CHARACTER_ID,
+    full_bytes: bytes | None = None,
 ) -> int:
-    """Create a PhotoDelivery row and return its id (button/per-frame anchor)."""
+    """Create a PhotoDelivery row and return its id (button/per-frame anchor).
+
+    Pass ``full_bytes`` (the raw image bytes from the generation result) to let
+    paid gallery downloads re-send the uncompressed file as a Telegram document.
+    """
     uid = ensure_user(telegram_id)
     with SessionLocal() as session:
         row = PhotoDelivery(
@@ -1783,6 +1812,7 @@ def _insert_delivery_row(
             image_url=url,
             provider=provider,
             estimated_cost_usd=estimated_cost_usd,
+            full_resolution_bytes=full_bytes,
         )
         session.add(row)
         session.commit()
@@ -1800,12 +1830,13 @@ def _attach_delivery_file(delivery_id: int, file_id: str | None):
             session.commit()
 
 
-def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=None, provider='unknown', estimated_cost_usd=0.0, *, character_id: str = CHARACTER_ID):
+def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=None, provider='unknown', estimated_cost_usd=0.0, *, character_id: str = CHARACTER_ID, full_bytes: bytes | None = None):
     _bump_photo_usage(telegram_id, delivery_type, character_id)
     return _insert_delivery_row(
         telegram_id, scene, delivery_type,
         file_id=file_id, url=url, provider=provider,
         estimated_cost_usd=estimated_cost_usd, character_id=character_id,
+        full_bytes=full_bytes,
     )
 
 
@@ -1992,10 +2023,15 @@ async def deliver_photo(
 
     async def _send_frame(result: GeneratedPhoto, idx: int):
         item_caption = caption if idx == 0 else None
+        # Capture the raw bytes so the paid gallery download can re-send this
+        # frame uncompressed as a Telegram document. URL-only providers may
+        # leave this empty — their frames just become view-only in the gallery.
+        full_bytes = result.data or (await _download_result_bytes(result))
         row_id = _insert_delivery_row(
             telegram_id, request.scene, delivery_type,
             url=result.url, provider=result.provider,
             estimated_cost_usd=result.estimated_cost_usd, character_id=character_id,
+            full_bytes=full_bytes,
         )
         if result.url:
             sent = await bot.send_photo(chat_id, result.url, caption=item_caption, reply_markup=_photo_action_markup(row_id))
@@ -2121,3 +2157,66 @@ def get_latest_photo_delivery(telegram_id: int):
             'id': row.id, 'scene': row.scene, 'telegram_file_id': row.telegram_file_id,
             'provider': row.provider, 'created_at': row.created_at,
         }
+
+
+GALLERY_PAGE_SIZE = 6
+
+
+def get_gallery_page(telegram_id: int, page: int = 0) -> dict:
+    """Return a slice of the user's deliveries with metadata for pagination.
+
+    Each item carries everything the gallery UI needs: telegram_file_id for
+    thumbnails, full_resolution_bytes availability (not the bytes themselves —
+    they are only loaded on a paid download), and a short caption.
+    """
+    with SessionLocal() as s:
+        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+        if not user:
+            return {'items': [], 'total': 0, 'page': 0, 'pages': 0}
+        q = (
+            select(PhotoDelivery)
+            .where(PhotoDelivery.user_id == user.id, PhotoDelivery.telegram_file_id.is_not(None))
+            .order_by(PhotoDelivery.created_at.desc(), PhotoDelivery.id.desc())
+        )
+        rows = s.scalars(q).all()
+        total = len(rows)
+        if total == 0:
+            return {'items': [], 'total': 0, 'page': 0, 'pages': 0}
+        pages = (total + GALLERY_PAGE_SIZE - 1) // GALLERY_PAGE_SIZE
+        page = max(0, min(int(page), pages - 1))
+        offset = page * GALLERY_PAGE_SIZE
+        slice_rows = rows[offset:offset + GALLERY_PAGE_SIZE]
+        items = [
+            {
+                'id': r.id,
+                'scene': r.scene,
+                'telegram_file_id': r.telegram_file_id,
+                'created_at': r.created_at,
+                'downloadable': bool(r.full_resolution_bytes),
+                'character_id': r.character_id,
+            }
+            for r in slice_rows
+        ]
+        return {'items': items, 'total': total, 'page': page, 'pages': pages}
+
+
+def get_gallery_item_bytes(telegram_id: int, delivery_id: int) -> dict | None:
+    """Fetch the raw image bytes for a single gallery item (paid download).
+
+    Returns a small dict with bytes + filename hint, or None when the item
+    belongs to another user or was delivered before bytes were stored.
+    """
+    with SessionLocal() as s:
+        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+        if not user:
+            return None
+        row = s.scalar(
+            select(PhotoDelivery).where(
+                PhotoDelivery.id == int(delivery_id),
+                PhotoDelivery.user_id == user.id,
+            )
+        )
+        if not row or not row.full_resolution_bytes:
+            return None
+        filename = f'anna_{row.scene}_{row.id}.jpg'
+        return {'bytes': row.full_resolution_bytes, 'filename': filename, 'scene': row.scene}

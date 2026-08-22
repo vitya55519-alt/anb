@@ -22,7 +22,7 @@ from config import (
     TELEGRAM_TOKEN, PREMIUM_MONTHLY_STARS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS,
     ADMIN_TELEGRAM_IDS, CHARACTER_ID, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS,
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
-    GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, WALLET_PAY_ENABLED,
+    GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, GALLERY_DOWNLOAD_STARS, WALLET_PAY_ENABLED,
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
 )
 from services.user_service import (
@@ -36,6 +36,7 @@ from services.photo_service import (
     create_offer, consume_offer, scene_allowed_for_stage, get_relationship_stage,
     get_relationship_level, is_custom_request, requires_adult_confirmation,
     SCENE_LEVELS, SCENES, PhotoGenerationError, get_latest_photo_delivery, get_photo_delivery_for_user,
+    get_gallery_page, get_gallery_item_bytes, GALLERY_PAGE_SIZE,
 )
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
@@ -2152,6 +2153,199 @@ async def collection_cmd(message: types.Message):
             lines.append(f'L{row["level"]} · 🔒')
     await message.answer('\n'.join(lines))
 
+
+def _gallery_caption(item: dict, index: int, total_on_page: int) -> str:
+    when = item['created_at']
+    stamp = when.strftime('%d.%m %H:%M') if when else 'недавно'
+    dl_mark = '⬇' if item.get('downloadable') else ''
+    return f'🖼 {index}/{total_on_page} · {item["scene"]}{dl_mark}\n{stamp}'
+
+
+def _gallery_keyboard(page: int, total_pages: int) -> types.InlineKeyboardMarkup:
+    """Grid of gallery items on one page + page navigation."""
+    rows: list[list[types.InlineKeyboardButton]] = []
+    return types.InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _send_gallery_page(chat_id: int, telegram_id: int, page: int = 0, *, edit: types.Message | None = None) -> None:
+    snap = get_gallery_page(telegram_id, page)
+    items = snap['items']
+    total_pages = snap['pages']
+    total = snap['total']
+    if total == 0:
+        text = (
+            '🖼 Твоя галерея пуста.\n\n'
+            'Попроси у Анны фото — и все твои кадры появятся здесь, с возможностью '
+            f'скачать их в полном разрешении за {GALLERY_DOWNLOAD_STARS}⭐ каждый.'
+        )
+        if edit:
+            await edit.edit_text(text)
+        else:
+            await bot.send_message(chat_id, text)
+        return
+
+    header = (
+        f'🖼 Твоя галерея · {total} фото · стр. {snap["page"] + 1}/{total_pages}\n\n'
+        'Нажми на фото — открою его в полном размере с кнопками «Оживить» и «Скачать».\n'
+        f'Платное скачивание: {GALLERY_DOWNLOAD_STARS}⭐ за кадр в полном разрешении (без Telegram-сжатия).'
+    )
+    # Render each item as a small photo message with its own action row.
+    if edit:
+        await edit.edit_text(header)
+    else:
+        await bot.send_message(chat_id, header)
+    for local_idx, item in enumerate(items, start=1):
+        row_buttons: list[types.InlineKeyboardButton] = [
+            types.InlineKeyboardButton(
+                text=f'👁 {local_idx}. {item["scene"]}',
+                callback_data=f'gallery:view:{item["id"]}',
+            ),
+        ]
+        if item.get('downloadable'):
+            row_buttons.append(
+                types.InlineKeyboardButton(
+                    text=f'⬇ Скачать {local_idx} · {GALLERY_DOWNLOAD_STARS}⭐',
+                    callback_data=f'gallery:dl:{item["id"]}',
+                )
+            )
+        else:
+            row_buttons.append(
+                types.InlineKeyboardButton(
+                    text=f'⬇ {local_idx} · без байтов',
+                    callback_data=f'gallery:no_dl:{item["id"]}',
+                )
+            )
+        row_buttons.append(
+            types.InlineKeyboardButton(
+                text=f'🎬 {local_idx}',
+                callback_data=f'gallery:animate:{item["id"]}',
+            )
+        )
+        kb = types.InlineKeyboardMarkup(inline_keyboard=[row_buttons])
+        try:
+            await bot.send_photo(
+                chat_id, item['telegram_file_id'],
+                caption=_gallery_caption(item, local_idx, len(items)),
+                reply_markup=kb,
+            )
+        except Exception:
+            await bot.send_message(
+                chat_id, _gallery_caption(item, local_idx, len(items)),
+                reply_markup=kb,
+            )
+    # Page navigation row.
+    nav: list[types.InlineKeyboardButton] = []
+    if snap['page'] > 0:
+        nav.append(types.InlineKeyboardButton(text='◀', callback_data=f'gallery:page:{snap["page"] - 1}'))
+    nav.append(types.InlineKeyboardButton(text=f'{snap["page"] + 1} / {total_pages}', callback_data='gallery:noop'))
+    if snap['page'] + 1 < total_pages:
+        nav.append(types.InlineKeyboardButton(text='▶', callback_data=f'gallery:page:{snap["page"] + 1}'))
+    await bot.send_message(chat_id, 'страницы 👇', reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[nav]))
+
+
+@dp.message(Command('gallery', 'photos'))
+async def gallery_cmd(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    if not has_accepted(message.from_user.id):
+        await message.answer('Сначала /start и подтверждение 18+.'); return
+    track_event(ensure_user(message.from_user.id), 'gallery_opened')
+    await _send_gallery_page(message.chat.id, message.from_user.id, page=0)
+
+
+@dp.callback_query(F.data.startswith('gallery:page:'))
+async def gallery_page_cb(cq: types.CallbackQuery):
+    try:
+        page = int(cq.data.split(':', 2)[2])
+    except ValueError:
+        await cq.answer(); return
+    await cq.answer()
+    track_event(ensure_user(cq.from_user.id), 'gallery_page', metadata={'page': page})
+    await _send_gallery_page(cq.message.chat.id, cq.from_user.id, page=page, edit=cq.message)
+
+
+@dp.callback_query(F.data == 'gallery:noop')
+async def gallery_noop_cb(cq: types.CallbackQuery):
+    await cq.answer()
+
+
+@dp.callback_query(F.data.startswith('gallery:view:'))
+async def gallery_view_cb(cq: types.CallbackQuery):
+    try:
+        delivery_id = int(cq.data.split(':', 2)[2])
+    except ValueError:
+        await cq.answer('не понял', show_alert=True); return
+    delivery = get_photo_delivery_for_user(cq.from_user.id, delivery_id)
+    if not delivery or not delivery.get('telegram_file_id'):
+        await cq.answer('это фото уже недоступно', show_alert=True); return
+    await cq.answer()
+    # Show the photo full-size with a clean action row: animate / download / back.
+    row = [
+        types.InlineKeyboardButton(text=f'🎬 Оживить · {VIDEO_COST_STARS}⭐', callback_data=f'gallery:animate:{delivery_id}'),
+        types.InlineKeyboardButton(text=f'⬇ Скачать · {GALLERY_DOWNLOAD_STARS}⭐', callback_data=f'gallery:dl:{delivery_id}'),
+        types.InlineKeyboardButton(text='↩ назад', callback_data='gallery:back'),
+    ]
+    kb = types.InlineKeyboardMarkup(inline_keyboard=[row])
+    try:
+        await bot.send_photo(
+            cq.message.chat.id, delivery['telegram_file_id'],
+            caption=f'🖼 {delivery["scene"]} · открыто {delivery["created_at"].strftime("%d.%m %H:%M") if delivery.get("created_at") else "недавно"}',
+            reply_markup=kb,
+        )
+    except Exception:
+        await bot.send_message(
+            cq.message.chat.id,
+            f'🖼 {delivery["scene"]} — не могу показать фото, но оно в коллекции.',
+            reply_markup=kb,
+        )
+
+
+@dp.callback_query(F.data == 'gallery:back')
+async def gallery_back_cb(cq: types.CallbackQuery):
+    await cq.answer()
+    track_event(ensure_user(cq.from_user.id), 'gallery_opened')
+    await _send_gallery_page(cq.message.chat.id, cq.from_user.id, page=0, edit=cq.message)
+
+
+@dp.callback_query(F.data.startswith('gallery:dl:'))
+async def gallery_download_cb(cq: types.CallbackQuery):
+    try:
+        delivery_id = int(cq.data.split(':', 2)[2])
+    except ValueError:
+        await cq.answer('не понял', show_alert=True); return
+    snap = get_gallery_item_bytes(cq.from_user.id, delivery_id)
+    if not snap:
+        await cq.answer('это фото нельзя скачать (нет исходных байтов)', show_alert=True); return
+    await cq.answer()
+    track_event(ensure_user(cq.from_user.id), 'gallery_download_invoice', metadata={'delivery_id': delivery_id})
+    await send_stars_invoice(
+        cq.message.chat.id,
+        'Скачать фото в полном разрешении',
+        f'Отправлю этот кадр как документ — без Telegram-сжатия, {snap["filename"]}',
+        f'gallery_dl:{delivery_id}',
+        GALLERY_DOWNLOAD_STARS,
+    )
+
+
+@dp.callback_query(F.data.startswith('gallery:no_dl:'))
+async def gallery_no_download_cb(cq: types.CallbackQuery):
+    await cq.answer('это фото нельзя скачать — оно было выдано без сохранения исходных байтов', show_alert=True)
+
+
+@dp.callback_query(F.data.startswith('gallery:animate:'))
+async def gallery_animate_cb(cq: types.CallbackQuery):
+    try:
+        delivery_id = int(cq.data.split(':', 2)[2])
+    except ValueError:
+        await cq.answer('не понял', show_alert=True); return
+    delivery = get_photo_delivery_for_user(cq.from_user.id, delivery_id)
+    if not delivery or not delivery.get('telegram_file_id'):
+        await cq.answer('это фото уже не оживить — попроси у меня новое 🙂', show_alert=True); return
+    await cq.answer()
+    # Reuse the existing video gate — admin/Premium free slot, otherwise Stars invoice.
+    await _video_gate(cq, delivery)
+
+
+
 @dp.message(Command('stories', 'quests'))
 async def stories_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
@@ -2494,6 +2688,13 @@ async def pre_checkout(query: types.PreCheckoutQuery):
             ok = False
         else:
             ok = amount == VIDEO_COST_STARS and bool(get_photo_delivery_for_user(query.from_user.id, delivery_id)) and _any_video_engine()
+    elif payload.startswith('gallery_dl:'):
+        try:
+            delivery_id = int(payload.split(':', 1)[1])
+        except ValueError:
+            ok = False
+        else:
+            ok = amount == GALLERY_DOWNLOAD_STARS and bool(get_gallery_item_bytes(query.from_user.id, delivery_id))
     if not ok:
         logger.warning('pre_checkout rejected user=%s payload=%s amount=%s', query.from_user.id,payload,amount)
         await query.answer(ok=False,error_message='Сумма или товар изменились. Открой покупку заново.')
@@ -2556,6 +2757,45 @@ async def successful_payment(message: types.Message):
         # with automatic engine fallback; auto-refunds Stars if all fail.
         task = asyncio.create_task(_run_video_background(message.chat.id, message.from_user.id, delivery_id, charge))
         _video_jobs[message.from_user.id] = task
+        return
+
+    if payload.startswith('gallery_dl:'):
+        try:
+            delivery_id = int(payload.split(':', 1)[1])
+        except ValueError:
+            return
+        snap = get_gallery_item_bytes(message.from_user.id, delivery_id)
+        if not snap:
+            # The source bytes were removed between invoice and payment — refund.
+            try:
+                await bot.refund_star_payment(user_id=message.from_user.id, telegram_payment_charge_id=charge)
+                record_refund(message.from_user.id, charge, payment.total_amount, product='gallery_download')
+                await message.answer('исходник этого фото уже недоступен — Stars вернул автоматически 🙂')
+            except Exception:
+                logger.exception('Gallery download refund failed user=%s charge=%s', message.from_user.id, charge)
+                await message.answer('не смог отправить скачанное фото. Напиши /support — проверим.')
+            return
+        record_payment(message.from_user.id, 'gallery_download', payment.total_amount, charge)
+        track_event(
+            ensure_user(message.from_user.id),
+            'stars_purchase',
+            value=payment.total_amount,
+            metadata={'product': 'gallery_download', 'source_delivery_id': delivery_id, 'scene': snap.get('scene')},
+        )
+        try:
+            await bot.send_document(
+                message.chat.id,
+                BufferedInputFile(snap['bytes'], filename=snap['filename']),
+                caption=f'🖼 {snap["scene"]} — твоё фото в полном разрешении, без Telegram-сжатия.',
+            )
+        except Exception:
+            logger.exception('Gallery download delivery failed user=%s delivery=%s', message.from_user.id, delivery_id)
+            try:
+                await bot.refund_star_payment(user_id=message.from_user.id, telegram_payment_charge_id=charge)
+                record_refund(message.from_user.id, charge, payment.total_amount, product='gallery_download')
+            except Exception:
+                logger.exception('Gallery download refund after delivery failure failed user=%s charge=%s', message.from_user.id, charge)
+            await message.answer('не получилось отправить файл. Stars вернул автоматически 🙂')
         return
 
     if payload.startswith('photo:'):
@@ -3477,7 +3717,8 @@ async def main():
         types.BotCommand(command='start', description='Начать общение'),
         types.BotCommand(command='photo', description='📸 Фото Анны'),
         types.BotCommand(command='premium', description='⭐ Premium'),
-        types.BotCommand(command='collection', description='📸 Моя коллекция'),
+        types.BotCommand(command='gallery', description='🖼 Моя галерея'),
+        types.BotCommand(command='collection', description='📸 Прогресс коллекции'),
         types.BotCommand(command='stories', description='🎯 Наши истории'),
         types.BotCommand(command='features', description='✨ Возможности бота'),
         types.BotCommand(command='paysupport', description='Помощь с оплатой'),

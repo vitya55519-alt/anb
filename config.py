@@ -67,6 +67,9 @@ GEMINI_VIDEO_RESOLUTION = os.getenv("GEMINI_VIDEO_RESOLUTION", "720p").strip()
 GEMINI_VIDEO_ASPECT_RATIO = os.getenv("GEMINI_VIDEO_ASPECT_RATIO", "9:16").strip()
 GEMINI_VIDEO_TIMEOUT_SECONDS = max(60, min(420, int(os.getenv("GEMINI_VIDEO_TIMEOUT_SECONDS", "360"))))
 VIDEO_COST_STARS = max(1, int(os.getenv("VIDEO_COST_STARS", "5")))
+# Paid gallery download: the user re-sends their own uncompressed photo as a
+# Telegram document (full resolution). Kept low to encourage repeat use.
+GALLERY_DOWNLOAD_STARS = max(1, int(os.getenv("GALLERY_DOWNLOAD_STARS", "30")))
 # Premium perk: this many photo animations per day are free for Premium users;
 # any extra animation on the same day is sold for VIDEO_COST_STARS Stars.
 VIDEO_PREMIUM_FREE_DAILY = max(0, int(os.getenv("VIDEO_PREMIUM_FREE_DAILY", "1")))
