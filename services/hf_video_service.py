@@ -19,9 +19,21 @@ def hf_video_available() -> bool:
     return bool(HF_VIDEO_ENABLED and HF_VIDEO_SPACE)
 
 
-_IMAGE_PARAM_NAMES = {'image', 'img', 'input_image', 'source_image', 'image_input', 'cond_image', 'init_image', 'imageupload'}
-_PROMPT_PARAM_NAMES = {'prompt', 'text', 'caption'}
+_IMAGE_PARAM_NAMES = {
+    'image', 'img', 'input_image', 'source_image', 'image_input', 'cond_image',
+    'init_image', 'imageupload', 'input_img', 'source_img', 'first_frame',
+    'first_frame_image', 'image_path', 'input_picture', 'picture',
+}
+_PROMPT_PARAM_NAMES = {'prompt', 'text', 'caption', 'description', 'text_prompt', 'input_text'}
 _VIDEO_EXTENSIONS = {'.mp4', '.webm', '.mov', '.gif', '.avi', '.mkv'}
+
+
+def _is_error_string(value: str) -> bool:
+    """Detect when the space returned a text error instead of a video."""
+    lower = value.lower()
+    error_markers = ('error', 'exception', 'traceback', 'failed', 'invalid input',
+                     'nsfw', 'content policy', 'unsupported', 'not allowed')
+    return any(marker in lower for marker in error_markers)
 
 
 def _extract_video_ref(result) -> str | None:
@@ -32,12 +44,21 @@ def _extract_video_ref(result) -> str | None:
         if item is None:
             continue
         if isinstance(item, dict):
-            for key in ('path', 'url', 'value', 'video'):
+            for key in ('path', 'url', 'value', 'video', 'video_url', 'output', 'output_video', 'file'):
                 if item.get(key):
                     stack.append(item[key])
             continue
         if isinstance(item, (list, tuple)):
             stack.extend(item)
+            continue
+        # pathlib.Path from newer gradio_client versions.
+        if hasattr(item, '__fspath__'):
+            try:
+                p = Path(os.fspath(item))
+                if p.exists() and p.suffix.lower() in _VIDEO_EXTENSIONS:
+                    return str(p)
+            except Exception:
+                pass
             continue
         if isinstance(item, str) and item.strip():
             value = item.strip()
@@ -46,6 +67,12 @@ def _extract_video_ref(result) -> str | None:
             candidate = Path(value)
             if candidate.exists() and candidate.suffix.lower() in _VIDEO_EXTENSIONS:
                 return str(candidate)
+        # Dataclass / NamedTuple-like result objects from some spaces.
+        if not isinstance(item, (str, dict, list, tuple, bytes)):
+            for attr in ('path', 'url', 'video', 'value', 'video_url', 'output', 'file'):
+                candidate = getattr(item, attr, None)
+                if candidate is not None:
+                    stack.append(candidate)
     return None
 
 
@@ -53,7 +80,9 @@ def _resolve_i2v_endpoint(client) -> tuple[str | None, str | None, str | None]:
     """Find the image-to-video endpoint and its image/prompt parameter names.
 
     Public spaces change their UI often, so the endpoint is discovered from the
-    space API schema instead of being hardcoded.
+    space API schema instead of being hardcoded.  When no parameter name
+    matches the known sets, a type/label-based fallback is tried before giving
+    up — many spaces use generic parameter labels with empty ``parameter_name``.
     """
     try:
         api = client.view_api(return_format='dict', print_info=False)
@@ -62,6 +91,20 @@ def _resolve_i2v_endpoint(client) -> tuple[str | None, str | None, str | None]:
 
     named = api.get('named_endpoints') or {}
     unnamed = api.get('unnamed_endpoints') or {}
+
+    # Log a compact schema summary so the owner can see what the space exposes.
+    try:
+        summary_parts = []
+        for label, endpoints in (('named', named), ('unnamed', unnamed)):
+            for name, spec in endpoints.items():
+                params = spec.get('parameters') or []
+                names = [str(p.get('parameter_name') or p.get('label') or '?').lower() for p in params if isinstance(p, dict)]
+                summary_parts.append(f'{label}:{name}({len(params)} params: {",".join(names[:6])})')
+        logger.info('HF video space schema: %s', '; '.join(summary_parts) or 'empty')
+    except Exception:
+        pass
+
+    # Pass 1: match by known parameter name.
     for endpoints in (named, unnamed):
         for name, spec in endpoints.items():
             params = spec.get('parameters') or []
@@ -72,6 +115,30 @@ def _resolve_i2v_endpoint(client) -> tuple[str | None, str | None, str | None]:
             prompt_param = next((n for n in names if n in _PROMPT_PARAM_NAMES), None)
             endpoint = name if name in named else None
             return endpoint, image_param, prompt_param
+
+    # Pass 2: match by parameter label or type hint (spaces often expose a
+    # ``label`` like "Image" while ``parameter_name`` is empty or generic).
+    _IMAGE_LABEL_HINTS = {'image', 'img', 'picture', 'photo', 'input image', 'source image', 'first frame'}
+    _PROMPT_LABEL_HINTS = {'prompt', 'text', 'caption', 'description'}
+    for endpoints in (named, unnamed):
+        for name, spec in endpoints.items():
+            params = spec.get('parameters') or []
+            image_param = None
+            prompt_param = None
+            for p in params:
+                if not isinstance(p, dict):
+                    continue
+                pname = str(p.get('parameter_name') or '').lower()
+                plabel = str(p.get('label') or '').lower().strip()
+                ptype = str(p.get('type') or p.get('python_type') or '').lower()
+                if not image_param and (plabel in _IMAGE_LABEL_HINTS or 'image' in ptype or 'file' in ptype):
+                    image_param = pname or plabel
+                elif not prompt_param and (plabel in _PROMPT_LABEL_HINTS or 'text' in ptype or 'str' in ptype):
+                    prompt_param = pname or plabel
+            if image_param:
+                endpoint = name if name in named else None
+                return endpoint, image_param, prompt_param
+
     raise HfVideoError('no_i2v_endpoint')
 
 
@@ -114,7 +181,17 @@ def _generate_blocking(image_path: str, prompt: str, space: str = HF_VIDEO_SPACE
 
     video_ref = _extract_video_ref(result)
     if not video_ref:
-        logger.warning('HF video space returned no video result=%s', str(result)[:600])
+        # Surface the raw result so the owner log shows exactly what the space
+        # returned — this is the single most useful diagnostic when a public
+        # space changes its output format.
+        logger.warning('HF video space returned no video, raw result=%s', str(result)[:800])
+        # Detect error messages disguised as a normal result string.
+        if isinstance(result, str) and _is_error_string(result):
+            raise HfVideoError(f'space_error:{result[:200]}')
+        if isinstance(result, (list, tuple)):
+            for item in result:
+                if isinstance(item, str) and _is_error_string(item):
+                    raise HfVideoError(f'space_error:{item[:200]}')
         raise HfVideoError('no_video_result')
 
     if video_ref.startswith(('http://', 'https://')):

@@ -1003,7 +1003,14 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         location = f"{SCENES['selfie']}; keep it consistent with the character's current fictional day context: location={state.location}, activity={activity}"
     else:
         location = SCENES.get(request.scene, SCENES['selfie'])
-    hair_color = request.hair_color or current_hair_color()
+    # Anna re-dyes monthly; other characters keep their identity's natural hair
+    # color (e.g. Emily is always blonde). The cycle was designed for Anna only.
+    if request.hair_color:
+        hair_color = request.hair_color
+    elif character_id == 'anna_01':
+        hair_color = current_hair_color()
+    else:
+        hair_color = ''
     makeup = request.makeup or random.choice(MAKEUP_POOL)
     accessory = request.accessory or random.choice(ACCESSORY_POOL)
     time_of_day = request.time_of_day or random.choice(DAYLIGHT_POOL)
@@ -1058,7 +1065,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'STYLING DETAILS: {request.accessory}.\n'
         f'TIME OF DAY: {request.time_of_day}. The light must match this time of day.\n'
         f'CAMERA/POSE: {angle}.\n'
-        f'HAIR COLOR THIS MONTH: {request.hair_color}. This temporary hair color overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n'
+        f'HAIR COLOR THIS MONTH: {request.hair_color}. This temporary hair color overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n' if request.hair_color else ''
         f'{body_reinforcement}\n'
         f'MOOD: {request.mood}.\n'
         f'{expression_identity}\n'
