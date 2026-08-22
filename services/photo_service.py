@@ -380,6 +380,31 @@ LEVEL_UNDERLAY_RULES = {
     6: 'Sophisticated visible lace and lingerie-inspired fashion details — her most sensual look, refined, feminine and non-explicit.',
 }
 
+# Underwear color variety — every photo should have a different lingerie color
+# so the wardrobe never feels repetitive. Includes both everyday and elegant tones.
+UNDERWEAR_COLOR_POOL = [
+    'black', 'white', 'nude beige', 'dusty pink', 'deep red', 'burgundy',
+    'navy blue', 'emerald green', 'chocolate brown', 'soft lavender',
+    'graphite grey', 'cream ivory', 'rose', 'forest green', 'wine red',
+    'powder blue', 'caramel', 'charcoal',
+]
+
+# Underwear style variety — regular everyday pieces, not always lace.
+UNDERWEAR_STYLE_POOL = [
+    'everyday cotton bra and matching panties',
+    'smooth microfiber bra and panties',
+    'classic padded bra and briefs',
+    'lace-trim bra and matching panties',
+    'seamless t-shirt bra and thong',
+    'soft bralette and hipster panties',
+    'elegant satin bra and high-waist panties',
+    'sporty bra and boyshorts',
+    'delicate lace bra and Brazilian panties',
+    'plunge bra and cheeky panties',
+    'push-up bra and matching briefs',
+    'wireless comfort bra and full-coverage panties',
+]
+
 # Bust size must never drift between frames or between sets.
 BUST_CONSISTENCY_RULE = (
     'BUST CONSISTENCY: her bust must look exactly the same size in this frame as in every other photo — '
@@ -565,6 +590,8 @@ class PhotoRequest:
     time_of_day: str = ''
     pack_outfits: tuple[str, ...] = ()
     customized: bool = False
+    underwear_color: str = ''
+    underwear_style: str = ''
 
 
 class PhotoGenerationError(RuntimeError):
@@ -1013,9 +1040,12 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     makeup = request.makeup or random.choice(MAKEUP_POOL)
     accessory = request.accessory or random.choice(ACCESSORY_POOL)
     time_of_day = request.time_of_day or random.choice(DAYLIGHT_POOL)
+    underwear_color = random.choice(UNDERWEAR_COLOR_POOL)
+    underwear_style = random.choice(UNDERWEAR_STYLE_POOL)
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season,
                    pack_outfits=pack_outfits, hair_color=hair_color, makeup=makeup,
-                   accessory=accessory, time_of_day=time_of_day)
+                   accessory=accessory, time_of_day=time_of_day,
+                   underwear_color=underwear_color, underwear_style=underwear_style)
 
 
 def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
@@ -1041,6 +1071,11 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     level_key = max(1, min(6, relationship_level))
     visual_rule = (LEVEL_VISUAL_RULES if seedream else OPENAI_LEVEL_VISUAL_RULES).get(level_key, LEVEL_VISUAL_RULES[1])
     underlay_rule = LEVEL_UNDERLAY_RULES.get(level_key, LEVEL_UNDERLAY_RULES[1])
+    # Inject specific underwear color and style for variety across photos.
+    if request.underwear_color:
+        underlay_rule = f'Her underwear this set is {request.underwear_color}. ' + (
+            f'She is wearing a {request.underwear_style}. ' if request.underwear_style else ''
+        ) + underlay_rule
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
     identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key)

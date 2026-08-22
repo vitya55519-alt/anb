@@ -1,28 +1,36 @@
-# Build Changes v3.16.10 — AI-First Photo Generation
+# Build Changes v3.16.10 — AI-First Photo Generation + Character & Underwear Fixes
 
 ## Summary
-Fixed Emily (and all characters) serving the same recycled photo. AI generation now ALWAYS takes priority — every user gets fresh unique photos. Community pool and curated library are safety nets for when AI providers fail.
+1. AI generation ALWAYS takes priority — no recycled photos from community pool or library.
+2. Library fallbacks now use the correct character_id (was hardcoded to Anna → Emily got Anna's photos).
+3. Monthly hair color cycle restored for ALL characters (brunette→blonde→chestnut→caramel).
+4. Underwear color and style variety — 18 colors × 12 styles randomly picked per photo.
 
 ## Changes
 
 ### `services/photo_service.py`
-- **Removed** community pool priority from `deliver_photo()` — was causing same AI-generated photo to be served to different users.
-- **Removed** curated library priority — was causing Emily to always show the same photo.
-- **Added** community pool as first fallback in the `except PhotoGenerationError` handler.
-- **Delivery priority**: AI generation → community pool fallback → library fallback → error.
-- AI-generated photos still enter the community pool (`community_shared=True`) for future fallback use.
+- **Removed** community pool and curated library priority from `deliver_photo()`.
+- **Added** community pool as first fallback in `except PhotoGenerationError` handler.
+- **Fixed** `_deliver_library_failure_fallback`: `CHARACTER_ID` → `character_id` (was always serving Anna's packs).
+- **Fixed** `_deliver_library_partial_topup`: added `character_id` parameter, passed to `choose_fallback_pack`.
+- **Restored** monthly hair color cycle for ALL characters (was Anna-only since v3.16.8).
+- **Added** `UNDERWEAR_COLOR_POOL` (18 colors: black, white, red, pink, beige, brown, green, navy, etc.) and `UNDERWEAR_STYLE_POOL` (12 styles: cotton, microfiber, lace, satin, sports, etc.).
+- **Added** `underwear_color` and `underwear_style` fields to `PhotoRequest`; randomly resolved in `_resolve_request`.
+- **Updated** `_build_prompt` to inject the specific underwear color and style into the `UNDER-CLOTHING REALISM` line.
 
 ### `main.py`
-- **Removed** `library_fast` shortcut in `_start_photo_background()` — now always shows "generating..." message and checks budget for free requests.
+- **Removed** `library_fast` shortcut — always shows "generating..." message.
+
+### `tests/test_v3168_emily_hair_and_video_static.py`
+- Updated hair color tests: cycle applies to all characters, not Anna-only.
 
 ### `tests/test_v3169_community_pool_static.py`
-- **Updated** tests to verify AI-first routing instead of community-pool-first.
+- Updated delivery priority tests: AI-first routing.
+- Added library fallback character_id tests.
 
 ## Testing
-- 152 tests pass
+- 154 tests pass
 - L3 deep review: clean
 
-## Impact
-- Users now always get fresh AI-generated photos (unique per request).
-- No more "same photo, different smile" from recycled community content.
-- Community pool and curated library still work as recovery mechanisms when AI providers are down.
+## Root Cause (character bug)
+`_deliver_library_failure_fallback` and `_deliver_library_partial_topup` used the `CHARACTER_ID` constant (Anna's ID) instead of the `character_id` parameter. When Emily was selected and AI generation failed, the fallbacks served Anna's library packs.
