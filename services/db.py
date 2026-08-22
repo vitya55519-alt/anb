@@ -100,6 +100,9 @@ def init_db():
         'estimated_cost_usd': 'FLOAT DEFAULT 0',
         # v3.16.7: raw image bytes for paid full-resolution gallery downloads.
         'full_resolution_bytes': 'BYTEA',
+        # v3.16.9: community photo pool — AI-generated photos shared across users.
+        'community_shared': 'BOOLEAN DEFAULT FALSE',
+        'source_delivery_id': 'INTEGER',
     })
     _add_missing_columns('user_character_relationships', {
         'familiarity_score': 'FLOAT DEFAULT 0',

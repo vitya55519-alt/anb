@@ -29,6 +29,12 @@ class PhotoDelivery(Base):
     # Raw image bytes for paid full-resolution gallery downloads. Nullable so
     # existing rows (delivered before v3.16.7) keep working.
     full_resolution_bytes:Mapped[bytes|None]=mapped_column(LargeBinary,nullable=True)
+    # Community pool: when True this AI-generated photo is available for other
+    # users requesting the same character+scene, saving API cost.
+    community_shared:Mapped[bool]=mapped_column(Boolean,default=False,nullable=False,index=True)
+    # When this delivery re-serves a community photo to a different user,
+    # source_delivery_id points to the original AI-generated row.
+    source_delivery_id:Mapped[int|None]=mapped_column(Integer,nullable=True,index=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=utcnow,nullable=False,index=True)
 
 class PhotoOffer(Base):

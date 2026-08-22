@@ -74,6 +74,12 @@ GALLERY_DOWNLOAD_STARS = max(1, int(os.getenv("GALLERY_DOWNLOAD_STARS", "30")))
 # any extra animation on the same day is sold for VIDEO_COST_STARS Stars.
 VIDEO_PREMIUM_FREE_DAILY = max(0, int(os.getenv("VIDEO_PREMIUM_FREE_DAILY", "1")))
 
+# Community photo pool: AI-generated photos are shared between users requesting
+# the same character+scene. New photos are generated only when the pool has no
+# unseen content for that user. This saves API cost and gives every user a
+# varied experience without redundant generations.
+COMMUNITY_POOL_ENABLED = os.getenv("COMMUNITY_POOL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+
 # Gemini native image generation / Nano Banana 2.
 # Ordinary fully-clothed scenes can use the same GEMINI_API_KEY as chat.
 # If the model/tier is unavailable, photo_service falls back to GPT Image 2.

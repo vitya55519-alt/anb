@@ -19,7 +19,7 @@ import httpx
 from aiogram import Bot
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from openai import AsyncOpenAI, BadRequestError
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from config import (
     CHARACTER_ID,
@@ -32,6 +32,7 @@ from config import (
     PHOTO_ROUTER_MODE, PHOTO_SET_SIZE,
     GEMINI_API_KEY, GEMINI_IMAGE_ENABLED, GEMINI_IMAGE_MODEL, GEMINI_IMAGE_TIMEOUT_SECONDS, GEMINI_IMAGE_ESTIMATED_COST_USD, GEMINI_IMAGE_ASPECT_RATIO, GEMINI_IMAGE_SIZE,
     POLLINATIONS_ENABLED, POLLINATIONS_MODEL, POLLINATIONS_TIMEOUT_SECONDS, POLLINATIONS_WIDTH, POLLINATIONS_HEIGHT,
+    COMMUNITY_POOL_ENABLED,
 )
 from models.app_models import User
 from models.relationship_models import UserCharacterRelationship
@@ -1802,11 +1803,16 @@ def _insert_delivery_row(
     estimated_cost_usd: float = 0.0,
     character_id: str = CHARACTER_ID,
     full_bytes: bytes | None = None,
+    community_shared: bool = False,
+    source_delivery_id: int | None = None,
 ) -> int:
     """Create a PhotoDelivery row and return its id (button/per-frame anchor).
 
     Pass ``full_bytes`` (the raw image bytes from the generation result) to let
     paid gallery downloads re-send the uncompressed file as a Telegram document.
+    Set ``community_shared=True`` on AI-generated frames so other users can
+    reuse them via the community pool. ``source_delivery_id`` links a
+    re-delivered community photo back to the original generation row.
     """
     uid = ensure_user(telegram_id)
     with SessionLocal() as session:
@@ -1820,6 +1826,8 @@ def _insert_delivery_row(
             provider=provider,
             estimated_cost_usd=estimated_cost_usd,
             full_resolution_bytes=full_bytes,
+            community_shared=community_shared,
+            source_delivery_id=source_delivery_id,
         )
         session.add(row)
         session.commit()
@@ -1845,6 +1853,66 @@ def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=
         estimated_cost_usd=estimated_cost_usd, character_id=character_id,
         full_bytes=full_bytes,
     )
+
+
+# ── Community photo pool ────────────────────────────────────────────────────
+# AI-generated photos are shared between users: when User B requests the same
+# character+scene that User A already generated, User B receives User A's photo
+# instead of paying for a new generation. Only generate new photos when the
+# pool has nothing unseen for this user.
+
+def query_community_photos(
+    telegram_id: int,
+    character_id: str,
+    scene: str,
+    relationship_level: int,
+    count: int = 1,
+) -> list[dict]:
+    """Return up to ``count`` random unseen community-shared photos.
+
+    A community photo is any AI-generated delivery (community_shared=True) for
+    the given character+scene that the current user has not yet received.
+    Results are randomly ordered so different users see different photos first.
+    """
+    if not COMMUNITY_POOL_ENABLED:
+        return []
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as session:
+        # All delivery IDs this user already received (own generations +
+        # community re-deliveries). Used to exclude photos they have seen.
+        seen_ids = set(session.scalars(
+            select(PhotoDelivery.id).where(PhotoDelivery.user_id == uid)
+        ).all())
+        # Source delivery IDs from community re-deliveries — the original
+        # AI generation that this user already received indirectly.
+        source_ids = set(session.scalars(
+            select(PhotoDelivery.source_delivery_id).where(
+                PhotoDelivery.user_id == uid,
+                PhotoDelivery.source_delivery_id.isnot(None),
+            )
+        ).all())
+        exclude = seen_ids | source_ids
+
+        query = select(PhotoDelivery).where(
+            PhotoDelivery.community_shared.is_(True),
+            PhotoDelivery.character_id == character_id,
+            PhotoDelivery.scene == scene,
+            PhotoDelivery.telegram_file_id.isnot(None),
+        )
+        if exclude:
+            query = query.where(PhotoDelivery.id.notin_(exclude))
+        # Random order so the pool is spread evenly across users.
+        query = query.order_by(func.random()).limit(count)
+        rows = session.scalars(query).all()
+        return [
+            {
+                'id': int(r.id),
+                'telegram_file_id': r.telegram_file_id,
+                'scene': r.scene,
+                'provider': r.provider,
+            }
+            for r in rows
+        ]
 
 
 _PRIVATE_LIBRARY_SCENES = {'personal', 'lingerie', 'private_fashion'}
@@ -2006,6 +2074,39 @@ async def deliver_photo(
     caption = caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',)))
     sent_messages = []
 
+    # Community pool first: re-use AI-generated photos from other users
+    # requesting the same character+scene, saving API cost. When the pool
+    # has unseen content the user gets fresh-to-them photos instantly.
+    if delivery_type in {'free', 'story'} and COMMUNITY_POOL_ENABLED and request.scene not in _PRIVATE_LIBRARY_SCENES:
+        level = get_relationship_level(telegram_id, character_id)
+        community_photos = query_community_photos(telegram_id, character_id, request.scene, level, count=PHOTO_SET_SIZE)
+        if community_photos:
+            for idx, cp in enumerate(community_photos):
+                row_id = _insert_delivery_row(
+                    telegram_id, request.scene, 'free',
+                    provider='community_pool', estimated_cost_usd=0.0,
+                    character_id=character_id,
+                    source_delivery_id=cp['id'],
+                )
+                sent = await bot.send_photo(
+                    chat_id, cp['telegram_file_id'],
+                    caption=caption if idx == 0 else None,
+                    reply_markup=_photo_action_markup(row_id),
+                )
+                _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else cp['telegram_file_id'])
+                sent_messages.append(sent)
+                logger.info('community photo delivered user=%s scene=%s source=%s frame=%s/%s',
+                            telegram_id, request.scene, cp['id'], idx + 1, len(community_photos))
+            _bump_photo_usage(telegram_id, 'free', character_id=character_id)
+            uid = ensure_user(telegram_id)
+            track_event(uid, 'photo_delivered', value=0.0, metadata={
+                'scene': request.scene, 'provider': 'community_pool',
+                'count': len(sent_messages),
+            })
+            logger.info('community pool set delivered user=%s scene=%s count=%s',
+                        telegram_id, request.scene, len(sent_messages))
+            return sent_messages
+
     # Cost-first routing for beta: ordinary free requests use a curated Telegram file_id library first.
     # Custom/paid-credit/admin requests still exercise AI generation so the user gets bespoke output.
     if delivery_type in {'free', 'story'}:
@@ -2039,6 +2140,9 @@ async def deliver_photo(
             url=result.url, provider=result.provider,
             estimated_cost_usd=result.estimated_cost_usd, character_id=character_id,
             full_bytes=full_bytes,
+            # AI-generated photos enter the community pool so other users can
+            # reuse them instead of paying for a duplicate generation.
+            community_shared=True,
         )
         if result.url:
             sent = await bot.send_photo(chat_id, result.url, caption=item_caption, reply_markup=_photo_action_markup(row_id))
