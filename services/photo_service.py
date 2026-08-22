@@ -246,6 +246,14 @@ HAIRSTYLE_POOL = [
     'two soft loose plaits',
     'a deep side part with hair tucked behind one ear',
     'gentle Hollywood waves swept to one side',
+    'a playful high ponytail with a wrapped hair tie',
+    'a soft bubble ponytail',
+    'a romantic side braid resting over one shoulder',
+    'sleek straight hair with a clean middle part',
+    'a voluminous blowout with soft curls at the ends',
+    'twin space buns with a few loose strands',
+    'a low twisted ponytail pinned loosely',
+    'loose curls pinned back on one side',
 ]
 
 MAKEUP_POOL = [
@@ -286,6 +294,28 @@ OUTFIT_COLOR_POOL = [
     'chocolate brown', 'graphite', 'soft red', 'mint',
 ]
 _recent_outfit_colors: dict[int, list[str]] = {}
+
+# Small tasteful details so every set feels like a fresh photo session.
+ACCESSORY_POOL = [
+    'a delicate gold necklace',
+    'small hoop earrings',
+    'a thin bracelet',
+    'an elegant wristwatch',
+    'a light silk scarf',
+    'a small stylish handbag',
+    'a subtle choker',
+    'minimal stud earrings',
+    'no accessories, a clean natural look',
+]
+
+# The time of day rotates so the lighting never repeats from set to set.
+DAYLIGHT_POOL = [
+    'soft morning light',
+    'bright midday light',
+    'warm golden-hour light',
+    'cool blue-hour evening light',
+    'cozy warm indoor evening light',
+]
 
 
 SHOT_VARIANTS = {
@@ -336,15 +366,17 @@ OPENAI_LEVEL_VISUAL_RULES = {
 }
 
 # How the underwear under her clothes reads on camera, by relationship level.
-# Like real life: she always wears lingerie; at low levels it only shows
-# through the fabric, at higher levels lace edges become part of the look.
+# Like real life: she always wears lingerie — and it is there to underline her
+# own femininity, confidence and natural sexuality, never to objectify her.
+# At low levels it only shows through the fabric; at higher levels lace edges
+# become a tasteful part of the look.
 LEVEL_UNDERLAY_RULES = {
-    1: 'Her everyday bra is clearly but subtly visible under the thin fitted fabric of her top — a realistic outline, like a real woman wearing lingerie under a blouse. No exposure.',
-    2: 'The outline of her bra and a hint of lingerie straps show gently through her fitted clothing — believable and attractive.',
-    3: 'Her lingerie is clearly hinted: the bra outline and a glimpse of a lace edge under the fitted garment.',
-    4: 'Lace lingerie edges are intentionally visible under the more revealing outfit, still no exposure.',
-    5: 'Elegant visible lace details and clearly hinted lingerie under the private-feeling outfit.',
-    6: 'Sophisticated visible lace and lingerie-inspired fashion details, tasteful and non-explicit.',
+    1: 'Her everyday bra is clearly but subtly visible under the thin fitted fabric of her top — like a real woman wearing beautiful lingerie under a blouse. The lingerie is not on display: it simply makes her posture and silhouette more feminine and attractive. No exposure.',
+    2: 'The outline of her bra and a hint of lingerie straps show gently through her fitted clothing — her underwear quietly emphasizes her natural sexuality and self-confidence.',
+    3: 'Her lingerie is clearly hinted: the bra outline and a glimpse of a lace edge under the fitted garment. The lace adds femininity and allure, never vulgarity.',
+    4: 'Lace lingerie edges are intentionally visible under the more revealing outfit — elegant sensuality that flatters her figure, still no exposure.',
+    5: 'Elegant visible lace details under the private-feeling outfit: the lingerie flatters her curves and radiates confident, tasteful sexuality.',
+    6: 'Sophisticated visible lace and lingerie-inspired fashion details — her most sensual look, refined, feminine and non-explicit.',
 }
 
 # Bust size must never drift between frames or between sets.
@@ -528,6 +560,8 @@ class PhotoRequest:
     mood: str = 'warm, natural'
     expression_key: str | None = None  # facial expression from chat mood (smile/upset/concerned/teasing)
     season: str = ''
+    accessory: str = ''
+    time_of_day: str = ''
     pack_outfits: tuple[str, ...] = ()
     customized: bool = False
 
@@ -971,8 +1005,11 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         location = SCENES.get(request.scene, SCENES['selfie'])
     hair_color = request.hair_color or current_hair_color()
     makeup = request.makeup or random.choice(MAKEUP_POOL)
+    accessory = request.accessory or random.choice(ACCESSORY_POOL)
+    time_of_day = request.time_of_day or random.choice(DAYLIGHT_POOL)
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season,
-                   pack_outfits=pack_outfits, hair_color=hair_color, makeup=makeup)
+                   pack_outfits=pack_outfits, hair_color=hair_color, makeup=makeup,
+                   accessory=accessory, time_of_day=time_of_day)
 
 
 def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
@@ -1018,6 +1055,8 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'{BUST_CONSISTENCY_RULE}\n'
         f'HAIRSTYLE: {request.hairstyle}.\n'
         f'MAKEUP: {request.makeup}.\n'
+        f'STYLING DETAILS: {request.accessory}.\n'
+        f'TIME OF DAY: {request.time_of_day}. The light must match this time of day.\n'
         f'CAMERA/POSE: {angle}.\n'
         f'HAIR COLOR THIS MONTH: {request.hair_color}. This temporary hair color overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n'
         f'{body_reinforcement}\n'

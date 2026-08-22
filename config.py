@@ -53,12 +53,13 @@ GEMINI_OPENAI_BASE_URL = os.getenv(
 ).strip()
 GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "minimal").strip().lower()
 
-# Optional Gemini/Veo image-to-video. Kept disabled by default because Veo
-# requires a paid Gemini API tier and each generation has a real per-second cost.
-GEMINI_VIDEO_ENABLED = (
-    os.getenv("GEMINI_VIDEO_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
-    and bool(GEMINI_API_KEY)
-)
+# Optional Gemini/Veo image-to-video. "auto" (default) means: enabled whenever
+# GEMINI_API_KEY is present, because free public HF spaces are unreliable and
+# video reliability is a top product priority. Veo may require a paid Gemini
+# API tier — if a request is rejected, the job automatically falls back to HF.
+# Set GEMINI_VIDEO_ENABLED=false explicitly to force the free route only.
+_GEMINI_VIDEO_FLAG = os.getenv("GEMINI_VIDEO_ENABLED", "auto").strip().lower()
+GEMINI_VIDEO_ENABLED = bool(GEMINI_API_KEY) and _GEMINI_VIDEO_FLAG not in {"0", "false", "no", "off"}
 GEMINI_VIDEO_MODEL = os.getenv("GEMINI_VIDEO_MODEL", "veo-3.1-lite-generate-preview").strip()
 GEMINI_VIDEO_BASE_URL = os.getenv("GEMINI_VIDEO_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 GEMINI_VIDEO_DURATION_SECONDS = max(4, min(8, int(os.getenv("GEMINI_VIDEO_DURATION_SECONDS", "8"))))
@@ -133,13 +134,15 @@ PHOTO_IDEA_LLM_CHANCE = max(0.0, min(1.0, float(os.getenv("PHOTO_IDEA_LLM_CHANCE
 # requests queue on public GPU servers, so generation typically takes 1–3 minutes.
 # Gemini/Veo stays the paid premium route when enabled.
 HF_VIDEO_ENABLED = os.getenv("HF_VIDEO_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
-HF_VIDEO_SPACE = os.getenv("HF_VIDEO_SPACE", "Wan-AI/Wan2.1").strip()
+HF_VIDEO_SPACE = os.getenv("HF_VIDEO_SPACE", "Wan-AI/Wan2.2-I2V-A14B").strip()
 # Public spaces die or overload often, so the video job walks this list in
 # order until one space actually returns a video (main space goes first).
+# Only image-to-video spaces belong here; the client probes each space API
+# schema for an endpoint that accepts an image parameter.
 HF_VIDEO_FALLBACK_SPACES = tuple(
     s.strip() for s in os.getenv(
         "HF_VIDEO_FALLBACK_SPACES",
-        "fffiloni/lumalabs-dream-machine, multiverseai/mochi, hysts/LTX-Video",
+        "fffiloni/lumalabs-dream-machine, hysts/LTX-Video, Wan-AI/Wan2.1",
     ).split(",") if s.strip()
 )
 HF_VIDEO_TIMEOUT_SECONDS = max(120, min(1800, int(os.getenv("HF_VIDEO_TIMEOUT_SECONDS", "600"))))

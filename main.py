@@ -1042,7 +1042,9 @@ async def onboarding_character_select(cq: types.CallbackQuery):
         await cq.answer('персонаж сейчас недоступен', show_alert=True)
         return
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
-    if card.status == 'premium' and not is_premium(cq.from_user.id):
+    # Admins may open any character, including premium ones, for moderation/testing.
+    is_admin = cq.from_user.id in ADMIN_TELEGRAM_IDS
+    if card.status == 'premium' and not is_admin and not is_premium(cq.from_user.id):
         track_event(uid, 'fake_door_click', metadata={'feature': f'{character_id}_onboarding'})
         await _send_onboarding_character_card(cq.message.chat.id, character_id, cq.from_user.id)
         await cq.answer('⭐ Premium-персонаж')
@@ -1113,13 +1115,16 @@ async def character_view(cq: types.CallbackQuery):
         track_event(uid, 'fake_door_click', metadata={'feature': f'{character_id}_character_card'})
     await cq.answer()
     await _send_character_card(cq.message.chat.id, character_id, viewer_id=cq.from_user.id)
-    if card.status == 'active':
+    is_admin = cq.from_user.id in ADMIN_TELEGRAM_IDS
+    can_open = card.status == 'active' or (card.status == 'premium' and (is_admin or is_premium(cq.from_user.id)))
+    if can_open:
         _user_character[cq.from_user.id] = character_id
+        track_event(uid, 'character_selected', metadata={'character_id': character_id})
         await cq.message.answer(
             f'✅ {card.display_name} выбрана. Можешь писать ей! 👇',
             reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS),
         )
-    elif card.status == 'premium' and not is_premium(cq.from_user.id):
+    elif card.status == 'premium' and not is_premium(cq.from_user.id) and not is_admin:
         await cq.message.answer(
             f'⭐ {card.display_name} — Premium-персонаж.\n'
             f'Открыть за {PREMIUM_MONTHLY_STARS} Stars на 30 дней:',
@@ -2264,6 +2269,9 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
             await bot.send_message(chat_id, 'видео сейчас не получилось 😕 напиши /support — проверим оплату и возврат.')
         else:
             await bot.send_message(chat_id, 'видео сейчас не получилось 😕 попробуй чуть позже.')
+        if telegram_id in ADMIN_TELEGRAM_IDS:
+            # Owner diagnostic: exact reason chain so the pipeline can be fixed.
+            await bot.send_message(chat_id, f'🔧 диагностика видео: {type(exc).__name__}: {str(exc)[:300]}')
         track_event(
             ensure_user(telegram_id),
             'video_failed',
