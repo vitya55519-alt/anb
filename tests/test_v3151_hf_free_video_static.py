@@ -46,19 +46,19 @@ def test_hf_video_service_surface():
 def test_main_wires_paid_video_route():
     assert "from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available" in MAIN
     assert "'video:animate_last'" in MAIN
-    assert 'async def _run_hf_video_background(' in MAIN
+    # One unified background job now runs both engines with automatic fallback.
+    assert 'async def _run_video_background(' in MAIN
     # User is warned about the public-server queue wait time.
     assert '1–3 минуты' in MAIN
     # Paid Gemini route stays the priority when enabled; HF is the zero-cost engine otherwise.
     assert 'if video_available():' in MAIN
     block = MAIN[MAIN.index("if payload.startswith('video:')"):]
-    assert '_run_gemini_video_background' in block
-    assert '_run_hf_video_background' in block
+    assert '_run_video_background' in block
 
 
 def test_paid_hf_video_auto_refunds_on_failure():
     # Paid generation on a flaky public server must refund Stars automatically.
-    block = MAIN[MAIN.index('async def _run_hf_video_background'):MAIN.index("Command('geministatus')")]
+    block = MAIN[MAIN.index('async def _run_video_background'):MAIN.index("Command('geministatus')")]
     assert 'refund_star_payment' in block
     assert 'record_refund' in block
     assert 'charge_id' in block

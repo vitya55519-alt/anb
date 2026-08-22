@@ -38,16 +38,19 @@ def test_video_gate_free_premium_then_paid():
     assert 'consume_premium_video_free(' in gate
     assert 'send_stars_invoice(' in gate
     assert 'VIDEO_COST_STARS' in gate
-    # Both engines can run a free (charge_id=None) generation.
-    assert '_run_gemini_video_background(cq.message.chat.id, cq.from_user.id, delivery[\'id\'], None)' in gate
-    assert '_run_hf_video_background(cq.message.chat.id, cq.from_user.id, delivery[\'id\'], None)' in gate
+    # One unified job handles free (charge_id=None) runs with engine fallback.
+    assert "_run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None)" in gate
 
 
-def test_gemini_video_refund_only_for_paid_runs():
-    sig = 'async def _run_gemini_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None)'
+def test_video_refund_only_for_paid_runs():
+    sig = 'async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None)'
     assert sig in MAIN
     block = MAIN[MAIN.index(sig):MAIN.index('@dp.callback_query(F.data.startswith(\'video:animate:\'))')]
     assert 'if charge_id:' in block
+    # Engine fallback: Gemini/Veo first when enabled, HF spaces as backup.
+    assert 'video_available()' in block
+    assert 'hf_video_available()' in block
+    assert 'animate_image_hf' in block
 
 
 def test_premium_daily_free_limit_helpers():

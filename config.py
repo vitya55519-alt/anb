@@ -134,6 +134,14 @@ PHOTO_IDEA_LLM_CHANCE = max(0.0, min(1.0, float(os.getenv("PHOTO_IDEA_LLM_CHANCE
 # Gemini/Veo stays the paid premium route when enabled.
 HF_VIDEO_ENABLED = os.getenv("HF_VIDEO_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 HF_VIDEO_SPACE = os.getenv("HF_VIDEO_SPACE", "Wan-AI/Wan2.1").strip()
+# Public spaces die or overload often, so the video job walks this list in
+# order until one space actually returns a video (main space goes first).
+HF_VIDEO_FALLBACK_SPACES = tuple(
+    s.strip() for s in os.getenv(
+        "HF_VIDEO_FALLBACK_SPACES",
+        "fffiloni/lumalabs-dream-machine, multiverseai/mochi, hysts/LTX-Video",
+    ).split(",") if s.strip()
+)
 HF_VIDEO_TIMEOUT_SECONDS = max(120, min(1800, int(os.getenv("HF_VIDEO_TIMEOUT_SECONDS", "600"))))
 
 # Per-user adaptive communication profile. The model never rewrites its own code/prompt;

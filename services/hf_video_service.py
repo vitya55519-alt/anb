@@ -6,7 +6,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from config import HF_VIDEO_ENABLED, HF_VIDEO_SPACE, HF_VIDEO_TIMEOUT_SECONDS
+from config import HF_VIDEO_ENABLED, HF_VIDEO_SPACE, HF_VIDEO_TIMEOUT_SECONDS, HF_VIDEO_FALLBACK_SPACES
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def _resolve_i2v_endpoint(client) -> tuple[str | None, str | None, str | None]:
     raise HfVideoError('no_i2v_endpoint')
 
 
-def _generate_blocking(image_path: str, prompt: str) -> bytes:
+def _generate_blocking(image_path: str, prompt: str, space: str = HF_VIDEO_SPACE) -> bytes:
     # Imported lazily: gradio_client is heavy and only needed for video jobs.
     from gradio_client import Client, handle_file
 
@@ -87,7 +87,7 @@ def _generate_blocking(image_path: str, prompt: str) -> bytes:
     # retrying it would double the user's wait beyond the promised 1–3 min.
     for attempt in range(2):
         try:
-            client = Client(HF_VIDEO_SPACE)
+            client = Client(space)
             endpoint, image_param, prompt_param = _resolve_i2v_endpoint(client)
 
             kwargs: dict = {image_param: handle_file(image_path)}
@@ -99,15 +99,15 @@ def _generate_blocking(image_path: str, prompt: str) -> bytes:
             break
         except TimeoutError as exc:
             last_error = HfVideoError('timeout')
-            logger.warning('HF video attempt %s/2 timed out space=%s (not retrying to avoid doubling wait)', attempt + 1, HF_VIDEO_SPACE)
+            logger.warning('HF video attempt %s/2 timed out space=%s (not retrying to avoid doubling wait)', attempt + 1, space)
             break
         except HfVideoError as exc:
             last_error = exc
-            logger.warning('HF video attempt %s/2 failed space=%s error=%s', attempt + 1, HF_VIDEO_SPACE, exc)
+            logger.warning('HF video attempt %s/2 failed space=%s error=%s', attempt + 1, space, exc)
             continue
         except Exception as exc:
             last_error = HfVideoError('space_call_failed')
-            logger.warning('HF video attempt %s/2 call failed space=%s error=%s', attempt + 1, HF_VIDEO_SPACE, str(exc)[:400])
+            logger.warning('HF video attempt %s/2 call failed space=%s error=%s', attempt + 1, space, str(exc)[:400])
             continue
     else:
         raise last_error or HfVideoError('space_call_failed')
@@ -152,7 +152,20 @@ async def animate_image_hf(image_bytes: bytes, mime_type: str = 'image/jpeg', pr
     try:
         with os.fdopen(fd, 'wb') as tmp:
             tmp.write(image_bytes)
-        return await asyncio.to_thread(_generate_blocking, tmp_path, prompt)
+        # Walk the main space plus fallbacks: a dead/overloaded public space
+        # should fail the whole animation only when every candidate failed.
+        spaces = [HF_VIDEO_SPACE] + [s for s in HF_VIDEO_FALLBACK_SPACES if s != HF_VIDEO_SPACE]
+        last_error: Exception | None = None
+        for idx, space in enumerate(spaces):
+            try:
+                if idx > 0:
+                    logger.info('HF video falling back to space=%s after %s failure(s)', space, idx)
+                return await asyncio.to_thread(_generate_blocking, tmp_path, prompt, space)
+            except HfVideoError as exc:
+                last_error = exc
+                logger.warning('HF video space=%s failed error=%s', space, exc)
+                continue
+        raise last_error or HfVideoError('all_spaces_failed')
     finally:
         try:
             os.remove(tmp_path)

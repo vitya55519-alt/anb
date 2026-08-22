@@ -275,3 +275,76 @@ def referral_rank(telegram_id: int, period_days: int | None = 30) -> tuple[int, 
 
 def referral_link(bot_username: str, telegram_id: int) -> str:
     return f"https://t.me/{bot_username}?start=ref_{telegram_id}"
+
+
+def _converted_in_window(start: datetime, end: datetime) -> list[tuple[int, int]]:
+    """Return (telegram_id, converted_count) for referral_converted events in [start, end), best first."""
+    with SessionLocal() as s:
+        rows = s.execute(
+            select(ProductEvent.user_id, func.count().label("cnt"))
+            .where(
+                ProductEvent.event_name == "referral_converted",
+                ProductEvent.created_at >= start,
+                ProductEvent.created_at < end,
+            )
+            .group_by(ProductEvent.user_id)
+            .order_by(func.count().desc())
+        ).all()
+        uids = [r[0] for r in rows if r[0] is not None]
+        tgids: dict[int, str] = {}
+        if uids:
+            for u in s.scalars(select(User).where(User.id.in_(uids))).all():
+                tgids[u.id] = u.telegram_id
+    return [
+        (int(tgids[r[0]]), int(r[1]))
+        for r in rows
+        if r[0] in tgids and int(r[1] or 0) > 0
+    ]
+
+
+def settle_monthly_contest(top_n: int = 3, premium_days: int = 30) -> dict:
+    """Grant Premium to the top inviters of the previous calendar month, once.
+
+    Idempotent via a `contest_settled` marker event carrying the month key, so
+    repeated /contest calls or worker restarts never double-grant. Called from
+    /contest; the grant itself is the existing grant_premium() admin path.
+    """
+    import json as _json
+    now = _now()
+    first_of_this_month = now.date().replace(day=1)
+    end = datetime.combine(first_of_this_month, datetime.min.time())
+    start = (end - timedelta(days=1)).replace(day=1)
+    month_key = start.strftime("%Y-%m")
+
+    with SessionLocal() as s:
+        already = int(s.scalar(
+            select(func.count()).select_from(ProductEvent).where(
+                ProductEvent.event_name == "contest_settled",
+                ProductEvent.metadata_json.like(f'%"month": "{month_key}"%'),
+            )
+        ) or 0)
+        if already:
+            return {"month": month_key, "already_settled": True, "winners": []}
+
+    winners = _converted_in_window(start, end)[:top_n]
+    granted: list[dict] = []
+    if winners:
+        from services.payments import grant_premium
+    for telegram_id, count in winners:
+        try:
+            if grant_premium(telegram_id, days=premium_days):
+                granted.append({"telegram_id": str(telegram_id), "count": count})
+        except Exception:
+            logger.exception("contest premium grant failed user=%s month=%s", telegram_id, month_key)
+
+    with SessionLocal() as s:
+        s.add(ProductEvent(
+            user_id=None,
+            event_name="contest_settled",
+            value=float(len(granted)),
+            metadata_json=_json.dumps({"month": month_key, "winners": granted}, ensure_ascii=False),
+        ))
+        s.commit()
+
+    logger.info("contest settled month=%s winners=%s", month_key, granted)
+    return {"month": month_key, "already_settled": False, "winners": granted}

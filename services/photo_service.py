@@ -241,7 +241,52 @@ HAIRSTYLE_POOL = [
     'a neat high bun',
     'a half-up hairstyle with long hair down',
     'a loose braid falling down her back',
+    'a relaxed messy bun with loose face strands',
+    'a low elegant chignon at the nape',
+    'two soft loose plaits',
+    'a deep side part with hair tucked behind one ear',
+    'gentle Hollywood waves swept to one side',
 ]
+
+MAKEUP_POOL = [
+    'fresh everyday makeup with soft nude lips',
+    'natural glow makeup with peachy blush',
+    'soft evening makeup with subtle smokey eyes',
+    'romantic makeup with rosy lips and light shimmer',
+    'clean minimal makeup with groomed brows',
+    'glamorous makeup with winged eyeliner and red lips',
+    'sun-kissed makeup with warm bronzer',
+    'elegant makeup with defined lashes and berry lips',
+    'playful makeup with glossy lips and a touch of glitter',
+    'classic makeup in soft brown tones',
+]
+
+# Anna re-dyes her hair once a month: brunette, then blonde, then chestnut,
+# then caramel — and the cycle repeats. Her face identity never changes.
+HAIR_COLOR_CYCLE = (
+    'rich dark brunette',
+    'natural blonde',
+    'warm chestnut brown',
+    'honey caramel with soft highlights',
+)
+_HAIR_COLOR_ANCHOR = datetime(2026, 8, 1, tzinfo=timezone.utc).date()
+
+
+def current_hair_color() -> str:
+    """The hair color of the current 30-day period."""
+    months = (_today() - _HAIR_COLOR_ANCHOR).days // 30
+    return HAIR_COLOR_CYCLE[months % len(HAIR_COLOR_CYCLE)]
+
+
+# Garment colors are spread across a wide palette so the wardrobe never
+# collapses into one repeated tone (orange is intentionally excluded).
+OUTFIT_COLOR_POOL = [
+    'black', 'white', 'ivory', 'beige', 'light grey', 'navy', 'deep blue',
+    'olive', 'burgundy', 'dusty pink', 'lavender', 'emerald green',
+    'chocolate brown', 'graphite', 'soft red', 'mint',
+]
+_recent_outfit_colors: dict[int, list[str]] = {}
+
 
 SHOT_VARIANTS = {
     'selfie': ['front-camera selfie at arm’s length, natural eye contact', 'slightly high-angle front-camera selfie, spontaneous smartphone perspective', 'best polished personal selfie with flattering natural phone-camera framing'],
@@ -289,6 +334,25 @@ OPENAI_LEVEL_VISUAL_RULES = {
     5: 'Relationship visual level 5/6: premium personalized styling, richer venue details and more exclusive-feeling composition, fully clothed; elegant daring cuts and visible lace details are allowed.',
     6: 'Relationship visual level 6/6: strongest premium styling, best accessories, lighting and composition; sophisticated and exclusive, boldest tasteful fashion while fully clothed and general-audience.',
 }
+
+# How the underwear under her clothes reads on camera, by relationship level.
+# Like real life: she always wears lingerie; at low levels it only shows
+# through the fabric, at higher levels lace edges become part of the look.
+LEVEL_UNDERLAY_RULES = {
+    1: 'Her everyday bra is clearly but subtly visible under the thin fitted fabric of her top — a realistic outline, like a real woman wearing lingerie under a blouse. No exposure.',
+    2: 'The outline of her bra and a hint of lingerie straps show gently through her fitted clothing — believable and attractive.',
+    3: 'Her lingerie is clearly hinted: the bra outline and a glimpse of a lace edge under the fitted garment.',
+    4: 'Lace lingerie edges are intentionally visible under the more revealing outfit, still no exposure.',
+    5: 'Elegant visible lace details and clearly hinted lingerie under the private-feeling outfit.',
+    6: 'Sophisticated visible lace and lingerie-inspired fashion details, tasteful and non-explicit.',
+}
+
+# Bust size must never drift between frames or between sets.
+BUST_CONSISTENCY_RULE = (
+    'BUST CONSISTENCY: her bust must look exactly the same size in this frame as in every other photo — '
+    'a full feminine bust with silicone implants (Russian size 4, D cup), neither larger nor smaller, '
+    'with the same shape and the same natural fit inside the clothing.'
+)
 
 SEASON_RULES = {
     'summer': 'Warm summer weather. Use breathable summer clothing. No sweaters, hoodies, coats, thick knitwear or winter styling unless explicitly requested.',
@@ -457,6 +521,8 @@ class PhotoRequest:
     scene: str = 'selfie'
     clothing: str = ''
     hairstyle: str = ''
+    hair_color: str = ''
+    makeup: str = ''
     location: str = ''
     angle: str = ''
     mood: str = 'warm, natural'
@@ -859,9 +925,19 @@ def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season:
         if not usable:
             usable = [x for x in pool if x not in picks] or pool
         chosen = random.choice(usable)
-        # Roughly half personalization, half diversity/surprise. Never override an explicit user outfit.
-        if favorite_color and SCENE_GROUP.get(request.scene) != 'adult' and random.random() < 0.50:
-            chosen = f'{chosen}, using a {favorite_color}-led color palette'
+        # Color diversity: every frame gets its own garment color and the
+        # favorite color shows up at most once per set (and never orange), so
+        # the wardrobe never collapses into one repeated tone.
+        if favorite_color and 'orange' not in favorite_color.lower() and i == 0 \
+                and SCENE_GROUP.get(request.scene) != 'adult' and random.random() < 0.35:
+            chosen = f'{chosen} in a {favorite_color} tone'
+        else:
+            recent_colors = _recent_outfit_colors.setdefault(telegram_id, [])
+            color_pool = [c for c in OUTFIT_COLOR_POOL if c not in recent_colors] or list(OUTFIT_COLOR_POOL)
+            color = random.choice(color_pool)
+            recent_colors.append(color)
+            del recent_colors[:-3]
+            chosen = f'{chosen} in a {color} color'
         picks.append(chosen)
     return tuple(picks)
 
@@ -893,7 +969,10 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         location = f"{SCENES['selfie']}; keep it consistent with the character's current fictional day context: location={state.location}, activity={activity}"
     else:
         location = SCENES.get(request.scene, SCENES['selfie'])
-    return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season, pack_outfits=pack_outfits)
+    hair_color = request.hair_color or current_hair_color()
+    makeup = request.makeup or random.choice(MAKEUP_POOL)
+    return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season,
+                   pack_outfits=pack_outfits, hair_color=hair_color, makeup=makeup)
 
 
 def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
@@ -918,6 +997,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     tier_rule = PACK_TIER_RULES[min(shot_index, len(PACK_TIER_RULES) - 1)]
     level_key = max(1, min(6, relationship_level))
     visual_rule = (LEVEL_VISUAL_RULES if seedream else OPENAI_LEVEL_VISUAL_RULES).get(level_key, LEVEL_VISUAL_RULES[1])
+    underlay_rule = LEVEL_UNDERLAY_RULES.get(level_key, LEVEL_UNDERLAY_RULES[1])
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
     identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key)
@@ -934,8 +1014,12 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'PROGRESSION PACK FRAME {shot_index + 1}/{PHOTO_SET_SIZE}: {tier_rule}\n'
         f'WARDROBE: {wardrobe}. {figure_note}'
         'The outfit must be believable for this exact venue, weather and time of day. Do not reuse a heavy sweater or hoodie in a visibly warm summer scene.\n'
+        f'UNDER-CLOTHING REALISM: {underlay_rule}\n'
+        f'{BUST_CONSISTENCY_RULE}\n'
         f'HAIRSTYLE: {request.hairstyle}.\n'
+        f'MAKEUP: {request.makeup}.\n'
         f'CAMERA/POSE: {angle}.\n'
+        f'HAIR COLOR THIS MONTH: {request.hair_color}. This temporary hair color overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n'
         f'{body_reinforcement}\n'
         f'MOOD: {request.mood}.\n'
         f'{expression_identity}\n'

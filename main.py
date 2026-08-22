@@ -44,6 +44,7 @@ from services.payments import record_payment, get_photo_credits, record_refund, 
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
     referral_user_lock, pending_referral, remember_referral, referral_leaderboard, referral_rank,
+    settle_monthly_contest,
 )
 from services.gemini_video_service import animate_image, GeminiVideoError, video_available
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
@@ -1985,8 +1986,15 @@ async def referral_cmd(message: types.Message):
 
 @dp.message(Command('contest'))
 async def contest_cmd(message: types.Message):
-    """Monthly referral race: top inviters over the last 30 days win Premium."""
+    """Monthly referral race: top inviters of the previous month get Premium automatically."""
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    # Idempotent: once a new month starts, the previous month's top-3 get
+    # Premium automatically the first time anyone opens /contest.
+    try:
+        settlement = settle_monthly_contest()
+    except Exception:
+        logger.exception('contest settlement failed')
+        settlement = None
     board = referral_leaderboard(limit=10, period_days=30)
     rank, total = referral_rank(message.from_user.id, period_days=30)
     lines = ['🏆 гонка пригласивших за 30 дней\n', 'топ-10 лидеров:']
@@ -1999,7 +2007,9 @@ async def contest_cmd(message: types.Message):
             me = ' (это ты!)' if row['telegram_id'] == message.from_user.id else ''
             lines.append(f"{medal} {row['name']}{me} — {row['count']} пригл.")
     lines.append('')
-    lines.append('призы: топ-3 получают Premium на месяц. конкурс обновляется каждый месяц.')
+    lines.append('призы: топ-3 по итогам месяца автоматически получают Premium на месяц. конкурс обновляется каждый месяц.')
+    if settlement and not settlement['already_settled'] and settlement['winners']:
+        lines.append(f"🎉 итоги за {settlement['month']}: победители уже получили Premium!")
     if rank > 0:
         lines.append(f'\nты сейчас на {rank} месте из {total} — пригласи ещё друзей командой /referral!')
     else:
@@ -2177,7 +2187,13 @@ async def quest_route_cb(cq: types.CallbackQuery):
         # Story reward: generate/deliver without consuming the daily free quota.
         await _start_photo_background(cq.message.chat.id,cq.from_user.id,PhotoRequest(scene=scene),'story')
 
-async def _run_gemini_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None) -> None:
+async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None) -> None:
+    """Animate a delivered photo with automatic engine fallback.
+
+    Order: Gemini/Veo first when enabled, then the free HF route (which walks
+    its own list of public spaces internally). The user only hears about a
+    failure when every available engine failed; a paid run is then refunded.
+    """
     try:
         delivery = get_photo_delivery_for_user(telegram_id, delivery_id)
         if not delivery or not delivery.get('telegram_file_id'):
@@ -2192,21 +2208,45 @@ async def _run_gemini_video_background(chat_id: int, telegram_id: int, delivery_
         if not image_bytes:
             raise GeminiVideoError('telegram_download_empty')
 
-        await bot.send_message(chat_id, 'оживляю этот кадр 🎬 это может занять пару минут')
-        video_bytes = await animate_image(image_bytes, mime_type='image/jpeg')
+        engines = []
+        if video_available():
+            engines.append(('gemini', animate_image))
+        if hf_video_available():
+            engines.append(('hf', animate_image_hf))
+        if not engines:
+            raise GeminiVideoError('no_video_engine')
+
+        await bot.send_message(chat_id, VIDEO_STATUS_TEXT)
+        video_bytes = None
+        used_engine = None
+        last_error = None
+        for idx, (engine_name, engine_fn) in enumerate(engines):
+            try:
+                if idx > 0:
+                    await bot.send_message(chat_id, 'секунду, пробую ещё один способ снять это видео 🎬')
+                video_bytes = await engine_fn(image_bytes, mime_type='image/jpeg')
+                used_engine = engine_name
+                break
+            except Exception as exc:
+                last_error = exc
+                logger.warning('video engine %s failed user=%s delivery=%s error=%s: %s',
+                               engine_name, telegram_id, delivery_id, type(exc).__name__, str(exc)[:300])
+        if video_bytes is None:
+            raise last_error or GeminiVideoError('no_video_result')
+
         await bot.send_video(
             chat_id,
-            BufferedInputFile(video_bytes, filename='anna_animated.mp4'),
+            BufferedInputFile(video_bytes, filename='animated_photo.mp4'),
             caption='вот 😌🎬',
             supports_streaming=True,
         )
         track_event(
             ensure_user(telegram_id),
-            'gemini_video_delivered',
-            metadata={'source_delivery_id': delivery_id, 'scene': delivery.get('scene')},
+            f'{used_engine}_video_delivered',
+            metadata={'source_delivery_id': delivery_id, 'scene': delivery.get('scene'), 'charge_id': charge_id or 'free'},
         )
     except Exception as exc:
-        logger.exception('Gemini video failed user=%s delivery=%s error=%s', telegram_id, delivery_id, type(exc).__name__)
+        logger.exception('video failed user=%s delivery=%s charge=%s error=%s', telegram_id, delivery_id, charge_id, type(exc).__name__)
         refunded = False
         if charge_id:
             try:
@@ -2223,9 +2263,37 @@ async def _run_gemini_video_background(chat_id: int, telegram_id: int, delivery_
         elif charge_id:
             await bot.send_message(chat_id, 'видео сейчас не получилось 😕 напиши /support — проверим оплату и возврат.')
         else:
-            await bot.send_message(chat_id, 'видео сейчас не получилось 😕 попробуй ещё раз чуть позже.')
+            await bot.send_message(chat_id, 'видео сейчас не получилось 😕 попробуй чуть позже.')
+        track_event(
+            ensure_user(telegram_id),
+            'video_failed',
+            metadata={'source_delivery_id': delivery_id, 'error_type': type(exc).__name__, 'error_message': str(exc)[:200], 'charge_id': charge_id or 'free', 'refunded': refunded},
+        )
     finally:
         _video_jobs.pop(telegram_id, None)
+
+
+@dp.message(Command('videotest'))
+async def video_test_cmd(message: types.Message):
+    """Owner diagnostic: animate my latest photo for free through the whole
+    engine fallback chain, to see end-to-end how video generation works."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    if not (video_available() or hf_video_available()):
+        await message.answer('видео-движки сейчас выключены.')
+        return
+    if message.from_user.id in _video_jobs and not _video_jobs[message.from_user.id].done():
+        await message.answer('одно видео уже создаётся 🎬')
+        return
+    delivery = get_latest_photo_delivery(message.from_user.id)
+    if not delivery or not delivery.get('telegram_file_id'):
+        await message.answer('сначала попроси фото — оживлю последний кадр.')
+        return
+    _video_jobs[message.from_user.id] = asyncio.create_task(
+        _run_video_background(message.chat.id, message.from_user.id, delivery['id'], None)
+    )
+    await message.answer('тест видео запущен: прогоню всю цепочку движков с автофолбэком 🎬')
 
 
 async def _video_gate(cq: types.CallbackQuery, delivery: dict) -> None:
@@ -2237,14 +2305,9 @@ async def _video_gate(cq: types.CallbackQuery, delivery: dict) -> None:
         free = consume_premium_video_free(cq.from_user.id)
     if free:
         track_event(uid, 'video_free_used', metadata={'delivery_id': delivery['id'], 'admin': cq.from_user.id in ADMIN_TELEGRAM_IDS})
-        if video_available():
-            _video_jobs[cq.from_user.id] = asyncio.create_task(
-                _run_gemini_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None)
-            )
-        else:
-            _video_jobs[cq.from_user.id] = asyncio.create_task(
-                _run_hf_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None)
-            )
+        _video_jobs[cq.from_user.id] = asyncio.create_task(
+            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None)
+        )
         return
     await send_stars_invoice(
         cq.message.chat.id,
@@ -2296,62 +2359,6 @@ async def animate_last_photo_cb(cq: types.CallbackQuery):
         return
     await cq.answer()
     await _video_gate(cq, delivery)
-
-
-async def _run_hf_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None) -> None:
-    try:
-        delivery = get_photo_delivery_for_user(telegram_id, delivery_id)
-        if not delivery or not delivery.get('telegram_file_id'):
-            raise HfVideoError('source_photo_missing')
-
-        tg_file = await bot.get_file(delivery['telegram_file_id'])
-        if not tg_file.file_path:
-            raise HfVideoError('telegram_file_path_missing')
-        source = io.BytesIO()
-        await bot.download_file(tg_file.file_path, destination=source)
-        image_bytes = source.getvalue()
-        if not image_bytes:
-            raise HfVideoError('telegram_download_empty')
-
-        await bot.send_message(chat_id, VIDEO_STATUS_TEXT)
-        video_bytes = await animate_image_hf(image_bytes, mime_type='image/jpeg')
-        await bot.send_video(
-            chat_id,
-            BufferedInputFile(video_bytes, filename='animated_photo.mp4'),
-            caption='вот 😌🎬',
-            supports_streaming=True,
-        )
-        track_event(
-            ensure_user(telegram_id),
-            'hf_video_delivered',
-            metadata={'source_delivery_id': delivery_id, 'scene': delivery.get('scene'), 'charge_id': charge_id or 'free'},
-        )
-    except Exception as exc:
-        logger.exception('HF video failed user=%s delivery=%s charge=%s error=%s: %s', telegram_id, delivery_id, charge_id, type(exc).__name__, str(exc)[:300])
-        refunded = False
-        if charge_id:
-            try:
-                await bot.refund_star_payment(
-                    user_id=telegram_id,
-                    telegram_payment_charge_id=charge_id,
-                )
-                record_refund(telegram_id, charge_id, VIDEO_COST_STARS, product='video')
-                refunded = True
-            except Exception:
-                logger.exception('Automatic HF video Stars refund failed user=%s charge=%s', telegram_id, charge_id)
-        if refunded:
-            await bot.send_message(chat_id, 'видео сейчас не получилось 😕 Stars автоматически вернул.')
-        elif charge_id:
-            await bot.send_message(chat_id, 'видео сейчас не получилось 😕 напиши /support — проверим оплату и возврат.')
-        else:
-            await bot.send_message(chat_id, 'видео сейчас не получилось 😕 попробуй чуть позже.')
-        track_event(
-            ensure_user(telegram_id),
-            'hf_video_failed',
-            metadata={'source_delivery_id': delivery_id, 'error_type': type(exc).__name__, 'error_message': str(exc)[:200], 'charge_id': charge_id or 'free', 'refunded': refunded},
-        )
-    finally:
-        _video_jobs.pop(telegram_id, None)
 
 
 @dp.message(Command('geministatus'))
@@ -2517,11 +2524,9 @@ async def successful_payment(message: types.Message):
             value=payment.total_amount,
             metadata={'product': 'video', 'source_delivery_id': delivery_id},
         )
-        if video_available():
-            task = asyncio.create_task(_run_gemini_video_background(message.chat.id, message.from_user.id, delivery_id, charge))
-        else:
-            # Zero-cost HF backend sold for Stars; auto-refunds on failure.
-            task = asyncio.create_task(_run_hf_video_background(message.chat.id, message.from_user.id, delivery_id, charge))
+        # One unified job: Gemini/Veo when enabled, free HF spaces otherwise,
+        # with automatic engine fallback; auto-refunds Stars if all fail.
+        task = asyncio.create_task(_run_video_background(message.chat.id, message.from_user.id, delivery_id, charge))
         _video_jobs[message.from_user.id] = task
         return
 
