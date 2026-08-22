@@ -47,7 +47,21 @@ from services.referral_service import (
     settle_monthly_contest,
 )
 from services.gemini_video_service import animate_image, GeminiVideoError, video_available
+from services.cloud_video_service import (
+    animate_image_replicate, animate_image_fal,
+    replicate_available, fal_available, CloudVideoError,
+)
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
+
+
+def _any_video_engine() -> bool:
+    """At least one image-to-video provider is configured."""
+    return bool(
+        video_available()
+        or replicate_available()
+        or fal_available()
+        or hf_video_available()
+    )
 from services.llm_provider_service import provider_status
 from services.reminder_service import set_timezone, create_from_text, cancel_active_wake, due_reminders
 from services.scheduler_service import start_scheduler
@@ -2216,6 +2230,12 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
         engines = []
         if video_available():
             engines.append(('gemini', animate_image))
+        # Stable public-cloud i2v providers: they keep the feature alive when
+        # Gemini/Veo rejects the request and HF spaces are flaky/down.
+        if replicate_available():
+            engines.append(('replicate', animate_image_replicate))
+        if fal_available():
+            engines.append(('fal', animate_image_fal))
         if hf_video_available():
             engines.append(('hf', animate_image_hf))
         if not engines:
@@ -2288,7 +2308,7 @@ async def video_test_cmd(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
-    if not (video_available() or hf_video_available()):
+    if not _any_video_engine():
         await message.answer('видео-движки сейчас выключены.')
         return
     if message.from_user.id in _video_jobs and not _video_jobs[message.from_user.id].done():
@@ -2331,7 +2351,7 @@ async def animate_photo_cb(cq: types.CallbackQuery):
     if not has_accepted(cq.from_user.id):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True)
         return
-    if not (video_available() or hf_video_available()):
+    if not _any_video_engine():
         await cq.answer('Видео пока недоступно.', show_alert=True)
         return
     if cq.from_user.id in _video_jobs and not _video_jobs[cq.from_user.id].done():
@@ -2355,7 +2375,7 @@ async def animate_last_photo_cb(cq: types.CallbackQuery):
     if not has_accepted(cq.from_user.id):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True)
         return
-    if not (video_available() or hf_video_available()):
+    if not _any_video_engine():
         await cq.answer('Видео пока недоступно.', show_alert=True)
         return
     if cq.from_user.id in _video_jobs and not _video_jobs[cq.from_user.id].done():
@@ -2473,7 +2493,7 @@ async def pre_checkout(query: types.PreCheckoutQuery):
         except ValueError:
             ok = False
         else:
-            ok = amount == VIDEO_COST_STARS and bool(get_photo_delivery_for_user(query.from_user.id, delivery_id)) and (video_available() or hf_video_available())
+            ok = amount == VIDEO_COST_STARS and bool(get_photo_delivery_for_user(query.from_user.id, delivery_id)) and _any_video_engine()
     if not ok:
         logger.warning('pre_checkout rejected user=%s payload=%s amount=%s', query.from_user.id,payload,amount)
         await query.answer(ok=False,error_message='Сумма или товар изменились. Открой покупку заново.')

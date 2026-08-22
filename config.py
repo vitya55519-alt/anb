@@ -147,6 +147,21 @@ HF_VIDEO_FALLBACK_SPACES = tuple(
 )
 HF_VIDEO_TIMEOUT_SECONDS = max(120, min(1800, int(os.getenv("HF_VIDEO_TIMEOUT_SECONDS", "600"))))
 
+# Public cloud image-to-video alternatives for when HF spaces die.
+# Both offer a free tier / free credits after sign-up and expose a stable API,
+# unlike the constantly-breaking Gradio spaces. The key is the only required
+# config — when present, the engine is used; without it, it is skipped.
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "").strip()
+REPLICATE_VIDEO_MODEL = os.getenv(
+    "REPLICATE_VIDEO_MODEL",
+    "minimax/video-01",
+).strip()
+REPLICATE_VIDEO_TIMEOUT_SECONDS = max(120, min(900, int(os.getenv("REPLICATE_VIDEO_TIMEOUT_SECONDS", "600"))))
+
+FAL_KEY = os.getenv("FAL_KEY", "").strip()
+FAL_VIDEO_ENDPOINT = os.getenv("FAL_VIDEO_ENDPOINT", "fal-ai/wan2.2/image-to-video").strip()
+FAL_VIDEO_TIMEOUT_SECONDS = max(120, min(900, int(os.getenv("FAL_VIDEO_TIMEOUT_SECONDS", "600"))))
+
 # Per-user adaptive communication profile. The model never rewrites its own code/prompt;
 # it only learns bounded style signals and recurring expressions into PostgreSQL.
 ADAPTATION_ENABLED = os.getenv("ADAPTATION_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
