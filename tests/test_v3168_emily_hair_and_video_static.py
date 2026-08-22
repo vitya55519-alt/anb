@@ -1,9 +1,9 @@
-"""Static regression tests for v3.16.8: Emily hair identity + HF video hardening.
+"""Static regression tests for v3.16.8: hair identity + HF video hardening.
 
 Two independent fixes:
-1. Emily (and any non-Anna character) must keep her natural hair color from
-   the character identity. The Anna-specific monthly hair-color cycle must
-   NOT override Emily's permanent blonde.
+1. All characters cycle hair color monthly (brunette, blonde, chestnut,
+   caramel). The override line in the prompt is conditional — when hair_color
+   is set it overrides the reference, when empty the identity controls it.
 2. The HF video service gets broader parameter-name patterns, a label/type
    fallback for endpoint discovery, better error detection and schema logging.
 """
@@ -14,15 +14,15 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 HF_VIDEO = (ROOT / 'services' / 'hf_video_service.py').read_text(encoding='utf-8')
 
 
-# ── Hair color: Anna-only cycle ──────────────────────────────────────────
+# ── Hair color: all characters cycle ──────────────────────────────────────
 
-def test_hair_color_cycle_is_anna_only():
-    # _resolve_request must branch on character_id, not apply the cycle blindly.
-    assert "elif character_id == 'anna_01':" in PHOTO
+def test_hair_color_cycle_applies_to_all_characters():
+    # _resolve_request applies current_hair_color() to ALL characters.
+    # The cycle was originally Anna-only but users want all characters to
+    # shift hair color monthly: brunette -> blonde -> chestnut -> caramel.
     assert "current_hair_color()" in PHOTO
-    # Non-Anna characters get an empty hair_color so the prompt does not
-    # override their identity's natural hair color.
-    assert "hair_color = ''" in PHOTO
+    # There must NOT be an Anna-only gate for the hair color cycle.
+    assert "character_id == 'anna_01':" not in PHOTO[PHOTO.index('def _resolve_request'):PHOTO.index('def _shot_variant')]
 
 
 def test_build_prompt_skips_hair_color_override_when_empty():
@@ -32,8 +32,8 @@ def test_build_prompt_skips_hair_color_override_when_empty():
     assert "if request.hair_color else ''" in PHOTO
 
 
-def test_current_hair_color_still_exists_for_anna():
-    # Anna's monthly cycle is preserved — she still re-dyes.
+def test_current_hair_color_still_exists():
+    # The monthly cycle is preserved for all characters.
     assert 'def current_hair_color()' in PHOTO
     assert 'HAIR_COLOR_CYCLE' in PHOTO
     assert "'rich dark brunette'" in PHOTO

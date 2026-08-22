@@ -1004,14 +1004,12 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         location = f"{SCENES['selfie']}; keep it consistent with the character's current fictional day context: location={state.location}, activity={activity}"
     else:
         location = SCENES.get(request.scene, SCENES['selfie'])
-    # Anna re-dyes monthly; other characters keep their identity's natural hair
-    # color (e.g. Emily is always blonde). The cycle was designed for Anna only.
+    # All characters cycle hair color monthly — brunette, blonde, chestnut, caramel.
+    # Each 30-day period shifts the color. Face and body stay the same.
     if request.hair_color:
         hair_color = request.hair_color
-    elif character_id == 'anna_01':
-        hair_color = current_hair_color()
     else:
-        hair_color = ''
+        hair_color = current_hair_color()
     makeup = request.makeup or random.choice(MAKEUP_POOL)
     accessory = request.accessory or random.choice(ACCESSORY_POOL)
     time_of_day = request.time_of_day or random.choice(DAYLIGHT_POOL)
@@ -1943,9 +1941,9 @@ async def _deliver_library_failure_fallback(
         return []
     level = get_relationship_level(telegram_id, character_id)
     scene_order = _library_fallback_scene_order(request.scene, level)
-    pack = choose_fallback_pack(telegram_id, CHARACTER_ID, level, scene_order)
+    pack = choose_fallback_pack(telegram_id, character_id, level, scene_order)
     if not pack or not pack.photos:
-        logger.warning('library failure fallback empty user=%s requested_scene=%s level=%s', telegram_id, request.scene, level)
+        logger.warning('library failure fallback empty user=%s requested_scene=%s level=%s character=%s', telegram_id, request.scene, level, character_id)
         return []
 
     actual_caption = caption or random.choice(AUTO_CAPTIONS.get(pack.scene, ('вот 😌',)))
@@ -1986,6 +1984,8 @@ async def _deliver_library_partial_topup(
     telegram_id: int,
     request: PhotoRequest,
     needed: int,
+    *,
+    character_id: str = CHARACTER_ID,
 ):
     """Fill missing ordinary free/story frames from ready library content.
 
@@ -2001,7 +2001,7 @@ async def _deliver_library_partial_topup(
     used_pack_ids: set[int] = set()
 
     while len(sent_messages) < needed:
-        pack = choose_fallback_pack(telegram_id, CHARACTER_ID, level, scene_order)
+        pack = choose_fallback_pack(telegram_id, character_id, level, scene_order)
         if not pack or not pack.photos or pack.id in used_pack_ids:
             break
         used_pack_ids.add(pack.id)
@@ -2152,6 +2152,7 @@ async def deliver_photo(
     if delivery_type in {'free', 'story'} and request.scene not in _PRIVATE_LIBRARY_SCENES and len(sent_messages) < PHOTO_SET_SIZE:
         topup = await _deliver_library_partial_topup(
             bot, chat_id, telegram_id, request, PHOTO_SET_SIZE - len(sent_messages),
+            character_id=character_id,
         )
         sent_messages.extend(topup)
         library_topup_count = len(topup)

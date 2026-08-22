@@ -102,3 +102,21 @@ def test_insert_delivery_row_supports_community_params():
     assert 'source_delivery_id: int | None = None' in PHOTO
     assert 'community_shared=community_shared,' in PHOTO
     assert 'source_delivery_id=source_delivery_id,' in PHOTO
+
+
+# ── Library fallback respects character_id ────────────────────────────────
+
+def test_library_failure_fallback_uses_character_id_parameter():
+    # _deliver_library_failure_fallback must pass the character_id parameter
+    # to choose_fallback_pack, NOT the hardcoded CHARACTER_ID constant.
+    fallback_fn = PHOTO[PHOTO.index('async def _deliver_library_failure_fallback('):PHOTO.index('return sent_messages', PHOTO.index('async def _deliver_library_failure_fallback('))]
+    assert 'choose_fallback_pack(telegram_id, character_id, level, scene_order)' in fallback_fn
+    # Must NOT use the hardcoded CHARACTER_ID constant.
+    assert 'choose_fallback_pack(telegram_id, CHARACTER_ID' not in fallback_fn
+
+
+def test_library_partial_topup_uses_character_id_parameter():
+    # _deliver_library_partial_topup must accept and use character_id.
+    topup_fn = PHOTO[PHOTO.index('async def _deliver_library_partial_topup('):PHOTO.index('return sent_messages', PHOTO.index('async def _deliver_library_partial_topup('))]
+    assert 'character_id: str = CHARACTER_ID' in topup_fn
+    assert 'choose_fallback_pack(telegram_id, character_id, level, scene_order)' in topup_fn
