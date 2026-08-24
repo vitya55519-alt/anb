@@ -53,6 +53,8 @@ from services.cloud_video_service import (
     replicate_available, fal_available, CloudVideoError,
 )
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
+from services import apartment_service, gifts_service, dates_service
+from services.relationship_service import record_user_message
 
 
 def _any_video_engine() -> bool:
@@ -216,8 +218,9 @@ def main_keyboard(is_admin: bool = False):
         [KeyboardButton(text='🎯 Истории'), KeyboardButton(text='🖼 Коллекция')],
         [KeyboardButton(text='✨ Возможности'), KeyboardButton(text='🚀 Премиум')],
         [KeyboardButton(text='⏰ Будильник'), KeyboardButton(text='👤 Профиль')],
+        [KeyboardButton(text='🏠 Квартира'), KeyboardButton(text='💕 Свидание')],
         [KeyboardButton(text='⚙️ Настройки'), KeyboardButton(text='👩 Персонажи')],
-        [KeyboardButton(text='🔗 Пригласить')],
+        [KeyboardButton(text='🔗 Пригласить'), KeyboardButton(text='🎁 Подарить')],
     ]
     if is_admin:
         rows.append([KeyboardButton(text='🛠 Админка')])
@@ -245,6 +248,9 @@ def abilities_text() -> str:
         '🎯 интерактивные истории: твой первый выбор становится каноном, а альтернативные ветки можно посмотреть позже\n'
         '📸 реалистичные фото по ситуациям и местам; если генерация недоступна, бот умеет брать подходящие кадры из коллекции\n'
         '🎬 кнопка «Оживить фото» под каждым снимком — короткое AI-видео из любого фото (Premium: 1 бесплатно в день)\n'
+        '🏠 квартира: заходи в комнаты, проводи с ней время — новые комнаты открываются с уровнями отношений\n'
+        '💕 свидания: пригласи её куда-нибудь, а после она пришлёт фото с прогулки\n'
+        '🎁 подарки: приятные сюрпризы, которые сближают\n'
         '🎙 голосовые ответы: у каждой девушки свой милый голос, отвечает на твоём языке\n'
         '🖼 коллекция открытых фотографий по уровням отношений\n'
         '💌 она иногда может написать первой и вернуться к незаконченной теме\n'
@@ -2694,6 +2700,12 @@ async def pre_checkout(query: types.PreCheckoutQuery):
             ok = False
         else:
             ok = amount == GALLERY_DOWNLOAD_STARS and bool(get_gallery_item_bytes(query.from_user.id, delivery_id))
+    elif payload.startswith('gift:'):
+        gift = gifts_service.get(payload.split(':', 1)[1])
+        ok = bool(gift) and amount == gift.cost
+    elif payload.startswith('date:'):
+        date = dates_service.get(payload.split(':', 1)[1])
+        ok = bool(date) and amount == date.cost and date.min_level <= get_relationship_level(query.from_user.id, get_user_character(query.from_user.id))
     if not ok:
         logger.warning('pre_checkout rejected user=%s payload=%s amount=%s', query.from_user.id,payload,amount)
         await query.answer(ok=False,error_message='Сумма или товар изменились. Открой покупку заново.')
@@ -2797,6 +2809,31 @@ async def successful_payment(message: types.Message):
             await message.answer('не получилось отправить файл. Stars вернул автоматически 🙂')
         return
 
+    if payload.startswith('gift:'):
+        gift = gifts_service.get(payload.split(':', 1)[1])
+        if not gift:
+            await message.answer('Оплата прошла, но подарок уже не найден. Напиши /support — разберёмся.')
+            return
+        record_payment(message.from_user.id, 'gift', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'gift', 'gift': gift.id})
+        character_id = get_user_character(message.from_user.id)
+        await record_user_message(message.from_user.id, message.from_user.first_name or '', relationship=gift.affection, event_type='gift', reason=f'gift:{gift.id}', character_id=character_id)
+        await message.answer(f'🎁 Ты подарил {gift.emoji} {gift.name}!\n\n{gift.reaction}')
+        return
+
+    if payload.startswith('date:'):
+        date = dates_service.get(payload.split(':', 1)[1])
+        if not date:
+            await message.answer('Оплата прошла, но свидание уже не найдено. Напиши /support — разберёмся.')
+            return
+        record_payment(message.from_user.id, 'date', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'date', 'date': date.id})
+        character_id = get_user_character(message.from_user.id)
+        await record_user_message(message.from_user.id, message.from_user.first_name or '', relationship=date.affection, intimacy=date.affection / 2, event_type='date', reason=f'date:{date.id}', character_id=character_id)
+        await message.answer(f'{date.emoji} {date.text}\n\nА вот и фото с нашей прогулки 😊')
+        await _start_photo_background(message.chat.id, message.from_user.id, PhotoRequest(scene=date.scene, mood='romantic'), 'story')
+        return
+
     if payload.startswith('photo:'):
         try:
             offer_id = int(payload.split(':', 1)[1])
@@ -2810,6 +2847,127 @@ async def successful_payment(message: types.Message):
             return
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': product})
         await _start_photo_background(message.chat.id, message.from_user.id, request, 'credit')
+
+
+# === КВАРТИРА / ПОДАРКИ / СВИДАНИЯ (v3.17.0) ===
+
+@dp.message(F.text == '🏠 Квартира')
+async def apartment_cmd(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
+    rows = [[InlineKeyboardButton(text=f'{r.emoji} {r.name}', callback_data=f'room:{r.id}')]
+            for r in apartment_service.get_available_rooms(level)]
+    rows += [[InlineKeyboardButton(text=f'🔒 {r.name} — уровень {r.min_level}', callback_data=f'room_locked:{r.id}')]
+             for r in apartment_service.get_locked_rooms(level)]
+    await message.answer('🏠 Моя квартира 😊\n\nВыбери комнату:', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@dp.callback_query(F.data.startswith('room:'))
+async def room_enter(cq: types.CallbackQuery):
+    room = apartment_service.get_room(cq.data.split(':', 1)[1])
+    if not room:
+        await cq.answer('Такой комнаты нет', show_alert=True)
+        return
+    level = get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
+    if room.min_level > level:
+        await cq.answer(f'Эта комната откроется на уровне {room.min_level} 😉', show_alert=True)
+        return
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    rows = [[InlineKeyboardButton(text=title, callback_data=f'apt_action:{room.id}:{action_id}')]
+            for title, action_id in room.actions]
+    await cq.answer()
+    try:
+        await cq.message.edit_text(f'{room.emoji} {room.name}\n\n{room.description}',
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    except Exception:
+        await cq.message.answer(f'{room.emoji} {room.name}\n\n{room.description}',
+                                reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@dp.callback_query(F.data.startswith('room_locked:'))
+async def room_locked(cq: types.CallbackQuery):
+    room = apartment_service.get_room(cq.data.split(':', 1)[1])
+    if room:
+        await cq.answer(f'Сюда пока нельзя — комната откроется на уровне {room.min_level} 😉', show_alert=True)
+    else:
+        await cq.answer()
+
+
+@dp.callback_query(F.data.startswith('apt_action:'))
+async def room_action(cq: types.CallbackQuery):
+    _, room_id, action_id = cq.data.split(':', 2)
+    result = apartment_service.room_action_reply(room_id, action_id)
+    if not result:
+        await cq.answer()
+        return
+    text, rel_delta, int_delta = result
+    character_id = get_user_character(cq.from_user.id)
+    await record_user_message(cq.from_user.id, cq.from_user.first_name or '',
+                              relationship=rel_delta, intimacy=int_delta,
+                              event_type='apartment', reason=f'apartment:{room_id}:{action_id}',
+                              character_id=character_id)
+    track_event(ensure_user(cq.from_user.id), 'apartment_action', metadata={'room': room_id, 'action': action_id})
+    await cq.answer()
+    await cq.message.answer(text)
+
+
+@dp.message(F.text == '🎁 Подарить')
+async def gifts_cmd(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    gifts = gifts_service.get_all()
+    text = '🎁 Выбери подарок — она будет рада 😊\n\n' + '\n'.join(
+        f'{g.emoji} {g.name} — {g.cost}⭐' for g in gifts)
+    rows = [[InlineKeyboardButton(text=f'{g.emoji} {g.name} · {g.cost}⭐', callback_data=f'gift:{g.id}')]
+            for g in gifts]
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@dp.callback_query(F.data.startswith('gift:'))
+async def gift_buy(cq: types.CallbackQuery):
+    gift = gifts_service.get(cq.data.split(':', 1)[1])
+    if not gift:
+        await cq.answer('Подарок не найден', show_alert=True)
+        return
+    await cq.answer()
+    await send_stars_invoice(cq.message.chat.id, f'Подарок: {gift.name}',
+                             f'{gift.emoji} {gift.name} для неё — она точно оценит 😉',
+                             f'gift:{gift.id}', gift.cost)
+
+
+@dp.message(F.text == '💕 Свидание')
+async def dates_cmd(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
+    rows = [[InlineKeyboardButton(text=f'{d.emoji} {d.name} · {d.cost}⭐', callback_data=f'date:{d.id}')]
+            for d in dates_service.get_available(level)]
+    rows += [[InlineKeyboardButton(text=f'🔒 {d.name} — уровень {d.min_level}', callback_data=f'date_locked:{d.id}')]
+             for d in dates_service.get_locked(level)]
+    await message.answer('💕 Куда пойдём?', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@dp.callback_query(F.data.startswith('date:'))
+async def date_start(cq: types.CallbackQuery):
+    date = dates_service.get(cq.data.split(':', 1)[1])
+    if not date:
+        await cq.answer('Свидание не найдено', show_alert=True)
+        return
+    level = get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
+    if date.min_level > level:
+        await cq.answer(f'Это свидание откроется на уровне {date.min_level} 😉', show_alert=True)
+        return
+    await cq.answer()
+    await send_stars_invoice(cq.message.chat.id, f'Свидание: {date.name}',
+                             f'{date.emoji} {date.name}. В конце она пришлёт фото с прогулки 📸',
+                             f'date:{date.id}', date.cost)
+
+
+@dp.callback_query(F.data.startswith('date_locked:'))
+async def date_locked(cq: types.CallbackQuery):
+    date = dates_service.get(cq.data.split(':', 1)[1])
+    if date:
+        await cq.answer(f'Это свидание откроется на уровне {date.min_level} 😉', show_alert=True)
+    else:
+        await cq.answer()
 
 
 @dp.message(Command('photo', 'selfie'))
