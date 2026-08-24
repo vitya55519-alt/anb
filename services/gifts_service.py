@@ -1,6 +1,7 @@
 """Gifts feature: paid gifts (Telegram Stars) that boost the relationship.
 Pure catalog — payment and relationship deltas are handled in main.py."""
 from dataclasses import dataclass
+from datetime import date, datetime, timezone
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,8 @@ GIFTS: tuple[Gift, ...] = (
          'Это… мне? 😳 Такое красивое. Ты меня балуешь, и мне это нравится 💍'),
     Gift('lingerie_set', 'Комплект белья', '🖤', 20, 4.0,
          'Очень смелый подарок 🖤 Я примерю его для тебя. Скоро.'),
+    Gift('yacht', 'Прогулка на яхте', '🛥', 50, 10.0,
+         'Яхта?! 😍 Ты серьёзно?.. Уже представляю закат, море и только мы вдвоём 🛥❤️'),
 )
 
 
@@ -38,3 +41,23 @@ def get(gift_id: str) -> Gift | None:
         if gift.id == gift_id:
             return gift
     return None
+
+
+# One gift per day is featured at a discount — deterministic rotation by date
+# so everyone sees the same offer and it creates a reason to check in daily.
+DAILY_DISCOUNT = 0.30
+
+
+def get_daily_featured(today: date | None = None) -> Gift:
+    today = today or datetime.now(timezone.utc).date()
+    return GIFTS[today.toordinal() % len(GIFTS)]
+
+
+def is_featured(gift: Gift, today: date | None = None) -> bool:
+    return gift.id == get_daily_featured(today).id
+
+
+def effective_cost(gift: Gift, today: date | None = None) -> int:
+    if is_featured(gift, today):
+        return max(1, round(gift.cost * (1 - DAILY_DISCOUNT)))
+    return gift.cost

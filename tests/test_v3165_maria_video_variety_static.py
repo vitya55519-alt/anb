@@ -45,8 +45,9 @@ def test_lingerie_underlines_sexuality_not_objectification():
     rules = rules.split('}\n\n# Bust size', 1)[0]
     assert 'natural sexuality' in rules
     assert 'tasteful sexuality' in rules
-    # Level-1 realism is preserved for the old regression check.
-    assert 'bra is clearly but subtly visible under the thin fitted fabric' in rules
+    # Level-1 realism is preserved, now with the explicit layering guard.
+    assert 'only her natural feminine silhouette reads through the fitted fabric' in rules
+    assert 'never on top of or outside the outfit' in rules
     assert 'lace edge' in rules
 
 

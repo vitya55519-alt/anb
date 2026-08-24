@@ -124,27 +124,39 @@ async def animate_image_replicate(
         raise CloudVideoError('empty_image')
 
     import replicate
-    from replicate.exceptions import ReplicateError
 
     prompt = prompt or ANIMATION_PROMPT
     tmp_path = await _save_bytes(image_bytes, mime_type)
     try:
+        client = replicate.Client(api_token=REPLICATE_API_TOKEN)
         input_payload = {
             "first_frame_image": Path(tmp_path),
             "prompt": prompt,
         }
-        run = await asyncio.to_thread(
-            replicate.run,
-            REPLICATE_VIDEO_MODEL,
+        # Explicit create + poll instead of the run(wait=...) helper: the API
+        # caps the Prefer-wait window at 60s, so run(wait=600) returned an
+        # unfinished prediction with no output and the video was lost.
+        prediction = await asyncio.to_thread(
+            client.predictions.create,
+            model=REPLICATE_VIDEO_MODEL,
             input=input_payload,
-            wait=REPLICATE_VIDEO_TIMEOUT_SECONDS,
         )
-    except ReplicateError as exc:
-        logger.warning('Replicate video error model=%s error=%s', REPLICATE_VIDEO_MODEL, exc)
-        raise CloudVideoError(f'replicate:{exc}') from exc
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + REPLICATE_VIDEO_TIMEOUT_SECONDS
+        while prediction.status not in ('succeeded', 'failed', 'canceled'):
+            if loop.time() >= deadline:
+                raise CloudVideoError(f'replicate_timeout:{prediction.status}')
+            await asyncio.sleep(5)
+            await asyncio.to_thread(prediction.reload)
+        if prediction.status != 'succeeded':
+            error_detail = str(getattr(prediction, 'error', '') or '')[:200]
+            raise CloudVideoError(f'replicate_{prediction.status}:{error_detail}')
+        run = prediction.output
+    except CloudVideoError:
+        raise
     except Exception as exc:
-        logger.warning('Replicate video unexpected error: %s', exc)
-        raise CloudVideoError(f'replicate_call_failed:{type(exc).__name__}') from exc
+        logger.warning('Replicate video error model=%s error=%s', REPLICATE_VIDEO_MODEL, exc)
+        raise CloudVideoError(f'replicate:{type(exc).__name__}:{str(exc)[:200]}') from exc
     finally:
         try:
             Path(tmp_path).unlink(missing_ok=True)

@@ -71,7 +71,7 @@ def test_lingerie_underlay_progression_rules():
     assert 'LEVEL_UNDERLAY_RULES' in PHOTO
     rules = PHOTO[PHOTO.index('LEVEL_UNDERLAY_RULES = {'):]
     rules = rules.split('}\n\n# Bust size', 1)[0]
-    assert 'bra is clearly but subtly visible under the thin fitted fabric' in rules
+    assert 'only her natural feminine silhouette reads through the fitted fabric' in rules
     assert 'lace edge' in rules
     assert 'UNDER-CLOTHING REALISM' in PHOTO
 

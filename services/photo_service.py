@@ -375,27 +375,18 @@ OPENAI_LEVEL_VISUAL_RULES = {
 # How the underwear under her clothes reads on camera, by relationship level.
 # Like real life: she always wears lingerie — and it is there to underline her
 # own femininity, confidence and natural sexuality, never to objectify her.
-# At low levels it only shows through the fabric; at higher levels lace edges
-# become a tasteful part of the look.
+# CRITICAL layering rule: the image model loves to draw named lingerie ON TOP
+# of the outfit, so every level explicitly forbids underwear as outerwear;
+# visibility grows only as a through-fabric outline/hint, never as a garment
+# worn over the clothes.
 LEVEL_UNDERLAY_RULES = {
-    1: 'Her everyday bra is clearly but subtly visible under the thin fitted fabric of her top — like a real woman wearing beautiful lingerie under a blouse. The lingerie is not on display: it simply makes her posture and silhouette more feminine and attractive. No exposure.',
-    2: 'The outline of her bra and a hint of lingerie straps show gently through her fitted clothing — her underwear quietly emphasizes her natural sexuality and self-confidence.',
-    3: 'Her lingerie is clearly hinted: the bra outline and a glimpse of a lace edge under the fitted garment. The lace adds femininity and allure, never vulgarity.',
-    4: 'Lace lingerie edges are intentionally visible under the more revealing outfit — elegant sensuality that flatters her figure, still no exposure.',
-    5: 'Elegant visible lace details under the private-feeling outfit: the lingerie flatters her curves and radiates confident, tasteful sexuality.',
-    6: 'Sophisticated visible lace and lingerie-inspired fashion details — her most sensual look, refined, feminine and non-explicit.',
+    1: 'Her everyday outfit fully covers her; her lingerie stays completely hidden underneath it, never on top of or outside the outfit — only her natural feminine silhouette reads through the fitted fabric, like a real woman wearing beautiful lingerie under a blouse. No exposure.',
+    2: 'Her lingerie stays strictly under the outfit, never on top of it; at most the faint natural outline of her bra reads through the fitted fabric — her underwear quietly emphasizes her natural sexuality and self-confidence without ever being drawn as outerwear.',
+    3: 'Her lingerie stays strictly under the outfit, never on top of it; only a subtle bra outline and a hint of a lace edge read through the fitted garment. The lace adds femininity and allure, never vulgarity — the outfit always stays on her.',
+    4: 'Her lingerie stays strictly under the outfit, never on top of it; a delicate lace edge may show at the neckline of the more revealing outfit, everything else stays covered by the clothes — elegant sensuality, no exposure.',
+    5: 'Elegant lingerie details read subtly under the private-feeling outfit while the outfit itself stays on her, never on top of it; the lingerie flatters her curves and radiates confident, tasteful sexuality without ever being worn over the clothes.',
+    6: 'Sophisticated lace and lingerie-inspired details read beneath her most sensual styling — refined, feminine, non-explicit, with the lingerie always under the outfit, never on top of it.',
 }
-
-# Believable everyday ways her lingerie becomes visible in the frame — one
-# random detail per set so the shots vary while staying realistic.
-UNDERWEAR_VISIBILITY_DETAILS = [
-    'a bra strap slipping visibly onto her shoulder',
-    'the lingerie waistband showing above her jeans',
-    'a hint of her bra through a few unbuttoned shirt buttons',
-    'the lace edge of her bra visible at the neckline',
-    'her underwear faintly readable under the sheer fabric',
-    'a strap glimpse where her top neckline sits lower',
-]
 
 # Private scenes escalate with the relationship level: the same scene reads
 # more openly at higher levels. Framing stays non-explicit in every tier.
@@ -599,7 +590,8 @@ OPENAI_GENERAL_AUDIENCE_BLOCK = (
 )
 NEGATIVE_BLOCK = (
     'Avoid identity drift, generic doll-like face, plastic skin, asymmetrical eyes, warped hands, extra fingers, '
-    'duplicate limbs, distorted anatomy, text, watermark, random accessories, and overprocessed beauty filters.'
+    'duplicate limbs, distorted anatomy, text, watermark, random accessories, overprocessed beauty filters, '
+    'and underwear worn over the outfit: bra over the top, panties over jeans or any lingerie as outerwear.'
 )
 
 
@@ -1108,17 +1100,15 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     level_key = max(1, min(6, relationship_level))
     visual_rule = (LEVEL_VISUAL_RULES if seedream else OPENAI_LEVEL_VISUAL_RULES).get(level_key, LEVEL_VISUAL_RULES[1])
     underlay_rule = LEVEL_UNDERLAY_RULES.get(level_key, LEVEL_UNDERLAY_RULES[1])
-    # Inject specific underwear color and style for variety — framed strictly
-    # as the under-layer beneath the main outfit, never as outerwear, so the
-    # image model does not render the lingerie on top of the clothes.
-    if request.underwear_color:
+    # Inject specific underwear color and style only where lingerie is meant
+    # to be seen (high level or private/peek/dressing scenes). Naming the bra
+    # and panties in ordinary low-level shots makes the image model draw them
+    # on top of the outfit, so there the color stays unspoken.
+    if request.underwear_color and (level_key >= 5 or request.scene in {'personal', 'lingerie', 'private_fashion', 'peek', 'dressing'}):
         style_note = f' ({request.underwear_style})' if request.underwear_style else ''
         underlay_rule = (
-            f'Beneath her main outfit, directly against her skin, she wears {request.underwear_color} lingerie{style_note}. '
-            'It is strictly the under-layer under her clothes and never replaces them — the main outfit stays fully on. '
+            f'The lingerie she wears beneath her outfit is {request.underwear_color}{style_note} — always the under-layer, never outerwear. '
         ) + underlay_rule
-    # One random believable detail makes the lingerie visible in this shot.
-    underlay_rule += f' In this frame one believable everyday detail shows it: {random.choice(UNDERWEAR_VISIBILITY_DETAILS)}.'
     # Private scenes escalate with the relationship level (standard/suggestive/revealing).
     tier_framing = ''
     scene_tiers = PRIVATE_SCENE_TIERS.get(request.scene)

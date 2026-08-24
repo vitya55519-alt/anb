@@ -2412,6 +2412,8 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
     its own list of public spaces internally). The user only hears about a
     failure when every available engine failed; a paid run is then refunded.
     """
+    engine_errors: list[str] = []
+    engine_names: list[str] = []
     try:
         delivery = get_photo_delivery_for_user(telegram_id, delivery_id)
         if not delivery or not delivery.get('telegram_file_id'):
@@ -2439,6 +2441,7 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
             engines.append(('hf', animate_image_hf))
         if not engines:
             raise GeminiVideoError('no_video_engine')
+        engine_names = [name for name, _ in engines]
 
         await bot.send_message(chat_id, VIDEO_STATUS_TEXT)
         video_bytes = None
@@ -2453,6 +2456,7 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
                 break
             except Exception as exc:
                 last_error = exc
+                engine_errors.append(f'{engine_name}: {type(exc).__name__}: {str(exc)[:160]}')
                 logger.warning('video engine %s failed user=%s delivery=%s error=%s: %s',
                                engine_name, telegram_id, delivery_id, type(exc).__name__, str(exc)[:300])
         if video_bytes is None:
@@ -2490,7 +2494,14 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
             await bot.send_message(chat_id, 'видео сейчас не получилось 😕 попробуй чуть позже.')
         if telegram_id in ADMIN_TELEGRAM_IDS:
             # Owner diagnostic: exact reason chain so the pipeline can be fixed.
-            await bot.send_message(chat_id, f'🔧 диагностика видео: {type(exc).__name__}: {str(exc)[:300]}')
+            configured = ', '.join(engine_names) or 'none'
+            chain = ' | '.join(engine_errors) if engine_errors else 'no per-engine errors captured'
+            await bot.send_message(
+                chat_id,
+                f'🔧 диагностика видео: {type(exc).__name__}: {str(exc)[:200]}\n'
+                f'движки: {configured}\n'
+                f'цепочка: {chain[:600]}',
+            )
         track_event(
             ensure_user(telegram_id),
             'video_failed',
@@ -2599,6 +2610,8 @@ async def gemini_status_cmd(message: types.Message):
         f'OpenRouter URL: {st["openrouter_base_url"]}\n'
         f'Gemini (fallback): {"✅" if st["gemini_key_present"] else "❌"} model: {st["gemini_model"]}\n'
         f'Gemini Video: {"✅" if video_available() else "❌"}\n'
+        f'Replicate Video: {"✅" if replicate_available() else "❌"}\n'
+        f'fal.ai Video: {"✅" if fal_available() else "❌"}\n'
         f'HF Video (paid engine): {"✅" if hf_video_available() else "❌"}'
     )
 
@@ -2702,7 +2715,7 @@ async def pre_checkout(query: types.PreCheckoutQuery):
             ok = amount == GALLERY_DOWNLOAD_STARS and bool(get_gallery_item_bytes(query.from_user.id, delivery_id))
     elif payload.startswith('gift:'):
         gift = gifts_service.get(payload.split(':', 1)[1])
-        ok = bool(gift) and amount == gift.cost
+        ok = bool(gift) and amount == gifts_service.effective_cost(gift)
     elif payload.startswith('date:'):
         date = dates_service.get(payload.split(':', 1)[1])
         ok = bool(date) and amount == date.cost and date.min_level <= get_relationship_level(query.from_user.id, get_user_character(query.from_user.id))
@@ -2818,7 +2831,10 @@ async def successful_payment(message: types.Message):
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'gift', 'gift': gift.id})
         character_id = get_user_character(message.from_user.id)
         await record_user_message(message.from_user.id, message.from_user.first_name or '', relationship=gift.affection, event_type='gift', reason=f'gift:{gift.id}', character_id=character_id)
+        from services.gamification_service import unlock_achievement
+        unlock_achievement(message.from_user.id, 'first_gift')
         await message.answer(f'🎁 Ты подарил {gift.emoji} {gift.name}!\n\n{gift.reaction}')
+        await _send_voice_note(message.chat.id, message.from_user.id, gift.reaction)
         return
 
     if payload.startswith('date:'):
@@ -2828,10 +2844,7 @@ async def successful_payment(message: types.Message):
             return
         record_payment(message.from_user.id, 'date', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'date', 'date': date.id})
-        character_id = get_user_character(message.from_user.id)
-        await record_user_message(message.from_user.id, message.from_user.first_name or '', relationship=date.affection, intimacy=date.affection / 2, event_type='date', reason=f'date:{date.id}', character_id=character_id)
-        await message.answer(f'{date.emoji} {date.text}\n\nА вот и фото с нашей прогулки 😊')
-        await _start_photo_background(message.chat.id, message.from_user.id, PhotoRequest(scene=date.scene, mood='romantic'), 'story')
+        await _deliver_date_reward(message.chat.id, message.from_user.id, message.from_user.first_name or '', date)
         return
 
     if payload.startswith('photo:'):
@@ -2850,6 +2863,38 @@ async def successful_payment(message: types.Message):
 
 
 # === КВАРТИРА / ПОДАРКИ / СВИДАНИЯ (v3.17.0) ===
+
+async def _send_voice_note(chat_id: int, telegram_id: int, text: str) -> None:
+    """She answers with her voice after gifts/dates — only when the user has
+    voice replies enabled. Emojis are stripped so TTS reads naturally."""
+    try:
+        user = get_user(telegram_id)
+        if not user or not getattr(user, 'voice_enabled', False):
+            return
+        clean = ''.join(ch for ch in text if ch.isalnum() or ch in ' .,!?:;-—…()«»\'\n')
+        if not clean.strip():
+            return
+        character_id = get_user_character(telegram_id)
+        audio = await synthesize_bytes(clean, user.voice_style, character_id=character_id)
+        await bot.send_voice(chat_id, BufferedInputFile(audio, filename=f'{character_id}.ogg'))
+    except Exception:
+        logger.exception('event voice note failed user=%s', telegram_id)
+
+
+async def _deliver_date_reward(chat_id: int, telegram_id: int, user_name: str, date) -> None:
+    """Shared date reward path for paid dates and the free streak date."""
+    character_id = get_user_character(telegram_id)
+    await record_user_message(telegram_id, user_name, relationship=date.affection, intimacy=date.affection / 2, event_type='date', reason=f'date:{date.id}', character_id=character_id)
+    from services.gamification_service import completed_date_ids, unlock_achievement
+    unlock_achievement(telegram_id, 'first_date')
+    completed = completed_date_ids(telegram_id)
+    if len(completed) >= 10:
+        unlock_achievement(telegram_id, 'ten_dates')
+    if len(completed) >= len(dates_service.get_all()):
+        unlock_achievement(telegram_id, 'date_collector')
+    await bot.send_message(chat_id, f'{date.emoji} {date.text}\n\nА вот и фото с нашей прогулки 😊')
+    await _send_voice_note(chat_id, telegram_id, date.text)
+    await _start_photo_background(chat_id, telegram_id, PhotoRequest(scene=date.scene, mood='romantic'), 'story')
 
 @dp.message(F.text == '🏠 Квартира')
 async def apartment_cmd(message: types.Message):
@@ -2915,11 +2960,18 @@ async def room_action(cq: types.CallbackQuery):
 async def gifts_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     gifts = gifts_service.get_all()
-    text = '🎁 Выбери подарок — она будет рада 😊\n\n' + '\n'.join(
-        f'{g.emoji} {g.name} — {g.cost}⭐' for g in gifts)
-    rows = [[InlineKeyboardButton(text=f'{g.emoji} {g.name} · {g.cost}⭐', callback_data=f'gift:{g.id}')]
-            for g in gifts]
-    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    lines = []
+    for g in gifts:
+        if gifts_service.is_featured(g):
+            lines.append(f'{g.emoji} {g.name} — {gifts_service.effective_cost(g)}⭐ 🔥 подарок дня (вместо {g.cost}⭐)')
+        else:
+            lines.append(f'{g.emoji} {g.name} — {g.cost}⭐')
+    rows = [[InlineKeyboardButton(
+        text=(f'{g.emoji} {g.name} · {gifts_service.effective_cost(g)}⭐ 🔥' if gifts_service.is_featured(g)
+              else f'{g.emoji} {g.name} · {g.cost}⭐'),
+        callback_data=f'gift:{g.id}')]
+        for g in gifts]
+    await message.answer('🎁 Выбери подарок — она будет рада 😊\n\n' + '\n'.join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @dp.callback_query(F.data.startswith('gift:'))
@@ -2931,18 +2983,22 @@ async def gift_buy(cq: types.CallbackQuery):
     await cq.answer()
     await send_stars_invoice(cq.message.chat.id, f'Подарок: {gift.name}',
                              f'{gift.emoji} {gift.name} для неё — она точно оценит 😉',
-                             f'gift:{gift.id}', gift.cost)
+                             f'gift:{gift.id}', gifts_service.effective_cost(gift))
 
 
 @dp.message(F.text == '💕 Свидание')
 async def dates_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
-    rows = [[InlineKeyboardButton(text=f'{d.emoji} {d.name} · {d.cost}⭐', callback_data=f'date:{d.id}')]
+    from services.gamification_service import completed_date_ids, has_free_date
+    done = completed_date_ids(message.from_user.id)
+    rows = [[InlineKeyboardButton(text=f'{"✅ " if d.id in done else ""}{d.emoji} {d.name} · {d.cost}⭐', callback_data=f'date:{d.id}')]
             for d in dates_service.get_available(level)]
     rows += [[InlineKeyboardButton(text=f'🔒 {d.name} — уровень {d.min_level}', callback_data=f'date_locked:{d.id}')]
              for d in dates_service.get_locked(level)]
-    await message.answer('💕 Куда пойдём?', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    banner = '\n\n🎁 У тебя есть бесплатное свидание за неделю стрика!' if has_free_date(message.from_user.id) else ''
+    progress = f'\n\n📖 Свиданий в коллекции: {len(done)}/{len(dates_service.get_all())}'
+    await message.answer(f'💕 Куда пойдём?{banner}{progress}', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @dp.callback_query(F.data.startswith('date:'))
@@ -2954,6 +3010,13 @@ async def date_start(cq: types.CallbackQuery):
     level = get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
     if date.min_level > level:
         await cq.answer(f'Это свидание откроется на уровне {date.min_level} 😉', show_alert=True)
+        return
+    from services.gamification_service import has_free_date, consume_free_date
+    if has_free_date(cq.from_user.id):
+        consume_free_date(cq.from_user.id)
+        await cq.answer('Бесплатное свидание за твой стрик 🔥')
+        track_event(ensure_user(cq.from_user.id), 'free_date_used', metadata={'date': date.id})
+        await _deliver_date_reward(cq.message.chat.id, cq.from_user.id, cq.from_user.first_name or '', date)
         return
     await cq.answer()
     await send_stars_invoice(cq.message.chat.id, f'Свидание: {date.name}',

@@ -38,6 +38,10 @@ def get_available(level: int) -> list[Date]:
     return [date for date in DATES if date.min_level <= max(1, min(6, level))]
 
 
+def get_all() -> list[Date]:
+    return list(DATES)
+
+
 def get_locked(level: int) -> list[Date]:
     """Dates still closed for this level — shown with a lock in the menu."""
     return [date for date in DATES if date.min_level > max(1, min(6, level))]

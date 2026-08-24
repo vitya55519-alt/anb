@@ -87,7 +87,7 @@ def test_gift_and_date_purchase_via_stars_invoice():
 def test_pre_checkout_validates_gift_and_date():
     block = MAIN[MAIN.index('async def pre_checkout('):MAIN.index('async def successful_payment(')]
     assert "payload.startswith('gift:')" in block
-    assert 'amount == gift.cost' in block
+    assert 'amount == gifts_service.effective_cost(gift)' in block
     assert "payload.startswith('date:')" in block
     assert 'amount == date.cost' in block
     # Dates must also be re-checked against the user's current level at checkout.
@@ -101,9 +101,13 @@ def test_successful_payment_handles_gift_and_date():
     assert 'await record_user_message(' in gift_part
     date_part = block[block.index("payload.startswith('date:'):"):]
     assert "record_payment(message.from_user.id, 'date'" in date_part
-    # Paid date ends with a fresh photo set from the date scene.
-    assert "PhotoRequest(scene=date.scene, mood='romantic')" in date_part
-    assert "_start_photo_background(message.chat.id, message.from_user.id" in date_part
+    # Paid date goes through the shared reward path.
+    assert 'await _deliver_date_reward(message.chat.id, message.from_user.id' in date_part
+    # The shared reward path ends with a fresh photo set from the date scene.
+    helper = MAIN[MAIN.index('async def _deliver_date_reward('):]
+    helper = helper[:helper.index('@dp.message')]
+    assert "PhotoRequest(scene=date.scene, mood='romantic')" in helper
+    assert '_start_photo_background(chat_id, telegram_id' in helper
 
 
 def test_new_handlers_registered_before_text_catch_all():

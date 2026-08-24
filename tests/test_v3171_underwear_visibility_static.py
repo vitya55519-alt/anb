@@ -9,15 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 
 
-def test_visibility_details_pool_and_injection():
-    assert 'UNDERWEAR_VISIBILITY_DETAILS = [' in PHOTO
-    assert 'a bra strap slipping visibly onto her shoulder' in PHOTO
-    assert 'the lingerie waistband showing above her jeans' in PHOTO
-    assert 'a hint of her bra through a few unbuttoned shirt buttons' in PHOTO
-    # The detail is injected randomly into the under-clothing rule per set.
-    assert 'random.choice(UNDERWEAR_VISIBILITY_DETAILS)' in PHOTO
-    block = PHOTO[PHOTO.index('underlay_rule = LEVEL_UNDERLAY_RULES.get(level_key'):]
-    assert 'underlay_rule += ' in block[:block.index('season = request.season')]
+def test_visibility_details_pool_removed():
+    # The visibility-detail injection made the model render lingerie ON TOP of
+    # the outfit (v3.17.2 evidence) — it was removed entirely.
+    assert 'UNDERWEAR_VISIBILITY_DETAILS' not in PHOTO
+    assert 'underlay_rule += ' not in PHOTO
+    # Instead the negatives explicitly forbid lingerie as outerwear.
+    assert 'underwear worn over the outfit' in PHOTO
+    assert 'lingerie as outerwear' in PHOTO
 
 
 def test_private_scene_tiers_level_mapping():

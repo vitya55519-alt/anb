@@ -8,11 +8,16 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from config import FREE_MESSAGES_PER_DAY, CHARACTER_ID, STREAK_REWARDS
-from models.app_models import Achievement, User
+from models.app_models import Achievement, StarTransaction, User
 from services.db import SessionLocal
 from services.user_service import ensure_user, get_user
 
 logger = logging.getLogger(__name__)
+
+# A 7-day streak grants one free date voucher (stored as 0-star payment
+# markers so no schema change is needed). The voucher is granted once and
+# consumed on the next date the user starts.
+FREE_DATE_STREAK = 7
 
 ACHIEVEMENTS = {
     'first_message': ('Первое сообщение', 'Вы начали общение'),
@@ -22,6 +27,10 @@ ACHIEVEMENTS = {
     'photo_collector': ('Коллекционер', 'Открыли все фото одного уровня'),
     'premium_member': ('Premium', 'Оформили подписку Premium'),
     'hundred_messages': ('100 сообщений', 'Общались более 100 раз'),
+    'first_gift': ('Первый подарок', 'Подарили ей первый подарок'),
+    'first_date': ('Первое свидание', 'Сходили на первое свидание'),
+    'ten_dates': ('10 свиданий', 'Десять свиданий — настоящий роман'),
+    'date_collector': ('Сердцеед', 'Прошли все свидания из каталога'),
 }
 
 
@@ -93,7 +102,70 @@ def touch_activity(telegram_id: int) -> dict:
         except Exception:
             logger.exception('streak reward failed user=%s streak=%s', telegram_id, streak)
 
+    # 7-day streak: one free date voucher on top of the photo credits.
+    if streak >= FREE_DATE_STREAK and summary['new_streak_day']:
+        try:
+            grant_free_date_voucher(telegram_id)
+            summary['free_date_granted'] = True
+        except Exception:
+            logger.exception('free date voucher failed user=%s', telegram_id)
+
     return summary
+
+
+def _free_date_markers(telegram_id: int) -> tuple[str, str]:
+    return (
+        f'streak{FREE_DATE_STREAK}_date:{telegram_id}',
+        f'streak{FREE_DATE_STREAK}_date_used:{telegram_id}',
+    )
+
+
+def grant_free_date_voucher(telegram_id: int) -> None:
+    from services.payments import record_payment
+    grant_marker, _ = _free_date_markers(telegram_id)
+    record_payment(telegram_id, 'free_date_grant', 0, grant_marker)
+
+
+def has_free_date(telegram_id: int) -> bool:
+    grant_marker, used_marker = _free_date_markers(telegram_id)
+    with SessionLocal() as session:
+        user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+        if not user:
+            return False
+        found = set(session.scalars(
+            select(StarTransaction.telegram_charge_id).where(
+                StarTransaction.user_id == user.id,
+                StarTransaction.telegram_charge_id.in_([grant_marker, used_marker]),
+            )
+        ).all())
+    return grant_marker in found and used_marker not in found
+
+
+def consume_free_date(telegram_id: int) -> bool:
+    if not has_free_date(telegram_id):
+        return False
+    from services.payments import record_payment
+    _, used_marker = _free_date_markers(telegram_id)
+    record_payment(telegram_id, 'free_date_used', 0, used_marker)
+    return True
+
+
+def completed_date_ids(telegram_id: int) -> set[str]:
+    """Dates the user has completed — from date:* relationship events."""
+    from models.relationship_models import RelationshipEvent, UserCharacterRelationship
+    user = get_user(telegram_id)
+    if not user:
+        return set()
+    with SessionLocal() as session:
+        rows = session.scalars(
+            select(RelationshipEvent.reason)
+            .join(UserCharacterRelationship, RelationshipEvent.user_character_id == UserCharacterRelationship.id)
+            .where(
+                UserCharacterRelationship.user_id == user.id,
+                RelationshipEvent.event_type == 'date',
+            )
+        ).all()
+    return {r.split(':', 1)[1] for r in rows if r and r.startswith('date:') and ':' in r}
 
 
 def unlock_achievement(telegram_id: int, key: str) -> bool:
