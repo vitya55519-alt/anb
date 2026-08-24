@@ -9,7 +9,7 @@ def test_ordinary_photo_prompt_is_separate_from_sensual_chat_dna():
     assert 'This prompt is independent from chat personality, flirting, sensuality or relationship erotics' in PHOTO
     ordinary = PHOTO.split('ORDINARY_BODY_IDENTITY = (', 1)[1].split(')\nORDINARY_REFERENCE_PROTOCOL', 1)[0]
     # Anna's canonical bust is part of the neutral body identity since v3.15.6.
-    assert 'd cup' in ordinary.lower()
+    assert 'e cup' in ordinary.lower()
     assert 'lingerie' not in ordinary.lower()
     assert 'erotic' not in ordinary.lower()
 

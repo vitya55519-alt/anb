@@ -103,6 +103,8 @@ SCENES = {
     'personal': 'a tasteful private adult lingerie portrait made especially for someone she trusts, non-explicit, with opaque lingerie coverage',
     'lingerie': 'tasteful adult glamour/boudoir fashion in lingerie, non-explicit and fully covered by the garment',
     'private_fashion': 'premium private adult fashion portrait, non-explicit, polished and highly personalized',
+    'peek': 'a casual personal smartphone photo where her lingerie believably peeks from under the everyday outfit',
+    'dressing': 'a natural relaxed personal photo while she is getting dressed, her underwear still visible before the clothing goes on',
 }
 
 SCENE_LEVELS = {
@@ -112,6 +114,7 @@ SCENE_LEVELS = {
     'evening': 4, 'bar': 4, 'karaoke': 4, 'rooftop': 4,
     'club': 5, 'personal': 5, 'lingerie': 5,
     'private_fashion': 6,
+    'peek': 4, 'dressing': 4,
 }
 STAGE_INDEX = {
     'stranger': 0, 'acquaintance': 1, 'close': 2, 'intimate': 3,
@@ -141,6 +144,8 @@ AUTO_CAPTIONS = {
     'personal': ('это уже чуть более личный сет 😌', 'ладно, эти кадры именно тебе'),
     'lingerie': ('сегодня чуть смелее обычного 😏', 'вот такой приватный fashion-настрой'),
     'private_fashion': ('это уже мой самый личный fashion-сет 😌', 'этот сет оставлю только здесь'),
+    'peek': ('ой, кажется, кое-что видно 😏', 'заметила только когда сфоткалась… ну пусть будет'),
+    'dressing': ('ещё собираюсь 😌', 'поймала момент до того, как оделась'),
 }
 
 SAFE_EXPLICIT = re.compile(
@@ -163,6 +168,7 @@ SCENE_GROUP = {
     'restaurant':'evening', 'evening':'evening', 'bar':'evening', 'karaoke':'evening', 'rooftop':'evening', 'club':'evening',
     'personal':'adult', 'private_fashion':'personal',
     'lingerie':'adult',
+    'peek':'home', 'dressing':'home',
 }
 
 WARDROBE_LEVEL_POOLS = {
@@ -380,6 +386,37 @@ LEVEL_UNDERLAY_RULES = {
     6: 'Sophisticated visible lace and lingerie-inspired fashion details — her most sensual look, refined, feminine and non-explicit.',
 }
 
+# Believable everyday ways her lingerie becomes visible in the frame — one
+# random detail per set so the shots vary while staying realistic.
+UNDERWEAR_VISIBILITY_DETAILS = [
+    'a bra strap slipping visibly onto her shoulder',
+    'the lingerie waistband showing above her jeans',
+    'a hint of her bra through a few unbuttoned shirt buttons',
+    'the lace edge of her bra visible at the neckline',
+    'her underwear faintly readable under the sheer fabric',
+    'a strap glimpse where her top neckline sits lower',
+]
+
+# Private scenes escalate with the relationship level: the same scene reads
+# more openly at higher levels. Framing stays non-explicit in every tier.
+PRIVATE_SCENE_TIERS = {
+    'lingerie': {
+        'standard': 'elegant lingerie catalog framing, realistic lace details, professional studio lighting, fabric texture visible',
+        'suggestive': 'intimate boudoir framing, sheer robe open, lingerie clearly visible underneath, realistic skin and fabric contrast, soft shadows',
+        'revealing': 'professional lingerie photography, bra and panties visible as the outfit, realistic body details, high-end editorial',
+    },
+    'personal': {
+        'standard': 'candid personal photo, casual intimate wear visible, natural setting',
+        'suggestive': 'personal intimate moment, underwear clearly visible, authentic bedroom lighting, realistic',
+        'revealing': 'intimate portrait, lingerie clearly visible, private setting, realistic skin texture',
+    },
+    'private_fashion': {
+        'standard': 'fashion editorial framing, visible underwear under a sheer blouse, elegant styling',
+        'suggestive': 'intimate fashion framing, lingerie visible through the fabric, realistic sheer material, authentic feminine form',
+        'revealing': 'boudoir-style fashion, lingerie visible as the main outfit, realistic details, professional lighting',
+    },
+}
+
 # Underwear color variety — every photo should have a different lingerie color
 # so the wardrobe never feels repetitive. Includes both everyday and elegant tones.
 UNDERWEAR_COLOR_POOL = [
@@ -408,7 +445,7 @@ UNDERWEAR_STYLE_POOL = [
 # Bust size must never drift between frames or between sets.
 BUST_CONSISTENCY_RULE = (
     'BUST CONSISTENCY: her bust must look exactly the same size in this frame as in every other photo — '
-    'a full feminine bust with silicone implants (Russian size 4, D cup), neither larger nor smaller, '
+    'a full feminine bust with silicone implants (Russian size 5, E cup), neither larger nor smaller, '
     'with the same shape and the same natural fit inside the clothing.'
 )
 
@@ -428,7 +465,7 @@ ANNA_FACE_IDENTITY = (
 ANNA_BODY_IDENTITY = (
     'BODY/LOOK IDENTITY — permanent and non-negotiable. Reference image 2 is the NEW canonical overall look and upper-body silhouette anchor. '
     'Preserve the same slender, fit feminine silhouette with a slim waist and toned figure exactly as shown in the reference. '
-    'Anna has a full feminine bust with silicone implants (Russian size 4, D cup) — this bust size is a permanent part of her identity even if the reference shows a smaller one. '
+    'Anna has a full feminine bust with silicone implants (Russian size 5, E cup) — this bust size is a permanent part of her identity even if the reference shows a smaller one. '
     'Anna has a naturally slim and fit build — this is a core part of her identity. '
     'These proportions are part of Anna\u2019s identity, not a wardrobe effect. Clothing may change, but it must fit the same underlying physique. '
     'Do not add weight, make her thicker, or change her body type. Keep the same slim proportions visible in the canonical reference. '
@@ -436,7 +473,7 @@ ANNA_BODY_IDENTITY = (
 )
 OPENAI_REFERENCE_PROTOCOL = (
     'REFERENCE PROTOCOL: image 1 controls Anna\u2019s exact face and hair identity; image 2 reinforces the same appearance and stable slender silhouette. '
-    'The two images depict the same canonical Anna. Anna\u2019s bust is always full (silicone implants, Russian size 4, D cup) regardless of how the reference shows it. '
+    'The two images depict the same canonical Anna. Anna\u2019s bust is always full (silicone implants, Russian size 5, E cup) regardless of how the reference shows it. '
     'Use requested scene, outfit, hairstyle and camera instructions for everything else. '
     'Never blend in facial traits from legacy references. Always preserve the same slim body proportions from image 2.'
 )
@@ -448,7 +485,7 @@ OPENAI_REFERENCE_PROTOCOL = (
 ORDINARY_BODY_IDENTITY = (
     'ORDINARY PHOTO IDENTITY: reference image 2 defines Anna\u2019s exact overall physique, proportions and silhouette. '
     'Preserve the same slim, fit body geometry with a defined waist and feminine figure exactly as shown. '
-    'Include Anna\u2019s full bust (silicone implants, Russian size 4, D cup) as a permanent body trait even if the reference shows it smaller; keep the waist slim. '
+    'Include Anna\u2019s full bust (silicone implants, Russian size 5, E cup) as a permanent body trait even if the reference shows it smaller; keep the waist slim. '
     'Do not add weight, make her thicker, or change her body type — keep the same slender proportions from the reference. '
     'Clothing changes coverage and styling only; the underlying body identity stays fixed and slim.'
 )
@@ -461,7 +498,7 @@ ORDINARY_IDENTITY_LOCK = ANNA_FACE_IDENTITY + ' ' + ORDINARY_BODY_IDENTITY + ' '
 BODY_REINFORCEMENT = (
     'BODY CONSISTENCY CHECK: keep Anna\u2019s overall physique and proportions visually consistent with reference image 2. '
     'She is naturally slim and fit — do NOT add weight, make her thicker, or change her body type in any pose, angle, clothing or scene. '
-    'Her bust stays full and consistent in every scene (silicone implants, Russian size 4, D cup). '
+    'Her bust stays full and consistent in every scene (silicone implants, Russian size 5, E cup). '
     'Including mirror, seated, athletic, full-body and loose-clothing scenes: preserve the same slender proportions. '
     'Keep anatomy realistic, clothing scene-appropriate and the pose natural.'
 )
@@ -543,7 +580,7 @@ SEEDREAM_IDENTITY_LOCK = (
     'The supplied reference defines Anna\u2019s NEW permanent canonical identity. Create the SAME fictional adult woman, Anna, age 26. '
     'Identity preservation has absolute priority. Preserve the exact face, eye shape and spacing, dark defined eyebrows, refined nose, full lips, cheekbones, jawline, '
     'warm light-to-medium skin tone, long dark-brown brunette hair, and the same slim, fit feminine proportions visible in the supplied canonical reference. '
-    'Anna has a full bust with silicone implants (Russian size 4, D cup) as a permanent trait even if the reference shows it smaller. '
+    'Anna has a full bust with silicone implants (Russian size 5, E cup) as a permanent trait even if the reference shows it smaller. '
     'Do not drift back to any previous Anna face, do not substitute another woman, and do not add weight or change her body type.'
 )
 BODY_REINFORCEMENT_SCENES = {'mirror', 'gym', 'cafe', 'restaurant', 'home', 'outfit', 'selfie'}
@@ -1080,6 +1117,14 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
             f'Beneath her main outfit, directly against her skin, she wears {request.underwear_color} lingerie{style_note}. '
             'It is strictly the under-layer under her clothes and never replaces them — the main outfit stays fully on. '
         ) + underlay_rule
+    # One random believable detail makes the lingerie visible in this shot.
+    underlay_rule += f' In this frame one believable everyday detail shows it: {random.choice(UNDERWEAR_VISIBILITY_DETAILS)}.'
+    # Private scenes escalate with the relationship level (standard/suggestive/revealing).
+    tier_framing = ''
+    scene_tiers = PRIVATE_SCENE_TIERS.get(request.scene)
+    if scene_tiers:
+        tier_key = 'revealing' if level_key >= 6 else ('suggestive' if level_key >= 5 else 'standard')
+        tier_framing = f'PRIVATE SCENE FRAMING: {scene_tiers[tier_key]}.\n'
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
     identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key)
@@ -1097,14 +1142,15 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'WARDROBE: {wardrobe}. {figure_note}'
         'The outfit must be believable for this exact venue, weather and time of day. Do not reuse a heavy sweater or hoodie in a visibly warm summer scene.\n'
         f'UNDER-CLOTHING REALISM: {underlay_rule}\n'
+        f'{tier_framing}'
         f'{BUST_CONSISTENCY_RULE}\n'
         f'HAIRSTYLE: {request.hairstyle}.\n'
         f'MAKEUP: {request.makeup}.\n'
         f'STYLING DETAILS: {request.accessory}.\n'
         f'TIME OF DAY: {request.time_of_day}. The light must match this time of day.\n'
         f'CAMERA/POSE: {angle}.\n'
-        f'HAIR COLOR THIS MONTH: {request.hair_color}. This temporary hair color overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n' if request.hair_color else ''
-        f'{body_reinforcement}\n'
+        + (f'HAIR COLOR THIS MONTH: {request.hair_color}. This temporary hair color overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n' if request.hair_color else '')
+        + f'{body_reinforcement}\n'
         f'MOOD: {request.mood}.\n'
         f'{expression_identity}\n'
         f'{personal}\n'

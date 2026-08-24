@@ -5,7 +5,7 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 ANNA_CARD = (ROOT / 'data' / 'characters' / 'anna.json').read_text(encoding='utf-8')
 
 def _has_bust(block: str) -> bool:
-    return 'silicone implants' in block and 'Russian size 4, D cup' in block
+    return 'silicone implants' in block and 'Russian size 5, E cup' in block
 
 
 def test_bust_identity_covers_all_photo_routes():
@@ -36,4 +36,4 @@ def test_slim_fit_build_is_preserved_alongside_bust():
 
 
 def test_anna_card_lists_bust_as_canonical_trait():
-    assert 'full bust with silicone implants (Russian size 4, D cup)' in ANNA_CARD
+    assert 'full bust with silicone implants (Russian size 5, E cup)' in ANNA_CARD
