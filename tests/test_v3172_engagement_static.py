@@ -103,3 +103,20 @@ def test_date_collection_and_achievements():
     # The dates menu shows the collection state.
     assert 'Свиданий в коллекции' in MAIN
     assert '✅' in MAIN
+
+
+def test_admin_can_test_gifts_and_dates_without_stars():
+    # Admin clicks deliver the gift/date instantly — no invoice, no voucher.
+    gift = MAIN[MAIN.index('async def gift_buy('):]
+    gift = gift[:gift.index('@dp.', 10)]
+    assert 'if cq.from_user.id in ADMIN_TELEGRAM_IDS:' in gift
+    assert "'admin_test_gift'" in gift
+    assert 'админ-тест: Stars не списаны' in gift
+    assert 'await _send_voice_note(cq.message.chat.id, cq.from_user.id, gift.reaction)' in gift
+    date = MAIN[MAIN.index('async def date_start('):]
+    date = date[:date.index('@dp.', 10)]
+    assert 'if cq.from_user.id in ADMIN_TELEGRAM_IDS:' in date
+    assert "'admin_test_date'" in date
+    assert 'await _deliver_date_reward(cq.message.chat.id' in date
+    # Admin bypass runs before the free-date voucher is consumed.
+    assert date.index('ADMIN_TELEGRAM_IDS') < date.index('has_free_date(cq.from_user.id)')

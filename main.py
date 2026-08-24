@@ -2980,6 +2980,17 @@ async def gift_buy(cq: types.CallbackQuery):
     if not gift:
         await cq.answer('Подарок не найден', show_alert=True)
         return
+    # Admin test mode: deliver the gift instantly, without a Stars invoice.
+    if cq.from_user.id in ADMIN_TELEGRAM_IDS:
+        character_id = get_user_character(cq.from_user.id)
+        await record_user_message(cq.from_user.id, cq.from_user.first_name or '', relationship=gift.affection, event_type='gift', reason=f'gift:{gift.id}', character_id=character_id)
+        from services.gamification_service import unlock_achievement
+        unlock_achievement(cq.from_user.id, 'first_gift')
+        track_event(ensure_user(cq.from_user.id), 'admin_test_gift', metadata={'gift': gift.id})
+        await cq.answer('🔧 админ-тест: Stars не списаны')
+        await cq.message.answer(f'🎁 Ты подарил {gift.emoji} {gift.name}!\n\n{gift.reaction}')
+        await _send_voice_note(cq.message.chat.id, cq.from_user.id, gift.reaction)
+        return
     await cq.answer()
     await send_stars_invoice(cq.message.chat.id, f'Подарок: {gift.name}',
                              f'{gift.emoji} {gift.name} для неё — она точно оценит 😉',
@@ -3012,6 +3023,12 @@ async def date_start(cq: types.CallbackQuery):
         await cq.answer(f'Это свидание откроется на уровне {date.min_level} 😉', show_alert=True)
         return
     from services.gamification_service import has_free_date, consume_free_date
+    # Admin test mode: run the date instantly, without invoice or voucher.
+    if cq.from_user.id in ADMIN_TELEGRAM_IDS:
+        await cq.answer('🔧 админ-тест: Stars не списаны')
+        track_event(ensure_user(cq.from_user.id), 'admin_test_date', metadata={'date': date.id})
+        await _deliver_date_reward(cq.message.chat.id, cq.from_user.id, cq.from_user.first_name or '', date)
+        return
     if has_free_date(cq.from_user.id):
         consume_free_date(cq.from_user.id)
         await cq.answer('Бесплатное свидание за твой стрик 🔥')

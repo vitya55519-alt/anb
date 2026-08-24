@@ -1,4 +1,4 @@
-# BUILD CHANGES v3.17.2
+# BUILD CHANGES v3.17.2 / v3.17.3
 
 ## Bug fixes
 
@@ -67,6 +67,15 @@ the top/jeans. Root causes and fixes in `services/photo_service.py`:
 - New achievements: `first_gift`, `first_date`, `ten_dates`, `date_collector`
   (wired into the gift and date reward paths).
 - New premium gift: 🛥 Прогулка на яхте (50⭐, +10.0 affection).
+
+## v3.17.3 — Admin test mode for paid features
+- Admins (`ADMIN_TELEGRAM_IDS`) can now click any gift or date and get the
+  full flow instantly — relationship delta, her reply, voice note, reward
+  photo set — without a Stars invoice and without consuming the free-date
+  voucher. Tracked as `admin_test_gift` / `admin_test_date`.
+- Level-gated content (apartment rooms, dates, photo scenes) is already
+  testable via the existing `/testlevel 1..6` override (`/testlevel off` to
+  reset); the video pipeline has `/videotest`.
 
 ## Tests
 - Updated: `test_v31611_underwear_underlay_static.py` (new under-layer
