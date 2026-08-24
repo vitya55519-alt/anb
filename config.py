@@ -80,6 +80,12 @@ VIDEO_PREMIUM_FREE_DAILY = max(0, int(os.getenv("VIDEO_PREMIUM_FREE_DAILY", "1")
 # varied experience without redundant generations.
 COMMUNITY_POOL_ENABLED = os.getenv("COMMUNITY_POOL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 
+# When enabled, free/story photo sets are served from the community pool first
+# (other users' AI generations for the same character+scene); fresh AI
+# generation runs only when the pool has no full unseen set for this user.
+# Paid credit sets always generate fresh AI photos regardless of this flag.
+COMMUNITY_POOL_FIRST = os.getenv("COMMUNITY_POOL_FIRST", "true").strip().lower() in {"1", "true", "yes", "on"}
+
 # Gemini native image generation / Nano Banana 2.
 # Ordinary fully-clothed scenes can use the same GEMINI_API_KEY as chat.
 # If the model/tier is unavailable, photo_service falls back to GPT Image 2.

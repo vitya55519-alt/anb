@@ -32,7 +32,7 @@ from config import (
     PHOTO_ROUTER_MODE, PHOTO_SET_SIZE,
     GEMINI_API_KEY, GEMINI_IMAGE_ENABLED, GEMINI_IMAGE_MODEL, GEMINI_IMAGE_TIMEOUT_SECONDS, GEMINI_IMAGE_ESTIMATED_COST_USD, GEMINI_IMAGE_ASPECT_RATIO, GEMINI_IMAGE_SIZE,
     POLLINATIONS_ENABLED, POLLINATIONS_MODEL, POLLINATIONS_TIMEOUT_SECONDS, POLLINATIONS_WIDTH, POLLINATIONS_HEIGHT,
-    COMMUNITY_POOL_ENABLED,
+    COMMUNITY_POOL_ENABLED, COMMUNITY_POOL_FIRST,
 )
 from models.app_models import User
 from models.relationship_models import UserCharacterRelationship
@@ -1988,7 +1988,7 @@ def query_community_photos(
         ]
 
 
-_PRIVATE_LIBRARY_SCENES = {'personal', 'lingerie', 'private_fashion'}
+_PRIVATE_LIBRARY_SCENES = {'personal', 'lingerie', 'private_fashion', 'peek', 'dressing'}
 
 def _library_fallback_scene_order(requested_scene: str, relationship_level: int) -> tuple[str, ...]:
     """Return compatible ordinary-library scenes in graceful-fallback order."""
@@ -2149,9 +2149,42 @@ async def deliver_photo(
     caption = caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',)))
     sent_messages = []
 
-    # Always generate fresh AI photos. The community pool and curated library
-    # are safety nets for when AI generation fails — they never take priority.
-    # This ensures every user gets unique photos, not recycled content.
+    # Community pool first for free/story sets: when other users' AI
+    # generations already cover this character+scene, serve the shared photos
+    # instead of paying for a duplicate AI run. Paid credit sets always
+    # generate fresh AI photos, and AI still runs whenever the pool has no
+    # full unseen set for this user. Fresh AI frames keep feeding the pool
+    # (community_shared=True in _send_frame).
+    if (
+        delivery_type in {'free', 'story'}
+        and request.scene not in _PRIVATE_LIBRARY_SCENES
+        and COMMUNITY_POOL_ENABLED and COMMUNITY_POOL_FIRST
+    ):
+        level = get_relationship_level(telegram_id, character_id)
+        community_photos = query_community_photos(telegram_id, character_id, request.scene, level, count=PHOTO_SET_SIZE)
+        if len(community_photos) >= PHOTO_SET_SIZE:
+            for idx, cp in enumerate(community_photos[:PHOTO_SET_SIZE]):
+                row_id = _insert_delivery_row(
+                    telegram_id, request.scene, delivery_type,
+                    provider='community_pool', estimated_cost_usd=0.0,
+                    character_id=character_id,
+                    source_delivery_id=cp['id'],
+                )
+                sent = await bot.send_photo(
+                    chat_id, cp['telegram_file_id'],
+                    caption=caption if idx == 0 else None,
+                    reply_markup=_photo_action_markup(row_id),
+                )
+                _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else cp['telegram_file_id'])
+                sent_messages.append(sent)
+            _bump_photo_usage(telegram_id, delivery_type, character_id=character_id)
+            uid = ensure_user(telegram_id)
+            track_event(uid, 'photo_community_pool_served', metadata={'scene': request.scene, 'count': len(sent_messages)})
+            logger.info('community pool served user=%s scene=%s count=%s', telegram_id, request.scene, len(sent_messages))
+            return sent_messages
+
+    # Paid sets and scenes the pool cannot cover generate fresh AI photos. The
+    # community pool and curated library remain safety nets if AI fails.
 
     async def _send_frame(result: GeneratedPhoto, idx: int):
         item_caption = caption if idx == 0 else None

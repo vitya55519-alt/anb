@@ -1,10 +1,12 @@
-"""Static regression tests for v3.16.9: community photo pool (fallback only).
+"""Static regression tests for v3.16.9 + v3.17.4: community photo pool.
 
-AI generation ALWAYS takes priority — every user gets fresh unique photos.
-The community pool and curated library are safety nets for when AI providers
-fail. This ensures no recycled content while still recovering gracefully.
+v3.16.9: every AI-generated frame enters the shared pool (community_shared),
+and the pool is a safety net when AI providers fail.
+v3.17.4: free/story sets are served from the pool FIRST when it holds a full
+unseen set; paid credit sets always generate fresh AI photos.
 
-Delivery priority: AI generation -> community pool fallback -> library fallback.
+Delivery priority (free/story): community pool -> AI generation -> pool/library
+fallback. Paid: AI generation only.
 """
 from pathlib import Path
 
@@ -50,21 +52,21 @@ def test_query_community_photos_function():
 
 # ── Delivery routing ──────────────────────────────────────────────────────
 
-def test_ai_generation_always_takes_priority():
-    # The comment block before _send_frame makes the policy explicit:
-    # AI always first, community/library are safety nets only.
-    assert 'Always generate fresh AI photos' in PHOTO
-    assert 'safety nets' in PHOTO
-    # deliver_photo must NOT call query_community_photos or choose_unseen_pack
-    # before the AI generation try block. The function definition is fine above.
+def test_pool_first_policy_for_free_and_story():
+    # v3.17.4: free/story sets consult the community pool before AI generation.
     deliver_fn = PHOTO[PHOTO.index('async def deliver_photo('):PHOTO.index('async def _send_frame(')]
-    assert 'query_community_photos(' not in deliver_fn
-    assert 'choose_unseen_pack(' not in deliver_fn
+    assert 'query_community_photos(' in deliver_fn
+    assert "delivery_type in {'free', 'story'}" in deliver_fn
+    assert 'COMMUNITY_POOL_FIRST' in deliver_fn
+    # Only a full unseen set is served proactively — partial pools fall through to AI.
+    assert 'len(community_photos) >= PHOTO_SET_SIZE' in deliver_fn
+    # Paid credit sets never take the pool path (the condition above is
+    # limited to free/story), so paying users always get fresh AI photos.
 
 
-def test_community_pool_is_fallback_only():
-    # Community pool appears in the error handler (except PhotoGenerationError),
-    # NOT before the AI generation try block.
+def test_community_pool_is_also_failure_fallback():
+    # Community pool appears in the error handler (except PhotoGenerationError)
+    # as the recovery path when AI generation fails.
     deliver_start = PHOTO.index('async def deliver_photo(')
     except_in_deliver = PHOTO.index('except PhotoGenerationError as exc:', deliver_start)
     except_block = PHOTO[except_in_deliver:except_in_deliver + 3000]
