@@ -1071,10 +1071,14 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     level_key = max(1, min(6, relationship_level))
     visual_rule = (LEVEL_VISUAL_RULES if seedream else OPENAI_LEVEL_VISUAL_RULES).get(level_key, LEVEL_VISUAL_RULES[1])
     underlay_rule = LEVEL_UNDERLAY_RULES.get(level_key, LEVEL_UNDERLAY_RULES[1])
-    # Inject specific underwear color and style for variety across photos.
+    # Inject specific underwear color and style for variety — framed strictly
+    # as the under-layer beneath the main outfit, never as outerwear, so the
+    # image model does not render the lingerie on top of the clothes.
     if request.underwear_color:
-        underlay_rule = f'Her underwear this set is {request.underwear_color}. ' + (
-            f'She is wearing a {request.underwear_style}. ' if request.underwear_style else ''
+        style_note = f' ({request.underwear_style})' if request.underwear_style else ''
+        underlay_rule = (
+            f'Beneath her main outfit, directly against her skin, she wears {request.underwear_color} lingerie{style_note}. '
+            'It is strictly the under-layer under her clothes and never replaces them — the main outfit stays fully on. '
         ) + underlay_rule
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
