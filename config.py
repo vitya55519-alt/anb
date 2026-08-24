@@ -86,6 +86,11 @@ COMMUNITY_POOL_ENABLED = os.getenv("COMMUNITY_POOL_ENABLED", "true").strip().low
 # Paid credit sets always generate fresh AI photos regardless of this flag.
 COMMUNITY_POOL_FIRST = os.getenv("COMMUNITY_POOL_FIRST", "true").strip().lower() in {"1", "true", "yes", "on"}
 
+# Relationship pulse: every N-th user message the chat LLM scores the recent
+# excerpt (warmth/trust/intimacy 0-3 + events) and applies a small extra
+# delta, so quality conversations without keyword hits still grow the bond.
+RELATIONSHIP_PULSE_ENABLED = os.getenv("RELATIONSHIP_PULSE_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+
 # Gemini native image generation / Nano Banana 2.
 # Ordinary fully-clothed scenes can use the same GEMINI_API_KEY as chat.
 # If the model/tier is unavailable, photo_service falls back to GPT Image 2.

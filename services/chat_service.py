@@ -117,6 +117,13 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             event_type=delta.event_type, reason=delta.reason,
             character_id=character_id,
         )
+        # Background LLM pulse: every few messages the quality of the recent
+        # conversation adds a small extra relationship delta (fail-silent).
+        try:
+            from services.relationship_pulse import maybe_pulse
+            asyncio.get_running_loop().create_task(maybe_pulse(user_id, user_name, character_id))
+        except Exception:
+            pass
     character = get_character(character_id)
     premium = is_premium(user_id)
     memories = get_memories(db_user_id, character_id, 40 if premium else 14)

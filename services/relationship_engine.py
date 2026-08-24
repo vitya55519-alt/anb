@@ -105,10 +105,14 @@ def _update_hidden_dimensions(row: UserCharacterRelationship, delta: Relationshi
     row.familiarity_score = min(100.0, row.familiarity_score + min(1.0, 0.28 + max(0.0, delta.relationship) * 0.12))
 
     previous = row.last_distinct_day or row.last_interaction_at
+    reconnect_bonus = 0.0
     if previous is None or previous.date() != now.date():
         gap = (now.date() - previous.date()).days if previous else 1
         row.active_days = max(1, row.active_days + 1)
         row.continuity_score = min(100.0, row.continuity_score + (1.7 if gap <= 3 else 1.0))
+        # Coming back after a real absence is a relationship moment, not a neutral event.
+        if gap >= 3:
+            reconnect_bonus = 1.5
         if gap == 1:
             row.consecutive_days = max(1, row.consecutive_days + 1)
         else:
@@ -127,6 +131,7 @@ def _update_hidden_dimensions(row: UserCharacterRelationship, delta: Relationshi
         connection_gain += min(0.6, delta.intimacy * 0.18)
     if delta.event_type == "negative_interaction":
         connection_gain -= 0.8
+    connection_gain += reconnect_bonus
     row.connection_score = max(0.0, min(100.0, row.connection_score + connection_gain))
 
 
@@ -238,6 +243,66 @@ def apply_absence_decay(session: Session, *, now: datetime | None = None) -> int
     return 0
 
 
+def bond_character(row: UserCharacterRelationship | None) -> tuple[str, str]:
+    """Describe the *flavor* of this bond from the leading axis.
+
+    Returns (title, tone_hint). The title is user-visible (profile card), the
+    hint steers her chat tone. Two people at the same level can have very
+    different relationships — this is what makes the progression feel personal.
+    """
+    if row is None:
+        return ('зарождающаяся симпатия', 'лёгкий интерес и осторожное узнавание друг друга')
+    r, t, i = row.relationship_score, row.trust_score, row.intimacy_score
+    top = max(r, t, i)
+    if top < 25:
+        return ('зарождающаяся симпатия', 'лёгкий интерес и осторожное узнавание друг друга')
+    margin = 10.0
+    if i >= r + margin and i >= t + margin:
+        return ('страстный роман', 'заметное чувственное напряжение, смелый флирт и притяжение')
+    if t >= r + margin and t >= i + margin:
+        return ('глубокое доверие', 'тепло, надёжность и ощущение, что ей можно рассказать всё')
+    if r >= t + margin and r >= i + margin:
+        return ('лёгкий флирт', 'игривость, лёгкость и постоянная искра без тяжести')
+    return ('гармоничная близость', 'сбалансированная связь: интерес, доверие и химия вместе')
+
+
+def next_stage_progress(row: UserCharacterRelationship | None) -> list[tuple[str, float, float]]:
+    """Per-axis progress toward the next stage: [(label, current, target)].
+
+    Empty at the final stage. Uses the same effective-axis math as
+    _dimension_stage so the bar matches the real gates.
+    """
+    if row is None:
+        stage = 'stranger'
+        eff_r = eff_t = eff_i = 0.0
+    else:
+        stage = row.stage or 'stranger'
+        eff_r = min(100.0, row.relationship_score + row.familiarity_score * 0.10)
+        eff_t = min(100.0, row.trust_score + row.continuity_score * 0.15)
+        eff_i = min(100.0, row.intimacy_score + row.connection_score * 0.45)
+    idx = STAGE_ORDER.index(stage) if stage in STAGE_ORDER else 0
+    if idx >= len(STAGE_ORDER) - 1:
+        return []
+    next_stage = STAGE_ORDER[idx + 1]
+    target = next((s for s in STAGE_RULES if s[0] == next_stage), None)
+    if not target:
+        return []
+    _, r_min, t_min, i_min = target
+    return [
+        ('❤️ отношения', eff_r, r_min),
+        ('🤝 доверие', eff_t, t_min),
+        ('🔥 страсть', eff_i, i_min),
+    ]
+
+
+def progress_bar(current: float, target: float, width: int = 10) -> str:
+    """Unicode progress bar like ▓▓▓▓░░░░░░ used in the profile card."""
+    if target <= 0:
+        return '▓' * width
+    filled = max(0, min(width, round(width * current / target)))
+    return '▓' * filled + '░' * (width - filled)
+
+
 def build_relationship_context(row: UserCharacterRelationship | None, milestones: list[RelationshipMilestone] | None = None) -> str:
     if row is None:
         stage = "stranger"
@@ -274,4 +339,6 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
     if milestones:
         titles = "; ".join(m.title for m in milestones[:4])
         extra = f" Недавние достижения отношений, которые можно иногда естественно обыграть без системных формулировок: {titles}."
+    bond_title, bond_hint = bond_character(row)
+    extra += f" Характер вашей связи сейчас: {bond_title} — {bond_hint}. Пусть он естественно окрашивает тон общения."
     return contexts[stage] + extra + " Не называй пользователю номер, внутреннее название уровня, scoring или скрытые метрики."

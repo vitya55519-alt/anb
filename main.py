@@ -54,7 +54,8 @@ from services.cloud_video_service import (
 )
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
 from services import apartment_service, gifts_service, dates_service
-from services.relationship_service import record_user_message
+from services.relationship_service import record_user_message, set_stage_change_notifier
+from services.relationship_signals import infer_delta
 
 
 def _any_video_engine() -> bool:
@@ -2830,7 +2831,7 @@ async def successful_payment(message: types.Message):
         record_payment(message.from_user.id, 'gift', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'gift', 'gift': gift.id})
         character_id = get_user_character(message.from_user.id)
-        await record_user_message(message.from_user.id, message.from_user.first_name or '', relationship=gift.affection, event_type='gift', reason=f'gift:{gift.id}', character_id=character_id)
+        await record_user_message(message.from_user.id, message.from_user.first_name or '', relationship=gift.affection, trust=max(0.5, round(gift.affection * 0.25, 2)), event_type='gift', reason=f'gift:{gift.id}', character_id=character_id)
         from services.gamification_service import unlock_achievement
         unlock_achievement(message.from_user.id, 'first_gift')
         await message.answer(f'🎁 Ты подарил {gift.emoji} {gift.name}!\n\n{gift.reaction}')
@@ -2983,7 +2984,7 @@ async def gift_buy(cq: types.CallbackQuery):
     # Admin test mode: deliver the gift instantly, without a Stars invoice.
     if cq.from_user.id in ADMIN_TELEGRAM_IDS:
         character_id = get_user_character(cq.from_user.id)
-        await record_user_message(cq.from_user.id, cq.from_user.first_name or '', relationship=gift.affection, event_type='gift', reason=f'gift:{gift.id}', character_id=character_id)
+        await record_user_message(cq.from_user.id, cq.from_user.first_name or '', relationship=gift.affection, trust=max(0.5, round(gift.affection * 0.25, 2)), event_type='gift', reason=f'gift:{gift.id}', character_id=character_id)
         from services.gamification_service import unlock_achievement
         unlock_achievement(cq.from_user.id, 'first_gift')
         track_event(ensure_user(cq.from_user.id), 'admin_test_gift', metadata={'gift': gift.id})
@@ -3401,15 +3402,26 @@ async def profile_button(message: types.Message):
     info = build_photo_menu(message.from_user.id, char_id)
     uid = ensure_user(message.from_user.id, message.from_user.first_name)
     milestone_text = ''
+    bond_text = ''
+    progress_text = ''
     with SessionLocal() as session:
         rel = session.query(UserCharacterRelationship).filter_by(user_id=uid, character_id=char_id).first()
         if rel:
+            from services.relationship_engine import bond_character, next_stage_progress, progress_bar
+            bond_title, _bond_hint = bond_character(rel)
+            bond_text = f'💞 Характер связи: {bond_title}\n'
+            progress = next_stage_progress(rel)
+            if progress:
+                lines = [f'{label} {progress_bar(current, target)} {int(current)}/{int(target)}' for label, current, target in progress]
+                progress_text = '📈 До следующего этапа:\n' + '\n'.join(lines) + '\n'
             milestones = session.query(RelationshipMilestone).filter_by(user_character_id=rel.id).order_by(RelationshipMilestone.achieved_at.desc()).limit(3).all()
             if milestones:
                 milestone_text = '\n🏷 ' + '\n🏷 '.join(m.title for m in reversed(milestones))
     await message.answer(
         f'👤 Твой профиль\n\n'
         f'❤️ {RELATIONSHIP_LEVEL_NAMES.get(info["level"], "Знакомство")}\n'
+        f'{bond_text}'
+        f'{progress_text}'
         f'⭐ Premium: {"активен" if info["premium"] else "нет"}\n'
         f'📸 Фото сегодня: {info["free_left"]} включено\n'
         f'🎟 Photo credits: {info["credits"]}\n'
@@ -3619,6 +3631,39 @@ async def _notify_quest_unlocks(chat_id: int, telegram_id: int, before_level: in
             ]),
         )
         track_event(ensure_user(telegram_id), 'quest_unlocked', metadata={'quest': item['key'], 'level': after_level})
+
+
+async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage: str, character_id: str):
+    """Level-up ceremony: announce the new stage, list fresh unlocks and send a
+    small celebration set. Registered as the relationship notifier, so it fires
+    from chat, gifts, dates and apartment actions alike."""
+    try:
+        await asyncio.sleep(3)  # let her chat reply land first
+        from services.photo_service import STAGE_INDEX, SCENE_LEVELS
+        level = STAGE_INDEX.get(new_stage, 0) + 1
+        name = RELATIONSHIP_LEVEL_NAMES.get(level, new_stage)
+        unlocks = []
+        scenes = [PHOTO_LABELS[s] for s in PHOTO_MENU_ORDER if s in PHOTO_LABELS and SCENE_LEVELS.get(s) == level]
+        if scenes:
+            unlocks.append('📸 фото: ' + ', '.join(scenes))
+        rooms = [f'{r.emoji} {r.name}' for r in apartment_service.get_available_rooms(level) if r.min_level == level]
+        if rooms:
+            unlocks.append('🏠 квартира: ' + ', '.join(rooms))
+        dates = [f'{d.emoji} {d.name}' for d in dates_service.get_all() if d.min_level == level]
+        if dates:
+            unlocks.append('💕 свидания: ' + ', '.join(dates))
+        text = f'❤️ Между нами что-то изменилось…\nНовый этап: {name}'
+        if unlocks:
+            text += '\n\nТеперь доступно:\n' + '\n'.join('• ' + u for u in unlocks)
+        text += '\n\nи небольшой подарок от меня 🤍'
+        await bot.send_message(telegram_id, text)
+        track_event(ensure_user(telegram_id), 'relationship_ceremony_sent', metadata={'level': level}, character_id=character_id)
+        await _start_photo_background(telegram_id, telegram_id, PhotoRequest(scene='selfie', mood='romantic'), 'story')
+    except Exception as exc:
+        logger.warning('level-up ceremony failed user=%s error=%s', telegram_id, type(exc).__name__)
+
+
+set_stage_change_notifier(_on_relationship_stage_up)
 
 
 @dp.message(F.voice)
@@ -3923,6 +3968,14 @@ async def text_message(message: types.Message):
             touch_user(message.from_user.id)
             return
         before_level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
+        # Instant game-like feedback: sometimes react to messages that grew the
+        # bond (care/flirt signals), so the user feels the relationship moving.
+        try:
+            sig = infer_delta(text)
+            if (sig.trust > 0 or sig.intimacy > 0) and random.random() < 0.30:
+                await message.react([types.ReactionTypeEmoji(emoji='❤️')])
+        except Exception:
+            pass
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text, language_code=message.from_user.language_code, character_id=get_user_character(message.from_user.id))
         await send_answer(message, answer)
