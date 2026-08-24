@@ -29,7 +29,7 @@ def test_pollinations_is_free_last_resort_fallback():
     assert '_run_pollinations_set' in block
     assert 'PhotoGenerationError as exc' in block
     # Private scenes must never be routed to the free public provider.
-    assert "resolved.scene not in {'personal', 'lingerie', 'private_fashion'}" in block
+    assert "resolved.scene not in {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}" in block
     # No infinite loop: do not fall back to pollinations when it already failed.
     assert "provider != 'pollinations'" in block
 

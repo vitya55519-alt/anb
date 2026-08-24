@@ -50,7 +50,7 @@ from services.referral_service import (
 from services.gemini_video_service import animate_image, GeminiVideoError, video_available
 from services.cloud_video_service import (
     animate_image_replicate, animate_image_fal,
-    replicate_available, fal_available, CloudVideoError,
+    replicate_available, fal_available, CloudVideoError, SENSUAL_ANIMATION_PROMPT,
 )
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
 from services import apartment_service, gifts_service, dates_service
@@ -118,6 +118,8 @@ PHOTO_LABELS = {
     'personal': '💌 Личное фото',
     'lingerie': '🖤 Приватный fashion',
     'private_fashion': '🔐 Premium private',
+    'nude': '🔥 Обнажённая',
+    'tease': '🍑 Дразнит',
 }
 
 PHOTO_MENU_ORDER = [
@@ -126,6 +128,7 @@ PHOTO_MENU_ORDER = [
     'restaurant', 'cinema', 'embankment', 'fashion',
     'evening', 'bar', 'karaoke', 'rooftop',
     'club', 'personal', 'lingerie', 'private_fashion',
+    'nude', 'tease',
 ]
 
 RELATIONSHIP_LEVEL_NAMES = {
@@ -2444,6 +2447,10 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
             raise GeminiVideoError('no_video_engine')
         engine_names = [name for name, _ in engines]
 
+        # Sensual animation prompt for adult/intimate photo scenes.
+        scene = delivery.get('scene')
+        anim_prompt = SENSUAL_ANIMATION_PROMPT if scene in {'nude', 'tease', 'personal', 'lingerie', 'private_fashion'} else None
+
         await bot.send_message(chat_id, VIDEO_STATUS_TEXT)
         video_bytes = None
         used_engine = None
@@ -2452,7 +2459,7 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
             try:
                 if idx > 0:
                     await bot.send_message(chat_id, 'секунду, пробую ещё один способ снять это видео 🎬')
-                video_bytes = await engine_fn(image_bytes, mime_type='image/jpeg')
+                video_bytes = await engine_fn(image_bytes, mime_type='image/jpeg', prompt=anim_prompt)
                 used_engine = engine_name
                 break
             except Exception as exc:

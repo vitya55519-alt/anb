@@ -41,6 +41,15 @@ ANIMATION_PROMPT = (
     "Photorealistic and calm."
 )
 
+SENSUAL_ANIMATION_PROMPT = (
+    "Animate this exact photo of the same adult woman. Preserve her identity, "
+    "face, hair, body proportions and scene. Slow sensual movement: she runs "
+    "her hand through her hair, tilts her head, lets her hand trail along her "
+    "waist and hip, a soft teasing smile. Gentle breathing, one or two blinks, "
+    "realistic handheld camera micro-motion. No wardrobe change, no body "
+    "transformation, no extra people. Photorealistic and intimate."
+)
+
 
 class CloudVideoError(RuntimeError):
     pass

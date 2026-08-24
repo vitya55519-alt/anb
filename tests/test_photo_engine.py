@@ -33,10 +33,9 @@ def test_lingerie_customization_parser():
     assert is_custom_request(r)
 
 
-def test_explicit_request_is_normalized_to_safe_fashion():
+def test_explicit_request_maps_to_adult_scene():
     r = parse_photo_request('сделай голое фото')
-    assert r and r.scene == 'fashion'
-    assert 'opaque' in r.clothing
+    assert r and r.scene == 'nude'
 
 
 def test_summer_park_wardrobe_has_no_heavy_sweater():

@@ -103,6 +103,8 @@ SCENES = {
     'personal': 'a tasteful private adult lingerie portrait made especially for someone she trusts, non-explicit, with opaque lingerie coverage',
     'lingerie': 'tasteful adult glamour/boudoir fashion in lingerie, non-explicit and fully covered by the garment',
     'private_fashion': 'premium private adult fashion portrait, non-explicit, polished and highly personalized',
+    'nude': 'a tasteful artistic nude portrait made in privacy for someone she deeply trusts, confident and warm',
+    'tease': 'a playful sensual photo from behind, teasing and confident, made for someone she deeply trusts',
     'peek': 'a casual personal smartphone photo where her lingerie believably peeks from under the everyday outfit',
     'dressing': 'a natural relaxed personal photo while she is getting dressed, her underwear still visible before the clothing goes on',
 }
@@ -114,6 +116,7 @@ SCENE_LEVELS = {
     'evening': 4, 'bar': 4, 'karaoke': 4, 'rooftop': 4,
     'club': 5, 'personal': 5, 'lingerie': 5,
     'private_fashion': 6,
+    'nude': 6, 'tease': 6,
     'peek': 4, 'dressing': 4,
 }
 STAGE_INDEX = {
@@ -144,6 +147,8 @@ AUTO_CAPTIONS = {
     'personal': ('это уже чуть более личный сет 😌', 'ладно, эти кадры именно тебе'),
     'lingerie': ('сегодня чуть смелее обычного 😏', 'вот такой приватный fashion-настрой'),
     'private_fashion': ('это уже мой самый личный fashion-сет 😌', 'этот сет оставлю только здесь'),
+    'nude': ('это уже только для тебя 🔥', 'решилась… вот 😌', 'этот кадр — самый личный'),
+    'tease': ('поворачиваюсь спиной… 😏', 'так хочется тебя подразнить', 'видишь? это для тебя'),
     'peek': ('ой, кажется, кое-что видно 😏', 'заметила только когда сфоткалась… ну пусть будет'),
     'dressing': ('ещё собираюсь 😌', 'поймала момент до того, как оделась'),
 }
@@ -154,7 +159,20 @@ SAFE_EXPLICIT = re.compile(
 INTIMATE_STYLE = re.compile(
     r'\b(бель\w*|lingerie|будуар\w*|boudoir|чулк\w*|stocking\w*|garter\w*|bra\b|bralette|смел\w*|daring|spicy|seductive)\b', re.I
 )
-REAR_VIEW_STYLE = re.compile(r'\b(попк\w*|ягодиц\w*|со спины|сзади|back view|from behind|butt\w*)\b', re.I)
+REAR_VIEW_STYLE = re.compile(r'\b(поп\w*|ягодиц\w*|со спины|сзади|back view|from behind|butt\w*)\b', re.I)
+
+# Level-6 adult scenes: artistic nudity, routed to Seedream with the safety
+# checker disabled.  These scenes are gated behind relationship level 6 and
+# the 18+ confirmation, and never enter the community pool.
+ADULT_SCENES = {'nude', 'tease'}
+
+ADULT_SAFETY = (
+    'This is a private intimate nude photograph made for someone she deeply trusts. '
+    'Artistic tasteful nudity is allowed: visible bare breasts, natural body curves and skin '
+    'in a private, confident, warm personal setting. Preserve the exact same face and body '
+    'identity from the references. Keep the tone intimate, personal and artful — not explicit, '
+    'clinical or pornographic.'
+)
 
 # Visual progression is explicit: relationship level changes garment families,
 # styling confidence and pose.  Each 3-photo request is a progression pack:
@@ -168,6 +186,7 @@ SCENE_GROUP = {
     'restaurant':'evening', 'evening':'evening', 'bar':'evening', 'karaoke':'evening', 'rooftop':'evening', 'club':'evening',
     'personal':'adult', 'private_fashion':'personal',
     'lingerie':'adult',
+    'nude':'adult', 'tease':'adult',
     'peek':'home', 'dressing':'home',
 }
 
@@ -348,6 +367,8 @@ SHOT_VARIANTS = {
     'personal': ['tasteful seated lingerie portrait with natural eye contact, non-explicit', 'polished mirror or self-timer lingerie fashion portrait, non-explicit', 'premium private lingerie-fashion portrait with elegant opaque coverage, non-explicit'],
     'lingerie': ['tasteful adult glamour portrait, non-explicit', 'more polished mirror-style lingerie fashion portrait, non-explicit', 'premium tasteful boudoir-fashion portrait with opaque garment coverage'],
     'private_fashion': ['tasteful private fashion portrait with opaque coverage', 'more polished private fashion portrait with confident styling', 'premium personalized private fashion portrait, non-explicit and opaque'],
+    'nude': ['tasteful artistic nude portrait, natural warm light, soft eye contact', 'confident seated nude with soft shadows and relaxed posture', 'premium artistic nude with elegant composition and warm tones'],
+    'tease': ['playful rear-view teasing photo with a glance over the shoulder', 'confident from-behind pose with relaxed posture and soft light', 'premium sensual back-view portrait with warm tones'],
 }
 
 PACK_TIER_RULES = (
@@ -405,6 +426,16 @@ PRIVATE_SCENE_TIERS = {
         'standard': 'fashion editorial framing, visible underwear under a sheer blouse, elegant styling',
         'suggestive': 'intimate fashion framing, lingerie visible through the fabric, realistic sheer material, authentic feminine form',
         'revealing': 'boudoir-style fashion, lingerie visible as the main outfit, realistic details, professional lighting',
+    },
+    'nude': {
+        'standard': 'tasteful artistic nude portrait, natural warm lighting, confident relaxed pose',
+        'suggestive': 'intimate nude portrait, soft bedroom lighting, realistic skin texture, warm tones',
+        'revealing': 'confident nude photography, artistic and personal, realistic body details, private setting',
+    },
+    'tease': {
+        'standard': 'playful rear-view teasing pose, glance over the shoulder, confident',
+        'suggestive': 'sensual from-behind portrait, relaxed and teasing, soft light',
+        'revealing': 'confident rear-view nude, teasing and artistic, private setting, warm tones',
     },
 }
 
@@ -690,11 +721,11 @@ def scene_allowed_for_stage(scene: str, stage: str) -> bool:
 
 
 def is_custom_request(request: PhotoRequest) -> bool:
-    return request.scene in {'lingerie', 'private_fashion'} or bool(request.customized)
+    return request.scene in {'lingerie', 'private_fashion', 'nude', 'tease'} or bool(request.customized)
 
 
 def requires_adult_confirmation(request: PhotoRequest) -> bool:
-    return request.scene in {'lingerie', 'private_fashion'} or bool(INTIMATE_STYLE.search(' '.join([request.clothing, request.location, request.angle])))
+    return request.scene in {'lingerie', 'private_fashion', 'nude', 'tease'} or bool(INTIMATE_STYLE.search(' '.join([request.clothing, request.location, request.angle])))
 
 
 def build_photo_menu(telegram_id: int, character_id: str = CHARACTER_ID):
@@ -796,7 +827,11 @@ def parse_photo_request(text: str) -> Optional[PhotoRequest]:
 
     season = _season_from_text(low)
     if SAFE_EXPLICIT.search(low):
-        return PhotoRequest(scene='fashion', clothing='tasteful fitted evening fashion outfit with opaque fabric', season=season)
+        # Adult scenes are level-gated at 6 and require 18+ confirmation. If the
+        # user is not yet at that level, scene_allowed_for_stage will reject it.
+        if REAR_VIEW_STYLE.search(low):
+            return PhotoRequest(scene='tease', season=season)
+        return PhotoRequest(scene='nude', season=season)
 
     scene = 'selfie'
     clothing = ''
@@ -1104,8 +1139,12 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # shot in only her lingerie — the lingerie IS the outfit there. Seedream
     # only: the general-audience OpenAI fallback route keeps ordinary
     # wardrobes to stay within its moderation envelope.
+    adult_scene = seedream and request.scene in ADULT_SCENES
     home_lingerie = seedream and level_key >= 5 and request.scene in HOME_LINGERIE_SCENES
-    if home_lingerie:
+    if adult_scene:
+        wardrobe = 'nothing — artistic nude, no clothing at all, bare skin throughout'
+        underlay_rule = ''
+    elif home_lingerie:
         style_note = f' ({request.underwear_style})' if request.underwear_style else ''
         set_desc = f'{request.underwear_color} lingerie{style_note} set' if request.underwear_color else 'elegant lingerie set'
         wardrobe = f'only her {set_desc} — a matching bra and panties worn as the entire outfit in the privacy of her home, no outerwear at all'
@@ -1136,6 +1175,8 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
     identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key)
+    if adult_scene:
+        safety = ADULT_SAFETY
     body_reinforcement = BODY_REINFORCEMENT if (character_id == 'anna_01' and not seedream and request.scene in BODY_REINFORCEMENT_SCENES) else ''
     figure_note = (
         'Use tasteful fashion fit and waist definition while preserving the underlying slim body proportions. ' if seedream else
@@ -1448,6 +1489,8 @@ async def _seedream_request(
     image_urls: list[str],
     num_images: int = 1,
     request_label: str = '',
+    *,
+    allow_adult: bool = False,
 ) -> dict:
     """Call fal/Seedream with explicit phase timeouts and bounded retry.
 
@@ -1465,7 +1508,7 @@ async def _seedream_request(
         'image_size': FAL_IMAGE_SIZE,
         'num_images': num_images,
         'max_images': num_images,
-        'enable_safety_checker': True,
+        'enable_safety_checker': not allow_adult,
     }
     headers = {'Authorization': f'Key {FAL_KEY}', 'Content-Type': 'application/json'}
     timeout = httpx.Timeout(
@@ -1663,7 +1706,7 @@ def _seedream_safe_retry_request(request: PhotoRequest) -> PhotoRequest:
     The retry removes high-intensity glamour wording and uses opaque, fully covered fashion.
     """
     season = request.season or _default_season()
-    if request.scene in {'personal', 'lingerie'}:
+    if request.scene in {'personal', 'lingerie', 'nude', 'tease'}:
         outfit = 'an elegant opaque lingerie fashion set with full garment coverage, no sheer fabric, tasteful catalog styling'
     else:
         outfit = (
@@ -1695,6 +1738,7 @@ async def _run_seedream_set(
         'Seedream set request user=%s scene=%s reference=%s target_count=%s per_request=1 timeout=%ss retries=%s',
         telegram_id, request.scene, ref.name, PHOTO_SET_SIZE, FAL_TIMEOUT_SECONDS, FAL_RETRIES,
     )
+    allow_adult = request.scene in ADULT_SCENES
     for i in range(PHOTO_SET_SIZE):
         prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id, character_id), character_id=character_id) + (
             '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location, '
@@ -1703,7 +1747,7 @@ async def _run_seedream_set(
         )
         frame_started = time.monotonic()
         try:
-            result = await _seedream_request(prompt, [reference_uri], 1, request_label=f'{request.scene}:{i + 1}/{PHOTO_SET_SIZE}')
+            result = await _seedream_request(prompt, [reference_uri], 1, request_label=f'{request.scene}:{i + 1}/{PHOTO_SET_SIZE}', allow_adult=allow_adult)
         except PhotoGenerationError as exc:
             # One safe retry on provider content validation. This simplifies the prompt; it does not disable safety.
             if exc.reason == 'HTTP 422':
@@ -1765,7 +1809,7 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
     # - intimate/private/bold scenes → Seedream
     # - ordinary fully-clothed scenes → Gemini Image (primary) → OpenAI (fallback)
     combined = ' '.join([request.scene, request.clothing, request.location, request.angle]).lower()
-    if request.scene in {'personal', 'lingerie', 'private_fashion'} or INTIMATE_STYLE.search(combined):
+    if request.scene in {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'} or INTIMATE_STYLE.search(combined):
         logger.info('Hybrid photo route scene=%s -> seedream45', request.scene)
         return 'seedream45'
     if GEMINI_IMAGE_ENABLED and GEMINI_API_KEY:
@@ -1845,7 +1889,7 @@ async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: 
         if (
             POLLINATIONS_ENABLED
             and provider != 'pollinations'
-            and resolved.scene not in {'personal', 'lingerie', 'private_fashion'}
+            and resolved.scene not in {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}
         ):
             logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=%s to=pollinations reason=%s', telegram_id, resolved.scene, provider, exc.reason)
             track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': provider, 'to': 'pollinations', 'reason': exc.reason})
@@ -2006,7 +2050,7 @@ def query_community_photos(
         ]
 
 
-_PRIVATE_LIBRARY_SCENES = {'personal', 'lingerie', 'private_fashion', 'peek', 'dressing'}
+_PRIVATE_LIBRARY_SCENES = {'personal', 'lingerie', 'private_fashion', 'peek', 'dressing', 'nude', 'tease'}
 
 # At-home scenes that switch to lingerie-only looks at high relationship
 # levels (5-6): once she trusts the user this much, her at-home selfie/home/
@@ -2235,7 +2279,7 @@ async def deliver_photo(
             # AI-generated photos enter the community pool so other users can
             # reuse them instead of paying for a duplicate generation. High-
             # level at-home lingerie sets stay private to their user.
-            community_shared=not home_lingerie_mode,
+            community_shared=not home_lingerie_mode and request.scene not in ADULT_SCENES,
         )
         if result.url:
             sent = await bot.send_photo(chat_id, result.url, caption=item_caption, reply_markup=_photo_action_markup(row_id))

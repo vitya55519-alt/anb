@@ -19,7 +19,7 @@ def test_gpt_ordinary_path_does_not_use_revealing_body_anchor():
 
 
 def test_private_scenes_are_not_broad_fallback_targets():
-    assert "_PRIVATE_LIBRARY_SCENES = {'personal', 'lingerie', 'private_fashion', 'peek', 'dressing'}" in PHOTO
+    assert "_PRIVATE_LIBRARY_SCENES = {'personal', 'lingerie', 'private_fashion', 'peek', 'dressing', 'nude', 'tease'}" in PHOTO
     assert 'scene not in _PRIVATE_LIBRARY_SCENES' in PHOTO
 
 

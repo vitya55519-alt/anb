@@ -11,7 +11,7 @@ def test_v3121_nano_config_and_routing():
     assert 'google-genai' in req
     assert '_run_gemini_set' in photo
     assert "return 'gemini_image'" in photo
-    assert "request.scene in {'personal', 'lingerie', 'private_fashion'}" in photo
+    assert "request.scene in {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}" in photo
     # Gemini failure path: OpenAI when available, otherwise Seedream.
     assert "fall back to Seedream" in photo
 

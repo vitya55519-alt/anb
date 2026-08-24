@@ -34,4 +34,4 @@ def test_pool_first_respects_private_scenes():
 
 def test_ai_frames_still_feed_the_pool():
     # Fresh generations keep entering the pool for other users.
-    assert 'community_shared=not home_lingerie_mode,' in PHOTO
+    assert 'community_shared=not home_lingerie_mode and request.scene not in ADULT_SCENES,' in PHOTO

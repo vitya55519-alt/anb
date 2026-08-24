@@ -30,11 +30,11 @@ def test_generated_photos_have_smile_instruction():
 
 def test_personal_scene_is_lingerie_and_seedream():
     assert "'personal':'adult'" in PHOTO
-    assert "request.scene in {'personal', 'lingerie', 'private_fashion'}" in PHOTO
+    assert "request.scene in {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}" in PHOTO
     assert 'tasteful private adult lingerie portrait' in PHOTO
 
 
 def test_personal_safe_retry_stays_lingerie():
     block = PHOTO[PHOTO.index('def _seedream_safe_retry_request'):PHOTO.index('async def _run_seedream_set')]
-    assert "request.scene in {'personal', 'lingerie'}" in block
+    assert "request.scene in {'personal', 'lingerie', 'nude', 'tease'}" in block
     assert 'opaque lingerie fashion set' in block

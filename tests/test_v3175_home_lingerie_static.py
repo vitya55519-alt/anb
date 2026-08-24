@@ -45,7 +45,7 @@ def test_pool_protection_for_home_lingerie_sets():
     assert 'home_lingerie_mode = (' in PHOTO
     assert 'request.scene in HOME_LINGERIE_SCENES' in PHOTO
     assert 'and not home_lingerie_mode' in PHOTO
-    assert 'community_shared=not home_lingerie_mode,' in PHOTO
+    assert 'community_shared=not home_lingerie_mode and request.scene not in ADULT_SCENES,' in PHOTO
 
 
 def test_bust_stays_size_5_e_cup():
