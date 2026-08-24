@@ -85,9 +85,9 @@ def test_fallback_order_community_before_library():
 
 
 def test_ai_generated_photos_are_community_shared():
-    # _send_frame sets community_shared=True so the photo enters the pool
-    # for future fallback use by other users.
-    assert 'community_shared=True,' in PHOTO
+    # _send_frame marks frames community_shared so the photo enters the pool
+    # (high-level at-home lingerie sets are the explicit exception, v3.17.5)
+    assert 'community_shared=not home_lingerie_mode,' in PHOTO
 
 
 def test_community_pool_skips_private_scenes():

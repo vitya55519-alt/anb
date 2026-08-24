@@ -1100,11 +1100,21 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     level_key = max(1, min(6, relationship_level))
     visual_rule = (LEVEL_VISUAL_RULES if seedream else OPENAI_LEVEL_VISUAL_RULES).get(level_key, LEVEL_VISUAL_RULES[1])
     underlay_rule = LEVEL_UNDERLAY_RULES.get(level_key, LEVEL_UNDERLAY_RULES[1])
+    # At relationship level 5+ her at-home scenes (selfie/home/mirror) are
+    # shot in only her lingerie — the lingerie IS the outfit there. Seedream
+    # only: the general-audience OpenAI fallback route keeps ordinary
+    # wardrobes to stay within its moderation envelope.
+    home_lingerie = seedream and level_key >= 5 and request.scene in HOME_LINGERIE_SCENES
+    if home_lingerie:
+        style_note = f' ({request.underwear_style})' if request.underwear_style else ''
+        set_desc = f'{request.underwear_color} lingerie{style_note} set' if request.underwear_color else 'elegant lingerie set'
+        wardrobe = f'only her {set_desc} — a matching bra and panties worn as the entire outfit in the privacy of her home, no outerwear at all'
+        underlay_rule = 'Her lingerie is the outfit itself in this private at-home moment: nothing is worn over it and no other clothing appears in the frame.'
     # Inject specific underwear color and style only where lingerie is meant
     # to be seen (high level or private/peek/dressing scenes). Naming the bra
     # and panties in ordinary low-level shots makes the image model draw them
     # on top of the outfit, so there the color stays unspoken.
-    if request.underwear_color and (level_key >= 5 or request.scene in {'personal', 'lingerie', 'private_fashion', 'peek', 'dressing'}):
+    elif request.underwear_color and (level_key >= 5 or request.scene in {'personal', 'lingerie', 'private_fashion', 'peek', 'dressing'}):
         style_note = f' ({request.underwear_style})' if request.underwear_style else ''
         underlay_rule = (
             f'The lingerie she wears beneath her outfit is {request.underwear_color}{style_note} — always the under-layer, never outerwear. '
@@ -1115,6 +1125,14 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     if scene_tiers:
         tier_key = 'revealing' if level_key >= 6 else ('suggestive' if level_key >= 5 else 'standard')
         tier_framing = f'PRIVATE SCENE FRAMING: {scene_tiers[tier_key]}.\n'
+    if home_lingerie:
+        tier_framing = (
+            'HOME LINGERIE LOOK: at this level of trust she shoots her at-home sets relaxed and confident in only her lingerie — '
+            'a private, tasteful, non-explicit at-home look made specifically for the person she is chatting with.\n'
+        )
+    elif seedream and level_key >= 5 and not scene_tiers:
+        # Everywhere else at level 5-6 her outfits turn noticeably more daring.
+        wardrobe += ', styled with a daring, revealing cut that shows more skin while staying a real outfit'
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
     identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key)
@@ -1990,6 +2008,14 @@ def query_community_photos(
 
 _PRIVATE_LIBRARY_SCENES = {'personal', 'lingerie', 'private_fashion', 'peek', 'dressing'}
 
+# At-home scenes that switch to lingerie-only looks at high relationship
+# levels (5-6): once she trusts the user this much, her at-home selfie/home/
+# mirror sets are shot in only her lingerie. These generations must never
+# enter the community pool (they would leak to low-level users requesting the
+# same scenes), and the pool must never serve low-level clothed photos back
+# into a high-level home set.
+HOME_LINGERIE_SCENES = {'selfie', 'home', 'mirror'}
+
 def _library_fallback_scene_order(requested_scene: str, relationship_level: int) -> tuple[str, ...]:
     """Return compatible ordinary-library scenes in graceful-fallback order."""
     requested_group = SCENE_GROUP.get(requested_scene)
@@ -2149,15 +2175,24 @@ async def deliver_photo(
     caption = caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',)))
     sent_messages = []
 
+    # High-level at-home sets are lingerie-only (see _build_prompt): they must
+    # neither be served from the community pool (which holds low-level clothed
+    # photos of these scenes) nor feed their frames back into it.
+    home_lingerie_mode = (
+        request.scene in HOME_LINGERIE_SCENES
+        and get_relationship_level(telegram_id, character_id) >= 5
+    )
+
     # Community pool first for free/story sets: when other users' AI
     # generations already cover this character+scene, serve the shared photos
     # instead of paying for a duplicate AI run. Paid credit sets always
     # generate fresh AI photos, and AI still runs whenever the pool has no
     # full unseen set for this user. Fresh AI frames keep feeding the pool
-    # (community_shared=True in _send_frame).
+    # (community_shared in _send_frame).
     if (
         delivery_type in {'free', 'story'}
         and request.scene not in _PRIVATE_LIBRARY_SCENES
+        and not home_lingerie_mode
         and COMMUNITY_POOL_ENABLED and COMMUNITY_POOL_FIRST
     ):
         level = get_relationship_level(telegram_id, character_id)
@@ -2198,8 +2233,9 @@ async def deliver_photo(
             estimated_cost_usd=result.estimated_cost_usd, character_id=character_id,
             full_bytes=full_bytes,
             # AI-generated photos enter the community pool so other users can
-            # reuse them instead of paying for a duplicate generation.
-            community_shared=True,
+            # reuse them instead of paying for a duplicate generation. High-
+            # level at-home lingerie sets stay private to their user.
+            community_shared=not home_lingerie_mode,
         )
         if result.url:
             sent = await bot.send_photo(chat_id, result.url, caption=item_caption, reply_markup=_photo_action_markup(row_id))

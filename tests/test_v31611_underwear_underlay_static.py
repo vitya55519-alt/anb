@@ -28,7 +28,7 @@ def test_color_injection_gated_to_visible_lingerie_contexts():
     # Naming the bra/panties in ordinary low-level shots made the model draw
     # them on top of the outfit — the color is injected only at level 5+ or in
     # scenes that intentionally show lingerie.
-    assert 'if request.underwear_color and (level_key >= 5 or request.scene in {' in block
+    assert 'elif request.underwear_color and (level_key >= 5 or request.scene in {' in block
     assert "'personal', 'lingerie', 'private_fashion', 'peek', 'dressing'" in block
 
 
