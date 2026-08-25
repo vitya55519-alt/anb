@@ -7,7 +7,7 @@ from openai import AsyncOpenAI
 
 from config import (
     OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL,
-    GEMINI_API_KEY, GEMINI_CHAT_MODEL, GEMINI_OPENAI_BASE_URL,
+    GEMINI_API_KEY, GEMINI_API_KEY_VALID, GEMINI_CHAT_MODEL, GEMINI_OPENAI_BASE_URL,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ _openrouter = (
 )
 _gemini = (
     AsyncOpenAI(api_key=GEMINI_API_KEY, base_url=GEMINI_OPENAI_BASE_URL)
-    if GEMINI_API_KEY else None
+    if GEMINI_API_KEY_VALID else None
 )
 
 logger.info(
@@ -108,6 +108,6 @@ def provider_status() -> dict:
         'openrouter_key_present': bool(OPENROUTER_API_KEY),
         'openrouter_model': OPENROUTER_MODEL,
         'openrouter_base_url': OPENROUTER_BASE_URL,
-        'gemini_key_present': bool(GEMINI_API_KEY),
+        'gemini_key_present': bool(GEMINI_API_KEY_VALID),
         'gemini_model': GEMINI_CHAT_MODEL,
     }

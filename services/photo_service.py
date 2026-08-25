@@ -1860,30 +1860,48 @@ async def _run_routed_photo_set(
             try:
                 return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
             except PhotoGenerationError as exc:
-                # V3.19.2: a Seedream validation/policy failure (HTTP 422 etc.)
-                # must not kill the photo — fall back through the other engines.
+                # V3.19.2/3: a Seedream failure (HTTP 422 policy/validation etc.)
+                # must not kill the photo — walk the remaining engines, and only
+                # surface an error when every one of them failed. Each fallback
+                # is wrapped: one broken engine must not stop the chain.
+                last_error = exc
                 if GEMINI_IMAGE_ENABLED and GEMINI_API_KEY:
-                    logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=gemini_image reason=%s', telegram_id, resolved.scene, exc.reason)
-                    track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'gemini_image', 'reason': exc.reason})
-                    return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                    try:
+                        logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=gemini_image reason=%s', telegram_id, resolved.scene, exc.reason)
+                        track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'gemini_image', 'reason': exc.reason})
+                        return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                    except PhotoGenerationError as gemini_exc:
+                        logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=gemini_image reason=%s', telegram_id, resolved.scene, gemini_exc.reason)
+                        last_error = gemini_exc
                 if OPENAI_IMAGE_AVAILABLE:
-                    logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=openai reason=%s', telegram_id, resolved.scene, exc.reason)
-                    track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'openai', 'reason': exc.reason})
-                    return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                    try:
+                        logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=openai reason=%s', telegram_id, resolved.scene, exc.reason)
+                        track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'openai', 'reason': exc.reason})
+                        return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                    except PhotoGenerationError as openai_exc:
+                        logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=openai reason=%s', telegram_id, resolved.scene, openai_exc.reason)
+                        last_error = openai_exc
                 if POLLINATIONS_ENABLED:
-                    logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=pollinations reason=%s', telegram_id, resolved.scene, exc.reason)
-                    track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'pollinations', 'reason': exc.reason})
-                    return await _run_pollinations_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
-                raise
+                    try:
+                        logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=pollinations reason=%s', telegram_id, resolved.scene, exc.reason)
+                        track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'pollinations', 'reason': exc.reason})
+                        return await _run_pollinations_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                    except PhotoGenerationError as pollinations_exc:
+                        logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=pollinations reason=%s', telegram_id, resolved.scene, pollinations_exc.reason)
+                        last_error = pollinations_exc
+                raise last_error
         if provider == 'gemini_image':
             try:
                 return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
             except PhotoGenerationError as exc:
                 # Gemini failed: try OpenAI if available, otherwise fall back to Seedream.
                 if OPENAI_IMAGE_AVAILABLE:
-                    logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=openai reason=%s', telegram_id, resolved.scene, exc.reason)
-                    track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'openai', 'reason': exc.reason})
-                    return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                    try:
+                        logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=openai reason=%s', telegram_id, resolved.scene, exc.reason)
+                        track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'openai', 'reason': exc.reason})
+                        return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                    except PhotoGenerationError as openai_exc:
+                        logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=openai reason=%s', telegram_id, resolved.scene, openai_exc.reason)
                 logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=seedream45 reason=%s', telegram_id, resolved.scene, exc.reason)
                 track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'seedream45', 'reason': exc.reason})
                 return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)

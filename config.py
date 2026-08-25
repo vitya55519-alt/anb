@@ -46,6 +46,17 @@ AI_BASE_URL = os.getenv("AI_BASE_URL", OPENROUTER_BASE_URL if OPENROUTER_API_KEY
 # Legacy provider-switching env vars were removed; the chain is hard-wired
 # in services/llm_provider_service.py for stability.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+# V3.19.3: a key pasted with non-ASCII characters (Cyrillic lookalikes, NBSP)
+# or embedded whitespace breaks every Gemini call with an opaque auth error.
+# Treat such a key as absent so photo/video engines fall back to the next
+# provider instead of failing, and the owner sees a clear startup warning.
+GEMINI_API_KEY_VALID = bool(GEMINI_API_KEY) and GEMINI_API_KEY.isascii() and not any(ch.isspace() for ch in GEMINI_API_KEY)
+if GEMINI_API_KEY and not GEMINI_API_KEY_VALID:
+    print(
+        'CONFIG WARNING: GEMINI_API_KEY contains non-ASCII or whitespace characters - '
+        'Gemini chat/image/video disabled until the key is re-pasted cleanly on Railway',
+        flush=True,
+    )
 GEMINI_CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.5-flash").strip()
 GEMINI_OPENAI_BASE_URL = os.getenv(
     "GEMINI_OPENAI_BASE_URL",
@@ -59,7 +70,7 @@ GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "minimal").strip().lo
 # API tier — if a request is rejected, the job automatically falls back to HF.
 # Set GEMINI_VIDEO_ENABLED=false explicitly to force the free route only.
 _GEMINI_VIDEO_FLAG = os.getenv("GEMINI_VIDEO_ENABLED", "auto").strip().lower()
-GEMINI_VIDEO_ENABLED = bool(GEMINI_API_KEY) and _GEMINI_VIDEO_FLAG not in {"0", "false", "no", "off"}
+GEMINI_VIDEO_ENABLED = bool(GEMINI_API_KEY_VALID) and _GEMINI_VIDEO_FLAG not in {"0", "false", "no", "off"}
 GEMINI_VIDEO_MODEL = os.getenv("GEMINI_VIDEO_MODEL", "veo-3.1-lite-generate-preview").strip()
 GEMINI_VIDEO_BASE_URL = os.getenv("GEMINI_VIDEO_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 GEMINI_VIDEO_DURATION_SECONDS = max(4, min(8, int(os.getenv("GEMINI_VIDEO_DURATION_SECONDS", "8"))))
@@ -96,7 +107,7 @@ RELATIONSHIP_PULSE_ENABLED = os.getenv("RELATIONSHIP_PULSE_ENABLED", "true").str
 # If the model/tier is unavailable, photo_service falls back to GPT Image 2.
 GEMINI_IMAGE_ENABLED = (
     os.getenv("GEMINI_IMAGE_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
-    and bool(GEMINI_API_KEY)
+    and bool(GEMINI_API_KEY_VALID)
 )
 GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image").strip()
 GEMINI_IMAGE_TIMEOUT_SECONDS = max(30, min(240, int(os.getenv("GEMINI_IMAGE_TIMEOUT_SECONDS", "120"))))

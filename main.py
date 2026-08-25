@@ -77,7 +77,7 @@ def _video_unavailable_text(telegram_id: int) -> str:
     if telegram_id in ADMIN_TELEGRAM_IDS:
         return (
             'Видео недоступно: нет ни одного активного движка.\n'
-            f'Gemini/Veo: {"✅" if video_available() else "❌ нет GEMINI_API_KEY"}\n'
+            f'Gemini/Veo: {"✅" if video_available() else "❌ нет/битый GEMINI_API_KEY (должен быть чистый ASCII)"}\n'
             f'Replicate: {"✅" if replicate_available() else "❌ нет REPLICATE_API_TOKEN"}\n'
             f'fal.ai: {"✅" if fal_available() else "❌ нет FAL_KEY"}\n'
             f'HF spaces: {"✅" if hf_video_available() else "❌ выключен"}\n\n'
