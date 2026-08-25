@@ -28,6 +28,21 @@ class User(Base):
     video_free_used: Mapped[int] = mapped_column(Integer, default=0)
     adult_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
 
+
+# V3.19.0: personal characters built through the in-chat constructor. One row
+# per user; character_id is stable ('custom_<telegram_id>') so chat history,
+# memory and relationship rows attach to it like to any built-in character.
+class CustomCharacter(Base):
+    __tablename__ = "custom_characters"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    character_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(80), default="")
+    params_json: Mapped[str] = mapped_column(Text, default="{}")
+    avatar_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    face_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
 class Message(Base):
     __tablename__ = "messages"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

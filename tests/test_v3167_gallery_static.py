@@ -62,8 +62,12 @@ def test_gallery_download_invoice_and_delivery():
 
 def test_gallery_animate_reuses_video_gate():
     # The gallery "🎬" button must route through the same admin/Premium/Stars
-    # video gate as the per-photo animate button.
+    # video gate as the per-photo animate button. V3.19.0: both go through the
+    # motion preset picker first; the preset callback then calls the gate.
     animate = MAIN[MAIN.index("async def gallery_animate_cb("):]
     animate = animate.split('\n\n\n@dp.', 1)[0]
-    assert '_video_gate(cq, delivery)' in animate
+    assert '_show_video_preset_menu(cq.message.chat.id' in animate
     assert 'get_photo_delivery_for_user(cq.from_user.id, delivery_id)' in animate
+    preset = MAIN[MAIN.index("async def video_preset_cb("):]
+    preset = preset.split('\n\n\n@dp.', 1)[0]
+    assert '_video_gate(cq, delivery' in preset

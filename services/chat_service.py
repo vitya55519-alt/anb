@@ -142,8 +142,14 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     competency = competency_context(user_text, character_id)
     dna = character_dna_context(character_id)
     diversity = build_repetition_guard(history, user_text)
+    # V3.19.0: constructor-built personas override the default character role.
+    try:
+        from services.custom_character_service import custom_persona_context
+        persona = custom_persona_context(character_id)
+    except Exception:
+        persona = ''
     system = build_system_prompt(
-        character, rel_context, [m.content for m in memories], behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation,
+        character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation,
         time_context=_time_context(user_id),
         character_id=character_id,
     )

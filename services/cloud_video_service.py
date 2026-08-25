@@ -50,6 +50,35 @@ SENSUAL_ANIMATION_PROMPT = (
     "transformation, no extra people. Photorealistic and intimate."
 )
 
+# V3.19.0: user-selectable motion presets, WildGrl-style. Values are
+# (button label, animation prompt). 'auto' is not listed: it reuses the
+# scene-aware default (SENSUAL_ANIMATION_PROMPT for intimate scenes).
+VIDEO_PRESETS: dict[str, tuple[str, str]] = {
+    'kiss': ('\U0001f48b Поцелуй', (
+        "Animate this exact photo of the same adult woman. Preserve her identity, "
+        "face, hair, body and scene. She slowly leans toward the camera as if "
+        "closer to the viewer, softly purses her lips, blows a gentle kiss and "
+        "smiles warmly. Natural breathing, one or two blinks, realistic handheld "
+        "camera micro-motion. No wardrobe change, no extra people. Photorealistic."
+    )),
+    'hug': ('\U0001f917 Обнимашки', (
+        "Animate this exact photo of the same adult woman. Preserve her identity, "
+        "face, hair, body and scene. She wraps her arms around herself in a cozy "
+        "self-hug, closes her eyes for a moment, tilts her head and smiles softly "
+        "as if hugging someone dear. Warm tender mood, natural breathing, one or "
+        "two blinks, realistic handheld camera micro-motion. No wardrobe change, "
+        "no extra people. Photorealistic."
+    )),
+    'dance': ('\U0001f483 Танец', (
+        "Animate this exact photo of the same adult woman. Preserve her identity, "
+        "face, hair, body and scene. She starts a slow sensual dance to unheard "
+        "music: rhythmic sway of hips and shoulders, playful hand movements, a "
+        "confident teasing smile. Natural body physics, one or two blinks, "
+        "realistic handheld camera micro-motion. No wardrobe change, no extra "
+        "people. Photorealistic."
+    )),
+}
+
 
 class CloudVideoError(RuntimeError):
     pass

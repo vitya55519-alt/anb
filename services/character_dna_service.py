@@ -40,6 +40,40 @@ def character_dna_context(character_id: str = CHARACTER_ID) -> str:
         f"Компетенции 0–5: {comps}. Профиль флирта: {(dna.get('flirt_profile') or {}).get('baseline','')}. Не раскрывай эти числа пользователю. Используй их только для устойчивости характера и знаний."
     )
 
+# V3.19.0: WildGrl-style visible trait bars for character cards. The most
+# distinctive DNA traits (farthest from neutral 0.5) are rendered as 10-cell
+# progress lines; hidden numbers stay hidden from the chat model itself.
+TRAIT_LABELS = {
+    'sensuality': 'Чувственность',
+    'playful_teasing': 'Дерзость',
+    'shyness': 'Скромность',
+    'romanticism': 'Романтика',
+    'initiative': 'Инициатива',
+    'sexual_openness': 'Открытость',
+    'social_energy': 'Общительность',
+}
+
+
+def trait_bars(character_id: str = CHARACTER_ID, top: int = 4) -> list[str]:
+    dna = get_character_dna(character_id)
+    traits = dna.get('traits') or {}
+    if not traits:
+        return []
+    try:
+        ranked = sorted(
+            ((key, float(value)) for key, value in traits.items()),
+            key=lambda kv: abs(kv[1] - 0.5),
+            reverse=True,
+        )[:top]
+    except (TypeError, ValueError):
+        return []
+    lines = []
+    for key, value in ranked:
+        score = max(0, min(10, round(value * 10)))
+        lines.append(f'{TRAIT_LABELS.get(key, key)} {"▓" * score}{"░" * (10 - score)} {score}/10')
+    return lines
+
+
 def competency_context(text: str, character_id: str = CHARACTER_ID) -> str:
     dna = get_character_dna(character_id)
     domain = classify_domain(text)

@@ -2,6 +2,7 @@ import asyncio
 import base64
 import datetime as dt
 import io
+import json
 import logging
 import random
 import re
@@ -24,6 +25,7 @@ from config import (
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
     GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, GALLERY_DOWNLOAD_STARS, WALLET_PAY_ENABLED,
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
+    CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
 )
 from services.user_service import (
     ensure_user, get_user, get_state, update_user_settings, touch_user,
@@ -36,7 +38,7 @@ from services.photo_service import (
     create_offer, consume_offer, scene_allowed_for_stage, get_relationship_stage,
     get_relationship_level, is_custom_request, requires_adult_confirmation,
     SCENE_LEVELS, SCENES, PhotoGenerationError, get_latest_photo_delivery, get_photo_delivery_for_user,
-    get_gallery_page, get_gallery_item_bytes, GALLERY_PAGE_SIZE,
+    get_gallery_page, get_gallery_item_bytes, GALLERY_PAGE_SIZE, generate_custom_avatar,
 )
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
@@ -51,6 +53,7 @@ from services.gemini_video_service import animate_image, GeminiVideoError, video
 from services.cloud_video_service import (
     animate_image_replicate, animate_image_fal,
     replicate_available, fal_available, CloudVideoError, SENSUAL_ANIMATION_PROMPT,
+    VIDEO_PRESETS,
 )
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
 from services import apartment_service, gifts_service, dates_service
@@ -81,6 +84,14 @@ from services.photo_library_service import import_buffered_photos, library_stats
 from services.state_service import ensure_life_state, apply_life_choice
 from services.character_card_service import (
     get_card, list_cards, update_card, reset_card, ensure_default_cards, create_card, delete_card,
+    get_scenario_hook,
+)
+from services.character_dna_service import trait_bars
+from services.photo_reaction_service import react_to_photo
+from services.custom_character_service import (
+    CONSTRUCTOR_STEPS, OPTION_LABELS, PARAM_TITLES, build_avatar_prompt,
+    custom_character_id, get_custom_character, save_custom_character,
+    summary_lines, step_index, is_custom_character,
 )
 from services.consent_service import has_accepted, accept as accept_consent, delete_user_data, TERMS_VERSION, PRIVACY_VERSION
 from services.collection_service import collection_progress
@@ -225,6 +236,7 @@ def main_keyboard(is_admin: bool = False):
         [KeyboardButton(text='🏠 Квартира'), KeyboardButton(text='💕 Свидание')],
         [KeyboardButton(text='⚙️ Настройки'), KeyboardButton(text='👩 Персонажи')],
         [KeyboardButton(text='🔗 Пригласить'), KeyboardButton(text='🎁 Подарить')],
+        [KeyboardButton(text='🎨 Мой персонаж')],
     ]
     if is_admin:
         rows.append([KeyboardButton(text='🛠 Админка')])
@@ -327,6 +339,8 @@ def characters_keyboard():
         else:
             text = f'🔒 {card.display_name} · скоро'
         rows.append([InlineKeyboardButton(text=text, callback_data=f'character:view:{card.character_id}')])
+    # V3.19.0: entry point to the personal character constructor.
+    rows.append([InlineKeyboardButton(text=f'🎨 Создать свою · {CONSTRUCTOR_COST_STARS}⭐', callback_data='constructor:start')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -484,9 +498,17 @@ def _character_card_text(card, viewer_id: int | None = None) -> str:
         f'{card.button_emoji} {card.display_name}, {card.age}',
         '',
         card.short_bio or 'Описание пока не заполнено.',
-        '',
-        f'🏷 Статус: {card.status_label}',
     ]
+    # V3.19.0: WildGrl-style trait bars and cinematic scenario hook.
+    bars = trait_bars(card.character_id)
+    if bars:
+        lines.append('')
+        lines.append('Характер:')
+        lines.extend(bars)
+    hook = get_scenario_hook(card.character_id)
+    if hook:
+        lines.extend(['', f'🎬 {hook}'])
+    lines.extend(['', f'🏷 Статус: {card.status_label}'])
     if viewer_id and card.character_id == CHARACTER_ID:
         try:
             level = get_relationship_level(viewer_id, get_user_character(viewer_id))
@@ -1148,6 +1170,11 @@ async def character_view(cq: types.CallbackQuery):
             f'✅ {card.display_name} выбрана. Можешь писать ей! 👇',
             reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS),
         )
+        # V3.19.0: scenario hook as her cinematic opening line.
+        hook = get_scenario_hook(character_id)
+        if hook:
+            await asyncio.sleep(1.0)
+            await cq.message.answer(hook)
     elif card.status == 'premium' and not is_premium(cq.from_user.id) and not is_admin:
         await cq.message.answer(
             f'⭐ {card.display_name} — Premium-персонаж.\n'
@@ -1688,6 +1715,11 @@ async def cancel_admin_edit(message: types.Message):
         method_id = sess.get('method_id')
         markup = admin_payment_keyboard(method_id) if method_id else admin_payments_keyboard()
         await message.answer('редактирование оплаты отменено', reply_markup=markup)
+        return
+    # V3.19.0: abort an in-flight constructor wizard (name/face entry steps).
+    if message.from_user.id in _constructor_sessions:
+        _constructor_sessions.pop(message.from_user.id, None)
+        await message.answer('конструктор отменён. вернуться можно через «🎨 Мой персонаж».')
 
 
 @dp.message(Command('plans', 'today'))
@@ -2350,8 +2382,8 @@ async def gallery_animate_cb(cq: types.CallbackQuery):
     if not delivery or not delivery.get('telegram_file_id'):
         await cq.answer('это фото уже не оживить — попроси у меня новое 🙂', show_alert=True); return
     await cq.answer()
-    # Reuse the existing video gate — admin/Premium free slot, otherwise Stars invoice.
-    await _video_gate(cq, delivery)
+    # V3.19.0: pick the motion first; the existing video gate runs after.
+    await _show_video_preset_menu(cq.message.chat.id, delivery['id'])
 
 
 
@@ -2409,7 +2441,7 @@ async def quest_route_cb(cq: types.CallbackQuery):
         # Story reward: generate/deliver without consuming the daily free quota.
         await _start_photo_background(cq.message.chat.id,cq.from_user.id,PhotoRequest(scene=scene),'story')
 
-async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None) -> None:
+async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None, motion_preset: str | None = None) -> None:
     """Animate a delivered photo with automatic engine fallback.
 
     Order: Gemini/Veo first when enabled, then the free HF route (which walks
@@ -2447,9 +2479,14 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
             raise GeminiVideoError('no_video_engine')
         engine_names = [name for name, _ in engines]
 
-        # Sensual animation prompt for adult/intimate photo scenes.
-        scene = delivery.get('scene')
-        anim_prompt = SENSUAL_ANIMATION_PROMPT if scene in {'nude', 'tease', 'personal', 'lingerie', 'private_fashion'} else None
+        # V3.19.0: a user-chosen motion preset wins; otherwise the scene-aware
+        # sensual prompt applies to intimate scenes only.
+        preset = VIDEO_PRESETS.get((motion_preset or '').strip())
+        if preset:
+            anim_prompt = preset[1]
+        else:
+            scene = delivery.get('scene')
+            anim_prompt = SENSUAL_ANIMATION_PROMPT if scene in {'nude', 'tease', 'personal', 'lingerie', 'private_fashion'} else None
 
         await bot.send_message(chat_id, VIDEO_STATUS_TEXT)
         video_bytes = None
@@ -2542,24 +2579,74 @@ async def video_test_cmd(message: types.Message):
     await message.answer('тест видео запущен: прогоню всю цепочку движков с автофолбэком 🎬')
 
 
-async def _video_gate(cq: types.CallbackQuery, delivery: dict) -> None:
+def _video_preset_keyboard(delivery_id: int):
+    """V3.19.0: motion preset picker shown before every animation."""
+    rows = [
+        [
+            InlineKeyboardButton(text=VIDEO_PRESETS['kiss'][0], callback_data=f'videopreset:kiss:{delivery_id}'),
+            InlineKeyboardButton(text=VIDEO_PRESETS['hug'][0], callback_data=f'videopreset:hug:{delivery_id}'),
+        ],
+        [
+            InlineKeyboardButton(text=VIDEO_PRESETS['dance'][0], callback_data=f'videopreset:dance:{delivery_id}'),
+            InlineKeyboardButton(text='✨ Авто', callback_data=f'videopreset:auto:{delivery_id}'),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _show_video_preset_menu(chat_id: int, delivery_id: int):
+    await bot.send_message(
+        chat_id,
+        '🎬 Как мне её оживить? Выбери движение — или оставь авто 🎥',
+        reply_markup=_video_preset_keyboard(delivery_id),
+    )
+
+
+@dp.callback_query(F.data.startswith('videopreset:'))
+async def video_preset_cb(cq: types.CallbackQuery):
+    parts = cq.data.split(':')
+    if len(parts) != 3:
+        await cq.answer(); return
+    preset, _, raw_id = parts
+    if preset not in VIDEO_PRESETS and preset != 'auto':
+        await cq.answer(); return
+    try:
+        delivery_id = int(raw_id)
+    except ValueError:
+        await cq.answer(); return
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    if not _any_video_engine():
+        await cq.answer('Видео пока недоступно.', show_alert=True); return
+    if cq.from_user.id in _video_jobs and not _video_jobs[cq.from_user.id].done():
+        await cq.answer('Одно видео уже создаётся 🎬', show_alert=True); return
+    delivery = get_photo_delivery_for_user(cq.from_user.id, delivery_id)
+    if not delivery or not delivery.get('telegram_file_id'):
+        await cq.answer('Это фото уже не оживить — попроси у меня новое 🙂', show_alert=True); return
+    await cq.answer()
+    await _video_gate(cq, delivery, preset if preset != 'auto' else None)
+
+
+async def _video_gate(cq: types.CallbackQuery, delivery: dict, motion_preset: str | None = None) -> None:
     """Start the animation free (admin or Premium daily slot) or invoice Stars."""
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
-    track_event(uid, 'video_animate_click', metadata={'delivery_id': delivery['id']})
+    track_event(uid, 'video_animate_click', metadata={'delivery_id': delivery['id'], 'preset': motion_preset or 'auto'})
     free = cq.from_user.id in ADMIN_TELEGRAM_IDS
     if not free and is_premium(cq.from_user.id):
         free = consume_premium_video_free(cq.from_user.id)
     if free:
         track_event(uid, 'video_free_used', metadata={'delivery_id': delivery['id'], 'admin': cq.from_user.id in ADMIN_TELEGRAM_IDS})
         _video_jobs[cq.from_user.id] = asyncio.create_task(
-            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None)
+            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset)
         )
         return
+    # Preset rides along inside the invoice payload: video:<delivery_id>:<preset>
+    payload = f'video:{delivery["id"]}:{motion_preset or "auto"}'
     await send_stars_invoice(
         cq.message.chat.id,
         'Оживить фото Анны',
         'Короткое AI-видео из выбранного фото. Генерация занимает 1–3 минуты.',
-        f'video:{delivery["id"]}',
+        payload,
         VIDEO_COST_STARS,
     )
 
@@ -2585,7 +2672,7 @@ async def animate_photo_cb(cq: types.CallbackQuery):
         await cq.answer('Это фото уже не оживить — попроси у меня новое 🙂', show_alert=True)
         return
     await cq.answer()
-    await _video_gate(cq, delivery)
+    await _show_video_preset_menu(cq.message.chat.id, delivery['id'])
 
 
 @dp.callback_query(F.data == 'video:animate_last')
@@ -2604,7 +2691,7 @@ async def animate_last_photo_cb(cq: types.CallbackQuery):
         await cq.answer('Сначала попроси у Анны фото — оживлю последний кадр.', show_alert=True)
         return
     await cq.answer()
-    await _video_gate(cq, delivery)
+    await _show_video_preset_menu(cq.message.chat.id, delivery['id'])
 
 
 @dp.message(Command('geministatus'))
@@ -2708,12 +2795,15 @@ async def pre_checkout(query: types.PreCheckoutQuery):
     elif payload.startswith('quest_replay:'):
         ok=amount==QUEST_REPLAY_STARS
     elif payload.startswith('video:'):
+        # Payload format: video:<delivery_id>:<preset>
         try:
-            delivery_id = int(payload.split(':', 1)[1])
-        except ValueError:
+            delivery_id = int(payload.split(':')[1])
+        except (ValueError, IndexError):
             ok = False
         else:
             ok = amount == VIDEO_COST_STARS and bool(get_photo_delivery_for_user(query.from_user.id, delivery_id)) and _any_video_engine()
+    elif payload.startswith('constructor:'):
+        ok = amount == CONSTRUCTOR_COST_STARS
     elif payload.startswith('gallery_dl:'):
         try:
             delivery_id = int(payload.split(':', 1)[1])
@@ -2764,10 +2854,13 @@ async def successful_payment(message: types.Message):
         return
 
     if payload.startswith('video:'):
+        # Payload format: video:<delivery_id>:<preset>
+        parts = payload.split(':')
         try:
-            delivery_id = int(payload.split(':', 1)[1])
-        except ValueError:
+            delivery_id = int(parts[1])
+        except (ValueError, IndexError):
             return
+        motion_preset = parts[2] if len(parts) > 2 and parts[2] in VIDEO_PRESETS else None
         delivery = get_photo_delivery_for_user(message.from_user.id, delivery_id)
         if not delivery or (message.from_user.id in _video_jobs and not _video_jobs[message.from_user.id].done()):
             try:
@@ -2787,8 +2880,15 @@ async def successful_payment(message: types.Message):
         )
         # One unified job: Gemini/Veo when enabled, free HF spaces otherwise,
         # with automatic engine fallback; auto-refunds Stars if all fail.
-        task = asyncio.create_task(_run_video_background(message.chat.id, message.from_user.id, delivery_id, charge))
+        task = asyncio.create_task(_run_video_background(message.chat.id, message.from_user.id, delivery_id, charge, motion_preset=motion_preset))
         _video_jobs[message.from_user.id] = task
+        return
+
+    if payload.startswith('constructor:'):
+        # V3.19.0: paid character constructor — avatar generation may take a
+        # minute, so it runs as a task like the video pipeline.
+        record_payment(message.from_user.id, 'constructor', payment.total_amount, charge)
+        asyncio.create_task(_finish_constructor(message, charge))
         return
 
     if payload.startswith('gallery_dl:'):
@@ -3483,6 +3583,380 @@ async def settings_button(message: types.Message):
     await settings(message)
 
 
+# V3.19.0: per-user cooldown for vision reactions to user photos.
+_photo_reaction_ts: dict[int, float] = {}
+
+
+async def _react_to_user_photo(message: types.Message):
+    """In-character vision reaction to a photo the user sent in chat.
+
+    Fully fail-silent: a broken provider or download must never block chat.
+    """
+    if not PHOTO_REACTION_ENABLED or not has_accepted(message.from_user.id):
+        return
+    now = _time.time()
+    if now - _photo_reaction_ts.get(message.from_user.id, 0) < PHOTO_REACTION_COOLDOWN_SECONDS:
+        return
+    try:
+        buffer = io.BytesIO()
+        await bot.download(message.photo[-1], destination=buffer)
+        image_b64 = base64.b64encode(buffer.getvalue()).decode('ascii')
+    except Exception:
+        logger.warning('photo reaction download failed user=%s', message.from_user.id)
+        return
+    _photo_reaction_ts[message.from_user.id] = now
+    character_id = get_user_character(message.from_user.id)
+    async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
+        reaction = await react_to_photo(image_b64, caption=message.caption, character_id=character_id)
+    if not reaction:
+        return
+    await message.answer(reaction)
+    # Sharing a photo is a meaningful gesture: let the bond grow a little.
+    try:
+        await record_user_message(
+            message.from_user.id, message.from_user.first_name or 'ты',
+            relationship=1, trust=1, intimacy=1,
+            event_type='meaningful_share', reason='пользователь прислал фото',
+            character_id=character_id,
+        )
+        track_event(ensure_user(message.from_user.id), 'photo_reaction_sent', metadata={'character_id': character_id})
+    except Exception:
+        pass
+
+
+# ── V3.19.0: personal character constructor ─────────────────────────────────
+
+_constructor_sessions: dict[int, dict] = {}
+
+AGE_BY_GROUP = {'age_young': 20, 'age_mid': 25, 'age_mature': 30, 'age_confident': 35}
+
+
+def _constructor_step_keyboard(step_key: str):
+    step = CONSTRUCTOR_STEPS[step_index(step_key)]
+    rows = [
+        [InlineKeyboardButton(text=label, callback_data=f'cbuild:{step["key"]}:{value}')]
+        for value, label, _ in step['options']
+    ]
+    back_label = '↩ назад' if step_index(step_key) > 0 else '❌ отменить'
+    rows.append([InlineKeyboardButton(text=back_label, callback_data=f'cbuild:back:{step["key"]}')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _constructor_prompt(step_key: str) -> str:
+    index = step_index(step_key)
+    return f'🎨 Шаг {index + 1}/{len(CONSTRUCTOR_STEPS)}: {CONSTRUCTOR_STEPS[index]["title"]}'
+
+
+async def _constructor_intro(chat_id: int, telegram_id: int):
+    if get_custom_character(telegram_id):
+        await _show_my_character(chat_id, telegram_id)
+        return
+    _constructor_sessions[telegram_id] = {'params': {}, 'step': 0}
+    await bot.send_message(
+        chat_id,
+        f'🎨 Конструктор персонажа\n\n'
+        f'Собери свою личную собеседницу: внешность, характер, роль. '
+        f'Можно приложить фото лица — персонаж получит эту внешность.\n\n'
+        f'Стоимость: {CONSTRUCTOR_COST_STARS} Stars, платишь один раз.',
+        reply_markup=_constructor_step_keyboard(CONSTRUCTOR_STEPS[0]['key']),
+    )
+    await bot.send_message(chat_id, _constructor_prompt(CONSTRUCTOR_STEPS[0]['key']))
+
+
+async def _constructor_face_step(chat_id: int, telegram_id: int):
+    cons = _constructor_sessions.get(telegram_id)
+    if not cons:
+        return
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text='📷 Загрузить фото лица', callback_data='cbuild:face_upload'),
+        InlineKeyboardButton(text='Пропустить', callback_data='cbuild:face_skip'),
+    ]])
+    await bot.send_message(
+        chat_id,
+        f'🎨 Шаг {len(CONSTRUCTOR_STEPS) + 1}/{len(CONSTRUCTOR_STEPS) + 1}: хочешь, чтобы она была похожа на кого-то конкретного?\n'
+        'Пришли фото лица — персонаж получит именно эту внешность (face-swap). Или пропусти.',
+        reply_markup=keyboard,
+    )
+
+
+async def _constructor_confirm(chat_id: int, telegram_id: int):
+    cons = _constructor_sessions.get(telegram_id)
+    if not cons:
+        return
+    params = cons['params']
+    lines = summary_lines(params, str(params.get('name') or 'Без имени'))
+    face_line = '📷 Лицо: по твоему фото (face-swap)' if cons.get('face_bytes') else '🎭 Внешность: полностью AI'
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f'✅ Создать · {CONSTRUCTOR_COST_STARS}⭐', callback_data='constructor:buy')],
+        [InlineKeyboardButton(text='❌ Отменить', callback_data='constructor:cancel')],
+    ])
+    await bot.send_message(
+        chat_id,
+        '🎨 Твой персонаж:\n\n' + '\n'.join(lines) + f'\n{face_line}\n\n'
+        f'Готова родиться за {CONSTRUCTOR_COST_STARS} Stars ✨',
+        reply_markup=keyboard,
+    )
+
+
+async def _constructor_receive_face(message: types.Message):
+    telegram_id = message.from_user.id
+    cons = _constructor_sessions.get(telegram_id)
+    if not cons:
+        return
+    try:
+        buffer = io.BytesIO()
+        await bot.download(message.photo[-1], destination=buffer)
+        face_bytes = buffer.getvalue()
+        if not face_bytes:
+            raise ValueError('empty photo')
+    except Exception:
+        await message.answer('не смогла прочитать фото 😕 попробуй другое.')
+        return
+    cons['face_bytes'] = face_bytes
+    cons['face_file_id'] = message.photo[-1].file_id
+    cons['await'] = None
+    await message.answer('✅ Лицо принято — буду похожа на него 🙂')
+    await _constructor_confirm(message.chat.id, telegram_id)
+
+
+def _my_character_keyboard(character_id: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='💬 Общаться с ней', callback_data=f'mychar:chat:{character_id}')],
+        [InlineKeyboardButton(text='🔄 Создать заново', callback_data='constructor:restart')],
+    ])
+
+
+async def _show_my_character(chat_id: int, telegram_id: int):
+    row = get_custom_character(telegram_id)
+    if not row:
+        await _constructor_intro(chat_id, telegram_id)
+        return
+    try:
+        params = json.loads(row.params_json or '{}')
+    except (TypeError, ValueError):
+        params = {}
+    lines = ['🎨 Твой персонаж готов:', '']
+    lines += summary_lines(params, row.display_name or 'Без имени')
+    if row.face_file_id:
+        lines.append('📷 Внешность — по твоему фото.')
+    markup = _my_character_keyboard(row.character_id)
+    if row.avatar_file_id:
+        await bot.send_photo(chat_id, row.avatar_file_id, caption='\n'.join(lines), reply_markup=markup)
+    else:
+        await bot.send_message(chat_id, '\n'.join(lines), reply_markup=markup)
+
+
+async def _finish_constructor(message: types.Message, charge: str):
+    """After Stars payment: generate the avatar, save the persona, open chat."""
+    telegram_id = message.from_user.id
+    cons = _constructor_sessions.pop(telegram_id, None)
+    if not cons:
+        await message.answer('что-то потерялось 😕 нажми «🎨 Мой персонаж» ещё раз.')
+        return
+    params = cons['params']
+    display_name = str(params.get('name') or 'Она')[:48]
+    await message.answer('✨ Отлично! Рисую твою героиню — это займёт до минуты...')
+    face_path = None
+    if cons.get('face_bytes'):
+        import tempfile
+        face_path = Path(tempfile.gettempdir()) / f'constructor_face_{telegram_id}.jpg'
+        try:
+            face_path.write_bytes(cons['face_bytes'])
+        except OSError:
+            face_path = None
+    try:
+        avatar_bytes, _mime = await generate_custom_avatar(
+            build_avatar_prompt(params, face_swap=bool(face_path)), face_path,
+        )
+    except Exception:
+        logger.exception('constructor avatar generation failed user=%s', telegram_id)
+        try:
+            await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge)
+            record_refund(telegram_id, charge, CONSTRUCTOR_COST_STARS, product='constructor')
+            await message.answer('аватар сейчас не получился 😕 Stars вернул автоматически. Попробуй ещё раз чуть позже.')
+        except Exception:
+            logger.exception('constructor refund failed user=%s', telegram_id)
+            await message.answer('аватар не получился 😕 напиши /support — вернём Stars.')
+        return
+    finally:
+        if face_path:
+            try:
+                face_path.unlink()
+            except OSError:
+                pass
+    try:
+        sent = await bot.send_photo(telegram_id, BufferedInputFile(avatar_bytes, filename='avatar.jpg'))
+        avatar_file_id = sent.photo[-1].file_id
+    except Exception:
+        logger.exception('constructor avatar telegram upload failed user=%s', telegram_id)
+        avatar_file_id = None
+    row = save_custom_character(
+        telegram_id, display_name=display_name, params=params,
+        avatar_file_id=avatar_file_id, face_file_id=cons.get('face_file_id'),
+    )
+    # Register her as a real character card so photo/relationship pipelines
+    # recognize the id; bio carries the appearance description for prompts.
+    descriptor_bits = [
+        OPTION_LABELS[str(params[key])] for key in ('age', 'body', 'hair', 'eyes', 'temperament', 'profession', 'role')
+        if key in params and str(params[key]) in OPTION_LABELS
+    ]
+    bio = (display_name + ': ' + ', '.join(descriptor_bits).lower())[:900]
+    card_age = AGE_BY_GROUP.get(str(params.get('age')), 25)
+    try:
+        if get_card(row.character_id):
+            update_card(
+                row.character_id, display_name=display_name, age=card_age,
+                short_bio=bio, status='active', card_photo_file_id=avatar_file_id,
+            )
+        else:
+            create_card(row.character_id, display_name, card_age, bio, '🎨', 'female')
+            update_card(row.character_id, status='active', card_photo_file_id=avatar_file_id)
+    except Exception:
+        logger.exception('constructor card registration failed user=%s', telegram_id)
+    track_event(
+        ensure_user(telegram_id),
+        'stars_purchase', value=CONSTRUCTOR_COST_STARS,
+        metadata={'product': 'constructor', 'face_swap': bool(cons.get('face_bytes'))},
+    )
+    await bot.send_message(
+        message.chat.id,
+        f'🎉 Знакомься — это {display_name}! Теперь она твоя личная собеседница.',
+        reply_markup=_my_character_keyboard(row.character_id),
+    )
+
+
+@dp.callback_query(F.data == 'constructor:start')
+async def constructor_start_cb(cq: types.CallbackQuery):
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True)
+        return
+    await cq.answer()
+    await _constructor_intro(cq.message.chat.id, cq.from_user.id)
+
+
+@dp.callback_query(F.data == 'constructor:restart')
+async def constructor_restart_cb(cq: types.CallbackQuery):
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True)
+        return
+    await cq.answer()
+    _constructor_sessions.pop(cq.from_user.id, None)
+    _constructor_sessions[cq.from_user.id] = {'params': {}, 'step': 0}
+    await cq.message.answer(
+        f'🎨 Собираем заново. Стоимость: {CONSTRUCTOR_COST_STARS} Stars.',
+        reply_markup=_constructor_step_keyboard(CONSTRUCTOR_STEPS[0]['key']),
+    )
+    await cq.message.answer(_constructor_prompt(CONSTRUCTOR_STEPS[0]['key']))
+
+
+@dp.callback_query(F.data.startswith('cbuild:'))
+async def constructor_step_cb(cq: types.CallbackQuery):
+    parts = cq.data.split(':')
+    telegram_id = cq.from_user.id
+    cons = _constructor_sessions.get(telegram_id)
+    if not cons:
+        await cq.answer('Сессия конструктора закончилась — начни заново.', show_alert=True)
+        return
+    action = parts[1] if len(parts) > 1 else ''
+    if action == 'back':
+        index = cons.get('step', 0)
+        if index == 0:
+            _constructor_sessions.pop(telegram_id, None)
+            await cq.answer('Конструктор отменён.')
+            await cq.message.answer('Хорошо, конструктор отменила. Вернуться можно в любой момент: «🎨 Мой персонаж».')
+            return
+        cons['step'] = index - 1
+        key = CONSTRUCTOR_STEPS[cons['step']]['key']
+        await cq.answer()
+        await cq.message.answer(_constructor_prompt(key), reply_markup=_constructor_step_keyboard(key))
+        return
+    if action == 'face_upload':
+        cons['await'] = 'face'
+        await cq.answer()
+        await cq.message.answer('Пришли фото лица одним сообщением 📷\n/cancel — отменить')
+        return
+    if action == 'face_skip':
+        cons['await'] = None
+        await cq.answer()
+        await _constructor_confirm(cq.message.chat.id, telegram_id)
+        return
+    # Regular step option: cbuild:<step_key>:<option_value>
+    if len(parts) != 3:
+        await cq.answer()
+        return
+    key, value = parts[1], parts[2]
+    index = step_index(key)
+    if index < 0 or value not in OPTION_LABELS:
+        await cq.answer()
+        return
+    if index != cons.get('step', 0):
+        await cq.answer('Шаги по порядку 🙂', show_alert=True)
+        return
+    cons['params'][key] = value
+    cons['step'] = index + 1
+    await cq.answer()
+    if cons['step'] < len(CONSTRUCTOR_STEPS):
+        next_key = CONSTRUCTOR_STEPS[cons['step']]['key']
+        await cq.message.answer(_constructor_prompt(next_key), reply_markup=_constructor_step_keyboard(next_key))
+        return
+    # All inline steps done — ask for the name as plain text.
+    cons['await'] = 'name'
+    await cq.message.answer('Шаг: как её зовут? Напиши имя одним сообщением (до 24 символов).')
+
+
+@dp.callback_query(F.data == 'constructor:buy')
+async def constructor_buy_cb(cq: types.CallbackQuery):
+    telegram_id = cq.from_user.id
+    cons = _constructor_sessions.get(telegram_id)
+    if not cons or not cons.get('params', {}).get('name'):
+        await cq.answer('Сначала собери персонажа до конца 🙂', show_alert=True)
+        return
+    await cq.answer()
+    await send_stars_invoice(
+        cq.message.chat.id,
+        'Личный персонаж',
+        'Конструктор создаст уникальную собеседницу с аватаром. Платёж одноразовый.',
+        f'constructor:{telegram_id}',
+        CONSTRUCTOR_COST_STARS,
+    )
+
+
+@dp.callback_query(F.data == 'constructor:cancel')
+async def constructor_cancel_cb(cq: types.CallbackQuery):
+    _constructor_sessions.pop(cq.from_user.id, None)
+    await cq.answer('Конструктор отменён.')
+    await cq.message.answer('Хорошо, отменила. Вернуться можно в любой момент: «🎨 Мой персонаж».')
+
+
+@dp.callback_query(F.data.startswith('mychar:chat:'))
+async def my_character_chat_cb(cq: types.CallbackQuery):
+    character_id = cq.data.split(':', 2)[2]
+    if not is_custom_character(character_id):
+        await cq.answer()
+        return
+    row = get_custom_character(cq.from_user.id)
+    if not row or row.character_id != character_id:
+        await cq.answer('Это не твой персонаж 🙂', show_alert=True)
+        return
+    await cq.answer()
+    _user_character[cq.from_user.id] = character_id
+    track_event(ensure_user(cq.from_user.id), 'character_selected', metadata={'character_id': character_id, 'custom': True})
+    await cq.message.answer(
+        f'✅ Теперь ты общаешься с {row.display_name or "ней"}. Пиши ей прямо сюда 👇',
+        reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS),
+    )
+    await cq.message.answer(f'{row.display_name or "Она"}: «Ну привет... я ждала, когда ты наконец выберешь меня 😏 Расскажи мне о себе.»')
+
+
+@dp.message(F.text == '🎨 Мой персонаж')
+async def my_character_button(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    if not has_accepted(message.from_user.id):
+        await message.answer('Сначала подтверди 18+ и условия через /start.', reply_markup=consent_keyboard())
+        return
+    await _show_my_character(message.chat.id, message.from_user.id)
+
+
 @dp.message(F.photo)
 async def library_photo_upload(message: types.Message):
     # Payment QR editing is owner-only and takes priority over other photo importers.
@@ -3524,8 +3998,17 @@ async def library_photo_upload(message: types.Message):
         await message.answer(f'🖼 Фото карточки сохранено.{warn}', reply_markup=admin_card_keyboard(character_id))
         return
 
+    # Constructor face-wait: the user is uploading an identity reference photo.
+    constructor_session = _constructor_sessions.get(message.from_user.id)
+    if constructor_session and constructor_session.get('await') == 'face':
+        await _constructor_receive_face(message)
+        return
+
     sess = _library_import_sessions.get(message.from_user.id)
     if message.from_user.id not in ADMIN_TELEGRAM_IDS or not sess:
+        # V3.19.0: regular users get an in-character vision reaction instead
+        # of silence; admins outside an import session do too.
+        await _react_to_user_photo(message)
         return
     if sess.get('preview'):
         await message.answer('сначала нажми «Продолжить загрузку» или «Сохранить всё».')
@@ -3922,6 +4405,17 @@ async def text_message(message: types.Message):
     track_event(uid, 'chat_user_message', metadata={'kind': 'text'})
     _track_proactive_reply_if_any(message.from_user.id, uid)
     cancel_active_wake(message.from_user.id)
+    # V3.19.0: constructor name step — the next plain text is the persona name.
+    constructor_name_session = _constructor_sessions.get(message.from_user.id)
+    if constructor_name_session and constructor_name_session.get('await') == 'name':
+        name_value = (message.text or '').strip()
+        if not 1 <= len(name_value) <= 24:
+            await message.answer('имя должно быть от 1 до 24 символов 🙂')
+            return
+        constructor_name_session['params']['name'] = name_value
+        constructor_name_session['await'] = None
+        await _constructor_face_step(message.chat.id, message.from_user.id)
+        return
     try:
         from services.gamification_service import touch_activity, check_first_message
         gam = touch_activity(message.from_user.id)

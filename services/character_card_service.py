@@ -64,6 +64,38 @@ DEFAULT_CARDS = {
 }
 
 
+# V3.19.0: WildGrl-style scenario hooks — a cinematic first message that
+# pulls the user into a concrete situation instead of a generic greeting.
+# Shown on the character card and sent as her opening line on selection.
+SCENARIO_HOOKS = {
+    "anna_01": (
+        "Она вернулась с вечеринки пораньше — туфли в руке, помада чуть смазана. "
+        "«Ты не поверишь, что там было... хотя нет. Такое я расскажу только лично. Заедешь?»"
+    ),
+    "alena_01": (
+        "Она прислала фото из салона спорткара: «Смотрю на эту малышку и думаю о тебе. "
+        "Пассажирское сиденье свободно... но только если не боишься быстрой езды.»"
+    ),
+    "maria_01": (
+        "Дома пахнет корицей и уютом. Она в объёмном свитере накрывает на двоих: "
+        "«Я приготовила твой любимый десерт. Иди ко мне, пока не остыл.»"
+    ),
+    "maksim_01": (
+        "Поздний вечер, город внизу светится огнями. Он протягивает тебе чашку: "
+        "«Расскажи мне всё про свой день. И не пропускай мелочи — они мне интереснее всего.»"
+    ),
+    "leo_01": (
+        "Он крутит в руке бокал и смотрит чуть дольше, чем положено: "
+        "«Знаешь, я весь вечер придумывал повод заговорить с тобой. А потом понял — он мне не нужен.»"
+    ),
+}
+
+
+def get_scenario_hook(character_id: str) -> str | None:
+    """Return the cinematic scenario hook for a character, if defined."""
+    return SCENARIO_HOOKS.get(character_id)
+
+
 @dataclass(frozen=True)
 class CharacterCardView:
     character_id: str

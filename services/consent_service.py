@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, delete
 from services.db import SessionLocal
 from services.user_service import ensure_user
-from models.app_models import UserConsent, User, Message, Memory, CommunicationProfile, CharacterState, Reminder, Subscription, StarTransaction, ProductEvent
+from models.app_models import UserConsent, User, Message, Memory, CommunicationProfile, CharacterState, Reminder, Subscription, StarTransaction, ProductEvent, CustomCharacter
 from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer, UserSeenPhotoPack, UserSeenPhotoItem
 from models.relationship_models import UserCharacterRelationship, RelationshipEvent, RelationshipMilestone
 from models.quest_models import UserQuestProgress, QuestReplayOffer
@@ -50,6 +50,8 @@ def delete_user_data(telegram_id: int) -> bool:
                       ProductEvent, StarTransaction, Subscription, Reminder, CharacterState, CommunicationProfile, Memory, Message,
                       UserConsent, UserCharacterRelationship):
             s.execute(delete(model).where(model.user_id == uid))
+        # V3.19.0: constructor characters are keyed by telegram_id directly.
+        s.execute(delete(CustomCharacter).where(CustomCharacter.telegram_id == str(telegram_id)))
         s.delete(user)
         s.commit()
         return True

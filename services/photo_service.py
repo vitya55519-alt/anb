@@ -992,6 +992,23 @@ def _seedream_reference_path(character: dict) -> Path:
     raise FileNotFoundError('У Анны нет нового canonical reference для Seedream')
 
 
+# ── V3.19.0: custom character constructor avatar ─────────────────────────
+
+async def generate_custom_avatar(prompt: str, reference_path: Path | None = None) -> tuple[bytes, str]:
+    """Generate a constructor avatar as (jpeg_bytes, mime).
+
+    Seedream with a user face reference acts as face-swap (identity anchor);
+    without a reference it creates a fresh identity. Gemini image generation
+    is the fallback route when fal.ai is unavailable or fails.
+    """
+    if FAL_KEY:
+        try:
+            return await _seedream_edit(reference_path, prompt, '3:4')
+        except Exception:
+            logger.warning('constructor avatar Seedream failed; falling back to Gemini')
+    return await _gemini_edit(prompt, '3:4')
+
+
 def _pick_nonrepeat(options: list[str], previous: str | None) -> str:
     usable = [x for x in options if not previous or x.strip().lower() != previous.strip().lower()]
     return random.choice(usable or options)

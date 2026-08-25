@@ -13,7 +13,7 @@ CONFIG = (ROOT / 'config.py').read_text(encoding='utf-8')
 
 
 def test_unified_video_job_with_engine_fallback():
-    sig = 'async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None)'
+    sig = 'async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None, motion_preset: str | None = None)'
     assert sig in MAIN
     block = MAIN[MAIN.index(sig):]
     block = block.split('\n\n\n@dp.', 1)[0]

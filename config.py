@@ -199,6 +199,16 @@ CUSTOM_PHOTO_COST_STARS = int(os.getenv("CUSTOM_PHOTO_COST_STARS", "40"))
 QUEST_REPLAY_STARS = int(os.getenv("QUEST_REPLAY_STARS", "10"))
 PREMIUM_MONTHLY_QUEST_REPLAYS = int(os.getenv("PREMIUM_MONTHLY_QUEST_REPLAYS", "2"))
 
+# V3.19.0: personal character constructor — one-time Stars payment that builds
+# a private chat persona (appearance + personality + relationship role) with a
+# generated avatar. Optional user face photo enables face-swap identity.
+CONSTRUCTOR_COST_STARS = max(1, int(os.getenv("CONSTRUCTOR_COST_STARS", "50")))
+
+# V3.19.0: vision reactions — the character comments on photos users send in
+# chat (selfies, pets, food, gym...) via the multimodal chat provider.
+PHOTO_REACTION_ENABLED = os.getenv("PHOTO_REACTION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+PHOTO_REACTION_COOLDOWN_SECONDS = max(0, int(os.getenv("PHOTO_REACTION_COOLDOWN_SECONDS", "15")))
+
 # Referral & first-start "wow" bonuses. Both sides receive photo credits.
 # 0 disables a bonus.
 REFERRAL_REFERRER_CREDITS = int(os.getenv("REFERRAL_REFERRER_CREDITS", "3"))
