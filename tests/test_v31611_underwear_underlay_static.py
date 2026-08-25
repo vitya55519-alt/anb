@@ -25,11 +25,14 @@ def test_underwear_injection_framed_as_under_layer():
 
 def test_color_injection_gated_to_visible_lingerie_contexts():
     block = _underlay_block()
-    # Naming the bra/panties in ordinary low-level shots made the model draw
-    # them on top of the outfit — the color is injected only at level 5+ or in
-    # scenes that intentionally show lingerie.
-    assert 'elif request.underwear_color and (level_key >= 5 or request.scene in {' in block
-    assert "'personal', 'lingerie', 'private_fashion', 'peek', 'dressing'" in block
+    # V3.19.2: the bra/panties color is named only in the dedicated private
+    # scenes. Naming them at level 5+ in ordinary shots made the model draw
+    # visible lingerie in public venues (restaurant/car/bar), so the
+    # level-based gate was removed entirely.
+    assert 'elif request.underwear_color and request.scene in {' in block
+    assert "'personal', 'lingerie', 'private_fashion'" in block
+    assert 'underwear_color and (level_key >= 5' not in block
+    assert "'peek'" not in block and "'dressing'" not in block
 
 
 def test_level_underlay_rule_still_follows_color_injection():

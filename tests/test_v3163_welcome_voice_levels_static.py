@@ -58,9 +58,11 @@ def test_level_rules_gradual_reveal_with_lingerie_hint():
     assert 'level 1/6' in rules
     assert 'bra outline under a thin blouse' in rules
     assert 'never exposed' in rules
-    # Reveal grows with levels.
+    # Reveal grows with levels, but V3.19.2 caps it: levels 5-6 stay fully
+    # covered in public scenes (no visible lingerie), intimacy moved to the
+    # private scenes.
     assert 'open back or off-shoulder' in rules
-    assert 'visible lace details' in rules
+    assert 'no visible lingerie' in rules
     # Every level stays non-explicit.
     for key in ('level 1/6', 'level 4/6', 'level 6/6'):
         assert key in rules

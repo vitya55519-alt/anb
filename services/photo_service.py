@@ -117,7 +117,9 @@ SCENE_LEVELS = {
     'club': 5, 'personal': 5, 'lingerie': 5,
     'private_fashion': 6,
     'nude': 6, 'tease': 6,
-    'peek': 4, 'dressing': 4,
+    # V3.19.2: 'peek'/'dressing' are retired from generation — every public
+    # venue scene must stay fully clothed; lingerie belongs to the private
+    # scenes only. They stay in SCENES/AUTO_CAPTIONS for old library photos.
 }
 STAGE_INDEX = {
     'stranger': 0, 'acquaintance': 1, 'close': 2, 'intimate': 3,
@@ -381,15 +383,15 @@ LEVEL_VISUAL_RULES = {
     2: 'Relationship visual level 2/6: more feminine and fitted styling, clearer waist definition, still fully clothed. A discreet lingerie outline under fitted fabric is allowed; necklines slightly more feminine.',
     3: 'Relationship visual level 3/6: noticeably more stylish, confident and figure-flattering fashion, deeper feminine necklines and fitted silhouettes while remaining mainstream; tasteful hints of lace or lingerie under clothing, fully clothed.',
     4: 'Relationship visual level 4/6: polished personal fashion, more confident poses and stronger fitted silhouettes; more revealing cuts such as open back or off-shoulder are allowed, still no exposure and non-explicit.',
-    5: 'Relationship visual level 5/6: glamorous personalized styling and more private-feeling fashion; elegant daring cuts and visible lace details are allowed, keep it classy and non-explicit.',
-    6: 'Relationship visual level 6/6: premium personalized styling, strongest confident fashion presentation and clear exclusivity; boldest tasteful fashion allowed, remain fully non-explicit.',
+    5: 'Relationship visual level 5/6: glamorous personalized styling and more private-feeling fashion; the outfit stays fully covered with no visible lingerie, straps or lace details — elegant, classy and non-explicit.',
+    6: 'Relationship visual level 6/6: premium personalized styling, strongest confident fashion presentation and clear exclusivity; boldest tasteful fully-clothed fashion allowed, no visible underwear, remain fully non-explicit.',
 }
 OPENAI_LEVEL_VISUAL_RULES = {
     1: 'Relationship visual level 1/6: simple casual styling, natural pose, everyday social-media feel, fully clothed. A very subtle hint of everyday lingerie under fitted clothing (soft bra outline under a thin blouse) is allowed if natural; never exposed.',
     2: 'Relationship visual level 2/6: more coordinated clothing, cleaner styling and a little more confidence, fully clothed; a discreet lingerie outline under fitted fabric is allowed.',
     3: 'Relationship visual level 3/6: noticeably more fashionable outfit, better accessories and stronger composition, fully clothed; deeper feminine necklines and tasteful hints of lace under clothing are allowed.',
     4: 'Relationship visual level 4/6: polished personal fashion, confident lifestyle pose and more intentional styling, fully clothed; more revealing cuts such as open back or off-shoulder are allowed, no exposure.',
-    5: 'Relationship visual level 5/6: premium personalized styling, richer venue details and more exclusive-feeling composition, fully clothed; elegant daring cuts and visible lace details are allowed.',
+    5: 'Relationship visual level 5/6: premium personalized styling, richer venue details and more exclusive-feeling composition, fully clothed; elegant premium cuts are allowed while everything stays covered — no visible lingerie.',
     6: 'Relationship visual level 6/6: strongest premium styling, best accessories, lighting and composition; sophisticated and exclusive, boldest tasteful fashion while fully clothed and general-audience.',
 }
 
@@ -405,8 +407,8 @@ LEVEL_UNDERLAY_RULES = {
     2: 'Her lingerie stays strictly under the outfit, never on top of it; at most the faint natural outline of her bra reads through the fitted fabric — her underwear quietly emphasizes her natural sexuality and self-confidence without ever being drawn as outerwear.',
     3: 'Her lingerie stays strictly under the outfit, never on top of it; only a subtle bra outline and a hint of a lace edge read through the fitted garment. The lace adds femininity and allure, never vulgarity — the outfit always stays on her.',
     4: 'Her lingerie stays strictly under the outfit, never on top of it; a delicate lace edge may show at the neckline of the more revealing outfit, everything else stays covered by the clothes — elegant sensuality, no exposure.',
-    5: 'Elegant lingerie details read subtly under the private-feeling outfit while the outfit itself stays on her, never on top of it; the lingerie flatters her curves and radiates confident, tasteful sexuality without ever being worn over the clothes.',
-    6: 'Sophisticated lace and lingerie-inspired details read beneath her most sensual styling — refined, feminine, non-explicit, with the lingerie always under the outfit, never on top of it.',
+    5: 'Her everyday/public outfit fully covers her; her lingerie stays completely hidden underneath — no straps, lace edges or lingerie details are visible at the neckline or anywhere else, the lingerie is never on top of or outside the outfit. Only in a dedicated lingerie/private scene is the lingerie the outfit itself, as directed by the scene framing.',
+    6: 'Her outfit fully covers her; the lingerie beneath stays completely invisible — no straps, lace edges or underwear details read through or outside the clothing, the lingerie is never on top of the outfit. Only in a dedicated lingerie/private scene is the lingerie the outfit itself, as directed by the scene framing.',
 }
 
 # Private scenes escalate with the relationship level: the same scene reads
@@ -1166,11 +1168,12 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         set_desc = f'{request.underwear_color} lingerie{style_note} set' if request.underwear_color else 'elegant lingerie set'
         wardrobe = f'only her {set_desc} — a matching bra and panties worn as the entire outfit in the privacy of her home, no outerwear at all'
         underlay_rule = 'Her lingerie is the outfit itself in this private at-home moment: nothing is worn over it and no other clothing appears in the frame.'
-    # Inject specific underwear color and style only where lingerie is meant
-    # to be seen (high level or private/peek/dressing scenes). Naming the bra
-    # and panties in ordinary low-level shots makes the image model draw them
-    # on top of the outfit, so there the color stays unspoken.
-    elif request.underwear_color and (level_key >= 5 or request.scene in {'personal', 'lingerie', 'private_fashion', 'peek', 'dressing'}):
+    # Inject specific underwear color and style only in the dedicated private
+    # scenes where lingerie is the subject of the photo. V3.19.2: naming the
+    # bra and panties in ordinary/public shots (even at level 5-6) made the
+    # model draw visible lingerie in restaurants, cars and bars — public
+    # venues now stay fully clothed, so the color stays unspoken there.
+    elif request.underwear_color and request.scene in {'personal', 'lingerie', 'private_fashion'}:
         style_note = f' ({request.underwear_style})' if request.underwear_style else ''
         underlay_rule = (
             f'The lingerie she wears beneath her outfit is {request.underwear_color}{style_note} — always the under-layer, never outerwear. '
@@ -1186,9 +1189,9 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
             'HOME LINGERIE LOOK: at this level of trust she shoots her at-home sets relaxed and confident in only her lingerie — '
             'a private, tasteful, non-explicit at-home look made specifically for the person she is chatting with.\n'
         )
-    elif seedream and level_key >= 5 and not scene_tiers:
-        # Everywhere else at level 5-6 her outfits turn noticeably more daring.
-        wardrobe += ', styled with a daring, revealing cut that shows more skin while staying a real outfit'
+    # V3.19.2: at level 5-6 ordinary/public scenes no longer escalate toward
+    # revealing cuts — she stays fully clothed there; the intimate looks live
+    # in the at-home lingerie sets and the private scenes instead.
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
     identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key)
@@ -1854,7 +1857,24 @@ async def _run_routed_photo_set(
 ) -> list[GeneratedPhoto]:
     try:
         if provider == 'seedream45':
-            return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+            try:
+                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+            except PhotoGenerationError as exc:
+                # V3.19.2: a Seedream validation/policy failure (HTTP 422 etc.)
+                # must not kill the photo — fall back through the other engines.
+                if GEMINI_IMAGE_ENABLED and GEMINI_API_KEY:
+                    logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=gemini_image reason=%s', telegram_id, resolved.scene, exc.reason)
+                    track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'gemini_image', 'reason': exc.reason})
+                    return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                if OPENAI_IMAGE_AVAILABLE:
+                    logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=openai reason=%s', telegram_id, resolved.scene, exc.reason)
+                    track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'openai', 'reason': exc.reason})
+                    return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                if POLLINATIONS_ENABLED:
+                    logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=pollinations reason=%s', telegram_id, resolved.scene, exc.reason)
+                    track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'pollinations', 'reason': exc.reason})
+                    return await _run_pollinations_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                raise
         if provider == 'gemini_image':
             try:
                 return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)

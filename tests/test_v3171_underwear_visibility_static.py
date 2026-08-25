@@ -33,11 +33,15 @@ def test_private_scene_tiers_level_mapping():
     assert "f'{tier_framing}'" in prompt
 
 
-def test_new_peek_and_dressing_scenes_registered():
+def test_peek_and_dressing_scenes_retired_from_generation():
+    # V3.19.2: 'peek'/'dressing' (visible underwear in everyday scenes) are
+    # no longer routable — public venues must stay fully clothed. The scene
+    # definitions stay for old library photos, but without a SCENE_LEVELS
+    # entry scene_allowed_for_stage() rejects them (default level 99).
     from services.photo_service import SCENES, SCENE_LEVELS, SCENE_GROUP, AUTO_CAPTIONS
     for scene in ('peek', 'dressing'):
         assert scene in SCENES
-        assert SCENE_LEVELS[scene] == 4
+        assert scene not in SCENE_LEVELS
         assert scene in SCENE_GROUP
         assert scene in AUTO_CAPTIONS and AUTO_CAPTIONS[scene]
 

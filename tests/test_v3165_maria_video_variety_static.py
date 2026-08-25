@@ -44,7 +44,8 @@ def test_lingerie_underlines_sexuality_not_objectification():
     rules = PHOTO[PHOTO.index('LEVEL_UNDERLAY_RULES = {'):]
     rules = rules.split('}\n\n# Bust size', 1)[0]
     assert 'natural sexuality' in rules
-    assert 'tasteful sexuality' in rules
+    # V3.19.2: levels 5-6 keep the lingerie completely hidden in public scenes.
+    assert 'completely hidden underneath' in rules
     # Level-1 realism is preserved, now with the explicit layering guard.
     assert 'only her natural feminine silhouette reads through the fitted fabric' in rules
     assert 'never on top of or outside the outfit' in rules

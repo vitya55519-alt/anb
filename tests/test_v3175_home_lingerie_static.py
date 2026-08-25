@@ -31,12 +31,13 @@ def test_build_prompt_home_lingerie_override():
     assert 'HOME LINGERIE LOOK:' in fn
 
 
-def test_revealing_cut_for_other_scenes_at_level_5plus():
+def test_public_scenes_stay_fully_clothed_at_level_5plus():
+    # V3.19.2: the "daring, revealing cut" escalation for ordinary scenes at
+    # level 5+ was removed — public venues stay fully clothed, lingerie lives
+    # in the at-home sets and private scenes only.
     fn = _build_fn()
-    assert "styled with a daring, revealing cut that shows more skin while staying a real outfit" in fn
-    # Private-tier scenes keep their own framing; the OpenAI fallback route
-    # stays general-audience (seedream guard).
-    assert 'elif seedream and level_key >= 5 and not scene_tiers:' in fn
+    assert 'daring, revealing cut' not in fn
+    assert 'elif seedream and level_key >= 5 and not scene_tiers:' not in fn
 
 
 def test_pool_protection_for_home_lingerie_sets():
@@ -71,11 +72,11 @@ def test_runtime_home_scene_level4_stays_clothed():
     assert 'no outerwear at all' not in prompt
 
 
-def test_runtime_other_scene_level5_gets_revealing_cut():
+def test_runtime_other_scene_level5_stays_fully_clothed():
     from services.photo_service import PhotoRequest, _build_prompt
     request = PhotoRequest(scene='park', clothing='summer dress')
     prompt = _build_prompt(request, 0, seedream=True, relationship_level=5, character_id='anna_01')
-    assert 'daring, revealing cut' in prompt
+    assert 'daring, revealing cut' not in prompt
     # OpenAI fallback route stays general-audience.
     prompt_openai = _build_prompt(request, 0, seedream=False, relationship_level=5, character_id='anna_01')
     assert 'daring, revealing cut' not in prompt_openai
