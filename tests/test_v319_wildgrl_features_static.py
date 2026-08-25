@@ -176,3 +176,22 @@ def test_faceswap_uploads_reference_and_locks_identity():
     assert 'cbuild:face_upload' in MAIN
     assert "cons['face_bytes'] = face_bytes" in MAIN
     assert 'face_swap=bool(face_path)' in MAIN
+
+
+# ── 7. V3.19.1: admin free constructor + video diagnostics ────────────────
+
+def test_admin_free_constructor():
+    assert 'async def _finish_constructor(message: types.Message, charge: str | None):' in MAIN
+    assert "'✅ Создать · бесплатно (админ)'" in MAIN
+    # Admins skip the invoice and run generation with no charge.
+    assert '_finish_constructor(cq.message, None)' in MAIN
+    # Refund logic only fires for paid runs.
+    assert 'if charge:' in MAIN[MAIN.index('constructor avatar generation failed'):]
+
+
+def test_video_unavailable_diagnostics_for_admins():
+    assert 'def _video_unavailable_text(' in MAIN
+    assert 'Проверь переменные окружения на Railway' in MAIN
+    assert 'GEMINI_API_KEY' in MAIN and 'REPLICATE_API_TOKEN' in MAIN
+    # All animation entry points use the diagnostic alert.
+    assert MAIN.count('_video_unavailable_text(cq.from_user.id)') >= 3

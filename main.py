@@ -69,6 +69,21 @@ def _any_video_engine() -> bool:
         or fal_available()
         or hf_video_available()
     )
+
+
+def _video_unavailable_text(telegram_id: int) -> str:
+    """V3.19.1: admins see exactly which video engines are off, so a broken
+    Railway env is diagnosable in one tap instead of a silent failure."""
+    if telegram_id in ADMIN_TELEGRAM_IDS:
+        return (
+            'Видео недоступно: нет ни одного активного движка.\n'
+            f'Gemini/Veo: {"✅" if video_available() else "❌ нет GEMINI_API_KEY"}\n'
+            f'Replicate: {"✅" if replicate_available() else "❌ нет REPLICATE_API_TOKEN"}\n'
+            f'fal.ai: {"✅" if fal_available() else "❌ нет FAL_KEY"}\n'
+            f'HF spaces: {"✅" if hf_video_available() else "❌ выключен"}\n\n'
+            'Проверь переменные окружения на Railway.'
+        )
+    return 'Видео пока недоступно.'
 from services.llm_provider_service import provider_status
 from services.reminder_service import set_timezone, create_from_text, cancel_active_wake, due_reminders
 from services.scheduler_service import start_scheduler
@@ -2617,7 +2632,7 @@ async def video_preset_cb(cq: types.CallbackQuery):
     if not has_accepted(cq.from_user.id):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
     if not _any_video_engine():
-        await cq.answer('Видео пока недоступно.', show_alert=True); return
+        await cq.answer(_video_unavailable_text(cq.from_user.id), show_alert=True); return
     if cq.from_user.id in _video_jobs and not _video_jobs[cq.from_user.id].done():
         await cq.answer('Одно видео уже создаётся 🎬', show_alert=True); return
     delivery = get_photo_delivery_for_user(cq.from_user.id, delivery_id)
@@ -2657,7 +2672,7 @@ async def animate_photo_cb(cq: types.CallbackQuery):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True)
         return
     if not _any_video_engine():
-        await cq.answer('Видео пока недоступно.', show_alert=True)
+        await cq.answer(_video_unavailable_text(cq.from_user.id), show_alert=True)
         return
     if cq.from_user.id in _video_jobs and not _video_jobs[cq.from_user.id].done():
         await cq.answer('Одно видео уже создаётся 🎬', show_alert=True)
@@ -2681,7 +2696,7 @@ async def animate_last_photo_cb(cq: types.CallbackQuery):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True)
         return
     if not _any_video_engine():
-        await cq.answer('Видео пока недоступно.', show_alert=True)
+        await cq.answer(_video_unavailable_text(cq.from_user.id), show_alert=True)
         return
     if cq.from_user.id in _video_jobs and not _video_jobs[cq.from_user.id].done():
         await cq.answer('Одно видео уже создаётся 🎬', show_alert=True)
@@ -3686,14 +3701,20 @@ async def _constructor_confirm(chat_id: int, telegram_id: int):
     params = cons['params']
     lines = summary_lines(params, str(params.get('name') or 'Без имени'))
     face_line = '📷 Лицо: по твоему фото (face-swap)' if cons.get('face_bytes') else '🎭 Внешность: полностью AI'
+    # V3.19.1: admins create their personal character for free.
+    if telegram_id in ADMIN_TELEGRAM_IDS:
+        buy_label = '✅ Создать · бесплатно (админ)'
+        price_note = 'Админский доступ: бесплатно.'
+    else:
+        buy_label = f'✅ Создать · {CONSTRUCTOR_COST_STARS}⭐'
+        price_note = f'Готова родиться за {CONSTRUCTOR_COST_STARS} Stars ✨'
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f'✅ Создать · {CONSTRUCTOR_COST_STARS}⭐', callback_data='constructor:buy')],
+        [InlineKeyboardButton(text=buy_label, callback_data='constructor:buy')],
         [InlineKeyboardButton(text='❌ Отменить', callback_data='constructor:cancel')],
     ])
     await bot.send_message(
         chat_id,
-        '🎨 Твой персонаж:\n\n' + '\n'.join(lines) + f'\n{face_line}\n\n'
-        f'Готова родиться за {CONSTRUCTOR_COST_STARS} Stars ✨',
+        '🎨 Твой персонаж:\n\n' + '\n'.join(lines) + f'\n{face_line}\n\n' + price_note,
         reply_markup=keyboard,
     )
 
@@ -3746,7 +3767,7 @@ async def _show_my_character(chat_id: int, telegram_id: int):
         await bot.send_message(chat_id, '\n'.join(lines), reply_markup=markup)
 
 
-async def _finish_constructor(message: types.Message, charge: str):
+async def _finish_constructor(message: types.Message, charge: str | None):
     """After Stars payment: generate the avatar, save the persona, open chat."""
     telegram_id = message.from_user.id
     cons = _constructor_sessions.pop(telegram_id, None)
@@ -3770,13 +3791,17 @@ async def _finish_constructor(message: types.Message, charge: str):
         )
     except Exception:
         logger.exception('constructor avatar generation failed user=%s', telegram_id)
-        try:
-            await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge)
-            record_refund(telegram_id, charge, CONSTRUCTOR_COST_STARS, product='constructor')
-            await message.answer('аватар сейчас не получился 😕 Stars вернул автоматически. Попробуй ещё раз чуть позже.')
-        except Exception:
-            logger.exception('constructor refund failed user=%s', telegram_id)
-            await message.answer('аватар не получился 😕 напиши /support — вернём Stars.')
+        if charge:
+            try:
+                await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge)
+                record_refund(telegram_id, charge, CONSTRUCTOR_COST_STARS, product='constructor')
+                await message.answer('аватар сейчас не получился 😕 Stars вернул автоматически. Попробуй ещё раз чуть позже.')
+            except Exception:
+                logger.exception('constructor refund failed user=%s', telegram_id)
+                await message.answer('аватар не получился 😕 напиши /support — вернём Stars.')
+        else:
+            # Admin free run — nothing to refund.
+            await message.answer('аватар сейчас не получился 😕 попробуй ещё раз чуть позже.')
         return
     finally:
         if face_path:
@@ -3912,6 +3937,10 @@ async def constructor_buy_cb(cq: types.CallbackQuery):
         await cq.answer('Сначала собери персонажа до конца 🙂', show_alert=True)
         return
     await cq.answer()
+    # V3.19.1: admins skip the Stars invoice entirely.
+    if telegram_id in ADMIN_TELEGRAM_IDS:
+        asyncio.create_task(_finish_constructor(cq.message, None))
+        return
     await send_stars_invoice(
         cq.message.chat.id,
         'Личный персонаж',
