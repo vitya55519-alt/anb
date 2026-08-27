@@ -26,6 +26,7 @@ from config import (
     GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, GALLERY_DOWNLOAD_STARS, WALLET_PAY_ENABLED,
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
+    FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, PUBLIC_BASE_URL, WEB_PORT,
 )
 from services.user_service import (
     ensure_user, get_user, get_state, update_user_settings, touch_user,
@@ -56,6 +57,8 @@ from services.cloud_video_service import (
     VIDEO_PRESETS,
 )
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
+from services import freekassa_service
+from aiohttp import web
 from services import apartment_service, gifts_service, dates_service
 from services.relationship_service import record_user_message, set_stage_change_notifier
 from services.relationship_signals import infer_delta
@@ -710,6 +713,10 @@ def premium_keyboard():
     ]
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text=f'💎 Premium — Wallet Pay (крипта/карта)', callback_data='walletpay:premium')])
+    if FREEKASSA_ENABLED:
+        # V3.19.6: external card/SBP scenario (Telegram policy keeps Stars for
+        # in-Telegram digital purchases; this link pays on FreeKassa's page).
+        rows.append([InlineKeyboardButton(text=f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ картой / СБП', callback_data='fk:premium')])
     rows.append([video_button])
     rows.append([InlineKeyboardButton(text='🔒 📞 Звонок с персонажем · скоро', callback_data='future:anna_call')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -2756,6 +2763,28 @@ async def buy_premium(cq: types.CallbackQuery):
     await send_stars_invoice(cq.message.chat.id, 'Anna Premium', 'Premium-доступ на 30 дней', 'premium_month', PREMIUM_MONTHLY_STARS)
 
 
+@dp.callback_query(F.data == 'fk:premium')
+async def fk_premium(cq: types.CallbackQuery):
+    """V3.19.6: card/SBP premium via FreeKassa payment link."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    if not FREEKASSA_ENABLED:
+        await cq.answer('Оплата картой сейчас выключена — используй Stars ⭐', show_alert=True); return
+    await cq.answer()
+    order_id = freekassa_service.create_order(
+        cq.from_user.id, 'premium_month', str(FREEKASSA_PREMIUM_PRICE_RUB),
+    )
+    link = freekassa_service.payment_url(order_id, FREEKASSA_PREMIUM_PRICE_RUB)
+    await bot.send_message(
+        cq.message.chat.id,
+        f'💳 Оплата Premium картой / СБП — {FREEKASSA_PREMIUM_PRICE_RUB} ₽\n\n'
+        f'{link}\n\n'
+        'После оплаты премиум включится автоматически в течение минуты. '
+        'Если что-то пойдёт не так — напиши /support.',
+    )
+
+
 @dp.callback_query(F.data.startswith('walletpay:'))
 async def walletpay_callback(cq: types.CallbackQuery):
     ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
@@ -4534,6 +4563,79 @@ async def text_message(message: types.Message):
         await message.answer(f'я сейчас немного зависла 😅 попробуй ещё раз\n\n💡 если повторяется — напиши /support')
 
 
+# ---------------------------------------------------------------------------
+# V3.19.6: tiny public web server for FreeKassa callbacks (card/SBP premium).
+# Railway injects PORT; the public domain is configured via PUBLIC_BASE_URL.
+# ---------------------------------------------------------------------------
+
+async def _fk_notify(request: web.Request) -> web.Response:
+    """FreeKassa server notification: verify SIGN (secret 2) and grant."""
+    params = dict(request.query)
+    if request.method == 'POST':
+        try:
+            form = await request.post()
+            params.update({k: str(v) for k, v in form.items()})
+        except Exception:
+            pass
+    ok, order_id_or_reason = freekassa_service.verify_notify(params)
+    if not ok:
+        logger.warning('FreeKassa notify rejected reason=%s params=%s', order_id_or_reason, {k: v for k, v in list(params.items())[:12]})
+        return web.Response(text=f'NO|{order_id_or_reason}')
+    order_id = int(order_id_or_reason)
+    order = freekassa_service.get_order(order_id)
+    if order and freekassa_service.mark_paid(order_id, json.dumps(params, ensure_ascii=False)):
+        try:
+            record_payment(
+                order['telegram_id'], order['product'], 0,
+                f'freekassa:{order_id}', provider='freekassa',
+                provider_payload=f'amount={order["amount"]}',
+            )
+        except Exception:
+            logger.exception('FreeKassa premium grant failed order=%s', order_id)
+        try:
+            await bot.send_message(
+                order['telegram_id'],
+                '💳 Оплата получена — Premium активирован на 30 дней! ✨',
+            )
+        except Exception:
+            logger.exception('FreeKassa confirmation message failed order=%s', order_id)
+    # FreeKassa expects a plain YES (or YES|<order id>) on success.
+    return web.Response(text=f'YES|{order_id}')
+
+
+async def _fk_success(request: web.Request) -> web.Response:
+    return web.Response(
+        text='✅ Оплата прошла! Premium уже включён — возвращайся в бот 💫',
+        content_type='text/html',
+    )
+
+
+async def _fk_fail(request: web.Request) -> web.Response:
+    return web.Response(
+        text='Оплата не завершена. Попробуй ещё раз или оплати Stars прямо в боте ⭐',
+        content_type='text/html',
+    )
+
+
+async def _healthz(request: web.Request) -> web.Response:
+    return web.Response(text='ok')
+
+
+async def _start_web_server() -> None:
+    app = web.Application()
+    app.router.add_route('*', '/freekassa/notify', _fk_notify)
+    # Success/fail are browser redirects; FreeKassa may send them as GET or
+    # POST depending on the merchant form method dropdown, so accept both.
+    app.router.add_route('*', '/freekassa/success', _fk_success)
+    app.router.add_route('*', '/freekassa/fail', _fk_fail)
+    app.router.add_get('/healthz', _healthz)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', WEB_PORT)
+    await site.start()
+    logger.info('web server listening port=%s freekassa=%s base=%s', WEB_PORT, FREEKASSA_ENABLED, PUBLIC_BASE_URL or '-')
+
+
 async def main():
     public_commands = [
         types.BotCommand(command='start', description='Начать общение'),
@@ -4585,6 +4687,7 @@ async def main():
         st['gemini_model'], video_available(),
     )
     logger.info('AnnaBot started')
+    await _start_web_server()
     await dp.start_polling(bot)
 
 

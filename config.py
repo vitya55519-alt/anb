@@ -193,6 +193,19 @@ REPLICATE_VIDEO_MODEL = os.getenv(
 ).strip()
 REPLICATE_VIDEO_TIMEOUT_SECONDS = max(120, min(900, int(os.getenv("REPLICATE_VIDEO_TIMEOUT_SECONDS", "600"))))
 
+# V3.19.6: FreeKassa card/SBP payments — the external (non-Telegram) scenario;
+# Stars stay the in-Telegram method per Telegram policy. All three secrets are
+# required, otherwise the card button and webhook endpoints stay off.
+FREEKASSA_MERCHANT_ID = os.getenv("FREEKASSA_MERCHANT_ID", "").strip()
+FREEKASSA_SECRET1 = os.getenv("FREEKASSA_SECRET1", "").strip()
+FREEKASSA_SECRET2 = os.getenv("FREEKASSA_SECRET2", "").strip()
+FREEKASSA_ENABLED = bool(FREEKASSA_MERCHANT_ID and FREEKASSA_SECRET1 and FREEKASSA_SECRET2)
+FREEKASSA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_RUB", "299")))
+# Public base URL of this Railway service (generated domain). Used in the
+# FreeKassa merchant form (notify/success/fail URLs).
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+WEB_PORT = int(os.getenv("PORT", "8080"))
+
 FAL_KEY = os.getenv("FAL_KEY", "").strip()
 FAL_VIDEO_ENDPOINT = os.getenv("FAL_VIDEO_ENDPOINT", "fal-ai/wan2.2/image-to-video").strip()
 FAL_VIDEO_TIMEOUT_SECONDS = max(120, min(900, int(os.getenv("FAL_VIDEO_TIMEOUT_SECONDS", "600"))))
