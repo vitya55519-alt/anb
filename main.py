@@ -4621,8 +4621,19 @@ async def _healthz(request: web.Request) -> web.Response:
     return web.Response(text='ok')
 
 
+async def _root(request: web.Request) -> web.Response:
+    # V3.19.10: plain liveness page for the bare Railway domain. Without it the
+    # public URL showed aiohttp's default "404: Not Found" and looked like a
+    # broken deploy; only /healthz and the FreeKassa routes existed.
+    return web.Response(
+        text='AnnaBot web endpoint is alive. Health check: /healthz',
+        content_type='text/plain',
+    )
+
+
 async def _start_web_server() -> None:
     app = web.Application()
+    app.router.add_get('/', _root)
     app.router.add_route('*', '/freekassa/notify', _fk_notify)
     # Success/fail are browser redirects; FreeKassa may send them as GET or
     # POST depending on the merchant form method dropdown, so accept both.

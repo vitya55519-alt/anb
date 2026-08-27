@@ -41,6 +41,7 @@ def test_fk_premium_handler_creates_order_and_sends_link():
 
 def test_web_server_routes_and_startup():
     server = MAIN[MAIN.index('async def _start_web_server()'):]
+    assert "app.router.add_get('/', _root)" in server
     assert "app.router.add_route('*', '/freekassa/notify', _fk_notify)" in server
     assert "app.router.add_route('*', '/freekassa/success', _fk_success)" in server
     assert "app.router.add_route('*', '/freekassa/fail', _fk_fail)" in server
