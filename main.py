@@ -2632,7 +2632,11 @@ async def video_preset_cb(cq: types.CallbackQuery):
     parts = cq.data.split(':')
     if len(parts) != 3:
         await cq.answer(); return
-    preset, _, raw_id = parts
+    # V3.19.12: data is 'videopreset:<preset>:<id>' — the first token is the
+    # router prefix, the preset is the SECOND one. The old unpack treated
+    # 'videopreset' as the preset and silently exited, so the kiss/hug/dance
+    # buttons looked dead.
+    _, preset, raw_id = parts
     if preset not in VIDEO_PRESETS and preset != 'auto':
         await cq.answer(); return
     try:
