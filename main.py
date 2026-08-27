@@ -40,6 +40,7 @@ from services.photo_service import (
     get_relationship_level, is_custom_request, requires_adult_confirmation,
     SCENE_LEVELS, SCENES, PhotoGenerationError, get_latest_photo_delivery, get_photo_delivery_for_user,
     get_gallery_page, get_gallery_item_bytes, GALLERY_PAGE_SIZE, generate_custom_avatar,
+    admin_pool_count, admin_pool_get, admin_pool_latest_id, admin_pool_neighbor, admin_pool_set_shared,
 )
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
@@ -370,6 +371,7 @@ def admin_keyboard():
         [InlineKeyboardButton(text='🎭 Карточки персонажей', callback_data='admin:cards')],
         [InlineKeyboardButton(text='💳 Способы оплаты', callback_data='admin:payments')],
         [InlineKeyboardButton(text='📚 Библиотека фото', callback_data='admin:library_help')],
+        [InlineKeyboardButton(text='🖼 Общая галерея (модерация)', callback_data='poolmod:view')],
         [InlineKeyboardButton(text='💡 Идеи для фото', callback_data='admin:ideas')],
         [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats')],
         [InlineKeyboardButton(text=f'⭐ Premium себе (тесты): {premium_state}', callback_data='admin:premium_toggle')],
@@ -1237,6 +1239,73 @@ async def admin_panel_button(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
     await admin_panel(message)
+
+
+def _pool_view_payload(delivery_id: int):
+    """V3.19.14: media + keyboard for one community-pool photo (owner view)."""
+    row = admin_pool_get(delivery_id)
+    if not row:
+        return None
+    caption = (
+        f'🖼 Общая галерея · #{row["id"]} (в пуле: {admin_pool_count()})\n'
+        f'сцена: {row["scene"]} · персонаж: {row["character_id"]}\n'
+        f'провайдер: {row["provider"]} · {row["created_at"]:%d.%m.%Y %H:%M} UTC'
+    )
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='❌ Убрать из галереи', callback_data=f'poolmod:del:{row["id"]}')],
+        [InlineKeyboardButton(text='⬅️ Новее', callback_data=f'poolmod:prev:{row["id"]}'),
+         InlineKeyboardButton(text='➡️ Старше', callback_data=f'poolmod:next:{row["id"]}')],
+        [InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')],
+    ])
+    return types.InputMediaPhoto(media=row['telegram_file_id'], caption=caption), markup
+
+
+@dp.callback_query(F.data.startswith('poolmod:'))
+async def pool_moderation_cb(cq: types.CallbackQuery):
+    """V3.19.14: owner browses the community pool newest-first and excludes
+    bad frames; excluded photos stay with their original owner but are never
+    served to other users."""
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    parts = cq.data.split(':')
+    action = parts[1] if len(parts) > 1 else 'view'
+    if action == 'del':
+        target = int(parts[2])
+        admin_pool_set_shared(target, False)
+        try:
+            track_event(ensure_user(cq.from_user.id), 'admin_pool_remove', metadata={'delivery_id': target})
+        except Exception:
+            pass
+        await cq.answer('убрано из общей галереи ✅')
+        cur = admin_pool_neighbor(target, 'next') or admin_pool_latest_id()
+        if cur is None:
+            try:
+                await cq.message.edit_caption(caption='🖼 Общая галерея пуста')
+            except Exception:
+                await cq.message.answer('🖼 Общая галерея пуста')
+            return
+    elif action == 'next':
+        cur = admin_pool_neighbor(int(parts[2]), 'next') or int(parts[2])
+    elif action == 'prev':
+        cur = admin_pool_neighbor(int(parts[2]), 'prev') or int(parts[2])
+    else:
+        cur = admin_pool_latest_id()
+    if cur is None:
+        await cq.answer('общая галерея пуста', show_alert=True)
+        return
+    payload = _pool_view_payload(cur)
+    if payload is None:
+        await cq.answer('фото недоступно', show_alert=True)
+        return
+    media, markup = payload
+    try:
+        # Same-message navigation: swap the photo in place.
+        await cq.message.edit_media(media=media, reply_markup=markup)
+    except Exception:
+        # First open comes from a text message (admin keyboard) — send instead.
+        await cq.message.answer_photo(media.media, caption=media.caption, reply_markup=markup)
+    await cq.answer()
 
 
 @dp.callback_query(F.data == 'admin:home')

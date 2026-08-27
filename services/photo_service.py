@@ -2021,6 +2021,69 @@ def query_community_photos(
         ]
 
 
+# V3.19.14: owner moderation for the community pool. Every AI-generated public
+# frame enters the shared pool (community_shared=True); these helpers let the
+# owner browse the pool newest-first and exclude bad frames so other users
+# never receive them. Removal only flips the flag — the original owner keeps
+# the photo in their own history.
+def admin_pool_count() -> int:
+    """How many deliveries are currently shared into the community pool."""
+    with SessionLocal() as session:
+        return int(session.scalar(
+            select(func.count(PhotoDelivery.id)).where(PhotoDelivery.community_shared.is_(True))
+        ) or 0)
+
+
+def admin_pool_get(delivery_id: int) -> dict | None:
+    with SessionLocal() as session:
+        r = session.get(PhotoDelivery, delivery_id)
+        if not r or not r.telegram_file_id:
+            return None
+        return {
+            'id': int(r.id),
+            'scene': r.scene,
+            'provider': r.provider,
+            'character_id': r.character_id,
+            'telegram_file_id': r.telegram_file_id,
+            'community_shared': bool(r.community_shared),
+            'created_at': r.created_at,
+        }
+
+
+def admin_pool_latest_id() -> int | None:
+    """Newest delivery id currently in the pool (with a sendable file)."""
+    with SessionLocal() as session:
+        return session.scalar(
+            select(PhotoDelivery.id).where(
+                PhotoDelivery.community_shared.is_(True),
+                PhotoDelivery.telegram_file_id.isnot(None),
+            ).order_by(PhotoDelivery.id.desc()).limit(1)
+        )
+
+
+def admin_pool_neighbor(delivery_id: int, direction: str) -> int | None:
+    """Adjacent pool id in newest-first order: 'next' = older, 'prev' = newer."""
+    with SessionLocal() as session:
+        cond = PhotoDelivery.id < delivery_id if direction == 'next' else PhotoDelivery.id > delivery_id
+        q = select(PhotoDelivery.id).where(
+            PhotoDelivery.community_shared.is_(True),
+            PhotoDelivery.telegram_file_id.isnot(None),
+            cond,
+        ).order_by(PhotoDelivery.id.desc() if direction == 'next' else PhotoDelivery.id.asc()).limit(1)
+        return session.scalar(q)
+
+
+def admin_pool_set_shared(delivery_id: int, shared: bool) -> bool:
+    """Include/exclude a delivery from the community pool (moderation)."""
+    with SessionLocal() as session:
+        r = session.get(PhotoDelivery, delivery_id)
+        if not r:
+            return False
+        r.community_shared = bool(shared)
+        session.commit()
+        return True
+
+
 _PRIVATE_LIBRARY_SCENES = {'personal', 'lingerie', 'private_fashion', 'peek', 'dressing', 'nude', 'tease'}
 
 # At-home scenes that switch to lingerie-only looks at high relationship
