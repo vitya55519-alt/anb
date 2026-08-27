@@ -45,6 +45,7 @@ from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
 )
 from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left
+from services.bot_description import apply_bot_descriptions
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
     referral_user_lock, pending_referral, remember_referral, referral_leaderboard, referral_rank,
@@ -4699,6 +4700,12 @@ async def main():
     )
     logger.info('AnnaBot started')
     await _start_web_server()
+    # V3.19.11: refresh the public storefront (profile description) on every
+    # deploy. A description failure must never block startup.
+    try:
+        await apply_bot_descriptions(bot)
+    except Exception:
+        logger.exception('bot description apply failed (non-fatal)')
     await dp.start_polling(bot)
 
 

@@ -47,7 +47,9 @@ def test_web_server_routes_and_startup():
     assert "app.router.add_route('*', '/freekassa/fail', _fk_fail)" in server
     assert "app.router.add_get('/healthz', _healthz)" in server
     # The web server must start before polling so callbacks never 404.
-    assert '    await _start_web_server()\n    await dp.start_polling(bot)' in MAIN
+    # (v3.19.11: the storefront-description apply sits between the two calls.)
+    assert '    await _start_web_server()' in MAIN
+    assert MAIN.index('await _start_web_server()') < MAIN.index('await dp.start_polling(bot)')
 
 
 def test_notify_signature_and_idempotent_grant():
