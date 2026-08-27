@@ -57,9 +57,9 @@ def test_hairstyle_pool_has_at_least_20_styles():
     assert pool.count("'") // 2 >= 20
 
 
-def test_gemini_video_auto_enabled_with_key():
-    assert '_GEMINI_VIDEO_FLAG = os.getenv("GEMINI_VIDEO_ENABLED", "auto")' in CONFIG
-    assert '_GEMINI_VIDEO_FLAG not in {"0", "false", "no", "off"}' in CONFIG
+def test_hf_video_space_default_is_i2v():
+    # V3.19.4: Gemini/Veo video removed; Replicate/fal/HF remain.
+    assert 'GEMINI_VIDEO_ENABLED' not in CONFIG
     # The default HF space is an image-to-video space now.
     assert 'HF_VIDEO_SPACE = os.getenv("HF_VIDEO_SPACE", "Wan-AI/Wan2.2-I2V-A14B")' in CONFIG
     assert 'multiverseai/mochi' not in CONFIG

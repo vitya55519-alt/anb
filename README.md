@@ -195,7 +195,7 @@ See `BUILD_CHANGES_V3_10_2.md`.
 
 V3.12 can use Gemini as the primary user-visible dialogue engine while keeping OpenAI as an automatic fallback. Configure Railway with `GEMINI_API_KEY`; the default model is `gemini-3.6-flash`. The existing OpenAI image pipeline, Seedream private-photo route, memory extraction and TTS remain independent.
 
-Optional image-to-video support is included but disabled by default. After enabling paid Gemini API billing, set `GEMINI_VIDEO_ENABLED=true` to expose the Stars-paid `Оживить последнее фото` flow. The default video model is `veo-3.1-lite-generate-preview` at 720p portrait, with automatic Stars refund attempts when generation fails.
+V3.19.4 removed Gemini/Veo video. Image-to-video runs on Replicate (default model `minimax/hailuo-2.3-fast`) with fal.ai and HF-space fallbacks; the Stars-paid `Оживить последнее фото` flow unlocks when `REPLICATE_API_TOKEN` is set, with automatic Stars refund attempts when generation fails.
 
 
 ## V3.14 Linked photo videos

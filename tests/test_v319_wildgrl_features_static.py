@@ -192,6 +192,6 @@ def test_admin_free_constructor():
 def test_video_unavailable_diagnostics_for_admins():
     assert 'def _video_unavailable_text(' in MAIN
     assert 'Проверь переменные окружения на Railway' in MAIN
-    assert 'GEMINI_API_KEY' in MAIN and 'REPLICATE_API_TOKEN' in MAIN
+    assert 'REPLICATE_API_TOKEN' in MAIN and 'FAL_KEY' in MAIN
     # All animation entry points use the diagnostic alert.
     assert MAIN.count('_video_unavailable_text(cq.from_user.id)') >= 3

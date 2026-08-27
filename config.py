@@ -54,7 +54,7 @@ GEMINI_API_KEY_VALID = bool(GEMINI_API_KEY) and GEMINI_API_KEY.isascii() and not
 if GEMINI_API_KEY and not GEMINI_API_KEY_VALID:
     print(
         'CONFIG WARNING: GEMINI_API_KEY contains non-ASCII or whitespace characters - '
-        'Gemini chat/image/video disabled until the key is re-pasted cleanly on Railway',
+        'Gemini chat/image disabled until the key is re-pasted cleanly on Railway',
         flush=True,
     )
 GEMINI_CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.5-flash").strip()
@@ -64,19 +64,8 @@ GEMINI_OPENAI_BASE_URL = os.getenv(
 ).strip()
 GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "minimal").strip().lower()
 
-# Optional Gemini/Veo image-to-video. "auto" (default) means: enabled whenever
-# GEMINI_API_KEY is present, because free public HF spaces are unreliable and
-# video reliability is a top product priority. Veo may require a paid Gemini
-# API tier — if a request is rejected, the job automatically falls back to HF.
-# Set GEMINI_VIDEO_ENABLED=false explicitly to force the free route only.
-_GEMINI_VIDEO_FLAG = os.getenv("GEMINI_VIDEO_ENABLED", "auto").strip().lower()
-GEMINI_VIDEO_ENABLED = bool(GEMINI_API_KEY_VALID) and _GEMINI_VIDEO_FLAG not in {"0", "false", "no", "off"}
-GEMINI_VIDEO_MODEL = os.getenv("GEMINI_VIDEO_MODEL", "veo-3.1-lite-generate-preview").strip()
-GEMINI_VIDEO_BASE_URL = os.getenv("GEMINI_VIDEO_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
-GEMINI_VIDEO_DURATION_SECONDS = max(4, min(8, int(os.getenv("GEMINI_VIDEO_DURATION_SECONDS", "8"))))
-GEMINI_VIDEO_RESOLUTION = os.getenv("GEMINI_VIDEO_RESOLUTION", "720p").strip()
-GEMINI_VIDEO_ASPECT_RATIO = os.getenv("GEMINI_VIDEO_ASPECT_RATIO", "9:16").strip()
-GEMINI_VIDEO_TIMEOUT_SECONDS = max(60, min(420, int(os.getenv("GEMINI_VIDEO_TIMEOUT_SECONDS", "360"))))
+# V3.19.4: Gemini/Veo video is fully removed. The video pipeline is now
+# Replicate -> fal.ai -> HF spaces (see main.py engine chain).
 VIDEO_COST_STARS = max(1, int(os.getenv("VIDEO_COST_STARS", "5")))
 # Paid gallery download: the user re-sends their own uncompressed photo as a
 # Telegram document (full resolution). Kept low to encourage repeat use.
@@ -183,9 +172,13 @@ HF_VIDEO_TIMEOUT_SECONDS = max(120, min(1800, int(os.getenv("HF_VIDEO_TIMEOUT_SE
 # unlike the constantly-breaking Gradio spaces. The key is the only required
 # config — when present, the engine is used; without it, it is skipped.
 REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "").strip()
+# V3.19.4: primary video model. Hailuo 2.3 Fast (MiniMax) is tuned for
+# realistic human motion + expressive faces, which fits the kiss/hug/dance
+# animation presets, and accepts the same first_frame_image input the code
+# already sends. Override via env to any other Replicate image-to-video model.
 REPLICATE_VIDEO_MODEL = os.getenv(
     "REPLICATE_VIDEO_MODEL",
-    "minimax/video-01",
+    "minimax/hailuo-2.3-fast",
 ).strip()
 REPLICATE_VIDEO_TIMEOUT_SECONDS = max(120, min(900, int(os.getenv("REPLICATE_VIDEO_TIMEOUT_SECONDS", "600"))))
 

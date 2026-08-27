@@ -27,23 +27,22 @@ def test_cloud_video_dependencies_installed():
 def test_config_exposes_replicate_and_fal():
     assert 'REPLICATE_API_TOKEN' in CONFIG
     assert 'REPLICATE_VIDEO_MODEL' in CONFIG
-    assert 'minimax/video-01' in CONFIG
+    assert 'minimax/hailuo-2.3-fast' in CONFIG
     assert 'FAL_KEY' in CONFIG
     assert 'FAL_VIDEO_ENDPOINT' in CONFIG
     assert 'fal-ai/wan2.2/image-to-video' in CONFIG
 
 
 def test_video_job_orchestrates_cloud_engines_before_hf():
-    # Cloud providers must be tried in order: gemini -> replicate -> fal -> hf.
+    # Cloud providers must be tried in order: replicate -> fal -> hf.
     job = MAIN[MAIN.index('async def _run_video_background('):]
     job = job.split('\n\n\n@dp.', 1)[0]
     order = (
-        job.index("engines.append(('gemini'"),
         job.index("engines.append(('replicate'"),
         job.index("engines.append(('fal'"),
         job.index("engines.append(('hf'"),
     )
-    assert order == tuple(sorted(order)), 'engine order must be gemini, replicate, fal, hf'
+    assert order == tuple(sorted(order)), 'engine order must be replicate, fal, hf'
     assert 'replicate_available' in MAIN
     assert 'fal_available' in MAIN
     assert 'animate_image_replicate' in MAIN

@@ -2,11 +2,12 @@
 
 A GEMINI_API_KEY pasted with non-ASCII characters (the production incident:
 `gemini_image/invalid_api_key_non_ascii`) used to poison every Gemini call —
-chat fallback, Nano Banana photos and Veo video — while the engine still
-reported READY. Now such a key is treated as absent: engines skip it, the
-fallback chains continue, and the owner gets a loud startup warning.
+chat fallback and Nano Banana photos — while the engine still reported READY.
+Now such a key is treated as absent: engines skip it, the fallback chains
+continue, and the owner gets a loud startup warning.
 The photo fallback chains are additionally hardened so one broken fallback
-engine can no longer stop the chain.
+engine can no longer stop the chain. (Veo video was removed entirely in
+v3.19.4.)
 """
 from pathlib import Path
 
@@ -24,7 +25,8 @@ def test_key_validity_gate_defined_in_config():
 
 
 def test_gemini_engines_gated_on_valid_key():
-    assert 'GEMINI_VIDEO_ENABLED = bool(GEMINI_API_KEY_VALID)' in CONFIG
+    # V3.19.4: Gemini/Veo video is gone from config entirely.
+    assert 'GEMINI_VIDEO_ENABLED' not in CONFIG
     assert 'and bool(GEMINI_API_KEY_VALID)\n)' in CONFIG  # GEMINI_IMAGE_ENABLED
     # Chat fallback client is not built for a broken key.
     assert 'GEMINI_API_KEY_VALID' in LLM
@@ -54,6 +56,7 @@ def test_gemini_route_falls_through_openai_to_seedream():
     assert 'engine=openai reason=%s' in gemini_block
 
 
-def test_video_alert_mentions_broken_key():
+def test_video_alert_lists_missing_engine_keys():
     main_src = (ROOT / 'main.py').read_text(encoding='utf-8')
-    assert 'нет/битый GEMINI_API_KEY (должен быть чистый ASCII)' in main_src
+    assert 'нет REPLICATE_API_TOKEN' in main_src
+    assert 'Gemini/Veo' not in main_src

@@ -1,9 +1,11 @@
 """Public-cloud image-to-video providers with stable APIs.
 
+V3.19.4: Replicate is the primary video engine (Gemini/Veo was removed).
+The remaining chain in main.py is Replicate -> fal.ai -> HF spaces.
+
 Unlike the best-effort Hugging Face Gradio spaces, these services expose
-documented REST APIs with proper rate limiting and a free tier. They are
-used as the second/third lines of defence in the video job after
-Gemini/Veo fails and before the flaky HF-space walk.
+documented REST APIs with proper rate limiting and a free tier. They keep
+the video feature alive when one engine fails.
 
 Each ``animate_image_*`` coroutine takes the same inputs and returns the
 raw MP4/WebM bytes on success. Failures raise a ``CloudVideoError`` so the
@@ -92,6 +94,17 @@ def fal_available() -> bool:
     return bool(FAL_KEY)
 
 
+def _replicate_image_param(model: str) -> str:
+    """V3.19.4: different Replicate i2v models name the input image key
+    differently; map by owner so the default payload works model-agnostic."""
+    name = (model or '').lower()
+    if name.startswith('minimax'):
+        return 'first_frame_image'
+    if 'wan' in name:
+        return 'img'
+    return 'image'
+
+
 def _suffix_for_bytes(image_bytes: bytes, mime_type: str) -> str:
     if 'png' in (mime_type or ''):
         return '.png'
@@ -152,7 +165,7 @@ async def animate_image_replicate(
     mime_type: str = 'image/jpeg',
     prompt: str | None = None,
 ) -> bytes:
-    """Image-to-video via Replicate (minimax/video-01 by default).
+    """Image-to-video via Replicate (minimax/hailuo-2.3-fast by default).
 
     Lazy-imports the SDK so that missing the package does not break boot.
     """
@@ -168,7 +181,7 @@ async def animate_image_replicate(
     try:
         client = replicate.Client(api_token=REPLICATE_API_TOKEN)
         input_payload = {
-            "first_frame_image": Path(tmp_path),
+            _replicate_image_param(REPLICATE_VIDEO_MODEL): Path(tmp_path),
             "prompt": prompt,
         }
         # Explicit create + poll instead of the run(wait=...) helper: the API

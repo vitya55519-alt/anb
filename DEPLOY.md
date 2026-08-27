@@ -79,18 +79,13 @@ For the AI Studio key shown as Free tier, add these Railway Variables first:
 GEMINI_API_KEY=<your full key; never commit it>
 GEMINI_CHAT_MODEL=gemini-3.5-flash
 GEMINI_THINKING_LEVEL=minimal
-GEMINI_VIDEO_ENABLED=false
 ```
 
-After Google paid billing is enabled, you may switch chat to the newest Flash model and unlock video:
+V3.19.4: Gemini/Veo video was removed. Video generation runs on Replicate
+(primary), fal.ai and HF spaces. Add the Replicate token to Railway Variables:
 
 ```text
-GEMINI_CHAT_MODEL=gemini-3.6-flash
-GEMINI_VIDEO_ENABLED=true
-GEMINI_VIDEO_MODEL=veo-3.1-lite-generate-preview
-GEMINI_VIDEO_DURATION_SECONDS=8
-GEMINI_VIDEO_RESOLUTION=720p
-GEMINI_VIDEO_ASPECT_RATIO=9:16
+REPLICATE_API_TOKEN=<your token from replicate.com/account/api-tokens>
 VIDEO_COST_STARS=100
 ```
 
