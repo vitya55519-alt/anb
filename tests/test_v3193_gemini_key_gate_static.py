@@ -41,15 +41,16 @@ def test_seedream_fallback_chain_is_hardened():
     # only raises after ALL engines failed.
     assert 'last_error = exc' in seedream_block
     assert 'raise last_error' in seedream_block
-    assert seedream_block.count('PHOTO ROUTE FALLBACK FAILED') >= 3
+    assert seedream_block.count('PHOTO ROUTE FALLBACK FAILED') >= 2
     assert 'from=seedream45 to=gemini_image' in seedream_block
     assert 'from=seedream45 to=openai' in seedream_block
-    assert 'from=seedream45 to=pollinations' in seedream_block
+    # V3.19.9: the free Pollinations fallback was removed entirely.
+    assert 'pollinations' not in seedream_block
 
 
 def test_gemini_route_falls_through_openai_to_seedream():
     dispatch = PHOTO[PHOTO.index('async def _run_routed_photo_set'):PHOTO.index('async def generate_photo_set')]
-    gemini_block = dispatch[dispatch.index("if provider == 'gemini_image':"):dispatch.index("if provider == 'pollinations':")]
+    gemini_block = dispatch[dispatch.index("if provider == 'gemini_image':"):dispatch.index("# provider == 'openai'")]
     assert 'from=gemini_image to=openai' in gemini_block
     assert 'from=gemini_image to=seedream45' in gemini_block
     # A failing OpenAI fallback must still hand over to Seedream.

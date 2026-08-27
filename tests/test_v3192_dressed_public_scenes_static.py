@@ -69,10 +69,10 @@ def test_peek_dressing_not_routable():
 
 def test_seedream_failure_falls_back_to_other_engines():
     # A Seedream HTTP 422 must not kill the photo: the routed set falls back
-    # Gemini -> OpenAI -> Pollinations before surfacing the error.
+    # Gemini -> OpenAI before surfacing the error. V3.19.9: Pollinations removed.
     dispatch = PHOTO[PHOTO.index('async def _run_routed_photo_set'):PHOTO.index('async def generate_photo_set')]
     seedream_block = dispatch[dispatch.index("if provider == 'seedream45':"):dispatch.index("if provider == 'gemini_image':")]
     assert 'except PhotoGenerationError as exc:' in seedream_block
     assert 'from=seedream45 to=gemini_image' in seedream_block
     assert 'from=seedream45 to=openai' in seedream_block
-    assert 'from=seedream45 to=pollinations' in seedream_block
+    assert 'pollinations' not in seedream_block

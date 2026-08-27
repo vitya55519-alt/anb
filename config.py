@@ -145,15 +145,8 @@ PHOTO_ROUTER_MODE = os.getenv("PHOTO_ROUTER_MODE", "hybrid").strip().lower()
 SEEDREAM_RELATIONSHIP_LEVEL = int(os.getenv("SEEDREAM_RELATIONSHIP_LEVEL", "5"))
 PHOTO_SET_SIZE = max(1, min(3, int(os.getenv("PHOTO_SET_SIZE", "1"))))
 
-# Pollinations.ai — free last-resort photo provider, no API key required.
-# It is only used as the final fallback for ordinary fully-clothed photos when
-# the primary providers (Gemini/OpenAI/Seedream) fail or are not configured.
-# It does not accept reference uploads, so identity is reinforced by text only.
-POLLINATIONS_ENABLED = os.getenv("POLLINATIONS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
-POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "flux").strip()
-POLLINATIONS_TIMEOUT_SECONDS = max(30, min(240, int(os.getenv("POLLINATIONS_TIMEOUT_SECONDS", "120"))))
-POLLINATIONS_WIDTH = max(512, min(2048, int(os.getenv("POLLINATIONS_WIDTH", "1024"))))
-POLLINATIONS_HEIGHT = max(512, min(2048, int(os.getenv("POLLINATIONS_HEIGHT", "1280"))))
+# V3.19.9: Pollinations.ai was removed (repeated http_500 + wrong-subject
+# renders). Photo providers are now Gemini Image -> OpenAI -> fal/Seedream.
 
 # Photo idea engine: curated bank (data/photo_ideas.json) + optional LLM variations.
 # Fills underspecified ordinary photo requests with fresh location/camera ideas.

@@ -187,10 +187,6 @@ class TestProviderRoutingAdult:
         req = photo_mod.PhotoRequest(scene='tease')
         assert photo_mod.choose_photo_provider(0, req) == 'seedream45'
 
-    def test_pollinations_excludes_adult(self):
-        assert "'nude'" in PSRC[PSRC.index('not in {'):PSRC.index('not in {') + 120]
-        assert "'tease'" in PSRC[PSRC.index('not in {'):PSRC.index('not in {') + 120]
-
     def test_private_library_scenes_includes_adult(self, photo_mod):
         assert 'nude' in photo_mod._PRIVATE_LIBRARY_SCENES
         assert 'tease' in photo_mod._PRIVATE_LIBRARY_SCENES

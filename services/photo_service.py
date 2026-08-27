@@ -13,7 +13,6 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Awaitable, Callable
-from urllib.parse import quote
 
 import httpx
 from aiogram import Bot
@@ -31,7 +30,6 @@ from config import (
     FAL_RETRIES, FAL_RETRY_BACKOFF_SECONDS, FAL_ESTIMATED_COST_USD,
     PHOTO_ROUTER_MODE, PHOTO_SET_SIZE,
     GEMINI_API_KEY, GEMINI_IMAGE_ENABLED, GEMINI_IMAGE_MODEL, GEMINI_IMAGE_TIMEOUT_SECONDS, GEMINI_IMAGE_ESTIMATED_COST_USD, GEMINI_IMAGE_ASPECT_RATIO, GEMINI_IMAGE_SIZE,
-    POLLINATIONS_ENABLED, POLLINATIONS_MODEL, POLLINATIONS_TIMEOUT_SECONDS, POLLINATIONS_WIDTH, POLLINATIONS_HEIGHT,
     COMMUNITY_POOL_ENABLED, COMMUNITY_POOL_FIRST,
 )
 from models.app_models import User
@@ -71,12 +69,11 @@ openai_client = AsyncOpenAI(api_key=IMAGE_API_KEY, base_url=IMAGE_BASE_URL) if O
 
 # Startup diagnostic — visible in Railway logs immediately
 logger.info(
-    'PHOTO PROVIDERS: Gemini=%s (model=%s) | OpenAI=%s | fal.ai/Seedream=%s | Pollinations(free)=%s | mode=%s',
+    'PHOTO PROVIDERS: Gemini=%s (model=%s) | OpenAI=%s | fal.ai/Seedream=%s | mode=%s',
     'READY' if GEMINI_IMAGE_ENABLED else 'NO KEY/DISABLED',
     GEMINI_IMAGE_MODEL if GEMINI_IMAGE_ENABLED else '-',
     'READY' if OPENAI_IMAGE_AVAILABLE else 'NO KEY',
     'READY' if FAL_KEY else 'NO KEY',
-    'READY' if POLLINATIONS_ENABLED else 'DISABLED',
     PHOTO_ROUTER_MODE,
 )
 
@@ -176,22 +173,16 @@ ADULT_SAFETY = (
     'clinical or pornographic.'
 )
 
-# V3.19.7: hard subject lock appended to every provider prompt (and placed
-# first in the compact Pollinations prompt). A free text-to-image fallback
-# once rendered a child in an industrial zone because the long structured
-# prompt made the model drop the subject; identity + adult-only constraint
-# must never be truncated away.
+# V3.19.7: hard subject lock appended to every provider prompt, right after
+# the identity block. A free text-to-image fallback (removed in V3.19.9 after
+# repeated http_500 and a child-in-industrial-zone hallucination) once
+# rendered a child because the model dropped the subject; identity +
+# adult-only constraint must never be lost.
 ADULT_ONLY_LOCK = (
     'HARD SUBJECT LOCK: the only person in the photo is the same fictional adult woman in her twenties (20+ years old) described above. '
     'Never depict minors: no children, no teenagers, no child-like faces or child body proportions anywhere in the frame. '
     'If any other instruction conflicts with this lock, this lock wins.'
 )
-# Free URL-based providers get a capped prompt so proxies/CDNs cannot cut it
-# mid-sentence; the ADULT_ONLY_LOCK is prepended first, so a cut never loses
-# the subject. V3.19.8: 4000 chars — the rich full prompt is what made the
-# free model produce good photos; the 1600-char compact experiment (v3.19.7)
-# degraded quality and was reverted.
-POLLINATIONS_MAX_PROMPT_CHARS = 4000
 
 # Visual progression is explicit: relationship level changes garment families,
 # styling confidence and pose.  Each 3-photo request is a progression pack:
@@ -1456,99 +1447,6 @@ async def _run_gemini_set(
     return out
 
 
-async def _pollinations_one_frame(character: dict, telegram_id: int, request: PhotoRequest, i: int, *, character_id: str = CHARACTER_ID) -> GeneratedPhoto:
-    """Free text-to-image fallback via Pollinations.ai (no API key required).
-
-    Used as the last-resort route for ordinary fully-clothed photos when the
-    primary providers fail or are not configured. The endpoint cannot accept
-    reference image uploads, so identity is reinforced purely by the text lock.
-    """
-    if not POLLINATIONS_ENABLED:
-        raise PhotoGenerationError('pollinations', 'not_configured')
-
-    level = get_relationship_level(telegram_id, character_id)
-    # V3.19.8: the rich full prompt is restored (the v3.19.7 compact experiment
-    # degraded free-provider quality). The adult-subject lock is simply
-    # prepended first, so the subject constraint leads the prompt.
-    prompt = ADULT_ONLY_LOCK + ' ' + _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id) + (
-        " FREE PROVIDER ORDINARY-PHOTO RULE: Keep the same fictional adult person described in PHOTO IDENTITY "
-        "across every photo: same face features, hair color and style, overall physique and subtle warm smile. "
-        "Change only the requested scene, fully clothed outfit, pose, camera and lighting. "
-        "Keep the result mainstream, natural and general-audience. Photorealistic personal smartphone-photo aesthetic."
-    )
-    # Pollinations rejects prompts containing newline characters (404), so the
-    # structured prompt must be flattened into a single line.
-    prompt = ' '.join(line.strip() for line in prompt.split('\n') if line.strip())
-    # Generous cap: only guards against absurd URL lengths; the lock sits at
-    # the very start, so even a hard cut never loses the subject.
-    if len(prompt) > POLLINATIONS_MAX_PROMPT_CHARS:
-        prompt = prompt[:POLLINATIONS_MAX_PROMPT_CHARS].rsplit(' ', 1)[0]
-    params = {
-        'width': str(POLLINATIONS_WIDTH),
-        'height': str(POLLINATIONS_HEIGHT),
-        'model': POLLINATIONS_MODEL,
-        'seed': str(random.randint(0, 2**31 - 1)),
-        'nologo': 'true',
-        'safe': 'true',
-    }
-    url = f'https://image.pollinations.ai/prompt/{quote(prompt)}'
-    timeout = httpx.Timeout(float(POLLINATIONS_TIMEOUT_SECONDS), connect=20.0)
-    try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            response = await client.get(url, params=params)
-    except httpx.TimeoutException as exc:
-        raise PhotoGenerationError('pollinations', 'timeout') from exc
-    except httpx.HTTPError as exc:
-        logger.warning('Pollinations transport failed user=%s scene=%s frame=%s/%s error=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, type(exc).__name__)
-        raise PhotoGenerationError('pollinations', type(exc).__name__) from exc
-
-    if response.status_code >= 400:
-        logger.warning('Pollinations HTTP failure user=%s scene=%s frame=%s/%s status=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, response.status_code)
-        raise PhotoGenerationError('pollinations', f'http_{response.status_code}')
-
-    data = response.content
-    # The endpoint returns image bytes directly; guard against error pages.
-    if not data or not (data.startswith(b'\xff\xd8') or data.startswith(b'\x89PNG')):
-        raise PhotoGenerationError('pollinations', 'no_image')
-    logger.info(
-        'Pollinations frame success user=%s scene=%s frame=%s/%s model=%s bytes=%s',
-        telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, POLLINATIONS_MODEL, len(data),
-    )
-    return GeneratedPhoto(data=data, provider='pollinations', estimated_cost_usd=0.0)
-
-
-async def _run_pollinations_set(
-    character: dict,
-    telegram_id: int,
-    request: PhotoRequest,
-    on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
-    *,
-    character_id: str = CHARACTER_ID,
-) -> list[GeneratedPhoto]:
-    out: list[GeneratedPhoto] = []
-    logger.info('Pollinations set request user=%s scene=%s model=%s count=%s (free last resort)', telegram_id, request.scene, POLLINATIONS_MODEL, PHOTO_SET_SIZE)
-    for i in range(PHOTO_SET_SIZE):
-        started = time.monotonic()
-        try:
-            photo = await _pollinations_one_frame(character, telegram_id, request, i, character_id=character_id)
-        except PhotoGenerationError as exc:
-            track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'pollinations', 'reason': exc.reason})
-            if out:
-                logger.warning('Pollinations partial set user=%s scene=%s count=%s/%s reason=%s', telegram_id, request.scene, len(out), PHOTO_SET_SIZE, exc.reason)
-                break
-            raise
-        out.append(photo)
-        frame_elapsed = time.monotonic() - started
-        track_event(ensure_user(telegram_id), 'photo_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'pollinations'})
-        if i == 0:
-            track_event(ensure_user(telegram_id), 'photo_first_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'provider': 'pollinations'})
-        if on_frame:
-            await on_frame(photo, i)
-    if not out:
-        raise PhotoGenerationError('pollinations', 'no_image')
-    return out
-
-
 async def _seedream_request(
     prompt: str,
     image_urls: list[str],
@@ -1867,8 +1765,6 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
         return 'seedream45'
     if mode in {'gemini', 'nano', 'nanobanana', 'nano-banana'}:
         return 'gemini_image' if GEMINI_IMAGE_ENABLED else ('openai' if OPENAI_IMAGE_AVAILABLE else 'seedream45')
-    if mode == 'pollinations':
-        return 'pollinations' if POLLINATIONS_ENABLED else ('gemini_image' if GEMINI_IMAGE_ENABLED else 'seedream45')
 
     # HYBRID routing (default):
     # - intimate/private/bold scenes → Seedream
@@ -1883,9 +1779,6 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
     if OPENAI_IMAGE_AVAILABLE:
         logger.info('Hybrid photo route scene=%s -> openai', request.scene)
         return 'openai'
-    if POLLINATIONS_ENABLED:
-        logger.info('Hybrid photo route scene=%s -> pollinations (free, no Gemini/OpenAI)', request.scene)
-        return 'pollinations'
     # Ultimate fallback to Seedream
     logger.info('Hybrid photo route scene=%s -> seedream45 (no Gemini/OpenAI)', request.scene)
     return 'seedream45'
@@ -1926,14 +1819,6 @@ async def _run_routed_photo_set(
                     except PhotoGenerationError as openai_exc:
                         logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=openai reason=%s', telegram_id, resolved.scene, openai_exc.reason)
                         last_error = openai_exc
-                if POLLINATIONS_ENABLED:
-                    try:
-                        logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=pollinations reason=%s', telegram_id, resolved.scene, exc.reason)
-                        track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'pollinations', 'reason': exc.reason})
-                        return await _run_pollinations_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
-                    except PhotoGenerationError as pollinations_exc:
-                        logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=pollinations reason=%s', telegram_id, resolved.scene, pollinations_exc.reason)
-                        last_error = pollinations_exc
                 raise last_error
         if provider == 'gemini_image':
             try:
@@ -1950,8 +1835,6 @@ async def _run_routed_photo_set(
                 logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=seedream45 reason=%s', telegram_id, resolved.scene, exc.reason)
                 track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'seedream45', 'reason': exc.reason})
                 return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
-        if provider == 'pollinations':
-            return await _run_pollinations_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
         # provider == 'openai'
         if OPENAI_IMAGE_AVAILABLE:
             return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
@@ -1983,18 +1866,6 @@ async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: 
     )
     try:
         return await _run_routed_photo_set(character, telegram_id, resolved, provider, on_frame=on_frame, character_id=character_id), resolved
-    except PhotoGenerationError as exc:
-        # Free last-resort route: ordinary scenes get a zero-cost Pollinations
-        # frame instead of failing outright. Private scenes never go here.
-        if (
-            POLLINATIONS_ENABLED
-            and provider != 'pollinations'
-            and resolved.scene not in {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}
-        ):
-            logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=%s to=pollinations reason=%s', telegram_id, resolved.scene, provider, exc.reason)
-            track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': provider, 'to': 'pollinations', 'reason': exc.reason})
-            return await _run_pollinations_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id), resolved
-        raise
     except Exception as exc:
         logger.exception('photo provider failed provider=%s user=%s scene=%s', provider, telegram_id, request.scene)
         raise PhotoGenerationError(provider, type(exc).__name__) from exc
