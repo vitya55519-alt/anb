@@ -54,7 +54,7 @@ GEMINI_API_KEY_VALID = bool(GEMINI_API_KEY) and GEMINI_API_KEY.isascii() and not
 if GEMINI_API_KEY and not GEMINI_API_KEY_VALID:
     print(
         'CONFIG WARNING: GEMINI_API_KEY contains non-ASCII or whitespace characters - '
-        'Gemini chat/image disabled until the key is re-pasted cleanly on Railway',
+        'Gemini chat/image/video disabled until the key is re-pasted cleanly on Railway',
         flush=True,
     )
 GEMINI_CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.5-flash").strip()
@@ -64,8 +64,19 @@ GEMINI_OPENAI_BASE_URL = os.getenv(
 ).strip()
 GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "minimal").strip().lower()
 
-# V3.19.4: Gemini/Veo video is fully removed. The video pipeline is now
-# Replicate -> fal.ai -> HF spaces (see main.py engine chain).
+# Gemini/Veo image-to-video — the PRIMARY video engine again (V3.19.5 owner
+# decision; it was briefly removed in V3.19.4). "auto" (default) means: enabled
+# whenever a VALID GEMINI_API_KEY is present (the V3.19.3 key gate keeps a
+# dirty-pasted key from poisoning the chain — the job then falls back to
+# Replicate). Set GEMINI_VIDEO_ENABLED=false to force the Replicate route only.
+_GEMINI_VIDEO_FLAG = os.getenv("GEMINI_VIDEO_ENABLED", "auto").strip().lower()
+GEMINI_VIDEO_ENABLED = bool(GEMINI_API_KEY_VALID) and _GEMINI_VIDEO_FLAG not in {"0", "false", "no", "off"}
+GEMINI_VIDEO_MODEL = os.getenv("GEMINI_VIDEO_MODEL", "veo-3.1-lite-generate-preview").strip()
+GEMINI_VIDEO_BASE_URL = os.getenv("GEMINI_VIDEO_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
+GEMINI_VIDEO_DURATION_SECONDS = max(4, min(8, int(os.getenv("GEMINI_VIDEO_DURATION_SECONDS", "8"))))
+GEMINI_VIDEO_RESOLUTION = os.getenv("GEMINI_VIDEO_RESOLUTION", "720p").strip()
+GEMINI_VIDEO_ASPECT_RATIO = os.getenv("GEMINI_VIDEO_ASPECT_RATIO", "9:16").strip()
+GEMINI_VIDEO_TIMEOUT_SECONDS = max(60, min(420, int(os.getenv("GEMINI_VIDEO_TIMEOUT_SECONDS", "360"))))
 VIDEO_COST_STARS = max(1, int(os.getenv("VIDEO_COST_STARS", "5")))
 # Paid gallery download: the user re-sends their own uncompressed photo as a
 # Telegram document (full resolution). Kept low to encourage repeat use.

@@ -42,4 +42,4 @@ Keep one bot replica when using Telegram long polling.
 
 ## V3.12 Gemini dialogue and optional Veo video
 
-After deploying the ZIP, add `GEMINI_API_KEY` and the Gemini routing variables in Railway → service → Variables. Do not put the key into PowerShell history or Git. V3.19.4 removed Gemini/Veo video: video runs on Replicate, so also add `REPLICATE_API_TOKEN` in Railway Variables.
+After deploying the ZIP, add `GEMINI_API_KEY` and the Gemini routing variables in Railway → service → Variables. Do not put the key into PowerShell history or Git. V3.19.5: Gemini/Veo is the primary video engine again (needs a clean ASCII key); also add `REPLICATE_API_TOKEN` as the first video fallback.

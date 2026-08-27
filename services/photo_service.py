@@ -1321,22 +1321,42 @@ async def _gemini_image_one_frame(character: dict, telegram_id: int, request: Ph
     }
     headers = {'x-goog-api-key': api_key, 'Content-Type': 'application/json'}
     timeout = httpx.Timeout(float(GEMINI_IMAGE_TIMEOUT_SECONDS), connect=20.0)
-    try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            response = await client.post(
-                'https://generativelanguage.googleapis.com/v1beta/interactions',
-                headers=headers,
-                json=payload,
-            )
-    except httpx.TimeoutException as exc:
-        raise PhotoGenerationError('gemini_image', 'timeout') from exc
-    except UnicodeEncodeError as exc:
-        # Header encoding should now only fail for a malformed API key; keep the
-        # error explicit instead of silently masking it behind GPT fallback logs.
-        raise PhotoGenerationError('gemini_image', 'header_unicode_error') from exc
-    except httpx.HTTPError as exc:
-        logger.warning('Nano Banana transport failed user=%s scene=%s frame=%s/%s error=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, type(exc).__name__)
-        raise PhotoGenerationError('gemini_image', type(exc).__name__) from exc
+    # V3.19.5: one automatic retry on transient failures (timeouts, 408/429/5xx).
+    # Google's image API hiccups under load; a single retry turns many
+    # "фото сейчас не получилось" moments into delivered photos.
+    retryable_statuses = {408, 429, 500, 502, 503, 504}
+    response = None
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+                response = await client.post(
+                    'https://generativelanguage.googleapis.com/v1beta/interactions',
+                    headers=headers,
+                    json=payload,
+                )
+        except httpx.TimeoutException as exc:
+            if attempt == 0:
+                logger.warning('Nano Banana timeout user=%s scene=%s frame=%s/%s - retrying once', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE)
+                await asyncio.sleep(2.0)
+                continue
+            raise PhotoGenerationError('gemini_image', 'timeout') from exc
+        except UnicodeEncodeError as exc:
+            # Header encoding should now only fail for a malformed API key; keep the
+            # error explicit instead of silently masking it behind GPT fallback logs.
+            raise PhotoGenerationError('gemini_image', 'header_unicode_error') from exc
+        except httpx.HTTPError as exc:
+            if attempt == 0:
+                logger.warning('Nano Banana transport failed user=%s scene=%s frame=%s/%s error=%s - retrying once', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, type(exc).__name__)
+                await asyncio.sleep(2.0)
+                continue
+            logger.warning('Nano Banana transport failed user=%s scene=%s frame=%s/%s error=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, type(exc).__name__)
+            raise PhotoGenerationError('gemini_image', type(exc).__name__) from exc
+
+        if response.status_code in retryable_statuses and attempt == 0:
+            logger.warning('Nano Banana transient HTTP %s user=%s scene=%s frame=%s/%s - retrying once', response.status_code, telegram_id, request.scene, i + 1, PHOTO_SET_SIZE)
+            await asyncio.sleep(2.0)
+            continue
+        break
 
     if response.status_code >= 400:
         reason = f'http_{response.status_code}'

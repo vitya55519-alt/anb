@@ -23,7 +23,7 @@ from config import (
     TELEGRAM_TOKEN, PREMIUM_MONTHLY_STARS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS,
     ADMIN_TELEGRAM_IDS, CHARACTER_ID, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS,
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
-    VIDEO_COST_STARS, GALLERY_DOWNLOAD_STARS, WALLET_PAY_ENABLED,
+    GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, GALLERY_DOWNLOAD_STARS, WALLET_PAY_ENABLED,
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
 )
@@ -49,6 +49,7 @@ from services.referral_service import (
     referral_user_lock, pending_referral, remember_referral, referral_leaderboard, referral_rank,
     settle_monthly_contest,
 )
+from services.gemini_video_service import animate_image, video_available
 from services.cloud_video_service import (
     animate_image_replicate, animate_image_fal,
     replicate_available, fal_available, CloudVideoError, SENSUAL_ANIMATION_PROMPT,
@@ -63,7 +64,8 @@ from services.relationship_signals import infer_delta
 def _any_video_engine() -> bool:
     """At least one image-to-video provider is configured."""
     return bool(
-        replicate_available()
+        video_available()
+        or replicate_available()
         or fal_available()
         or hf_video_available()
     )
@@ -75,6 +77,7 @@ def _video_unavailable_text(telegram_id: int) -> str:
     if telegram_id in ADMIN_TELEGRAM_IDS:
         return (
             'Видео недоступно: нет ни одного активного движка.\n'
+            f'Gemini/Veo: {"✅" if video_available() else "❌ нет/битый GEMINI_API_KEY (должен быть чистый ASCII)"}\n'
             f'Replicate: {"✅" if replicate_available() else "❌ нет REPLICATE_API_TOKEN"}\n'
             f'fal.ai: {"✅" if fal_available() else "❌ нет FAL_KEY"}\n'
             f'HF spaces: {"✅" if hf_video_available() else "❌ выключен"}\n\n'
@@ -2456,10 +2459,11 @@ async def quest_route_cb(cq: types.CallbackQuery):
 async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None, motion_preset: str | None = None) -> None:
     """Animate a delivered photo with automatic engine fallback.
 
-    V3.19.4 order: Replicate first, then fal.ai, then the free HF route
-    (which walks its own list of public spaces internally). The user only
-    hears about a failure when every available engine failed; a paid run
-    is then refunded.
+    V3.19.5 order: Gemini/Veo first again (owner decision), then Replicate,
+    fal.ai, then the free HF route (which walks its own list of public spaces
+    internally). The V3.19.3 key gate keeps a broken Gemini key out of the
+    chain. The user only hears about a failure when every available engine
+    failed; a paid run is then refunded.
     """
     engine_errors: list[str] = []
     engine_names: list[str] = []
@@ -2478,8 +2482,10 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
             raise CloudVideoError('telegram_download_empty')
 
         engines = []
-        # V3.19.4: Replicate is the primary i2v engine; fal.ai and the free
-        # HF spaces keep the feature alive when it rejects or fails.
+        # V3.19.5: Gemini/Veo is the primary engine again; Replicate (hailuo),
+        # fal.ai and the free HF spaces are the fallback chain.
+        if video_available():
+            engines.append(('gemini', animate_image))
         if replicate_available():
             engines.append(('replicate', animate_image_replicate))
         if fal_available():
@@ -2715,7 +2721,8 @@ async def gemini_status_cmd(message: types.Message):
         f'OpenRouter: {"✅" if st["openrouter_key_present"] else "❌"} model: {st["openrouter_model"]}\n'
         f'OpenRouter URL: {st["openrouter_base_url"]}\n'
         f'Gemini (fallback): {"✅" if st["gemini_key_present"] else "❌"} model: {st["gemini_model"]}\n'
-        f'Replicate Video: {"✅" if replicate_available() else "❌"} (primary, V3.19.4)\n'
+        f'Gemini Video: {"✅" if video_available() else "❌"} (primary, V3.19.5)\n'
+        f'Replicate Video: {"✅" if replicate_available() else "❌"}\n'
         f'fal.ai Video: {"✅" if fal_available() else "❌"}\n'
         f'HF Video (paid engine): {"✅" if hf_video_available() else "❌"}'
     )
@@ -2888,7 +2895,7 @@ async def successful_payment(message: types.Message):
             value=payment.total_amount,
             metadata={'product': 'video', 'source_delivery_id': delivery_id},
         )
-        # One unified job: Replicate first, fal/HF fallbacks otherwise,
+        # One unified job: Gemini/Veo first, cloud + HF fallbacks otherwise,
         # with automatic engine fallback; auto-refunds Stars if all fail.
         task = asyncio.create_task(_run_video_background(message.chat.id, message.from_user.id, delivery_id, charge, motion_preset=motion_preset))
         _video_jobs[message.from_user.id] = task
@@ -4573,9 +4580,9 @@ async def main():
         logger.exception('startup reminder check failed')
     st = provider_status()
     logger.info(
-        'LLM status: openrouter=%s model=%s gemini=%s gemini_model=%s video_replicate=%s',
+        'LLM status: openrouter=%s model=%s gemini=%s gemini_model=%s video=%s',
         st['openrouter_key_present'], st['openrouter_model'], st['gemini_key_present'],
-        st['gemini_model'], replicate_available(),
+        st['gemini_model'], video_available(),
     )
     logger.info('AnnaBot started')
     await dp.start_polling(bot)

@@ -17,7 +17,7 @@ def test_unified_video_job_with_engine_fallback():
     assert sig in MAIN
     block = MAIN[MAIN.index(sig):]
     block = block.split('\n\n\n@dp.', 1)[0]
-    assert 'replicate_available()' in block
+    assert 'video_available()' in block
     assert 'hf_video_available()' in block
     assert 'animate_image_hf' in block
     assert 'if charge_id:' in block

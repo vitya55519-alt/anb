@@ -81,8 +81,9 @@ GEMINI_CHAT_MODEL=gemini-3.5-flash
 GEMINI_THINKING_LEVEL=minimal
 ```
 
-V3.19.4: Gemini/Veo video was removed. Video generation runs on Replicate
-(primary), fal.ai and HF spaces. Add the Replicate token to Railway Variables:
+V3.19.5: Gemini/Veo is the primary video engine again (needs a clean ASCII
+`GEMINI_API_KEY`); Replicate, fal.ai and HF spaces are the fallback chain.
+Add the Replicate token to Railway Variables:
 
 ```text
 REPLICATE_API_TOKEN=<your token from replicate.com/account/api-tokens>

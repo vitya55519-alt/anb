@@ -51,7 +51,7 @@ def test_main_wires_paid_video_route():
     # User is warned about the public-server queue wait time.
     assert '1–3 минуты' in MAIN
     # Paid Gemini route stays the priority when enabled; HF is the zero-cost engine otherwise.
-    assert 'if replicate_available():' in MAIN
+    assert 'if video_available():' in MAIN
     block = MAIN[MAIN.index("if payload.startswith('video:')"):]
     assert '_run_video_background' in block
 
