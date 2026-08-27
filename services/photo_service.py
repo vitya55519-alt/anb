@@ -176,6 +176,20 @@ ADULT_SAFETY = (
     'clinical or pornographic.'
 )
 
+# V3.19.7: hard subject lock appended to every provider prompt (and placed
+# first in the compact Pollinations prompt). A free text-to-image fallback
+# once rendered a child in an industrial zone because the long structured
+# prompt made the model drop the subject; identity + adult-only constraint
+# must never be truncated away.
+ADULT_ONLY_LOCK = (
+    'HARD SUBJECT LOCK: the only person in the photo is the same fictional adult woman in her twenties (20+ years old) described above. '
+    'Never depict minors: no children, no teenagers, no child-like faces or child body proportions anywhere in the frame. '
+    'If any other instruction conflicts with this lock, this lock wins.'
+)
+# Free URL-based providers get a capped prompt so proxies/CDNs cannot cut it
+# mid-sentence; the identity + lock sit first, so a cut never loses the subject.
+POLLINATIONS_MAX_PROMPT_CHARS = 1600
+
 # Visual progression is explicit: relationship level changes garment families,
 # styling confidence and pose.  Each 3-photo request is a progression pack:
 # base -> stylish -> premium.  Clothing stays believable for venue/season.
@@ -531,15 +545,23 @@ EXPRESSION_IDENTITY = (
     'avoid a blank stern expression and avoid an exaggerated forced grin or unnaturally wide toothy smile.'
 )
 OPENAI_IDENTITY_LOCK = ORDINARY_IDENTITY_LOCK
+# V3.19.7: one-line identity used by the compact Pollinations prompt — the full
+# reference-based lock is ~2k chars and made the free model drop the subject.
+ANNA_COMPACT_IDENTITY = (
+    'PHOTO IDENTITY: Anna, the same fictional adult woman, age 26, in every photo: '
+    'long dark-brown brunette hair, slim feminine physique, warm subtle smile, photorealistic.'
+)
 
 
-def _character_identity_lock(character_id: str, seedream: bool = False, expression_key: str | None = None) -> tuple[str, str, str, str]:
-    """Return (identity, personal_note, safety, expression) for a character.
+def _character_identity_lock(character_id: str, seedream: bool = False, expression_key: str | None = None) -> tuple[str, str, str, str, str]:
+    """Return (identity, personal_note, safety, expression, compact_identity).
 
     For Anna the existing reference-based locks are preserved.
     For other characters a generic lock is built from the character card.
     expression_key (from the user's chat mood) overrides the default warm smile
     with an emotion-matched facial expression; None keeps the old behavior.
+    compact_identity (V3.19.7) is a one-line subject description for the capped
+    free-provider prompt, where the full reference lock is far too long.
     """
     from services.photo_expression_service import expression_description
     if character_id == 'anna_01':
@@ -552,6 +574,7 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
                 'Tasteful adult fashion/editorial styling only. No nudity, no exposed nipples or genitals. '
                 'For personal or lingerie scenes, use elegant adult lingerie with opaque garment coverage; preserve identity above styling.',
                 expression_description(expression_key, 'Anna') if expression_key else EXPRESSION_IDENTITY,
+                ANNA_COMPACT_IDENTITY,
             )
         return (
             OPENAI_IDENTITY_LOCK,
@@ -561,6 +584,7 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
             'but still like a real personal lifestyle photo rather than a studio glamour shoot.',
             OPENAI_GENERAL_AUDIENCE_BLOCK,
             expression_description(expression_key, 'Anna') if expression_key else EXPRESSION_IDENTITY,
+            ANNA_COMPACT_IDENTITY,
         )
 
     from services.character_card_service import get_card
@@ -597,7 +621,10 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
         'The image should read as an everyday social-media or personal travel/lifestyle photo.'
     )
     expression = expression_description(expression_key, name)
-    return identity, personal, safety, expression
+    compact_identity = (
+        f'PHOTO IDENTITY: {name}, the same fictional adult {gender} aged {age} in every photo: {preserve_text}.'
+    )
+    return identity, personal, safety, expression, compact_identity
 
 
 SEEDREAM_IDENTITY_LOCK = (
@@ -1138,7 +1165,7 @@ def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
     return variants[index % len(variants)]
 
 
-def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False, relationship_level: int = 1, character_id: str = CHARACTER_ID) -> str:
+def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False, relationship_level: int = 1, character_id: str = CHARACTER_ID, compact: bool = False) -> str:
     scene = SCENES.get(request.scene, SCENES['selfie'])
     angle = _shot_variant(request.scene, shot_index, request.angle)
     outfits = tuple(request.pack_outfits) if request.pack_outfits else (request.clothing,)
@@ -1194,7 +1221,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # in the at-home lingerie sets and the private scenes instead.
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
-    identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key)
+    identity, personal, safety, expression_identity, compact_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key)
     if adult_scene:
         safety = ADULT_SAFETY
     body_reinforcement = BODY_REINFORCEMENT if (character_id == 'anna_01' and not seedream and request.scene in BODY_REINFORCEMENT_SCENES) else ''
@@ -1202,8 +1229,23 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         'Use tasteful fashion fit and waist definition while preserving the underlying slim body proportions. ' if seedream else
         'Use a well-fitted outfit that preserves the person\u2019s physique and proportions. Use a natural everyday pose with the visual focus on the person, outfit and environment. '
     )
+    if compact:
+        # V3.19.7: the free Pollinations fallback once rendered a child in an
+        # industrial zone — the huge multi-section prompt made the model drop
+        # the subject entirely. The compact lock keeps identity + adult-only
+        # safety first, so even a truncated prompt still describes her.
+        compact_text = (
+            f'{compact_identity} {ADULT_ONLY_LOCK} '
+            f'SCENE: {scene}. {request.location}. '
+            f'WARDROBE: {wardrobe}. {figure_note}'
+            f'HAIRSTYLE: {request.hairstyle}. MAKEUP: {request.makeup}. '
+            f'MOOD: {request.mood}. {expression_identity} {safety} '
+            'Photorealistic personal smartphone-photo aesthetic, one adult woman only.'
+        )
+        return ' '.join(compact_text.split())
     return (
         f'{identity}\n'
+        f'{ADULT_ONLY_LOCK}\n'
         f'SCENE: {scene}. {request.location}.\n'
         f'SEASON/WEATHER: {season}. {season_rule}\n'
         f'RELATIONSHIP VISUAL PROGRESSION: {visual_rule}\n'
@@ -1449,15 +1491,16 @@ async def _pollinations_one_frame(character: dict, telegram_id: int, request: Ph
         raise PhotoGenerationError('pollinations', 'not_configured')
 
     level = get_relationship_level(telegram_id, character_id)
-    prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id) + (
-        " FREE PROVIDER ORDINARY-PHOTO RULE: Keep the same fictional adult person described in PHOTO IDENTITY "
-        "across every photo: same face features, hair color and style, overall physique and subtle warm smile. "
-        "Change only the requested scene, fully clothed outfit, pose, camera and lighting. "
-        "Keep the result mainstream, natural and general-audience. Photorealistic personal smartphone-photo aesthetic."
-    )
+    # V3.19.7: compact identity-first prompt — the full multi-section prompt
+    # made the free model drop the subject once (child in an industrial zone).
+    prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id, compact=True)
     # Pollinations rejects prompts containing newline characters (404), so the
-    # multi-line structured prompt must be flattened into a single line.
+    # structured prompt must be flattened into a single line.
     prompt = ' '.join(line.strip() for line in prompt.split('\n') if line.strip())
+    # Cap the URL length so proxies/CDNs cannot truncate it mid-sentence; the
+    # identity + ADULT_ONLY_LOCK sit first, so a cut never loses the subject.
+    if len(prompt) > POLLINATIONS_MAX_PROMPT_CHARS:
+        prompt = prompt[:POLLINATIONS_MAX_PROMPT_CHARS].rsplit(' ', 1)[0]
     params = {
         'width': str(POLLINATIONS_WIDTH),
         'height': str(POLLINATIONS_HEIGHT),
