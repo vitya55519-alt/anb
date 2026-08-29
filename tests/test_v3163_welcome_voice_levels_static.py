@@ -12,7 +12,7 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 def test_welcome_message_lists_bot_abilities():
     start = MAIN[MAIN.index('@dp.message(CommandStart())'):]
     start = start.split('@dp.callback_query', 1)[0]
-    for fragment in ('Что я умею', '📸', '🎬', '🎙', 'уровням 1–6'):
+    for fragment in ('Что я умею', '📸', '🎬', '🎙', 'уровням 1–8'):
         assert fragment in start
 
 
@@ -22,7 +22,7 @@ def test_abilities_text_covers_video_and_voice():
     assert 'Оживить фото' in block
     assert 'свой милый голос' in block
     assert 'на твоём языке' in block
-    assert 'уровням 1–6' in block
+    assert 'уровням 1–8' in block
 
 
 def test_three_characters_have_distinct_voice_profiles():

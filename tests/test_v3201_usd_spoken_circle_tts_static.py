@@ -11,7 +11,8 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION == '3.20.1'
+    # Superseded by V3.21.0 (couple layer); the USD/circle/TTS pins below stay valid.
+    assert VERSION in ('3.20.1', '3.21.0')
 
 
 def test_usd_price_config():

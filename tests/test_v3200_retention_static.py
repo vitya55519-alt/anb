@@ -110,4 +110,5 @@ def test_premium_pitch_mentions_new_perks_and_plateau():
     assert '2 бесплатных оживления фото каждый день' in pitch
     assert 'видео-кружочки' in pitch
     assert 'безлимит сообщений' in pitch
-    assert 'последнем уровне близости' in pitch
+    # V3.21.0 renamed the plateau line to the two premium levels.
+    assert '«Родственные души» и «Одно целое»' in pitch

@@ -30,6 +30,23 @@ class User(Base):
     # (nullable = never offered). Auto-migrated by services/db.py.
     discount_offered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     adult_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # V3.21.0: couple-layer UI pack (pet name, daily quest, rituals toggle,
+    # celebrated anniversaries, onboarding tour). Auto-migrated by services/db.py.
+    pet_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    quest_claimed_date: Mapped[str] = mapped_column(String(10), default="")
+    tour_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    notify_rituals: Mapped[bool] = mapped_column(Boolean, default=True)
+    anniversaries: Mapped[str] = mapped_column(String(64), default="")
+
+
+# V3.21.0: one milestone photo per relationship level — the couple album.
+class CoupleAlbum(Base):
+    __tablename__ = "couple_album"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    level: Mapped[int] = mapped_column(Integer, nullable=False)
+    delivery_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 # V3.19.0: personal characters built through the in-chat constructor. One row

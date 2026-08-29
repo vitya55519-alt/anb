@@ -96,7 +96,8 @@ async def _rituals(bot):
     now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     fresh_cutoff=now-dt.timedelta(days=RITUAL_MAX_INACTIVE_DAYS)
     with SessionLocal() as s:
-        users=s.scalars(select(User).where(User.proactive_enabled==True,User.last_active_at>=fresh_cutoff)).all()
+        # V3.21.0: notify_rituals is the per-user opt-out (NULL = legacy on).
+        users=s.scalars(select(User).where(User.proactive_enabled==True,User.notify_rituals!=False,User.last_active_at>=fresh_cutoff)).all()
         snapshot=[(u.id,u.telegram_id,u.name or 'ты',u.streak_count or 0,u.timezone) for u in users]
     today_key=now.date().isoformat()
     for uid,tg_id,name,streak,tz in snapshot:

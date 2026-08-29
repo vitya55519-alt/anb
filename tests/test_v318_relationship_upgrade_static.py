@@ -97,8 +97,9 @@ def test_next_stage_progress_targets():
     assert labels == ['❤️ отношения', '🤝 доверие', '🔥 страсть']
     # Next stage after stranger is acquaintance: 15/10/0.
     assert [p[2] for p in prog] == [15, 10, 0]
-    # Final stage has nothing to chase.
-    assert next_stage_progress(_row(stage='committed')) == []
+    # V3.21.0: the plateau extended to soulmate — only the true final stage
+    # has nothing left to chase.
+    assert next_stage_progress(_row(stage='soulmate')) == []
 
 
 def test_progress_bar_rendering():

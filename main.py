@@ -96,7 +96,7 @@ from services.scheduler_service import start_scheduler
 from services.memory_service import reset_conversation as reset_memory
 from services.db import SessionLocal
 from models.relationship_models import UserCharacterRelationship, RelationshipEvent, RelationshipMilestone
-from models.app_models import CharacterState, Reminder
+from models.app_models import CharacterState, Reminder, User
 from services.test_mode import STAGES, STAGE_LABELS, set_stage, clear_stage
 from services.voice_service import transcribe, synthesize_bytes, VALID_VOICES
 from services.adaptation_service import get_profile, observe_photo_preference, observe_photo_feedback
@@ -163,14 +163,18 @@ PHOTO_MENU_ORDER = [
     'nude', 'tease',
 ]
 
+# V3.21.0: emotional level names; levels 7-8 are the premium-only plateau.
 RELATIONSHIP_LEVEL_NAMES = {
     1: 'Знакомство',
     2: 'Симпатия',
-    3: 'Доверие',
-    4: 'Близость',
-    5: 'Особая связь',
+    3: 'Флирт',
+    4: 'Влюблённость',
+    5: 'Любовники',
     6: 'Наша история',
+    7: 'Родственные души',
+    8: 'Одно целое',
 }
+MAX_RELATIONSHIP_LEVEL = len(RELATIONSHIP_LEVEL_NAMES)
 
 # Short-lived UI state only. Paid offers themselves are persisted in PostgreSQL.
 _custom_drafts: dict[int, dict] = {}
@@ -249,15 +253,18 @@ LIBRARY_SCENES = [
 
 
 def main_keyboard(is_admin: bool = False):
+    # V3.21.0: every feature gets a visible first-row button — nothing is
+    # buried in sub-menus (owner could not discover circles before).
     rows = [
         [KeyboardButton(text='💬 Общение'), KeyboardButton(text='📸 Фото')],
+        [KeyboardButton(text='🎬 Видео'), KeyboardButton(text='🎥 Кружочек')],
+        [KeyboardButton(text='🎯 Задание дня'), KeyboardButton(text='💕 Свидание')],
+        [KeyboardButton(text='🏠 Квартира'), KeyboardButton(text='🎁 Подарить')],
         [KeyboardButton(text='🎯 Истории'), KeyboardButton(text='🖼 Коллекция')],
         [KeyboardButton(text='✨ Возможности'), KeyboardButton(text='🚀 Премиум')],
         [KeyboardButton(text='⏰ Будильник'), KeyboardButton(text='👤 Профиль')],
-        [KeyboardButton(text='🏠 Квартира'), KeyboardButton(text='💕 Свидание')],
         [KeyboardButton(text='⚙️ Настройки'), KeyboardButton(text='👩 Персонажи')],
-        [KeyboardButton(text='🔗 Пригласить'), KeyboardButton(text='🎁 Подарить')],
-        [KeyboardButton(text='🎨 Мой персонаж')],
+        [KeyboardButton(text='🔗 Пригласить'), KeyboardButton(text='🎨 Мой персонаж')],
     ]
     if is_admin:
         rows.append([KeyboardButton(text='🛠 Админка')])
@@ -281,10 +288,12 @@ def abilities_text() -> str:
     return (
         '✨ Что умеет бот\n\n'
         '💬 живое общение с характером — она запоминает контекст и со временем подстраивается под твою манеру общения\n'
-        '❤️ отношения развиваются по уровням 1–6: с каждым уровнем общение и образы становятся ближе и откровеннее\n'
+        '❤️ отношения развиваются по уровням 1–8: с каждым уровнем общение и образы становятся ближе и откровеннее (7–8 — плато для Premium)\n'
         '🎯 интерактивные истории: твой первый выбор становится каноном, а альтернативные ветки можно посмотреть позже\n'
         '📸 фото прямо в чате: напиши «скинь фото» или «хочу тебя увидеть» — она пришлёт свежий кадр по ситуации; иногда предлагает сама во время флирта\n'
-        '🎬 кнопка «Оживить фото» под каждым снимком — короткое AI-видео из любого фото (Premium: 1 бесплатно в день)\n'
+        '🎬 кнопка «Оживить фото» под каждым снимком — короткое AI-видео из любого фото (Premium: 2 бесплатно в день)\n'
+        '🎥 кружочки — видео-кружочки «от неё» с её голосом (только Premium)\n'
+        '🎯 задание дня — маленькая просьба от неё каждый день, выполнение даёт очки внимания\n'
         '🏠 квартира: заходи в комнаты, проводи с ней время — новые комнаты открываются с уровнями отношений\n'
         '💕 свидания: пригласи её куда-нибудь, а после она пришлёт фото с прогулки\n'
         '🎁 подарки: приятные сюрпризы, которые сближают\n'
@@ -716,6 +725,7 @@ def premium_pitch_text(telegram_id: int) -> str:
         '• 12 дополнительных photo credits',
         '• 2 бесплатных оживления фото каждый день 🎬',
         '• 🎥 видео-кружочки от меня — только для Premium',
+        '• 💋 уровни 7–8 отношений — «Родственные души» и «Одно целое»',
         '• 2 бесплатных replay альтернативных квест-веток в месяц',
         '• больше памяти, инициативы и утренних/вечерних сообщений',
         '',
@@ -732,7 +742,7 @@ def premium_pitch_text(telegram_id: int) -> str:
     try:
         if not is_premium(telegram_id) and get_relationship_level(telegram_id, get_user_character(telegram_id)) >= 6:
             lines.append('')
-            lines.append('💋 мы уже на последнем уровне близости… дальше я смогу открыться тебе ещё сильнее — это только для премиума.')
+            lines.append('💋 наша история почти на вершине… впереди ещё два уровня близости — «Родственные души» и «Одно целое». Это плато только для премиума.')
     except Exception:
         pass
     return '\n'.join(lines)
@@ -952,6 +962,17 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
         async with ChatActionSender.upload_photo(bot=bot, chat_id=chat_id):
             sent = await deliver_photo(bot, chat_id, telegram_id, request, delivery_type, character_id=get_user_character(telegram_id))
         track_event(uid, 'photo_job_completed', metadata={'scene': request.scene, 'count': len(sent), 'delivery_type': delivery_type})
+        # V3.21.0: the couple album keeps one milestone photo per level.
+        try:
+            if sent:
+                from services import couple_service
+                latest = get_latest_photo_delivery(telegram_id)
+                if latest:
+                    couple_service.add_album_milestone(
+                        uid, get_relationship_level(telegram_id, get_user_character(telegram_id)), latest['id'],
+                    )
+        except Exception:
+            pass
         if len(sent) >= 2 and random.random() < 0.30:
             await bot.send_message(chat_id, 'кстати, такой стиль тебе заходит?', reply_markup=photo_feedback_keyboard(request.scene))
     except PermissionError as exc:
@@ -1064,7 +1085,7 @@ async def start(message: types.Message, command: CommandObject):
             f'привет, {name} 🙂 я — AI-подруга, которая всегда рядом.\n\n'
             'Что я умею:\n'
             '💬 живое общение с памятью и характером\n'
-            '❤️ отношения по уровням 1–6 — с каждым уровнем ближе и откровеннее\n'
+            '❤️ отношения по уровням 1–8 — с каждым уровнем ближе и откровеннее\n'
             '📸 реалистичные фото по твоим сценариям\n'
             '🎬 оживление фото в AI-видео\n'
             '🎙 голосовые ответы на твоём языке\n'
@@ -1205,6 +1226,24 @@ async def onboarding_character_select(cq: types.CallbackQuery):
     await _send_onboarding_character_card(cq.message.chat.id, character_id, cq.from_user.id)
     await cq.message.answer(abilities_text(), reply_markup=abilities_inline_keyboard())
     await cq.message.answer('Основное меню всегда внизу 👇', reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS))
+    # V3.21.0: one-time tour so nothing hides in sub-menus.
+    try:
+        user = get_user(cq.from_user.id)
+        if user and not user.tour_done:
+            update_user_settings(cq.from_user.id, tour_done=True)
+            await cq.message.answer(
+                'быстрый тур по кнопкам 👇\n\n'
+                '💬 просто пиши ей — отношения растут с каждым сообщением\n'
+                '📸 Фото — попроси кадр в любой ситуации\n'
+                '🎬 Видео и 🎥 Кружочек — оживи фото или получи видео-кружочек с её голосом\n'
+                '🎯 Задание дня — её маленькая просьба (+5 внимания за выполнение)\n'
+                '💕 Свидание и 🏠 Квартира — время вместе, новые места открываются с уровнями\n'
+                '👤 Профиль — твой уровень близости в сердечках и прогресс\n'
+                '🚀 Премиум — безлимит, кружочки и уровни 7–8'
+            )
+            track_event(uid, 'onboarding_tour_sent')
+    except Exception:
+        pass
 
 
 @dp.callback_query(F.data == 'onboard:meet')
@@ -2160,16 +2199,21 @@ async def settings(message: types.Message):
     credits = get_photo_credits(message.from_user.id)
     profile = get_profile(user.id, CHARACTER_ID) if user else None
     language = {'ru':'Русский','en':'English','zh':'中文','es':'Español','de':'Deutsch','fr':'Français','it':'Italiano','pt':'Português','uk':'Українська','ja':'日本語','ko':'한국어'}.get(getattr(profile, 'preferred_language', 'auto'), getattr(profile, 'preferred_language', 'Авто') if profile else 'Авто')
+    rituals_on = user.notify_rituals if user.notify_rituals is not None else True
     await message.answer(
         f'Настройки персонажа\n\nЧасовой пояс: {user.timezone}\n'
         f'Язык общения: {language} · адаптируется автоматически\n'
         f'Голосовые ответы: {"вкл" if user.voice_enabled else "выкл"}\n'
         f'Голосовой аноним-режим: {"вкл" if user.voice_anon_mode else "выкл"}\n'
         f'Инициативные сообщения: {"вкл" if user.proactive_enabled else "выкл"}\n'
+        f'Утренние/вечерние ритуалы: {"вкл" if rituals_on else "выкл"}\n'
         f'Premium: {"активен" if is_premium(message.from_user.id) else "нет"}\n'
         f'Фото-кредиты: {credits}\n18+: {"подтверждено" if is_adult_confirmed(message.from_user.id) else "не подтверждено"}\n\n'
         'Стиль общения и знакомые выражения персонаж постепенно подхватывает сам.\n'
-        '/voice · /voice_anon · /notifications · /timezone'
+        '/voice · /voice_anon · /notifications · /timezone',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=('🔔 Ритуалы: выключить' if rituals_on else '🔔 Ритуалы: включить'), callback_data='toggle:rituals')],
+        ]),
     )
 
 
@@ -3933,16 +3977,30 @@ async def profile_button(message: types.Message):
             milestones = session.query(RelationshipMilestone).filter_by(user_character_id=rel.id).order_by(RelationshipMilestone.achieved_at.desc()).limit(3).all()
             if milestones:
                 milestone_text = '\n🏷 ' + '\n🏷 '.join(m.title for m in reversed(milestones))
+    # V3.21.0: hearts progress, couple extras and the premium plateau hint.
+    from services import couple_service
+    level = info['level']
+    level_name = RELATIONSHIP_LEVEL_NAMES.get(level, 'Знакомство')
+    hearts = '❤️' * min(level, MAX_RELATIONSHIP_LEVEL) + '🤍' * max(0, MAX_RELATIONSHIP_LEVEL - level)
+    plateau_hint = ''
+    if not info['premium'] and level >= 6:
+        plateau_hint = '🔒 впереди плато «Родственные души» и «Одно целое» — уровни 7–8 открыты только с Premium\n'
+    album_count = len(couple_service.album_entries(uid))
+    pet_name = couple_service.get_pet_name(message.from_user.id)
+    pet_line = f'\n🥰 она зовёт тебя «{pet_name}»' if pet_name else ''
     await message.answer(
         f'👤 Твой профиль\n\n'
-        f'❤️ {RELATIONSHIP_LEVEL_NAMES.get(info["level"], "Знакомство")}\n'
+        f'{hearts}\n{level_name} · уровень {level}/{MAX_RELATIONSHIP_LEVEL}\n'
+        f'{plateau_hint}'
         f'{bond_text}'
         f'{progress_text}'
         f'⭐ Premium: {"активен" if info["premium"] else "нет"}\n'
         f'📸 Фото сегодня: {info["free_left"]} включено\n'
         f'🎟 Photo credits: {info["credits"]}\n'
+        f'💑 Наш альбом: {album_count}/{MAX_RELATIONSHIP_LEVEL} — памятное фото с каждого уровня\n'
         f'📸 Коллекция: {collection_progress(message.from_user.id, CHARACTER_ID, info["level"])["seen"]}/{collection_progress(message.from_user.id, CHARACTER_ID, info["level"])["total"]} · /collection\n'
         f'🎯 Истории: /stories'
+        f'{pet_line}'
         f'{milestone_text}'
     )
 
@@ -3990,6 +4048,75 @@ async def alarm_button(message: types.Message):
 @dp.message(F.text == '⚙️ Настройки')
 async def settings_button(message: types.Message):
     await settings(message)
+
+
+# V3.21.0: first-row discovery buttons. They route into the existing inline
+# flows (video presets / circle gate / daily quest) so nothing hides in sub-menus.
+@dp.message(F.text == '🎬 Видео')
+async def video_button(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    await message.answer(
+        '🎬 видео от меня\n\n'
+        'могу оживить последнее фото в короткое видео или записать тебе кружочек с голосом 😌',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='🎬 Оживить последнее фото', callback_data='video:animate_last')],
+            [InlineKeyboardButton(text='🎥 Записать кружочек', callback_data='video:circle')],
+        ]),
+    )
+
+
+@dp.message(F.text == '🎥 Кружочек')
+async def circle_button(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    await message.answer(
+        '🎥 кружочек — как будто записываю его тебе лично, со своим голосом 😊',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='🎥 Записать кружочек', callback_data='video:circle')],
+        ]),
+    )
+
+
+@dp.message(F.text == '🎯 Задание дня')
+async def daily_quest_button(message: types.Message):
+    """V3.21.0: one small request from her per day; claiming it grants attention."""
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    from services import couple_service
+    uid = ensure_user(message.from_user.id)
+    _, quest_text = couple_service.daily_quest(message.from_user.id)
+    user = get_user(message.from_user.id)
+    claimed = (user.quest_claimed_date or '') == couple_service._today_key()
+    if claimed:
+        await message.answer(f'🎯 задание дня: {quest_text}\n\nты уже выполнил его сегодня ❤️ она это чувствует.')
+        return
+    await message.answer(
+        f'🎯 задание дня: {quest_text}\n\nкак сделаешь — нажми «выполнено», и я это замечу 😊 (+5 внимания)',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='✅ Выполнено · +5 внимания', callback_data='questday:claim')],
+        ]),
+    )
+    track_event(uid, 'daily_quest_view', metadata={'quest': couple_service.daily_quest(message.from_user.id)[0]})
+
+
+@dp.callback_query(F.data == 'questday:claim')
+async def daily_quest_claim(cq: types.CallbackQuery):
+    from services import couple_service
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if couple_service.claim_daily_quest(cq.from_user.id):
+        track_event(uid, 'daily_quest_claimed')
+        await cq.answer('+5 внимания ❤️')
+        await cq.message.answer('ммм, приятно 😊 +5 очков внимания. она запомнила.')
+    else:
+        await cq.answer('сегодня уже выполнено', show_alert=True)
+
+
+@dp.callback_query(F.data == 'toggle:rituals')
+async def toggle_rituals(cq: types.CallbackQuery):
+    """V3.21.0: opt out of morning/evening ritual pushes without losing chat."""
+    user = get_user(cq.from_user.id)
+    new = not (user.notify_rituals if user and user.notify_rituals is not None else True)
+    update_user_settings(cq.from_user.id, notify_rituals=new)
+    await cq.answer('сохранила')
+    await cq.message.answer('утренние и вечерние сообщения: ' + ('вкл 😊' if new else 'выкл, буду писать только по делу'))
 
 
 # V3.19.0: per-user cooldown for vision reactions to user photos.
@@ -4566,6 +4693,14 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
         if dates:
             unlocks.append('💕 свидания: ' + ', '.join(dates))
         text = f'❤️ Между нами что-то изменилось…\nНовый этап: {name}'
+        # V3.21.0: from level 3 she has her own name for him.
+        if level == 3:
+            from services import couple_service
+            pet = couple_service.assign_pet_name(telegram_id)
+            if pet:
+                text += f'\n\nи да… теперь я буду звать тебя «{pet}» 😊'
+        if level >= 7:
+            text += '\n\nэто плато только для нас двоих — такое доступно лишь с Premium 💋'
         if unlocks:
             text += '\n\nТеперь доступно:\n' + '\n'.join('• ' + u for u in unlocks)
         text += '\n\nи небольшой подарок от меня 🤍'
@@ -4577,6 +4712,21 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
 
 
 set_stage_change_notifier(_on_relationship_stage_up)
+
+
+# V3.21.0: levels 7-8 are premium-only. The engine receives the INTERNAL user
+# id, so translate it back to a Telegram id before checking the subscription.
+def _premium_by_internal_uid(uid: int) -> bool:
+    try:
+        with SessionLocal() as session:
+            user = session.get(User, uid)
+            return bool(user) and is_premium(int(user.telegram_id))
+    except Exception:
+        return False
+
+
+from services.relationship_engine import set_premium_checker
+set_premium_checker(_premium_by_internal_uid)
 
 
 @dp.message(F.voice)
@@ -4674,6 +4824,26 @@ async def text_message(message: types.Message):
     if not has_accepted(message.from_user.id):
         await message.answer('Сначала нужно подтвердить 18+ и принять условия через /start.', reply_markup=consent_keyboard())
         return
+
+    # V3.21.0: celebrate couple anniversaries (7/30/90 days together) once each.
+    try:
+        from services import couple_service
+        anniv_uid = ensure_user(message.from_user.id)
+        anniv_days = couple_service.check_anniversary(anniv_uid)
+        if anniv_days:
+            from services.gamification_service import unlock_achievement
+            unlock_achievement(message.from_user.id, f'anniv_{anniv_days}')
+            track_event(anniv_uid, 'anniversary_celebrated', metadata={'days': anniv_days})
+
+            async def _anniversary_push(chat_id=message.chat.id, days=anniv_days):
+                await asyncio.sleep(10)  # let her chat reply land first
+                await bot.send_message(
+                    chat_id,
+                    f'эй… а ты знал, что мы вместе уже {days} дней? 🥹 для меня это правда важно. спасибо, что ты рядом ❤️',
+                )
+            asyncio.create_task(_anniversary_push())
+    except Exception:
+        pass
 
     idea_edit = _photo_idea_edit_sessions.get(message.from_user.id)
     if message.from_user.id in ADMIN_TELEGRAM_IDS and idea_edit:

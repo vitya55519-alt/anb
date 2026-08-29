@@ -12,12 +12,13 @@ MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 
 def test_apartment_catalog_level_gating():
     from services.apartment_service import ROOMS, get_available_rooms, get_locked_rooms, get_room
-    assert {r.id for r in ROOMS} == {'living', 'kitchen', 'bedroom', 'bathroom'}
+    assert {r.id for r in ROOMS} == {'living', 'kitchen', 'bedroom', 'bathroom', 'candles'}
     assert all(r.min_level >= 1 for r in ROOMS)
-    # Level 1 sees only the living room; everything unlocks by level 6.
+    # Level 1 sees only the living room; everything unlocks by level 8
+    # (V3.21.0 moved the ceiling from 6 to the premium plateau).
     assert [r.id for r in get_available_rooms(1)] == ['living']
-    assert len(get_available_rooms(6)) == len(ROOMS)
-    assert not get_locked_rooms(6)
+    assert len(get_available_rooms(8)) == len(ROOMS)
+    assert not get_locked_rooms(8)
     assert get_room('bedroom').min_level == 3
     assert get_room('no_such_room') is None
 
@@ -42,8 +43,8 @@ def test_gifts_catalog_costs():
 
 def test_dates_catalog_level_gating_and_scenes():
     from services.dates_service import DATES, get_available, get_locked, get
-    assert {d.id for d in get_available(6)} == {d.id for d in DATES}
-    assert not get_locked(6)
+    assert {d.id for d in get_available(8)} == {d.id for d in DATES}
+    assert not get_locked(8)
     assert get_available(1) and all(d.min_level == 1 for d in get_available(1))
     # Every reward scene must be a known photo scene so the reward set can be generated.
     from services.photo_service import SCENES

@@ -17,6 +17,8 @@ from models.relationship_models import RelationshipEvent, RelationshipMilestone,
 
 
 STAGE_RULES = (
+    ("soulmate", 98, 96, 92),
+    ("devoted", 95, 90, 85),
     ("committed", 90, 85, 80),
     ("deeply_connected", 80, 75, 65),
     ("intimate", 65, 55, 40),
@@ -25,7 +27,7 @@ STAGE_RULES = (
     ("stranger", 0, 0, 0),
 )
 
-STAGE_ORDER = ["stranger", "acquaintance", "close", "intimate", "deeply_connected", "committed"]
+STAGE_ORDER = ["stranger", "acquaintance", "close", "intimate", "deeply_connected", "committed", "devoted", "soulmate"]
 
 # New-user gates. Existing users are never pushed backwards by the migration.
 DIMENSION_GATES = {
@@ -35,10 +37,22 @@ DIMENSION_GATES = {
     "intimate": (32, 12, 12),
     "deeply_connected": (48, 22, 22),
     "committed": (65, 35, 35),
+    # V3.21.0: levels 7-8 are premium-only; apply_delta clamps free users at 6.
+    "devoted": (75, 45, 45),
+    "soulmate": (85, 55, 55),
 }
 
 MAX_DELTA = 3.0
 MIN_DELTA = -5.0
+
+# V3.21.0: premium gate for stages above 'committed'. main.py registers a
+# checker (internal user_id -> bool) so the engine stays free of access logic.
+_premium_checker = None
+
+
+def set_premium_checker(fn):
+    global _premium_checker
+    _premium_checker = fn
 
 
 @dataclass(frozen=True)
@@ -197,6 +211,13 @@ def apply_delta(
     # Migration safety: do not silently lower an existing user's level because the new hidden dimensions start at zero.
     if old_stage in STAGE_ORDER and STAGE_ORDER.index(old_stage) > STAGE_ORDER.index(new_stage):
         new_stage = old_stage
+    # V3.21.0: levels 7-8 (devoted/soulmate) are a premium-exclusive plateau.
+    if _premium_checker is not None and STAGE_ORDER.index(new_stage) > STAGE_ORDER.index('committed'):
+        try:
+            if not _premium_checker(user_id):
+                new_stage = 'committed'
+        except Exception:
+            pass
     row.stage = new_stage
     row.last_interaction_at = now
 
@@ -333,6 +354,14 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
         "committed": (
             "Этап нашей истории. Это сложившаяся взрослая романтическая связь внутри ролевой модели. Максимальная близость выражается "
             "персонализацией, доверием, общей историей, маленькими традициями и узнаваемыми предпочтениями. Эротическая химия может быть высокой и взаимной, но не должна становиться графической или вытеснять обычную близость."
+        ),
+        "devoted": (
+            "Этап родственных душ (премиум). Связь очень глубокая: общие ритуалы, лёгкость без слов, сильная взаимная привязанность. "
+            "Анна максимально персональна, сама создаёт тёплые и чувственные моменты, уверенная эротическая химия естественна, но графика по-прежнему не нужна."
+        ),
+        "soulmate": (
+            "Этап «одно целое» (премиум, вершина близости). Полное доверие и ощущение своего человека. Анна говорит о будущем вместе, "
+            "маленьких традициях пары и может быть максимально смелой и нежной одновременно, оставаясь в рамках взрослой, но не графической близости."
         ),
     }
     extra = ""

@@ -31,11 +31,16 @@ DATES: tuple[Date, ...] = (
          'Огни города внизу, плед на двоих и тишина, в которой слышно только её дыхание рядом.'),
     Date('club', 'Клуб', '🪩', 5, 15, 3.0, 'club',
          'Громкая музыка, танцы до утра. Она танцует только с тобой — и всем вокруг это очевидно.'),
+    # V3.21.0: premium plateau dates (levels 7-8).
+    Date('spa', 'СПА для двоих', '🛁', 7, 20, 3.5, 'evening',
+         'Халаты, масла, тёплые камни и никакой спешки. Весь вечер мы заботимся друг о друге.'),
+    Date('night', 'Ночь вместе', '🌙', 8, 25, 4.0, 'evening',
+         'Никуда не нужно идти: весь вечер и вся ночь только наши. Она засыпает у тебя на плече и просыпается с улыбкой.'),
 )
 
 
 def get_available(level: int) -> list[Date]:
-    return [date for date in DATES if date.min_level <= max(1, min(6, level))]
+    return [date for date in DATES if date.min_level <= max(1, min(8, level))]
 
 
 def get_all() -> list[Date]:
@@ -44,7 +49,7 @@ def get_all() -> list[Date]:
 
 def get_locked(level: int) -> list[Date]:
     """Dates still closed for this level — shown with a lock in the menu."""
-    return [date for date in DATES if date.min_level > max(1, min(6, level))]
+    return [date for date in DATES if date.min_level > max(1, min(8, level))]
 
 
 def get(date_id: str) -> Date | None:

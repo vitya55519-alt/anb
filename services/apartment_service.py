@@ -53,16 +53,23 @@ ROOMS: tuple[Room, ...] = (
         min_level=4,
         actions=(('🚿 Душ', 'shower'), ('🛁 Ванна', 'bath')),
     ),
+    # V3.21.0: premium plateau rooms (levels 7-8).
+    Room(
+        id='candles', name='Комната со свечами', emoji='🕯',
+        description='Полумрак, десятки свечей и плед на полу. Сюда мы приходим, когда хочется только друг друга.',
+        min_level=7,
+        actions=(('💋 Интим', 'intimate'), ('😌 Отдых', 'relax')),
+    ),
 )
 
 
 def get_available_rooms(level: int) -> list[Room]:
-    return [room for room in ROOMS if room.min_level <= max(1, min(6, level))]
+    return [room for room in ROOMS if room.min_level <= max(1, min(8, level))]
 
 
 def get_locked_rooms(level: int) -> list[Room]:
     """Rooms still closed for this level — shown with a lock in the menu."""
-    return [room for room in ROOMS if room.min_level > max(1, min(6, level))]
+    return [room for room in ROOMS if room.min_level > max(1, min(8, level))]
 
 
 def get_room(room_id: str) -> Room | None:
