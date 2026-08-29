@@ -207,12 +207,51 @@ _PHOTO_OFFER_DETECT = re.compile(
     re.I
 )
 
-# Regex: user accepts a photo offer
+# Regex: user accepts a photo offer. V3.26.1: the old pattern was anchored
+# with $ so «давай буду рад )» was not an acceptance and the chat model
+# role-played a fake photo instead of the real flow. Prefix + word boundary
+# is enough; a «нет» guard lives at the call site.
 _PHOTO_ACCEPT = re.compile(
     r'^(да|давай|даа|дааа|ок|окей|хочу|конечно|скинь|кинь|кидай|'
-    r'покажи|показывай|присылай|давай да|ну давай|ага|угу|ес|yep|yes|sure)$',
+    r'покажи|показывай|присылай|ну давай|ага|угу|ес|yep|yes|sure)\b'
+    r'(?!.*(?:потом|позже|как-нибудь|не надо|не нужно|в другой раз|может быть|наверное))',
     re.I
 )
+
+# V3.26.1: the chat model sometimes "sends" a photo by role-playing it in
+# square brackets ([фото: ...]). That text must never reach the user — strip
+# it and deliver a real photo instead.
+_FAKE_PHOTO_BLOCK = re.compile(r'\[(?:фото|photo)\s*:[^\]\n]{0,300}\]', re.I)
+
+
+def _strip_fake_photo(text: str) -> tuple[str, bool]:
+    cleaned, hits = _FAKE_PHOTO_BLOCK.subn('', text)
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
+    return cleaned, hits > 0
+
+
+async def _photo_accept_flow(chat_id: int, telegram_id: int, expr_key: str | None = None) -> None:
+    """Shared accept path: free daily photo or the cheap Stars offer."""
+    req = PhotoRequest(scene='selfie', expression_key=expr_key)
+    if has_free_photo(telegram_id, get_user_character(telegram_id)):
+        await _start_photo_background(chat_id, telegram_id, req, 'free')
+    else:
+        offer_id = create_offer(telegram_id, req)
+        await bot.send_message(
+            chat_id,
+            f'бесплатный лимит на сегодня кончился, но для тебя сейчас — {CHAT_PHOTO_OFFER_STARS}⭐ ✨'
+        )
+        await send_stars_invoice(
+            chat_id, 'Фото от Анны', 'Персональное фото прямо сейчас',
+            f'photo:{offer_id}', CHAT_PHOTO_OFFER_STARS,
+        )
+
+
+async def _deliver_intercepted_photo(message: types.Message) -> None:
+    """The model role-played sending a photo — deliver a real one instead."""
+    if message.from_user.id in _photo_jobs and not _photo_jobs[message.from_user.id].done():
+        return
+    await _photo_accept_flow(message.chat.id, message.from_user.id)
 
 from config import CHAT_PHOTO_OFFER_STARS
 from config import VIDEO_STATUS_TEXT
@@ -5264,6 +5303,10 @@ async def voice_message(message: types.Message):
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             display_name = 'ты' if (user and user.voice_anon_mode) else (message.from_user.first_name or 'ты')
             answer = await anna_reply(message.from_user.id, display_name, text, language_code=message.from_user.language_code, character_id=get_user_character(message.from_user.id))
+        answer, had_fake_photo = _strip_fake_photo(answer)
+        if had_fake_photo:
+            logger.info('fake_photo_intercepted user=%s source=voice', message.from_user.id)
+            asyncio.create_task(_deliver_intercepted_photo(message))
         await send_answer(message, answer)
         try:
             from services.gamification_service import unlock_achievement
@@ -5548,29 +5591,16 @@ async def text_message(message: types.Message):
         # Check if user is accepting a photo offer from Anna
         offer_ts = _photo_offer_pending.get(message.from_user.id, 0)
         offer_active = offer_ts and (_time.time() - offer_ts < _PHOTO_OFFER_TTL)
-        if offer_active and _PHOTO_ACCEPT.match(text.strip().lower()):
+        low = text.strip().lower()
+        # V3.26.1: «да нет» / «давай не надо» must never count as acceptance.
+        if offer_active and 'нет' not in low and _PHOTO_ACCEPT.match(low):
             _photo_offer_pending.pop(message.from_user.id, None)
             # Match the character's facial expression to the mood of the
             # conversation. Prefer the mood captured at the moment Anna offered
             # the photo (e.g. a compliment); fall back to the acceptance message.
             from services.photo_expression_service import detect_expression_key
             expr_key = _photo_offer_expression.pop(message.from_user.id, None) or detect_expression_key(text)
-            # User accepted Anna's photo offer
-            if has_free_photo(message.from_user.id, get_user_character(message.from_user.id)):
-                req = PhotoRequest(scene='selfie', expression_key=expr_key)
-                await _start_photo_background(message.chat.id, message.from_user.id, req, 'free')
-            else:
-                # Offer cheap photo for 5 stars instead of full price
-                req = PhotoRequest(scene='selfie', expression_key=expr_key)
-                offer_id = create_offer(message.from_user.id, req)
-                await bot.send_message(
-                    message.chat.id,
-                    f'бесплатный лимит на сегодня кончился, но для тебя сейчас — {CHAT_PHOTO_OFFER_STARS}⭐ \u2728'
-                )
-                await send_stars_invoice(
-                    message.chat.id, 'Фото от Анны', 'Персональное фото прямо сейчас',
-                    f'photo:{offer_id}', CHAT_PHOTO_OFFER_STARS,
-                )
+            await _photo_accept_flow(message.chat.id, message.from_user.id, expr_key)
             touch_user(message.from_user.id)
             return
 
@@ -5592,6 +5622,10 @@ async def text_message(message: types.Message):
             pass
         async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
             answer = await anna_reply(message.from_user.id, message.from_user.first_name or 'ты', text, language_code=message.from_user.language_code, character_id=get_user_character(message.from_user.id))
+        answer, had_fake_photo = _strip_fake_photo(answer)
+        if had_fake_photo:
+            logger.info('fake_photo_intercepted user=%s', message.from_user.id)
+            asyncio.create_task(_deliver_intercepted_photo(message))
         await send_answer(message, answer)
         # Detect if Anna offered a photo in her response
         if _PHOTO_OFFER_DETECT.search(answer):

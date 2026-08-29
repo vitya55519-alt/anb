@@ -22,7 +22,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.21.0', '3.22.0', '3.23.0', '3.24.0', '3.25.0', '3.26.0')
+    assert VERSION in ('3.21.0', '3.22.0', '3.23.0', '3.24.0', '3.25.0', '3.26.0', '3.26.1')
 
 
 def test_eight_levels_with_emotional_names():

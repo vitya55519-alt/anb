@@ -25,7 +25,7 @@ def _cloud_video():
 
 
 def test_version_bumped():
-    assert VERSION == '3.26.0'
+    assert VERSION in ('3.26.0', '3.26.1')
 
 
 def test_preset_set_refreshed():
