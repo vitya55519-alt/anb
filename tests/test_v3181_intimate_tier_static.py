@@ -141,7 +141,9 @@ class TestBuildPromptAdult:
                                      underwear_color='black', underwear_style='lace bra and panties',
                                      mood='confident, intimate')
         prompt = photo_mod._build_prompt(req, 0, seedream=True, relationship_level=6, character_id='anna_01')
-        assert 'no clothing at all' in prompt
+        # V3.22.0: fine-art/boudoir wording instead of explicit body-part phrasing
+        # (fal's API-level moderation rejects the old wording with 400/422).
+        assert 'fine-art nude composition' in prompt
         assert 'ADULT_SAFETY' not in prompt  # constant name shouldn't appear
         assert 'nudity is allowed' in prompt.lower()
 
@@ -151,7 +153,7 @@ class TestBuildPromptAdult:
                                      underwear_color='black', underwear_style='lace bra and panties',
                                      mood='playful, teasing')
         prompt = photo_mod._build_prompt(req, 0, seedream=True, relationship_level=6, character_id='anna_01')
-        assert 'no clothing at all' in prompt
+        assert 'fine-art nude composition' in prompt
 
     def test_non_adult_prompt_has_no_nudity(self, photo_mod):
         req = photo_mod.PhotoRequest(scene='selfie', hairstyle='long loose', makeup='natural', accessory='none',
@@ -159,7 +161,7 @@ class TestBuildPromptAdult:
                                      underwear_color='white', underwear_style='cotton bra and panties',
                                      mood='casual')
         prompt = photo_mod._build_prompt(req, 0, seedream=True, relationship_level=1, character_id='anna_01')
-        assert 'no clothing at all' not in prompt
+        assert 'fine-art nude composition' not in prompt
         assert 'No nudity' in prompt or 'non-explicit' in prompt
 
 

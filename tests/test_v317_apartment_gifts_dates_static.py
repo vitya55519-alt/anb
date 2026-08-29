@@ -55,9 +55,14 @@ def test_dates_catalog_level_gating_and_scenes():
 
 
 def test_main_keyboard_has_new_buttons():
-    assert "KeyboardButton(text='🏠 Квартира')" in MAIN
-    assert "KeyboardButton(text='💕 Свидание')" in MAIN
-    assert "KeyboardButton(text='🎁 Подарить')" in MAIN
+    # V3.22.0: keyboard labels moved to services/ui_lang.py as (ru, en) pairs;
+    # handlers match both variants via F.text.in_(kb_pair(key)).
+    from services.ui_lang import KB_LABELS
+    assert KB_LABELS['apartment'] == ('🏠 Квартира', '🏠 Apartment')
+    assert KB_LABELS['date'] == ('💕 Свидание', '💕 Date')
+    assert KB_LABELS['gift'] == ('🎁 Подарить', '🎁 Gift')
+    for key in ('apartment', 'date', 'gift'):
+        assert f"F.text.in_(kb_pair('{key}'))" in MAIN
 
 
 def test_room_enter_looks_up_room_by_id():
@@ -112,7 +117,6 @@ def test_successful_payment_handles_gift_and_date():
 
 
 def test_new_handlers_registered_before_text_catch_all():
-    # Exact-text handlers must be registered before the generic F.text handler.
-    assert MAIN.index("F.text == '🏠 Квартира'") < MAIN.index('@dp.message(F.text)\n')
-    assert MAIN.index("F.text == '🎁 Подарить'") < MAIN.index('@dp.message(F.text)\n')
-    assert MAIN.index("F.text == '💕 Свидание'") < MAIN.index('@dp.message(F.text)\n')
+    # Dual-language handlers must be registered before the generic F.text handler.
+    for key in ('apartment', 'gift', 'date'):
+        assert MAIN.index(f"kb_pair('{key}')") < MAIN.index('@dp.message(F.text)\n')

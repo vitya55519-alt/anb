@@ -3,6 +3,7 @@ from sqlalchemy import select
 from services.db import SessionLocal
 from models.app_models import User, CharacterState
 from config import CHARACTER_ID, DEFAULT_TIMEZONE, LANG_TZ_DEFAULTS
+from services.ui_lang import detect_lang
 
 def now(): return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -17,7 +18,7 @@ def ensure_user(telegram_id: int, name: str | None = None, language_code: str | 
         user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
         if not user:
             tz = _timezone_from_language(language_code)
-            user = User(telegram_id=str(telegram_id), name=name or "", timezone=tz)
+            user = User(telegram_id=str(telegram_id), name=name or "", timezone=tz, ui_lang=detect_lang(language_code))
             s.add(user); s.flush()
         elif name:
             user.name = name
@@ -26,6 +27,9 @@ def ensure_user(telegram_id: int, name: str | None = None, language_code: str | 
             detected = _timezone_from_language(language_code)
             if detected != DEFAULT_TIMEZONE:
                 user.timezone = detected
+        # V3.22.0: detect the interface language once for legacy users.
+        if language_code and not (user.ui_lang or '').strip():
+            user.ui_lang = detect_lang(language_code)
         state = s.scalar(select(CharacterState).where(CharacterState.user_id == user.id, CharacterState.character_id == CHARACTER_ID))
         if not state:
             s.add(CharacterState(user_id=user.id, character_id=CHARACTER_ID))

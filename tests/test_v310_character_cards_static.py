@@ -10,7 +10,10 @@ assert 'class CharacterCard(Base):' in models
 assert 'character_cards' in models
 assert 'CharacterCard' in db
 assert "Command('admin')" in main
-assert "KeyboardButton(text='🛠 Админка')" in main
+# V3.22.0: keyboard labels live in services/ui_lang.py as (ru, en) pairs.
+from services.ui_lang import KB_LABELS
+assert KB_LABELS['admin'][0] == '🛠 Админка'
+assert "F.text.in_(kb_pair('admin'))" in main
 assert "admin:cards" in main
 assert "admin:cardedit:" in main
 assert "admin:setstatus:" in main

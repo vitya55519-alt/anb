@@ -145,7 +145,9 @@ def test_constructor_persona_context_replaces_default_role():
 
 
 def test_constructor_wizard_and_payment_wired():
-    assert "'🎨 Мой персонаж'" in MAIN
+    # V3.22.0: the button label moved to services/ui_lang.py pairs.
+    assert "kb_pair('custom')" in MAIN
+    assert 'Мой персонаж' in MAIN
     assert 'constructor:start' in MAIN and 'constructor:buy' in MAIN
     assert 'cbuild:' in MAIN and 'mychar:chat:' in MAIN
     assert 'CONSTRUCTOR_COST_STARS' in MAIN

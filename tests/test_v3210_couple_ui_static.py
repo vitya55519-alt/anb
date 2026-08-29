@@ -22,7 +22,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION == '3.21.0'
+    assert VERSION in ('3.21.0', '3.22.0')
 
 
 def test_eight_levels_with_emotional_names():
@@ -49,13 +49,18 @@ def test_premium_checker_registered_with_internal_uid_translation():
 
 
 def test_main_menu_has_discovery_buttons():
+    # V3.22.0: labels live in services/ui_lang.py as (ru, en) pairs and the
+    # keyboard is built from MAIN_KB_ROWS via kb_label(user_lang(telegram_id)).
+    from services.ui_lang import KB_LABELS, MAIN_KB_ROWS
+    row_keys = {key for row in MAIN_KB_ROWS for key in row}
+    for key in ('video', 'circle', 'quest', 'date',
+                'apartment', 'gift', 'profile', 'premium'):
+        assert key in KB_LABELS and key in row_keys
     kb = MAIN[MAIN.index('def main_keyboard('):MAIN.index('def onboarding_character_keyboard()')]
-    for label in ('🎬 Видео', '🎥 Кружочек', '🎯 Задание дня', '💕 Свидание',
-                  '🏠 Квартира', '🎁 Подарить', '👤 Профиль', '🚀 Премиум'):
-        assert f"KeyboardButton(text='{label}')" in kb
+    assert 'MAIN_KB_ROWS' in kb and 'kb_label(' in kb
     # Discovery buttons register before the generic text catch-all.
-    assert MAIN.index("F.text == '🎥 Кружочек'") < MAIN.index('@dp.message(F.text)\n')
-    assert MAIN.index("F.text == '🎯 Задание дня'") < MAIN.index('@dp.message(F.text)\n')
+    assert MAIN.index("kb_pair('circle')") < MAIN.index('@dp.message(F.text)\n')
+    assert MAIN.index("kb_pair('quest')") < MAIN.index('@dp.message(F.text)\n')
 
 
 def test_video_and_circle_buttons_route_to_existing_flows():
@@ -111,7 +116,7 @@ def test_anniversaries():
 
 
 def test_profile_hearts_progress_and_plateau_hint():
-    block = MAIN[MAIN.index('async def profile_button('):MAIN.index('@dp.message(F.text == \'⏰ Будильник\')')]
+    block = MAIN[MAIN.index('async def profile_button('):MAIN.index('@dp.message(F.text.in_(kb_pair(\'alarm\')))')]
     assert "hearts = '❤️' * min(level, MAX_RELATIONSHIP_LEVEL)" in block
     assert "🤍" in block
     assert 'уровень {level}/{MAX_RELATIONSHIP_LEVEL}' in block

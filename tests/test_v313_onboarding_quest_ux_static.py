@@ -15,7 +15,10 @@ def test_all_python_parses():
 
 def test_user_menu_and_onboarding_are_product_facing():
     assert "KeyboardButton(text='🎭 Образы')" not in MAIN
-    assert "KeyboardButton(text='✨ Возможности')" in MAIN
+    # V3.22.0: the features button label moved to services/ui_lang.py pairs.
+    from services.ui_lang import KB_LABELS
+    assert KB_LABELS['features'][0] == '✨ Возможности'
+    assert "F.text.in_(kb_pair('features'))" in MAIN
     assert 'onboarding_character_keyboard' in MAIN
     assert "onboard:character:" in MAIN
     assert "✅ {card.display_name} · выбрать" in MAIN

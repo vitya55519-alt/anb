@@ -75,7 +75,7 @@ def test_free_date_voucher_service():
 
 
 def test_free_date_wired_in_dates_flow():
-    start = MAIN.index("F.text == '💕 Свидание'")
+    start = MAIN.index("kb_pair('date')")
     block = MAIN[start:MAIN.index("@dp.callback_query(F.data.startswith('date_locked:'))")]
     assert 'has_free_date' in block
     assert 'consume_free_date' in block

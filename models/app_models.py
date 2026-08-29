@@ -37,6 +37,10 @@ class User(Base):
     tour_done: Mapped[bool] = mapped_column(Boolean, default=False)
     notify_rituals: Mapped[bool] = mapped_column(Boolean, default=True)
     anniversaries: Mapped[str] = mapped_column(String(64), default="")
+    # V3.22.0: the chosen character survives restarts/redeploys. Empty = Anna.
+    selected_character: Mapped[str] = mapped_column(String(64), default="")
+    # V3.22.0: interface language ('ru'/'en'); empty = Russian (legacy).
+    ui_lang: Mapped[str] = mapped_column(String(8), default="")
 
 
 # V3.21.0: one milestone photo per relationship level — the couple album.

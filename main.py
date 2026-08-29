@@ -33,6 +33,8 @@ from services.user_service import (
     ensure_user, get_user, get_state, update_user_settings, touch_user,
     set_adult_confirmed, is_adult_confirmed,
 )
+# V3.22.0: RU/EN interface layer (reply keyboard + top-level menus).
+from services.ui_lang import EN, RU, MAIN_KB_ROWS, kb_label, kb_pair, user_lang
 from services.chat_service import reply as anna_reply
 from services.access_service import can_send_message, is_premium
 from services.photo_service import (
@@ -231,13 +233,35 @@ _photo_idea_edit_sessions: dict[int, dict] = {}
 # Scenes that admins may attach photo ideas to (private scenes stay untouched).
 ALLOWED_IDEA_SCENES = tuple(sorted(k for k in SCENES if k not in {'personal', 'lingerie', 'private_fashion'}))
 
-# Per-user selected character (telegram_id -> character_id). Falls back to CHARACTER_ID.
+# Per-user selected character (telegram_id -> character_id). Memory is only a
+# cache: the choice is persisted in User.selected_character (V3.22.0), so a
+# redeploy/restart no longer silently switches everyone back to Anna.
 _user_character: dict[int, str] = {}
 
 
 def get_user_character(telegram_id: int) -> str:
     """Return the character_id the user currently chats with, or CHARACTER_ID as default."""
-    return _user_character.get(telegram_id, CHARACTER_ID)
+    cached = _user_character.get(telegram_id)
+    if cached:
+        return cached
+    try:
+        user = get_user(telegram_id)
+        selected = (getattr(user, 'selected_character', '') or '').strip() if user else ''
+        if selected:
+            _user_character[telegram_id] = selected
+            return selected
+    except Exception:
+        pass
+    return CHARACTER_ID
+
+
+def set_user_character(telegram_id: int, character_id: str) -> None:
+    """Select a character and persist it so it survives restarts."""
+    _user_character[telegram_id] = character_id
+    try:
+        update_user_settings(telegram_id, selected_character=character_id)
+    except Exception:
+        logger.exception('failed to persist selected character user=%s', telegram_id)
 
 LIBRARY_CHARACTERS = {
     'anna_01': '👩🏻 Анна',
@@ -252,22 +276,14 @@ LIBRARY_SCENES = [
 ]
 
 
-def main_keyboard(is_admin: bool = False):
+def main_keyboard(is_admin: bool = False, telegram_id: int | None = None):
     # V3.21.0: every feature gets a visible first-row button — nothing is
     # buried in sub-menus (owner could not discover circles before).
-    rows = [
-        [KeyboardButton(text='💬 Общение'), KeyboardButton(text='📸 Фото')],
-        [KeyboardButton(text='🎬 Видео'), KeyboardButton(text='🎥 Кружочек')],
-        [KeyboardButton(text='🎯 Задание дня'), KeyboardButton(text='💕 Свидание')],
-        [KeyboardButton(text='🏠 Квартира'), KeyboardButton(text='🎁 Подарить')],
-        [KeyboardButton(text='🎯 Истории'), KeyboardButton(text='🖼 Коллекция')],
-        [KeyboardButton(text='✨ Возможности'), KeyboardButton(text='🚀 Премиум')],
-        [KeyboardButton(text='⏰ Будильник'), KeyboardButton(text='👤 Профиль')],
-        [KeyboardButton(text='⚙️ Настройки'), KeyboardButton(text='👩 Персонажи')],
-        [KeyboardButton(text='🔗 Пригласить'), KeyboardButton(text='🎨 Мой персонаж')],
-    ]
+    # V3.22.0: labels are localized per user (RU/EN).
+    lang = user_lang(telegram_id) if telegram_id else RU
+    rows = [[KeyboardButton(text=kb_label(key, lang)) for key in row] for row in MAIN_KB_ROWS]
     if is_admin:
-        rows.append([KeyboardButton(text='🛠 Админка')])
+        rows.append([KeyboardButton(text=kb_label('admin', lang))])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
 
 
@@ -284,7 +300,26 @@ def onboarding_character_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def abilities_text() -> str:
+def abilities_text(lang: str = RU) -> str:
+    if lang == EN:
+        return (
+            '✨ What I can do\n\n'
+            '💬 real conversation with personality — I remember the context and adapt to your style over time\n'
+            '❤️ the relationship grows through levels 1–8: each level gets closer and more open (7–8 are a Premium plateau)\n'
+            '🎯 interactive stories: your first choice becomes canon, and you can replay alternate branches later\n'
+            '📸 photos right in the chat: type “send a photo” or “I want to see you” — I send a fresh shot for the moment; sometimes I offer one myself while flirting\n'
+            '🎬 an “Animate photo” button under every shot — a short AI video from any photo (Premium: 2 free per day)\n'
+            '🎥 video circles — “from me” circles with my voice (Premium only)\n'
+            '🎯 daily quest — a small request from me every day, completing it earns attention points\n'
+            '🏠 apartment: visit the rooms, spend time with me — new rooms open as the relationship grows\n'
+            '💕 dates: invite me somewhere, and afterwards I send you a photo from our outing\n'
+            '🎁 gifts: nice surprises that bring us closer\n'
+            '🎙 voice replies: every girl has her own sweet voice, I answer in your language\n'
+            '🖼 a collection of unlocked photos by relationship level\n'
+            '💌 sometimes I write first and return to an unfinished topic\n'
+            '⏰ alarm and reminders — a Premium feature: I wake you up on time and remember your timezone\n\n'
+            '🎯 The first story is already available — start it right away or just write to me.'
+        )
     return (
         '✨ Что умеет бот\n\n'
         '💬 живое общение с характером — она запоминает контекст и со временем подстраивается под твою манеру общения\n'
@@ -305,14 +340,24 @@ def abilities_text() -> str:
     )
 
 
-def abilities_inline_keyboard():
+def abilities_inline_keyboard(lang: str = RU):
+    if lang == EN:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='💬 Start chatting', callback_data='onboard:meet')],
+            [InlineKeyboardButton(text='🎯 First story', callback_data='quest:view:outfit_choice')],
+        ])
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='💬 Начать общение', callback_data='onboard:meet')],
         [InlineKeyboardButton(text='🎯 Первая история', callback_data='quest:view:outfit_choice')],
     ])
 
 
-def consent_keyboard():
+def consent_keyboard(lang: str = RU):
+    if lang == EN:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='✅ I am 18+ · I accept the terms', callback_data='consent:accept')],
+            [InlineKeyboardButton(text='📄 Terms', callback_data='consent:terms'), InlineKeyboardButton(text='🔐 Privacy', callback_data='consent:privacy')],
+        ])
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='✅ Мне 18+ · принимаю условия', callback_data='consent:accept')],
         [InlineKeyboardButton(text='📄 Условия', callback_data='consent:terms'), InlineKeyboardButton(text='🔐 Privacy', callback_data='consent:privacy')],
@@ -540,12 +585,16 @@ def _character_card_text(card, viewer_id: int | None = None) -> str:
     if hook:
         lines.extend(['', f'🎬 {hook}'])
     lines.extend(['', f'🏷 Статус: {card.status_label}'])
-    if viewer_id and card.character_id == CHARACTER_ID:
+    # V3.22.0: every character card shows ITS OWN relationship level. Before,
+    # only Anna's card had a level line and it read the viewer's currently
+    # selected character — Emily's progress appeared on Anna's card.
+    if viewer_id and card.character_id in LIBRARY_CHARACTERS:
         try:
-            level = get_relationship_level(viewer_id, get_user_character(viewer_id))
+            level = get_relationship_level(viewer_id, card.character_id)
             lines.append(f'❤️ {RELATIONSHIP_LEVEL_NAMES.get(level, "Знакомство")}')
         except Exception:
             pass
+    if viewer_id and card.character_id == CHARACTER_ID:
         lines.extend([
             ('🎬 Оживить фото: ✅ доступно' if _any_video_engine() else '🎬 Оживить фото: 🔒 скоро'),
             '📞 Звонок с Анной: 🔒 скоро',
@@ -718,31 +767,56 @@ def _contextualize_vague_photo(telegram_id: int, text: str, request: PhotoReques
 
 def premium_pitch_text(telegram_id: int) -> str:
     """V3.20.0: paywall pitch with retention hooks — the one-time discount
-    countdown when active and a level-6 plateau line for maxed relationships."""
-    lines = [
-        'Premium на 30 дней:',
-        '• безлимит сообщений — я больше не «засыпаю» посреди разговора 😴',
-        '• 12 дополнительных photo credits',
-        '• 2 бесплатных оживления фото каждый день 🎬',
-        '• 🎥 видео-кружочки от меня — только для Premium',
-        '• 💋 уровни 7–8 отношений — «Родственные души» и «Одно целое»',
-        '• 2 бесплатных replay альтернативных квест-веток в месяц',
-        '• больше памяти, инициативы и утренних/вечерних сообщений',
-        '',
-        'Бесплатные фото зависят от близости: 1–2 уровень — 1/день, 3–6 — 2/день.',
-        'Отношения не покупаются — они развиваются из общения. Кастомные фото оплачиваются отдельно.',
-        '',
-        '💳 Цифровые покупки внутри Telegram оплачиваются через Telegram Stars.',
-    ]
+    countdown when active and a level-6 plateau line for maxed relationships.
+    V3.22.0: localized RU/EN."""
+    lang = user_lang(telegram_id)
+    if lang == EN:
+        lines = [
+            'Premium for 30 days:',
+            '• unlimited messages — I never “fall asleep” mid-conversation 😴',
+            '• 12 extra photo credits',
+            '• 2 free photo animations every day 🎬',
+            '• 🎥 video circles from me — Premium only',
+            '• 💋 relationship levels 7–8 — “Kindred spirits” and “One whole”',
+            '• 2 free replays of alternative quest branches per month',
+            '• more memory, initiative and morning/evening messages',
+            '',
+            'Free photos depend on intimacy: levels 1–2 — 1/day, 3–6 — 2/day.',
+            'The relationship cannot be bought — it grows from conversation. Custom photos are paid separately.',
+            '',
+            '💳 Digital purchases inside Telegram are paid with Telegram Stars.',
+        ]
+    else:
+        lines = [
+            'Premium на 30 дней:',
+            '• безлимит сообщений — я больше не «засыпаю» посреди разговора 😴',
+            '• 12 дополнительных photo credits',
+            '• 2 бесплатных оживления фото каждый день 🎬',
+            '• 🎥 видео-кружочки от меня — только для Premium',
+            '• 💋 уровни 7–8 отношений — «Родственные души» и «Одно целое»',
+            '• 2 бесплатных replay альтернативных квест-веток в месяц',
+            '• больше памяти, инициативы и утренних/вечерних сообщений',
+            '',
+            'Бесплатные фото зависят от близости: 1–2 уровень — 1/день, 3–6 — 2/день.',
+            'Отношения не покупаются — они развиваются из общения. Кастомные фото оплачиваются отдельно.',
+            '',
+            '💳 Цифровые покупки внутри Telegram оплачиваются через Telegram Stars.',
+        ]
     from services.retention_service import discount_info
     discount = discount_info(telegram_id)
     if discount.get('active'):
-        lines.insert(0, f'🔥 Только для тебя: скидка −{discount["percent"]}% ещё {discount["hours_left"]:.0f} ч — потом снова {PREMIUM_MONTHLY_STARS} Stars!')
+        if lang == EN:
+            lines.insert(0, f'🔥 Just for you: −{discount["percent"]}% discount for {discount["hours_left"]:.0f} more hours — then it is {PREMIUM_MONTHLY_STARS} Stars again!')
+        else:
+            lines.insert(0, f'🔥 Только для тебя: скидка −{discount["percent"]}% ещё {discount["hours_left"]:.0f} ч — потом снова {PREMIUM_MONTHLY_STARS} Stars!')
         lines.insert(1, '')
     try:
         if not is_premium(telegram_id) and get_relationship_level(telegram_id, get_user_character(telegram_id)) >= 6:
             lines.append('')
-            lines.append('💋 наша история почти на вершине… впереди ещё два уровня близости — «Родственные души» и «Одно целое». Это плато только для премиума.')
+            if lang == EN:
+                lines.append('💋 our story is almost at the top… two more levels of intimacy ahead — “Kindred spirits” and “One whole”. That plateau is Premium only.')
+            else:
+                lines.append('💋 наша история почти на вершине… впереди ещё два уровня близости — «Родственные души» и «Одно целое». Это плато только для премиума.')
     except Exception:
         pass
     return '\n'.join(lines)
@@ -860,8 +934,20 @@ def photo_feedback_keyboard(scene: str):
 def photo_menu_text(telegram_id: int) -> str:
     info = build_photo_menu(telegram_id, get_user_character(telegram_id))
     level = info['level']
-    name = RELATIONSHIP_LEVEL_NAMES.get(level, '')
+    lang = user_lang(telegram_id)
+    from services.ui_lang import LEVEL_NAMES_EN
+    names = LEVEL_NAMES_EN if lang == EN else RELATIONSHIP_LEVEL_NAMES
+    name = names.get(level, '')
     future = sorted({required for required in SCENE_LEVELS.values() if required > level})
+    if lang == EN:
+        next_line = f'\n🔒 Next photos unlock at level {future[0]}/6' if future else '\n✨ All photo levels are already open'
+        return (
+            f'what should I show? 😌\n'
+            f'❤️ Intimacy: {level}/6 · {name}\n'
+            f'🎁 Free today: {info["free_left"]}/{info["limit"]} · credits: {info["credits"]}\n'
+            f'📷 Progression pack: base → stylish → premium · up to {info["set_size"]} photos'
+            f'{next_line}'
+        )
     next_line = f'\n🔒 Следующие фото откроются на уровне {future[0]}/6' if future else '\n✨ Все уровни фото уже открыты'
     return (
         f'что показать? 😌\n'
@@ -1081,21 +1167,38 @@ async def start(message: types.Message, command: CommandObject):
     track_event(uid, 'onboarding_completed')
 
     if not has_accepted(message.from_user.id):
-        welcome = (
-            f'привет, {name} 🙂 я — AI-подруга, которая всегда рядом.\n\n'
-            'Что я умею:\n'
-            '💬 живое общение с памятью и характером\n'
-            '❤️ отношения по уровням 1–8 — с каждым уровнем ближе и откровеннее\n'
-            '📸 реалистичные фото по твоим сценариям\n'
-            '🎬 оживление фото в AI-видео\n'
-            '🎙 голосовые ответы на твоём языке\n'
-            '🎯 интерактивные истории с выбором\n\n'
-        )
-        welcome += '🎁 после подтверждения 18+ ты получишь бесплатные фото-кредиты на первое фото — это наш подарок за знакомство.\n\n'
-        if has_referral:
-            welcome += 'пришёл по приглашению друга — бонусы начислятся вам обоим сразу после подтверждения.\n\n'
-        welcome += 'Перед началом подтверди, что тебе 18+, и прими условия использования и политику конфиденциальности.'
-        await message.answer(welcome, reply_markup=consent_keyboard())
+        lang = user_lang(message.from_user.id)
+        if lang == EN:
+            welcome = (
+                f'hi, {name} 🙂 I am an AI girlfriend who is always close.\n\n'
+                'What I can do:\n'
+                '💬 real conversation with memory and personality\n'
+                '❤️ a relationship through levels 1–8 — closer and more open at every level\n'
+                '📸 realistic photos for your scenarios\n'
+                '🎬 animating photos into AI video\n'
+                '🎙 voice replies in your language\n'
+                '🎯 interactive stories with choices\n\n'
+            )
+            welcome += '🎁 after confirming 18+ you will get free photo credits for your first photo — a gift for meeting you.\n\n'
+            if has_referral:
+                welcome += 'you arrived via a friend’s invite — you both get the bonus right after you confirm.\n\n'
+            welcome += 'Before we start, please confirm that you are 18+ and accept the terms of use and the privacy policy.'
+        else:
+            welcome = (
+                f'привет, {name} 🙂 я — AI-подруга, которая всегда рядом.\n\n'
+                'Что я умею:\n'
+                '💬 живое общение с памятью и характером\n'
+                '❤️ отношения по уровням 1–8 — с каждым уровнем ближе и откровеннее\n'
+                '📸 реалистичные фото по твоим сценариям\n'
+                '🎬 оживление фото в AI-видео\n'
+                '🎙 голосовые ответы на твоём языке\n'
+                '🎯 интерактивные истории с выбором\n\n'
+            )
+            welcome += '🎁 после подтверждения 18+ ты получишь бесплатные фото-кредиты на первое фото — это наш подарок за знакомство.\n\n'
+            if has_referral:
+                welcome += 'пришёл по приглашению друга — бонусы начислятся вам обоим сразу после подтверждения.\n\n'
+            welcome += 'Перед началом подтверди, что тебе 18+, и прими условия использования и политику конфиденциальности.'
+        await message.answer(welcome, reply_markup=consent_keyboard(lang))
         return
 
     # Returning user who already accepted: apply any pending referral/bonus now
@@ -1109,16 +1212,28 @@ async def start(message: types.Message, command: CommandObject):
         if first_start['credits'] or first_start['trial_days']:
             track_event(uid, 'first_start_bonus_granted', metadata=first_start)
     # Surface the user's own referral link so they can invite friends right away.
+    lang = user_lang(message.from_user.id)
     try:
         me = await message.bot.get_me()
         ref_link = referral_link(me.username, message.from_user.id)
-        ref_hint = f'\n\n🔗 твоя ссылка для приглашения друзей:\n{ref_link}\nза каждого друга, который подтвердит 18+, ты получишь {REFERRAL_REFERRER_CREDITS}, а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов.'
+        if lang == EN:
+            ref_hint = f'\n\n🔗 your invite link for friends:\n{ref_link}\nfor every friend who confirms 18+ you get {REFERRAL_REFERRER_CREDITS} and your friend gets {REFERRAL_INVITEE_CREDITS} photo credits.'
+        else:
+            ref_hint = f'\n\n🔗 твоя ссылка для приглашения друзей:\n{ref_link}\nза каждого друга, который подтвердит 18+, ты получишь {REFERRAL_REFERRER_CREDITS}, а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов.'
     except Exception:
-        ref_hint = '\n\nприглашай друзей командой /referral — бонусы за обоих.'
+        ref_hint = '\n\ninvite friends with /referral — bonuses for both of you.' if lang == EN else '\n\nприглашай друзей командой /referral — бонусы за обоих.'
+    if lang == EN:
+        welcome_back = (
+            f'welcome back, {name} 🙂 if you haven’t claimed them yet, you may have free photo credits for your first photo.\n'
+            'tap “✨ Features” or just send me a message.'
+        )
+    else:
+        welcome_back = (
+            f'с возвращением, {name} 🙂 если ещё не забрал — у тебя могут быть бесплатные фото-кредиты на первое фото.\n'
+            'нажми «✨ Возможности» или просто отправь мне сообщение.'
+        )
     await message.answer(
-        f'с возвращением, {name} 🙂 если ещё не забрал — у тебя могут быть бесплатные фото-кредиты на первое фото.\n'
-        'нажми «✅ Возможности» или просто отправь мне сообщение.'
-        + ref_hint,
+        welcome_back + ref_hint,
         reply_markup=onboarding_character_keyboard(),
     )
 
@@ -1146,18 +1261,33 @@ async def consent_accept(cq: types.CallbackQuery):
         ref_link = referral_link(me.username, cq.from_user.id)
     except Exception:
         ref_link = None
-    bonus_line = (
-        f'🎁 добро пожаловать! подарил тебе {first_start["credits"]} фото-кредитов — '
-        'попробуй первое фото бесплатно.\n'
-        'Выбери персонажа и начни общаться:'
-    ) if first_start['credits'] else 'Отлично 🙂 теперь выбери персонажа:'
+    lang = user_lang(cq.from_user.id)
+    if lang == EN:
+        bonus_line = (
+            f'🎁 welcome! I gave you {first_start["credits"]} photo credits — '
+            'try your first photo for free.\n'
+            'Choose a character and start chatting:'
+        ) if first_start['credits'] else 'Great 🙂 now choose a character:'
+    else:
+        bonus_line = (
+            f'🎁 добро пожаловать! подарил тебе {first_start["credits"]} фото-кредитов — '
+            'попробуй первое фото бесплатно.\n'
+            'Выбери персонажа и начни общаться:'
+        ) if first_start['credits'] else 'Отлично 🙂 теперь выбери персонажа:'
     ref_line = ''
     if ref_link:
-        ref_line = (
-            f'\n\n🔗 твоя ссылка для приглашения друзей:\n{ref_link}\n'
-            f'за каждого друга, который подтвердит 18+, ты получишь {REFERRAL_REFERRER_CREDITS}, '
-            f'а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов.'
-        )
+        if lang == EN:
+            ref_line = (
+                f'\n\n🔗 your invite link for friends:\n{ref_link}\n'
+                f'for every friend who confirms 18+ you get {REFERRAL_REFERRER_CREDITS}, '
+                f'and your friend gets {REFERRAL_INVITEE_CREDITS} photo credits.'
+            )
+        else:
+            ref_line = (
+                f'\n\n🔗 твоя ссылка для приглашения друзей:\n{ref_link}\n'
+                f'за каждого друга, который подтвердит 18+, ты получишь {REFERRAL_REFERRER_CREDITS}, '
+                f'а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов.'
+            )
     await cq.message.answer(bonus_line + ref_line, reply_markup=onboarding_character_keyboard())
 
 
@@ -1220,18 +1350,30 @@ async def onboarding_character_select(cq: types.CallbackQuery):
         await cq.message.answer('Пока полностью доступна Анна 👇', reply_markup=onboarding_character_keyboard())
         return
     # Active or premium-unlocked character: allow selection
-    _user_character[cq.from_user.id] = character_id
+    set_user_character(cq.from_user.id, character_id)
     track_event(uid, 'character_selected', metadata={'character_id': character_id})
     await cq.answer(f'{card.display_name} выбрана')
     await _send_onboarding_character_card(cq.message.chat.id, character_id, cq.from_user.id)
-    await cq.message.answer(abilities_text(), reply_markup=abilities_inline_keyboard())
-    await cq.message.answer('Основное меню всегда внизу 👇', reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS))
+    sel_lang = user_lang(cq.from_user.id)
+    await cq.message.answer(abilities_text(sel_lang), reply_markup=abilities_inline_keyboard(sel_lang))
+    menu_line = 'The main menu is always at the bottom 👇' if sel_lang == EN else 'Основное меню всегда внизу 👇'
+    await cq.message.answer(menu_line, reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS, cq.from_user.id))
     # V3.21.0: one-time tour so nothing hides in sub-menus.
     try:
         user = get_user(cq.from_user.id)
         if user and not user.tour_done:
             update_user_settings(cq.from_user.id, tour_done=True)
-            await cq.message.answer(
+            tour_lang = user_lang(cq.from_user.id)
+            tour_text = (
+                'a quick tour of the buttons 👇\n\n'
+                '💬 just write to her — the relationship grows with every message\n'
+                '📸 Photos — ask for a shot in any situation\n'
+                '🎬 Video and 🎥 Video circle — animate a photo or get a circle with her voice\n'
+                '🎯 Daily quest — her small request (+5 attention for completing it)\n'
+                '💕 Date and 🏠 Apartment — time together, new places open with the levels\n'
+                '👤 Profile — your intimacy level in hearts and progress\n'
+                '🚀 Premium — unlimited chatting, video circles and levels 7–8'
+            ) if tour_lang == EN else (
                 'быстрый тур по кнопкам 👇\n\n'
                 '💬 просто пиши ей — отношения растут с каждым сообщением\n'
                 '📸 Фото — попроси кадр в любой ситуации\n'
@@ -1241,6 +1383,7 @@ async def onboarding_character_select(cq: types.CallbackQuery):
                 '👤 Профиль — твой уровень близости в сердечках и прогресс\n'
                 '🚀 Премиум — безлимит, кружочки и уровни 7–8'
             )
+            await cq.message.answer(tour_text)
             track_event(uid, 'onboarding_tour_sent')
     except Exception:
         pass
@@ -1251,7 +1394,10 @@ async def onboarding_meet(cq: types.CallbackQuery):
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     track_event(uid, 'onboarding_meet')
     await cq.answer()
-    await cq.message.answer('тогда без анкеты 😄 как тебя лучше называть — и что мне про тебя стоит знать первым?')
+    if user_lang(cq.from_user.id) == EN:
+        await cq.message.answer('then no questionnaire 😄 what should I call you — and what should I know about you first?')
+    else:
+        await cq.message.answer('тогда без анкеты 😄 как тебя лучше называть — и что мне про тебя стоит знать первым?')
 
 
 @dp.callback_query(F.data == 'onboard:abilities')
@@ -1259,21 +1405,23 @@ async def onboarding_abilities(cq: types.CallbackQuery):
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     track_event(uid, 'onboarding_abilities')
     await cq.answer()
-    await cq.message.answer(abilities_text(), reply_markup=abilities_inline_keyboard())
+    lang = user_lang(cq.from_user.id)
+    await cq.message.answer(abilities_text(lang), reply_markup=abilities_inline_keyboard(lang))
 
 
 @dp.message(Command('features', 'abilities'))
 async def features_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
-    await message.answer(abilities_text(), reply_markup=abilities_inline_keyboard())
+    lang = user_lang(message.from_user.id)
+    await message.answer(abilities_text(lang), reply_markup=abilities_inline_keyboard(lang))
 
 
-@dp.message(F.text == '✨ Возможности')
+@dp.message(F.text.in_(kb_pair('features')))
 async def features_button(message: types.Message):
     await features_cmd(message)
 
 
-@dp.message(F.text == '👩 Персонажи')
+@dp.message(F.text.in_(kb_pair('characters')))
 async def characters_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     await message.answer('выбери персонажа 👇', reply_markup=characters_keyboard())
@@ -1294,11 +1442,11 @@ async def character_view(cq: types.CallbackQuery):
     is_admin = cq.from_user.id in ADMIN_TELEGRAM_IDS
     can_open = card.status == 'active' or (card.status == 'premium' and (is_admin or is_premium(cq.from_user.id)))
     if can_open:
-        _user_character[cq.from_user.id] = character_id
+        set_user_character(cq.from_user.id, character_id)
         track_event(uid, 'character_selected', metadata={'character_id': character_id})
         await cq.message.answer(
             f'✅ {card.display_name} выбрана. Можешь писать ей! 👇',
-            reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS),
+            reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS, cq.from_user.id),
         )
         # V3.19.0: scenario hook as her cinematic opening line.
         hook = get_scenario_hook(character_id)
@@ -1339,7 +1487,7 @@ async def admin_panel(message: types.Message):
     await message.answer('⚙️ Админка AnnaBot', reply_markup=admin_keyboard())
 
 
-@dp.message(F.text == '🛠 Админка')
+@dp.message(F.text.in_(kb_pair('admin')))
 async def admin_panel_button(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
@@ -2200,19 +2348,39 @@ async def settings(message: types.Message):
     profile = get_profile(user.id, CHARACTER_ID) if user else None
     language = {'ru':'Русский','en':'English','zh':'中文','es':'Español','de':'Deutsch','fr':'Français','it':'Italiano','pt':'Português','uk':'Українська','ja':'日本語','ko':'한국어'}.get(getattr(profile, 'preferred_language', 'auto'), getattr(profile, 'preferred_language', 'Авто') if profile else 'Авто')
     rituals_on = user.notify_rituals if user.notify_rituals is not None else True
+    lang = user_lang(message.from_user.id)
+    if lang == EN:
+        text = (
+            f'Character settings\n\nTimezone: {user.timezone}\n'
+            f'Chat language: {language} · adapts automatically\n'
+            f'Voice replies: {"on" if user.voice_enabled else "off"}\n'
+            f'Voice anon mode: {"on" if user.voice_anon_mode else "off"}\n'
+            f'Proactive messages: {"on" if user.proactive_enabled else "off"}\n'
+            f'Morning/evening rituals: {"on" if rituals_on else "off"}\n'
+            f'Premium: {"active" if is_premium(message.from_user.id) else "no"}\n'
+            f'Photo credits: {credits}\n18+: {"confirmed" if is_adult_confirmed(message.from_user.id) else "not confirmed"}\n\n'
+            'She picks up your communication style and familiar expressions on her own over time.\n'
+            '/voice · /voice_anon · /notifications · /timezone'
+        )
+        button = '🔔 Rituals: disable' if rituals_on else '🔔 Rituals: enable'
+    else:
+        text = (
+            f'Настройки персонажа\n\nЧасовой пояс: {user.timezone}\n'
+            f'Язык общения: {language} · адаптируется автоматически\n'
+            f'Голосовые ответы: {"вкл" if user.voice_enabled else "выкл"}\n'
+            f'Голосовой аноним-режим: {"вкл" if user.voice_anon_mode else "выкл"}\n'
+            f'Инициативные сообщения: {"вкл" if user.proactive_enabled else "выкл"}\n'
+            f'Утренние/вечерние ритуалы: {"вкл" if rituals_on else "выкл"}\n'
+            f'Premium: {"активен" if is_premium(message.from_user.id) else "нет"}\n'
+            f'Фото-кредиты: {credits}\n18+: {"подтверждено" if is_adult_confirmed(message.from_user.id) else "не подтверждено"}\n\n'
+            'Стиль общения и знакомые выражения персонаж постепенно подхватывает сам.\n'
+            '/voice · /voice_anon · /notifications · /timezone'
+        )
+        button = '🔔 Ритуалы: выключить' if rituals_on else '🔔 Ритуалы: включить'
     await message.answer(
-        f'Настройки персонажа\n\nЧасовой пояс: {user.timezone}\n'
-        f'Язык общения: {language} · адаптируется автоматически\n'
-        f'Голосовые ответы: {"вкл" if user.voice_enabled else "выкл"}\n'
-        f'Голосовой аноним-режим: {"вкл" if user.voice_anon_mode else "выкл"}\n'
-        f'Инициативные сообщения: {"вкл" if user.proactive_enabled else "выкл"}\n'
-        f'Утренние/вечерние ритуалы: {"вкл" if rituals_on else "выкл"}\n'
-        f'Premium: {"активен" if is_premium(message.from_user.id) else "нет"}\n'
-        f'Фото-кредиты: {credits}\n18+: {"подтверждено" if is_adult_confirmed(message.from_user.id) else "не подтверждено"}\n\n'
-        'Стиль общения и знакомые выражения персонаж постепенно подхватывает сам.\n'
-        '/voice · /voice_anon · /notifications · /timezone',
+        text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=('🔔 Ритуалы: выключить' if rituals_on else '🔔 Ритуалы: включить'), callback_data='toggle:rituals')],
+            [InlineKeyboardButton(text=button, callback_data='toggle:rituals')],
         ]),
     )
 
@@ -3457,7 +3625,7 @@ async def _deliver_date_reward(chat_id: int, telegram_id: int, user_name: str, d
     await _send_voice_note(chat_id, telegram_id, date.text)
     await _start_photo_background(chat_id, telegram_id, PhotoRequest(scene=date.scene, mood='romantic'), 'story')
 
-@dp.message(F.text == '🏠 Квартира')
+@dp.message(F.text.in_(kb_pair('apartment')))
 async def apartment_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
@@ -3465,7 +3633,8 @@ async def apartment_cmd(message: types.Message):
             for r in apartment_service.get_available_rooms(level)]
     rows += [[InlineKeyboardButton(text=f'🔒 {r.name} — уровень {r.min_level}', callback_data=f'room_locked:{r.id}')]
              for r in apartment_service.get_locked_rooms(level)]
-    await message.answer('🏠 Моя квартира 😊\n\nВыбери комнату:', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    header = '🏠 My apartment 😊\n\nChoose a room:' if user_lang(message.from_user.id) == EN else '🏠 Моя квартира 😊\n\nВыбери комнату:'
+    await message.answer(header, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @dp.callback_query(F.data.startswith('room:'))
@@ -3517,7 +3686,7 @@ async def room_action(cq: types.CallbackQuery):
     await cq.message.answer(text)
 
 
-@dp.message(F.text == '🎁 Подарить')
+@dp.message(F.text.in_(kb_pair('gift')))
 async def gifts_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     gifts = gifts_service.get_all()
@@ -3532,7 +3701,8 @@ async def gifts_cmd(message: types.Message):
               else f'{g.emoji} {g.name} · {g.cost}⭐'),
         callback_data=f'gift:{g.id}')]
         for g in gifts]
-    await message.answer('🎁 Выбери подарок — она будет рада 😊\n\n' + '\n'.join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    header = '🎁 Pick a gift — she will love it 😊\n\n' if user_lang(message.from_user.id) == EN else '🎁 Выбери подарок — она будет рада 😊\n\n'
+    await message.answer(header + '\n'.join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @dp.callback_query(F.data.startswith('gift:'))
@@ -3558,7 +3728,7 @@ async def gift_buy(cq: types.CallbackQuery):
                              f'gift:{gift.id}', gifts_service.effective_cost(gift))
 
 
-@dp.message(F.text == '💕 Свидание')
+@dp.message(F.text.in_(kb_pair('date')))
 async def dates_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
@@ -3570,7 +3740,12 @@ async def dates_cmd(message: types.Message):
              for d in dates_service.get_locked(level)]
     banner = '\n\n🎁 У тебя есть бесплатное свидание за неделю стрика!' if has_free_date(message.from_user.id) else ''
     progress = f'\n\n📖 Свиданий в коллекции: {len(done)}/{len(dates_service.get_all())}'
-    await message.answer(f'💕 Куда пойдём?{banner}{progress}', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    lead = '💕 Куда пойдём?'
+    if user_lang(message.from_user.id) == EN:
+        lead = '💕 Where shall we go?'
+        banner = '\n\n🎁 you have a free date for your weekly streak!' if has_free_date(message.from_user.id) else ''
+        progress = f'\n\n📖 dates in the collection: {len(done)}/{len(dates_service.get_all())}'
+    await message.answer(f'{lead}{banner}{progress}', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @dp.callback_query(F.data.startswith('date:'))
@@ -3627,10 +3802,17 @@ async def locked_photo_callback(cq: types.CallbackQuery):
     item = cq.data.split(':', 1)[1]
     required = 5 if item == 'custom' else SCENE_LEVELS.get(item, 6)
     current = get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
-    await cq.answer(
-        f'🔒 Откроется на уровне {required}/6. Сейчас {current}/6. Близость растёт от общения — купить уровень нельзя.',
-        show_alert=True,
-    )
+    if user_lang(cq.from_user.id) == EN:
+        alert = (
+            f'🔒 Unlocks at level {required}/{MAX_RELATIONSHIP_LEVEL}. You are at {current}/{MAX_RELATIONSHIP_LEVEL}. '
+            'Intimacy grows from conversation — levels cannot be bought.'
+        )
+    else:
+        alert = (
+            f'🔒 Откроется на уровне {required}/{MAX_RELATIONSHIP_LEVEL}. Сейчас {current}/{MAX_RELATIONSHIP_LEVEL}. '
+            'Близость растёт от общения — купить уровень нельзя.'
+        )
+    await cq.answer(alert, show_alert=True)
 
 
 @dp.callback_query(F.data == 'photo_menu:open')
@@ -3914,18 +4096,21 @@ async def send_answer(message: types.Message, text: str):
     await message.answer(text)
 
 
-@dp.message(F.text == '💬 Общение')
+@dp.message(F.text.in_(kb_pair('chat')))
 async def chat_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
-    await message.answer('я здесь 🙂 просто пиши мне как обычно')
+    if user_lang(message.from_user.id) == EN:
+        await message.answer('I am here 🙂 just write to me like usual')
+    else:
+        await message.answer('я здесь 🙂 просто пиши мне как обычно')
 
 
-@dp.message(F.text == '📸 Фото')
+@dp.message(F.text.in_(kb_pair('photo')))
 async def photo_button(message: types.Message):
     await photo_menu(message)
 
 
-@dp.message(F.text == '🔗 Пригласить')
+@dp.message(F.text.in_(kb_pair('invite')))
 async def referral_button(message: types.Message):
     """Persistent menu button so the referral link is always one tap away,
     not buried in a one-time consent message that scrolls out of view."""
@@ -3936,26 +4121,26 @@ async def referral_button(message: types.Message):
 async def looks_button_legacy(message: types.Message):
     # Old Telegram reply keyboards can remain cached after a deploy. The button is
     # removed from the new UI; redirect stale clicks into the consolidated photo menu.
-    await message.answer('Раздел «Образы» теперь внутри 📸 Фото.', reply_markup=main_keyboard(message.from_user.id in ADMIN_TELEGRAM_IDS))
+    await message.answer('Раздел «Образы» теперь внутри 📸 Фото.', reply_markup=main_keyboard(message.from_user.id in ADMIN_TELEGRAM_IDS, message.from_user.id))
     await photo_menu(message)
 
 
-@dp.message(F.text == '🚀 Премиум')
+@dp.message(F.text.in_(kb_pair('premium')))
 async def premium_button(message: types.Message):
     await premium(message)
 
 
-@dp.message(F.text == '🎯 Истории')
+@dp.message(F.text.in_(kb_pair('stories')))
 async def stories_button(message: types.Message):
     await stories_cmd(message)
 
 
-@dp.message(F.text == '🖼 Коллекция')
+@dp.message(F.text.in_(kb_pair('collection')))
 async def collection_button(message: types.Message):
     await collection_cmd(message)
 
 
-@dp.message(F.text == '👤 Профиль')
+@dp.message(F.text.in_(kb_pair('profile')))
 async def profile_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     char_id = get_user_character(message.from_user.id)
@@ -3979,15 +4164,39 @@ async def profile_button(message: types.Message):
                 milestone_text = '\n🏷 ' + '\n🏷 '.join(m.title for m in reversed(milestones))
     # V3.21.0: hearts progress, couple extras and the premium plateau hint.
     from services import couple_service
+    from services.ui_lang import LEVEL_NAMES_EN
+    lang = user_lang(message.from_user.id)
     level = info['level']
-    level_name = RELATIONSHIP_LEVEL_NAMES.get(level, 'Знакомство')
+    names = LEVEL_NAMES_EN if lang == EN else RELATIONSHIP_LEVEL_NAMES
+    level_name = names.get(level, 'Getting to know each other' if lang == EN else 'Знакомство')
     hearts = '❤️' * min(level, MAX_RELATIONSHIP_LEVEL) + '🤍' * max(0, MAX_RELATIONSHIP_LEVEL - level)
     plateau_hint = ''
     if not info['premium'] and level >= 6:
-        plateau_hint = '🔒 впереди плато «Родственные души» и «Одно целое» — уровни 7–8 открыты только с Premium\n'
+        plateau_hint = (
+            '🔒 ahead is the “Kindred spirits” and “One whole” plateau — levels 7–8 are Premium only\n'
+            if lang == EN else
+            '🔒 впереди плато «Родственные души» и «Одно целое» — уровни 7–8 открыты только с Premium\n'
+        )
     album_count = len(couple_service.album_entries(uid))
     pet_name = couple_service.get_pet_name(message.from_user.id)
-    pet_line = f'\n🥰 она зовёт тебя «{pet_name}»' if pet_name else ''
+    pet_line = f'\n🥰 she calls you “{pet_name}”' if (pet_name and lang == EN) else (f'\n🥰 она зовёт тебя «{pet_name}»' if pet_name else '')
+    if lang == EN:
+        await message.answer(
+            f'👤 Your profile\n\n'
+            f'{hearts}\n{level_name} · level {level}/{MAX_RELATIONSHIP_LEVEL}\n'
+            f'{plateau_hint}'
+            f'{bond_text}'
+            f'{progress_text}'
+            f'⭐ Premium: {"active" if info["premium"] else "no"}\n'
+            f'📸 Photos today: {info["free_left"]} included\n'
+            f'🎟 Photo credits: {info["credits"]}\n'
+            f'💑 Our album: {album_count}/{MAX_RELATIONSHIP_LEVEL} — a keepsake photo from every level\n'
+            f'📸 Collection: {collection_progress(message.from_user.id, CHARACTER_ID, info["level"])["seen"]}/{collection_progress(message.from_user.id, CHARACTER_ID, info["level"])["total"]} · /collection\n'
+            f'🎯 Stories: /stories'
+            f'{pet_line}'
+            f'{milestone_text}'
+        )
+        return
     await message.answer(
         f'👤 Твой профиль\n\n'
         f'{hearts}\n{level_name} · уровень {level}/{MAX_RELATIONSHIP_LEVEL}\n'
@@ -4005,19 +4214,30 @@ async def profile_button(message: types.Message):
     )
 
 
-@dp.message(F.text == '⏰ Будильник')
+@dp.message(F.text.in_(kb_pair('alarm')))
 async def alarm_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     premium = is_premium(message.from_user.id)
+    lang = user_lang(message.from_user.id)
     if not premium:
-        await message.answer(
-            '⏰ Будильник и напоминания — Premium-функция\n\n'
-            'С Premium Анна будет будить тебя утром, напоминать о делах и всегда помнить твой часовой пояс.\n\n'
-            '/premium — подключить',
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text='⭐ Получить Premium', callback_data='premium:view')]
-            ]),
-        )
+        if lang == EN:
+            await message.answer(
+                '⏰ Alarm and reminders — a Premium feature\n\n'
+                'With Premium, she will wake you up in the morning, remind you about things and always remember your timezone.\n\n'
+                '/premium — subscribe',
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text='⭐ Get Premium', callback_data='premium:view')]
+                ]),
+            )
+        else:
+            await message.answer(
+                '⏰ Будильник и напоминания — Premium-функция\n\n'
+                'С Premium Анна будет будить тебя утром, напоминать о делах и всегда помнить твой часовой пояс.\n\n'
+                '/premium — подключить',
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text='⭐ Получить Premium', callback_data='premium:view')]
+                ]),
+            )
         return
     user = get_user(message.from_user.id)
     tz = user.timezone or 'UTC'
@@ -4045,16 +4265,26 @@ async def alarm_button(message: types.Message):
     await message.answer('\n'.join(lines))
 
 
-@dp.message(F.text == '⚙️ Настройки')
+@dp.message(F.text.in_(kb_pair('settings')))
 async def settings_button(message: types.Message):
     await settings(message)
 
 
 # V3.21.0: first-row discovery buttons. They route into the existing inline
 # flows (video presets / circle gate / daily quest) so nothing hides in sub-menus.
-@dp.message(F.text == '🎬 Видео')
+@dp.message(F.text.in_(kb_pair('video')))
 async def video_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    if user_lang(message.from_user.id) == EN:
+        await message.answer(
+            '🎬 video from me\n\n'
+            'I can animate the last photo into a short video or record a video circle with my voice 😌',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='🎬 Animate the last photo', callback_data='video:animate_last')],
+                [InlineKeyboardButton(text='🎥 Record a circle', callback_data='video:circle')],
+            ]),
+        )
+        return
     await message.answer(
         '🎬 видео от меня\n\n'
         'могу оживить последнее фото в короткое видео или записать тебе кружочек с голосом 😌',
@@ -4065,18 +4295,24 @@ async def video_button(message: types.Message):
     )
 
 
-@dp.message(F.text == '🎥 Кружочек')
+@dp.message(F.text.in_(kb_pair('circle')))
 async def circle_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    if user_lang(message.from_user.id) == EN:
+        text = '🎥 a video circle — as if I record it just for you, with my own voice 😊'
+        button = '🎥 Record a circle'
+    else:
+        text = '🎥 кружочек — как будто записываю его тебе лично, со своим голосом 😊'
+        button = '🎥 Записать кружочек'
     await message.answer(
-        '🎥 кружочек — как будто записываю его тебе лично, со своим голосом 😊',
+        text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='🎥 Записать кружочек', callback_data='video:circle')],
+            [InlineKeyboardButton(text=button, callback_data='video:circle')],
         ]),
     )
 
 
-@dp.message(F.text == '🎯 Задание дня')
+@dp.message(F.text.in_(kb_pair('quest')))
 async def daily_quest_button(message: types.Message):
     """V3.21.0: one small request from her per day; claiming it grants attention."""
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
@@ -4085,15 +4321,27 @@ async def daily_quest_button(message: types.Message):
     _, quest_text = couple_service.daily_quest(message.from_user.id)
     user = get_user(message.from_user.id)
     claimed = (user.quest_claimed_date or '') == couple_service._today_key()
+    lang = user_lang(message.from_user.id)
     if claimed:
-        await message.answer(f'🎯 задание дня: {quest_text}\n\nты уже выполнил его сегодня ❤️ она это чувствует.')
+        if lang == EN:
+            await message.answer(f'🎯 daily quest: {quest_text}\n\nyou already completed it today ❤️ she can feel it.')
+        else:
+            await message.answer(f'🎯 задание дня: {quest_text}\n\nты уже выполнил его сегодня ❤️ она это чувствует.')
         return
-    await message.answer(
-        f'🎯 задание дня: {quest_text}\n\nкак сделаешь — нажми «выполнено», и я это замечу 😊 (+5 внимания)',
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='✅ Выполнено · +5 внимания', callback_data='questday:claim')],
-        ]),
-    )
+    if lang == EN:
+        await message.answer(
+            f'🎯 daily quest: {quest_text}\n\nwhen you do it, tap “Done” and I will notice 😊 (+5 attention)',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='✅ Done · +5 attention', callback_data='questday:claim')],
+            ]),
+        )
+    else:
+        await message.answer(
+            f'🎯 задание дня: {quest_text}\n\nкак сделаешь — нажми «выполнено», и я это замечу 😊 (+5 внимания)',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='✅ Выполнено · +5 внимания', callback_data='questday:claim')],
+            ]),
+        )
     track_event(uid, 'daily_quest_view', metadata={'quest': couple_service.daily_quest(message.from_user.id)[0]})
 
 
@@ -4489,16 +4737,16 @@ async def my_character_chat_cb(cq: types.CallbackQuery):
         await cq.answer('Это не твой персонаж 🙂', show_alert=True)
         return
     await cq.answer()
-    _user_character[cq.from_user.id] = character_id
+    set_user_character(cq.from_user.id, character_id)
     track_event(ensure_user(cq.from_user.id), 'character_selected', metadata={'character_id': character_id, 'custom': True})
     await cq.message.answer(
         f'✅ Теперь ты общаешься с {row.display_name or "ней"}. Пиши ей прямо сюда 👇',
-        reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS),
+        reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS, cq.from_user.id),
     )
     await cq.message.answer(f'{row.display_name or "Она"}: «Ну привет... я ждала, когда ты наконец выберешь меня 😏 Расскажи мне о себе.»')
 
 
-@dp.message(F.text == '🎨 Мой персонаж')
+@dp.message(F.text.in_(kb_pair('custom')))
 async def my_character_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     if not has_accepted(message.from_user.id):
