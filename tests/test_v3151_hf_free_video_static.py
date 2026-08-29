@@ -19,7 +19,8 @@ def test_hf_video_config_exists():
 
 def test_video_is_sold_for_stars():
     # The HF backend is free, but the feature is sold for VIDEO_COST_STARS.
-    assert '"VIDEO_COST_STARS", "5"' in CONFIG
+    # V3.20.0: animation repriced to 50 Stars.
+    assert '"VIDEO_COST_STARS", "50"' in CONFIG
     assert 'VIDEO_COST_STARS' in MAIN
     # No free video route may remain: everything goes through the Stars invoice.
     assert "'video:animate_last_free'" not in MAIN

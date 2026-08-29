@@ -77,13 +77,13 @@ GEMINI_VIDEO_DURATION_SECONDS = max(4, min(8, int(os.getenv("GEMINI_VIDEO_DURATI
 GEMINI_VIDEO_RESOLUTION = os.getenv("GEMINI_VIDEO_RESOLUTION", "720p").strip()
 GEMINI_VIDEO_ASPECT_RATIO = os.getenv("GEMINI_VIDEO_ASPECT_RATIO", "9:16").strip()
 GEMINI_VIDEO_TIMEOUT_SECONDS = max(60, min(420, int(os.getenv("GEMINI_VIDEO_TIMEOUT_SECONDS", "360"))))
-VIDEO_COST_STARS = max(1, int(os.getenv("VIDEO_COST_STARS", "5")))
+VIDEO_COST_STARS = max(1, int(os.getenv("VIDEO_COST_STARS", "50")))
 # Paid gallery download: the user re-sends their own uncompressed photo as a
 # Telegram document (full resolution). Kept low to encourage repeat use.
 GALLERY_DOWNLOAD_STARS = max(1, int(os.getenv("GALLERY_DOWNLOAD_STARS", "30")))
 # Premium perk: this many photo animations per day are free for Premium users;
 # any extra animation on the same day is sold for VIDEO_COST_STARS Stars.
-VIDEO_PREMIUM_FREE_DAILY = max(0, int(os.getenv("VIDEO_PREMIUM_FREE_DAILY", "1")))
+VIDEO_PREMIUM_FREE_DAILY = max(0, int(os.getenv("VIDEO_PREMIUM_FREE_DAILY", "2")))
 
 # Community photo pool: AI-generated photos are shared between users requesting
 # the same character+scene. New photos are generated only when the pool has no
@@ -209,7 +209,7 @@ ADAPTATION_ENABLED = os.getenv("ADAPTATION_ENABLED", "true").strip().lower() not
 ADAPTATION_ANALYZE_EVERY = max(3, min(20, int(os.getenv("ADAPTATION_ANALYZE_EVERY", "5"))))
 ADAPTATION_MAX_EXPRESSIONS = max(3, min(20, int(os.getenv("ADAPTATION_MAX_EXPRESSIONS", "12"))))
 
-FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "80"))
+FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "20"))
 FREE_PHOTOS_LEVEL_1_2 = int(os.getenv("FREE_PHOTOS_LEVEL_1_2", "1"))
 FREE_PHOTOS_LEVEL_3_6 = int(os.getenv("FREE_PHOTOS_LEVEL_3_6", "2"))
 PREMIUM_MONTHLY_STARS = int(os.getenv("PREMIUM_MONTHLY_STARS", "500"))
@@ -219,6 +219,27 @@ CHAT_PHOTO_OFFER_STARS = int(os.getenv("CHAT_PHOTO_OFFER_STARS", "5"))
 CUSTOM_PHOTO_COST_STARS = int(os.getenv("CUSTOM_PHOTO_COST_STARS", "40"))
 QUEST_REPLAY_STARS = int(os.getenv("QUEST_REPLAY_STARS", "10"))
 PREMIUM_MONTHLY_QUEST_REPLAYS = int(os.getenv("PREMIUM_MONTHLY_QUEST_REPLAYS", "2"))
+
+# V3.20.0 retention & monetization pack.
+# Demo premium: a one-time free taste granted when the user hits the daily
+# chat limit — losing it converts stronger than never having it.
+DEMO_PREMIUM_HOURS = max(1, min(72, int(os.getenv("DEMO_PREMIUM_HOURS", "3"))))
+# One-time 24h premium discount offered after the demo is used; the deadline
+# creates urgency in the paywall button.
+PREMIUM_DISCOUNT_PERCENT = max(0, min(90, int(os.getenv("PREMIUM_DISCOUNT_PERCENT", "30"))))
+PREMIUM_DISCOUNT_STARS = max(1, int(PREMIUM_MONTHLY_STARS * (100 - PREMIUM_DISCOUNT_PERCENT) // 100))
+PREMIUM_DISCOUNT_HOURS = max(1, int(os.getenv("PREMIUM_DISCOUNT_HOURS", "24")))
+# Proactive emotional pushes: static miss/jealousy texts fire after this many
+# hours of silence (cheap, no LLM), the LLM-crafted nudge still fires after
+# PROACTIVE_MIN_HOURS.
+RETENTION_REMINDER_HOURS = max(6, min(48, int(os.getenv("RETENTION_REMINDER_HOURS", "24"))))
+# Morning/evening rituals: she writes first in the user's local time windows.
+RITUALS_ENABLED = os.getenv("RITUALS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+RITUAL_MORNING_START_HOUR = max(0, min(23, int(os.getenv("RITUAL_MORNING_START_HOUR", "7"))))
+RITUAL_MORNING_END_HOUR = max(0, min(23, int(os.getenv("RITUAL_MORNING_END_HOUR", "10"))))
+RITUAL_EVENING_START_HOUR = max(0, min(23, int(os.getenv("RITUAL_EVENING_START_HOUR", "21"))))
+RITUAL_EVENING_END_HOUR = max(0, min(23, int(os.getenv("RITUAL_EVENING_END_HOUR", "23"))))
+RITUAL_MAX_INACTIVE_DAYS = max(1, int(os.getenv("RITUAL_MAX_INACTIVE_DAYS", "7")))
 
 # V3.19.0: personal character constructor — one-time Stars payment that builds
 # a private chat persona (appearance + personality + relationship role) with a

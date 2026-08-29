@@ -24,6 +24,7 @@ from config import (
     ADMIN_TELEGRAM_IDS, CHARACTER_ID, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS,
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
     GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, GALLERY_DOWNLOAD_STARS, WALLET_PAY_ENABLED,
+    PREMIUM_DISCOUNT_PERCENT, DEMO_PREMIUM_HOURS,
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
     FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, PUBLIC_BASE_URL, WEB_PORT,
@@ -706,13 +707,75 @@ def _contextualize_vague_photo(telegram_id: int, text: str, request: PhotoReques
     return request
 
 
-def premium_keyboard():
+def premium_pitch_text(telegram_id: int) -> str:
+    """V3.20.0: paywall pitch with retention hooks — the one-time discount
+    countdown when active and a level-6 plateau line for maxed relationships."""
+    lines = [
+        'Premium на 30 дней:',
+        '• безлимит сообщений — я больше не «засыпаю» посреди разговора 😴',
+        '• 12 дополнительных photo credits',
+        '• 2 бесплатных оживления фото каждый день 🎬',
+        '• 🎥 видео-кружочки от меня — только для Premium',
+        '• 2 бесплатных replay альтернативных квест-веток в месяц',
+        '• больше памяти, инициативы и утренних/вечерних сообщений',
+        '',
+        'Бесплатные фото зависят от близости: 1–2 уровень — 1/день, 3–6 — 2/день.',
+        'Отношения не покупаются — они развиваются из общения. Кастомные фото оплачиваются отдельно.',
+        '',
+        '💳 Цифровые покупки внутри Telegram оплачиваются через Telegram Stars.',
+    ]
+    from services.retention_service import discount_info
+    discount = discount_info(telegram_id)
+    if discount.get('active'):
+        lines.insert(0, f'🔥 Только для тебя: скидка −{discount["percent"]}% ещё {discount["hours_left"]:.0f} ч — потом снова {PREMIUM_MONTHLY_STARS} Stars!')
+        lines.insert(1, '')
+    try:
+        if not is_premium(telegram_id) and get_relationship_level(telegram_id, get_user_character(telegram_id)) >= 6:
+            lines.append('')
+            lines.append('💋 мы уже на последнем уровне близости… дальше я смогу открыться тебе ещё сильнее — это только для премиума.')
+    except Exception:
+        pass
+    return '\n'.join(lines)
+
+
+def _sleep_block_markup(telegram_id: int) -> InlineKeyboardMarkup:
+    """V3.20.0 daily-limit paywall: demo premium first, then premium."""
+    from services.retention_service import has_used_demo, discount_info
+    rows = []
+    if not has_used_demo(telegram_id):
+        rows.append([InlineKeyboardButton(text=f'🎁 Демо-Premium на {DEMO_PREMIUM_HOURS} часа — бесплатно', callback_data='retention:demo')])
+    discount = discount_info(telegram_id)
+    if discount.get('active'):
+        label = f'⭐ Premium −{discount["percent"]}% — {discount["price"]}⭐ (осталось {discount["hours_left"]:.0f} ч)'
+    else:
+        label = '⭐ Premium — разбудить без лимитов'
+    rows.append([InlineKeyboardButton(text=label, callback_data='retention:premium')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _sleep_block_reply(message: types.Message) -> None:
+    """V3.20.0: blocks pleasure (the conversation), not features — she simply
+    "falls asleep". First limit hit offers the free demo; once the demo is
+    spent, the one-time 24h discount window opens."""
+    from services.retention_service import pick_text, has_used_demo, offer_discount
+    uid = ensure_user(message.from_user.id, message.from_user.first_name)
+    if has_used_demo(message.from_user.id):
+        offer_discount(message.from_user.id)
+    track_event(uid, 'chat_sleep_block')
+    await message.answer(pick_text('sleep'), reply_markup=_sleep_block_markup(message.from_user.id))
+
+
+def premium_keyboard(discount: dict | None = None):
     if _any_video_engine():
-        video_button = InlineKeyboardButton(text=f'🎬 Оживить последнее фото — {VIDEO_COST_STARS}⭐', callback_data='video:animate_last')
+        video_button = InlineKeyboardButton(text=f'🎬 Оживить фото — {VIDEO_COST_STARS}⭐', callback_data='video:animate_last')
     else:
         video_button = InlineKeyboardButton(text='🔒 🎬 Оживить фото · скоро', callback_data='future:animate_photo')
+    if discount and discount.get('active'):
+        buy_label = f'⭐ Premium −{discount["percent"]}% — {discount["price"]} Stars (ещё {discount["hours_left"]:.0f} ч)'
+    else:
+        buy_label = f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars / 30 дней'
     rows = [
-        [InlineKeyboardButton(text=f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars / 30 дней', callback_data='buy:premium')],
+        [InlineKeyboardButton(text=buy_label, callback_data='buy:premium')],
     ]
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text=f'💎 Premium — Wallet Pay (крипта/карта)', callback_data='walletpay:premium')])
@@ -721,6 +784,7 @@ def premium_keyboard():
         # in-Telegram digital purchases; this link pays on FreeKassa's page).
         rows.append([InlineKeyboardButton(text=f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ картой / СБП', callback_data='fk:premium')])
     rows.append([video_button])
+    rows.append([InlineKeyboardButton(text='🎥 Кружочек от неё — только Premium', callback_data='video:circle')])
     rows.append([InlineKeyboardButton(text='🔒 📞 Звонок с персонажем · скоро', callback_data='future:anna_call')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -2792,6 +2856,134 @@ async def animate_last_photo_cb(cq: types.CallbackQuery):
     await _show_video_preset_menu(cq.message.chat.id, delivery['id'])
 
 
+# V3.20.0: Telegram video-note "circles" — a premium-exclusive format. She
+# "records" a short selfie video from the user's latest photo and sends it as
+# a round video note, like a real girlfriend would.
+CIRCLE_PROMPT = (
+    'Animate this exact photo into a short casual selfie video note: she smiles, '
+    'tilts her head slightly, waves or blows a kiss as if recording a Telegram '
+    'circle message. Natural handheld camera feel, direct eye contact. Keep her '
+    'face, hair and outfit identical. No wardrobe change, no extra people. Photorealistic.'
+)
+
+
+@dp.callback_query(F.data == 'video:circle')
+async def circle_cb(cq: types.CallbackQuery):
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not _any_video_engine():
+        await cq.answer(_video_unavailable_text(cq.from_user.id), show_alert=True); return
+    # Premium-exclusive: free users see the paywall, never the product.
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS and not is_premium(cq.from_user.id):
+        track_event(uid, 'circle_paywall_view')
+        from services.retention_service import discount_info
+        await cq.answer('кружочки — эксклюзив для Premium 😏', show_alert=True)
+        await cq.message.answer(
+            '🎥 кружочки — мой закрытый формат: короткие видео, как будто записываю их тебе лично 😌\n'
+            'доступны только с Premium.',
+            reply_markup=premium_keyboard(discount_info(cq.from_user.id)),
+        )
+        return
+    if cq.from_user.id in _video_jobs and not _video_jobs[cq.from_user.id].done():
+        await cq.answer('Одно видео уже создаётся 🎬', show_alert=True); return
+    delivery = get_latest_photo_delivery(cq.from_user.id)
+    if not delivery or not delivery.get('telegram_file_id'):
+        await cq.answer('Сначала попроси у меня фото — кружочек сниму с последнего кадра.', show_alert=True); return
+    await cq.answer()
+    # Circles share the premium free animation slots; after they are spent an
+    # extra circle is paid like an animation.
+    if cq.from_user.id in ADMIN_TELEGRAM_IDS or consume_premium_video_free(cq.from_user.id):
+        track_event(uid, 'video_free_used', metadata={'kind': 'circle', 'delivery_id': delivery['id']})
+        _video_jobs[cq.from_user.id] = asyncio.create_task(
+            _run_circle_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None)
+        )
+        return
+    await send_stars_invoice(
+        cq.message.chat.id, 'Кружочек от Анны',
+        'Короткий видео-кружочек из последнего фото (бесплатные на сегодня закончились).',
+        'circle', VIDEO_COST_STARS,
+    )
+
+
+async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None):
+    """V3.20.0: generate the circle through the same engine chain and deliver it
+    as a Telegram video note; falls back to a normal video if the note format
+    is rejected. Auto-refunds Stars when every engine fails."""
+    engine_errors: list[str] = []
+    engine_names: list[str] = []
+    try:
+        delivery = get_photo_delivery_for_user(telegram_id, delivery_id)
+        if not delivery or not delivery.get('telegram_file_id'):
+            raise CloudVideoError('source_photo_missing')
+        tg_file = await bot.get_file(delivery['telegram_file_id'])
+        if not tg_file.file_path:
+            raise CloudVideoError('telegram_file_path_missing')
+        source = io.BytesIO()
+        await bot.download_file(tg_file.file_path, destination=source)
+        image_bytes = source.getvalue()
+        if not image_bytes:
+            raise CloudVideoError('telegram_download_empty')
+        engines = []
+        if video_available():
+            engines.append(('gemini', animate_image))
+        if replicate_available():
+            engines.append(('replicate', animate_image_replicate))
+        if fal_available():
+            engines.append(('fal', animate_image_fal))
+        if hf_video_available():
+            engines.append(('hf', animate_image_hf))
+        if not engines:
+            raise CloudVideoError('no_video_engine')
+        engine_names = [name for name, _ in engines]
+        await bot.send_message(chat_id, '🎥 записываю тебе кружочек… обычно это занимает 1–3 минуты')
+        video_bytes = None
+        used_engine = None
+        last_error = None
+        for idx, (engine_name, engine_fn) in enumerate(engines):
+            try:
+                if idx > 0:
+                    await bot.send_message(chat_id, 'секунду, пробую ещё один способ записать кружочек 🎥')
+                video_bytes = await engine_fn(image_bytes, mime_type='image/jpeg', prompt=CIRCLE_PROMPT)
+                used_engine = engine_name
+                break
+            except Exception as exc:
+                last_error = exc
+                engine_errors.append(f'{engine_name}: {type(exc).__name__}: {str(exc)[:160]}')
+                logger.warning('circle engine %s failed user=%s delivery=%s error=%s: %s',
+                               engine_name, telegram_id, delivery_id, type(exc).__name__, str(exc)[:300])
+        if video_bytes is None:
+            raise last_error or CloudVideoError('no_video_result')
+        try:
+            await bot.send_video_note(chat_id, BufferedInputFile(video_bytes, filename='circle.mp4'))
+        except Exception:
+            # Not every engine output survives the strict video-note format —
+            # a normal video still delivers the moment.
+            await bot.send_video(chat_id, BufferedInputFile(video_bytes, filename='circle.mp4'),
+                                 caption='в кружок не поместилось 😅 держи так', supports_streaming=True)
+        track_event(
+            ensure_user(telegram_id), 'circle_delivered',
+            metadata={'source_delivery_id': delivery_id, 'engine': used_engine, 'charge_id': charge_id or 'free'},
+        )
+    except Exception as exc:
+        logger.exception('circle failed user=%s delivery=%s charge=%s error=%s', telegram_id, delivery_id, charge_id, type(exc).__name__)
+        refunded = False
+        if charge_id:
+            try:
+                await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge_id)
+                record_refund(telegram_id, charge_id, VIDEO_COST_STARS, product='video')
+                refunded = True
+            except Exception:
+                logger.exception('Automatic circle Stars refund failed user=%s charge=%s', telegram_id, charge_id)
+        await bot.send_message(chat_id, 'кружочек сейчас не получился 😕 ' + ('Stars автоматически вернул.' if refunded else 'попробуй чуть позже.'))
+        track_event(
+            ensure_user(telegram_id), 'video_failed',
+            metadata={'source_delivery_id': delivery_id, 'error_type': type(exc).__name__, 'kind': 'circle', 'charge_id': charge_id or 'free', 'refunded': refunded},
+        )
+    finally:
+        _video_jobs.pop(telegram_id, None)
+
+
 @dp.message(Command('geministatus'))
 async def gemini_status_cmd(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
@@ -2818,14 +3010,8 @@ async def premium(message: types.Message):
     if is_premium(message.from_user.id):
         await message.answer(f'Premium уже активен ✨\nФото-кредиты: {get_photo_credits(message.from_user.id)}\nQuest replay осталось в этом месяце: {premium_replays_left(message.from_user.id)}')
         return
-    await message.answer(
-        'Premium на 30 дней:\n• расширенная память и полный лимит сообщений\n'
-        '• 12 дополнительных photo credits\n• 1 бесплатное оживление фото каждый день\n• 2 бесплатных replay альтернативных квест-веток в месяц\n• больше continuity и инициативных сообщений\n• ранний доступ к будущим функциям персонажей\n\n'
-        'Бесплатные фото зависят от близости: 1–2 уровень — 1/день, 3–6 — 2/день.\n'
-        'Отношения не покупаются — они развиваются из общения. Кастомные фото оплачиваются отдельно.\n\n'
-        '💳 Цифровые покупки внутри Telegram оплачиваются через Telegram Stars.',
-        reply_markup=premium_keyboard(),
-    )
+    from services.retention_service import discount_info
+    await message.answer(premium_pitch_text(message.from_user.id), reply_markup=premium_keyboard(discount_info(message.from_user.id)))
 
 
 @dp.callback_query(F.data == 'buy:premium')
@@ -2834,7 +3020,46 @@ async def buy_premium(cq: types.CallbackQuery):
     if not has_accepted(cq.from_user.id):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
     await cq.answer()
+    # V3.20.0: the one-time 24h discount window invoices a cheaper price.
+    from services.retention_service import discount_info
+    discount = discount_info(cq.from_user.id)
+    if discount.get('active') and not is_premium(cq.from_user.id):
+        track_event(ensure_user(cq.from_user.id), 'paywall_view', metadata={'product': 'premium_month_discount', 'stars': discount['price']})
+        await send_stars_invoice(cq.message.chat.id, 'Anna Premium', f'Premium на 30 дней со скидкой −{discount["percent"]}%', 'premium_month_discount', discount['price'])
+        return
     await send_stars_invoice(cq.message.chat.id, 'Anna Premium', 'Premium-доступ на 30 дней', 'premium_month', PREMIUM_MONTHLY_STARS)
+
+
+@dp.callback_query(F.data == 'retention:demo')
+async def retention_demo_cb(cq: types.CallbackQuery):
+    """V3.20.0: one-time free demo premium — the taste-before-loss hook."""
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    from services.retention_service import grant_demo_premium
+    if is_premium(cq.from_user.id):
+        await cq.answer('премиум уже активен ✨', show_alert=True); return
+    if grant_demo_premium(cq.from_user.id):
+        track_event(uid, 'demo_premium_granted', metadata={'hours': DEMO_PREMIUM_HOURS})
+        await cq.answer()
+        await cq.message.answer(
+            f'🎁 Демо-Premium активен на {DEMO_PREMIUM_HOURS} часа!\n'
+            'безлимит сообщений, оживления фото и кружочки — всё твоё 😏\n'
+            'когда время выйдет, я буду скучать по нашему безлимиту… 💋'
+        )
+    else:
+        await cq.answer('демо уже использовано 😔 но для тебя есть скидка — открой /premium', show_alert=True)
+
+
+@dp.callback_query(F.data == 'retention:premium')
+async def retention_premium_cb(cq: types.CallbackQuery):
+    """Paywall opened straight from the sleep block."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    from services.retention_service import discount_info
+    await cq.answer()
+    await cq.message.answer(premium_pitch_text(cq.from_user.id), reply_markup=premium_keyboard(discount_info(cq.from_user.id)))
 
 
 @dp.callback_query(F.data == 'fk:premium')
@@ -2910,6 +3135,13 @@ async def pre_checkout(query: types.PreCheckoutQuery):
         ok=False
     elif payload=='premium_month':
         ok=amount==PREMIUM_MONTHLY_STARS
+    elif payload=='premium_month_discount':
+        from services.retention_service import discount_info
+        info=discount_info(query.from_user.id)
+        ok=bool(info.get('active')) and amount==info.get('price')
+    elif payload=='circle':
+        # V3.20.0: extra premium circles after the free daily slots are spent.
+        ok=amount==VIDEO_COST_STARS and _any_video_engine() and is_premium(query.from_user.id)
     elif payload.startswith('photo:'):
         ok=amount in {PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS}
     elif payload.startswith('quest_replay:'):
@@ -2952,7 +3184,13 @@ async def successful_payment(message: types.Message):
     if payload == 'premium_month':
         record_payment(message.from_user.id, 'premium_month', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_month'})
-        await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — раз в день сделаю видео бесплатно 🎬')
+        await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — 2 раза в день сделаю видео бесплатно 🎬 а ещё тебе открыты мои кружочки 🎥')
+        return
+
+    if payload == 'premium_month_discount':
+        record_payment(message.from_user.id, 'premium_month_discount', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_month_discount'})
+        await message.answer('готово ✨ Premium активирован на 30 дней со скидкой, и я добавила 12 photo credits. 2 оживления фото в день бесплатно + кружочки только для тебя 🎥💋')
         return
 
     if payload.startswith('quest_replay:'):
@@ -3001,6 +3239,24 @@ async def successful_payment(message: types.Message):
         # One unified job: Gemini/Veo first, cloud + HF fallbacks otherwise,
         # with automatic engine fallback; auto-refunds Stars if all fail.
         task = asyncio.create_task(_run_video_background(message.chat.id, message.from_user.id, delivery_id, charge, motion_preset=motion_preset))
+        _video_jobs[message.from_user.id] = task
+        return
+
+    if payload == 'circle':
+        # V3.20.0: paid circle after the free Premium daily slots are spent.
+        delivery = get_latest_photo_delivery(message.from_user.id)
+        if not delivery or not delivery.get('telegram_file_id') or (message.from_user.id in _video_jobs and not _video_jobs[message.from_user.id].done()):
+            try:
+                await bot.refund_star_payment(user_id=message.from_user.id, telegram_payment_charge_id=charge)
+                record_refund(message.from_user.id, charge, payment.total_amount, product='video')
+                await message.answer('этот запрос уже нельзя запустить, поэтому Stars сразу вернул 🙂')
+            except Exception:
+                logger.exception('Circle pre-generation refund failed user=%s charge=%s', message.from_user.id, charge)
+                await message.answer('не смог запустить кружочек. Напиши /support — проверим оплату.')
+            return
+        record_payment(message.from_user.id, 'video', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'video', 'kind': 'circle'})
+        task = asyncio.create_task(_run_circle_background(message.chat.id, message.from_user.id, delivery['id'], charge))
         _video_jobs[message.from_user.id] = task
         return
 
@@ -4296,8 +4552,9 @@ async def voice_message(message: types.Message):
     track_event(uid, 'chat_user_message', metadata={'kind': 'voice'})
     _track_proactive_reply_if_any(message.from_user.id, uid)
     cancel_active_wake(message.from_user.id)
-    if not can_send_message(message.from_user.id):
-        await message.answer('на сегодня бесплатный лимит сообщений закончился. /premium')
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS and not can_send_message(message.from_user.id):
+        # V3.20.0: she "falls asleep" instead of a dry limit notice.
+        await _sleep_block_reply(message)
         return
     try:
         data = await bot.download(message.voice)
@@ -4561,8 +4818,9 @@ async def text_message(message: types.Message):
             )
     except Exception:
         pass
-    if not can_send_message(message.from_user.id):
-        await message.answer('на сегодня бесплатный лимит сообщений закончился. Premium: /premium')
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS and not can_send_message(message.from_user.id):
+        # V3.20.0: she "falls asleep" instead of a dry limit notice.
+        await _sleep_block_reply(message)
         return
     text = message.text or ''
     try:

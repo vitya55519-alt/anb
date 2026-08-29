@@ -2,10 +2,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from services.db import SessionLocal
 from models.app_models import Subscription, StarTransaction, User
-from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY
+from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS
 from services.access_service import is_premium
 
-PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"video":VIDEO_COST_STARS}
+PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"video":VIDEO_COST_STARS}
 
 def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provider:str="stars", provider_payload:str|None=None):
     now=datetime.now(timezone.utc).replace(tzinfo=None)
@@ -22,7 +22,7 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
             provider=provider,
             provider_payload=provider_payload,
         ))
-        if product=="premium_month":
+        if product in {"premium_month","premium_month_discount"}:
             current=s.scalar(select(Subscription).where(Subscription.user_id==user.id,Subscription.status=="active",Subscription.expires_at>now).order_by(Subscription.expires_at.desc()))
             start=current.expires_at if current and current.expires_at and current.expires_at>now else now
             s.add(Subscription(user_id=user.id,plan="premium",status="active",stars_amount=stars,started_at=now,expires_at=start+timedelta(days=30),telegram_charge_id=charge_id))

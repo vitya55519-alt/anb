@@ -63,8 +63,9 @@ def test_premium_daily_free_limit_helpers():
     assert 'video_free_used' in USER_MODEL
     assert "'video_free_date'" in DB
     assert "'video_free_used'" in DB
-    assert '"VIDEO_PREMIUM_FREE_DAILY", "1"' in CONFIG
+    # V3.20.0: perk raised to 2 free animations per day on Premium.
+    assert '"VIDEO_PREMIUM_FREE_DAILY", "2"' in CONFIG
 
 
 def test_premium_pitch_mentions_daily_free_video():
-    assert '1 бесплатное оживление фото каждый день' in MAIN
+    assert '2 бесплатных оживления фото каждый день' in MAIN
