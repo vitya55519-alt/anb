@@ -21,7 +21,10 @@ CONSENT = (ROOT / 'services' / 'consent_service.py').read_text(encoding='utf-8')
 
 def test_video_presets_defined_with_identity_preserving_prompts():
     cloud_video = importlib.import_module('services.cloud_video_service')
-    assert set(cloud_video.VIDEO_PRESETS) == {'kiss', 'hug', 'dance'}
+    # V3.26.0: hug/dance retired (artifacts); the set is now close-up motion.
+    assert set(cloud_video.VIDEO_PRESETS) == {'kiss', 'wink', 'turn', 'whisper', 'touch', 'caress'}
+    assert 'hug' not in cloud_video.VIDEO_PRESETS
+    assert 'dance' not in cloud_video.VIDEO_PRESETS
     for key, (label, prompt) in cloud_video.VIDEO_PRESETS.items():
         assert label, f'{key} must have a button label'
         assert 'Preserve her identity' in prompt, f'{key} prompt must lock identity'

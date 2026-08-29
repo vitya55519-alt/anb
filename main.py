@@ -2988,17 +2988,20 @@ async def video_test_cmd(message: types.Message):
 
 
 def _video_preset_keyboard(delivery_id: int):
-    """V3.19.0: motion preset picker shown before every animation."""
+    """V3.19.0: motion preset picker shown before every animation.
+
+    V3.26.0: built generically from VIDEO_PRESETS so new/removed presets
+    never require keyboard surgery here.
+    """
+    keys = list(VIDEO_PRESETS)
     rows = [
         [
-            InlineKeyboardButton(text=VIDEO_PRESETS['kiss'][0], callback_data=f'videopreset:kiss:{delivery_id}'),
-            InlineKeyboardButton(text=VIDEO_PRESETS['hug'][0], callback_data=f'videopreset:hug:{delivery_id}'),
-        ],
-        [
-            InlineKeyboardButton(text=VIDEO_PRESETS['dance'][0], callback_data=f'videopreset:dance:{delivery_id}'),
-            InlineKeyboardButton(text='✨ Авто', callback_data=f'videopreset:auto:{delivery_id}'),
-        ],
+            InlineKeyboardButton(text=VIDEO_PRESETS[key][0], callback_data=f'videopreset:{key}:{delivery_id}')
+            for key in keys[i:i + 2]
+        ]
+        for i in range(0, len(keys), 2)
     ]
+    rows.append([InlineKeyboardButton(text='✨ Авто', callback_data=f'videopreset:auto:{delivery_id}')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

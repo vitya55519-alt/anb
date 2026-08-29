@@ -23,7 +23,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.24.0', '3.25.0')
+    assert VERSION in ('3.24.0', '3.25.0', '3.26.0')
 
 
 def test_seedream_adult_scenes_cover_all_intimate_sets():
@@ -52,12 +52,15 @@ def test_constructor_admin_path_uses_real_user_id():
 
 def test_video_presets_are_pov_not_self_hug():
     cloud_video = importlib.import_module('services.cloud_video_service')
-    hug_prompt = cloud_video.VIDEO_PRESETS['hug'][1]
+    # V3.26.0: the artifact-prone hug/dance presets are gone; kiss/whisper/touch
+    # keep the POV framing pinned in v3.24.0.
+    assert 'hug' not in cloud_video.VIDEO_PRESETS
+    assert 'dance' not in cloud_video.VIDEO_PRESETS
     kiss_prompt = cloud_video.VIDEO_PRESETS['kiss'][1]
-    assert 'self-hug' not in hug_prompt and 'around herself' not in hug_prompt
-    assert "viewer's eyes" in hug_prompt and 'around the viewer' in hug_prompt
-    assert "viewer's eyes" in kiss_prompt and 'toward the viewer' in kiss_prompt
-    for prompt in (hug_prompt, kiss_prompt):
+    whisper_prompt = cloud_video.VIDEO_PRESETS['whisper'][1]
+    touch_prompt = cloud_video.VIDEO_PRESETS['touch'][1]
+    for prompt in (kiss_prompt, whisper_prompt, touch_prompt):
+        assert "viewer's eyes" in prompt
         assert 'Preserve her identity' in prompt
         assert 'No wardrobe change' in prompt
         assert 'no extra people' in prompt

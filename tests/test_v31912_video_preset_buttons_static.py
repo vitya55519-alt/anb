@@ -27,7 +27,8 @@ def test_preset_reaches_animation_job():
 
 def test_presets_carry_motion_prompts():
     from services.cloud_video_service import VIDEO_PRESETS
-    assert set(VIDEO_PRESETS) == {'kiss', 'hug', 'dance'}
+    # V3.26.0 preset set (kiss kept, hug/dance replaced with close-up motion).
+    assert set(VIDEO_PRESETS) == {'kiss', 'wink', 'turn', 'whisper', 'touch', 'caress'}
     for label, prompt in VIDEO_PRESETS.values():
         assert label and 'Animate this exact photo' in prompt
         assert 'No wardrobe change, no extra people' in prompt

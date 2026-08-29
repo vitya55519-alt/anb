@@ -55,6 +55,9 @@ SENSUAL_ANIMATION_PROMPT = (
 # V3.19.0: user-selectable motion presets, WildGrl-style. Values are
 # (button label, animation prompt). 'auto' is not listed: it reuses the
 # scene-aware default (SENSUAL_ANIMATION_PROMPT for intimate scenes).
+# V3.26.0: hug/dance replaced — full-body choreography produced artifacts.
+# The new set sticks to close-up, low-amplitude motion that i2v engines
+# render cleanly; whisper/touch keep the POV "camera is the viewer's eyes".
 VIDEO_PRESETS: dict[str, tuple[str, str]] = {
     'kiss': ('\U0001f48b Поцелуй', (
         "Animate this exact photo of the same adult woman. Preserve her identity, "
@@ -64,22 +67,43 @@ VIDEO_PRESETS: dict[str, tuple[str, str]] = {
         "smiles warmly. Natural breathing, one or two blinks, realistic handheld "
         "camera micro-motion. No wardrobe change, no extra people. Photorealistic."
     )),
-    'hug': ('\U0001f917 Обнимашки', (
+    'wink': ('\U0001f60f Подмигивание', (
         "Animate this exact photo of the same adult woman. Preserve her identity, "
-        "face, hair, body and scene. The camera is the viewer's eyes: she steps "
-        "close and wraps her arms around the viewer in a warm embrace, leaning her "
-        "head toward the camera, closing her eyes for a moment and smiling softly "
-        "as if hugging someone dear. Warm tender mood, natural breathing, one or "
+        "face, hair, body and scene. She catches the viewer's eye, gives a playful "
+        "wink and a teasing smile, tucking a loose strand of hair behind her ear. "
+        "Natural breathing, one or two blinks, realistic handheld camera "
+        "micro-motion. No wardrobe change, no extra people. Photorealistic."
+    )),
+    'turn': ('\U0001f4a8 Оборот', (
+        "Animate this exact photo of the same adult woman. Preserve her identity, "
+        "face, hair, body and scene. She slowly turns toward the camera, hair "
+        "flowing and settling over her shoulders, and smiles softly at the viewer. "
+        "Natural breathing, one or two blinks, realistic handheld camera "
+        "micro-motion. No wardrobe change, no extra people. Photorealistic."
+    )),
+    'whisper': ('\U0001f92b Шёпот', (
+        "Animate this exact photo of the same adult woman. Preserve her identity, "
+        "face, hair, body and scene. The camera is the viewer's eyes: she leans in "
+        "very close to the camera and whispers a playful secret, lips moving "
+        "subtly, one hand near her mouth, then smiles warmly. Natural breathing, "
+        "one or two blinks, realistic handheld camera micro-motion. No wardrobe "
+        "change, no extra people. Photorealistic."
+    )),
+    'touch': ('\U0001f590 Прикосновение', (
+        "Animate this exact photo of the same adult woman. Preserve her identity, "
+        "face, hair, body and scene. The camera is the viewer's eyes: she slowly "
+        "reaches one hand toward the camera as if gently touching the viewer's "
+        "face, fingers softly extended, tender smile. Natural breathing, one or "
         "two blinks, realistic handheld camera micro-motion. No wardrobe change, "
         "no extra people. Photorealistic."
     )),
-    'dance': ('\U0001f483 Танец', (
+    'caress': ('\U0001f525 Ласка', (
         "Animate this exact photo of the same adult woman. Preserve her identity, "
-        "face, hair, body and scene. She starts a slow sensual dance to unheard "
-        "music: rhythmic sway of hips and shoulders, playful hand movements, a "
-        "confident teasing smile. Natural body physics, one or two blinks, "
-        "realistic handheld camera micro-motion. No wardrobe change, no extra "
-        "people. Photorealistic."
+        "face, hair, body and scene. Slow sensual movement: her hand trails from "
+        "her waist up along her side and rests above her heart, she tilts her "
+        "head, eyes half-closed, a soft teasing smile. Gentle breathing, one or "
+        "two blinks, realistic handheld camera micro-motion. No wardrobe change, "
+        "no extra people, no sexual action. Photorealistic and intimate."
     )),
 }
 
