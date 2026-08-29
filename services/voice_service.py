@@ -1,15 +1,20 @@
 """Voice service: TTS (text-to-speech) and STT (speech-to-text).
 
 Provider priority:
-  TTS: edge-tts (free, no API key) → OpenAI TTS (if key present)
+  TTS: Gemini 2.5 TTS (natural human-like voices, V3.20.1)
+       → edge-tts (free, no API key) → OpenAI TTS (if key present)
   STT: faster-whisper (local, free) → OpenAI Whisper (if key present)
 """
+import base64
 import io
 import logging
 import tempfile
 from pathlib import Path
 
-from config import TTS_API_KEY, TTS_MODEL, TTS_VOICE, AI_BASE_URL, OPENAI_VOICE_AVAILABLE
+from config import (
+    TTS_API_KEY, TTS_MODEL, TTS_VOICE, AI_BASE_URL, OPENAI_VOICE_AVAILABLE,
+    GEMINI_API_KEY, GEMINI_TTS_ENABLED, GEMINI_TTS_MODEL, GEMINI_VIDEO_BASE_URL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +49,14 @@ CHARACTER_VOICE_PROFILES = {
     },
 }
 _DEFAULT_VOICE_PROFILE = CHARACTER_VOICE_PROFILES['anna_01']
+
+# ── Gemini 2.5 TTS prebuilt voices (V3.20.1): one cute female voice per girl ─
+GEMINI_TTS_VOICES = {
+    'anna_01': 'Leda',
+    'alena_01': 'Kore',
+    'maria_01': 'Aoede',
+}
+_DEFAULT_GEMINI_TTS_VOICE = GEMINI_TTS_VOICES['anna_01']
 
 
 def detect_voice_language(text: str) -> str:
@@ -124,7 +137,15 @@ async def synthesize_bytes(text: str, voice: str | None = None, character_id: st
     """
     v = voice if voice in _EDGE_VOICE_MAP else TTS_VOICE
 
-    # Try edge-tts first (free, no API key needed)
+    # V3.20.1: Gemini TTS first — a natural, human-like cute voice (the same
+    # audio family heard in Veo videos); edge-tts sounded robotic to the owner.
+    if GEMINI_TTS_ENABLED:
+        try:
+            return await _tts_gemini(text, character_id)
+        except Exception as exc:
+            logger.warning('gemini-tts failed: %s; falling back to edge-tts', exc)
+
+    # Try edge-tts (free, no API key needed)
     try:
         return await _tts_edge_tts(text, v, character_id)
     except ImportError:
@@ -192,3 +213,69 @@ async def _tts_openai(text: str, voice: str) -> bytes:
         model=TTS_MODEL, voice=v, input=text, response_format='opus',
     )
     return r.content
+
+
+async def _tts_gemini(text: str, character_id: str | None = None) -> bytes:
+    """V3.20.1: Gemini 2.5 Flash TTS over REST — natural cute female voices.
+
+    Returns opus when ffmpeg is available, else a WAV container (Telegram
+    still plays it as a voice file).
+    """
+    import httpx
+
+    voice_name = GEMINI_TTS_VOICES.get(character_id or '', _DEFAULT_GEMINI_TTS_VOICE)
+    payload = {
+        'contents': [{'parts': [{'text': text}]}],
+        'generationConfig': {
+            'responseModalities': ['AUDIO'],
+            'speechConfig': {
+                'voiceConfig': {'prebuiltVoiceConfig': {'voiceName': voice_name}},
+            },
+        },
+    }
+    headers = {'x-goog-api-key': GEMINI_API_KEY, 'Content-Type': 'application/json'}
+    url = f'{GEMINI_VIDEO_BASE_URL}/models/{GEMINI_TTS_MODEL}:generateContent'
+    timeout = httpx.Timeout(60.0, connect=20.0, read=60.0, write=60.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.post(url, headers=headers, json=payload)
+        if r.status_code >= 400:
+            logger.warning('Gemini TTS failed status=%s body=%s', r.status_code, r.text[:400])
+            raise RuntimeError(f'gemini_tts_http_{r.status_code}')
+        data = r.json()
+    pcm_b64 = None
+    for part in ((data.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []:
+        inline = part.get('inlineData') or part.get('inline_data') or {}
+        if inline.get('data'):
+            pcm_b64 = inline['data']
+            break
+    if not pcm_b64:
+        raise RuntimeError('gemini_tts_empty_audio')
+    wav = _pcm16_to_wav(base64.b64decode(pcm_b64), rate=24000)
+    try:
+        return await _convert_wav_to_opus(wav)
+    except Exception:
+        return wav
+
+
+def _pcm16_to_wav(pcm: bytes, rate: int = 24000) -> bytes:
+    """Wrap raw 16-bit mono PCM (Gemini TTS output) into a WAV container."""
+    import struct
+    header = b'RIFF' + struct.pack('<I', 36 + len(pcm)) + b'WAVE'
+    header += b'fmt ' + struct.pack('<IHHIIHH', 16, 1, 1, rate, rate * 2, 2, 16)
+    header += b'data' + struct.pack('<I', len(pcm))
+    return header + pcm
+
+
+async def _convert_wav_to_opus(wav_bytes: bytes) -> bytes:
+    """Convert wav bytes to opus using pydub + ffmpeg (for voice bubbles)."""
+    import asyncio
+
+    def _convert():
+        from pydub import AudioSegment
+        audio = AudioSegment.from_wav(io.BytesIO(wav_bytes))
+        out = io.BytesIO()
+        audio.export(out, format='opus', codec='libopus', bitrate='64k')
+        return out.getvalue()
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _convert)

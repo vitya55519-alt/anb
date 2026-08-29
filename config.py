@@ -72,6 +72,10 @@ GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "minimal").strip().lo
 _GEMINI_VIDEO_FLAG = os.getenv("GEMINI_VIDEO_ENABLED", "auto").strip().lower()
 GEMINI_VIDEO_ENABLED = bool(GEMINI_API_KEY_VALID) and _GEMINI_VIDEO_FLAG not in {"0", "false", "no", "off"}
 GEMINI_VIDEO_MODEL = os.getenv("GEMINI_VIDEO_MODEL", "veo-3.1-lite-generate-preview").strip()
+# V3.20.1: Gemini 2.5 TTS — natural human-like voices for voice messages
+# (edge-tts stays as the free fallback). Same key/base URL as the video chain.
+GEMINI_TTS_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts").strip()
+GEMINI_TTS_ENABLED = bool(GEMINI_API_KEY_VALID)
 GEMINI_VIDEO_BASE_URL = os.getenv("GEMINI_VIDEO_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 GEMINI_VIDEO_DURATION_SECONDS = max(4, min(8, int(os.getenv("GEMINI_VIDEO_DURATION_SECONDS", "8"))))
 GEMINI_VIDEO_RESOLUTION = os.getenv("GEMINI_VIDEO_RESOLUTION", "720p").strip()
@@ -194,6 +198,9 @@ FREEKASSA_SECRET1 = os.getenv("FREEKASSA_SECRET1", "").strip()
 FREEKASSA_SECRET2 = os.getenv("FREEKASSA_SECRET2", "").strip()
 FREEKASSA_ENABLED = bool(FREEKASSA_MERCHANT_ID and FREEKASSA_SECRET1 and FREEKASSA_SECRET2)
 FREEKASSA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_RUB", "299")))
+# V3.20.1: international Visa/Mastercard button — the same FreeKassa kassa,
+# invoice currency USD (multi-currency must be enabled in the kassa settings).
+FREEKASSA_PREMIUM_PRICE_USD = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_USD", "5")))
 # Public base URL of this Railway service (generated domain). Used in the
 # FreeKassa merchant form (notify/success/fail URLs).
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")

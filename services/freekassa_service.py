@@ -50,13 +50,20 @@ def get_order(order_id: int) -> dict | None:
         }
 
 
-def payment_url(order_id: int, amount: str) -> str:
-    """Payment-page link signed with SECRET1 (initiation signature)."""
+def payment_url(order_id: int, amount: str, currency: str | None = None) -> str:
+    """Payment-page link signed with SECRET1 (initiation signature).
+
+    V3.20.1: ``currency`` (e.g. 'USD') selects the invoice currency on a
+    multi-currency kassa — international Visa/Mastercard pay in dollars.
+    """
     sign = _md5_sign([FREEKASSA_MERCHANT_ID, str(amount), FREEKASSA_SECRET1, str(order_id)])
-    return (
+    url = (
         f'https://pay.freekassa.ru/?m={FREEKASSA_MERCHANT_ID}'
         f'&oa={amount}&o={order_id}&s={sign}&lang=ru'
     )
+    if currency:
+        url += f'&currency={currency}'
+    return url
 
 
 def verify_notify(params: dict) -> tuple[bool, str]:

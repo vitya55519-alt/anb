@@ -27,7 +27,7 @@ from config import (
     PREMIUM_DISCOUNT_PERCENT, DEMO_PREMIUM_HOURS,
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
-    FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, PUBLIC_BASE_URL, WEB_PORT,
+    FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
 )
 from services.user_service import (
     ensure_user, get_user, get_state, update_user_settings, touch_user,
@@ -783,6 +783,8 @@ def premium_keyboard(discount: dict | None = None):
         # V3.19.6: external card/SBP scenario (Telegram policy keeps Stars for
         # in-Telegram digital purchases; this link pays on FreeKassa's page).
         rows.append([InlineKeyboardButton(text=f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ картой / СБП', callback_data='fk:premium')])
+        # V3.20.1: international cards — the same kassa, invoice in USD.
+        rows.append([InlineKeyboardButton(text=f'💳 Premium — ${FREEKASSA_PREMIUM_PRICE_USD} · Visa/Mastercard', callback_data='fk:premium_usd')])
     rows.append([video_button])
     rows.append([InlineKeyboardButton(text='🎥 Кружочек от неё — только Premium', callback_data='video:circle')])
     rows.append([InlineKeyboardButton(text='🔒 📞 Звонок с персонажем · скоро', callback_data='future:anna_call')])
@@ -2862,8 +2864,17 @@ async def animate_last_photo_cb(cq: types.CallbackQuery):
 CIRCLE_PROMPT = (
     'Animate this exact photo into a short casual selfie video note: she smiles, '
     'tilts her head slightly, waves or blows a kiss as if recording a Telegram '
-    'circle message. Natural handheld camera feel, direct eye contact. Keep her '
-    'face, hair and outfit identical. No wardrobe change, no extra people. Photorealistic.'
+    'circle message. She says one short phrase in a soft, cute, natural female '
+    'voice, in Russian: "{phrase}". Natural handheld camera feel, direct eye '
+    'contact. Keep her face, hair and outfit identical. No wardrobe change, no '
+    'extra people. Photorealistic.'
+)
+# V3.20.1: circles are spoken — Veo renders her voice natively (the same cute
+# voice heard in Gemini-generated videos); silent fallback engines just ignore it.
+CIRCLE_PHRASES = (
+    'привет, это я 😘 скучал по мне?',
+    'держи мой кружочек 💋 думай обо мне',
+    'смотри, как я тебе улыбаюсь…',
 )
 
 
@@ -2944,7 +2955,7 @@ async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: in
             try:
                 if idx > 0:
                     await bot.send_message(chat_id, 'секунду, пробую ещё один способ записать кружочек 🎥')
-                video_bytes = await engine_fn(image_bytes, mime_type='image/jpeg', prompt=CIRCLE_PROMPT)
+                video_bytes = await engine_fn(image_bytes, mime_type='image/jpeg', prompt=CIRCLE_PROMPT.format(phrase=random.choice(CIRCLE_PHRASES)))
                 used_engine = engine_name
                 break
             except Exception as exc:
@@ -3078,6 +3089,28 @@ async def fk_premium(cq: types.CallbackQuery):
     await bot.send_message(
         cq.message.chat.id,
         f'💳 Оплата Premium картой / СБП — {FREEKASSA_PREMIUM_PRICE_RUB} ₽\n\n'
+        f'{link}\n\n'
+        'После оплаты премиум включится автоматически в течение минуты. '
+        'Если что-то пойдёт не так — напиши /support.',
+    )
+
+
+@dp.callback_query(F.data == 'fk:premium_usd')
+async def fk_premium_usd(cq: types.CallbackQuery):
+    """V3.20.1: international Visa/Mastercard premium, invoiced in USD."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    if not FREEKASSA_ENABLED:
+        await cq.answer('Оплата картой сейчас выключена — используй Stars ⭐', show_alert=True); return
+    await cq.answer()
+    order_id = freekassa_service.create_order(
+        cq.from_user.id, 'premium_month', str(FREEKASSA_PREMIUM_PRICE_USD),
+    )
+    link = freekassa_service.payment_url(order_id, FREEKASSA_PREMIUM_PRICE_USD, currency='USD')
+    await bot.send_message(
+        cq.message.chat.id,
+        f'💳 Оплата Premium картой Visa/Mastercard — ${FREEKASSA_PREMIUM_PRICE_USD}\n\n'
         f'{link}\n\n'
         'После оплаты премиум включится автоматически в течение минуты. '
         'Если что-то пойдёт не так — напиши /support.',
