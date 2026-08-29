@@ -183,10 +183,11 @@ def test_faceswap_uploads_reference_and_locks_identity():
 # ── 7. V3.19.1: admin free constructor + video diagnostics ────────────────
 
 def test_admin_free_constructor():
-    assert 'async def _finish_constructor(message: types.Message, charge: str | None):' in MAIN
+    assert 'async def _finish_constructor(message: types.Message, charge: str | None, telegram_id: int | None = None):' in MAIN
+    assert 'asyncio.create_task(_finish_constructor(cq.message, None, telegram_id))' in MAIN
     assert "'✅ Создать · бесплатно (админ)'" in MAIN
     # Admins skip the invoice and run generation with no charge.
-    assert '_finish_constructor(cq.message, None)' in MAIN
+    assert '_finish_constructor(message, charge)' in MAIN
     # Refund logic only fires for paid runs.
     assert 'if charge:' in MAIN[MAIN.index('constructor avatar generation failed'):]
 

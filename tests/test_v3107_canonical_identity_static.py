@@ -30,7 +30,7 @@ def test_generated_photos_have_smile_instruction():
 
 def test_personal_scene_is_lingerie_and_seedream():
     assert "'personal':'adult'" in PHOTO
-    assert "request.scene in {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}" in PHOTO
+    assert 'request.scene in SEEDREAM_ADULT_SCENES or INTIMATE_STYLE.search' in PHOTO
     assert 'tasteful private adult lingerie portrait' in PHOTO
 
 

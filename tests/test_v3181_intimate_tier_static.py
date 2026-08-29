@@ -176,7 +176,7 @@ class TestSeedreamRequestAdult:
         assert "'enable_safety_checker': not allow_adult" in PSRC
 
     def test_run_seedream_set_passes_allow_adult(self):
-        assert 'allow_adult = request.scene in ADULT_SCENES' in PSRC
+        assert 'allow_adult = request.scene in SEEDREAM_ADULT_SCENES' in PSRC
         assert 'allow_adult=allow_adult' in PSRC
 
 

@@ -22,7 +22,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION == '3.23.0'
+    assert VERSION in ('3.23.0', '3.24.0')
 
 
 # --- catalogs ----------------------------------------------------------------

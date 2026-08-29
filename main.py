@@ -4796,9 +4796,11 @@ async def _show_my_character(chat_id: int, telegram_id: int):
         await bot.send_message(chat_id, '\n'.join(lines), reply_markup=markup)
 
 
-async def _finish_constructor(message: types.Message, charge: str | None):
+async def _finish_constructor(message: types.Message, charge: str | None, telegram_id: int | None = None):
     """After Stars payment: generate the avatar, save the persona, open chat."""
-    telegram_id = message.from_user.id
+    # V3.24.0: the admin free path calls this with the callback message, whose
+    # from_user is the BOT — the session must be looked up by the real user id.
+    telegram_id = telegram_id if telegram_id is not None else message.from_user.id
     cons = _constructor_sessions.pop(telegram_id, None)
     if not cons:
         await message.answer('что-то потерялось 😕 нажми «🎨 Мой персонаж» ещё раз.')
@@ -4968,7 +4970,7 @@ async def constructor_buy_cb(cq: types.CallbackQuery):
     await cq.answer()
     # V3.19.1: admins skip the Stars invoice entirely.
     if telegram_id in ADMIN_TELEGRAM_IDS:
-        asyncio.create_task(_finish_constructor(cq.message, None))
+        asyncio.create_task(_finish_constructor(cq.message, None, telegram_id))
         return
     await send_stars_invoice(
         cq.message.chat.id,

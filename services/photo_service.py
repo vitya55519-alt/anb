@@ -167,6 +167,13 @@ REAR_VIEW_STYLE = re.compile(r'\b(поп\w*|ягодиц\w*|со спины|сз
 # explicit body-part phrasing (400/422) even when the model checker is off.
 ADULT_SCENES = {'nude', 'tease'}
 
+# V3.24.0: every intimate scene routed to Seedream runs with fal's safety
+# checker disabled (the product is 18+ confirmed; Seedream is the engine that
+# can deliver boudoir/lingerie frames). With the checker ON, fal's API-level
+# moderation rejected lingerie prompts (4xx) and the set died on the Gemini
+# fallback (http_400). Level/18+ gates upstream still apply per scene.
+SEEDREAM_ADULT_SCENES = {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}
+
 ADULT_SAFETY = (
     'This is a private intimate fine-art photograph made for someone she deeply trusts. '
     'Tasteful artistic nudity is allowed: natural body and soft warm skin tones in a private, '
@@ -1703,7 +1710,7 @@ async def _run_seedream_set(
         'Seedream set request user=%s scene=%s reference=%s target_count=%s per_request=1 timeout=%ss retries=%s',
         telegram_id, request.scene, ref.name, PHOTO_SET_SIZE, FAL_TIMEOUT_SECONDS, FAL_RETRIES,
     )
-    allow_adult = request.scene in ADULT_SCENES
+    allow_adult = request.scene in SEEDREAM_ADULT_SCENES
     for i in range(PHOTO_SET_SIZE):
         prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id, character_id), character_id=character_id) + (
             '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location, '
@@ -1775,7 +1782,7 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
     # - intimate/private/bold scenes → Seedream
     # - ordinary fully-clothed scenes → Gemini Image (primary) → OpenAI (fallback)
     combined = ' '.join([request.scene, request.clothing, request.location, request.angle]).lower()
-    if request.scene in {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'} or INTIMATE_STYLE.search(combined):
+    if request.scene in SEEDREAM_ADULT_SCENES or INTIMATE_STYLE.search(combined):
         logger.info('Hybrid photo route scene=%s -> seedream45', request.scene)
         return 'seedream45'
     if GEMINI_IMAGE_ENABLED and GEMINI_API_KEY:
@@ -1807,6 +1814,10 @@ async def _run_routed_photo_set(
                 # must not kill the photo — walk the remaining engines, and only
                 # surface an error when every one of them failed. Each fallback
                 # is wrapped: one broken engine must not stop the chain.
+                # V3.24.0: the final error carries the whole engine chain
+                # (seedream45/... → gemini_image/...) so the owner sees which
+                # engine failed FIRST and why, not just the last fallback.
+                chain = [f'seedream45/{exc.reason}']
                 last_error = exc
                 if GEMINI_IMAGE_ENABLED and GEMINI_API_KEY:
                     try:
@@ -1815,6 +1826,7 @@ async def _run_routed_photo_set(
                         return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
                     except PhotoGenerationError as gemini_exc:
                         logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=gemini_image reason=%s', telegram_id, resolved.scene, gemini_exc.reason)
+                        chain.append(f'gemini_image/{gemini_exc.reason}')
                         last_error = gemini_exc
                 if OPENAI_IMAGE_AVAILABLE:
                     try:
@@ -1823,7 +1835,10 @@ async def _run_routed_photo_set(
                         return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
                     except PhotoGenerationError as openai_exc:
                         logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=openai reason=%s', telegram_id, resolved.scene, openai_exc.reason)
+                        chain.append(f'openai/{openai_exc.reason}')
                         last_error = openai_exc
+                if len(chain) > 1:
+                    raise PhotoGenerationError('seedream45', ' → '.join(chain)) from last_error
                 raise last_error
         if provider == 'gemini_image':
             try:

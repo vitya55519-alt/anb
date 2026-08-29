@@ -58,15 +58,17 @@ SENSUAL_ANIMATION_PROMPT = (
 VIDEO_PRESETS: dict[str, tuple[str, str]] = {
     'kiss': ('\U0001f48b Поцелуй', (
         "Animate this exact photo of the same adult woman. Preserve her identity, "
-        "face, hair, body and scene. She slowly leans toward the camera as if "
-        "closer to the viewer, softly purses her lips, blows a gentle kiss and "
+        "face, hair, body and scene. The camera is the viewer's eyes: she slowly "
+        "leans in close to the camera, softly purses her lips and presses a gentle "
+        "kiss toward the viewer, as if kissing the person holding the camera, then "
         "smiles warmly. Natural breathing, one or two blinks, realistic handheld "
         "camera micro-motion. No wardrobe change, no extra people. Photorealistic."
     )),
     'hug': ('\U0001f917 Обнимашки', (
         "Animate this exact photo of the same adult woman. Preserve her identity, "
-        "face, hair, body and scene. She wraps her arms around herself in a cozy "
-        "self-hug, closes her eyes for a moment, tilts her head and smiles softly "
+        "face, hair, body and scene. The camera is the viewer's eyes: she steps "
+        "close and wraps her arms around the viewer in a warm embrace, leaning her "
+        "head toward the camera, closing her eyes for a moment and smiling softly "
         "as if hugging someone dear. Warm tender mood, natural breathing, one or "
         "two blinks, realistic handheld camera micro-motion. No wardrobe change, "
         "no extra people. Photorealistic."

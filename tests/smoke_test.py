@@ -23,7 +23,8 @@ adapt=(ROOT/'services/adaptation_service.py').read_text(encoding='utf-8')
 models=(ROOT/'models/app_models.py').read_text(encoding='utf-8')
 chat=(ROOT/'services/chat_service.py').read_text(encoding='utf-8')
 assert 'https://fal.run/' in photo
-assert "request.scene in {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}" in photo
+assert "SEEDREAM_ADULT_SCENES = {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}" in photo
+assert 'request.scene in SEEDREAM_ADULT_SCENES or INTIMATE_STYLE.search' in photo
 assert "return 'openai'" in photo
 assert 'OUTFIT_POOLS' in photo and 'WARDROBE_LEVEL_POOLS' in photo and 'HAIRSTYLE_POOL' in photo and 'SHOT_VARIANTS' in photo
 assert 'PACK_TIER_RULES' in photo and 'LEVEL_VISUAL_RULES' in photo and 'SEASON_RULES' in photo
