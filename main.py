@@ -64,7 +64,7 @@ from services.cloud_video_service import (
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
 from services import freekassa_service
 from aiohttp import web
-from services import apartment_service, gifts_service, dates_service
+from services import apartment_service, gifts_service, dates_service, spicy_service
 from services.relationship_service import record_user_message, set_stage_change_notifier
 from services.relationship_signals import infer_delta
 
@@ -192,6 +192,9 @@ _photo_job_reservations: set[int] = set()
 # Track when Anna offers a photo in chat — next user "yes" triggers photo flow
 _photo_offer_pending: dict[int, float] = {}  # telegram_id -> timestamp of offer
 _photo_offer_expression: dict[int, str | None] = {}  # telegram_id -> chat mood that triggered the offer
+# V3.23.0: paid fantasy constructor — telegram_id -> (charge_id, amount) while
+# the bot waits for the user's scenario description.
+_fantasy_pending: dict[int, tuple[str, int]] = {}
 _PHOTO_OFFER_TTL = 120  # offer expires after 2 minutes
 
 # Regex: Anna offered a photo in her response
@@ -884,6 +887,7 @@ def adult_keyboard():
 
 def photo_keyboard(telegram_id: int):
     level = get_relationship_level(telegram_id, get_user_character(telegram_id))
+    lang = user_lang(telegram_id)
     unlocked = [scene for scene in PHOTO_MENU_ORDER if SCENE_LEVELS.get(scene, 99) <= level]
     rows = []
     for i in range(0, len(unlocked), 2):
@@ -914,6 +918,11 @@ def photo_keyboard(telegram_id: int):
 
     if level >= 5:
         rows.append([InlineKeyboardButton(text=f'✨ Кастомное фото — {CUSTOM_PHOTO_COST_STARS}⭐', callback_data='custom:start')])
+        # V3.23.0: entry point to the paid spicy products (sets/gifts/fantasy).
+        rows.append([InlineKeyboardButton(
+            text='🔥 Приватное — горячие сеты' if lang == RU else '🔥 Private — hot sets',
+            callback_data='spicy:menu',
+        )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1040,7 +1049,22 @@ async def _photo_progress_ping(chat_id: int, telegram_id: int):
         pass
 
 
-async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str):
+async def _maybe_refund_paid_photo(chat_id: int, telegram_id: int, charge: str | None, amount: int, product: str) -> bool:
+    """V3.23.0: paid spicy/gift/fantasy sets auto-refund Stars whenever the
+    set cannot be delivered. Free/credit sets never carry a charge id."""
+    if not charge:
+        return False
+    try:
+        await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge)
+        record_refund(telegram_id, charge, amount, product=product)
+        await bot.send_message(chat_id, 'не получилось сделать этот сет 😕 Stars вернул автоматически.')
+    except Exception:
+        logger.exception('spicy refund failed user=%s charge=%s', telegram_id, charge)
+        await bot.send_message(chat_id, 'сет не получился 😕 напиши /support — проверим оплату и вернём Stars.')
+    return True
+
+
+async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo'):
     uid = ensure_user(telegram_id)
     ping = asyncio.create_task(_photo_progress_ping(chat_id, telegram_id))
     try:
@@ -1064,35 +1088,47 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
     except PermissionError as exc:
         logger.info('photo denied user=%s reason=%s', telegram_id, exc)
         track_event(uid, 'photo_failed', metadata={'scene': request.scene, 'reason': str(exc), 'provider': 'access'})
+        if await _maybe_refund_paid_photo(chat_id, telegram_id, charge, amount, product):
+            return
         await bot.send_message(chat_id, 'этот вариант сейчас недоступен 😌')
     except PhotoGenerationError as exc:
         logger.warning('photo generation failed provider=%s reason=%s user=%s scene=%s', exc.provider, exc.reason, telegram_id, request.scene)
         track_event(uid, 'photo_failed', metadata={'scene': request.scene, 'reason': exc.reason, 'provider': exc.provider})
+        if await _maybe_refund_paid_photo(chat_id, telegram_id, charge, amount, product):
+            return
         debug_hint = f' ({exc.provider}/{exc.reason})' if exc.reason else ''
         await bot.send_message(chat_id, f'фото сейчас не получилось 😕{debug_hint}\nлимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
     except Exception as exc:
         logger.exception('photo generation failed user=%s', telegram_id)
         track_event(uid, 'photo_failed', metadata={'scene': request.scene, 'reason': type(exc).__name__, 'provider': 'unknown'})
+        if await _maybe_refund_paid_photo(chat_id, telegram_id, charge, amount, product):
+            return
         await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
     finally:
         ping.cancel()
         _photo_jobs.pop(telegram_id, None)
 
 
-async def _start_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str):
+async def _start_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo'):
     active = _photo_jobs.get(telegram_id)
     if (active and not active.done()) or telegram_id in _photo_job_reservations:
+        if await _maybe_refund_paid_photo(chat_id, telegram_id, charge, amount, product):
+            return False
         await bot.send_message(chat_id, 'я уже делаю тебе один сет 😄 сначала закончу его')
         return False
     _photo_job_reservations.add(telegram_id)
     try:
         # Always check budget and show the generating message — AI generation
         # is the primary route now, library/community are fallbacks only.
-        if delivery_type in {'free', 'story'}:
+        # V3.23.0: paid sets are budget-guarded too and auto-refund instead of
+        # taking money during a provider outage.
+        if delivery_type in {'free', 'story', 'paid'}:
             allowed, reason = budget_allows_photo()
             if not allowed:
                 logger.error('image budget guard blocked generation reason=%s user=%s', reason, telegram_id)
                 track_event(ensure_user(telegram_id), 'photo_budget_blocked', metadata={'scene': request.scene, 'reason': reason})
+                if await _maybe_refund_paid_photo(chat_id, telegram_id, charge, amount, product):
+                    return False
                 await bot.send_message(chat_id, 'с фото сейчас техническая пауза 😕 попробуй чуть позже. лимит не списан.')
                 return False
         await bot.send_message(chat_id, random.choice((
@@ -1100,7 +1136,7 @@ async def _start_photo_background(chat_id: int, telegram_id: int, request: Photo
             'погоди чуть-чуть 😌 хочу сделать красиво',
             'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
         )))
-        task = asyncio.create_task(_run_photo_background(chat_id, telegram_id, request, delivery_type))
+        task = asyncio.create_task(_run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, amount=amount, product=product))
         _photo_jobs[telegram_id] = task
         return True
     finally:
@@ -3414,6 +3450,21 @@ async def pre_checkout(query: types.PreCheckoutQuery):
     elif payload.startswith('date:'):
         date = dates_service.get(payload.split(':', 1)[1])
         ok = bool(date) and amount == date.cost and date.min_level <= get_relationship_level(query.from_user.id, get_user_character(query.from_user.id))
+    elif payload.startswith('spicy:'):
+        # V3.23.0: paid hot sets — amount, level gate and 18+ are re-checked here.
+        item = spicy_service.get_spicy_set(payload.split(':', 1)[1])
+        ok = (bool(item) and amount == item.cost
+              and item.min_level <= get_relationship_level(query.from_user.id, get_user_character(query.from_user.id))
+              and is_adult_confirmed(query.from_user.id))
+    elif payload.startswith('pgift:'):
+        gift = spicy_service.get_private_gift(payload.split(':', 1)[1])
+        ok = (bool(gift) and amount == gift.cost
+              and gift.min_level <= get_relationship_level(query.from_user.id, get_user_character(query.from_user.id))
+              and is_adult_confirmed(query.from_user.id))
+    elif payload == 'fantasy:start':
+        ok = (amount == spicy_service.FANTASY_COST_STARS
+              and spicy_service.FANTASY_MIN_LEVEL <= get_relationship_level(query.from_user.id, get_user_character(query.from_user.id))
+              and is_adult_confirmed(query.from_user.id))
     if not ok:
         logger.warning('pre_checkout rejected user=%s payload=%s amount=%s', query.from_user.id,payload,amount)
         await query.answer(ok=False,error_message='Сумма или товар изменились. Открой покупку заново.')
@@ -3574,6 +3625,51 @@ async def successful_payment(message: types.Message):
         record_payment(message.from_user.id, 'date', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'date', 'date': date.id})
         await _deliver_date_reward(message.chat.id, message.from_user.id, message.from_user.first_name or '', date)
+        return
+
+    if payload.startswith('spicy:'):
+        # V3.23.0: paid hot set — narration, voice reply and a fresh private set
+        # outside the daily quota; Stars auto-refund if delivery fails.
+        item = spicy_service.get_spicy_set(payload.split(':', 1)[1])
+        if not item:
+            await message.answer('Оплата прошла, но сет уже не найден. Напиши /support — разберёмся.')
+            return
+        record_payment(message.from_user.id, 'spicy_set', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'spicy_set', 'set': item.id})
+        narration = item.text_en if user_lang(message.from_user.id) == EN else item.text
+        await message.answer(f'{item.emoji} {narration}')
+        await _send_voice_note(message.chat.id, message.from_user.id, narration)
+        await _start_photo_background(message.chat.id, message.from_user.id, PhotoRequest(scene=item.scene, mood=item.mood), 'paid',
+                                      charge=charge, amount=payment.total_amount, product='spicy_set')
+        return
+
+    if payload.startswith('pgift:'):
+        # V3.23.0: private gift — affection delta + narration + 18+ photo finale.
+        gift = spicy_service.get_private_gift(payload.split(':', 1)[1])
+        if not gift:
+            await message.answer('Оплата прошла, но подарок уже не найден. Напиши /support — разберёмся.')
+            return
+        record_payment(message.from_user.id, 'private_gift', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'private_gift', 'gift': gift.id})
+        character_id = get_user_character(message.from_user.id)
+        await record_user_message(message.from_user.id, message.from_user.first_name or '', relationship=gift.affection, intimacy=round(gift.affection / 2, 2), event_type='gift', reason=f'pgift:{gift.id}', character_id=character_id)
+        narration = gift.text_en if user_lang(message.from_user.id) == EN else gift.text
+        await message.answer(f'{gift.emoji} Ты подарил {gift.name}!\n\n{narration}' if user_lang(message.from_user.id) != EN else f'{gift.emoji} You gifted the {gift.name_en}!\n\n{narration}')
+        await _send_voice_note(message.chat.id, message.from_user.id, narration)
+        await _start_photo_background(message.chat.id, message.from_user.id, PhotoRequest(scene=gift.scene, mood=gift.mood), 'paid',
+                                      charge=charge, amount=payment.total_amount, product='private_gift')
+        return
+
+    if payload == 'fantasy:start':
+        # V3.23.0: the fantasy constructor is paid first — the NEXT text
+        # message becomes the scenario (parsed via whitelisted keywords only).
+        record_payment(message.from_user.id, 'fantasy', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'fantasy'})
+        _fantasy_pending[message.from_user.id] = (charge, payment.total_amount)
+        if user_lang(message.from_user.id) == EN:
+            await message.answer('payment received 😌 now describe your fantasy in a few words — outfit, place, mood. I\'ll turn it into a photo set.')
+        else:
+            await message.answer('оплату получила 😌 теперь опиши фантазию в двух словах — образ, место, настроение. Я превращу её в сет фото.')
         return
 
     if payload.startswith('photo:'):
@@ -3784,6 +3880,170 @@ async def date_locked(cq: types.CallbackQuery):
         await cq.answer(f'Это свидание откроется на уровне {date.min_level} 😉', show_alert=True)
     else:
         await cq.answer()
+
+
+# === ПРИВАТНЫЙ РАЗДЕЛ (v3.23.0) — платные горячие сеты, приватные подарки ===
+# и конструктор фантазий. Всё вне дневного лимита, только после 18+ и с
+# уровнем не ниже каталожного; при любой неудаче доставки Stars возвращаются.
+
+def _spicy_menu_text(telegram_id: int, lang: str) -> str:
+    info = build_photo_menu(telegram_id, get_user_character(telegram_id))
+    if lang == EN:
+        return (
+            f'🔥 Private section — everything here is outside your daily limit.\n'
+            f'❤️ Intimacy: {info["level"]}/6 · paid sets never spend free photos or credits.\n\n'
+            f'Choose what you want right now:'
+        )
+    return (
+        f'🔥 Приватный раздел — всё здесь вне дневного лимита.\n'
+        f'❤️ Близость: {info["level"]}/6 · платные сеты не тратят бесплатные фото и кредиты.\n\n'
+        f'Выбери, что хочешь прямо сейчас:'
+    )
+
+
+def _spicy_menu_keyboard(telegram_id: int, lang: str) -> InlineKeyboardMarkup:
+    level = get_relationship_level(telegram_id, get_user_character(telegram_id))
+    lock_suffix = 'ур.' if lang == RU else 'lvl '
+    rows: list[list[InlineKeyboardButton]] = []
+    for item in spicy_service.SPICY_SETS:
+        name = item.name_en if lang == EN else item.name
+        if item.min_level <= level:
+            rows.append([InlineKeyboardButton(text=f'{item.emoji} {name} · {item.cost}⭐', callback_data=f'spicy:set:{item.id}')])
+        else:
+            rows.append([InlineKeyboardButton(text=f'🔒 {name} · {lock_suffix}{item.min_level}', callback_data=f'spicy:locked:{item.min_level}')])
+    for gift in spicy_service.PRIVATE_GIFTS:
+        name = gift.name_en if lang == EN else gift.name
+        if gift.min_level <= level:
+            rows.append([InlineKeyboardButton(text=f'{gift.emoji} {name} · {gift.cost}⭐', callback_data=f'spicy:gift:{gift.id}')])
+        else:
+            rows.append([InlineKeyboardButton(text=f'🔒 {name} · {lock_suffix}{gift.min_level}', callback_data=f'spicy:locked:{gift.min_level}')])
+    fantasy_name = '🎭 Фантазия — сценарий от тебя' if lang == RU else '🎭 Fantasy — your scenario'
+    if level >= spicy_service.FANTASY_MIN_LEVEL:
+        rows.append([InlineKeyboardButton(text=f'{fantasy_name} · {spicy_service.FANTASY_COST_STARS}⭐', callback_data='spicy:fantasy')])
+    else:
+        rows.append([InlineKeyboardButton(text=f'🔒 {fantasy_name} · {lock_suffix}{spicy_service.FANTASY_MIN_LEVEL}', callback_data=f'spicy:locked:{spicy_service.FANTASY_MIN_LEVEL}')])
+    back = '← 📸 Фото' if lang == RU else '← 📸 Photos'
+    rows.append([InlineKeyboardButton(text=back, callback_data='photo_menu:open')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@dp.callback_query(F.data == 'spicy:menu')
+async def spicy_menu_callback(cq: types.CallbackQuery):
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not is_adult_confirmed(cq.from_user.id):
+        await cq.answer()
+        await cq.message.answer('подтверди 18+ одной кнопкой — и сразу открою приватный раздел 🔥', reply_markup=adult_keyboard())
+        return
+    await cq.answer()
+    lang = user_lang(cq.from_user.id)
+    await cq.message.answer(_spicy_menu_text(cq.from_user.id, lang), reply_markup=_spicy_menu_keyboard(cq.from_user.id, lang))
+
+
+@dp.callback_query(F.data.startswith('spicy:set:'))
+async def spicy_set_callback(cq: types.CallbackQuery):
+    item = spicy_service.get_spicy_set(cq.data.split(':', 2)[2])
+    if not item:
+        await cq.answer('Сет не найден', show_alert=True)
+        return
+    level = get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
+    if item.min_level > level:
+        await cq.answer(f'Откроется на уровне {item.min_level} 😉', show_alert=True)
+        return
+    if not is_adult_confirmed(cq.from_user.id):
+        await cq.answer()
+        await cq.message.answer('подтверди 18+ одной кнопкой — и сразу открою приватный раздел 🔥', reply_markup=adult_keyboard())
+        return
+    await cq.answer()
+    track_event(ensure_user(cq.from_user.id), 'paywall_view', metadata={'product': 'spicy_set', 'set': item.id})
+    lang = user_lang(cq.from_user.id)
+    name = item.name_en if lang == EN else item.name
+    description = item.text_en if lang == EN else item.text
+    await send_stars_invoice(cq.message.chat.id, f'{item.emoji} {name}',
+                             f'{description}\n\n{"Fresh photo set, outside your daily limit 📸" if lang == EN else "Свежий сет фото, вне дневного лимита 📸"}',
+                             f'spicy:{item.id}', item.cost)
+
+
+@dp.callback_query(F.data.startswith('spicy:gift:'))
+async def spicy_gift_callback(cq: types.CallbackQuery):
+    gift = spicy_service.get_private_gift(cq.data.split(':', 2)[2])
+    if not gift:
+        await cq.answer('Подарок не найден', show_alert=True)
+        return
+    level = get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
+    if gift.min_level > level:
+        await cq.answer(f'Откроется на уровне {gift.min_level} 😉', show_alert=True)
+        return
+    if not is_adult_confirmed(cq.from_user.id):
+        await cq.answer()
+        await cq.message.answer('подтверди 18+ одной кнопкой — и сразу открою приватный раздел 🔥', reply_markup=adult_keyboard())
+        return
+    await cq.answer()
+    track_event(ensure_user(cq.from_user.id), 'paywall_view', metadata={'product': 'private_gift', 'gift': gift.id})
+    lang = user_lang(cq.from_user.id)
+    name = gift.name_en if lang == EN else gift.name
+    description = gift.text_en if lang == EN else gift.text
+    await send_stars_invoice(cq.message.chat.id, f'{gift.emoji} {name}',
+                             f'{description}\n\n{"She reacts, your bond grows — and a private photo set follows 📸" if lang == EN else "Она отреагирует, связь станет крепче — а в конце приватный сет фото 📸"}',
+                             f'pgift:{gift.id}', gift.cost)
+
+
+@dp.callback_query(F.data == 'spicy:fantasy')
+async def spicy_fantasy_callback(cq: types.CallbackQuery):
+    level = get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
+    if level < spicy_service.FANTASY_MIN_LEVEL:
+        await cq.answer(f'Откроется на уровне {spicy_service.FANTASY_MIN_LEVEL} 😉', show_alert=True)
+        return
+    if not is_adult_confirmed(cq.from_user.id):
+        await cq.answer()
+        await cq.message.answer('подтверди 18+ одной кнопкой — и сразу открою приватный раздел 🔥', reply_markup=adult_keyboard())
+        return
+    await cq.answer()
+    track_event(ensure_user(cq.from_user.id), 'paywall_view', metadata={'product': 'fantasy'})
+    lang = user_lang(cq.from_user.id)
+    title = '🎭 Фантазия' if lang == RU else '🎭 Fantasy'
+    if lang == EN:
+        description = 'Describe your scenario in a few words — outfit, place, mood — and she will shoot a custom set for you.'
+    else:
+        description = 'Опиши сценарий в двух словах — образ, место, настроение — и она снимет персональный сет.'
+    await send_stars_invoice(cq.message.chat.id, title, description, 'fantasy:start', spicy_service.FANTASY_COST_STARS)
+
+
+@dp.callback_query(F.data.startswith('spicy:locked:'))
+async def spicy_locked_callback(cq: types.CallbackQuery):
+    try:
+        required = int(cq.data.split(':', 2)[2])
+    except ValueError:
+        await cq.answer()
+        return
+    current = get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
+    if user_lang(cq.from_user.id) == EN:
+        alert = f'🔒 Unlocks at level {required}/{MAX_RELATIONSHIP_LEVEL}. You are at {current}/{MAX_RELATIONSHIP_LEVEL}. Intimacy grows from conversation.'
+    else:
+        alert = f'🔒 Откроется на уровне {required}/{MAX_RELATIONSHIP_LEVEL}. Сейчас {current}/{MAX_RELATIONSHIP_LEVEL}. Близость растёт от общения.'
+    await cq.answer(alert, show_alert=True)
+
+
+async def _handle_fantasy_input(message: types.Message) -> None:
+    """The paid fantasy constructor consumes the user's NEXT text message.
+    Only whitelisted keyword extractions reach the image prompt."""
+    charge, amount = _fantasy_pending[message.from_user.id]
+    text_value = (message.text or '').strip()
+    if len(text_value) < 3:
+        if user_lang(message.from_user.id) == EN:
+            await message.answer('a bit more detail 🙂 for example: “black lace, by the mirror, bold”')
+        else:
+            await message.answer('опиши чуть подробнее 🙂 например: «в чёрном кружеве, у зеркала, дерзко»')
+        return
+    fields = spicy_service.parse_fantasy(text_value)
+    del _fantasy_pending[message.from_user.id]
+    uid = ensure_user(message.from_user.id)
+    track_event(uid, 'fantasy_request', metadata={'scene': fields['scene']})
+    if user_lang(message.from_user.id) == EN:
+        await message.answer('got it 😌 assembling your set…')
+    else:
+        await message.answer('приняла 😌 собираю твой сет…')
+    await _start_photo_background(message.chat.id, message.from_user.id, PhotoRequest(**fields), 'paid',
+                                  charge=charge, amount=amount, product='fantasy')
 
 
 @dp.message(Command('photo', 'selfie'))
@@ -5067,6 +5327,11 @@ async def admin_stats_cmd(message: types.Message):
 @dp.message(F.text)
 async def text_message(message: types.Message):
     if (message.text or '').startswith('/'):
+        return
+
+    # V3.23.0: a paid fantasy constructor is waiting for the scenario text.
+    if message.from_user and message.from_user.id in _fantasy_pending:
+        await _handle_fantasy_input(message)
         return
 
     if not has_accepted(message.from_user.id):

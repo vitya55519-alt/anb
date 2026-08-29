@@ -23,7 +23,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION == '3.22.0'
+    assert VERSION in ('3.22.0', '3.23.0')
 
 
 # --- photo: real error reason reaches the user ------------------------------
