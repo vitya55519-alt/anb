@@ -30,6 +30,7 @@ from config import (
     FAL_RETRIES, FAL_RETRY_BACKOFF_SECONDS, FAL_ESTIMATED_COST_USD,
     PHOTO_ROUTER_MODE, PHOTO_SET_SIZE,
     GEMINI_API_KEY, GEMINI_IMAGE_ENABLED, GEMINI_IMAGE_MODEL, GEMINI_IMAGE_TIMEOUT_SECONDS, GEMINI_IMAGE_ESTIMATED_COST_USD, GEMINI_IMAGE_ASPECT_RATIO, GEMINI_IMAGE_SIZE,
+    GEMINI_VIDEO_BASE_URL,
     COMMUNITY_POOL_ENABLED, COMMUNITY_POOL_FIRST,
 )
 from models.app_models import User
@@ -1020,12 +1021,61 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
     without a reference it creates a fresh identity. Gemini image generation
     is the fallback route when fal.ai is unavailable or fails.
     """
-    if FAL_KEY:
+    # V3.25.0: _seedream_edit/_gemini_edit below are the real engines; the
+    # face reference makes Seedream act as a face-swap identity anchor.
+    if FAL_KEY and reference_path:
         try:
-            return await _seedream_edit(reference_path, prompt, '3:4')
+            return await _seedream_edit(reference_path, prompt)
         except Exception:
             logger.warning('constructor avatar Seedream failed; falling back to Gemini')
-    return await _gemini_edit(prompt, '3:4')
+    return await _gemini_edit(prompt, reference_path)
+
+
+async def _seedream_edit(reference_path: Path | None, prompt: str) -> tuple[bytes, str]:
+    """V3.25.0: constructor face-swap via Seedream edit (user face = anchor)."""
+    if not FAL_KEY:
+        raise PhotoGenerationError('seedream45', 'FAL_KEY is not configured')
+    if not (reference_path and reference_path.exists()):
+        raise PhotoGenerationError('seedream45', 'no_face_reference')
+    result = await _seedream_request(
+        prompt, [_file_data_uri(reference_path)], 1,
+        request_label='constructor_avatar', allow_adult=False,
+    )
+    images = result.get('images') if isinstance(result, dict) else None
+    url = images[0].get('url') if images and isinstance(images[0], dict) else None
+    if not url:
+        raise PhotoGenerationError('seedream45', 'no_image_url')
+    async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=20.0), follow_redirects=True) as client:
+        download = await client.get(url)
+    if download.status_code >= 400 or not download.content:
+        raise PhotoGenerationError('seedream45', f'download_{download.status_code}')
+    return download.content, download.headers.get('content-type', 'image/jpeg')
+
+
+async def _gemini_edit(prompt: str, reference_path: Path | None = None) -> tuple[bytes, str]:
+    """V3.25.0: constructor avatar via Gemini image (text-to-image, optional face ref)."""
+    if not GEMINI_API_KEY or not GEMINI_IMAGE_ENABLED:
+        raise PhotoGenerationError('gemini_image', 'not_configured')
+    parts: list[dict] = [{'text': prompt + '\nPhotorealistic portrait of one person, natural skin, soft studio light.'}]
+    if reference_path and reference_path.exists():
+        data, mime = _image_b64(reference_path)
+        parts.append({'inline_data': {'mime_type': mime, 'data': data}})
+    payload = {'contents': [{'parts': parts}], 'generationConfig': {'responseModalities': ['IMAGE']}}
+    headers = {'x-goog-api-key': GEMINI_API_KEY, 'Content-Type': 'application/json'}
+    async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=20.0)) as client:
+        response = await client.post(
+            f'{GEMINI_VIDEO_BASE_URL}/models/{GEMINI_IMAGE_MODEL}:generateContent',
+            headers=headers, json=payload,
+        )
+    if response.status_code >= 400:
+        logger.warning('constructor avatar Gemini HTTP %s body=%s', response.status_code, response.text[:400])
+        raise PhotoGenerationError('gemini_image', f'http_{response.status_code}')
+    data = response.json()
+    for part in ((data.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []:
+        inline = part.get('inlineData') or part.get('inline_data') or {}
+        if inline.get('data'):
+            return base64.b64decode(inline['data']), inline.get('mimeType') or inline.get('mime_type') or 'image/png'
+    raise PhotoGenerationError('gemini_image', 'no_image')
 
 
 def _pick_nonrepeat(options: list[str], previous: str | None) -> str:
@@ -1286,9 +1336,46 @@ async def _download_result_bytes(result: GeneratedPhoto) -> bytes | None:
         return None
 
 
-def _file_data_uri(path: Path) -> str:
+_DATA_URI_CACHE: dict[str, tuple[str, str]] = {}
+
+
+def _image_b64(path: Path, max_bytes: int = 900_000, max_side: int = 1280) -> tuple[str, str]:
+    """Return (base64, mime) for a reference image, downscaled when oversized.
+
+    V3.25.0: the canonical PNGs are ~5 MB each; embedding them as base64 made
+    every Seedream/Gemini edit request multi-megabyte and fal rejected the
+    payload with HTTP 422.  Re-encode to a compact JPEG (Pillow) when needed;
+    results are cached per path+size+mtime.
+    """
+    stat = path.stat()
+    key = f'{path}:{stat.st_size}:{stat.st_mtime_ns}'
+    cached = _DATA_URI_CACHE.get(key)
+    if cached:
+        return cached
+    raw = path.read_bytes()
     mime = mimetypes.guess_type(path.name)[0] or 'image/png'
-    encoded = base64.b64encode(path.read_bytes()).decode('ascii')
+    if len(raw) > max_bytes:
+        try:
+            import io as _io
+            from PIL import Image
+            img = Image.open(_io.BytesIO(raw)).convert('RGB')
+            width, height = img.size
+            scale = min(1.0, max_side / max(width, height))
+            if scale < 1.0:
+                img = img.resize((max(1, int(width * scale)), max(1, int(height * scale))), Image.LANCZOS)
+            buf = _io.BytesIO()
+            img.save(buf, format='JPEG', quality=88, optimize=True)
+            raw = buf.getvalue()
+            mime = 'image/jpeg'
+        except Exception:
+            logger.warning('reference downscale failed for %s; sending original bytes', path.name)
+    encoded = (base64.b64encode(raw).decode('ascii'), mime)
+    _DATA_URI_CACHE[key] = encoded
+    return encoded
+
+
+def _file_data_uri(path: Path) -> str:
+    encoded, mime = _image_b64(path)
     return f'data:{mime};base64,{encoded}'
 
 
@@ -1320,12 +1407,8 @@ async def _gemini_image_one_frame(character: dict, telegram_id: int, request: Ph
     refs = _openai_reference_paths(character, request.scene)[:2]
     inputs: list[dict] = [{"type": "text", "text": prompt}]
     for ref in refs:
-        mime = mimetypes.guess_type(str(ref))[0] or 'image/png'
-        inputs.append({
-            "type": "image",
-            "data": base64.b64encode(ref.read_bytes()).decode('ascii'),
-            "mime_type": mime,
-        })
+        data, mime = _image_b64(ref)
+        inputs.append({"type": "image", "data": data, "mime_type": mime})
 
     payload = {
         'model': GEMINI_IMAGE_MODEL,
@@ -1524,7 +1607,10 @@ async def _seedream_request(
                     await asyncio.sleep(FAL_RETRY_BACKOFF_SECONDS * attempt)
                     continue
                 logger.error('Seedream HTTP error status=%s body=%s', response.status_code, body)
-                raise PhotoGenerationError('seedream45', f'HTTP {response.status_code}')
+                # V3.25.0: carry a short body excerpt in the reason so the chat
+                # error chain shows WHY fal rejected the request, not just 422.
+                detail = ' '.join(body.split())[:140]
+                raise PhotoGenerationError('seedream45', f'HTTP {response.status_code} {detail}'.strip())
 
             try:
                 return response.json()
@@ -1725,7 +1811,7 @@ async def _run_seedream_set(
             # wording with its own API-level moderation (400/403/422/451) even
             # when the model safety checker is disabled — the retry simplifies
             # the prompt; it does not disable safety.
-            if exc.reason in {'HTTP 400', 'HTTP 403', 'HTTP 422', 'HTTP 451'}:
+            if exc.reason.startswith(('HTTP 400', 'HTTP 403', 'HTTP 422', 'HTTP 451')):
                 retry_request = _seedream_safe_retry_request(request)
                 retry_prompt = _build_prompt(retry_request, i, seedream=True, relationship_level=min(get_relationship_level(telegram_id, character_id), 4), character_id=character_id, force_safe=True) + (
                     '\nSAFE RETRY: tasteful fully covered fashion, opaque garment, neutral pose, no nudity, no body-part emphasis. Even for private scenes the outfit stays fully opaque and covered. Create exactly ONE photo.'

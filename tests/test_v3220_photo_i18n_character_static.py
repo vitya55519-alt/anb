@@ -23,7 +23,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.22.0', '3.23.0', '3.24.0')
+    assert VERSION in ('3.22.0', '3.23.0', '3.24.0', '3.25.0')
 
 
 # --- photo: real error reason reaches the user ------------------------------
@@ -48,7 +48,7 @@ def test_adult_prompts_use_fine_art_wording():
 
 
 def test_safe_retry_covers_policy_4xx():
-    assert "{'HTTP 400', 'HTTP 403', 'HTTP 422', 'HTTP 451'}" in PHOTO
+    assert "('HTTP 400', 'HTTP 403', 'HTTP 422', 'HTTP 451')" in PHOTO
 
 
 def test_safe_retry_forces_clothed_prompt():
@@ -57,7 +57,7 @@ def test_safe_retry_forces_clothed_prompt():
     assert 'force_safe: bool = False' in PHOTO
     assert 'request.scene in ADULT_SCENES and not force_safe' in PHOTO
     assert 'if scene_tiers and not force_safe:' in PHOTO
-    retry = PHOTO[PHOTO.index("exc.reason in {'HTTP 400'"):PHOTO.index("exc.reason in {'HTTP 400'") + 800]
+    retry = PHOTO[PHOTO.index("exc.reason.startswith(('HTTP 400'"):PHOTO.index("exc.reason.startswith(('HTTP 400'") + 800]
     assert 'force_safe=True' in retry
 
 

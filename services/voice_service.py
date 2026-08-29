@@ -5,6 +5,7 @@ Provider priority:
        → edge-tts (free, no API key) → OpenAI TTS (if key present)
   STT: faster-whisper (local, free) → OpenAI Whisper (if key present)
 """
+import asyncio
 import base64
 import io
 import logging
@@ -57,6 +58,14 @@ GEMINI_TTS_VOICES = {
     'maria_01': 'Aoede',
 }
 _DEFAULT_GEMINI_TTS_VOICE = GEMINI_TTS_VOICES['anna_01']
+
+# V3.25.0: Google rotates TTS model names (2.5 preview was superseded by the
+# 3.1 preview).  Walk the chain on 404/400 so the human-like voice survives
+# model shutdowns; an explicit GEMINI_TTS_MODEL env override is tried first.
+_TTS_MODEL_CHAIN = tuple(dict.fromkeys(
+    [GEMINI_TTS_MODEL, 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts']
+))
+_tts_good_model: str | None = None
 
 
 def detect_voice_language(text: str) -> str:
@@ -216,14 +225,40 @@ async def _tts_openai(text: str, voice: str) -> bytes:
 
 
 async def _tts_gemini(text: str, character_id: str | None = None) -> bytes:
-    """V3.20.1: Gemini 2.5 Flash TTS over REST — natural cute female voices.
+    """V3.20.1: Gemini Flash TTS over REST — natural cute female voices.
 
-    Returns opus when ffmpeg is available, else a WAV container (Telegram
-    still plays it as a voice file).
+    V3.25.0: model chain with a remembered working model; one backoff retry
+    on 429/503 per model.  Returns opus when ffmpeg is available, else a WAV
+    container (Telegram still plays it as a voice file).
     """
+    global _tts_good_model
+    voice_name = GEMINI_TTS_VOICES.get(character_id or '', _DEFAULT_GEMINI_TTS_VOICE)
+    models = ([_tts_good_model] if _tts_good_model in _TTS_MODEL_CHAIN else []) + [
+        m for m in _TTS_MODEL_CHAIN if m != _tts_good_model
+    ]
+    last_error: Exception = RuntimeError('gemini_tts_no_model')
+    for model in models:
+        for attempt in range(2):
+            try:
+                audio = await _tts_gemini_model(text, voice_name, model)
+            except RuntimeError as exc:
+                last_error = exc
+                status = str(exc).removeprefix('gemini_tts_http_')
+                if status in {'429', '503'} and attempt == 0:
+                    await asyncio.sleep(2.0)
+                    continue
+                break  # 404/400/etc: this model is dead for us, try the next
+            except Exception as exc:
+                last_error = exc
+                break
+            _tts_good_model = model
+            return audio
+    raise last_error
+
+
+async def _tts_gemini_model(text: str, voice_name: str, model: str) -> bytes:
     import httpx
 
-    voice_name = GEMINI_TTS_VOICES.get(character_id or '', _DEFAULT_GEMINI_TTS_VOICE)
     payload = {
         'contents': [{'parts': [{'text': text}]}],
         'generationConfig': {
@@ -234,12 +269,12 @@ async def _tts_gemini(text: str, character_id: str | None = None) -> bytes:
         },
     }
     headers = {'x-goog-api-key': GEMINI_API_KEY, 'Content-Type': 'application/json'}
-    url = f'{GEMINI_VIDEO_BASE_URL}/models/{GEMINI_TTS_MODEL}:generateContent'
+    url = f'{GEMINI_VIDEO_BASE_URL}/models/{model}:generateContent'
     timeout = httpx.Timeout(60.0, connect=20.0, read=60.0, write=60.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         r = await client.post(url, headers=headers, json=payload)
         if r.status_code >= 400:
-            logger.warning('Gemini TTS failed status=%s body=%s', r.status_code, r.text[:400])
+            logger.warning('Gemini TTS failed model=%s status=%s body=%s', model, r.status_code, r.text[:400])
             raise RuntimeError(f'gemini_tts_http_{r.status_code}')
         data = r.json()
     pcm_b64 = None
