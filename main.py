@@ -65,6 +65,7 @@ from services.cloud_video_service import (
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
 from services import freekassa_service
 from services import jobs_service
+from services import dialog_store
 from aiohttp import web
 from services import apartment_service, gifts_service, dates_service, spicy_service
 from services.relationship_service import record_user_message, set_stage_change_notifier
@@ -181,8 +182,10 @@ RELATIONSHIP_LEVEL_NAMES = {
 MAX_RELATIONSHIP_LEVEL = len(RELATIONSHIP_LEVEL_NAMES)
 
 # Short-lived UI state only. Paid offers themselves are persisted in PostgreSQL.
-_custom_drafts: dict[int, dict] = {}
-_pending_adult_photo: dict[int, PhotoRequest] = {}
+# V3.29.0: user-facing wizard state persists in dialog_sessions so a
+# redeploy no longer drops paid flows mid-conversation.
+_custom_drafts = dialog_store.DialogStore('custom_drafts')
+_pending_adult_photo = dialog_store.DialogStore('pending_adult_photo', codec='photo_request')
 _pending_adult_custom: set[int] = set()
 
 # Background photo jobs: Telegram handlers return immediately, so normal chat remains responsive.
@@ -192,11 +195,12 @@ _photo_jobs: dict[int, asyncio.Task] = {}
 _photo_job_reservations: set[int] = set()
 
 # Track when Anna offers a photo in chat — next user "yes" triggers photo flow
-_photo_offer_pending: dict[int, float] = {}  # telegram_id -> timestamp of offer
-_photo_offer_expression: dict[int, str | None] = {}  # telegram_id -> chat mood that triggered the offer
+_photo_offer_pending = dialog_store.DialogStore('photo_offer_pending')  # telegram_id -> timestamp of offer
+_photo_offer_expression = dialog_store.DialogStore('photo_offer_expression')  # telegram_id -> chat mood that triggered the offer
 # V3.23.0: paid fantasy constructor — telegram_id -> (charge_id, amount) while
 # the bot waits for the user's scenario description.
-_fantasy_pending: dict[int, tuple[str, int]] = {}
+# V3.29.0: JSON stores the (charge, amount) tuple as a list; consumers unpack.
+_fantasy_pending = dialog_store.DialogStore('fantasy_pending')
 _PHOTO_OFFER_TTL = 120  # offer expires after 2 minutes
 
 # Regex: Anna offered a photo in her response
@@ -4292,7 +4296,10 @@ async def custom_start(cq: types.CallbackQuery):
 async def custom_color(cq: types.CallbackQuery):
     await cq.answer()
     color = cq.data.rsplit(':', 1)[1]
-    _custom_drafts.setdefault(cq.from_user.id, {})['color'] = color
+    # V3.29.0: read/modify/write-back so the draft lands in dialog_sessions.
+    draft = dict(_custom_drafts.get(cq.from_user.id) or {})
+    draft['color'] = color
+    _custom_drafts[cq.from_user.id] = draft
     await cq.message.answer('добавить чулки?', reply_markup=custom_addon_keyboard())
 
 
@@ -4300,7 +4307,10 @@ async def custom_color(cq: types.CallbackQuery):
 async def custom_addon(cq: types.CallbackQuery):
     await cq.answer()
     addon = cq.data.rsplit(':', 1)[1]
-    _custom_drafts.setdefault(cq.from_user.id, {})['addon'] = addon
+    # V3.29.0: read/modify/write-back so the draft lands in dialog_sessions.
+    draft = dict(_custom_drafts.get(cq.from_user.id) or {})
+    draft['addon'] = addon
+    _custom_drafts[cq.from_user.id] = draft
     await cq.message.answer('причёска?', reply_markup=custom_hair_keyboard())
 
 
@@ -4308,7 +4318,10 @@ async def custom_addon(cq: types.CallbackQuery):
 async def custom_hair(cq: types.CallbackQuery):
     await cq.answer()
     hair = cq.data.rsplit(':', 1)[1]
-    _custom_drafts.setdefault(cq.from_user.id, {})['hair'] = hair
+    # V3.29.0: read/modify/write-back so the draft lands in dialog_sessions.
+    draft = dict(_custom_drafts.get(cq.from_user.id) or {})
+    draft['hair'] = hair
+    _custom_drafts[cq.from_user.id] = draft
     await cq.message.answer('и где сделать кадр?', reply_markup=custom_place_keyboard())
 
 
@@ -4827,7 +4840,8 @@ async def _react_to_user_photo(message: types.Message):
 
 # ── V3.19.0: personal character constructor ─────────────────────────────────
 
-_constructor_sessions: dict[int, dict] = {}
+# V3.29.0: the wizard's state lives in dialog_sessions, so a redeploy keeps it.
+_constructor_sessions = dialog_store.DialogStore('constructor_sessions')
 
 AGE_BY_GROUP = {'age_young': 20, 'age_mid': 25, 'age_mature': 30, 'age_confident': 35}
 
@@ -5105,7 +5119,10 @@ async def constructor_step_cb(cq: types.CallbackQuery):
     if index != cons.get('step', 0):
         await cq.answer('Шаги по порядку 🙂', show_alert=True)
         return
-    cons['params'][key] = value
+    # V3.29.0: write the params dict back whole so the change hits the DB row.
+    params = dict(cons.get('params') or {})
+    params[key] = value
+    cons['params'] = params
     cons['step'] = index + 1
     await cq.answer()
     if cons['step'] < len(CONSTRUCTOR_STEPS):
@@ -5929,6 +5946,13 @@ async def main():
             logger.info('startup recovered_stale_jobs users=%s', len(stale))
     except Exception:
         logger.exception('startup job recovery failed')
+    # V3.29.0: prune wizard sessions nobody touched for over a day.
+    try:
+        _removed_sessions = dialog_store.cleanup_stale_sessions()
+        if _removed_sessions:
+            logger.info('startup removed_stale_dialog_sessions=%s', _removed_sessions)
+    except Exception:
+        logger.exception('startup dialog session cleanup failed')
     logger.info('AnnaBot started')
     await _start_web_server()
     # V3.19.11: refresh the public storefront (profile description) on every

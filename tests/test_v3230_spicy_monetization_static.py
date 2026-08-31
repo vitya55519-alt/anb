@@ -145,7 +145,8 @@ def test_spicy_menu_handlers_registered():
 
 
 def test_fantasy_input_intercepted_before_chat():
-    assert '_fantasy_pending: dict[int, tuple[str, int]] = {}' in MAIN
+    # v3.29.0: fantasy state moved to the persistent dialog_sessions store
+    assert "_fantasy_pending = dialog_store.DialogStore('fantasy_pending')" in MAIN
     catch_all = MAIN[MAIN.index('async def text_message('):]
     assert '_handle_fantasy_input' in catch_all.split('has_accepted')[0]
     handler = MAIN[MAIN.index('async def _handle_fantasy_input('):MAIN.index("@dp.message(Command('photo', 'selfie'))")]

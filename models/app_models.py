@@ -201,6 +201,22 @@ class BackgroundJob(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
+
+# V3.29.0: persistent multi-step dialog wizards (character constructor, paid
+# fantasy input, photo offers...). In-memory dicts died with the process;
+# these rows let a redeploy keep the conversation mid-wizard.
+class DialogSession(Base):
+    __tablename__ = "dialog_sessions"
+    __table_args__ = (UniqueConstraint('telegram_id', 'session_key', name='uq_dialog_session'),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    session_key: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, default='{}')
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 class Reminder(Base):
     __tablename__ = "reminders"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
