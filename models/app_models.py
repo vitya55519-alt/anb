@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .waifu_models import Base
 
@@ -170,7 +170,9 @@ class FreeKassaOrder(Base):
     """V3.19.6: card/SBP orders created in-bot and paid on the FreeKassa page."""
     __tablename__ = "freekassa_orders"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    telegram_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    # V3.26.2: BigInteger вЂ” Telegram IDs above 2^31-1 overflowed 32-bit INTEGER
+    # (psycopg NumericValueOutOfRange) and the order INSERT crashed.
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
     product: Mapped[str] = mapped_column(String(64), nullable=False)
     amount: Mapped[str] = mapped_column(String(24), nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="pending", index=True)

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import BigInteger, create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from models.waifu_models import Base
 from models.relationship_models import UserCharacterRelationship, RelationshipEvent, RelationshipMilestone  # noqa
@@ -81,8 +81,26 @@ def _migrate_existing_users():
     }
     _add_missing_columns('users', wanted)
 
+def _widen_freekassa_telegram_id():
+    # V3.26.2: freekassa_orders.telegram_id was created as 32-bit INTEGER;
+    # Telegram IDs above 2^31-1 crashed the order INSERT
+    # (psycopg NumericValueOutOfRange). Widen the live column to BIGINT.
+    # SQLite integers are already 64-bit, so only Postgres needs this.
+    if engine.dialect.name != 'postgresql':
+        return
+    inspector = inspect(engine)
+    if 'freekassa_orders' not in inspector.get_table_names():
+        return
+    cols = {c['name']: c for c in inspector.get_columns('freekassa_orders')}
+    col = cols.get('telegram_id')
+    if col is None or isinstance(col['type'], BigInteger):
+        return
+    with engine.begin() as conn:
+        conn.execute(text('ALTER TABLE freekassa_orders ALTER COLUMN telegram_id TYPE BIGINT'))
+
 def init_db():
     Base.metadata.create_all(engine)
+    _widen_freekassa_telegram_id()
     _migrate_existing_users()
     _add_missing_columns('character_states', {
         'recent_outfits_json': "TEXT DEFAULT '[]'",
