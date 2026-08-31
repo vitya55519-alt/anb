@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from datetime import datetime, timedelta
 
 from models.app_models import FreeKassaOrder
 from services.db import SessionLocal
@@ -24,6 +25,16 @@ def _md5_sign(parts: list[str]) -> str:
 
 def create_order(telegram_id: int, product: str, amount: str) -> int:
     with SessionLocal() as session:
+        # V3.27.0: direct url-buttons create an order on every keyboard
+        # render; drop stale pending duplicates for the same user+product
+        # so the table cannot grow without bound.
+        cutoff = datetime.utcnow() - timedelta(hours=1)
+        session.query(FreeKassaOrder).filter(
+            FreeKassaOrder.telegram_id == int(telegram_id),
+            FreeKassaOrder.product == product,
+            FreeKassaOrder.status == 'pending',
+            FreeKassaOrder.created_at < cutoff,
+        ).delete()
         row = FreeKassaOrder(
             telegram_id=int(telegram_id),
             product=product,

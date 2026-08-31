@@ -27,6 +27,7 @@ from config import (
     PREMIUM_DISCOUNT_PERCENT, DEMO_PREMIUM_HOURS,
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
+    CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST,
     FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
 )
 from services.user_service import (
@@ -446,7 +447,7 @@ def quest_routes_keyboard(telegram_id: int, quest_key: str):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def characters_keyboard():
+def characters_keyboard(telegram_id: int | None = None):
     rows = []
     for card in list_cards(visible_only=True):
         if card.status == 'active':
@@ -458,6 +459,10 @@ def characters_keyboard():
         rows.append([InlineKeyboardButton(text=text, callback_data=f'character:view:{card.character_id}')])
     # V3.19.0: entry point to the personal character constructor.
     rows.append([InlineKeyboardButton(text=f'🎨 Создать свою · {CONSTRUCTOR_COST_STARS}⭐', callback_data='constructor:start')])
+    if FREEKASSA_ENABLED and telegram_id:
+        rows.append([_fk_url_button(
+            telegram_id, 'constructor_rub', CONSTRUCTOR_COST_RUB,
+            f'🎭 Персонаж — {CONSTRUCTOR_COST_RUB} ₽ · ⚡СБП / карта')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -661,7 +666,7 @@ async def _send_character_card(chat_id: int, character_id: str, *, viewer_id: in
         await bot.send_message(chat_id, 'карточка не найдена')
         return
     text_value = _character_card_text(card, viewer_id=viewer_id)
-    markup = None if admin_preview else characters_keyboard()
+    markup = None if admin_preview else characters_keyboard(telegram_id=viewer_id)
     if card.card_photo_file_id:
         await bot.send_photo(chat_id, card.card_photo_file_id, caption=text_value, reply_markup=markup)
         return
@@ -891,7 +896,66 @@ async def _sleep_block_reply(message: types.Message) -> None:
     await message.answer(pick_text('sleep'), reply_markup=_sleep_block_markup(message.from_user.id))
 
 
-def premium_keyboard(discount: dict | None = None):
+# V3.27.0: ruble-shop balances (tokens + constructor credit) live on the users
+# table; the helpers below keep every read-modify-write in one place.
+def get_token_balance(telegram_id: int) -> int:
+    with SessionLocal() as s:
+        row = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
+        return int(row.token_balance or 0) if row else 0
+
+
+def spend_tokens(telegram_id: int, amount: int) -> bool:
+    with SessionLocal() as s:
+        row = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
+        if not row or (row.token_balance or 0) < amount:
+            return False
+        row.token_balance = (row.token_balance or 0) - amount
+        s.commit()
+        return True
+
+
+def add_tokens(telegram_id: int, amount: int) -> int:
+    with SessionLocal() as s:
+        row = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
+        if not row:
+            return 0
+        row.token_balance = (row.token_balance or 0) + amount
+        new = int(row.token_balance)
+        s.commit()
+        return new
+
+
+def consume_constructor_credit(telegram_id: int) -> bool:
+    with SessionLocal() as s:
+        row = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
+        if not row or (row.constructor_credit or 0) < 1:
+            return False
+        row.constructor_credit = (row.constructor_credit or 0) - 1
+        s.commit()
+        return True
+
+
+def add_constructor_credit(telegram_id: int, amount: int = 1) -> None:
+    with SessionLocal() as s:
+        row = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
+        if not row:
+            return
+        row.constructor_credit = (row.constructor_credit or 0) + amount
+        s.commit()
+
+
+def _fk_url_button(telegram_id: int, product: str, amount: int, text: str,
+                   currency: str | None = None):
+    """One-click payment: the order is created now and the button opens the
+    FreeKassa page directly (no intermediate link message)."""
+    order_id = freekassa_service.create_order(telegram_id, product, str(amount))
+    return InlineKeyboardButton(
+        text=text,
+        url=freekassa_service.payment_url(order_id, str(amount), currency=currency),
+    )
+
+
+def premium_keyboard(discount: dict | None = None, telegram_id: int | None = None):
     if _any_video_engine():
         video_button = InlineKeyboardButton(text=f'🎬 Оживить фото — {VIDEO_COST_STARS}⭐', callback_data='video:animate_last')
     else:
@@ -905,11 +969,26 @@ def premium_keyboard(discount: dict | None = None):
     ]
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text=f'💎 Premium — Wallet Pay (крипта/карта)', callback_data='walletpay:premium')])
-    if FREEKASSA_ENABLED:
-        # V3.19.6: external card/SBP scenario (Telegram policy keeps Stars for
-        # in-Telegram digital purchases; this link pays on FreeKassa's page).
+    if FREEKASSA_ENABLED and telegram_id:
+        # V3.27.0: one-click payments — the button itself is the payment link
+        # (order created upfront) with payment-system badges, not plain text.
+        rows.append([_fk_url_button(
+            telegram_id, 'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
+            f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · ⚡СБП / карта')])
+        rows.append([_fk_url_button(
+            telegram_id, 'premium_month', FREEKASSA_PREMIUM_PRICE_USD,
+            f'💳 Premium — ${FREEKASSA_PREMIUM_PRICE_USD} · Ⓥ Visa / Ⓜ Mastercard',
+            currency='USD')])
+        rows.append([
+            _fk_url_button(telegram_id, 'tokens_1', TOKEN_PRICE_RUB,
+                           f'🪙 1 токен — {TOKEN_PRICE_RUB} ₽'),
+            _fk_url_button(telegram_id, f'tokens_{TOKEN_PACK_SIZE}',
+                           TOKEN_PACK_SIZE * TOKEN_PRICE_RUB,
+                           f'🪙 {TOKEN_PACK_SIZE} токенов — {TOKEN_PACK_SIZE * TOKEN_PRICE_RUB} ₽'),
+        ])
+    elif FREEKASSA_ENABLED:
+        # Callers without telegram_id keep the legacy callback buttons.
         rows.append([InlineKeyboardButton(text=f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ картой / СБП', callback_data='fk:premium')])
-        # V3.20.1: international cards — the same kassa, invoice in USD.
         rows.append([InlineKeyboardButton(text=f'💳 Premium — ${FREEKASSA_PREMIUM_PRICE_USD} · Visa/Mastercard', callback_data='fk:premium_usd')])
     rows.append([video_button])
     rows.append([InlineKeyboardButton(text='🎥 Кружочек от неё — только Premium', callback_data='video:circle')])
@@ -1415,7 +1494,7 @@ async def onboarding_character_select(cq: types.CallbackQuery):
             f'⭐ {card.display_name} доступна с Premium.\n\n'
             f'Premium — {PREMIUM_MONTHLY_STARS} Stars на 30 дней.\n'
             'Нежная, заботливая и очень сексуальная — она будет спрашивать про твой день, слушать и создавать уют.\n',
-            reply_markup=premium_keyboard(),
+            reply_markup=premium_keyboard(telegram_id=cq.from_user.id),
         )
         return
     if card.status not in ('active', 'premium'):
@@ -1499,7 +1578,7 @@ async def features_button(message: types.Message):
 @dp.message(F.text.in_(kb_pair('characters')))
 async def characters_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
-    await message.answer('выбери персонажа 👇', reply_markup=characters_keyboard())
+    await message.answer('выбери персонажа 👇', reply_markup=characters_keyboard(telegram_id=message.from_user.id))
 
 
 @dp.callback_query(F.data.startswith('character:view:'))
@@ -1532,7 +1611,7 @@ async def character_view(cq: types.CallbackQuery):
         await cq.message.answer(
             f'⭐ {card.display_name} — Premium-персонаж.\n'
             f'Открыть за {PREMIUM_MONTHLY_STARS} Stars на 30 дней:',
-            reply_markup=premium_keyboard(),
+            reply_markup=premium_keyboard(telegram_id=cq.from_user.id),
         )
 
 
@@ -3094,6 +3173,15 @@ async def _video_gate(cq: types.CallbackQuery, delivery: dict, motion_preset: st
             _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset)
         )
         return
+    # V3.27.0: tokens (bought with rubles on FreeKassa) are an alternative to
+    # Stars — spend them first so card-paying users animate without Stars.
+    if spend_tokens(cq.from_user.id, VIDEO_TOKEN_COST):
+        track_event(uid, 'tokens_spent', metadata={'amount': VIDEO_TOKEN_COST, 'delivery_id': delivery['id'], 'preset': motion_preset or 'auto'})
+        await cq.message.answer(f'🪙 Списано {VIDEO_TOKEN_COST} токенов — оживляю фото! Баланс: {get_token_balance(cq.from_user.id)} 🪙')
+        _video_jobs[cq.from_user.id] = asyncio.create_task(
+            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset)
+        )
+        return
     # Preset rides along inside the invoice payload: video:<delivery_id>:<preset>
     payload = f'video:{delivery["id"]}:{motion_preset or "auto"}'
     await send_stars_invoice(
@@ -3183,7 +3271,7 @@ async def circle_cb(cq: types.CallbackQuery):
         await cq.message.answer(
             '🎥 кружочки — мой закрытый формат: короткие видео, как будто записываю их тебе лично 😌\n'
             'доступны только с Premium.',
-            reply_markup=premium_keyboard(discount_info(cq.from_user.id)),
+            reply_markup=premium_keyboard(discount_info(cq.from_user.id), telegram_id=cq.from_user.id),
         )
         return
     if cq.from_user.id in _video_jobs and not _video_jobs[cq.from_user.id].done():
@@ -3312,7 +3400,7 @@ async def premium(message: types.Message):
         await message.answer(f'Premium уже активен ✨\nФото-кредиты: {get_photo_credits(message.from_user.id)}\nQuest replay осталось в этом месяце: {premium_replays_left(message.from_user.id)}')
         return
     from services.retention_service import discount_info
-    await message.answer(premium_pitch_text(message.from_user.id), reply_markup=premium_keyboard(discount_info(message.from_user.id)))
+    await message.answer(premium_pitch_text(message.from_user.id), reply_markup=premium_keyboard(discount_info(message.from_user.id), telegram_id=message.from_user.id))
 
 
 @dp.callback_query(F.data == 'buy:premium')
@@ -3360,7 +3448,7 @@ async def retention_premium_cb(cq: types.CallbackQuery):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
     from services.retention_service import discount_info
     await cq.answer()
-    await cq.message.answer(premium_pitch_text(cq.from_user.id), reply_markup=premium_keyboard(discount_info(cq.from_user.id)))
+    await cq.message.answer(premium_pitch_text(cq.from_user.id), reply_markup=premium_keyboard(discount_info(cq.from_user.id), telegram_id=cq.from_user.id))
 
 
 @dp.callback_query(F.data == 'fk:premium')
@@ -5014,6 +5102,11 @@ async def constructor_buy_cb(cq: types.CallbackQuery):
     if telegram_id in ADMIN_TELEGRAM_IDS:
         asyncio.create_task(_finish_constructor(cq.message, None, telegram_id))
         return
+    # V3.27.0: a ruble-paid constructor credit (FreeKassa) skips Stars too.
+    if consume_constructor_credit(telegram_id):
+        record_payment(telegram_id, 'constructor', 0, f'freekassa_credit:{telegram_id}:{int(_time.time() * 1000)}')
+        asyncio.create_task(_finish_constructor(cq.message, None, telegram_id))
+        return
     await send_stars_invoice(
         cq.message.chat.id,
         'Личный персонаж',
@@ -5671,6 +5764,21 @@ async def _fk_notify(request: web.Request) -> web.Response:
     order_id = int(order_id_or_reason)
     order = freekassa_service.get_order(order_id)
     if order and freekassa_service.mark_paid(order_id, json.dumps(params, ensure_ascii=False)):
+        product = order['product']
+        if product == 'constructor_rub':
+            # V3.27.0: ruble-paid character constructor credit.
+            ensure_user(order['telegram_id'])
+            add_constructor_credit(order['telegram_id'], 1)
+            confirm = ('🎭 Персонаж оплачен картой! Открой «Создать своего персонажа» '
+                       'и собери его — оплата уже зачислена.')
+        elif product.startswith('tokens_'):
+            # V3.27.0: token pack for video animation.
+            ensure_user(order['telegram_id'])
+            balance = add_tokens(order['telegram_id'], int(product.split('_')[1]))
+            confirm = (f'🪙 Токены зачислены! Баланс: {balance} 🪙 '
+                       f'— оживление фото стоит {VIDEO_TOKEN_COST} 🪙.')
+        else:
+            confirm = '💖 Оплата прошла! Premium активирован на 30 дней. Наслаждайся! 🎉'
         try:
             record_payment(
                 order['telegram_id'], order['product'], 0,
@@ -5678,12 +5786,9 @@ async def _fk_notify(request: web.Request) -> web.Response:
                 provider_payload=f'amount={order["amount"]}',
             )
         except Exception:
-            logger.exception('FreeKassa premium grant failed order=%s', order_id)
+            logger.exception('FreeKassa grant failed order=%s', order_id)
         try:
-            await bot.send_message(
-                order['telegram_id'],
-                '💳 Оплата получена — Premium активирован на 30 дней! ✨',
-            )
+            await bot.send_message(order['telegram_id'], confirm)
         except Exception:
             logger.exception('FreeKassa confirmation message failed order=%s', order_id)
     # FreeKassa expects a plain YES (or YES|<order id>) on success.

@@ -252,6 +252,12 @@ RITUAL_MAX_INACTIVE_DAYS = max(1, int(os.getenv("RITUAL_MAX_INACTIVE_DAYS", "7")
 # a private chat persona (appearance + personality + relationship role) with a
 # generated avatar. Optional user face photo enables face-swap identity.
 CONSTRUCTOR_COST_STARS = max(1, int(os.getenv("CONSTRUCTOR_COST_STARS", "50")))
+# V3.27.0: ruble side of the shop (FreeKassa): character constructor price,
+# token price/pack (1 token = TOKEN_PRICE_RUB) and the animation token cost.
+CONSTRUCTOR_COST_RUB = max(1, int(os.getenv("CONSTRUCTOR_COST_RUB", "200")))
+TOKEN_PRICE_RUB = max(1, int(os.getenv("TOKEN_PRICE_RUB", "10")))
+TOKEN_PACK_SIZE = max(1, int(os.getenv("TOKEN_PACK_SIZE", "5")))
+VIDEO_TOKEN_COST = max(1, int(os.getenv("VIDEO_TOKEN_COST", "5")))
 
 # V3.19.0: vision reactions — the character comments on photos users send in
 # chat (selfies, pets, food, gym...) via the multimodal chat provider.

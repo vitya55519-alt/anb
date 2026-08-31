@@ -26,8 +26,11 @@ def test_config_gates_freekassa_on_three_secrets():
 
 
 def test_premium_keyboard_shows_card_button_only_when_enabled():
-    kb = MAIN[MAIN.index('def premium_keyboard(discount: dict | None = None):'):MAIN.index('def adult_keyboard():')]
-    assert "if FREEKASSA_ENABLED:" in kb
+    # v3.27.0: signature gained telegram_id; the gated block is now the
+    # one-click url-button branch plus the legacy callback fallback.
+    kb = MAIN[MAIN.index('def premium_keyboard(discount: dict | None = None, telegram_id: int | None = None):'):MAIN.index('def adult_keyboard():')]
+    assert 'if FREEKASSA_ENABLED and telegram_id:' in kb
+    assert 'elif FREEKASSA_ENABLED:' in kb
     assert "callback_data='fk:premium'" in kb
     assert 'картой / СБП' in kb
 
