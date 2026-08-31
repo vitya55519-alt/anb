@@ -184,6 +184,23 @@ class FreeKassaOrder(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
+# V3.28.0: persistent registry of long-running generation jobs (photo /
+# video / circle / constructor). In-memory asyncio.Task dicts die with the
+# process; these rows survive redeploys and are visible to future workers.
+class BackgroundJob(Base):
+    __tablename__ = "background_jobs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    # running / done / failed / recovered (restart sweep) / superseded
+    status: Mapped[str] = mapped_column(String(16), default="running", index=True)
+    # premium users get 1 — a future worker orders by priority desc.
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
 class Reminder(Base):
     __tablename__ = "reminders"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

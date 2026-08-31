@@ -187,7 +187,8 @@ def test_faceswap_uploads_reference_and_locks_identity():
 
 def test_admin_free_constructor():
     assert 'async def _finish_constructor(message: types.Message, charge: str | None, telegram_id: int | None = None):' in MAIN
-    assert 'asyncio.create_task(_finish_constructor(cq.message, None, telegram_id))' in MAIN
+    # v3.28.0: constructor spawns are tracked through _spawn_job
+    assert "_spawn_job('constructor', telegram_id, _finish_constructor(cq.message, None, telegram_id)" in MAIN
     assert "'✅ Создать · бесплатно (админ)'" in MAIN
     # Admins skip the invoice and run generation with no charge.
     assert '_finish_constructor(message, charge)' in MAIN

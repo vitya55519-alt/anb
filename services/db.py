@@ -2,7 +2,7 @@ from sqlalchemy import BigInteger, create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from models.waifu_models import Base
 from models.relationship_models import UserCharacterRelationship, RelationshipEvent, RelationshipMilestone  # noqa
-from models.app_models import User, Message, Memory, CommunicationProfile, CharacterState, CharacterCard, PaymentMethod, Reminder, Subscription, StarTransaction, ProductEvent, UserConsent  # noqa
+from models.app_models import User, Message, Memory, CommunicationProfile, CharacterState, CharacterCard, PaymentMethod, Reminder, Subscription, StarTransaction, ProductEvent, UserConsent, BackgroundJob  # noqa
 from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer, PhotoLibraryPack, PhotoLibraryItem, UserSeenPhotoPack, UserSeenPhotoItem, AdminPhotoIdea  # noqa
 from models.quest_models import UserQuestProgress, QuestReplayOffer  # noqa
 from config import DATABASE_URL

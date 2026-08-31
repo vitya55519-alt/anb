@@ -58,7 +58,8 @@ assert "num_images': num_images" in photo
 analytics=(ROOT/'services/analytics_service.py').read_text(encoding='utf-8')
 state=(ROOT/'services/state_service.py').read_text(encoding='utf-8')
 assert 'onboard:abilities' in main and 'onboard:meet' in main
-assert '_photo_jobs' in main and 'asyncio.create_task(_run_photo_background' in main
+# v3.28.0: the photo pipeline spawns through the tracked _spawn_job wrapper
+assert '_photo_jobs' in main and "_spawn_job('photo'" in main
 assert 'photo_feedback:' in main
 assert 'SAFE RETRY' in photo and 'on_frame' in photo and 'photo_partial' in photo
 assert 'OPENAI_LEVEL_VISUAL_RULES' in photo

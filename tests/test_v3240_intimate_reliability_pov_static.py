@@ -45,9 +45,10 @@ def test_fallback_chain_error_names_every_failed_engine():
 def test_constructor_admin_path_uses_real_user_id():
     assert 'async def _finish_constructor(message: types.Message, charge: str | None, telegram_id: int | None = None):' in MAIN
     assert 'telegram_id = telegram_id if telegram_id is not None else message.from_user.id' in MAIN
-    assert 'asyncio.create_task(_finish_constructor(cq.message, None, telegram_id))' in MAIN
+    # v3.28.0: constructor spawns are tracked through _spawn_job
+    assert "_spawn_job('constructor', telegram_id, _finish_constructor(cq.message, None, telegram_id)" in MAIN
     # the paid path still works with the default (payment message from_user)
-    assert 'asyncio.create_task(_finish_constructor(message, charge))' in MAIN
+    assert "_spawn_job('constructor', message.from_user.id, _finish_constructor(message, charge)" in MAIN
 
 
 def test_video_presets_are_pov_not_self_hug():

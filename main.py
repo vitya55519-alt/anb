@@ -64,6 +64,7 @@ from services.cloud_video_service import (
 )
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
 from services import freekassa_service
+from services import jobs_service
 from aiohttp import web
 from services import apartment_service, gifts_service, dates_service, spicy_service
 from services.relationship_service import record_user_message, set_stage_change_notifier
@@ -260,6 +261,25 @@ from config import VIDEO_STATUS_TEXT
 # Video jobs are intentionally limited to one per user. They can
 # take minutes during peak load, so generation always runs in background.
 _video_jobs: dict[int, asyncio.Task] = {}
+
+# V3.28.0: every long generation also gets a background_jobs DB row, so a
+# redeploy no longer loses jobs silently and future workers can see them.
+async def _track_job(job_id: int, coro):
+    try:
+        await coro
+        jobs_service.finish_job(job_id, 'done')
+    except Exception as exc:
+        try:
+            jobs_service.finish_job(job_id, 'failed', str(exc)[:500])
+        except Exception:
+            logger.exception('job finalize failed job=%s', job_id)
+        raise
+
+
+def _spawn_job(kind: str, telegram_id: int, coro, payload: dict | None = None) -> asyncio.Task:
+    priority = 1 if is_premium(telegram_id) else 0
+    job_id = jobs_service.begin_job(telegram_id, kind, payload, priority=priority)
+    return asyncio.create_task(_track_job(job_id, coro))
 
 # Owner-only Telegram photo-library importer. Images stay on Telegram; only file_id metadata is persisted.
 _library_import_sessions: dict[int, dict] = {}
@@ -1254,7 +1274,7 @@ async def _start_photo_background(chat_id: int, telegram_id: int, request: Photo
             'погоди чуть-чуть 😌 хочу сделать красиво',
             'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
         )))
-        task = asyncio.create_task(_run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, amount=amount, product=product))
+        task = _spawn_job('photo', telegram_id, _run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, amount=amount, product=product), payload={'product': product or ''})
         _photo_jobs[telegram_id] = task
         return True
     finally:
@@ -3099,8 +3119,10 @@ async def video_test_cmd(message: types.Message):
     if not delivery or not delivery.get('telegram_file_id'):
         await message.answer('сначала попроси фото — оживлю последний кадр.')
         return
-    _video_jobs[message.from_user.id] = asyncio.create_task(
-        _run_video_background(message.chat.id, message.from_user.id, delivery['id'], None)
+    _video_jobs[message.from_user.id] = _spawn_job(
+        'video', message.from_user.id,
+        _run_video_background(message.chat.id, message.from_user.id, delivery['id'], None),
+        payload={'source': 'admin_test'},
     )
     await message.answer('тест видео запущен: прогоню всю цепочку движков с автофолбэком 🎬')
 
@@ -3169,8 +3191,10 @@ async def _video_gate(cq: types.CallbackQuery, delivery: dict, motion_preset: st
         free = consume_premium_video_free(cq.from_user.id)
     if free:
         track_event(uid, 'video_free_used', metadata={'delivery_id': delivery['id'], 'admin': cq.from_user.id in ADMIN_TELEGRAM_IDS})
-        _video_jobs[cq.from_user.id] = asyncio.create_task(
-            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset)
+        _video_jobs[cq.from_user.id] = _spawn_job(
+            'video', cq.from_user.id,
+            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset),
+            payload={'preset': motion_preset or 'auto'},
         )
         return
     # V3.27.0: tokens (bought with rubles on FreeKassa) are an alternative to
@@ -3178,8 +3202,10 @@ async def _video_gate(cq: types.CallbackQuery, delivery: dict, motion_preset: st
     if spend_tokens(cq.from_user.id, VIDEO_TOKEN_COST):
         track_event(uid, 'tokens_spent', metadata={'amount': VIDEO_TOKEN_COST, 'delivery_id': delivery['id'], 'preset': motion_preset or 'auto'})
         await cq.message.answer(f'🪙 Списано {VIDEO_TOKEN_COST} токенов — оживляю фото! Баланс: {get_token_balance(cq.from_user.id)} 🪙')
-        _video_jobs[cq.from_user.id] = asyncio.create_task(
-            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset)
+        _video_jobs[cq.from_user.id] = _spawn_job(
+            'video', cq.from_user.id,
+            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset),
+            payload={'preset': motion_preset or 'auto'},
         )
         return
     # Preset rides along inside the invoice payload: video:<delivery_id>:<preset>
@@ -3284,8 +3310,9 @@ async def circle_cb(cq: types.CallbackQuery):
     # extra circle is paid like an animation.
     if cq.from_user.id in ADMIN_TELEGRAM_IDS or consume_premium_video_free(cq.from_user.id):
         track_event(uid, 'video_free_used', metadata={'kind': 'circle', 'delivery_id': delivery['id']})
-        _video_jobs[cq.from_user.id] = asyncio.create_task(
-            _run_circle_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None)
+        _video_jobs[cq.from_user.id] = _spawn_job(
+            'circle', cq.from_user.id,
+            _run_circle_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None),
         )
         return
     await send_stars_invoice(
@@ -3664,7 +3691,7 @@ async def successful_payment(message: types.Message):
         )
         # One unified job: Gemini/Veo first, cloud + HF fallbacks otherwise,
         # with automatic engine fallback; auto-refunds Stars if all fail.
-        task = asyncio.create_task(_run_video_background(message.chat.id, message.from_user.id, delivery_id, charge, motion_preset=motion_preset))
+        task = _spawn_job('video', message.from_user.id, _run_video_background(message.chat.id, message.from_user.id, delivery_id, charge, motion_preset=motion_preset), payload={'charge': charge, 'preset': motion_preset or 'auto'})
         _video_jobs[message.from_user.id] = task
         return
 
@@ -3682,7 +3709,7 @@ async def successful_payment(message: types.Message):
             return
         record_payment(message.from_user.id, 'video', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'video', 'kind': 'circle'})
-        task = asyncio.create_task(_run_circle_background(message.chat.id, message.from_user.id, delivery['id'], charge))
+        task = _spawn_job('circle', message.from_user.id, _run_circle_background(message.chat.id, message.from_user.id, delivery['id'], charge), payload={'charge': charge})
         _video_jobs[message.from_user.id] = task
         return
 
@@ -3690,7 +3717,7 @@ async def successful_payment(message: types.Message):
         # V3.19.0: paid character constructor — avatar generation may take a
         # minute, so it runs as a task like the video pipeline.
         record_payment(message.from_user.id, 'constructor', payment.total_amount, charge)
-        asyncio.create_task(_finish_constructor(message, charge))
+        _spawn_job('constructor', message.from_user.id, _finish_constructor(message, charge), payload={'charge': charge})
         return
 
     if payload.startswith('gallery_dl:'):
@@ -5100,12 +5127,12 @@ async def constructor_buy_cb(cq: types.CallbackQuery):
     await cq.answer()
     # V3.19.1: admins skip the Stars invoice entirely.
     if telegram_id in ADMIN_TELEGRAM_IDS:
-        asyncio.create_task(_finish_constructor(cq.message, None, telegram_id))
+        _spawn_job('constructor', telegram_id, _finish_constructor(cq.message, None, telegram_id), payload={'source': 'free'})
         return
     # V3.27.0: a ruble-paid constructor credit (FreeKassa) skips Stars too.
     if consume_constructor_credit(telegram_id):
         record_payment(telegram_id, 'constructor', 0, f'freekassa_credit:{telegram_id}:{int(_time.time() * 1000)}')
-        asyncio.create_task(_finish_constructor(cq.message, None, telegram_id))
+        _spawn_job('constructor', telegram_id, _finish_constructor(cq.message, None, telegram_id), payload={'source': 'free'})
         return
     await send_stars_invoice(
         cq.message.chat.id,
@@ -5889,6 +5916,19 @@ async def main():
         st['openrouter_key_present'], st['openrouter_model'], st['gemini_key_present'],
         st['gemini_model'], video_available(),
     )
+    # V3.28.0: jobs interrupted by the previous deploy — mark them recovered
+    # and let the affected users know they can retry.
+    try:
+        stale = jobs_service.recover_stale_jobs()
+        for stale_uid, _stale_kind in stale:
+            try:
+                await bot.send_message(stale_uid, 'я перезапускалась и не успела доделать генерацию 😔 нажми ещё раз — сразу сделаю')
+            except Exception:
+                pass
+        if stale:
+            logger.info('startup recovered_stale_jobs users=%s', len(stale))
+    except Exception:
+        logger.exception('startup job recovery failed')
     logger.info('AnnaBot started')
     await _start_web_server()
     # V3.19.11: refresh the public storefront (profile description) on every

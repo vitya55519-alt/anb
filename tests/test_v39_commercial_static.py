@@ -15,7 +15,8 @@ models = (ROOT / 'models/app_models.py').read_text(encoding='utf-8')
 cfg = (ROOT / 'config.py').read_text(encoding='utf-8')
 
 assert "onboard:abilities" in main and "onboard:meet" in main
-assert "_photo_jobs" in main and "asyncio.create_task(_run_photo_background" in main
+# v3.28.0: the photo pipeline spawns through the tracked _spawn_job wrapper
+assert "_photo_jobs" in main and "_spawn_job('photo'" in main
 assert "сек 😄 сейчас выберу нормальные кадры" in main
 assert "photo_requested" in main and "admin_snapshot" in main
 assert "Command('stats', 'adminstats')" in main
