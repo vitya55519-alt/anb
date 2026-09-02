@@ -23,7 +23,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.24.0', '3.25.0', '3.26.0', '3.26.1', '3.30.0')
+    assert VERSION in ('3.24.0', '3.25.0', '3.26.0', '3.26.1', '3.30.0', '3.30.1')
 
 
 def test_seedream_adult_scenes_cover_all_intimate_sets():

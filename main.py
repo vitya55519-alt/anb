@@ -6,6 +6,7 @@ import json
 import logging
 import random
 import re
+import sys
 import time as _time
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -127,7 +128,18 @@ from services.payment_method_service import (
     update_payment_method, delete_payment_method, ensure_default_payment_methods,
 )
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+# V3.30.1: Railway tags every stderr line as severity=error, and Python
+# logging writes to stderr by default — route the whole log to stdout so
+# INFO stays INFO in the Railway console.
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s: %(message)s',
+    stream=sys.stdout,
+)
+# The 30-second reminder tick and the per-update aiogram lines flood the
+# log; keep them silent unless something actually warns.
+logging.getLogger('apscheduler').setLevel(logging.WARNING)
+logging.getLogger('aiogram.event').setLevel(logging.WARNING)
 logger = logging.getLogger('annabot')
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
