@@ -35,6 +35,21 @@ logger = logging.getLogger(__name__)
 FK_API_BASE = 'https://api.fk.life/v1'
 # Payment-system id passed in ``i`` for SBP QR-code acceptance (docs: i=44).
 FK_SBP_QR_PAYMENT_ID = 44
+# V3.30.2 section 1.8 «Список доступных валют» — documented payment-system
+# IDs used in the REQUIRED ``i`` parameter of orders/create. The /currencies
+# endpoint resolves the merchant's actually-enabled systems first (that's
+# the authoritative source); this map is the last-resort fallback so ``i``
+# is never missing and the API always creates a real ``location`` link.
+FK_CURRENCY_PAYMENT_IDS = {
+    'RUB': 42,   # СБП
+    'USD': 2,    # FK WALLET USD
+    'EUR': 3,    # FK WALLET EUR
+    'UAH': 7,    # VISA UAH
+    'KZT': 41,   # VISA / MasterCard KZT
+}
+# V3.30.2: SCI payment-form host (docs 1.5). The old pay.freekassa.ru is
+# dead — the payment page never loads from it.
+FK_SCI_BASE = 'https://pay.fk.money'
 
 _server_ip_cache: dict[str, object] = {}
 _currencies_cache: dict[str, int] = {}
@@ -115,7 +130,14 @@ async def create_api_order(order_id: int, amount: str, currency: str = 'RUB',
     if not ip:
         logger.warning('FreeKassa API order skipped (no server ip) order=%s', order_id)
         return None
-    pay_id = payment_system or await _default_payment_id(currency)
+    # Section 1.8: ``i`` is REQUIRED by orders/create — the API rejects a
+    # request without it. Resolve in priority order: explicit param →
+    # /currencies (merchant's enabled systems) → documented static default.
+    pay_id = (
+        payment_system
+        or await _default_payment_id(currency)
+        or FK_CURRENCY_PAYMENT_IDS.get(currency.upper())
+    )
     params: dict = {
         'shopId': int(FREEKASSA_MERCHANT_ID),
         'nonce': _nonce(),
@@ -123,29 +145,34 @@ async def create_api_order(order_id: int, amount: str, currency: str = 'RUB',
         # Docs: the real client email or <telegram id>@telegram.org.
         'email': f'{int(telegram_id)}@telegram.org' if telegram_id else f'order{int(order_id)}@telegram.org',
         'ip': ip,
-        'amount': str(amount),
+        # docs: amount is numeric, not a string
+        'amount': round(float(amount), 2),
         'currency': currency,
     }
     if pay_id:
         params['i'] = int(pay_id)
+    else:
+        logger.warning('FreeKassa order %s: no payment-system id for %s — orders/create may reject', order_id, currency)
     if PUBLIC_BASE_URL:
         params['success_url'] = f'{PUBLIC_BASE_URL}/freekassa/success'
         params['failure_url'] = f'{PUBLIC_BASE_URL}/freekassa/fail'
         params['notification_url'] = f'{PUBLIC_BASE_URL}/freekassa/notify'
     params['signature'] = _api_signature(params, FREEKASSA_API_KEY)
+    status = 0
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f'{FK_API_BASE}/orders/create', json=params,
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
-                data = await resp.json()
+                status = resp.status
+                data = await resp.json(content_type=None)
     except Exception as exc:
         logger.error('FreeKassa API order request failed order=%s err=%s', order_id, exc)
         return None
     location = str((data or {}).get('location') or '').strip()
     if not location:
-        logger.error('FreeKassa API order rejected order=%s resp=%s', order_id, str(data)[:300])
+        logger.error('FreeKassa API order rejected order=%s status=%s resp=%s', order_id, status, str(data)[:300])
         return None
     logger.info('FreeKassa API order created order=%s fk_order=%s', order_id, (data or {}).get('orderId'))
     return location
@@ -198,15 +225,17 @@ def payment_url(order_id: int, amount: str, currency: str | None = None) -> str:
 
     V3.20.1: ``currency`` (e.g. 'USD') selects the invoice currency on a
     multi-currency kassa — international Visa/Mastercard pay in dollars.
+    V3.30.2: the legacy ``pay.freekassa.ru`` host stopped serving the
+    payment page at all (TLS timeout — «страница не загружается»); the
+    current SCI form lives on ``pay.fk.money`` and docs 1.5 sign order is
+    Merchant:Amount:Secret1:Currency:Order with the currency always sent.
     """
-    sign = _md5_sign([FREEKASSA_MERCHANT_ID, str(amount), FREEKASSA_SECRET1, str(order_id)])
-    url = (
-        f'https://pay.freekassa.ru/?m={FREEKASSA_MERCHANT_ID}'
-        f'&oa={amount}&o={order_id}&s={sign}&lang=ru'
+    cur = (currency or 'RUB').upper()
+    sign = _md5_sign([FREEKASSA_MERCHANT_ID, str(amount), FREEKASSA_SECRET1, cur, str(order_id)])
+    return (
+        f'{FK_SCI_BASE}/?m={FREEKASSA_MERCHANT_ID}'
+        f'&oa={amount}&o={order_id}&s={sign}&currency={cur}&lang=ru'
     )
-    if currency:
-        url += f'&currency={currency}'
-    return url
 
 
 def verify_notify(params: dict) -> tuple[bool, str]:

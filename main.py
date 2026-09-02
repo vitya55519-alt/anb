@@ -30,6 +30,7 @@ from config import (
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
     CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST, COSPLAY_TOKEN_COST,
     FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
+    FREEKASSA_MERCHANT_ID, FREEKASSA_API_KEY, FREEKASSA_API_ENABLED,
 )
 from services.user_service import (
     ensure_user, get_user, get_state, update_user_settings, touch_user,
@@ -127,6 +128,10 @@ from services.payment_method_service import (
     list_payment_methods, get_payment_method, create_payment_method,
     update_payment_method, delete_payment_method, ensure_default_payment_methods,
 )
+
+# V3.30.2: /fkcheck diagnostics print the deployed build straight from the
+# VERSION file so the owner can confirm Railway picked up the new commit.
+VERSION = (Path(__file__).resolve().parent / 'VERSION').read_text(encoding='utf-8').strip()
 
 # V3.30.1: Railway tags every stderr line as severity=error, and Python
 # logging writes to stderr by default — route the whole log to stdout so
@@ -5991,6 +5996,36 @@ async def _healthz(request: web.Request) -> web.Response:
     return web.Response(text='ok')
 
 
+async def _fk_check(request: web.Request) -> web.Response:
+    """V3.30.2: live FreeKassa diagnostics for the owner («страница платежа
+    не загружается»). Probes every piece of the payment path and prints a
+    plain-text report: env flags, server-IP lookup, /currencies default
+    payment id, a real API test order (returns the ``location`` link) and
+    the SCI fallback URL for the same order."""
+    lines = [
+        f'VERSION={VERSION}',
+        f'FREEKASSA_ENABLED={FREEKASSA_ENABLED} merchant={FREEKASSA_MERCHANT_ID or "-"}',
+        f'FREEKASSA_API_ENABLED={FREEKASSA_API_ENABLED} api_key={"set" if FREEKASSA_API_KEY else "MISSING"}',
+        f'PUBLIC_BASE_URL={PUBLIC_BASE_URL or "-"}',
+    ]
+    ip = await freekassa_service._server_ip()
+    lines.append(f'server_ip={ip or "UNRESOLVED (API orders will be skipped)"}')
+    pay_id = await freekassa_service._default_payment_id('RUB')
+    lines.append(f'default_payment_id(RUB)={pay_id if pay_id else "UNRESOLVED"}')
+    if FREEKASSA_API_ENABLED and ip:
+        order_id = freekassa_service.create_order(0, 'fkcheck', '10')
+        location = await freekassa_service.create_api_order(
+            order_id, '10', currency='RUB', telegram_id=None,
+        )
+        lines.append(f'api_test_order={order_id}')
+        lines.append(f'api_location={location or "API REJECTED ORDER (see bot logs)"}')
+        lines.append(f'sci_fallback_url={freekassa_service.payment_url(order_id, "10")}')
+    else:
+        lines.append('api_test_order=SKIPPED (need FREEKASSA_API_KEY + server ip)')
+        lines.append(f'sci_fallback_url={freekassa_service.payment_url(1, "10")}')
+    return web.Response(text='\n'.join(lines), content_type='text/plain')
+
+
 async def _root(request: web.Request) -> web.Response:
     # V3.19.10: plain liveness page for the bare Railway domain. Without it the
     # public URL showed aiohttp's default "404: Not Found" and looked like a
@@ -6010,6 +6045,7 @@ async def _start_web_server() -> None:
     app.router.add_route('*', '/freekassa/success', _fk_success)
     app.router.add_route('*', '/freekassa/fail', _fk_fail)
     app.router.add_get('/healthz', _healthz)
+    app.router.add_get('/fkcheck', _fk_check)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', WEB_PORT)

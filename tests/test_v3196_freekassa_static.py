@@ -56,8 +56,9 @@ def test_web_server_routes_and_startup():
 
 
 def test_notify_signature_and_idempotent_grant():
-    # Initiation signature uses SECRET1; server notification uses SECRET2.
-    assert 'FREEKASSA_SECRET1, str(order_id)]' in SERVICE
+    # V3.30.2: initiation signature uses SECRET1 with currency per docs 1.5
+    # (Merchant:Amount:Secret1:Currency:Order); server notification uses SECRET2.
+    assert 'FREEKASSA_SECRET1, cur, str(order_id)]' in SERVICE
     assert 'FREEKASSA_SECRET2, order_id]' in SERVICE
     assert 'hashlib.md5' in SERVICE
     # Grant path: verify -> mark_paid (idempotent) -> record_payment -> notify user.

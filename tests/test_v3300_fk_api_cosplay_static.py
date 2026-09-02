@@ -24,7 +24,7 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2')
 
 
 def test_config_exposes_api_key_and_server_ip():
