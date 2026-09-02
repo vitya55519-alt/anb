@@ -27,7 +27,7 @@ from config import (
     PREMIUM_DISCOUNT_PERCENT, DEMO_PREMIUM_HOURS,
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
-    CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST,
+    CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST, COSPLAY_TOKEN_COST,
     FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
 )
 from services.user_service import (
@@ -165,8 +165,23 @@ PHOTO_MENU_ORDER = [
     'restaurant', 'cinema', 'embankment', 'fashion',
     'evening', 'bar', 'karaoke', 'rooftop',
     'club', 'personal', 'lingerie', 'private_fashion',
-    'nude', 'tease',
+    # V3.30.0: the two explicit adult buttons left the menu — the image
+    # providers moderate them into HTTP 422 almost every time. Those scenes
+    # stay in photo_service only for old library photos.
 ]
+
+# V3.30.0: cosplay photoshoot costumes (label, wardrobe prompt fragment).
+# The scene is token-priced (COSPLAY_TOKEN_COST) and fully clothed.
+COSPLAY_COSTUMES = {
+    'maid': ('🖤 Горничная', 'a cute french-maid cosplay: black dress, white apron, lace headband'),
+    'nurse': ('💉 Медсестра', 'a playful nurse cosplay: white dress and cap with a red cross'),
+    'cat': ('🐱 Кошка-герл', 'a catgirl cosplay with cat ears, a bell collar and a tail'),
+    'bunny': ('🐰 Банни', 'a bunny cosplay with long ears, a bow tie and fluffy cuffs'),
+    'elf': ('🧝 Эльфийка', 'a fantasy elf cosplay: leaf-green dress, circlet, pointed ears'),
+    'witch': ('🧙 Ведьмочка', 'a witch cosplay: pointed hat and a dark cloak with silver clasps'),
+    'superhero': ('🦸 Супергероиня', 'a sleek superheroine cosplay with a domino mask and a cape'),
+    'police': ('🚔 Полицейская', 'a police cosplay uniform with a peaked cap and a shiny badge'),
+}
 
 # V3.21.0: emotional level names; levels 7-8 are the premium-only plateau.
 RELATIONSHIP_LEVEL_NAMES = {
@@ -484,8 +499,8 @@ def characters_keyboard(telegram_id: int | None = None):
     # V3.19.0: entry point to the personal character constructor.
     rows.append([InlineKeyboardButton(text=f'🎨 Создать свою · {CONSTRUCTOR_COST_STARS}⭐', callback_data='constructor:start')])
     if FREEKASSA_ENABLED and telegram_id:
-        rows.append([_fk_url_button(
-            telegram_id, 'constructor_rub', CONSTRUCTOR_COST_RUB,
+        rows.append([_fk_pay_button(
+            'constructor_rub', CONSTRUCTOR_COST_RUB,
             f'🎭 Персонаж — {CONSTRUCTOR_COST_RUB} ₽ · ⚡СБП / карта')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -968,15 +983,15 @@ def add_constructor_credit(telegram_id: int, amount: int = 1) -> None:
         s.commit()
 
 
-def _fk_url_button(telegram_id: int, product: str, amount: int, text: str,
-                   currency: str | None = None):
-    """One-click payment: the order is created now and the button opens the
-    FreeKassa page directly (no intermediate link message)."""
-    order_id = freekassa_service.create_order(telegram_id, product, str(amount))
-    return InlineKeyboardButton(
-        text=text,
-        url=freekassa_service.payment_url(order_id, str(amount), currency=currency),
-    )
+def _fk_pay_button(product: str, amount: int, text: str,
+                   currency: str | None = None, pay_id: int | None = None):
+    """V3.30.0: FreeKassa REST API order creation is a network call, so the
+    keyboard carries a lightweight callback button; the ``fkapi:`` handler
+    creates the order and sends back the ``location`` payment link."""
+    data = f'fkapi:{product}:{currency or "RUB"}'
+    if pay_id:
+        data += f':{pay_id}'
+    return InlineKeyboardButton(text=text, callback_data=data)
 
 
 def premium_keyboard(discount: dict | None = None, telegram_id: int | None = None):
@@ -994,19 +1009,24 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text=f'💎 Premium — Wallet Pay (крипта/карта)', callback_data='walletpay:premium')])
     if FREEKASSA_ENABLED and telegram_id:
-        # V3.27.0: one-click payments — the button itself is the payment link
-        # (order created upfront) with payment-system badges, not plain text.
-        rows.append([_fk_url_button(
-            telegram_id, 'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
+        # V3.30.0: REST API orders — callback buttons; the fkapi: handler
+        # creates the order and replies with the `location` payment link.
+        # Payment-system badges stay on the labels; SBP QR gets its own row.
+        rows.append([_fk_pay_button(
+            'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
             f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · ⚡СБП / карта')])
-        rows.append([_fk_url_button(
-            telegram_id, 'premium_month', FREEKASSA_PREMIUM_PRICE_USD,
+        rows.append([_fk_pay_button(
+            'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
+            f'⚡ Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · SBP QR',
+            pay_id=freekassa_service.FK_SBP_QR_PAYMENT_ID)])
+        rows.append([_fk_pay_button(
+            'premium_month', FREEKASSA_PREMIUM_PRICE_USD,
             f'💳 Premium — ${FREEKASSA_PREMIUM_PRICE_USD} · Ⓥ Visa / Ⓜ Mastercard',
             currency='USD')])
         rows.append([
-            _fk_url_button(telegram_id, 'tokens_1', TOKEN_PRICE_RUB,
+            _fk_pay_button('tokens_1', TOKEN_PRICE_RUB,
                            f'🪙 1 токен — {TOKEN_PRICE_RUB} ₽'),
-            _fk_url_button(telegram_id, f'tokens_{TOKEN_PACK_SIZE}',
+            _fk_pay_button(f'tokens_{TOKEN_PACK_SIZE}',
                            TOKEN_PACK_SIZE * TOKEN_PRICE_RUB,
                            f'🪙 {TOKEN_PACK_SIZE} токенов — {TOKEN_PACK_SIZE * TOKEN_PRICE_RUB} ₽'),
         ])
@@ -1064,6 +1084,12 @@ def photo_keyboard(telegram_id: int):
         rows.append([InlineKeyboardButton(
             text='🔥 Приватное — горячие сеты' if lang == RU else '🔥 Private — hot sets',
             callback_data='spicy:menu',
+        )])
+    # V3.30.0: cosplay photoshoot — token-priced, unlocked from level 3.
+    if level >= SCENE_LEVELS.get('cosplay', 3):
+        rows.append([InlineKeyboardButton(
+            text=f'🎭 Косплей-фотосет — {COSPLAY_TOKEN_COST}🪙',
+            callback_data='cosplay:start',
         )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -3494,7 +3520,10 @@ async def fk_premium(cq: types.CallbackQuery):
     order_id = freekassa_service.create_order(
         cq.from_user.id, 'premium_month', str(FREEKASSA_PREMIUM_PRICE_RUB),
     )
-    link = freekassa_service.payment_url(order_id, FREEKASSA_PREMIUM_PRICE_RUB)
+    # V3.30.0: REST API link first; the SCI form link is only a fallback.
+    link = await freekassa_service.create_api_order(
+        order_id, str(FREEKASSA_PREMIUM_PRICE_RUB), telegram_id=cq.from_user.id,
+    ) or freekassa_service.payment_url(order_id, FREEKASSA_PREMIUM_PRICE_RUB)
     await bot.send_message(
         cq.message.chat.id,
         f'💳 Оплата Premium картой / СБП — {FREEKASSA_PREMIUM_PRICE_RUB} ₽\n\n'
@@ -3516,7 +3545,11 @@ async def fk_premium_usd(cq: types.CallbackQuery):
     order_id = freekassa_service.create_order(
         cq.from_user.id, 'premium_month', str(FREEKASSA_PREMIUM_PRICE_USD),
     )
-    link = freekassa_service.payment_url(order_id, FREEKASSA_PREMIUM_PRICE_USD, currency='USD')
+    # V3.30.0: REST API link first; the SCI form link is only a fallback.
+    link = await freekassa_service.create_api_order(
+        order_id, str(FREEKASSA_PREMIUM_PRICE_USD), currency='USD',
+        telegram_id=cq.from_user.id,
+    ) or freekassa_service.payment_url(order_id, FREEKASSA_PREMIUM_PRICE_USD, currency='USD')
     await bot.send_message(
         cq.message.chat.id,
         f'💳 Оплата Premium картой Visa/Mastercard — ${FREEKASSA_PREMIUM_PRICE_USD}\n\n'
@@ -3524,6 +3557,95 @@ async def fk_premium_usd(cq: types.CallbackQuery):
         'После оплаты премиум включится автоматически в течение минуты. '
         'Если что-то пойдёт не так — напиши /support.',
     )
+
+
+def _fk_amount_for(product: str, currency: str) -> int:
+    """V3.30.0: price lookup behind the fkapi: callback buttons."""
+    if product == 'premium_month':
+        return FREEKASSA_PREMIUM_PRICE_USD if currency == 'USD' else FREEKASSA_PREMIUM_PRICE_RUB
+    if product == 'constructor_rub':
+        return CONSTRUCTOR_COST_RUB
+    if product.startswith('tokens_'):
+        return int(product.split('_')[1]) * TOKEN_PRICE_RUB
+    return FREEKASSA_PREMIUM_PRICE_RUB
+
+
+@dp.callback_query(F.data.startswith('fkapi:'))
+async def fkapi_pay(cq: types.CallbackQuery):
+    """V3.30.0: FreeKassa REST API order — create the row, call
+    POST /orders/create and hand the user the ``location`` payment link."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    if not FREEKASSA_ENABLED:
+        await cq.answer('Оплата картой сейчас выключена — используй Stars ⭐', show_alert=True); return
+    parts = cq.data.split(':')
+    product, currency = parts[1], parts[2]
+    pay_id = int(parts[3]) if len(parts) > 3 else None
+    amount = _fk_amount_for(product, currency)
+    await cq.answer('создаю счёт…')
+    order_id = freekassa_service.create_order(cq.from_user.id, product, str(amount))
+    link = await freekassa_service.create_api_order(
+        order_id, str(amount), currency=currency,
+        telegram_id=cq.from_user.id, payment_system=pay_id,
+    )
+    if not link:
+        # API unreachable (no key/IP/error) — the SCI form link still pays.
+        link = freekassa_service.payment_url(order_id, str(amount), currency=currency)
+    sign = '$' if currency == 'USD' else '₽'
+    if product == 'premium_month':
+        title = f'💳 Premium — {sign}{amount}'
+    elif product == 'constructor_rub':
+        title = f'🎭 Персонаж — {sign}{amount}'
+    else:
+        title = f'🪙 Токены — {sign}{amount}'
+    await bot.send_message(
+        cq.message.chat.id,
+        f'{title} · оплата картой / СБП\n\n{link}\n\n'
+        'После оплаты всё включится автоматически в течение минуты. '
+        'Если что-то пойдёт не так — напиши /support.',
+    )
+
+
+@dp.callback_query(F.data == 'cosplay:start')
+async def cosplay_start(cq: types.CallbackQuery):
+    """V3.30.0: costume picker for the token-priced cosplay photoshoot."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    await cq.answer()
+    balance = get_token_balance(cq.from_user.id)
+    rows = [[InlineKeyboardButton(text=label, callback_data=f'cosplay:{key}')]
+            for key, (label, _costume) in COSPLAY_COSTUMES.items()]
+    rows.append([InlineKeyboardButton(text='⬅️ Фото-меню', callback_data='photo_menu:open')])
+    await cq.message.answer(
+        f'🎭 выбери костюм — сниму сет за {COSPLAY_TOKEN_COST}🪙\nтвой баланс: {balance}🪙',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+@dp.callback_query(F.data.startswith('cosplay:'))
+async def cosplay_pick(cq: types.CallbackQuery):
+    """V3.30.0: charge tokens and shoot the chosen cosplay set."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    costume = COSPLAY_COSTUMES.get(cq.data.split(':', 1)[1])
+    if costume is None:
+        await cq.answer('такого костюма нет в списке 😅', show_alert=True); return
+    if not spend_tokens(cq.from_user.id, COSPLAY_TOKEN_COST):
+        await cq.answer(f'нужно {COSPLAY_TOKEN_COST}🪙 — токены продаются в премиум-меню', show_alert=True); return
+    await cq.answer()
+    request = PhotoRequest(scene='cosplay', clothing=costume[1])
+    started = await _start_photo_background(
+        cq.message.chat.id, cq.from_user.id, request, 'paid',
+        amount=COSPLAY_TOKEN_COST, product='cosplay',
+    )
+    if not started:
+        # Busy/budget guard blocked the job — give the tokens back.
+        add_tokens(cq.from_user.id, COSPLAY_TOKEN_COST)
+    else:
+        await cq.message.answer(f'🎭 снимаю сет в образе «{costume[0]}»… {COSPLAY_TOKEN_COST}🪙 списала')
 
 
 @dp.callback_query(F.data.startswith('walletpay:'))

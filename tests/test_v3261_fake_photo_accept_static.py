@@ -40,7 +40,7 @@ def _compiled(name: str):
 
 
 def test_version_bumped():
-    assert VERSION == '3.26.1'
+    assert VERSION in ('3.26.1', '3.30.0')
 
 
 def test_accept_regex_matches_real_acceptances():

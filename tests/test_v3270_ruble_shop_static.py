@@ -50,8 +50,8 @@ def test_runtime_user_balances_default_zero():
 
 def test_premium_keyboard_is_one_click_url_buttons_with_badges():
     assert 'def premium_keyboard(discount: dict | None = None, telegram_id: int | None = None):' in MAIN
-    assert 'def _fk_url_button(' in MAIN
-    assert 'url=freekassa_service.payment_url(order_id, str(amount), currency=currency)' in MAIN
+    assert 'def _fk_pay_button(' in MAIN
+    assert 'link = freekassa_service.payment_url(order_id, str(amount), currency=currency)' in MAIN
     assert 'if FREEKASSA_ENABLED and telegram_id:' in MAIN
     # ruble premium: SBP + card badges
     assert "⚡СБП / карта" in MAIN  # SBP / card

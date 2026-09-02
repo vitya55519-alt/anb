@@ -197,6 +197,16 @@ FREEKASSA_MERCHANT_ID = os.getenv("FREEKASSA_MERCHANT_ID", "").strip()
 FREEKASSA_SECRET1 = os.getenv("FREEKASSA_SECRET1", "").strip()
 FREEKASSA_SECRET2 = os.getenv("FREEKASSA_SECRET2", "").strip()
 FREEKASSA_ENABLED = bool(FREEKASSA_MERCHANT_ID and FREEKASSA_SECRET1 and FREEKASSA_SECRET2)
+# V3.30.0: FreeKassa REST API (https://api.fk.life/v1, JSON). The merchant
+# cabinet issues a separate API key; when it is present, orders are created
+# via POST /orders/create (HMAC-SHA256 signature) and the returned `location`
+# link is handed to the user. Without the key the legacy SCI form link stays.
+FREEKASSA_API_KEY = os.getenv("FREEKASSA_API_KEY", "").strip()
+FREEKASSA_API_ENABLED = bool(FREEKASSA_MERCHANT_ID and FREEKASSA_API_KEY)
+# orders/create requires a real IP (127.0.0.1 is rejected) and Telegram hides
+# the user IP, so we send our own public egress IP (auto-looked-up, cached).
+# Override manually when the auto lookup is blocked on the host.
+FREEKASSA_SERVER_IP = os.getenv("FREEKASSA_SERVER_IP", "").strip()
 FREEKASSA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_RUB", "299")))
 # V3.20.1: international Visa/Mastercard button — the same FreeKassa kassa,
 # invoice currency USD (multi-currency must be enabled in the kassa settings).
@@ -258,6 +268,8 @@ CONSTRUCTOR_COST_RUB = max(1, int(os.getenv("CONSTRUCTOR_COST_RUB", "200")))
 TOKEN_PRICE_RUB = max(1, int(os.getenv("TOKEN_PRICE_RUB", "10")))
 TOKEN_PACK_SIZE = max(1, int(os.getenv("TOKEN_PACK_SIZE", "5")))
 VIDEO_TOKEN_COST = max(1, int(os.getenv("VIDEO_TOKEN_COST", "5")))
+# V3.30.0: cosplay photoshoot price in tokens (costume picker in photo menu).
+COSPLAY_TOKEN_COST = max(1, int(os.getenv("COSPLAY_TOKEN_COST", "10")))
 
 # V3.19.0: vision reactions — the character comments on photos users send in
 # chat (selfies, pets, food, gym...) via the multimodal chat provider.

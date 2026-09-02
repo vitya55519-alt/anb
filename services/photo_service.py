@@ -105,6 +105,9 @@ SCENES = {
     'tease': 'a playful sensual photo from behind, teasing and confident, made for someone she deeply trusts',
     'peek': 'a casual personal smartphone photo where her lingerie believably peeks from under the everyday outfit',
     'dressing': 'a natural relaxed personal photo while she is getting dressed, her underwear still visible before the clothing goes on',
+    # V3.30.0: token-priced cosplay photoshoot — the costume itself arrives
+    # via PhotoRequest.clothing from the COSPLAY_COSTUMES picker.
+    'cosplay': 'a playful cosplay photoshoot portrait where she wears a recognizable costume outfit, fully clothed, styled like a convention cosplay shoot',
 }
 
 SCENE_LEVELS = {
@@ -115,6 +118,9 @@ SCENE_LEVELS = {
     'club': 5, 'personal': 5, 'lingerie': 5,
     'private_fashion': 6,
     'nude': 6, 'tease': 6,
+    # V3.30.0: cosplay is token-priced from the photo menu (level 3+ sees the
+    # button); the level gate keeps it out of brand-new conversations.
+    'cosplay': 3,
     # V3.19.2: 'peek'/'dressing' are retired from generation — every public
     # venue scene must stay fully clothed; lingerie belongs to the private
     # scenes only. They stay in SCENES/AUTO_CAPTIONS for old library photos.
@@ -151,6 +157,7 @@ AUTO_CAPTIONS = {
     'tease': ('поворачиваюсь спиной… 😏', 'так хочется тебя подразнить', 'видишь? это для тебя'),
     'peek': ('ой, кажется, кое-что видно 😏', 'заметила только когда сфоткалась… ну пусть будет'),
     'dressing': ('ещё собираюсь 😌', 'поймала момент до того, как оделась'),
+    'cosplay': ('примерила образ специально для тебя 🎭', 'косплей-сет готов 😏', 'как тебе мой костюм? 🎭'),
 }
 
 SAFE_EXPLICIT = re.compile(
@@ -208,6 +215,9 @@ SCENE_GROUP = {
     'lingerie':'adult',
     'nude':'adult', 'tease':'adult',
     'peek':'home', 'dressing':'home',
+    # V3.30.0: cosplay wardrobe comes from PhotoRequest.clothing (the chosen
+    # costume); the group only feeds the generic outfit fallback pools.
+    'cosplay':'fashion',
 }
 
 WARDROBE_LEVEL_POOLS = {

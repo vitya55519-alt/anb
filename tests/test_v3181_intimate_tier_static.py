@@ -229,7 +229,11 @@ class TestSensualAnimationPrompt:
         assert 'Дразнит' in MAIN_SRC
 
     def test_main_photo_menu_order_has_adult(self):
+        # V3.30.0: the nude/tease BUTTONS left the menu (image providers
+        # moderate them into HTTP 422 almost every time); labels and the
+        # backend registries stay for old library photos.
         idx = MAIN_SRC.index('PHOTO_MENU_ORDER')
-        chunk = MAIN_SRC[idx:idx + 300]
-        assert "'nude'" in chunk
-        assert "'tease'" in chunk
+        chunk = MAIN_SRC[idx:idx + 400]
+        assert "'nude'" not in chunk
+        assert "'tease'" not in chunk
+        assert "'nude'" in MAIN_SRC and "'tease'" in MAIN_SRC
