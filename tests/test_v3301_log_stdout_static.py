@@ -14,7 +14,7 @@ MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3')
 
 
 def test_logging_streams_to_stdout():

@@ -22,7 +22,7 @@ FK = (ROOT / 'services' / 'freekassa_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3')
 
 
 def test_sci_host_is_pay_fk_money_not_dead_ru():
@@ -41,12 +41,20 @@ def test_sci_signature_includes_currency_per_docs_1_5():
 
 def test_api_order_always_sends_required_i():
     # Section 1.8: i is REQUIRED; the static fallback map must exist.
-    assert 'FK_CURRENCY_PAYMENT_IDS = {' in FK
-    assert "'RUB': 42," in FK    # СБП
-    assert "'USD': 2," in FK     # FK WALLET USD
-    assert "'EUR': 3," in FK     # FK WALLET EUR
-    # The pay_id chain: explicit → /currencies → static fallback
-    assert 'or FK_CURRENCY_PAYMENT_IDS.get(currency.upper())' in FK
+    assert 'FK_CURRENCY_PAYMENT_IDS: dict[str, list[int]] = {' in FK
+    assert "'RUB': [44, 42, 4, 8, 1]," in FK   # СБП API / СБП / VISA / MC / Wallet
+    assert "'USD': [2]," in FK                  # FK WALLET USD
+    assert "'EUR': [3]," in FK                  # FK WALLET EUR
+    # The pay_id chain: explicit → /currencies best enabled → static fallback
+    assert 'or (FK_CURRENCY_PAYMENT_IDS.get(currency.upper()) or [None])[0]' in FK
+
+
+def test_default_payment_id_prefers_card_sbp_over_wallet():
+    # We must not blindly pick the first enabled system from /currencies,
+    # because FK WALLET RUB (id=1) would redirect to fkwallet.io.
+    assert 'preferred = set(FK_CURRENCY_PAYMENT_IDS.get(currency.upper(), []))' in FK
+    assert 'for pid in FK_CURRENCY_PAYMENT_IDS.get(currency.upper(), []):' in FK
+    assert 'if pid in enabled:' in FK
 
 
 def test_api_amount_is_numeric_not_string():

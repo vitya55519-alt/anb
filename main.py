@@ -6012,6 +6012,7 @@ async def _fk_check(request: web.Request) -> web.Response:
     lines.append(f'server_ip={ip or "UNRESOLVED (API orders will be skipped)"}')
     pay_id = await freekassa_service._default_payment_id('RUB')
     lines.append(f'default_payment_id(RUB)={pay_id if pay_id else "UNRESOLVED"}')
+    lines.append(f'preferred_RUB={freekassa_service.FK_CURRENCY_PAYMENT_IDS.get("RUB", [])}')
     if FREEKASSA_API_ENABLED and ip:
         order_id = freekassa_service.create_order(0, 'fkcheck', '10')
         location = await freekassa_service.create_api_order(

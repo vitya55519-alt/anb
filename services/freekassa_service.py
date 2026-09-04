@@ -35,17 +35,18 @@ logger = logging.getLogger(__name__)
 FK_API_BASE = 'https://api.fk.life/v1'
 # Payment-system id passed in ``i`` for SBP QR-code acceptance (docs: i=44).
 FK_SBP_QR_PAYMENT_ID = 44
-# V3.30.2 section 1.8 «Список доступных валют» — documented payment-system
+# V3.30.3 section 1.8 «Список доступных валют» — documented payment-system
 # IDs used in the REQUIRED ``i`` parameter of orders/create. The /currencies
-# endpoint resolves the merchant's actually-enabled systems first (that's
-# the authoritative source); this map is the last-resort fallback so ``i``
-# is never missing and the API always creates a real ``location`` link.
-FK_CURRENCY_PAYMENT_IDS = {
-    'RUB': 42,   # СБП
-    'USD': 2,    # FK WALLET USD
-    'EUR': 3,    # FK WALLET EUR
-    'UAH': 7,    # VISA UAH
-    'KZT': 41,   # VISA / MasterCard KZT
+# endpoint is queried first, but we pick the *preferred* enabled system for
+# the currency rather than the arbitrary first row — otherwise FK WALLET
+# (id=1 for RUB, id=2 for USD) gets selected and the user lands on
+# fkwallet.io instead of the card/SBP payment form.
+FK_CURRENCY_PAYMENT_IDS: dict[str, list[int]] = {
+    'RUB': [44, 42, 4, 8, 1],   # СБП API, СБП, VISA, MasterCard, FK Wallet
+    'USD': [2],                  # FK WALLET USD (known USD option)
+    'EUR': [3],                  # FK WALLET EUR
+    'UAH': [7, 9],               # VISA UAH, MasterCard UAH
+    'KZT': [41],                 # VISA / MasterCard KZT
 }
 # V3.30.2: SCI payment-form host (docs 1.5). The old pay.freekassa.ru is
 # dead — the payment page never loads from it.
@@ -93,7 +94,10 @@ async def _server_ip() -> str:
 
 
 async def _default_payment_id(currency: str) -> int | None:
-    """First enabled payment system for the currency (docs: /currencies)."""
+    """Best enabled payment system for the currency (docs: /currencies).
+
+    We prefer card/SBP methods over FK WALLET so the user lands on the
+    payment form, not on fkwallet.io."""
     if currency.upper() in _currencies_cache:
         return _currencies_cache[currency.upper()]
     if not FREEKASSA_API_ENABLED:
@@ -107,10 +111,21 @@ async def _default_payment_id(currency: str) -> int | None:
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 data = await resp.json()
-        for row in (data or {}).get('currencies') or []:
-            if row.get('is_enabled') == 1 and str(row.get('currency', '')).upper() == currency.upper():
-                _currencies_cache[currency.upper()] = int(row['id'])
-                return int(row['id'])
+        preferred = set(FK_CURRENCY_PAYMENT_IDS.get(currency.upper(), []))
+        enabled = [
+            int(row['id']) for row in ((data or {}).get('currencies') or [])
+            if row.get('is_enabled') == 1
+            and str(row.get('currency', '')).upper() == currency.upper()
+        ]
+        # Prefer the first enabled method from our curated list.
+        for pid in FK_CURRENCY_PAYMENT_IDS.get(currency.upper(), []):
+            if pid in enabled:
+                _currencies_cache[currency.upper()] = pid
+                return pid
+        # Nothing matched our preference list — fall back to whatever is enabled.
+        if enabled:
+            _currencies_cache[currency.upper()] = enabled[0]
+            return enabled[0]
     except Exception as exc:
         logger.warning('FreeKassa currencies lookup failed: %s', exc)
     return None
@@ -132,11 +147,11 @@ async def create_api_order(order_id: int, amount: str, currency: str = 'RUB',
         return None
     # Section 1.8: ``i`` is REQUIRED by orders/create — the API rejects a
     # request without it. Resolve in priority order: explicit param →
-    # /currencies (merchant's enabled systems) → documented static default.
+    # /currencies best enabled → first documented static default.
     pay_id = (
         payment_system
         or await _default_payment_id(currency)
-        or FK_CURRENCY_PAYMENT_IDS.get(currency.upper())
+        or (FK_CURRENCY_PAYMENT_IDS.get(currency.upper()) or [None])[0]
     )
     params: dict = {
         'shopId': int(FREEKASSA_MERCHANT_ID),
