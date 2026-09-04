@@ -131,6 +131,43 @@ async def _default_payment_id(currency: str) -> int | None:
     return None
 
 
+async def get_orders(payment_id: int | str | None = None,
+                     fk_order_id: int | None = None,
+                     status: int | None = None,
+                     page: int | None = None) -> dict | None:
+    """Docs getOrders: POST /orders, list/order status via API.
+
+    Useful as a diagnostic fallback when a webhook is missed or the owner
+    wants to verify a specific order. Returns the parsed JSON response or
+    None if the API is not configured / request failed.
+    """
+    if not FREEKASSA_API_ENABLED:
+        return None
+    params: dict = {'shopId': int(FREEKASSA_MERCHANT_ID), 'nonce': _nonce()}
+    if payment_id is not None:
+        params['paymentId'] = str(payment_id)
+    if fk_order_id is not None:
+        params['orderId'] = int(fk_order_id)
+    if status is not None:
+        params['orderStatus'] = int(status)
+    if page is not None:
+        params['page'] = int(page)
+    params['signature'] = _api_signature(params, FREEKASSA_API_KEY)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f'{FK_API_BASE}/orders', json=params,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                data = await resp.json(content_type=None)
+        logger.info('FreeKassa get_orders payment_id=%s fk_order_id=%s status=%s',
+                    payment_id, fk_order_id, status)
+        return data
+    except Exception as exc:
+        logger.error('FreeKassa get_orders failed payment_id=%s err=%s', payment_id, exc)
+        return None
+
+
 async def create_api_order(order_id: int, amount: str, currency: str = 'RUB',
                            telegram_id: int | None = None,
                            payment_system: int | None = None) -> str | None:

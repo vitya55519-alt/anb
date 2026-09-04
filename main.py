@@ -6021,6 +6021,9 @@ async def _fk_check(request: web.Request) -> web.Response:
         lines.append(f'api_test_order={order_id}')
         lines.append(f'api_location={location or "API REJECTED ORDER (see bot logs)"}')
         lines.append(f'sci_fallback_url={freekassa_service.payment_url(order_id, "10")}')
+        # getOrders sanity check for the order we just created.
+        orders_data = await freekassa_service.get_orders(payment_id=order_id)
+        lines.append(f'get_orders_status={str(orders_data)[:500]}')
     else:
         lines.append('api_test_order=SKIPPED (need FREEKASSA_API_KEY + server ip)')
         lines.append(f'sci_fallback_url={freekassa_service.payment_url(1, "10")}')

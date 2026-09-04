@@ -12,7 +12,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 def test_version_bumped():
     # Superseded by V3.21.0 (couple layer); the USD/circle/TTS pins below stay valid.
-    assert VERSION in ('3.20.1', '3.21.0', '3.22.0', '3.23.0', '3.24.0', '3.25.0', '3.26.0', '3.26.1', '3.30.0', '3.30.1', '3.30.2', '3.30.3')
+    assert VERSION in ('3.20.1', '3.21.0', '3.22.0', '3.23.0', '3.24.0', '3.25.0', '3.26.0', '3.26.1', '3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4')
 
 
 def test_usd_price_config():

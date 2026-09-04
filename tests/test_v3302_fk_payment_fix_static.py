@@ -22,7 +22,7 @@ FK = (ROOT / 'services' / 'freekassa_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4')
 
 
 def test_sci_host_is_pay_fk_money_not_dead_ru():
@@ -68,8 +68,18 @@ def test_fkcheck_diagnostics_route():
     assert 'freekassa_service._server_ip()' in MAIN
     assert 'freekassa_service._default_payment_id(' in MAIN
     assert 'freekassa_service.create_api_order(' in MAIN
+    assert 'freekassa_service.get_orders(payment_id=order_id)' in MAIN
     # the route prints the deployed VERSION so owner can verify the build
     assert "VERSION = (Path(__file__).resolve().parent / 'VERSION')" in MAIN
+
+
+def test_get_orders_helper_exists():
+    # docs getOrders: POST /orders, optional paymentId/orderId/orderStatus/page.
+    assert 'async def get_orders(' in FK
+    assert "f'{FK_API_BASE}/orders'" in FK
+    assert "params['paymentId'] = str(payment_id)" in FK
+    assert "params['orderId'] = int(fk_order_id)" in FK
+    assert "params['orderStatus'] = int(status)" in FK
 
 
 def test_config_api_key_gate_present():
