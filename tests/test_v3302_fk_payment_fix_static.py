@@ -22,7 +22,7 @@ FK = (ROOT / 'services' / 'freekassa_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6')
 
 
 def test_sci_host_is_pay_fk_money_not_dead_ru():
@@ -75,12 +75,15 @@ def test_fkcheck_diagnostics_route():
 
 
 def test_get_orders_helper_exists():
-    # docs getOrders: POST /orders, optional paymentId/orderId/orderStatus/page.
+    # docs getOrders: POST /orders, optional paymentId/orderId/orderStatus/page/dateFrom/dateTo.
+    # Params are sent as QUERY string, not JSON body.
     assert 'async def get_orders(' in FK
-    assert "f'{FK_API_BASE}/orders'" in FK
+    assert "f'{FK_API_BASE}/orders', params=params," in FK
     assert "params['paymentId'] = str(payment_id)" in FK
     assert "params['orderId'] = int(fk_order_id)" in FK
     assert "params['orderStatus'] = int(status)" in FK
+    assert "params['dateFrom'] = date_from" in FK
+    assert "params['dateTo'] = date_to" in FK
 
 
 def test_currencies_lookup_and_logging():

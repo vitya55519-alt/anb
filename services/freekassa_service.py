@@ -144,8 +144,10 @@ async def _default_payment_id(currency: str) -> int | None:
 async def get_orders(payment_id: int | str | None = None,
                      fk_order_id: int | None = None,
                      status: int | None = None,
-                     page: int | None = None) -> dict | None:
-    """Docs getOrders: POST /orders, list/order status via API.
+                     page: int | None = None,
+                     date_from: str | None = None,
+                     date_to: str | None = None) -> dict | None:
+    """Docs getOrders: POST /orders?..., query parameters per docs.
 
     Useful as a diagnostic fallback when a webhook is missed or the owner
     wants to verify a specific order. Returns the parsed JSON response or
@@ -162,11 +164,15 @@ async def get_orders(payment_id: int | str | None = None,
         params['orderStatus'] = int(status)
     if page is not None:
         params['page'] = int(page)
+    if date_from is not None:
+        params['dateFrom'] = date_from
+    if date_to is not None:
+        params['dateTo'] = date_to
     params['signature'] = _api_signature(params, FREEKASSA_API_KEY)
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f'{FK_API_BASE}/orders', json=params,
+                f'{FK_API_BASE}/orders', params=params,
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 data = await resp.json(content_type=None)
