@@ -24,7 +24,7 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7')
 
 
 def test_config_exposes_api_key_and_server_ip():
@@ -36,8 +36,9 @@ def test_config_exposes_api_key_and_server_ip():
 
 def test_api_base_and_sbp_qr_id():
     assert "FK_API_BASE = 'https://api.fk.life/v1'" in FK
-    # docs: parameter i=44 is SBP QR-code acceptance
-    assert 'FK_SBP_QR_PAYMENT_ID = 44' in FK
+    # i=44 "СБП (НСПК)" is API-only and cannot be opened as a web form.
+    # Web links use i=42 "СБП" which renders the normal payment form.
+    assert 'FK_SBP_QR_PAYMENT_ID = 42' in FK
 
 
 def test_request_signature_is_hmac_sha256_over_ksort_pipe():
@@ -85,9 +86,9 @@ def test_keyboard_uses_callback_buttons_and_handler_sends_location():
     assert 'freekassa_service.create_api_order(' in handler
     # SCI form link stays only as a fallback inside the handler
     assert 'link = freekassa_service.payment_url(order_id, str(amount), currency=currency)' in handler
-    # the SBP QR row passes i=44
+    # the SBP row passes the chosen pay_id (now 42 for web form)
     assert 'pay_id=freekassa_service.FK_SBP_QR_PAYMENT_ID' in MAIN
-    assert '⚡ Premium —' in MAIN and 'SBP QR' in MAIN
+    assert '⚡ Premium —' in MAIN and 'SBP' in MAIN
 
 
 def test_photo_menu_has_no_explicit_adult_buttons():

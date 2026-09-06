@@ -22,7 +22,7 @@ FK = (ROOT / 'services' / 'freekassa_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7')
 
 
 def test_sci_host_is_pay_fk_money_not_dead_ru():
@@ -41,10 +41,13 @@ def test_sci_signature_includes_currency_per_docs_1_5():
 
 def test_api_order_always_sends_required_i():
     # Section 1.8: i is REQUIRED; the static fallback map must exist.
+    # i=44 "СБП (НСПК)" is API-only (browser form shows an error), so web
+    # links use i=42 "СБП" which renders the normal payment form.
     assert 'FK_CURRENCY_PAYMENT_IDS: dict[str, list[int]] = {' in FK
-    assert "'RUB': [44, 42, 4, 8, 1]," in FK   # СБП API / СБП / VISA / MC / Wallet
-    assert "'USD': [2]," in FK                  # FK WALLET USD
-    assert "'EUR': [3]," in FK                  # FK WALLET EUR
+    assert "'RUB': [42, 4, 8, 1]," in FK   # СБП, VISA, MasterCard, FK Wallet
+    assert "'USD': [2]," in FK              # FK WALLET USD
+    assert "'EUR': [3]," in FK              # FK WALLET EUR
+    assert 'FK_SBP_QR_PAYMENT_ID = 42' in FK
     # The pay_id chain: explicit → /currencies best enabled → static fallback
     assert 'or (FK_CURRENCY_PAYMENT_IDS.get(currency.upper()) or [None])[0]' in FK
 

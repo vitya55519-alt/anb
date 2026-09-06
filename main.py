@@ -1028,13 +1028,16 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
     if FREEKASSA_ENABLED and telegram_id:
         # V3.30.0: REST API orders — callback buttons; the fkapi: handler
         # creates the order and replies with the `location` payment link.
-        # Payment-system badges stay on the labels; SBP QR gets its own row.
+        # Payment-system badges stay on the labels; SBP gets its own row.
+        # NOTE: i=44 "СБП (НСПК)" is API-only and does NOT open in a browser
+        # form (FreeKassa shows "Данный метод работает только по API!"), so we
+        # use i=42 "СБП" for the web-form link.
         rows.append([_fk_pay_button(
             'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
             f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · ⚡СБП / карта')])
         rows.append([_fk_pay_button(
             'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
-            f'⚡ Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · SBP QR',
+            f'⚡ Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · SBP',
             pay_id=freekassa_service.FK_SBP_QR_PAYMENT_ID)])
         rows.append([_fk_pay_button(
             'premium_month', FREEKASSA_PREMIUM_PRICE_USD,

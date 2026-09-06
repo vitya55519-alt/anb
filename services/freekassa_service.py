@@ -33,8 +33,9 @@ logger = logging.getLogger(__name__)
 
 # V3.30.0: every REST request is a JSON POST under this base (docs 2.x).
 FK_API_BASE = 'https://api.fk.life/v1'
-# Payment-system id passed in ``i`` for SBP QR-code acceptance (docs: i=44).
-FK_SBP_QR_PAYMENT_ID = 44
+# Payment-system id passed in ``i`` for SBP form acceptance (docs i=42).
+# NOTE: i=44 "СБП (НСПК)" is API-only and does NOT open in a browser form.
+FK_SBP_QR_PAYMENT_ID = 42
 # V3.30.3 section 1.8 «Список доступных валют» — documented payment-system
 # IDs used in the REQUIRED ``i`` parameter of orders/create. The /currencies
 # endpoint is queried first, but we pick the *preferred* enabled system for
@@ -42,7 +43,10 @@ FK_SBP_QR_PAYMENT_ID = 44
 # (id=1 for RUB, id=2 for USD) gets selected and the user lands on
 # fkwallet.io instead of the card/SBP payment form.
 FK_CURRENCY_PAYMENT_IDS: dict[str, list[int]] = {
-    'RUB': [44, 42, 4, 8, 1],   # СБП API, СБП, VISA, MasterCard, FK Wallet
+    # V3.30.7: i=44 "СБП (НСПК)" is API-only and cannot be opened as a web
+    # payment form (FreeKassa shows "Данный метод работает только по API!").
+    # For web links we prefer i=42 "СБП" which renders the normal form.
+    'RUB': [42, 4, 8, 1],        # СБП, VISA, MasterCard, FK Wallet
     'USD': [2],                  # FK WALLET USD (known USD option)
     'EUR': [3],                  # FK WALLET EUR
     'UAH': [7, 9],               # VISA UAH, MasterCard UAH
