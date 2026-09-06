@@ -5936,6 +5936,11 @@ async def text_message(message: types.Message):
 
 async def _fk_notify(request: web.Request) -> web.Response:
     """FreeKassa server notification: verify SIGN (secret 2) and grant."""
+    # Docs 1.4: notifications should only be accepted from FreeKassa IPs.
+    peer_ip = request.headers.get('X-Real-IP') or request.headers.get('X-Forwarded-For') or request.remote
+    if peer_ip and peer_ip not in freekassa_service.FK_NOTIFY_IPS:
+        logger.warning('FreeKassa notify rejected bad peer_ip=%s', peer_ip)
+        return web.Response(text='NO|bad_ip', status=403)
     params = dict(request.query)
     if request.method == 'POST':
         try:

@@ -66,9 +66,16 @@ def _api_signature(params: dict, key: str) -> str:
     return hmac.new(key.encode('utf-8'), base.encode('utf-8'), hashlib.sha256).hexdigest()
 
 
+# FreeKassa example uses Moscow time in milliseconds:
+#   (time() + 10800) * 1000
+# Using UTC could be ~3 hours behind the server's expected clock, so we
+# align with the docs example to avoid "nonce too small" style rejections.
+FK_NONCE_UTC_OFFSET_SECONDS = 10800
+
+
 def _nonce() -> int:
     """Request id that must always be greater than the previous one."""
-    return int(time.time() * 1000)
+    return (int(time.time()) + FK_NONCE_UTC_OFFSET_SECONDS) * 1000
 
 
 async def _server_ip() -> str:
@@ -250,6 +257,13 @@ async def create_api_order(order_id: int, amount: str, currency: str = 'RUB',
     logger.info('FreeKassa API order created order=%s fk_order=%s i=%s location_domain=%s',
                 order_id, (data or {}).get('orderId'), pay_id, domain)
     return location
+
+
+# IPs from which FreeKassa sends server notifications (docs 1.4).
+FK_NOTIFY_IPS = {
+    '168.119.157.136', '168.119.60.227',
+    '178.154.197.79', '51.250.54.238',
+}
 
 
 def _md5_sign(parts: list[str]) -> str:

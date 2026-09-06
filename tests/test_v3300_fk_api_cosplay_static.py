@@ -24,7 +24,7 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8')
 
 
 def test_config_exposes_api_key_and_server_ip():
@@ -63,15 +63,19 @@ def test_create_api_order_posts_orders_create_and_returns_location():
     assert '@telegram.org' in FK
     assert "'ip': ip," in FK
     assert 'async def _server_ip() -> str:' in FK
-    # nonce must always be greater than the previous request
+    # nonce must always be greater than the previous request.
+    # Docs example uses (time() + 10800) * 1000 (Moscow-time ms).
     assert 'def _nonce() -> int:' in FK
-    assert 'int(time.time() * 1000)' in FK
+    assert 'FK_NONCE_UTC_OFFSET_SECONDS = 10800' in FK
+    assert '(int(time.time()) + FK_NONCE_UTC_OFFSET_SECONDS) * 1000' in FK
 
 
 def test_notify_signature_still_md5_secret2():
     # docs 1.7: md5(MERCHANT_ID:AMOUNT:SECRET2:MERCHANT_ORDER_ID)
     assert 'def verify_notify(params: dict) -> tuple[bool, str]:' in FK
     assert '_md5_sign([FREEKASSA_MERCHANT_ID, amount, FREEKASSA_SECRET2, order_id])' in FK
+    # docs 1.4: webhooks come only from known FreeKassa IPs.
+    assert 'FK_NOTIFY_IPS' in FK
 
 
 def test_keyboard_uses_callback_buttons_and_handler_sends_location():
