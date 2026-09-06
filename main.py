@@ -6013,6 +6013,10 @@ async def _fk_check(request: web.Request) -> web.Response:
     pay_id = await freekassa_service._default_payment_id('RUB')
     lines.append(f'default_payment_id(RUB)={pay_id if pay_id else "UNRESOLVED"}')
     lines.append(f'preferred_RUB={freekassa_service.FK_CURRENCY_PAYMENT_IDS.get("RUB", [])}')
+    # Show the full /currencies response so the owner sees which methods are
+    # actually enabled in the cabinet (SBP/card/wallet).
+    currencies_data = await freekassa_service._currencies_lookup_raw('RUB')
+    lines.append(f'enabled_RUB_methods={str(currencies_data)[:800]}')
     if FREEKASSA_API_ENABLED and ip:
         order_id = freekassa_service.create_order(0, 'fkcheck', '10')
         location = await freekassa_service.create_api_order(
@@ -6020,6 +6024,8 @@ async def _fk_check(request: web.Request) -> web.Response:
         )
         lines.append(f'api_test_order={order_id}')
         lines.append(f'api_location={location or "API REJECTED ORDER (see bot logs)"}')
+        if location:
+            lines.append(f'api_location_domain={location.split("/")[2]}')
         lines.append(f'sci_fallback_url={freekassa_service.payment_url(order_id, "10")}')
         # getOrders sanity check for the order we just created.
         orders_data = await freekassa_service.get_orders(payment_id=order_id)

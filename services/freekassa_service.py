@@ -93,15 +93,13 @@ async def _server_ip() -> str:
     return ''
 
 
-async def _default_payment_id(currency: str) -> int | None:
-    """Best enabled payment system for the currency (docs: /currencies).
+async def _currencies_lookup_raw(currency: str) -> list[dict]:
+    """Raw enabled payment systems for a currency (docs: /currencies).
 
-    We prefer card/SBP methods over FK WALLET so the user lands on the
-    payment form, not on fkwallet.io."""
-    if currency.upper() in _currencies_cache:
-        return _currencies_cache[currency.upper()]
+    Used by diagnostics so the owner can see exactly which methods are
+    active in the merchant cabinet."""
     if not FREEKASSA_API_ENABLED:
-        return None
+        return []
     params: dict = {'shopId': int(FREEKASSA_MERCHANT_ID), 'nonce': _nonce()}
     params['signature'] = _api_signature(params, FREEKASSA_API_KEY)
     try:
@@ -111,23 +109,35 @@ async def _default_payment_id(currency: str) -> int | None:
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 data = await resp.json()
-        preferred = set(FK_CURRENCY_PAYMENT_IDS.get(currency.upper(), []))
-        enabled = [
-            int(row['id']) for row in ((data or {}).get('currencies') or [])
+        return [
+            {'id': int(row['id']), 'name': row.get('name'), 'currency': row.get('currency')}
+            for row in ((data or {}).get('currencies') or [])
             if row.get('is_enabled') == 1
             and str(row.get('currency', '')).upper() == currency.upper()
         ]
-        # Prefer the first enabled method from our curated list.
-        for pid in FK_CURRENCY_PAYMENT_IDS.get(currency.upper(), []):
-            if pid in enabled:
-                _currencies_cache[currency.upper()] = pid
-                return pid
-        # Nothing matched our preference list — fall back to whatever is enabled.
-        if enabled:
-            _currencies_cache[currency.upper()] = enabled[0]
-            return enabled[0]
     except Exception as exc:
         logger.warning('FreeKassa currencies lookup failed: %s', exc)
+        return []
+
+
+async def _default_payment_id(currency: str) -> int | None:
+    """Best enabled payment system for the currency (docs: /currencies).
+
+    We prefer card/SBP methods over FK WALLET so the user lands on the
+    payment form, not on fkwallet.io."""
+    if currency.upper() in _currencies_cache:
+        return _currencies_cache[currency.upper()]
+    enabled = await _currencies_lookup_raw(currency)
+    enabled_ids = {row['id'] for row in enabled}
+    # Prefer the first enabled method from our curated list.
+    for pid in FK_CURRENCY_PAYMENT_IDS.get(currency.upper(), []):
+        if pid in enabled_ids:
+            _currencies_cache[currency.upper()] = pid
+            return pid
+    # Nothing matched our preference list — fall back to whatever is enabled.
+    if enabled:
+        _currencies_cache[currency.upper()] = enabled[0]['id']
+        return enabled[0]['id']
     return None
 
 
@@ -226,7 +236,9 @@ async def create_api_order(order_id: int, amount: str, currency: str = 'RUB',
     if not location:
         logger.error('FreeKassa API order rejected order=%s status=%s resp=%s', order_id, status, str(data)[:300])
         return None
-    logger.info('FreeKassa API order created order=%s fk_order=%s', order_id, (data or {}).get('orderId'))
+    domain = location.split('/')[2] if location.startswith('http') else '-'
+    logger.info('FreeKassa API order created order=%s fk_order=%s i=%s location_domain=%s',
+                order_id, (data or {}).get('orderId'), pay_id, domain)
     return location
 
 

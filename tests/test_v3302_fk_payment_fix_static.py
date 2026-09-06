@@ -22,7 +22,7 @@ FK = (ROOT / 'services' / 'freekassa_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5')
 
 
 def test_sci_host_is_pay_fk_money_not_dead_ru():
@@ -52,9 +52,10 @@ def test_api_order_always_sends_required_i():
 def test_default_payment_id_prefers_card_sbp_over_wallet():
     # We must not blindly pick the first enabled system from /currencies,
     # because FK WALLET RUB (id=1) would redirect to fkwallet.io.
-    assert 'preferred = set(FK_CURRENCY_PAYMENT_IDS.get(currency.upper(), []))' in FK
+    assert 'async def _currencies_lookup_raw(' in FK
+    assert "enabled_ids = {row['id'] for row in enabled}" in FK
     assert 'for pid in FK_CURRENCY_PAYMENT_IDS.get(currency.upper(), []):' in FK
-    assert 'if pid in enabled:' in FK
+    assert 'if pid in enabled_ids:' in FK
 
 
 def test_api_amount_is_numeric_not_string():
@@ -80,6 +81,14 @@ def test_get_orders_helper_exists():
     assert "params['paymentId'] = str(payment_id)" in FK
     assert "params['orderId'] = int(fk_order_id)" in FK
     assert "params['orderStatus'] = int(status)" in FK
+
+
+def test_currencies_lookup_and_logging():
+    # Diagnostics must expose the raw enabled methods list.
+    assert 'async def _currencies_lookup_raw(' in FK
+    assert 'freekassa_service._currencies_lookup_raw(' in MAIN
+    # create_api_order logs the selected i and the location domain.
+    assert 'i=%s location_domain=%s' in FK
 
 
 def test_config_api_key_gate_present():
