@@ -22,7 +22,7 @@ FK = (ROOT / 'services' / 'freekassa_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8', '3.30.9')
 
 
 def test_sci_host_is_pay_fk_money_not_dead_ru():
@@ -44,10 +44,15 @@ def test_api_order_always_sends_required_i():
     # i=44 "СБП (НСПК)" is API-only (browser form shows an error), so web
     # links use i=42 "СБП" which renders the normal payment form.
     assert 'FK_CURRENCY_PAYMENT_IDS: dict[str, list[int]] = {' in FK
-    assert "'RUB': [42, 4, 8, 1]," in FK   # СБП, VISA, MasterCard, FK Wallet
-    assert "'USD': [2]," in FK              # FK WALLET USD
-    assert "'EUR': [3]," in FK              # FK WALLET EUR
+    assert "'RUB': [42, 4, 8, 17]," in FK   # СБП, VISA, MasterCard, МИР
+    assert "'USD': [37]," in FK             # VISA / MasterCard USD
+    assert "'EUR': [11]," in FK             # Visa/Mastercard World EUR
     assert 'FK_SBP_QR_PAYMENT_ID = 42' in FK
+    # V3.30.9: internal FreeKassa wallets are hard-excluded so the user can
+    # never be routed to fkwallet.io.
+    assert 'FK_WALLET_PAYMENT_IDS = {1, 2, 3}' in FK
+    assert 'if row[\'id\'] not in FK_WALLET_PAYMENT_IDS' in FK
+    assert 'if pay_id in FK_WALLET_PAYMENT_IDS:' in FK
     # The pay_id chain: explicit → /currencies best enabled → static fallback
     assert 'or (FK_CURRENCY_PAYMENT_IDS.get(currency.upper()) or [None])[0]' in FK
 

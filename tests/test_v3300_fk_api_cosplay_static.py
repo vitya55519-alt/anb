@@ -24,7 +24,7 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8', '3.30.9')
 
 
 def test_config_exposes_api_key_and_server_ip():
@@ -64,10 +64,17 @@ def test_create_api_order_posts_orders_create_and_returns_location():
     assert "'ip': ip," in FK
     assert 'async def _server_ip() -> str:' in FK
     # nonce must always be greater than the previous request.
-    # Docs example uses (time() + 10800) * 1000 (Moscow-time ms).
+    # Docs example uses (time() + 10800) * 1000 (Moscow-time ms) but that has
+    # second granularity; v3.30.9 keeps a monotonic counter on top of it.
     assert 'def _nonce() -> int:' in FK
     assert 'FK_NONCE_UTC_OFFSET_SECONDS = 10800' in FK
-    assert '(int(time.time()) + FK_NONCE_UTC_OFFSET_SECONDS) * 1000' in FK
+    assert 'base = (int(time.time()) + FK_NONCE_UTC_OFFSET_SECONDS) * 1000' in FK
+    assert 'candidate = base if base > _last_nonce else _last_nonce + 1' in FK
+    from services import freekassa_service
+    a = freekassa_service._nonce()
+    b = freekassa_service._nonce()
+    c = freekassa_service._nonce()
+    assert a < b < c, 'nonce must be strictly increasing'
 
 
 def test_notify_signature_still_md5_secret2():

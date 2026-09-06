@@ -46,12 +46,17 @@ FK_CURRENCY_PAYMENT_IDS: dict[str, list[int]] = {
     # V3.30.7: i=44 "СБП (НСПК)" is API-only and cannot be opened as a web
     # payment form (FreeKassa shows "Данный метод работает только по API!").
     # For web links we prefer i=42 "СБП" which renders the normal form.
-    'RUB': [42, 4, 8, 1],        # СБП, VISA, MasterCard, FK Wallet
-    'USD': [2],                  # FK WALLET USD (known USD option)
-    'EUR': [3],                  # FK WALLET EUR
+    # V3.30.9: FK WALLET ids are hard-excluded (see FK_WALLET_PAYMENT_IDS) so
+    # the user can never land on fkwallet.io; cards/SBP/MIR only.
+    'RUB': [42, 4, 8, 17],       # СБП, VISA, MasterCard, МИР
+    'USD': [37],                 # VISA / MasterCard USD
+    'EUR': [11],                 # Visa/Mastercard World EUR
     'UAH': [7, 9],               # VISA UAH, MasterCard UAH
     'KZT': [41],                 # VISA / MasterCard KZT
 }
+# V3.30.9: internal FreeKassa wallets. The owner does not want payments to be
+# routed through fkwallet.io, so these ids are filtered out everywhere.
+FK_WALLET_PAYMENT_IDS = {1, 2, 3}
 # V3.30.2: SCI payment-form host (docs 1.5). The old pay.freekassa.ru is
 # dead — the payment page never loads from it.
 FK_SCI_BASE = 'https://pay.fk.money'
@@ -71,11 +76,21 @@ def _api_signature(params: dict, key: str) -> str:
 # Using UTC could be ~3 hours behind the server's expected clock, so we
 # align with the docs example to avoid "nonce too small" style rejections.
 FK_NONCE_UTC_OFFSET_SECONDS = 10800
+_last_nonce = 0
 
 
 def _nonce() -> int:
-    """Request id that must always be greater than the previous one."""
-    return (int(time.time()) + FK_NONCE_UTC_OFFSET_SECONDS) * 1000
+    """Request id that must always be greater than the previous one.
+
+    The docs example ``(time()+10800)*1000`` only has second granularity, so
+    two calls inside the same second would collide. We keep the Moscow-ms
+    base but bump by one whenever a call lands on or before the last value,
+    guaranteeing a strictly increasing sequence."""
+    global _last_nonce
+    base = (int(time.time()) + FK_NONCE_UTC_OFFSET_SECONDS) * 1000
+    candidate = base if base > _last_nonce else _last_nonce + 1
+    _last_nonce = candidate
+    return candidate
 
 
 async def _server_ip() -> str:
@@ -134,18 +149,21 @@ async def _currencies_lookup_raw(currency: str) -> list[dict]:
 async def _default_payment_id(currency: str) -> int | None:
     """Best enabled payment system for the currency (docs: /currencies).
 
-    We prefer card/SBP methods over FK WALLET so the user lands on the
-    payment form, not on fkwallet.io."""
+    We prefer card/SBP methods and HARD-EXCLUDE FreeKassa wallets so the user
+    lands on the payment form, never on fkwallet.io."""
     if currency.upper() in _currencies_cache:
         return _currencies_cache[currency.upper()]
     enabled = await _currencies_lookup_raw(currency)
+    # V3.30.9: drop internal wallets from the enabled set entirely.
+    enabled = [row for row in enabled if row['id'] not in FK_WALLET_PAYMENT_IDS]
     enabled_ids = {row['id'] for row in enabled}
     # Prefer the first enabled method from our curated list.
     for pid in FK_CURRENCY_PAYMENT_IDS.get(currency.upper(), []):
         if pid in enabled_ids:
             _currencies_cache[currency.upper()] = pid
             return pid
-    # Nothing matched our preference list — fall back to whatever is enabled.
+    # Nothing matched our preference list — fall back to whatever is enabled
+    # (wallets already filtered out above).
     if enabled:
         _currencies_cache[currency.upper()] = enabled[0]['id']
         return enabled[0]['id']
@@ -217,6 +235,11 @@ async def create_api_order(order_id: int, amount: str, currency: str = 'RUB',
         or await _default_payment_id(currency)
         or (FK_CURRENCY_PAYMENT_IDS.get(currency.upper()) or [None])[0]
     )
+    # V3.30.9: never allow an internal FreeKassa wallet even if explicitly
+    # requested — the owner does not want fkwallet.io redirections.
+    if pay_id in FK_WALLET_PAYMENT_IDS:
+        logger.warning('FreeKassa order %s: wallet id %s blocked, resolving card/SBP', order_id, pay_id)
+        pay_id = await _default_payment_id(currency) or (FK_CURRENCY_PAYMENT_IDS.get(currency.upper()) or [None])[0]
     params: dict = {
         'shopId': int(FREEKASSA_MERCHANT_ID),
         'nonce': _nonce(),
