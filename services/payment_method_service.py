@@ -18,6 +18,7 @@ TYPE_LABELS = {
     "qr": "QR-код",
     "link": "Ссылка / провайдер",
     "wallet_pay": "Wallet Pay (крипта/карта)",
+    "builtin": "Встроенная кнопка меню оплаты",
 }
 
 SCOPE_LABELS = {
@@ -49,6 +50,41 @@ DEFAULT_METHODS = {
         "scope": "external_only",
         "is_system": False,
         "instructions": "Заготовка для внешнего сценария. URL можно добавить из админки.",
+    },
+    # V3.31.1: built-in rows of the user payment keyboard become admin-managed.
+    # Switching the status to «выключен» hides the button from every user
+    # without a code deploy (owner request: «дай возможность убирать кнопки»).
+    "freekassa_rub": {
+        "display_name": "Кнопка: Premium ₽ · СБП/карта",
+        "method_type": "builtin",
+        "status": "active",
+        "scope": "external_only",
+        "is_system": True,
+        "instructions": "Встроенная рублёвая кнопка FreeKassa (карта РФ / СБП) в меню Premium. Статус «выключен» убирает её у пользователей.",
+    },
+    "freekassa_sbp": {
+        "display_name": "Кнопка: Premium ₽ · SBP",
+        "method_type": "builtin",
+        "status": "active",
+        "scope": "external_only",
+        "is_system": True,
+        "instructions": "Встроенная кнопка оплаты Premium по СБП. Статус «выключен» убирает её у пользователей.",
+    },
+    "freekassa_usd": {
+        "display_name": "Кнопка: Premium $ · Visa/MC",
+        "method_type": "builtin",
+        "status": "active",
+        "scope": "external_only",
+        "is_system": True,
+        "instructions": "Встроенная кнопка долларовых карт (Visa/MC World). Статус «выключен» убирает её у пользователей.",
+    },
+    "freekassa_tokens": {
+        "display_name": "Кнопка: Токены за рубли",
+        "method_type": "builtin",
+        "status": "active",
+        "scope": "external_only",
+        "is_system": True,
+        "instructions": "Встроенная кнопка покупки токенов за рубли. Статус «выключен» убирает её у пользователей.",
     },
 }
 
@@ -139,6 +175,19 @@ def public_payment_methods() -> list[PaymentMethodView]:
             continue
         ready.append(method)
     return ready
+
+
+def is_button_enabled(method_key: str, default: bool = True) -> bool:
+    """V3.31.1: owner-facing on/off switch for the built-in payment keyboard
+    buttons. A missing row keeps the previous default (so behaviour never
+    breaks before the rows are seeded); an existing row is visible only while
+    its status is ``active``."""
+    ensure_default_payment_methods()
+    with SessionLocal() as session:
+        row = session.query(PaymentMethod).filter_by(method_key=method_key).first()
+        if row is None:
+            return default
+        return str(row.status or "disabled") == "active"
 
 
 def create_payment_method(method_type: str, display_name: str) -> PaymentMethodView:

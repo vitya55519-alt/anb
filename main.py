@@ -127,7 +127,7 @@ from services.quest_service import QUESTS, QUEST_REPLAY_STARS, story_status, get
 from services.payment_method_service import (
     list_payment_methods, get_payment_method, create_payment_method,
     update_payment_method, delete_payment_method, ensure_default_payment_methods,
-    public_payment_methods,
+    public_payment_methods, is_button_enabled,
 )
 
 # V3.30.2: /fkcheck diagnostics print the deployed build straight from the
@@ -645,6 +645,9 @@ def _admin_payment_summary(method_id: int) -> str:
         value = ' · '.join(parts) if parts else 'QR не загружен'
     elif method.method_type == 'link':
         value = method.external_url or 'ссылка не указана'
+    elif method.method_type == 'builtin':
+        # V3.31.1: admin switch for a hard-coded row of the user payment menu.
+        value = 'кнопка в меню оплаты — видна пользователям, пока статус «включён»'
     elif method.method_type == 'stars':
         value = 'XTR / Telegram Stars'
     return (
@@ -1041,28 +1044,37 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
         # NOTE: i=44 "СБП (НСПК)" is API-only and does NOT open in a browser
         # form (FreeKassa shows "Данный метод работает только по API!"), so we
         # use i=42 "СБП" for the web-form link.
-        rows.append([_fk_pay_button(
-            'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
-            f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · ⚡СБП / карта')])
-        rows.append([_fk_pay_button(
-            'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
-            f'⚡ Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · SBP',
-            pay_id=freekassa_service.FK_SBP_QR_PAYMENT_ID)])
-        rows.append([_fk_pay_button(
-            'premium_month', FREEKASSA_PREMIUM_PRICE_USD,
-            f'💳 Premium — ${FREEKASSA_PREMIUM_PRICE_USD} · Ⓥ Visa / Ⓜ Mastercard',
-            currency='USD')])
-        rows.append([
-            _fk_pay_button('tokens_1', TOKEN_PRICE_RUB,
-                           f'🪙 1 токен — {TOKEN_PRICE_RUB} ₽'),
-            _fk_pay_button(f'tokens_{TOKEN_PACK_SIZE}',
-                           TOKEN_PACK_SIZE * TOKEN_PRICE_RUB,
-                           f'🪙 {TOKEN_PACK_SIZE} токенов — {TOKEN_PACK_SIZE * TOKEN_PRICE_RUB} ₽'),
-        ])
+        # V3.31.1: each built-in row obeys its admin-managed 'builtin' switch
+        # (Админка → Способы оплаты → статус) so the owner can remove any
+        # button from the user menu without a deploy.
+        if is_button_enabled('freekassa_rub'):
+            rows.append([_fk_pay_button(
+                'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
+                f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · ⚡СБП / карта')])
+        if is_button_enabled('freekassa_sbp'):
+            rows.append([_fk_pay_button(
+                'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
+                f'⚡ Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · SBP',
+                pay_id=freekassa_service.FK_SBP_QR_PAYMENT_ID)])
+        if is_button_enabled('freekassa_usd'):
+            rows.append([_fk_pay_button(
+                'premium_month', FREEKASSA_PREMIUM_PRICE_USD,
+                f'💳 Premium — ${FREEKASSA_PREMIUM_PRICE_USD} · Ⓥ Visa / Ⓜ Mastercard',
+                currency='USD')])
+        if is_button_enabled('freekassa_tokens'):
+            rows.append([
+                _fk_pay_button('tokens_1', TOKEN_PRICE_RUB,
+                               f'🪙 1 токен — {TOKEN_PRICE_RUB} ₽'),
+                _fk_pay_button(f'tokens_{TOKEN_PACK_SIZE}',
+                               TOKEN_PACK_SIZE * TOKEN_PRICE_RUB,
+                               f'🪙 {TOKEN_PACK_SIZE} токенов — {TOKEN_PACK_SIZE * TOKEN_PRICE_RUB} ₽'),
+            ])
     elif FREEKASSA_ENABLED:
         # Callers without telegram_id keep the legacy callback buttons.
-        rows.append([InlineKeyboardButton(text=f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ картой / СБП', callback_data='fk:premium')])
-        rows.append([InlineKeyboardButton(text=f'💳 Premium — ${FREEKASSA_PREMIUM_PRICE_USD} · Visa/Mastercard', callback_data='fk:premium_usd')])
+        if is_button_enabled('freekassa_rub'):
+            rows.append([InlineKeyboardButton(text=f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ картой / СБП', callback_data='fk:premium')])
+        if is_button_enabled('freekassa_usd'):
+            rows.append([InlineKeyboardButton(text=f'💳 Premium — ${FREEKASSA_PREMIUM_PRICE_USD} · Visa/Mastercard', callback_data='fk:premium_usd')])
     rows.append([video_button])
     rows.append([InlineKeyboardButton(text='🎥 Кружочек от неё — только Premium', callback_data='video:circle')])
     rows.append([InlineKeyboardButton(text='🔒 📞 Звонок с персонажем · скоро', callback_data='future:anna_call')])
