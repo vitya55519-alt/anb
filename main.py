@@ -200,6 +200,19 @@ COSPLAY_COSTUMES = {
     'witch': ('🧙 Ведьмочка', 'a witch cosplay: pointed hat and a dark cloak with silver clasps'),
     'superhero': ('🦸 Супергероиня', 'a sleek superheroine cosplay with a domino mask and a cape'),
     'police': ('🚔 Полицейская', 'a police cosplay uniform with a peaked cap and a shiny badge'),
+    # V3.31.6: sexy + popular video-game heroines (owner request). The label
+    # names the recognisable character; the prompt describes her iconic costume
+    # concretely and stays fully clothed so it clears provider moderation.
+    'nier2b': ('🤍 2B · NieR', 'a battle-android cosplay: elegant black gothic-lolita dress with puffed sleeves, a white blindfold visor and short silver hair'),
+    'lara': ('🏹 Лара Крофт', 'a tomb-raider cosplay: fitted teal tank top, brown cargo shorts, fingerless gloves, twin holsters and a long braid'),
+    'tifa': ('🥊 Тифа · FF7', 'a martial-artist cosplay: black sleeveless top, a dark miniskirt with suspenders, red-and-black gloves and long brunette hair'),
+    'chunli': ('🐉 Чун-Ли · SF', 'a fighting-game cosplay: blue qipao-style dress with gold trim, white combat boots and ribbon hair buns'),
+    'ahri': ('🦊 Арри · LoL', 'a nine-tailed fox-spirit cosplay: white-and-crimson kimono-style outfit with fox ears and fluffy tails'),
+    'dva': ('🎮 D.Va · Overwatch', 'a futuristic pilot cosplay: white-and-pink bodysuit with a bunny emblem, a headset and glowing face marks'),
+    'bayonetta': ('🕶 Байонетта', 'a stylish witch cosplay: sleek black bodysuit under a cropped jacket, round red glasses and a long braid'),
+    'yennefer': ('🖤 Йеннифэр · Witcher', 'a sorceress cosplay: black-and-white velvet gown with silver embroidery, a dark choker and raven hair'),
+    'raiden': ('⚡ Райдэн · Genshin', 'a thunder-shogun cosplay: deep purple-and-gold kimono-style battle dress with a long braid and a katana'),
+    'ada': ('🌹 Ада Вонг · RE', 'a secret-agent cosplay: elegant red dress with a strap leg holster, dark sunglasses and a sleek dark bob'),
 }
 
 # V3.21.0: emotional level names; levels 7-8 are the premium-only plateau.

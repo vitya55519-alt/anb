@@ -18,7 +18,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.9', '3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4', '3.31.5')
+    assert VERSION in ('3.30.9', '3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4', '3.31.5', '3.31.6')
 
 
 def test_user_row_keeps_username():

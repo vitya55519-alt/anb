@@ -20,7 +20,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.31.4', '3.31.5')
+    assert VERSION in ('3.31.4', '3.31.5', '3.31.6')
 
 
 def test_cosplay_scene_level_is_floor():
