@@ -2772,6 +2772,8 @@ async def settings(message: types.Message):
         text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=button, callback_data='toggle:rituals')],
+            # V3.31.4: real one-tap URL button to support the project (CloudTips).
+            [donation_service.donation_button(lang)],
         ]),
     )
 
@@ -5025,6 +5027,20 @@ async def alarm_button(message: types.Message):
 @dp.message(F.text.in_(kb_pair('settings')))
 async def settings_button(message: types.Message):
     await settings(message)
+
+
+@dp.message(F.text.in_(kb_pair('support')))
+async def support_button(message: types.Message):
+    # V3.31.4: main-menu «Support the project» reply button. Reply keyboards
+    # can't carry URL buttons, so this opens the donation appeal whose CTA
+    # button links to CloudTips. Reuses the shared donation_service copy so it
+    # never diverges from the welcome / weekly reminder wording.
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    lang = user_lang(message.from_user.id)
+    await message.answer(
+        donation_service.donation_appeal(lang),
+        reply_markup=donation_service.donation_keyboard(lang),
+    )
 
 
 # V3.21.0: first-row discovery buttons. They route into the existing inline

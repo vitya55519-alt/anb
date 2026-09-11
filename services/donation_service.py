@@ -59,12 +59,19 @@ def donation_appeal(lang: str = RU) -> str:
     return _APPEAL_EN if lang == EN else _APPEAL_RU
 
 
+def donation_button(lang: str = RU) -> InlineKeyboardButton:
+    """A single URL button that opens the CloudTips donation link.
+
+    V3.31.4: extracted so the same button can ride inside other inline menus
+    (e.g. /settings) as well as stand alone via :func:`donation_keyboard`.
+    """
+    label = '💖 Support the project' if lang == EN else '💖 Поддержать проект'
+    return InlineKeyboardButton(text=label, url=DONATION_LINK)
+
+
 def donation_keyboard(lang: str = RU) -> InlineKeyboardMarkup:
     """Single CTA button that opens the CloudTips donation link."""
-    label = '💖 Support the project' if lang == EN else '💖 Поддержать проект'
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=label, url=DONATION_LINK)],
-    ])
+    return InlineKeyboardMarkup(inline_keyboard=[[donation_button(lang)]])
 
 
 def due_donation_pings(now: dt.datetime) -> list[tuple[int, int, str]]:

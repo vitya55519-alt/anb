@@ -19,7 +19,7 @@ LINK = 'https://pay.cloudtips.ru/p/7afc7b16'
 
 
 def test_version_bumped():
-    assert VERSION in ('3.31.2', '3.31.3')
+    assert VERSION in ('3.31.2', '3.31.3', '3.31.4')
 
 
 def test_config_donation_settings():

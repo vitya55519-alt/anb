@@ -17,7 +17,7 @@ BUILTIN_KEYS = ('freekassa_rub', 'freekassa_sbp', 'freekassa_usd', 'freekassa_to
 
 
 def test_version_bumped():
-    assert VERSION in ('3.31.0', '3.31.1', '3.31.2', '3.31.3')
+    assert VERSION in ('3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4')
 
 
 def test_builtin_rows_are_seeded_and_system():

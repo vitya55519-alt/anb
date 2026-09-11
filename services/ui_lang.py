@@ -44,6 +44,7 @@ KB_LABELS = {
     'characters': ('👩 Персонажи', '👩 Characters'),
     'invite': ('🔗 Пригласить', '🔗 Invite'),
     'custom': ('🎨 Мой персонаж', '🎨 My character'),
+    'support': ('💖 Поддержать проект', '💖 Support the project'),
     'admin': ('🛠 Админка', '🛠 Admin'),
 }
 
@@ -58,6 +59,10 @@ MAIN_KB_ROWS = [
     ['alarm', 'profile'],
     ['settings', 'characters'],
     ['invite', 'custom'],
+    # V3.31.4: «Support the project» CTA — a prominent full-width reply button.
+    # Reply keyboards can't hold URL buttons, so it opens the donation appeal
+    # with the CloudTips link button (see support_button in main.py).
+    ['support'],
 ]
 
 # English names for the 8-level relationship ladder (RU lives in main.py).
