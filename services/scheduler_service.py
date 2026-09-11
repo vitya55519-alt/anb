@@ -5,6 +5,7 @@ from config import (
     PROACTIVE_MIN_HOURS, RETENTION_REMINDER_HOURS, CHARACTER_ID,
     RITUALS_ENABLED, RITUAL_MORNING_START_HOUR, RITUAL_MORNING_END_HOUR,
     RITUAL_EVENING_START_HOUR, RITUAL_EVENING_END_HOUR, RITUAL_MAX_INACTIVE_DAYS,
+    DONATION_LINK, DONATION_REMINDER_ENABLED,
 )
 from services.db import SessionLocal
 from models.app_models import User, CharacterState
@@ -12,6 +13,7 @@ from services.reminder_service import due_reminders, mark_after_send
 from services.chat_service import proactive_reply
 from services.analytics_service import track_event
 from services import retention_service
+from services import donation_service
 
 logger=logging.getLogger(__name__); scheduler=AsyncIOScheduler()
 
@@ -122,9 +124,29 @@ async def _rituals(bot):
             track_event(uid, f'ritual_{kind}_sent', metadata={'streak': streak, 'tz': tz})
         except Exception: logger.exception('ritual failed user=%s',uid)
 
+async def _donation_reminder(bot):
+    """V3.31.3: weekly «support the project» ping to active, opted-in users.
+    The job runs often, but each user is gated by last_donation_ping_at in the
+    DB (once per DONATION_REMINDER_INTERVAL_DAYS), so a Railway redeploy can
+    never double-send within the week."""
+    if not DONATION_REMINDER_ENABLED or not DONATION_LINK:
+        return
+    now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    rows=await asyncio.to_thread(donation_service.due_donation_pings, now)
+    if rows:
+        logger.info('donation reminder due count=%s', len(rows))
+    for uid,tg_id,lang in rows:
+        try:
+            await bot.send_message(int(tg_id), donation_service.donation_appeal(lang), reply_markup=donation_service.donation_keyboard(lang))
+            await asyncio.to_thread(donation_service.mark_donation_ping_sent, uid, now)
+            track_event(uid, 'donation_reminder_sent', metadata={'lang': lang})
+        except Exception: logger.exception('donation reminder failed user=%s', uid)
+
 def start_scheduler(bot):
     scheduler.add_job(_reminders,'interval',seconds=30,args=[bot],id='reminders',replace_existing=True)
     scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
     if RITUALS_ENABLED:
         scheduler.add_job(_rituals,'interval',minutes=30,args=[bot],id='rituals',replace_existing=True)
+    if DONATION_REMINDER_ENABLED and DONATION_LINK:
+        scheduler.add_job(_donation_reminder,'interval',hours=12,args=[bot],id='donation_reminder',replace_existing=True)
     if not scheduler.running: scheduler.start()

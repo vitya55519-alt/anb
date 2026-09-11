@@ -15,7 +15,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.31.1', '3.31.2')
+    assert VERSION in ('3.31.1', '3.31.2', '3.31.3')
 
 
 def test_admin_keyboard_has_grant_button():

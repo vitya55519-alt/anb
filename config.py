@@ -347,6 +347,15 @@ WALLET_PAY_TIMEOUT_SECONDS = max(10, min(120, int(os.getenv("WALLET_PAY_TIMEOUT_
 # Fallback conversion: 1 Star ≈ 0.02 USD, used to show fiat price in Wallet Pay invoices.
 STARS_TO_USD = float(os.getenv("STARS_TO_USD", "0.02"))
 
+# ── Support-the-project donation (CloudTips) ────────────────────────────
+# V3.31.3: an optional donation link shown to every new user right after the
+# welcome, then reminded to active users about once a week. The owner can
+# change the link or switch the weekly reminder off via Railway env vars.
+DONATION_LINK = os.getenv("DONATION_LINK", "https://pay.cloudtips.ru/p/7afc7b16").strip()
+DONATION_REMINDER_ENABLED = os.getenv("DONATION_REMINDER_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+DONATION_REMINDER_INTERVAL_DAYS = max(1, int(os.getenv("DONATION_REMINDER_INTERVAL_DAYS", "7")))
+DONATION_REMINDER_ACTIVE_DAYS = max(1, int(os.getenv("DONATION_REMINDER_ACTIVE_DAYS", "30")))
+
 ADMIN_TELEGRAM_IDS = {int(x.strip()) for x in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if x.strip().isdigit()}
 
 if not TELEGRAM_TOKEN:

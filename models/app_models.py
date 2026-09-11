@@ -48,6 +48,9 @@ class User(Base):
     # TOKEN_PRICE_RUB) and one-time constructor credits bought via FreeKassa.
     token_balance: Mapped[int] = mapped_column(Integer, default=0)
     constructor_credit: Mapped[int] = mapped_column(Integer, default=0)
+    # V3.31.3: last weekly "support the project" donation ping (nullable =
+    # never pinged). Auto-migrated by services/db.py.
+    last_donation_ping_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 # V3.21.0: one milestone photo per relationship level — the couple album.

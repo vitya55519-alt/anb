@@ -129,6 +129,7 @@ from services.payment_method_service import (
     update_payment_method, delete_payment_method, ensure_default_payment_methods,
     public_payment_methods, is_button_enabled,
 )
+from services import donation_service
 
 # V3.30.2: /fkcheck diagnostics print the deployed build straight from the
 # VERSION file so the owner can confirm Railway picked up the new commit.
@@ -1539,6 +1540,16 @@ async def consent_accept(cq: types.CallbackQuery):
                 f'а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов.'
             )
     await cq.message.answer(bonus_line + ref_line, reply_markup=onboarding_character_keyboard())
+    # V3.31.3: every new user sees the optional «support the project» donation
+    # link once, right after the welcome (owner request). Failures here must
+    # never break onboarding, so it is guarded.
+    try:
+        await cq.message.answer(
+            donation_service.donation_appeal(lang),
+            reply_markup=donation_service.donation_keyboard(lang),
+        )
+    except Exception:
+        logger.exception('donation welcome message failed user=%s', cq.from_user.id)
 
 
 @dp.callback_query(F.data == 'consent:terms')
