@@ -127,6 +127,7 @@ from services.quest_service import QUESTS, QUEST_REPLAY_STARS, story_status, get
 from services.payment_method_service import (
     list_payment_methods, get_payment_method, create_payment_method,
     update_payment_method, delete_payment_method, ensure_default_payment_methods,
+    public_payment_methods,
 )
 
 # V3.30.2: /fkcheck diagnostics print the deployed build straight from the
@@ -1025,6 +1026,14 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
     ]
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text=f'💎 Premium — Wallet Pay (крипта/карта)', callback_data='walletpay:premium')])
+    # V3.31.0: owner-configured external methods switched to «active» in the
+    # admin panel must be visible to users here — a link opens its URL, a QR
+    # method sends the saved photo + instructions via the paymethod: handler.
+    for method in public_payment_methods():
+        if method.method_type == 'link' and method.external_url:
+            rows.append([InlineKeyboardButton(text=f'💳 {method.display_name}', url=method.external_url)])
+        elif method.method_type == 'qr':
+            rows.append([InlineKeyboardButton(text=f'💳 {method.display_name}', callback_data=f'paymethod:{method.id}')])
     if FREEKASSA_ENABLED and telegram_id:
         # V3.30.0: REST API orders — callback buttons; the fkapi: handler
         # creates the order and replies with the `location` payment link.
@@ -1375,7 +1384,8 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
 @dp.message(CommandStart())
 async def start(message: types.Message, command: CommandObject):
     name = message.from_user.first_name or message.from_user.username or 'ты'
-    uid = ensure_user(message.from_user.id, name, language_code=message.from_user.language_code)
+    uid = ensure_user(message.from_user.id, name, language_code=message.from_user.language_code,
+                      username=message.from_user.username)
     track_event(uid, 'onboarding_started')
 
     # Referral: a new user may have arrived via https://t.me/<bot>?start=ref_<referrer_id>.
@@ -1812,6 +1822,74 @@ async def admin_premium_toggle(cq: types.CallbackQuery):
         await cq.answer('Premium включён на 30 дней', show_alert=False)
         text = f'⭐ Тестовый Premium включён на 30 дней. Photo credits: {get_photo_credits(cq.from_user.id)}.'
     await cq.message.answer(text, reply_markup=admin_keyboard())
+
+
+def _resolve_grant_target(ref: str) -> int | None:
+    """V3.31.0: manual-grant target — a numeric Telegram id or a @username
+    already seen in our users table (the Bot API cannot look users up)."""
+    clean = (ref or '').strip().lstrip('@')
+    if clean.isdigit():
+        return int(clean)
+    from services.user_service import find_user_by_username
+    return find_user_by_username(clean)
+
+
+@dp.message(Command('grant'))
+async def admin_grant(message: types.Message, command: CommandObject):
+    """V3.31.0: off-bot payment flow — the owner received money outside the
+    bot (card transfer, cash, crypto…) and grants premium/tokens by
+    @username or id. The user gets the same confirmation as after a payment."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    args = (command.args or '').split()
+    if len(args) < 2:
+        await message.answer(
+            'формат:\n/grant @username premium — премиум на 30 дней\n'
+            '/grant @username tokens 5 — начислить 5 токенов\n'
+            '/grant 123456789 premium — то же самое по id'
+        )
+        return
+    target = _resolve_grant_target(args[0])
+    if not target:
+        await message.answer(f'не нашла пользователя {args[0]} в базе — он должен хотя бы раз написать боту 🙂')
+        return
+    kind = args[1].lower()
+    if kind == 'premium':
+        # record_payment('premium_month') creates/extends the subscription and
+        # adds the monthly photo credits exactly like a real Stars payment;
+        # grant_premium on top of it would double-grant both.
+        ensure_user(target)
+        try:
+            record_payment(target, 'premium_month', 0,
+                           f'manual_grant:{message.from_user.id}:{int(_time.time())}',
+                           provider='manual', provider_payload=f'granted by {message.from_user.id}')
+        except Exception:
+            logger.exception('manual grant record failed target=%s', target)
+        try:
+            await bot.send_message(target, '💖 Оплата прошла! Premium активирован на 30 дней. Наслаждайся! 🎉')
+        except Exception:
+            pass
+        await message.answer(f'✅ premium на 30 дней выдан {args[0]} (id {target})')
+    elif kind == 'tokens':
+        count = int(args[2]) if len(args) > 2 and args[2].isdigit() else 0
+        if count < 1:
+            await message.answer('укажи количество: /grant @username tokens 5')
+            return
+        ensure_user(target)
+        balance = add_tokens(target, count)
+        try:
+            record_payment(target, f'tokens_{count}', 0,
+                           f'manual_grant:{message.from_user.id}:{int(_time.time())}',
+                           provider='manual', provider_payload=f'granted by {message.from_user.id}')
+        except Exception:
+            logger.exception('manual grant record failed target=%s', target)
+        try:
+            await bot.send_message(target, f'🪙 Токены зачислены! Баланс: {balance} 🪙')
+        except Exception:
+            pass
+        await message.answer(f'✅ {count} токенов выдано {args[0]} (id {target}), баланс {balance}')
+    else:
+        await message.answer('не знаю такой вид выдачи: premium | tokens')
 
 
 @dp.callback_query(F.data == 'admin:ideas')
@@ -3625,6 +3703,24 @@ async def fkapi_pay(cq: types.CallbackQuery):
         'После оплаты всё включится автоматически в течение минуты. '
         'Если что-то пойдёт не так — напиши /support.',
     )
+
+
+@dp.callback_query(F.data.startswith('paymethod:'))
+async def paymethod_show(cq: types.CallbackQuery):
+    """V3.31.0: owner-configured QR payment method from the admin panel —
+    send the saved QR photo with instructions so the user can pay outside
+    the bot, then get the purchase granted manually by @username."""
+    await cq.answer()
+    method = get_payment_method(int(cq.data.split(':')[1]))
+    if not method or method.status != 'active':
+        await cq.message.answer('этот способ оплаты сейчас недоступен 🙂 попробуй Stars ⭐')
+        return
+    text = f'💳 {method.display_name}\n\n{method.instructions}'.strip()
+    text += '\n\nПосле оплаты напиши владельцу свой @username в Telegram — он активирует покупку вручную.'
+    if method.qr_photo_file_id:
+        await bot.send_photo(cq.message.chat.id, method.qr_photo_file_id, caption=text[:1024])
+    else:
+        await cq.message.answer(text)
 
 
 @dp.callback_query(F.data == 'cosplay:start')
@@ -5835,7 +5931,8 @@ async def text_message(message: types.Message):
         await message.answer('✅ Карточка обновлена.\n\n' + _admin_card_summary(character_id), reply_markup=admin_card_keyboard(character_id))
         return
 
-    uid = ensure_user(message.from_user.id, message.from_user.first_name)
+    uid = ensure_user(message.from_user.id, message.from_user.first_name,
+                      username=message.from_user.username)
     track_event(uid, 'chat_user_message', metadata={'kind': 'text'})
     _track_proactive_reply_if_any(message.from_user.id, uid)
     cancel_active_wake(message.from_user.id)
@@ -6102,7 +6199,7 @@ async def main():
     for admin_id in ADMIN_TELEGRAM_IDS:
         try:
             await bot.set_my_commands(
-                public_commands + [types.BotCommand(command='admin', description='🛠 Админка'), types.BotCommand(command='refundstars', description='↩️ Возврат Stars'), types.BotCommand(command='geministatus', description='🧠 Gemini status')],
+                public_commands + [types.BotCommand(command='admin', description='🛠 Админка'), types.BotCommand(command='refundstars', description='↩️ Возврат Stars'), types.BotCommand(command='geministatus', description='🧠 Gemini status'), types.BotCommand(command='grant', description='🎁 Выдать premium/токены по @username')],
                 scope=types.BotCommandScopeChat(chat_id=admin_id),
             )
         except Exception:

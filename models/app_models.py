@@ -11,6 +11,9 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     telegram_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # V3.31.0: last seen @username so the owner can grant premium/tokens
+    # manually by username (alternative off-bot payment flow). Auto-migrated.
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_active_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     memory_enabled: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -13,7 +13,8 @@ def _timezone_from_language(language_code: str | None) -> str:
     lang = language_code.lower().split('-')[0].split('_')[0]
     return LANG_TZ_DEFAULTS.get(lang, DEFAULT_TIMEZONE)
 
-def ensure_user(telegram_id: int, name: str | None = None, language_code: str | None = None) -> int:
+def ensure_user(telegram_id: int, name: str | None = None, language_code: str | None = None,
+                username: str | None = None) -> int:
     with SessionLocal() as s:
         user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
         if not user:
@@ -22,6 +23,10 @@ def ensure_user(telegram_id: int, name: str | None = None, language_code: str | 
             s.add(user); s.flush()
         elif name:
             user.name = name
+        # V3.31.0: keep the last seen @username so the owner can grant
+        # premium/tokens manually by username (off-bot payment flow).
+        if username and user.username != username:
+            user.username = username
         # If the user still has the default UTC, try to auto-detect from language on any contact.
         if user.timezone == DEFAULT_TIMEZONE and language_code:
             detected = _timezone_from_language(language_code)
@@ -38,6 +43,18 @@ def ensure_user(telegram_id: int, name: str | None = None, language_code: str | 
 def get_user(telegram_id: int):
     with SessionLocal() as s:
         return s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+
+
+def find_user_by_username(username: str) -> int | None:
+    """V3.31.0: resolve a Telegram @username to a telegram_id from our own
+    users table (the Bot API cannot look users up by username)."""
+    clean = (username or '').strip().lstrip('@').lower()
+    if not clean:
+        return None
+    with SessionLocal() as s:
+        from sqlalchemy import func
+        row = s.scalar(select(User).where(func.lower(User.username) == clean))
+        return int(row.telegram_id) if row else None
 
 def touch_user(telegram_id: int):
     with SessionLocal() as s:

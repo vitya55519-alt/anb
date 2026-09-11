@@ -125,6 +125,22 @@ def get_payment_method(method_id: int) -> PaymentMethodView | None:
         return _to_view(row) if row else None
 
 
+def public_payment_methods() -> list[PaymentMethodView]:
+    """V3.31.0: methods the owner switched to ``active`` in the admin panel
+    and that are ready to be shown to users (a link URL or a QR photo /
+    instructions). Stars stays out of this list — it has its own checkout."""
+    ready = []
+    for method in list_payment_methods():
+        if method.status != 'active' or method.method_type not in {'link', 'qr', 'wallet_pay'}:
+            continue
+        if method.method_type == 'link' and not method.external_url:
+            continue
+        if method.method_type == 'qr' and not (method.qr_photo_file_id or method.instructions):
+            continue
+        ready.append(method)
+    return ready
+
+
 def create_payment_method(method_type: str, display_name: str) -> PaymentMethodView:
     if method_type not in {"qr", "link", "wallet_pay"}:
         raise ValueError("unsupported payment method type")
