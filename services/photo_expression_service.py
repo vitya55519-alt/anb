@@ -20,6 +20,7 @@ identity lock are never undermined.
 """
 from __future__ import annotations
 
+import random
 import re
 
 _TOKEN_SPLIT = re.compile(r'[^\w]+', re.UNICODE)
@@ -112,7 +113,44 @@ EXPRESSIONS: dict[str, str] = {
         'a natural warm relaxed expression. Keep it subtle, relaxed and believable; '
         'avoid a blank stern expression and avoid an exaggerated forced grin.'
     ),
+    # V3.31.7: extra pleasant expressions for the per-frame variety rotation.
+    # The owner complained every photo carried the same mimicry; packs now walk
+    # this wider pool frame by frame instead of one fixed warm smile.
+    'laughing': (
+        'a light genuine laugh: soft open smile with bright amused eyes and a tiny '
+        'natural head tilt. Joyful but restrained — no exaggerated wide-open mouth.'
+    ),
+    'confident': (
+        'a calm confident look: relaxed slight smile, steady direct gaze and a subtly '
+        'raised chin. Self-assured and elegant, never stern or cold.'
+    ),
+    'thoughtful': (
+        'a soft thoughtful expression: gentle half-smile, dreamy gaze directed slightly '
+        'away from the camera. Calm and reflective, not sad.'
+    ),
+    'shy': (
+        'a slightly shy bashful expression: faint closed-lip smile, soft glance from '
+        'under the lashes, a subtle tilt of the head. Tender and believable.'
+    ),
 }
+
+# V3.31.7: pleasant-expression keys used for the per-frame rotation when the
+# chat mood did not pin an explicit expression. Upset/concerned stay mood-only:
+# a random pack must never look sad without a reason.
+VARIETY_KEYS: tuple[str, ...] = (
+    'smile', 'laughing', 'teasing', 'confident', 'thoughtful', 'shy', 'neutral',
+)
+
+
+def shuffled_variety_keys() -> tuple[str, ...]:
+    """Return the variety expression keys in random order.
+
+    A photo pack walks this rotation frame by frame, so consecutive photos no
+    longer repeat the same facial expression.
+    """
+    keys = list(VARIETY_KEYS)
+    random.shuffle(keys)
+    return tuple(keys)
 
 
 def _tokens(text: str) -> list[str]:

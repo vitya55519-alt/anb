@@ -24,7 +24,7 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8', '3.30.9', '3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4', '3.31.5', '3.31.6')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8', '3.30.9', '3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7')
 
 
 def test_config_exposes_api_key_and_server_ip():
@@ -125,7 +125,7 @@ def test_cosplay_scene_and_costumes():
     assert 'COSPLAY_COSTUMES = {' in MAIN
     assert 'async def cosplay_start(' in MAIN
     assert 'async def cosplay_pick(' in MAIN
-    assert "PhotoRequest(scene='cosplay', clothing=costume[1])" in MAIN
+    assert "PhotoRequest(scene='cosplay', clothing=costume[1], hairstyle=costume[2], hair_color=costume[3])" in MAIN
     assert 'spend_tokens(cq.from_user.id, COSPLAY_TOKEN_COST)' in MAIN
     # tokens come back when the job cannot start (busy/budget guard)
     assert 'add_tokens(cq.from_user.id, COSPLAY_TOKEN_COST)' in MAIN

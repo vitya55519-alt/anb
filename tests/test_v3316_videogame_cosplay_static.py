@@ -33,14 +33,14 @@ def _costumes() -> dict:
 
 
 def test_version_bumped():
-    assert VERSION in ('3.31.5', '3.31.6')
+    assert VERSION in ('3.31.5', '3.31.6', '3.31.7')
 
 
 def test_new_videogame_heroines_present():
     costumes = _costumes()
     for key in NEW_KEYS:
         assert key in costumes, f'missing heroine: {key}'
-        label, prompt = costumes[key]
+        label, prompt = costumes[key][0], costumes[key][1]
         assert label and prompt, key
     # picker grew from 8 to at least 18 costumes
     assert len(costumes) >= 18, len(costumes)
@@ -48,14 +48,15 @@ def test_new_videogame_heroines_present():
 
 def test_every_costume_is_label_prompt_pair():
     for key, value in _costumes().items():
-        assert isinstance(value, tuple) and len(value) == 2, key
+        # V3.31.7: 4-tuple (label, prompt, iconic hairstyle, iconic hair color)
+        assert isinstance(value, tuple) and len(value) == 4, key
         assert isinstance(value[0], str) and isinstance(value[1], str), key
         assert value[0].strip() and value[1].strip(), key
 
 
 def test_costumes_stay_fully_clothed_and_safe():
     # the scene is fully clothed: no explicit/lingerie wording may sneak in
-    for key, (_label, prompt) in _costumes().items():
+    for key, (_label, prompt, *_hair) in _costumes().items():
         low = prompt.lower()
         for word in BANNED:
             assert word not in low, f'{key} prompt contains banned word: {word}'

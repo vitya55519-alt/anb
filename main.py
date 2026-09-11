@@ -189,30 +189,36 @@ PHOTO_MENU_ORDER = [
     # stay in photo_service only for old library photos.
 ]
 
-# V3.30.0: cosplay photoshoot costumes (label, wardrobe prompt fragment).
+# V3.30.0: cosplay photoshoot costumes. V3.31.7: each value is a 4-tuple
+# (label, wardrobe prompt fragment, iconic hairstyle, iconic hair color).
 # The scene is token-priced (COSPLAY_TOKEN_COST) and fully clothed.
+# V3.31.7: the hairstyle/hair color travel in their own PhotoRequest fields so
+# the prompt carries exactly ONE hairstyle for the costume (the old prompts
+# stacked a pool hairstyle on top of the costume hair); empty strings keep the
+# generic pools for the classic costumes.
 COSPLAY_COSTUMES = {
-    'maid': ('🖤 Горничная', 'a cute french-maid cosplay: black dress, white apron, lace headband'),
-    'nurse': ('💉 Медсестра', 'a playful nurse cosplay: white dress and cap with a red cross'),
-    'cat': ('🐱 Кошка-герл', 'a catgirl cosplay with cat ears, a bell collar and a tail'),
-    'bunny': ('🐰 Банни', 'a bunny cosplay with long ears, a bow tie and fluffy cuffs'),
-    'elf': ('🧝 Эльфийка', 'a fantasy elf cosplay: leaf-green dress, circlet, pointed ears'),
-    'witch': ('🧙 Ведьмочка', 'a witch cosplay: pointed hat and a dark cloak with silver clasps'),
-    'superhero': ('🦸 Супергероиня', 'a sleek superheroine cosplay with a domino mask and a cape'),
-    'police': ('🚔 Полицейская', 'a police cosplay uniform with a peaked cap and a shiny badge'),
+    'maid': ('🖤 Горничная', 'a cute french-maid cosplay: black dress, white apron, lace headband', '', ''),
+    'nurse': ('💉 Медсестра', 'a playful nurse cosplay: white dress and cap with a red cross', '', ''),
+    'cat': ('🐱 Кошка-герл', 'a catgirl cosplay with cat ears, a bell collar and a tail', '', ''),
+    'bunny': ('🐰 Банни', 'a bunny cosplay with long ears, a bow tie and fluffy cuffs', '', ''),
+    'elf': ('🧝 Эльфийка', 'a fantasy elf cosplay: leaf-green dress, circlet, pointed ears', '', ''),
+    'witch': ('🧙 Ведьмочка', 'a witch cosplay: pointed hat and a dark cloak with silver clasps', '', ''),
+    'superhero': ('🦸 Супергероиня', 'a sleek superheroine cosplay with a domino mask and a cape', '', ''),
+    'police': ('🚔 Полицейская', 'a police cosplay uniform with a peaked cap and a shiny badge', '', ''),
     # V3.31.6: sexy + popular video-game heroines (owner request). The label
     # names the recognisable character; the prompt describes her iconic costume
     # concretely and stays fully clothed so it clears provider moderation.
-    'nier2b': ('🤍 2B · NieR', 'a battle-android cosplay: elegant black gothic-lolita dress with puffed sleeves, a white blindfold visor and short silver hair'),
-    'lara': ('🏹 Лара Крофт', 'a tomb-raider cosplay: fitted teal tank top, brown cargo shorts, fingerless gloves, twin holsters and a long braid'),
-    'tifa': ('🥊 Тифа · FF7', 'a martial-artist cosplay: black sleeveless top, a dark miniskirt with suspenders, red-and-black gloves and long brunette hair'),
-    'chunli': ('🐉 Чун-Ли · SF', 'a fighting-game cosplay: blue qipao-style dress with gold trim, white combat boots and ribbon hair buns'),
-    'ahri': ('🦊 Арри · LoL', 'a nine-tailed fox-spirit cosplay: white-and-crimson kimono-style outfit with fox ears and fluffy tails'),
-    'dva': ('🎮 D.Va · Overwatch', 'a futuristic pilot cosplay: white-and-pink bodysuit with a bunny emblem, a headset and glowing face marks'),
-    'bayonetta': ('🕶 Байонетта', 'a stylish witch cosplay: sleek black bodysuit under a cropped jacket, round red glasses and a long braid'),
-    'yennefer': ('🖤 Йеннифэр · Witcher', 'a sorceress cosplay: black-and-white velvet gown with silver embroidery, a dark choker and raven hair'),
-    'raiden': ('⚡ Райдэн · Genshin', 'a thunder-shogun cosplay: deep purple-and-gold kimono-style battle dress with a long braid and a katana'),
-    'ada': ('🌹 Ада Вонг · RE', 'a secret-agent cosplay: elegant red dress with a strap leg holster, dark sunglasses and a sleek dark bob'),
+    # V3.31.7: hair moved out of the costume prompt into the iconic-hair fields.
+    'nier2b': ('🤍 2B · NieR', 'a battle-android cosplay: elegant black gothic-lolita dress with puffed sleeves and a white blindfold visor', 'a short silver-white bob with a soft loose fringe', 'silver-white'),
+    'lara': ('🏹 Лара Крофт', 'a tomb-raider cosplay: fitted teal tank top, brown cargo shorts, fingerless gloves and twin holsters', 'a single long braid falling over her shoulder', 'chestnut brown'),
+    'tifa': ('🥊 Тифа · FF7', 'a martial-artist cosplay: black sleeveless top, a dark miniskirt with suspenders and red-and-black gloves', 'long straight dark hair falling down her back', 'dark brunette'),
+    'chunli': ('🐉 Чун-Ли · SF', 'a fighting-game cosplay: blue qipao-style dress with gold trim and white combat boots', 'two neat covered buns with ribbons on top of her head', 'dark brown'),
+    'ahri': ('🦊 Арри · LoL', 'a nine-tailed fox-spirit cosplay: white-and-crimson kimono-style outfit with fox ears and fluffy tails', 'long flowing wavy hair down to her waist', 'silver-lavender'),
+    'dva': ('🎮 D.Va · Overwatch', 'a futuristic pilot cosplay: white-and-pink bodysuit with a bunny emblem, a headset and glowing face marks', 'a sleek long high ponytail', 'chestnut brown'),
+    'bayonetta': ('🕶 Байонетта', 'a stylish witch cosplay: sleek black bodysuit under a cropped jacket and round red glasses', 'a tall elegant beehive updo with two long face-framing strands', 'jet black'),
+    'yennefer': ('🖤 Йеннифэр · Witcher', 'a sorceress cosplay: black-and-white velvet gown with silver embroidery and a dark choker', 'long loose voluminous curls falling past her shoulders', 'violet-black'),
+    'raiden': ('⚡ Райдэн · Genshin', 'a thunder-shogun cosplay: deep purple-and-gold kimono-style battle dress with a katana at her hip', 'a very long braid falling to her waist', 'lavender purple'),
+    'ada': ('🌹 Ада Вонг · RE', 'a secret-agent cosplay: elegant red dress with a strap leg holster and dark sunglasses', 'a sleek chin-length bob with a side-swept fringe', 'jet black'),
 }
 
 # V3.21.0: emotional level names; levels 7-8 are the premium-only plateau.
@@ -3836,7 +3842,7 @@ async def cosplay_start(cq: types.CallbackQuery):
     await cq.answer()
     balance = get_token_balance(cq.from_user.id)
     rows = [[InlineKeyboardButton(text=label, callback_data=f'cosplay:{key}')]
-            for key, (label, _costume) in COSPLAY_COSTUMES.items()]
+            for key, (label, *_rest) in COSPLAY_COSTUMES.items()]
     rows.append([InlineKeyboardButton(text='⬅️ Фото-меню', callback_data='photo_menu:open')])
     await cq.message.answer(
         f'🎭 выбери костюм — сниму сет за {COSPLAY_TOKEN_COST}🪙\nтвой баланс: {balance}🪙',
@@ -3856,7 +3862,9 @@ async def cosplay_pick(cq: types.CallbackQuery):
     if not spend_tokens(cq.from_user.id, COSPLAY_TOKEN_COST):
         await cq.answer(f'нужно {COSPLAY_TOKEN_COST}🪙 — токены продаются в премиум-меню', show_alert=True); return
     await cq.answer()
-    request = PhotoRequest(scene='cosplay', clothing=costume[1])
+    # V3.31.7: the iconic hairstyle/color ride in their own request fields so
+    # the prompt carries exactly ONE hairstyle for the costume.
+    request = PhotoRequest(scene='cosplay', clothing=costume[1], hairstyle=costume[2], hair_color=costume[3])
     started = await _start_photo_background(
         cq.message.chat.id, cq.from_user.id, request, 'paid',
         amount=COSPLAY_TOKEN_COST, product='cosplay',

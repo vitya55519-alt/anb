@@ -20,7 +20,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.31.4', '3.31.5', '3.31.6')
+    assert VERSION in ('3.31.4', '3.31.5', '3.31.6', '3.31.7')
 
 
 def test_cosplay_scene_level_is_floor():
@@ -54,4 +54,4 @@ def test_cosplay_still_gated_by_adult_and_tokens():
     block = block[:block.index("@dp.callback_query(F.data.startswith('walletpay:'))")]
     assert 'if not has_accepted(cq.from_user.id):' in block
     assert 'spend_tokens(cq.from_user.id, COSPLAY_TOKEN_COST)' in block
-    assert "PhotoRequest(scene='cosplay', clothing=costume[1])" in block
+    assert "PhotoRequest(scene='cosplay', clothing=costume[1], hairstyle=costume[2], hair_color=costume[3])" in block

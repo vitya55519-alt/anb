@@ -313,6 +313,22 @@ HAIRSTYLE_POOL = [
     'loose curls pinned back on one side',
 ]
 
+# V3.31.7: per-frame posture notes. The owner complained that every photo in a
+# pack repeats the same mimicry and the same posture; each frame now draws its
+# own note from this shuffled rotation, so no two shots of a set match.
+POSE_POOL = [
+    'one hand casually brushing her hair back',
+    'relaxed arms with a natural weight shift onto one leg',
+    'a hand resting lightly on her hip or in a pocket',
+    'a soft glance back over her shoulder',
+    'a mid-step walking pose with a natural stride',
+    'seated with legs crossed and a relaxed open posture',
+    'leaning lightly against a wall or railing',
+    'both hands holding a phone or a cup in front of her',
+    'fingers lightly touching her chin or cheek',
+    'arms loosely crossed with a relaxed confident stance',
+]
+
 MAKEUP_POOL = [
     'fresh everyday makeup with soft nude lips',
     'natural glow makeup with peachy blush',
@@ -676,6 +692,12 @@ class PhotoRequest:
     angle: str = ''
     mood: str = 'warm, natural'
     expression_key: str | None = None  # facial expression from chat mood (smile/upset/concerned/teasing)
+    # V3.31.7: per-frame variety rotations, shuffled in _resolve_request. When
+    # the chat mood pins no expression, frame i takes expression_rotation[i];
+    # pose_rotation[i] adds a distinct posture note per frame so no two photos
+    # of a pack share the same mimicry or the same pose.
+    expression_rotation: tuple[str, ...] = ()
+    pose_rotation: tuple[str, ...] = ()
     season: str = ''
     accessory: str = ''
     time_of_day: str = ''
@@ -1203,10 +1225,21 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     time_of_day = request.time_of_day or random.choice(DAYLIGHT_POOL)
     underwear_color = random.choice(UNDERWEAR_COLOR_POOL)
     underwear_style = random.choice(UNDERWEAR_STYLE_POOL)
+    # V3.31.7: variety rotations. A chat-mood expression still wins over the
+    # rotation; otherwise every frame of the pack walks its own shuffled
+    # expression and pose note instead of repeating one fixed look.
+    from services.photo_expression_service import shuffled_variety_keys
+    expression_rotation = tuple(request.expression_rotation) or (
+        () if request.expression_key else shuffled_variety_keys()
+    )
+    poses = list(POSE_POOL)
+    random.shuffle(poses)
+    pose_rotation = tuple(request.pose_rotation) or tuple(poses)
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season,
                    pack_outfits=pack_outfits, hair_color=hair_color, makeup=makeup,
                    accessory=accessory, time_of_day=time_of_day,
-                   underwear_color=underwear_color, underwear_style=underwear_style)
+                   underwear_color=underwear_color, underwear_style=underwear_style,
+                   expression_rotation=expression_rotation, pose_rotation=pose_rotation)
 
 
 def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
@@ -1272,7 +1305,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # in the at-home lingerie sets and the private scenes instead.
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
-    identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key)
+    identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key or (request.expression_rotation[shot_index % len(request.expression_rotation)] if request.expression_rotation else None))
     if adult_scene:
         safety = ADULT_SAFETY
     body_reinforcement = BODY_REINFORCEMENT if (character_id == 'anna_01' and not seedream and request.scene in BODY_REINFORCEMENT_SCENES) else ''
@@ -1292,11 +1325,15 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'UNDER-CLOTHING REALISM: {underlay_rule}\n'
         f'{tier_framing}'
         f'{BUST_CONSISTENCY_RULE}\n'
-        f'HAIRSTYLE: {request.hairstyle}.\n'
+        f'HAIRSTYLE: {request.hairstyle}. This is her one and only hairstyle in the frame — '
+        'never combine it with a second hairdo, extra braid, bun, wig or hairpiece.\n'
         f'MAKEUP: {request.makeup}.\n'
         f'STYLING DETAILS: {request.accessory}.\n'
         f'TIME OF DAY: {request.time_of_day}. The light must match this time of day.\n'
         f'CAMERA/POSE: {angle}.\n'
+        + (f'POSE NOTE: {request.pose_rotation[shot_index % len(request.pose_rotation)]}. '
+           'Use exactly this posture for this frame and keep it clearly different from the other frames of the set.\n'
+           if request.pose_rotation else '')
         + (f'HAIR COLOR THIS MONTH: {request.hair_color}. This temporary hair color overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n' if request.hair_color else '')
         + f'{body_reinforcement}\n'
         f'MOOD: {request.mood}.\n'
@@ -1410,7 +1447,8 @@ async def _gemini_image_one_frame(character: dict, telegram_id: int, request: Ph
     level = get_relationship_level(telegram_id, character_id)
     prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id) + (
         "\nNANO BANANA ORDINARY-PHOTO RULE: Use the supplied canonical references as identity anchors. "
-        "Keep the same fictional adult person, same exact face, hair color and style, overall physique and subtle warm smile. "
+        "Keep the same fictional adult person, same exact face and overall physique. "
+        "Hair color, hairstyle, facial expression and outfit follow the requested HAIR COLOR, HAIRSTYLE, EXPRESSION and WARDROBE lines, not the reference photos. "
         "This prompt is independent from chat personality, flirting, sensuality or relationship erotics; none of those should affect ordinary-photo styling. "
         "Change only the requested scene, fully clothed outfit, pose, camera and lighting. Keep the result mainstream, natural and general-audience. "
         "Photorealistic personal smartphone-photo aesthetic."
