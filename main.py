@@ -330,6 +330,9 @@ _payment_method_edit_sessions: dict[int, dict] = {}
 # Owner-only editor state for photo ideas. Idea rows live in PostgreSQL.
 _photo_idea_edit_sessions: dict[int, dict] = {}
 
+# V3.31.2: owner-only state for the «🎁 Выдать премиум/токены» button flow.
+_admin_grant_sessions: dict[int, dict] = {}
+
 # Scenes that admins may attach photo ideas to (private scenes stay untouched).
 ALLOWED_IDEA_SCENES = tuple(sorted(k for k in SCENES if k not in {'personal', 'lingerie', 'private_fashion'}))
 
@@ -533,6 +536,7 @@ def admin_keyboard():
         [InlineKeyboardButton(text='🖼 Общая галерея (модерация)', callback_data='poolmod:view')],
         [InlineKeyboardButton(text='💡 Идеи для фото', callback_data='admin:ideas')],
         [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats')],
+        [InlineKeyboardButton(text='🎁 Выдать премиум/токены', callback_data='admin:grant')],
         [InlineKeyboardButton(text=f'⭐ Premium себе (тесты): {premium_state}', callback_data='admin:premium_toggle')],
     ])
 
@@ -1729,6 +1733,7 @@ async def admin_panel(message: types.Message):
     _character_card_edit_sessions.pop(message.from_user.id, None)
     _payment_method_edit_sessions.pop(message.from_user.id, None)
     _photo_idea_edit_sessions.pop(message.from_user.id, None)
+    _admin_grant_sessions.pop(message.from_user.id, None)
     ensure_default_cards()
     await message.answer('⚙️ Админка AnnaBot', reply_markup=admin_keyboard())
 
@@ -1814,6 +1819,7 @@ async def admin_home(cq: types.CallbackQuery):
     _character_card_edit_sessions.pop(cq.from_user.id, None)
     _payment_method_edit_sessions.pop(cq.from_user.id, None)
     _photo_idea_edit_sessions.pop(cq.from_user.id, None)
+    _admin_grant_sessions.pop(cq.from_user.id, None)
     await cq.answer()
     await cq.message.answer('⚙️ Админка AnnaBot', reply_markup=admin_keyboard())
 
@@ -1834,6 +1840,62 @@ async def admin_premium_toggle(cq: types.CallbackQuery):
         await cq.answer('Premium включён на 30 дней', show_alert=False)
         text = f'⭐ Тестовый Premium включён на 30 дней. Photo credits: {get_photo_credits(cq.from_user.id)}.'
     await cq.message.answer(text, reply_markup=admin_keyboard())
+
+
+# V3.31.2: button alternative to the /grant command. The owner opens
+# Админка → «🎁 Выдать премиум/токены», sends the recipient's @username or
+# numeric id, then taps what to grant. Premium uses record_payment so the
+# subscription + monthly photo credits match a real Stars payment exactly
+# (grant_premium on top would double-grant both).
+@dp.callback_query(F.data == 'admin:grant')
+async def admin_grant_start(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _admin_grant_sessions[cq.from_user.id] = {'step': 'target'}
+    await cq.answer()
+    await cq.message.answer(
+        '🎁 Кому выдать?\n\n'
+        'Пришли @username или числовой ID пользователя одним сообщением.\n'
+        'Он должен хотя бы раз написать боту, чтобы я его нашла.\n\n'
+        '/cancel — отменить'
+    )
+
+
+@dp.callback_query(F.data.startswith('admin:grantdo:premium:'))
+async def admin_grant_do_premium(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    try:
+        target = int(cq.data.rsplit(':', 1)[1])
+    except ValueError:
+        return
+    _admin_grant_sessions.pop(cq.from_user.id, None)
+    ensure_user(target)
+    try:
+        record_payment(target, 'premium_month', 0,
+                       f'manual_grant:{cq.from_user.id}:{int(_time.time())}',
+                       provider='manual', provider_payload=f'granted by {cq.from_user.id}')
+    except Exception:
+        logger.exception('manual grant record failed target=%s', target)
+    try:
+        await bot.send_message(target, '💖 Оплата прошла! Premium активирован на 30 дней. Наслаждайся! 🎉')
+    except Exception:
+        pass
+    await cq.answer('выдано')
+    await cq.message.answer(f'✅ Premium на 30 дней выдан пользователю id {target}.', reply_markup=admin_keyboard())
+
+
+@dp.callback_query(F.data.startswith('admin:grantdo:tokens:'))
+async def admin_grant_do_tokens_ask(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    try:
+        target = int(cq.data.rsplit(':', 1)[1])
+    except ValueError:
+        return
+    _admin_grant_sessions[cq.from_user.id] = {'step': 'tokens', 'target': target}
+    await cq.answer()
+    await cq.message.answer('Сколько токенов выдать? Пришли число, например 5.\n\n/cancel — отменить')
 
 
 def _resolve_grant_target(ref: str) -> int | None:
@@ -2374,6 +2436,10 @@ async def cancel_admin_edit(message: types.Message):
         method_id = sess.get('method_id')
         markup = admin_payment_keyboard(method_id) if method_id else admin_payments_keyboard()
         await message.answer('редактирование оплаты отменено', reply_markup=markup)
+        return
+    if message.from_user.id in _admin_grant_sessions:
+        _admin_grant_sessions.pop(message.from_user.id, None)
+        await message.answer('выдача отменена', reply_markup=admin_keyboard())
         return
     # V3.19.0: abort an in-flight constructor wizard (name/face entry steps).
     if message.from_user.id in _constructor_sessions:
@@ -5797,6 +5863,55 @@ async def text_message(message: types.Message):
     if message.from_user.id in ADMIN_TELEGRAM_IDS and idea_edit:
         await _admin_idea_text_step(message, idea_edit)
         return
+
+    # V3.31.2: «🎁 Выдать премиум/токены» button flow — first the recipient
+    # (@username or numeric id), then, for tokens, the amount.
+    grant_sess = _admin_grant_sessions.get(message.from_user.id)
+    if message.from_user.id in ADMIN_TELEGRAM_IDS and grant_sess:
+        value = (message.text or '').strip()
+        step = grant_sess.get('step')
+        if step == 'target':
+            target = _resolve_grant_target(value)
+            if not target:
+                await message.answer(
+                    f'Не нашла пользователя «{value}» в базе — он должен хотя бы раз написать боту 🙂\n\n'
+                    '/cancel — отменить'
+                )
+                return
+            _admin_grant_sessions.pop(message.from_user.id, None)
+            await message.answer(
+                f'Нашла пользователя: id {target}.\n\nЧто выдать?',
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text='⭐ Premium 30 дней', callback_data=f'admin:grantdo:premium:{target}')],
+                    [InlineKeyboardButton(text='🪙 Токены…', callback_data=f'admin:grantdo:tokens:{target}')],
+                    [InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')],
+                ]),
+            )
+            return
+        if step == 'tokens':
+            if not value.isdigit() or int(value) < 1:
+                await message.answer('Пришли количество токенов числом, например 5.\n\n/cancel — отменить')
+                return
+            count = int(value)
+            target = int(grant_sess['target'])
+            _admin_grant_sessions.pop(message.from_user.id, None)
+            ensure_user(target)
+            balance = add_tokens(target, count)
+            try:
+                record_payment(target, f'tokens_{count}', 0,
+                               f'manual_grant:{message.from_user.id}:{int(_time.time())}',
+                               provider='manual', provider_payload=f'granted by {message.from_user.id}')
+            except Exception:
+                logger.exception('manual grant record failed target=%s', target)
+            try:
+                await bot.send_message(target, f'🪙 Токены зачислены! Баланс: {balance} 🪙')
+            except Exception:
+                pass
+            await message.answer(
+                f'✅ Выдано {count} токенов пользователю id {target}. Баланс: {balance} 🪙',
+                reply_markup=admin_keyboard(),
+            )
+            return
 
     payment_edit = _payment_method_edit_sessions.get(message.from_user.id)
     if message.from_user.id in ADMIN_TELEGRAM_IDS and payment_edit:
