@@ -1131,8 +1131,8 @@ def photo_keyboard(telegram_id: int):
             text='🔥 Приватное — горячие сеты' if lang == RU else '🔥 Private — hot sets',
             callback_data='spicy:menu',
         )])
-    # V3.30.0: cosplay photoshoot — token-priced, unlocked from level 3.
-    if level >= SCENE_LEVELS.get('cosplay', 3):
+    # V3.31.5: cosplay photoshoot — token-priced, available at EVERY level.
+    if level >= SCENE_LEVELS.get('cosplay', 1):
         rows.append([InlineKeyboardButton(
             text=f'🎭 Косплей-фотосет — {COSPLAY_TOKEN_COST}🪙',
             callback_data='cosplay:start',

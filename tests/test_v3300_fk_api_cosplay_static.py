@@ -24,7 +24,7 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8', '3.30.9', '3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4')
+    assert VERSION in ('3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8', '3.30.9', '3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4', '3.31.5')
 
 
 def test_config_exposes_api_key_and_server_ip():
@@ -120,7 +120,8 @@ def test_photo_menu_has_no_explicit_adult_buttons():
 
 def test_cosplay_scene_and_costumes():
     assert "'cosplay':" in PHOTO
-    assert "'cosplay': 3," in PHOTO
+    # V3.31.5: cosplay is available at every relationship level (owner request)
+    assert "'cosplay': 1," in PHOTO
     assert 'COSPLAY_COSTUMES = {' in MAIN
     assert 'async def cosplay_start(' in MAIN
     assert 'async def cosplay_pick(' in MAIN

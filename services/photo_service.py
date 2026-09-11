@@ -118,9 +118,10 @@ SCENE_LEVELS = {
     'club': 5, 'personal': 5, 'lingerie': 5,
     'private_fashion': 6,
     'nude': 6, 'tease': 6,
-    # V3.30.0: cosplay is token-priced from the photo menu (level 3+ sees the
-    # button); the level gate keeps it out of brand-new conversations.
-    'cosplay': 3,
+    # V3.31.5: cosplay is token-priced and now available at EVERY relationship
+    # level (owner request) — level 1 removes the gate, so the button shows
+    # from the very start of a conversation.
+    'cosplay': 1,
     # V3.19.2: 'peek'/'dressing' are retired from generation — every public
     # venue scene must stay fully clothed; lingerie belongs to the private
     # scenes only. They stay in SCENES/AUTO_CAPTIONS for old library photos.
