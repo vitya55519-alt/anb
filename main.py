@@ -47,6 +47,7 @@ from services.photo_service import (
     SCENE_LEVELS, SCENES, PhotoGenerationError, get_latest_photo_delivery, get_photo_delivery_for_user,
     get_gallery_page, get_gallery_item_bytes, GALLERY_PAGE_SIZE, generate_custom_avatar,
     admin_pool_count, admin_pool_get, admin_pool_latest_id, admin_pool_neighbor, admin_pool_set_shared,
+    ensure_custom_avatar_cached,
 )
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
@@ -301,7 +302,7 @@ async def _photo_accept_flow(chat_id: int, telegram_id: int, expr_key: str | Non
             f'бесплатный лимит на сегодня кончился, но для тебя сейчас — {CHAT_PHOTO_OFFER_STARS}⭐ ✨'
         )
         await send_stars_invoice(
-            chat_id, 'Фото от Анны', 'Персональное фото прямо сейчас',
+            chat_id, f'Фото от {_character_display_name(get_user_character(telegram_id))}', 'Персональное фото прямо сейчас',
             f'photo:{offer_id}', CHAT_PHOTO_OFFER_STARS,
         )
 
@@ -385,6 +386,19 @@ def set_user_character(telegram_id: int, character_id: str) -> None:
         update_user_settings(telegram_id, selected_character=character_id)
     except Exception:
         logger.exception('failed to persist selected character user=%s', telegram_id)
+
+def _character_display_name(character_id: str) -> str:
+    """V3.31.8: user-facing name of a character for invoice titles. Before this
+    every Stars invoice said «Анна» even when the user was chatting with Emily
+    or their own constructor persona."""
+    try:
+        card = get_card(character_id)
+        if card and card.display_name:
+            return card.display_name
+    except Exception:
+        pass
+    return 'Анна'
+
 
 LIBRARY_CHARACTERS = {
     'anna_01': '👩🏻 Анна',
@@ -1263,7 +1277,7 @@ async def _offer_custom_photo(chat_id: int, telegram_id: int, request: PhotoRequ
     offer_id = create_offer(telegram_id, request)
     await send_stars_invoice(
         chat_id,
-        'Кастомное фото Анны',
+        f"Кастомное фото · {_character_display_name(get_user_character(telegram_id))}",
         'Персональный образ: одежда / цвет / причёска / место / ракурс',
         f'photo:{offer_id}',
         CUSTOM_PHOTO_COST_STARS,
@@ -1302,8 +1316,16 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
     ping = asyncio.create_task(_photo_progress_ping(chat_id, telegram_id))
     try:
         track_event(uid, 'photo_generation_started', metadata={'scene': request.scene, 'delivery_type': delivery_type})
+        character_id = get_user_character(telegram_id)
+        if is_custom_character(character_id):
+            # V3.31.8: constructor personas generate from their own avatar —
+            # make sure the reference image is on disk before routing.
+            try:
+                await ensure_custom_avatar_cached(bot, character_id)
+            except Exception:
+                logger.exception('custom avatar cache failed user=%s character=%s', telegram_id, character_id)
         async with ChatActionSender.upload_photo(bot=bot, chat_id=chat_id):
-            sent = await deliver_photo(bot, chat_id, telegram_id, request, delivery_type, character_id=get_user_character(telegram_id))
+            sent = await deliver_photo(bot, chat_id, telegram_id, request, delivery_type, character_id=character_id)
         track_event(uid, 'photo_job_completed', metadata={'scene': request.scene, 'count': len(sent), 'delivery_type': delivery_type})
         # V3.21.0: the couple album keeps one milestone photo per level.
         try:
@@ -1414,7 +1436,7 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
     offer_id = create_offer(telegram_id, request)
     track_event(db_uid, 'paywall_view', metadata={'product': 'photo', 'scene': request.scene, 'stars': PHOTO_COST_STARS})
     await bot.send_message(chat_id, f'бесплатный лимит на сегодня использован. следующее фото — {PHOTO_COST_STARS}⭐ ✨')
-    await send_stars_invoice(chat_id, 'Фото Анны', f'Новый сет до 3 фото: {PHOTO_LABELS.get(request.scene, request.scene)}', f'photo:{offer_id}', PHOTO_COST_STARS)
+    await send_stars_invoice(chat_id, f"Фото · {_character_display_name(get_user_character(telegram_id))}", f'Новый сет до 3 фото: {PHOTO_LABELS.get(request.scene, request.scene)}', f'photo:{offer_id}', PHOTO_COST_STARS)
 
 
 @dp.message(CommandStart())
@@ -5385,6 +5407,11 @@ async def _finish_constructor(message: types.Message, charge: str | None, telegr
         telegram_id, display_name=display_name, params=params,
         avatar_file_id=avatar_file_id, face_file_id=cons.get('face_file_id'),
     )
+    # V3.31.8: creating a persona selects her immediately. Before this the
+    # selection stayed on the previous character (Anna by default), so a user
+    # who built their own girl and pressed «💕 Свидание» got a date with Anna.
+    set_user_character(telegram_id, row.character_id)
+    track_event(ensure_user(telegram_id), 'character_selected', metadata={'character_id': row.character_id, 'custom': True})
     # Register her as a real character card so photo/relationship pipelines
     # recognize the id; bio carries the appearance description for prompts.
     descriptor_bits = [

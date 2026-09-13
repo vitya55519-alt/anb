@@ -12,3 +12,6 @@ build/
 .idea/
 .vscode/
 *.log
+
+# V3.31.8: cached avatars of constructor personas (downloaded Telegram files)
+data/custom_references/

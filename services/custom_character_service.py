@@ -241,3 +241,75 @@ def summary_lines(params: dict, display_name: str) -> list[str]:
         if value:
             lines.append(f'{title}: {value}')
     return lines
+
+
+# ── V3.31.8: identity helpers shared by photo/voice/chat pipelines ─────────
+# The constructor persona must never silently degrade to Anna: these helpers
+# turn the wizard params into a real identity (age, hair color, appearance,
+# base character dict) used by the photo prompt, the chat system prompt and
+# the per-character voice pick.
+
+CUSTOM_AGE_BY_GROUP = {
+    'age_young': 21,
+    'age_mid': 25,
+    'age_mature': 30,
+    'age_confident': 35,
+}
+
+CUSTOM_HAIR_COLOR_BY_OPTION = {
+    'hair_blonde': 'natural blonde',
+    'hair_brunette': 'rich dark brunette',
+    'hair_red': 'vivid red',
+    'hair_brown': 'warm chestnut brown',
+}
+
+
+def custom_age(params: dict) -> int:
+    """Constructor age-group option -> concrete age for prompts/cards."""
+    return CUSTOM_AGE_BY_GROUP.get(str(params.get('age', '')), 25)
+
+
+def custom_hair_color(params: dict) -> str:
+    """Canonical hair color of a constructor persona ('' when unknown)."""
+    return CUSTOM_HAIR_COLOR_BY_OPTION.get(str(params.get('hair', '')), '')
+
+
+def custom_appearance_descriptors(params: dict) -> list[str]:
+    """English appearance descriptors (age/body/hair/eyes) for identity locks."""
+    return [
+        descriptor for key in ('age', 'body', 'hair', 'eyes')
+        if (descriptor := OPTION_DESCRIPTORS.get(str(params.get(key, ''))))
+    ]
+
+
+def custom_base_character(character_id: str) -> dict | None:
+    """Minimal character dict for the chat system prompt (constructor personas).
+
+    Without this, character_service.get_character() silently falls back to
+    Anna's file and the chat model is told "Ты — Анна" for a custom girl.
+    """
+    if not is_custom_character(character_id):
+        return None
+    params, display_name = custom_character_params(character_id)
+    if not params:
+        return None
+    descriptors = custom_appearance_descriptors(params)
+    temper = OPTION_DESCRIPTORS.get(str(params.get('temperament', '')))
+    profession = OPTION_DESCRIPTORS.get(str(params.get('profession', '')))
+    core = []
+    if temper:
+        core.append(temper)
+    if profession:
+        core.append(f'по профессии — {profession}')
+    if not core:
+        core = ['яркая', 'игривая', 'с собственным характером']
+    return {
+        'id': character_id,
+        'name': display_name or 'Моя героиня',
+        'age': custom_age(params),
+        'is_adult': True,
+        'personality': {
+            'core': core,
+            'stable_tastes': [', '.join(descriptors)] if descriptors else [],
+        },
+    }

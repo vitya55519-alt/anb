@@ -13,6 +13,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from config import CHARACTER_ID
 from models.relationship_models import RelationshipEvent, RelationshipMilestone, UserCharacterRelationship
 
 
@@ -324,7 +325,30 @@ def progress_bar(current: float, target: float, width: int = 10) -> str:
     return '▓' * filled + '░' * (width - filled)
 
 
-def build_relationship_context(row: UserCharacterRelationship | None, milestones: list[RelationshipMilestone] | None = None) -> str:
+def _character_display_name(character_id: str) -> str:
+    """V3.31.8: resolve the persona name for stage guidance (card -> file -> Анна).
+
+    The stage texts below used to hardcode «Анна» for every character, so
+    Emily/custom girls received relationship guidance that described Anna.
+    """
+    try:
+        from services.character_card_service import get_card
+        card = get_card(character_id)
+        if card and card.display_name:
+            return card.display_name
+    except Exception:
+        pass
+    try:
+        from services.character_service import get_character
+        name = get_character(character_id).get('name')
+        if name:
+            return name
+    except Exception:
+        pass
+    return 'Анна'
+
+
+def build_relationship_context(row: UserCharacterRelationship | None, milestones: list[RelationshipMilestone] | None = None, character_id: str = CHARACTER_ID) -> str:
     if row is None:
         stage = "stranger"
     else:
@@ -370,4 +394,5 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
         extra = f" Недавние достижения отношений, которые можно иногда естественно обыграть без системных формулировок: {titles}."
     bond_title, bond_hint = bond_character(row)
     extra += f" Характер вашей связи сейчас: {bond_title} — {bond_hint}. Пусть он естественно окрашивает тон общения."
-    return contexts[stage] + extra + " Не называй пользователю номер, внутреннее название уровня, scoring или скрытые метрики."
+    # V3.31.8: the stage narratives name the selected character, not Anna.
+    return contexts[stage].replace('Анна', _character_display_name(character_id)) + extra + " Не называй пользователю номер, внутреннее название уровня, scoring или скрытые метрики."

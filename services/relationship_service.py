@@ -44,7 +44,7 @@ async def record_user_message(user_id, user_name, relationship=0, trust=0, intim
             relationship=relationship, trust=trust, intimacy=intimacy,
             event_type=event_type, reason=reason
         ))
-        context = build_relationship_context(row, get_milestones(s, row))
+        context = build_relationship_context(row, get_milestones(s, row), character_id)
         if reconnect_days:
             context += (
                 f' Пользователь вернулся после {reconnect_days} дней тишины: можно тепло и естественно отметить, '
@@ -71,4 +71,4 @@ async def get_context(user_id, character_id=CHARACTER_ID):
         if not user:
             return None
         row = get_state(s, user.id, character_id)
-        return build_relationship_context(row, get_milestones(s, row))
+        return build_relationship_context(row, get_milestones(s, row), character_id)

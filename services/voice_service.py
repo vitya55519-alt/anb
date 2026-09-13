@@ -12,6 +12,7 @@ import logging
 import tempfile
 from pathlib import Path
 
+from services.custom_character_service import is_custom_character
 from config import (
     TTS_API_KEY, TTS_MODEL, TTS_VOICE, AI_BASE_URL, OPENAI_VOICE_AVAILABLE,
     GEMINI_API_KEY, GEMINI_TTS_ENABLED, GEMINI_TTS_MODEL, GEMINI_VIDEO_BASE_URL,
@@ -49,6 +50,14 @@ CHARACTER_VOICE_PROFILES = {
         'en': ('en-US-MichelleNeural', {'rate': '+1%', 'pitch': '+4Hz'}),
     },
 }
+# V3.31.8: constructor personas get their own voice profile. Before this,
+# a custom character fell back to _DEFAULT_VOICE_PROFILE — Anna's exact
+# voice — so her date/gift voice notes literally sounded like Anna.
+CUSTOM_CHARACTER_VOICE_PROFILE = {
+    'ru': ('ru-RU-DariyaNeural', {'rate': '+6%', 'pitch': '+0Hz'}),
+    'en': ('en-US-JennyNeural', {'rate': '+6%', 'pitch': '+0Hz'}),
+}
+CUSTOM_CHARACTER_GEMINI_TTS_VOICE = 'Erin'
 _DEFAULT_VOICE_PROFILE = CHARACTER_VOICE_PROFILES['anna_01']
 
 # ── Gemini 2.5 TTS prebuilt voices (V3.20.1): one cute female voice per girl ─
@@ -75,7 +84,10 @@ def detect_voice_language(text: str) -> str:
 
 def pick_edge_voice(text: str, character_id: str | None = None) -> tuple[str, dict]:
     """Return (edge_voice, edge_kwargs) for a character and the text language."""
-    profile = CHARACTER_VOICE_PROFILES.get(character_id or '', _DEFAULT_VOICE_PROFILE)
+    profile = CHARACTER_VOICE_PROFILES.get(character_id or '')
+    if profile is None and is_custom_character(character_id):
+        profile = CUSTOM_CHARACTER_VOICE_PROFILE
+    profile = profile or _DEFAULT_VOICE_PROFILE
     return profile[detect_voice_language(text)]
 
 # ── OpenAI client (optional, only if key is present) ──────────────────────
@@ -232,7 +244,10 @@ async def _tts_gemini(text: str, character_id: str | None = None) -> bytes:
     container (Telegram still plays it as a voice file).
     """
     global _tts_good_model
-    voice_name = GEMINI_TTS_VOICES.get(character_id or '', _DEFAULT_GEMINI_TTS_VOICE)
+    voice_name = GEMINI_TTS_VOICES.get(character_id or '')
+    if voice_name is None and is_custom_character(character_id):
+        voice_name = CUSTOM_CHARACTER_GEMINI_TTS_VOICE
+    voice_name = voice_name or _DEFAULT_GEMINI_TTS_VOICE
     models = ([_tts_good_model] if _tts_good_model in _TTS_MODEL_CHAIN else []) + [
         m for m in _TTS_MODEL_CHAIN if m != _tts_good_model
     ]

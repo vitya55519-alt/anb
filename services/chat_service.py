@@ -103,7 +103,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         # Use the same stage guidance without modifying real scores.
         stage_prompts = {
             'stranger': 'Уровень 1 — знакомство. Легко, чувственно и с заметной химией; допустим лёгкий флирт и двусмысленность, но без фамильярности.',
-            'acquaintance': 'Уровень 2 — уже знакомые. Больше узнавания, чувственного флирта, двусмысленностей и инициативы Анны.',
+            'acquaintance': 'Уровень 2 — уже знакомые. Больше узнавания, чувственного флирта, двусмысленностей и её инициативы.',
             'close': 'Уровень 3 — близкое общение. Теплее, больше callbacks и инициативы.',
             'intimate': 'Уровень 4 — доверие, активный чувственный флирт и эротическое напряжение без графических описаний; не в каждом сообщении.',
             'deeply_connected': 'Уровень 5 — очень близкие. Персонализация, память, уверенный взаимный флирт.',
@@ -124,7 +124,14 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             asyncio.get_running_loop().create_task(maybe_pulse(user_id, user_name, character_id))
         except Exception:
             pass
-    character = get_character(character_id)
+    # V3.31.8: constructor personas must not degrade to Anna's file here —
+    # character_service.get_character() silently falls back to Anna's JSON for
+    # unknown ids, so a custom girl was told "Ты — Анна" in her own chat.
+    try:
+        from services.custom_character_service import custom_base_character
+        character = custom_base_character(character_id) or get_character(character_id)
+    except Exception:
+        character = get_character(character_id)
     premium = is_premium(user_id)
     memories = get_memories(db_user_id, character_id, 40 if premium else 14)
     history = get_recent_messages(db_user_id, character_id, 30 if premium else 16)
@@ -173,7 +180,12 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
 
 async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, language_code: str | None = None, character_id: str = CHARACTER_ID) -> str:
     db_user_id = ensure_user(user_id, user_name, language_code=language_code)
-    character = get_character(character_id)
+    # V3.31.8: constructor personas keep their own identity in proactive replies too.
+    try:
+        from services.custom_character_service import custom_base_character
+        character = custom_base_character(character_id) or get_character(character_id)
+    except Exception:
+        character = get_character(character_id)
     memories = get_memories(db_user_id, character_id, 10)
     history = get_recent_messages(db_user_id, character_id, 8)
     from services.relationship_service import get_context

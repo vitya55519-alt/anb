@@ -40,6 +40,10 @@ from services.db import SessionLocal
 from services.photo_idea_service import enrich_request_with_idea
 from services.character_service import get_anna
 from services.character_registry import get_character
+from services.custom_character_service import (
+    is_custom_character, get_custom_character_by_id, custom_character_params,
+    custom_appearance_descriptors, custom_base_character, custom_hair_color,
+)
 from services.test_mode import get_stage as get_test_stage
 from services.access_service import is_premium
 from services.user_service import ensure_user, get_state, update_state, is_adult_confirmed
@@ -610,9 +614,15 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
 
     from services.character_card_service import get_card
     card = get_card(character_id)
-    character = get_character(character_id)
-    name = card.display_name if card else character_id
-    age = card.age if card else 25
+    character = resolve_character(character_id)
+    # V3.31.8: fall back to the resolved profile (constructor personas carry
+    # their display name/age there) instead of leaking the raw character_id.
+    name = card.display_name if card else (character.get('name') or character_id)
+    try:
+        profile_age = int(character.get('age') or 25)
+    except (TypeError, ValueError):
+        profile_age = 25
+    age = card.age if card else profile_age
     gender = card.gender if card else 'female'
     pronoun = 'he' if gender == 'male' else 'she'
     pronoun_cap = 'He' if gender == 'male' else 'She'
@@ -1025,7 +1035,7 @@ def _openai_reference_paths(character: dict, scene: str, *, safe: bool = False) 
     ) if name)
     body = next((folder / name for name in body_candidates if (folder / name).exists()), None)
     if not face and not body:
-        raise FileNotFoundError('У Анны нет доступных reference-фото')
+        raise FileNotFoundError('Нет доступных reference-фото персонажа')
     refs: list[Path] = []
     if face:
         refs.append(face)
@@ -1042,7 +1052,91 @@ def _seedream_reference_path(character: dict) -> Path:
         p = folder / candidate
         if p.exists():
             return p
-    raise FileNotFoundError('У Анны нет нового canonical reference для Seedream')
+    raise FileNotFoundError('Нет canonical reference персонажа для Seedream')
+
+
+# ── V3.31.8: constructor personas in the photo pipeline ────────────────────
+# Custom characters have no data/characters/<id>.json, so the registry lookup
+# crashed the whole photo job with FileNotFoundError — a date/photo request
+# from a constructor persona died instead of showing the girl the user built.
+# resolve_character() synthesizes a real identity profile from the constructor
+# row (name/age/appearance) and anchors it on the avatar that was generated
+# (and, when provided, face-swapped) at construction time.
+
+def _custom_reference_dir(character_id: str) -> Path:
+    return Path(__file__).resolve().parents[1] / 'data' / 'custom_references' / character_id
+
+
+def _custom_character_profile(character_id: str) -> dict | None:
+    """Synthesized character profile for a constructor persona (or None)."""
+    base = custom_base_character(character_id)
+    if base is None:
+        return None
+    params, _name = custom_character_params(character_id)
+    preserve = custom_appearance_descriptors(params)
+    hair_color = custom_hair_color(params)
+    if hair_color:
+        preserve.append(f'{hair_color} hair color')
+    preserve.append('the exact same face as the canonical avatar reference')
+    return {
+        **base,
+        'visual_identity': {
+            'reference_folder': f'data/custom_references/{character_id}',
+            'openai_face_anchor': 'avatar.jpg',
+            'openai_body_anchor': 'avatar.jpg',
+            'openai_safe_body_anchor': 'avatar.jpg',
+            'openai_secondary_identity_anchor': 'avatar.jpg',
+            'seedream_identity_anchor': 'avatar.jpg',
+            'seedream_body_anchor': 'avatar.jpg',
+            'preserve_identity': preserve,
+        },
+    }
+
+
+def resolve_character(character_id: str) -> dict:
+    """Character profile for prompts: constructor personas resolve to their own
+    synthesized identity; built-in ids read the registry JSON as before."""
+    if is_custom_character(character_id):
+        profile = _custom_character_profile(character_id)
+        if profile is not None:
+            return profile
+    return get_character(character_id)
+
+
+async def ensure_custom_avatar_cached(bot, character_id: str) -> Path | None:
+    """Make sure the persona's avatar image exists on disk for reference-based
+    generation. The constructor stores the avatar as a Telegram file_id; here
+    it is downloaded once into data/custom_references/<id>/ and reused until
+    the persona is rebuilt (a new file_id re-downloads automatically).
+    """
+    row = get_custom_character_by_id(character_id)
+    if not row or not row.avatar_file_id:
+        return None
+    folder = _custom_reference_dir(character_id)
+    target = folder / 'avatar.jpg'
+    marker = folder / 'avatar.file_id'
+    try:
+        cached_id = marker.read_text(encoding='utf-8').strip() if marker.exists() else ''
+    except OSError:
+        cached_id = ''
+    if target.exists() and cached_id == row.avatar_file_id:
+        return target
+    try:
+        data = await bot.download(row.avatar_file_id)
+        payload = data.read() if hasattr(data, 'read') else bytes(data)
+    except Exception:
+        logger.exception('custom avatar download failed character=%s', character_id)
+        return target if target.exists() else None
+    if not payload:
+        return target if target.exists() else None
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        marker.write_text(row.avatar_file_id, encoding='utf-8')
+    except OSError:
+        logger.exception('custom avatar cache write failed character=%s', character_id)
+        return None
+    return target
 
 
 # ── V3.19.0: custom character constructor avatar ─────────────────────────
@@ -2007,7 +2101,7 @@ async def _run_routed_photo_set(
 
 
 async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None, *, character_id: str = CHARACTER_ID) -> tuple[list[GeneratedPhoto], PhotoRequest]:
-    character = get_character(character_id)
+    character = resolve_character(character_id)
     # Pinterest-style variety: underspecified ordinary requests get a fresh
     # curated/LLM idea (location + camera). Explicit and private requests pass through.
     request, idea_source = await enrich_request_with_idea(telegram_id, request)
@@ -2350,7 +2444,7 @@ async def _deliver_library_partial_topup(
         sent_item_ids: list[int] = []
         try:
             for item in chosen_items:
-                row_id = _insert_delivery_row(telegram_id, request.scene, 'free', provider='telegram_library_topup', estimated_cost_usd=0.0)
+                row_id = _insert_delivery_row(telegram_id, request.scene, 'free', provider='telegram_library_topup', estimated_cost_usd=0.0, character_id=character_id)
                 sent = await bot.send_photo(
                     chat_id, item.file_id, reply_markup=_photo_action_markup(row_id, item),
                 )
