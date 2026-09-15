@@ -45,6 +45,9 @@ KB_LABELS = {
     'invite': ('🔗 Пригласить', '🔗 Invite'),
     'custom': ('🎨 Мой персонаж', '🎨 My character'),
     'support': ('💖 Поддержать проект', '💖 Support the project'),
+    # V3.32.0: Platega/bank compliance — legal documents must be reachable
+    # at all times from the main keyboard, not only via commands.
+    'legal': ('📜 Документы', '📜 Documents'),
     'admin': ('🛠 Админка', '🛠 Admin'),
 }
 
@@ -59,6 +62,10 @@ MAIN_KB_ROWS = [
     ['alarm', 'profile'],
     ['settings', 'characters'],
     ['invite', 'custom'],
+    # V3.32.0: permanent legal access for the payment partner's bank review —
+    # opens the inline menu with privacy policy / user agreement / tariffs /
+    # support (see legal_button in main.py).
+    ['legal'],
     # V3.31.4: «Support the project» CTA — a prominent full-width reply button.
     # Reply keyboards can't hold URL buttons, so it opens the donation appeal
     # with the CloudTips link button (see support_button in main.py).

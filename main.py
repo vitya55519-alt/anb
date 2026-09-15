@@ -131,6 +131,7 @@ from services.payment_method_service import (
     public_payment_methods, is_button_enabled,
 )
 from services import donation_service
+from services import legal_service
 
 # V3.30.2: /fkcheck diagnostics print the deployed build straight from the
 # VERSION file so the owner can confirm Railway picked up the new commit.
@@ -499,6 +500,31 @@ def consent_keyboard(lang: str = RU):
         [InlineKeyboardButton(text='✅ Мне 18+ · принимаю условия', callback_data='consent:accept')],
         [InlineKeyboardButton(text='📄 Условия', callback_data='consent:terms'), InlineKeyboardButton(text='🔐 Privacy', callback_data='consent:privacy')],
     ])
+
+
+def legal_keyboard(lang: str = RU):
+    """V3.32.0: permanent legal access for the payment partner's bank review."""
+    if lang == EN:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='🔐 Privacy policy', callback_data='legal:privacy')],
+            [InlineKeyboardButton(text='📄 User agreement', callback_data='legal:terms')],
+            [InlineKeyboardButton(text='💰 Prices & tariffs', callback_data='legal:tariffs')],
+            [InlineKeyboardButton(text='🛟 Support', callback_data='legal:support')],
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='🔐 Политика конфиденциальности', callback_data='legal:privacy')],
+        [InlineKeyboardButton(text='📄 Пользовательское соглашение', callback_data='legal:terms')],
+        [InlineKeyboardButton(text='💰 Цены и тарифы', callback_data='legal:tariffs')],
+        [InlineKeyboardButton(text='🛟 Поддержка', callback_data='legal:support')],
+    ])
+
+
+async def _send_legal_doc(chat_id: int, text: str, lang: str = RU):
+    """V3.32.0: send a full legal document, split into Telegram-sized messages."""
+    notice = legal_service.legal_doc_notice(lang)
+    full = (notice + '\n\n' + text) if notice else text
+    for chunk in legal_service.split_legal_text(full):
+        await bot.send_message(chat_id, chunk)
 
 
 def delete_confirm_keyboard():
@@ -1596,12 +1622,39 @@ async def consent_accept(cq: types.CallbackQuery):
 @dp.callback_query(F.data == 'consent:terms')
 async def consent_terms(cq: types.CallbackQuery):
     await cq.answer()
-    await cq.message.answer('📄 Условия: сервис предоставляет общение с вымышленным взрослым AI-персонажем. Покупки цифровых функций внутри Telegram проводятся через Stars. Не используйте сервис для незаконных целей. /terms — полная краткая версия.')
+    # V3.32.0: the full agreement document, not a one-line digest — the
+    # payment partner's bank reviews these buttons straight from /start.
+    await _send_legal_doc(cq.message.chat.id, legal_service.USER_AGREEMENT, user_lang(cq.from_user.id))
 
 @dp.callback_query(F.data == 'consent:privacy')
 async def consent_privacy(cq: types.CallbackQuery):
     await cq.answer()
-    await cq.message.answer('🔐 Privacy: бот хранит Telegram ID, сообщения, память, настройки, прогресс отношений и данные покупок, необходимые для работы сервиса. Чувствительные данные намеренно не извлекаются в память. /privacy — подробнее; /delete_me — удалить данные.')
+    await _send_legal_doc(cq.message.chat.id, legal_service.PRIVACY_POLICY, user_lang(cq.from_user.id))
+
+
+# V3.32.0: the always-available «Документы» menu (main keyboard row + /legal).
+@dp.callback_query(F.data == 'legal:privacy')
+async def legal_privacy(cq: types.CallbackQuery):
+    await cq.answer()
+    await _send_legal_doc(cq.message.chat.id, legal_service.PRIVACY_POLICY, user_lang(cq.from_user.id))
+
+
+@dp.callback_query(F.data == 'legal:terms')
+async def legal_terms(cq: types.CallbackQuery):
+    await cq.answer()
+    await _send_legal_doc(cq.message.chat.id, legal_service.USER_AGREEMENT, user_lang(cq.from_user.id))
+
+
+@dp.callback_query(F.data == 'legal:tariffs')
+async def legal_tariffs(cq: types.CallbackQuery):
+    await cq.answer()
+    await cq.message.answer(legal_service.tariffs_text(user_lang(cq.from_user.id)))
+
+
+@dp.callback_query(F.data == 'legal:support')
+async def legal_support(cq: types.CallbackQuery):
+    await cq.answer()
+    await cq.message.answer(legal_service.support_text(user_lang(cq.from_user.id)))
 
 
 async def _send_onboarding_character_card(chat_id: int, character_id: str, viewer_id: int):
@@ -2913,22 +2966,18 @@ async def age_no(cq: types.CallbackQuery):
 
 @dp.message(Command('terms'))
 async def terms_cmd(message: types.Message):
-    await message.answer(
-        f'📄 Условия использования · версия {TERMS_VERSION}\n\n'
-        'Анна — вымышленный взрослый AI-персонаж, а не реальный человек. Сервис предназначен только для пользователей 18+. '
-        'Цифровые покупки внутри Telegram оплачиваются Stars. Результаты AI могут быть неточными; сервис не заменяет профессиональную медицинскую, юридическую или финансовую помощь. '
-        'Запрещено использовать сервис для незаконных действий, эксплуатации несовершеннолетних или нарушения прав других людей.\n\n'
-        'По вопросам: /support · по оплате: /paysupport · удалить данные: /delete_me'
-    )
+    # V3.32.0: full agreement document (payment-partner bank requirement).
+    await _send_legal_doc(message.chat.id, legal_service.USER_AGREEMENT, user_lang(message.from_user.id))
 
 @dp.message(Command('privacy'))
 async def privacy_cmd(message: types.Message):
-    await message.answer(
-        f'🔐 Политика конфиденциальности · версия {PRIVACY_VERSION}\n\n'
-        'Для работы бот хранит Telegram ID/имя, сообщения, сохранённые воспоминания, настройки, прогресс отношений, историю фото/коллекции и технические записи покупок. '
-        'Память настроена не сохранять пароли, платёжные реквизиты, точные адреса, диагнозы, сексуальную историю и другие особо чувствительные категории. '
-        'Данные используются для работы персонализации, поддержки и аналитики продукта. /reset очищает историю общения и память; /delete_me удаляет пользовательские данные целиком.'
-    )
+    await _send_legal_doc(message.chat.id, legal_service.PRIVACY_POLICY, user_lang(message.from_user.id))
+
+@dp.message(Command('legal'))
+async def legal_cmd(message: types.Message):
+    # V3.32.0: documents & prices menu — same screen as the «Документы» button.
+    lang = user_lang(message.from_user.id)
+    await message.answer(legal_service.legal_menu_text(lang), reply_markup=legal_keyboard(lang))
 
 @dp.message(Command('support'))
 async def support_cmd(message: types.Message):
@@ -5086,6 +5135,15 @@ async def support_button(message: types.Message):
     )
 
 
+@dp.message(F.text.in_(kb_pair('legal')))
+async def legal_button(message: types.Message):
+    # V3.32.0: «Документы» — permanently visible legal menu (privacy policy,
+    # user agreement, tariffs, support) required by the payment partner's bank.
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    lang = user_lang(message.from_user.id)
+    await message.answer(legal_service.legal_menu_text(lang), reply_markup=legal_keyboard(lang))
+
+
 # V3.21.0: first-row discovery buttons. They route into the existing inline
 # flows (video presets / circle gate / daily quest) so nothing hides in sub-menus.
 @dp.message(F.text.in_(kb_pair('video')))
@@ -6383,6 +6441,7 @@ async def main():
         types.BotCommand(command='support', description='Поддержка'),
         types.BotCommand(command='privacy', description='Конфиденциальность'),
         types.BotCommand(command='terms', description='Условия'),
+        types.BotCommand(command='legal', description='📜 Документы и цены'),
         types.BotCommand(command='delete_me', description='Удалить мои данные'),
         types.BotCommand(command='settings', description='Настройки'),
         types.BotCommand(command='voice', description='Голосовые ответы'),
