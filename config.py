@@ -289,6 +289,58 @@ VIDEO_TOKEN_COST = max(1, int(os.getenv("VIDEO_TOKEN_COST", "5")))
 # V3.30.0: cosplay photoshoot price in tokens (costume picker in photo menu).
 COSPLAY_TOKEN_COST = max(1, int(os.getenv("COSPLAY_TOKEN_COST", "10")))
 
+# V3.36.0: fiat equivalents next to every Stars price (owner request:
+# «напротив каждой цены звездочек добавь цену в рублях и долларах»).
+# Premium and the constructor reuse their REAL charges — the card prices
+# FreeKassa actually bills (rub + the existing $5 Visa/MC premium); every
+# other product shows the ladder below, which is roughly what the Stars
+# themselves cost to top up inside Telegram. Dollars are round marketing
+# numbers, not FX quotes.
+STARS_FIAT_RUB: dict[int, int] = {
+    5: 15, 10: 25, 15: 39, 20: 49, 25: 59, 30: 69, 40: 89, 50: 99,
+}
+STARS_FIAT_USD: dict[int, float] = {
+    5: 0.2, 10: 0.3, 15: 0.5, 20: 0.6, 25: 0.75, 30: 0.85, 40: 1.0, 50: 1.2,
+}
+# The monthly plan's dollars are FREEKASSA_PREMIUM_PRICE_USD (the real
+# Visa/Mastercard charge above); the week has no USD payment yet.
+PREMIUM_WEEKLY_PRICE_USD = float(os.getenv("PREMIUM_WEEKLY_PRICE_USD", "1.5"))
+CONSTRUCTOR_PRICE_USD = float(os.getenv("CONSTRUCTOR_PRICE_USD", "2.5"))
+
+
+def usd_str(value: float) -> str:
+    """'$6' / '$1.5' / '$0.75' — dollars without trailing zeros."""
+    return '$' + f'{value:g}'
+
+
+def fiat_values(stars: int) -> tuple[int | None, float | None]:
+    """Ladder (rub, usd) for a star count — None when no pretty number exists."""
+    return STARS_FIAT_RUB.get(stars), STARS_FIAT_USD.get(stars)
+
+
+def fiat_suffix(stars: int, rub: int | None = None, usd: float | None = None,
+                rub_enabled: bool = True) -> str:
+    """' · 59 ₽ · $0.75' — the fiat line shown next to a Stars price.
+
+    Explicit ``rub``/``usd`` override the ladder (premium and the constructor
+    pass their real card prices); ``rub_enabled=False`` hides only the rub
+    part — a real charge that is currently off; the dollar equivalent still
+    shows. Star counts outside the ladder fall back to ~2 ₽ / ~$0.024 per Star.
+    """
+    if rub is None:
+        rub = STARS_FIAT_RUB.get(stars)
+        if rub is None:
+            rub = max(1, stars * 2)
+    if usd is None:
+        usd = STARS_FIAT_USD.get(stars)
+        if usd is None:
+            usd = round(stars * 0.024, 2)
+    parts = []
+    if rub_enabled:
+        parts.append(f'{rub} ₽')
+    parts.append(usd_str(usd))
+    return ' · ' + ' · '.join(parts)
+
 # V3.19.0: vision reactions — the character comments on photos users send in
 # chat (selfies, pets, food, gym...) via the multimodal chat provider.
 PHOTO_REACTION_ENABLED = os.getenv("PHOTO_REACTION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}

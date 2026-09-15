@@ -15,7 +15,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.34.0', '3.34.1', '3.35.0')
+    assert VERSION in ('3.34.0', '3.34.1', '3.35.0', '3.36.0')
 
 
 def test_config_declares_weekly_plan():
@@ -72,9 +72,10 @@ def test_rub_prices_next_to_stars():
     assert cfg.FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB >= 1
     assert cfg.FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB * 4 > cfg.FREEKASSA_PREMIUM_PRICE_RUB
     kb = MAIN[MAIN.index('def premium_keyboard('):MAIN.index('def adult_keyboard():')]
-    # stars buttons carry the rub price inline when FreeKassa is on
-    assert "f' / {FREEKASSA_PREMIUM_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''" in kb
-    assert "f' / {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''" in kb
+    # V3.36.0: the stars buttons carry rub + dollar inline via fiat_suffix,
+    # using the real card prices when FreeKassa is on.
+    assert 'fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD' in kb
+    assert 'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD' in kb
     # the weekly plan is payable by card/SBP: its own fkapi row + price lookup
     assert "_fk_pay_button(\n                'premium_week', FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB," in MAIN
     assert "f'💳 Premium на неделю — {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · ⚡СБП / карта'" in MAIN
@@ -88,11 +89,10 @@ def test_rub_prices_next_to_stars():
     # the Mini App products carry the rub price for both plans
     assert "'rub': FREEKASSA_PREMIUM_PRICE_RUB if FREEKASSA_ENABLED else None," in WEBAPP_SVC
     assert "'rub': FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB if FREEKASSA_ENABLED else None," in WEBAPP_SVC
-    assert 'const moRub = premBuy && premBuy.rub' in INDEX
-    assert 'const wkRub = premWeek && premWeek.rub' in INDEX
-    # the legal tariffs price the week in rubles too (Platega)
-    assert "f' или {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽ (карта/СБП)'" in LEGAL
-    assert "f' or {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽ by card/SBP'" in LEGAL
+    assert 'const moRub = premBuy ? fiat(premBuy) : \'\'' in INDEX
+    assert 'const wkRub = premWeek ? fiat(premWeek) : \'\'' in INDEX
+    # the legal tariffs price the week in rubles too (Platega) — via fiat_suffix
+    assert 'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD' in LEGAL
 
 
 def test_mini_app_sells_week():
@@ -110,6 +110,6 @@ def test_mini_app_sells_week():
 
 def test_legal_tariffs_list_week():
     # Platega requires actual prices for every plan — RU and EN tariffs
-    assert "f'⭐ Premium — подписка на 7 дней: {PREMIUM_WEEKLY_STARS} Telegram Stars'" in LEGAL
-    assert "f'⭐ Premium — 7-day subscription: {PREMIUM_WEEKLY_STARS} Telegram Stars'" in LEGAL
+    assert "f'⭐ Premium — подписка на 7 дней: {PREMIUM_WEEKLY_STARS}⭐{fiat_suffix(PREMIUM_WEEKLY_STARS" in LEGAL
+    assert "f'⭐ Premium — 7-day subscription: {PREMIUM_WEEKLY_STARS}⭐{fiat_suffix(PREMIUM_WEEKLY_STARS" in LEGAL
     assert 'PREMIUM_WEEKLY_PHOTO_CREDITS' in LEGAL

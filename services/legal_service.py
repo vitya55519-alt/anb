@@ -39,9 +39,13 @@ from config import (
     GALLERY_DOWNLOAD_STARS,
     CONSTRUCTOR_COST_STARS,
     CONSTRUCTOR_COST_RUB,
+    CONSTRUCTOR_PRICE_USD,
     FREEKASSA_PREMIUM_PRICE_RUB,
+    FREEKASSA_PREMIUM_PRICE_USD,
     FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB,
+    PREMIUM_WEEKLY_PRICE_USD,
     FREEKASSA_ENABLED,
+    fiat_suffix,
 )
 from services import gifts_service
 
@@ -193,13 +197,12 @@ def tariffs_text(lang: str = 'ru') -> str:
             '',
             f'Actual as of {LEGAL_DATE_SHORT} · every price is shown in the bot before payment',
             '',
-            f'⭐ Premium — 30-day subscription: {PREMIUM_MONTHLY_STARS} Telegram Stars'
-            + (f' or {FREEKASSA_PREMIUM_PRICE_RUB} ₽ by card/SBP' if rub_lines else ''),
+            # V3.36.0: every Stars price carries its rub + dollar equivalent.
+            f'⭐ Premium — 30-day subscription: {PREMIUM_MONTHLY_STARS}⭐{fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=rub_lines)}',
             f'Includes: {PREMIUM_MONTHLY_PHOTO_CREDITS} photo credits/month, '
             f'{PREMIUM_MONTHLY_QUEST_REPLAYS} story replays, {VIDEO_PREMIUM_FREE_DAILY} free video '
             'animations per day, wider chat limits and all characters.',
-            f'⭐ Premium — 7-day subscription: {PREMIUM_WEEKLY_STARS} Telegram Stars'
-            + (f' or {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽ by card/SBP' if rub_lines else ''),
+            f'⭐ Premium — 7-day subscription: {PREMIUM_WEEKLY_STARS}⭐{fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=rub_lines)}',
             f'Includes: {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits for the week and the same '
             'features as the 30-day plan.',
             '',
@@ -209,21 +212,20 @@ def tariffs_text(lang: str = 'ru') -> str:
             f'{FREE_PHOTOS_LEVEL_3_6}/day (levels 3+)',
             '',
             '📸 Photos:',
-            f'• new photo set after the free limit — {PHOTO_COST_STARS}⭐',
-            f'• photo by your chat scenario — {CHAT_PHOTO_OFFER_STARS}⭐',
-            f'• custom photo by your own description — {CUSTOM_PHOTO_COST_STARS}⭐',
-            f'• full-resolution gallery download — {GALLERY_DOWNLOAD_STARS}⭐ per photo',
+            f'• new photo set after the free limit — {PHOTO_COST_STARS}⭐{fiat_suffix(PHOTO_COST_STARS)}',
+            f'• photo by your chat scenario — {CHAT_PHOTO_OFFER_STARS}⭐{fiat_suffix(CHAT_PHOTO_OFFER_STARS)}',
+            f'• custom photo by your own description — {CUSTOM_PHOTO_COST_STARS}⭐{fiat_suffix(CUSTOM_PHOTO_COST_STARS)}',
+            f'• full-resolution gallery download — {GALLERY_DOWNLOAD_STARS}⭐ per photo{fiat_suffix(GALLERY_DOWNLOAD_STARS)}',
             '',
             '🎬 Video:',
-            f'• photo animation (video or video circle) — {VIDEO_COST_STARS}⭐',
+            f'• photo animation (video or video circle) — {VIDEO_COST_STARS}⭐{fiat_suffix(VIDEO_COST_STARS)}',
             f'• Premium: {VIDEO_PREMIUM_FREE_DAILY} free per day',
             '',
             '🎯 Stories & characters:',
-            f'• alternative story branch — {QUEST_REPLAY_STARS}⭐',
-            f'• create your own character — {CONSTRUCTOR_COST_STARS}⭐'
-            + (f' or {CONSTRUCTOR_COST_RUB} ₽' if rub_lines else ''),
+            f'• alternative story branch — {QUEST_REPLAY_STARS}⭐{fiat_suffix(QUEST_REPLAY_STARS)}',
+            f'• create your own character — {CONSTRUCTOR_COST_STARS}⭐{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD, rub_enabled=rub_lines)}',
             '',
-            f'🎁 Gifts: {gift_min}⭐ – {gift_max}⭐ · gift of the day −{gift_discount}%',
+            f'🎁 Gifts: {gift_min}⭐{fiat_suffix(gift_min)} – {gift_max}⭐{fiat_suffix(gift_max)} · gift of the day −{gift_discount}%',
             '',
             '💖 Supporting the project is voluntary tips (CloudTips) and never affects access to features.',
             '',
@@ -235,13 +237,11 @@ def tariffs_text(lang: str = 'ru') -> str:
         '',
         f'Актуальны на {LEGAL_DATE_SHORT} · любая цена показывается в боте до оплаты',
         '',
-        f'⭐ Premium — подписка на 30 дней: {PREMIUM_MONTHLY_STARS} Telegram Stars'
-        + (f' или {FREEKASSA_PREMIUM_PRICE_RUB} ₽ (карта/СБП)' if rub_lines else ''),
+        f'⭐ Premium — подписка на 30 дней: {PREMIUM_MONTHLY_STARS}⭐{fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=rub_lines)}',
         f'Входит: {PREMIUM_MONTHLY_PHOTO_CREDITS} фото-кредитов в месяц, '
         f'{PREMIUM_MONTHLY_QUEST_REPLAYS} перезапуска историй, {VIDEO_PREMIUM_FREE_DAILY} бесплатных '
         'видео-оживлений в день, расширенные лимиты общения и все персонажи.',
-        f'⭐ Premium — подписка на 7 дней: {PREMIUM_WEEKLY_STARS} Telegram Stars'
-        + (f' или {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽ (карта/СБП)' if rub_lines else ''),
+        f'⭐ Premium — подписка на 7 дней: {PREMIUM_WEEKLY_STARS}⭐{fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=rub_lines)}',
         f'Входит: {PREMIUM_WEEKLY_PHOTO_CREDITS} фото-кредитов за неделю и те же '
         'возможности, что в подписке на 30 дней.',
         '',
@@ -251,21 +251,20 @@ def tariffs_text(lang: str = 'ru') -> str:
         f'{FREE_PHOTOS_LEVEL_3_6} в день (уровни 3+)',
         '',
         '📸 Фото:',
-        f'• новый сет фото после бесплатного лимита — {PHOTO_COST_STARS}⭐',
-        f'• фото по сценарию из чата — {CHAT_PHOTO_OFFER_STARS}⭐',
-        f'• кастомное фото по своему описанию — {CUSTOM_PHOTO_COST_STARS}⭐',
-        f'• скачивание из галереи в полном разрешении — {GALLERY_DOWNLOAD_STARS}⭐ за фото',
+        f'• новый сет фото после бесплатного лимита — {PHOTO_COST_STARS}⭐{fiat_suffix(PHOTO_COST_STARS)}',
+        f'• фото по сценарию из чата — {CHAT_PHOTO_OFFER_STARS}⭐{fiat_suffix(CHAT_PHOTO_OFFER_STARS)}',
+        f'• кастомное фото по своему описанию — {CUSTOM_PHOTO_COST_STARS}⭐{fiat_suffix(CUSTOM_PHOTO_COST_STARS)}',
+        f'• скачивание из галереи в полном разрешении — {GALLERY_DOWNLOAD_STARS}⭐ за фото{fiat_suffix(GALLERY_DOWNLOAD_STARS)}',
         '',
         '🎬 Видео:',
-        f'• оживление фото (видео или кружочек) — {VIDEO_COST_STARS}⭐',
+        f'• оживление фото (видео или кружочек) — {VIDEO_COST_STARS}⭐{fiat_suffix(VIDEO_COST_STARS)}',
         f'• Premium: {VIDEO_PREMIUM_FREE_DAILY} бесплатно в день',
         '',
         '🎯 Истории и персонажи:',
-        f'• альтернативная ветка истории — {QUEST_REPLAY_STARS}⭐',
-        f'• создание своего персонажа — {CONSTRUCTOR_COST_STARS}⭐'
-        + (f' или {CONSTRUCTOR_COST_RUB} ₽' if rub_lines else ''),
+        f'• альтернативная ветка истории — {QUEST_REPLAY_STARS}⭐{fiat_suffix(QUEST_REPLAY_STARS)}',
+        f'• создание своего персонажа — {CONSTRUCTOR_COST_STARS}⭐{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD, rub_enabled=rub_lines)}',
         '',
-        f'🎁 Подарки: от {gift_min}⭐ до {gift_max}⭐ · подарок дня −{gift_discount}%',
+        f'🎁 Подарки: от {gift_min}⭐{fiat_suffix(gift_min)} до {gift_max}⭐{fiat_suffix(gift_max)} · подарок дня −{gift_discount}%',
         '',
         '💖 Поддержка проекта — добровольные чаевые (CloudTips) и никак не влияют на доступ к функциям.',
         '',

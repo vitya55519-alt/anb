@@ -34,9 +34,11 @@ from config import (
     CHAT_PHOTO_OFFER_STARS,
     CONSTRUCTOR_COST_RUB,
     CONSTRUCTOR_COST_STARS,
+    CONSTRUCTOR_PRICE_USD,
     CUSTOM_PHOTO_COST_STARS,
     FREEKASSA_ENABLED,
     FREEKASSA_PREMIUM_PRICE_RUB,
+    FREEKASSA_PREMIUM_PRICE_USD,
     FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB,
     FREE_MESSAGES_PER_DAY,
     FREE_PHOTOS_LEVEL_1_2,
@@ -46,11 +48,13 @@ from config import (
     PREMIUM_MONTHLY_PHOTO_CREDITS,
     PREMIUM_MONTHLY_STARS,
     PREMIUM_WEEKLY_PHOTO_CREDITS,
+    PREMIUM_WEEKLY_PRICE_USD,
     PREMIUM_WEEKLY_STARS,
     QUEST_REPLAY_STARS,
     TELEGRAM_TOKEN,
     VIDEO_COST_STARS,
     VIDEO_PREMIUM_FREE_DAILY,
+    fiat_values,
 )
 from models.app_models import User
 from services import legal_service
@@ -187,6 +191,9 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
     - ``photo_pack`` — V3.34.0 addition: a standalone +1 photo credit.
     """
     en = lang == EN
+    # V3.36.0: every Stars price carries its rub + dollar equivalent so the
+    # storefront can show all three tiers next to each other.
+    photo_rub, photo_usd = fiat_values(PHOTO_COST_STARS)
     return [
         {
             'id': 'premium',
@@ -200,6 +207,7 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'stars': PREMIUM_MONTHLY_STARS,
             'payload': 'premium_month',
             'rub': FREEKASSA_PREMIUM_PRICE_RUB if FREEKASSA_ENABLED else None,
+            'usd': FREEKASSA_PREMIUM_PRICE_USD,
         },
         {
             'id': 'premium_week',
@@ -213,6 +221,7 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'stars': PREMIUM_WEEKLY_STARS,
             'payload': 'premium_week',
             'rub': FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB if FREEKASSA_ENABLED else None,
+            'usd': PREMIUM_WEEKLY_PRICE_USD,
         },
         {
             'id': 'photo_credit',
@@ -225,6 +234,8 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             ),
             'stars': PHOTO_COST_STARS,
             'payload': 'photo_pack',
+            'rub': photo_rub,
+            'usd': photo_usd,
         },
     ]
 
@@ -252,6 +263,7 @@ def api_shop(lang: str = 'ru') -> dict:
         'premium': {
             'stars': PREMIUM_MONTHLY_STARS,
             'rub': FREEKASSA_PREMIUM_PRICE_RUB if FREEKASSA_ENABLED else None,
+            'usd': FREEKASSA_PREMIUM_PRICE_USD,
             'photo_credits': PREMIUM_MONTHLY_PHOTO_CREDITS,
             'free_videos_daily': VIDEO_PREMIUM_FREE_DAILY,
             'features': [
@@ -263,11 +275,15 @@ def api_shop(lang: str = 'ru') -> dict:
             'photos_level_1_2': FREE_PHOTOS_LEVEL_1_2,
             'photos_level_3_6': FREE_PHOTOS_LEVEL_3_6,
         },
+        # V3.36.0: each item carries the rub + dollar equivalent of its Stars
+        # price (the same ladder the bot shows next to its buttons).
         'items': [
-            {'emoji': e, 'name': n, 'stars': s}
+            {'emoji': e, 'name': n, 'stars': s,
+             'rub': fiat_values(s)[0], 'usd': fiat_values(s)[1]}
             for e, n, s in items
         ],
         'constructor_rub': CONSTRUCTOR_COST_RUB if FREEKASSA_ENABLED else None,
+        'constructor_usd': CONSTRUCTOR_PRICE_USD,
         # V3.34.0: what the Mini App can sell right now (Stars invoices via
         # tg.openInvoice) — the rest of the price list stays informational.
         'purchases': api_invoice_products(lang),

@@ -636,7 +636,7 @@ async function sendChat() {
 }
 
 // ── V3.35.0: character constructor wizard ─────────────────────────────────
-let WIZ = { steps: [], idx: 0, params: {}, name: '', stars: 0, free: false };
+let WIZ = { steps: [], idx: 0, params: {}, name: '', stars: 0, rub: 0, usd: 0, free: false };
 
 async function openWizard() {
   try {
@@ -644,7 +644,7 @@ async function openWizard() {
     const r = await fetch('/webapp/api/constructor/options' + q + 'lang=' + LANG);
     const j = await r.json();
     if (!j.ok || !j.steps || !j.steps.length) { toast(L.invoice_err); return; }
-    WIZ = { steps: j.steps, idx: 0, params: {}, name: '', stars: j.stars || 0, free: !!j.free };
+    WIZ = { steps: j.steps, idx: 0, params: {}, name: '', stars: j.stars || 0, rub: j.rub || 0, usd: j.usd || 0, free: !!j.free };
     document.getElementById('wizview').classList.add('open');
     renderWizStep();
   } catch (e) {
@@ -683,7 +683,7 @@ function renderWizStep() {
     <div class="step-title">${esc(L.wiz_name_ph)}</div>
     <input class="name" id="wizName" maxlength="24" value="${esc(WIZ.name)}">
     <div class="review">${review}</div>
-    <div class="price-note" id="wizPrice">${WIZ.free ? '✅ ' + esc(L.wiz_free) : '⭐ ' + WIZ.stars}</div>
+    <div class="price-note" id="wizPrice">${WIZ.free ? '✅ ' + esc(L.wiz_free) : '⭐ ' + WIZ.stars + (WIZ.rub ? ' · ' + esc(WIZ.rub) + ' ₽' : '') + (WIZ.usd ? ' · $' + esc(WIZ.usd) : '')}</div>
     <button class="cta" id="wizCreate" ${WIZ.name ? '' : 'disabled'}>🎨 ${esc(L.wiz_create)}</button>`;
   const nameInput = document.getElementById('wizName');
   const createBtn = document.getElementById('wizCreate');
@@ -770,8 +770,9 @@ async function loadShop() {
     const j = await r.json();
     if (!j.ok) return;
     const s = j.shop, p = s.premium;
-    const price = `⭐ ${p.stars} <small>${esc(L.month)}</small>` +
-      (p.rub ? ` · ${p.rub} ₽` : '');
+    // V3.36.0: every Stars price shows its rub + dollar equivalent.
+    const fiat = o => (o.rub ? ` · ${esc(o.rub)} ₽` : '') + (o.usd ? ` · $${esc(o.usd)}` : '');
+    const price = `⭐ ${p.stars} <small>${esc(L.month)}</small>` + fiat(p);
     const feats = p.features.map(f => `<li><span>${esc(f.emoji)}</span><span>${esc(LANG === 'en' ? f.en : f.ru)}</span></li>`).join('');
     // V3.34.0: what the app sells directly — the CTA button on the Premium
     // hero and the +1 photo credit row; the rest of the list stays a price
@@ -780,15 +781,15 @@ async function loadShop() {
     const premBuy = purchases.find(x => x.id === 'premium');
     const premWeek = purchases.find(x => x.id === 'premium_week');
     const credit = purchases.find(x => x.id === 'photo_credit');
-    // V3.34.1: the rub price rides next to the Stars price on both plans.
-    const moRub = premBuy && premBuy.rub ? ` · ${premBuy.rub} ₽` : '';
-    const wkRub = premWeek && premWeek.rub ? ` · ${premWeek.rub} ₽` : '';
+    // V3.36.0: the rub + dollar prices ride next to the Stars price on both plans.
+    const moRub = premBuy ? fiat(premBuy) : '';
+    const wkRub = premWeek ? fiat(premWeek) : '';
     const heroBtn = premBuy ? `<button class="cta" data-buy="premium">⭐ ${premBuy.stars} — ${esc(L.buy)}${moRub}</button>` : '';
     const heroWeekBtn = premWeek ? `<button class="cta ghost" data-buy="premium_week">⭐ ${premWeek.stars} — ${esc(L.week)}${wkRub}</button>` : '';
     const creditRow = credit
-      ? `<div class="row-item"><span class="n">${esc(credit.emoji)} ${esc(credit.title)}</span><span class="buy-cell"><span class="c">${credit.stars} ⭐</span><button class="cta small" data-buy="photo_credit">${esc(L.buy)}</button></span></div>`
+      ? `<div class="row-item"><span class="n">${esc(credit.emoji)} ${esc(credit.title)}</span><span class="buy-cell"><span class="c">${credit.stars} ⭐${fiat(credit)}</span><button class="cta small" data-buy="photo_credit">${esc(L.buy)}</button></span></div>`
       : '';
-    const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars} ⭐</span></div>`).join('');
+    const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars} ⭐${fiat(i)}</span></div>`).join('');
     document.getElementById('shopbody').innerHTML = `
       <div class="hero">
         <div class="title">⭐ Premium</div>

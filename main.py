@@ -30,6 +30,7 @@ from config import (
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
     CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST, COSPLAY_TOKEN_COST,
+    CONSTRUCTOR_PRICE_USD, PREMIUM_WEEKLY_PRICE_USD, fiat_suffix,
     FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
     FREEKASSA_MERCHANT_ID, FREEKASSA_API_KEY, FREEKASSA_API_ENABLED,
 )
@@ -302,7 +303,7 @@ async def _photo_accept_flow(chat_id: int, telegram_id: int, expr_key: str | Non
         offer_id = create_offer(telegram_id, req)
         await bot.send_message(
             chat_id,
-            f'бесплатный лимит на сегодня кончился, но для тебя сейчас — {CHAT_PHOTO_OFFER_STARS}⭐ ✨'
+            f'бесплатный лимит на сегодня кончился, но для тебя сейчас — {CHAT_PHOTO_OFFER_STARS}⭐{fiat_suffix(CHAT_PHOTO_OFFER_STARS)} ✨'
         )
         await send_stars_invoice(
             chat_id, f'Фото от {_character_display_name(get_user_character(telegram_id))}', 'Персональное фото прямо сейчас',
@@ -562,7 +563,7 @@ def quest_routes_keyboard(telegram_id: int, quest_key: str):
             suffix=' ✅' + (' · канон' if key==(status or {}).get('canonical') else '')
             rows.append([InlineKeyboardButton(text=route['label']+suffix, callback_data='quest:done')])
         elif (status or {}).get('canonical'):
-            rows.append([InlineKeyboardButton(text=f"🔒 {route['label']} · replay {QUEST_REPLAY_STARS}⭐", callback_data=f"quest:route:{quest_key}:{key}")])
+            rows.append([InlineKeyboardButton(text=f"🔒 {route['label']} · replay {QUEST_REPLAY_STARS}⭐{fiat_suffix(QUEST_REPLAY_STARS)}", callback_data=f"quest:route:{quest_key}:{key}")])
         else:
             rows.append([InlineKeyboardButton(text=route['label'], callback_data=f"quest:route:{quest_key}:{key}")])
     rows.append([InlineKeyboardButton(text='⬅️ Истории', callback_data='quest:list')])
@@ -580,7 +581,7 @@ def characters_keyboard(telegram_id: int | None = None):
             text = f'🔒 {card.display_name} · скоро'
         rows.append([InlineKeyboardButton(text=text, callback_data=f'character:view:{card.character_id}')])
     # V3.19.0: entry point to the personal character constructor.
-    rows.append([InlineKeyboardButton(text=f'🎨 Создать свою · {CONSTRUCTOR_COST_STARS}⭐', callback_data='constructor:start')])
+    rows.append([InlineKeyboardButton(text=f'🎨 Создать свою · {CONSTRUCTOR_COST_STARS}⭐{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD)}', callback_data='constructor:start')])
     if FREEKASSA_ENABLED and telegram_id:
         rows.append([_fk_pay_button(
             'constructor_rub', CONSTRUCTOR_COST_RUB,
@@ -943,9 +944,11 @@ def premium_pitch_text(telegram_id: int) -> str:
     countdown when active and a level-6 plateau line for maxed relationships.
     V3.22.0: localized RU/EN."""
     lang = user_lang(telegram_id)
+    # V3.36.0: rub + dollars next to the Stars price — premium's rub is the
+    # real card/SBP charge, its dollars the real Visa/MC price.
+    wk_fiat = fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
+    mo_fiat = fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
     if lang == EN:
-        wk_rub = f' / {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
-        mo_rub = f' / {FREEKASSA_PREMIUM_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
         lines = [
             'Premium:',
             '• unlimited messages — I never “fall asleep” mid-conversation 😴',
@@ -955,7 +958,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 💋 relationship levels 7–8 — “Kindred spirits” and “One whole”',
             '• 2 free replays of alternative quest branches per month',
             '• more memory, initiative and morning/evening messages',
-            f'• plans: a week — {PREMIUM_WEEKLY_STARS} Stars{wk_rub} · a month — {PREMIUM_MONTHLY_STARS} Stars{mo_rub}',
+            f'• plans: a week — {PREMIUM_WEEKLY_STARS} Stars{wk_fiat}, a month — {PREMIUM_MONTHLY_STARS} Stars{mo_fiat}',
             '',
             'Free photos depend on intimacy: levels 1–2 — 1/day, 3–6 — 2/day.',
             'The relationship cannot be bought — it grows from conversation. Custom photos are paid separately.',
@@ -963,8 +966,6 @@ def premium_pitch_text(telegram_id: int) -> str:
             '💳 Digital purchases inside Telegram are paid with Telegram Stars.',
         ]
     else:
-        wk_rub = f' / {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
-        mo_rub = f' / {FREEKASSA_PREMIUM_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
         lines = [
             'Premium:',
             '• безлимит сообщений — я больше не «засыпаю» посреди разговора 😴',
@@ -974,7 +975,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 💋 уровни 7–8 отношений — «Родственные души» и «Одно целое»',
             '• 2 бесплатных replay альтернативных квест-веток в месяц',
             '• больше памяти, инициативы и утренних/вечерних сообщений',
-            f'• тарифы: неделя — {PREMIUM_WEEKLY_STARS} Stars{wk_rub} · месяц — {PREMIUM_MONTHLY_STARS} Stars{mo_rub}',
+            f'• тарифы: неделя — {PREMIUM_WEEKLY_STARS} Stars{wk_fiat}, месяц — {PREMIUM_MONTHLY_STARS} Stars{mo_fiat}',
             '',
             'Бесплатные фото зависят от близости: 1–2 уровень — 1/день, 3–6 — 2/день.',
             'Отношения не покупаются — они развиваются из общения. Кастомные фото оплачиваются отдельно.',
@@ -1089,20 +1090,21 @@ def _fk_pay_button(product: str, amount: int, text: str,
 
 def premium_keyboard(discount: dict | None = None, telegram_id: int | None = None):
     if _any_video_engine():
-        video_button = InlineKeyboardButton(text=f'🎬 Оживить фото — {VIDEO_COST_STARS}⭐', callback_data='video:animate_last')
+        video_button = InlineKeyboardButton(text=f'🎬 Оживить фото — {VIDEO_COST_STARS}⭐{fiat_suffix(VIDEO_COST_STARS)}', callback_data='video:animate_last')
     else:
         video_button = InlineKeyboardButton(text='🔒 🎬 Оживить фото · скоро', callback_data='future:animate_photo')
     if discount and discount.get('active'):
         buy_label = f'⭐ Premium −{discount["percent"]}% — {discount["price"]} Stars (ещё {discount["hours_left"]:.0f} ч)'
     else:
-        # V3.34.1: rub next to the Stars price — the card/SBP cost of the same plan.
-        month_rub = f' / {FREEKASSA_PREMIUM_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
-        buy_label = f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars{month_rub} / 30 дней'
-    week_rub = f' / {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
+        # V3.36.0: rub + dollars next to the Stars price — the rub is the real
+        # card/SBP charge while FreeKassa is on, the dollars the Visa/MC price.
+        month_fiat = fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
+        buy_label = f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars{month_fiat} / 30 дней'
+    week_fiat = fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
     rows = [
         [InlineKeyboardButton(text=buy_label, callback_data='buy:premium')],
         # V3.34.1: the short plan for the undecided — same invoice pipeline.
-        [InlineKeyboardButton(text=f'⭐ Premium на неделю — {PREMIUM_WEEKLY_STARS} Stars{week_rub}', callback_data='buy:premium_week')],
+        [InlineKeyboardButton(text=f'⭐ Premium на неделю — {PREMIUM_WEEKLY_STARS} Stars{week_fiat}', callback_data='buy:premium_week')],
     ]
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text=f'💎 Premium — Wallet Pay (крипта/карта)', callback_data='walletpay:premium')])
@@ -1202,7 +1204,7 @@ def photo_keyboard(telegram_id: int):
             )])
 
     if level >= 5:
-        rows.append([InlineKeyboardButton(text=f'✨ Кастомное фото — {CUSTOM_PHOTO_COST_STARS}⭐', callback_data='custom:start')])
+        rows.append([InlineKeyboardButton(text=f'✨ Кастомное фото — {CUSTOM_PHOTO_COST_STARS}⭐{fiat_suffix(CUSTOM_PHOTO_COST_STARS)}', callback_data='custom:start')])
         # V3.23.0: entry point to the paid spicy products (sets/gifts/fantasy).
         rows.append([InlineKeyboardButton(
             text='🔥 Приватное — горячие сеты' if lang == RU else '🔥 Private — hot sets',
@@ -1479,7 +1481,7 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
 
     offer_id = create_offer(telegram_id, request)
     track_event(db_uid, 'paywall_view', metadata={'product': 'photo', 'scene': request.scene, 'stars': PHOTO_COST_STARS})
-    await bot.send_message(chat_id, f'бесплатный лимит на сегодня использован. следующее фото — {PHOTO_COST_STARS}⭐ ✨')
+    await bot.send_message(chat_id, f'бесплатный лимит на сегодня использован. следующее фото — {PHOTO_COST_STARS}⭐{fiat_suffix(PHOTO_COST_STARS)} ✨')
     await send_stars_invoice(chat_id, f"Фото · {_character_display_name(get_user_character(telegram_id))}", f'Новый сет до 3 фото: {PHOTO_LABELS.get(request.scene, request.scene)}', f'photo:{offer_id}', PHOTO_COST_STARS)
 
 
@@ -3122,7 +3124,7 @@ async def _send_gallery_page(chat_id: int, telegram_id: int, page: int = 0, *, e
         text = (
             '🖼 Твоя галерея пуста.\n\n'
             'Попроси у Анны фото — и все твои кадры появятся здесь, с возможностью '
-            f'скачать их в полном разрешении за {GALLERY_DOWNLOAD_STARS}⭐ каждый.'
+            f'скачать их в полном разрешении за {GALLERY_DOWNLOAD_STARS}⭐{fiat_suffix(GALLERY_DOWNLOAD_STARS)} каждый.'
         )
         if edit:
             await edit.edit_text(text)
@@ -3133,7 +3135,7 @@ async def _send_gallery_page(chat_id: int, telegram_id: int, page: int = 0, *, e
     header = (
         f'🖼 Твоя галерея · {total} фото · стр. {snap["page"] + 1}/{total_pages}\n\n'
         'Нажми на фото — открою его в полном размере с кнопками «Оживить» и «Скачать».\n'
-        f'Платное скачивание: {GALLERY_DOWNLOAD_STARS}⭐ за кадр в полном разрешении (без Telegram-сжатия).'
+        f'Платное скачивание: {GALLERY_DOWNLOAD_STARS}⭐{fiat_suffix(GALLERY_DOWNLOAD_STARS)} за кадр в полном разрешении (без Telegram-сжатия).'
     )
     # Render each item as a small photo message with its own action row.
     if edit:
@@ -3150,7 +3152,7 @@ async def _send_gallery_page(chat_id: int, telegram_id: int, page: int = 0, *, e
         if item.get('downloadable'):
             row_buttons.append(
                 types.InlineKeyboardButton(
-                    text=f'⬇ Скачать {local_idx} · {GALLERY_DOWNLOAD_STARS}⭐',
+                    text=f'⬇ Скачать {local_idx} · {GALLERY_DOWNLOAD_STARS}⭐{fiat_suffix(GALLERY_DOWNLOAD_STARS)}',
                     callback_data=f'gallery:dl:{item["id"]}',
                 )
             )
@@ -3226,8 +3228,8 @@ async def gallery_view_cb(cq: types.CallbackQuery):
     await cq.answer()
     # Show the photo full-size with a clean action row: animate / download / back.
     row = [
-        types.InlineKeyboardButton(text=f'🎬 Оживить · {VIDEO_COST_STARS}⭐', callback_data=f'gallery:animate:{delivery_id}'),
-        types.InlineKeyboardButton(text=f'⬇ Скачать · {GALLERY_DOWNLOAD_STARS}⭐', callback_data=f'gallery:dl:{delivery_id}'),
+        types.InlineKeyboardButton(text=f'🎬 Оживить · {VIDEO_COST_STARS}⭐{fiat_suffix(VIDEO_COST_STARS)}', callback_data=f'gallery:animate:{delivery_id}'),
+        types.InlineKeyboardButton(text=f'⬇ Скачать · {GALLERY_DOWNLOAD_STARS}⭐{fiat_suffix(GALLERY_DOWNLOAD_STARS)}', callback_data=f'gallery:dl:{delivery_id}'),
         types.InlineKeyboardButton(text='↩ назад', callback_data='gallery:back'),
     ]
     kb = types.InlineKeyboardMarkup(inline_keyboard=[row])
@@ -4469,12 +4471,12 @@ async def gifts_cmd(message: types.Message):
     lines = []
     for g in gifts:
         if gifts_service.is_featured(g):
-            lines.append(f'{g.emoji} {g.name} — {gifts_service.effective_cost(g)}⭐ 🔥 подарок дня (вместо {g.cost}⭐)')
+            lines.append(f'{g.emoji} {g.name} — {gifts_service.effective_cost(g)}⭐{fiat_suffix(gifts_service.effective_cost(g))} 🔥 подарок дня (вместо {g.cost}⭐)')
         else:
-            lines.append(f'{g.emoji} {g.name} — {g.cost}⭐')
+            lines.append(f'{g.emoji} {g.name} — {g.cost}⭐{fiat_suffix(g.cost)}')
     rows = [[InlineKeyboardButton(
-        text=(f'{g.emoji} {g.name} · {gifts_service.effective_cost(g)}⭐ 🔥' if gifts_service.is_featured(g)
-              else f'{g.emoji} {g.name} · {g.cost}⭐'),
+        text=(f'{g.emoji} {g.name} · {gifts_service.effective_cost(g)}⭐{fiat_suffix(gifts_service.effective_cost(g))} 🔥' if gifts_service.is_featured(g)
+              else f'{g.emoji} {g.name} · {g.cost}⭐{fiat_suffix(g.cost)}'),
         callback_data=f'gift:{g.id}')]
         for g in gifts]
     header = '🎁 Pick a gift — she will love it 😊\n\n' if user_lang(message.from_user.id) == EN else '🎁 Выбери подарок — она будет рада 😊\n\n'
@@ -4510,7 +4512,7 @@ async def dates_cmd(message: types.Message):
     level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
     from services.gamification_service import completed_date_ids, has_free_date
     done = completed_date_ids(message.from_user.id)
-    rows = [[InlineKeyboardButton(text=f'{"✅ " if d.id in done else ""}{d.emoji} {d.name} · {d.cost}⭐', callback_data=f'date:{d.id}')]
+    rows = [[InlineKeyboardButton(text=f'{"✅ " if d.id in done else ""}{d.emoji} {d.name} · {d.cost}⭐{fiat_suffix(d.cost)}', callback_data=f'date:{d.id}')]
             for d in dates_service.get_available(level)]
     rows += [[InlineKeyboardButton(text=f'🔒 {d.name} — уровень {d.min_level}', callback_data=f'date_locked:{d.id}')]
              for d in dates_service.get_locked(level)]
@@ -4588,18 +4590,18 @@ def _spicy_menu_keyboard(telegram_id: int, lang: str) -> InlineKeyboardMarkup:
     for item in spicy_service.SPICY_SETS:
         name = item.name_en if lang == EN else item.name
         if item.min_level <= level:
-            rows.append([InlineKeyboardButton(text=f'{item.emoji} {name} · {item.cost}⭐', callback_data=f'spicy:set:{item.id}')])
+            rows.append([InlineKeyboardButton(text=f'{item.emoji} {name} · {item.cost}⭐{fiat_suffix(item.cost)}', callback_data=f'spicy:set:{item.id}')])
         else:
             rows.append([InlineKeyboardButton(text=f'🔒 {name} · {lock_suffix}{item.min_level}', callback_data=f'spicy:locked:{item.min_level}')])
     for gift in spicy_service.PRIVATE_GIFTS:
         name = gift.name_en if lang == EN else gift.name
         if gift.min_level <= level:
-            rows.append([InlineKeyboardButton(text=f'{gift.emoji} {name} · {gift.cost}⭐', callback_data=f'spicy:gift:{gift.id}')])
+            rows.append([InlineKeyboardButton(text=f'{gift.emoji} {name} · {gift.cost}⭐{fiat_suffix(gift.cost)}', callback_data=f'spicy:gift:{gift.id}')])
         else:
             rows.append([InlineKeyboardButton(text=f'🔒 {name} · {lock_suffix}{gift.min_level}', callback_data=f'spicy:locked:{gift.min_level}')])
     fantasy_name = '🎭 Фантазия — сценарий от тебя' if lang == RU else '🎭 Fantasy — your scenario'
     if level >= spicy_service.FANTASY_MIN_LEVEL:
-        rows.append([InlineKeyboardButton(text=f'{fantasy_name} · {spicy_service.FANTASY_COST_STARS}⭐', callback_data='spicy:fantasy')])
+        rows.append([InlineKeyboardButton(text=f'{fantasy_name} · {spicy_service.FANTASY_COST_STARS}⭐{fiat_suffix(spicy_service.FANTASY_COST_STARS)}', callback_data='spicy:fantasy')])
     else:
         rows.append([InlineKeyboardButton(text=f'🔒 {fantasy_name} · {lock_suffix}{spicy_service.FANTASY_MIN_LEVEL}', callback_data=f'spicy:locked:{spicy_service.FANTASY_MIN_LEVEL}')])
     back = '← 📸 Фото' if lang == RU else '← 📸 Photos'
@@ -5448,8 +5450,8 @@ async def _constructor_confirm(chat_id: int, telegram_id: int):
         buy_label = '✅ Создать · бесплатно (админ)'
         price_note = 'Админский доступ: бесплатно.'
     else:
-        buy_label = f'✅ Создать · {CONSTRUCTOR_COST_STARS}⭐'
-        price_note = f'Готова родиться за {CONSTRUCTOR_COST_STARS} Stars ✨'
+        buy_label = f'✅ Создать · {CONSTRUCTOR_COST_STARS}⭐{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD)}'
+        price_note = f'Готова родиться за {CONSTRUCTOR_COST_STARS} Stars{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD)} ✨'
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=buy_label, callback_data='constructor:buy')],
         [InlineKeyboardButton(text='❌ Отменить', callback_data='constructor:cancel')],
@@ -6740,6 +6742,9 @@ async def _webapp_api_constructor_options(request: web.Request) -> web.Response:
         'ok': True,
         'steps': webapp_service.api_constructor_steps(request.query.get('lang', 'ru')),
         'stars': CONSTRUCTOR_COST_STARS,
+        # V3.36.0: rub + dollar equivalents ride along for the price note.
+        'rub': CONSTRUCTOR_COST_RUB,
+        'usd': CONSTRUCTOR_PRICE_USD,
         'free': free,
     })
 

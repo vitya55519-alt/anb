@@ -12,7 +12,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.33.1', '3.34.0', '3.34.1', '3.35.0')
+    assert VERSION in ('3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0')
 
 
 def test_invoice_products_declared():
@@ -110,7 +110,7 @@ def test_no_unescaped_backend_strings_in_templates():
     # of the known numeric/int expressions (Stars prices, counters, percents)
     numeric_ok = {
         'p.stars', 'p.rub', 'premBuy.stars', 'premBuy.rub', 'premWeek.stars', 'premWeek.rub',
-        'credit.stars', 'i.stars', 'lvlPct', 'WIZ.stars',
+        'credit.stars', 'i.stars', 'lvlPct', 'WIZ.stars', 'WIZ.rub', 'WIZ.usd',
         's.free_tier.messages_per_day', 's.free_tier.photos_level_1_2',
         's.free_tier.photos_level_3_6',
     }
@@ -128,6 +128,8 @@ def test_no_unescaped_backend_strings_in_templates():
             "c.custom ? '1' : '0'",
             "WIZ.params[step.key] === o.value ? ' sel' : ''",
             "WIZ.name ? '' : 'disabled'",
+            # V3.36.0: the fiat formatter esc()-wraps its own fields internally
+            'fiat(credit)', 'fiat(i)', 'fiat(p)',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         raise AssertionError(f'unescaped template value: {expr!r} in INDEX')
