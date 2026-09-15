@@ -160,6 +160,45 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     return out
 
 
+def api_invoice_products(lang: str = 'ru') -> list[dict]:
+    """Products the Mini App sells directly with Stars (V3.34.0).
+
+    ``payload`` is the exact string the bot's ``pre_checkout_query`` /
+    ``successful_payment`` handlers already validate, so a payment started
+    from the app lands in the very same granting code path as a chat payment:
+
+    - ``premium_month`` — handled since forever: +30 days Premium, +12 credits;
+    - ``photo_pack`` — V3.34.0 addition: a standalone +1 photo credit.
+    """
+    en = lang == EN
+    return [
+        {
+            'id': 'premium',
+            'emoji': '⭐',
+            'title': 'Premium · 30 дней' if not en else 'Premium · 30 days',
+            'description': (
+                '30 дней Premium: 12 фото-кредитов, 2 видео-оживления в день, все персонажи и кружочки'
+                if not en else
+                '30 days of Premium: 12 photo credits, 2 photo animations daily, all characters and video circles'
+            ),
+            'stars': PREMIUM_MONTHLY_STARS,
+            'payload': 'premium_month',
+        },
+        {
+            'id': 'photo_credit',
+            'emoji': '📸',
+            'title': '+1 фото-кредит' if not en else '+1 photo credit',
+            'description': (
+                'Один сет фото на заказ — кредит списывается, когда попросишь фото в чате'
+                if not en else
+                'One photo set on demand — the credit is used when you ask for a photo in chat'
+            ),
+            'stars': PHOTO_COST_STARS,
+            'payload': 'photo_pack',
+        },
+    ]
+
+
 def api_shop(lang: str = 'ru') -> dict:
     """Structured prices for the shop tab (same constants the bot charges)."""
     en = lang == EN
@@ -199,6 +238,9 @@ def api_shop(lang: str = 'ru') -> dict:
             for e, n, s in items
         ],
         'constructor_rub': CONSTRUCTOR_COST_RUB if FREEKASSA_ENABLED else None,
+        # V3.34.0: what the Mini App can sell right now (Stars invoices via
+        # tg.openInvoice) — the rest of the price list stays informational.
+        'purchases': api_invoice_products(lang),
     }
 
 

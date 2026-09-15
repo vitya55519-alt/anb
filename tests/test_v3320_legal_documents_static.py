@@ -17,7 +17,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1')
+    assert VERSION in ('3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0')
 
 
 def test_legal_service_documents_exist():

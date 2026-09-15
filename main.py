@@ -4033,6 +4033,9 @@ async def pre_checkout(query: types.PreCheckoutQuery):
         ok=False
     elif payload=='premium_month':
         ok=amount==PREMIUM_MONTHLY_STARS
+    elif payload=='photo_pack':
+        # V3.34.0: standalone +1 photo credit purchased from the Mini App shop.
+        ok=amount==PHOTO_COST_STARS
     elif payload=='premium_month_discount':
         from services.retention_service import discount_info
         info=discount_info(query.from_user.id)
@@ -4094,10 +4097,24 @@ async def successful_payment(message: types.Message):
     payment = message.successful_payment
     payload = payment.invoice_payload
     charge = payment.telegram_payment_charge_id
+    if payload == 'photo_pack':
+        # V3.34.0: standalone +1 photo credit from the Mini App shop — same
+        # product record as a chat photo purchase, so the grant is identical.
+        record_payment(message.from_user.id, 'photo', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'photo', 'source': 'webapp'})
+        if user_lang(message.from_user.id) == EN:
+            await message.answer('done 📸 +1 photo credit added — ask me for a photo in chat and it will be used.')
+        else:
+            await message.answer('готово 📸 +1 фото-кредит на счету — попроси фото в чате, и он спишется.')
+        return
+
     if payload == 'premium_month':
         record_payment(message.from_user.id, 'premium_month', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_month'})
-        await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — 2 раза в день сделаю видео бесплатно 🎬 а ещё тебе открыты мои кружочки 🎥')
+        if user_lang(message.from_user.id) == EN:
+            await message.answer('done ✨ Premium is active for 30 days and I added 12 photo credits. Every photo of mine now has an «Animate» button — 2 free videos a day 🎬 plus my video circles 🎥')
+        else:
+            await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — 2 раза в день сделаю видео бесплатно 🎬 а ещё тебе открыты мои кружочки 🎥')
         return
 
     if payload == 'premium_month_discount':
@@ -6489,8 +6506,16 @@ async def _webapp_api_me(request: web.Request) -> web.Response:
 
 
 async def _webapp_api_characters(request: web.Request) -> web.Response:
-    # Public storefront data (same cards the bot shows); no initData needed.
-    return web.json_response({'ok': True, 'characters': webapp_service.api_characters()})
+    # Public storefront data (same cards the bot shows). With valid initData
+    # the grid also learns which girl the caller has selected — V3.34.0, the
+    # grid re-renders after purchases and in-app selections.
+    telegram_id = None
+    init_data = request.query.get('init_data', '')
+    if init_data:
+        pairs = webapp_service.validate_init_data(init_data)
+        if pairs:
+            telegram_id = webapp_service.init_data_user(pairs).get('id')
+    return web.json_response({'ok': True, 'characters': webapp_service.api_characters(telegram_id)})
 
 
 async def _webapp_api_shop(request: web.Request) -> web.Response:
@@ -6510,6 +6535,75 @@ async def _webapp_photo(request: web.Request) -> web.Response:
     return web.Response(body=data, content_type=content_type, headers={'Cache-Control': 'public, max-age=3600'})
 
 
+async def _webapp_api_invoice(request: web.Request) -> web.Response:
+    # V3.34.0: Stars purchases from the Mini App. Returns an invoice link the
+    # frontend opens with tg.openInvoice; the payment itself arrives as a
+    # normal successful_payment message and goes through the same granting
+    # code path as a chat purchase.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    product_id = str((body or {}).get('product', ''))
+    lang = user_lang(telegram_id)
+    product = next((p for p in webapp_service.api_invoice_products(lang) if p['id'] == product_id), None)
+    if not product:
+        return web.json_response({'ok': False, 'error': 'unknown_product'}, status=400)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    track_event(uid, 'webapp_invoice_created', metadata={'product': product_id})
+    try:
+        link = await bot.create_invoice_link(
+            title=product['title'],
+            description=product['description'],
+            payload=product['payload'],
+            provider_token='',
+            currency='XTR',
+            prices=[LabeledPrice(label=product['title'], amount=product['stars'])],
+        )
+    except Exception:
+        logger.exception('webapp invoice link failed user=%s product=%s', telegram_id, product_id)
+        return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
+    return web.json_response({'ok': True, 'link': link, 'product': product_id, 'stars': product['stars']})
+
+
+async def _webapp_api_select(request: web.Request) -> web.Response:
+    # V3.34.0: character selection from the storefront grid — the same rules
+    # as the in-chat «Персонажи» buttons: active cards select freely, premium
+    # cards need Premium, anything else stays locked.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    character_id = str((body or {}).get('character_id', ''))
+    card = get_card(character_id)
+    if not card or card.status not in ('active', 'premium'):
+        return web.json_response({'ok': False, 'error': 'locked'}, status=400)
+    if card.status == 'premium' and not is_premium(telegram_id):
+        return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    set_user_character(telegram_id, character_id)
+    track_event(uid, 'character_selected', metadata={'character_id': character_id, 'source': 'webapp'})
+    return web.json_response({
+        'ok': True,
+        'me': webapp_service.api_me(telegram_id),
+        'characters': webapp_service.api_characters(telegram_id),
+    })
+
+
 async def _start_web_server() -> None:
     app = web.Application()
     app.router.add_get('/', _root)
@@ -6527,6 +6621,9 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/shop', _webapp_api_shop)
     app.router.add_get('/webapp/api/legal', _webapp_api_legal)
     app.router.add_get('/webapp/photo/{character_id}', _webapp_photo)
+    # V3.34.0: storefront actions — Stars purchases and character selection.
+    app.router.add_post('/webapp/api/invoice', _webapp_api_invoice)
+    app.router.add_post('/webapp/api/select', _webapp_api_select)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', WEB_PORT)

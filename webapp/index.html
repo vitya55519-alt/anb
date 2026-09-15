@@ -102,6 +102,26 @@
   }
   .row-item .n { font-size: 14px; }
   .row-item .c { color: var(--premium); font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .card { cursor: pointer; }
+  .card:active { transform: scale(.97); }
+  .cta {
+    display: block; width: 100%; border: none; cursor: pointer;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    color: #fff; font-size: 15px; font-weight: 700;
+    padding: 12px; border-radius: 12px; margin-top: 12px;
+  }
+  .cta:active { transform: scale(.98); }
+  .cta:disabled { opacity: .55; }
+  .cta.small { width: auto; margin: 0; padding: 8px 14px; font-size: 13px; }
+  .row-item .buy-cell { display: flex; align-items: center; gap: 10px; }
+  #toast {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-90px);
+    background: rgba(20, 12, 28, .96); color: var(--text);
+    border: 1px solid rgba(232, 68, 127, .35); border-radius: 14px;
+    padding: 10px 16px; font-size: 13px; z-index: 50; max-width: 86vw; text-align: center;
+    transition: transform .22s ease; pointer-events: none;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
   .profile-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
   .avatar {
     width: 64px; height: 64px; border-radius: 50%;
@@ -186,6 +206,7 @@
   <button data-tab="profile"><span class="ico">👤</span><span class="lbl">Профиль</span></button>
   <button data-tab="docs"><span class="ico">📜</span><span class="lbl">Документы</span></button>
 </nav>
+<div id="toast"></div>
 <script>
 const tg = window.Telegram.WebApp;
 tg.ready();
@@ -197,9 +218,9 @@ const LANG = String(user0.language_code || 'ru').toLowerCase().startsWith('en') 
 
 const L = LANG === 'en' ? {
   chars_title: 'Characters', loading: 'Loading…',
-  chars_hint: 'Pick a girl to chat with inside the bot — “Characters” section',
+  chars_hint: 'Tap a card to select your girl',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
-  shop_title: 'Shop', month: '/ 30 days', pay_hint: 'Payment happens in the bot — the “🚀 Premium” button or a photo/video button. Prices are the same.',
+  shop_title: 'Shop', month: '/ 30 days', pay_hint: 'Stars payments happen right here. Card or crypto — in the bot chat. Prices are the same.',
   free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
   profile_title: 'Profile', premium_on: 'Premium active', premium_off: 'Free account',
   streak: 'day streak', level: 'relationship level', selected_girl: 'selected girl',
@@ -207,11 +228,16 @@ const L = LANG === 'en' ? {
   docs_title: 'Documents & prices', checkword: 'code word',
   privacy: 'Privacy policy', agreement: 'User agreement', tariffs: 'Prices & tariffs', support: 'Support',
   err_auth: 'Could not confirm your Telegram account.<br>Open this app from the bot’s profile.',
+  buy: 'Buy', auth_short: 'Open this app from Telegram',
+  selected_toast: 'selected', locked: 'This girl is locked for now', need_premium: 'Available with Premium ⭐',
+  paid_prem: 'Premium activated ✨', paid_credit: 'Photo credit added 📸',
+  pay_failed: 'Payment failed', pay_cancelled: 'Payment cancelled',
+  invoice_err: 'Could not open payment — try again',
 } : {
   chars_title: 'Персонажи', loading: 'Загрузка…',
-  chars_hint: 'Выбрать девушку для общения можно в чате бота — раздел «Персонажи»',
+  chars_hint: 'Нажми на карточку, чтобы выбрать девушку',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
-  shop_title: 'Магазин', month: '/ 30 дней', pay_hint: 'Оплата проходит в боте — кнопка «🚀 Премиум» или кнопка фото/видео. Цены те же.',
+  shop_title: 'Магазин', month: '/ 30 дней', pay_hint: 'Оплата Stars — прямо здесь. Картой или крипто — в чате бота. Цены те же.',
   free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
   profile_title: 'Профиль', premium_on: 'Premium активен', premium_off: 'Бесплатный аккаунт',
   streak: 'дней подряд', level: 'уровень отношений', selected_girl: 'выбранная девушка',
@@ -219,6 +245,11 @@ const L = LANG === 'en' ? {
   docs_title: 'Документы и цены', checkword: 'кодовое слово',
   privacy: 'Политика конфиденциальности', agreement: 'Пользовательское соглашение', tariffs: 'Цены и тарифы', support: 'Поддержка',
   err_auth: 'Не удалось подтвердить твою учётную запись Telegram.<br>Открой приложение из профиля бота.',
+  buy: 'Купить', auth_short: 'Открой приложение из Telegram',
+  selected_toast: 'выбрана', locked: 'Эта девушка пока закрыта', need_premium: 'Доступна с Premium ⭐',
+  paid_prem: 'Premium активирован ✨', paid_credit: 'Фото-кредит начислен 📸',
+  pay_failed: 'Оплата не прошла', pay_cancelled: 'Оплата отменена',
+  invoice_err: 'Не удалось открыть оплату — попробуй ещё раз',
 };
 
 document.getElementById('l_chars_title').textContent = L.chars_title;
@@ -244,36 +275,118 @@ navBtns.forEach(btn => btn.addEventListener('click', () => {
     s.classList.toggle('active', s.id === 'tab-' + btn.dataset.tab));
 }));
 
+// ── actions (V3.34.0): toasts, tab switch, purchases ─────────────────────
+let ME = null;
+let toastTimer = null;
+function toast(text) {
+  const el = document.getElementById('toast');
+  el.textContent = text;
+  el.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+function showTab(name) {
+  navBtns.forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  document.querySelectorAll('section.tab').forEach(s =>
+    s.classList.toggle('active', s.id === 'tab-' + name));
+}
+async function buy(productId, btn) {
+  if (btn) btn.disabled = true;
+  const done = () => { if (btn) btn.disabled = false; };
+  try {
+    const r = await fetch('/webapp/api/invoice?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product: productId }),
+    });
+    if (r.status === 401) { toast(L.auth_short); done(); return; }
+    const j = await r.json();
+    if (!j.ok) { toast(L.invoice_err); done(); return; }
+    if (typeof tg.openInvoice !== 'function') { toast(L.auth_short); done(); return; }
+    tg.openInvoice(j.link, (status) => {
+      done();
+      if (status === 'paid') {
+        toast(productId === 'premium' ? L.paid_prem : L.paid_credit);
+        loadMe(); loadShop(); loadCharacters();
+      } else if (status === 'failed') {
+        toast(L.pay_failed);
+      } else {
+        toast(L.pay_cancelled);
+      }
+    });
+  } catch (e) {
+    toast(L.invoice_err); done();
+  }
+}
+
 // ── characters ────────────────────────────────────────────────────────────
+function renderCharacters(list) {
+  const grid = document.getElementById('chargrid');
+  grid.innerHTML = list.map(c => {
+    const badge = c.status === 'active'
+      ? `<span class="badge active">✅ ${esc(L.active)}</span>`
+      : c.status === 'premium'
+        ? `<span class="badge premium">⭐ ${esc(L.prem)}</span>`
+        : `<span class="badge soon">🔒 ${esc(L.soon)}</span>`;
+    return `<div class="card${c.selected ? ' selected' : ''}" data-id="${esc(c.id)}" data-status="${esc(c.status)}" data-name="${esc(c.name)}">
+      <div class="photo">
+        <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+        <div class="fallback">${esc(c.emoji)}</div>
+        ${badge}${c.selected ? `<span class="badge" style="left:auto;right:8px;color:#e8447f">❤️</span>` : ''}
+      </div>
+      <div class="body">
+        <div class="name">${esc(c.name)}</div>
+        <div class="age">${esc(c.age)} ${esc(L.years)}</div>
+        <div class="bio">${esc(c.bio)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.card').forEach(el =>
+    el.addEventListener('click', () => selectCharacter(el)));
+}
+
 async function loadCharacters() {
   try {
-    const r = await fetch('/webapp/api/characters');
+    // With initData the grid also knows which girl is selected (V3.34.0 —
+    // it re-renders after purchases and selections).
+    const q = tg.initData ? ('?init_data=' + encodeURIComponent(tg.initData)) : '';
+    const r = await fetch('/webapp/api/characters' + q);
     const j = await r.json();
-    const grid = document.getElementById('chargrid');
     if (!j.ok || !j.characters.length) {
-      grid.innerHTML = '<div class="loading">—</div>'; return;
+      document.getElementById('chargrid').innerHTML = '<div class="loading">—</div>'; return;
     }
-    grid.innerHTML = j.characters.map(c => {
-      const badge = c.status === 'active'
-        ? `<span class="badge active">✅ ${esc(L.active)}</span>`
-        : c.status === 'premium'
-          ? `<span class="badge premium">⭐ ${esc(L.prem)}</span>`
-          : `<span class="badge soon">🔒 ${esc(L.soon)}</span>`;
-      return `<div class="card${c.selected ? ' selected' : ''}">
-        <div class="photo">
-          <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-          <div class="fallback">${esc(c.emoji)}</div>
-          ${badge}${c.selected ? `<span class="badge" style="left:auto;right:8px;color:#e8447f">❤️</span>` : ''}
-        </div>
-        <div class="body">
-          <div class="name">${esc(c.name)}</div>
-          <div class="age">${esc(c.age)} ${esc(L.years)}</div>
-          <div class="bio">${esc(c.bio)}</div>
-        </div>
-      </div>`;
-    }).join('');
+    renderCharacters(j.characters);
   } catch (e) {
     document.getElementById('chargrid').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+let selecting = false;
+async function selectCharacter(el) {
+  if (selecting || el.classList.contains('selected')) return;
+  const status = el.dataset.status;
+  if (status === 'premium' && !(ME && ME.premium)) { toast(L.need_premium); showTab('shop'); return; }
+  if (status !== 'active' && status !== 'premium') { toast(L.locked); return; }
+  selecting = true;
+  try {
+    const r = await fetch('/webapp/api/select?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: el.dataset.id }),
+    });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    if (r.status === 403) { toast(L.need_premium); showTab('shop'); return; }
+    if (r.status === 400) { toast(L.locked); return; }
+    const j = await r.json();
+    if (j.ok) {
+      renderCharacters(j.characters);
+      toast(`${el.dataset.name} — ${L.selected_toast} ❤️`);
+      loadMe();
+    }
+  } catch (e) {
+    toast(L.invoice_err);
+  } finally {
+    selecting = false;
   }
 }
 
@@ -287,16 +400,30 @@ async function loadShop() {
     const price = `⭐ ${p.stars} <small>${esc(L.month)}</small>` +
       (p.rub ? ` · ${p.rub} ₽` : '');
     const feats = p.features.map(f => `<li><span>${esc(f.emoji)}</span><span>${esc(LANG === 'en' ? f.en : f.ru)}</span></li>`).join('');
+    // V3.34.0: what the app sells directly — the CTA button on the Premium
+    // hero and the +1 photo credit row; the rest of the list stays a price
+    // reference for chat purchases.
+    const purchases = s.purchases || [];
+    const premBuy = purchases.find(x => x.id === 'premium');
+    const credit = purchases.find(x => x.id === 'photo_credit');
+    const heroBtn = premBuy ? `<button class="cta" data-buy="premium">⭐ ${premBuy.stars} — ${esc(L.buy)}</button>` : '';
+    const creditRow = credit
+      ? `<div class="row-item"><span class="n">${esc(credit.emoji)} ${esc(credit.title)}</span><span class="buy-cell"><span class="c">${credit.stars} ⭐</span><button class="cta small" data-buy="photo_credit">${esc(L.buy)}</button></span></div>`
+      : '';
     const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars} ⭐</span></div>`).join('');
     document.getElementById('shopbody').innerHTML = `
       <div class="hero">
         <div class="title">⭐ Premium</div>
         <div class="price">${price}</div>
         <ul>${feats}</ul>
+        ${heroBtn}
       </div>
+      ${creditRow}
       ${items}
       <div class="note">${esc(L.pay_hint)}</div>
       <div class="note">💬 ${s.free_tier.messages_per_day} ${esc(L.msg_day)} · 📸 ${s.free_tier.photos_level_1_2}–${s.free_tier.photos_level_3_6} ${esc(L.photos_day)}</div>`;
+    document.querySelectorAll('#shopbody [data-buy]').forEach(b =>
+      b.addEventListener('click', () => buy(b.dataset.buy, b)));
   } catch (e) {
     document.getElementById('shopbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
@@ -314,6 +441,7 @@ async function loadMe() {
     const j = await r.json();
     if (!j.ok) return;
     const m = j.me;
+    ME = m;
     chip.textContent = m.premium ? '⭐ Premium' : (m.name || ('#' + m.id));
     chip.className = 'chip' + (m.premium ? ' premium' : '');
     const initial = (m.name || user0.first_name || 'A').trim().charAt(0).toUpperCase();

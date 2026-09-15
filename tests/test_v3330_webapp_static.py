@@ -16,7 +16,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.32.1', '3.33.0', '3.33.1')
+    assert VERSION in ('3.32.1', '3.33.0', '3.33.1', '3.34.0')
 
 
 def test_init_data_hmac_validation():
@@ -69,7 +69,7 @@ def test_webapp_page_structure():
     assert 'id="bottomnav"' in INDEX
     # the page calls our endpoints with absolute paths
     assert "fetch('/webapp/api/me?init_data=' + encodeURIComponent(tg.initData" in INDEX
-    assert "fetch('/webapp/api/characters')" in INDEX
+    assert "fetch('/webapp/api/characters'" in INDEX
     assert "fetch('/webapp/api/shop?lang='" in INDEX
     assert "fetch('/webapp/api/legal?lang='" in INDEX
     # no real import from main (handlers import the service, not vice versa);

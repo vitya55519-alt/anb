@@ -1,0 +1,126 @@
+"""V3.34.0 static checks: the Mini App becomes functional — Stars purchases
+(createInvoiceLink + tg.openInvoice reusing the bot's payment handlers) and
+character selection straight from the storefront grid."""
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
+MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
+WEBAPP_SVC = (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')
+INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
+
+
+def test_version_bumped():
+    assert VERSION in ('3.33.1', '3.34.0')
+
+
+def test_invoice_products_declared():
+    # Two standalone products: Premium (existing payload) and a new photo
+    # credit pack. Payloads must match what the payment handlers validate.
+    assert 'def api_invoice_products(' in WEBAPP_SVC
+    assert "'payload': 'premium_month'" in WEBAPP_SVC
+    assert "'payload': 'photo_pack'" in WEBAPP_SVC
+    assert "'id': 'premium'" in WEBAPP_SVC
+    assert "'id': 'photo_credit'" in WEBAPP_SVC
+    # both RU and EN titles exist
+    assert '+1 фото-кредит' in WEBAPP_SVC
+    assert '+1 photo credit' in WEBAPP_SVC
+    # the shop payload exposes the purchasable items
+    assert "'purchases': api_invoice_products(lang)" in WEBAPP_SVC
+
+
+def test_invoice_route_creates_links():
+    handler = MAIN[MAIN.index('async def _webapp_api_invoice('):MAIN.index('async def _webapp_api_select(')]
+    # initData HMAC gate before anything else
+    assert 'validate_init_data' in handler
+    assert "status=401" in handler
+    # only declared products, priced from the same constants
+    assert 'api_invoice_products(lang)' in handler
+    assert "status=400" in handler
+    # a Stars invoice link for the frontend to open with tg.openInvoice
+    assert 'await bot.create_invoice_link(' in handler
+    assert "currency='XTR'" in handler
+    assert "provider_token=''" in handler
+    assert 'LabeledPrice(' in handler
+
+
+def test_select_route_applies_chat_rules():
+    handler = MAIN[MAIN.index('async def _webapp_api_select('):MAIN.index('async def _start_web_server(')]
+    assert 'validate_init_data' in handler
+    # same gating as the in-chat character buttons
+    assert "card.status not in ('active', 'premium')" in handler
+    assert "card.status == 'premium' and not is_premium(telegram_id)" in handler
+    assert "status=403" in handler
+    assert 'set_user_character(telegram_id, character_id)' in handler
+    assert "metadata={'character_id': character_id, 'source': 'webapp'}" in handler
+    # the response re-renders the grid with the new selection
+    assert 'api_characters(telegram_id)' in handler
+
+
+def test_routes_registered():
+    routes = MAIN[MAIN.index('async def _start_web_server('):MAIN.index('async def main():')]
+    assert "add_post('/webapp/api/invoice', _webapp_api_invoice)" in routes
+    assert "add_post('/webapp/api/select', _webapp_api_select)" in routes
+
+
+def test_photo_pack_payment_flow():
+    # pre_checkout validates the amount, successful_payment grants +1 credit
+    # through the exact same record path as a chat photo purchase.
+    pre = MAIN[MAIN.index('@dp.pre_checkout_query()'):MAIN.index('@dp.message(F.successful_payment)')]
+    assert "elif payload=='photo_pack':" in pre
+    assert 'ok=amount==PHOTO_COST_STARS' in pre
+
+    pay = MAIN[MAIN.index('@dp.message(F.successful_payment)'):]
+    photo_pack = pay[pay.index("if payload == 'photo_pack':"):pay.index("if payload == 'premium_month':")]
+    assert "record_payment(message.from_user.id, 'photo', payment.total_amount, charge)" in photo_pack
+    assert "'source': 'webapp'" in photo_pack
+
+
+def test_characters_endpoint_knows_selection():
+    handler = MAIN[MAIN.index('async def _webapp_api_characters('):MAIN.index('async def _webapp_api_shop(')]
+    assert 'init_data' in handler
+    assert 'api_characters(telegram_id)' in handler
+
+
+def test_frontend_buys_and_selects():
+    # tg.openInvoice with the backend-issued link
+    assert 'tg.openInvoice(j.link' in INDEX
+    assert "/webapp/api/invoice?init_data=" in INDEX
+    assert "JSON.stringify({ product: productId })" in INDEX
+    # purchase buttons driven by the backend purchase list
+    assert "data-buy=\"premium\"" in INDEX
+    assert "data-buy=\"photo_credit\"" in INDEX
+    assert "s.purchases || []" in INDEX
+    # character selection posts to the validated endpoint and re-renders
+    assert "/webapp/api/select?init_data=" in INDEX
+    assert "JSON.stringify({ character_id: el.dataset.id })" in INDEX
+    assert 'selectCharacter(el)' in INDEX
+    assert 'renderCharacters(j.characters)' in INDEX
+    # every dynamic string still goes through esc() or textContent
+    assert 'data-name="${esc(c.name)}"' in INDEX
+    assert 'el.textContent = text;' in INDEX
+    # post-payment refresh of all tabs
+    assert 'loadMe(); loadShop(); loadCharacters();' in INDEX
+
+
+def test_no_unescaped_backend_strings_in_templates():
+    # dynamic values inside template literals must be esc()-wrapped, or be one
+    # of the known numeric/int expressions (Stars prices, counters, percents)
+    numeric_ok = {
+        'p.stars', 'p.rub', 'premBuy.stars', 'credit.stars', 'i.stars', 'lvlPct',
+        's.free_tier.messages_per_day', 's.free_tier.photos_level_1_2',
+        's.free_tier.photos_level_3_6',
+    }
+    # d.check_word is the lone backend value outside esc(): it flows into
+    # textContent (checkword line), not innerHTML, so no parsing happens.
+    text_content_ok = {'d.check_word', 'el.dataset.name', 'L.selected_toast'}
+    for m in re.finditer(r'\$\{([^}]+)\}', INDEX):
+        expr = m.group(1).strip()
+        if (expr.startswith('esc(') or expr in numeric_ok or expr.startswith('L.')
+                or expr in text_content_ok or expr in (
+            'badge', 'c.selected ? `<span class="badge" style="left:auto;right:8px;color:#e8447f">❤️</span>` : \'\'',
+            'heroBtn', 'creditRow', 'items', 'feats', 'price',
+        ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
+            continue
+        raise AssertionError(f'unescaped template value: {expr!r} in INDEX')
