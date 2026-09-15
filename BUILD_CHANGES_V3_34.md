@@ -65,3 +65,40 @@ the app via `/app` or the profile button: the shop now has a pink
 «⭐ 500 — Купить» button and a «Купить» on the +1 photo credit row; tapping a
 character card selects her (premium girls redirect to the shop unless
 Premium is active).
+
+## V3.34.1 — weekly Premium plan
+Owner request: «чтобы подписку можно было брать премиум не на месяц, а еще и
+на неделю». The week is now a first-class plan everywhere the month is:
+
+- **Config**: `PREMIUM_WEEKLY_STARS` (default 150) and
+  `PREMIUM_WEEKLY_PHOTO_CREDITS` (default 3). Priced so four weeks (600⭐)
+  cost more than the month (500⭐) — the month stays the better deal, the
+  week is the low-commitment entry (env-overridable both).
+- **Rub next to Stars** (owner follow-up: «рядом со звездочками пропиши цену
+  в рублях»): `FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB` (default 99; month stays
+  299 ₽; 4×99 = 396 ₽ > 299 ₽, same incentive). When FreeKassa is on, the
+  rub price is shown next to the Stars price everywhere — paywall buttons
+  («⭐ 500 / 299 ₽ / 30 дней», «⭐ Premium на неделю — 150 / 99 ₽»), the pitch
+  bullet, the Mini App CTAs («⭐ 150 — 7 дней · 99 ₽») and the tariffs — and
+  it is a REAL charge: the weekly plan has its own card/SBP row
+  («💳 Premium на неделю — 99 ₽ · СБП/карта»), `_fk_amount_for` prices it,
+  and the FreeKassa webhook grants 7 days with a week-specific confirmation.
+- **Grant**: `record_payment(..., 'premium_week')` — +7 days (stacking on top
+  of an active window, exactly like the month) + the weekly credit share.
+  `PRODUCTS` prices it from the same constant `pre_checkout` validates.
+- **Chat**: the paywall keyboard gains «⭐ Premium на неделю — 150 Stars»
+  (`buy:premium_week` → the same `send_stars_invoice` pipeline); the pitch
+  heading is now plan-agnostic «Premium:» with both prices as a bullet;
+  `pre_checkout` / `successful_payment` branches bilingual, amount
+  re-checked, `metadata product=premium_week` tracked.
+- **Mini App**: third product on the Premium hero — a ghost CTA
+  «⭐ 150 — 7 дней» under the monthly button; opens the same native Stars
+  sheet through `create_invoice_link` + `tg.openInvoice`.
+- **Legal**: the Platega tariff list (RU + EN) now documents the 7-day
+  subscription with its price and what it includes — the bank requires
+  every actual price to be listed.
+- Tests: `tests/test_v3341_premium_week_static.py` (8 checks, incl. the rub
+  pricing audit) + widened pins; runtime probes verified grant 0→3 credits,
+  7-day window, stacking (7→14→44 days with the month on top), app SKU,
+  tariffs and the rub prices with FreeKassa enabled.
+- Full suite: 522 passed.

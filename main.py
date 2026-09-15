@@ -21,7 +21,8 @@ from sqlalchemy import select
 from aiogram.utils.chat_action import ChatActionSender
 
 from config import (
-    TELEGRAM_TOKEN, PREMIUM_MONTHLY_STARS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS,
+    TELEGRAM_TOKEN, PREMIUM_MONTHLY_STARS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS,
+    PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS,
     ADMIN_TELEGRAM_IDS, CHARACTER_ID, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS,
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
     GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, GALLERY_DOWNLOAD_STARS, WALLET_PAY_ENABLED,
@@ -29,7 +30,7 @@ from config import (
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
     CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST, COSPLAY_TOKEN_COST,
-    FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
+    FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
     FREEKASSA_MERCHANT_ID, FREEKASSA_API_KEY, FREEKASSA_API_ENABLED,
 )
 from services.user_service import (
@@ -943,8 +944,10 @@ def premium_pitch_text(telegram_id: int) -> str:
     V3.22.0: localized RU/EN."""
     lang = user_lang(telegram_id)
     if lang == EN:
+        wk_rub = f' / {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
+        mo_rub = f' / {FREEKASSA_PREMIUM_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
         lines = [
-            'Premium for 30 days:',
+            'Premium:',
             '• unlimited messages — I never “fall asleep” mid-conversation 😴',
             '• 12 extra photo credits',
             '• 2 free photo animations every day 🎬',
@@ -952,6 +955,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 💋 relationship levels 7–8 — “Kindred spirits” and “One whole”',
             '• 2 free replays of alternative quest branches per month',
             '• more memory, initiative and morning/evening messages',
+            f'• plans: a week — {PREMIUM_WEEKLY_STARS} Stars{wk_rub} · a month — {PREMIUM_MONTHLY_STARS} Stars{mo_rub}',
             '',
             'Free photos depend on intimacy: levels 1–2 — 1/day, 3–6 — 2/day.',
             'The relationship cannot be bought — it grows from conversation. Custom photos are paid separately.',
@@ -959,8 +963,10 @@ def premium_pitch_text(telegram_id: int) -> str:
             '💳 Digital purchases inside Telegram are paid with Telegram Stars.',
         ]
     else:
+        wk_rub = f' / {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
+        mo_rub = f' / {FREEKASSA_PREMIUM_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
         lines = [
-            'Premium на 30 дней:',
+            'Premium:',
             '• безлимит сообщений — я больше не «засыпаю» посреди разговора 😴',
             '• 12 дополнительных photo credits',
             '• 2 бесплатных оживления фото каждый день 🎬',
@@ -968,6 +974,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 💋 уровни 7–8 отношений — «Родственные души» и «Одно целое»',
             '• 2 бесплатных replay альтернативных квест-веток в месяц',
             '• больше памяти, инициативы и утренних/вечерних сообщений',
+            f'• тарифы: неделя — {PREMIUM_WEEKLY_STARS} Stars{wk_rub} · месяц — {PREMIUM_MONTHLY_STARS} Stars{mo_rub}',
             '',
             'Бесплатные фото зависят от близости: 1–2 уровень — 1/день, 3–6 — 2/день.',
             'Отношения не покупаются — они развиваются из общения. Кастомные фото оплачиваются отдельно.',
@@ -1088,9 +1095,14 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
     if discount and discount.get('active'):
         buy_label = f'⭐ Premium −{discount["percent"]}% — {discount["price"]} Stars (ещё {discount["hours_left"]:.0f} ч)'
     else:
-        buy_label = f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars / 30 дней'
+        # V3.34.1: rub next to the Stars price — the card/SBP cost of the same plan.
+        month_rub = f' / {FREEKASSA_PREMIUM_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
+        buy_label = f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars{month_rub} / 30 дней'
+    week_rub = f' / {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽' if FREEKASSA_ENABLED else ''
     rows = [
         [InlineKeyboardButton(text=buy_label, callback_data='buy:premium')],
+        # V3.34.1: the short plan for the undecided — same invoice pipeline.
+        [InlineKeyboardButton(text=f'⭐ Premium на неделю — {PREMIUM_WEEKLY_STARS} Stars{week_rub}', callback_data='buy:premium_week')],
     ]
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text=f'💎 Premium — Wallet Pay (крипта/карта)', callback_data='walletpay:premium')])
@@ -1116,6 +1128,11 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
             rows.append([_fk_pay_button(
                 'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
                 f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · ⚡СБП / карта')])
+            # V3.34.1: the weekly plan is payable by card/SBP too — the rub
+            # price shown next to its Stars price is a real charge, not a display.
+            rows.append([_fk_pay_button(
+                'premium_week', FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB,
+                f'💳 Premium на неделю — {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · ⚡СБП / карта')])
         if is_button_enabled('freekassa_sbp'):
             rows.append([_fk_pay_button(
                 'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
@@ -3790,6 +3807,16 @@ async def buy_premium(cq: types.CallbackQuery):
     await send_stars_invoice(cq.message.chat.id, 'Anna Premium', 'Premium-доступ на 30 дней', 'premium_month', PREMIUM_MONTHLY_STARS)
 
 
+@dp.callback_query(F.data == 'buy:premium_week')
+async def buy_premium_week(cq: types.CallbackQuery):
+    """V3.34.1: the weekly Premium option — 7 days for PREMIUM_WEEKLY_STARS."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    await cq.answer()
+    await send_stars_invoice(cq.message.chat.id, 'Anna Premium', 'Premium-доступ на 7 дней', 'premium_week', PREMIUM_WEEKLY_STARS)
+
+
 @dp.callback_query(F.data == 'retention:demo')
 async def retention_demo_cb(cq: types.CallbackQuery):
     """V3.20.0: one-time free demo premium — the taste-before-loss hook."""
@@ -3877,6 +3904,9 @@ def _fk_amount_for(product: str, currency: str) -> int:
     """V3.30.0: price lookup behind the fkapi: callback buttons."""
     if product == 'premium_month':
         return FREEKASSA_PREMIUM_PRICE_USD if currency == 'USD' else FREEKASSA_PREMIUM_PRICE_RUB
+    if product == 'premium_week':
+        # V3.34.1: card/SBP price of the weekly plan (RUB only).
+        return FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB
     if product == 'constructor_rub':
         return CONSTRUCTOR_COST_RUB
     if product.startswith('tokens_'):
@@ -3909,6 +3939,9 @@ async def fkapi_pay(cq: types.CallbackQuery):
     sign = '$' if currency == 'USD' else '₽'
     if product == 'premium_month':
         title = f'💳 Premium — {sign}{amount}'
+    elif product == 'premium_week':
+        # V3.34.1: the weekly card/SBP invoice.
+        title = f'💳 Premium на неделю — {sign}{amount}'
     elif product == 'constructor_rub':
         title = f'🎭 Персонаж — {sign}{amount}'
     else:
@@ -4033,6 +4066,9 @@ async def pre_checkout(query: types.PreCheckoutQuery):
         ok=False
     elif payload=='premium_month':
         ok=amount==PREMIUM_MONTHLY_STARS
+    elif payload=='premium_week':
+        # V3.34.1: the weekly Premium option — chat and Mini App share it.
+        ok=amount==PREMIUM_WEEKLY_STARS
     elif payload=='photo_pack':
         # V3.34.0: standalone +1 photo credit purchased from the Mini App shop.
         ok=amount==PHOTO_COST_STARS
@@ -4115,6 +4151,16 @@ async def successful_payment(message: types.Message):
             await message.answer('done ✨ Premium is active for 30 days and I added 12 photo credits. Every photo of mine now has an «Animate» button — 2 free videos a day 🎬 plus my video circles 🎥')
         else:
             await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — 2 раза в день сделаю видео бесплатно 🎬 а ещё тебе открыты мои кружочки 🎥')
+        return
+
+    if payload == 'premium_week':
+        # V3.34.1: the weekly Premium plan — 7 days + the weekly credit share.
+        record_payment(message.from_user.id, 'premium_week', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_week'})
+        if user_lang(message.from_user.id) == EN:
+            await message.answer(f'done ✨ Premium is active for 7 days and I added {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits. Every photo of mine now has an «Animate» button — 2 free videos a day 🎬 plus my video circles 🎥')
+        else:
+            await message.answer(f'готово ✨ Premium активирован на 7 дней, и я добавила {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — 2 раза в день сделаю видео бесплатно 🎬 а ещё тебе открыты мои кружочки 🎥')
         return
 
     if payload == 'premium_month_discount':
@@ -6377,6 +6423,9 @@ async def _fk_notify(request: web.Request) -> web.Response:
             balance = add_tokens(order['telegram_id'], int(product.split('_')[1]))
             confirm = (f'🪙 Токены зачислены! Баланс: {balance} 🪙 '
                        f'— оживление фото стоит {VIDEO_TOKEN_COST} 🪙.')
+        elif product == 'premium_week':
+            # V3.34.1: ruble-paid weekly Premium — record_payment below grants it.
+            confirm = '💖 Оплата прошла! Premium активирован на 7 дней. Наслаждайся! 🎉'
         else:
             confirm = '💖 Оплата прошла! Premium активирован на 30 дней. Наслаждайся! 🎉'
         try:

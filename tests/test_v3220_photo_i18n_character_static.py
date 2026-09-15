@@ -23,7 +23,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.22.0', '3.23.0', '3.24.0', '3.25.0', '3.26.0', '3.26.1', '3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8', '3.30.9', '3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0')
+    assert VERSION in ('3.22.0', '3.23.0', '3.24.0', '3.25.0', '3.26.0', '3.26.1', '3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8', '3.30.9', '3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1')
 
 
 # --- photo: real error reason reaches the user ------------------------------
@@ -122,7 +122,10 @@ def test_english_texts_present():
         assert en and en != ru
     # EN top-level texts are inlined in main.py behind lang == EN branches.
     assert MAIN.count('if lang == EN:') >= 10
-    assert 'Premium for 30 days:' in MAIN
+    # V3.34.1: the paywall heading is plan-agnostic ('Premium:') and lists
+    # both plan prices as a bullet (rub segments interpolate when FreeKassa is on).
+    assert 'Premium:' in MAIN
+    assert 'plans: a week — {PREMIUM_WEEKLY_STARS} Stars' in MAIN
     assert 'what should I show?' in MAIN
     # EN ladder names are resolved from ui_lang, not hardcoded in main.py.
     assert MAIN.count('from services.ui_lang import LEVEL_NAMES_EN') >= 2

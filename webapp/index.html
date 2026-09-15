@@ -113,6 +113,7 @@
   .cta:active { transform: scale(.98); }
   .cta:disabled { opacity: .55; }
   .cta.small { width: auto; margin: 0; padding: 8px 14px; font-size: 13px; }
+  .cta.ghost { background: transparent; border: 1px solid rgba(232, 68, 127, .5); margin-top: 8px; }
   .row-item .buy-cell { display: flex; align-items: center; gap: 10px; }
   #toast {
     position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-90px);
@@ -220,7 +221,7 @@ const L = LANG === 'en' ? {
   chars_title: 'Characters', loading: 'Loading…',
   chars_hint: 'Tap a card to select your girl',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
-  shop_title: 'Shop', month: '/ 30 days', pay_hint: 'Stars payments happen right here. Card or crypto — in the bot chat. Prices are the same.',
+  shop_title: 'Shop', month: '/ 30 days', week: '7 days', pay_hint: 'Stars payments happen right here. Card or crypto — in the bot chat. Prices are the same.',
   free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
   profile_title: 'Profile', premium_on: 'Premium active', premium_off: 'Free account',
   streak: 'day streak', level: 'relationship level', selected_girl: 'selected girl',
@@ -237,7 +238,7 @@ const L = LANG === 'en' ? {
   chars_title: 'Персонажи', loading: 'Загрузка…',
   chars_hint: 'Нажми на карточку, чтобы выбрать девушку',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
-  shop_title: 'Магазин', month: '/ 30 дней', pay_hint: 'Оплата Stars — прямо здесь. Картой или крипто — в чате бота. Цены те же.',
+  shop_title: 'Магазин', month: '/ 30 дней', week: '7 дней', pay_hint: 'Оплата Stars — прямо здесь. Картой или крипто — в чате бота. Цены те же.',
   free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
   profile_title: 'Профиль', premium_on: 'Premium активен', premium_off: 'Бесплатный аккаунт',
   streak: 'дней подряд', level: 'уровень отношений', selected_girl: 'выбранная девушка',
@@ -405,8 +406,13 @@ async function loadShop() {
     // reference for chat purchases.
     const purchases = s.purchases || [];
     const premBuy = purchases.find(x => x.id === 'premium');
+    const premWeek = purchases.find(x => x.id === 'premium_week');
     const credit = purchases.find(x => x.id === 'photo_credit');
-    const heroBtn = premBuy ? `<button class="cta" data-buy="premium">⭐ ${premBuy.stars} — ${esc(L.buy)}</button>` : '';
+    // V3.34.1: the rub price rides next to the Stars price on both plans.
+    const moRub = premBuy && premBuy.rub ? ` · ${premBuy.rub} ₽` : '';
+    const wkRub = premWeek && premWeek.rub ? ` · ${premWeek.rub} ₽` : '';
+    const heroBtn = premBuy ? `<button class="cta" data-buy="premium">⭐ ${premBuy.stars} — ${esc(L.buy)}${moRub}</button>` : '';
+    const heroWeekBtn = premWeek ? `<button class="cta ghost" data-buy="premium_week">⭐ ${premWeek.stars} — ${esc(L.week)}${wkRub}</button>` : '';
     const creditRow = credit
       ? `<div class="row-item"><span class="n">${esc(credit.emoji)} ${esc(credit.title)}</span><span class="buy-cell"><span class="c">${credit.stars} ⭐</span><button class="cta small" data-buy="photo_credit">${esc(L.buy)}</button></span></div>`
       : '';
@@ -417,6 +423,7 @@ async function loadShop() {
         <div class="price">${price}</div>
         <ul>${feats}</ul>
         ${heroBtn}
+        ${heroWeekBtn}
       </div>
       ${creditRow}
       ${items}

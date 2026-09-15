@@ -50,7 +50,8 @@ def test_retention_service_helpers_and_pools():
 
 def test_discount_product_and_column():
     assert '"premium_month_discount":PREMIUM_DISCOUNT_STARS' in PAYMENTS
-    assert 'product in {"premium_month","premium_month_discount"}' in PAYMENTS
+    # V3.34.1: the premium grant set also carries the weekly plan.
+    assert 'product in {"premium_month","premium_month_discount","premium_week"}' in PAYMENTS
     assert 'discount_offered_at' in MODELS
 
 

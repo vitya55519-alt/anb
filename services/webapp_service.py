@@ -37,6 +37,7 @@ from config import (
     CUSTOM_PHOTO_COST_STARS,
     FREEKASSA_ENABLED,
     FREEKASSA_PREMIUM_PRICE_RUB,
+    FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB,
     FREE_MESSAGES_PER_DAY,
     FREE_PHOTOS_LEVEL_1_2,
     FREE_PHOTOS_LEVEL_3_6,
@@ -44,6 +45,8 @@ from config import (
     PHOTO_COST_STARS,
     PREMIUM_MONTHLY_PHOTO_CREDITS,
     PREMIUM_MONTHLY_STARS,
+    PREMIUM_WEEKLY_PHOTO_CREDITS,
+    PREMIUM_WEEKLY_STARS,
     QUEST_REPLAY_STARS,
     TELEGRAM_TOKEN,
     VIDEO_COST_STARS,
@@ -168,6 +171,7 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
     from the app lands in the very same granting code path as a chat payment:
 
     - ``premium_month`` — handled since forever: +30 days Premium, +12 credits;
+    - ``premium_week`` — V3.34.1 addition: +7 days Premium, +3 credits;
     - ``photo_pack`` — V3.34.0 addition: a standalone +1 photo credit.
     """
     en = lang == EN
@@ -183,6 +187,20 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             ),
             'stars': PREMIUM_MONTHLY_STARS,
             'payload': 'premium_month',
+            'rub': FREEKASSA_PREMIUM_PRICE_RUB if FREEKASSA_ENABLED else None,
+        },
+        {
+            'id': 'premium_week',
+            'emoji': '⭐',
+            'title': 'Premium · 7 дней' if not en else 'Premium · 7 days',
+            'description': (
+                f'7 дней Premium: {PREMIUM_WEEKLY_PHOTO_CREDITS} фото-кредита, 2 видео-оживления в день, все персонажи и кружочки'
+                if not en else
+                f'7 days of Premium: {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits, 2 photo animations daily, all characters and video circles'
+            ),
+            'stars': PREMIUM_WEEKLY_STARS,
+            'payload': 'premium_week',
+            'rub': FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB if FREEKASSA_ENABLED else None,
         },
         {
             'id': 'photo_credit',

@@ -28,6 +28,8 @@ from config import (
     PREMIUM_MONTHLY_STARS,
     PREMIUM_MONTHLY_PHOTO_CREDITS,
     PREMIUM_MONTHLY_QUEST_REPLAYS,
+    PREMIUM_WEEKLY_STARS,
+    PREMIUM_WEEKLY_PHOTO_CREDITS,
     PHOTO_COST_STARS,
     CHAT_PHOTO_OFFER_STARS,
     CUSTOM_PHOTO_COST_STARS,
@@ -38,6 +40,7 @@ from config import (
     CONSTRUCTOR_COST_STARS,
     CONSTRUCTOR_COST_RUB,
     FREEKASSA_PREMIUM_PRICE_RUB,
+    FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB,
     FREEKASSA_ENABLED,
 )
 from services import gifts_service
@@ -195,6 +198,10 @@ def tariffs_text(lang: str = 'ru') -> str:
             f'Includes: {PREMIUM_MONTHLY_PHOTO_CREDITS} photo credits/month, '
             f'{PREMIUM_MONTHLY_QUEST_REPLAYS} story replays, {VIDEO_PREMIUM_FREE_DAILY} free video '
             'animations per day, wider chat limits and all characters.',
+            f'⭐ Premium — 7-day subscription: {PREMIUM_WEEKLY_STARS} Telegram Stars'
+            + (f' or {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽ by card/SBP' if rub_lines else ''),
+            f'Includes: {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits for the week and the same '
+            'features as the 30-day plan.',
             '',
             'Free tier:',
             f'• chat — {FREE_MESSAGES_PER_DAY} messages per day',
@@ -233,6 +240,10 @@ def tariffs_text(lang: str = 'ru') -> str:
         f'Входит: {PREMIUM_MONTHLY_PHOTO_CREDITS} фото-кредитов в месяц, '
         f'{PREMIUM_MONTHLY_QUEST_REPLAYS} перезапуска историй, {VIDEO_PREMIUM_FREE_DAILY} бесплатных '
         'видео-оживлений в день, расширенные лимиты общения и все персонажи.',
+        f'⭐ Premium — подписка на 7 дней: {PREMIUM_WEEKLY_STARS} Telegram Stars'
+        + (f' или {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽ (карта/СБП)' if rub_lines else ''),
+        f'Входит: {PREMIUM_WEEKLY_PHOTO_CREDITS} фото-кредитов за неделю и те же '
+        'возможности, что в подписке на 30 дней.',
         '',
         'Бесплатный функционал:',
         f'• общение — {FREE_MESSAGES_PER_DAY} сообщений в день',

@@ -2,10 +2,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from services.db import SessionLocal
 from models.app_models import Subscription, StarTransaction, User
-from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS
+from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS
 from services.access_service import is_premium
 
-PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"video":VIDEO_COST_STARS}
+PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"premium_week":PREMIUM_WEEKLY_STARS,"video":VIDEO_COST_STARS}
 
 def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provider:str="stars", provider_payload:str|None=None):
     now=datetime.now(timezone.utc).replace(tzinfo=None)
@@ -22,11 +22,15 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
             provider=provider,
             provider_payload=provider_payload,
         ))
-        if product in {"premium_month","premium_month_discount"}:
+        if product in {"premium_month","premium_month_discount","premium_week"}:
+            # V3.34.1: premium_week grants 7 days + the weekly credit share;
+            # the monthly plans keep 30 days + the monthly share.
+            days=7 if product=="premium_week" else 30
+            credits=PREMIUM_WEEKLY_PHOTO_CREDITS if product=="premium_week" else PREMIUM_MONTHLY_PHOTO_CREDITS
             current=s.scalar(select(Subscription).where(Subscription.user_id==user.id,Subscription.status=="active",Subscription.expires_at>now).order_by(Subscription.expires_at.desc()))
             start=current.expires_at if current and current.expires_at and current.expires_at>now else now
-            s.add(Subscription(user_id=user.id,plan="premium",status="active",stars_amount=stars,started_at=now,expires_at=start+timedelta(days=30),telegram_charge_id=charge_id))
-            user.photo_credits=(user.photo_credits or 0)+PREMIUM_MONTHLY_PHOTO_CREDITS
+            s.add(Subscription(user_id=user.id,plan="premium",status="active",stars_amount=stars,started_at=now,expires_at=start+timedelta(days=days),telegram_charge_id=charge_id))
+            user.photo_credits=(user.photo_credits or 0)+credits
             try:
                 from services.gamification_service import unlock_achievement
                 unlock_achievement(telegram_id, 'premium_member')

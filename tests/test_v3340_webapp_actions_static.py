@@ -12,7 +12,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.33.1', '3.34.0')
+    assert VERSION in ('3.33.1', '3.34.0', '3.34.1')
 
 
 def test_invoice_products_declared():
@@ -108,7 +108,8 @@ def test_no_unescaped_backend_strings_in_templates():
     # dynamic values inside template literals must be esc()-wrapped, or be one
     # of the known numeric/int expressions (Stars prices, counters, percents)
     numeric_ok = {
-        'p.stars', 'p.rub', 'premBuy.stars', 'credit.stars', 'i.stars', 'lvlPct',
+        'p.stars', 'p.rub', 'premBuy.stars', 'premBuy.rub', 'premWeek.stars', 'premWeek.rub',
+        'credit.stars', 'i.stars', 'lvlPct',
         's.free_tier.messages_per_day', 's.free_tier.photos_level_1_2',
         's.free_tier.photos_level_3_6',
     }
@@ -120,7 +121,7 @@ def test_no_unescaped_backend_strings_in_templates():
         if (expr.startswith('esc(') or expr in numeric_ok or expr.startswith('L.')
                 or expr in text_content_ok or expr in (
             'badge', 'c.selected ? `<span class="badge" style="left:auto;right:8px;color:#e8447f">❤️</span>` : \'\'',
-            'heroBtn', 'creditRow', 'items', 'feats', 'price',
+            'heroBtn', 'heroWeekBtn', 'moRub', 'wkRub', 'creditRow', 'items', 'feats', 'price',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         raise AssertionError(f'unescaped template value: {expr!r} in INDEX')

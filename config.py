@@ -208,6 +208,8 @@ FREEKASSA_API_ENABLED = bool(FREEKASSA_MERCHANT_ID and FREEKASSA_API_KEY)
 # Override manually when the auto lookup is blocked on the host.
 FREEKASSA_SERVER_IP = os.getenv("FREEKASSA_SERVER_IP", "").strip()
 FREEKASSA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_RUB", "299")))
+# V3.34.1: card/SBP price of the weekly plan (rub next to the Stars price).
+FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB", "99")))
 # V3.20.1: international Visa/Mastercard button — the same FreeKassa kassa,
 # invoice currency USD (multi-currency must be enabled in the kassa settings).
 FREEKASSA_PREMIUM_PRICE_USD = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_USD", "5")))
@@ -231,6 +233,10 @@ FREE_PHOTOS_LEVEL_1_2 = int(os.getenv("FREE_PHOTOS_LEVEL_1_2", "1"))
 FREE_PHOTOS_LEVEL_3_6 = int(os.getenv("FREE_PHOTOS_LEVEL_3_6", "2"))
 PREMIUM_MONTHLY_STARS = int(os.getenv("PREMIUM_MONTHLY_STARS", "500"))
 PREMIUM_MONTHLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_MONTHLY_PHOTO_CREDITS", "12"))
+# V3.34.1: the short Premium plan — a week for the undecided. Priced per day
+# slightly above the monthly plan so the month stays the better deal.
+PREMIUM_WEEKLY_STARS = int(os.getenv("PREMIUM_WEEKLY_STARS", "150"))
+PREMIUM_WEEKLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_WEEKLY_PHOTO_CREDITS", "3"))
 PHOTO_COST_STARS = int(os.getenv("PHOTO_COST_STARS", "25"))
 CHAT_PHOTO_OFFER_STARS = int(os.getenv("CHAT_PHOTO_OFFER_STARS", "5"))
 CUSTOM_PHOTO_COST_STARS = int(os.getenv("CUSTOM_PHOTO_COST_STARS", "40"))
