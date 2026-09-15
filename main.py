@@ -2863,13 +2863,18 @@ async def settings(message: types.Message):
             '/voice · /voice_anon · /notifications · /timezone'
         )
         button = '🔔 Ритуалы: выключить' if rituals_on else '🔔 Ритуалы: включить'
+    rows = [
+        [InlineKeyboardButton(text=button, callback_data='toggle:rituals')],
+        # V3.31.4: real one-tap URL button to support the project (CloudTips).
+        [donation_service.donation_button(lang)],
+    ]
+    # V3.33.1: always-available Mini App launcher (same app as /app).
+    if PUBLIC_BASE_URL:
+        app_label = '🛍 App' if lang == EN else '🛍 Приложение'
+        rows.append([InlineKeyboardButton(text=app_label, web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'))])
     await message.answer(
         text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=button, callback_data='toggle:rituals')],
-            # V3.31.4: real one-tap URL button to support the project (CloudTips).
-            [donation_service.donation_button(lang)],
-        ]),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
 
 
@@ -2979,6 +2984,35 @@ async def legal_cmd(message: types.Message):
     # V3.32.0: documents & prices menu — same screen as the «Документы» button.
     lang = user_lang(message.from_user.id)
     await message.answer(legal_service.legal_menu_text(lang), reply_markup=legal_keyboard(lang))
+
+@dp.message(Command('app'))
+async def app_cmd(message: types.Message):
+    # V3.33.1: guaranteed Mini App entry point. The profile «Открыть
+    # приложение» button depends on Telegram client caching and the
+    # BotFather main-mini-app state; an inline web_app button always opens
+    # the app right here, whatever those do.
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    lang = user_lang(message.from_user.id)
+    if not PUBLIC_BASE_URL:
+        hint = ('the app is not connected on the server yet — the owner needs to set PUBLIC_BASE_URL (the Railway domain).' if lang == EN else
+                'приложение ещё не подключено на сервере — нужно задать PUBLIC_BASE_URL (домен Railway).')
+        await message.answer('🛍 ' + hint)
+        return
+    url = f'{PUBLIC_BASE_URL}/webapp'
+    if lang == EN:
+        await message.answer(
+            '🛍 AnnaBot app — characters, shop and your profile:',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='🛍 Open App', web_app=types.WebAppInfo(url=url))],
+            ]),
+        )
+        return
+    await message.answer(
+        '🛍 приложение AnnaBot — персонажи, магазин и твой профиль:',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='🛍 Открыть приложение', web_app=types.WebAppInfo(url=url))],
+        ]),
+    )
 
 @dp.message(Command('support'))
 async def support_cmd(message: types.Message):
@@ -6399,6 +6433,20 @@ async def _fk_check(request: web.Request) -> web.Response:
     else:
         lines.append('api_test_order=SKIPPED (need FREEKASSA_API_KEY + server ip)')
         lines.append(f'sci_fallback_url={freekassa_service.payment_url(1, "10")}')
+    # V3.33.1: Mini App diagnostics — check here when the «Открыть приложение»
+    # button does not show up: the public URL and a self-probe of /webapp.
+    lines.append(f'WEBAPP_PUBLIC_URL={(PUBLIC_BASE_URL + "/webapp") if PUBLIC_BASE_URL else "-"}')
+    if PUBLIC_BASE_URL:
+        try:
+            import aiohttp as _aiohttp
+            async with _aiohttp.ClientSession() as session:
+                async with session.get(f'{PUBLIC_BASE_URL}/webapp', timeout=_aiohttp.ClientTimeout(total=10)) as resp:
+                    body_head = (await resp.text())[:60].replace('\n', ' ')
+                    lines.append(f'WEBAPP_SELF_PROBE={resp.status} head={body_head}')
+        except Exception as exc:
+            lines.append(f'WEBAPP_SELF_PROBE=ERROR {type(exc).__name__}: {str(exc)[:120]}')
+    else:
+        lines.append('WEBAPP_SELF_PROBE=SKIPPED (PUBLIC_BASE_URL not set)')
     return web.Response(text='\n'.join(lines), content_type='text/plain')
 
 
@@ -6500,6 +6548,7 @@ async def main():
         types.BotCommand(command='privacy', description='Конфиденциальность'),
         types.BotCommand(command='terms', description='Условия'),
         types.BotCommand(command='legal', description='📜 Документы и цены'),
+        types.BotCommand(command='app', description='🛍 Приложение'),
         types.BotCommand(command='delete_me', description='Удалить мои данные'),
         types.BotCommand(command='settings', description='Настройки'),
         types.BotCommand(command='voice', description='Голосовые ответы'),
@@ -6522,8 +6571,17 @@ async def main():
                 web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'),
             ))
             logger.info('webapp menu button installed url=%s/webapp', PUBLIC_BASE_URL)
+            # V3.33.1: read the actual Telegram state back so the owner can
+            # tell «set but not visible» (client cache) from «never set».
+            try:
+                current = await bot.get_chat_menu_button()
+                logger.info('webapp menu button confirmed type=%s text=%s', type(current).__name__, getattr(current, 'text', ''))
+            except Exception:
+                logger.exception('webapp menu button verification failed')
         except Exception:
             logger.exception('failed to set webapp menu button')
+    else:
+        logger.warning('PUBLIC_BASE_URL is not set — Mini App entry points (/app, settings button, menu button) are disabled')
     logger.info('startup admin_ids_count=%s', len(ADMIN_TELEGRAM_IDS))
     if not ADMIN_TELEGRAM_IDS:
         logger.warning('ADMIN_TELEGRAM_IDS is empty; /admin will be inaccessible')

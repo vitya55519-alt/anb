@@ -16,7 +16,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.32.1', '3.33.0')
+    assert VERSION in ('3.32.1', '3.33.0', '3.33.1')
 
 
 def test_init_data_hmac_validation():
@@ -118,3 +118,30 @@ def test_menu_button_installed_when_public_url_set():
     assert 'set_chat_menu_button' in main_body
     # the call is guarded — a Telegram API hiccup must not kill startup
     assert "logger.exception('failed to set webapp menu button')" in main_body
+
+
+def test_guaranteed_app_entry_points():
+    # V3.33.1: /app command + settings launcher work even when the profile
+    # «Открыть приложение» button is hidden by client caching or BotFather
+    # main-mini-app state.
+    assert "@dp.message(Command('app'))" in MAIN
+    assert "types.BotCommand(command='app', description='🛍 Приложение')" in MAIN
+    # web_app buttons: /app (RU+EN branches), settings row, menu button
+    assert MAIN.count("web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp')") >= 3 or \
+        MAIN.count("web_app=types.WebAppInfo(url=url)") >= 2
+    # loud warning instead of a silent skip when the public URL is missing
+    main_body = MAIN[MAIN.index('async def main():'):]
+    assert "logger.warning('PUBLIC_BASE_URL is not set" in main_body
+    # after setting, the actual Telegram state is read back and logged
+    assert 'get_chat_menu_button' in main_body
+    # /app explains the missing server config instead of failing silently
+    app_cmd = MAIN[MAIN.index("@dp.message(Command('app'))"):MAIN.index("@dp.message(Command('support'))")]
+    assert 'PUBLIC_BASE_URL' in app_cmd
+
+
+def test_fkcheck_reports_webapp_diagnostics():
+    # V3.33.1: the owner diagnoses the missing app button via /fkcheck
+    fk = MAIN[MAIN.index('async def _fk_check('):MAIN.index('async def _root(')]
+    assert 'WEBAPP_PUBLIC_URL=' in fk
+    assert 'WEBAPP_SELF_PROBE=' in fk
+    assert "'WEBAPP_SELF_PROBE=SKIPPED (PUBLIC_BASE_URL not set)'" in fk
