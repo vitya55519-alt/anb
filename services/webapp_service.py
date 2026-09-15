@@ -58,7 +58,7 @@ from config import (
     VIDEO_PREMIUM_FREE_DAILY,
     fiat_values,
 )
-from models.app_models import Message, User
+from models.app_models import CharacterStat, Message, User
 from services import legal_service
 from services.access_service import is_premium
 from services.character_card_service import get_card, get_scenario_hook, list_cards
@@ -220,6 +220,7 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     if telegram_id:
         user = _user_row(telegram_id)
         selected = (user.selected_character or CHARACTER_ID) if user else None
+    views = character_views_map()
     out = []
     for card in list_cards(visible_only=True):
         custom = is_custom_character(card.character_id)
@@ -234,6 +235,14 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             'status': card.status,
             'emoji': card.button_emoji or '👩',
             'photo': f"/webapp/photo/{card.character_id}",
+            # V3.40.0: the animated card preview — built-in heroines ride a
+            # looping GIF tile like Come Closer; custom personas and missing
+            # assets fall back to the static photo.
+            'card': (f'/webapp/gif/{card.character_id}'
+                     if character_card_gif(card.character_id)
+                     else f"/webapp/photo/{card.character_id}"),
+            # V3.40.0: the «👁 427k» view badge on the card corner.
+            'views': views.get(card.character_id, 0),
             # V3.39.0: the Come Closer character page opens with a photo strip
             # (face + look references), so the card page needs every shot.
             'gallery': [
@@ -591,6 +600,52 @@ def character_gallery(character_id: str) -> list[Path]:
     if not folder.exists():
         return []
     return sorted(p for p in folder.glob('*.png') if p.name.startswith(('00_', '01_')))
+
+
+def character_card_gif(character_id: str) -> Path | None:
+    """V3.40.0: the looping animated tile of a built-in heroine, or None.
+
+    The owner benchmarked Come Closer's living storefront cards; our answer
+    is a pre-rendered Ken-Burns loop per heroine (``card_preview.webp`` — an
+    animated «гифка» 5-10x lighter than a GIF container — next to her canonical
+    references) served straight from disk.
+    """
+    if is_custom_character(character_id):
+        return None
+    rel = _FACE_REFERENCES.get(character_id)
+    if not rel:
+        return None
+    folder = ROOT.joinpath('data', rel[0], rel[1])
+    for name in ('card_preview.webp', 'card_preview.gif'):
+        tile = folder / name
+        if tile.exists():
+            return tile
+    return None
+
+
+def character_views_map() -> dict[str, int]:
+    """V3.40.0: view counters for the storefront badges (missing row = 0)."""
+    try:
+        with SessionLocal() as s:
+            rows = s.scalars(select(CharacterStat)).all()
+            return {r.character_id: r.views or 0 for r in rows}
+    except Exception:
+        return {}
+
+
+def bump_character_views(character_id: str) -> int:
+    """V3.40.0: +1 view when the character page opens; returns the new total."""
+    try:
+        with SessionLocal() as s:
+            row = s.get(CharacterStat, character_id)
+            if row is None:
+                row = CharacterStat(character_id=character_id, views=0)
+                s.add(row)
+            row.views = (row.views or 0) + 1
+            s.commit()
+            return row.views
+    except Exception:
+        return 0
 
 
 def character_photo(character_id: str, index: int = 0) -> tuple[bytes, str] | None:

@@ -66,9 +66,12 @@ KB_LABELS = {
 # V3.38.0: the Come Closer funnel layout — the Mini App is the product, the
 # chat keyboard is its launcher. Old keys stay in KB_LABELS so cached reply
 # keyboards from earlier versions keep resolving to their handlers.
+# V3.40.0: owner benchmarked the Come Closer main menu (screenshot) — the two
+# app actions each get their OWN full-width row instead of sharing one.
 MAIN_KB_ROWS = [
     ['app'],
-    ['credits', 'paint'],
+    ['credits'],
+    ['paint'],
     ['partner', 'support'],
 ]
 

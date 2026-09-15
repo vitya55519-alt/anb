@@ -26,7 +26,7 @@ NEW_CHARACTERS = ('erika_01', 'sonya_01', 'vika_01', 'alisa_01', 'mila_01')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.38.0', '3.39.0')
+    assert VERSION in ('3.40.0', '3.38.0', '3.39.0')
 
 
 # ── 1. main menu funnel ────────────────────────────────────────────────────
@@ -43,7 +43,9 @@ def test_main_menu_rows_funnel_into_miniapp():
         assert label in UI_LANG, f'missing label: {key}'
     rows = UI_LANG[UI_LANG.index('MAIN_KB_ROWS = ['):UI_LANG.index('LEVEL_NAMES_EN')]
     assert "['app']," in rows
-    assert "['credits', 'paint']," in rows
+    # V3.40.0: the Come Closer menu gives each app action its own full row.
+    assert "['credits']," in rows
+    assert "['paint']," in rows
     assert "['partner', 'support']," in rows
 
 

@@ -105,6 +105,7 @@ from services.llm_provider_service import provider_status
 from services.reminder_service import set_timezone, create_from_text, cancel_active_wake, due_reminders
 from services.scheduler_service import start_scheduler
 from services.memory_service import reset_conversation as reset_memory, save_message
+from services.provider_stats_service import provider_snapshot, record_provider
 from services.db import SessionLocal
 from models.relationship_models import UserCharacterRelationship, RelationshipEvent, RelationshipMilestone
 from models.app_models import CharacterState, Reminder, User
@@ -428,8 +429,19 @@ def main_keyboard(is_admin: bool = False, telegram_id: int | None = None):
     # V3.21.0: every feature gets a visible first-row button — nothing is
     # buried in sub-menus (owner could not discover circles before).
     # V3.22.0: labels are localized per user (RU/EN).
+    # V3.40.0: the «open app» row is a real web_app button — the teal
+    # direct-launch tile from the Come Closer menu the owner benchmarked.
     lang = user_lang(telegram_id) if telegram_id else RU
-    rows = [[KeyboardButton(text=kb_label(key, lang)) for key in row] for row in MAIN_KB_ROWS]
+    rows = []
+    for row in MAIN_KB_ROWS:
+        rows.append([
+            KeyboardButton(
+                text=kb_label(key, lang),
+                web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp')
+                if key == 'app' and PUBLIC_BASE_URL else None,
+            )
+            for key in row
+        ])
     if is_admin:
         rows.append([KeyboardButton(text=kb_label('admin', lang))])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
@@ -631,7 +643,8 @@ def admin_keyboard():
         [InlineKeyboardButton(text='📚 Библиотека фото', callback_data='admin:library_help')],
         [InlineKeyboardButton(text='🖼 Общая галерея (модерация)', callback_data='poolmod:view')],
         [InlineKeyboardButton(text='💡 Идеи для фото', callback_data='admin:ideas')],
-        [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats')],
+        [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats'),
+         InlineKeyboardButton(text='🩺 Отказы', callback_data='admin:providers')],
         [InlineKeyboardButton(text='🎁 Выдать премиум/токены', callback_data='admin:grant')],
         [InlineKeyboardButton(text=f'⭐ Premium себе (тесты): {premium_state}', callback_data='admin:premium_toggle')],
     ])
@@ -2574,12 +2587,53 @@ async def admin_stats_button(cq: types.CallbackQuery):
         return
     await cq.answer()
     snap = admin_snapshot()
+    # V3.40.0: the owner asked for a real user-statistics screen — signups,
+    # paying users, message volume, media mix, studio health and the character
+    # leaderboard. Studio success rate comes from the per-provider counters.
+    photo_ok = photo_fail = 0
+    for row in provider_snapshot():
+        if row['provider'].startswith('photo/'):
+            photo_ok += row['ok']
+            photo_fail += row['fail']
+    studio_total = photo_ok + photo_fail
+    studio_rate = (photo_ok / studio_total * 100.0) if studio_total else 0.0
+    top_lines = '\n'.join(
+        f'· {_character_display_name(cid)} — {cnt} сооб.' for cid, cnt in snap['top_characters']
+    ) or '· пока пусто'
     await cq.message.answer(
-        '📊 Anna beta stats\n\n'
-        f'Users: {snap["users_total"]} · active 24h: {snap["users_24h"]} · active 7d: {snap["users_7d"]}\n'
-        f'Photo requests 24h: {snap["photo_requests_24h"]} · delivered sets: {snap["photos_24h"]}\n'
-        f'Image cost: ${snap["photo_cost_24h"]:.2f}/24h · Stars 30d: {snap["stars_30d"]}'
+        '📊 Статистика пользователей\n\n'
+        f'👥 всего: {snap["users_total"]} · новых за 24ч: {snap["new_24h"]} · за 7д: {snap["new_7d"]}\n'
+        f'🟢 активны: за 24ч {snap["users_24h"]} · за 7д {snap["users_7d"]}\n'
+        f'⭐ Premium активен: {snap["premium_active"]}\n'
+        f'💬 сообщения пользователей: за 24ч {snap["messages_24h"]} · за 7д {snap["messages_7d"]}\n'
+        f'📸 медиа за 24ч: фото {snap["photos_24h"]} · кружки {snap["circles_24h"]} · видео {snap["videos_24h"]}\n'
+        f'🎨 студия: ✅{photo_ok} ❌{photo_fail} (успешность {studio_rate:.0f}%)\n'
+        f'🔁 удержание: D1 {snap["d1_retention"]:.0f}% · D7 {snap["d7_retention"]:.0f}%\n'
+        f'💰 Stars за 30д: {snap["stars_30d"]} · себестоимость фото за 24ч: ${snap["photo_cost_24h"]:.2f}\n\n'
+        f'🏆 топ персонажей (7д):\n{top_lines}'
     )
+
+
+@dp.callback_query(F.data == 'admin:providers')
+async def admin_providers_button(cq: types.CallbackQuery):
+    """V3.40.0: per-engine ok/fail counters — which leg of the media chains is
+    flaky, with the last error per provider, in one tap instead of in logs."""
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    await cq.answer()
+    rows = provider_snapshot()
+    if not rows:
+        lines = ' счётчики пока пустые — ни одной генерации ещё не было.'
+    else:
+        lines = '\n'.join(
+            f'{r["provider"]}: ✅{r["ok"]} ❌{r["fail"]}'
+            + (f'\n   посл: {r["last_error"]}' if r['last_error'] else '')
+            for r in rows
+        )
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')],
+    ])
+    await cq.message.answer(f'🩺 Отказы провайдеров\n\n{lines}', reply_markup=markup)
 
 
 @dp.message(Command('cancel'))
@@ -3614,9 +3668,11 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
                     await bot.send_message(chat_id, 'секунду, пробую ещё один способ снять это видео 🎬')
                 video_bytes = await engine_fn(image_bytes, mime_type='image/jpeg', prompt=anim_prompt)
                 used_engine = engine_name
+                record_provider(f'video/{engine_name}', True)
                 break
             except Exception as exc:
                 last_error = exc
+                record_provider(f'video/{engine_name}', False, f'{type(exc).__name__}: {str(exc)[:120]}')
                 engine_errors.append(f'{engine_name}: {type(exc).__name__}: {str(exc)[:160]}')
                 logger.warning('video engine %s failed user=%s delivery=%s error=%s: %s',
                                engine_name, telegram_id, delivery_id, type(exc).__name__, str(exc)[:300])
@@ -3932,9 +3988,11 @@ async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: in
                     await bot.send_message(chat_id, 'секунду, пробую ещё один способ записать кружочек 🎥')
                 video_bytes = await engine_fn(image_bytes, mime_type='image/jpeg', prompt=CIRCLE_PROMPT.format(phrase=random.choice(CIRCLE_PHRASES)))
                 used_engine = engine_name
+                record_provider(f'circle/{engine_name}', True)
                 break
             except Exception as exc:
                 last_error = exc
+                record_provider(f'circle/{engine_name}', False, f'{type(exc).__name__}: {str(exc)[:120]}')
                 engine_errors.append(f'{engine_name}: {type(exc).__name__}: {str(exc)[:160]}')
                 logger.warning('circle engine %s failed user=%s delivery=%s error=%s: %s',
                                engine_name, telegram_id, delivery_id, type(exc).__name__, str(exc)[:300])
@@ -6995,6 +7053,33 @@ async def _webapp_photo(request: web.Request) -> web.Response:
     return web.Response(body=data, content_type=content_type, headers={'Cache-Control': 'public, max-age=3600'})
 
 
+async def _webapp_gif(request: web.Request) -> web.Response:
+    # V3.40.0: the animated card preview — a public storefront asset with the
+    # same caching as the static photo (the grid shows it instead of the JPEG).
+    gif = webapp_service.character_card_gif(request.match_info['character_id'])
+    if not gif:
+        return web.Response(status=404)
+    content_type = 'image/webp' if gif.suffix.lower() == '.webp' else 'image/gif'
+    return web.Response(body=gif.read_bytes(), content_type=content_type,
+                        headers={'Cache-Control': 'public, max-age=3600'})
+
+
+async def _webapp_api_char_view(request: web.Request) -> web.Response:
+    # V3.40.0: +1 view when the character page opens — the «👁 427k» badge on
+    # the Come Closer cards. Auth like every other write endpoint.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+        character_id = str(body.get('character_id') or '').strip()
+    except Exception:
+        return web.json_response({'ok': False, 'error': 'body'}, status=400)
+    if not get_card(character_id):
+        return web.json_response({'ok': False, 'error': 'character'}, status=404)
+    return web.json_response({'ok': True, 'views': webapp_service.bump_character_views(character_id)})
+
+
 async def _webapp_api_invoice(request: web.Request) -> web.Response:
     # V3.34.0: Stars purchases from the Mini App. Returns an invoice link the
     # frontend opens with tg.openInvoice; the payment itself arrives as a
@@ -7254,13 +7339,18 @@ async def _webapp_media_circle(telegram_id: int, character_id: str):
         raise PhotoGenerationError('circle', 'no_video_engine')
     last_error = None
     for engine_fn in engines:
+        # V3.40.0: name the engine for the provider counters — animate_image
+        # is the Gemini/Veo leg, the rest keep their service suffix.
+        ename = 'gemini' if engine_fn.__name__ == 'animate_image' else engine_fn.__name__.replace('animate_image_', '')
         try:
             video_bytes = await engine_fn(
                 image_bytes, mime_type='image/png',
                 prompt=CIRCLE_PROMPT.format(phrase=random.choice(CIRCLE_PHRASES)))
+            record_provider(f'circle/{ename}', True)
             return video_bytes, 'video/mp4', 'mp4'
         except Exception as exc:
             last_error = exc
+            record_provider(f'circle/{ename}', False, f'{type(exc).__name__}: {str(exc)[:120]}')
             logger.warning('webapp circle engine failed user=%s: %s', telegram_id, str(exc)[:200])
     raise last_error or PhotoGenerationError('circle', 'no_video_result')
 
@@ -7512,6 +7602,9 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/partner', _webapp_api_partner)
     app.router.add_post('/webapp/api/partner/withdraw', _webapp_api_partner_withdraw)
     app.router.add_get('/webapp/photo/{character_id}', _webapp_photo)
+    # V3.40.0: the living storefront — looping GIF tiles and the view counter.
+    app.router.add_get('/webapp/gif/{character_id}', _webapp_gif)
+    app.router.add_post('/webapp/api/char_view', _webapp_api_char_view)
     # V3.34.0: storefront actions — Stars purchases and character selection.
     app.router.add_post('/webapp/api/invoice', _webapp_api_invoice)
     app.router.add_post('/webapp/api/select', _webapp_api_select)

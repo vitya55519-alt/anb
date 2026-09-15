@@ -38,6 +38,7 @@ from models.relationship_models import UserCharacterRelationship
 from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer
 from services.db import SessionLocal
 from services.photo_idea_service import enrich_request_with_idea
+from services.provider_stats_service import record_provider
 from services.character_service import get_anna
 from services.character_registry import get_character
 from services.custom_character_service import (
@@ -1150,20 +1151,34 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
     """
     # V3.25.0: _seedream_edit/_gemini_edit below are the real engines; the
     # face reference makes Seedream act as a face-swap identity anchor.
+    # V3.40.0: every engine attempt bumps the provider counters, so the admin
+    # «Отказы» screen shows which leg of the chain is flaky.
     if FAL_KEY and reference_path:
         try:
-            return await _seedream_edit(reference_path, prompt)
-        except Exception:
+            result = await _seedream_edit(reference_path, prompt)
+            record_provider('photo/seedream_edit', True)
+            return result
+        except Exception as exc:
+            record_provider('photo/seedream_edit', False, f'{type(exc).__name__}: {str(exc)[:120]}')
             logger.warning('constructor avatar Seedream failed; falling back to Gemini')
     elif FAL_KEY:
         # V3.39.0: freeform renders (the «Картинки» studio) get a real t2i
         # engine before Gemini, so a single provider outage or refusal no
         # longer kills the studio with «Не получилось нарисовать».
         try:
-            return await _seedream_t2i(prompt)
-        except Exception:
+            result = await _seedream_t2i(prompt)
+            record_provider('photo/seedream_t2i', True)
+            return result
+        except Exception as exc:
+            record_provider('photo/seedream_t2i', False, f'{type(exc).__name__}: {str(exc)[:120]}')
             logger.warning('studio Seedream t2i failed; falling back to Gemini')
-    return await _gemini_edit(prompt, reference_path)
+    try:
+        result = await _gemini_edit(prompt, reference_path)
+        record_provider('photo/gemini', True)
+        return result
+    except Exception as exc:
+        record_provider('photo/gemini', False, f'{type(exc).__name__}: {str(exc)[:120]}')
+        raise
 
 
 async def _seedream_t2i(prompt: str) -> tuple[bytes, str]:

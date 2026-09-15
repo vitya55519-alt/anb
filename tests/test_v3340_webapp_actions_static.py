@@ -12,7 +12,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.40.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_invoice_products_declared():
@@ -125,7 +125,8 @@ def test_no_unescaped_backend_strings_in_templates():
         expr = m.group(1).strip()
         if (expr.startswith('esc(') or expr in numeric_ok or expr.startswith('L.')
                 or expr in text_content_ok or expr in (
-            'badge', 'c.selected ? `<span class="badge" style="left:auto;right:8px;color:#e8447f">❤️</span>` : \'\'',
+            'badge', 'viewsBadge',
+            'c.selected ? `<span class="badge" style="left:8px;top:auto;bottom:8px;color:#e8447f">❤️</span>` : \'\'',
             'heroBtn', 'heroWeekBtn', 'moRub', 'wkRub', 'creditRow', 'items', 'feats', 'price',
             'customBadge', 'opts', 'review', 't',
             "role === 'user' ? 'user' : 'bot'",

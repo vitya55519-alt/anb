@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 
 from config import CHARACTER_ID, DAILY_IMAGE_BUDGET_USD, MONTHLY_IMAGE_BUDGET_USD
-from models.app_models import ProductEvent, StarTransaction, User, Message
+from models.app_models import ProductEvent, StarTransaction, Subscription, User, Message
 from models.photo_models import PhotoDelivery
 from services.db import SessionLocal
 
@@ -93,6 +93,21 @@ def admin_snapshot() -> dict:
         feedback_like_7d = s.scalar(select(func.count(ProductEvent.id)).where(ProductEvent.created_at >= d7, ProductEvent.event_name == 'photo_feedback_like')) or 0
         feedback_dislike_7d = s.scalar(select(func.count(ProductEvent.id)).where(ProductEvent.created_at >= d7, ProductEvent.event_name == 'photo_feedback_dislike')) or 0
         first_frame_avg = s.scalar(select(func.avg(ProductEvent.value)).where(ProductEvent.created_at >= d1, ProductEvent.event_name == 'photo_first_frame_ready')) or 0.0
+        # V3.40.0: the owner asked for a real user-statistics screen in the
+        # admin panel — signups, paying users, message volume, media mix and
+        # the character leaderboard join the beta counters.
+        new_24h = s.scalar(select(func.count(User.id)).where(User.created_at >= d1)) or 0
+        premium_active = s.scalar(select(func.count(Subscription.id)).where(Subscription.status == 'active', Subscription.expires_at > now)) or 0
+        messages_7d = s.scalar(select(func.count(Message.id)).where(Message.created_at >= d7, Message.role == 'user')) or 0
+        circles_24h = s.scalar(select(func.count(ProductEvent.id)).where(ProductEvent.created_at >= d1, ProductEvent.event_name == 'circle_delivered')) or 0
+        videos_24h = s.scalar(select(func.count(ProductEvent.id)).where(ProductEvent.created_at >= d1, ProductEvent.event_name.like('%_video_delivered'))) or 0
+        top_rows = s.execute(
+            select(Message.character_id, func.count(Message.id).label('cnt'))
+            .where(Message.created_at >= d7, Message.role == 'user')
+            .group_by(Message.character_id)
+            .order_by(func.count(Message.id).desc())
+            .limit(5)
+        ).all()
     failure_rate = (failures_24h / photo_requests_24h * 100.0) if photo_requests_24h else 0.0
     proactive_reply_rate = (proactive_replied_7d / proactive_sent_7d * 100.0) if proactive_sent_7d else 0.0
     return {
@@ -103,4 +118,7 @@ def admin_snapshot() -> dict:
         'first_frame_avg_seconds': float(first_frame_avg), 'd1_retention': _retention_rate(1), 'd3_retention': _retention_rate(3), 'd7_retention': _retention_rate(7),
         'proactive_sent_7d': int(proactive_sent_7d), 'proactive_replied_7d': int(proactive_replied_7d), 'proactive_reply_rate': proactive_reply_rate,
         'feedback_like_7d': int(feedback_like_7d), 'feedback_dislike_7d': int(feedback_dislike_7d),
+        'new_24h': int(new_24h), 'premium_active': int(premium_active), 'messages_7d': int(messages_7d),
+        'circles_24h': int(circles_24h), 'videos_24h': int(videos_24h),
+        'top_characters': [[cid, int(cnt)] for cid, cnt in top_rows],
     }

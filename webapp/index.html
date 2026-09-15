@@ -77,6 +77,13 @@
   .card .badge.active { color: var(--ok); }
   .card .badge.premium { color: var(--premium); }
   .card .badge.soon { color: var(--muted); }
+    /* V3.40.0: the view-count pill on the card corner — the Come Closer
+       «👁 427k» badge, riding on top of the living GIF tile. */
+    .card .views {
+      position: absolute; top: 8px; right: 8px;
+      font-size: 11px; padding: 3px 9px; border-radius: 12px;
+      background: rgba(0,0,0,.55); backdrop-filter: blur(4px); color: #fff;
+    }
   .card .body { padding: 10px 12px 12px; }
   .card .name { font-weight: 600; font-size: 15px; }
   .card .age { color: var(--muted); font-size: 12px; margin: 2px 0 6px; }
@@ -680,11 +687,14 @@ function renderCharacters(list) {
     // V3.38.0: the Come Closer story-hook under the name ("мать твоего
     // друга") — the bio stays as the smaller descriptive line.
     const hookLine = c.hook ? `<div class="hook">${esc(c.hook)}</div>` : '';
+    // V3.40.0: the view badge («👁 427k») — built from esc()'d parts, shown
+    // from the first view on; the grid card refreshes after each page open.
+    const viewsBadge = c.views ? '<div class="views">👁 ' + esc(fmtK(c.views)) + '</div>' : '';
     return `<div class="card${c.selected ? ' selected' : ''}" data-id="${esc(c.id)}" data-status="${esc(c.status)}" data-name="${esc(c.name)}" data-photo="${esc(c.photo)}" data-emoji="${esc(c.emoji)}" data-custom="${c.custom ? '1' : '0'}">
       <div class="photo">
-        <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+        <img src="${esc(c.card || c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
         <div class="fallback">${esc(c.emoji)}</div>
-        ${badge}${c.selected ? `<span class="badge" style="left:auto;right:8px;color:#e8447f">❤️</span>` : ''}${customBadge}
+        ${badge}${viewsBadge}${c.selected ? `<span class="badge" style="left:8px;top:auto;bottom:8px;color:#e8447f">❤️</span>` : ''}${customBadge}
       </div>
       <div class="body">
         <div class="name">${esc(c.name)}</div>
@@ -786,6 +796,15 @@ function fmtTime(ts) {
     const d = new Date(ts);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } catch (e) { return ''; }
+}
+
+function fmtK(n) {
+  // V3.40.0: compact view counts for the card badge — 427 stays «427»,
+  // 42700 becomes «43k», 1200000 becomes «1.2M» (Come Closer badge vibe).
+  n = n || 0;
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace('.0', '') + 'M';
+  if (n >= 1000) return Math.round(n / 1000) + 'k';
+  return String(n);
 }
 
 function chatBubble(roleOrM, content, ts) {
@@ -937,6 +956,21 @@ function openCharPage(el) {
   if (status === 'premium' && !(ME && ME.premium)) { toast(L.need_premium); showTab('shop'); return; }
   if (status !== 'active' && status !== 'premium') { toast(L.locked); return; }
   CHARPAGE = c;
+  // V3.40.0: count the view and refresh the badge on the grid card behind
+  // the overlay (fire-and-forget — a stats hiccup must never block the page).
+  fetch('/webapp/api/char_view?init_data=' + encodeURIComponent(tg.initData || ''), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ character_id: c.id }),
+  }).then(r => r.json()).then(j => {
+    if (!j.ok) return;
+    c.views = j.views;
+    const cardEl = document.querySelector('.card[data-id="' + c.id + '"]');
+    if (!cardEl) return;
+    const b = cardEl.querySelector('.views');
+    if (b) b.textContent = '👁 ' + fmtK(j.views);
+    else cardEl.querySelector('.photo').insertAdjacentHTML('beforeend',
+      '<div class="views">👁 ' + esc(fmtK(j.views)) + '</div>');
+  }).catch(() => {});
   document.getElementById('charName').textContent = c.name;
   document.getElementById('charSub').textContent = c.custom ? L.made_badge : (status === 'premium' ? L.prem : L.active);
   document.getElementById('charTitle').textContent = c.name;

@@ -332,6 +332,24 @@ class ProductEvent(Base):
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
+class CharacterStat(Base):
+    # V3.40.0: per-character storefront view counter — the «👁 427k» badge on
+    # the Come Closer cards the owner benchmarked. Auto-migrated by db.py.
+    __tablename__ = "character_stats"
+    character_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    views: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+class ProviderStat(Base):
+    # V3.40.0: per-provider success/failure counters for the admin «Отказы»
+    # screen, so a flaky engine is visible in one tap instead of in logs.
+    __tablename__ = "provider_stats"
+    provider: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ok: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    fail: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
 class UserConsent(Base):
     __tablename__ = 'user_consents'
     __table_args__ = (UniqueConstraint('user_id', name='uq_user_consent'),)
