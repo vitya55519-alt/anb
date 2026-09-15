@@ -91,7 +91,7 @@ def test_constructor_buy_consumes_ruble_credit_before_stars():
     assert 'def add_constructor_credit(' in MAIN
     # unique charge id per purchase (record_payment dedups on charge_id)
     assert 'freekassa_credit:{telegram_id}:{int(_time.time() * 1000)}' in MAIN
-    assert '_finish_constructor(cq.message, None, telegram_id)' in MAIN
+    assert '_finish_constructor(cq.message.chat.id, None, telegram_id)' in MAIN
 
 
 def test_video_gate_spends_tokens_before_stars_invoice():

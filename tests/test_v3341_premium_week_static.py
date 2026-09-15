@@ -15,7 +15,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.34.0', '3.34.1')
+    assert VERSION in ('3.34.0', '3.34.1', '3.35.0')
 
 
 def test_config_declares_weekly_plan():

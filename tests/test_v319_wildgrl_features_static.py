@@ -110,10 +110,15 @@ def test_trait_bars_visible_on_character_card():
 def test_constructor_steps_cover_full_profile():
     ccs = importlib.import_module('services.custom_character_service')
     keys = [step['key'] for step in ccs.CONSTRUCTOR_STEPS]
-    assert keys == ['age', 'body', 'hair', 'eyes', 'temperament', 'profession', 'role']
+    # V3.35.0: face/breast/waist/hips steps + shy/naughty temperaments.
+    assert keys == [
+        'age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes',
+        'temperament', 'profession', 'role',
+    ]
     values = [value for step in ccs.CONSTRUCTOR_STEPS for value, _, _ in step['options']]
     assert len(values) == len(set(values)), 'option callback values must be unique'
     assert set(ccs.OPTION_LABELS) == set(ccs.OPTION_DESCRIPTORS) == set(values)
+    assert 'temper_shy' in values and 'temper_naughty' in values
 
 
 def test_constructor_character_id_and_detection():
@@ -155,7 +160,7 @@ def test_constructor_wizard_and_payment_wired():
     assert 'cbuild:' in MAIN and 'mychar:chat:' in MAIN
     assert 'CONSTRUCTOR_COST_STARS' in MAIN
     assert "ok = amount == CONSTRUCTOR_COST_STARS" in MAIN
-    assert "_finish_constructor(message, charge)" in MAIN
+    assert "_finish_constructor(message.chat.id, charge, message.from_user.id)" in MAIN
     assert 'generate_custom_avatar' in MAIN
 
 
@@ -186,12 +191,12 @@ def test_faceswap_uploads_reference_and_locks_identity():
 # ── 7. V3.19.1: admin free constructor + video diagnostics ────────────────
 
 def test_admin_free_constructor():
-    assert 'async def _finish_constructor(message: types.Message, charge: str | None, telegram_id: int | None = None):' in MAIN
+    assert 'async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None):' in MAIN
     # v3.28.0: constructor spawns are tracked through _spawn_job
-    assert "_spawn_job('constructor', telegram_id, _finish_constructor(cq.message, None, telegram_id)" in MAIN
+    assert "_spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id)" in MAIN
     assert "'✅ Создать · бесплатно (админ)'" in MAIN
     # Admins skip the invoice and run generation with no charge.
-    assert '_finish_constructor(message, charge)' in MAIN
+    assert MAIN.count('_finish_constructor(cq.message.chat.id, None, telegram_id)') >= 2
     # Refund logic only fires for paid runs.
     assert 'if charge:' in MAIN[MAIN.index('constructor avatar generation failed'):]
 

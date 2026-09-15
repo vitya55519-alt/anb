@@ -21,7 +21,9 @@ def test_config_gates_freekassa_on_three_secrets():
     assert 'FREEKASSA_SECRET1 = os.getenv("FREEKASSA_SECRET1", "").strip()' in CONFIG
     assert 'FREEKASSA_SECRET2 = os.getenv("FREEKASSA_SECRET2", "").strip()' in CONFIG
     assert 'FREEKASSA_ENABLED = bool(FREEKASSA_MERCHANT_ID and FREEKASSA_SECRET1 and FREEKASSA_SECRET2)' in CONFIG
-    assert 'PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")' in CONFIG
+    # V3.35.0: PUBLIC_BASE_URL gained a RAILWAY_PUBLIC_DOMAIN fallback block.
+    assert '_PUBLIC_BASE_URL_RAW = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")' in CONFIG
+    assert 'PUBLIC_BASE_URL = _PUBLIC_BASE_URL_RAW' in CONFIG
     assert 'WEB_PORT = int(os.getenv("PORT", "8080"))' in CONFIG
 
 

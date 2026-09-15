@@ -174,6 +174,71 @@
   }
   nav#bottomnav button .ico { font-size: 21px; }
   nav#bottomnav button.on { color: var(--accent); background: rgba(232, 68, 127, .12); }
+  /* V3.35.0: full-screen overlays — in-app chat and the character wizard */
+  .overlay {
+    position: fixed; inset: 0; z-index: 30; display: none;
+    flex-direction: column; background: var(--bg);
+  }
+  .overlay.open { display: flex; }
+  .chat-head {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    background: rgba(26, 16, 35, .96); border-bottom: 1px solid rgba(232, 68, 127, .18);
+    flex-shrink: 0;
+  }
+  .chat-head .p {
+    width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
+    background: var(--card2); flex-shrink: 0;
+  }
+  .chat-head .p.pdiv { display: flex; align-items: center; justify-content: center; font-size: 20px; }
+  .chat-head .nm { font-weight: 700; font-size: 15px; }
+  .chat-head .sub { color: var(--muted); font-size: 11px; }
+  .chat-head .spacer { margin-left: auto; }
+  .chat-head .iconbtn {
+    background: var(--card); border: none; color: var(--text); font-size: 18px;
+    border-radius: 12px; padding: 8px 12px; cursor: pointer;
+  }
+  .chat-msgs { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .msg {
+    max-width: 82%; padding: 9px 12px; border-radius: 16px; font-size: 14px;
+    line-height: 1.45; word-break: break-word; white-space: pre-wrap;
+  }
+  .msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--card); border-bottom-left-radius: 4px; }
+  .msg .t { display: block; font-size: 10px; opacity: .6; margin-top: 4px; }
+  .chat-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 40px 20px; line-height: 1.5; }
+  .chat-input {
+    display: flex; gap: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(20, 12, 28, .96); border-top: 1px solid rgba(232, 68, 127, .18); flex-shrink: 0;
+  }
+  .chat-input input {
+    flex: 1; background: var(--card); border: 1px solid rgba(255,255,255,.08);
+    color: var(--text); font-size: 15px; padding: 11px 14px; border-radius: 14px; outline: none;
+  }
+  .chat-input button {
+    background: linear-gradient(90deg, var(--accent), var(--accent2)); border: none; color: #fff;
+    font-size: 16px; padding: 0 18px; border-radius: 14px; cursor: pointer;
+  }
+  .chat-input button:disabled { opacity: .5; }
+  .typing { align-self: flex-start; color: var(--muted); font-size: 13px; padding: 4px 12px; }
+  .wiz { flex: 1; overflow-y: auto; padding: 16px; }
+  .wiz .step-title { font-size: 17px; font-weight: 700; margin: 6px 0 12px; }
+  .wiz .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .wiz .opt {
+    background: var(--card); border: 1px solid rgba(255,255,255,.08); color: var(--text);
+    font-size: 14px; padding: 10px 14px; border-radius: 14px; cursor: pointer;
+  }
+  .wiz .opt.sel { border-color: var(--accent); background: rgba(232, 68, 127, .14); }
+  .wiz input.name {
+    width: 100%; background: var(--card); border: 1px solid rgba(255,255,255,.08);
+    color: var(--text); font-size: 15px; padding: 12px 14px; border-radius: 14px;
+    outline: none; margin: 8px 0 4px;
+  }
+  .wiz .review { font-size: 13px; color: var(--muted); line-height: 1.7; margin: 10px 0; }
+  .wiz .price-note { color: var(--premium); font-size: 13px; margin: 8px 0 4px; }
+  .card.create .plus { font-size: 40px; }
+  .card.create .lbl2 { font-weight: 600; font-size: 15px; }
+  .card.create .sub2 { color: var(--muted); font-size: 12px; margin-top: 4px; padding: 0 12px 14px; }
+  .badge.made { color: var(--accent2); }
 </style>
 </head>
 <body>
@@ -208,6 +273,36 @@
   <button data-tab="docs"><span class="ico">📜</span><span class="lbl">Документы</span></button>
 </nav>
 <div id="toast"></div>
+<!-- V3.35.0: in-app chat — tap a card opens the dialog (shared with the bot chat) -->
+<div class="overlay" id="chatview">
+  <div class="chat-head">
+    <button class="iconbtn" id="chatBack">‹</button>
+    <img class="p" id="chatPhoto" alt="" style="display:none">
+    <div class="p pdiv" id="chatEmoji">👩</div>
+    <div>
+      <div class="nm" id="chatName"></div>
+      <div class="sub" id="chatSub"></div>
+    </div>
+    <div class="spacer"></div>
+    <button class="iconbtn" id="chatSelect" style="font-size:13px">❤️</button>
+  </div>
+  <div class="chat-msgs" id="chatMsgs"></div>
+  <div class="chat-input">
+    <input id="chatText" maxlength="4000" placeholder="">
+    <button id="chatSend">➤</button>
+  </div>
+</div>
+<!-- V3.35.0: character constructor wizard — build your own girl in the app -->
+<div class="overlay" id="wizview">
+  <div class="chat-head">
+    <button class="iconbtn" id="wizBack">‹</button>
+    <div>
+      <div class="nm" id="wizTitle"></div>
+      <div class="sub" id="wizSub"></div>
+    </div>
+  </div>
+  <div class="wiz" id="wizBody"></div>
+</div>
 <script>
 const tg = window.Telegram.WebApp;
 tg.ready();
@@ -219,7 +314,7 @@ const LANG = String(user0.language_code || 'ru').toLowerCase().startsWith('en') 
 
 const L = LANG === 'en' ? {
   chars_title: 'Characters', loading: 'Loading…',
-  chars_hint: 'Tap a card to select your girl',
+  chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
   shop_title: 'Shop', month: '/ 30 days', week: '7 days', pay_hint: 'Stars payments happen right here. Card or crypto — in the bot chat. Prices are the same.',
   free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
@@ -234,9 +329,19 @@ const L = LANG === 'en' ? {
   paid_prem: 'Premium activated ✨', paid_credit: 'Photo credit added 📸',
   pay_failed: 'Payment failed', pay_cancelled: 'Payment cancelled',
   invoice_err: 'Could not open payment — try again',
+  input_ph: 'Type a message…', send: 'Send',
+  empty_chat: 'Send the first message — she replies right here',
+  limit_reached: 'Daily free-message limit reached. Premium lifts it ⭐',
+  consent_needed: 'Confirm 18+ first — open the bot and press /start',
+  set_main: 'Set as your girl', reply_err: 'Could not reply — try again',
+  create_own: 'Create your own', create_sub: 'Looks, figure and personality — she chats the way you pick',
+  wiz_step: 'Step', wiz_name_ph: 'Her name? (up to 24 characters)', wiz_create: 'Create',
+  wiz_free: 'free (admin)', wiz_paid_toast: 'Drawing your girl — up to a minute. Her card appears in the grid ✨',
+  wiz_exists: 'You already have a character — recreate via the bot chat',
+  made_badge: 'user-made', mine_badge: 'yours', mychar_note: 'Your character is created 🎨 recreate via the bot chat',
 } : {
   chars_title: 'Персонажи', loading: 'Загрузка…',
-  chars_hint: 'Нажми на карточку, чтобы выбрать девушку',
+  chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
   shop_title: 'Магазин', month: '/ 30 дней', week: '7 дней', pay_hint: 'Оплата Stars — прямо здесь. Картой или крипто — в чате бота. Цены те же.',
   free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
@@ -251,6 +356,16 @@ const L = LANG === 'en' ? {
   paid_prem: 'Premium активирован ✨', paid_credit: 'Фото-кредит начислен 📸',
   pay_failed: 'Оплата не прошла', pay_cancelled: 'Оплата отменена',
   invoice_err: 'Не удалось открыть оплату — попробуй ещё раз',
+  input_ph: 'Напиши сообщение…', send: 'Отправить',
+  empty_chat: 'Напиши первое сообщение — она ответит прямо здесь',
+  limit_reached: 'Дневной лимит бесплатных сообщений. Premium снимает лимит ⭐',
+  consent_needed: 'Сначала подтверди 18+ — открой бота и нажми /start',
+  set_main: 'Сделать твоей девушкой', reply_err: 'Не получилось ответить — попробуй ещё раз',
+  create_own: 'Создать свою', create_sub: 'Внешность, фигура и характер — она будет общаться так, как ты выберешь',
+  wiz_step: 'Шаг', wiz_name_ph: 'Как её зовут? (до 24 символов)', wiz_create: 'Создать',
+  wiz_free: 'бесплатно (админ)', wiz_paid_toast: 'Рисую твою героиню — до минуты. Карточка появится в сетке ✨',
+  wiz_exists: 'Персонаж уже создан — создать заново можно в чате бота',
+  made_badge: 'создана игроком', mine_badge: 'твоя', mychar_note: 'Твой персонаж создан 🎨 создать заново можно в чате бота',
 };
 
 document.getElementById('l_chars_title').textContent = L.chars_title;
@@ -323,17 +438,23 @@ async function buy(productId, btn) {
 // ── characters ────────────────────────────────────────────────────────────
 function renderCharacters(list) {
   const grid = document.getElementById('chargrid');
-  grid.innerHTML = list.map(c => {
+  // V3.35.0: the grid is the chat entry now — tap opens the dialog; the
+  // «create your own» card rides at the end of the grid.
+  const hasMine = list.some(c => c.mine);
+  const cards = list.map(c => {
     const badge = c.status === 'active'
       ? `<span class="badge active">✅ ${esc(L.active)}</span>`
       : c.status === 'premium'
         ? `<span class="badge premium">⭐ ${esc(L.prem)}</span>`
         : `<span class="badge soon">🔒 ${esc(L.soon)}</span>`;
-    return `<div class="card${c.selected ? ' selected' : ''}" data-id="${esc(c.id)}" data-status="${esc(c.status)}" data-name="${esc(c.name)}">
+    const customBadge = c.custom
+      ? `<span class="badge made" style="left:auto;right:8px;top:auto;bottom:8px">${c.mine ? '💚 ' + esc(L.mine_badge) : '🎨 ' + esc(L.made_badge)}</span>`
+      : '';
+    return `<div class="card${c.selected ? ' selected' : ''}" data-id="${esc(c.id)}" data-status="${esc(c.status)}" data-name="${esc(c.name)}" data-photo="${esc(c.photo)}" data-emoji="${esc(c.emoji)}" data-custom="${c.custom ? '1' : '0'}">
       <div class="photo">
         <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
         <div class="fallback">${esc(c.emoji)}</div>
-        ${badge}${c.selected ? `<span class="badge" style="left:auto;right:8px;color:#e8447f">❤️</span>` : ''}
+        ${badge}${c.selected ? `<span class="badge" style="left:auto;right:8px;color:#e8447f">❤️</span>` : ''}${customBadge}
       </div>
       <div class="body">
         <div class="name">${esc(c.name)}</div>
@@ -342,8 +463,20 @@ function renderCharacters(list) {
       </div>
     </div>`;
   }).join('');
-  grid.querySelectorAll('.card').forEach(el =>
-    el.addEventListener('click', () => selectCharacter(el)));
+  const createCard = hasMine
+    ? `<div class="card create" style="opacity:.75">
+        <div class="photo" style="display:flex;align-items:center;justify-content:center"><div class="plus">🎨</div></div>
+        <div class="body"><div class="lbl2">${esc(L.mychar_note)}</div></div>
+      </div>`
+    : `<div class="card create" id="createCard">
+        <div class="photo" style="display:flex;align-items:center;justify-content:center"><div class="plus">➕</div></div>
+        <div class="body"><div class="lbl2">${esc(L.create_own)}</div><div class="sub2">${esc(L.create_sub)}</div></div>
+      </div>`;
+  grid.innerHTML = cards + createCard;
+  grid.querySelectorAll('.card[data-id]').forEach(el =>
+    el.addEventListener('click', () => openCharacter(el)));
+  const cc = document.getElementById('createCard');
+  if (cc) cc.addEventListener('click', openWizard);
 }
 
 async function loadCharacters() {
@@ -363,17 +496,16 @@ async function loadCharacters() {
 }
 
 let selecting = false;
-async function selectCharacter(el) {
-  if (selecting || el.classList.contains('selected')) return;
-  const status = el.dataset.status;
-  if (status === 'premium' && !(ME && ME.premium)) { toast(L.need_premium); showTab('shop'); return; }
-  if (status !== 'active' && status !== 'premium') { toast(L.locked); return; }
+async function doSelect(c) {
+  if (selecting) return;
+  if (c.status === 'premium' && !(ME && ME.premium)) { toast(L.need_premium); showTab('shop'); return; }
+  if (c.status !== 'active' && c.status !== 'premium') { toast(L.locked); return; }
   selecting = true;
   try {
     const r = await fetch('/webapp/api/select?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: el.dataset.id }),
+      body: JSON.stringify({ character_id: c.id }),
     });
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 403) { toast(L.need_premium); showTab('shop'); return; }
@@ -381,14 +513,254 @@ async function selectCharacter(el) {
     const j = await r.json();
     if (j.ok) {
       renderCharacters(j.characters);
-      toast(`${el.dataset.name} — ${L.selected_toast} ❤️`);
+      toast(`${c.name} — ${L.selected_toast} ❤️`);
       loadMe();
+      if (CHAT && CHAT.id === c.id) {
+        CHAT.selected = true;
+        document.getElementById('chatSelect').style.display = 'none';
+      }
     }
   } catch (e) {
     toast(L.invoice_err);
   } finally {
     selecting = false;
   }
+}
+
+// ── V3.35.0: in-app chat — tap a card, the dialog opens ───────────────────
+let CHAT = null;
+let chatBusy = false;
+
+function openCharacter(el) {
+  const status = el.dataset.status;
+  if (status === 'premium' && !(ME && ME.premium)) { toast(L.need_premium); showTab('shop'); return; }
+  if (status !== 'active' && status !== 'premium') { toast(L.locked); return; }
+  openChat({
+    id: el.dataset.id,
+    name: el.dataset.name,
+    photo: el.dataset.photo,
+    emoji: el.dataset.emoji,
+    status: status,
+    custom: el.dataset.custom === '1',
+    selected: el.classList.contains('selected'),
+  });
+}
+
+function fmtTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch (e) { return ''; }
+}
+
+function chatBubble(role, content, ts) {
+  const t = fmtTime(ts) ? `<span class="t">${esc(fmtTime(ts))}</span>` : '';
+  return `<div class="msg ${role === 'user' ? 'user' : 'bot'}">${esc(content)}${t}</div>`;
+}
+
+function openChat(c) {
+  CHAT = c;
+  document.getElementById('chatName').textContent = c.name;
+  document.getElementById('chatSub').textContent = c.custom ? L.made_badge : (c.status === 'premium' ? L.prem : L.active);
+  const ph = document.getElementById('chatPhoto');
+  const em = document.getElementById('chatEmoji');
+  ph.style.display = 'none'; em.style.display = 'flex'; em.textContent = c.emoji;
+  ph.onload = () => { ph.style.display = 'block'; em.style.display = 'none'; };
+  ph.onerror = () => { ph.style.display = 'none'; em.style.display = 'flex'; };
+  ph.src = c.photo;
+  const sel = document.getElementById('chatSelect');
+  sel.textContent = '❤️ ' + L.set_main;
+  sel.style.display = c.selected ? 'none' : '';
+  document.getElementById('chatText').placeholder = L.input_ph;
+  document.getElementById('chatMsgs').innerHTML = `<div class="loading">${esc(L.loading)}</div>`;
+  document.getElementById('chatview').classList.add('open');
+  loadChatHistory(c.id);
+}
+
+async function loadChatHistory(characterId) {
+  try {
+    const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId));
+    if (r.status === 401) { toast(L.auth_short); return; }
+    const j = await r.json();
+    const box = document.getElementById('chatMsgs');
+    if (!j.ok) { box.innerHTML = `<div class="chat-empty">${esc(L.reply_err)}</div>`; return; }
+    if (!j.history.length) { box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`; return; }
+    box.innerHTML = j.history.map(m => chatBubble(m.role, m.content, m.ts)).join('');
+    box.scrollTop = box.scrollHeight;
+  } catch (e) {
+    document.getElementById('chatMsgs').innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
+  }
+}
+
+async function sendChat() {
+  if (!CHAT || chatBusy) return;
+  const input = document.getElementById('chatText');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!tg.initData) { toast(L.auth_short); return; }
+  chatBusy = true;
+  input.value = '';
+  const box = document.getElementById('chatMsgs');
+  const empty = box.querySelector('.chat-empty');
+  if (empty) empty.remove();
+  box.insertAdjacentHTML('beforeend', chatBubble('user', text, null));
+  box.insertAdjacentHTML('beforeend', `<div class="typing" id="chatTyping">${esc(CHAT.name)} …</div>`);
+  box.scrollTop = box.scrollHeight;
+  try {
+    const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: CHAT.id, text: text }),
+    });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    if (r.status === 429) { toast(L.limit_reached); showTab('shop'); return; }
+    if (r.status === 403) {
+      const j = await r.json().catch(() => ({}));
+      toast(j.error === 'consent' ? L.consent_needed : (j.error === 'premium_required' ? L.need_premium : L.locked));
+      if (j.error === 'premium_required') showTab('shop');
+      return;
+    }
+    const j = await r.json();
+    if (!j.ok) { toast(L.reply_err); return; }
+    box.insertAdjacentHTML('beforeend', chatBubble('bot', j.reply, null));
+    box.scrollTop = box.scrollHeight;
+  } catch (e) {
+    toast(L.reply_err);
+  } finally {
+    const typing = document.getElementById('chatTyping');
+    if (typing) typing.remove();
+    chatBusy = false;
+    input.focus();
+  }
+}
+
+// ── V3.35.0: character constructor wizard ─────────────────────────────────
+let WIZ = { steps: [], idx: 0, params: {}, name: '', stars: 0, free: false };
+
+async function openWizard() {
+  try {
+    const q = tg.initData ? ('?init_data=' + encodeURIComponent(tg.initData) + '&') : '?';
+    const r = await fetch('/webapp/api/constructor/options' + q + 'lang=' + LANG);
+    const j = await r.json();
+    if (!j.ok || !j.steps || !j.steps.length) { toast(L.invoice_err); return; }
+    WIZ = { steps: j.steps, idx: 0, params: {}, name: '', stars: j.stars || 0, free: !!j.free };
+    document.getElementById('wizview').classList.add('open');
+    renderWizStep();
+  } catch (e) {
+    toast(L.invoice_err);
+  }
+}
+
+function renderWizStep() {
+  const total = WIZ.steps.length;
+  document.getElementById('wizTitle').textContent = L.create_own;
+  document.getElementById('wizSub').textContent = L.wiz_step + ' ' + (WIZ.idx + 1) + '/' + (total + 1);
+  const body = document.getElementById('wizBody');
+  if (WIZ.idx < total) {
+    const step = WIZ.steps[WIZ.idx];
+    const opts = step.options.map(o =>
+      `<button class="opt${WIZ.params[step.key] === o.value ? ' sel' : ''}" data-v="${esc(o.value)}">${esc(o.label)}</button>`).join('');
+    body.innerHTML = `
+      <div class="step-title">${esc(step.title)}</div>
+      <div class="opts">${opts}</div>
+      ${WIZ.idx > 0 ? `<button class="cta ghost" id="wizPrev">↩ ${esc(L.wiz_step)}</button>` : ''}`;
+    body.querySelectorAll('.opt').forEach(b => b.addEventListener('click', () => {
+      WIZ.params[WIZ.steps[WIZ.idx].key] = b.dataset.v;
+      WIZ.idx += 1;
+      renderWizStep();
+    }));
+    const prev = document.getElementById('wizPrev');
+    if (prev) prev.addEventListener('click', () => { WIZ.idx -= 1; renderWizStep(); });
+    return;
+  }
+  // Final step: the name + a review of every choice + the price.
+  const review = WIZ.steps.map(s => {
+    const chosen = s.options.find(o => o.value === WIZ.params[s.key]);
+    return chosen ? `<div>${esc(s.title.replace('?', ''))}: ${esc(chosen.label)}</div>` : '';
+  }).filter(Boolean).join('');
+  body.innerHTML = `
+    <div class="step-title">${esc(L.wiz_name_ph)}</div>
+    <input class="name" id="wizName" maxlength="24" value="${esc(WIZ.name)}">
+    <div class="review">${review}</div>
+    <div class="price-note" id="wizPrice">${WIZ.free ? '✅ ' + esc(L.wiz_free) : '⭐ ' + WIZ.stars}</div>
+    <button class="cta" id="wizCreate" ${WIZ.name ? '' : 'disabled'}>🎨 ${esc(L.wiz_create)}</button>`;
+  const nameInput = document.getElementById('wizName');
+  const createBtn = document.getElementById('wizCreate');
+  nameInput.addEventListener('input', () => {
+    WIZ.name = nameInput.value.trim();
+    createBtn.disabled = !WIZ.name;
+  });
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && WIZ.name) submitWizard();
+  });
+  createBtn.addEventListener('click', submitWizard);
+}
+
+async function submitWizard() {
+  if (!WIZ.name) return;
+  const btn = document.getElementById('wizCreate');
+  if (btn) btn.disabled = true;
+  try {
+    // 1. Save the draft — it lands in the same constructor session the bot
+    //    wizard uses, so the payment pipeline is identical.
+    const dr = await fetch('/webapp/api/constructor/draft?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ params: WIZ.params, name: WIZ.name }),
+    });
+    if (dr.status === 401) { toast(L.auth_short); if (btn) btn.disabled = false; return; }
+    if (dr.status === 409) { toast(L.wiz_exists); if (btn) btn.disabled = false; return; }
+    const dj = await dr.json();
+    if (!dj.ok) { toast(L.invoice_err); if (btn) btn.disabled = false; return; }
+    // 2. Pay — admins and rub-credit holders get the free path.
+    const br = await fetch('/webapp/api/constructor/buy?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (br.status === 401) { toast(L.auth_short); if (btn) btn.disabled = false; return; }
+    const bj = await br.json();
+    if (!bj.ok) { toast(L.invoice_err); if (btn) btn.disabled = false; return; }
+    if (bj.free) {
+      closeWizard();
+      toast(L.wiz_paid_toast);
+      pollCharacters();
+      return;
+    }
+    if (typeof tg.openInvoice !== 'function') { toast(L.auth_short); if (btn) btn.disabled = false; return; }
+    tg.openInvoice(bj.link, (status) => {
+      if (btn) btn.disabled = false;
+      if (status === 'paid') {
+        closeWizard();
+        toast(L.wiz_paid_toast);
+        pollCharacters();
+      } else if (status === 'failed') {
+        toast(L.pay_failed);
+      } else {
+        toast(L.pay_cancelled);
+      }
+    });
+  } catch (e) {
+    toast(L.invoice_err);
+    if (btn) btn.disabled = false;
+  }
+}
+
+function closeWizard() {
+  document.getElementById('wizview').classList.remove('open');
+}
+
+let pollTimer = null;
+function pollCharacters() {
+  // The avatar job takes up to a minute — refresh the grid until she appears.
+  let tries = 0;
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    tries += 1;
+    await loadCharacters();
+    if (tries >= 18) clearInterval(pollTimer);
+  }, 5000);
 }
 
 // ── shop ──────────────────────────────────────────────────────────────────
@@ -492,6 +864,21 @@ async function loadDocs() {
     document.getElementById('docsbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
 }
+
+// ── V3.35.0 wiring: chat + wizard overlays ─────────────────────────────
+document.getElementById('chatBack').addEventListener('click', () => {
+  document.getElementById('chatview').classList.remove('open');
+  CHAT = null;
+});
+document.getElementById('chatSend').addEventListener('click', sendChat);
+document.getElementById('chatText').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendChat();
+});
+document.getElementById('chatSelect').addEventListener('click', () => { if (CHAT) doSelect(CHAT); });
+document.getElementById('wizBack').addEventListener('click', () => {
+  if (WIZ.idx > 0) { WIZ.idx -= 1; renderWizStep(); return; }
+  closeWizard();
+});
 
 loadMe();
 loadCharacters();

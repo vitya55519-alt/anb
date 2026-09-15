@@ -12,7 +12,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.33.1', '3.34.0', '3.34.1')
+    assert VERSION in ('3.33.1', '3.34.0', '3.34.1', '3.35.0')
 
 
 def test_invoice_products_declared():
@@ -93,9 +93,10 @@ def test_frontend_buys_and_selects():
     assert "data-buy=\"photo_credit\"" in INDEX
     assert "s.purchases || []" in INDEX
     # character selection posts to the validated endpoint and re-renders
+    # V3.35.0: the card tap opens the dialog; selection lives on the chat header
     assert "/webapp/api/select?init_data=" in INDEX
-    assert "JSON.stringify({ character_id: el.dataset.id })" in INDEX
-    assert 'selectCharacter(el)' in INDEX
+    assert "JSON.stringify({ character_id: c.id })" in INDEX
+    assert 'openCharacter(el)' in INDEX
     assert 'renderCharacters(j.characters)' in INDEX
     # every dynamic string still goes through esc() or textContent
     assert 'data-name="${esc(c.name)}"' in INDEX
@@ -109,19 +110,24 @@ def test_no_unescaped_backend_strings_in_templates():
     # of the known numeric/int expressions (Stars prices, counters, percents)
     numeric_ok = {
         'p.stars', 'p.rub', 'premBuy.stars', 'premBuy.rub', 'premWeek.stars', 'premWeek.rub',
-        'credit.stars', 'i.stars', 'lvlPct',
+        'credit.stars', 'i.stars', 'lvlPct', 'WIZ.stars',
         's.free_tier.messages_per_day', 's.free_tier.photos_level_1_2',
         's.free_tier.photos_level_3_6',
     }
     # d.check_word is the lone backend value outside esc(): it flows into
     # textContent (checkword line), not innerHTML, so no parsing happens.
-    text_content_ok = {'d.check_word', 'el.dataset.name', 'L.selected_toast'}
+    text_content_ok = {'d.check_word', 'el.dataset.name', 'L.selected_toast', 'c.name'}
     for m in re.finditer(r'\$\{([^}]+)\}', INDEX):
         expr = m.group(1).strip()
         if (expr.startswith('esc(') or expr in numeric_ok or expr.startswith('L.')
                 or expr in text_content_ok or expr in (
             'badge', 'c.selected ? `<span class="badge" style="left:auto;right:8px;color:#e8447f">❤️</span>` : \'\'',
             'heroBtn', 'heroWeekBtn', 'moRub', 'wkRub', 'creditRow', 'items', 'feats', 'price',
+            'customBadge', 'opts', 'review', 't',
+            "role === 'user' ? 'user' : 'bot'",
+            "c.custom ? '1' : '0'",
+            "WIZ.params[step.key] === o.value ? ' sel' : ''",
+            "WIZ.name ? '' : 'disabled'",
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         raise AssertionError(f'unescaped template value: {expr!r} in INDEX')

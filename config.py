@@ -214,8 +214,20 @@ FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_WEE
 # invoice currency USD (multi-currency must be enabled in the kassa settings).
 FREEKASSA_PREMIUM_PRICE_USD = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_USD", "5")))
 # Public base URL of this Railway service (generated domain). Used in the
-# FreeKassa merchant form (notify/success/fail URLs).
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+# FreeKassa merchant form (notify/success/fail URLs) and every Mini App entry
+# point (menu button, /app command, inline buttons).
+# V3.35.0: when the variable is not set explicitly, fall back to Railway's
+# generated public domain so the «Открыть приложение» button cannot silently
+# disappear just because PUBLIC_BASE_URL was forgotten in a fresh deploy.
+_PUBLIC_BASE_URL_RAW = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+if not _PUBLIC_BASE_URL_RAW:
+    _railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip().rstrip("/")
+    if _railway_domain:
+        _PUBLIC_BASE_URL_RAW = (
+            _railway_domain if _railway_domain.startswith("http")
+            else f"https://{_railway_domain}"
+        )
+PUBLIC_BASE_URL = _PUBLIC_BASE_URL_RAW
 WEB_PORT = int(os.getenv("PORT", "8080"))
 
 FAL_KEY = os.getenv("FAL_KEY", "").strip()

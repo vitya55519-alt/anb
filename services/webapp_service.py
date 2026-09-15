@@ -56,7 +56,10 @@ from models.app_models import User
 from services import legal_service
 from services.access_service import is_premium
 from services.character_card_service import get_card, list_cards
-from services.custom_character_service import is_custom_character
+from services.custom_character_service import (
+    CONSTRUCTOR_STEPS, OPTION_LABELS_EN, STEP_TITLES_EN,
+    custom_character_id, is_custom_character,
+)
 from services.db import SessionLocal
 from services.ui_lang import EN, user_lang
 
@@ -143,13 +146,20 @@ def api_me(telegram_id: int) -> dict:
 
 
 def api_characters(telegram_id: int | None = None) -> list[dict]:
-    """Storefront grid: every visible card plus its storefront photo URL."""
+    """Storefront grid: every visible card plus its storefront photo URL.
+
+    V3.35.0: constructor personas are public — they were always registered as
+    visible ``active`` cards, and now the grid also marks which cards are
+    user-made (``custom``) and which one is the caller's own creation
+    (``mine``), so the app can offer «create your own» and chat entry.
+    """
     selected = None
     if telegram_id:
         user = _user_row(telegram_id)
         selected = (user.selected_character or CHARACTER_ID) if user else None
     out = []
     for card in list_cards(visible_only=True):
+        custom = is_custom_character(card.character_id)
         out.append({
             'id': card.character_id,
             'name': card.display_name,
@@ -159,6 +169,8 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             'emoji': card.button_emoji or '👩',
             'photo': f"/webapp/photo/{card.character_id}",
             'selected': card.character_id == selected,
+            'custom': custom,
+            'mine': custom and bool(telegram_id) and card.character_id == custom_character_id(telegram_id),
         })
     return out
 
@@ -260,6 +272,43 @@ def api_shop(lang: str = 'ru') -> dict:
         # tg.openInvoice) — the rest of the price list stays informational.
         'purchases': api_invoice_products(lang),
     }
+
+
+def api_constructor_steps(lang: str = 'ru') -> list[dict]:
+    """V3.35.0: the app wizard's steps — the same CONSTRUCTOR_STEPS the bot's
+    inline constructor walks, labeled per language."""
+    en = lang == EN
+    out = []
+    for step in CONSTRUCTOR_STEPS:
+        title = STEP_TITLES_EN.get(step['key'], step['title']) if en else step['title']
+        options = [
+            {'value': value, 'label': (OPTION_LABELS_EN.get(value, label) if en else label)}
+            for value, label, _ in step['options']
+        ]
+        out.append({'key': step['key'], 'title': title, 'options': options})
+    return out
+
+
+def api_chat_history(db_user_id: int, character_id: str, limit: int = 30) -> list[dict]:
+    """V3.35.0: recent dialog rows for the Mini App chat view (oldest first).
+
+    Same ``messages`` table the bot chat writes to — the app and the bot share
+    one continuous dialog per (user, character).
+    """
+    limit = max(1, min(60, int(limit or 30)))
+    try:
+        from services.memory_service import get_recent_messages
+        rows = get_recent_messages(db_user_id, character_id, limit)
+    except Exception:
+        return []
+    out = []
+    for m in rows:
+        try:
+            ts = m.created_at.isoformat() if m.created_at else None
+        except Exception:
+            ts = None
+        out.append({'role': m.role, 'content': m.content, 'ts': ts})
+    return out
 
 
 def api_legal(lang: str = 'ru') -> dict:

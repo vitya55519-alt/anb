@@ -40,12 +40,49 @@ CONSTRUCTOR_STEPS: list[dict] = [
         ],
     },
     {
+        # V3.35.0: face type — the app constructor's «какое у неё лицо».
+        'key': 'face', 'title': 'Какое у неё лицо?',
+        'options': [
+            ('face_oval', 'Овальное, классическое', 'oval classical face with soft regular features'),
+            ('face_round', 'Круглое, милое', 'round cute face with soft cheeks and dimples'),
+            ('face_sharp', 'Скулистое, модельное', 'sharp model-like cheekbones and defined jawline'),
+            ('face_soft', 'Мягкое, женственное', 'soft feminine delicate face'),
+        ],
+    },
+    {
         'key': 'body', 'title': 'Какая у неё фигура?',
         'options': [
             ('body_slim', 'Стройная', 'slim elegant figure'),
             ('body_sport', 'Спортивная', 'toned athletic figure'),
             ('body_curvy', 'Пышная', 'soft curvy figure'),
             ('body_fit', 'Фитоняшка', 'fit gym body'),
+        ],
+    },
+    {
+        # V3.35.0: figure detail steps requested for the app constructor.
+        'key': 'breast', 'title': 'Какая у неё грудь?',
+        'options': [
+            ('breast_small', 'Маленькая', 'small natural bust'),
+            ('breast_medium', 'Средняя', 'medium natural bust'),
+            ('breast_large', 'Большая', 'large full bust'),
+            ('breast_xl', 'Очень большая', 'very large voluptuous bust'),
+        ],
+    },
+    {
+        'key': 'waist', 'title': 'Какая у неё талия?',
+        'options': [
+            ('waist_thin', 'Тонкая, осиная', 'very slim wasp waist'),
+            ('waist_fit', 'Спортивная', 'fit toned waist'),
+            ('waist_soft', 'Мягкая, женственная', 'soft feminine waistline'),
+        ],
+    },
+    {
+        'key': 'hips', 'title': 'Какая у неё попа?',
+        'options': [
+            ('hips_small', 'Строгая, аккуратная', 'slim neat hips'),
+            ('hips_round', 'Круглая, аппетитная', 'round appetizing hips'),
+            ('hips_big', 'Пышная', 'full wide curvy hips'),
+            ('hips_xl', 'Очень пышная', 'very full voluptuous hips'),
         ],
     },
     {
@@ -73,6 +110,11 @@ CONSTRUCTOR_STEPS: list[dict] = [
             ('temper_bold', 'Дерзкая и страстная', 'bold, passionate and dominant'),
             ('temper_playful', 'Игривая хулиганка', 'playful mischievous tease'),
             ('temper_mystery', 'Загадочная интеллектуалка', 'mysterious intellectual'),
+            # V3.35.0: the two ends of the dial the owner asked for — a shy
+            # girl must chat shyly, a naughty one openly lewd. The style line
+            # below (TEMPERAMENT_STYLE) is what actually bends the chat voice.
+            ('temper_shy', 'Скромная и застенчивая', 'shy, modest and easily blushing'),
+            ('temper_naughty', 'Пошлая и развратная', 'naughty, dirty-minded and openly lewd'),
         ],
     },
     {
@@ -112,6 +154,51 @@ OPTION_DESCRIPTORS: dict[str, str] = {
 PARAM_TITLES: dict[str, str] = {step['key']: step['title'].rstrip('?') for step in CONSTRUCTOR_STEPS}
 
 
+def _EN_LABELS_FOR_STEP(step: dict) -> dict[str, str]:
+    """EN button labels per option value (V3.35.0 app wizard)."""
+    table = {
+        'age_young': '18–22', 'age_mid': '23–27', 'age_mature': '28–33', 'age_confident': '34+',
+        'face_oval': 'Oval, classic', 'face_round': 'Round, cute', 'face_sharp': 'Sharp, model-like', 'face_soft': 'Soft, feminine',
+        'body_slim': 'Slim', 'body_sport': 'Athletic', 'body_curvy': 'Curvy', 'body_fit': 'Gym girl',
+        'breast_small': 'Small', 'breast_medium': 'Medium', 'breast_large': 'Large', 'breast_xl': 'Very large',
+        'waist_thin': 'Slim wasp', 'waist_fit': 'Toned', 'waist_soft': 'Soft',
+        'hips_small': 'Neat', 'hips_round': 'Round', 'hips_big': 'Curvy', 'hips_xl': 'Very curvy',
+        'hair_blonde': 'Blonde', 'hair_brunette': 'Brunette', 'hair_red': 'Redhead', 'hair_brown': 'Chestnut',
+        'eyes_brown': 'Brown', 'eyes_blue': 'Blue', 'eyes_green': 'Green', 'eyes_grey': 'Grey',
+        'temper_gentle': 'Gentle & caring', 'temper_bold': 'Bold & passionate', 'temper_playful': 'Playful tease',
+        'temper_mystery': 'Mysterious intellect', 'temper_shy': 'Shy & modest', 'temper_naughty': 'Naughty & dirty-minded',
+        'prof_model': 'Model', 'prof_student': 'Student', 'prof_trainer': 'Fitness trainer',
+        'prof_artist': 'Artist', 'prof_business': 'Businesswoman',
+        'role_girlfriend': 'Girlfriend', 'role_friends': 'Friend with benefits',
+        'role_ex': 'Ex who came back', 'role_secret': 'Secret lover',
+    }
+    return {value: table.get(value, label) for value, label, _ in step['options']}
+
+
+# V3.35.0: English UI labels per option value — the Mini App wizard renders
+# these for EN users (the RU labels above stay the single truth for RU).
+OPTION_LABELS_EN: dict[str, str] = {
+    value: label_en
+    for step in CONSTRUCTOR_STEPS
+    for value, label_en in _EN_LABELS_FOR_STEP(step).items()
+}
+
+# V3.35.0: EN titles of the wizard steps (RU titles live on the steps).
+STEP_TITLES_EN: dict[str, str] = {
+    'age': 'How old is she?',
+    'face': 'What does her face look like?',
+    'body': 'What is her figure?',
+    'breast': 'Her bust size?',
+    'waist': 'Her waist?',
+    'hips': 'Her butt?',
+    'hair': 'Her hair?',
+    'eyes': 'Her eyes?',
+    'temperament': 'Her personality?',
+    'profession': 'What does she do?',
+    'role': 'Who is she to you?',
+}
+
+
 def step_index(key: str) -> int:
     for index, step in enumerate(CONSTRUCTOR_STEPS):
         if step['key'] == key:
@@ -126,7 +213,7 @@ def build_avatar_prompt(params: dict, face_swap: bool = False) -> str:
         'Photorealistic portrait of an adult woman in a cozy warm evening setting, '
         'soft golden light, shallow depth of field, fashion-editorial quality.',
     ]
-    for key in ('age', 'body', 'hair', 'eyes'):
+    for key in ('age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes'):
         descriptor = OPTION_DESCRIPTORS.get(str(params.get(key, '')))
         if descriptor:
             parts.append(descriptor)
@@ -150,6 +237,40 @@ def build_avatar_prompt(params: dict, face_swap: bool = False) -> str:
     return ', '.join(parts)
 
 
+# V3.35.0: the owner's explicit requirement — the temperament choice must
+# bend HOW she writes, not just what the avatar looks like. These lines ride
+# inside the persona override so every chat (bot or Mini App) speaks in that
+# voice: a naughty girl flirts dirty in every message, a shy one blushes.
+TEMPERAMENT_STYLE: dict[str, str] = {
+    'temper_gentle': (
+        'Твой стиль общения: нежный и заботливый — мягкие слова, поддержка и '
+        'ласка в каждом сообщении, тёплые объятия словами.'
+    ),
+    'temper_bold': (
+        'Твой стиль общения: дерзкий и страстный — уверенная инициатива, горячие '
+        'комплименты, провокации и доминирование во флирте.'
+    ),
+    'temper_playful': (
+        'Твой стиль общения: игривый хулиганистый — дразнишь, подкалываешь, '
+        'флиртуешь с лёгкой издёвкой и никогда не даёшь заскучать.'
+    ),
+    'temper_mystery': (
+        'Твой стиль общения: загадочный и интеллектуальный — недосказанность, '
+        'глубокие вопросы, эротизм через намёки, а не прямоту.'
+    ),
+    'temper_shy': (
+        'Твой стиль общения: скромный и застенчивый — краснеешь от комплиментов, '
+        'отвечаешь коротко и тихо, смущение показываешь через «...» и паузы; '
+        'флиртуют с тобой, а не ты, и только когда тебя хорошенько раскачать.'
+    ),
+    'temper_naughty': (
+        'Твой стиль общения: откровенно пошлый — грязные намёки, двусмысленности '
+        'и горячие фантазии в каждом сообщении; инициатором пошлости всегда '
+        'выступаешь ты, но без графичности — через намёки и возбуждающие слова.'
+    ),
+}
+
+
 def build_persona_context(params: dict, display_name: str) -> str:
     """System-prompt override that makes the chat model play the custom persona."""
     name = display_name or str(params.get('name') or 'она')
@@ -158,7 +279,7 @@ def build_persona_context(params: dict, display_name: str) -> str:
         f'Ты — личный персонаж пользователя по имени {name}. Оставайся в этом образе всегда.',
     ]
     descriptors = []
-    for key in ('age', 'body', 'hair', 'eyes', 'temperament', 'profession'):
+    for key in ('age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes', 'temperament', 'profession'):
         descriptor = OPTION_DESCRIPTORS.get(str(params.get(key, '')))
         if descriptor:
             descriptors.append(descriptor)
@@ -167,6 +288,9 @@ def build_persona_context(params: dict, display_name: str) -> str:
     role = OPTION_DESCRIPTORS.get(str(params.get('role', '')))
     if role:
         lines.append(f'Твоя роль по отношению к пользователю: {role}.')
+    style = TEMPERAMENT_STYLE.get(str(params.get('temperament', '')))
+    if style:
+        lines.append(style)
     lines.append(
         'Если пользователь прикладывал своё фото при создании — ты выглядишь именно так, '
         'как на нём. Никогда не упоминай, что ты конструктор или шаблон.'
@@ -275,9 +399,9 @@ def custom_hair_color(params: dict) -> str:
 
 
 def custom_appearance_descriptors(params: dict) -> list[str]:
-    """English appearance descriptors (age/body/hair/eyes) for identity locks."""
+    """English appearance descriptors (age/face/body/hair/eyes + figure) for identity locks."""
     return [
-        descriptor for key in ('age', 'body', 'hair', 'eyes')
+        descriptor for key in ('age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes')
         if (descriptor := OPTION_DESCRIPTORS.get(str(params.get(key, ''))))
     ]
 

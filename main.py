@@ -120,7 +120,7 @@ from services.character_dna_service import trait_bars
 from services.photo_reaction_service import react_to_photo
 from services.custom_character_service import (
     CONSTRUCTOR_STEPS, OPTION_LABELS, PARAM_TITLES, build_avatar_prompt,
-    custom_character_id, get_custom_character, save_custom_character,
+    custom_character_id, get_custom_character, get_custom_character_by_id, save_custom_character,
     summary_lines, step_index, is_custom_character,
 )
 from services.consent_service import has_accepted, accept as accept_consent, delete_user_data, TERMS_VERSION, PRIVACY_VERSION
@@ -4240,7 +4240,7 @@ async def successful_payment(message: types.Message):
         # V3.19.0: paid character constructor — avatar generation may take a
         # minute, so it runs as a task like the video pipeline.
         record_payment(message.from_user.id, 'constructor', payment.total_amount, charge)
-        _spawn_job('constructor', message.from_user.id, _finish_constructor(message, charge), payload={'charge': charge})
+        _spawn_job('constructor', message.from_user.id, _finish_constructor(message.chat.id, charge, message.from_user.id), payload={'charge': charge})
         return
 
     if payload.startswith('gallery_dl:'):
@@ -5509,18 +5509,24 @@ async def _show_my_character(chat_id: int, telegram_id: int):
         await bot.send_message(chat_id, '\n'.join(lines), reply_markup=markup)
 
 
-async def _finish_constructor(message: types.Message, charge: str | None, telegram_id: int | None = None):
-    """After Stars payment: generate the avatar, save the persona, open chat."""
-    # V3.24.0: the admin free path calls this with the callback message, whose
+async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None):
+    """After Stars payment: generate the avatar, save the persona, open chat.
+
+    V3.35.0: takes a chat id instead of a Message — the Mini App constructor
+    pays through the same successful_payment pipeline and has no Message to
+    reply into; the user's private chat id serves both callers.
+    """
+    # V3.24.0: the admin free path used to pass the callback message, whose
     # from_user is the BOT — the session must be looked up by the real user id.
-    telegram_id = telegram_id if telegram_id is not None else message.from_user.id
+    if telegram_id is None:
+        telegram_id = chat_id
     cons = _constructor_sessions.pop(telegram_id, None)
     if not cons:
-        await message.answer('что-то потерялось 😕 нажми «🎨 Мой персонаж» ещё раз.')
+        await bot.send_message(chat_id, 'что-то потерялось 😕 нажми «🎨 Мой персонаж» ещё раз.')
         return
     params = cons['params']
     display_name = str(params.get('name') or 'Она')[:48]
-    await message.answer('✨ Отлично! Рисую твою героиню — это займёт до минуты...')
+    await bot.send_message(chat_id, '✨ Отлично! Рисую твою героиню — это займёт до минуты...')
     face_path = None
     if cons.get('face_bytes'):
         import tempfile
@@ -5539,13 +5545,13 @@ async def _finish_constructor(message: types.Message, charge: str | None, telegr
             try:
                 await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge)
                 record_refund(telegram_id, charge, CONSTRUCTOR_COST_STARS, product='constructor')
-                await message.answer('аватар сейчас не получился 😕 Stars вернул автоматически. Попробуй ещё раз чуть позже.')
+                await bot.send_message(chat_id, 'аватар сейчас не получился 😕 Stars вернул автоматически. Попробуй ещё раз чуть позже.')
             except Exception:
                 logger.exception('constructor refund failed user=%s', telegram_id)
-                await message.answer('аватар не получился 😕 напиши /support — вернём Stars.')
+                await bot.send_message(chat_id, 'аватар не получился 😕 напиши /support — вернём Stars.')
         else:
             # Admin free run — nothing to refund.
-            await message.answer('аватар сейчас не получился 😕 попробуй ещё раз чуть позже.')
+            await bot.send_message(chat_id, 'аватар сейчас не получился 😕 попробуй ещё раз чуть позже.')
         return
     finally:
         if face_path:
@@ -5571,7 +5577,7 @@ async def _finish_constructor(message: types.Message, charge: str | None, telegr
     # Register her as a real character card so photo/relationship pipelines
     # recognize the id; bio carries the appearance description for prompts.
     descriptor_bits = [
-        OPTION_LABELS[str(params[key])] for key in ('age', 'body', 'hair', 'eyes', 'temperament', 'profession', 'role')
+        OPTION_LABELS[str(params[key])] for key in PARAM_TITLES
         if key in params and str(params[key]) in OPTION_LABELS
     ]
     bio = (display_name + ': ' + ', '.join(descriptor_bits).lower())[:900]
@@ -5593,7 +5599,7 @@ async def _finish_constructor(message: types.Message, charge: str | None, telegr
         metadata={'product': 'constructor', 'face_swap': bool(cons.get('face_bytes'))},
     )
     await bot.send_message(
-        message.chat.id,
+        chat_id,
         f'🎉 Знакомься — это {display_name}! Теперь она твоя личная собеседница.',
         reply_markup=_my_character_keyboard(row.character_id),
     )
@@ -5691,12 +5697,12 @@ async def constructor_buy_cb(cq: types.CallbackQuery):
     await cq.answer()
     # V3.19.1: admins skip the Stars invoice entirely.
     if telegram_id in ADMIN_TELEGRAM_IDS:
-        _spawn_job('constructor', telegram_id, _finish_constructor(cq.message, None, telegram_id), payload={'source': 'free'})
+        _spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id), payload={'source': 'free'})
         return
     # V3.27.0: a ruble-paid constructor credit (FreeKassa) skips Stars too.
     if consume_constructor_credit(telegram_id):
         record_payment(telegram_id, 'constructor', 0, f'freekassa_credit:{telegram_id}:{int(_time.time() * 1000)}')
-        _spawn_job('constructor', telegram_id, _finish_constructor(cq.message, None, telegram_id), payload={'source': 'free'})
+        _spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id), payload={'source': 'free'})
         return
     await send_stars_invoice(
         cq.message.chat.id,
@@ -6653,6 +6659,173 @@ async def _webapp_api_select(request: web.Request) -> web.Response:
     })
 
 
+async def _webapp_api_chat_history(request: web.Request) -> web.Response:
+    # V3.35.0: chat in the app — the dialog the bot and the app share.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    character_id = str(request.query.get('character_id', ''))
+    if not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    try:
+        limit = int(request.query.get('limit', '30'))
+    except ValueError:
+        limit = 30
+    return web.json_response({'ok': True, 'history': webapp_service.api_chat_history(uid, character_id, limit)})
+
+
+async def _webapp_api_chat_send(request: web.Request) -> web.Response:
+    # V3.35.0: a message typed in the app goes through the exact pipeline the
+    # bot chat uses (memory, relationships, persona) — same gates too: 18+
+    # consent and the daily free-message limit.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))
+    text = str(body.get('text', '')).strip()[:4000]
+    if not character_id or not text:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    if is_custom_character(character_id):
+        # Constructor personas are public: anyone can open a dialog with her.
+        if not get_custom_character_by_id(character_id):
+            return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+    else:
+        card = get_card(character_id)
+        if not card or card.status not in ('active', 'premium'):
+            return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+        if card.status == 'premium' and not is_premium(telegram_id):
+            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    if not has_accepted(telegram_id):
+        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    if telegram_id not in ADMIN_TELEGRAM_IDS and not can_send_message(telegram_id):
+        return web.json_response({'ok': False, 'error': 'limit'}, status=429)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    track_event(uid, 'webapp_chat_message', metadata={'character_id': character_id})
+    try:
+        answer = await anna_reply(
+            telegram_id, user_info.get('first_name') or 'ты', text,
+            language_code=user_info.get('language_code'), character_id=character_id,
+        )
+    except Exception:
+        logger.exception('webapp chat reply failed user=%s character=%s', telegram_id, character_id)
+        return web.json_response({'ok': False, 'error': 'reply'}, status=502)
+    return web.json_response({'ok': True, 'reply': answer})
+
+
+async def _webapp_api_constructor_options(request: web.Request) -> web.Response:
+    # V3.35.0: the wizard steps — the same CONSTRUCTOR_STEPS the bot walks.
+    # The price rides along so the form can show it without another call.
+    free = False
+    init_data = request.query.get('init_data', '')
+    if init_data:
+        pairs = webapp_service.validate_init_data(init_data)
+        if pairs:
+            telegram_id = webapp_service.init_data_user(pairs).get('id')
+            free = bool(telegram_id) and telegram_id in ADMIN_TELEGRAM_IDS
+    return web.json_response({
+        'ok': True,
+        'steps': webapp_service.api_constructor_steps(request.query.get('lang', 'ru')),
+        'stars': CONSTRUCTOR_COST_STARS,
+        'free': free,
+    })
+
+
+async def _webapp_api_constructor_draft(request: web.Request) -> web.Response:
+    # V3.35.0: the app form posts its finished draft into the very session
+    # store the bot wizard uses, so payment and avatar generation run through
+    # the identical pipeline (pre_checkout → successful_payment → job).
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    params_in = body.get('params')
+    name = str(body.get('name') or '').strip()[:24]
+    if not isinstance(params_in, dict):
+        return web.json_response({'ok': False, 'error': 'invalid_params'}, status=400)
+    if get_custom_character(telegram_id):
+        # One persona per user — recreate via the bot's «Создать заново».
+        return web.json_response({'ok': False, 'error': 'exists'}, status=409)
+    params = {}
+    for step in CONSTRUCTOR_STEPS:
+        value = str(params_in.get(step['key'], ''))
+        if value not in OPTION_LABELS:
+            return web.json_response({'ok': False, 'error': 'invalid_params'}, status=400)
+        params[step['key']] = value
+    if not name:
+        return web.json_response({'ok': False, 'error': 'name_required'}, status=400)
+    params['name'] = name
+    _constructor_sessions[telegram_id] = {'params': params, 'step': len(CONSTRUCTOR_STEPS)}
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    track_event(uid, 'webapp_constructor_draft')
+    return web.json_response({
+        'ok': True,
+        'stars': CONSTRUCTOR_COST_STARS,
+        'free': telegram_id in ADMIN_TELEGRAM_IDS,
+    })
+
+
+async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
+    # V3.35.0: pay for the app-built persona — admins and rub-credit holders
+    # skip the invoice, everyone else gets the same `constructor:<id>` payload
+    # the chat wizard charges, so successful_payment finishes her.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    cons = _constructor_sessions.get(telegram_id)
+    if not cons or not (cons.get('params') or {}).get('name'):
+        return web.json_response({'ok': False, 'error': 'no_draft'}, status=400)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    if telegram_id in ADMIN_TELEGRAM_IDS:
+        track_event(uid, 'webapp_constructor_buy', metadata={'product': 'constructor', 'source': 'webapp_admin'})
+        _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'webapp_admin'})
+        return web.json_response({'ok': True, 'free': True})
+    if consume_constructor_credit(telegram_id):
+        record_payment(telegram_id, 'constructor', 0, f'freekassa_credit:{telegram_id}:{int(_time.time() * 1000)}')
+        track_event(uid, 'webapp_constructor_buy', metadata={'product': 'constructor', 'source': 'webapp_credit'})
+        _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'webapp_credit'})
+        return web.json_response({'ok': True, 'free': True})
+    try:
+        link = await bot.create_invoice_link(
+            title='Личный персонаж',
+            description='Конструктор создаст уникальную собеседницу с аватаром. Платёж одноразовый.',
+            payload=f'constructor:{telegram_id}',
+            provider_token='',
+            currency='XTR',
+            prices=[LabeledPrice(label='Личный персонаж', amount=CONSTRUCTOR_COST_STARS)],
+        )
+    except Exception:
+        logger.exception('webapp constructor invoice failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
+    track_event(uid, 'webapp_invoice_created', metadata={'product': 'constructor'})
+    return web.json_response({'ok': True, 'link': link, 'stars': CONSTRUCTOR_COST_STARS})
+
+
 async def _start_web_server() -> None:
     app = web.Application()
     app.router.add_get('/', _root)
@@ -6673,6 +6846,12 @@ async def _start_web_server() -> None:
     # V3.34.0: storefront actions — Stars purchases and character selection.
     app.router.add_post('/webapp/api/invoice', _webapp_api_invoice)
     app.router.add_post('/webapp/api/select', _webapp_api_select)
+    # V3.35.0: chat in the app and the character constructor wizard.
+    app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
+    app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)
+    app.router.add_get('/webapp/api/constructor/options', _webapp_api_constructor_options)
+    app.router.add_post('/webapp/api/constructor/draft', _webapp_api_constructor_draft)
+    app.router.add_post('/webapp/api/constructor/buy', _webapp_api_constructor_buy)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', WEB_PORT)
@@ -6713,7 +6892,7 @@ async def main():
     if PUBLIC_BASE_URL:
         try:
             await bot.set_chat_menu_button(types.MenuButtonWebApp(
-                text='AnnaBot',
+                text='Открыть приложение',
                 web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'),
             ))
             logger.info('webapp menu button installed url=%s/webapp', PUBLIC_BASE_URL)
