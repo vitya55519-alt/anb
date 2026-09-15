@@ -239,6 +239,22 @@
   .card.create .lbl2 { font-weight: 600; font-size: 15px; }
   .card.create .sub2 { color: var(--muted); font-size: 12px; margin-top: 4px; padding: 0 12px 14px; }
   .badge.made { color: var(--accent2); }
+  /* V3.37.0: partner tab — the two stat boxes and the big actions, styled
+     after the reference affiliate screen (labels on top, bold values). */
+  .pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .pbox {
+    background: var(--card); border-radius: var(--radius); padding: 14px;
+    border: 1px solid rgba(255,255,255,.05);
+  }
+  .pbox .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+  .pbox .v { font-size: 24px; font-weight: 800; margin-top: 6px; }
+  .plink {
+    background: var(--card); border-radius: 12px; padding: 10px 12px; margin: 12px 0;
+    font-size: 12.5px; color: var(--muted); word-break: break-all; line-height: 1.5;
+    border: 1px dashed rgba(232, 68, 127, .35);
+  }
+  .faq-title { text-align: center; color: var(--muted); font-size: 12px; text-transform: uppercase;
+    letter-spacing: .6px; margin: 18px 0 10px; }
 </style>
 </head>
 <body>
@@ -256,6 +272,11 @@
     <h2 id="l_shop_title">Магазин</h2>
     <div id="shopbody"><div class="loading">…</div></div>
   </section>
+  <!-- V3.37.0: the partner tab — stats, personal link, withdrawal, FAQ -->
+  <section class="tab" id="tab-partner">
+    <h2 id="l_partner_title">Партнёрка</h2>
+    <div id="partnerbody"><div class="loading">…</div></div>
+  </section>
   <section class="tab" id="tab-profile">
     <h2 id="l_profile_title">Профиль</h2>
     <div id="profilebody"><div class="loading">…</div></div>
@@ -269,6 +290,7 @@
 <nav id="bottomnav">
   <button data-tab="characters" class="on"><span class="ico">👩</span><span class="lbl">Персонажи</span></button>
   <button data-tab="shop"><span class="ico">🛒</span><span class="lbl">Магазин</span></button>
+  <button data-tab="partner"><span class="ico">💰</span><span class="lbl">Партнёрка</span></button>
   <button data-tab="profile"><span class="ico">👤</span><span class="lbl">Профиль</span></button>
   <button data-tab="docs"><span class="ico">📜</span><span class="lbl">Документы</span></button>
 </nav>
@@ -322,6 +344,15 @@ const L = LANG === 'en' ? {
   streak: 'day streak', level: 'relationship level', selected_girl: 'selected girl',
   open_bot: 'Open the bot to chat 💬',
   docs_title: 'Documents & prices', checkword: 'code word',
+  partner_title: 'Partner program', invited_lbl: 'friends invited', earned_lbl: 'earned',
+  partner_sub: pct => `Invite friends and get ${pct}% of EVERY purchase they make — forever.`,
+  copy_link: 'COPY LINK', withdraw: 'Withdraw', withdraw_pending: 'Payout request pending',
+  min_note: min => `Minimum payout — ${min} ₽`, faq_t: 'Questions & answers',
+  copied: 'Link copied ✅', copy_fail: 'Could not copy — long-press the link above',
+  wd_ok: 'Payout request sent ✅ the owner confirms manually, usually within a day',
+  wd_below: min => `Not there yet — minimum is ${min} ₽`,
+  wd_pending: 'You already have a pending payout request',
+  wd_fail: 'Something went wrong — try later',
   privacy: 'Privacy policy', agreement: 'User agreement', tariffs: 'Prices & tariffs', support: 'Support',
   err_auth: 'Could not confirm your Telegram account.<br>Open this app from the bot’s profile.',
   buy: 'Buy', auth_short: 'Open this app from Telegram',
@@ -349,6 +380,15 @@ const L = LANG === 'en' ? {
   streak: 'дней подряд', level: 'уровень отношений', selected_girl: 'выбранная девушка',
   open_bot: 'Открой бота, чтобы общаться 💬',
   docs_title: 'Документы и цены', checkword: 'кодовое слово',
+  partner_title: 'Партнёрка', invited_lbl: 'людей приведено', earned_lbl: 'заработано',
+  partner_sub: pct => `Приглашай друзей и получай ${pct}% с КАЖДОЙ их покупки — навсегда.`,
+  copy_link: 'СКОПИРОВАТЬ ССЫЛКУ', withdraw: 'Вывести деньги', withdraw_pending: 'Заявка на вывод',
+  min_note: min => `Минимум для вывода — ${min} ₽`, faq_t: 'Вопросы и ответы',
+  copied: 'Ссылка скопирована ✅', copy_fail: 'Не скопировалось — зажми ссылку выше',
+  wd_ok: 'Заявка на вывод создана ✅ владелец подтвердит вручную, обычно в течение суток',
+  wd_below: min => `Ещё не набралось — минимум ${min} ₽`,
+  wd_pending: 'У тебя уже есть заявка на рассмотрении',
+  wd_fail: 'Что-то пошло не так — попробуй позже',
   privacy: 'Политика конфиденциальности', agreement: 'Пользовательское соглашение', tariffs: 'Цены и тарифы', support: 'Поддержка',
   err_auth: 'Не удалось подтвердить твою учётную запись Telegram.<br>Открой приложение из профиля бота.',
   buy: 'Купить', auth_short: 'Открой приложение из Telegram',
@@ -370,13 +410,14 @@ const L = LANG === 'en' ? {
 
 document.getElementById('l_chars_title').textContent = L.chars_title;
 document.getElementById('l_shop_title').textContent = L.shop_title;
+document.getElementById('l_partner_title').textContent = L.partner_title;
 document.getElementById('l_profile_title').textContent = L.profile_title;
 document.getElementById('l_docs_title').textContent = L.docs_title;
 document.getElementById('l_loading').textContent = L.loading;
 document.getElementById('l_chars_hint').textContent = L.chars_hint;
 document.querySelectorAll('#bottomnav .lbl').forEach((el, i) => {
-  el.textContent = ['Персонажи','Магазин','Профиль','Документы'][i];
-  if (LANG === 'en') el.textContent = ['Characters','Shop','Profile','Documents'][i];
+  el.textContent = ['Персонажи','Магазин','Партнёрка','Профиль','Документы'][i];
+  if (LANG === 'en') el.textContent = ['Characters','Shop','Partner','Profile','Documents'][i];
 });
 
 function esc(s) {
@@ -809,6 +850,80 @@ async function loadShop() {
   }
 }
 
+// ── V3.37.0: partner tab — stats, copy link, withdrawal, FAQ ─────────────
+let PARTNER = null;
+
+async function loadPartner() {
+  try {
+    const r = await fetch('/webapp/api/partner?init_data=' + encodeURIComponent(tg.initData || ''));
+    if (r.status === 401) {
+      document.getElementById('partnerbody').innerHTML = `<div class="err">${L.err_auth}</div>`;
+      return;
+    }
+    const j = await r.json();
+    if (!j.ok) return;
+    PARTNER = j.partner;
+    renderPartner();
+  } catch (e) {
+    document.getElementById('partnerbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+function renderPartner() {
+  const p = PARTNER;
+  if (!p) return;
+  const canWithdraw = p.balance_rub >= p.min_payout_rub && !p.pending_payout;
+  const withdrawBtn = p.pending_payout
+    ? `<button class="cta" disabled>${esc(L.withdraw_pending)}</button>`
+    : `<button class="cta" id="pWithdraw" ${canWithdraw ? '' : 'disabled'}>${esc(L.withdraw)} · ${esc(p.balance_rub)} ₽</button>`;
+  const faq = (p.faq || []).map(f =>
+    `<details class="doc"><summary>❓ ${esc(f.q)}</summary><div class="txt">${esc(f.a)}</div></details>`).join('');
+  document.getElementById('partnerbody').innerHTML = `
+    <div class="note" style="margin-top:0;text-align:left;font-size:13px">${esc(L.partner_sub(p.pct))}</div>
+    <div class="pgrid" style="margin-top:12px">
+      <div class="pbox"><div class="k">${esc(L.invited_lbl)}</div><div class="v">${esc(p.invited)}</div></div>
+      <div class="pbox"><div class="k">${esc(L.earned_lbl)}</div><div class="v">${esc(p.earned_rub)} ₽</div></div>
+    </div>
+    <button class="cta" id="pCopy">${esc(L.copy_link)}</button>
+    ${withdrawBtn}
+    <div class="note">${esc(L.min_note(p.min_payout_rub))}</div>
+    <div class="plink" id="pLink">${esc(p.link || '—')}</div>
+    <div class="faq-title">${esc(L.faq_t)}</div>
+    ${faq}`;
+  const copyBtn = document.getElementById('pCopy');
+  if (copyBtn) copyBtn.addEventListener('click', () => {
+    const link = (document.getElementById('pLink').textContent || '').trim();
+    if (!link || link === '—') { toast(L.copy_fail); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(() => toast(L.copied), () => toast(L.copy_fail));
+    } else {
+      try { tg.showAlert(link); } catch (e) { toast(L.copy_fail); }
+    }
+  });
+  const wdBtn = document.getElementById('pWithdraw');
+  if (wdBtn) wdBtn.addEventListener('click', withdrawPartner);
+}
+
+async function withdrawPartner() {
+  const btn = document.getElementById('pWithdraw');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/webapp/api/partner/withdraw?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    if (r.status === 401) { toast(L.auth_short); if (btn) btn.disabled = false; return; }
+    if (r.status === 409) { toast(L.wd_pending); if (btn) btn.disabled = false; return; }
+    if (r.status === 400) { toast(L.wd_below(PARTNER.min_payout_rub)); if (btn) btn.disabled = false; return; }
+    const j = await r.json();
+    if (!j.ok) { toast(L.wd_fail); if (btn) btn.disabled = false; return; }
+    toast(L.wd_ok);
+    loadPartner();
+  } catch (e) {
+    toast(L.wd_fail);
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ── profile ───────────────────────────────────────────────────────────────
 async function loadMe() {
   const chip = document.getElementById('userchip');
@@ -884,6 +999,7 @@ document.getElementById('wizBack').addEventListener('click', () => {
 loadMe();
 loadCharacters();
 loadShop();
+loadPartner();
 loadDocs();
 </script>
 </body>

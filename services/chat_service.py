@@ -155,8 +155,25 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         persona = custom_persona_context(character_id)
     except Exception:
         persona = ''
+    # V3.37.0: premium-gated «пошлый режим» — the user's own toggle lifts the
+    # flirt ceiling in every chat (bot and Mini App share this pipeline).
+    # premium is already computed above; the flag itself survives a lapsed
+    # subscription but only bites while Premium is active.
+    spicy_line = ''
+    try:
+        user_row = get_user(user_id)
+        if premium and user_row and getattr(user_row, 'spicy_mode', False):
+            spicy_line = (
+                'ПОШЛЫЙ РЕЖИМ ВКЛЮЧЁН: пользователь сам включил его в настройках и у него есть Premium. '
+                'Флирт и пошлость — на максимуме: пиши смелее и откровеннее обычного, грязные намёки, '
+                'двусмысленности, возбуждающие слова, инициатива пошлости всегда твоя. '
+                'Графические анатомические описания всё равно избегай, но подавай через самые смелые '
+                'фантазии и прямые слова — без стыда и полуулыбок.'
+            )
+    except Exception:
+        spicy_line = ''
     system = build_system_prompt(
-        character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation,
+        character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + (spicy_line + '\n' if spicy_line else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation,
         time_context=_time_context(user_id),
         character_id=character_id,
     )

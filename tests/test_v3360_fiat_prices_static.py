@@ -18,7 +18,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION == '3.36.0'
+    assert VERSION in ('3.36.0', '3.37.0')
 
 
 def test_config_fiat_helpers():

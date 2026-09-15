@@ -111,8 +111,9 @@ def test_constructor_steps_cover_full_profile():
     ccs = importlib.import_module('services.custom_character_service')
     keys = [step['key'] for step in ccs.CONSTRUCTOR_STEPS]
     # V3.35.0: face/breast/waist/hips steps + shy/naughty temperaments.
+    # V3.37.0: 'style' first — realistic vs anime art direction.
     assert keys == [
-        'age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes',
+        'style', 'age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes',
         'temperament', 'profession', 'role',
     ]
     values = [value for step in ccs.CONSTRUCTOR_STEPS for value, _, _ in step['options']]
@@ -166,7 +167,8 @@ def test_constructor_wizard_and_payment_wired():
 
 def test_chat_service_injects_custom_persona():
     assert 'custom_persona_context(character_id)' in CHAT
-    assert "(persona + '\\n' if persona else '') + behavior" in CHAT
+    # V3.37.0: the spicy lift joins the persona segment in the same composition.
+    assert "(persona + '\\n' if persona else '') + (spicy_line" in CHAT
 
 
 def test_custom_character_model_and_cleanup():

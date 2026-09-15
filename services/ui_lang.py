@@ -43,6 +43,10 @@ KB_LABELS = {
     'settings': ('⚙️ Настройки', '⚙️ Settings'),
     'characters': ('👩 Персонажи', '👩 Characters'),
     'invite': ('🔗 Пригласить', '🔗 Invite'),
+    # V3.37.0: the money affiliate program — the «пригласить» button grew up
+    # into a full partner screen (stats, payouts, FAQ). Kept as its own key so
+    # old keyboards still resolve; MAIN_KB_ROWS shows partner instead of invite.
+    'partner': ('💰 Партнёрка', '💰 Partner program'),
     'custom': ('🎨 Мой персонаж', '🎨 My character'),
     'support': ('💖 Поддержать проект', '💖 Support the project'),
     # V3.32.0: Platega/bank compliance — legal documents must be reachable
@@ -61,7 +65,9 @@ MAIN_KB_ROWS = [
     ['features', 'premium'],
     ['alarm', 'profile'],
     ['settings', 'characters'],
-    ['invite', 'custom'],
+    # V3.37.0: the partner program button — stats + payouts, one tap away.
+    ['partner'],
+    ['custom'],
     # V3.32.0: permanent legal access for the payment partner's bank review —
     # opens the inline menu with privacy policy / user agreement / tariffs /
     # support (see legal_button in main.py).

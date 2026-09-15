@@ -16,7 +16,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.35.0', '3.36.0')
+    assert VERSION in ('3.35.0', '3.36.0', '3.37.0')
 
 
 # ── constructor steps: 11 keys in wizard order ─────────────────────────────
@@ -24,8 +24,9 @@ def test_version_bumped():
 def test_constructor_steps_extended():
     assert "CONSTRUCTOR_STEPS: list[dict] = [" in CCS
     keys = re.findall(r"'key': '(\w+)'", CCS)
-    assert keys[:11] == [
-        'age', 'face', 'body', 'breast', 'waist', 'hips',
+    # V3.37.0: 'style' is the new first step (realistic vs anime).
+    assert keys[:12] == [
+        'style', 'age', 'face', 'body', 'breast', 'waist', 'hips',
         'hair', 'eyes', 'temperament', 'profession', 'role',
     ]
 
@@ -68,9 +69,9 @@ def test_prompt_key_tuples_cover_new_steps():
     avatar = CCS[CCS.index('def build_avatar_prompt('):CCS.index('# V3.35.0: the owner')]
     assert "('age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes')" in avatar
     persona = CCS[CCS.index('def build_persona_context('):CCS.index('# ── DB operations')]
-    assert "('age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes', 'temperament', 'profession')" in persona
+    assert "('style', 'age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes', 'temperament', 'profession')" in persona
     appearance = CCS[CCS.index('def custom_appearance_descriptors('):]
-    assert "('age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes')" in appearance
+    assert "('style', 'age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes')" in appearance
 
 
 def test_english_labels_for_app_wizard():

@@ -355,6 +355,15 @@ FIRST_START_BONUS_CREDITS = int(os.getenv("FIRST_START_BONUS_CREDITS", "2"))
 # photo routes on day one. 0 disables. Days, not stars.
 FIRST_START_PREMIUM_TRIAL_DAYS = int(os.getenv("FIRST_START_PREMIUM_TRIAL_DAYS", "0"))
 
+# V3.37.0: the affiliate (partner) program — money commission with every
+# purchase a referred user ever makes, paid out on request. The percent and
+# the payout threshold are env-tunable so the owner can run promos.
+PARTNER_ENABLED = os.getenv("PARTNER_ENABLED", "1") == "1"
+REFERRAL_COMMISSION_PCT = float(os.getenv("REFERRAL_COMMISSION_PCT", "40"))
+PARTNER_MIN_PAYOUT_RUB = int(os.getenv("PARTNER_MIN_PAYOUT_RUB", "500"))
+# Shown in the partner FAQ — the payout rails the owner actually supports.
+PARTNER_PAYOUT_METHODS = os.getenv("PARTNER_PAYOUT_METHODS", "карта РФ, СБП, крипта (USDT)")
+
 # Video animation guardrails.
 VIDEO_PROGRESS_NOTIFY_SECONDS = float(os.getenv("VIDEO_PROGRESS_NOTIFY_SECONDS", "45"))
 VIDEO_STATUS_TEXT = os.getenv("VIDEO_STATUS_TEXT", "🎬 видео создаётся, обычно это занимает 1–3 минуты. я напишу, как будет готово — или верну Stars, если что-то пойдёт не так.")

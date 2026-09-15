@@ -1555,9 +1555,9 @@ async def start(message: types.Message, command: CommandObject):
         me = await message.bot.get_me()
         ref_link = referral_link(me.username, message.from_user.id)
         if lang == EN:
-            ref_hint = f'\n\n🔗 your invite link for friends:\n{ref_link}\nfor every friend who confirms 18+ you get {REFERRAL_REFERRER_CREDITS} and your friend gets {REFERRAL_INVITEE_CREDITS} photo credits.'
+            ref_hint = f'\n\n🔗 your invite link for friends:\n{ref_link}\nfor every friend who confirms 18+ you get {REFERRAL_REFERRER_CREDITS} and your friend gets {REFERRAL_INVITEE_CREDITS} photo credits. And from V3.37.0 — a money commission from every purchase they make: /partner'
         else:
-            ref_hint = f'\n\n🔗 твоя ссылка для приглашения друзей:\n{ref_link}\nза каждого друга, который подтвердит 18+, ты получишь {REFERRAL_REFERRER_CREDITS}, а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов.'
+            ref_hint = f'\n\n🔗 твоя ссылка для приглашения друзей:\n{ref_link}\nза каждого друга, который подтвердит 18+, ты получишь {REFERRAL_REFERRER_CREDITS}, а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов. а ещё с v3.37 — денежный процент с каждой его покупки: /partner'
     except Exception:
         ref_hint = '\n\ninvite friends with /referral — bonuses for both of you.' if lang == EN else '\n\nприглашай друзей командой /referral — бонусы за обоих.'
     if lang == EN:
@@ -2853,6 +2853,7 @@ async def settings(message: types.Message):
     profile = get_profile(user.id, CHARACTER_ID) if user else None
     language = {'ru':'Русский','en':'English','zh':'中文','es':'Español','de':'Deutsch','fr':'Français','it':'Italiano','pt':'Português','uk':'Українська','ja':'日本語','ko':'한국어'}.get(getattr(profile, 'preferred_language', 'auto'), getattr(profile, 'preferred_language', 'Авто') if profile else 'Авто')
     rituals_on = user.notify_rituals if user.notify_rituals is not None else True
+    spicy_on = bool(getattr(user, 'spicy_mode', False)) and is_premium(message.from_user.id)
     lang = user_lang(message.from_user.id)
     if lang == EN:
         text = (
@@ -2862,12 +2863,14 @@ async def settings(message: types.Message):
             f'Voice anon mode: {"on" if user.voice_anon_mode else "off"}\n'
             f'Proactive messages: {"on" if user.proactive_enabled else "off"}\n'
             f'Morning/evening rituals: {"on" if rituals_on else "off"}\n'
+            f'Spicy mode (Premium): {"on 🔥" if spicy_on else "off"}\n'
             f'Premium: {"active" if is_premium(message.from_user.id) else "no"}\n'
             f'Photo credits: {credits}\n18+: {"confirmed" if is_adult_confirmed(message.from_user.id) else "not confirmed"}\n\n'
             'She picks up your communication style and familiar expressions on her own over time.\n'
             '/voice · /voice_anon · /notifications · /timezone'
         )
         button = '🔔 Rituals: disable' if rituals_on else '🔔 Rituals: enable'
+        spicy_button = '🌶 Spicy mode: turn off' if spicy_on else '🌶 Spicy mode: turn on (Premium)'
     else:
         text = (
             f'Настройки персонажа\n\nЧасовой пояс: {user.timezone}\n'
@@ -2876,14 +2879,18 @@ async def settings(message: types.Message):
             f'Голосовой аноним-режим: {"вкл" if user.voice_anon_mode else "выкл"}\n'
             f'Инициативные сообщения: {"вкл" if user.proactive_enabled else "выкл"}\n'
             f'Утренние/вечерние ритуалы: {"вкл" if rituals_on else "выкл"}\n'
+            f'Пошлый режим (Premium): {"вкл 🔥" if spicy_on else "выкл"}\n'
             f'Premium: {"активен" if is_premium(message.from_user.id) else "нет"}\n'
             f'Фото-кредиты: {credits}\n18+: {"подтверждено" if is_adult_confirmed(message.from_user.id) else "не подтверждено"}\n\n'
             'Стиль общения и знакомые выражения персонаж постепенно подхватывает сам.\n'
             '/voice · /voice_anon · /notifications · /timezone'
         )
         button = '🔔 Ритуалы: выключить' if rituals_on else '🔔 Ритуалы: включить'
+        spicy_button = '🌶 Пошлый режим: выключить' if spicy_on else '🌶 Пошлый режим: включить (Premium)'
     rows = [
         [InlineKeyboardButton(text=button, callback_data='toggle:rituals')],
+        # V3.37.0: the premium-gated spicy-mode switch (see toggle:spicy).
+        [InlineKeyboardButton(text=spicy_button, callback_data='toggle:spicy')],
         # V3.31.4: real one-tap URL button to support the project (CloudTips).
         [donation_service.donation_button(lang)],
     ]
@@ -2905,26 +2912,191 @@ async def profile_cmd(message: types.Message):
     await message.answer(format_profile_summary(summary))
 
 
-@dp.message(Command('referral', 'invite'))
+@dp.message(Command('referral', 'invite', 'partner'))
 async def referral_cmd(message: types.Message):
-    """Show the user's personal referral link and current invite stats."""
+    """V3.37.0: the partner screen — stats, personal link, withdrawal, FAQ.
+
+    The «💰 Партнёрка» button lands here: invited count + earned rubles + the
+    live balance, one tap to copy the link, one tap to request a payout.
+    """
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
-    count = referral_count(message.from_user.id)
+    from services import partner_service
+    from config import PARTNER_MIN_PAYOUT_RUB, PARTNER_PAYOUT_METHODS, REFERRAL_COMMISSION_PCT
+    user = get_user(message.from_user.id)
+    stats = partner_service.partner_stats(user.id) if user else {'invited': 0, 'earned_rub': 0.0, 'balance_rub': 0.0, 'pending_payout_id': None}
     try:
         me = await bot.get_me()
         link = referral_link(me.username or 'bot', message.from_user.id)
     except Exception:
         await message.answer('не удалось получить ссылку прямо сейчас, попробуй позже.')
         return
-    from config import REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS
-    text = (
-        '🎁 поделись своим приглашением и получай бонусы\n\n'
-        f'твоя ссылка: {link}\n\n'
-        f'приятель, который перейдёт по ней и впервые запустит бота, получит {REFERRAL_INVITEE_CREDITS} фото-кредитов, а ты — {REFERRAL_REFERRER_CREDITS}.\n'
-        f'уже приглашено: {count}\n\n'
-        'отправь ссылку другу в личном сообщении, в свой канал или в сторис — чем больше переходов, тем больше кредитов.'
+    lang = user_lang(message.from_user.id)
+    pct = int(REFERRAL_COMMISSION_PCT) if float(REFERRAL_COMMISSION_PCT).is_integer() else REFERRAL_COMMISSION_PCT
+    if lang == EN:
+        text = (
+            f'💰 AnnaBot Partner program\n\n'
+            f'Invite friends and earn {pct}% of EVERY purchase they make — forever, not just once.\n\n'
+            f'👥 friends invited: {stats["invited"]}\n'
+            f'💵 total earned: {stats["earned_rub"]:g} ₽\n'
+            f'💳 available to withdraw: {stats["balance_rub"]:g} ₽\n\n'
+            f'🔗 your link:\n{link}\n\n'
+            f'A friend who opens it and starts the bot gets {REFERRAL_INVITEE_CREDITS} photo credits, you get {REFERRAL_REFERRER_CREDITS}. '
+            f'And afterwards your {pct}% lands with every purchase they make.\n'
+            f'Minimum payout — {PARTNER_MIN_PAYOUT_RUB} ₽.'
+        )
+        withdraw_label = f'💸 Withdraw {stats["balance_rub"]:g} ₽'
+    else:
+        text = (
+            f'💰 Партнёрка AnnaBot\n\n'
+            f'Приглашай друзей и получай {pct}% с КАЖДОЙ их покупки — навсегда, а не один раз.\n\n'
+            f'👥 приведено друзей: {stats["invited"]}\n'
+            f'💵 заработано всего: {stats["earned_rub"]:g} ₽\n'
+            f'💳 доступно к выводу: {stats["balance_rub"]:g} ₽\n\n'
+            f'🔗 твоя ссылка:\n{link}\n\n'
+            f'друг, который перейдёт по ней и впервые запустит бота, получит {REFERRAL_INVITEE_CREDITS} фото-кредита, а ты — {REFERRAL_REFERRER_CREDITS}. '
+            f'а дальше твои {pct}% капают с каждой его покупки.\n'
+            f'минимум для вывода — {PARTNER_MIN_PAYOUT_RUB} ₽.'
+        )
+        withdraw_label = f'💸 Вывести {stats["balance_rub"]:g} ₽'
+    rows = [
+        [InlineKeyboardButton(text=withdraw_label, callback_data='partner:withdraw')],
+        [InlineKeyboardButton(text='❓ ' + ('What is it?' if lang == EN else 'Что это такое?'), callback_data='partner:faq:0')],
+        [InlineKeyboardButton(text='❓ ' + ('How does it work?' if lang == EN else 'Как это работает?'), callback_data='partner:faq:1')],
+        [InlineKeyboardButton(text='❓ ' + ('How do I get paid?' if lang == EN else 'Как мне вывести деньги?'), callback_data='partner:faq:2')],
+        [InlineKeyboardButton(text='❓ ' + ('Is the payout one-time?' if lang == EN else 'Выплата разовая?'), callback_data='partner:faq:3')],
+        [InlineKeyboardButton(text='❓ ' + ('More questions' if lang == EN else 'У меня остались вопросы'), callback_data='partner:faq:4')],
+    ]
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), disable_web_page_preview=True)
+
+
+# V3.37.0: partner FAQ copy — question buttons above, answers delivered as
+# short follow-up messages (inline alerts cap at 200 chars, too small).
+_PARTNER_FAQ_RU = [
+    'Партнёрская программа: ты получаешь {pct}% от всех покупок приглашённых тобой друзей. Это бессрочная программа — комиссия капает с каждой их покупки навсегда.',
+    '1. Поделись своей ссылкой из экрана «💰 Партнёрка». 2. Друг переходит, запускает бота и что-то покупает. 3. Тебе автоматически капает {pct}% от каждой его покупки — с премиума, фото, видео, всего.',
+    'Набери {min} ₽ и нажми «💸 Вывести». Выплата — на {methods}. Владелец подтверждает вручную, обычно в течение суток.',
+    'Нет! Это не разовая выплата, а постоянный пассивный доход: {pct}% с каждой покупки твоих рефералов капают всегда.',
+    'Напиши /support прямо в этом боте — сообщение попадёт владельцу, он ответит лично.',
+]
+_PARTNER_FAQ_EN = [
+    'The affiliate program: you earn {pct}% of every purchase your invited friends make. It runs forever — commission lands with each of their purchases, permanently.',
+    '1. Share your link from the «💰 Partner program» screen. 2. Your friend opens it, starts the bot and buys something. 3. You automatically get {pct}% of every purchase they make — premium, photos, video, everything.',
+    'Reach {min} ₽ and tap «💸 Withdraw». Payouts go to {methods}. The owner confirms manually, usually within a day.',
+    'No! This is not a one-time reward — it is a permanent passive income: {pct}% of every purchase your referrals make, forever.',
+    'Write /support right here in the bot — the message reaches the owner and he replies personally.',
+]
+
+
+@dp.callback_query(F.data.startswith('partner:faq:'))
+async def partner_faq(cq: types.CallbackQuery):
+    from config import PARTNER_MIN_PAYOUT_RUB, PARTNER_PAYOUT_METHODS, REFERRAL_COMMISSION_PCT
+    try:
+        idx = int(cq.data.rsplit(':', 1)[1])
+    except (ValueError, IndexError):
+        await cq.answer('…')
+        return
+    lang = user_lang(cq.from_user.id)
+    table = _PARTNER_FAQ_EN if lang == EN else _PARTNER_FAQ_RU
+    if not 0 <= idx < len(table):
+        await cq.answer('…')
+        return
+    pct = int(REFERRAL_COMMISSION_PCT) if float(REFERRAL_COMMISSION_PCT).is_integer() else REFERRAL_COMMISSION_PCT
+    await cq.answer('💌')
+    await cq.message.answer(table[idx].format(pct=pct, min=PARTNER_MIN_PAYOUT_RUB, methods=PARTNER_PAYOUT_METHODS))
+
+
+@dp.callback_query(F.data == 'partner:withdraw')
+async def partner_withdraw(cq: types.CallbackQuery):
+    """V3.37.0: create a pending payout when the balance allows it."""
+    from services import partner_service
+    from config import PARTNER_MIN_PAYOUT_RUB
+    result = partner_service.request_payout(cq.from_user.id)
+    lang = user_lang(cq.from_user.id)
+    if not result.get('ok'):
+        reason = result.get('reason')
+        if reason == 'below_min':
+            await cq.answer(
+                (f'до вывода не хватает: на балансе {result.get("balance_rub", 0):g} ₽, минимум — {PARTNER_MIN_PAYOUT_RUB} ₽.'
+                 if lang != EN else
+                 f'not there yet: balance is {result.get("balance_rub", 0):g} ₽, minimum — {PARTNER_MIN_PAYOUT_RUB} ₽.'),
+                show_alert=True,
+            )
+        elif reason == 'pending_exists':
+            await cq.answer('заявка уже на рассмотрении 💌' if lang != EN else 'a payout request is already pending 💌', show_alert=True)
+        else:
+            await cq.answer('не получилось, попробуй позже' if lang != EN else 'failed, try again later', show_alert=True)
+        return
+    await cq.answer('заявка создана ✅')
+    await cq.message.answer(
+        f'💸 заявка на вывод {result["amount_rub"]:g} ₽ создана. владелец подтвердит и переведёт вручную — обычно в течение суток.'
+        if lang != EN else
+        f'💸 payout request for {result["amount_rub"]:g} ₽ created. The owner confirms and sends it manually — usually within a day.'
     )
-    await message.answer(text)
+    # The owner pays by hand — ping every admin with confirm/reject buttons.
+    for admin_id in ADMIN_TELEGRAM_IDS:
+        try:
+            await bot.send_message(
+                admin_id,
+                f'💸 Заявка на вывод партнёрских\nuser: {cq.from_user.id}\nname: {cq.from_user.first_name or "—"}\namount: {result["amount_rub"]:g} ₽\npayout_id: {result["payout_id"]}',
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text='✅ Выплачено', callback_data=f'payout:done:{result["payout_id"]}'),
+                    InlineKeyboardButton(text='❌ Отклонить', callback_data=f'payout:cancel:{result["payout_id"]}'),
+                ]]),
+            )
+        except Exception:
+            logger.exception('payout admin notify failed admin=%s', admin_id)
+
+
+@dp.callback_query(F.data.startswith('payout:done:'))
+async def payout_done(cq: types.CallbackQuery):
+    """V3.37.0: owner marks a partner payout as sent."""
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer('только для владельца')
+        return
+    from services import partner_service
+    try:
+        payout_id = int(cq.data.rsplit(':', 1)[1])
+    except (ValueError, IndexError):
+        await cq.answer('bad id')
+        return
+    payout = partner_service.settle_payout(payout_id, 'paid')
+    if not payout:
+        await cq.answer('уже обработана')
+        return
+    await cq.answer('выплачено ✅')
+    try:
+        await bot.send_message(
+            payout['telegram_id'],
+            f'💸 выплата {payout["amount_rub"]:g} ₽ отправлена! проверь реквизиты. спасибо, что приводишь друзей 💜',
+        )
+    except Exception:
+        logger.exception('payout user notify failed tgid=%s', payout['telegram_id'])
+
+
+@dp.callback_query(F.data.startswith('payout:cancel:'))
+async def payout_cancel(cq: types.CallbackQuery):
+    """V3.37.0: owner rejects a payout — the balance refunds automatically."""
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer('только для владельца')
+        return
+    from services import partner_service
+    try:
+        payout_id = int(cq.data.rsplit(':', 1)[1])
+    except (ValueError, IndexError):
+        await cq.answer('bad id')
+        return
+    payout = partner_service.settle_payout(payout_id, 'cancelled')
+    if not payout:
+        await cq.answer('уже обработана')
+        return
+    await cq.answer('отклонено')
+    try:
+        await bot.send_message(
+            payout['telegram_id'],
+            f'заявка на вывод {payout["amount_rub"]:g} ₽ отклонена — деньги остались на балансе партнёрки. напиши /support, если вопрос.',
+        )
+    except Exception:
+        logger.exception('payout cancel notify failed tgid=%s', payout['telegram_id'])
 
 
 @dp.message(Command('contest'))
@@ -5068,6 +5240,13 @@ async def referral_button(message: types.Message):
     await referral_cmd(message)
 
 
+@dp.message(F.text.in_(kb_pair('partner')))
+async def partner_button(message: types.Message):
+    """V3.37.0: the «💰 Партнёрка» reply-keyboard row — stats + payouts."""
+    await referral_cmd(message)
+
+
+
 @dp.message(F.text == '🎭 Образы')
 async def looks_button_legacy(message: types.Message):
     # Old Telegram reply keyboards can remain cached after a deploy. The button is
@@ -5341,6 +5520,43 @@ async def toggle_rituals(cq: types.CallbackQuery):
     await cq.message.answer('утренние и вечерние сообщения: ' + ('вкл 😊' if new else 'выкл, буду писать только по делу'))
 
 
+@dp.callback_query(F.data == 'toggle:spicy')
+async def toggle_spicy(cq: types.CallbackQuery):
+    """V3.37.0: the premium-gated «пошлый режим» switch.
+
+    Enabling requires an active Premium; disabling is always allowed. The
+    flag survives a lapsed subscription but the chat gate re-checks Premium
+    on every message, so the mode simply sleeps until the next payment.
+    """
+    user = get_user(cq.from_user.id)
+    current = bool(getattr(user, 'spicy_mode', False)) if user else False
+    lang = user_lang(cq.from_user.id)
+    if not current and not is_premium(cq.from_user.id):
+        await cq.answer('нужен Premium ⭐' if lang != EN else 'Premium required ⭐', show_alert=True)
+        await cq.message.answer(
+            'пошлый режим — фишка Premium 🌶 включи Premium в «🚀 Премиум» — и переключатель заработает.'
+            if lang != EN else
+            'spicy mode is a Premium perk 🌶 grab Premium and the switch turns on.'
+        )
+        return
+    new = not current
+    update_user_settings(cq.from_user.id, spicy_mode=new)
+    await cq.answer('сохранила ❤️' if new else 'выключила')
+    if new:
+        await cq.message.answer(
+            'пошлый режим включён 🔥 теперь флирт горячее — она будет намёкать смелее и откровеннее. '
+            'выключить можно тут же в «⚙️ Настройки».'
+            if lang != EN else
+            'spicy mode is on 🔥 the flirting gets hotter and bolder. Switch it off anytime in «⚙️ Settings».'
+        )
+    else:
+        await cq.message.answer(
+            'пошлый режим выключен 🌙 флирт снова обычный.'
+            if lang != EN else
+            'spicy mode is off 🌙 back to regular flirting.'
+        )
+
+
 # V3.19.0: per-user cooldown for vision reactions to user photos.
 _photo_reaction_ts: dict[int, float] = {}
 
@@ -5591,7 +5807,9 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
                 short_bio=bio, status='active', card_photo_file_id=avatar_file_id,
             )
         else:
-            create_card(row.character_id, display_name, card_age, bio, '🎨', 'female')
+            # V3.37.0: anime personas get their own card emoji.
+            card_emoji = '🌸' if str(params.get('style', '')) == 'style_anime' else '🎨'
+            create_card(row.character_id, display_name, card_age, bio, card_emoji, 'female')
             update_card(row.character_id, status='active', card_photo_file_id=avatar_file_id)
     except Exception:
         logger.exception('constructor card registration failed user=%s', telegram_id)
@@ -6584,6 +6802,55 @@ async def _webapp_api_legal(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'legal': webapp_service.api_legal(request.query.get('lang', 'ru'))})
 
 
+async def _webapp_api_partner(request: web.Request) -> web.Response:
+    # V3.37.0: the «Партнёрка» tab — partner stats + the personal link + FAQ.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    payload = webapp_service.api_partner(uid, telegram_id)
+    try:
+        me = await bot.get_me()
+        payload['link'] = referral_link(me.username or 'bot', telegram_id)
+    except Exception:
+        logger.exception('partner link resolution failed user=%s', telegram_id)
+    return web.json_response({'ok': True, 'partner': payload})
+
+
+async def _webapp_api_partner_withdraw(request: web.Request) -> web.Response:
+    # V3.37.0: payout request from the Mini App — the same guarded flow the
+    # bot button uses (min balance, one pending request per user).
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    from services import partner_service
+    result = partner_service.request_payout(telegram_id)
+    if not result.get('ok'):
+        status = 409 if result.get('reason') == 'pending_exists' else 400
+        return web.json_response({'ok': False, 'error': result.get('reason', 'failed')}, status=status)
+    for admin_id in ADMIN_TELEGRAM_IDS:
+        try:
+            await bot.send_message(
+                admin_id,
+                f'💸 Заявка на вывод партнёрских (приложение)\nuser: {telegram_id}\namount: {result["amount_rub"]:g} ₽\npayout_id: {result["payout_id"]}',
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text='✅ Выплачено', callback_data=f'payout:done:{result["payout_id"]}'),
+                    InlineKeyboardButton(text='❌ Отклонить', callback_data=f'payout:cancel:{result["payout_id"]}'),
+                ]]),
+            )
+        except Exception:
+            logger.exception('webapp payout admin notify failed admin=%s', admin_id)
+    return web.json_response({'ok': True, 'amount_rub': result['amount_rub']})
+
+
 async def _webapp_photo(request: web.Request) -> web.Response:
     photo = webapp_service.character_photo(request.match_info['character_id'])
     if not photo:
@@ -6847,6 +7114,9 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/characters', _webapp_api_characters)
     app.router.add_get('/webapp/api/shop', _webapp_api_shop)
     app.router.add_get('/webapp/api/legal', _webapp_api_legal)
+    # V3.37.0: the partner tab — stats/link and the payout request.
+    app.router.add_get('/webapp/api/partner', _webapp_api_partner)
+    app.router.add_post('/webapp/api/partner/withdraw', _webapp_api_partner_withdraw)
     app.router.add_get('/webapp/photo/{character_id}', _webapp_photo)
     # V3.34.0: storefront actions — Stars purchases and character selection.
     app.router.add_post('/webapp/api/invoice', _webapp_api_invoice)
@@ -6885,6 +7155,7 @@ async def main():
         types.BotCommand(command='voice_anon', description='Анонимный голосовой режим'),
         types.BotCommand(command='profile', description='Прогресс, стрик, достижения'),
         types.BotCommand(command='referral', description='🔗 Моя ссылка для приглашения'),
+        types.BotCommand(command='partner', description='💰 Партнёрка — 40% с покупок друзей'),
         types.BotCommand(command='contest', description='🏆 Гонка пригласивших'),
         types.BotCommand(command='notifications', description='Инициативные сообщения'),
         types.BotCommand(command='wake', description='Будильник: /wake 08:00'),

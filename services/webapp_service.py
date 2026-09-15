@@ -343,6 +343,65 @@ def api_legal(lang: str = 'ru') -> dict:
     }
 
 
+def api_partner(user_id: int, telegram_id: int) -> dict:
+    """V3.37.0: the «Партнёрка» tab payload — live stats, the personal link
+    and the FAQ copy, all in the caller's interface language."""
+    from services import partner_service
+    from config import PARTNER_MIN_PAYOUT_RUB, PARTNER_PAYOUT_METHODS, REFERRAL_COMMISSION_PCT
+    lang = user_lang(telegram_id)
+    en = lang == EN
+    stats = partner_service.partner_stats(user_id)
+    pct = int(REFERRAL_COMMISSION_PCT) if float(REFERRAL_COMMISSION_PCT).is_integer() else REFERRAL_COMMISSION_PCT
+    faq = [
+        {
+            'q': 'What is it?' if en else 'Что это такое?',
+            'a': (f'The affiliate program: you earn {pct}% of every purchase your invited friends make. '
+                  'It runs forever — commission lands with each of their purchases, permanently.') if en else
+                 (f'Партнёрская программа: ты получаешь {pct}% от всех покупок приглашённых тобой друзей. '
+                  'Это бессрочная программа — комиссия капает с каждой их покупки навсегда.'),
+        },
+        {
+            'q': 'How does it work?' if en else 'Как это работает?',
+            'a': ('1. Share your link below. 2. Your friend opens it, starts the bot and buys something. '
+                  f'3. You automatically get {pct}% of every purchase they make — premium, photos, video, everything.') if en else
+                 ('1. Поделись своей ссылкой ниже. 2. Друг переходит, запускает бота и что-то покупает. '
+                  f'3. Тебе автоматически капает {pct}% от каждой его покупки — с премиума, фото, видео, всего.'),
+        },
+        {
+            'q': 'How do I get paid?' if en else 'Как мне вывести деньги?',
+            'a': (f'Reach {PARTNER_MIN_PAYOUT_RUB} ₽ and tap «Withdraw». Payouts go to {PARTNER_PAYOUT_METHODS}. '
+                  'The owner confirms manually, usually within a day.') if en else
+                 (f'Набери {PARTNER_MIN_PAYOUT_RUB} ₽ и нажми «Вывести деньги». Выплата — на {PARTNER_PAYOUT_METHODS}. '
+                  'Владелец подтверждает вручную, обычно в течение суток.'),
+        },
+        {
+            'q': 'Is the payout one-time?' if en else 'Выплата разовая?',
+            'a': (f'No! This is not a one-time reward — it is a permanent passive income: {pct}% of every '
+                  'purchase your referrals make, forever.') if en else
+                 (f'Нет! Это не разовая выплата, а постоянный пассивный доход: {pct}% с каждой покупки '
+                  'твоих рефералов капают всегда.'),
+        },
+        {
+            'q': 'More questions' if en else 'У меня остались вопросы',
+            'a': ('Write /support right in the bot — the message reaches the owner and he replies '
+                  'personally.') if en else
+                 ('Напиши /support прямо в боте — сообщение попадёт владельцу, он ответит лично.'),
+        },
+    ]
+    return {
+        'enabled': True,
+        'pct': pct,
+        'invited': stats['invited'],
+        'earned_rub': stats['earned_rub'],
+        'balance_rub': stats['balance_rub'],
+        'pending_payout': bool(stats['pending_payout_id']),
+        'min_payout_rub': PARTNER_MIN_PAYOUT_RUB,
+        'payout_methods': PARTNER_PAYOUT_METHODS,
+        'link': None,  # filled by the caller — only the bot knows its username
+        'faq': faq,
+    }
+
+
 def character_photo(character_id: str) -> tuple[bytes, str] | None:
     """(bytes, content_type) of a storefront photo, or None if unavailable.
 

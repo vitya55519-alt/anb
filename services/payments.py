@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta, timezone
+import logging
 from sqlalchemy import select
 from services.db import SessionLocal
 from models.app_models import Subscription, StarTransaction, User
 from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS
 from services.access_service import is_premium
+
+logger = logging.getLogger(__name__)
 
 PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"premium_week":PREMIUM_WEEKLY_STARS,"video":VIDEO_COST_STARS}
 
@@ -39,6 +42,17 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
         elif product in {"photo","custom_photo"}:
             user.photo_credits=(user.photo_credits or 0)+1
         s.commit()
+        payer_user_id = user.id
+    # V3.37.0: after the purchase commits, credit the payer's referrer in the
+    # partner ledger (money commission). Outside the payment transaction on
+    # purpose — a ledger failure must never roll back the user's purchase.
+    try:
+        from services import partner_service
+        partner_service.accrue_commission(
+            payer_user_id, product, stars, charge_id, provider=provider, provider_payload=provider_payload,
+        )
+    except Exception:
+        logger.exception('partner commission accrual failed user=%s charge=%s', telegram_id, charge_id)
 
 def consume_photo_credit(telegram_id:int)->bool:
     with SessionLocal() as s:

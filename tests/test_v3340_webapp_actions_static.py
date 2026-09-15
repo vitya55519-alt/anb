@@ -12,7 +12,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0')
+    assert VERSION in ('3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0')
 
 
 def test_invoice_products_declared():
@@ -113,6 +113,9 @@ def test_no_unescaped_backend_strings_in_templates():
         'credit.stars', 'i.stars', 'lvlPct', 'WIZ.stars', 'WIZ.rub', 'WIZ.usd',
         's.free_tier.messages_per_day', 's.free_tier.photos_level_1_2',
         's.free_tier.photos_level_3_6',
+        # V3.37.0: partner tab percent — always numeric from config, and the
+        # interpolated L-string is esc()-wrapped at the render site anyway.
+        'pct', 'min',
     }
     # d.check_word is the lone backend value outside esc(): it flows into
     # textContent (checkword line), not innerHTML, so no parsing happens.
@@ -130,6 +133,11 @@ def test_no_unescaped_backend_strings_in_templates():
             "WIZ.name ? '' : 'disabled'",
             # V3.36.0: the fiat formatter esc()-wraps its own fields internally
             'fiat(credit)', 'fiat(i)', 'fiat(p)',
+            # V3.37.0: partner withdraw button state — a boolean ternary that
+            # can only ever be '' or 'disabled', never backend data.
+            "canWithdraw ? '' : 'disabled'",
+            # V3.37.0: locally-built HTML fragments (every inner field esc()'d).
+            'withdrawBtn', 'faq',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         raise AssertionError(f'unescaped template value: {expr!r} in INDEX')

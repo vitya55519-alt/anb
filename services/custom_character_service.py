@@ -31,6 +31,15 @@ def custom_character_id(telegram_id: int) -> str:
 # English descriptor used inside the generation prompt).
 CONSTRUCTOR_STEPS: list[dict] = [
     {
+        # V3.37.0: art style first — it decides the whole visual identity of
+        # the persona (photorealistic vs anime) for the avatar and photos.
+        'key': 'style', 'title': 'Какой у неё стиль?',
+        'options': [
+            ('style_real', 'Реалистичная', 'photorealistic'),
+            ('style_anime', 'Аниме', 'anime style, 2D cel-shaded illustration, detailed anime background'),
+        ],
+    },
+    {
         'key': 'age', 'title': 'Сколько ей лет?',
         'options': [
             ('age_young', '18–22', 'early twenties'),
@@ -157,6 +166,7 @@ PARAM_TITLES: dict[str, str] = {step['key']: step['title'].rstrip('?') for step 
 def _EN_LABELS_FOR_STEP(step: dict) -> dict[str, str]:
     """EN button labels per option value (V3.35.0 app wizard)."""
     table = {
+        'style_real': 'Realistic', 'style_anime': 'Anime',
         'age_young': '18–22', 'age_mid': '23–27', 'age_mature': '28–33', 'age_confident': '34+',
         'face_oval': 'Oval, classic', 'face_round': 'Round, cute', 'face_sharp': 'Sharp, model-like', 'face_soft': 'Soft, feminine',
         'body_slim': 'Slim', 'body_sport': 'Athletic', 'body_curvy': 'Curvy', 'body_fit': 'Gym girl',
@@ -185,6 +195,7 @@ OPTION_LABELS_EN: dict[str, str] = {
 
 # V3.35.0: EN titles of the wizard steps (RU titles live on the steps).
 STEP_TITLES_EN: dict[str, str] = {
+    'style': 'Her style?',
     'age': 'How old is she?',
     'face': 'What does her face look like?',
     'body': 'What is her figure?',
@@ -209,10 +220,18 @@ def step_index(key: str) -> int:
 def build_avatar_prompt(params: dict, face_swap: bool = False) -> str:
     """English Seedream/Gemini prompt assembled from constructor params."""
     name = str(params.get('name') or 'the woman')
-    parts = [
-        'Photorealistic portrait of an adult woman in a cozy warm evening setting, '
-        'soft golden light, shallow depth of field, fashion-editorial quality.',
-    ]
+    anime = str(params.get('style', '')) == 'style_anime'
+    if anime:
+        parts = [
+            'Beautiful anime illustration of an adult woman, high-quality 2D '
+            'cel-shaded art, clean lineart, vibrant colors, cozy warm evening '
+            'atmosphere, detailed painted anime background.',
+        ]
+    else:
+        parts = [
+            'Photorealistic portrait of an adult woman in a cozy warm evening setting, '
+            'soft golden light, shallow depth of field, fashion-editorial quality.',
+        ]
     for key in ('age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes'):
         descriptor = OPTION_DESCRIPTORS.get(str(params.get(key, '')))
         if descriptor:
@@ -224,11 +243,18 @@ def build_avatar_prompt(params: dict, face_swap: bool = False) -> str:
     if prof:
         parts.append(f'styled like a {prof}')
     if face_swap:
-        parts.append(
-            'CRITICAL: preserve the exact same face, facial features and identity '
-            'as the person in the reference photo — same nose, lips, jawline and '
-            'eye shape. Do not beautify or change the face.'
-        )
+        if anime:
+            parts.append(
+                'CRITICAL: keep the same facial features and identity as the person '
+                'in the reference photo — same face shape, eyes, nose and lips '
+                'faithfully translated into anime style, not a different character.'
+            )
+        else:
+            parts.append(
+                'CRITICAL: preserve the exact same face, facial features and identity '
+                'as the person in the reference photo — same nose, lips, jawline and '
+                'eye shape. Do not beautify or change the face.'
+            )
     parts.append('She looks directly at the viewer with a warm confident smile.')
     parts.append(
         'Tasteful elegant outfit, fully covered; no nudity. One person only, '
@@ -279,7 +305,7 @@ def build_persona_context(params: dict, display_name: str) -> str:
         f'Ты — личный персонаж пользователя по имени {name}. Оставайся в этом образе всегда.',
     ]
     descriptors = []
-    for key in ('age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes', 'temperament', 'profession'):
+    for key in ('style', 'age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes', 'temperament', 'profession'):
         descriptor = OPTION_DESCRIPTORS.get(str(params.get(key, '')))
         if descriptor:
             descriptors.append(descriptor)
@@ -399,9 +425,9 @@ def custom_hair_color(params: dict) -> str:
 
 
 def custom_appearance_descriptors(params: dict) -> list[str]:
-    """English appearance descriptors (age/face/body/hair/eyes + figure) for identity locks."""
+    """English appearance descriptors (style/age/face/body/hair/eyes + figure) for identity locks."""
     return [
-        descriptor for key in ('age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes')
+        descriptor for key in ('style', 'age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes')
         if (descriptor := OPTION_DESCRIPTORS.get(str(params.get(key, ''))))
     ]
 

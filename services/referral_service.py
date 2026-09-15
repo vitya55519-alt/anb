@@ -205,6 +205,16 @@ def apply_referral(invitee_telegram_id: int, referrer_telegram_id: int) -> dict:
     track_event(referrer_uid, "referral_converted", value=float(REFERRAL_REFERRER_CREDITS),
                 metadata={"invitee_telegram_id": str(invitee_telegram_id)})
 
+    # V3.37.0: persist the permanent invitee→referrer link for the partner
+    # program (money commission on every future purchase). Fail-silent — a
+    # ledger hiccup must never break the bonus grant itself.
+    try:
+        from services import partner_service
+        partner_service.register_referral_link(referrer_uid, invitee_uid)
+    except Exception:
+        logger.exception("partner link registration failed referrer=%s invitee=%s",
+                         referrer_telegram_id, invitee_telegram_id)
+
     logger.info(
         "referral awarded referrer=%s invitee=%s referrer_credits=%s invitee_credits=%s",
         referrer_telegram_id, invitee_telegram_id, REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,

@@ -51,6 +51,39 @@ class User(Base):
     # V3.31.3: last weekly "support the project" donation ping (nullable =
     # never pinged). Auto-migrated by services/db.py.
     last_donation_ping_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # V3.37.0: the premium-gated "пошлый режим" chat toggle. Auto-migrated.
+    # Stays True when Premium lapses — the chat gate re-checks is_premium per
+    # message, so the flag simply waits for the next subscription.
+    spicy_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+# V3.37.0: money affiliate program. One row per converted referral — the
+# permanent link between the invitee and the referrer that the commission
+# ledger reads on every purchase the invitee makes.
+class Referral(Base):
+    __tablename__ = "referrals"
+    __table_args__ = (UniqueConstraint("invitee_user_id", name="uq_referral_invitee"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    referrer_user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    invitee_user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# V3.37.0: partner balance ledger. kind='commission' credits a percent of a
+# referred user's payment; kind='payout' (status pending -> paid/cancelled)
+# is the withdrawal request. source_charge_id is unique so a retried payment
+# webhook can never double-credit a commission.
+class PartnerTransaction(Base):
+    __tablename__ = "partner_transactions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount_rub: Mapped[float] = mapped_column(Float, nullable=False)
+    # commission / pending / paid / cancelled
+    status: Mapped[str] = mapped_column(String(16), default="done")
+    product: Mapped[str] = mapped_column(String(64), default="")
+    source_charge_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 # V3.21.0: one milestone photo per relationship level — the couple album.
