@@ -546,15 +546,21 @@ def abilities_inline_keyboard(lang: str = RU):
 
 
 def consent_keyboard(lang: str = RU):
+    # V3.41.0: the owner wants the Mini App reachable straight from the first
+    # welcome screen — a «📱 Открыть приложение» web_app button right under the
+    # 18+ gate (terms/privacy stay). Added only when PUBLIC_BASE_URL is set.
+    app_url = f'{PUBLIC_BASE_URL}/webapp' if PUBLIC_BASE_URL else None
     if lang == EN:
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='✅ I am 18+ · I accept the terms', callback_data='consent:accept')],
-            [InlineKeyboardButton(text='📄 Terms', callback_data='consent:terms'), InlineKeyboardButton(text='🔐 Privacy', callback_data='consent:privacy')],
-        ])
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='✅ Мне 18+ · принимаю условия', callback_data='consent:accept')],
-        [InlineKeyboardButton(text='📄 Условия', callback_data='consent:terms'), InlineKeyboardButton(text='🔐 Privacy', callback_data='consent:privacy')],
-    ])
+        rows = [[InlineKeyboardButton(text='✅ I am 18+ · I accept the terms', callback_data='consent:accept')]]
+        if app_url:
+            rows.append([InlineKeyboardButton(text='📱 Open the app', web_app=types.WebAppInfo(url=app_url))])
+        rows.append([InlineKeyboardButton(text='📄 Terms', callback_data='consent:terms'), InlineKeyboardButton(text='🔐 Privacy', callback_data='consent:privacy')])
+        return InlineKeyboardMarkup(inline_keyboard=rows)
+    rows = [[InlineKeyboardButton(text='✅ Мне 18+ · принимаю условия', callback_data='consent:accept')]]
+    if app_url:
+        rows.append([InlineKeyboardButton(text='📱 Открыть приложение', web_app=types.WebAppInfo(url=app_url))])
+    rows.append([InlineKeyboardButton(text='📄 Условия', callback_data='consent:terms'), InlineKeyboardButton(text='🔐 Privacy', callback_data='consent:privacy')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def legal_keyboard(lang: str = RU):
@@ -1652,14 +1658,14 @@ async def consent_accept(cq: types.CallbackQuery):
         bonus_line = (
             f'🎁 welcome! I gave you {first_start["credits"]} photo credits — '
             'try your first photo for free.\n'
-            'Choose a character and start chatting:'
-        ) if first_start['credits'] else 'Great 🙂 now choose a character:'
+            'All the heroines, chats, pictures and the shop live in the app 👇'
+        ) if first_start['credits'] else 'Welcome 🙂 the heroines, chats and the shop live in the app 👇'
     else:
         bonus_line = (
             f'🎁 добро пожаловать! подарил тебе {first_start["credits"]} фото-кредитов — '
             'попробуй первое фото бесплатно.\n'
-            'Выбери персонажа и начни общаться:'
-        ) if first_start['credits'] else 'Отлично 🙂 теперь выбери персонажа:'
+            'Все героини, чаты, картинки и магазин — в приложении 👇'
+        ) if first_start['credits'] else 'Добро пожаловать 🙂 все героини, чаты и магазин — в приложении 👇'
     ref_line = ''
     if ref_link:
         if lang == EN:
@@ -1674,7 +1680,12 @@ async def consent_accept(cq: types.CallbackQuery):
                 f'за каждого друга, который подтвердит 18+, ты получишь {REFERRAL_REFERRER_CREDITS}, '
                 f'а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов.'
             )
-    await cq.message.answer(bonus_line + ref_line, reply_markup=onboarding_character_keyboard())
+    # V3.41.0: character selection moved into the Mini App — no inline picker
+    # here anymore; show the persistent main menu (reply keyboard) instead.
+    await cq.message.answer(
+        bonus_line + ref_line,
+        reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS, cq.from_user.id),
+    )
     # V3.31.3: every new user sees the optional «support the project» donation
     # link once, right after the welcome (owner request). Failures here must
     # never break onboarding, so it is guarded.
@@ -1778,7 +1789,9 @@ async def onboarding_character_select(cq: types.CallbackQuery):
     await cq.answer(f'{card.display_name} выбрана')
     await _send_onboarding_character_card(cq.message.chat.id, character_id, cq.from_user.id)
     sel_lang = user_lang(cq.from_user.id)
-    await cq.message.answer(abilities_text(sel_lang), reply_markup=abilities_inline_keyboard(sel_lang))
+    # V3.41.0: the owner asked to drop the «✨ Что умеет бот» text wall after
+    # picking a heroine — the character card + the main menu are enough, and the
+    # features now live as buttons in the app chat instead of a wall of text.
     menu_line = 'The main menu is always at the bottom 👇' if sel_lang == EN else 'Основное меню всегда внизу 👇'
     await cq.message.answer(menu_line, reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS, cq.from_user.id))
     # V3.21.0: one-time tour so nothing hides in sub-menus.
@@ -4665,6 +4678,13 @@ async def _deliver_date_reward(chat_id: int, telegram_id: int, user_name: str, d
     if len(completed) >= len(dates_service.get_all()):
         unlock_achievement(telegram_id, 'date_collector')
     await bot.send_message(chat_id, f'{date.emoji} {date.text}\n\nА вот и фото с нашей прогулки 😊')
+    # V3.41.0: mirror the date narration into the shared app/bot dialog so a
+    # date paid from the Mini App also shows up in the app chat history (the
+    # photo itself is generated into the bot chat right below).
+    try:
+        save_message(ensure_user(telegram_id, user_name), character_id, 'assistant', f'{date.emoji} {date.text}')
+    except Exception:
+        logger.warning('date history mirror failed user=%s date=%s', telegram_id, date.id)
     await _send_voice_note(chat_id, telegram_id, date.text)
     await _start_photo_background(chat_id, telegram_id, PhotoRequest(scene=date.scene, mood='romantic'), 'story')
 
@@ -7369,6 +7389,62 @@ async def _webapp_media_voice(telegram_id: int, character_id: str):
     return audio, 'audio/ogg', 'ogg'
 
 
+# V3.41.0: the app-chat «🎬 Видео» button animates the canonical face into a
+# short cinematic clip (a normal rectangle, not a round circle). Same engine
+# chain the bot's «Оживить фото» uses: Gemini/Veo → Replicate → fal → HF.
+_WEBAPP_VIDEO_PROMPT = (
+    'Animate this exact photo into a short 5-second cinematic clip: she turns '
+    'toward the camera, smiles softly, brushes her hair or shifts her pose with '
+    'natural, gentle motion. Keep her face, hair and outfit identical. Soft '
+    'handheld camera feel, shallow depth of field. No wardrobe change, no extra '
+    'people. Photorealistic, fully clothed, tasteful.'
+)
+
+
+async def _webapp_media_video(telegram_id: int, character_id: str):
+    """V3.41.0: a short AI video from the canonical face — the app-chat twin of
+    the bot's «🎬 Оживить фото», rendered as a normal (non-round) clip."""
+    photo = webapp_service.character_photo(character_id)
+    if not photo:
+        raise PhotoGenerationError('video', 'no_source_photo')
+    image_bytes = photo[0]
+    engines = []
+    if video_available():
+        engines.append(animate_image)
+    if replicate_available():
+        engines.append(animate_image_replicate)
+    if fal_available():
+        engines.append(animate_image_fal)
+    if hf_video_available():
+        engines.append(animate_image_hf)
+    if not engines:
+        raise PhotoGenerationError('video', 'no_video_engine')
+    last_error = None
+    for engine_fn in engines:
+        ename = 'gemini' if engine_fn.__name__ == 'animate_image' else engine_fn.__name__.replace('animate_image_', '')
+        try:
+            video_bytes = await engine_fn(image_bytes, mime_type='image/png', prompt=_WEBAPP_VIDEO_PROMPT)
+            record_provider(f'video/{ename}', True)
+            return video_bytes, 'video/mp4', 'mp4'
+        except Exception as exc:
+            last_error = exc
+            record_provider(f'video/{ename}', False, f'{type(exc).__name__}: {str(exc)[:120]}')
+            logger.warning('webapp video engine failed user=%s: %s', telegram_id, str(exc)[:200])
+    raise last_error or PhotoGenerationError('video', 'no_video_result')
+
+
+async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str):
+    """V3.41.0: an in-character photo for a specific scene — the app-native
+    reward shot for a free/admin date (identity-locked like the studio)."""
+    card = get_card(character_id)
+    prompt = (f'photo from a date with {card.display_name if card else "your girl"}: {scene}, '
+              'romantic mood, photorealistic, fully clothed, tasteful' + webapp_service.PICTURE_PROMPT_SUFFIX)
+    gallery = webapp_service.character_gallery(character_id)
+    reference = gallery[0] if gallery else None
+    data, mime = await generate_custom_avatar(prompt, reference)
+    return data, mime, ('png' if 'png' in (mime or '') else 'jpg')
+
+
 async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     # V3.39.0: everything the bot dialog sends — photos, video circles, voice —
     # is requestable inside the Mini App chat too. Same gates as the bot:
@@ -7388,7 +7464,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     body = body or {}
     character_id = str(body.get('character_id', ''))
     kind = str(body.get('kind', ''))
-    if kind not in ('photo', 'circle', 'voice') or not character_id:
+    if kind not in ('photo', 'circle', 'voice', 'video') or not character_id:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     if is_custom_character(character_id):
         if not get_custom_character_by_id(character_id):
@@ -7409,6 +7485,14 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
         if not consume_premium_video_free(telegram_id):
             return web.json_response({'ok': False, 'error': 'circle_limit'}, status=402)
+    if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS:
+        # V3.41.0: app video shares the Premium free-animation slots, exactly
+        # like the bot's «🎬 Оживить фото»; a separate gate keeps the circle
+        # branch (and its static test) untouched.
+        if not is_premium(telegram_id):
+            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+        if not consume_premium_video_free(telegram_id):
+            return web.json_response({'ok': False, 'error': 'video_limit'}, status=402)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     track_event(uid, 'webapp_chat_media', metadata={'character_id': character_id, 'kind': kind})
     try:
@@ -7416,6 +7500,8 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             data, mime, ext = await _webapp_media_photo(telegram_id, character_id)
         elif kind == 'circle':
             data, mime, ext = await _webapp_media_circle(telegram_id, character_id)
+        elif kind == 'video':
+            data, mime, ext = await _webapp_media_video(telegram_id, character_id)
         else:
             data, mime, ext = await _webapp_media_voice(telegram_id, character_id)
     except Exception:
@@ -7426,7 +7512,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     filename = webapp_service.save_chat_media(telegram_id, data, ext)
     url = f'/webapp/media/{filename}'
     content = {'photo': '📸 отправила фото', 'circle': '🎥 отправила кружочек',
-               'voice': '🎙 отправила голосовое'}[kind]
+               'voice': '🎙 отправила голосовое', 'video': '🎬 отправила видео'}[kind]
     save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
     if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
         logger.warning('webapp chat photo credit race user=%s', telegram_id)
@@ -7461,6 +7547,165 @@ _WEBAPP_PHOTO_SCENES = (
     'evening walk under city lights',
     'mirror selfie in today’s outfit',
 )
+
+
+async def _webapp_api_feature(request: web.Request) -> web.Response:
+    # V3.41.0: the app-chat feature buttons (🏠 Квартира, 💕 Свидание,
+    # 🎯 Задание дня) all render their menu from this one endpoint. Same auth
+    # as the rest of the Mini App API; the character comes from the open chat.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    kind = str(request.query.get('kind', ''))
+    if kind not in ('apartment', 'date', 'quest'):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    character_id = str(request.query.get('character_id', '')) or get_user_character(telegram_id)
+    ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    lang = user_lang(telegram_id)
+    level = get_relationship_level(telegram_id, character_id)
+    if kind == 'apartment':
+        items = []
+        for r in apartment_service.get_available_rooms(level):
+            items.append({
+                'id': r.id, 'emoji': r.emoji, 'title': r.name, 'subtitle': r.description,
+                'locked': False,
+                'actions': [{'id': a_id, 'title': a_title} for a_title, a_id in r.actions],
+            })
+        for r in apartment_service.get_locked_rooms(level):
+            items.append({
+                'id': r.id, 'emoji': '🔒', 'title': r.name,
+                'subtitle': (f'opens at level {r.min_level}' if lang == EN else f'откроется на уровне {r.min_level}'),
+                'locked': True, 'actions': [],
+            })
+        title = '🏠 Apartment' if lang == EN else '🏠 Квартира'
+        return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
+    if kind == 'date':
+        from services.gamification_service import completed_date_ids, has_free_date
+        done = completed_date_ids(telegram_id)
+        items = []
+        for d in dates_service.get_available(level):
+            items.append({'id': d.id, 'emoji': d.emoji, 'title': d.name, 'subtitle': d.text,
+                          'locked': False, 'cost': d.cost, 'done': d.id in done})
+        for d in dates_service.get_locked(level):
+            items.append({'id': d.id, 'emoji': '🔒', 'title': d.name,
+                          'subtitle': (f'opens at level {d.min_level}' if lang == EN else f'откроется на уровне {d.min_level}'),
+                          'locked': True, 'cost': d.cost, 'done': False})
+        title = '💕 Where shall we go?' if lang == EN else '💕 Куда пойдём?'
+        return web.json_response({'ok': True, 'kind': kind, 'title': title,
+                                  'free_date': bool(has_free_date(telegram_id)), 'items': items})
+    from services import couple_service
+    _, quest_text = couple_service.daily_quest(telegram_id)
+    user = get_user(telegram_id)
+    claimed = bool(user and (user.quest_claimed_date or '') == couple_service._today_key())
+    title = '🎯 Daily quest' if lang == EN else '🎯 Задание дня'
+    return web.json_response({'ok': True, 'kind': kind, 'title': title,
+                              'text': quest_text, 'claimed': claimed})
+
+
+async def _webapp_api_feature_action(request: web.Request) -> web.Response:
+    # V3.41.0: perform a feature action from the app chat. Apartment actions and
+    # the daily quest resolve instantly into the shared dialog; a free/admin date
+    # is delivered right here, while a paid date returns a Stars invoice link that
+    # reuses the bot's existing «date:» payment + reward path.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    kind = str(body.get('kind', ''))
+    if kind not in ('apartment', 'date', 'quest'):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    if not has_accepted(telegram_id):
+        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    character_id = str(body.get('character_id', '')) or get_user_character(telegram_id)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    user_name = user_info.get('first_name') or ''
+    level = get_relationship_level(telegram_id, character_id)
+
+    if kind == 'apartment':
+        room_id = str(body.get('id', ''))
+        action_id = str(body.get('action_id', ''))
+        room = apartment_service.get_room(room_id)
+        if not room or room.min_level > level:
+            return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+        result = apartment_service.room_action_reply(room_id, action_id)
+        if not result:
+            return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+        text, rel_delta, int_delta = result
+        await record_user_message(telegram_id, user_name, relationship=rel_delta, intimacy=int_delta,
+                                  event_type='apartment', reason=f'apartment:{room_id}:{action_id}',
+                                  character_id=character_id)
+        track_event(uid, 'apartment_action', metadata={'room': room_id, 'action': action_id, 'source': 'webapp'})
+        save_message(uid, character_id, 'assistant', text)
+        return web.json_response({'ok': True, 'kind': kind, 'text': text})
+
+    if kind == 'quest':
+        from services import couple_service
+        if not couple_service.claim_daily_quest(telegram_id):
+            return web.json_response({'ok': False, 'error': 'already'}, status=409)
+        track_event(uid, 'daily_quest_claimed', metadata={'source': 'webapp'})
+        text = ('mmm, nice 😊 +5 attention points. she noticed.' if user_lang(telegram_id) == EN
+                else 'ммм, приятно 😊 +5 очков внимания. она заметила.')
+        save_message(uid, character_id, 'assistant', text)
+        return web.json_response({'ok': True, 'kind': kind, 'text': text})
+
+    date = dates_service.get(str(body.get('id', '')))
+    if not date or date.min_level > level:
+        return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+    from services.gamification_service import (
+        completed_date_ids, consume_free_date, has_free_date, unlock_achievement,
+    )
+    if telegram_id in ADMIN_TELEGRAM_IDS or has_free_date(telegram_id):
+        # Free weekly-streak date (or admin test): deliver app-native, no Stars.
+        if telegram_id not in ADMIN_TELEGRAM_IDS:
+            consume_free_date(telegram_id)
+        await record_user_message(telegram_id, user_name, relationship=date.affection, intimacy=date.affection / 2,
+                                  event_type='date', reason=f'date:{date.id}', character_id=character_id)
+        unlock_achievement(telegram_id, 'first_date')
+        completed = completed_date_ids(telegram_id)
+        if len(completed) >= 10:
+            unlock_achievement(telegram_id, 'ten_dates')
+        if len(completed) >= len(dates_service.get_all()):
+            unlock_achievement(telegram_id, 'date_collector')
+        track_event(uid, 'webapp_date_free', metadata={'date': date.id})
+        narration = f'{date.emoji} {date.text}'
+        save_message(uid, character_id, 'assistant', narration)
+        photo_url = None
+        try:
+            data, mime, ext = await _webapp_media_scene(telegram_id, character_id, date.scene)
+            if data:
+                filename = webapp_service.save_chat_media(telegram_id, data, ext)
+                photo_url = f'/webapp/media/{filename}'
+                save_message(uid, character_id, 'assistant', '📸 фото с нашей прогулки', media_kind='photo', media_url=photo_url)
+        except Exception:
+            logger.warning('webapp date photo failed user=%s date=%s', telegram_id, date.id)
+        return web.json_response({'ok': True, 'kind': kind, 'delivered': True,
+                                  'text': narration, 'photo_url': photo_url})
+    try:
+        link = await bot.create_invoice_link(
+            title=f'Свидание: {date.name}',
+            description=f'{date.emoji} {date.name}. В конце она пришлёт фото с прогулки 📸',
+            payload=f'date:{date.id}',
+            provider_token='',
+            currency='XTR',
+            prices=[LabeledPrice(label=date.name, amount=date.cost)],
+        )
+    except Exception:
+        logger.exception('webapp date invoice failed user=%s date=%s', telegram_id, date.id)
+        return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
+    track_event(uid, 'webapp_date_invoice', metadata={'date': date.id})
+    return web.json_response({'ok': True, 'kind': kind, 'delivered': False, 'invoice': link, 'cost': date.cost})
 
 
 async def _webapp_picture(request: web.Request) -> web.Response:
@@ -7614,6 +7859,9 @@ async def _start_web_server() -> None:
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)
     app.router.add_post('/webapp/api/chat/media', _webapp_api_chat_media)
+    # V3.41.0: the app-chat feature buttons — apartment / date / daily quest.
+    app.router.add_get('/webapp/api/feature', _webapp_api_feature)
+    app.router.add_post('/webapp/api/feature/action', _webapp_api_feature_action)
     app.router.add_get('/webapp/media/{filename}', _webapp_media)
     app.router.add_post('/webapp/api/picture', _webapp_api_picture_generate)
     app.router.add_get('/webapp/api/pictures', _webapp_api_pictures)

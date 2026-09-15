@@ -26,7 +26,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.40.0',)
+    assert VERSION in ('3.41.0', '3.40.0',)
 
 
 # ── 1. main reply keyboard like the Come Closer menu ───────────────────────

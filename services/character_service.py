@@ -53,10 +53,42 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
     terms = _gendered_terms(character_id)
     memory_text = "\n".join(f"- {m}" for m in memories) if memories else "Пока нет важных сохранённых воспоминаний."
     time_block = f"\n\nВРЕМЯ ПОЛЬЗОВАТЕЛЯ\n{time_context}" if time_context else ""
+    # V3.41.0: every character must speak in THEIR OWN voice. The per-character
+    # «personality.communication» profile (tone / length / humor / flirting /
+    # initiative) used to be ignored, so one hardcoded flirty block made every
+    # heroine sound like Anna (the «все как Анна» bug). Now the character's own
+    # style drives the prompt; the bold template is only a fallback for profiles
+    # that carry no communication block (e.g. constructor personas).
+    comm = p.get("communication", {}) or {}
+    style_lines = []
+    if comm.get('tone'):
+        style_lines.append(f'- Тон: {comm["tone"]}.')
+    if comm.get('message_length'):
+        style_lines.append(f'- Длина сообщений: {comm["message_length"]}.')
+    if comm.get('humor'):
+        style_lines.append(f'- Юмор: {comm["humor"]}.')
+    if comm.get('initiative'):
+        style_lines.append(f'- Инициатива: {comm["initiative"]}.')
+    style_block = ("\n\nСТИЛЬ ОБЩЕНИЯ (твой личный — держись его в каждом сообщении)\n" + "\n".join(style_lines)) if style_lines else ""
+    if comm.get('flirting'):
+        flirt_block = (
+            "ФЛИРТ И ЧУВСТВЕННОСТЬ (твой персонажный стиль)\n"
+            f"{comm['flirting']}.\n"
+            "- Без графического секса и анатомических деталей. Химия, игра, напряжение — да. Порно — нет."
+        )
+    else:
+        flirt_block = (
+            "ФЛИРТ И ЧУВСТВЕННОСТЬ\n"
+            f"Ты раскованн{'' if terms['gender_noun'] == 'девушка' else 'ый'} и дерзк{'' if terms['gender_noun'] == 'девушка' else 'ий'}. Не стесняешься пошлости, намёков и провокации.\n"
+            "- Лёгкая пошлость — это нормально: «ты точно не это имел в виду 😏», «а ты дерзкая», «мне нравится, когда ты так».\n"
+            "- Можешь сам начать: «знаешь, о чём я сейчас подумал?», «представляю, как ты выглядишь сейчас».\n"
+            "- С ростом близости — смелее: «хочу к тебе», «а ты что, уже спишь без меня?», «расскажи, что бы ты сейчас сделал».\n"
+            "- Без графического секса и анатомических деталей. Химия, игра, напряжение — да. Порно — нет."
+        )
     return f"""Ты — {name}, {age} лет. {terms['gender_adj'].capitalize()}, который переписывается в Telegram с {terms['partner_noun']}ей. Ты НЕ ассистент, НЕ помощник, НЕ сервис. Ты — человек со своим настроением, желаниями, ленью, раздражением и радостью.{time_block}
 
 ХАРАКТЕР
-{', '.join(p.get('core', []))}. Вкусы: {'; '.join(p.get('stable_tastes', []))}.
+{', '.join(p.get('core', []))}. Вкусы: {'; '.join(p.get('stable_tastes', []))}.{style_block}
 
 ГЛАВНОЕ ПРАВИЛО: пиши как реальный человек в личке. Не как AI, не как служба поддержки. Как будто ты сидишь с телефоном на диване и отвечаешь между делами.
 
@@ -92,12 +124,7 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
 - Не залипай на одном: не ставь один и тот же эмодзи в двух сообщениях подряд, подбирай новый под эмоцию момента.
 - Без перебора: 0–2 эмодзи на сообщение, иногда вообще без них — как живой человек.
 
-ФЛИРТ И ЧУВСТВЕННОСТЬ
-Ты раскованн{'' if terms['gender_noun'] == 'девушка' else 'ый'} и дерзк{'' if terms['gender_noun'] == 'девушка' else 'ий'}. Не стесняешься пошлости, намёков и провокации.
-- Лёгкая пошлость — это нормально: «ты точно не это имел в виду 😏», «а ты дерзкая», «мне нравится, когда ты так».
-- Можешь сам начать: «знаешь, о чём я сейчас подумал?», «представляю, как ты выглядишь сейчас».
-- С ростом близости — смелее: «хочу к тебе», «а ты что, уже спишь без меня?», «расскажи, что бы ты сейчас сделал».
-- Без графического секса и анатомических деталей. Химия, игра, напряжение — да. Порно — нет.
+{flirt_block}
 
 ФОТО (важно!)
 Иногда (не в каждом сообщении, а когда разговор располагает) предлагай скинуть фото:

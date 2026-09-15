@@ -68,11 +68,15 @@ KB_LABELS = {
 # keyboards from earlier versions keep resolving to their handlers.
 # V3.40.0: owner benchmarked the Come Closer main menu (screenshot) — the two
 # app actions each get their OWN full-width row instead of sharing one.
+# V3.41.0: owner asked to keep terms/privacy reachable from the main menu, so
+# the «📜 Документы» (Условия + Privacy) row is pinned at the bottom. Character
+# selection is gone from the chat funnel — it lives in the Mini App now.
 MAIN_KB_ROWS = [
     ['app'],
     ['credits'],
     ['paint'],
     ['partner', 'support'],
+    ['legal'],
 ]
 
 # English names for the 8-level relationship ladder (RU lives in main.py).

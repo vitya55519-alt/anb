@@ -239,9 +239,28 @@
   .msg img.m { display: block; max-width: 220px; width: 100%; border-radius: 12px; margin-top: 4px; background: var(--card2); }
   .msg video.circle { display: block; width: 180px; height: 180px; object-fit: cover; border-radius: 50%; margin-top: 4px; background: #000; }
   .msg audio { display: block; width: 220px; margin-top: 4px; }
-  .chat-media { display: flex; gap: 4px; }
-  .chat-media button { width: 38px; height: 38px; border: 0; border-radius: 12px; background: var(--card); font-size: 17px; cursor: pointer; }
+  .chat-media { display: flex; gap: 4px; width: 100%; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+  .chat-media button { flex: 0 0 auto; width: 38px; height: 38px; border: 0; border-radius: 12px; background: var(--card); font-size: 17px; cursor: pointer; }
   .chat-media button:disabled { opacity: .5; }
+  /* V3.41.0: 7 feature buttons — the strip scrolls on its own row above the input. */
+  .chat-input { flex-wrap: wrap; }
+  .msg video.m { display: block; max-width: 220px; width: 100%; border-radius: 12px; margin-top: 4px; background: #000; }
+  /* V3.41.0: the feature sheet (apartment rooms / dates / daily quest). */
+  .featlist { padding: 12px 14px calc(20px + env(safe-area-inset-bottom)); }
+  .featitem { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; background: var(--card); border: 1px solid rgba(255,255,255,.08); color: var(--text); border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; }
+  .featitem.locked { opacity: .55; cursor: default; }
+  .featitem .fem { font-size: 22px; flex: 0 0 auto; }
+  .featitem .fet { flex: 1; min-width: 0; }
+  .featitem .fen { font-weight: 700; font-size: 15px; }
+  .featitem .fes { color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.35; }
+  .featitem .fec { font-size: 13px; font-weight: 700; color: var(--accent); flex: 0 0 auto; }
+  .featactions { display: none; flex-wrap: wrap; gap: 6px; margin: -2px 0 10px; }
+  .featactions.open { display: flex; }
+  .featactions button { background: var(--card2); border: 1px solid rgba(255,255,255,.1); color: var(--text); font-size: 13px; padding: 8px 12px; border-radius: 12px; cursor: pointer; }
+  .featquest { padding: 16px; }
+  .featquest .qtext { background: var(--card); border-radius: 14px; padding: 14px; line-height: 1.5; margin-bottom: 12px; }
+  .featdone { display: block; width: 100%; border: 0; border-radius: 14px; padding: 14px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
+  .featdone:disabled { opacity: .5; }
   /* V3.39.0: the Come Closer segment switch — our roster vs the community */
   .seg { display: flex; gap: 6px; margin: 4px 14px 10px; background: var(--card); border-radius: 14px; padding: 4px; }
   .seg button { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 10px 8px; border-radius: 11px; font-size: 14px; font-weight: 700; cursor: pointer; }
@@ -404,8 +423,12 @@
   <div class="chat-input">
     <div class="chat-media">
       <button id="mediaPhoto">📸</button>
+      <button id="mediaVideo">🎬</button>
       <button id="mediaCircle">🎥</button>
       <button id="mediaVoice">🎙</button>
+      <button id="featQuest">🎯</button>
+      <button id="featDate">💕</button>
+      <button id="featApt">🏠</button>
     </div>
     <input id="chatText" maxlength="4000" placeholder="">
     <button id="chatSend">➤</button>
@@ -461,6 +484,16 @@
     <div class="checkword" id="checkword"></div>
     <div id="docsbody"><div class="loading">…</div></div>
   </div>
+</div>
+<!-- V3.41.0: the app-chat feature sheet — apartment rooms / dates / daily quest -->
+<div class="overlay" id="featview">
+  <div class="chat-head">
+    <button class="iconbtn" id="featBack">‹</button>
+    <div>
+      <div class="nm" id="featTitle"></div>
+    </div>
+  </div>
+  <div class="page" id="featBody"><div class="loading">…</div></div>
 </div>
 <script>
 const tg = window.Telegram.WebApp;
@@ -525,8 +558,11 @@ const L = LANG === 'en' ? {
   start_chat: 'Start chat', plot: 'PLOT', make_mine: '❤️ Make her yours',
   seg_official: '🍑 Peach Garden', seg_community: '👥 Community',
   media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
-  media_wait_voice: 'Recording her voice…',
+  media_wait_voice: 'Recording her voice…', media_wait_video: 'Rendering a video — 1–3 min…',
   circle_limit: 'No free circles left today — Premium refreshes them daily',
+  // V3.41.0: the app-chat feature sheet (apartment / date / daily quest).
+  feat_done_btn: '✅ Done · +5 attention', feat_claimed: 'Already done today ❤️',
+  feat_empty: 'Nothing here yet', feat_paid: 'Date paid 💕 she will write in the chat',
 } : {
   chars_title: 'Персонажи', loading: 'Загрузка…',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
@@ -581,8 +617,11 @@ const L = LANG === 'en' ? {
   start_chat: 'Начать чат', plot: 'СЮЖЕТ', make_mine: '❤️ Сделать твоей',
   seg_official: '🍑 Персиковый сад', seg_community: '👥 Сообщество',
   media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
-  media_wait_voice: 'Записываю голос…',
+  media_wait_voice: 'Записываю голос…', media_wait_video: 'Рисую видео — 1–3 минуты…',
   circle_limit: 'Бесплатные кружочки на сегодня кончились — Premium обновляет их каждый день',
+  // V3.41.0: панель фич в чате приложения (квартира / свидание / задание дня).
+  feat_done_btn: '✅ Выполнено · +5 внимания', feat_claimed: 'Сегодня уже выполнено ❤️',
+  feat_empty: 'Здесь пока пусто', feat_paid: 'Свидание оплачено 💕 она напишет в чат',
 };
 
 document.getElementById('l_chars_title').textContent = L.chars_title;
@@ -817,6 +856,7 @@ function chatBubble(roleOrM, content, ts) {
   if (m.media_url) {
     const src = m.media_url + '?init_data=' + encodeURIComponent(tg.initData || '');
     if (m.media_kind === 'circle') body = `<video class="circle" src="${esc(src)}" loop autoplay muted playsinline></video>`;
+    else if (m.media_kind === 'video') body = `<video class="m" src="${esc(src)}" controls playsinline></video>`;
     else if (m.media_kind === 'voice') body = `<audio controls src="${esc(src)}"></audio>`;
     else body = `<img class="m" src="${esc(src)}" alt="">`;
     if (m.content) body += `<div style="margin-top:4px">${esc(m.content)}</div>`;
@@ -910,7 +950,7 @@ async function requestMedia(kind) {
   const box = document.getElementById('chatMsgs');
   const empty = box.querySelector('.chat-empty');
   if (empty) empty.remove();
-  const wait = kind === 'circle' ? L.media_wait_circle : (kind === 'voice' ? L.media_wait_voice : L.media_wait_photo);
+  const wait = kind === 'circle' ? L.media_wait_circle : (kind === 'video' ? L.media_wait_video : (kind === 'voice' ? L.media_wait_voice : L.media_wait_photo));
   box.insertAdjacentHTML('beforeend', `<div class="typing" id="mediaTyping">${esc(wait)}</div>`);
   box.scrollTop = box.scrollHeight;
   try {
@@ -945,6 +985,120 @@ async function requestMedia(kind) {
     mediaBusy = false;
     document.querySelectorAll('.chat-media button').forEach(b => b.disabled = false);
   }
+}
+
+// ── V3.41.0: app-chat feature sheet — apartment / date / daily quest ───────
+// One overlay renders all three menus from /webapp/api/feature; taps post to
+// /webapp/api/feature/action. Built with string concatenation + esc() so every
+// dynamic value is escaped (no raw template interpolation).
+function closeFeature() { document.getElementById('featview').classList.remove('open'); }
+
+function featItemHtml(kind, it) {
+  const locked = it.locked ? ' locked' : '';
+  const lockFlag = it.locked ? '1' : '0';
+  const costHtml = (kind === 'date' && !it.locked) ? ('<div class="fec">' + esc(it.cost) + '\u2b50</div>') : '';
+  const doneHtml = (kind === 'date' && it.done) ? ' \u2705' : '';
+  let actsHtml = '';
+  if (kind === 'apartment' && !it.locked) {
+    actsHtml = '<div class="featactions" id="act_' + esc(it.id) + '">' +
+      (it.actions || []).map(a => '<button data-room="' + esc(it.id) + '" data-act="' + esc(a.id) + '">' + esc(a.title) + '</button>').join('') +
+      '</div>';
+  }
+  return '<div class="featitem' + locked + '" data-id="' + esc(it.id) + '" data-locked="' + lockFlag + '" data-hint="' + esc(it.subtitle || '') + '">' +
+    '<div class="fem">' + esc(it.emoji) + '</div>' +
+    '<div class="fet"><div class="fen">' + esc(it.title) + doneHtml + '</div><div class="fes">' + esc(it.subtitle || '') + '</div></div>' +
+    costHtml + '</div>' + actsHtml;
+}
+
+function toggleRoomActions(el) {
+  const box = document.getElementById('act_' + el.dataset.id);
+  if (!box) return;
+  const willOpen = !box.classList.contains('open');
+  document.querySelectorAll('.featactions').forEach(a => a.classList.remove('open'));
+  if (willOpen) box.classList.add('open');
+}
+
+function renderFeature(j) {
+  const box = document.getElementById('featBody');
+  if (j.kind === 'quest') {
+    const done = j.claimed;
+    box.innerHTML = '<div class="featquest"><div class="qtext">\ud83c\udfaf ' + esc(j.text) + '</div>' +
+      '<button class="featdone" id="questDone"' + (done ? ' disabled' : '') + '>' +
+      esc(done ? L.feat_claimed : L.feat_done_btn) + '</button></div>';
+    const qbtn = document.getElementById('questDone');
+    if (qbtn && !done) qbtn.addEventListener('click', () => featurePost({ kind: 'quest' }));
+    return;
+  }
+  const items = j.items || [];
+  if (!items.length) { box.innerHTML = '<div class="chat-empty">' + esc(L.feat_empty) + '</div>'; return; }
+  box.innerHTML = '<div class="featlist">' + items.map(it => featItemHtml(j.kind, it)).join('') + '</div>';
+  box.querySelectorAll('.featitem').forEach(el => {
+    el.addEventListener('click', () => {
+      if (el.dataset.locked === '1') { toast(el.dataset.hint || L.locked); return; }
+      if (j.kind === 'apartment') toggleRoomActions(el);
+      else if (j.kind === 'date') featurePost({ kind: 'date', id: el.dataset.id });
+    });
+  });
+  box.querySelectorAll('.featactions button').forEach(b => {
+    b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      featurePost({ kind: 'apartment', id: b.dataset.room, action_id: b.dataset.act });
+    });
+  });
+}
+
+async function openFeature(kind) {
+  if (!CHAT) return;
+  if (!tg.initData) { toast(L.auth_short); return; }
+  document.getElementById('featBody').innerHTML = '<div class="loading">' + esc(L.loading) + '</div>';
+  document.getElementById('featTitle').textContent = '';
+  document.getElementById('featview').classList.add('open');
+  try {
+    const r = await fetch('/webapp/api/feature?init_data=' + encodeURIComponent(tg.initData) +
+      '&kind=' + encodeURIComponent(kind) + '&character_id=' + encodeURIComponent(CHAT.id));
+    if (r.status === 401) { toast(L.auth_short); closeFeature(); return; }
+    const j = await r.json();
+    if (!j.ok) { document.getElementById('featBody').innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; return; }
+    document.getElementById('featTitle').textContent = j.title || '';
+    renderFeature(j);
+  } catch (e) {
+    document.getElementById('featBody').innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>';
+  }
+}
+
+async function featurePost(payload) {
+  if (!CHAT || !tg.initData) { toast(L.auth_short); return; }
+  payload.character_id = CHAT.id;
+  const box = document.getElementById('chatMsgs');
+  try {
+    const r = await fetch('/webapp/api/feature/action?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    if (r.status === 403) {
+      const je = await r.json().catch(() => ({}));
+      toast(je.error === 'consent' ? L.consent_needed : (je.error === 'premium_required' ? L.need_premium : L.locked));
+      return;
+    }
+    if (r.status === 409) { toast(L.feat_claimed); return; }
+    const j = await r.json();
+    if (!j.ok) { toast(L.reply_err); return; }
+    if (j.invoice) {
+      if (typeof tg.openInvoice !== 'function') { toast(L.auth_short); return; }
+      closeFeature();
+      tg.openInvoice(j.invoice, (status) => {
+        if (status === 'paid') { toast(L.feat_paid); if (CHAT) loadChatHistory(CHAT.id); loadMe(); }
+        else if (status === 'failed') toast(L.pay_failed);
+        else toast(L.pay_cancelled);
+      });
+      return;
+    }
+    closeFeature();
+    const empty = box.querySelector('.chat-empty'); if (empty) empty.remove();
+    if (j.text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.text, ts: null }));
+    if (j.photo_url) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
+    box.scrollTop = box.scrollHeight;
+  } catch (e) { toast(L.reply_err); }
 }
 
 // ── V3.39.0: the Come Closer character page (strip → CTA → bio → СЮЖЕТ) ────
@@ -1520,6 +1674,13 @@ document.getElementById('chatSelect').addEventListener('click', () => { if (CHAT
 document.getElementById('mediaPhoto').addEventListener('click', () => requestMedia('photo'));
 document.getElementById('mediaCircle').addEventListener('click', () => requestMedia('circle'));
 document.getElementById('mediaVoice').addEventListener('click', () => requestMedia('voice'));
+// V3.41.0: the app-chat feature buttons — video reuses the media pipeline, the
+// other three open the feature sheet (apartment / date / daily quest).
+document.getElementById('mediaVideo').addEventListener('click', () => requestMedia('video'));
+document.getElementById('featQuest').addEventListener('click', () => openFeature('quest'));
+document.getElementById('featDate').addEventListener('click', () => openFeature('date'));
+document.getElementById('featApt').addEventListener('click', () => openFeature('apartment'));
+document.getElementById('featBack').addEventListener('click', closeFeature);
 document.getElementById('charBack').addEventListener('click', () => {
   document.getElementById('charview').classList.remove('open');
 });
