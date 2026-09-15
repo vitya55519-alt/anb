@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AnnaBot</title>
+<!-- The official Telegram WebApp SDK. It is the platform bridge (tg.*) and
+     is intentionally NOT SRI-pinned: Telegram serves it unversioned and updates
+     it in place, so a pinned hash would break the Mini App on their next
+     release. Inside the Telegram client the client-side copy takes precedence
+     anyway; this tag is the fallback for external browsers. -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #1a1023;
+    --bg2: #221430;
+    --card: #2b1a3d;
+    --card2: #33204a;
+    --accent: #e8447f;
+    --accent2: #b844e8;
+    --text: #f5eef8;
+    --muted: #a894bd;
+    --ok: #4cd97b;
+    --premium: #ffcf5c;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
+    color: var(--text);
+    min-height: 100vh;
+    padding-bottom: 76px;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px;
+    background: rgba(26, 16, 35, .92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(232, 68, 127, .18);
+  }
+  header .logo {
+    font-size: 20px; font-weight: 700;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header .chip {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+    background: var(--card); border-radius: 20px; padding: 6px 12px;
+  }
+  header .chip.premium { color: var(--premium); }
+  main { padding: 16px; max-width: 640px; margin: 0 auto; }
+  section.tab { display: none; animation: fade .18s ease; }
+  section.tab.active { display: block; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  h2 { font-size: 17px; margin: 4px 0 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .card {
+    background: var(--card); border-radius: var(--radius);
+    overflow: hidden; border: 1px solid rgba(255,255,255,.05);
+    transition: transform .12s ease;
+  }
+  .card.selected { border: 2px solid var(--accent); }
+  .card .photo { position: relative; aspect-ratio: 3/4; background: var(--card2); }
+  .card .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .card .photo .fallback {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center; font-size: 64px;
+  }
+  .card .badge {
+    position: absolute; top: 8px; left: 8px;
+    font-size: 11px; padding: 3px 9px; border-radius: 12px;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(4px);
+  }
+  .card .badge.active { color: var(--ok); }
+  .card .badge.premium { color: var(--premium); }
+  .card .badge.soon { color: var(--muted); }
+  .card .body { padding: 10px 12px 12px; }
+  .card .name { font-weight: 600; font-size: 15px; }
+  .card .age { color: var(--muted); font-size: 12px; margin: 2px 0 6px; }
+  .card .bio { color: var(--muted); font-size: 12px; line-height: 1.45;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .hero {
+    background: linear-gradient(135deg, var(--card) 0%, var(--card2) 100%);
+    border-radius: var(--radius); padding: 18px; margin-bottom: 14px;
+    border: 1px solid rgba(255, 207, 92, .25);
+  }
+  .hero .title { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; color: var(--premium); }
+  .hero .price { font-size: 26px; font-weight: 800; margin: 10px 0 2px; }
+  .hero .price small { font-size: 13px; color: var(--muted); font-weight: 400; }
+  .hero ul { list-style: none; margin-top: 12px; }
+  .hero li { display: flex; gap: 8px; font-size: 13px; padding: 4px 0; color: var(--text); }
+  .note {
+    font-size: 12px; color: var(--muted); text-align: center; padding: 10px;
+    background: var(--card); border-radius: 12px; margin-top: 12px;
+  }
+  .row-item {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--card); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px;
+  }
+  .row-item .n { font-size: 14px; }
+  .row-item .c { color: var(--premium); font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .profile-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+  .avatar {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; font-weight: 700; flex-shrink: 0;
+  }
+  .profile-head .nm { font-size: 18px; font-weight: 700; }
+  .profile-head .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .stat {
+    background: var(--card); border-radius: 12px; padding: 14px;
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+  }
+  .stat .k { color: var(--muted); font-size: 13px; }
+  .stat .v { font-weight: 700; font-size: 15px; }
+  .bar { height: 8px; background: var(--card2); border-radius: 4px; overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  details.doc {
+    background: var(--card); border-radius: 12px; margin-bottom: 10px; overflow: hidden;
+  }
+  details.doc summary {
+    padding: 14px; font-weight: 600; font-size: 14px; cursor: pointer; list-style: none;
+    display: flex; align-items: center; gap: 8px;
+  }
+  details.doc summary::-webkit-details-marker { display: none; }
+  details.doc summary::after { content: '›'; margin-left: auto; transform: rotate(90deg); transition: transform .15s; }
+  details.doc[open] summary::after { transform: rotate(-90deg); }
+  details.doc .txt {
+    padding: 0 14px 14px; font-size: 12.5px; line-height: 1.55; color: var(--text);
+    white-space: pre-wrap; word-break: break-word; max-height: 60vh; overflow-y: auto;
+  }
+  .checkword {
+    text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0 14px;
+  }
+  .loading { text-align: center; color: var(--muted); padding: 48px 0; font-size: 14px; }
+  .err { text-align: center; color: var(--accent); padding: 48px 16px; font-size: 14px; line-height: 1.5; }
+  nav#bottomnav {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+    display: flex; background: rgba(20, 12, 28, .96);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(232, 68, 127, .18);
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  }
+  nav#bottomnav button {
+    flex: 1; background: none; border: none; color: var(--muted);
+    font-size: 11px; padding: 8px 4px; border-radius: 12px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+  }
+  nav#bottomnav button .ico { font-size: 21px; }
+  nav#bottomnav button.on { color: var(--accent); background: rgba(232, 68, 127, .12); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">AnnaBot</div>
+  <div class="chip" id="userchip">…</div>
+</header>
+<main>
+  <section class="tab" id="tab-characters">
+    <h2 id="l_chars_title">Персонажи</h2>
+    <div class="grid" id="chargrid"><div class="loading" id="l_loading">Загрузка…</div></div>
+    <div class="note" id="l_chars_hint">Выбрать девушку для общения можно в чате бота — раздел «Персонажи»</div>
+  </section>
+  <section class="tab" id="tab-shop">
+    <h2 id="l_shop_title">Магазин</h2>
+    <div id="shopbody"><div class="loading">…</div></div>
+  </section>
+  <section class="tab" id="tab-profile">
+    <h2 id="l_profile_title">Профиль</h2>
+    <div id="profilebody"><div class="loading">…</div></div>
+  </section>
+  <section class="tab" id="tab-docs">
+    <h2 id="l_docs_title">Документы и цены</h2>
+    <div class="checkword" id="checkword"></div>
+    <div id="docsbody"><div class="loading">…</div></div>
+  </section>
+</main>
+<nav id="bottomnav">
+  <button data-tab="characters" class="on"><span class="ico">👩</span><span class="lbl">Персонажи</span></button>
+  <button data-tab="shop"><span class="ico">🛒</span><span class="lbl">Магазин</span></button>
+  <button data-tab="profile"><span class="ico">👤</span><span class="lbl">Профиль</span></button>
+  <button data-tab="docs"><span class="ico">📜</span><span class="lbl">Документы</span></button>
+</nav>
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready();
+try { tg.expand(); } catch (e) {}
+try { tg.setHeaderColor('#1a1023'); tg.setBackgroundColor('#1a1023'); } catch (e) {}
+
+const user0 = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {};
+const LANG = String(user0.language_code || 'ru').toLowerCase().startsWith('en') ? 'en' : 'ru';
+
+const L = LANG === 'en' ? {
+  chars_title: 'Characters', loading: 'Loading…',
+  chars_hint: 'Pick a girl to chat with inside the bot — “Characters” section',
+  active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
+  shop_title: 'Shop', month: '/ 30 days', pay_hint: 'Payment happens in the bot — the “🚀 Premium” button or a photo/video button. Prices are the same.',
+  free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
+  profile_title: 'Profile', premium_on: 'Premium active', premium_off: 'Free account',
+  streak: 'day streak', level: 'relationship level', selected_girl: 'selected girl',
+  open_bot: 'Open the bot to chat 💬',
+  docs_title: 'Documents & prices', checkword: 'code word',
+  privacy: 'Privacy policy', agreement: 'User agreement', tariffs: 'Prices & tariffs', support: 'Support',
+  err_auth: 'Could not confirm your Telegram account.<br>Open this app from the bot’s profile.',
+} : {
+  chars_title: 'Персонажи', loading: 'Загрузка…',
+  chars_hint: 'Выбрать девушку для общения можно в чате бота — раздел «Персонажи»',
+  active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
+  shop_title: 'Магазин', month: '/ 30 дней', pay_hint: 'Оплата проходит в боте — кнопка «🚀 Премиум» или кнопка фото/видео. Цены те же.',
+  free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
+  profile_title: 'Профиль', premium_on: 'Premium активен', premium_off: 'Бесплатный аккаунт',
+  streak: 'дней подряд', level: 'уровень отношений', selected_girl: 'выбранная девушка',
+  open_bot: 'Открой бота, чтобы общаться 💬',
+  docs_title: 'Документы и цены', checkword: 'кодовое слово',
+  privacy: 'Политика конфиденциальности', agreement: 'Пользовательское соглашение', tariffs: 'Цены и тарифы', support: 'Поддержка',
+  err_auth: 'Не удалось подтвердить твою учётную запись Telegram.<br>Открой приложение из профиля бота.',
+};
+
+document.getElementById('l_chars_title').textContent = L.chars_title;
+document.getElementById('l_shop_title').textContent = L.shop_title;
+document.getElementById('l_profile_title').textContent = L.profile_title;
+document.getElementById('l_docs_title').textContent = L.docs_title;
+document.getElementById('l_loading').textContent = L.loading;
+document.getElementById('l_chars_hint').textContent = L.chars_hint;
+document.querySelectorAll('#bottomnav .lbl').forEach((el, i) => {
+  el.textContent = ['Персонажи','Магазин','Профиль','Документы'][i];
+  if (LANG === 'en') el.textContent = ['Characters','Shop','Profile','Documents'][i];
+});
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── tabs ──────────────────────────────────────────────────────────────────
+const navBtns = document.querySelectorAll('#bottomnav button');
+navBtns.forEach(btn => btn.addEventListener('click', () => {
+  navBtns.forEach(b => b.classList.toggle('on', b === btn));
+  document.querySelectorAll('section.tab').forEach(s =>
+    s.classList.toggle('active', s.id === 'tab-' + btn.dataset.tab));
+}));
+
+// ── characters ────────────────────────────────────────────────────────────
+async function loadCharacters() {
+  try {
+    const r = await fetch('/webapp/api/characters');
+    const j = await r.json();
+    const grid = document.getElementById('chargrid');
+    if (!j.ok || !j.characters.length) {
+      grid.innerHTML = '<div class="loading">—</div>'; return;
+    }
+    grid.innerHTML = j.characters.map(c => {
+      const badge = c.status === 'active'
+        ? `<span class="badge active">✅ ${esc(L.active)}</span>`
+        : c.status === 'premium'
+          ? `<span class="badge premium">⭐ ${esc(L.prem)}</span>`
+          : `<span class="badge soon">🔒 ${esc(L.soon)}</span>`;
+      return `<div class="card${c.selected ? ' selected' : ''}">
+        <div class="photo">
+          <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <div class="fallback">${esc(c.emoji)}</div>
+          ${badge}${c.selected ? `<span class="badge" style="left:auto;right:8px;color:#e8447f">❤️</span>` : ''}
+        </div>
+        <div class="body">
+          <div class="name">${esc(c.name)}</div>
+          <div class="age">${esc(c.age)} ${esc(L.years)}</div>
+          <div class="bio">${esc(c.bio)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('chargrid').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+// ── shop ──────────────────────────────────────────────────────────────────
+async function loadShop() {
+  try {
+    const r = await fetch('/webapp/api/shop?lang=' + LANG);
+    const j = await r.json();
+    if (!j.ok) return;
+    const s = j.shop, p = s.premium;
+    const price = `⭐ ${p.stars} <small>${esc(L.month)}</small>` +
+      (p.rub ? ` · ${p.rub} ₽` : '');
+    const feats = p.features.map(f => `<li><span>${esc(f.emoji)}</span><span>${esc(LANG === 'en' ? f.en : f.ru)}</span></li>`).join('');
+    const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars} ⭐</span></div>`).join('');
+    document.getElementById('shopbody').innerHTML = `
+      <div class="hero">
+        <div class="title">⭐ Premium</div>
+        <div class="price">${price}</div>
+        <ul>${feats}</ul>
+      </div>
+      ${items}
+      <div class="note">${esc(L.pay_hint)}</div>
+      <div class="note">💬 ${s.free_tier.messages_per_day} ${esc(L.msg_day)} · 📸 ${s.free_tier.photos_level_1_2}–${s.free_tier.photos_level_3_6} ${esc(L.photos_day)}</div>`;
+  } catch (e) {
+    document.getElementById('shopbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+// ── profile ───────────────────────────────────────────────────────────────
+async function loadMe() {
+  const chip = document.getElementById('userchip');
+  try {
+    const r = await fetch('/webapp/api/me?init_data=' + encodeURIComponent(tg.initData || ''));
+    if (r.status === 401) {
+      document.getElementById('profilebody').innerHTML = `<div class="err">${L.err_auth}</div>`;
+      chip.textContent = '—'; return;
+    }
+    const j = await r.json();
+    if (!j.ok) return;
+    const m = j.me;
+    chip.textContent = m.premium ? '⭐ Premium' : (m.name || ('#' + m.id));
+    chip.className = 'chip' + (m.premium ? ' premium' : '');
+    const initial = (m.name || user0.first_name || 'A').trim().charAt(0).toUpperCase();
+    const lvlPct = Math.min(100, Math.round(m.selected_character.level / 8 * 100));
+    document.getElementById('profilebody').innerHTML = `
+      <div class="profile-head">
+        <div class="avatar">${esc(initial)}</div>
+        <div>
+          <div class="nm">${esc(m.name || user0.first_name || '—')}</div>
+          <div class="sub">${m.premium ? '⭐ ' + esc(L.premium_on) : esc(L.premium_off)} · id ${esc(m.id)}</div>
+        </div>
+      </div>
+      <div class="stat"><span class="k">👩 ${esc(L.selected_girl)}</span><span class="v">${esc(m.selected_character.name)}</span></div>
+      <div class="stat" style="flex-direction:column;align-items:stretch">
+        <div style="display:flex;justify-content:space-between">
+          <span class="k">❤️ ${esc(L.level)}</span><span class="v">${esc(m.selected_character.level)} / 8</span>
+        </div>
+        <div class="bar"><i style="width:${lvlPct}%"></i></div>
+      </div>
+      <div class="stat"><span class="k">🔥 ${esc(L.streak)}</span><span class="v">${esc(m.streak)}</span></div>
+      <div class="note">${esc(L.open_bot)}</div>`;
+  } catch (e) {
+    document.getElementById('profilebody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+// ── documents ─────────────────────────────────────────────────────────────
+async function loadDocs() {
+  try {
+    const r = await fetch('/webapp/api/legal?lang=' + LANG);
+    const j = await r.json();
+    if (!j.ok) return;
+    const d = j.legal;
+    document.getElementById('checkword').textContent = `${L.checkword}: ${d.check_word}`;
+    document.getElementById('docsbody').innerHTML = `
+      <details class="doc"><summary>🔐 ${esc(L.privacy)}</summary><div class="txt">${esc(d.privacy)}</div></details>
+      <details class="doc"><summary>📄 ${esc(L.agreement)}</summary><div class="txt">${esc(d.agreement)}</div></details>
+      <details class="doc"><summary>💰 ${esc(L.tariffs)}</summary><div class="txt">${esc(d.tariffs)}</div></details>
+      <details class="doc"><summary>🛟 ${esc(L.support)}</summary><div class="txt">${esc(d.support)}</div></details>`;
+  } catch (e) {
+    document.getElementById('docsbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+loadMe();
+loadCharacters();
+loadShop();
+loadDocs();
+</script>
+</body>
+</html>

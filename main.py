@@ -132,6 +132,7 @@ from services.payment_method_service import (
 )
 from services import donation_service
 from services import legal_service
+from services import webapp_service
 
 # V3.30.2: /fkcheck diagnostics print the deployed build straight from the
 # VERSION file so the owner can confirm Railway picked up the new commit.
@@ -6411,6 +6412,56 @@ async def _root(request: web.Request) -> web.Response:
     )
 
 
+# ---------------------------------------------------------------------------
+# V3.33.0: Telegram Mini App (WebApp) — the storefront served by the same
+# aiohttp app Railway already runs. /webapp is the page; /webapp/api/* are its
+# JSON endpoints; /webapp/photo/<id> serves canonical character portraits.
+# ---------------------------------------------------------------------------
+
+async def _webapp_index(request: web.Request) -> web.Response:
+    index = webapp_service.WEBAPP_INDEX
+    if index.exists():
+        return web.FileResponse(index, headers={'Cache-Control': 'no-cache'})
+    return web.Response(text='webapp is not deployed', status=500)
+
+
+async def _webapp_api_me(request: web.Request) -> web.Response:
+    # initData is signed by Telegram with the bot token — the official HMAC
+    # check in webapp_service validates it before any user data is returned.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    track_event(uid, 'webapp_opened')
+    return web.json_response({'ok': True, 'me': webapp_service.api_me(telegram_id)})
+
+
+async def _webapp_api_characters(request: web.Request) -> web.Response:
+    # Public storefront data (same cards the bot shows); no initData needed.
+    return web.json_response({'ok': True, 'characters': webapp_service.api_characters()})
+
+
+async def _webapp_api_shop(request: web.Request) -> web.Response:
+    return web.json_response({'ok': True, 'shop': webapp_service.api_shop(request.query.get('lang', 'ru'))})
+
+
+async def _webapp_api_legal(request: web.Request) -> web.Response:
+    # The Platega-required documents, visible in the Mini App as well.
+    return web.json_response({'ok': True, 'legal': webapp_service.api_legal(request.query.get('lang', 'ru'))})
+
+
+async def _webapp_photo(request: web.Request) -> web.Response:
+    photo = webapp_service.character_photo(request.match_info['character_id'])
+    if not photo:
+        return web.Response(status=404)
+    data, content_type = photo
+    return web.Response(body=data, content_type=content_type, headers={'Cache-Control': 'public, max-age=3600'})
+
+
 async def _start_web_server() -> None:
     app = web.Application()
     app.router.add_get('/', _root)
@@ -6421,6 +6472,13 @@ async def _start_web_server() -> None:
     app.router.add_route('*', '/freekassa/fail', _fk_fail)
     app.router.add_get('/healthz', _healthz)
     app.router.add_get('/fkcheck', _fk_check)
+    # V3.33.0: Mini App storefront (page + JSON API + character portraits).
+    app.router.add_get('/webapp', _webapp_index)
+    app.router.add_get('/webapp/api/me', _webapp_api_me)
+    app.router.add_get('/webapp/api/characters', _webapp_api_characters)
+    app.router.add_get('/webapp/api/shop', _webapp_api_shop)
+    app.router.add_get('/webapp/api/legal', _webapp_api_legal)
+    app.router.add_get('/webapp/photo/{character_id}', _webapp_photo)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', WEB_PORT)
@@ -6454,6 +6512,18 @@ async def main():
         types.BotCommand(command='reset', description='Очистить память и историю'),
     ]
     await bot.set_my_commands(public_commands)
+    # V3.33.0: Mini App — the blue «Открыть приложение» button in the bot's
+    # profile plus the «AnnaBot» menu button. Requires PUBLIC_BASE_URL (the
+    # same Railway domain FreeKassa already uses); skipped silently otherwise.
+    if PUBLIC_BASE_URL:
+        try:
+            await bot.set_chat_menu_button(types.MenuButtonWebApp(
+                text='AnnaBot',
+                web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'),
+            ))
+            logger.info('webapp menu button installed url=%s/webapp', PUBLIC_BASE_URL)
+        except Exception:
+            logger.exception('failed to set webapp menu button')
     logger.info('startup admin_ids_count=%s', len(ADMIN_TELEGRAM_IDS))
     if not ADMIN_TELEGRAM_IDS:
         logger.warning('ADMIN_TELEGRAM_IDS is empty; /admin will be inaccessible')
