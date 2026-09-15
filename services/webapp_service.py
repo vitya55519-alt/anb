@@ -251,13 +251,15 @@ def api_shop(lang: str = 'ru') -> dict:
         ('🎙', 'голосовые ответы и кружочки', 'voice replies and video circles'),
     ]
     items = [
-        ('📸', 'Сет фото' if not en else 'Photo set', PHOTO_COST_STARS),
-        ('✨', 'Фото по сценарию из чата' if not en else 'Chat-scenario photo', CHAT_PHOTO_OFFER_STARS),
-        ('🎨', 'Кастомное фото' if not en else 'Custom photo', CUSTOM_PHOTO_COST_STARS),
-        ('🎬', 'Оживление фото' if not en else 'Photo animation', VIDEO_COST_STARS),
-        ('🖼', 'Скачивание из галереи' if not en else 'Gallery download', GALLERY_DOWNLOAD_STARS),
-        ('🎯', 'Другая ветка истории' if not en else 'Story branch replay', QUEST_REPLAY_STARS),
-        ('👩', 'Создание персонажа' if not en else 'Character creation', CONSTRUCTOR_COST_STARS),
+        ('📸', 'Сет фото' if not en else 'Photo set', PHOTO_COST_STARS, None, None),
+        ('✨', 'Фото по сценарию из чата' if not en else 'Chat-scenario photo', CHAT_PHOTO_OFFER_STARS, None, None),
+        ('🎨', 'Кастомное фото' if not en else 'Custom photo', CUSTOM_PHOTO_COST_STARS, None, None),
+        ('🎬', 'Оживление фото' if not en else 'Photo animation', VIDEO_COST_STARS, None, None),
+        ('🖼', 'Скачивание из галереи' if not en else 'Gallery download', GALLERY_DOWNLOAD_STARS, None, None),
+        ('🎯', 'Другая ветка истории' if not en else 'Story branch replay', QUEST_REPLAY_STARS, None, None),
+        # the constructor has REAL card prices — the ladder would lie about them
+        ('👩', 'Создание персонажа' if not en else 'Character creation', CONSTRUCTOR_COST_STARS,
+         CONSTRUCTOR_COST_RUB if FREEKASSA_ENABLED else None, CONSTRUCTOR_PRICE_USD),
     ]
     return {
         'premium': {
@@ -276,11 +278,13 @@ def api_shop(lang: str = 'ru') -> dict:
             'photos_level_3_6': FREE_PHOTOS_LEVEL_3_6,
         },
         # V3.36.0: each item carries the rub + dollar equivalent of its Stars
-        # price (the same ladder the bot shows next to its buttons).
+        # price (the same ladder the bot shows next to its buttons); explicit
+        # per-item fiat (the constructor) wins over the ladder.
         'items': [
             {'emoji': e, 'name': n, 'stars': s,
-             'rub': fiat_values(s)[0], 'usd': fiat_values(s)[1]}
-            for e, n, s in items
+             'rub': rub if rub is not None else fiat_values(s)[0],
+             'usd': usd if usd is not None else fiat_values(s)[1]}
+            for e, n, s, rub, usd in items
         ],
         'constructor_rub': CONSTRUCTOR_COST_RUB if FREEKASSA_ENABLED else None,
         'constructor_usd': CONSTRUCTOR_PRICE_USD,

@@ -99,7 +99,9 @@ def test_webapp_service_items_carry_fiat():
     assert "'usd': FREEKASSA_PREMIUM_PRICE_USD," in WEBAPP_SVC
     assert "'usd': PREMIUM_WEEKLY_PRICE_USD," in WEBAPP_SVC
     assert "'rub': photo_rub," in WEBAPP_SVC and "'usd': photo_usd," in WEBAPP_SVC
-    assert "'rub': fiat_values(s)[0], 'usd': fiat_values(s)[1]" in WEBAPP_SVC
+    assert "'rub': rub if rub is not None else fiat_values(s)[0]," in WEBAPP_SVC
+    # the constructor item carries its REAL card prices, not the ladder
+    assert 'CONSTRUCTOR_COST_RUB if FREEKASSA_ENABLED else None, CONSTRUCTOR_PRICE_USD),' in WEBAPP_SVC
 
 
 def test_frontend_renders_fiat_next_to_stars():
