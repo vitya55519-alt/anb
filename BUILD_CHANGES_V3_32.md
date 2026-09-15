@@ -13,8 +13,10 @@ permanently reachable from the bot, plus the temporary check word «чекап»
   законность, интеллектуальная собственность, ограничения, платежи и возвраты
   (24h refund window, chargeback ban), ссылка на Политику, тикет-поддержка.
 - Texts deliberately contain NO ИП/ООО/ИНН data (partner's compliance rule);
-  service identity is `телеграм-бот AnnaBot (@come_closer_bot)` — the username
-  is env-configurable via `LEGAL_BOT_USERNAME`.
+  service identity is `телеграм-бот AnnaBot (@Anna67901_bot)` — the username
+  is env-configurable via `LEGAL_BOT_USERNAME` (V3.32.1: default corrected —
+  the earlier `@come_closer_bot` default was the payment partner's sample
+  bot, not ours).
 - Revision date: 15 сентября 2026 г.; `LEGAL_VERSION = '2026-09-15'`.
 
 ## Always-visible access points (bank review requirement)

@@ -33,7 +33,7 @@ def _costumes() -> dict:
 
 
 def test_version_bumped():
-    assert VERSION in ('3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0')
+    assert VERSION in ('3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1')
 
 
 def test_new_videogame_heroines_present():

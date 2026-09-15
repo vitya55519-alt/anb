@@ -47,7 +47,7 @@ LEGAL_DATE_RU = '15 сентября 2026 г.'
 LEGAL_DATE_SHORT = '15.09.2026'
 # The service identity shown in every document header (env-configurable so a
 # renamed bot does not need a code change).
-LEGAL_BOT_USERNAME = os.getenv('LEGAL_BOT_USERNAME', '@come_closer_bot').strip()
+LEGAL_BOT_USERNAME = os.getenv('LEGAL_BOT_USERNAME', '@Anna67901_bot').strip()
 SERVICE_NAME = f'телеграм-бот AnnaBot ({LEGAL_BOT_USERNAME})'
 
 # Temporary verification word for the payment partner's compliance check.

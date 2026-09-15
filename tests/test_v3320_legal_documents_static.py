@@ -17,7 +17,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.31.8', '3.32.0')
+    assert VERSION in ('3.31.8', '3.32.0', '3.32.1')
 
 
 def test_legal_service_documents_exist():
@@ -42,7 +42,7 @@ def test_legal_service_documents_exist():
     # the documents are dated and identify the service
     assert "LEGAL_VERSION = '2026-09-15'" in LEGAL
     assert 'LEGAL_DATE_RU' in LEGAL
-    assert "os.getenv('LEGAL_BOT_USERNAME', '@come_closer_bot')" in LEGAL
+    assert "os.getenv('LEGAL_BOT_USERNAME', '@Anna67901_bot')" in LEGAL
 
 
 def test_no_personal_registration_data_in_legal_texts():
