@@ -27,7 +27,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION == '3.37.0'
+    assert VERSION in ('3.37.0', '3.38.0')
 
 
 # ── config: the program dials live behind env vars ─────────────────────────
@@ -111,7 +111,8 @@ def test_partner_bot_screen_and_callbacks():
 
 def test_partner_keyboard_button():
     assert "'partner': ('💰 Партнёрка', '💰 Partner program')" in UI_LANG
-    assert "['partner']" in UI_LANG
+    # V3.38.0: partner shares the bottom row with «👥 Поддержка».
+    assert "['partner', 'support']" in UI_LANG
 
 
 # ── Mini App: 5th tab + endpoints ──────────────────────────────────────────
@@ -125,7 +126,10 @@ def test_partner_webapp_endpoints():
 
 
 def test_partner_miniapp_tab():
-    assert 'id="tab-partner"' in INDEX
+    # V3.38.0: the partner tab became a full-screen overlay opened from the
+    # profile «Партнёрка» row; the render/load/withdraw functions are intact.
+    assert 'id="partnerview"' in INDEX
+    assert 'id="menuPartner"' in INDEX
     assert 'async function loadPartner()' in INDEX
     assert 'function renderPartner()' in INDEX
     assert 'async function withdrawPartner()' in INDEX

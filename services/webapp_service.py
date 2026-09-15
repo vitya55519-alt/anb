@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import time
 from pathlib import Path
 from urllib.parse import parse_qsl
@@ -56,10 +57,10 @@ from config import (
     VIDEO_PREMIUM_FREE_DAILY,
     fiat_values,
 )
-from models.app_models import User
+from models.app_models import Message, User
 from services import legal_service
 from services.access_service import is_premium
-from services.character_card_service import get_card, list_cards
+from services.character_card_service import get_card, get_scenario_hook, list_cards
 from services.custom_character_service import (
     CONSTRUCTOR_STEPS, OPTION_LABELS_EN, STEP_TITLES_EN,
     custom_character_id, is_custom_character,
@@ -70,11 +71,68 @@ from services.ui_lang import EN, user_lang
 ROOT = Path(__file__).resolve().parents[1]
 WEBAPP_INDEX = ROOT / 'webapp' / 'index.html'
 
+# V3.38.0: user-generated pictures from the «Картинки» studio tab live
+# outside the character system — one folder per user, meta.json index.
+APP_PICTURES_DIR = ROOT / 'data' / 'app_pictures'
+
+# One freeform picture costs one photo credit (🍓) — the same balance the bot
+# charges for a photo set, so shop purchases feed both chat photos and the
+# studio.
+WEBAPP_PICTURE_COST_CREDITS = 1
+
+# The studio is a public, fully-clothed surface. Prompts that point at minors
+# or coercion are rejected before any engine call; every prompt additionally
+# gets the SFW constraint appended so the output stays within the same
+# boundaries as the rest of the product.
+_PICTURE_BLOCKED_RE = re.compile(
+    r'(child|children|kid|kids|teen|teenager|minor|underage|loli|shota|'
+    r'школьниц|школьник|школяр|реб[её]н|детск|девочк|мальчик|несовершеннолетн|подрост|'
+    r'rape|raped|изнасил|насили|принуд|non.?consensual)',
+    re.IGNORECASE,
+)
+PICTURE_PROMPT_SUFFIX = (
+    ', fully clothed, elegant outfit, safe for work, no nudity, '
+    'high quality, detailed, cinematic lighting'
+)
+PICTURE_PROMPT_MAX_LEN = 800
+PICTURE_PROMPT_MIN_LEN = 4
+
+# Studio selectors — the user-facing «Стиль»/«Формат» dropdowns only prepend /
+# append neutral composition words; the SFW constraint is mandatory.
+PICTURE_STYLE_PREFIXES = {
+    'anime': 'anime style illustration, vibrant colors, ',
+    'realistic': 'photorealistic photo, natural lighting, ',
+    'fantasy': 'fantasy digital art, ',
+}
+PICTURE_FORMAT_SUFFIXES = {
+    'square': ', square 1:1 composition',
+    'portrait': ', vertical portrait 2:3 composition',
+}
+
+
+def picture_prompt_allowed(prompt: str) -> bool:
+    """V3.38.0: hard reject for the studio — minors/coercion never reach an engine."""
+    return not _PICTURE_BLOCKED_RE.search(prompt or '')
+
+
+def picture_final_prompt(prompt: str, style: str = 'anime', fmt: str = 'square') -> str:
+    """User text + the chosen style/format + the standing SFW constraint."""
+    base = (prompt or '').strip()[:PICTURE_PROMPT_MAX_LEN]
+    prefix = PICTURE_STYLE_PREFIXES.get(style, PICTURE_STYLE_PREFIXES['anime'])
+    suffix = PICTURE_FORMAT_SUFFIXES.get(fmt, PICTURE_FORMAT_SUFFIXES['square'])
+    return prefix + base + suffix + PICTURE_PROMPT_SUFFIX
+
 # Canonical face references used for storefront photos (no network needed).
 _FACE_REFERENCES = {
     CHARACTER_ID: ('references', 'anna', '00_anna_canonical_face_v3.png'),
     'alena_01': ('references', 'emily', '00_emily_canonical_face.png'),
     'maria_01': ('references', 'maria', '00_maria_canonical_face.png'),
+    # V3.38.0: the Come Closer character pack storefront portraits.
+    'erika_01': ('references', 'erika', '00_erika_canonical_face.png'),
+    'sonya_01': ('references', 'sonya', '00_sonya_canonical_face.png'),
+    'vika_01': ('references', 'vika', '00_vika_canonical_face.png'),
+    'alisa_01': ('references', 'alisa', '00_alisa_canonical_face.png'),
+    'mila_01': ('references', 'mila', '00_mila_canonical_face.png'),
 }
 
 
@@ -169,6 +227,9 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             'name': card.display_name,
             'age': card.age,
             'bio': card.short_bio or '',
+            # V3.38.0: the Come Closer story-hook line under the name ("мать
+            # твоего друга", "подруга детства приехала в твой город").
+            'hook': get_scenario_hook(card.character_id) or '',
             'status': card.status,
             'emoji': card.button_emoji or '👩',
             'photo': f"/webapp/photo/{card.character_id}",
@@ -329,6 +390,106 @@ def api_chat_history(db_user_id: int, character_id: str, limit: int = 30) -> lis
             ts = None
         out.append({'role': m.role, 'content': m.content, 'ts': ts})
     return out
+
+
+def api_chat_list(db_user_id: int, telegram_id: int | None = None) -> list[dict]:
+    """V3.38.0: the «Чаты» tab — one row per character the user has any
+    messages with, newest activity first, carrying the storefront card data
+    (photo, status) so a tap can open the shared in-app chat view."""
+    try:
+        with SessionLocal() as session:
+            rows = session.scalars(
+                select(Message)
+                .where(Message.user_id == int(db_user_id))
+                .order_by(Message.created_at.desc())
+                .limit(400)
+            ).all()
+    except Exception:
+        return []
+    seen: dict[str, Message] = {}
+    for m in rows:
+        if m.character_id not in seen:
+            seen[m.character_id] = m
+    out = []
+    for character_id, last in seen.items():
+        card = get_card(character_id)
+        custom = is_custom_character(character_id)
+        try:
+            ts = last.created_at.isoformat() if last.created_at else None
+        except Exception:
+            ts = None
+        out.append({
+            'id': character_id,
+            'name': card.display_name if card else (character_id if not custom else '—'),
+            'photo': f"/webapp/photo/{character_id}",
+            'emoji': (card.button_emoji if card else None) or '👩',
+            'status': card.status if card else ('active' if custom else 'soon'),
+            'custom': custom,
+            'mine': custom and bool(telegram_id) and character_id == custom_character_id(telegram_id),
+            'selected': False,
+            'last_message': (last.content or '')[:140],
+            'last_role': last.role,
+            'last_ts': ts,
+        })
+    return out[:50]
+
+
+# ── V3.38.0: «Картинки» studio persistence ────────────────────────────────
+
+def _picture_folder(telegram_id: int) -> Path:
+    return APP_PICTURES_DIR / str(int(telegram_id))
+
+
+def save_picture(telegram_id: int, filename: str, prompt: str) -> None:
+    """Append the new picture to the user's meta.json index (newest last)."""
+    folder = _picture_folder(telegram_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    meta = folder / 'meta.json'
+    try:
+        items = json.loads(meta.read_text(encoding='utf-8')) if meta.exists() else []
+        if not isinstance(items, list):
+            items = []
+    except Exception:
+        items = []
+    items.append({'file': filename, 'prompt': (prompt or '')[:300], 'ts': time.time()})
+    items = items[-100:]
+    meta.write_text(json.dumps(items, ensure_ascii=False), encoding='utf-8')
+
+
+def api_picture_list(telegram_id: int) -> list[dict]:
+    """Newest-first gallery of the user's studio pictures."""
+    meta = _picture_folder(telegram_id) / 'meta.json'
+    if not meta.exists():
+        return []
+    try:
+        items = json.loads(meta.read_text(encoding='utf-8'))
+        if not isinstance(items, list):
+            return []
+    except Exception:
+        return []
+    out = []
+    for item in reversed(items[-30:]):
+        if not isinstance(item, dict) or not item.get('file'):
+            continue
+        out.append({
+            'file': f"/webapp/picture/{item['file']}",
+            'prompt': item.get('prompt', ''),
+            'ts': item.get('ts'),
+        })
+    return out
+
+
+def picture_file_path(telegram_id: int, filename: str) -> Path | None:
+    """Resolve a gallery image for serving; None unless it belongs to the user.
+
+    Filenames are server-generated (<unix_ms>_<hex>.jpg), so a caller can
+    only ever reference pictures they already received from the API.
+    """
+    safe_name = Path(str(filename)).name
+    if not re.fullmatch(r'\d+_[0-9a-f]{8,}\.(jpg|jpeg|png|webp)', safe_name):
+        return None
+    path = _picture_folder(telegram_id) / safe_name
+    return path if path.exists() else None
 
 
 def api_legal(lang: str = 'ru') -> dict:

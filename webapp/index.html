@@ -255,6 +255,63 @@
   }
   .faq-title { text-align: center; color: var(--muted); font-size: 12px; text-transform: uppercase;
     letter-spacing: .6px; margin: 18px 0 10px; }
+  /* V3.38.0: Come Closer tabs — chat list rows, the picture studio, profile
+     menu rows and the story-hook line on character cards. */
+  .hook {
+    color: var(--accent); font-size: 12px; line-height: 1.4; margin: 4px 0 6px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .chat-row {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card); border-radius: 14px; padding: 10px 12px; margin-bottom: 8px;
+    cursor: pointer; border: 1px solid rgba(255,255,255,.05);
+  }
+  .chat-row:active { transform: scale(.98); }
+  .chat-row .p {
+    width: 48px; height: 48px; border-radius: 50%; object-fit: cover;
+    background: var(--card2); flex-shrink: 0;
+  }
+  .chat-row .p.pdiv { display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  .chat-row .mid { flex: 1; min-width: 0; }
+  .chat-row .nm { font-weight: 600; font-size: 14px; }
+  .chat-row .prev {
+    color: var(--muted); font-size: 12px; margin-top: 2px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .chat-row .tm { color: var(--muted); font-size: 10px; flex-shrink: 0; align-self: flex-start; margin-top: 4px; }
+  .page { flex: 1; overflow-y: auto; padding: 16px; }
+  .studio textarea {
+    width: 100%; background: var(--card); border: 1px solid rgba(255,255,255,.08);
+    color: var(--text); font-size: 14px; padding: 12px 14px; border-radius: 14px;
+    outline: none; min-height: 88px; resize: vertical; font-family: inherit;
+  }
+  .studio select, .studio input.txt {
+    width: 100%; background: var(--card); border: 1px solid rgba(255,255,255,.08);
+    color: var(--text); font-size: 14px; padding: 11px 14px; border-radius: 14px;
+    outline: none; margin-top: 8px;
+  }
+  .studio .lbl { color: var(--muted); font-size: 12px; margin: 12px 0 2px; text-transform: uppercase; letter-spacing: .4px; }
+  .studio .hint { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.5; }
+  .pgal { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 10px; }
+  .pgal img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; display: block; background: var(--card2); }
+  .sect-title {
+    color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
+    margin: 18px 0 10px; text-align: center;
+  }
+  .menurow {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--card); border-radius: 12px; padding: 14px; margin-bottom: 8px;
+    cursor: pointer; font-size: 14px; font-weight: 600; border: 1px solid rgba(255,255,255,.05);
+  }
+  .menurow .arr { color: var(--muted); }
+  .menurow:active { transform: scale(.98); }
+  .minichar {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--card); border-radius: 12px; padding: 8px 10px; margin-bottom: 8px;
+  }
+  .minichar img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--card2); }
+  .minichar .nm { font-size: 14px; font-weight: 600; flex: 1; }
+  .minichar button { flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -268,31 +325,33 @@
     <div class="grid" id="chargrid"><div class="loading" id="l_loading">Загрузка…</div></div>
     <div class="note" id="l_chars_hint">Выбрать девушку для общения можно в чате бота — раздел «Персонажи»</div>
   </section>
+  <section class="tab" id="tab-chats">
+    <h2 id="l_chats_title2">Чаты</h2>
+    <div id="chatsbody"><div class="loading">…</div></div>
+  </section>
+  <!-- V3.38.0: the «Картинки» studio — freeform picture generation for 🍓 -->
+  <section class="tab" id="tab-pictures">
+    <h2 id="l_pic_title">Создать картинку</h2>
+    <div class="studio" id="studiobody"></div>
+  </section>
   <section class="tab" id="tab-shop">
     <h2 id="l_shop_title">Магазин</h2>
     <div id="shopbody"><div class="loading">…</div></div>
-  </section>
-  <!-- V3.37.0: the partner tab — stats, personal link, withdrawal, FAQ -->
-  <section class="tab" id="tab-partner">
-    <h2 id="l_partner_title">Партнёрка</h2>
-    <div id="partnerbody"><div class="loading">…</div></div>
   </section>
   <section class="tab" id="tab-profile">
     <h2 id="l_profile_title">Профиль</h2>
     <div id="profilebody"><div class="loading">…</div></div>
   </section>
-  <section class="tab" id="tab-docs">
-    <h2 id="l_docs_title">Документы и цены</h2>
-    <div class="checkword" id="checkword"></div>
-    <div id="docsbody"><div class="loading">…</div></div>
-  </section>
 </main>
+<!-- V3.38.0: the Come Closer bottom nav — Персонажи / Чаты / Картинки /
+     Магазин / Профиль. Partner program and documents moved into the profile
+     as full-screen overlays. -->
 <nav id="bottomnav">
   <button data-tab="characters" class="on"><span class="ico">👩</span><span class="lbl">Персонажи</span></button>
+  <button data-tab="chats"><span class="ico">💬</span><span class="lbl">Чаты</span></button>
+  <button data-tab="pictures"><span class="ico">🖼</span><span class="lbl">Картинки</span></button>
   <button data-tab="shop"><span class="ico">🛒</span><span class="lbl">Магазин</span></button>
-  <button data-tab="partner"><span class="ico">💰</span><span class="lbl">Партнёрка</span></button>
   <button data-tab="profile"><span class="ico">👤</span><span class="lbl">Профиль</span></button>
-  <button data-tab="docs"><span class="ico">📜</span><span class="lbl">Документы</span></button>
 </nav>
 <div id="toast"></div>
 <!-- V3.35.0: in-app chat — tap a card opens the dialog (shared with the bot chat) -->
@@ -324,6 +383,27 @@
     </div>
   </div>
   <div class="wiz" id="wizBody"></div>
+</div>
+<div class="overlay" id="partnerview">
+  <div class="chat-head">
+    <button class="iconbtn" id="partnerBack">‹</button>
+    <div>
+      <div class="nm" id="l_partner_ov">Партнёрка</div>
+    </div>
+  </div>
+  <div class="page" id="partnerbody"><div class="loading">…</div></div>
+</div>
+<div class="overlay" id="docsview">
+  <div class="chat-head">
+    <button class="iconbtn" id="docsBack">‹</button>
+    <div>
+      <div class="nm" id="l_docs_ov">Документы и цены</div>
+    </div>
+  </div>
+  <div class="page">
+    <div class="checkword" id="checkword"></div>
+    <div id="docsbody"><div class="loading">…</div></div>
+  </div>
 </div>
 <script>
 const tg = window.Telegram.WebApp;
@@ -370,6 +450,20 @@ const L = LANG === 'en' ? {
   wiz_free: 'free (admin)', wiz_paid_toast: 'Drawing your girl — up to a minute. Her card appears in the grid ✨',
   wiz_exists: 'You already have a character — recreate via the bot chat',
   made_badge: 'user-made', mine_badge: 'yours', mychar_note: 'Your character is created 🎨 recreate via the bot chat',
+  // V3.38.0: the Come Closer tabs — chats list, picture studio, profile.
+  chats_title: 'Chats', chats_empty: 'No dialogs yet — open a character and she will answer right here.',
+  pic_title: 'Create a picture', pic_prompt_ph: 'Describe the picture — who, where, mood…',
+  pic_style: 'Style', pic_format: 'Format',
+  style_anime: 'Anime', style_realistic: 'Realistic', style_fantasy: 'Fantasy',
+  pic_square: 'Square', pic_portrait: 'Portrait',
+  pic_advanced: 'Advanced mode', pic_extra_ph: 'Extra details (optional)…',
+  pic_cost: 'One picture — 1 🍓', pic_generate: 'Create · 1 🍓',
+  pic_wait: 'Drawing — up to a minute…', pic_blocked: 'This description is not allowed',
+  pic_no_credits: 'Not enough 🍓 — add them in the Shop tab',
+  pic_gen_fail: 'Could not draw — try again',
+  pic_gallery: 'My pictures', pic_empty: 'No pictures yet — your works will appear here.',
+  my_chars: 'MY CHARACTERS', create_char: '＋ Create', no_chars: 'No character yet — create your own girl.',
+  partner_row: '💰 Partner program', docs_row: '📜 Documents & prices', open_chat: 'chat',
 } : {
   chars_title: 'Персонажи', loading: 'Загрузка…',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
@@ -406,18 +500,34 @@ const L = LANG === 'en' ? {
   wiz_free: 'бесплатно (админ)', wiz_paid_toast: 'Рисую твою героиню — до минуты. Карточка появится в сетке ✨',
   wiz_exists: 'Персонаж уже создан — создать заново можно в чате бота',
   made_badge: 'создана игроком', mine_badge: 'твоя', mychar_note: 'Твой персонаж создан 🎨 создать заново можно в чате бота',
+  // V3.38.0: вкладки в стиле Come Closer — чаты, студия картинок, профиль.
+  chats_title: 'Чаты', chats_empty: 'Диалогов пока нет — открой персонажу, и она ответит прямо здесь.',
+  pic_title: 'Создать картинку', pic_prompt_ph: 'Опиши картинку — кто, где, настроение…',
+  pic_style: 'Стиль', pic_format: 'Формат',
+  style_anime: 'Аниме', style_realistic: 'Реализм', style_fantasy: 'Фэнтези',
+  pic_square: 'Квадрат', pic_portrait: 'Портрет',
+  pic_advanced: 'Продвинутый режим', pic_extra_ph: 'Дополнительные детали (необязательно)…',
+  pic_cost: 'Одна картинка — 1 🍓', pic_generate: 'Создать · 1 🍓',
+  pic_wait: 'Рисую — до минуты…', pic_blocked: 'Такое описание нельзя',
+  pic_no_credits: 'Не хватает 🍓 — добавь во вкладке «Магазин»',
+  pic_gen_fail: 'Не получилось нарисовать — попробуй ещё раз',
+  pic_gallery: 'Мои картинки', pic_empty: 'Картинок пока нет — твои работы появятся здесь.',
+  my_chars: 'МОИ ПЕРСОНАЖИ', create_char: '＋ Создать', no_chars: 'Персонажа пока нет — создай свою девушку.',
+  partner_row: '💰 Партнёрка', docs_row: '📜 Документы и цены', open_chat: 'чат',
 };
 
 document.getElementById('l_chars_title').textContent = L.chars_title;
 document.getElementById('l_shop_title').textContent = L.shop_title;
-document.getElementById('l_partner_title').textContent = L.partner_title;
+document.getElementById('l_chats_title2').textContent = L.chats_title;
+document.getElementById('l_pic_title').textContent = L.pic_title;
+document.getElementById('l_partner_ov').textContent = L.partner_title;
+document.getElementById('l_docs_ov').textContent = L.docs_title;
 document.getElementById('l_profile_title').textContent = L.profile_title;
-document.getElementById('l_docs_title').textContent = L.docs_title;
 document.getElementById('l_loading').textContent = L.loading;
 document.getElementById('l_chars_hint').textContent = L.chars_hint;
 document.querySelectorAll('#bottomnav .lbl').forEach((el, i) => {
-  el.textContent = ['Персонажи','Магазин','Партнёрка','Профиль','Документы'][i];
-  if (LANG === 'en') el.textContent = ['Characters','Shop','Partner','Profile','Documents'][i];
+  el.textContent = ['Персонажи','Чаты','Картинки','Магазин','Профиль'][i];
+  if (LANG === 'en') el.textContent = ['Characters','Chats','Pictures','Shop','Profile'][i];
 });
 
 function esc(s) {
@@ -477,7 +587,9 @@ async function buy(productId, btn) {
 }
 
 // ── characters ────────────────────────────────────────────────────────────
+let CHARS = [];
 function renderCharacters(list) {
+  CHARS = list;
   const grid = document.getElementById('chargrid');
   // V3.35.0: the grid is the chat entry now — tap opens the dialog; the
   // «create your own» card rides at the end of the grid.
@@ -491,6 +603,9 @@ function renderCharacters(list) {
     const customBadge = c.custom
       ? `<span class="badge made" style="left:auto;right:8px;top:auto;bottom:8px">${c.mine ? '💚 ' + esc(L.mine_badge) : '🎨 ' + esc(L.made_badge)}</span>`
       : '';
+    // V3.38.0: the Come Closer story-hook under the name ("мать твоего
+    // друга") — the bio stays as the smaller descriptive line.
+    const hookLine = c.hook ? `<div class="hook">${esc(c.hook)}</div>` : '';
     return `<div class="card${c.selected ? ' selected' : ''}" data-id="${esc(c.id)}" data-status="${esc(c.status)}" data-name="${esc(c.name)}" data-photo="${esc(c.photo)}" data-emoji="${esc(c.emoji)}" data-custom="${c.custom ? '1' : '0'}">
       <div class="photo">
         <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
@@ -500,6 +615,7 @@ function renderCharacters(list) {
       <div class="body">
         <div class="name">${esc(c.name)}</div>
         <div class="age">${esc(c.age)} ${esc(L.years)}</div>
+        ${hookLine}
         <div class="bio">${esc(c.bio)}</div>
       </div>
     </div>`;
@@ -518,6 +634,9 @@ function renderCharacters(list) {
     el.addEventListener('click', () => openCharacter(el)));
   const cc = document.getElementById('createCard');
   if (cc) cc.addEventListener('click', openWizard);
+  // V3.38.0: the profile «MY CHARACTERS» block lists mine cards — re-render
+  // it once the grid data arrives (loadMe usually finishes first).
+  if (ME) renderProfileBody();
 }
 
 async function loadCharacters() {
@@ -804,6 +923,153 @@ function pollCharacters() {
   }, 5000);
 }
 
+// ── V3.38.0: the «Чаты» tab — every dialog in one list ───────────────────
+function fmtDay(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+  } catch (e) { return ''; }
+}
+
+function renderChats(list) {
+  const box = document.getElementById('chatsbody');
+  if (!list.length) {
+    box.innerHTML = `<div class="chat-empty">${esc(L.chats_empty)}</div>`;
+    return;
+  }
+  box.innerHTML = list.map(c => {
+    const prev = (c.last_role === 'user' ? '✓ ' : '') + (c.last_message || '…');
+    return `<div class="chat-row" data-id="${esc(c.id)}">
+      <img class="p" src="${esc(c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+      <div class="p pdiv" style="display:none">${esc(c.emoji)}</div>
+      <div class="mid">
+        <div class="nm">${esc(c.name)}</div>
+        <div class="prev">${esc(prev)}</div>
+      </div>
+      <div class="tm">${esc(fmtDay(c.last_ts))}</div>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.chat-row').forEach(el => el.addEventListener('click', () => {
+    const c = list.find(x => x.id === el.dataset.id);
+    if (!c) return;
+    if (c.status === 'premium' && !(ME && ME.premium)) { toast(L.need_premium); showTab('shop'); return; }
+    if (c.status !== 'active' && c.status !== 'premium') { toast(L.locked); return; }
+    openChat({
+      id: c.id, name: c.name, photo: c.photo, emoji: c.emoji,
+      status: c.status, custom: c.custom, selected: c.selected,
+    });
+  }));
+}
+
+async function loadChats() {
+  try {
+    const r = await fetch('/webapp/api/chats?init_data=' + encodeURIComponent(tg.initData || ''));
+    if (r.status === 401) {
+      document.getElementById('chatsbody').innerHTML = `<div class="err">${L.err_auth}</div>`;
+      return;
+    }
+    const j = await r.json();
+    if (!j.ok) return;
+    renderChats(j.chats || []);
+  } catch (e) {
+    document.getElementById('chatsbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+// ── V3.38.0: the «Картинки» tab — prompt studio + my gallery ─────────────
+function renderStudio() {
+  document.getElementById('studiobody').innerHTML = `
+    <textarea id="picPrompt" maxlength="800" placeholder="${esc(L.pic_prompt_ph)}"></textarea>
+    <div class="lbl">${esc(L.pic_style)}</div>
+    <select id="picStyle">
+      <option value="anime">🍓 ${esc(L.style_anime)}</option>
+      <option value="realistic">📷 ${esc(L.style_realistic)}</option>
+      <option value="fantasy">🐉 ${esc(L.style_fantasy)}</option>
+    </select>
+    <div class="lbl">${esc(L.pic_format)}</div>
+    <select id="picFormat">
+      <option value="square">⬛ ${esc(L.pic_square)}</option>
+      <option value="portrait">📱 ${esc(L.pic_portrait)}</option>
+    </select>
+    <div class="lbl" style="cursor:pointer" id="advToggle">⚙️ ${esc(L.pic_advanced)} ›</div>
+    <div id="advBox" style="display:none">
+      <input class="txt" id="picExtra" maxlength="300" placeholder="${esc(L.pic_extra_ph)}">
+    </div>
+    <div class="note" style="margin-top:10px">${esc(L.pic_cost)}</div>
+    <button class="cta" id="picGen">${esc(L.pic_generate)}</button>
+    <div id="picResult"></div>
+    <div class="sect-title">${esc(L.pic_gallery)}</div>
+    <div id="picGallery"></div>`;
+  document.getElementById('advToggle').addEventListener('click', () => {
+    const box = document.getElementById('advBox');
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  });
+  document.getElementById('picGen').addEventListener('click', generatePicture);
+}
+
+async function generatePicture() {
+  const btn = document.getElementById('picGen');
+  if (btn && btn.disabled) return;
+  const prompt = (document.getElementById('picPrompt').value || '').trim();
+  const extra = (document.getElementById('picExtra').value || '').trim();
+  const full = extra ? prompt + ', ' + extra : prompt;
+  if (full.length < 4) { toast(L.pic_prompt_ph); return; }
+  if (!tg.initData) { toast(L.auth_short); return; }
+  if (btn) btn.disabled = true;
+  const result = document.getElementById('picResult');
+  result.innerHTML = `<div class="note">${esc(L.pic_wait)}</div>`;
+  try {
+    const r = await fetch('/webapp/api/picture?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: full,
+        style: document.getElementById('picStyle').value,
+        format: document.getElementById('picFormat').value,
+      }),
+    });
+    if (r.status === 401) { toast(L.auth_short); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
+    if (r.status === 402) { toast(L.pic_no_credits); showTab('shop'); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
+    if (r.status === 403) { toast(L.consent_needed); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
+    if (r.status === 400) { toast(L.pic_blocked); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
+    const j = await r.json();
+    if (!j.ok) { toast(L.pic_gen_fail); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
+    result.innerHTML = `<img src="${esc(j.file)}?init_data=${encodeURIComponent(tg.initData || '')}" style="width:100%;border-radius:14px;margin-top:10px;display:block;background:var(--card2)">`;
+    toast('🍓 ' + (j.credits_left != null ? j.credits_left : ''));
+    loadMe();
+    loadPictures();
+  } catch (e) {
+    toast(L.pic_gen_fail);
+    result.innerHTML = '';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function loadPictures() {
+  const box = document.getElementById('picGallery');
+  if (!box) return;
+  try {
+    const r = await fetch('/webapp/api/pictures?init_data=' + encodeURIComponent(tg.initData || ''));
+    if (r.status === 401) return;
+    const j = await r.json();
+    if (!j.ok) return;
+    const pics = j.pictures || [];
+    if (!pics.length) {
+      box.innerHTML = `<div class="note">${esc(L.pic_empty)}</div>`;
+      return;
+    }
+    box.innerHTML = `<div class="pgal">${pics.map(p =>
+      `<img src="${esc(p.file)}?init_data=${encodeURIComponent(tg.initData || '')}" alt="" loading="lazy">`).join('')}</div>`;
+  } catch (e) {
+    box.innerHTML = '';
+  }
+}
+
 // ── shop ──────────────────────────────────────────────────────────────────
 async function loadShop() {
   try {
@@ -935,32 +1201,72 @@ async function loadMe() {
     }
     const j = await r.json();
     if (!j.ok) return;
-    const m = j.me;
-    ME = m;
-    chip.textContent = m.premium ? '⭐ Premium' : (m.name || ('#' + m.id));
-    chip.className = 'chip' + (m.premium ? ' premium' : '');
-    const initial = (m.name || user0.first_name || 'A').trim().charAt(0).toUpperCase();
-    const lvlPct = Math.min(100, Math.round(m.selected_character.level / 8 * 100));
-    document.getElementById('profilebody').innerHTML = `
-      <div class="profile-head">
-        <div class="avatar">${esc(initial)}</div>
-        <div>
-          <div class="nm">${esc(m.name || user0.first_name || '—')}</div>
-          <div class="sub">${m.premium ? '⭐ ' + esc(L.premium_on) : esc(L.premium_off)} · id ${esc(m.id)}</div>
-        </div>
-      </div>
-      <div class="stat"><span class="k">👩 ${esc(L.selected_girl)}</span><span class="v">${esc(m.selected_character.name)}</span></div>
-      <div class="stat" style="flex-direction:column;align-items:stretch">
-        <div style="display:flex;justify-content:space-between">
-          <span class="k">❤️ ${esc(L.level)}</span><span class="v">${esc(m.selected_character.level)} / 8</span>
-        </div>
-        <div class="bar"><i style="width:${lvlPct}%"></i></div>
-      </div>
-      <div class="stat"><span class="k">🔥 ${esc(L.streak)}</span><span class="v">${esc(m.streak)}</span></div>
-      <div class="note">${esc(L.open_bot)}</div>`;
+    ME = j.me;
+    chip.textContent = m_chipText(ME);
+    chip.className = 'chip' + (ME.premium ? ' premium' : '');
+    renderProfileBody();
   } catch (e) {
     document.getElementById('profilebody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
+}
+
+function m_chipText(m) {
+  return m.premium ? '⭐ Premium' : ((m.name || '') + (m.photo_credits ? ' · 🍓' + m.photo_credits : ''));
+}
+
+// V3.38.0: the Come Closer profile — user card, relationship stats, MY
+// CHARACTERS with a create button, and the partner/documents entries that
+// open full-screen overlays. Needs both ME and CHARS, so it re-renders from
+// loadMe and from renderCharacters.
+function renderProfileBody() {
+  if (!ME) return;
+  const m = ME;
+  const initial = (m.name || user0.first_name || 'A').trim().charAt(0).toUpperCase();
+  const lvlPct = Math.min(100, Math.round(m.selected_character.level / 8 * 100));
+  const mine = (CHARS || []).filter(c => c.mine);
+  const hasMine = mine.length > 0;
+  const myCharsHtml = hasMine
+    ? mine.map(c => `<div class="minichar">
+        <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none'">
+        <div class="nm">${esc(c.name)}</div>
+        <button class="cta small" data-chat-id="${esc(c.id)}">${esc(L.open_chat)}</button>
+      </div>`).join('')
+    : `<div class="note">${esc(L.no_chars)}</div>`;
+  document.getElementById('profilebody').innerHTML = `
+    <div class="profile-head">
+      <div class="avatar">${esc(initial)}</div>
+      <div>
+        <div class="nm">${esc(m.name || user0.first_name || '—')}</div>
+        <div class="sub">${m.premium ? '⭐ ' + esc(L.premium_on) : esc(L.premium_off)} · id ${esc(m.id)}</div>
+      </div>
+    </div>
+    <div class="stat"><span class="k">👩 ${esc(L.selected_girl)}</span><span class="v">${esc(m.selected_character.name)}</span></div>
+    <div class="stat" style="flex-direction:column;align-items:stretch">
+      <div style="display:flex;justify-content:space-between">
+        <span class="k">❤️ ${esc(L.level)}</span><span class="v">${esc(m.selected_character.level)} / 8</span>
+      </div>
+      <div class="bar"><i style="width:${lvlPct}%"></i></div>
+    </div>
+    <div class="stat"><span class="k">🔥 ${esc(L.streak)}</span><span class="v">${esc(m.streak)}</span></div>
+    <div class="stat"><span class="k">🍓 ${esc(L.paid_credit)}</span><span class="v">${esc(m.photo_credits)}</span></div>
+    <div class="sect-title">${esc(L.my_chars)}</div>
+    ${myCharsHtml}
+    ${hasMine ? '' : `<button class="cta" id="profileCreate">${esc(L.create_char)}</button>`}
+    <div class="menurow" id="menuPartner"><span>${esc(L.partner_row)}</span><span class="arr">›</span></div>
+    <div class="menurow" id="menuDocs"><span>${esc(L.docs_row)}</span><span class="arr">›</span></div>
+    <div class="note">${esc(L.open_bot)}</div>`;
+  const pc = document.getElementById('profileCreate');
+  if (pc) pc.addEventListener('click', openWizard);
+  const mp = document.getElementById('menuPartner');
+  if (mp) mp.addEventListener('click', openPartnerOverlay);
+  const md = document.getElementById('menuDocs');
+  if (md) md.addEventListener('click', openDocsOverlay);
+  document.querySelectorAll('#profilebody [data-chat-id]').forEach(b =>
+    b.addEventListener('click', () => {
+      const c = (CHARS || []).find(x => x.id === b.dataset.chatId);
+      if (!c) return;
+      openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: c.custom, selected: c.selected });
+    }));
 }
 
 // ── documents ─────────────────────────────────────────────────────────────
@@ -981,10 +1287,26 @@ async function loadDocs() {
   }
 }
 
-// ── V3.35.0 wiring: chat + wizard overlays ─────────────────────────────
+// ── V3.38.0 wiring: chat + wizard + partner/docs overlays ────────────────
+function openPartnerOverlay() {
+  document.getElementById('partnerview').classList.add('open');
+  loadPartner();
+}
+function openDocsOverlay() {
+  document.getElementById('docsview').classList.add('open');
+  loadDocs();
+}
+document.getElementById('partnerBack').addEventListener('click', () => {
+  document.getElementById('partnerview').classList.remove('open');
+});
+document.getElementById('docsBack').addEventListener('click', () => {
+  document.getElementById('docsview').classList.remove('open');
+});
 document.getElementById('chatBack').addEventListener('click', () => {
   document.getElementById('chatview').classList.remove('open');
   CHAT = null;
+  // a reply may have landed — refresh the dialog list preview
+  loadChats();
 });
 document.getElementById('chatSend').addEventListener('click', sendChat);
 document.getElementById('chatText').addEventListener('keydown', (e) => {
@@ -996,11 +1318,12 @@ document.getElementById('wizBack').addEventListener('click', () => {
   closeWizard();
 });
 
+renderStudio();
 loadMe();
 loadCharacters();
 loadShop();
-loadPartner();
-loadDocs();
+loadChats();
+loadPictures();
 </script>
 </body>
 </html>

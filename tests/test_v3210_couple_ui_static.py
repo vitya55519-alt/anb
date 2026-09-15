@@ -22,7 +22,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.21.0', '3.22.0', '3.23.0', '3.24.0', '3.25.0', '3.26.0', '3.26.1', '3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8', '3.30.9', '3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0')
+    assert VERSION in ('3.21.0', '3.22.0', '3.23.0', '3.24.0', '3.25.0', '3.26.0', '3.26.1', '3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8', '3.30.9', '3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0')
 
 
 def test_eight_levels_with_emotional_names():
@@ -51,11 +51,17 @@ def test_premium_checker_registered_with_internal_uid_translation():
 def test_main_menu_has_discovery_buttons():
     # V3.22.0: labels live in services/ui_lang.py as (ru, en) pairs and the
     # keyboard is built from MAIN_KB_ROWS via kb_label(user_lang(telegram_id)).
+    # V3.38.0: the menu funnels into the Mini App (Come Closer layout) —
+    # ['app'] / ['credits','paint'] / ['partner','support']. The legacy
+    # discovery keys stay in KB_LABELS so cached reply keyboards from older
+    # versions keep resolving to their handlers.
     from services.ui_lang import KB_LABELS, MAIN_KB_ROWS
     row_keys = {key for row in MAIN_KB_ROWS for key in row}
+    for key in ('app', 'credits', 'paint', 'partner', 'support'):
+        assert key in KB_LABELS and key in row_keys
     for key in ('video', 'circle', 'quest', 'date',
                 'apartment', 'gift', 'profile', 'premium'):
-        assert key in KB_LABELS and key in row_keys
+        assert key in KB_LABELS
     kb = MAIN[MAIN.index('def main_keyboard('):MAIN.index('def onboarding_character_keyboard()')]
     assert 'MAIN_KB_ROWS' in kb and 'kb_label(' in kb
     # Discovery buttons register before the generic text catch-all.

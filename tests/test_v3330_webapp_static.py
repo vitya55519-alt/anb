@@ -16,7 +16,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0')
+    assert VERSION in ('3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0')
 
 
 def test_init_data_hmac_validation():
@@ -63,15 +63,20 @@ def test_webapp_page_structure():
     assert 'telegram-web-app.js' in INDEX
     assert 'const tg = window.Telegram.WebApp;' in INDEX
     assert 'tg.ready()' in INDEX
-    # four tabs in the bottom navigation
-    for tab in ('tab-characters', 'tab-shop', 'tab-profile', 'tab-docs'):
+    # V3.38.0: five tabs in the bottom navigation (Come Closer layout);
+    # Партнёрка/Документы became full-screen overlays from the profile tab.
+    for tab in ('tab-characters', 'tab-chats', 'tab-pictures', 'tab-shop', 'tab-profile'):
         assert f'id="{tab}"' in INDEX, f'missing tab: {tab}'
     assert 'id="bottomnav"' in INDEX
+    assert 'id="partnerview"' in INDEX
+    assert 'id="docsview"' in INDEX
     # the page calls our endpoints with absolute paths
     assert "fetch('/webapp/api/me?init_data=' + encodeURIComponent(tg.initData" in INDEX
     assert "fetch('/webapp/api/characters'" in INDEX
     assert "fetch('/webapp/api/shop?lang='" in INDEX
     assert "fetch('/webapp/api/legal?lang='" in INDEX
+    assert "fetch('/webapp/api/chats?init_data=' + encodeURIComponent(tg.initData" in INDEX
+    assert "fetch('/webapp/api/picture?init_data=' + encodeURIComponent(tg.initData)" in INDEX
     # no real import from main (handlers import the service, not vice versa);
     # the docstring may MENTION main.py, so match actual import statements
     import re as _re

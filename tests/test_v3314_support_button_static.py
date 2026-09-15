@@ -23,16 +23,16 @@ LINK = 'https://pay.cloudtips.ru/p/7afc7b16'
 
 
 def test_version_bumped():
-    assert VERSION in ('3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0')
+    assert VERSION in ('3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0')
 
 
 def test_support_key_added_to_reply_menu():
-    # RU/EN label pair exists (dual-language, ru != en) ...
-    assert "'support': ('💖 Поддержать проект', '💖 Support the project')," in UI_LANG
-    # ... and the button rides as its own full-width row in the main keyboard.
-    assert "['support']," in UI_LANG
+    # V3.38.0: «Поддержка» is a real ticket flow to the owner (the donation
+    # appeal moved to /legal). RU/EN label pair + bottom row next to Партнёрка.
+    assert "'support': ('👥 Поддержка', '👥 Support')," in UI_LANG
     rows = UI_LANG[UI_LANG.index('MAIN_KB_ROWS = ['):UI_LANG.index('LEVEL_NAMES_EN')]
     assert "'support'" in rows
+    assert "['partner', 'support']" in rows
 
 
 def test_donation_service_exposes_reusable_button():
@@ -45,15 +45,26 @@ def test_donation_service_exposes_reusable_button():
 
 
 def test_support_button_handler_wired():
-    # dual-language match (required by test_v3220) + reuses the shared copy
+    # V3.38.0: dual-language match + arms the pending ticket; the next plain
+    # text message is forwarded to the admins (see text_message).
     assert "@dp.message(F.text.in_(kb_pair('support')))" in MAIN
     assert 'async def support_button(message: types.Message):' in MAIN
     body = MAIN[MAIN.index('async def support_button(message: types.Message):'):]
-    body = body[:body.index('# V3.21.0: first-row discovery buttons')]
-    assert 'donation_service.donation_appeal(lang)' in body
-    assert 'donation_service.donation_keyboard(lang)' in body
+    body = body[:body.index('async def _deliver_support_message(')]
+    assert '_support_pending[' in body
     assert 'ensure_user(' in body
     assert 'lang = user_lang(message.from_user.id)' in body
+    # the shared delivery forwards the ticket to every configured admin
+    deliver = MAIN[MAIN.index('async def _deliver_support_message('):]
+    deliver = deliver[:deliver.index("@dp.message(F.text.in_(kb_pair('legal')))")]
+    assert 'ADMIN_TELEGRAM_IDS' in deliver
+    assert '🛟 Support' in deliver
+    assert 'track_event(' in deliver
+    # text_message intercepts the armed ticket before it reaches the character
+    intercept = MAIN[MAIN.index('async def text_message('):]
+    intercept = intercept[:intercept.index('if not has_accepted(')]
+    assert 'message.from_user.id in _support_pending' in intercept
+    assert '_deliver_support_message(message, message.text' in intercept
 
 
 def test_settings_menu_has_url_button():

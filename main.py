@@ -6,6 +6,7 @@ import json
 import logging
 import random
 import re
+import secrets
 import sys
 import time as _time
 from pathlib import Path
@@ -54,7 +55,7 @@ from services.photo_service import (
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
 )
-from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left
+from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, consume_photo_credit
 from services.bot_description import apply_bot_descriptions
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
@@ -259,6 +260,10 @@ _photo_offer_expression = dialog_store.DialogStore('photo_offer_expression')  # 
 # the bot waits for the user's scenario description.
 # V3.29.0: JSON stores the (charge, amount) tuple as a list; consumers unpack.
 _fantasy_pending = dialog_store.DialogStore('fantasy_pending')
+# V3.38.0: «👥 Поддержка» reply-button flow — telegram_id -> timestamp while
+# the bot waits for the user's support message (next plain text is forwarded
+# to the owner instead of being read by the character).
+_support_pending = dialog_store.DialogStore('support_pending')
 _PHOTO_OFFER_TTL = 120  # offer expires after 2 minutes
 
 # Regex: Anna offered a photo in her response
@@ -1563,12 +1568,12 @@ async def start(message: types.Message, command: CommandObject):
     if lang == EN:
         welcome_back = (
             f'welcome back, {name} 🙂 if you haven’t claimed them yet, you may have free photo credits for your first photo.\n'
-            'tap “✨ Features” or just send me a message.'
+            'tap “📱 Open the app” below — characters, chats, pictures and the shop now live there.'
         )
     else:
         welcome_back = (
             f'с возвращением, {name} 🙂 если ещё не забрал — у тебя могут быть бесплатные фото-кредиты на первое фото.\n'
-            'нажми «✨ Возможности» или просто отправь мне сообщение.'
+            'нажми «📱 Открыть приложение» внизу — персонажи, чаты, картинки и магазин теперь там.'
         )
     await message.answer(
         welcome_back + ref_hint,
@@ -3211,14 +3216,7 @@ async def support_cmd(message: types.Message):
     if len(parts)<2 or not parts[1].strip():
         await message.answer('Напиши: /support что произошло — сообщение уйдёт владельцу.')
         return
-    text_value=parts[1].strip()[:1500]; delivered=False
-    for admin_id in ADMIN_TELEGRAM_IDS:
-        try:
-            await bot.send_message(admin_id, f'🛟 Support\nuser: {message.from_user.id}\nname: {message.from_user.first_name or "—"}\n\n{text_value}')
-            delivered=True
-        except Exception:
-            logger.exception('failed to forward support admin=%s', admin_id)
-    track_event(ensure_user(message.from_user.id), 'support_request')
+    delivered = await _deliver_support_message(message, parts[1])
     await message.answer('Передала владельцу 🙂' if delivered else 'Запрос записан, но сейчас не удалось доставить сообщение.')
 
 @dp.message(Command('delete_me'))
@@ -5246,6 +5244,66 @@ async def partner_button(message: types.Message):
     await referral_cmd(message)
 
 
+# V3.38.0: the Come Closer funnel — the reply keyboard is the Mini App
+# launcher. These three buttons either open the app right here (inline
+# web_app button) or point at the tab where the action now lives.
+def _app_entry_markup(lang: str) -> InlineKeyboardMarkup | None:
+    """Inline «open the app» button; None when the app is not wired on the server."""
+    if not PUBLIC_BASE_URL:
+        return None
+    url = f'{PUBLIC_BASE_URL}/webapp'
+    label = '🛍 Open App' if lang == EN else '🛍 Открыть приложение'
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=label, web_app=types.WebAppInfo(url=url))],
+    ])
+
+
+async def _send_app_entry(message: types.Message, intro_ru: str, intro_en: str):
+    """Answer with the app-opening inline button (or the setup hint)."""
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    lang = user_lang(message.from_user.id)
+    markup = _app_entry_markup(lang)
+    if markup is None:
+        hint = ('the app is not connected on the server yet — the owner needs to set PUBLIC_BASE_URL (the Railway domain).'
+                if lang == EN else
+                'приложение ещё не подключено на сервере — нужно задать PUBLIC_BASE_URL (домен Railway).')
+        await message.answer('🛍 ' + hint)
+        return
+    await message.answer(intro_en if lang == EN else intro_ru, reply_markup=markup)
+
+
+@dp.message(F.text.in_(kb_pair('app')))
+async def app_button(message: types.Message):
+    """V3.38.0: «📱 Открыть приложение» — the top funnel row."""
+    await _send_app_entry(
+        message,
+        '🛍 приложение AnnaBot — персонажи, чаты, картинки, магазин и твой профиль:',
+        '🛍 AnnaBot app — characters, chats, pictures, shop and your profile:',
+    )
+
+
+@dp.message(F.text.in_(kb_pair('credits')))
+async def credits_button(message: types.Message):
+    """V3.38.0: «🍓 Добавить клубничек» — buying photo credits now lives in the
+    app's «Магазин» tab; the button carries the user straight into the app."""
+    await _send_app_entry(
+        message,
+        '🍓 клубнички (фото-кредиты) покупаются в приложении — вкладка «Магазин» 👇',
+        '🍓 photo credits are bought in the app — the «Shop» tab 👇',
+    )
+
+
+@dp.message(F.text.in_(kb_pair('paint')))
+async def paint_button(message: types.Message):
+    """V3.38.0: «🖼 Создать картинку» — the picture studio lives in the app's
+    «Картинки» tab."""
+    await _send_app_entry(
+        message,
+        '🖼 создавать картинки по своим промптам теперь можно в приложении — вкладка «Картинки» 👇',
+        '🖼 creating pictures from your prompts now lives in the app — the «Pictures» tab 👇',
+    )
+
+
 
 @dp.message(F.text == '🎭 Образы')
 async def looks_button_legacy(message: types.Message):
@@ -5402,16 +5460,40 @@ async def settings_button(message: types.Message):
 
 @dp.message(F.text.in_(kb_pair('support')))
 async def support_button(message: types.Message):
-    # V3.31.4: main-menu «Support the project» reply button. Reply keyboards
-    # can't carry URL buttons, so this opens the donation appeal whose CTA
-    # button links to CloudTips. Reuses the shared donation_service copy so it
-    # never diverges from the welcome / weekly reminder wording.
+    # V3.38.0: «👥 Поддержка» is now a real ticket flow to the owner (Come
+    # Closer layout). The button arms the pending state; the user's next
+    # plain text message is forwarded to the admins instead of reaching the
+    # character (see text_message). The donation appeal moved to /legal.
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     lang = user_lang(message.from_user.id)
-    await message.answer(
-        donation_service.donation_appeal(lang),
-        reply_markup=donation_service.donation_keyboard(lang),
-    )
+    _support_pending[message.from_user.id] = _time.time()
+    if lang == EN:
+        await message.answer(
+            '👥 support\n\ndescribe what happened in ONE message — '
+            'it goes straight to the owner. Commands like /start still work.'
+        )
+    else:
+        await message.answer(
+            '👥 поддержка\n\nопиши, что случилось, ОДНИМ сообщением — '
+            'я передам это владельцу. Команды вроде /start продолжают работать.'
+        )
+
+
+async def _deliver_support_message(message: types.Message, text_value: str) -> bool:
+    """Forward a support ticket to every admin. Shared by /support and the
+    «👥 Поддержка» button flow."""
+    text_value = text_value.strip()[:1500]
+    if not text_value:
+        return False
+    delivered = False
+    for admin_id in ADMIN_TELEGRAM_IDS:
+        try:
+            await bot.send_message(admin_id, f'🛟 Support\nuser: {message.from_user.id}\nname: {message.from_user.first_name or "—"}\n\n{text_value}')
+            delivered = True
+        except Exception:
+            logger.exception('failed to forward support admin=%s', admin_id)
+    track_event(ensure_user(message.from_user.id), 'support_request')
+    return delivered
 
 
 @dp.message(F.text.in_(kb_pair('legal')))
@@ -6292,6 +6374,17 @@ async def text_message(message: types.Message):
         await _handle_fantasy_input(message)
         return
 
+    # V3.38.0: «👥 Поддержка» armed — the next plain text is a ticket for the
+    # owner, not a message for the character. Commands above still pass through.
+    if message.from_user and message.from_user.id in _support_pending:
+        try:
+            del _support_pending[message.from_user.id]
+        except Exception:
+            pass
+        delivered = await _deliver_support_message(message, message.text or '')
+        await message.answer('Передала владельцу 🙂' if delivered else 'Запрос записан, но сейчас не удалось доставить сообщение.')
+        return
+
     if not has_accepted(message.from_user.id):
         await message.answer('Сначала нужно подтвердить 18+ и принять условия через /start.', reply_markup=consent_keyboard())
         return
@@ -6995,6 +7088,110 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'reply': answer})
 
 
+async def _webapp_api_chats(request: web.Request) -> web.Response:
+    # V3.38.0: the «Чаты» tab — a dialog list built from the shared messages
+    # table, so every conversation the user has (bot chat included) appears.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    return web.json_response({'ok': True, 'chats': webapp_service.api_chat_list(uid, telegram_id)})
+
+
+async def _webapp_api_pictures(request: web.Request) -> web.Response:
+    # V3.38.0: the user's «Картинки» gallery (newest first).
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    return web.json_response({'ok': True, 'pictures': webapp_service.api_picture_list(telegram_id)})
+
+
+async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
+    # V3.38.0: the «Картинки» studio — freeform generation for one photo credit
+    # (🍓). The prompt passes a hard minors/coercion filter, gets the standing
+    # SFW constraint appended, and runs through the same engine as the
+    # constructor avatar (Gemini freeform; Seedream needs a face reference).
+    # The credit is charged only after a successful render, so a failed
+    # generation never costs the user anything.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    prompt = str(body.get('prompt', '')).strip()
+    if not (webapp_service.PICTURE_PROMPT_MIN_LEN <= len(prompt) <= webapp_service.PICTURE_PROMPT_MAX_LEN):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    if not webapp_service.picture_prompt_allowed(prompt):
+        return web.json_response({'ok': False, 'error': 'blocked'}, status=400)
+    if not has_accepted(telegram_id):
+        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    if get_photo_credits(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS:
+        return web.json_response({'ok': False, 'error': 'credits'}, status=402)
+    style = str(body.get('style', 'anime'))[:16]
+    fmt = str(body.get('format', 'square'))[:16]
+    final_prompt = webapp_service.picture_final_prompt(prompt, style, fmt)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    try:
+        from services import photo_service
+        data, mime = await photo_service.generate_custom_avatar(final_prompt, None)
+    except Exception:
+        logger.exception('webapp picture generation failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'gen'}, status=502)
+    if not data:
+        return web.json_response({'ok': False, 'error': 'gen'}, status=502)
+    ext = 'png' if 'png' in (mime or '') else 'jpg'
+    filename = f"{int(_time.time() * 1000)}_{secrets.token_hex(8)}.{ext}"
+    try:
+        folder = webapp_service.APP_PICTURES_DIR / str(telegram_id)
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / filename).write_bytes(data)
+        webapp_service.save_picture(telegram_id, filename, prompt)
+    except Exception:
+        logger.exception('webapp picture save failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'save'}, status=500)
+    # Race window (two concurrent renders) is deliberate: the picture is
+    # already on disk by now, so the user keeps it and we log the unpaid one.
+    if not consume_photo_credit(telegram_id):
+        logger.warning('webapp picture credit race user=%s', telegram_id)
+    track_event(uid, 'webapp_picture_generated', metadata={'style': style, 'format': fmt})
+    return web.json_response({
+        'ok': True,
+        'file': f'/webapp/picture/{filename}',
+        'credits_left': get_photo_credits(telegram_id),
+    })
+
+
+async def _webapp_picture(request: web.Request) -> web.Response:
+    # V3.38.0: serve a gallery image to its owner. The file name is an
+    # unguessable server-generated token and the lookup is scoped to the
+    # caller's folder, so authorization is "knows the name they received".
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.Response(status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.Response(status=401)
+    path = webapp_service.picture_file_path(telegram_id, request.match_info['filename'])
+    if not path:
+        return web.Response(status=404)
+    return web.FileResponse(path, headers={'Cache-Control': 'private, max-age=3600'})
+
+
 async def _webapp_api_constructor_options(request: web.Request) -> web.Response:
     # V3.35.0: the wizard steps — the same CONSTRUCTOR_STEPS the bot walks.
     # The price rides along so the form can show it without another call.
@@ -7124,6 +7321,11 @@ async def _start_web_server() -> None:
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
     app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)
+    # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
+    app.router.add_get('/webapp/api/chats', _webapp_api_chats)
+    app.router.add_post('/webapp/api/picture', _webapp_api_picture_generate)
+    app.router.add_get('/webapp/api/pictures', _webapp_api_pictures)
+    app.router.add_get('/webapp/picture/{filename}', _webapp_picture)
     app.router.add_get('/webapp/api/constructor/options', _webapp_api_constructor_options)
     app.router.add_post('/webapp/api/constructor/draft', _webapp_api_constructor_draft)
     app.router.add_post('/webapp/api/constructor/buy', _webapp_api_constructor_buy)

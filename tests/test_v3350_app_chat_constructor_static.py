@@ -16,7 +16,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.35.0', '3.36.0', '3.37.0')
+    assert VERSION in ('3.35.0', '3.36.0', '3.37.0', '3.38.0')
 
 
 # ── constructor steps: 11 keys in wizard order ─────────────────────────────

@@ -48,34 +48,28 @@ KB_LABELS = {
     # old keyboards still resolve; MAIN_KB_ROWS shows partner instead of invite.
     'partner': ('💰 Партнёрка', '💰 Partner program'),
     'custom': ('🎨 Мой персонаж', '🎨 My character'),
-    'support': ('💖 Поддержать проект', '💖 Support the project'),
+    # V3.38.0: the main menu funnels users into the Mini App (Come Closer
+    # layout): one big «open app» row on top, the two app actions (buy
+    # photo credits / create a picture) in the middle, partner + support at
+    # the bottom. «Поддержка» is now a real ticket flow to the owner (the
+    # old «💖 Поддержать проект» donation appeal stays on the legal screen).
+    'app': ('📱 Открыть приложение', '📱 Open the app'),
+    'credits': ('🍓 Добавить клубничек', '🍓 Add credits'),
+    'paint': ('🖼 Создать картинку', '🖼 Create a picture'),
+    'support': ('👥 Поддержка', '👥 Support'),
     # V3.32.0: Platega/bank compliance — legal documents must be reachable
     # at all times from the main keyboard, not only via commands.
     'legal': ('📜 Документы', '📜 Documents'),
     'admin': ('🛠 Админка', '🛠 Admin'),
 }
 
-# V3.21.0 discovery layout: every feature has a visible first-row button.
+# V3.38.0: the Come Closer funnel layout — the Mini App is the product, the
+# chat keyboard is its launcher. Old keys stay in KB_LABELS so cached reply
+# keyboards from earlier versions keep resolving to their handlers.
 MAIN_KB_ROWS = [
-    ['chat', 'photo'],
-    ['video', 'circle'],
-    ['quest', 'date'],
-    ['apartment', 'gift'],
-    ['stories', 'collection'],
-    ['features', 'premium'],
-    ['alarm', 'profile'],
-    ['settings', 'characters'],
-    # V3.37.0: the partner program button — stats + payouts, one tap away.
-    ['partner'],
-    ['custom'],
-    # V3.32.0: permanent legal access for the payment partner's bank review —
-    # opens the inline menu with privacy policy / user agreement / tariffs /
-    # support (see legal_button in main.py).
-    ['legal'],
-    # V3.31.4: «Support the project» CTA — a prominent full-width reply button.
-    # Reply keyboards can't hold URL buttons, so it opens the donation appeal
-    # with the CloudTips link button (see support_button in main.py).
-    ['support'],
+    ['app'],
+    ['credits', 'paint'],
+    ['partner', 'support'],
 ]
 
 # English names for the 8-level relationship ladder (RU lives in main.py).
