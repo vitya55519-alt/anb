@@ -2,13 +2,13 @@
 
 Owner request (benchmarking @come_closer_bot screenshots):
 1. the bot's main menu funnels users into the Mini App — reply keyboard rows
-   📱 Открыть приложение / 🍓 Добавить клубничек + 🖼 Создать картинку /
+   📱 Открыть приложение / 🍑 Добавить персиков + 🖼 Создать картинку /
    💰 Партнёрка + 👥 Поддержка, with the actions living inside the Mini App;
 2. five new characters incl. the requested «30+» women (мать друга и др.),
    each with a photorealistic canonical face/look reference and a cinematic
    scenario hook under the card (exactly like the screenshots);
 3. the Mini App itself: 5 bottom tabs (Персонажи/Чаты/Картинки/Магазин/
-   Профиль), a «Картинки» studio (prompt/style/format, 1 🍓 credit, charged
+   Профиль), a «Картинки» studio (prompt/style/format, 1 🍑 credit, charged
    only after a successful render) and a Чаты tab with last-message previews.
 """
 import json
@@ -26,7 +26,7 @@ NEW_CHARACTERS = ('erika_01', 'sonya_01', 'vika_01', 'alisa_01', 'mila_01')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.38.0',)
+    assert VERSION in ('3.38.0', '3.39.0')
 
 
 # ── 1. main menu funnel ────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ def test_main_menu_rows_funnel_into_miniapp():
     # exact label pairs from the owner's screenshot
     for key, label in (
         ('app', "'app': ('📱 Открыть приложение', '📱 Open the app'),"),
-        ('credits', "'credits': ('🍓 Добавить клубничек', '🍓 Add credits'),"),
+        ('credits', "'credits': ('🍑 Добавить персиков', '🍑 Add peaches'),"),
         ('paint', "'paint': ('🖼 Создать картинку', '🖼 Create a picture'),"),
         ('partner', "'partner': ('💰 Партнёрка', '💰 Partner program'),"),
         ('support', "'support': ('👥 Поддержка', '👥 Support'),"),

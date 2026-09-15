@@ -104,7 +104,7 @@ def _video_unavailable_text(telegram_id: int) -> str:
 from services.llm_provider_service import provider_status
 from services.reminder_service import set_timezone, create_from_text, cancel_active_wake, due_reminders
 from services.scheduler_service import start_scheduler
-from services.memory_service import reset_conversation as reset_memory
+from services.memory_service import reset_conversation as reset_memory, save_message
 from services.db import SessionLocal
 from models.relationship_models import UserCharacterRelationship, RelationshipEvent, RelationshipMilestone
 from models.app_models import CharacterState, Reminder, User
@@ -140,6 +140,8 @@ from services import webapp_service
 # V3.30.2: /fkcheck diagnostics print the deployed build straight from the
 # VERSION file so the owner can confirm Railway picked up the new commit.
 VERSION = (Path(__file__).resolve().parent / 'VERSION').read_text(encoding='utf-8').strip()
+# V3.39.0: Come Closer-style /start — the welcome leads with a group photo.
+WELCOME_BANNER_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner.png'
 
 # V3.30.1: Railway tags every stderr line as severity=error, and Python
 # logging writes to stderr by default — route the whole log to stdout so
@@ -433,17 +435,50 @@ def main_keyboard(is_admin: bool = False, telegram_id: int | None = None):
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
 
 
-def onboarding_character_keyboard():
-    rows = []
+def _character_pick_buttons(kind: str):
+    # V3.39.0: flat pick buttons without the old per-button status suffix —
+    # callers chunk them two per row so /start no longer shows a ten-row wall
+    # of buttons (owner: «замени, чтобы оно было как-то компактно, удобно»).
+    buttons = []
     for card in list_cards(visible_only=True):
         if card.status == 'active':
-            text = f'✅ {card.display_name} · выбрать'
+            text = f'✅ {card.display_name}'
         elif card.status == 'premium':
-            text = f'⭐ {card.display_name} · Premium'
+            text = f'⭐ {card.display_name}'
         else:
-            text = f'🔒 {card.display_name} · скоро'
-        rows.append([InlineKeyboardButton(text=text, callback_data=f'onboard:character:{card.character_id}')])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+            text = f'🔒 {card.display_name}'
+        prefix = 'onboard:character' if kind == 'onboard' else 'character:view'
+        buttons.append(InlineKeyboardButton(text=text, callback_data=f'{prefix}:{card.character_id}'))
+    return buttons
+
+
+def _pair_rows(buttons):
+    """V3.39.0: chunk flat inline buttons into a two-per-row keyboard."""
+    return [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+
+
+def onboarding_character_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=_pair_rows(_character_pick_buttons('onboard')))
+
+
+def _welcome_banner_file():
+    """V3.39.0: the group banner photo for /start; None when the asset is absent."""
+    if WELCOME_BANNER_PATH.exists():
+        return FSInputFile(WELCOME_BANNER_PATH)
+    return None
+
+
+def _welcome_cta_row(lang: str):
+    """V3.39.0: app + partner CTA row shown above the character picker."""
+    row = []
+    if PUBLIC_BASE_URL:
+        row.append(InlineKeyboardButton(
+            text='📱 Открыть приложение' if lang == RU else '📱 Open the app',
+            web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'),
+        ))
+    row.append(InlineKeyboardButton(
+        text='💰 Партнёрка' if lang == RU else '💰 Partner', callback_data='partner:open'))
+    return row
 
 
 def abilities_text(lang: str = RU) -> str:
@@ -576,15 +611,8 @@ def quest_routes_keyboard(telegram_id: int, quest_key: str):
 
 
 def characters_keyboard(telegram_id: int | None = None):
-    rows = []
-    for card in list_cards(visible_only=True):
-        if card.status == 'active':
-            text = f'✅ {card.display_name} · доступна'
-        elif card.status == 'premium':
-            text = f'⭐ {card.display_name} · Premium'
-        else:
-            text = f'🔒 {card.display_name} · скоро'
-        rows.append([InlineKeyboardButton(text=text, callback_data=f'character:view:{card.character_id}')])
+    # V3.39.0: two characters per row — the old one-per-row wall was unreadable.
+    rows = _pair_rows(_character_pick_buttons('view'))
     # V3.19.0: entry point to the personal character constructor.
     rows.append([InlineKeyboardButton(text=f'🎨 Создать свою · {CONSTRUCTOR_COST_STARS}⭐{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD)}', callback_data='constructor:start')])
     if FREEKASSA_ENABLED and telegram_id:
@@ -1513,35 +1541,31 @@ async def start(message: types.Message, command: CommandObject):
         lang = user_lang(message.from_user.id)
         if lang == EN:
             welcome = (
-                f'hi, {name} 🙂 I am an AI girlfriend who is always close.\n\n'
-                'What I can do:\n'
-                '💬 real conversation with memory and personality\n'
-                '❤️ a relationship through levels 1–8 — closer and more open at every level\n'
-                '📸 realistic photos for your scenarios\n'
-                '🎬 animating photos into AI video\n'
-                '🎙 voice replies in your language\n'
-                '🎯 interactive stories with choices\n\n'
+                'What can this bot do?\n\n'
+                'Roleplay with AI girls: live chats with memory, photos for your scenarios, AI video and voice.\n'
+                'The relationship grows through levels 1–8 — closer and more open at every level.\n\n'
+                '🎁 after confirming 18+ you get free photo credits for your first photo.\n'
+                '⬇️ Let’s go! ⬇️\n\n'
             )
-            welcome += '🎁 after confirming 18+ you will get free photo credits for your first photo — a gift for meeting you.\n\n'
             if has_referral:
-                welcome += 'you arrived via a friend’s invite — you both get the bonus right after you confirm.\n\n'
-            welcome += 'Before we start, please confirm that you are 18+ and accept the terms of use and the privacy policy.'
+                welcome += 'you arrived via a friend’s invite — bonuses for both of you land right after you confirm.\n'
+            welcome += 'Confirm you are 18+ and accept the terms of use and the privacy policy.'
         else:
             welcome = (
-                f'привет, {name} 🙂 я — AI-подруга, которая всегда рядом.\n\n'
-                'Что я умею:\n'
-                '💬 живое общение с памятью и характером\n'
-                '❤️ отношения по уровням 1–8 — с каждым уровнем ближе и откровеннее\n'
-                '📸 реалистичные фото по твоим сценариям\n'
-                '🎬 оживление фото в AI-видео\n'
-                '🎙 голосовые ответы на твоём языке\n'
-                '🎯 интерактивные истории с выбором\n\n'
+                'Что умеет этот бот?\n\n'
+                'Ролевая игра с ИИ девушками: живые чаты с памятью, фото по твоим сценариям, AI-видео и голос.\n'
+                'Отношения растут по уровням 1–8 — с каждым уровнем ближе и откровеннее.\n\n'
+                '🎁 после подтверждения 18+ — бесплатные фото-кредиты на первое фото.\n'
+                '⬇️ Поехали! ⬇️\n\n'
             )
-            welcome += '🎁 после подтверждения 18+ ты получишь бесплатные фото-кредиты на первое фото — это наш подарок за знакомство.\n\n'
             if has_referral:
-                welcome += 'пришёл по приглашению друга — бонусы начислятся вам обоим сразу после подтверждения.\n\n'
-            welcome += 'Перед началом подтверди, что тебе 18+, и прими условия использования и политику конфиденциальности.'
-        await message.answer(welcome, reply_markup=consent_keyboard(lang))
+                welcome += 'пришёл по приглашению друга — бонусы вам обоим начислятся сразу после подтверждения.\n'
+            welcome += 'Подтверди, что тебе 18+, и прими условия использования и политику конфиденциальности.'
+        banner = _welcome_banner_file()
+        if banner is not None:
+            await message.answer_photo(banner, caption=welcome, reply_markup=consent_keyboard(lang))
+        else:
+            await message.answer(welcome, reply_markup=consent_keyboard(lang))
         return
 
     # Returning user who already accepted: apply any pending referral/bonus now
@@ -1567,18 +1591,24 @@ async def start(message: types.Message, command: CommandObject):
         ref_hint = '\n\ninvite friends with /referral — bonuses for both of you.' if lang == EN else '\n\nприглашай друзей командой /referral — бонусы за обоих.'
     if lang == EN:
         welcome_back = (
-            f'welcome back, {name} 🙂 if you haven’t claimed them yet, you may have free photo credits for your first photo.\n'
-            'tap “📱 Open the app” below — characters, chats, pictures and the shop now live there.'
+            f'welcome back, {name} 🙂 the girls, chats, pictures and the shop live in the app — pick yours 👇'
         )
     else:
         welcome_back = (
-            f'с возвращением, {name} 🙂 если ещё не забрал — у тебя могут быть бесплатные фото-кредиты на первое фото.\n'
-            'нажми «📱 Открыть приложение» внизу — персонажи, чаты, картинки и магазин теперь там.'
+            f'с возвращением, {name} 🙂 девушки, чаты, картинки и магазин — в приложении. выбирай свою 👇'
         )
-    await message.answer(
-        welcome_back + ref_hint,
-        reply_markup=onboarding_character_keyboard(),
-    )
+    rows = [_welcome_cta_row(lang)]
+    rows.extend(_pair_rows(_character_pick_buttons('onboard')))
+    markup = InlineKeyboardMarkup(inline_keyboard=rows)
+    banner = _welcome_banner_file()
+    if banner is not None:
+        await message.answer_photo(banner, caption=welcome_back, reply_markup=markup)
+    else:
+        await message.answer(welcome_back, reply_markup=markup)
+    # V3.39.0: the referral block moved out of the welcome caption into its own
+    # short message so the photo message stays compact.
+    if ref_hint.strip():
+        await message.answer(ref_hint.strip())
 
 
 @dp.callback_query(F.data == 'consent:accept')
@@ -3008,6 +3038,13 @@ async def partner_faq(cq: types.CallbackQuery):
     pct = int(REFERRAL_COMMISSION_PCT) if float(REFERRAL_COMMISSION_PCT).is_integer() else REFERRAL_COMMISSION_PCT
     await cq.answer('💌')
     await cq.message.answer(table[idx].format(pct=pct, min=PARTNER_MIN_PAYOUT_RUB, methods=PARTNER_PAYOUT_METHODS))
+
+
+@dp.callback_query(F.data == 'partner:open')
+async def partner_open(cq: types.CallbackQuery):
+    """V3.39.0: the «💰 Партнёрка» CTA on the welcome photo — same partner screen."""
+    await cq.answer()
+    await referral_cmd(cq.message)
 
 
 @dp.callback_query(F.data == 'partner:withdraw')
@@ -5284,12 +5321,12 @@ async def app_button(message: types.Message):
 
 @dp.message(F.text.in_(kb_pair('credits')))
 async def credits_button(message: types.Message):
-    """V3.38.0: «🍓 Добавить клубничек» — buying photo credits now lives in the
+    """V3.38.0: «🍑 Добавить персиков» — buying photo credits now lives in the
     app's «Магазин» tab; the button carries the user straight into the app."""
     await _send_app_entry(
         message,
-        '🍓 клубнички (фото-кредиты) покупаются в приложении — вкладка «Магазин» 👇',
-        '🍓 photo credits are bought in the app — the «Shop» tab 👇',
+        '🍑 персики (фото-кредиты) покупаются в приложении — вкладка «Магазин» 👇',
+        '🍑 peaches (photo credits) are bought in the app — the «Shop» tab 👇',
     )
 
 
@@ -6945,7 +6982,13 @@ async def _webapp_api_partner_withdraw(request: web.Request) -> web.Response:
 
 
 async def _webapp_photo(request: web.Request) -> web.Response:
-    photo = webapp_service.character_photo(request.match_info['character_id'])
+    # V3.39.0: ?i= picks a shot from the canonical gallery (0 = face, 1 = look)
+    # so the character page can show the Come Closer photo strip.
+    try:
+        idx = int(request.query.get('i', '0') or 0)
+    except ValueError:
+        idx = 0
+    photo = webapp_service.character_photo(request.match_info['character_id'], idx)
     if not photo:
         return web.Response(status=404)
     data, content_type = photo
@@ -7116,7 +7159,7 @@ async def _webapp_api_pictures(request: web.Request) -> web.Response:
 
 async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     # V3.38.0: the «Картинки» studio — freeform generation for one photo credit
-    # (🍓). The prompt passes a hard minors/coercion filter, gets the standing
+    # (🍑). The prompt passes a hard minors/coercion filter, gets the standing
     # SFW constraint appended, and runs through the same engine as the
     # constructor avatar (Gemini freeform; Seedream needs a face reference).
     # The credit is charged only after a successful render, so a failed
@@ -7149,9 +7192,11 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     try:
         from services import photo_service
         data, mime = await photo_service.generate_custom_avatar(final_prompt, None)
-    except Exception:
+    except Exception as exc:
         logger.exception('webapp picture generation failed user=%s', telegram_id)
-        return web.json_response({'ok': False, 'error': 'gen'}, status=502)
+        # V3.39.0: the owner sees WHY the render died right in the studio toast.
+        reason = f'{type(exc).__name__}: {str(exc)[:100]}' if telegram_id in ADMIN_TELEGRAM_IDS else None
+        return web.json_response({'ok': False, 'error': 'gen', 'reason': reason}, status=502)
     if not data:
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)
     ext = 'png' if 'png' in (mime or '') else 'jpg'
@@ -7174,6 +7219,158 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
         'file': f'/webapp/picture/{filename}',
         'credits_left': get_photo_credits(telegram_id),
     })
+
+
+async def _webapp_media_photo(telegram_id: int, character_id: str):
+    """V3.39.0: a personal in-character photo — identity-locked through the
+    canonical face reference, the same engine the studio uses."""
+    card = get_card(character_id)
+    scene = random.choice(_WEBAPP_PHOTO_SCENES)
+    prompt = (f'personal photo from {card.display_name if card else "your girl"}: {scene}, '
+              'photorealistic, fully clothed, tasteful' + webapp_service.PICTURE_PROMPT_SUFFIX)
+    gallery = webapp_service.character_gallery(character_id)
+    reference = gallery[0] if gallery else None
+    data, mime = await generate_custom_avatar(prompt, reference)
+    return data, mime, ('png' if 'png' in (mime or '') else 'jpg')
+
+
+async def _webapp_media_circle(telegram_id: int, character_id: str):
+    """V3.39.0: a video circle from the canonical face — same engine chain the
+    bot's «🎥 кружочек» uses (Gemini → Replicate → fal → HF)."""
+    photo = webapp_service.character_photo(character_id)
+    if not photo:
+        raise PhotoGenerationError('circle', 'no_source_photo')
+    image_bytes = photo[0]
+    engines = []
+    if video_available():
+        engines.append(animate_image)
+    if replicate_available():
+        engines.append(animate_image_replicate)
+    if fal_available():
+        engines.append(animate_image_fal)
+    if hf_video_available():
+        engines.append(animate_image_hf)
+    if not engines:
+        raise PhotoGenerationError('circle', 'no_video_engine')
+    last_error = None
+    for engine_fn in engines:
+        try:
+            video_bytes = await engine_fn(
+                image_bytes, mime_type='image/png',
+                prompt=CIRCLE_PROMPT.format(phrase=random.choice(CIRCLE_PHRASES)))
+            return video_bytes, 'video/mp4', 'mp4'
+        except Exception as exc:
+            last_error = exc
+            logger.warning('webapp circle engine failed user=%s: %s', telegram_id, str(exc)[:200])
+    raise last_error or PhotoGenerationError('circle', 'no_video_result')
+
+
+async def _webapp_media_voice(telegram_id: int, character_id: str):
+    """V3.39.0: her voice — synthesizes her last reply (or the scenario hook)."""
+    user = get_user(telegram_id)
+    history = webapp_service.api_chat_history(user.id if user else 0, character_id, 10)
+    text = next((m['content'] for m in reversed(history)
+                 if m['role'] == 'assistant' and not m.get('media_url')), '')
+    if not text:
+        text = get_scenario_hook(character_id) or 'привет, я скучала 🙂'
+    clean = ''.join(ch for ch in text if ch.isalnum() or ch in ' .,!?:;-—…()«»\'\n')[:600]
+    audio = await synthesize_bytes(clean, (user.voice_style if user else None) or 'nova',
+                                   character_id=character_id)
+    return audio, 'audio/ogg', 'ogg'
+
+
+async def _webapp_api_chat_media(request: web.Request) -> web.Response:
+    # V3.39.0: everything the bot dialog sends — photos, video circles, voice —
+    # is requestable inside the Mini App chat too. Same gates as the bot:
+    # a photo costs 1 🍑 (charged after success), circles are a Premium
+    # free-slot format, voice follows the character's TTS voice.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))
+    kind = str(body.get('kind', ''))
+    if kind not in ('photo', 'circle', 'voice') or not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    if is_custom_character(character_id):
+        if not get_custom_character_by_id(character_id):
+            return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+    else:
+        card = get_card(character_id)
+        if not card or card.status not in ('active', 'premium'):
+            return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+        if card.status == 'premium' and not is_premium(telegram_id):
+            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    if not has_accepted(telegram_id):
+        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS \
+            and get_photo_credits(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS:
+        return web.json_response({'ok': False, 'error': 'credits'}, status=402)
+    if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS:
+        if not is_premium(telegram_id):
+            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+        if not consume_premium_video_free(telegram_id):
+            return web.json_response({'ok': False, 'error': 'circle_limit'}, status=402)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    track_event(uid, 'webapp_chat_media', metadata={'character_id': character_id, 'kind': kind})
+    try:
+        if kind == 'photo':
+            data, mime, ext = await _webapp_media_photo(telegram_id, character_id)
+        elif kind == 'circle':
+            data, mime, ext = await _webapp_media_circle(telegram_id, character_id)
+        else:
+            data, mime, ext = await _webapp_media_voice(telegram_id, character_id)
+    except Exception:
+        logger.exception('webapp chat media failed user=%s kind=%s', telegram_id, kind)
+        return web.json_response({'ok': False, 'error': 'gen'}, status=502)
+    if not data:
+        return web.json_response({'ok': False, 'error': 'gen'}, status=502)
+    filename = webapp_service.save_chat_media(telegram_id, data, ext)
+    url = f'/webapp/media/{filename}'
+    content = {'photo': '📸 отправила фото', 'circle': '🎥 отправила кружочек',
+               'voice': '🎙 отправила голосовое'}[kind]
+    save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
+    if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
+        logger.warning('webapp chat photo credit race user=%s', telegram_id)
+    return web.json_response({
+        'ok': True, 'kind': kind, 'url': url, 'content': content,
+        'credits_left': get_photo_credits(telegram_id),
+    })
+
+
+async def _webapp_media(request: web.Request) -> web.Response:
+    # V3.39.0: owner-scoped chat media (photos / circles / voice). The file
+    # name is an unguessable server-generated token inside the caller's own
+    # folder — same authorization model as /webapp/picture/{filename}.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.Response(status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.Response(status=401)
+    path = webapp_service.chat_media_file_path(telegram_id, request.match_info['filename'])
+    if not path:
+        return web.Response(status=404)
+    ctype = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+             'mp4': 'video/mp4', 'ogg': 'audio/ogg'}.get(path.suffix.lstrip('.'), 'application/octet-stream')
+    return web.Response(body=path.read_bytes(), content_type=ctype,
+                        headers={'Cache-Control': 'private, max-age=3600'})
+
+
+_WEBAPP_PHOTO_SCENES = (
+    'cozy selfie at home in soft daylight',
+    'cafe date photo across the table',
+    'evening walk under city lights',
+    'mirror selfie in today’s outfit',
+)
 
 
 async def _webapp_picture(request: web.Request) -> web.Response:
@@ -7323,6 +7520,8 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)
+    app.router.add_post('/webapp/api/chat/media', _webapp_api_chat_media)
+    app.router.add_get('/webapp/media/{filename}', _webapp_media)
     app.router.add_post('/webapp/api/picture', _webapp_api_picture_generate)
     app.router.add_get('/webapp/api/pictures', _webapp_api_pictures)
     app.router.add_get('/webapp/picture/{filename}', _webapp_picture)

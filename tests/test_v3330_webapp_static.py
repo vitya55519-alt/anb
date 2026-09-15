@@ -16,7 +16,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0')
+    assert VERSION in ('3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_init_data_hmac_validation():
@@ -35,7 +35,7 @@ def test_api_payload_builders():
         'def api_characters(telegram_id: int | None = None) -> list[dict]:',
         'def api_shop(lang: str = \'ru\') -> dict:',
         'def api_legal(lang: str = \'ru\') -> dict:',
-        'def character_photo(character_id: str) -> tuple[bytes, str] | None:',
+        'def character_photo(character_id: str, index: int = 0) -> tuple[bytes, str] | None:',
     ):
         assert fn in WEBAPP_SVC, f'missing: {fn}'
     # profile reads real state, storefront reads real cards

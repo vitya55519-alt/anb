@@ -8,9 +8,10 @@ from services.llm_provider_service import generate_text
 
 def _now(): return datetime.now(timezone.utc).replace(tzinfo=None)
 
-def save_message(user_id, character_id, role, content):
+def save_message(user_id, character_id, role, content, media_kind=None, media_url=None):
     with SessionLocal() as s:
-        s.add(Message(user_id=user_id, character_id=character_id, role=role, content=content))
+        s.add(Message(user_id=user_id, character_id=character_id, role=role, content=content,
+                      media_kind=media_kind, media_url=media_url))
         if role == "user":
             user=s.get(User,user_id)
             if user: user.last_active_at=_now()

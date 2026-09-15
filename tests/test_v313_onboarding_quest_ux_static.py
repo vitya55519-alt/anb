@@ -21,8 +21,10 @@ def test_user_menu_and_onboarding_are_product_facing():
     assert "F.text.in_(kb_pair('features'))" in MAIN
     assert 'onboarding_character_keyboard' in MAIN
     assert "onboard:character:" in MAIN
-    assert "✅ {card.display_name} · выбрать" in MAIN
-    assert "🔒 {card.display_name} · скоро" in MAIN
+    # V3.39.0: compact two-per-row pick buttons without the «· выбрать» suffix
+    assert "text = f'✅ {card.display_name}'" in MAIN
+    assert "text = f'🔒 {card.display_name}'" in MAIN
+    assert 'def _pair_rows(buttons)' in MAIN
     assert '00_anna_canonical_face_v3.png' in MAIN
     assert 'FSInputFile' in MAIN
     assert 'abilities_text' in MAIN

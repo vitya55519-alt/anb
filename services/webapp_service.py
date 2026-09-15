@@ -24,6 +24,7 @@ import hashlib
 import hmac
 import json
 import re
+import secrets
 import time
 from pathlib import Path
 from urllib.parse import parse_qsl
@@ -75,7 +76,7 @@ WEBAPP_INDEX = ROOT / 'webapp' / 'index.html'
 # outside the character system — one folder per user, meta.json index.
 APP_PICTURES_DIR = ROOT / 'data' / 'app_pictures'
 
-# One freeform picture costs one photo credit (🍓) — the same balance the bot
+# One freeform picture costs one photo credit (🍑) — the same balance the bot
 # charges for a photo set, so shop purchases feed both chat photos and the
 # studio.
 WEBAPP_PICTURE_COST_CREDITS = 1
@@ -233,6 +234,12 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             'status': card.status,
             'emoji': card.button_emoji or '👩',
             'photo': f"/webapp/photo/{card.character_id}",
+            # V3.39.0: the Come Closer character page opens with a photo strip
+            # (face + look references), so the card page needs every shot.
+            'gallery': [
+                f'/webapp/photo/{card.character_id}?i={idx}'
+                for idx in range(min(4, len(character_gallery(card.character_id))))
+            ],
             'selected': card.character_id == selected,
             'custom': custom,
             'mine': custom and bool(telegram_id) and card.character_id == custom_character_id(telegram_id),
@@ -388,7 +395,11 @@ def api_chat_history(db_user_id: int, character_id: str, limit: int = 30) -> lis
             ts = m.created_at.isoformat() if m.created_at else None
         except Exception:
             ts = None
-        out.append({'role': m.role, 'content': m.content, 'ts': ts})
+        out.append({'role': m.role, 'content': m.content, 'ts': ts,
+                    # V3.39.0: media messages (photo / circle / voice) travel
+                    # with the history so the app renders them like the bot.
+                    'media_kind': getattr(m, 'media_kind', None),
+                    'media_url': getattr(m, 'media_url', None)})
     return out
 
 
@@ -563,24 +574,61 @@ def api_partner(user_id: int, telegram_id: int) -> dict:
     }
 
 
-def character_photo(character_id: str) -> tuple[bytes, str] | None:
-    """(bytes, content_type) of a storefront photo, or None if unavailable.
+def character_gallery(character_id: str) -> list[Path]:
+    """V3.39.0: the canonical shots of a character (face first, then look).
 
-    Built-ins read their canonical face reference; constructor personas read
-    the cached avatar (v3.31.8 ``ensure_custom_avatar_cached``).
+    The Come Closer character page leads with a horizontal photo strip, so the
+    storefront needs every canonical reference, not just the face.
     """
     base = ROOT / 'data'
-    path: Path | None = None
     if is_custom_character(character_id):
         path = base / 'custom_references' / character_id / 'avatar.jpg'
-    else:
-        rel = _FACE_REFERENCES.get(character_id)
-        if rel:
-            path = base.joinpath(*rel)
-    if path and path.exists():
-        content_type = 'image/jpeg' if path.suffix.lower() in ('.jpg', '.jpeg') else 'image/png'
-        try:
-            return path.read_bytes(), content_type
-        except OSError:
-            return None
-    return None
+        return [path] if path.exists() else []
+    rel = _FACE_REFERENCES.get(character_id)
+    if not rel:
+        return []
+    folder = base.joinpath(rel[0], rel[1])
+    if not folder.exists():
+        return []
+    return sorted(p for p in folder.glob('*.png') if p.name.startswith(('00_', '01_')))
+
+
+def character_photo(character_id: str, index: int = 0) -> tuple[bytes, str] | None:
+    """(bytes, content_type) of a storefront photo, or None if unavailable.
+
+    Built-ins read their canonical references (index 0 = face, 1 = look);
+    constructor personas read the cached avatar (v3.31.8
+    ``ensure_custom_avatar_cached``).
+    """
+    paths = character_gallery(character_id)
+    if not paths:
+        return None
+    path = paths[max(0, min(int(index or 0), len(paths) - 1))]
+    content_type = 'image/jpeg' if path.suffix.lower() in ('.jpg', '.jpeg') else 'image/png'
+    try:
+        return path.read_bytes(), content_type
+    except OSError:
+        return None
+
+
+# ── V3.39.0: in-app chat media (photos / circles / voice) ──────────────────
+
+APP_MEDIA_DIR = ROOT / 'data' / 'app_media'
+_MEDIA_NAME_RE = re.compile(r'^\d+_[0-9a-f]{8}\.(jpg|jpeg|png|mp4|ogg)$')
+
+
+def save_chat_media(telegram_id: int, data: bytes, ext: str) -> str:
+    """Store a generated media file per user; returns the unguessable name."""
+    folder = APP_MEDIA_DIR / str(int(telegram_id))
+    folder.mkdir(parents=True, exist_ok=True)
+    name = f'{int(time.time() * 1000)}_{secrets.token_hex(4)}.{ext}'
+    (folder / name).write_bytes(data)
+    return name
+
+
+def chat_media_file_path(telegram_id: int, filename: str) -> Path | None:
+    """Owner-scoped media path; None when the name is not a server-made one."""
+    if not _MEDIA_NAME_RE.match(filename or ''):
+        return None
+    path = APP_MEDIA_DIR / str(int(telegram_id)) / filename
+    return path if path.exists() else None

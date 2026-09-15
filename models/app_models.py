@@ -117,6 +117,10 @@ class Message(Base):
     character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # V3.39.0: in-app chat media (photo / circle / voice) rides on the same
+    # messages table so the Mini App history renders it like the bot dialog.
+    media_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    media_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 class Memory(Base):

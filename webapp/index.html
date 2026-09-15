@@ -219,6 +219,26 @@
     font-size: 16px; padding: 0 18px; border-radius: 14px; cursor: pointer;
   }
   .chat-input button:disabled { opacity: .5; }
+  /* V3.39.0: Come Closer character page — photo strip, CTA, plot block */
+  .strip { display: flex; gap: 8px; overflow-x: auto; padding: 12px 14px 4px; }
+  .strip img { width: 74px; height: 96px; object-fit: cover; border-radius: 12px; border: 2px solid transparent; cursor: pointer; flex: 0 0 auto; background: var(--card2); }
+  .strip img.on { border-color: var(--accent); }
+  .charhero { padding: 6px 16px 0; }
+  .charhero h1 { margin: 6px 0 2px; font-size: 26px; }
+  .charcta { display: block; width: calc(100% - 32px); margin: 14px 16px; padding: 14px; border: 0; border-radius: 14px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
+  .charblock { margin: 10px 16px; padding: 12px 14px; background: var(--card); border-radius: 14px; line-height: 1.45; white-space: pre-wrap; }
+  .charblock .lbl3 { color: var(--accent); font-size: 12px; letter-spacing: .08em; margin-bottom: 6px; }
+  /* V3.39.0: media inside the in-app chat (photos / circles / voice) */
+  .msg img.m { display: block; max-width: 220px; width: 100%; border-radius: 12px; margin-top: 4px; background: var(--card2); }
+  .msg video.circle { display: block; width: 180px; height: 180px; object-fit: cover; border-radius: 50%; margin-top: 4px; background: #000; }
+  .msg audio { display: block; width: 220px; margin-top: 4px; }
+  .chat-media { display: flex; gap: 4px; }
+  .chat-media button { width: 38px; height: 38px; border: 0; border-radius: 12px; background: var(--card); font-size: 17px; cursor: pointer; }
+  .chat-media button:disabled { opacity: .5; }
+  /* V3.39.0: the Come Closer segment switch — our roster vs the community */
+  .seg { display: flex; gap: 6px; margin: 4px 14px 10px; background: var(--card); border-radius: 14px; padding: 4px; }
+  .seg button { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 10px 8px; border-radius: 11px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .seg button.on { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
   .typing { align-self: flex-start; color: var(--muted); font-size: 13px; padding: 4px 12px; }
   .wiz { flex: 1; overflow-y: auto; padding: 16px; }
   .wiz .step-title { font-size: 17px; font-weight: 700; margin: 6px 0 12px; }
@@ -322,6 +342,12 @@
 <main>
   <section class="tab" id="tab-characters">
     <h2 id="l_chars_title">Персонажи</h2>
+    <!-- V3.39.0: the Come Closer segment switch — our roster (the «Peach
+         Garden») vs girls created by the community (constructor personas). -->
+    <div class="seg" id="charSeg">
+      <button class="on" data-seg="official" id="segOfficial"></button>
+      <button data-seg="community" id="segCommunity"></button>
+    </div>
     <div class="grid" id="chargrid"><div class="loading" id="l_loading">Загрузка…</div></div>
     <div class="note" id="l_chars_hint">Выбрать девушку для общения можно в чате бота — раздел «Персонажи»</div>
   </section>
@@ -329,7 +355,7 @@
     <h2 id="l_chats_title2">Чаты</h2>
     <div id="chatsbody"><div class="loading">…</div></div>
   </section>
-  <!-- V3.38.0: the «Картинки» studio — freeform picture generation for 🍓 -->
+  <!-- V3.38.0: the «Картинки» studio — freeform picture generation for 🍑 -->
   <section class="tab" id="tab-pictures">
     <h2 id="l_pic_title">Создать картинку</h2>
     <div class="studio" id="studiobody"></div>
@@ -369,8 +395,32 @@
   </div>
   <div class="chat-msgs" id="chatMsgs"></div>
   <div class="chat-input">
+    <div class="chat-media">
+      <button id="mediaPhoto">📸</button>
+      <button id="mediaCircle">🎥</button>
+      <button id="mediaVoice">🎙</button>
+    </div>
     <input id="chatText" maxlength="4000" placeholder="">
     <button id="chatSend">➤</button>
+  </div>
+</div>
+<!-- V3.39.0: the Come Closer character page — photo strip, «Начать чат»,
+     bio and the СЮЖЕТ block before the dialog opens -->
+<div class="overlay" id="charview">
+  <div class="chat-head">
+    <button class="iconbtn" id="charBack">‹</button>
+    <div>
+      <div class="nm" id="charName"></div>
+      <div class="sub" id="charSub"></div>
+    </div>
+  </div>
+  <div class="page" style="padding-bottom:20px">
+    <div class="strip" id="charStrip"></div>
+    <div class="charhero"><h1 id="charTitle"></h1><div class="sub" id="charMeta"></div></div>
+    <button class="charcta" id="charStart"></button>
+    <div class="charblock" id="charBio"></div>
+    <div class="charblock" id="charPlot" style="display:none"><div class="lbl3" id="charPlotLbl"></div><div id="charPlotText" style="font-style:italic"></div></div>
+    <button class="charcta" id="charSelect" style="background:var(--card);color:var(--accent)"></button>
   </div>
 </div>
 <!-- V3.35.0: character constructor wizard — build your own girl in the app -->
@@ -457,13 +507,19 @@ const L = LANG === 'en' ? {
   style_anime: 'Anime', style_realistic: 'Realistic', style_fantasy: 'Fantasy',
   pic_square: 'Square', pic_portrait: 'Portrait',
   pic_advanced: 'Advanced mode', pic_extra_ph: 'Extra details (optional)…',
-  pic_cost: 'One picture — 1 🍓', pic_generate: 'Create · 1 🍓',
+  pic_cost: 'One picture — 1 🍑', pic_generate: 'Create · 1 🍑',
   pic_wait: 'Drawing — up to a minute…', pic_blocked: 'This description is not allowed',
-  pic_no_credits: 'Not enough 🍓 — add them in the Shop tab',
+  pic_no_credits: 'Not enough 🍑 — add them in the Shop tab',
   pic_gen_fail: 'Could not draw — try again',
   pic_gallery: 'My pictures', pic_empty: 'No pictures yet — your works will appear here.',
   my_chars: 'MY CHARACTERS', create_char: '＋ Create', no_chars: 'No character yet — create your own girl.',
   partner_row: '💰 Partner program', docs_row: '📜 Documents & prices', open_chat: 'chat',
+  // V3.39.0: the Come Closer character page + in-app chat media.
+  start_chat: 'Start chat', plot: 'PLOT', make_mine: '❤️ Make her yours',
+  seg_official: '🍑 Peach Garden', seg_community: '👥 Community',
+  media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
+  media_wait_voice: 'Recording her voice…',
+  circle_limit: 'No free circles left today — Premium refreshes them daily',
 } : {
   chars_title: 'Персонажи', loading: 'Загрузка…',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
@@ -507,13 +563,19 @@ const L = LANG === 'en' ? {
   style_anime: 'Аниме', style_realistic: 'Реализм', style_fantasy: 'Фэнтези',
   pic_square: 'Квадрат', pic_portrait: 'Портрет',
   pic_advanced: 'Продвинутый режим', pic_extra_ph: 'Дополнительные детали (необязательно)…',
-  pic_cost: 'Одна картинка — 1 🍓', pic_generate: 'Создать · 1 🍓',
+  pic_cost: 'Одна картинка — 1 🍑', pic_generate: 'Создать · 1 🍑',
   pic_wait: 'Рисую — до минуты…', pic_blocked: 'Такое описание нельзя',
-  pic_no_credits: 'Не хватает 🍓 — добавь во вкладке «Магазин»',
+  pic_no_credits: 'Не хватает 🍑 — добавь во вкладке «Магазин»',
   pic_gen_fail: 'Не получилось нарисовать — попробуй ещё раз',
   pic_gallery: 'Мои картинки', pic_empty: 'Картинок пока нет — твои работы появятся здесь.',
   my_chars: 'МОИ ПЕРСОНАЖИ', create_char: '＋ Создать', no_chars: 'Персонажа пока нет — создай свою девушку.',
   partner_row: '💰 Партнёрка', docs_row: '📜 Документы и цены', open_chat: 'чат',
+  // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
+  start_chat: 'Начать чат', plot: 'СЮЖЕТ', make_mine: '❤️ Сделать твоей',
+  seg_official: '🍑 Персиковый сад', seg_community: '👥 Сообщество',
+  media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
+  media_wait_voice: 'Записываю голос…',
+  circle_limit: 'Бесплатные кружочки на сегодня кончились — Premium обновляет их каждый день',
 };
 
 document.getElementById('l_chars_title').textContent = L.chars_title;
@@ -525,6 +587,8 @@ document.getElementById('l_docs_ov').textContent = L.docs_title;
 document.getElementById('l_profile_title').textContent = L.profile_title;
 document.getElementById('l_loading').textContent = L.loading;
 document.getElementById('l_chars_hint').textContent = L.chars_hint;
+document.getElementById('segOfficial').textContent = L.seg_official;
+document.getElementById('segCommunity').textContent = L.seg_community;
 document.querySelectorAll('#bottomnav .lbl').forEach((el, i) => {
   el.textContent = ['Персонажи','Чаты','Картинки','Магазин','Профиль'][i];
   if (LANG === 'en') el.textContent = ['Characters','Chats','Pictures','Shop','Profile'][i];
@@ -540,6 +604,12 @@ navBtns.forEach(btn => btn.addEventListener('click', () => {
   navBtns.forEach(b => b.classList.toggle('on', b === btn));
   document.querySelectorAll('section.tab').forEach(s =>
     s.classList.toggle('active', s.id === 'tab-' + btn.dataset.tab));
+}));
+// V3.39.0: the roster/community segment switch re-renders the cached grid.
+document.querySelectorAll('#charSeg button').forEach(btn => btn.addEventListener('click', () => {
+  CHAR_SEG = btn.dataset.seg;
+  document.querySelectorAll('#charSeg button').forEach(b => b.classList.toggle('on', b === btn));
+  renderCharacters(CHARS);
 }));
 
 // ── actions (V3.34.0): toasts, tab switch, purchases ─────────────────────
@@ -588,13 +658,17 @@ async function buy(productId, btn) {
 
 // ── characters ────────────────────────────────────────────────────────────
 let CHARS = [];
+let CHAR_SEG = 'official';
 function renderCharacters(list) {
   CHARS = list;
+  // V3.39.0: the segment switch — the official roster lives in the «Peach
+  // Garden», constructor personas made by people live in the «Community».
+  const shown = list.filter(c => (CHAR_SEG === 'official' ? !c.custom : !!c.custom));
   const grid = document.getElementById('chargrid');
   // V3.35.0: the grid is the chat entry now — tap opens the dialog; the
   // «create your own» card rides at the end of the grid.
-  const hasMine = list.some(c => c.mine);
-  const cards = list.map(c => {
+  const hasMine = shown.some(c => c.mine);
+  const cards = shown.map(c => {
     const badge = c.status === 'active'
       ? `<span class="badge active">✅ ${esc(L.active)}</span>`
       : c.status === 'premium'
@@ -620,7 +694,7 @@ function renderCharacters(list) {
       </div>
     </div>`;
   }).join('');
-  const createCard = hasMine
+  const createCard = CHAR_SEG === 'official' ? '' : (hasMine
     ? `<div class="card create" style="opacity:.75">
         <div class="photo" style="display:flex;align-items:center;justify-content:center"><div class="plus">🎨</div></div>
         <div class="body"><div class="lbl2">${esc(L.mychar_note)}</div></div>
@@ -628,10 +702,10 @@ function renderCharacters(list) {
     : `<div class="card create" id="createCard">
         <div class="photo" style="display:flex;align-items:center;justify-content:center"><div class="plus">➕</div></div>
         <div class="body"><div class="lbl2">${esc(L.create_own)}</div><div class="sub2">${esc(L.create_sub)}</div></div>
-      </div>`;
+      </div>`);
   grid.innerHTML = cards + createCard;
   grid.querySelectorAll('.card[data-id]').forEach(el =>
-    el.addEventListener('click', () => openCharacter(el)));
+    el.addEventListener('click', () => openCharPage(el)));
   const cc = document.getElementById('createCard');
   if (cc) cc.addEventListener('click', openWizard);
   // V3.38.0: the profile «MY CHARACTERS» block lists mine cards — re-render
@@ -714,9 +788,21 @@ function fmtTime(ts) {
   } catch (e) { return ''; }
 }
 
-function chatBubble(role, content, ts) {
-  const t = fmtTime(ts) ? `<span class="t">${esc(fmtTime(ts))}</span>` : '';
-  return `<div class="msg ${role === 'user' ? 'user' : 'bot'}">${esc(content)}${t}</div>`;
+function chatBubble(roleOrM, content, ts) {
+  // V3.39.0: media messages (photo / circle / voice) render like in the bot
+  // dialog — round video for circles, a player for voice, a photo otherwise.
+  const m = (roleOrM && typeof roleOrM === 'object') ? roleOrM : { role: roleOrM, content: content, ts: ts };
+  const t = fmtTime(m.ts) ? `<span class="t">${esc(fmtTime(m.ts))}</span>` : '';
+  const cls = m.role === 'user' ? 'user' : 'bot';
+  let body = esc(m.content);
+  if (m.media_url) {
+    const src = m.media_url + '?init_data=' + encodeURIComponent(tg.initData || '');
+    if (m.media_kind === 'circle') body = `<video class="circle" src="${esc(src)}" loop autoplay muted playsinline></video>`;
+    else if (m.media_kind === 'voice') body = `<audio controls src="${esc(src)}"></audio>`;
+    else body = `<img class="m" src="${esc(src)}" alt="">`;
+    if (m.content) body += `<div style="margin-top:4px">${esc(m.content)}</div>`;
+  }
+  return `<div class="msg ${cls}">${body}${t}</div>`;
 }
 
 function openChat(c) {
@@ -746,7 +832,7 @@ async function loadChatHistory(characterId) {
     const box = document.getElementById('chatMsgs');
     if (!j.ok) { box.innerHTML = `<div class="chat-empty">${esc(L.reply_err)}</div>`; return; }
     if (!j.history.length) { box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`; return; }
-    box.innerHTML = j.history.map(m => chatBubble(m.role, m.content, m.ts)).join('');
+    box.innerHTML = j.history.map(m => chatBubble(m)).join('');
     box.scrollTop = box.scrollHeight;
   } catch (e) {
     document.getElementById('chatMsgs').innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
@@ -793,6 +879,90 @@ async function sendChat() {
     chatBusy = false;
     input.focus();
   }
+}
+
+// ── V3.39.0: in-app chat media — photos, circles, voice like the bot dialog ──
+let mediaBusy = false;
+async function requestMedia(kind) {
+  if (!CHAT || mediaBusy) return;
+  if (!tg.initData) { toast(L.auth_short); return; }
+  mediaBusy = true;
+  document.querySelectorAll('.chat-media button').forEach(b => b.disabled = true);
+  const box = document.getElementById('chatMsgs');
+  const empty = box.querySelector('.chat-empty');
+  if (empty) empty.remove();
+  const wait = kind === 'circle' ? L.media_wait_circle : (kind === 'voice' ? L.media_wait_voice : L.media_wait_photo);
+  box.insertAdjacentHTML('beforeend', `<div class="typing" id="mediaTyping">${esc(wait)}</div>`);
+  box.scrollTop = box.scrollHeight;
+  try {
+    const r = await fetch('/webapp/api/chat/media?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: CHAT.id, kind: kind }),
+    });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    if (r.status === 402) {
+      const j = await r.json().catch(() => ({}));
+      toast(j.error === 'circle_limit' ? L.circle_limit : L.pic_no_credits);
+      if (j.error !== 'circle_limit') showTab('shop');
+      return;
+    }
+    if (r.status === 403) {
+      const j = await r.json().catch(() => ({}));
+      toast(j.error === 'consent' ? L.consent_needed : (j.error === 'premium_required' ? L.need_premium : L.locked));
+      if (j.error === 'premium_required') showTab('shop');
+      return;
+    }
+    const j = await r.json();
+    if (!j.ok) { toast(L.reply_err); return; }
+    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
+    box.scrollTop = box.scrollHeight;
+    if (ME && j.credits_left != null) ME.photo_credits = j.credits_left;
+  } catch (e) {
+    toast(L.reply_err);
+  } finally {
+    const t2 = document.getElementById('mediaTyping');
+    if (t2) t2.remove();
+    mediaBusy = false;
+    document.querySelectorAll('.chat-media button').forEach(b => b.disabled = false);
+  }
+}
+
+// ── V3.39.0: the Come Closer character page (strip → CTA → bio → СЮЖЕТ) ────
+let CHARPAGE = null;
+function openCharPage(el) {
+  const c = CHARS.find(x => x.id === el.dataset.id);
+  if (!c) { openCharacter(el); return; }
+  const status = c.status;
+  if (status === 'premium' && !(ME && ME.premium)) { toast(L.need_premium); showTab('shop'); return; }
+  if (status !== 'active' && status !== 'premium') { toast(L.locked); return; }
+  CHARPAGE = c;
+  document.getElementById('charName').textContent = c.name;
+  document.getElementById('charSub').textContent = c.custom ? L.made_badge : (status === 'premium' ? L.prem : L.active);
+  document.getElementById('charTitle').textContent = c.name;
+  document.getElementById('charMeta').textContent =
+    `${c.age} ${L.years} · ${status === 'premium' ? L.prem : L.active}` + (c.selected ? ` · ❤️ ${L.selected}` : '');
+  const strip = document.getElementById('charStrip');
+  const shots = (c.gallery && c.gallery.length) ? c.gallery : [c.photo];
+  strip.innerHTML = shots.map((u, i) =>
+    `<img src="${esc(u)}" class="${i === 0 ? 'on' : ''}" alt="">`).join('');
+  strip.querySelectorAll('img').forEach(img => img.addEventListener('click', () => {
+    strip.querySelectorAll('img').forEach(x => x.classList.toggle('on', x === img));
+  }));
+  document.getElementById('charStart').textContent = '💬 ' + L.start_chat;
+  document.getElementById('charBio').textContent = c.bio || '';
+  const plot = document.getElementById('charPlot');
+  if (c.hook) {
+    plot.style.display = '';
+    document.getElementById('charPlotLbl').textContent = L.plot;
+    document.getElementById('charPlotText').textContent = c.hook;
+  } else {
+    plot.style.display = 'none';
+  }
+  const selBtn = document.getElementById('charSelect');
+  selBtn.textContent = L.make_mine;
+  selBtn.style.display = c.selected ? 'none' : '';
+  document.getElementById('charview').classList.add('open');
 }
 
 // ── V3.35.0: character constructor wizard ─────────────────────────────────
@@ -986,7 +1156,7 @@ function renderStudio() {
     <textarea id="picPrompt" maxlength="800" placeholder="${esc(L.pic_prompt_ph)}"></textarea>
     <div class="lbl">${esc(L.pic_style)}</div>
     <select id="picStyle">
-      <option value="anime">🍓 ${esc(L.style_anime)}</option>
+      <option value="anime">🍑 ${esc(L.style_anime)}</option>
       <option value="realistic">📷 ${esc(L.style_realistic)}</option>
       <option value="fantasy">🐉 ${esc(L.style_fantasy)}</option>
     </select>
@@ -1037,9 +1207,9 @@ async function generatePicture() {
     if (r.status === 403) { toast(L.consent_needed); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     if (r.status === 400) { toast(L.pic_blocked); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     const j = await r.json();
-    if (!j.ok) { toast(L.pic_gen_fail); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
+    if (!j.ok) { toast(j.reason || L.pic_gen_fail); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     result.innerHTML = `<img src="${esc(j.file)}?init_data=${encodeURIComponent(tg.initData || '')}" style="width:100%;border-radius:14px;margin-top:10px;display:block;background:var(--card2)">`;
-    toast('🍓 ' + (j.credits_left != null ? j.credits_left : ''));
+    toast('🍑 ' + (j.credits_left != null ? j.credits_left : ''));
     loadMe();
     loadPictures();
   } catch (e) {
@@ -1211,7 +1381,7 @@ async function loadMe() {
 }
 
 function m_chipText(m) {
-  return m.premium ? '⭐ Premium' : ((m.name || '') + (m.photo_credits ? ' · 🍓' + m.photo_credits : ''));
+  return m.premium ? '⭐ Premium' : ((m.name || '') + (m.photo_credits ? ' · 🍑' + m.photo_credits : ''));
 }
 
 // V3.38.0: the Come Closer profile — user card, relationship stats, MY
@@ -1248,7 +1418,7 @@ function renderProfileBody() {
       <div class="bar"><i style="width:${lvlPct}%"></i></div>
     </div>
     <div class="stat"><span class="k">🔥 ${esc(L.streak)}</span><span class="v">${esc(m.streak)}</span></div>
-    <div class="stat"><span class="k">🍓 ${esc(L.paid_credit)}</span><span class="v">${esc(m.photo_credits)}</span></div>
+    <div class="stat"><span class="k">🍑 ${esc(L.paid_credit)}</span><span class="v">${esc(m.photo_credits)}</span></div>
     <div class="sect-title">${esc(L.my_chars)}</div>
     ${myCharsHtml}
     ${hasMine ? '' : `<button class="cta" id="profileCreate">${esc(L.create_char)}</button>`}
@@ -1313,6 +1483,18 @@ document.getElementById('chatText').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendChat();
 });
 document.getElementById('chatSelect').addEventListener('click', () => { if (CHAT) doSelect(CHAT); });
+document.getElementById('mediaPhoto').addEventListener('click', () => requestMedia('photo'));
+document.getElementById('mediaCircle').addEventListener('click', () => requestMedia('circle'));
+document.getElementById('mediaVoice').addEventListener('click', () => requestMedia('voice'));
+document.getElementById('charBack').addEventListener('click', () => {
+  document.getElementById('charview').classList.remove('open');
+});
+document.getElementById('charStart').addEventListener('click', () => {
+  if (!CHARPAGE) return;
+  document.getElementById('charview').classList.remove('open');
+  openChat(CHARPAGE);
+});
+document.getElementById('charSelect').addEventListener('click', () => { if (CHARPAGE) doSelect(CHARPAGE); });
 document.getElementById('wizBack').addEventListener('click', () => {
   if (WIZ.idx > 0) { WIZ.idx -= 1; renderWizStep(); return; }
   closeWizard();

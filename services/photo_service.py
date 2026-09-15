@@ -1155,7 +1155,31 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
             return await _seedream_edit(reference_path, prompt)
         except Exception:
             logger.warning('constructor avatar Seedream failed; falling back to Gemini')
+    elif FAL_KEY:
+        # V3.39.0: freeform renders (the «Картинки» studio) get a real t2i
+        # engine before Gemini, so a single provider outage or refusal no
+        # longer kills the studio with «Не получилось нарисовать».
+        try:
+            return await _seedream_t2i(prompt)
+        except Exception:
+            logger.warning('studio Seedream t2i failed; falling back to Gemini')
     return await _gemini_edit(prompt, reference_path)
+
+
+async def _seedream_t2i(prompt: str) -> tuple[bytes, str]:
+    """V3.39.0: Seedream text-to-image for freeform prompts (no reference)."""
+    result = await _seedream_request(
+        prompt, [], 1, request_label='studio_picture', allow_adult=False,
+    )
+    images = result.get('images') if isinstance(result, dict) else None
+    url = images[0].get('url') if images and isinstance(images[0], dict) else None
+    if not url:
+        raise PhotoGenerationError('seedream45', 'no_image_url')
+    async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=20.0), follow_redirects=True) as client:
+        download = await client.get(url)
+    if download.status_code >= 400 or not download.content:
+        raise PhotoGenerationError('seedream45', f'download_{download.status_code}')
+    return download.content, download.headers.get('content-type', 'image/jpeg')
 
 
 async def _seedream_edit(reference_path: Path | None, prompt: str) -> tuple[bytes, str]:

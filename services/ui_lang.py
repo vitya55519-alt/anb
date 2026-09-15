@@ -54,7 +54,7 @@ KB_LABELS = {
     # the bottom. «Поддержка» is now a real ticket flow to the owner (the
     # old «💖 Поддержать проект» donation appeal stays on the legal screen).
     'app': ('📱 Открыть приложение', '📱 Open the app'),
-    'credits': ('🍓 Добавить клубничек', '🍓 Add credits'),
+    'credits': ('🍑 Добавить персиков', '🍑 Add peaches'),
     'paint': ('🖼 Создать картинку', '🖼 Create a picture'),
     'support': ('👥 Поддержка', '👥 Support'),
     # V3.32.0: Platega/bank compliance — legal documents must be reachable

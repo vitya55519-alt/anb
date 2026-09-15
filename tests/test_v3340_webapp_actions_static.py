@@ -12,7 +12,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0')
+    assert VERSION in ('3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_invoice_products_declared():
@@ -117,9 +117,10 @@ def test_no_unescaped_backend_strings_in_templates():
         # interpolated L-string is esc()-wrapped at the render site anyway.
         'pct', 'min',
     }
-    # d.check_word is the lone backend value outside esc(): it flows into
-    # textContent (checkword line), not innerHTML, so no parsing happens.
-    text_content_ok = {'d.check_word', 'el.dataset.name', 'L.selected_toast', 'c.name'}
+    # These backend values sit outside esc() only because they flow into
+    # textContent (checkword line, V3.39.0 character-page title/meta), not
+    # innerHTML — so no HTML parsing ever happens on them.
+    text_content_ok = {'d.check_word', 'el.dataset.name', 'L.selected_toast', 'c.name', 'c.age'}
     for m in re.finditer(r'\$\{([^}]+)\}', INDEX):
         expr = m.group(1).strip()
         if (expr.startswith('esc(') or expr in numeric_ok or expr.startswith('L.')
@@ -148,6 +149,17 @@ def test_no_unescaped_backend_strings_in_templates():
             # V3.38.0: locally-built «мои персонажи» fragment — every inner
             # field (photo/name/id/open_chat) is esc()'d at build time.
             'myCharsHtml',
+            # V3.39.0: chatBubble's locally-computed role class — the ternary
+            # can only ever be 'user' or 'bot', never backend data.
+            'cls',
+            # V3.39.0: chatBubble's locally-built media/text fragment — every
+            # inner value (content + media src) is esc()'d at build time.
+            'body',
+            # V3.39.0: character-page meta ternaries — one yields only the
+            # L.prem/L.active localization constants (into textContent), the
+            # other only the 'on'/'' thumbnail CSS class from a local map index.
+            "status === 'premium' ? L.prem : L.active",
+            "i === 0 ? 'on' : ''",
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         raise AssertionError(f'unescaped template value: {expr!r} in INDEX')
