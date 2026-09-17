@@ -53,6 +53,7 @@ from services.photo_service import (
     get_relationship_level, is_custom_request, requires_adult_confirmation,
     SCENE_LEVELS, SCENES, PhotoGenerationError, get_latest_photo_delivery, get_photo_delivery_for_user,
     get_gallery_page, get_gallery_item_bytes, GALLERY_PAGE_SIZE, generate_custom_avatar,
+    generate_photo_set, photo_frame_bytes, AUTO_CAPTIONS,
     admin_pool_count, admin_pool_get, admin_pool_latest_id, admin_pool_neighbor, admin_pool_set_shared,
     ensure_custom_avatar_cached,
 )
@@ -7840,17 +7841,28 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     })
 
 
-async def _webapp_media_photo(telegram_id: int, character_id: str):
-    """V3.39.0: a personal in-character photo — identity-locked through the
-    canonical face reference, the same engine the studio uses."""
-    card = get_card(character_id)
-    scene = random.choice(_WEBAPP_PHOTO_SCENES)
-    prompt = (f'personal photo from {card.display_name if card else "your girl"}: {scene}, '
-              'photorealistic, fully clothed, tasteful' + webapp_service.PICTURE_PROMPT_SUFFIX)
-    gallery = webapp_service.character_gallery(character_id)
-    reference = gallery[0] if gallery else None
-    data, mime = await generate_custom_avatar(prompt, reference)
-    return data, mime, ('png' if 'png' in (mime or '') else 'jpg')
+async def _webapp_pipeline_photo(telegram_id: int, character_id: str, request: PhotoRequest):
+    """V3.43.7: the shared renderer for the app's in-character photos — the
+    REAL photo pipeline (BODY IDENTITY / REFERENCE PROTOCOL / BUST
+    CONSISTENCY locks included), one frame, bytes for the app's media folder.
+    URL-only providers get downloaded once, like the bot's gallery capture.
+    The V3.39.0 shortcut these calls replace (a one-line prompt through
+    generate_custom_avatar on gallery[0], a face close-up) bypassed every
+    lock — which is exactly why the figure kept drifting in the app while
+    the bot's photos stayed on-spec."""
+    photos, _ = await generate_photo_set(telegram_id, request, character_id=character_id, frames=1)
+    data = await photo_frame_bytes(photos[0])
+    if not data:
+        raise PhotoGenerationError(request.scene, 'no_bytes')
+    ext = 'png' if data[:8] == b'\x89PNG\r\n\x1a\n' else 'jpg'
+    return data, ('image/png' if ext == 'png' else 'image/jpeg'), ext
+
+
+async def _webapp_media_photo(telegram_id: int, character_id: str, scene: str = 'selfie'):
+    """V3.39.0: a personal in-character photo. V3.43.7: now through the real
+    photo pipeline with the scene the app's picker chose — the figure follows
+    the declared BODY IDENTITY instead of an improvised face-swap body."""
+    return await _webapp_pipeline_photo(telegram_id, character_id, PhotoRequest(scene=scene))
 
 
 async def _webapp_media_circle(telegram_id: int, character_id: str):
@@ -7949,14 +7961,13 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
 
 async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str):
     """V3.41.0: an in-character photo for a specific scene — the app-native
-    reward shot for a free/admin date (identity-locked like the studio)."""
-    card = get_card(character_id)
-    prompt = (f'photo from a date with {card.display_name if card else "your girl"}: {scene}, '
-              'romantic mood, photorealistic, fully clothed, tasteful' + webapp_service.PICTURE_PROMPT_SUFFIX)
-    gallery = webapp_service.character_gallery(character_id)
-    reference = gallery[0] if gallery else None
-    data, mime = await generate_custom_avatar(prompt, reference)
-    return data, mime, ('png' if 'png' in (mime or '') else 'jpg')
+    reward shot for a free/admin date. V3.43.7: through the real photo
+    pipeline too — the date description rides PhotoRequest.location, so the
+    figure follows the declared BODY IDENTITY here as well."""
+    return await _webapp_pipeline_photo(
+        telegram_id, character_id,
+        PhotoRequest(scene='selfie', location=f'a personal smartphone photo from a date: {scene}'),
+    )
 
 
 async def _webapp_api_chat_media(request: web.Request) -> web.Response:
@@ -7978,6 +7989,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     body = body or {}
     character_id = str(body.get('character_id', ''))
     kind = str(body.get('kind', ''))
+    scene = str(body.get('scene') or 'selfie')[:40]
     if kind not in ('photo', 'circle', 'voice', 'video') or not character_id:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     if is_custom_character(character_id):
@@ -7991,6 +8003,16 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
     if not has_accepted(telegram_id):
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    if kind == 'photo':
+        # V3.43.7: the scene comes from the app's picker — it must be one of
+        # the menu scenes and clear the same relationship/adult gates the
+        # bot's photo keyboard enforces.
+        if scene not in PHOTO_MENU_ORDER:
+            return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+        if not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
+            return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+        if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
+            return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
     if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS \
             and get_photo_credits(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS:
         return web.json_response({'ok': False, 'error': 'credits'}, status=402)
@@ -8008,10 +8030,10 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         if not consume_premium_video_free(telegram_id):
             return web.json_response({'ok': False, 'error': 'video_limit'}, status=402)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-    track_event(uid, 'webapp_chat_media', metadata={'character_id': character_id, 'kind': kind})
+    track_event(uid, 'webapp_chat_media', metadata={'character_id': character_id, 'kind': kind, 'scene': scene})
     try:
         if kind == 'photo':
-            data, mime, ext = await _webapp_media_photo(telegram_id, character_id)
+            data, mime, ext = await _webapp_media_photo(telegram_id, character_id, scene)
         elif kind == 'circle':
             data, mime, ext = await _webapp_media_circle(telegram_id, character_id)
         elif kind == 'video':
@@ -8025,8 +8047,13 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)
     filename = webapp_service.save_chat_media(telegram_id, data, ext)
     url = f'/webapp/media/{filename}'
-    content = {'photo': '📸 отправила фото', 'circle': '🎥 отправила кружочек',
-               'voice': '🎙 отправила голосовое', 'video': '🎬 отправила видео'}[kind]
+    if kind == 'photo':
+        # V3.43.7: her caption is scene-flavored, the same AUTO_CAPTIONS the
+        # bot's photo delivery attaches.
+        content = f'📸 {random.choice(AUTO_CAPTIONS.get(scene, ("отправила фото",)))}'
+    else:
+        content = {'circle': '🎥 отправила кружочек',
+                   'voice': '🎙 отправила голосовое', 'video': '🎬 отправила видео'}[kind]
     save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
     if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
         logger.warning('webapp chat photo credit race user=%s', telegram_id)
@@ -8055,14 +8082,6 @@ async def _webapp_media(request: web.Request) -> web.Response:
                         headers={'Cache-Control': 'private, max-age=3600'})
 
 
-_WEBAPP_PHOTO_SCENES = (
-    'cozy selfie at home in soft daylight',
-    'cafe date photo across the table',
-    'evening walk under city lights',
-    'mirror selfie in today’s outfit',
-)
-
-
 async def _webapp_api_feature(request: web.Request) -> web.Response:
     # V3.41.0: the app-chat feature buttons (🏠 Квартира, 💕 Свидание,
     # 🎯 Задание дня) all render their menu from this one endpoint. Same auth
@@ -8075,7 +8094,7 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
     kind = str(request.query.get('kind', ''))
-    if kind not in ('apartment', 'date', 'quest'):
+    if kind not in ('apartment', 'date', 'quest', 'photo'):
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     character_id = str(request.query.get('character_id', '')) or get_user_character(telegram_id)
     ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
@@ -8111,6 +8130,19 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
         title = '💕 Where shall we go?' if lang == EN else '💕 Куда пойдём?'
         return web.json_response({'ok': True, 'kind': kind, 'title': title,
                                   'free_date': bool(has_free_date(telegram_id)), 'items': items})
+    if kind == 'photo':
+        # V3.43.7: the scene picker behind the app-chat «📸 Фото» button —
+        # the same PHOTO_MENU_ORDER + SCENE_LEVELS progression the bot's
+        # photo keyboard shows, so the menus pop out in the app too. Labels
+        # live in the frontend (all 7 interface languages); the backend owns
+        # the order and the relationship-level gates.
+        items = [{
+            'id': scene,
+            'locked': SCENE_LEVELS.get(scene, 99) > level,
+            'min_level': SCENE_LEVELS.get(scene, 99),
+        } for scene in PHOTO_MENU_ORDER]
+        title = '📸 Photo' if lang == EN else '📸 Фото'
+        return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
     from services import couple_service
     _, quest_text = couple_service.daily_quest(telegram_id)
     user = get_user(telegram_id)

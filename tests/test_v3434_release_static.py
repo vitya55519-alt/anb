@@ -27,7 +27,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.6', '3.43.5', '3.43.4')
+    assert VERSION in ('3.43.7', '3.43.6', '3.43.5', '3.43.4')
 
 
 # ── 1. hotter private-scene descriptors ─────────────────────────────────────

@@ -24,7 +24,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.6', '3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0',)
+    assert VERSION in ('3.43.7', '3.43.6', '3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0',)
 
 
 # ── 1. photo banner leads the welcome ──────────────────────────────────────
@@ -165,7 +165,9 @@ def test_chat_media_endpoint_and_gates():
     assert 'async def _webapp_media_voice(' in MAIN
     assert 'synthesize_bytes(clean,' in MAIN
     assert 'async def _webapp_media_photo(' in MAIN
-    assert 'generate_custom_avatar(prompt, reference)' in MAIN
+    # V3.43.7: the app photo runs the REAL identity-locked pipeline — the
+    # generate_custom_avatar shortcut (which bypassed every lock) is gone.
+    assert 'generate_photo_set(telegram_id, request, character_id=character_id, frames=1)' in MAIN
 
 
 def test_chat_media_persistence_and_rendering():
@@ -176,7 +178,7 @@ def test_chat_media_persistence_and_rendering():
     assert 'media_kind=media_kind, media_url=media_url' in MEMORY
     assert "'media_kind': getattr(m, 'media_kind', None)" in WEBAPP_SVC
     # the frontend renders all three kinds and offers the action buttons
-    assert 'function requestMedia(kind)' in INDEX
+    assert 'function requestMedia(kind, scene)' in INDEX
     assert 'id="mediaPhoto"' in INDEX and 'id="mediaCircle"' in INDEX
     # V3.42.2: the crooked voice action button was removed from the chat strip
     assert 'id="mediaVoice"' not in INDEX

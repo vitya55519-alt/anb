@@ -389,6 +389,9 @@
   .featactions { display: none; flex-wrap: wrap; gap: 6px; margin: -2px 0 10px; }
   .featactions.open { display: flex; }
   .featactions button { background: var(--card2); border: 1px solid rgba(255,255,255,.1); color: var(--text); font-size: 13px; padding: 8px 12px; border-radius: 12px; cursor: pointer; }
+  /* V3.43.7: section headers inside the photo scene menu. */
+  .featgroup { font-size: 11px; font-weight: 800; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; margin: 14px 2px 8px; }
+  .featlist .featgroup:first-child { margin-top: 2px; }
   .featquest { padding: 16px; }
   .featquest .qtext { background: var(--card); border-radius: 14px; padding: 14px; line-height: 1.5; margin-bottom: 12px; }
   .featdone { display: block; width: 100%; border: 0; border-radius: 14px; padding: 14px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
@@ -781,6 +784,17 @@ const L_EN = {
   settings_title: 'Settings', spicy_title: '🌶 Spicy mode', spicy_on: 'on', spicy_off: 'off',
   spicy_prem: 'Spicy mode is a Premium perk ⭐', spicy_toast_on: 'Spicy mode is on 🔥',
   spicy_toast_off: 'Spicy mode is off 🌙', lang_title: '🌐 Interface language',
+  // V3.43.7: the scene picker behind the app-chat photo button.
+  photo_menu_title: '📸 Which photo?',
+  sc_locked: n => 'opens at level ' + n,
+  scg_everyday: 'Everyday', scg_fashion: 'Fashion', scg_evening: 'Evening out', scg_private: 'Private',
+  sc_selfie: '📸 Selfie', sc_home: '🏠 At home', sc_park: '🌿 Park', sc_cafe: '☕ Cafe',
+  sc_street: '🌆 Street', sc_mirror: '🪞 Mirror selfie', sc_outfit: '👗 Today’s outfit', sc_shop: '🛍 Shopping',
+  sc_car: '🚗 In the car', sc_gym: '🏋️ Gym', sc_restaurant: '🍽 Restaurant', sc_cinema: '🎬 Cinema',
+  sc_embankment: '🌊 Embankment', sc_fashion: '💎 Fashion', sc_evening: '✨ Evening look',
+  sc_bar: '🍸 Bar', sc_karaoke: '🎤 Karaoke', sc_rooftop: '🌃 Rooftop', sc_club: '💃 Club',
+  sc_personal: '💌 Personal photo', sc_lingerie: '🖤 Private fashion', sc_private_fashion: '🔐 Premium private',
+  adult_confirm_needed: 'Confirm 18+ in the bot chat first',
 };
 
 // V3.43.5: the full Russian dictionary stays the base; five more interface
@@ -866,6 +880,17 @@ const L_RU = {
   settings_title: 'Настройки', spicy_title: '🌶 Пошлый режим', spicy_on: 'вкл', spicy_off: 'выкл',
   spicy_prem: 'Пошлый режим — фишка Premium ⭐', spicy_toast_on: 'Пошлый режим включён 🔥',
   spicy_toast_off: 'Пошлый режим выключен 🌙', lang_title: '🌐 Язык интерфейса',
+  // V3.43.7: выбор сцены за кнопкой «📸 Фото» в чате приложения.
+  photo_menu_title: '📸 Какое фото?',
+  sc_locked: n => 'откроется на уровне ' + n,
+  scg_everyday: 'Повседневные', scg_fashion: 'Мода', scg_evening: 'Вечер', scg_private: 'Приват',
+  sc_selfie: '📸 Селфи', sc_home: '🏠 Дома', sc_park: '🌿 Парк', sc_cafe: '☕ Кафе',
+  sc_street: '🌆 Улица', sc_mirror: '🪞 Зеркало', sc_outfit: '👗 Образ', sc_shop: '🛍 Магазин',
+  sc_car: '🚗 В машине', sc_gym: '🏋️ Зал', sc_restaurant: '🍽 Ресторан', sc_cinema: '🎬 Кино',
+  sc_embankment: '🌊 Набережная', sc_fashion: '💎 Fashion', sc_evening: '✨ Вечер',
+  sc_bar: '🍸 Бар', sc_karaoke: '🎤 Караоке', sc_rooftop: '🌃 Крыша', sc_club: '💃 Клуб',
+  sc_personal: '💌 Личное фото', sc_lingerie: '🖤 Приватный fashion', sc_private_fashion: '🔐 Premium private',
+  adult_confirm_needed: 'Сначала подтверди 18+ в чате бота',
 };
 
 // V3.43.5: partial UI dictionaries — everything missing falls back to the
@@ -897,6 +922,16 @@ const L_OV = {
     spicy_prem: 'El modo atrevido es una ventaja Premium ⭐',
     spicy_toast_on: 'Modo atrevido activado 🔥', spicy_toast_off: 'Modo atrevido desactivado 🌙',
     lang_title: '🌐 Idioma de la interfaz',
+    photo_menu_title: '📸 ¿Qué foto?',
+    sc_locked: n => 'se abre en el nivel ' + n,
+    scg_everyday: 'Cotidiano', scg_fashion: 'Moda', scg_evening: 'Salidas', scg_private: 'Privado',
+    sc_selfie: '📸 Selfi', sc_home: '🏠 En casa', sc_park: '🌿 Parque', sc_cafe: '☕ Cafetería',
+    sc_street: '🌆 Calle', sc_mirror: '🪞 Espejo', sc_outfit: '👗 Look del día', sc_shop: '🛍 Compras',
+    sc_car: '🚗 En el coche', sc_gym: '🏋️ Gimnasio', sc_restaurant: '🍽 Restaurante', sc_cinema: '🎬 Cine',
+    sc_embankment: '🌊 Paseo marítimo', sc_fashion: '💎 Moda', sc_evening: '✨ Look de noche',
+    sc_bar: '🍸 Bar', sc_karaoke: '🎤 Karaoke', sc_rooftop: '🌃 Azotea', sc_club: '💃 Discoteca',
+    sc_personal: '💌 Foto personal', sc_lingerie: '🖤 Moda privada', sc_private_fashion: '🔐 Premium privado',
+    adult_confirm_needed: 'Confirma primero 18+ en el chat del bot',
   },
   it: {
     chars_title: 'Ragazze', loading: 'Caricamento…',
@@ -923,6 +958,16 @@ const L_OV = {
     spicy_prem: 'La modalità audace è un vantaggio Premium ⭐',
     spicy_toast_on: 'Modalità audace attiva 🔥', spicy_toast_off: 'Modalità audace disattivata 🌙',
     lang_title: '🌐 Lingua dell\'interfaccia',
+    photo_menu_title: '📸 Quale foto?',
+    sc_locked: n => 'si apre al livello ' + n,
+    scg_everyday: 'Quotidiano', scg_fashion: 'Moda', scg_evening: 'Sera', scg_private: 'Privato',
+    sc_selfie: '📸 Selfie', sc_home: '🏠 A casa', sc_park: '🌿 Parco', sc_cafe: '☕ Caffè',
+    sc_street: '🌆 Strada', sc_mirror: '🪞 Specchio', sc_outfit: '👗 Look di oggi', sc_shop: '🛍 Shopping',
+    sc_car: '🚗 In auto', sc_gym: '🏋️ Palestra', sc_restaurant: '🍽 Ristorante', sc_cinema: '🎬 Cinema',
+    sc_embankment: '🌊 Lungofiume', sc_fashion: '💎 Moda', sc_evening: '✨ Look da sera',
+    sc_bar: '🍸 Bar', sc_karaoke: '🎤 Karaoke', sc_rooftop: '🌃 Terrazza', sc_club: '💃 Discoteca',
+    sc_personal: '💌 Foto personale', sc_lingerie: '🖤 Moda privata', sc_private_fashion: '🔐 Premium privato',
+    adult_confirm_needed: 'Conferma prima 18+ nella chat del bot',
   },
   fr: {
     chars_title: 'Filles', loading: 'Chargement…',
@@ -949,6 +994,16 @@ const L_OV = {
     spicy_prem: 'Le mode coquin est un avantage Premium ⭐',
     spicy_toast_on: 'Mode coquin activé 🔥', spicy_toast_off: 'Mode coquin désactivé 🌙',
     lang_title: '🌐 Langue de l\'interface',
+    photo_menu_title: '📸 Quelle photo ?',
+    sc_locked: n => 's\'ouvre au niveau ' + n,
+    scg_everyday: 'Quotidien', scg_fashion: 'Mode', scg_evening: 'Soirée', scg_private: 'Privé',
+    sc_selfie: '📸 Selfie', sc_home: '🏠 À la maison', sc_park: '🌿 Parc', sc_cafe: '☕ Café',
+    sc_street: '🌆 Rue', sc_mirror: '🪞 Miroir', sc_outfit: '👗 Tenue du jour', sc_shop: '🛍 Shopping',
+    sc_car: '🚗 En voiture', sc_gym: '🏋️ Salle de sport', sc_restaurant: '🍽 Restaurant', sc_cinema: '🎬 Cinéma',
+    sc_embankment: '🌊 Quai', sc_fashion: '💎 Mode', sc_evening: '✨ Look du soir',
+    sc_bar: '🍸 Bar', sc_karaoke: '🎤 Karaoké', sc_rooftop: '🌃 Toit-terrasse', sc_club: '💃 Club',
+    sc_personal: '💌 Photo perso', sc_lingerie: '🖤 Mode privée', sc_private_fashion: '🔐 Premium privé',
+    adult_confirm_needed: 'Confirme d\'abord 18+ dans le chat du bot',
   },
   zh: {
     chars_title: '女孩', loading: '加载中…',
@@ -975,6 +1030,16 @@ const L_OV = {
     spicy_prem: '火辣模式是 Premium 专属 ⭐',
     spicy_toast_on: '火辣模式已开启 🔥', spicy_toast_off: '火辣模式已关闭 🌙',
     lang_title: '🌐 界面语言',
+    photo_menu_title: '📸 想要哪种照片？',
+    sc_locked: n => '等级 ' + n + ' 解锁',
+    scg_everyday: '日常', scg_fashion: '时尚', scg_evening: '夜晚出行', scg_private: '私密',
+    sc_selfie: '📸 自拍', sc_home: '🏠 在家', sc_park: '🌿 公园', sc_cafe: '☕ 咖啡馆',
+    sc_street: '🌆 街头', sc_mirror: '🪞 镜子', sc_outfit: '👗 今日穿搭', sc_shop: '🛍 购物',
+    sc_car: '🚗 车内', sc_gym: '🏋️ 健身房', sc_restaurant: '🍽 餐厅', sc_cinema: '🎬 电影院',
+    sc_embankment: '🌊 海滨步道', sc_fashion: '💎 时尚大片', sc_evening: '✨ 夜晚造型',
+    sc_bar: '🍸 酒吧', sc_karaoke: '🎤 K歌', sc_rooftop: '🌃 天台', sc_club: '💃 夜店',
+    sc_personal: '💌 私人照片', sc_lingerie: '🖤 私密时尚', sc_private_fashion: '🔐 高级私密',
+    adult_confirm_needed: '请先在机器人聊天中确认 18+',
   },
   ja: {
     chars_title: '女の子', loading: '読み込み中…',
@@ -1001,6 +1066,16 @@ const L_OV = {
     spicy_prem: 'セクシーモードは Premium 特典 ⭐',
     spicy_toast_on: 'セクシーモードがオンになりました 🔥', spicy_toast_off: 'セクシーモードがオフになりました 🌙',
     lang_title: '🌐 表示言語',
+    photo_menu_title: '📸 どの写真にする？',
+    sc_locked: n => 'レベル ' + n + ' で解放',
+    scg_everyday: '日常', scg_fashion: 'ファッション', scg_evening: '夜のおでかけ', scg_private: 'プライベート',
+    sc_selfie: '📸 セルフィー', sc_home: '🏠 おうち', sc_park: '🌿 公園', sc_cafe: '☕ カフェ',
+    sc_street: '🌆 街中', sc_mirror: '🪞 鏡', sc_outfit: '👗 今日のコーデ', sc_shop: '🛍 ショッピング',
+    sc_car: '🚗 車内', sc_gym: '🏋️ ジム', sc_restaurant: '🍽 レストラン', sc_cinema: '🎬 映画',
+    sc_embankment: '🌊 河岸プロムナード', sc_fashion: '💎 ファッション', sc_evening: '✨ 夜のスタイル',
+    sc_bar: '🍸 バー', sc_karaoke: '🎤 カラオケ', sc_rooftop: '🌃 屋上', sc_club: '💃 クラブ',
+    sc_personal: '💌 プライベート写真', sc_lingerie: '🖤 プライベートファッション', sc_private_fashion: '🔐 プレミアムプライベート',
+    adult_confirm_needed: 'まずボットのチャットで18+を確認してください',
   },
 };
 const L = LANG === 'ru' ? L_RU : Object.assign({}, L_EN, (L_OV[LANG] || {}));
@@ -1356,7 +1431,7 @@ async function sendChat() {
 
 // ── V3.39.0: in-app chat media — photos, circles, voice like the bot dialog ──
 let mediaBusy = false;
-async function requestMedia(kind) {
+async function requestMedia(kind, scene) {
   if (!CHAT || mediaBusy) return;
   if (!tg.initData) { toast(L.auth_short); return; }
   mediaBusy = true;
@@ -1371,7 +1446,7 @@ async function requestMedia(kind) {
     const r = await fetch('/webapp/api/chat/media?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: CHAT.id, kind: kind }),
+      body: JSON.stringify({ character_id: CHAT.id, kind: kind, scene: scene || '' }),
     });
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 402) {
@@ -1382,7 +1457,8 @@ async function requestMedia(kind) {
     }
     if (r.status === 403) {
       const j = await r.json().catch(() => ({}));
-      toast(j.error === 'consent' ? L.consent_needed : (j.error === 'premium_required' ? L.need_premium : L.locked));
+      toast(j.error === 'consent' ? L.consent_needed : (j.error === 'adult_confirm' ? L.adult_confirm_needed :
+        (j.error === 'premium_required' ? L.need_premium : L.locked)));
       if (j.error === 'premium_required') showTab('shop');
       return;
     }
@@ -1432,8 +1508,49 @@ function toggleRoomActions(el) {
   if (willOpen) box.classList.add('open');
 }
 
+// V3.43.7: the scene menu behind the app-chat «📸 Фото» button — grouped
+// like the bot's photo keyboard (everyday / fashion / evening / private).
+// The backend sends ids + lock state (relationship level); the labels come
+// from the interface language. Built with string concatenation + esc() so
+// every dynamic value is escaped (no raw template interpolation).
+const SCENE_GROUPS = [
+  { key: 'everyday', scenes: ['selfie', 'home', 'park', 'cafe', 'street', 'shop', 'car', 'gym', 'cinema', 'embankment'] },
+  { key: 'fashion', scenes: ['mirror', 'outfit', 'fashion'] },
+  { key: 'evening', scenes: ['restaurant', 'evening', 'bar', 'karaoke', 'rooftop', 'club'] },
+  { key: 'private', scenes: ['personal', 'lingerie', 'private_fashion'] },
+];
+
+function renderPhotoScenes(j) {
+  const box = document.getElementById('featBody');
+  const byId = {};
+  (j.items || []).forEach(it => { byId[it.id] = it; });
+  let html = '<div class="featlist">';
+  SCENE_GROUPS.forEach(g => {
+    html += '<div class="featgroup">' + esc(L['scg_' + g.key]) + '</div>';
+    g.scenes.forEach(id => {
+      const it = byId[id];
+      if (!it) return;
+      const sub = it.locked ? String(L.sc_locked(it.min_level)) : '';
+      html += '<div class="featitem' + (it.locked ? ' locked' : '') + '" data-scene="' + esc(id) +
+        '" data-locked="' + (it.locked ? '1' : '0') + '" data-hint="' + esc(sub) + '">' +
+        '<div class="fet"><div class="fen">' + esc(typeof L['sc_' + id] === 'string' ? L['sc_' + id] : id) + '</div>' +
+        (sub ? '<div class="fes">' + esc(sub) + '</div>' : '') + '</div></div>';
+    });
+  });
+  html += '</div>';
+  box.innerHTML = html;
+  box.querySelectorAll('.featitem').forEach(el => {
+    el.addEventListener('click', () => {
+      if (el.dataset.locked === '1') { toast(el.dataset.hint || L.locked); return; }
+      closeFeature();
+      requestMedia('photo', el.dataset.scene);
+    });
+  });
+}
+
 function renderFeature(j) {
   const box = document.getElementById('featBody');
+  if (j.kind === 'photo') { renderPhotoScenes(j); return; }
   if (j.kind === 'quest') {
     const done = j.claimed;
     box.innerHTML = '<div class="featquest"><div class="qtext">\ud83c\udfaf ' + esc(j.text) + '</div>' +
@@ -1473,7 +1590,7 @@ async function openFeature(kind) {
     if (r.status === 401) { toast(L.auth_short); closeFeature(); return; }
     const j = await r.json();
     if (!j.ok) { document.getElementById('featBody').innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; return; }
-    document.getElementById('featTitle').textContent = j.title || '';
+    document.getElementById('featTitle').textContent = (kind === 'photo') ? L.photo_menu_title : (j.title || '');
     renderFeature(j);
   } catch (e) {
     document.getElementById('featBody').innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>';
@@ -2199,7 +2316,9 @@ document.getElementById('chatText').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendChat();
 });
 document.getElementById('chatSelect').addEventListener('click', () => { if (CHAT) doSelect(CHAT); });
-document.getElementById('mediaPhoto').addEventListener('click', () => requestMedia('photo'));
+// V3.43.7: the photo button opens the scene menu first (the same picker the
+// bot's photo keyboard shows); the chosen scene rides the media request.
+document.getElementById('mediaPhoto').addEventListener('click', () => openFeature('photo'));
 document.getElementById('mediaCircle').addEventListener('click', () => requestMedia('circle'));
 // V3.41.0: the app-chat feature buttons — video reuses the media pipeline, the
 // other three open the feature sheet (apartment / date / daily quest).

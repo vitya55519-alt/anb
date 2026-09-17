@@ -18,7 +18,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.6', '3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0')
+    assert VERSION in ('3.43.7', '3.43.6', '3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0')
 
 
 # ── the crooked voice button is gone ──────────────────────────────────────
@@ -27,8 +27,9 @@ def test_voice_button_and_listener_removed():
     assert 'id="mediaVoice"' not in INDEX
     assert "getElementById('mediaVoice')" not in INDEX
     assert "requestMedia('voice')" not in INDEX
-    # the other media/feature actions stay wired
-    assert "getElementById('mediaPhoto').addEventListener('click', () => requestMedia('photo'))" in INDEX
+    # the other media/feature actions stay wired; V3.43.7: the photo pill
+    # opens the scene menu first, the chosen scene rides the media request
+    assert "getElementById('mediaPhoto').addEventListener('click', () => openFeature('photo'))" in INDEX
     assert "getElementById('mediaCircle').addEventListener('click', () => requestMedia('circle'))" in INDEX
     assert "getElementById('mediaVideo').addEventListener('click', () => requestMedia('video'))" in INDEX
 

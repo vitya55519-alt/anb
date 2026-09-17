@@ -1598,6 +1598,14 @@ async def _download_result_bytes(result: GeneratedPhoto) -> bytes | None:
         return None
 
 
+async def photo_frame_bytes(photo: GeneratedPhoto) -> bytes | None:
+    """V3.43.7: raw image bytes for one generated frame. The app paths
+    (in-chat photos, date reward shots) save the file into their own media
+    folder, so URL-only providers (openai/seedream) get downloaded once —
+    the same capture the bot's gallery performs in _send_frame."""
+    return photo.data or (await _download_result_bytes(photo))
+
+
 _DATA_URI_CACHE: dict[str, tuple[str, str]] = {}
 
 
@@ -1779,10 +1787,11 @@ async def _run_gemini_set(
     on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
     *,
     character_id: str = CHARACTER_ID,
+    frames: int = PHOTO_SET_SIZE,
 ) -> list[GeneratedPhoto]:
     out: list[GeneratedPhoto] = []
-    logger.info('Nano Banana set request user=%s scene=%s model=%s count=%s refs=2', telegram_id, request.scene, GEMINI_IMAGE_MODEL, PHOTO_SET_SIZE)
-    for i in range(PHOTO_SET_SIZE):
+    logger.info('Nano Banana set request user=%s scene=%s model=%s count=%s refs=2', telegram_id, request.scene, GEMINI_IMAGE_MODEL, frames)
+    for i in range(frames):
         started = time.monotonic()
         try:
             photo = await _gemini_image_one_frame(character, telegram_id, request, i, character_id=character_id)
@@ -1954,11 +1963,12 @@ async def _run_openai_set(
     on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
     *,
     character_id: str = CHARACTER_ID,
+    frames: int = PHOTO_SET_SIZE,
 ) -> list[GeneratedPhoto]:
     refs = _openai_reference_paths(character, request.scene)
-    logger.info('OpenAI normal-photo set request user=%s scene=%s references=%s count=%s identity_engine=v3', telegram_id, request.scene, ','.join(p.name for p in refs), PHOTO_SET_SIZE)
+    logger.info('OpenAI normal-photo set request user=%s scene=%s references=%s count=%s identity_engine=v3', telegram_id, request.scene, ','.join(p.name for p in refs), frames)
     outputs: list[GeneratedPhoto] = []
-    for i in range(PHOTO_SET_SIZE):
+    for i in range(frames):
         frame_started = time.monotonic()
         try:
             photo = await _openai_one_frame(character, telegram_id, request, i, character_id=character_id)
@@ -2057,16 +2067,17 @@ async def _run_seedream_set(
     on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
     *,
     character_id: str = CHARACTER_ID,
+    frames: int = PHOTO_SET_SIZE,
 ) -> list[GeneratedPhoto]:
     ref = _seedream_reference_path(character)
     reference_uri = _file_data_uri(ref)
     out: list[GeneratedPhoto] = []
     logger.info(
         'Seedream set request user=%s scene=%s reference=%s target_count=%s per_request=1 timeout=%ss retries=%s',
-        telegram_id, request.scene, ref.name, PHOTO_SET_SIZE, FAL_TIMEOUT_SECONDS, FAL_RETRIES,
+        telegram_id, request.scene, ref.name, frames, FAL_TIMEOUT_SECONDS, FAL_RETRIES,
     )
     allow_adult = request.scene in SEEDREAM_ADULT_SCENES
-    for i in range(PHOTO_SET_SIZE):
+    for i in range(frames):
         prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id, character_id), character_id=character_id) + (
             '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location and face identity '
             'as the other photos in this set; her body always follows the declared BODY IDENTITY — never the reference silhouette. '
@@ -2159,11 +2170,12 @@ async def _run_routed_photo_set(
     on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
     *,
     character_id: str = CHARACTER_ID,
+    frames: int = PHOTO_SET_SIZE,
 ) -> list[GeneratedPhoto]:
     try:
         if provider == 'seedream45':
             try:
-                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
             except PhotoGenerationError as exc:
                 # V3.19.2/3: a Seedream failure (HTTP 422 policy/validation etc.)
                 # must not kill the photo — walk the remaining engines, and only
@@ -2178,7 +2190,7 @@ async def _run_routed_photo_set(
                     try:
                         logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=gemini_image reason=%s', telegram_id, resolved.scene, exc.reason)
                         track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'gemini_image', 'reason': exc.reason})
-                        return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                        return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
                     except PhotoGenerationError as gemini_exc:
                         logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=gemini_image reason=%s', telegram_id, resolved.scene, gemini_exc.reason)
                         chain.append(f'gemini_image/{gemini_exc.reason}')
@@ -2187,7 +2199,7 @@ async def _run_routed_photo_set(
                     try:
                         logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=openai reason=%s', telegram_id, resolved.scene, exc.reason)
                         track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'openai', 'reason': exc.reason})
-                        return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                        return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
                     except PhotoGenerationError as openai_exc:
                         logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=openai reason=%s', telegram_id, resolved.scene, openai_exc.reason)
                         chain.append(f'openai/{openai_exc.reason}')
@@ -2197,26 +2209,26 @@ async def _run_routed_photo_set(
                 raise last_error
         if provider == 'gemini_image':
             try:
-                return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
             except PhotoGenerationError as exc:
                 # Gemini failed: try OpenAI if available, otherwise fall back to Seedream.
                 if OPENAI_IMAGE_AVAILABLE:
                     try:
                         logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=openai reason=%s', telegram_id, resolved.scene, exc.reason)
                         track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'openai', 'reason': exc.reason})
-                        return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                        return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
                     except PhotoGenerationError as openai_exc:
                         logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=openai reason=%s', telegram_id, resolved.scene, openai_exc.reason)
                 logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=gemini_image to=seedream45 reason=%s', telegram_id, resolved.scene, exc.reason)
                 track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'gemini_image', 'to': 'seedream45', 'reason': exc.reason})
-                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
         # provider == 'openai'
         if OPENAI_IMAGE_AVAILABLE:
-            return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+            return await _run_openai_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
         # OpenAI requested but not available: use Gemini or Seedream
         if GEMINI_IMAGE_ENABLED and GEMINI_API_KEY:
-            return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
-        return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id)
+            return await _run_gemini_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
+        return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
     except BadRequestError as exc:
         body = getattr(exc, 'body', None) or {}
         err = body.get('error', body) if isinstance(body, dict) else {}
@@ -2226,7 +2238,7 @@ async def _run_routed_photo_set(
         raise PhotoGenerationError('openai', code or 'bad_request') from exc
 
 
-async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None, *, character_id: str = CHARACTER_ID) -> tuple[list[GeneratedPhoto], PhotoRequest]:
+async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None, *, character_id: str = CHARACTER_ID, frames: int = PHOTO_SET_SIZE) -> tuple[list[GeneratedPhoto], PhotoRequest]:
     character = resolve_character(character_id)
     # Pinterest-style variety: underspecified ordinary requests get a fresh
     # curated/LLM idea (location + camera). Explicit and private requests pass through.
@@ -2240,7 +2252,7 @@ async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: 
         telegram_id, resolved.scene, provider, bool(GEMINI_IMAGE_ENABLED), bool(GEMINI_API_KEY), GEMINI_IMAGE_MODEL if provider == 'gemini_image' else '-',
     )
     try:
-        return await _run_routed_photo_set(character, telegram_id, resolved, provider, on_frame=on_frame, character_id=character_id), resolved
+        return await _run_routed_photo_set(character, telegram_id, resolved, provider, on_frame=on_frame, character_id=character_id, frames=frames), resolved
     except PhotoGenerationError:
         # V3.22.0: keep the original provider/reason — the old wrapper replaced
         # the real reason with the exception class name ("PhotoGenerationError"),

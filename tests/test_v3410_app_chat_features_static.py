@@ -28,7 +28,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.6', '3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0')
+    assert VERSION in ('3.43.7', '3.43.6', '3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0')
 
 
 # ── p1. every heroine speaks in her own voice ──────────────────────────────
@@ -144,10 +144,11 @@ def test_feature_endpoints_and_routes_registered():
     routes = MAIN[MAIN.index('async def _start_web_server('):MAIN.index('async def main():')]
     assert "add_get('/webapp/api/feature', _webapp_api_feature)" in routes
     assert "add_post('/webapp/api/feature/action', _webapp_api_feature_action)" in routes
-    # the GET renders all three menus, gated by the initData HMAC
+    # the GET renders the menus, gated by the initData HMAC; V3.43.7 added
+    # the photo scene picker as the fourth kind
     feat = MAIN[MAIN.index('async def _webapp_api_feature('):MAIN.index('async def _webapp_api_feature_action(')]
     assert 'validate_init_data' in feat
-    assert "if kind not in ('apartment', 'date', 'quest'):" in feat
+    assert "if kind not in ('apartment', 'date', 'quest', 'photo'):" in feat
     assert 'apartment_service.get_available_rooms(level)' in feat
     assert 'dates_service.get_available(level)' in feat
     assert 'couple_service.daily_quest(telegram_id)' in feat
