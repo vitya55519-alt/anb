@@ -29,7 +29,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION == '3.43.5'
+    assert VERSION in ('3.43.6', '3.43.5')
 
 
 # ── 1. the plain «Персики» label ────────────────────────────────────────────

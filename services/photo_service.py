@@ -544,7 +544,8 @@ UNDERWEAR_STYLE_POOL = [
 BUST_CONSISTENCY_RULE = (
     'BUST CONSISTENCY: her bust must look exactly the same size in this frame as in every other photo — '
     'a full feminine bust with silicone implants (Russian size 5, E cup), neither larger nor smaller, '
-    'with the same shape and the same natural fit inside the clothing.'
+    'with the same shape and the same natural fit inside the clothing. '
+    'This bust size is a permanent identity trait and OVERRIDES any smaller or flatter bust visible in the reference photos.'
 )
 
 SEASON_RULES = {
@@ -697,9 +698,19 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
         'Preserve this exact figure in every photo regardless of outfit, pose or crop; '
         'never flatten, reduce or enlarge the bust, never widen the waist or hips. '
     ) if body_spec else ''
+    # V3.43.6: references are scoped to the FACE — the preserve list used to
+    # drag the body off the reference photos too («fit feminine physique»),
+    # and the reference's smaller bust beat the declared figure frame after
+    # frame (the owner watched Emily render size 2 against a size-5 card).
+    reference_protocol = (
+        f'REFERENCE PROTOCOL: the canonical reference images define {name}\'s face, hairstyle, '
+        'coloring and recognizable identity ONLY; her body measurements, bust size and figure '
+        'come exclusively from the BODY IDENTITY declaration, never from the reference photos. '
+    ) if body_spec else ''
     identity = (
         f'PHOTO IDENTITY: Create the SAME fictional adult {gender} character, {name}, age {age}. '
         f'Identity preservation is the highest priority. Preserve these exact traits from the canonical references: {preserve_text}. '
+        f'{reference_protocol}'
         f'{pronoun_cap} is the same person across all photos. Preserve {figure}. '
         f'{body_line}'
         f'Do not substitute another person, do not change age or ethnicity. '
@@ -1649,8 +1660,8 @@ async def _gemini_image_one_frame(character: dict, telegram_id: int, request: Ph
 
     level = get_relationship_level(telegram_id, character_id)
     prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id) + (
-        "\nNANO BANANA ORDINARY-PHOTO RULE: Use the supplied canonical references as identity anchors. "
-        "Keep the same fictional adult person, same exact face and overall physique. "
+        "\nNANO BANANA ORDINARY-PHOTO RULE: Use the supplied canonical references as FACE and HAIR identity anchors only. "
+        "Keep the same fictional adult person and the same exact face. The character's body and figure follow the BODY IDENTITY declaration in this prompt — including the declared bust size — even when a reference photo shows a smaller or different build. "
         "Hair color, hairstyle, facial expression and outfit follow the requested HAIR COLOR, HAIRSTYLE, EXPRESSION and WARDROBE lines, not the reference photos. "
         "This prompt is independent from chat personality, flirting, sensuality or relationship erotics; none of those should affect ordinary-photo styling. "
         "Change only the requested scene, fully clothed outfit, pose, camera and lighting. Keep the result mainstream, natural and general-audience. "
@@ -1894,12 +1905,12 @@ async def _openai_one_frame(character: dict, telegram_id: int, request: PhotoReq
         )
         safe_request = replace(request, clothing=fallback_outfit, pack_outfits=tuple(fallback_outfit for _ in range(PHOTO_SET_SIZE)), mood='natural, relaxed')
         prompt = _build_prompt(safe_request, i, seedream=False, relationship_level=min(level, 3), character_id=character_id) + (
-            '\nSAFE RETRY: Strictly general-audience, fully clothed everyday lifestyle fashion. Neutral pose and scene-appropriate coverage. Preserve the exact face and canonical body proportions from the references; safety changes styling, not identity.'
+            '\nSAFE RETRY: Strictly general-audience, fully clothed everyday lifestyle fashion. Neutral pose and scene-appropriate coverage. Preserve the exact face from the references; the body follows the BODY IDENTITY declaration, never the references; safety changes styling, not identity.'
         )
     else:
         prompt = _build_prompt(request, i, seedream=False, relationship_level=level, character_id=character_id)
     if single_reference:
-        prompt += '\nCOMPATIBILITY RETRY: the single supplied fully-clothed reference controls both the character\u2019s recognizable identity and stable overall silhouette.'
+        prompt += '\nCOMPATIBILITY RETRY: the single supplied fully-clothed reference controls the character\u2019s recognizable face and hair identity; her body follows the BODY IDENTITY declaration, never the reference silhouette.'
     started = time.monotonic()
     with ExitStack() as stack:
         image_files = [stack.enter_context(path.open('rb')) for path in refs]
@@ -2057,8 +2068,8 @@ async def _run_seedream_set(
     allow_adult = request.scene in SEEDREAM_ADULT_SCENES
     for i in range(PHOTO_SET_SIZE):
         prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id, character_id), character_id=character_id) + (
-            '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location, '
-            'face identity and body proportions as the other photos in this set. '
+            '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location and face identity '
+            'as the other photos in this set; her body always follows the declared BODY IDENTITY — never the reference silhouette. '
             'Make this framing clearly different from the previous shot while staying in the same photo session.'
         )
         frame_started = time.monotonic()
