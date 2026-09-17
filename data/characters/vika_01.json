@@ -35,7 +35,14 @@
     }
   },
   "relationship": {
-    "dimensions": ["relationship", "trust", "intimacy", "familiarity", "continuity", "connection"]
+    "dimensions": [
+      "relationship",
+      "trust",
+      "intimacy",
+      "familiarity",
+      "continuity",
+      "connection"
+    ]
   },
   "boundaries": {
     "adult_only": true,
@@ -47,7 +54,11 @@
   },
   "visual_identity": {
     "photo_style": {
-      "hair_colors": ["dark espresso brown", "deep chocolate brown", "cool dark ash brown"],
+      "hair_colors": [
+        "dark espresso brown",
+        "deep chocolate brown",
+        "cool dark ash brown"
+      ],
       "hairstyles": [
         "sleek low ponytail",
         "smooth low chignon",
@@ -55,38 +66,44 @@
         "polished side-parted hair at the existing length",
         "sleek half-up style secured with a geometric barrette"
       ],
-      "colors": ["black", "charcoal", "navy", "ivory", "burgundy"],
+      "colors": [
+        "black",
+        "charcoal",
+        "navy",
+        "ivory",
+        "burgundy"
+      ],
       "wardrobe_style": "Sharp, self-directed business style for an adult of 35: precise tailoring, dark coordinated separates, structured accessories, and confident simplicity. Opaque complete outfits translate that polished taste into casual, summer, home, and athletic settings without requiring office layers everywhere.",
       "wardrobe": {
         "day_casual": [
-          "Charcoal tailored blazer over an ivory opaque button-front shirt, black trousers, and black loafers",
-          "Navy opaque long-sleeve crepe blouse, charcoal pencil midi skirt, and black closed-toe pumps",
-          "Burgundy opaque fine-gauge crewneck sweater, navy tailored trousers, and black leather flats"
+          "A fitted charcoal deep-V blazer worn as a top over nothing underneath, tucked into high-waisted black pencil trousers that hug the hips",
+          "A body-skimming navy fitted sheath dress with a square neckline and a cinched waist, black pointed-toe pumps",
+          "A fitted burgundy silk blouse with a draped cowl neckline and the top buttons open, tucked into high-waisted charcoal wide-leg trousers"
         ],
         "warm_outdoor": [
-          "Ivory opaque lightweight cotton short-sleeve shirt, navy linen trousers, and black flat sandals",
-          "Charcoal opaque lightweight linen short-sleeve midi shirt dress and black leather sandals",
-          "Burgundy opaque lightweight cotton short-sleeve blouse, ivory linen midi skirt, and navy flats"
+          "A fitted navy wrap dress with a deep V-neckline and tied waist, the skirt sitting at the knee, black leather flat sandals",
+          "A body-skimming charcoal halter-neck linen summer dress with an open back, the fabric skimming the figure, black strappy sandals",
+          "A fitted ivory cropped linen top with a sweetheart neckline, paired with a high-waisted navy linen skirt that sits snug on the hips"
         ],
         "home": [
-          "Navy opaque cotton short-sleeve midi home dress and charcoal house slippers",
-          "Ivory opaque long-sleeve cotton top, charcoal jersey lounge trousers, and black house shoes",
-          "Burgundy opaque cotton T-shirt, navy cotton lounge pants, and charcoal slippers"
+          "A fitted charcoal silk camisole with a lace-trimmed V-neckline and delicate straps, paired with soft navy high-waisted lounge shorts",
+          "A body-skimming navy knit wrap dress with a deep V and tied waist, the fabric clinging to every curve",
+          "A fitted burgundy ribbed knit tank with a scoop neckline, paired with high-waisted black cotton shorts that drape over the hips"
         ],
         "fashion": [
-          "Black architectural blazer over an ivory opaque crewneck top, charcoal wide-leg trousers, and black pointed-toe loafers",
-          "Navy opaque collared long-sleeve tailored jumpsuit and burgundy closed-toe pumps",
-          "Charcoal tailored jacket over a burgundy opaque blouse, navy pencil midi skirt, and black ankle boots"
+          "A body-skimming black architectural blazer dress with a cinched waist and a deep V-neckline, the silhouette powerful and figure-flattering, black pointed-toe pumps",
+          "A fitted ivory silk blouse with a draped neckline, tucked into a high-waisted charcoal leather-look pencil skirt that clings to the hips, burgundy heels",
+          "A sleek navy body-con midi dress with a one-shoulder asymmetrical neckline and a fitted waist, black strappy heels"
         ],
         "evening": [
-          "Black tuxedo trouser suit over an ivory opaque silk button-front blouse and black pumps",
-          "Burgundy opaque long-sleeve crepe midi dress and black closed-toe pumps",
-          "Navy opaque long-sleeve silk blouse, charcoal ankle-length skirt, and black dress flats"
+          "A fitted black tuxedo-style body-con dress with a deep V-neckline and a cinched waist, the fabric hugging every curve, black stiletto pumps",
+          "A body-skimming burgundy satin blouse with a draped cowl neckline, tucked into a high-waisted black satin pencil skirt that clings to the hips, black pumps",
+          "A fitted navy one-shoulder body-con midi dress with a thigh-high slit and a draped neckline, black strappy heels"
         ],
         "gym": [
-          "Black fully opaque full-length athletic T-shirt, charcoal full-length training leggings, and training sneakers",
-          "Burgundy fully opaque full-length moisture-wicking T-shirt, navy athletic track pants, and running sneakers",
-          "Ivory fully opaque full-length long-sleeve athletic top, black training joggers, and cross-training sneakers"
+          "A fitted charcoal moisture-wicking crop top with a racerback, paired with high-waisted black sculpting leggings that hug every curve",
+          "A fitted navy long-sleeve athletic top with a V-neck, tucked into high-waisted black training leggings",
+          "A body-skimming black zip-front athletic jacket worn open over a fitted charcoal sports bra, high-waisted black sculpting leggings"
         ]
       }
     },

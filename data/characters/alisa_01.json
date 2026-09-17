@@ -35,7 +35,14 @@
     }
   },
   "relationship": {
-    "dimensions": ["relationship", "trust", "intimacy", "familiarity", "continuity", "connection"]
+    "dimensions": [
+      "relationship",
+      "trust",
+      "intimacy",
+      "familiarity",
+      "continuity",
+      "connection"
+    ]
   },
   "boundaries": {
     "adult_only": true,
@@ -47,7 +54,11 @@
   },
   "visual_identity": {
     "photo_style": {
-      "hair_colors": ["light hazelnut brown", "light ash brown", "light golden brown"],
+      "hair_colors": [
+        "light hazelnut brown",
+        "light ash brown",
+        "light golden brown"
+      ],
       "hairstyles": [
         "loose side braid",
         "soft loose waves at the existing length",
@@ -55,38 +66,44 @@
         "low ponytail tied with a plain fabric ribbon",
         "relaxed braided low bun"
       ],
-      "colors": ["oatmeal", "moss green", "dusty blue", "plum", "warm brown"],
+      "colors": [
+        "oatmeal",
+        "moss green",
+        "dusty blue",
+        "plum",
+        "warm brown"
+      ],
       "wardrobe_style": "Thoughtful, bookish style for an adult of 27: soft cardigans, textured separates, subtle checks, and comfortable long skirts, with warm colors and a quietly romantic touch. Complete opaque outfits retain that individual taste in every setting, using breathable woven fabrics for summer.",
       "wardrobe": {
         "day_casual": [
-          "Oatmeal cardigan over a dusty blue opaque cotton shirt, warm brown corduroy trousers, and warm brown loafers",
-          "Moss green cardigan over an oatmeal opaque blouse, plum long skirt, and warm brown ankle boots",
-          "Dusty blue opaque long-sleeve checked midi shirt dress and warm brown leather flats"
+          "A fitted dusty blue deep-V wrap top with a tied waist, tucked into high-waisted warm brown wide-leg trousers that hug the hips",
+          "A body-skimming moss green fitted knit midi dress with a sweetheart neckline and cap sleeves, warm brown ankle boots",
+          "A fitted oatmeal off-shoulder ribbed top with a draped neckline, paired with high-waisted plum linen trousers"
         ],
         "warm_outdoor": [
-          "Oatmeal opaque lightweight cotton short-sleeve blouse, moss green linen midi skirt, and warm brown flat sandals",
-          "Dusty blue opaque lightweight cotton short-sleeve checked midi summer dress and oatmeal canvas sneakers",
-          "Plum opaque short-sleeve linen shirt, oatmeal lightweight linen trousers, and warm brown sandals"
+          "A fitted plum wrap dress with a plunging V-neckline and tied waist, the skirt flowing above the knee, warm brown flat sandals",
+          "A body-skimming dusty blue halter-neck summer dress that drapes softly over the figure, open back with delicate straps, oatmeal sandals",
+          "A fitted moss green cropped knit top with a scoop neckline, paired with a high-waisted oatmeal linen skirt that sits snug on the hips"
         ],
         "home": [
-          "Dusty blue opaque cotton short-sleeve midi home dress and oatmeal house slippers",
-          "Oatmeal cardigan over a plum opaque cotton T-shirt, warm brown jersey lounge trousers, and soft house shoes",
-          "Moss green opaque long-sleeve cotton top, oatmeal cotton lounge pants, and warm brown slippers"
+          "A fitted oatmeal silk camisole with a lace-trimmed V-neckline and delicate straps, paired with soft dusty blue lounge shorts",
+          "A body-skimming plum knit wrap dress with a deep V and tied waist, the soft fabric clinging to every curve",
+          "A fitted dusty blue ribbed tank top with a scoop neckline, paired with high-waisted moss green cotton shorts that drape over the hips"
         ],
         "fashion": [
-          "Warm brown corduroy blazer over an oatmeal opaque blouse, dusty blue pleated midi skirt, and warm brown loafers",
-          "Plum cardigan over an oatmeal opaque collared shirt, moss green wide-leg trousers, and warm brown ankle boots",
-          "Moss green opaque long-sleeve checked midi dress, oatmeal cardigan, and warm brown leather flats"
+          "A body-skimming warm brown corduroy fitted blazer worn over a dusty blue lace-trim camisole, plum satin pencil skirt that clings to the hips, warm brown loafers",
+          "A fitted oatmeal lace-trim blouse with a deep V-neck, tucked into a high-waisted moss green satin midi skirt that drapes over the figure",
+          "A sleek dusty blue body-con midi dress with a draped cowl neckline and a fitted waist, warm brown pointed-toe flats"
         ],
         "evening": [
-          "Plum opaque long-sleeve velvet midi dress and warm brown closed-toe pumps",
-          "Oatmeal opaque silk button-front blouse, moss green ankle-length skirt, and warm brown dress flats",
-          "Dusty blue opaque short-sleeve crepe midi dress and warm brown closed-toe shoes"
+          "A fitted plum velvet body-con dress with a draped cowl neckline and an open back, the fabric hugging every curve, warm brown strappy heels",
+          "A body-skimming oatmeal silk blouse with a romantic ruffled V-neck, tucked into a high-waisted moss green satin midi skirt that clings to the hips",
+          "A fitted dusty blue off-shoulder body-con midi dress with a thigh-high slit and delicate sleeve draping, warm brown heels"
         ],
         "gym": [
-          "Moss green fully opaque full-length athletic T-shirt, warm brown full-length training leggings, and training sneakers",
-          "Dusty blue fully opaque full-length moisture-wicking T-shirt, plum athletic track pants, and running sneakers",
-          "Oatmeal fully opaque full-length long-sleeve athletic top, moss green training joggers, and cross-training sneakers"
+          "A fitted plum moisture-wicking crop top with a racerback, paired with high-waisted black sculpting leggings",
+          "A fitted oatmeal long-sleeve athletic top with a V-neck, tucked into high-waisted moss green training leggings",
+          "A body-skimming warm brown zip-front athletic jacket worn open over a fitted plum sports bra, high-waisted black sculpting leggings"
         ]
       }
     },

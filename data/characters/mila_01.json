@@ -35,7 +35,14 @@
     }
   },
   "relationship": {
-    "dimensions": ["relationship", "trust", "intimacy", "familiarity", "continuity", "connection"]
+    "dimensions": [
+      "relationship",
+      "trust",
+      "intimacy",
+      "familiarity",
+      "continuity",
+      "connection"
+    ]
   },
   "boundaries": {
     "adult_only": true,
@@ -47,7 +54,11 @@
   },
   "visual_identity": {
     "photo_style": {
-      "hair_colors": ["warm honey brown", "golden honey brown", "soft caramel brown"],
+      "hair_colors": [
+        "warm honey brown",
+        "golden honey brown",
+        "soft caramel brown"
+      ],
       "hairstyles": [
         "casual claw-clip updo",
         "half-up style held with a small claw clip",
@@ -55,38 +66,44 @@
         "loose low ponytail with a cotton scrunchie",
         "soft loose waves at the existing length with one side clipped back"
       ],
-      "colors": ["oatmeal", "olive green", "cream", "dusty rose", "walnut brown"],
+      "colors": [
+        "oatmeal",
+        "olive green",
+        "cream",
+        "dusty rose",
+        "walnut brown"
+      ],
       "wardrobe_style": "Warm, practical style for an adult of 30: easy-care linen, comfortable knits, useful pockets, simple clips, and welcoming natural colors. All outfits are complete and opaque, with lightweight cotton and linen for summer and relaxed polish for going out.",
       "wardrobe": {
         "day_casual": [
-          "Oatmeal opaque knit crewneck sweater, olive green linen trousers, and walnut brown loafers",
-          "Cream cardigan over a dusty rose opaque cotton T-shirt, walnut brown cotton trousers, and cream sneakers",
-          "Olive green opaque long-sleeve linen midi shirt dress with pockets and walnut brown ankle boots"
+          "A fitted olive green deep-V wrap top with a tied waist, tucked into high-waisted walnut brown tailored trousers that hug the hips",
+          "A body-skimming dusty rose fitted knit midi dress with a sweetheart neckline and cap sleeves, walnut brown ankle boots",
+          "A fitted cream off-shoulder ribbed top with a draped neckline, paired with high-waisted olive green wide-leg linen trousers"
         ],
         "warm_outdoor": [
-          "Cream opaque lightweight linen short-sleeve shirt, olive green linen trousers, and walnut brown flat sandals",
-          "Dusty rose opaque lightweight cotton short-sleeve midi summer dress with pockets and cream canvas sneakers",
-          "Oatmeal opaque lightweight cotton T-shirt, walnut brown linen Bermuda shorts, and olive green walking sandals"
+          "A fitted dusty rose wrap dress with a plunging V-neckline and tied waist, the skirt flowing above the knee, cream flat sandals",
+          "A body-skimming olive green halter-neck linen summer dress with an open back, the fabric skimming the figure, walnut brown sandals",
+          "A fitted cream cropped knit top with a sweetheart neckline, paired with a high-waisted dusty rose linen skirt that sits snug on the hips"
         ],
         "home": [
-          "Dusty rose opaque cotton short-sleeve midi home dress with pockets and oatmeal house slippers",
-          "Cream opaque cotton T-shirt, olive green lounge trousers, oatmeal linen apron, and walnut brown house shoes",
-          "Oatmeal opaque knit crewneck top, walnut brown cotton lounge pants, and cream slippers"
+          "A fitted cream silk camisole with a lace-trimmed V-neckline and delicate spaghetti straps, paired with soft olive green lounge shorts",
+          "A body-skimming dusty rose knit wrap dress with a deep V and tied waist, the soft fabric draping over every curve",
+          "A fitted oatmeal ribbed tank top with a scoop neckline, paired with high-waisted walnut brown cotton shorts that drape over the hips"
         ],
         "fashion": [
-          "Olive green linen jacket over a cream opaque cotton blouse, oatmeal wide-leg linen trousers, and walnut brown loafers",
-          "Dusty rose opaque fine-gauge knit short-sleeve top, walnut brown pleated midi skirt, and cream flats",
-          "Oatmeal opaque collared long-sleeve linen jumpsuit with pockets and walnut brown ankle boots"
+          "A body-skimming olive green linen fitted blazer worn over a cream lace-trim camisole, walnut brown satin pencil skirt that clings to the hips, cream loafers",
+          "A fitted cream lace-trim blouse with a deep V-neck, tucked into a high-waisted dusty rose satin midi skirt that drapes over the figure",
+          "A sleek oatmeal body-con midi dress with a draped cowl neckline and a fitted waist, walnut brown pointed-toe flats"
         ],
         "evening": [
-          "Olive green opaque long-sleeve linen-blend midi dress and walnut brown closed-toe pumps",
-          "Cream opaque button-front blouse, walnut brown ankle-length skirt, and dusty rose dress flats",
-          "Dusty rose opaque short-sleeve crepe midi dress, oatmeal cardigan, and walnut brown closed-toe shoes"
+          "A fitted olive green satin body-con dress with a draped cowl neckline and an open back, the fabric hugging every curve, walnut brown strappy heels",
+          "A body-skimming cream silk blouse with a sensual draped neckline, tucked into a high-waisted walnut brown satin midi skirt that clings to the hips",
+          "A fitted dusty rose one-shoulder body-con midi dress with a thigh-high slit and a draped neckline, walnut brown heels"
         ],
         "gym": [
-          "Olive green fully opaque full-length athletic T-shirt, walnut brown full-length training leggings, and training sneakers",
-          "Dusty rose fully opaque full-length moisture-wicking T-shirt, oatmeal athletic track pants, and running sneakers",
-          "Cream fully opaque full-length long-sleeve athletic top, olive green training joggers, and cross-training sneakers"
+          "A fitted olive green moisture-wicking crop top with a racerback, paired with high-waisted black sculpting leggings",
+          "A fitted cream long-sleeve athletic top with a V-neck, tucked into high-waisted walnut brown training leggings",
+          "A body-skimming oatmeal zip-front athletic jacket worn open over a fitted cream sports bra, high-waisted black sculpting leggings"
         ]
       }
     },

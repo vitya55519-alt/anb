@@ -35,7 +35,14 @@
     }
   },
   "relationship": {
-    "dimensions": ["relationship", "trust", "intimacy", "familiarity", "continuity", "connection"]
+    "dimensions": [
+      "relationship",
+      "trust",
+      "intimacy",
+      "familiarity",
+      "continuity",
+      "connection"
+    ]
   },
   "boundaries": {
     "adult_only": true,
@@ -47,7 +54,11 @@
   },
   "visual_identity": {
     "photo_style": {
-      "hair_colors": ["warm chestnut brown", "auburn chestnut brown", "soft copper chestnut"],
+      "hair_colors": [
+        "warm chestnut brown",
+        "auburn chestnut brown",
+        "soft copper chestnut"
+      ],
       "hairstyles": [
         "loose tousled natural waves at the existing length",
         "casual messy ponytail",
@@ -55,38 +66,44 @@
         "simple loose side braid at the existing length",
         "casual low bun secured with a fabric scrunchie"
       ],
-      "colors": ["forest green", "denim blue", "cream", "burgundy", "slate gray"],
+      "colors": [
+        "forest green",
+        "denim blue",
+        "cream",
+        "burgundy",
+        "slate gray"
+      ],
       "wardrobe_style": "Adventurous, playful casual style for an adult of 22: easy denim, practical pockets, cheerful cotton prints, and sneakers ready for spontaneous city walks. Opaque complete outfits prioritize comfort, with lightweight summer options and relaxed layers for cooler settings.",
       "wardrobe": {
         "day_casual": [
-          "Forest green hoodie over a cream opaque T-shirt, denim blue straight-leg jeans, and cream sneakers",
-          "Burgundy opaque graphic T-shirt, slate gray cargo trousers, and forest green walking shoes",
-          "Denim blue jacket over a cream opaque cotton short-sleeve knee-length dress and burgundy canvas sneakers"
+          "A fitted forest green deep-V crop top showing a sliver of midriff, tucked into high-waisted denim blue skinny jeans that hug the hips",
+          "A body-skimming burgundy fitted knit mini dress with a sweetheart neckline and short sleeves, cream canvas sneakers",
+          "A fitted cream off-shoulder ribbed top with a draped neckline, paired with high-waisted denim blue wide-leg jeans"
         ],
         "warm_outdoor": [
-          "Cream opaque lightweight cotton T-shirt, forest green cotton Bermuda shorts, and walking sandals",
-          "Denim blue opaque lightweight linen short-sleeve shirt, slate gray cotton trousers, and canvas sneakers",
-          "Burgundy opaque lightweight cotton short-sleeve printed knee-length summer dress and cream flat sandals"
+          "A fitted burgundy wrap dress with a plunging V-neckline and tied waist, the skirt sitting mid-thigh to show toned legs, cream flat sandals",
+          "A body-skimming forest green halter-neck summer dress that clings to the figure, open back with tied straps, cream sandals",
+          "A fitted cream bikini-style crop top paired with high-waisted denim blue linen shorts that sit low on the hips, forest green sandals"
         ],
         "home": [
-          "Forest green opaque cotton T-shirt midi home dress and cream house slippers",
-          "Burgundy opaque cotton T-shirt, slate gray jersey lounge trousers, and soft house shoes",
-          "Cream opaque long-sleeve cotton top, denim blue cotton lounge pants, and burgundy slippers"
+          "A fitted burgundy silk camisole with a lace-trimmed V-neckline, paired with soft denim blue high-waisted lounge shorts",
+          "A body-skimming forest green knit wrap dress with a deep V and tied waist, the fabric draping softly over every curve",
+          "A fitted cream ribbed tank top with a scoop neckline, paired with high-waisted burgundy cotton shorts that sit snug on the hips"
         ],
         "fashion": [
-          "Forest green utility jacket over a cream opaque T-shirt, denim blue wide-leg jeans, and burgundy sneakers",
-          "Burgundy opaque short-sleeve graphic shirt, slate gray cargo midi skirt, and cream canvas sneakers",
-          "Denim blue opaque collared long-sleeve utility jumpsuit and forest green ankle boots"
+          "A body-skimming forest green fitted utility-style midi dress with a cinched waist and a V-neckline, the silhouette sharp and figure-flattering, burgundy ankle boots",
+          "A fitted cream cropped graphic tee tucked into a high-waisted burgundy satin pencil skirt that clings to the hips, cream sneakers",
+          "A sleek denim blue body-con midi dress with an off-shoulder neckline and a fitted waist, forest green ankle boots"
         ],
         "evening": [
-          "Forest green opaque short-sleeve printed midi dress and cream closed-toe flats",
-          "Cream opaque button-front blouse, burgundy tailored trousers, and slate gray loafers",
-          "Burgundy opaque long-sleeve cotton blouse, denim blue midi skirt, and slate gray ankle boots"
+          "A fitted burgundy satin body-con dress with a draped cowl neckline and an open back, the fabric hugging every curve, cream strappy heels",
+          "A body-skimming forest green silk blouse with a sensual draped neckline, tucked into a high-waisted denim blue satin midi skirt that clings to the hips",
+          "A fitted cream one-shoulder body-con midi dress with a thigh-high slit and a draped neckline, burgundy heels"
         ],
         "gym": [
-          "Forest green fully opaque full-length athletic T-shirt, slate gray full-length training leggings, and training sneakers",
-          "Burgundy fully opaque full-length moisture-wicking T-shirt, denim blue athletic track pants, and running sneakers",
-          "Cream fully opaque full-length long-sleeve athletic top, forest green training joggers, and cross-training sneakers"
+          "A fitted forest green sports bra with a racerback, paired with high-waisted black sculpting leggings that hug every curve",
+          "A fitted burgundy moisture-wicking crop top, paired with high-waisted denim blue training leggings",
+          "A body-skimming cream zip-front athletic jacket worn open over a fitted forest green sports bra, high-waisted black sculpting leggings"
         ]
       }
     },

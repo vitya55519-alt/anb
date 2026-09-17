@@ -37,7 +37,14 @@
     }
   },
   "relationship": {
-    "dimensions": ["relationship", "trust", "intimacy", "familiarity", "continuity", "connection"]
+    "dimensions": [
+      "relationship",
+      "trust",
+      "intimacy",
+      "familiarity",
+      "continuity",
+      "connection"
+    ]
   },
   "boundaries": {
     "adult_only": true,
@@ -49,7 +56,11 @@
   },
   "visual_identity": {
     "photo_style": {
-      "hair_colors": ["champagne blonde", "beige blonde", "soft golden blonde"],
+      "hair_colors": [
+        "champagne blonde",
+        "beige blonde",
+        "soft golden blonde"
+      ],
       "hairstyles": [
         "smooth center-parted blowout at the existing length",
         "polished side-parted waves at the existing length",
@@ -57,38 +68,44 @@
         "half-up styling secured with a metallic barrette",
         "sleek swept-back styling held with a wide fashion headband"
       ],
-      "colors": ["black", "white", "silver", "cobalt blue", "fuchsia"],
+      "colors": [
+        "black",
+        "white",
+        "silver",
+        "cobalt blue",
+        "fuchsia"
+      ],
       "wardrobe_style": "Bold modern glamour and expressive street fashion for an adult of 25: statement color, metallic accessories, contemporary denim, and polished city outfits. All clothing is opaque and fully covering, with practical complete ensembles for each setting.",
       "wardrobe": {
         "day_casual": [
-          "White opaque graphic T-shirt, black cargo jeans, and cobalt blue sneakers",
-          "Cobalt blue opaque button-front shirt, white straight-leg jeans, and black platform loafers",
-          "Black opaque crewneck top, silver cotton utility trousers, and white sneakers"
+          "A fitted cobalt blue deep-V top that hugs the bust, tucked into high-waisted black skinny jeans with a thin silver belt",
+          "A body-skimming fuchsia fitted knit mini dress with a sweetheart neckline and short sleeves, white sneakers",
+          "A fitted black off-shoulder crop top showing a sliver of midriff, paired with high-waisted silver wide-leg trousers that drape over the hips"
         ],
         "warm_outdoor": [
-          "Fuchsia opaque lightweight cotton short-sleeve knee-length summer dress and white flat sandals",
-          "White opaque lightweight cotton T-shirt, cobalt blue linen Bermuda shorts, and white canvas sneakers",
-          "Black opaque short-sleeve linen shirt, white lightweight cotton midi skirt, and silver flat sandals"
+          "A fitted fuchsia wrap dress with a deep V-neckline and a tied waist, the skirt sitting above the knee to show toned legs, white flat sandals",
+          "A body-skimming cobalt blue halter-top summer dress that clings to the figure, open back, white strappy sandals",
+          "A fitted white bikini-style crop top paired with a high-waisted cobalt blue linen skirt that sits low on the hips, silver flat sandals"
         ],
         "home": [
-          "Fuchsia opaque cotton T-shirt midi home dress and white house slippers",
-          "White opaque cotton T-shirt, cobalt blue jersey lounge trousers, and soft house shoes",
-          "Black opaque long-sleeve jersey top, silver cotton lounge pants, and black slippers"
+          "A fitted fuchsia silk camisole with a lace-trimmed V-neckline, paired with soft black high-waisted lounge shorts",
+          "A body-skimming cobalt blue knit wrap dress with a deep V and tied waist, the fabric draping softly over every curve",
+          "A fitted black ribbed tank top with a scoop neckline, paired with high-waisted silver cotton joggers that sit snug on the hips"
         ],
         "fashion": [
-          "Cobalt blue oversized blazer over a white opaque crewneck top, black wide-leg trousers, and silver loafers",
-          "Silver opaque short-sleeve sequined top, black denim midi skirt, and black ankle boots",
-          "Fuchsia opaque collared long-sleeve jumpsuit and white platform sneakers"
+          "A body-skimming cobalt blue fitted blazer with strong shoulders worn over a black lace-trim camisole, black pencil skirt that hugs the hips, silver loafers",
+          "A fitted silver metallic sequined top with a deep V-neck, tucked into high-waisted black leather-look trousers, black ankle boots",
+          "A sleek fuchsia body-con midi dress with a one-shoulder asymmetrical neckline and a fitted waist, white platform heels"
         ],
         "evening": [
-          "Cobalt blue opaque short-sleeve satin midi dress and silver closed-toe pumps",
-          "Black tuxedo jacket over a white opaque button-front blouse, black dress trousers, and black pumps",
-          "Fuchsia opaque long-sleeve blouse, black ankle-length skirt, and silver dress flats"
+          "A fitted cobalt blue satin body-con dress with a draped cowl neckline and an open back, the fabric clinging to every curve, silver stiletto pumps",
+          "A body-skimming black tuxedo-style jumpsuit with a deep V-neckline and cinched waist, a silver chain belt at the hips, black pumps",
+          "A fitted fuchsia one-shoulder midi dress with a thigh-high slit and a draped neckline, silver strappy heels"
         ],
         "gym": [
-          "Cobalt blue fully opaque full-length athletic T-shirt, black full-length training leggings, and white training sneakers",
-          "Fuchsia fully opaque full-length moisture-wicking T-shirt, black athletic joggers, and running sneakers",
-          "White fully opaque full-length long-sleeve athletic top, cobalt blue track pants, and cross-training sneakers"
+          "A fitted cobalt blue sports bra with a racerback, paired with high-waisted black sculpting leggings that hug every curve",
+          "A fitted fuchsia moisture-wicking crop top, paired with high-waisted black sculpting leggings with silver side stripes",
+          "A body-skimming black zip-front athletic jacket worn open over a fitted cobalt blue sports bra, black sculpting leggings"
         ]
       }
     },

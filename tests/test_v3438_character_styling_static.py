@@ -47,15 +47,20 @@ def test_photo_style_no_orange_in_colors():
             assert 'orange' not in c.lower(), f'{name} has orange in palette: {c}'
 
 
-def test_all_outfits_fully_opaque():
+def test_all_outfits_fully_clothed():
+    # Every outfit must be clearly fully clothed — no sheer, transparent,
+    # see-through, or exposed wording. Normal garments (jeans, dresses,
+    # blazers, trousers) are inherently opaque.
+    forbidden = ('sheer', 'see-through', 'transparent', 'nude mesh', 'naked')
     for name in BUILT_IN_HEROINES:
         data = json.loads((CHARACTERS_DIR / f'{name}.json').read_text(encoding='utf-8'))
         wardrobe = data['visual_identity']['photo_style']['wardrobe']
         for group, outfits in wardrobe.items():
             for outfit in outfits:
                 low = outfit.lower()
-                assert 'opaque' in low or 'fully opaque' in low, \
-                    f'{name}/{group} outfit missing "opaque": {outfit[:80]}'
+                for word in forbidden:
+                    assert word not in low, \
+                        f'{name}/{group} outfit has forbidden sheer/exposed wording: {outfit[:80]}'
 
 
 # ── Photo service: per-character styling helpers ──────────────────────────

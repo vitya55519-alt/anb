@@ -35,7 +35,14 @@
     }
   },
   "relationship": {
-    "dimensions": ["relationship", "trust", "intimacy", "familiarity", "continuity", "connection"]
+    "dimensions": [
+      "relationship",
+      "trust",
+      "intimacy",
+      "familiarity",
+      "continuity",
+      "connection"
+    ]
   },
   "boundaries": {
     "adult_only": true,
@@ -47,7 +54,11 @@
   },
   "visual_identity": {
     "photo_style": {
-      "hair_colors": ["dark golden blonde", "dark beige blonde", "dark ash blonde"],
+      "hair_colors": [
+        "dark golden blonde",
+        "dark beige blonde",
+        "dark ash blonde"
+      ],
       "hairstyles": [
         "soft low bun",
         "neat French twist",
@@ -55,38 +66,44 @@
         "side-parted soft waves at the existing length",
         "half-up twist secured with a classic tortoiseshell barrette"
       ],
-      "colors": ["ivory", "taupe", "champagne", "chocolate brown", "warm gray"],
+      "colors": [
+        "ivory",
+        "taupe",
+        "champagne",
+        "chocolate brown",
+        "warm gray"
+      ],
       "wardrobe_style": "Self-assured, welcoming elegance for an adult of 38: classic silk separates, cashmere layers, warm neutrals, and restrained accessories chosen for personal taste. Complete opaque outfits balance polished occasions with comfortable daily life; summer choices use lightweight woven fabrics.",
       "wardrobe": {
         "day_casual": [
-          "Ivory opaque silk button-front blouse, taupe tailored trousers, and chocolate brown loafers",
-          "Warm gray opaque cashmere crewneck sweater, chocolate brown midi skirt, and taupe ankle boots",
-          "Champagne opaque silk shirt under an ivory cashmere cardigan, warm gray trousers, and chocolate brown flats"
+          "A fitted ivory silk blouse with a draped cowl neckline and the top buttons open, tucked into high-waisted chocolate brown tailored trousers that hug the hips",
+          "A body-skimming warm gray fitted cashmere turtleneck dress at knee length, the soft fabric clinging to every curve, taupe ankle boots",
+          "A fitted champagne off-shoulder knit top with a draped neckline, paired with high-waisted chocolate brown wide-leg trousers"
         ],
         "warm_outdoor": [
-          "Ivory opaque lightweight silk short-sleeve blouse, taupe linen trousers, and chocolate brown flat sandals",
-          "Champagne opaque lightweight cotton short-sleeve midi summer dress and taupe sandals",
-          "Warm gray opaque short-sleeve linen shirt, ivory cotton midi skirt, and chocolate brown leather sandals"
+          "A fitted ivory silk wrap dress with a deep V-neckline and tied waist, the fabric draping sensually over the figure, taupe strappy sandals",
+          "A body-skimming champagne halter-neck linen summer dress with an open back, the fabric skimming the body, chocolate brown sandals",
+          "A fitted warm gray cropped linen top with a sweetheart neckline, paired with a high-waisted ivory linen skirt that sits snug on the hips"
         ],
         "home": [
-          "Taupe opaque cotton short-sleeve midi home dress and ivory house slippers",
-          "Ivory opaque cashmere crewneck pullover, warm gray cotton lounge trousers, and chocolate brown house shoes",
-          "Champagne opaque long-sleeve cotton shirt, chocolate brown jersey lounge pants, and taupe slippers"
+          "A fitted champagne silk camisole with a lace-trimmed V-neckline and delicate spaghetti straps, paired with soft taupe lounge shorts",
+          "A body-skimming ivory cashmere wrap dress with a deep V and tied waist, the soft fabric draping over every curve",
+          "A fitted warm gray ribbed knit tank with a scoop neckline, paired with high-waisted chocolate brown jersey lounge pants"
         ],
         "fashion": [
-          "Taupe tailored blazer over an ivory opaque silk blouse, chocolate brown pleated midi skirt, and chocolate brown pumps",
-          "Champagne opaque silk long-sleeve shirt dress in midi length, warm gray cashmere cardigan, and taupe loafers",
-          "Chocolate brown opaque cashmere crewneck top, ivory wide-leg trousers, and taupe dress flats"
+          "A body-skimming taupe fitted blazer dress with a cinched waist and a deep V-neckline, the silhouette sharp and figure-flattering, chocolate brown pumps",
+          "A fitted ivory silk blouse with a draped neckline, tucked into a high-waisted champagne satin pencil skirt that clings to the hips, taupe heels",
+          "A sleek chocolate brown body-con midi dress with a one-shoulder draped neckline and a fitted waist, taupe strappy heels"
         ],
         "evening": [
-          "Chocolate brown opaque long-sleeve silk midi dress and champagne closed-toe pumps",
-          "Ivory opaque silk button-front blouse, taupe ankle-length skirt, and chocolate brown pumps",
-          "Warm gray tailored trouser suit over a champagne opaque silk blouse and taupe closed-toe shoes"
+          "A fitted champagne silk body-con dress with a draped cowl neckline and an open back, the fabric hugging every curve, taupe stiletto pumps",
+          "A body-skimming ivory silk blouse with a sensual draped neckline, tucked into a high-waisted chocolate brown satin midi skirt that clings to the hips",
+          "A fitted warm gray one-shoulder body-con midi dress with a thigh-high slit and a draped neckline, chocolate brown heels"
         ],
         "gym": [
-          "Warm gray fully opaque full-length athletic T-shirt, chocolate brown full-length training leggings, and training sneakers",
-          "Ivory fully opaque full-length moisture-wicking T-shirt, taupe athletic track pants, and running sneakers",
-          "Taupe fully opaque full-length long-sleeve athletic top, warm gray training joggers, and cross-training sneakers"
+          "A fitted ivory moisture-wicking crop top with a racerback, paired with high-waisted chocolate brown sculpting leggings",
+          "A fitted taupe long-sleeve athletic top with a V-neck, tucked into high-waisted warm gray training leggings",
+          "A body-skimming champagne zip-front athletic jacket worn open over a fitted ivory sports bra, high-waisted chocolate brown sculpting leggings"
         ]
       }
     },

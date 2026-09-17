@@ -53,7 +53,11 @@
   },
   "visual_identity": {
     "photo_style": {
-      "hair_colors": ["warm chestnut brown", "soft golden chestnut", "deep chestnut brown"],
+      "hair_colors": [
+        "warm chestnut brown",
+        "soft golden chestnut",
+        "deep chestnut brown"
+      ],
       "hairstyles": [
         "long loose natural waves",
         "loose side braid with softly waved ends",
@@ -61,38 +65,44 @@
         "low ponytail retaining the natural waves",
         "soft braided low bun"
       ],
-      "colors": ["cream", "dusty rose", "sage green", "soft blue", "cocoa brown"],
+      "colors": [
+        "cream",
+        "dusty rose",
+        "sage green",
+        "soft blue",
+        "cocoa brown"
+      ],
       "wardrobe_style": "Warm romantic casual style for an adult of 24: soft colors, subtle floral prints, cozy cardigans, and thoughtful comfortable details. Opaque fabrics and complete outfits keep home, city, and evening choices fully clothed.",
       "wardrobe": {
         "day_casual": [
-          "Cream cardigan over a dusty rose opaque cotton blouse, cocoa brown trousers, and cream loafers",
-          "Sage green opaque long-sleeve floral midi dress and cocoa brown ankle boots",
-          "Soft blue opaque button-front shirt, cream cotton midi skirt, and cocoa brown flats"
+          "A fitted dusty rose wrap top with a deep V-neckline and tied waist, tucked into high-waisted cream wide-leg trousers",
+          "A body-skimming sage green fitted knit midi dress with a sweetheart neckline and cap sleeves, cocoa brown ankle boots",
+          "A fitted soft blue off-shoulder top with a draped neckline, paired with high-waisted cocoa brown linen trousers that hug the hips"
         ],
         "warm_outdoor": [
-          "Dusty rose opaque lightweight cotton short-sleeve floral midi summer dress and cream flat sandals",
-          "Cream opaque short-sleeve cotton blouse, sage green lightweight linen trousers, and cocoa brown sandals",
-          "Soft blue opaque lightweight linen short-sleeve shirt dress in midi length and cream canvas sneakers"
+          "A fitted dusty rose floral wrap dress with a plunging V-neck and tied waist, the skirt flowing above the knee, cream flat sandals",
+          "A body-skimming cream halter-neck summer dress that drapes softly over the figure, open back with delicate straps, cocoa brown sandals",
+          "A fitted sage green cropped knit top with a scoop neckline, paired with a high-waisted dusty rose linen skirt that sits snug on the hips"
         ],
         "home": [
-          "Dusty rose opaque cotton short-sleeve floral midi home dress and cream house slippers",
-          "Cream opaque cotton long-sleeve top, sage green jersey lounge trousers, and soft house shoes",
-          "Soft blue opaque short-sleeve cotton shirt, cocoa brown cotton lounge pants, and cream slippers"
+          "A fitted cream silk camisole with a lace-trimmed V-neckline and delicate straps, paired with soft dusty rose lounge shorts",
+          "A body-skimming sage green knit wrap dress with a deep V and tied waist, the soft fabric clinging to every curve",
+          "A fitted soft blue ribbed tank top with a scoop neckline, paired with high-waisted cream cotton shorts that drape over the hips"
         ],
         "fashion": [
-          "Cream cardigan over a dusty rose opaque blouse, sage green pleated midi skirt, and cocoa brown loafers",
-          "Soft blue opaque embroidered cotton long-sleeve midi dress and cream flats",
-          "Cocoa brown corduroy blazer over a cream opaque cotton shirt, dusty rose tailored trousers, and cocoa brown ankle boots"
+          "A body-skimming dusty rose fitted midi dress with a square neckline and a cinched waist, the fabric draping softly over the bust and hips, cocoa brown loafers",
+          "A fitted cream lace-trim blouse with a deep V-neck, tucked into a high-waisted sage green satin pencil skirt that clings to the hips",
+          "A sleek soft blue body-con midi dress with a draped cowl neckline and a fitted waist, cream pointed-toe flats"
         ],
         "evening": [
-          "Dusty rose opaque long-sleeve satin midi dress and cocoa brown closed-toe pumps",
-          "Cream opaque silk button-front blouse, sage green ankle-length skirt, and cream dress flats",
-          "Soft blue opaque short-sleeve floral maxi dress and cocoa brown closed-toe shoes"
+          "A fitted dusty rose satin body-con dress with a draped cowl neckline and an open back, the fabric hugging every curve, cocoa brown strappy heels",
+          "A body-skimming cream silk blouse with a romantic ruffled V-neck, tucked into a high-waisted sage green satin midi skirt that clings to the hips",
+          "A fitted soft blue off-shoulder body-con midi dress with a thigh-high slit and delicate sleeve draping, cocoa brown heels"
         ],
         "gym": [
-          "Dusty rose fully opaque full-length athletic T-shirt, cocoa brown full-length training leggings, and training sneakers",
-          "Sage green fully opaque full-length moisture-wicking T-shirt, cream athletic track pants, and running sneakers",
-          "Soft blue fully opaque full-length long-sleeve athletic top, cocoa brown training joggers, and cross-training sneakers"
+          "A fitted dusty rose moisture-wicking crop top with a racerback, paired with high-waisted black sculpting leggings",
+          "A fitted cream long-sleeve athletic top with a V-neck, tucked into high-waisted sage green training leggings",
+          "A body-skimming cream zip-front athletic jacket worn open over a fitted dusty rose sports bra, high-waisted black sculpting leggings"
         ]
       }
     },

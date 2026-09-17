@@ -55,7 +55,11 @@
   },
   "visual_identity": {
     "photo_style": {
-      "hair_colors": ["espresso brown", "dark chocolate brown", "deep neutral brunette"],
+      "hair_colors": [
+        "espresso brown",
+        "dark chocolate brown",
+        "deep neutral brunette"
+      ],
       "hairstyles": [
         "smooth center-parted hair at the existing length",
         "soft loose waves at the existing length",
@@ -63,38 +67,44 @@
         "half-up style secured with a minimalist black barrette",
         "swept-back styling held with a narrow black headband"
       ],
-      "colors": ["black", "white", "charcoal", "pearl gray", "ivory"],
+      "colors": [
+        "black",
+        "white",
+        "charcoal",
+        "pearl gray",
+        "ivory"
+      ],
       "wardrobe_style": "Confident, playful urban minimalism for an adult of 26: black-and-white foundations, clean lines, understated accessories, and occasional tonal gray accents. All outfits use opaque fabrics and complete everyday coverage.",
       "wardrobe": {
         "day_casual": [
-          "White opaque cotton T-shirt, black straight-leg jeans, and white leather sneakers",
-          "Black opaque crewneck top, charcoal tailored trousers, and black loafers",
-          "White opaque button-front shirt, black midi skirt, and black ankle boots"
+          "A fitted white ribbed V-neck top tucked into high-waisted black skinny jeans, a thin black leather belt accenting the waist",
+          "A body-skimming black fitted turtleneck dress at knee length with long sleeves, paired with black ankle boots",
+          "A fitted black V-neck blouse with the top two buttons open, tucked into high-waisted charcoal tailored trousers that hug the hips"
         ],
         "warm_outdoor": [
-          "White opaque lightweight cotton short-sleeve shirt, black linen trousers, and flat sandals",
-          "Black opaque cotton short-sleeve midi summer dress and white canvas sneakers",
-          "Ivory opaque lightweight linen T-shirt, charcoal cotton Bermuda shorts, and black flat sandals"
+          "A fitted white deep-V linen shirt worn slightly open over a black bikini top, tucked into high-waisted black shorts showing toned legs",
+          "A body-skimming black fitted cotton midi dress with a plunging V-neckline and short sleeves, laced flat sandals",
+          "A fitted ivory off-shoulder knit top with a draped neckline, paired with high-waisted black linen wide-leg trousers that flow over the hips"
         ],
         "home": [
-          "Pearl gray opaque cotton short-sleeve midi home dress and soft house slippers",
-          "White opaque cotton T-shirt, black jersey lounge trousers, and house slippers",
-          "Black opaque long-sleeve cotton top, pearl gray lounge trousers, and soft house shoes"
+          "A fitted black silk camisole with a delicate V-neckline and lace trim, paired with soft high-waisted lounge trousers that drape over the hips",
+          "A body-skimming charcoal knit wrap dress with a deep V-neck and tied waist, the fabric clinging softly to every curve",
+          "A fitted ivory ribbed tank top with a scoop neckline, paired with soft black high-waisted cotton shorts that sit low on the waist"
         ],
         "fashion": [
-          "Black structured blazer over a white opaque crewneck top, black wide-leg trousers, and white loafers",
-          "Charcoal opaque geometric-print long-sleeve midi dress and black ankle boots",
-          "White opaque poplin shirt, black pleated midi skirt, and pearl gray leather flats"
+          "A body-skimming black fitted blazer dress with a cinched waist and a V-neckline, the silhouette sharp and figure-flattering, black pointed-toe pumps",
+          "A fitted charcoal turtleneck knit top tucked into a high-waisted black satin midi skirt that drapes over the hips, black ankle boots",
+          "A sleek black off-shoulder body-con midi dress with a fitted waist and a subtle side slit, black strappy heels"
         ],
         "evening": [
-          "Black opaque long-sleeve midi dress and black closed-toe pumps",
-          "Ivory opaque silk button-front blouse, black tailored trousers, and black pumps",
-          "White opaque short-sleeve blouse, charcoal ankle-length skirt, and black dress flats"
+          "A fitted black backless midi dress with a deep V-neck, the fabric hugging every curve, black stiletto pumps",
+          "A body-skimming ivory silk blouse with a draped cowl neckline, tucked into a high-waisted black satin pencil skirt that clings to the hips, black pumps",
+          "A fitted charcoal one-shoulder body-con midi dress with a thigh-high slit, black strappy heels and a delicate gold waist chain"
         ],
         "gym": [
-          "Black fully opaque full-length athletic T-shirt, charcoal full-length training leggings, and cross-training sneakers",
-          "White fully opaque full-length moisture-wicking T-shirt, black athletic track pants, and running sneakers",
-          "Pearl gray fully opaque full-length long-sleeve athletic top, black training joggers, and training sneakers"
+          "A fitted black moisture-wicking crop top with a racerback, paired with high-waisted black sculpting leggings that hug every curve",
+          "A fitted white long-sleeve athletic top with a deep V-neck, tucked into high-waisted charcoal training leggings",
+          "A body-skimming black zip-front athletic jacket worn open over a fitted sports bra, paired with high-waisted black sculpting leggings"
         ]
       }
     },
