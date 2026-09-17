@@ -25,7 +25,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION == '3.43.1'
+    assert VERSION in ('3.43.2', '3.43.1')
 
 
 # ── 1. photo engines: t2i endpoint + 429 backoff ────────────────────────────
@@ -114,7 +114,7 @@ def test_living_tiles_job_and_route():
     assert "add_get('/webapp/live/{character_id}', _webapp_live)" in MAIN
     assert "content_type='video/mp4'" in MAIN
     # the grid plays the loop when rendered, else the Ken-Burns webp
-    assert "'live': (f'/webapp/live/{card.character_id}'" in WEBAPP_SVC
+    assert "'live': (f'/webapp/live/{card.character_id}?v={ver}'" in WEBAPP_SVC
     assert 'const cardMedia = c => c.live' in INDEX
     assert '.card .photo video {' in INDEX
 

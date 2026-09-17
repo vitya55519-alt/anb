@@ -26,7 +26,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0',)
+    assert VERSION in ('3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0',)
 
 
 # ── 1. main reply keyboard like the Come Closer menu ───────────────────────
@@ -102,7 +102,7 @@ def test_cards_ride_animated_previews():
         tile = ROOT / 'data' / 'references' / folder / 'card_preview.webp'
         assert tile.exists() and tile.stat().st_size > 50_000, folder
     assert 'def character_card_gif(character_id: str) -> Path | None' in WEBAPP_SVC
-    assert "'card': (f'/webapp/gif/{card.character_id}'" in WEBAPP_SVC
+    assert "'card': (f'/webapp/gif/{card.character_id}?v={ver}'" in WEBAPP_SVC
     assert "add_get('/webapp/gif/{character_id}', _webapp_gif)" in MAIN
     assert "content_type = 'image/webp' if gif.suffix.lower() == '.webp' else 'image/gif'" in MAIN
     assert 'img src="${esc(c.card || c.photo)}"' in INDEX

@@ -4130,6 +4130,14 @@ LIVE_TILE_PROMPT = (
     'toward the viewer, hand rising gently to her lips. Subtle natural motion '
     'only: soft smile, hair sway, no face or outfit changes, no camera cuts.'
 )
+# V3.43.2: backup motion for heroines the kiss script rejects (maria did):
+# a slow head turn plus a soft smile reads just as "alive" without the hand.
+LIVE_TILE_PROMPT_ALT = (
+    'Close-up portrait of the exact same woman from the source photo. '
+    'She slowly turns her head toward the camera and smiles softly, hair '
+    'swaying gently in a light breeze. Subtle natural motion only: no face '
+    'or outfit changes, no camera cuts, no hands in frame.'
+)
 
 
 async def _run_live_tiles(admin_id: int) -> None:
@@ -4152,14 +4160,19 @@ async def _run_live_tiles(admin_id: int) -> None:
             await bot.send_message(admin_id, f'🎬 {cid}: нет канонического фото.')
             continue
         video_bytes = None
-        for ename, efn in engines:
-            try:
-                video_bytes = await efn(image_bytes, mime_type='image/jpeg', prompt=LIVE_TILE_PROMPT)
-                record_provider(f'video/{ename}', True)
+        # V3.43.2: a heroine the kiss motion rejects gets a second pass with
+        # the simpler turn-and-smile script before we give up on her.
+        for prompt in (LIVE_TILE_PROMPT, LIVE_TILE_PROMPT_ALT):
+            for ename, efn in engines:
+                try:
+                    video_bytes = await efn(image_bytes, mime_type='image/jpeg', prompt=prompt)
+                    record_provider(f'video/{ename}', True)
+                    break
+                except Exception as exc:
+                    record_provider(f'video/{ename}', False, f'{type(exc).__name__}: {str(exc)[:120]}')
+                    logger.warning('live tile engine %s failed char=%s: %s', ename, cid, exc)
+            if video_bytes:
                 break
-            except Exception as exc:
-                record_provider(f'video/{ename}', False, f'{type(exc).__name__}: {str(exc)[:120]}')
-                logger.warning('live tile engine %s failed char=%s: %s', ename, cid, exc)
         if not video_bytes:
             await bot.send_message(admin_id, f'🎬 {cid}: все движки отказали.')
             continue
@@ -7231,7 +7244,10 @@ async def _webapp_api_characters(request: web.Request) -> web.Response:
         pairs = webapp_service.validate_init_data(init_data)
         if pairs:
             telegram_id = webapp_service.init_data_user(pairs).get('id')
-    return web.json_response({'ok': True, 'characters': webapp_service.api_characters(telegram_id)})
+    # V3.43.2: no-store — a heuristically cached JSON kept handing the grid
+    # the previous payload (stale cards, missing live tiles) after deploys.
+    return web.json_response({'ok': True, 'characters': webapp_service.api_characters(telegram_id)},
+                             headers={'Cache-Control': 'no-store'})
 
 
 async def _webapp_api_shop(request: web.Request) -> web.Response:
@@ -7303,7 +7319,7 @@ async def _webapp_photo(request: web.Request) -> web.Response:
     if not photo:
         return web.Response(status=404)
     data, content_type = photo
-    return web.Response(body=data, content_type=content_type, headers={'Cache-Control': 'public, max-age=3600'})
+    return web.Response(body=data, content_type=content_type, headers={'Cache-Control': 'public, max-age=604800'})
 
 
 async def _webapp_gif(request: web.Request) -> web.Response:
@@ -7314,7 +7330,7 @@ async def _webapp_gif(request: web.Request) -> web.Response:
         return web.Response(status=404)
     content_type = 'image/webp' if gif.suffix.lower() == '.webp' else 'image/gif'
     return web.Response(body=gif.read_bytes(), content_type=content_type,
-                        headers={'Cache-Control': 'public, max-age=3600'})
+                        headers={'Cache-Control': 'public, max-age=604800'})
 
 
 async def _webapp_live(request: web.Request) -> web.Response:
@@ -7324,7 +7340,7 @@ async def _webapp_live(request: web.Request) -> web.Response:
     if not live:
         return web.Response(status=404)
     return web.Response(body=live.read_bytes(), content_type='video/mp4',
-                        headers={'Cache-Control': 'public, max-age=3600'})
+                        headers={'Cache-Control': 'public, max-age=604800'})
 
 
 async def _webapp_api_char_view(request: web.Request) -> web.Response:
@@ -7527,7 +7543,7 @@ async def _webapp_api_select(request: web.Request) -> web.Response:
         'ok': True,
         'me': webapp_service.api_me(telegram_id),
         'characters': webapp_service.api_characters(telegram_id),
-    })
+    }, headers={'Cache-Control': 'no-store'})
 
 
 async def _webapp_api_chat_history(request: web.Request) -> web.Response:

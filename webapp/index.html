@@ -950,7 +950,7 @@ function renderCharacters(list) {
     // V3.43.1: living tile — a muted looping mp4 (she smiles and blows an air
     // kiss) when the owner rendered one; otherwise the Ken-Burns webp «гифка».
     const cardMedia = c => c.live
-      ? `<video src="${esc(c.live)}" muted loop autoplay playsinline onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"></video>`
+      ? `<video src="${esc(c.live)}" muted loop autoplay playsinline preload="metadata" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"></video>`
       : `<img src="${esc(c.card || c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">`;
     return `<div class="card${c.selected ? ' selected' : ''}" data-id="${esc(c.id)}" data-status="${esc(c.status)}" data-name="${esc(c.name)}" data-photo="${esc(c.photo)}" data-emoji="${esc(c.emoji)}" data-custom="${c.custom ? '1' : '0'}">
       <div class="photo">
@@ -976,6 +976,13 @@ function renderCharacters(list) {
         <div class="body"><div class="lbl2">${esc(L.create_own)}</div><div class="sub2">${esc(L.create_sub)}</div></div>
       </div>`);
   grid.innerHTML = cards + createCard;
+  // V3.43.2: WebView does not always honour the autoplay attribute — kick
+  // every living tile by hand, and pause the ones scrolled off screen so
+  // eight mp4 loops do not drag the grid down.
+  const liveIO = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) e.target.play().catch(() => {}); else e.target.pause();
+  }), {threshold: .25}) : null;
+  grid.querySelectorAll('video').forEach(v => { if (liveIO) liveIO.observe(v); v.play().catch(() => {}); });
   grid.querySelectorAll('.card[data-id]').forEach(el =>
     el.addEventListener('click', () => openCharPage(el)));
   const cc = document.getElementById('createCard');
@@ -990,7 +997,7 @@ async function loadCharacters() {
     // With initData the grid also knows which girl is selected (V3.34.0 —
     // it re-renders after purchases and selections).
     const q = tg.initData ? ('?init_data=' + encodeURIComponent(tg.initData)) : '';
-    const r = await fetch('/webapp/api/characters' + q);
+    const r = await fetch('/webapp/api/characters' + q, {cache: 'no-store'});
     const j = await r.json();
     if (!j.ok || !j.characters.length) {
       document.getElementById('chargrid').innerHTML = '<div class="loading">—</div>'; return;

@@ -237,6 +237,9 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     out = []
     for card in list_cards(visible_only=True):
         custom = is_custom_character(card.character_id)
+        # V3.43.2: cache-buster so a re-rendered tile reaches the grid at
+        # once instead of sitting in the WebView cache for an hour.
+        ver = asset_version(card.character_id)
         out.append({
             'id': card.character_id,
             'name': card.display_name,
@@ -247,17 +250,17 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             'hook': get_scenario_hook(card.character_id) or '',
             'status': card.status,
             'emoji': card.button_emoji or '👩',
-            'photo': f"/webapp/photo/{card.character_id}",
+            'photo': f"/webapp/photo/{card.character_id}?v={ver}",
             # V3.40.0: the animated card preview — built-in heroines ride a
             # looping GIF tile like Come Closer; custom personas and missing
             # assets fall back to the static photo.
-            'card': (f'/webapp/gif/{card.character_id}'
+            'card': (f'/webapp/gif/{card.character_id}?v={ver}'
                      if character_card_gif(card.character_id)
-                     else f"/webapp/photo/{card.character_id}"),
+                     else f"/webapp/photo/{card.character_id}?v={ver}"),
             # V3.43.1: the i2v-rendered living tile (she smiles and blows a
             # kiss) — the grid plays it as a muted loop when the owner has
             # rendered one; otherwise the Ken-Burns webp stays.
-            'live': (f'/webapp/live/{card.character_id}'
+            'live': (f'/webapp/live/{card.character_id}?v={ver}'
                      if character_card_live(card.character_id)
                      else None),
             # V3.40.0: the «👁 427k» view badge on the card corner.
@@ -265,7 +268,7 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             # V3.39.0: the Come Closer character page opens with a photo strip
             # (face + look references), so the card page needs every shot.
             'gallery': [
-                f'/webapp/photo/{card.character_id}?i={idx}'
+                f'/webapp/photo/{card.character_id}?i={idx}&v={ver}'
                 for idx in range(min(4, len(character_gallery(card.character_id))))
             ],
             'selected': card.character_id == selected,
@@ -497,7 +500,7 @@ def api_chat_list(db_user_id: int, telegram_id: int | None = None) -> list[dict]
         out.append({
             'id': character_id,
             'name': card.display_name if card else (character_id if not custom else '—'),
-            'photo': f"/webapp/photo/{character_id}",
+            'photo': f"/webapp/photo/{character_id}?v={asset_version(character_id)}",
             'emoji': (card.button_emoji if card else None) or '👩',
             'status': card.status if card else ('active' if custom else 'soon'),
             'custom': custom,
@@ -698,6 +701,28 @@ def character_card_live(character_id: str) -> Path | None:
         return None
     live = ROOT.joinpath('data', rel[0], rel[1]) / 'card_live.mp4'
     return live if live.exists() else None
+
+
+def asset_version(character_id: str) -> str:
+    """V3.43.2: cache-buster stamp for the storefront assets of one heroine.
+
+    Telegram's WebView kept the previous card tile for the whole ``max-age``
+    window, so for up to an hour after a re-render the grid showed the old
+    girl. Every asset URL now carries ``?v=<newest mtime in her reference
+    folder>`` — rebuilding a tile or a live clip changes the URL and forces
+    the client to fetch the fresh file.
+    """
+    newest = 0
+    rel = _FACE_REFERENCES.get(character_id)
+    if rel:
+        folder = ROOT.joinpath('data', rel[0], rel[1])
+        if folder.exists():
+            for item in folder.iterdir():
+                try:
+                    newest = max(newest, int(item.stat().st_mtime))
+                except OSError:
+                    continue
+    return str(newest)
 
 
 def canonical_face_bytes(character_id: str, max_side: int = 768) -> bytes | None:
