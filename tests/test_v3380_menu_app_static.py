@@ -26,7 +26,7 @@ NEW_CHARACTERS = ('erika_01', 'sonya_01', 'vika_01', 'alisa_01', 'mila_01')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.38.0', '3.39.0')
 
 
 # ── 1. main menu funnel ────────────────────────────────────────────────────
@@ -68,14 +68,16 @@ def test_menu_buttons_reply_with_webapp_entry():
 
 
 def test_support_button_is_a_ticket_flow():
-    # V3.38.0: «👥 Поддержка» arms a pending state; the next plain text goes
-    # to the admins, not to the character.
+    # V3.38.0: the /support command still routes tickets to the admins; the
+    # pending store + intercept survive for it. V3.43.0: the «👥 Поддержка»
+    # buttons themselves deep-link to the dedicated support bot instead.
     assert '_support_pending = dialog_store.DialogStore(' in MAIN
-    assert '_support_pending[message.from_user.id] = _time.time()' in MAIN
     assert 'async def _deliver_support_message(' in MAIN
     assert 'message.from_user.id in _support_pending' in MAIN
     assert '_deliver_support_message(message, message.text' in MAIN
     assert "del _support_pending[message.from_user.id]" in MAIN
+    assert 'SUPPORT_BOT_USERNAME' in MAIN
+    assert "url=f'https://t.me/{SUPPORT_BOT_USERNAME}'" in MAIN
 
 
 # ── 2. new character pack ──────────────────────────────────────────────────

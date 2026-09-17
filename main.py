@@ -23,6 +23,7 @@ from aiogram.utils.chat_action import ChatActionSender
 
 from config import (
     TELEGRAM_TOKEN, PREMIUM_MONTHLY_STARS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS,
+    PREMIUM_QUARTERLY_STARS,
     PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS,
     ADMIN_TELEGRAM_IDS, CHARACTER_ID, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS,
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
@@ -32,7 +33,9 @@ from config import (
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
     CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST, COSPLAY_TOKEN_COST,
     CONSTRUCTOR_PRICE_USD, PREMIUM_WEEKLY_PRICE_USD, fiat_suffix,
-    FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
+    FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
+    SUPPORT_BOT_USERNAME,
+    CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS,
     FREEKASSA_MERCHANT_ID, FREEKASSA_API_KEY, FREEKASSA_API_ENABLED,
 )
 from services.user_service import (
@@ -55,7 +58,7 @@ from services.photo_service import (
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
 )
-from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, consume_photo_credit
+from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits
 from services.bot_description import apply_bot_descriptions
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
@@ -497,7 +500,7 @@ def _welcome_back_rows(lang: str):
     rows.append([InlineKeyboardButton(
         text=kb_label('partner', lang), callback_data='partner:open')])
     rows.append([InlineKeyboardButton(
-        text=kb_label('support', lang), callback_data='support:open')])
+        text=kb_label('support', lang), url=f'https://t.me/{SUPPORT_BOT_USERNAME}')])
     rows.append([
         InlineKeyboardButton(text='📄 Условия' if lang == RU else '📄 Terms', callback_data='legal:terms'),
         InlineKeyboardButton(text='🔐 Privacy', callback_data='legal:privacy'),
@@ -1004,21 +1007,30 @@ def _contextualize_vague_photo(telegram_id: int, text: str, request: PhotoReques
 
 
 def _premium_tariff_lines(lang: str) -> list[str]:
-    """V3.42.0: the tariff card the owner benchmarked (Come Closer screenshot) —
-    a radio list where the monthly plan shows its per-week price, a savings
-    badge and the struck «instead of» price of buying four separate weeks."""
+    """V3.42.0: the tariff card the owner benchmarked (Come Closer screenshot).
+    V3.43.0: three tiers with the competitor's prices (299 / 899 / 1799 ₽) —
+    week, month and 3 months; the longer plans show their per-week price, a
+    savings badge and the struck «instead of» price of buying them separately."""
     en = lang == EN
     wk_fiat = fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
     mo_fiat = fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
+    q_fiat = fiat_suffix(PREMIUM_QUARTERLY_STARS, rub=FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB, rub_enabled=FREEKASSA_ENABLED)
     if FREEKASSA_ENABLED and FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB and FREEKASSA_PREMIUM_PRICE_RUB:
-        unit, week_full, month_full = '₽', FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_RUB
+        unit = '₽'
+        week_full, month_full, quarter_full = FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB
     else:
-        unit, week_full, month_full = 'Stars', PREMIUM_WEEKLY_STARS, PREMIUM_MONTHLY_STARS
+        unit = 'Stars'
+        week_full, month_full, quarter_full = PREMIUM_WEEKLY_STARS, PREMIUM_MONTHLY_STARS, PREMIUM_QUARTERLY_STARS
     was = 4 * week_full
     save = max(0, round((1 - month_full / was) * 100)) if was else 0
     month_pw = round(month_full / 4)
     badge = f'  −{save}%' if save else ''
     strike = f'   ({"вместо" if not en else "instead of"} {was} {unit})' if save else ''
+    q_was = 12 * week_full
+    q_save = max(0, round((1 - quarter_full / q_was) * 100)) if q_was else 0
+    q_pw = round(quarter_full / 12)
+    q_badge = f'  −{q_save}%' if q_save else ''
+    q_strike = f'   ({"вместо" if not en else "instead of"} {q_was} {unit})' if q_save else ''
     if en:
         return [
             '⭐ Plans:',
@@ -1027,6 +1039,8 @@ def _premium_tariff_lines(lang: str) -> list[str]:
             f'     {week_full} {unit} per week',
             f'●  1 month — {PREMIUM_MONTHLY_STARS} Stars{mo_fiat}{badge}',
             f'     {month_pw} {unit} per week{strike}',
+            f'○  3 months — {PREMIUM_QUARTERLY_STARS} Stars{q_fiat}{q_badge}',
+            f'     {q_pw} {unit} per week{q_strike}',
         ]
     return [
         '⭐ Тарифы:',
@@ -1035,6 +1049,8 @@ def _premium_tariff_lines(lang: str) -> list[str]:
         f'     {week_full} {unit} в неделю',
         f'●  1 месяц — {PREMIUM_MONTHLY_STARS} Stars{mo_fiat}{badge}',
         f'     {month_pw} {unit} в неделю{strike}',
+        f'○  3 месяца — {PREMIUM_QUARTERLY_STARS} Stars{q_fiat}{q_badge}',
+        f'     {q_pw} {unit} в неделю{q_strike}',
     ]
 
 
@@ -1206,10 +1222,13 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
         month_fiat = fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
         buy_label = f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars{month_fiat} / 30 дней'
     week_fiat = fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
+    quarter_fiat = fiat_suffix(PREMIUM_QUARTERLY_STARS, rub=FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB, rub_enabled=FREEKASSA_ENABLED)
     rows = [
         [InlineKeyboardButton(text=buy_label, callback_data='buy:premium')],
         # V3.34.1: the short plan for the undecided — same invoice pipeline.
         [InlineKeyboardButton(text=f'⭐ Premium на неделю — {PREMIUM_WEEKLY_STARS} Stars{week_fiat}', callback_data='buy:premium_week')],
+        # V3.43.0: the 3-month plan from the benchmarked card — best per-week price.
+        [InlineKeyboardButton(text=f'⭐ Premium на 3 месяца — {PREMIUM_QUARTERLY_STARS} Stars{quarter_fiat}', callback_data='buy:premium_quarter')],
     ]
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text=f'💎 Premium — Wallet Pay (крипта/карта)', callback_data='walletpay:premium')])
@@ -1240,6 +1259,10 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
             rows.append([_fk_pay_button(
                 'premium_week', FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB,
                 f'💳 Premium на неделю — {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · ⚡СБП / карта')])
+            # V3.43.0: the 3-month plan is payable by card/SBP too.
+            rows.append([_fk_pay_button(
+                'premium_quarter', FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB,
+                f'💳 Premium на 3 месяца — {FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB} ₽ · ⚡СБП / карта')])
         if is_button_enabled('freekassa_sbp'):
             rows.append([_fk_pay_button(
                 'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
@@ -1650,17 +1673,7 @@ async def start(message: types.Message, command: CommandObject):
         first_start = apply_first_start_bonuses(message.from_user.id)
         if first_start['credits'] or first_start['trial_days']:
             track_event(uid, 'first_start_bonus_granted', metadata=first_start)
-    # Surface the user's own referral link so they can invite friends right away.
     lang = user_lang(message.from_user.id)
-    try:
-        me = await message.bot.get_me()
-        ref_link = referral_link(me.username, message.from_user.id)
-        if lang == EN:
-            ref_hint = f'\n\n🔗 your invite link for friends:\n{ref_link}\nfor every friend who confirms 18+ you get {REFERRAL_REFERRER_CREDITS} and your friend gets {REFERRAL_INVITEE_CREDITS} photo credits. And from V3.37.0 — a money commission from every purchase they make: /partner'
-        else:
-            ref_hint = f'\n\n🔗 твоя ссылка для приглашения друзей:\n{ref_link}\nза каждого друга, который подтвердит 18+, ты получишь {REFERRAL_REFERRER_CREDITS}, а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов. а ещё с v3.37 — денежный процент с каждой его покупки: /partner'
-    except Exception:
-        ref_hint = '\n\ninvite friends with /referral — bonuses for both of you.' if lang == EN else '\n\nприглашай друзей командой /referral — бонусы за обоих.'
     if lang == EN:
         welcome_back = (
             f'welcome back, {name} 🙂 the girls, chats, pictures and the shop live in the app 👇'
@@ -1676,10 +1689,8 @@ async def start(message: types.Message, command: CommandObject):
         await message.answer_photo(banner, caption=welcome_back, reply_markup=markup)
     else:
         await message.answer(welcome_back, reply_markup=markup)
-    # V3.39.0: the referral block moved out of the welcome caption into its own
-    # short message so the photo message stays compact.
-    if ref_hint.strip():
-        await message.answer(ref_hint.strip())
+    # V3.43.0: the referral dump is gone from the welcome screen entirely —
+    # the invite link lives on the partner screen (/referral) now.
 
 
 @dp.callback_query(F.data == 'consent:accept')
@@ -3179,25 +3190,8 @@ async def credits_open(cq: types.CallbackQuery):
     )
 
 
-@dp.callback_query(F.data == 'support:open')
-async def support_open(cq: types.CallbackQuery):
-    """V3.42.1: the «👥 Поддержка» CTA on the welcome screen — arms the same
-    ticket flow as the reply-keyboard support button (the next plain text goes
-    to the owner instead of the character)."""
-    await cq.answer()
-    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
-    lang = user_lang(cq.from_user.id)
-    _support_pending[cq.from_user.id] = _time.time()
-    if lang == EN:
-        await cq.message.answer(
-            '👥 support\n\ndescribe what happened in ONE message — '
-            'it goes straight to the owner. Commands like /start still work.'
-        )
-    else:
-        await cq.message.answer(
-            '👥 поддержка\n\nопиши, что случилось, ОДНИМ сообщением — '
-            'я передам это владельцу. Команды вроде /start продолжают работать.'
-        )
+# V3.43.0: the welcome «👥 Поддержка» row is a plain url button to the
+# dedicated support bot, so the old 'support:open' ticket callback is gone.
 
 
 @dp.callback_query(F.data == 'partner:withdraw')
@@ -4173,6 +4167,16 @@ async def buy_premium(cq: types.CallbackQuery):
     await send_stars_invoice(cq.message.chat.id, 'Anna Premium', 'Premium-доступ на 30 дней', 'premium_month', PREMIUM_MONTHLY_STARS)
 
 
+@dp.callback_query(F.data == 'buy:premium_quarter')
+async def buy_premium_quarter(cq: types.CallbackQuery):
+    """V3.43.0: the 3-month plan from the benchmarked tariff card — 90 days."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('сначала /start', show_alert=True)
+        return
+    await send_stars_invoice(cq.message.chat.id, 'Anna Premium', 'Premium-доступ на 90 дней', 'premium_quarter', PREMIUM_QUARTERLY_STARS)
+
+
 @dp.callback_query(F.data == 'buy:premium_week')
 async def buy_premium_week(cq: types.CallbackQuery):
     """V3.34.1: the weekly Premium option — 7 days for PREMIUM_WEEKLY_STARS."""
@@ -4273,6 +4277,13 @@ def _fk_amount_for(product: str, currency: str) -> int:
     if product == 'premium_week':
         # V3.34.1: card/SBP price of the weekly plan (RUB only).
         return FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB
+    if product == 'premium_quarter':
+        # V3.43.0: the 3-month plan is card/SBP-purchasable too.
+        return FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB
+    if product == 'photo':
+        # V3.43.0: the pay-method modal sells a single photo credit in rubles.
+        from config import fiat_values
+        return fiat_values(PHOTO_COST_STARS)[0]
     if product == 'constructor_rub':
         return CONSTRUCTOR_COST_RUB
     if product.startswith('tokens_'):
@@ -4310,6 +4321,9 @@ async def fkapi_pay(cq: types.CallbackQuery):
         title = f'💳 Premium на неделю — {sign}{amount}'
     elif product == 'constructor_rub':
         title = f'🎭 Персонаж — {sign}{amount}'
+    elif product == 'photo':
+        # V3.43.0: ruble-paid single photo credit from the app pay modal.
+        title = f'🍑 Фото-кредит — {sign}{amount}'
     else:
         title = f'🪙 Токены — {sign}{amount}'
     await bot.send_message(
@@ -5663,22 +5677,23 @@ async def settings_button(message: types.Message):
 
 @dp.message(F.text.in_(kb_pair('support')))
 async def support_button(message: types.Message):
-    # V3.38.0: «👥 Поддержка» is now a real ticket flow to the owner (Come
-    # Closer layout). The button arms the pending state; the user's next
-    # plain text message is forwarded to the admins instead of reaching the
-    # character (see text_message). The donation appeal moved to /legal.
+    # V3.43.0: support moved to the dedicated @Anna67901support_bot — this
+    # button no longer arms an in-bot ticket, it just opens the support chat
+    # where the team answers directly (owner request: «привяжи нового бота»).
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     lang = user_lang(message.from_user.id)
-    _support_pending[message.from_user.id] = _time.time()
+    markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text='👥 написать в поддержку' if lang != EN else '👥 contact support',
+        url=f'https://t.me/{SUPPORT_BOT_USERNAME}')]])
     if lang == EN:
         await message.answer(
-            '👥 support\n\ndescribe what happened in ONE message — '
-            'it goes straight to the owner. Commands like /start still work.'
+            '👥 support\n\nwrite to our support bot — the team answers there directly 👇',
+            reply_markup=markup,
         )
     else:
         await message.answer(
-            '👥 поддержка\n\nопиши, что случилось, ОДНИМ сообщением — '
-            'я передам это владельцу. Команды вроде /start продолжают работать.'
+            '👥 поддержка\n\nнапиши нашему боту поддержки — команда ответит прямо там 👇',
+            reply_markup=markup,
         )
 
 
@@ -6977,6 +6992,12 @@ async def _fk_notify(request: web.Request) -> web.Response:
         elif product == 'premium_week':
             # V3.34.1: ruble-paid weekly Premium — record_payment below grants it.
             confirm = '💖 Оплата прошла! Premium активирован на 7 дней. Наслаждайся! 🎉'
+        elif product == 'premium_quarter':
+            # V3.43.0: ruble-paid 3-month Premium.
+            confirm = '💖 Оплата прошла! Premium активирован на 90 дней. Наслаждайся! 🎉'
+        elif product == 'photo':
+            # V3.43.0: ruble-paid single photo credit from the app pay modal.
+            confirm = '🍑 Фото-кредит оплачен картой! Уже начислен 📸'
         else:
             confirm = '💖 Оплата прошла! Premium активирован на 30 дней. Наслаждайся! 🎉'
         try:
@@ -7093,9 +7114,20 @@ async def _webapp_index(request: web.Request) -> web.Response:
 async def _webapp_api_me(request: web.Request) -> web.Response:
     # initData is signed by Telegram with the bot token — the official HMAC
     # check in webapp_service validates it before any user data is returned.
-    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    init_data = request.query.get('init_data', '')
+    pairs = webapp_service.validate_init_data(init_data)
     if not pairs:
-        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+        # V3.43.0: the owner reported «she can't authorize» — log WHY the
+        # initData was rejected so the next complaint is diagnosable:
+        # missing (opened outside Telegram) / expired (stale recents) / hash.
+        if not init_data:
+            reason = 'missing'
+        elif webapp_service.validate_init_data(init_data, max_age_seconds=0):
+            reason = 'expired'
+        else:
+            reason = 'hash'
+        logger.warning('webapp auth rejected reason=%s', reason)
+        return web.json_response({'ok': False, 'error': 'auth', 'reason': reason}, status=401)
     user_info = webapp_service.init_data_user(pairs)
     telegram_id = user_info.get('id')
     if not telegram_id:
@@ -7217,6 +7249,64 @@ async def _webapp_api_char_view(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'views': webapp_service.bump_character_views(character_id)})
 
 
+async def _webapp_api_channel_bonus(request: web.Request) -> web.Response:
+    # V3.43.0: «Бесплатные 🍑 за подписку на канал» — GET returns the channel
+    # link + bonus size (public), plus whether the bonus was already granted
+    # when initData is valid; POST verifies membership via getChatMember and
+    # grants the one-time bonus — or revokes it when the user unsubscribed,
+    # exactly what the modal warning promises. The bot must be an admin in
+    # the channel or getChatMember answers with a 403 (surfaced as 502).
+    base = {'ok': True, 'url': f'https://t.me/{CHANNEL_SUBSCRIBE_USERNAME}',
+            'bonus': CHANNEL_SUBSCRIBE_BONUS_CREDITS}
+    init_data = request.query.get('init_data', '')
+    pairs = webapp_service.validate_init_data(init_data) if init_data else None
+    user_info = webapp_service.init_data_user(pairs) if pairs else {}
+    telegram_id = user_info.get('id')
+    if request.method != 'POST':
+        granted = bool(telegram_id) and has_credit_grant(telegram_id, 'channel_subscribe')
+        return web.json_response({**base, 'granted': granted})
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    try:
+        member = await bot.get_chat_member(chat_id=f'@{CHANNEL_SUBSCRIBE_USERNAME}', user_id=telegram_id)
+        subscribed = member.status in ('member', 'administrator', 'creator')
+    except Exception:
+        logger.exception('channel membership check failed user=%s channel=@%s', telegram_id, CHANNEL_SUBSCRIBE_USERNAME)
+        return web.json_response({'ok': False, 'error': 'check'}, status=502)
+    if subscribed:
+        balance = grant_photo_credits(telegram_id, CHANNEL_SUBSCRIBE_BONUS_CREDITS, reason='channel_subscribe')
+        if balance == -1:
+            return web.json_response({**base, 'subscribed': True, 'granted': False,
+                                        'already': True, 'credits': get_photo_credits(telegram_id)})
+        track_event(ensure_user(telegram_id), 'channel_bonus_granted', metadata={'credits': balance})
+        return web.json_response({**base, 'subscribed': True, 'granted': True, 'credits': balance})
+    if has_credit_grant(telegram_id, 'channel_subscribe'):
+        balance = revoke_photo_credits(telegram_id, CHANNEL_SUBSCRIBE_BONUS_CREDITS, 'channel_subscribe')
+        track_event(ensure_user(telegram_id), 'channel_bonus_revoked', metadata={'credits': balance})
+        return web.json_response({**base, 'subscribed': False, 'granted': False,
+                                    'revoked': True, 'credits': balance})
+    return web.json_response({**base, 'subscribed': False, 'granted': False,
+                                'credits': get_photo_credits(telegram_id)})
+
+
+async def _webapp_api_char_like(request: web.Request) -> web.Response:
+    # V3.43.0: the «♡ N» like on the character page — GET returns the counter
+    # and whether this user liked her, POST toggles it (one like per user).
+    character_id = str(request.query.get('character_id') or '').strip()
+    if not get_card(character_id):
+        return web.json_response({'ok': False, 'error': 'character'}, status=404)
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    telegram_id = webapp_service.init_data_user(pairs).get('id') if pairs else None
+    if request.method != 'POST':
+        state = webapp_service.character_like_state(character_id, telegram_id)
+        return web.json_response({'ok': True, **state})
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    state = webapp_service.toggle_character_like(character_id, telegram_id)
+    return web.json_response({'ok': True, **state})
+
+
 async def _webapp_api_invoice(request: web.Request) -> web.Response:
     # V3.34.0: Stars purchases from the Mini App. Returns an invoice link the
     # frontend opens with tg.openInvoice; the payment itself arrives as a
@@ -7253,6 +7343,62 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
         logger.exception('webapp invoice link failed user=%s product=%s', telegram_id, product_id)
         return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
     return web.json_response({'ok': True, 'link': link, 'product': product_id, 'stars': product['stars']})
+
+
+async def _webapp_api_pay_link(request: web.Request) -> web.Response:
+    # V3.43.0: the Come Closer pay menu — tapping a shop square opens a modal
+    # with Stars / card-SBP / crypto rows. Stars reuses /webapp/api/invoice;
+    # this endpoint returns an external payment link for the other two:
+    # FreeKassa REST order (SBP form) and a Wallet Pay invoice (TON/USDT).
+    # Both land in the same granting chain: the FreeKassa notify and the
+    # Wallet Pay webhook call record_payment with these product keys.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    product_id = str((body or {}).get('product', ''))
+    method = str((body or {}).get('method', ''))
+    lang = user_lang(telegram_id)
+    product = next((p for p in webapp_service.api_invoice_products(lang) if p['id'] == product_id), None)
+    # order product keys record_payment knows how to grant
+    fk_product = {'premium': 'premium_month', 'premium_week': 'premium_week',
+                  'photo_credit': 'photo'}.get(product_id)
+    if not product or not fk_product:
+        return web.json_response({'ok': False, 'error': 'unknown_product'}, status=400)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    if method == 'sbp':
+        if not FREEKASSA_ENABLED or not product.get('rub'):
+            return web.json_response({'ok': False, 'error': 'method_off'}, status=400)
+        amount = str(product['rub'])
+        order_id = freekassa_service.create_order(telegram_id, fk_product, amount)
+        link = await freekassa_service.create_api_order(
+            order_id, amount, currency='RUB', telegram_id=telegram_id,
+            payment_system=freekassa_service.FK_SBP_QR_PAYMENT_ID,
+        )
+        if not link:
+            # API unreachable (no key/IP/error) — the SCI form link still pays.
+            link = freekassa_service.payment_url(order_id, amount, currency='RUB')
+        track_event(uid, 'webapp_pay_link', metadata={'product': product_id, 'method': 'sbp'})
+        return web.json_response({'ok': True, 'url': link})
+    if method == 'crypto':
+        if not WALLET_PAY_ENABLED:
+            return web.json_response({'ok': False, 'error': 'method_off'}, status=400)
+        from services.wallet_pay_service import create_invoice
+        invoice = await create_invoice(
+            telegram_id, fk_product, product['stars'], product['description'],
+        )
+        if not invoice:
+            return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
+        track_event(uid, 'webapp_pay_link', metadata={'product': product_id, 'method': 'crypto'})
+        return web.json_response({'ok': True, 'url': invoice['payment_link']})
+    return web.json_response({'ok': False, 'error': 'unknown_method'}, status=400)
 
 
 async def _webapp_api_select(request: web.Request) -> web.Response:
@@ -7967,8 +8113,14 @@ async def _start_web_server() -> None:
     # V3.40.0: the living storefront — looping GIF tiles and the view counter.
     app.router.add_get('/webapp/gif/{character_id}', _webapp_gif)
     app.router.add_post('/webapp/api/char_view', _webapp_api_char_view)
+    # V3.43.0: the channel-subscribe peach bonus — GET status, POST check+grant.
+    app.router.add_route('*', '/webapp/api/channel_bonus', _webapp_api_channel_bonus)
+    # V3.43.0: the character-page like — GET state, POST toggle.
+    app.router.add_route('*', '/webapp/api/char_like', _webapp_api_char_like)
     # V3.34.0: storefront actions — Stars purchases and character selection.
     app.router.add_post('/webapp/api/invoice', _webapp_api_invoice)
+    # V3.43.0: the pay-method modal — card/SBP and crypto payment links.
+    app.router.add_post('/webapp/api/pay_link', _webapp_api_pay_link)
     app.router.add_post('/webapp/api/select', _webapp_api_select)
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
@@ -8025,21 +8177,29 @@ async def main():
     # profile plus the «AnnaBot» menu button. Requires PUBLIC_BASE_URL (the
     # same Railway domain FreeKassa already uses); skipped silently otherwise.
     if PUBLIC_BASE_URL:
-        try:
-            await bot.set_chat_menu_button(types.MenuButtonWebApp(
-                text='Открыть приложение',
-                web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'),
-            ))
-            logger.info('webapp menu button installed url=%s/webapp', PUBLIC_BASE_URL)
-            # V3.33.1: read the actual Telegram state back so the owner can
-            # tell «set but not visible» (client cache) from «never set».
+        # V3.43.0: the owner reported the blue button missing after a deploy —
+        # a single call can silently fail on a cold start / Telegram hiccup,
+        # so we retry a few times and log every attempt for diagnostics.
+        menu_url = f'{PUBLIC_BASE_URL}/webapp'
+        for attempt in range(1, 4):
             try:
-                current = await bot.get_chat_menu_button()
-                logger.info('webapp menu button confirmed type=%s text=%s', type(current).__name__, getattr(current, 'text', ''))
+                await bot.set_chat_menu_button(types.MenuButtonWebApp(
+                    text='Открыть приложение',
+                    web_app=types.WebAppInfo(url=menu_url),
+                ))
+                logger.info('webapp menu button installed url=%s attempt=%d', menu_url, attempt)
+                break
             except Exception:
-                logger.exception('webapp menu button verification failed')
+                logger.exception('failed to set webapp menu button attempt=%d', attempt)
+                if attempt < 3:
+                    await asyncio.sleep(3 * attempt)
+        # V3.33.1: read the actual Telegram state back so the owner can
+        # tell «set but not visible» (client cache) from «never set».
+        try:
+            current = await bot.get_chat_menu_button()
+            logger.info('webapp menu button confirmed type=%s text=%s', type(current).__name__, getattr(current, 'text', ''))
         except Exception:
-            logger.exception('failed to set webapp menu button')
+            logger.exception('webapp menu button verification failed')
     else:
         logger.warning('PUBLIC_BASE_URL is not set — Mini App entry points (/app, settings button, menu button) are disabled')
     logger.info('startup admin_ids_count=%s', len(ADMIN_TELEGRAM_IDS))

@@ -230,6 +230,125 @@
   .strip { display: flex; gap: 8px; overflow-x: auto; padding: 12px 14px 4px; }
   .strip img { width: 74px; height: 96px; object-fit: cover; border-radius: 12px; border: 2px solid transparent; cursor: pointer; flex: 0 0 auto; background: var(--card2); }
   .strip img.on { border-color: var(--accent); }
+  /* V3.43.0: channel-subscribe bonus banner on the characters tab */
+  .chanbanner {
+    display: flex; align-items: center; gap: 10px; width: calc(100% - 8px);
+    margin: 10px 4px 2px; padding: 9px 12px; border: 0; border-radius: 14px;
+    background: linear-gradient(90deg, rgba(232,68,127,.28), rgba(184,68,232,.16));
+    color: var(--text); cursor: pointer;
+  }
+  .chanbanner .gift {
+    width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto;
+    background: radial-gradient(circle at 35% 30%, #ff9ec7, var(--accent));
+    display: flex; align-items: center; justify-content: center; font-size: 17px;
+  }
+  .chanbanner .t { flex: 1; text-align: left; font-size: 13px; font-weight: 600; }
+  .chanbanner .ar {
+    width: 26px; height: 26px; border-radius: 50%; background: var(--accent);
+    color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  /* V3.43.0: the centered gift modal for the channel bonus */
+  #chanmodal {
+    position: fixed; inset: 0; z-index: 45; display: none;
+    align-items: center; justify-content: center; background: rgba(10,5,14,.62);
+  }
+  #chanmodal.open { display: flex; }
+  #chanmodal .box {
+    width: min(320px, 86vw); background: var(--card); border-radius: 18px;
+    padding: 20px 16px 16px; text-align: center; position: relative;
+  }
+  #chanmodal .gift {
+    width: 62px; height: 62px; border-radius: 50%; margin: 0 auto 10px;
+    background: radial-gradient(circle at 35% 30%, #ff9ec7, var(--accent));
+    display: flex; align-items: center; justify-content: center; font-size: 29px;
+  }
+  #chanmodal h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
+  #chanmodal .txt { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+  #chanmodal .warn {
+    background: rgba(255,193,7,.13); color: #ffc107; border-radius: 10px;
+    font-size: 12px; padding: 8px 10px; margin-bottom: 12px;
+  }
+  #chanmodal .go, #chanmodal .chk {
+    width: 100%; border: 0; border-radius: 12px; padding: 12px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  #chanmodal .go { background: linear-gradient(90deg, var(--accent), #ff7ab0); color: #fff; margin-bottom: 8px; }
+  #chanmodal .chk { background: var(--card2); color: var(--text); }
+  #chanmodal .x {
+    position: absolute; top: 8px; right: 10px; border: 0; background: transparent;
+    color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px;
+  }
+  /* V3.43.0: Come Closer pack squares + the pay-method modal */
+  .packs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+  .pack {
+    background: var(--card); border: 1px solid rgba(232, 68, 127, .16);
+    border-radius: 14px; padding: 12px 8px 10px; text-align: center; cursor: pointer;
+  }
+  .pack .amt { font-size: 16px; font-weight: 700; color: var(--text); }
+  .pack .sub { color: var(--text); font-size: 11px; margin-top: 3px; }
+  .pack .rub { color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
+  .pack .get {
+    width: 100%; border: 0; border-radius: 10px; padding: 7px 0;
+    background: rgba(232, 68, 127, .16); color: var(--accent);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  #paymodal {
+    position: fixed; inset: 0; z-index: 46; display: none;
+    align-items: center; justify-content: center; background: rgba(10,5,14,.62);
+  }
+  #paymodal.open { display: flex; }
+  #paymodal .box {
+    width: min(320px, 86vw); background: var(--card); border-radius: 18px;
+    padding: 20px 16px 16px; text-align: center; position: relative;
+  }
+  #paymodal .emo { font-size: 40px; margin-bottom: 6px; }
+  #paymodal h3 { margin: 0 0 12px; font-size: 16px; color: var(--text); }
+  #paymodal .mrow {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: var(--card2); border: 0; border-radius: 12px;
+    padding: 12px; margin-bottom: 8px; cursor: pointer;
+    color: var(--text); font-size: 14px; text-align: left;
+  }
+  #paymodal .mrow:disabled { opacity: .55; }
+  #paymodal .mrow .ico { font-size: 18px; }
+  #paymodal .mrow .nm { flex: 1; font-weight: 600; }
+  #paymodal .mrow .pr {
+    background: rgba(232, 68, 127, .16); color: var(--accent);
+    border-radius: 9px; padding: 5px 9px; font-size: 12px; font-weight: 700;
+  }
+  #paymodal .x {
+    position: absolute; top: 8px; right: 10px; border: 0; background: transparent;
+    color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px;
+  }
+  /* V3.43.0: full-screen lightbox — a tap on any photo opens it */
+  #lightbox {
+    position: fixed; inset: 0; z-index: 50; display: none;
+    align-items: center; justify-content: center; background: rgba(0,0,0,.92);
+  }
+  #lightbox.open { display: flex; }
+  #lightbox img { max-width: 96vw; max-height: 92vh; border-radius: 10px; }
+  #lightbox .x {
+    position: absolute; top: 12px; right: 12px; border: 0; border-radius: 50%;
+    width: 34px; height: 34px; background: rgba(255,255,255,.14); color: #fff;
+    font-size: 16px; cursor: pointer;
+  }
+  /* V3.43.0: character-page carousel arrows/dots + the like badge */
+  .stripwrap { position: relative; }
+  .stripwrap .nav {
+    position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+    width: 30px; height: 30px; border: 0; border-radius: 50%;
+    background: rgba(10,5,14,.55); color: #fff; font-size: 17px; cursor: pointer;
+  }
+  .stripwrap .nav.prev { left: 6px; }
+  .stripwrap .nav.next { right: 6px; }
+  .stripdots { display: flex; gap: 5px; justify-content: center; margin: 6px 0 2px; }
+  .stripdots i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); opacity: .5; }
+  .stripdots i.on { background: var(--accent); opacity: 1; }
+  .charlike {
+    position: absolute; top: 16px; right: 10px; z-index: 2; border: 0; border-radius: 12px;
+    background: rgba(10,5,14,.55); color: #fff; font-size: 12px; padding: 6px 10px; cursor: pointer;
+  }
+  .charlike.on { color: #ff7ab0; }
   .charhero { padding: 6px 16px 0; }
   .charhero h1 { margin: 6px 0 2px; font-size: 26px; }
   .charcta { display: block; width: calc(100% - 32px); margin: 14px 16px; padding: 14px; border: 0; border-radius: 14px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
@@ -378,6 +497,12 @@
       <button class="on" data-seg="official" id="segOfficial"></button>
       <button data-seg="community" id="segCommunity"></button>
     </div>
+    <!-- V3.43.0: free peaches for subscribing to the channel — banner row -->
+    <button class="chanbanner" id="chanBanner">
+      <span class="gift">🎁</span>
+      <span class="t" id="chanBannerText"></span>
+      <span class="ar">→</span>
+    </button>
     <div class="grid" id="chargrid"><div class="loading" id="l_loading">Загрузка…</div></div>
     <div class="note" id="l_chars_hint">Выбрать девушку для общения можно в чате бота — раздел «Персонажи»</div>
   </section>
@@ -410,6 +535,32 @@
   <button data-tab="profile"><span class="ico">👤</span><span class="lbl">Профиль</span></button>
 </nav>
 <div id="toast"></div>
+<!-- V3.43.0: the channel-subscribe bonus modal (Come Closer gift dialog) -->
+<div id="chanmodal">
+  <div class="box">
+    <button class="x" id="chanClose">✕</button>
+    <div class="gift">🎁</div>
+    <h3 id="chanTitle"></h3>
+    <div class="txt" id="chanText"></div>
+    <div class="warn" id="chanWarn"></div>
+    <button class="go" id="chanGo"></button>
+    <button class="chk" id="chanCheck"></button>
+  </div>
+</div>
+<!-- V3.43.0: pay-method modal (Come Closer: tap a square → Stars/SBP/crypto) -->
+<div id="paymodal">
+  <div class="box">
+    <button class="x" id="payClose">✕</button>
+    <div class="emo" id="payEmo">⭐</div>
+    <h3 id="payTitle"></h3>
+    <div id="payRows"></div>
+  </div>
+</div>
+<!-- V3.43.0: full-screen photo lightbox — tap a photo and it opens -->
+<div id="lightbox">
+  <button class="x" id="lbClose">✕</button>
+  <img id="lbImg" alt="">
+</div>
 <!-- V3.35.0: in-app chat — tap a card opens the dialog (shared with the bot chat) -->
 <div class="overlay" id="chatview">
   <div class="chat-head">
@@ -448,7 +599,14 @@
     </div>
   </div>
   <div class="page" style="padding-bottom:20px">
-    <div class="strip" id="charStrip"></div>
+    <!-- V3.43.0: carousel arrows/dots + the like badge (Come Closer page) -->
+    <div class="stripwrap">
+      <button class="charlike" id="charLike">♡ 0</button>
+      <div class="strip" id="charStrip"></div>
+      <button class="nav prev" id="charPrev">‹</button>
+      <button class="nav next" id="charNext">›</button>
+    </div>
+    <div class="stripdots" id="charDots"></div>
     <div class="charhero"><h1 id="charTitle"></h1><div class="sub" id="charMeta"></div></div>
     <button class="charcta" id="charStart"></button>
     <div class="charblock" id="charBio"></div>
@@ -511,7 +669,7 @@ const L = LANG === 'en' ? {
   chars_title: 'Characters', loading: 'Loading…',
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
-  shop_title: 'Shop', month: '/ 30 days', week: '7 days', pay_hint: 'Stars payments happen right here. Card or crypto — in the bot chat. Prices are the same.',
+  shop_title: 'Shop', month: '/ 30 days', week: '7 days', pay_hint: 'Tap a plan — pick how to pay: Stars here, card/SBP or crypto on the payment page.',
   free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
   profile_title: 'Profile', premium_on: 'Premium active', premium_off: 'Free account',
   streak: 'day streak', level: 'relationship level', selected_girl: 'selected girl',
@@ -528,11 +686,26 @@ const L = LANG === 'en' ? {
   wd_fail: 'Something went wrong — try later',
   privacy: 'Privacy policy', agreement: 'User agreement', tariffs: 'Prices & tariffs', support: 'Support',
   err_auth: 'Could not confirm your Telegram account.<br>Open this app from the bot’s profile.',
+  err_auth_out: 'This app only works inside Telegram — open it from a button in the bot.',
+  err_auth_retry: 'Authorization failed. Close this window and open the app again from the «📱 Open the app» button.',
+  err_auth_btn: 'Retry',
+  chan_banner: 'Free 🍑 for subscribing to the channel',
+  chan_title: 'Free 🍑 for subscribing',
+  chan_text: b => `Subscribe to our channel and get ${b} 🍑 as a gift.`,
+  chan_warn: '⚠️ The bonus is revoked if you unsubscribe',
+  chan_go: 'To the channel', chan_check: 'Check subscription',
+  chan_ok: b => `+${b} 🍑 added!`, chan_already: 'Bonus already received ✅',
+  chan_not: 'You are not subscribed to the channel yet',
+  chan_revoked: 'Bonus revoked — you are no longer subscribed',
+  chan_check_fail: 'Could not check the subscription — try again later',
   buy: 'Buy', auth_short: 'Open this app from Telegram',
   selected_toast: 'selected', locked: 'This girl is locked for now', need_premium: 'Available with Premium ⭐',
   paid_prem: 'Premium activated ✨', paid_credit: 'Photo credit added 📸',
   pay_failed: 'Payment failed', pay_cancelled: 'Payment cancelled',
   invoice_err: 'Could not open payment — try again',
+  pay_stars: 'Telegram Stars', pay_sbp: 'SBP / card', pay_crypto: 'Crypto (TON/USDT)',
+  pay_get: 'Get', pay_link_err: 'Could not create the payment — try again',
+  pay_opened: 'Payment page opened — finish the payment there',
   input_ph: 'Type a message…', send: 'Send',
   empty_chat: 'Send the first message — she replies right here',
   limit_reached: 'Daily free-message limit reached. Premium lifts it ⭐',
@@ -573,7 +746,7 @@ const L = LANG === 'en' ? {
   chars_title: 'Персонажи', loading: 'Загрузка…',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
-  shop_title: 'Магазин', month: '/ 30 дней', week: '7 дней', pay_hint: 'Оплата Stars — прямо здесь. Картой или крипто — в чате бота. Цены те же.',
+  shop_title: 'Магазин', month: '/ 30 дней', week: '7 дней', pay_hint: 'Нажми на тариф — выбери способ: Stars здесь, карта/СБП или крипта на платёжной странице.',
   free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
   profile_title: 'Профиль', premium_on: 'Premium активен', premium_off: 'Бесплатный аккаунт',
   streak: 'дней подряд', level: 'уровень отношений', selected_girl: 'выбранная девушка',
@@ -590,11 +763,26 @@ const L = LANG === 'en' ? {
   wd_fail: 'Что-то пошло не так — попробуй позже',
   privacy: 'Политика конфиденциальности', agreement: 'Пользовательское соглашение', tariffs: 'Цены и тарифы', support: 'Поддержка',
   err_auth: 'Не удалось подтвердить твою учётную запись Telegram.<br>Открой приложение из профиля бота.',
+  err_auth_out: 'Приложение работает только внутри Telegram — открой его из кнопки в боте.',
+  err_auth_retry: 'Авторизация не удалась. Закрой это окно и открой приложение заново из кнопки «📱 Открыть приложение».',
+  err_auth_btn: 'Повторить',
+  chan_banner: 'Бесплатные 🍑 за подписку на канал',
+  chan_title: 'Бесплатные 🍑 за подписку',
+  chan_text: b => `Подпишись на наш канал и получи ${b} 🍑 в подарок.`,
+  chan_warn: '⚠️ При отписке бонус аннулируется',
+  chan_go: 'В канал', chan_check: 'Проверить подписку',
+  chan_ok: b => `+${b} 🍑 начислено!`, chan_already: 'Бонус уже получен ✅',
+  chan_not: 'Ты пока не подписан на канал',
+  chan_revoked: 'Бонус аннулирован — ты отписался от канала',
+  chan_check_fail: 'Не удалось проверить подписку — попробуй позже',
   buy: 'Купить', auth_short: 'Открой приложение из Telegram',
   selected_toast: 'выбрана', locked: 'Эта девушка пока закрыта', need_premium: 'Доступна с Premium ⭐',
   paid_prem: 'Premium активирован ✨', paid_credit: 'Фото-кредит начислен 📸',
   pay_failed: 'Оплата не прошла', pay_cancelled: 'Оплата отменена',
   invoice_err: 'Не удалось открыть оплату — попробуй ещё раз',
+  pay_stars: 'Telegram Stars', pay_sbp: 'СБП / карта', pay_crypto: 'Крипта (TON/USDT)',
+  pay_get: 'Получить', pay_link_err: 'Не удалось создать счёт — попробуй ещё раз',
+  pay_opened: 'Платёжная страница открыта — заверши оплату там',
   input_ph: 'Напиши сообщение…', send: 'Отправить',
   empty_chat: 'Напиши первое сообщение — она ответит прямо здесь',
   limit_reached: 'Дневной лимит бесплатных сообщений. Premium снимает лимит ⭐',
@@ -651,6 +839,11 @@ document.getElementById('lbMediaCircle').textContent = L.media_circle;
 document.getElementById('lbFeatQuest').textContent = L.feat_quest;
 document.getElementById('lbFeatDate').textContent = L.feat_date;
 document.getElementById('lbFeatApt').textContent = L.feat_apt;
+document.getElementById('chanBannerText').textContent = L.chan_banner;
+document.getElementById('chanTitle').textContent = L.chan_title;
+document.getElementById('chanWarn').textContent = L.chan_warn;
+document.getElementById('chanGo').textContent = L.chan_go;
+document.getElementById('chanCheck').textContent = L.chan_check;
 document.querySelectorAll('#bottomnav .lbl').forEach((el, i) => {
   el.textContent = ['Персонажи','Чаты','Картинки','Магазин','Профиль'][i];
   if (LANG === 'en') el.textContent = ['Characters','Chats','Pictures','Shop','Profile'][i];
@@ -874,7 +1067,7 @@ function chatBubble(roleOrM, content, ts) {
     if (m.media_kind === 'circle') body = `<video class="circle" src="${esc(src)}" loop autoplay muted playsinline></video>`;
     else if (m.media_kind === 'video') body = `<video class="m" src="${esc(src)}" controls playsinline></video>`;
     else if (m.media_kind === 'voice') body = `<audio controls src="${esc(src)}"></audio>`;
-    else body = `<img class="m" src="${esc(src)}" alt="">`;
+    else body = `<img class="m" src="${esc(src)}" data-lb="1" alt="">`;
     if (m.content) body += `<div style="margin-top:4px">${esc(m.content)}</div>`;
   }
   return `<div class="msg ${cls}">${body}${t}</div>`;
@@ -1148,11 +1341,28 @@ function openCharPage(el) {
     `${c.age} ${L.years} · ${status === 'premium' ? L.prem : L.active}` + (c.selected ? ` · ❤️ ${L.selected}` : '');
   const strip = document.getElementById('charStrip');
   const shots = (c.gallery && c.gallery.length) ? c.gallery : [c.photo];
+  // V3.43.0: Come Closer carousel — arrows + dots switch the shot while a tap
+  // on the photo itself opens the full-screen lightbox (data-lb delegate).
   strip.innerHTML = shots.map((u, i) =>
-    `<img src="${esc(u)}" class="${i === 0 ? 'on' : ''}" alt="">`).join('');
-  strip.querySelectorAll('img').forEach(img => img.addEventListener('click', () => {
-    strip.querySelectorAll('img').forEach(x => x.classList.toggle('on', x === img));
-  }));
+    `<img src="${esc(u)}" data-lb="1" class="${i === 0 ? 'on' : ''}" alt="">`).join('');
+  const dots = document.getElementById('charDots');
+  dots.innerHTML = shots.map((u, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('');
+  const multi = shots.length > 1;
+  document.getElementById('charPrev').style.display = multi ? '' : 'none';
+  document.getElementById('charNext').style.display = multi ? '' : 'none';
+  dots.style.display = multi ? '' : 'none';
+  const setShot = (i) => {
+    const imgs = strip.querySelectorAll('img');
+    if (!imgs.length) return;
+    const idx = (i + imgs.length) % imgs.length;
+    imgs.forEach((x, k) => x.classList.toggle('on', k === idx));
+    dots.querySelectorAll('i').forEach((x, k) => x.classList.toggle('on', k === idx));
+  };
+  const curShot = () => [...strip.querySelectorAll('img')].findIndex(x => x.classList.contains('on'));
+  document.getElementById('charPrev').onclick = () => setShot(curShot() - 1);
+  document.getElementById('charNext').onclick = () => setShot(curShot() + 1);
+  dots.querySelectorAll('i').forEach((d, i) => { d.onclick = () => setShot(i); });
+  loadLike(c.id);
   document.getElementById('charStart').textContent = '💬 ' + L.start_chat;
   document.getElementById('charBio').textContent = c.bio || '';
   const plot = document.getElementById('charPlot');
@@ -1343,7 +1553,7 @@ async function loadChats() {
   try {
     const r = await fetch('/webapp/api/chats?init_data=' + encodeURIComponent(tg.initData || ''));
     if (r.status === 401) {
-      document.getElementById('chatsbody').innerHTML = `<div class="err">${L.err_auth}</div>`;
+      document.getElementById('chatsbody').innerHTML = `${authErrHtml()}`;
       return;
     }
     const j = await r.json();
@@ -1412,7 +1622,7 @@ async function generatePicture() {
     if (r.status === 400) { toast(L.pic_blocked); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     const j = await r.json();
     if (!j.ok) { toast(j.reason || L.pic_gen_fail); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
-    result.innerHTML = `<img src="${esc(j.file)}?init_data=${encodeURIComponent(tg.initData || '')}" style="width:100%;border-radius:14px;margin-top:10px;display:block;background:var(--card2)">`;
+    result.innerHTML = `<img src="${esc(j.file)}?init_data=${encodeURIComponent(tg.initData || '')}" data-lb="1" style="width:100%;border-radius:14px;margin-top:10px;display:block;background:var(--card2)">`;
     toast('🍑 ' + (j.credits_left != null ? j.credits_left : ''));
     loadMe();
     loadPictures();
@@ -1438,7 +1648,7 @@ async function loadPictures() {
       return;
     }
     box.innerHTML = `<div class="pgal">${pics.map(p =>
-      `<img src="${esc(p.file)}?init_data=${encodeURIComponent(tg.initData || '')}" alt="" loading="lazy">`).join('')}</div>`;
+      `<img src="${esc(p.file)}?init_data=${encodeURIComponent(tg.initData || '')}" data-lb="1" alt="" loading="lazy">`).join('')}</div>`;
   } catch (e) {
     box.innerHTML = '';
   }
@@ -1455,40 +1665,80 @@ async function loadShop() {
     const fiat = o => (o.rub ? ` · ${esc(o.rub)} ₽` : '') + (o.usd ? ` · $${esc(o.usd)}` : '');
     const price = `⭐ ${p.stars} <small>${esc(L.month)}</small>` + fiat(p);
     const feats = p.features.map(f => `<li><span>${esc(f.emoji)}</span><span>${esc(LANG === 'en' ? f.en : f.ru)}</span></li>`).join('');
-    // V3.34.0: what the app sells directly — the CTA button on the Premium
-    // hero and the +1 photo credit row; the rest of the list stays a price
-    // reference for chat purchases.
+    // V3.43.0: Come Closer-style pack squares — tap one and the pay-method
+    // modal opens (Stars / card-SBP / crypto rows), like the benchmark shop.
     const purchases = s.purchases || [];
-    const premBuy = purchases.find(x => x.id === 'premium');
-    const premWeek = purchases.find(x => x.id === 'premium_week');
-    const credit = purchases.find(x => x.id === 'photo_credit');
-    // V3.36.0: the rub + dollar prices ride next to the Stars price on both plans.
-    const moRub = premBuy ? fiat(premBuy) : '';
-    const wkRub = premWeek ? fiat(premWeek) : '';
-    const heroBtn = premBuy ? `<button class="cta" data-buy="premium">⭐ ${premBuy.stars} — ${esc(L.buy)}${moRub}</button>` : '';
-    const heroWeekBtn = premWeek ? `<button class="cta ghost" data-buy="premium_week">⭐ ${premWeek.stars} — ${esc(L.week)}${wkRub}</button>` : '';
-    const creditRow = credit
-      ? `<div class="row-item"><span class="n">${esc(credit.emoji)} ${esc(credit.title)}</span><span class="buy-cell"><span class="c">${credit.stars} ⭐${fiat(credit)}</span><button class="cta small" data-buy="photo_credit">${esc(L.buy)}</button></span></div>`
-      : '';
+    SHOP = s;
+    const packs = purchases.map(x => `
+      <div class="pack" data-pay="${esc(x.id)}">
+        <div class="amt">${x.stars} ⭐</div>
+        <div class="sub">${esc(x.emoji)} ${esc(x.title)}</div>
+        <div class="rub">${x.rub ? esc(x.rub) + ' ₽' : (x.usd ? '$' + esc(x.usd) : '')}</div>
+        <button class="get">${esc(L.pay_get)}</button>
+      </div>`).join('');
     const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars} ⭐${fiat(i)}</span></div>`).join('');
     document.getElementById('shopbody').innerHTML = `
+      <div class="packs">${packs}</div>
       <div class="hero">
         <div class="title">⭐ Premium</div>
         <div class="price">${price}</div>
         <ul>${feats}</ul>
-        ${heroBtn}
-        ${heroWeekBtn}
       </div>
-      ${creditRow}
       ${items}
       <div class="note">${esc(L.pay_hint)}</div>
       <div class="note">💬 ${s.free_tier.messages_per_day} ${esc(L.msg_day)} · 📸 ${s.free_tier.photos_level_1_2}–${s.free_tier.photos_level_3_6} ${esc(L.photos_day)}</div>`;
-    document.querySelectorAll('#shopbody [data-buy]').forEach(b =>
-      b.addEventListener('click', () => buy(b.dataset.buy, b)));
+    document.querySelectorAll('#shopbody [data-pay]').forEach(b =>
+      b.addEventListener('click', () => openPay(b.dataset.pay)));
   } catch (e) {
     document.getElementById('shopbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
 }
+
+// ── V3.43.0: pay-method modal — tap a square, pick Stars / SBP / crypto ───
+let SHOP = null;
+function openPay(id) {
+  const s = SHOP;
+  if (!s) return;
+  const x = (s.purchases || []).find(p => p.id === id);
+  if (!x) return;
+  document.getElementById('payEmo').textContent = x.emoji;
+  document.getElementById('payTitle').textContent = x.title;
+  const rows = [`<button class="mrow" data-m="stars"><span class="ico">⭐</span><span class="nm">${esc(L.pay_stars)}</span><span class="pr">${x.stars} ⭐</span></button>`];
+  if (x.rub && s.freekassa) rows.push(`<button class="mrow" data-m="sbp"><span class="ico">🏦</span><span class="nm">${esc(L.pay_sbp)}</span><span class="pr">${esc(x.rub)} ₽</span></button>`);
+  if (s.wallet_pay) rows.push(`<button class="mrow" data-m="crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto)}</span><span class="pr">$${esc(x.usd || (x.stars * 0.02).toFixed(2))}</span></button>`);
+  document.getElementById('payRows').innerHTML = rows.join('');
+  document.querySelectorAll('#payRows [data-m]').forEach(b =>
+    b.addEventListener('click', () => payVia(x.id, b.dataset.m, b)));
+  document.getElementById('paymodal').classList.add('open');
+}
+async function payVia(id, method, btn) {
+  if (method === 'stars') {
+    document.getElementById('paymodal').classList.remove('open');
+    buy(id, btn);
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const r = await fetch('/webapp/api/pay_link?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product: id, method }),
+    });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    const j = await r.json();
+    if (!j.ok || !j.url) { toast(L.pay_link_err); return; }
+    document.getElementById('paymodal').classList.remove('open');
+    if (j.url.indexOf('https://t.me/') === 0 && typeof tg.openTelegramLink === 'function') tg.openTelegramLink(j.url);
+    else if (typeof tg.openLink === 'function') tg.openLink(j.url);
+    else window.open(j.url, '_blank');
+    toast(L.pay_opened);
+  } catch (e) {
+    toast(L.pay_link_err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+document.getElementById('payClose').addEventListener('click', () => document.getElementById('paymodal').classList.remove('open'));
 
 // ── V3.37.0: partner tab — stats, copy link, withdrawal, FAQ ─────────────
 let PARTNER = null;
@@ -1497,7 +1747,7 @@ async function loadPartner() {
   try {
     const r = await fetch('/webapp/api/partner?init_data=' + encodeURIComponent(tg.initData || ''));
     if (r.status === 401) {
-      document.getElementById('partnerbody').innerHTML = `<div class="err">${L.err_auth}</div>`;
+      document.getElementById('partnerbody').innerHTML = `${authErrHtml()}`;
       return;
     }
     const j = await r.json();
@@ -1570,7 +1820,7 @@ async function loadMe() {
   try {
     const r = await fetch('/webapp/api/me?init_data=' + encodeURIComponent(tg.initData || ''));
     if (r.status === 401) {
-      document.getElementById('profilebody').innerHTML = `<div class="err">${L.err_auth}</div>`;
+      document.getElementById('profilebody').innerHTML = `${authErrHtml()}`;
       chip.textContent = '—'; return;
     }
     const j = await r.json();
@@ -1710,12 +1960,107 @@ document.getElementById('wizBack').addEventListener('click', () => {
   closeWizard();
 });
 
+// ── V3.43.0: auth failures are no longer a dead end ───────────────────────
+// Say WHY it failed (opened outside Telegram vs stale initData) and offer a
+// one-tap retry instead of a bare error line.
+function authErrHtml() {
+  const msg = (tg.initData || '').trim() ? L.err_auth_retry : L.err_auth_out;
+  return `<div class="err">${msg}<br><button class="cta small" style="margin-top:10px" onclick="location.reload()">${L.err_auth_btn}</button></div>`;
+}
+
+// ── V3.43.0: full-screen lightbox — tap a photo and it opens ──────────────
+const lbRoot = document.getElementById('lightbox');
+function openLightbox(src) {
+  document.getElementById('lbImg').src = src;
+  lbRoot.classList.add('open');
+}
+document.getElementById('lbClose').addEventListener('click', () => lbRoot.classList.remove('open'));
+lbRoot.addEventListener('click', e => { if (e.target === lbRoot) lbRoot.classList.remove('open'); });
+document.addEventListener('click', e => {
+  const img = e.target && e.target.closest ? e.target.closest('img[data-lb]') : null;
+  if (img && img.src) openLightbox(img.src);
+});
+
+// ── V3.43.0: the character-page like («♡ 189» on the benchmarked card) ────
+const LIKECACHE = {};
+function setLikeUi(st) {
+  const b = document.getElementById('charLike');
+  b.textContent = (st.liked ? '❤️ ' : '♡ ') + (st.count || 0);
+  b.classList.toggle('on', !!st.liked);
+}
+async function loadLike(charId) {
+  const btn = document.getElementById('charLike');
+  btn.dataset.char = charId;
+  setLikeUi(LIKECACHE[charId] || { count: 0, liked: false });
+  try {
+    const r = await fetch('/webapp/api/char_like?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(charId));
+    const j = await r.json();
+    if (j.ok) {
+      LIKECACHE[charId] = { count: j.count, liked: j.liked };
+      if (btn.dataset.char === charId) setLikeUi(LIKECACHE[charId]);
+    }
+  } catch (e) { /* the like badge is decorative — never block the page */ }
+}
+document.getElementById('charLike').addEventListener('click', async () => {
+  const charId = document.getElementById('charLike').dataset.char;
+  if (!charId) return;
+  try {
+    const r = await fetch('/webapp/api/char_like?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(charId), { method: 'POST' });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    const j = await r.json();
+    if (j.ok) { LIKECACHE[charId] = { count: j.count, liked: j.liked }; setLikeUi(LIKECACHE[charId]); }
+  } catch (e) { toast(L.reply_err); }
+});
+
+// ── V3.43.0: channel-subscribe peach bonus (banner + gift modal) ──────────
+let CHAN = { url: 'https://t.me/Anna634212', bonus: 100, granted: false };
+async function loadChannel() {
+  try {
+    const r = await fetch('/webapp/api/channel_bonus?init_data=' + encodeURIComponent(tg.initData || ''));
+    const j = await r.json();
+    if (j.ok) CHAN = { url: j.url || CHAN.url, bonus: j.bonus != null ? j.bonus : CHAN.bonus, granted: !!j.granted };
+  } catch (e) { /* the modal still opens with the defaults */ }
+  document.getElementById('chanText').textContent = L.chan_text(CHAN.bonus);
+}
+document.getElementById('chanBanner').addEventListener('click', () => {
+  document.getElementById('chanText').textContent = L.chan_text(CHAN.bonus);
+  document.getElementById('chanmodal').classList.add('open');
+});
+document.getElementById('chanClose').addEventListener('click', () => document.getElementById('chanmodal').classList.remove('open'));
+document.getElementById('chanGo').addEventListener('click', () => {
+  if (typeof tg.openTelegramLink === 'function') tg.openTelegramLink(CHAN.url);
+  else window.open(CHAN.url, '_blank');
+});
+let chanChecking = false;
+document.getElementById('chanCheck').addEventListener('click', async () => {
+  if (chanChecking) return;
+  chanChecking = true;
+  try {
+    const r = await fetch('/webapp/api/channel_bonus?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    if (r.status === 502) { toast(L.chan_check_fail); return; }
+    const j = await r.json();
+    if (!j.ok) { toast(L.chan_check_fail); return; }
+    CHAN.granted = !!j.granted || !!j.already;
+    if (j.granted) toast(L.chan_ok(j.bonus != null ? j.bonus : CHAN.bonus));
+    else if (j.already) toast(L.chan_already);
+    else if (j.revoked) toast(L.chan_revoked);
+    else toast(L.chan_not);
+    loadMe();
+  } catch (e) {
+    toast(L.chan_check_fail);
+  } finally {
+    chanChecking = false;
+  }
+});
+
 renderStudio();
 loadMe();
 loadCharacters();
 loadShop();
 loadChats();
 loadPictures();
+loadChannel();
 </script>
 </body>
 </html>

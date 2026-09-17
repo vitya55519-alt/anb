@@ -15,7 +15,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_config_declares_weekly_plan():
@@ -32,10 +32,13 @@ def test_payments_grant_week():
     # the product is priced from the same constant pre_checkout validates
     # (PRODUCTS uses the module's compact key:value style)
     assert '"premium_week":PREMIUM_WEEKLY_STARS' in PAYMENTS
-    grant = PAYMENTS[PAYMENTS.index('if product in {"premium_month","premium_month_discount","premium_week"}'):]
-    grant = grant[:grant.index('elif product')]
-    assert 'days=7 if product=="premium_week" else 30' in grant
-    assert 'credits=PREMIUM_WEEKLY_PHOTO_CREDITS if product=="premium_week" else PREMIUM_MONTHLY_PHOTO_CREDITS' in grant
+    # V3.43.0: the grant block grew the quarterly plan — week/quarter/month
+    # each carry their own (days, credits) pair now.
+    grant = PAYMENTS[PAYMENTS.index('if product in {"premium_month","premium_month_discount","premium_week","premium_quarter"}'):]  # noqa: E501
+    grant = grant[:grant.index('elif product in {"photo","custom_photo"}')]
+    assert 'days, credits = 7, PREMIUM_WEEKLY_PHOTO_CREDITS' in grant
+    assert 'days, credits = 90, PREMIUM_QUARTERLY_PHOTO_CREDITS' in grant
+    assert 'days, credits = 30, PREMIUM_MONTHLY_PHOTO_CREDITS' in grant
     assert 'timedelta(days=days)' in grant
 
 
@@ -93,8 +96,9 @@ def test_rub_prices_next_to_stars():
     # the Mini App products carry the rub price for both plans
     assert "'rub': FREEKASSA_PREMIUM_PRICE_RUB if FREEKASSA_ENABLED else None," in WEBAPP_SVC
     assert "'rub': FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB if FREEKASSA_ENABLED else None," in WEBAPP_SVC
-    assert 'const moRub = premBuy ? fiat(premBuy) : \'\'' in INDEX
-    assert 'const wkRub = premWeek ? fiat(premWeek) : \'\'' in INDEX
+    # V3.43.0: the rub prices ride on the shop pack squares now
+    assert 'const packs = purchases.map(x => `' in INDEX
+    assert "esc(x.rub) + ' ₽'" in INDEX
     # the legal tariffs price the week in rubles too (Platega) — via fiat_suffix
     assert 'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD' in LEGAL
 
@@ -105,10 +109,11 @@ def test_mini_app_sells_week():
     assert "'stars': PREMIUM_WEEKLY_STARS," in WEBAPP_SVC
     assert 'Premium · 7 дней' in WEBAPP_SVC
     assert 'Premium · 7 days' in WEBAPP_SVC
-    # frontend: ghost CTA under the monthly button on the Premium hero
-    assert 'data-buy="premium_week"' in INDEX
-    assert "premWeek.stars} — ${esc(L.week)}" in INDEX
-    assert 'cta ghost' in INDEX
+    # frontend: V3.43.0 the weekly plan is a pack square in the shop grid —
+    # a tap opens the pay-method modal (Stars / SBP / crypto rows)
+    assert 'class="pack" data-pay="${esc(x.id)}"' in INDEX
+    assert 'openPay(b.dataset.pay)' in INDEX
+    assert '#paymodal' in INDEX
     assert "week: '7 days'" in INDEX and "week: '7 дней'" in INDEX
 
 

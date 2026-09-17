@@ -12,7 +12,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_invoice_products_declared():
@@ -88,9 +88,10 @@ def test_frontend_buys_and_selects():
     assert 'tg.openInvoice(j.link' in INDEX
     assert "/webapp/api/invoice?init_data=" in INDEX
     assert "JSON.stringify({ product: productId })" in INDEX
-    # purchase buttons driven by the backend purchase list
-    assert "data-buy=\"premium\"" in INDEX
-    assert "data-buy=\"photo_credit\"" in INDEX
+    # purchase squares driven by the backend purchase list — V3.43.0: the
+    # Come Closer pack grid; a tap opens the pay-method modal (Stars/SBP/crypto)
+    assert 'class="pack" data-pay="${esc(x.id)}"' in INDEX
+    assert 'openPay(b.dataset.pay)' in INDEX
     assert "s.purchases || []" in INDEX
     # character selection posts to the validated endpoint and re-renders
     # V3.35.0: the card tap opens the dialog; selection lives on the chat header
@@ -111,6 +112,11 @@ def test_no_unescaped_backend_strings_in_templates():
     numeric_ok = {
         'p.stars', 'p.rub', 'premBuy.stars', 'premBuy.rub', 'premWeek.stars', 'premWeek.rub',
         'credit.stars', 'i.stars', 'lvlPct', 'WIZ.stars', 'WIZ.rub', 'WIZ.usd',
+        # V3.43.0: pack-square Stars price — numeric from config constants.
+        'x.stars',
+        # V3.43.0: the channel-bonus L-functions interpolate the peach amount
+        # (a config integer) into their localized template.
+        'b',
         's.free_tier.messages_per_day', 's.free_tier.photos_level_1_2',
         's.free_tier.photos_level_3_6',
         # V3.37.0: partner tab percent — always numeric from config, and the
@@ -128,6 +134,12 @@ def test_no_unescaped_backend_strings_in_templates():
             'badge', 'viewsBadge',
             'c.selected ? `<span class="badge" style="left:8px;top:auto;bottom:8px;color:#e8447f">❤️</span>` : \'\'',
             'heroBtn', 'heroWeekBtn', 'moRub', 'wkRub', 'creditRow', 'items', 'feats', 'price',
+            # V3.43.0: the pack grid + pay-modal row fragments — every inner
+            # backend field (id/emoji/title/rub) is esc()'d at build time.
+            'packs', "rows.join('')",
+            # V3.43.0: the auth-failure fragment — built from L constants and
+            # static markup only, no backend strings inside.
+            'authErrHtml()', 'msg',
             'customBadge', 'opts', 'review', 't',
             "role === 'user' ? 'user' : 'bot'",
             "c.custom ? '1' : '0'",

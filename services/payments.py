@@ -3,12 +3,12 @@ import logging
 from sqlalchemy import select
 from services.db import SessionLocal
 from models.app_models import Subscription, StarTransaction, User
-from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS
+from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_STARS, PREMIUM_QUARTERLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS
 from services.access_service import is_premium
 
 logger = logging.getLogger(__name__)
 
-PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"premium_week":PREMIUM_WEEKLY_STARS,"video":VIDEO_COST_STARS}
+PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"premium_week":PREMIUM_WEEKLY_STARS,"premium_quarter":PREMIUM_QUARTERLY_STARS,"video":VIDEO_COST_STARS}
 
 def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provider:str="stars", provider_payload:str|None=None):
     now=datetime.now(timezone.utc).replace(tzinfo=None)
@@ -25,11 +25,16 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
             provider=provider,
             provider_payload=provider_payload,
         ))
-        if product in {"premium_month","premium_month_discount","premium_week"}:
+        if product in {"premium_month","premium_month_discount","premium_week","premium_quarter"}:
             # V3.34.1: premium_week grants 7 days + the weekly credit share;
+            # V3.43.0: premium_quarter grants 90 days + three credit shares;
             # the monthly plans keep 30 days + the monthly share.
-            days=7 if product=="premium_week" else 30
-            credits=PREMIUM_WEEKLY_PHOTO_CREDITS if product=="premium_week" else PREMIUM_MONTHLY_PHOTO_CREDITS
+            if product == "premium_week":
+                days, credits = 7, PREMIUM_WEEKLY_PHOTO_CREDITS
+            elif product == "premium_quarter":
+                days, credits = 90, PREMIUM_QUARTERLY_PHOTO_CREDITS
+            else:
+                days, credits = 30, PREMIUM_MONTHLY_PHOTO_CREDITS
             current=s.scalar(select(Subscription).where(Subscription.user_id==user.id,Subscription.status=="active",Subscription.expires_at>now).order_by(Subscription.expires_at.desc()))
             start=current.expires_at if current and current.expires_at and current.expires_at>now else now
             s.add(Subscription(user_id=user.id,plan="premium",status="active",stars_amount=stars,started_at=now,expires_at=start+timedelta(days=days),telegram_charge_id=charge_id))
@@ -81,6 +86,31 @@ def grant_photo_credits(telegram_id:int, amount:int, reason:str="bonus")->int:
             return 0
         user.photo_credits=(user.photo_credits or 0)+max(0,int(amount))
         s.add(StarTransaction(user_id=user.id,transaction_type="grant",product=reason,stars=0,telegram_charge_id=marker))
+        s.commit()
+        return int(user.photo_credits or 0)
+
+
+def has_credit_grant(telegram_id:int, reason:str)->bool:
+    """V3.43.0: whether a reason-marker grant already landed — lets the UI show
+    «bonus already received» without triggering the grant itself."""
+    marker=f"credit_grant:{reason}:{telegram_id}"
+    with SessionLocal() as s:
+        return bool(s.scalar(select(StarTransaction).where(StarTransaction.telegram_charge_id==marker)))
+
+
+def revoke_photo_credits(telegram_id:int, amount:int, reason:str)->int:
+    """V3.43.0: mirror of grant_photo_credits for the channel bonus — «при
+    отписке бонус аннулируется». Subtracts the bonus (never below zero) and
+    drops the marker so re-subscribing can grant it again. Returns the new
+    balance, or -1 when there was nothing to revoke."""
+    marker=f"credit_grant:{reason}:{telegram_id}"
+    with SessionLocal() as s:
+        tx=s.scalar(select(StarTransaction).where(StarTransaction.telegram_charge_id==marker))
+        if not tx: return -1
+        user=s.scalar(select(User).where(User.telegram_id==str(telegram_id)))
+        if not user: return -1
+        s.delete(tx)
+        user.photo_credits=max(0, (user.photo_credits or 0)-max(0, int(amount)))
         s.commit()
         return int(user.photo_credits or 0)
 

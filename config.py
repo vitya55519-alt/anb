@@ -207,9 +207,13 @@ FREEKASSA_API_ENABLED = bool(FREEKASSA_MERCHANT_ID and FREEKASSA_API_KEY)
 # the user IP, so we send our own public egress IP (auto-looked-up, cached).
 # Override manually when the auto lookup is blocked on the host.
 FREEKASSA_SERVER_IP = os.getenv("FREEKASSA_SERVER_IP", "").strip()
-FREEKASSA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_RUB", "299")))
+FREEKASSA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_RUB", "899")))
 # V3.34.1: card/SBP price of the weekly plan (rub next to the Stars price).
-FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB", "99")))
+# V3.43.0: owner benchmarked Come Closer and asked to take their prices —
+# week 299₽ / month 899₽ / 3 months 1799₽.
+FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB", "299")))
+# V3.43.0: the 3-month plan the competitor card shows (−50% vs buying monthly).
+FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB", "1799")))
 # V3.20.1: international Visa/Mastercard button — the same FreeKassa kassa,
 # invoice currency USD (multi-currency must be enabled in the kassa settings).
 FREEKASSA_PREMIUM_PRICE_USD = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_USD", "5")))
@@ -249,6 +253,9 @@ PREMIUM_MONTHLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_MONTHLY_PHOTO_CREDITS", "
 # slightly above the monthly plan so the month stays the better deal.
 PREMIUM_WEEKLY_STARS = int(os.getenv("PREMIUM_WEEKLY_STARS", "150"))
 PREMIUM_WEEKLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_WEEKLY_PHOTO_CREDITS", "3"))
+# V3.43.0: the 3-month plan (three monthly credit shares, priced below 3×month).
+PREMIUM_QUARTERLY_STARS = int(os.getenv("PREMIUM_QUARTERLY_STARS", "1200"))
+PREMIUM_QUARTERLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_QUARTERLY_PHOTO_CREDITS", "36"))
 PHOTO_COST_STARS = int(os.getenv("PHOTO_COST_STARS", "25"))
 CHAT_PHOTO_OFFER_STARS = int(os.getenv("CHAT_PHOTO_OFFER_STARS", "5"))
 CUSTOM_PHOTO_COST_STARS = int(os.getenv("CUSTOM_PHOTO_COST_STARS", "40"))
@@ -361,6 +368,19 @@ FIRST_START_PREMIUM_TRIAL_DAYS = int(os.getenv("FIRST_START_PREMIUM_TRIAL_DAYS",
 PARTNER_ENABLED = os.getenv("PARTNER_ENABLED", "1") == "1"
 REFERRAL_COMMISSION_PCT = float(os.getenv("REFERRAL_COMMISSION_PCT", "30"))
 PARTNER_MIN_PAYOUT_RUB = int(os.getenv("PARTNER_MIN_PAYOUT_RUB", "500"))
+# V3.43.0: support moved to a DEDICATED bot the owner reads personally
+# (@Anna67901support_bot). Only the public username is configured here — the
+# support bot's token never belongs in this service. «Поддержка» buttons hand
+# the user a t.me link to it instead of arming an in-bot ticket.
+SUPPORT_BOT_USERNAME = os.getenv("SUPPORT_BOT_USERNAME", "Anna67901support_bot").strip().lstrip('@')
+# V3.43.0: «Бесплатные 🍑 за подписку на канал» — the owner's channel and the
+# one-time peach bonus for being a member (checked via getChatMember).
+CHANNEL_SUBSCRIBE_USERNAME = os.getenv("CHANNEL_SUBSCRIBE_USERNAME", "Anna634212").strip().lstrip('@')
+CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "100"))
+# V3.43.0: how long a Telegram WebApp initData stays acceptable. The 24h
+# default broke users who reopen the Mini App from the client's recents —
+# the hash is still verified, only the replay window is wider now.
+WEBAPP_INIT_DATA_MAX_AGE = int(os.getenv("WEBAPP_INIT_DATA_MAX_AGE", "604800"))
 # Shown in the partner FAQ — the payout rails the owner actually supports.
 PARTNER_PAYOUT_METHODS = os.getenv("PARTNER_PAYOUT_METHODS", "карта РФ, СБП, крипта (USDT)")
 

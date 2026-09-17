@@ -18,7 +18,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_config_fiat_helpers():
@@ -108,8 +108,10 @@ def test_frontend_renders_fiat_next_to_stars():
     # the shared formatter esc()-wraps backend fields before they hit innerHTML
     assert 'const fiat = o =>' in INDEX
     assert '(o.rub ? ` · ${esc(o.rub)} ₽` : \'\') + (o.usd ? ` · $${esc(o.usd)}` : \'\')' in INDEX
-    assert 'fiat(p)' in INDEX and 'fiat(credit)' in INDEX and 'fiat(i)' in INDEX
-    assert 'fiat(premBuy)' in INDEX and 'fiat(premWeek)' in INDEX
+    assert 'fiat(i)' in INDEX
+    # V3.43.0: the shop pack squares print the rub price inline from the same
+    # payload (the old hero/credit rows that used fiat(p)/fiat(credit) are gone)
+    assert "esc(x.rub) + ' ₽'" in INDEX
     # the constructor wizard price note shows all three tiers
     assert "WIZ.rub ? ' · ' + esc(WIZ.rub) + ' ₽' : ''" in INDEX
     assert "WIZ.usd ? ' · $' + esc(WIZ.usd) : ''" in INDEX

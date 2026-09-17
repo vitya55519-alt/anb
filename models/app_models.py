@@ -338,7 +338,18 @@ class CharacterStat(Base):
     __tablename__ = "character_stats"
     character_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     views: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # V3.43.0: the «♡ 189» like counter from the benchmarked character page.
+    likes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class CharacterLike(Base):
+    # V3.43.0: one row per (girl, user) — the like marker behind the counter;
+    # the composite PK makes double-likes impossible and unlikes exact.
+    __tablename__ = "character_likes"
+    character_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 class ProviderStat(Base):
     # V3.40.0: per-provider success/failure counters for the admin «Отказы»

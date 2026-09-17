@@ -26,7 +26,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0')
+    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0')
 
 
 # ── p1. the owner can finally answer a support ticket ─────────────────────
@@ -116,8 +116,9 @@ def test_premium_tariff_card_layout():
     assert "{month_pw} {unit} в неделю{strike}" in card
     assert "{month_pw} {unit} per week{strike}" in card
     assert 'save = max(0, round((1 - month_full / was) * 100))' in card
-    # rub prices take over when FreeKassa is enabled
-    assert "unit, week_full, month_full = '₽', FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_RUB" in card
+    # rub prices take over when FreeKassa is enabled — V3.43.0: the quarter
+    # plan joined the trio, so all three totals come from the kassa constants
+    assert "week_full, month_full, quarter_full = FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB" in card
 
 
 def test_premium_pitch_embeds_the_tariff_card():

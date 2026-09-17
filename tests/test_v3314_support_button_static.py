@@ -23,7 +23,7 @@ LINK = 'https://pay.cloudtips.ru/p/7afc7b16'
 
 
 def test_version_bumped():
-    assert VERSION in ('3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_support_key_added_to_reply_menu():
@@ -46,13 +46,14 @@ def test_donation_service_exposes_reusable_button():
 
 
 def test_support_button_handler_wired():
-    # V3.38.0: dual-language match + arms the pending ticket; the next plain
-    # text message is forwarded to the admins (see text_message).
+    # V3.38.0: dual-language match; V3.43.0: the button hands the user a url
+    # button to the dedicated support bot instead of arming an in-bot ticket.
     assert "@dp.message(F.text.in_(kb_pair('support')))" in MAIN
     assert 'async def support_button(message: types.Message):' in MAIN
     body = MAIN[MAIN.index('async def support_button(message: types.Message):'):]
     body = body[:body.index('async def _deliver_support_message(')]
-    assert '_support_pending[' in body
+    assert 'SUPPORT_BOT_USERNAME' in body
+    assert "url=f'https://t.me/{SUPPORT_BOT_USERNAME}'" in body
     assert 'ensure_user(' in body
     assert 'lang = user_lang(message.from_user.id)' in body
     # the shared delivery forwards the ticket to every configured admin

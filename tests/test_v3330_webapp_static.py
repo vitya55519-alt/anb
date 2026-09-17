@@ -16,7 +16,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_init_data_hmac_validation():
@@ -24,8 +24,11 @@ def test_init_data_hmac_validation():
     assert 'def validate_init_data(init_data: str' in WEBAPP_SVC
     assert "hmac.new(b'WebAppData', token.encode(), hashlib.sha256)" in WEBAPP_SVC
     assert 'hmac.compare_digest(calculated, received_hash)' in WEBAPP_SVC
-    # freshness window so a captured initData can be replayed only briefly
-    assert 'max_age_seconds: int = 86400' in WEBAPP_SVC
+    # freshness window so a captured initData can be replayed only briefly;
+    # V3.43.0: the default comes from config (7 days) — client recents must
+    # not lock users out, while callers can still pin a stricter window.
+    assert 'max_age_seconds: int | None = None' in WEBAPP_SVC
+    assert 'max_age_seconds = WEBAPP_INIT_DATA_MAX_AGE' in WEBAPP_SVC
     assert 'def init_data_user(pairs: dict) -> dict:' in WEBAPP_SVC
 
 
@@ -119,10 +122,13 @@ def test_menu_button_installed_when_public_url_set():
     main_body = MAIN[MAIN.index('async def main():'):]
     assert 'if PUBLIC_BASE_URL:' in main_body
     assert 'types.MenuButtonWebApp(' in main_body
-    assert "types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp')" in main_body
+    # V3.43.0: the url rides in a local var and the install retries 3 times
+    assert "menu_url = f'{PUBLIC_BASE_URL}/webapp'" in main_body
+    assert 'types.WebAppInfo(url=menu_url)' in main_body
     assert 'set_chat_menu_button' in main_body
+    assert 'for attempt in range(1, 4):' in main_body
     # the call is guarded — a Telegram API hiccup must not kill startup
-    assert "logger.exception('failed to set webapp menu button')" in main_body
+    assert "logger.exception('failed to set webapp menu button attempt=%d', attempt)" in main_body
 
 
 def test_guaranteed_app_entry_points():

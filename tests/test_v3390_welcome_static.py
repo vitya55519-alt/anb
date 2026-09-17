@@ -24,7 +24,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0',)
+    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0',)
 
 
 # ── 1. photo banner leads the welcome ──────────────────────────────────────
@@ -60,8 +60,9 @@ def test_welcome_caption_is_short_and_punchy():
 def test_welcome_back_is_compact():
     assert 'девушки, чаты, картинки и магазин — в приложении 👇' in MAIN
     assert 'the girls, chats, pictures and the shop live in the app 👇' in MAIN
-    # the referral block left the caption and goes out as its own message
-    assert 'await message.answer(ref_hint.strip())' in MAIN
+    # V3.43.0: the referral dump left the welcome entirely (it lives on the
+    # partner screen now) — no separate ref_hint message is sent anymore.
+    assert 'await message.answer(ref_hint.strip())' not in MAIN
     assert 'welcome_back + ref_hint' not in MAIN
 
 

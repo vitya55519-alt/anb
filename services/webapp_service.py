@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import re
 import secrets
 import time
@@ -56,9 +57,11 @@ from config import (
     TELEGRAM_TOKEN,
     VIDEO_COST_STARS,
     VIDEO_PREMIUM_FREE_DAILY,
+    WALLET_PAY_ENABLED,
+    WEBAPP_INIT_DATA_MAX_AGE,
     fiat_values,
 )
-from models.app_models import CharacterStat, Message, User
+from models.app_models import CharacterLike, CharacterStat, Message, User
 from services import legal_service
 from services.access_service import is_premium
 from services.character_card_service import get_card, get_scenario_hook, list_cards
@@ -71,6 +74,8 @@ from services.ui_lang import EN, user_lang
 
 ROOT = Path(__file__).resolve().parents[1]
 WEBAPP_INDEX = ROOT / 'webapp' / 'index.html'
+
+logger = logging.getLogger(__name__)
 
 # V3.38.0: user-generated pictures from the «Картинки» studio tab live
 # outside the character system — one folder per user, meta.json index.
@@ -137,14 +142,19 @@ _FACE_REFERENCES = {
 }
 
 
-def validate_init_data(init_data: str, bot_token: str | None = None, max_age_seconds: int = 86400) -> dict | None:
+def validate_init_data(init_data: str, bot_token: str | None = None, max_age_seconds: int | None = None) -> dict | None:
     """Verify Telegram WebApp initData; return its fields, or None if invalid.
 
     Per the official spec: data_check_string is every field except ``hash``,
     sorted alphabetically, joined with newlines; secret key is
     HMAC-SHA256(key="WebAppData", msg=bot_token).
+    V3.43.0: the age window comes from config (7 days) — the strict 24h
+    default locked users out when the client reopened the Mini App from its
+    recents list with the previous initData.
     """
     token = bot_token or TELEGRAM_TOKEN
+    if max_age_seconds is None:
+        max_age_seconds = WEBAPP_INIT_DATA_MAX_AGE
     if not init_data or not token:
         return None
     try:
@@ -365,6 +375,10 @@ def api_shop(lang: str = 'ru') -> dict:
         ],
         'constructor_rub': CONSTRUCTOR_COST_RUB if FREEKASSA_ENABLED else None,
         'constructor_usd': CONSTRUCTOR_PRICE_USD,
+        # V3.43.0: the pay-method modal only offers rows the backend can sell —
+        # FreeKassa (card/SBP) and Wallet Pay (crypto) are env-gated.
+        'freekassa': FREEKASSA_ENABLED,
+        'wallet_pay': WALLET_PAY_ENABLED,
         # V3.34.0: what the Mini App can sell right now (Stars invoices via
         # tg.openInvoice) — the rest of the price list stays informational.
         'purchases': api_invoice_products(lang),
@@ -599,7 +613,7 @@ def character_gallery(character_id: str) -> list[Path]:
     folder = base.joinpath(rel[0], rel[1])
     if not folder.exists():
         return []
-    return sorted(p for p in folder.glob('*.png') if p.name.startswith(('00_', '01_')))
+    return sorted(p for p in folder.glob('*.png') if p.name.startswith(('00_', '01_', '02_', '03_', '04_', '05_')))
 
 
 def character_card_gif(character_id: str) -> Path | None:
@@ -646,6 +660,44 @@ def bump_character_views(character_id: str) -> int:
             return row.views
     except Exception:
         return 0
+
+
+def character_like_state(character_id: str, telegram_id: int | None) -> dict:
+    """V3.43.0: the «♡ N» counter of a heroine plus whether THIS user already
+    liked her — the Come Closer character page badge, per-user aware."""
+    try:
+        with SessionLocal() as s:
+            row = s.get(CharacterStat, character_id)
+            count = int(row.likes or 0) if row else 0
+            liked = bool(telegram_id) and s.get(CharacterLike, (character_id, int(telegram_id))) is not None
+        return {'count': count, 'liked': liked}
+    except Exception:
+        return {'count': 0, 'liked': False}
+
+
+def toggle_character_like(character_id: str, telegram_id: int) -> dict:
+    """V3.43.0: tap the heart once to like, again to take it back. The marker
+    row and the counter move together inside one transaction."""
+    try:
+        with SessionLocal() as s:
+            row = s.get(CharacterStat, character_id)
+            if row is None:
+                row = CharacterStat(character_id=character_id, views=0, likes=0)
+                s.add(row)
+            mark = s.get(CharacterLike, (character_id, int(telegram_id)))
+            if mark:
+                s.delete(mark)
+                row.likes = max(0, (row.likes or 0) - 1)
+                liked = False
+            else:
+                s.add(CharacterLike(character_id=character_id, telegram_id=int(telegram_id)))
+                row.likes = (row.likes or 0) + 1
+                liked = True
+            s.commit()
+            return {'count': int(row.likes or 0), 'liked': liked}
+    except Exception:
+        logger.exception('character like toggle failed char=%s user=%s', character_id, telegram_id)
+        return character_like_state(character_id, telegram_id)
 
 
 def character_photo(character_id: str, index: int = 0) -> tuple[bytes, str] | None:

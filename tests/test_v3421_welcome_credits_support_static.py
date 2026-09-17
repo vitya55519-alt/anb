@@ -18,7 +18,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.42.2', '3.42.1', '3.42.0', '3.41.0')
+    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0')
 
 
 # ── the two new rows live on the welcome keyboard ─────────────────────────
@@ -29,7 +29,8 @@ def test_welcome_back_rows_include_credits_and_support():
     rows = rows[:rows.index('\ndef ', 10)]
     # full-width credits (peaches) + support rows, localized from KB_LABELS
     assert "text=kb_label('credits', lang), callback_data='credits:open'" in rows
-    assert "text=kb_label('support', lang), callback_data='support:open'" in rows
+    # V3.43.0: the support row deep-links to the dedicated support bot
+    assert "text=kb_label('support', lang), url=f'https://t.me/{SUPPORT_BOT_USERNAME}'" in rows
     # the pre-existing rows stay
     assert "text=kb_label('partner', lang), callback_data='partner:open'" in rows
     assert "callback_data='legal:terms'" in rows
@@ -55,25 +56,21 @@ def test_credits_open_callback_reuses_the_app_entry():
     assert '🍑 персики (фото-кредиты) покупаются в приложении' in handler
 
 
-# ── support:open arms the same ticket flow as the reply button ────────────
+# ── support: the welcome callback is gone, the bot link replaced it ────────
 
-def test_support_open_callback_arms_the_pending_ticket():
-    assert "@dp.callback_query(F.data == 'support:open')" in MAIN
-    assert 'async def support_open(cq: types.CallbackQuery):' in MAIN
-    handler = MAIN[MAIN.index('async def support_open(cq: types.CallbackQuery):'):]
-    handler = handler[:handler.index('\nasync def ', 10)]
-    assert 'await cq.answer()' in handler
-    assert 'ensure_user(cq.from_user.id' in handler
-    assert '_support_pending[cq.from_user.id] = _time.time()' in handler
-    # the one-message prompt is delivered in both languages
-    assert '👥 поддержка' in handler and '👥 support' in handler
-    assert 'опиши, что случилось, ОДНИМ сообщением' in handler
+def test_support_open_callback_is_gone():
+    # V3.43.0: support moved to @Anna67901support_bot — the ticket callback
+    # would only dead-end now that the buttons carry a t.me url instead.
+    assert "@dp.callback_query(F.data == 'support:open')" not in MAIN
+    assert 'async def support_open(cq: types.CallbackQuery):' not in MAIN
 
 
-def test_reply_support_button_is_untouched():
-    # the reply-keyboard handler and its wiring must survive the callback addition
+def test_reply_support_button_points_at_the_support_bot():
+    # the reply-keyboard handler survives but hands over a url button
     assert "@dp.message(F.text.in_(kb_pair('support')))" in MAIN
     assert 'async def support_button(message: types.Message):' in MAIN
     body = MAIN[MAIN.index('async def support_button(message: types.Message):'):]
     body = body[:body.index('async def _deliver_support_message(')]
-    assert '_support_pending[message.from_user.id] = _time.time()' in body
+    assert "url=f'https://t.me/{SUPPORT_BOT_USERNAME}'" in body
+    assert '_support_pending[' not in body
+    assert '👥 написать в поддержку' in body and '👥 contact support' in body
