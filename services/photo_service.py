@@ -568,6 +568,29 @@ ORDINARY_REFERENCE_PROTOCOL = (
     'Use the requested scene, outfit, hairstyle, pose, camera and lighting for everything else. '
     'Keep the result natural and general-audience but always preserve Anna\u2019s naturally slim and fit figure.'
 )
+# V3.43.3: the declared figure of every built-in heroine. Until now only Anna
+# carried body geometry in her prompts (the blocks above); the new girls got
+# face traits plus a generic "consistent feminine physique", so the engine
+# re-improvised bust and waist per scene — the owner watched the figure
+# "jump" between photos of the same girl. Every identity prompt now names
+# the declared figure explicitly, and a DNA json may override it per
+# character via visual_identity.body_spec.
+# The owner set ONE house archetype («большая грудь, спортивная, пышная,
+# талия тонкая — плоских не генерировать»): a full silicone bust, Russian
+# size 5, E cup, for every built-in heroine — no flat girls, no drift.
+BODY_SPECS = {
+    'alena_01': 'a slim athletic hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
+    'maria_01': 'a slim hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
+    'erika_01': 'a slim athletic hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
+    'sonya_01': 'a slim fit hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
+    'vika_01': 'a slim athletic hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
+    'alisa_01': 'a slim fit hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
+    'mila_01': 'a slim hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
+}
+DEFAULT_FEMALE_BODY_SPEC = (
+    'a slim athletic feminine hourglass build with a wasp waist, round lifted hips '
+    'and a full bust (silicone, Russian size 5, E cup)'
+)
 ORDINARY_IDENTITY_LOCK = ANNA_FACE_IDENTITY + ' ' + ORDINARY_BODY_IDENTITY + ' ' + ORDINARY_REFERENCE_PROTOCOL
 BODY_REINFORCEMENT = (
     'BODY CONSISTENCY CHECK: keep Anna\u2019s overall physique and proportions visually consistent with reference image 2. '
@@ -635,10 +658,21 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
         if gender == 'male' else
         'a consistent feminine physique, body proportions and silhouette'
     )
+    # V3.43.3: the declared figure — without it the engine re-improvises the
+    # body per scene and the same girl looks different from photo to photo.
+    body_spec = visual_identity.get('body_spec') or BODY_SPECS.get(character_id, '')
+    if not body_spec and gender == 'female':
+        body_spec = DEFAULT_FEMALE_BODY_SPEC
+    body_line = (
+        f'BODY IDENTITY: {name} has {body_spec}. Preserve this exact figure in every photo '
+        'regardless of outfit, pose or crop; never flatten, reduce or enlarge the bust, '
+        'never widen the waist or hips. '
+    ) if body_spec else ''
     identity = (
         f'PHOTO IDENTITY: Create the SAME fictional adult {gender} character, {name}, age {age}. '
         f'Identity preservation is the highest priority. Preserve these exact traits from the canonical references: {preserve_text}. '
         f'{pronoun_cap} is the same person across all photos. Preserve {figure}. '
+        f'{body_line}'
         f'Do not substitute another person, do not change age or ethnicity. '
         f'Use the requested scene, outfit, pose, camera and lighting for everything else.'
     )

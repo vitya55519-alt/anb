@@ -27,7 +27,8 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION == '3.43.2'
+    # V3.43.2 shipped this; newer releases keep the pin in their own suite.
+    assert VERSION in ('3.43.3', '3.43.2')
 
 
 # ── 1. content-addressed asset URLs ─────────────────────────────────────────
@@ -38,16 +39,16 @@ def test_asset_version_helper_stamps_every_storefront_url():
     # grid payload: photo, tile, live clip and the gallery strip all carry ?v=
     assert 'ver = asset_version(card.character_id)' in WEBAPP_SVC
     assert "'photo': f\"/webapp/photo/{card.character_id}?v={ver}\"," in WEBAPP_SVC
-    assert "'card': (f'/webapp/gif/{card.character_id}?v={ver}'" in WEBAPP_SVC
-    assert "'live': (f'/webapp/live/{card.character_id}?v={ver}'" in WEBAPP_SVC
+    assert "'card': (f'/webapp/card/{card.character_id}?v={ver}'" in WEBAPP_SVC
+    assert "'live': (f'/webapp/card/{card.character_id}?v={ver}'" in WEBAPP_SVC
     assert "f'/webapp/photo/{card.character_id}?i={idx}&v={ver}'" in WEBAPP_SVC
     # the chat list avatar too
     assert "'photo': f\"/webapp/photo/{character_id}?v={asset_version(character_id)}\"," in WEBAPP_SVC
 
 
 def test_asset_routes_are_immutable_now_that_urls_carry_the_stamp():
-    # three public storefront routes (photo, gif tile, live clip)
-    assert MAIN.count("headers={'Cache-Control': 'public, max-age=604800'})") == 3
+    # four public storefront routes (photo, gif tile, live clip, card media)
+    assert MAIN.count("headers={'Cache-Control': 'public, max-age=604800'})") == 4
     assert 'public, max-age=3600' not in MAIN.split('async def _webapp_photo')[1].split('async def _webapp_api_char_view')[0]
 
 

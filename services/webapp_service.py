@@ -240,6 +240,9 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
         # V3.43.2: cache-buster so a re-rendered tile reaches the grid at
         # once instead of sitting in the WebView cache for an hour.
         ver = asset_version(card.character_id)
+        # V3.43.3: the admin-uploaded storefront media (photo/gif/mp4).
+        ov = character_card_override(card.character_id)
+        ov_ext = ov.suffix.lower() if ov else ''
         out.append({
             'id': card.character_id,
             'name': card.display_name,
@@ -251,18 +254,15 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             'status': card.status,
             'emoji': card.button_emoji or '👩',
             'photo': f"/webapp/photo/{card.character_id}?v={ver}",
-            # V3.40.0: the animated card preview — built-in heroines ride a
-            # looping GIF tile like Come Closer; custom personas and missing
-            # assets fall back to the static photo.
-            'card': (f'/webapp/gif/{card.character_id}?v={ver}'
-                     if character_card_gif(card.character_id)
-                     else f"/webapp/photo/{card.character_id}?v={ver}"),
-            # V3.43.1: the i2v-rendered living tile (she smiles and blows a
-            # kiss) — the grid plays it as a muted loop when the owner has
-            # rendered one; otherwise the Ken-Burns webp stays.
-            'live': (f'/webapp/live/{card.character_id}?v={ver}'
-                     if character_card_live(card.character_id)
-                     else None),
+            # V3.43.3: the grid card is a PLAIN static photo (owner: «сделай
+            # просто фото») — the look shot, not the Ken-Burns webp anymore.
+            # An admin-uploaded override wins: jpg/png/webp/gif ride <img>
+            # (animated formats loop by themselves), mp4 rides <video>.
+            'card': (f'/webapp/card/{card.character_id}?v={ver}'
+                     if ov_ext in ('.jpg', '.png', '.webp', '.gif')
+                     else f"/webapp/photo/{card.character_id}?i=1&v={ver}"),
+            'live': (f'/webapp/card/{card.character_id}?v={ver}'
+                     if ov_ext == '.mp4' else None),
             # V3.40.0: the «👁 427k» view badge on the card corner.
             'views': views.get(card.character_id, 0),
             # V3.39.0: the Come Closer character page opens with a photo strip
@@ -687,6 +687,55 @@ def builtin_character_ids() -> tuple[str, ...]:
     return tuple(_FACE_REFERENCES)
 
 
+# V3.43.3: the admin-uploaded storefront media of one character lives in its
+# own folder as ``card_override.<ext>`` — exactly one file at a time, the ext
+# decides how the grid renders it (jpg/png static, webp/gif animated <img>,
+# mp4 looping <video>).
+CARD_OVERRIDE_EXTS = ('.mp4', '.webp', '.gif', '.png', '.jpg')
+
+
+def card_media_folder(character_id: str) -> Path:
+    """V3.43.3: per-character folder for the admin-uploaded card media."""
+    return ROOT / 'data' / 'card_media' / character_id
+
+
+def character_card_override(character_id: str) -> Path | None:
+    """V3.43.3: the active storefront media override of a character, if any."""
+    folder = card_media_folder(character_id)
+    if not folder.exists():
+        return None
+    for ext in CARD_OVERRIDE_EXTS:
+        item = folder / f'card_override{ext}'
+        if item.exists():
+            return item
+    return None
+
+
+def set_card_override(character_id: str, data: bytes, ext: str) -> Path:
+    """V3.43.3: replace the card media of a character (admin panel upload)."""
+    folder = card_media_folder(character_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    for stale_ext in CARD_OVERRIDE_EXTS:
+        stale = folder / f'card_override{stale_ext}'
+        if stale.exists():
+            stale.unlink()
+    target = folder / f'card_override{ext}'
+    target.write_bytes(data)
+    return target
+
+
+def clear_card_override(character_id: str) -> bool:
+    """V3.43.3: drop the override so the card falls back to the plain photo."""
+    folder = card_media_folder(character_id)
+    removed = False
+    for stale_ext in CARD_OVERRIDE_EXTS:
+        stale = folder / f'card_override{stale_ext}'
+        if stale.exists():
+            stale.unlink()
+            removed = True
+    return removed
+
+
 def character_card_live(character_id: str) -> Path | None:
     """V3.43.1: the i2v-rendered living tile (``card_live.mp4``) of a heroine.
 
@@ -714,8 +763,12 @@ def asset_version(character_id: str) -> str:
     """
     newest = 0
     rel = _FACE_REFERENCES.get(character_id)
+    folders = []
     if rel:
-        folder = ROOT.joinpath('data', rel[0], rel[1])
+        folders.append(ROOT.joinpath('data', rel[0], rel[1]))
+    # V3.43.3: an admin-uploaded override re-stamps the URLs too.
+    folders.append(card_media_folder(character_id))
+    for folder in folders:
         if folder.exists():
             for item in folder.iterdir():
                 try:

@@ -34,7 +34,7 @@ from config import (
     CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST, COSPLAY_TOKEN_COST,
     CONSTRUCTOR_PRICE_USD, PREMIUM_WEEKLY_PRICE_USD, fiat_suffix,
     FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
-    SUPPORT_BOT_USERNAME,
+    SUPPORT_BOT_USERNAME, SUPPORT_BOT_TOKEN, SUPPORT_WELCOME_TEXT,
     CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS,
     PEACH_PACK_STARS, PEACH_PACK_CREDITS,
     FREEKASSA_MERCHANT_ID, FREEKASSA_API_KEY, FREEKASSA_API_ENABLED,
@@ -360,6 +360,10 @@ _library_import_sessions: dict[int, dict] = {}
 
 # Owner-only editor state for public character cards. Persistent card values live in PostgreSQL.
 _character_card_edit_sessions: dict[int, dict] = {}
+
+# V3.43.3: admin ids waiting to send the storefront card media (photo/gif/mp4)
+# for a character — populated by the «📥 Медиа витрины» button in the admin panel.
+CARD_MEDIA_WAIT: dict[int, str] = {}
 
 # Owner-only editor state for configurable payment methods. Payment rows live in PostgreSQL.
 _payment_method_edit_sessions: dict[int, dict] = {}
@@ -699,6 +703,10 @@ def admin_card_keyboard(character_id: str):
          InlineKeyboardButton(text='🖼 Фото', callback_data=f'admin:cardedit:{character_id}:photo')],
         [InlineKeyboardButton(text='👁 Видимость', callback_data=f'admin:toggle:{character_id}'),
          InlineKeyboardButton(text='🗑 Убрать фото', callback_data=f'admin:clearphoto:{character_id}')],
+        # V3.43.3: the storefront card media swap — photo, GIF or video,
+        # straight from the admin chat, no deploy needed.
+        [InlineKeyboardButton(text='📥 Медиа витрины', callback_data=f'admin:cardmedia:{character_id}'),
+         InlineKeyboardButton(text='🧹 Убрать медиа', callback_data=f'admin:cardclear:{character_id}')],
         [InlineKeyboardButton(text='↩️ Сбросить карточку', callback_data=f'admin:reset:{character_id}')],
     ]
     from services.character_card_service import DEFAULT_CARDS
@@ -872,6 +880,15 @@ async def _send_character_card(chat_id: int, character_id: str, *, viewer_id: in
     await bot.send_message(chat_id, text_value, reply_markup=markup)
 
 
+def _admin_card_media_label(character_id: str) -> str:
+    """V3.43.3: what the storefront grid shows for this character right now."""
+    override = webapp_service.character_card_override(character_id)
+    if not override:
+        return 'нет (в витрине статичное фото)'
+    return {'.mp4': 'видео-петля', '.webp': 'анимированный стикер', '.gif': 'GIF',
+            '.png': 'своё фото', '.jpg': 'своё фото'}.get(override.suffix.lower(), override.suffix)
+
+
 def _admin_card_summary(character_id: str) -> str:
     card = get_card(character_id)
     if not card:
@@ -882,7 +899,8 @@ def _admin_card_summary(character_id: str) -> str:
         f'Возраст: {card.age}\n'
         f'Статус: {card.status_label}\n'
         f'Видимость: {"да" if card.is_visible else "нет"}\n'
-        f'Фото: {"установлено" if card.card_photo_file_id else "нет"}\n\n'
+        f'Фото: {"установлено" if card.card_photo_file_id else "нет"}\n'
+        f'Медиа витрины: {_admin_card_media_label(character_id)}\n\n'
         f'{card.short_bio or "Описание не заполнено."}\n\n'
         'ℹ️ Статус «активна» открывает персонажа для выбора в чате. Premium — за платный доступ.'
     )
@@ -1984,6 +2002,7 @@ async def admin_panel(message: types.Message):
     _payment_method_edit_sessions.pop(message.from_user.id, None)
     _photo_idea_edit_sessions.pop(message.from_user.id, None)
     _admin_grant_sessions.pop(message.from_user.id, None)
+    CARD_MEDIA_WAIT.pop(message.from_user.id, None)
     ensure_default_cards()
     await message.answer('⚙️ Админка AnnaBot', reply_markup=admin_keyboard())
 
@@ -2070,6 +2089,7 @@ async def admin_home(cq: types.CallbackQuery):
     _payment_method_edit_sessions.pop(cq.from_user.id, None)
     _photo_idea_edit_sessions.pop(cq.from_user.id, None)
     _admin_grant_sessions.pop(cq.from_user.id, None)
+    CARD_MEDIA_WAIT.pop(cq.from_user.id, None)
     await cq.answer()
     await cq.message.answer('⚙️ Админка AnnaBot', reply_markup=admin_keyboard())
 
@@ -2466,6 +2486,83 @@ async def admin_card_reset(cq: types.CallbackQuery):
     await cq.message.answer(_admin_card_summary(character_id), reply_markup=admin_card_keyboard(character_id))
 
 
+# V3.43.3: the owner swaps a storefront card right from the admin chat —
+# photo, GIF or video, no deploy: the grid URL carries the ?v= stamp and the
+# override folder re-stamps it the moment the file lands on disk.
+@dp.callback_query(F.data.startswith('admin:cardmedia:'))
+async def admin_card_media_wait(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    character_id = cq.data.split(':', 2)[2]
+    CARD_MEDIA_WAIT[cq.from_user.id] = character_id
+    await cq.answer()
+    await cq.message.answer(
+        f'📥 Пришли фото, GIF или видео (до 20 MB) для карточки {character_id}.\n\n'
+        'Фото встанет статичной карточкой; GIF, анимированный стикер и видео '
+        'витрина будет крутить по кругу.\n\n/cancel — отменить')
+
+
+@dp.callback_query(F.data.startswith('admin:cardclear:'))
+async def admin_card_media_clear(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    character_id = cq.data.split(':', 2)[2]
+    removed = webapp_service.clear_card_override(character_id)
+    await cq.answer('медиа убрано' if removed else 'медиа не было')
+    await cq.message.answer(_admin_card_summary(character_id), reply_markup=admin_card_keyboard(character_id))
+
+
+@dp.message(lambda m: m.from_user is not None and m.from_user.id in CARD_MEDIA_WAIT,
+            F.photo | F.video | F.animation | F.document)
+async def admin_card_media_upload(message: types.Message):
+    """V3.43.3: the media the admin sent becomes the storefront card."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    character_id = CARD_MEDIA_WAIT.get(message.from_user.id)
+    if not character_id:
+        return
+    file_id, ext = None, None
+    if message.photo:
+        file_id, ext = message.photo[-1].file_id, '.jpg'
+    elif message.animation:
+        mime = (message.animation.mime_type or '').lower()
+        file_id, ext = message.animation.file_id, ('.gif' if mime == 'image/gif' else '.mp4')
+    elif message.video:
+        file_id, ext = message.video.file_id, '.mp4'
+    elif message.document:
+        mime = (message.document.mime_type or '').lower()
+        name = (message.document.file_name or '').lower()
+        if mime == 'image/gif' or name.endswith('.gif'):
+            ext = '.gif'
+        elif mime == 'image/webp' or name.endswith('.webp'):
+            ext = '.webp'
+        elif mime == 'image/png' or name.endswith('.png'):
+            ext = '.png'
+        elif mime.startswith('video/') or name.endswith('.mp4'):
+            ext = '.mp4'
+        elif mime in ('image/jpeg', 'image/jpg') or name.endswith(('.jpg', '.jpeg')):
+            ext = '.jpg'
+        file_id = message.document.file_id
+    if not file_id:
+        await message.answer('не поняла формат — пришли фото, GIF, WebP или MP4.')
+        return
+    size = (message.photo[-1].file_size if message.photo
+            else (message.animation or message.video or message.document).file_size) or 0
+    if size > 20 * 1024 * 1024:
+        await message.answer('файл тяжелее 20 MB — Telegram не даст мне его скачать. Пришли полегче.')
+        return
+    buf = io.BytesIO()
+    await bot.download(file_id, destination=buf)
+    webapp_service.set_card_override(character_id, buf.getvalue(), ext)
+    CARD_MEDIA_WAIT.pop(message.from_user.id, None)
+    kind = {'.jpg': 'фото', '.png': 'фото', '.webp': 'анимированный стикер',
+            '.gif': 'GIF', '.mp4': 'видео-петля'}[ext]
+    await message.answer(
+        f'✅ Карточка {character_id}: в витрине теперь {kind}. '
+        'Открой приложение заново — ссылка уже с новой версией.',
+        reply_markup=admin_card_keyboard(character_id))
+
+
 def _admin_gender_keyboard(prefix: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='👨 Мужской', callback_data=f'{prefix}:male'),
@@ -2715,6 +2812,10 @@ async def admin_providers_button(cq: types.CallbackQuery):
 
 @dp.message(Command('cancel'))
 async def cancel_admin_edit(message: types.Message):
+    if message.from_user.id in CARD_MEDIA_WAIT:
+        character_id = CARD_MEDIA_WAIT.pop(message.from_user.id)
+        await message.answer('отменено', reply_markup=admin_card_keyboard(character_id))
+        return
     if message.from_user.id in _character_card_edit_sessions:
         sess = _character_card_edit_sessions.pop(message.from_user.id)
         if sess.get('mode') == 'add':
@@ -7343,6 +7444,19 @@ async def _webapp_live(request: web.Request) -> web.Response:
                         headers={'Cache-Control': 'public, max-age=604800'})
 
 
+async def _webapp_card(request: web.Request) -> web.Response:
+    # V3.43.3: the admin-uploaded storefront media (photo/gif/mp4) — same
+    # immutable caching as the other ?v=-stamped assets.
+    override = webapp_service.character_card_override(request.match_info['character_id'])
+    if not override:
+        return web.Response(status=404)
+    content_type = {'.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+                    '.gif': 'image/gif', '.mp4': 'video/mp4'}.get(
+        override.suffix.lower(), 'application/octet-stream')
+    return web.Response(body=override.read_bytes(), content_type=content_type,
+                        headers={'Cache-Control': 'public, max-age=604800'})
+
+
 async def _webapp_api_char_view(request: web.Request) -> web.Response:
     # V3.40.0: +1 view when the character page opens — the «👁 427k» badge on
     # the Come Closer cards. Auth like every other write endpoint.
@@ -8228,6 +8342,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/gif/{character_id}', _webapp_gif)
     # V3.43.1: the living tiles — i2v mp4 loops next to the Ken-Burns webp.
     app.router.add_get('/webapp/live/{character_id}', _webapp_live)
+    app.router.add_get('/webapp/card/{character_id}', _webapp_card)
     app.router.add_post('/webapp/api/char_view', _webapp_api_char_view)
     # V3.43.0: the channel-subscribe peach bonus — GET status, POST check+grant.
     app.router.add_route('*', '/webapp/api/channel_bonus', _webapp_api_channel_bonus)
@@ -8259,6 +8374,37 @@ async def _start_web_server() -> None:
     site = web.TCPSite(runner, '0.0.0.0', WEB_PORT)
     await site.start()
     logger.info('web server listening port=%s freekassa=%s base=%s', WEB_PORT, FREEKASSA_ENABLED, PUBLIC_BASE_URL or '-')
+
+
+async def _run_support_bot() -> None:
+    """V3.43.3: the support desk bot — /start welcome + appeals to the admins.
+
+    Runs as a second aiogram bot inside this process when SUPPORT_BOT_TOKEN
+    is set (the rotated token of the support bot, env only). The owner's
+    benchmark: /start must answer at once («Напишите ваше обращение и
+    менеджер с вами свяжется»), otherwise the support chat looks dead.
+    """
+    from aiogram import Bot as SupportBot, Dispatcher as SupportDispatcher
+    support_bot = SupportBot(token=SUPPORT_BOT_TOKEN)
+    support_dp = SupportDispatcher()
+
+    @support_dp.message(Command('start'))
+    async def _support_start(msg: types.Message):
+        await msg.answer(SUPPORT_WELCOME_TEXT)
+
+    @support_dp.message()
+    async def _support_appeal(msg: types.Message):
+        for admin_id in ADMIN_TELEGRAM_IDS:
+            try:
+                await msg.forward(chat_id=admin_id)
+            except Exception as exc:
+                logger.warning('support forward failed admin=%s: %s', admin_id, exc)
+        await msg.answer('Приняла твоё обращение ✅ Менеджер свяжется с тобой вскоре.')
+
+    try:
+        await support_dp.start_polling(support_bot)
+    except Exception:
+        logger.exception('support bot polling crashed')
 
 
 async def main():
@@ -8364,6 +8510,12 @@ async def main():
     except Exception:
         logger.exception('startup dialog session cleanup failed')
     logger.info('AnnaBot started')
+    # V3.43.3: the support desk bot polls alongside the main one when its
+    # (rotated) token is configured in the host env.
+    if SUPPORT_BOT_TOKEN:
+        asyncio.create_task(_run_support_bot())
+    else:
+        logger.warning('SUPPORT_BOT_TOKEN empty — the support bot stays offline')
     await _start_web_server()
     # V3.19.11: refresh the public storefront (profile description) on every
     # deploy. A description failure must never block startup.

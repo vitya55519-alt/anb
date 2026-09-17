@@ -383,6 +383,16 @@ PARTNER_MIN_PAYOUT_RUB = int(os.getenv("PARTNER_MIN_PAYOUT_RUB", "500"))
 # support bot's token never belongs in this service. «Поддержка» buttons hand
 # the user a t.me link to it instead of arming an in-bot ticket.
 SUPPORT_BOT_USERNAME = os.getenv("SUPPORT_BOT_USERNAME", "Anna67901support_bot").strip().lstrip('@')
+# V3.43.3: the support bot lives in this process too — when the (rotated)
+# token is set in the host env, a second aiogram bot polls it, answers /start
+# with SUPPORT_WELCOME_TEXT and forwards every appeal to the admins. The
+# token stays in env only, exactly like TELEGRAM_TOKEN — never in the repo.
+SUPPORT_BOT_TOKEN = os.getenv("SUPPORT_BOT_TOKEN", "").strip()
+SUPPORT_WELCOME_TEXT = os.getenv(
+    "SUPPORT_WELCOME_TEXT",
+    "Привет! Ваше сообщение для нас важно ❤️\n"
+    "Напишите ваше обращение и менеджер с вами свяжется.",
+).strip()
 # V3.43.0: «Бесплатные 🍑 за подписку на канал» — the owner's channel and the
 # one-time peach bonus for being a member (checked via getChatMember).
 CHANNEL_SUBSCRIBE_USERNAME = os.getenv("CHANNEL_SUBSCRIBE_USERNAME", "Anna634212").strip().lstrip('@')

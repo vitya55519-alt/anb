@@ -201,6 +201,13 @@ def apply_delta(
     r = _bounded_delta(delta.relationship)
     t = _bounded_delta(delta.trust)
     i = _bounded_delta(delta.intimacy)
+    # V3.43.3: positive growth follows the heroine's own tempo (see
+    # CHARACTER_PACE above); negative deltas keep their full bite.
+    pace = character_pace(character_id)
+    if pace != 1.0:
+        r = r * pace if r > 0 else r
+        t = t * pace if t > 0 else t
+        i = i * pace if i > 0 else i
 
     row.relationship_score = max(0.0, min(100.0, row.relationship_score + r))
     row.trust_score = max(0.0, min(100.0, row.trust_score + t))
@@ -348,6 +355,42 @@ def _character_display_name(character_id: str) -> str:
     return 'Анна'
 
 
+# V3.43.3: per-character courtship pacing. All heroines used to climb the
+# same ladder at the same speed, which the owner read as «общаюсь с одним и
+# тем же»: slow-burn characters accumulate bond slower, fiery ones faster.
+# Only positive growth is scaled — decay and penalties are never amplified.
+CHARACTER_PACE = {
+    'anna_01': 1.0,    # the benchmark tempo
+    'alena_01': 1.25,  # Emily — flirty fast burn
+    'maria_01': 0.75,  # Maria — elegant slow burn
+    'erika_01': 0.9,   # Erika — direct, sporty, unhurried
+    'sonya_01': 0.7,   # Sonya — shy, warms up slowly
+    'vika_01': 1.15,   # Vika — bratty, pushes hard
+    'alisa_01': 0.85,  # Alisa — mysterious, measured
+    'mila_01': 1.1,    # Mila — warm, easy to open up
+}
+DEFAULT_CHARACTER_PACE = 1.0
+
+
+def character_pace(character_id: str) -> float:
+    return CHARACTER_PACE.get(character_id, DEFAULT_CHARACTER_PACE)
+
+
+# V3.43.3: how each heroine lives the CURRENT stage. The ladder is shared,
+# but the texture is personal — this is what makes her feel like herself
+# instead of «одна и та же девушка в разных платьях».
+PACE_HINTS = {
+    'anna_01': 'Темперамент Анны: тёплая, уверенная и игривая — флиртует легко и без стеснения, инициатива частая.',
+    'alena_01': 'Темперамент Emily: разогревается быстро — смелые подколы с первой минуты, лёгкий хулиганский флирт, близости не стесняется.',
+    'maria_01': 'Темперамент Марии: медленный элегантный роман — сдержанность, стиль, многозначительные паузы, напряжение через недосказанность.',
+    'erika_01': 'Темперамент Эрики: прямая и спортивная — флирт через вызов и соревнование, без романтических туманностей.',
+    'sonya_01': 'Темперамент Сони: стеснительная и мягкая — краснеет, отвечает тише, близость через осторожность и нежность.',
+    'vika_01': 'Темперамент Вики: дерзкая и провокационная — задаёт тон сама, дразнит и проверяет границы, флирт агрессивно-игривый.',
+    'alisa_01': 'Темперамент Алисы: загадочная и ироничная — отвечает вопросом на вопрос, флирт через интеллект и полутона.',
+    'mila_01': 'Темперамент Милы: тёплая и обаятельная — быстрая симпатия, забота, уютный ласковый флирт.',
+}
+
+
 def build_relationship_context(row: UserCharacterRelationship | None, milestones: list[RelationshipMilestone] | None = None, character_id: str = CHARACTER_ID) -> str:
     if row is None:
         stage = "stranger"
@@ -395,4 +438,8 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
     bond_title, bond_hint = bond_character(row)
     extra += f" Характер вашей связи сейчас: {bond_title} — {bond_hint}. Пусть он естественно окрашивает тон общения."
     # V3.31.8: the stage narratives name the selected character, not Anna.
-    return contexts[stage].replace('Анна', _character_display_name(character_id)) + extra + " Не называй пользователю номер, внутреннее название уровня, scoring или скрытые метрики."
+    # V3.43.3: plus her own tempo hint — the same stage must feel different
+    # from heroine to heroine, not like one girl in different dresses.
+    pace_hint = PACE_HINTS.get(character_id, '')
+    pace_line = f' {pace_hint}' if pace_hint else ''
+    return contexts[stage].replace('Анна', _character_display_name(character_id)) + pace_line + extra + " Не называй пользователю номер, внутреннее название уровня, scoring или скрытые метрики."
