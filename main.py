@@ -483,7 +483,9 @@ def _welcome_banner_file():
 def _welcome_back_rows(lang: str):
     """V3.42.0: the returning-user welcome is a short button list, not a wall —
     open the app, the partner program (full-width), terms + privacy. The old
-    nine-button character grid is gone: character selection lives in the app."""
+    nine-button character grid is gone: character selection lives in the app.
+    V3.42.1: owner asked to also surface «🍑 Пополнить персики» (photo credits)
+    and «👥 Поддержка» right on the welcome screen."""
     rows = []
     if PUBLIC_BASE_URL:
         rows.append([InlineKeyboardButton(
@@ -491,7 +493,11 @@ def _welcome_back_rows(lang: str):
             web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'),
         )])
     rows.append([InlineKeyboardButton(
+        text=kb_label('credits', lang), callback_data='credits:open')])
+    rows.append([InlineKeyboardButton(
         text=kb_label('partner', lang), callback_data='partner:open')])
+    rows.append([InlineKeyboardButton(
+        text=kb_label('support', lang), callback_data='support:open')])
     rows.append([
         InlineKeyboardButton(text='📄 Условия' if lang == RU else '📄 Terms', callback_data='legal:terms'),
         InlineKeyboardButton(text='🔐 Privacy', callback_data='legal:privacy'),
@@ -3158,6 +3164,40 @@ async def partner_open(cq: types.CallbackQuery):
     """V3.39.0: the «💰 Партнёрка» CTA on the welcome photo — same partner screen."""
     await cq.answer()
     await referral_cmd(cq.message)
+
+
+@dp.callback_query(F.data == 'credits:open')
+async def credits_open(cq: types.CallbackQuery):
+    """V3.42.1: the «🍑 Пополнить персики» CTA on the welcome screen — same
+    app-shop entry as the reply-keyboard credits button (peaches are bought in
+    the Mini App «Магазин» tab)."""
+    await cq.answer()
+    await _send_app_entry(
+        cq.message,
+        '🍑 персики (фото-кредиты) покупаются в приложении — вкладка «Магазин» 👇',
+        '🍑 peaches (photo credits) are bought in the app — the «Shop» tab 👇',
+    )
+
+
+@dp.callback_query(F.data == 'support:open')
+async def support_open(cq: types.CallbackQuery):
+    """V3.42.1: the «👥 Поддержка» CTA on the welcome screen — arms the same
+    ticket flow as the reply-keyboard support button (the next plain text goes
+    to the owner instead of the character)."""
+    await cq.answer()
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    lang = user_lang(cq.from_user.id)
+    _support_pending[cq.from_user.id] = _time.time()
+    if lang == EN:
+        await cq.message.answer(
+            '👥 support\n\ndescribe what happened in ONE message — '
+            'it goes straight to the owner. Commands like /start still work.'
+        )
+    else:
+        await cq.message.answer(
+            '👥 поддержка\n\nопиши, что случилось, ОДНИМ сообщением — '
+            'я передам это владельцу. Команды вроде /start продолжают работать.'
+        )
 
 
 @dp.callback_query(F.data == 'partner:withdraw')
