@@ -54,6 +54,50 @@
     "no_nudity_generation": true
   },
   "visual_identity": {
+    "photo_style": {
+      "hair_colors": ["espresso brown", "dark chocolate brown", "deep neutral brunette"],
+      "hairstyles": [
+        "smooth center-parted hair at the existing length",
+        "soft loose waves at the existing length",
+        "sleek side-parted hair tucked behind one ear",
+        "half-up style secured with a minimalist black barrette",
+        "swept-back styling held with a narrow black headband"
+      ],
+      "colors": ["black", "white", "charcoal", "pearl gray", "ivory"],
+      "wardrobe_style": "Confident, playful urban minimalism for an adult of 26: black-and-white foundations, clean lines, understated accessories, and occasional tonal gray accents. All outfits use opaque fabrics and complete everyday coverage.",
+      "wardrobe": {
+        "day_casual": [
+          "White opaque cotton T-shirt, black straight-leg jeans, and white leather sneakers",
+          "Black opaque crewneck top, charcoal tailored trousers, and black loafers",
+          "White opaque button-front shirt, black midi skirt, and black ankle boots"
+        ],
+        "warm_outdoor": [
+          "White opaque lightweight cotton short-sleeve shirt, black linen trousers, and flat sandals",
+          "Black opaque cotton short-sleeve midi summer dress and white canvas sneakers",
+          "Ivory opaque lightweight linen T-shirt, charcoal cotton Bermuda shorts, and black flat sandals"
+        ],
+        "home": [
+          "Pearl gray opaque cotton short-sleeve midi home dress and soft house slippers",
+          "White opaque cotton T-shirt, black jersey lounge trousers, and house slippers",
+          "Black opaque long-sleeve cotton top, pearl gray lounge trousers, and soft house shoes"
+        ],
+        "fashion": [
+          "Black structured blazer over a white opaque crewneck top, black wide-leg trousers, and white loafers",
+          "Charcoal opaque geometric-print long-sleeve midi dress and black ankle boots",
+          "White opaque poplin shirt, black pleated midi skirt, and pearl gray leather flats"
+        ],
+        "evening": [
+          "Black opaque long-sleeve midi dress and black closed-toe pumps",
+          "Ivory opaque silk button-front blouse, black tailored trousers, and black pumps",
+          "White opaque short-sleeve blouse, charcoal ankle-length skirt, and black dress flats"
+        ],
+        "gym": [
+          "Black fully opaque full-length athletic T-shirt, charcoal full-length training leggings, and cross-training sneakers",
+          "White fully opaque full-length moisture-wicking T-shirt, black athletic track pants, and running sneakers",
+          "Pearl gray fully opaque full-length long-sleeve athletic top, black training joggers, and training sneakers"
+        ]
+      }
+    },
     "age": 26,
     "reference_folder": "data/references/anna",
     "reference_assets": [

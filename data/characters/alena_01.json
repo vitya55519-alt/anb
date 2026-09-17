@@ -48,6 +48,50 @@
     "no_nudity_generation": true
   },
   "visual_identity": {
+    "photo_style": {
+      "hair_colors": ["champagne blonde", "beige blonde", "soft golden blonde"],
+      "hairstyles": [
+        "smooth center-parted blowout at the existing length",
+        "polished side-parted waves at the existing length",
+        "defined loose curls at the existing length",
+        "half-up styling secured with a metallic barrette",
+        "sleek swept-back styling held with a wide fashion headband"
+      ],
+      "colors": ["black", "white", "silver", "cobalt blue", "fuchsia"],
+      "wardrobe_style": "Bold modern glamour and expressive street fashion for an adult of 25: statement color, metallic accessories, contemporary denim, and polished city outfits. All clothing is opaque and fully covering, with practical complete ensembles for each setting.",
+      "wardrobe": {
+        "day_casual": [
+          "White opaque graphic T-shirt, black cargo jeans, and cobalt blue sneakers",
+          "Cobalt blue opaque button-front shirt, white straight-leg jeans, and black platform loafers",
+          "Black opaque crewneck top, silver cotton utility trousers, and white sneakers"
+        ],
+        "warm_outdoor": [
+          "Fuchsia opaque lightweight cotton short-sleeve knee-length summer dress and white flat sandals",
+          "White opaque lightweight cotton T-shirt, cobalt blue linen Bermuda shorts, and white canvas sneakers",
+          "Black opaque short-sleeve linen shirt, white lightweight cotton midi skirt, and silver flat sandals"
+        ],
+        "home": [
+          "Fuchsia opaque cotton T-shirt midi home dress and white house slippers",
+          "White opaque cotton T-shirt, cobalt blue jersey lounge trousers, and soft house shoes",
+          "Black opaque long-sleeve jersey top, silver cotton lounge pants, and black slippers"
+        ],
+        "fashion": [
+          "Cobalt blue oversized blazer over a white opaque crewneck top, black wide-leg trousers, and silver loafers",
+          "Silver opaque short-sleeve sequined top, black denim midi skirt, and black ankle boots",
+          "Fuchsia opaque collared long-sleeve jumpsuit and white platform sneakers"
+        ],
+        "evening": [
+          "Cobalt blue opaque short-sleeve satin midi dress and silver closed-toe pumps",
+          "Black tuxedo jacket over a white opaque button-front blouse, black dress trousers, and black pumps",
+          "Fuchsia opaque long-sleeve blouse, black ankle-length skirt, and silver dress flats"
+        ],
+        "gym": [
+          "Cobalt blue fully opaque full-length athletic T-shirt, black full-length training leggings, and white training sneakers",
+          "Fuchsia fully opaque full-length moisture-wicking T-shirt, black athletic joggers, and running sneakers",
+          "White fully opaque full-length long-sleeve athletic top, cobalt blue track pants, and cross-training sneakers"
+        ]
+      }
+    },
     "status": "active",
     "description": "original synthetic blonde adult character; confident feminine modern-glamour visual archetype",
     "reference_folder": "data/references/emily",

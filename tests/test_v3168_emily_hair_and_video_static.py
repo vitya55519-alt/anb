@@ -14,26 +14,28 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 HF_VIDEO = (ROOT / 'services' / 'hf_video_service.py').read_text(encoding='utf-8')
 
 
-# ── Hair color: all characters cycle ──────────────────────────────────────
+# ── Hair color: per-character palettes ─────────────────────────────────────
 
 def test_hair_color_cycle_applies_to_all_characters():
-    # _resolve_request applies current_hair_color() to ALL characters.
-    # The cycle was originally Anna-only but users want all characters to
-    # shift hair color monthly: brunette -> blonde -> chestnut -> caramel.
+    # V3.43.8: _resolve_request uses per-character hair-color palettes from
+    # photo_style.hair_colors when available; the old monthly cycle is the
+    # fallback for Anna and custom personas without a palette.
     assert "current_hair_color()" in PHOTO
     # There must NOT be an Anna-only gate for the hair color cycle.
     assert "character_id == 'anna_01':" not in PHOTO[PHOTO.index('def _resolve_request'):PHOTO.index('def _shot_variant')]
+    # Character-specific palette selection is present.
+    assert "style.get('hair_colors'" in PHOTO
 
 
 def test_build_prompt_skips_hair_color_override_when_empty():
-    # The "HAIR COLOR THIS MONTH" line must be conditional, not unconditional.
+    # The "HAIR COLOR" line must be conditional, not unconditional.
     # When request.hair_color is empty the override line is omitted entirely,
     # so the character's identity description controls the hair color.
     assert "if request.hair_color else ''" in PHOTO
 
 
 def test_current_hair_color_still_exists():
-    # The monthly cycle is preserved for all characters.
+    # The monthly cycle is preserved as a fallback for Anna and custom personas.
     assert 'def current_hair_color()' in PHOTO
     assert 'HAIR_COLOR_CYCLE' in PHOTO
     assert "'rich dark brunette'" in PHOTO

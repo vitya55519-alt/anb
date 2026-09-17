@@ -46,6 +46,50 @@
     "no_nudity_generation": true
   },
   "visual_identity": {
+    "photo_style": {
+      "hair_colors": ["warm chestnut brown", "auburn chestnut brown", "soft copper chestnut"],
+      "hairstyles": [
+        "loose tousled natural waves at the existing length",
+        "casual messy ponytail",
+        "half-up knot with the remaining waves loose",
+        "simple loose side braid at the existing length",
+        "casual low bun secured with a fabric scrunchie"
+      ],
+      "colors": ["forest green", "denim blue", "cream", "burgundy", "slate gray"],
+      "wardrobe_style": "Adventurous, playful casual style for an adult of 22: easy denim, practical pockets, cheerful cotton prints, and sneakers ready for spontaneous city walks. Opaque complete outfits prioritize comfort, with lightweight summer options and relaxed layers for cooler settings.",
+      "wardrobe": {
+        "day_casual": [
+          "Forest green hoodie over a cream opaque T-shirt, denim blue straight-leg jeans, and cream sneakers",
+          "Burgundy opaque graphic T-shirt, slate gray cargo trousers, and forest green walking shoes",
+          "Denim blue jacket over a cream opaque cotton short-sleeve knee-length dress and burgundy canvas sneakers"
+        ],
+        "warm_outdoor": [
+          "Cream opaque lightweight cotton T-shirt, forest green cotton Bermuda shorts, and walking sandals",
+          "Denim blue opaque lightweight linen short-sleeve shirt, slate gray cotton trousers, and canvas sneakers",
+          "Burgundy opaque lightweight cotton short-sleeve printed knee-length summer dress and cream flat sandals"
+        ],
+        "home": [
+          "Forest green opaque cotton T-shirt midi home dress and cream house slippers",
+          "Burgundy opaque cotton T-shirt, slate gray jersey lounge trousers, and soft house shoes",
+          "Cream opaque long-sleeve cotton top, denim blue cotton lounge pants, and burgundy slippers"
+        ],
+        "fashion": [
+          "Forest green utility jacket over a cream opaque T-shirt, denim blue wide-leg jeans, and burgundy sneakers",
+          "Burgundy opaque short-sleeve graphic shirt, slate gray cargo midi skirt, and cream canvas sneakers",
+          "Denim blue opaque collared long-sleeve utility jumpsuit and forest green ankle boots"
+        ],
+        "evening": [
+          "Forest green opaque short-sleeve printed midi dress and cream closed-toe flats",
+          "Cream opaque button-front blouse, burgundy tailored trousers, and slate gray loafers",
+          "Burgundy opaque long-sleeve cotton blouse, denim blue midi skirt, and slate gray ankle boots"
+        ],
+        "gym": [
+          "Forest green fully opaque full-length athletic T-shirt, slate gray full-length training leggings, and training sneakers",
+          "Burgundy fully opaque full-length moisture-wicking T-shirt, denim blue athletic track pants, and running sneakers",
+          "Cream fully opaque full-length long-sleeve athletic top, forest green training joggers, and cross-training sneakers"
+        ]
+      }
+    },
     "status": "active",
     "description": "original synthetic adult woman 22 y.o.; bright girl-next-door visual archetype — chestnut wavy hair, grey-green eyes, light freckles, casual cute outfits",
     "reference_folder": "data/references/sonya",

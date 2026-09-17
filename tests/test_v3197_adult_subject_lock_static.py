@@ -17,7 +17,9 @@ def test_adult_only_lock_constant_defined():
     assert 'ADULT_ONLY_LOCK = (' in PHOTO
     assert 'HARD SUBJECT LOCK' in PHOTO
     assert 'no children' in PHOTO
-    assert 'adult woman in her twenties' in PHOTO
+    # V3.43.8: the universal "twenties" wording is gone; the actual age is
+    # injected per character at prompt-build time.
+    assert 'fictional adult woman' in PHOTO
 
 
 def test_full_prompt_includes_subject_lock_before_scene():

@@ -46,6 +46,50 @@
     "no_nudity_generation": true
   },
   "visual_identity": {
+    "photo_style": {
+      "hair_colors": ["dark golden blonde", "dark beige blonde", "dark ash blonde"],
+      "hairstyles": [
+        "soft low bun",
+        "neat French twist",
+        "polished low ponytail",
+        "side-parted soft waves at the existing length",
+        "half-up twist secured with a classic tortoiseshell barrette"
+      ],
+      "colors": ["ivory", "taupe", "champagne", "chocolate brown", "warm gray"],
+      "wardrobe_style": "Self-assured, welcoming elegance for an adult of 38: classic silk separates, cashmere layers, warm neutrals, and restrained accessories chosen for personal taste. Complete opaque outfits balance polished occasions with comfortable daily life; summer choices use lightweight woven fabrics.",
+      "wardrobe": {
+        "day_casual": [
+          "Ivory opaque silk button-front blouse, taupe tailored trousers, and chocolate brown loafers",
+          "Warm gray opaque cashmere crewneck sweater, chocolate brown midi skirt, and taupe ankle boots",
+          "Champagne opaque silk shirt under an ivory cashmere cardigan, warm gray trousers, and chocolate brown flats"
+        ],
+        "warm_outdoor": [
+          "Ivory opaque lightweight silk short-sleeve blouse, taupe linen trousers, and chocolate brown flat sandals",
+          "Champagne opaque lightweight cotton short-sleeve midi summer dress and taupe sandals",
+          "Warm gray opaque short-sleeve linen shirt, ivory cotton midi skirt, and chocolate brown leather sandals"
+        ],
+        "home": [
+          "Taupe opaque cotton short-sleeve midi home dress and ivory house slippers",
+          "Ivory opaque cashmere crewneck pullover, warm gray cotton lounge trousers, and chocolate brown house shoes",
+          "Champagne opaque long-sleeve cotton shirt, chocolate brown jersey lounge pants, and taupe slippers"
+        ],
+        "fashion": [
+          "Taupe tailored blazer over an ivory opaque silk blouse, chocolate brown pleated midi skirt, and chocolate brown pumps",
+          "Champagne opaque silk long-sleeve shirt dress in midi length, warm gray cashmere cardigan, and taupe loafers",
+          "Chocolate brown opaque cashmere crewneck top, ivory wide-leg trousers, and taupe dress flats"
+        ],
+        "evening": [
+          "Chocolate brown opaque long-sleeve silk midi dress and champagne closed-toe pumps",
+          "Ivory opaque silk button-front blouse, taupe ankle-length skirt, and chocolate brown pumps",
+          "Warm gray tailored trouser suit over a champagne opaque silk blouse and taupe closed-toe shoes"
+        ],
+        "gym": [
+          "Warm gray fully opaque full-length athletic T-shirt, chocolate brown full-length training leggings, and training sneakers",
+          "Ivory fully opaque full-length moisture-wicking T-shirt, taupe athletic track pants, and running sneakers",
+          "Taupe fully opaque full-length long-sleeve athletic top, warm gray training joggers, and cross-training sneakers"
+        ]
+      }
+    },
     "status": "active",
     "description": "original synthetic adult woman 38 y.o.; elegant mature visual archetype — dark blonde hair in a soft low bun, warm hazel eyes, silk blouse and fitted midi skirt",
     "reference_folder": "data/references/erika",

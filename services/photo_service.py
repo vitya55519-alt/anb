@@ -202,7 +202,7 @@ ADULT_SAFETY = (
 # rendered a child because the model dropped the subject; identity +
 # adult-only constraint must never be lost.
 ADULT_ONLY_LOCK = (
-    'HARD SUBJECT LOCK: the only person in the photo is the same fictional adult woman in her twenties (20+ years old) described above. '
+    'HARD SUBJECT LOCK: the only person in the photo is the same fictional adult woman described above. '
     'Never depict minors: no children, no teenagers, no child-like faces or child body proportions anywhere in the frame. '
     'If any other instruction conflicts with this lock, this lock wins.'
 )
@@ -1340,9 +1340,32 @@ def _default_season() -> str:
     return 'autumn'
 
 
-def _wardrobe_pool(scene: str, level: int, season: str) -> list[str]:
+def _photo_style(character_id: str) -> dict:
+    """Character-specific styling metadata from visual_identity.photo_style.
+
+    Returns per-character hair colors, hairstyles and wardrobe when available;
+    an empty dict for characters without dedicated styling (Anna, custom
+    personas) so the caller falls through to the generic shared pools.
+    """
+    try:
+        character = resolve_character(character_id)
+        return character.get('visual_identity', {}).get('photo_style', {}) or {}
+    except Exception:
+        return {}
+
+
+def _wardrobe_pool(scene: str, level: int, season: str, *, character_id: str = '') -> list[str]:
     group = SCENE_GROUP.get(scene, 'day_casual')
     level = max(1, min(6, int(level)))
+    # V3.43.8: character-specific wardrobe from photo_style when available.
+    # Each built-in heroine now has her own age-appropriate outfits; the
+    # generic level pools remain the fallback for Anna, custom personas and
+    # scene groups without character entries (adult/lingerie).
+    if character_id and group != 'adult':
+        style = _photo_style(character_id)
+        char_wardrobe = style.get('wardrobe', {})
+        if group in char_wardrobe:
+            return list(char_wardrobe[group])
     pool = list(WARDROBE_LEVEL_POOLS[group][level])
 
     # Outdoor summer scenes must never accidentally get winter styling.
@@ -1369,11 +1392,17 @@ def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season:
         return tuple(request.clothing for _ in range(PHOTO_SET_SIZE))
     state = get_state(telegram_id)
     level = get_relationship_level(telegram_id, character_id)
-    pool = _wardrobe_pool(request.scene, level, season)
+    pool = _wardrobe_pool(request.scene, level, season, character_id=character_id)
     uid = ensure_user(telegram_id)
     visual_prefs = get_visual_preferences(uid, character_id)
     color_counts = visual_prefs.get('colors', {}) if isinstance(visual_prefs, dict) else {}
     favorite_color = max(color_counts, key=color_counts.get) if color_counts and max(color_counts.values()) >= 2 else ''
+    # V3.43.8: character-specific outfits already include coordinated garment
+    # colors, so appending another color would contradict them. The generic
+    # fallback pool still gets per-frame color diversity as before.
+    style = _photo_style(character_id)
+    group = SCENE_GROUP.get(request.scene, 'day_casual')
+    has_char_wardrobe = bool(style.get('wardrobe', {}).get(group))
     picks: list[str] = []
     recent = {x.strip().lower() for x in _json_list(getattr(state, 'recent_outfits_json', '[]'))}
     if state.outfit:
@@ -1383,19 +1412,18 @@ def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season:
         if not usable:
             usable = [x for x in pool if x not in picks] or pool
         chosen = random.choice(usable)
-        # Color diversity: every frame gets its own garment color and the
-        # favorite color shows up at most once per set (and never orange), so
-        # the wardrobe never collapses into one repeated tone.
-        if favorite_color and 'orange' not in favorite_color.lower() and i == 0 \
-                and SCENE_GROUP.get(request.scene) != 'adult' and random.random() < 0.35:
-            chosen = f'{chosen} in a {favorite_color} tone'
-        else:
-            recent_colors = _recent_outfit_colors.setdefault(telegram_id, [])
-            color_pool = [c for c in OUTFIT_COLOR_POOL if c not in recent_colors] or list(OUTFIT_COLOR_POOL)
-            color = random.choice(color_pool)
-            recent_colors.append(color)
-            del recent_colors[:-3]
-            chosen = f'{chosen} in a {color} color'
+        if not has_char_wardrobe:
+            # Generic pool: color diversity per frame as before.
+            if favorite_color and 'orange' not in favorite_color.lower() and i == 0 \
+                    and SCENE_GROUP.get(request.scene) != 'adult' and random.random() < 0.35:
+                chosen = f'{chosen} in a {favorite_color} tone'
+            else:
+                recent_colors = _recent_outfit_colors.setdefault(telegram_id, [])
+                color_pool = [c for c in OUTFIT_COLOR_POOL if c not in recent_colors] or list(OUTFIT_COLOR_POOL)
+                color = random.choice(color_pool)
+                recent_colors.append(color)
+                del recent_colors[:-3]
+                chosen = f'{chosen} in a {color} color'
         picks.append(chosen)
     return tuple(picks)
 
@@ -1405,13 +1433,19 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     season = request.season or _default_season()
     pack_outfits = tuple(request.pack_outfits) if request.pack_outfits else _choose_progression_outfits(telegram_id, request, season, character_id=character_id)
     clothing = pack_outfits[-1] if pack_outfits else request.clothing
+    # V3.43.8: character-specific styling. Each built-in heroine has her own
+    # hair colors, hairstyles and wardrobe in visual_identity.photo_style;
+    # explicit request fields and learned preferences still win.
+    style = _photo_style(character_id)
     if request.hairstyle:
         hairstyle = request.hairstyle
     else:
         recent_hair = {x.strip().lower() for x in _json_list(getattr(state, 'recent_hairstyles_json', '[]'))}
         if state.hairstyle:
             recent_hair.add(state.hairstyle.strip().lower())
-        hair_pool = [x for x in HAIRSTYLE_POOL if x.strip().lower() not in recent_hair] or HAIRSTYLE_POOL
+        char_hairstyles = style.get('hairstyles', [])
+        base_hair_pool = char_hairstyles if char_hairstyles else HAIRSTYLE_POOL
+        hair_pool = [x for x in base_hair_pool if x.strip().lower() not in recent_hair] or list(base_hair_pool)
         uid = ensure_user(telegram_id)
         visual_prefs = get_visual_preferences(uid, character_id)
         hair_counts = visual_prefs.get('hairstyles', {}) if isinstance(visual_prefs, dict) else {}
@@ -1427,12 +1461,19 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         location = f"{SCENES['selfie']}; keep it consistent with the character's current fictional day context: location={state.location}, activity={activity}"
     else:
         location = SCENES.get(request.scene, SCENES['selfie'])
-    # All characters cycle hair color monthly — brunette, blonde, chestnut, caramel.
-    # Each 30-day period shifts the color. Face and body stay the same.
+    # V3.43.8: each character draws from her own hair-color palette instead
+    # of sharing one global monthly cycle. Anna and custom personas without
+    # a palette fall back to the original cycle.
     if request.hair_color:
         hair_color = request.hair_color
     else:
-        hair_color = current_hair_color()
+        char_colors = style.get('hair_colors', [])
+        if char_colors:
+            recent_hc = {x.strip().lower() for x in _json_list(getattr(state, 'recent_hair_colors_json', '[]'))}
+            available = [c for c in char_colors if c.strip().lower() not in recent_hc] or list(char_colors)
+            hair_color = random.choice(available)
+        else:
+            hair_color = current_hair_color()
     makeup = request.makeup or random.choice(MAKEUP_POOL)
     accessory = request.accessory or random.choice(ACCESSORY_POOL)
     time_of_day = request.time_of_day or random.choice(DAYLIGHT_POOL)
@@ -1522,6 +1563,22 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key or (request.expression_rotation[shot_index % len(request.expression_rotation)] if request.expression_rotation else None))
     if adult_scene:
         safety = ADULT_SAFETY
+    # V3.43.8: inject the character's actual age into the subject lock so
+    # the provider sees the real age instead of a universal "twenties" label.
+    adult_lock = ADULT_ONLY_LOCK
+    if character_id != 'anna_01':
+        try:
+            _char = resolve_character(character_id)
+            _card = None
+            try:
+                from services.character_card_service import get_card as _gc
+                _card = _gc(character_id)
+            except Exception:
+                pass
+            _age = _card.age if _card and _card.age else int(_char.get('age') or 25)
+        except Exception:
+            _age = 25
+        adult_lock = ADULT_ONLY_LOCK.replace('adult woman', f'adult woman, {_age} years old', 1)
     body_reinforcement = BODY_REINFORCEMENT if (character_id == 'anna_01' and not seedream and request.scene in BODY_REINFORCEMENT_SCENES) else ''
     figure_note = (
         'Use tasteful fashion fit and waist definition while preserving the underlying slim body proportions. ' if seedream else
@@ -1529,7 +1586,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     )
     return (
         f'{identity}\n'
-        f'{ADULT_ONLY_LOCK}\n'
+        f'{adult_lock}\n'
         f'SCENE: {scene}. {request.location}.\n'
         f'SEASON/WEATHER: {season}. {season_rule}\n'
         f'RELATIONSHIP VISUAL PROGRESSION: {visual_rule}\n'
@@ -1548,7 +1605,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         + (f'POSE NOTE: {request.pose_rotation[shot_index % len(request.pose_rotation)]}. '
            'Use exactly this posture for this frame and keep it clearly different from the other frames of the set.\n'
            if request.pose_rotation else '')
-        + (f'HAIR COLOR THIS MONTH: {request.hair_color}. This temporary hair color overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n' if request.hair_color else '')
+        + (f'HAIR COLOR: {request.hair_color}. This is the character\'s current hair color; it overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n' if request.hair_color else '')
         + f'{body_reinforcement}\n'
         f'MOOD: {request.mood}.\n'
         f'{expression_identity}\n'
@@ -2014,7 +2071,7 @@ async def _run_openai_set(
                 # the bot usable without weakening provider safety.
                 try:
                     logger.info('OpenAI compatibility retry single-reference user=%s scene=%s frame=%s/%s original_code=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, code)
-                    photo = await _openai_one_frame(character, telegram_id, request, i, safe_retry=True, single_reference=True)
+                    photo = await _openai_one_frame(character, telegram_id, request, i, safe_retry=True, single_reference=True, character_id=character_id)
                     track_event(ensure_user(telegram_id), 'photo_single_reference_retry_success', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'openai', 'original_reason': code or 'bad_request'})
                 except Exception as retry_exc:
                     logger.warning('OpenAI compatibility retry failed user=%s scene=%s frame=%s/%s type=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, type(retry_exc).__name__)

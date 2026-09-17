@@ -52,6 +52,50 @@
     "no_nudity_generation": true
   },
   "visual_identity": {
+    "photo_style": {
+      "hair_colors": ["warm chestnut brown", "soft golden chestnut", "deep chestnut brown"],
+      "hairstyles": [
+        "long loose natural waves",
+        "loose side braid with softly waved ends",
+        "half-up twisted hairstyle with a fabric ribbon",
+        "low ponytail retaining the natural waves",
+        "soft braided low bun"
+      ],
+      "colors": ["cream", "dusty rose", "sage green", "soft blue", "cocoa brown"],
+      "wardrobe_style": "Warm romantic casual style for an adult of 24: soft colors, subtle floral prints, cozy cardigans, and thoughtful comfortable details. Opaque fabrics and complete outfits keep home, city, and evening choices fully clothed.",
+      "wardrobe": {
+        "day_casual": [
+          "Cream cardigan over a dusty rose opaque cotton blouse, cocoa brown trousers, and cream loafers",
+          "Sage green opaque long-sleeve floral midi dress and cocoa brown ankle boots",
+          "Soft blue opaque button-front shirt, cream cotton midi skirt, and cocoa brown flats"
+        ],
+        "warm_outdoor": [
+          "Dusty rose opaque lightweight cotton short-sleeve floral midi summer dress and cream flat sandals",
+          "Cream opaque short-sleeve cotton blouse, sage green lightweight linen trousers, and cocoa brown sandals",
+          "Soft blue opaque lightweight linen short-sleeve shirt dress in midi length and cream canvas sneakers"
+        ],
+        "home": [
+          "Dusty rose opaque cotton short-sleeve floral midi home dress and cream house slippers",
+          "Cream opaque cotton long-sleeve top, sage green jersey lounge trousers, and soft house shoes",
+          "Soft blue opaque short-sleeve cotton shirt, cocoa brown cotton lounge pants, and cream slippers"
+        ],
+        "fashion": [
+          "Cream cardigan over a dusty rose opaque blouse, sage green pleated midi skirt, and cocoa brown loafers",
+          "Soft blue opaque embroidered cotton long-sleeve midi dress and cream flats",
+          "Cocoa brown corduroy blazer over a cream opaque cotton shirt, dusty rose tailored trousers, and cocoa brown ankle boots"
+        ],
+        "evening": [
+          "Dusty rose opaque long-sleeve satin midi dress and cocoa brown closed-toe pumps",
+          "Cream opaque silk button-front blouse, sage green ankle-length skirt, and cream dress flats",
+          "Soft blue opaque short-sleeve floral maxi dress and cocoa brown closed-toe shoes"
+        ],
+        "gym": [
+          "Dusty rose fully opaque full-length athletic T-shirt, cocoa brown full-length training leggings, and training sneakers",
+          "Sage green fully opaque full-length moisture-wicking T-shirt, cream athletic track pants, and running sneakers",
+          "Soft blue fully opaque full-length long-sleeve athletic top, cocoa brown training joggers, and cross-training sneakers"
+        ]
+      }
+    },
     "age": 24,
     "reference_folder": "data/references/maria",
     "reference_assets": [

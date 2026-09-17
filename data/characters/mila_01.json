@@ -46,6 +46,50 @@
     "no_nudity_generation": true
   },
   "visual_identity": {
+    "photo_style": {
+      "hair_colors": ["warm honey brown", "golden honey brown", "soft caramel brown"],
+      "hairstyles": [
+        "casual claw-clip updo",
+        "half-up style held with a small claw clip",
+        "relaxed low bun secured with a plain hairpin",
+        "loose low ponytail with a cotton scrunchie",
+        "soft loose waves at the existing length with one side clipped back"
+      ],
+      "colors": ["oatmeal", "olive green", "cream", "dusty rose", "walnut brown"],
+      "wardrobe_style": "Warm, practical style for an adult of 30: easy-care linen, comfortable knits, useful pockets, simple clips, and welcoming natural colors. All outfits are complete and opaque, with lightweight cotton and linen for summer and relaxed polish for going out.",
+      "wardrobe": {
+        "day_casual": [
+          "Oatmeal opaque knit crewneck sweater, olive green linen trousers, and walnut brown loafers",
+          "Cream cardigan over a dusty rose opaque cotton T-shirt, walnut brown cotton trousers, and cream sneakers",
+          "Olive green opaque long-sleeve linen midi shirt dress with pockets and walnut brown ankle boots"
+        ],
+        "warm_outdoor": [
+          "Cream opaque lightweight linen short-sleeve shirt, olive green linen trousers, and walnut brown flat sandals",
+          "Dusty rose opaque lightweight cotton short-sleeve midi summer dress with pockets and cream canvas sneakers",
+          "Oatmeal opaque lightweight cotton T-shirt, walnut brown linen Bermuda shorts, and olive green walking sandals"
+        ],
+        "home": [
+          "Dusty rose opaque cotton short-sleeve midi home dress with pockets and oatmeal house slippers",
+          "Cream opaque cotton T-shirt, olive green lounge trousers, oatmeal linen apron, and walnut brown house shoes",
+          "Oatmeal opaque knit crewneck top, walnut brown cotton lounge pants, and cream slippers"
+        ],
+        "fashion": [
+          "Olive green linen jacket over a cream opaque cotton blouse, oatmeal wide-leg linen trousers, and walnut brown loafers",
+          "Dusty rose opaque fine-gauge knit short-sleeve top, walnut brown pleated midi skirt, and cream flats",
+          "Oatmeal opaque collared long-sleeve linen jumpsuit with pockets and walnut brown ankle boots"
+        ],
+        "evening": [
+          "Olive green opaque long-sleeve linen-blend midi dress and walnut brown closed-toe pumps",
+          "Cream opaque button-front blouse, walnut brown ankle-length skirt, and dusty rose dress flats",
+          "Dusty rose opaque short-sleeve crepe midi dress, oatmeal cardigan, and walnut brown closed-toe shoes"
+        ],
+        "gym": [
+          "Olive green fully opaque full-length athletic T-shirt, walnut brown full-length training leggings, and training sneakers",
+          "Dusty rose fully opaque full-length moisture-wicking T-shirt, oatmeal athletic track pants, and running sneakers",
+          "Cream fully opaque full-length long-sleeve athletic top, olive green training joggers, and cross-training sneakers"
+        ]
+      }
+    },
     "status": "active",
     "description": "original synthetic adult woman 30 y.o.; cozy neighbor visual archetype — honey-brown hair in a lazy claw clip, amber eyes, soft knit sweater, linen apron",
     "reference_folder": "data/references/mila",

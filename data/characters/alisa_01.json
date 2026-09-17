@@ -46,6 +46,50 @@
     "no_nudity_generation": true
   },
   "visual_identity": {
+    "photo_style": {
+      "hair_colors": ["light hazelnut brown", "light ash brown", "light golden brown"],
+      "hairstyles": [
+        "loose side braid",
+        "soft loose waves at the existing length",
+        "half-up braided twist with a small barrette",
+        "low ponytail tied with a plain fabric ribbon",
+        "relaxed braided low bun"
+      ],
+      "colors": ["oatmeal", "moss green", "dusty blue", "plum", "warm brown"],
+      "wardrobe_style": "Thoughtful, bookish style for an adult of 27: soft cardigans, textured separates, subtle checks, and comfortable long skirts, with warm colors and a quietly romantic touch. Complete opaque outfits retain that individual taste in every setting, using breathable woven fabrics for summer.",
+      "wardrobe": {
+        "day_casual": [
+          "Oatmeal cardigan over a dusty blue opaque cotton shirt, warm brown corduroy trousers, and warm brown loafers",
+          "Moss green cardigan over an oatmeal opaque blouse, plum long skirt, and warm brown ankle boots",
+          "Dusty blue opaque long-sleeve checked midi shirt dress and warm brown leather flats"
+        ],
+        "warm_outdoor": [
+          "Oatmeal opaque lightweight cotton short-sleeve blouse, moss green linen midi skirt, and warm brown flat sandals",
+          "Dusty blue opaque lightweight cotton short-sleeve checked midi summer dress and oatmeal canvas sneakers",
+          "Plum opaque short-sleeve linen shirt, oatmeal lightweight linen trousers, and warm brown sandals"
+        ],
+        "home": [
+          "Dusty blue opaque cotton short-sleeve midi home dress and oatmeal house slippers",
+          "Oatmeal cardigan over a plum opaque cotton T-shirt, warm brown jersey lounge trousers, and soft house shoes",
+          "Moss green opaque long-sleeve cotton top, oatmeal cotton lounge pants, and warm brown slippers"
+        ],
+        "fashion": [
+          "Warm brown corduroy blazer over an oatmeal opaque blouse, dusty blue pleated midi skirt, and warm brown loafers",
+          "Plum cardigan over an oatmeal opaque collared shirt, moss green wide-leg trousers, and warm brown ankle boots",
+          "Moss green opaque long-sleeve checked midi dress, oatmeal cardigan, and warm brown leather flats"
+        ],
+        "evening": [
+          "Plum opaque long-sleeve velvet midi dress and warm brown closed-toe pumps",
+          "Oatmeal opaque silk button-front blouse, moss green ankle-length skirt, and warm brown dress flats",
+          "Dusty blue opaque short-sleeve crepe midi dress and warm brown closed-toe shoes"
+        ],
+        "gym": [
+          "Moss green fully opaque full-length athletic T-shirt, warm brown full-length training leggings, and training sneakers",
+          "Dusty blue fully opaque full-length moisture-wicking T-shirt, plum athletic track pants, and running sneakers",
+          "Oatmeal fully opaque full-length long-sleeve athletic top, moss green training joggers, and cross-training sneakers"
+        ]
+      }
+    },
     "status": "active",
     "description": "original synthetic adult woman 27 y.o.; gentle teacher visual archetype — light brown hair in a loose braid, blue eyes, thin round glasses, cozy cardigans",
     "reference_folder": "data/references/alisa",

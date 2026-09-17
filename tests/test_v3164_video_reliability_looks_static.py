@@ -54,7 +54,9 @@ def test_monthly_hair_color_cycle():
     assert 'rich dark brunette' in PHOTO
     assert 'natural blonde' in PHOTO
     assert 'def current_hair_color()' in PHOTO
-    assert 'HAIR COLOR THIS MONTH' in PHOTO
+    # V3.43.8: the prompt line no longer says "THIS MONTH" — each character
+    # now draws from her own palette; the cycle is a fallback for Anna/custom.
+    assert 'HAIR COLOR:' in PHOTO
     assert 'overrides the hair color in the reference photos' in PHOTO
 
 

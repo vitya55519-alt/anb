@@ -56,7 +56,8 @@ def test_bust_bumped_to_size_five():
 def test_hair_color_line_condition_is_parenthesized():
     # The 'if request.hair_color else ""' condition must apply only to the hair
     # line — without parentheses Python applies it to the whole prompt string.
-    assert "+ (f'HAIR COLOR THIS MONTH:" in PHOTO
+    # V3.43.8: the label changed from "HAIR COLOR THIS MONTH" to "HAIR COLOR".
+    assert "+ (f'HAIR COLOR:" in PHOTO
     assert "if request.hair_color else '')" in PHOTO
 
 
