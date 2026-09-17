@@ -65,6 +65,8 @@
   .card.selected { border: 2px solid var(--accent); }
   .card .photo { position: relative; aspect-ratio: 3/4; background: var(--card2); }
   .card .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* V3.43.1: the living tile — muted looping mp4 in the same 3:4 frame */
+  .card .photo video { width: 100%; height: 100%; object-fit: cover; display: block; }
   .card .photo .fallback {
     position: absolute; inset: 0; display: none;
     align-items: center; justify-content: center; font-size: 64px;
@@ -232,20 +234,20 @@
   .strip img.on { border-color: var(--accent); }
   /* V3.43.0: channel-subscribe bonus banner on the characters tab */
   .chanbanner {
-    display: flex; align-items: center; gap: 10px; width: calc(100% - 8px);
-    margin: 10px 4px 2px; padding: 9px 12px; border: 0; border-radius: 14px;
+    display: flex; align-items: center; gap: 12px; width: calc(100% - 8px);
+    margin: 12px 4px 4px; padding: 15px 16px; border: 0; border-radius: 16px;
     background: linear-gradient(90deg, rgba(232,68,127,.28), rgba(184,68,232,.16));
     color: var(--text); cursor: pointer;
   }
   .chanbanner .gift {
-    width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto;
+    width: 46px; height: 46px; border-radius: 50%; flex: 0 0 auto;
     background: radial-gradient(circle at 35% 30%, #ff9ec7, var(--accent));
-    display: flex; align-items: center; justify-content: center; font-size: 17px;
+    display: flex; align-items: center; justify-content: center; font-size: 23px;
   }
-  .chanbanner .t { flex: 1; text-align: left; font-size: 13px; font-weight: 600; }
+  .chanbanner .t { flex: 1; text-align: left; font-size: 15px; font-weight: 700; line-height: 1.3; }
   .chanbanner .ar {
-    width: 26px; height: 26px; border-radius: 50%; background: var(--accent);
-    color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px;
+    width: 32px; height: 32px; border-radius: 50%; background: var(--accent);
+    color: #fff; display: flex; align-items: center; justify-content: center; font-size: 17px;
   }
   /* V3.43.0: the centered gift modal for the channel bonus */
   #chanmodal {
@@ -281,8 +283,15 @@
   /* V3.43.0: Come Closer pack squares + the pay-method modal */
   .packs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
   .pack {
+    position: relative;
     background: var(--card); border: 1px solid rgba(232, 68, 127, .16);
     border-radius: 14px; padding: 12px 8px 10px; text-align: center; cursor: pointer;
+  }
+  /* V3.43.1: the discount badge on the 30/100 peach packs */
+  .pack .bdg {
+    position: absolute; top: 6px; right: 6px; padding: 2px 7px; border-radius: 8px;
+    background: linear-gradient(90deg, var(--accent), #ff7ab0); color: #fff;
+    font-size: 10px; font-weight: 700;
   }
   .pack .amt { font-size: 16px; font-weight: 700; color: var(--text); }
   .pack .sub { color: var(--text); font-size: 11px; margin-top: 3px; }
@@ -345,8 +354,8 @@
   .stripdots i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); opacity: .5; }
   .stripdots i.on { background: var(--accent); opacity: 1; }
   .charlike {
-    position: absolute; top: 16px; right: 10px; z-index: 2; border: 0; border-radius: 12px;
-    background: rgba(10,5,14,.55); color: #fff; font-size: 12px; padding: 6px 10px; cursor: pointer;
+    position: absolute; top: 14px; right: 12px; z-index: 2; border: 0; border-radius: 14px;
+    background: rgba(10,5,14,.55); color: #fff; font-size: 16px; font-weight: 700; padding: 10px 16px; cursor: pointer;
   }
   .charlike.on { color: #ff7ab0; }
   .charhero { padding: 6px 16px 0; }
@@ -731,7 +740,7 @@ const L = LANG === 'en' ? {
   my_chars: 'MY CHARACTERS', create_char: '＋ Create', no_chars: 'No character yet — create your own girl.',
   partner_row: '💰 Partner program', docs_row: '📜 Documents & prices', open_chat: 'chat',
   // V3.39.0: the Come Closer character page + in-app chat media.
-  start_chat: 'Start chat', plot: 'PLOT', make_mine: '❤️ Make her yours',
+  start_chat: 'Start chat', plot: 'HOW YOU TWO MEET', make_mine: '❤️ Make her yours',
   seg_official: '🍑 Peach Garden', seg_community: '👥 Community',
   media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
   media_wait_voice: 'Recording her voice…', media_wait_video: 'Rendering a video — 1–3 min…',
@@ -808,7 +817,7 @@ const L = LANG === 'en' ? {
   my_chars: 'МОИ ПЕРСОНАЖИ', create_char: '＋ Создать', no_chars: 'Персонажа пока нет — создай свою девушку.',
   partner_row: '💰 Партнёрка', docs_row: '📜 Документы и цены', open_chat: 'чат',
   // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
-  start_chat: 'Начать чат', plot: 'СЮЖЕТ', make_mine: '❤️ Сделать твоей',
+  start_chat: 'Начать чат', plot: 'КАК ВЫ ПОЗНАКОМИТЕСЬ', make_mine: '❤️ Сделать твоей',
   seg_official: '🍑 Персиковый сад', seg_community: '👥 Сообщество',
   media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
   media_wait_voice: 'Записываю голос…', media_wait_video: 'Рисую видео — 1–3 минуты…',
@@ -938,9 +947,14 @@ function renderCharacters(list) {
     // V3.40.0: the view badge («👁 427k») — built from esc()'d parts, shown
     // from the first view on; the grid card refreshes after each page open.
     const viewsBadge = c.views ? '<div class="views">👁 ' + esc(fmtK(c.views)) + '</div>' : '';
+    // V3.43.1: living tile — a muted looping mp4 (she smiles and blows an air
+    // kiss) when the owner rendered one; otherwise the Ken-Burns webp «гифка».
+    const cardMedia = c => c.live
+      ? `<video src="${esc(c.live)}" muted loop autoplay playsinline onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"></video>`
+      : `<img src="${esc(c.card || c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">`;
     return `<div class="card${c.selected ? ' selected' : ''}" data-id="${esc(c.id)}" data-status="${esc(c.status)}" data-name="${esc(c.name)}" data-photo="${esc(c.photo)}" data-emoji="${esc(c.emoji)}" data-custom="${c.custom ? '1' : '0'}">
       <div class="photo">
-        <img src="${esc(c.card || c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+        ${cardMedia(c)}
         <div class="fallback">${esc(c.emoji)}</div>
         ${badge}${viewsBadge}${c.selected ? `<span class="badge" style="left:8px;top:auto;bottom:8px;color:#e8447f">❤️</span>` : ''}${customBadge}
       </div>
@@ -1669,8 +1683,11 @@ async function loadShop() {
     // modal opens (Stars / card-SBP / crypto rows), like the benchmark shop.
     const purchases = s.purchases || [];
     SHOP = s;
+    // V3.43.1: the −10%/−25% corner badge on the bigger peach packs.
+    const packBadge = x => x.badge ? '<div class="bdg">' + esc(x.badge) + '</div>' : '';
     const packs = purchases.map(x => `
       <div class="pack" data-pay="${esc(x.id)}">
+        ${packBadge(x)}
         <div class="amt">${x.stars} ⭐</div>
         <div class="sub">${esc(x.emoji)} ${esc(x.title)}</div>
         <div class="rub">${x.rub ? esc(x.rub) + ' ₽' : (x.usd ? '$' + esc(x.usd) : '')}</div>

@@ -3,12 +3,12 @@ import logging
 from sqlalchemy import select
 from services.db import SessionLocal
 from models.app_models import Subscription, StarTransaction, User
-from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_STARS, PREMIUM_QUARTERLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS
+from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_STARS, PREMIUM_QUARTERLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS, PEACH_PACK_10_STARS, PEACH_PACK_30_STARS, PEACH_PACK_100_STARS, PEACH_PACK_CREDITS
 from services.access_service import is_premium
 
 logger = logging.getLogger(__name__)
 
-PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"premium_week":PREMIUM_WEEKLY_STARS,"premium_quarter":PREMIUM_QUARTERLY_STARS,"video":VIDEO_COST_STARS}
+PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"premium_week":PREMIUM_WEEKLY_STARS,"premium_quarter":PREMIUM_QUARTERLY_STARS,"video":VIDEO_COST_STARS,"peach_pack_10":PEACH_PACK_10_STARS,"peach_pack_30":PEACH_PACK_30_STARS,"peach_pack_100":PEACH_PACK_100_STARS}
 
 def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provider:str="stars", provider_payload:str|None=None):
     now=datetime.now(timezone.utc).replace(tzinfo=None)
@@ -46,6 +46,9 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
                 pass
         elif product in {"photo","custom_photo"}:
             user.photo_credits=(user.photo_credits or 0)+1
+        elif product in PEACH_PACK_CREDITS:
+            # V3.43.1: the peach pack ladder grants the whole pack at once.
+            user.photo_credits=(user.photo_credits or 0)+PEACH_PACK_CREDITS[product]
         s.commit()
         payer_user_id = user.id
     # V3.37.0: after the purchase commits, credit the payer's referrer in the

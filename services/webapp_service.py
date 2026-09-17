@@ -47,6 +47,9 @@ from config import (
     FREE_PHOTOS_LEVEL_1_2,
     FREE_PHOTOS_LEVEL_3_6,
     GALLERY_DOWNLOAD_STARS,
+    PEACH_PACK_10_STARS,
+    PEACH_PACK_30_STARS,
+    PEACH_PACK_100_STARS,
     PHOTO_COST_STARS,
     PREMIUM_MONTHLY_PHOTO_CREDITS,
     PREMIUM_MONTHLY_STARS,
@@ -251,6 +254,12 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             'card': (f'/webapp/gif/{card.character_id}'
                      if character_card_gif(card.character_id)
                      else f"/webapp/photo/{card.character_id}"),
+            # V3.43.1: the i2v-rendered living tile (she smiles and blows a
+            # kiss) — the grid plays it as a muted loop when the owner has
+            # rendered one; otherwise the Ken-Burns webp stays.
+            'live': (f'/webapp/live/{card.character_id}'
+                     if character_card_live(card.character_id)
+                     else None),
             # V3.40.0: the «👁 427k» view badge on the card corner.
             'views': views.get(card.character_id, 0),
             # V3.39.0: the Come Closer character page opens with a photo strip
@@ -275,12 +284,15 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
 
     - ``premium_month`` — handled since forever: +30 days Premium, +12 credits;
     - ``premium_week`` — V3.34.1 addition: +7 days Premium, +3 credits;
-    - ``photo_pack`` — V3.34.0 addition: a standalone +1 photo credit.
+    - ``peach_pack_*`` — V3.43.1: the peach pack ladder (10/30/100 credits)
+      that replaced the standalone +1 photo credit square.
     """
     en = lang == EN
     # V3.36.0: every Stars price carries its rub + dollar equivalent so the
     # storefront can show all three tiers next to each other.
-    photo_rub, photo_usd = fiat_values(PHOTO_COST_STARS)
+    p10_rub, p10_usd = fiat_values(PEACH_PACK_10_STARS)
+    p30_rub, p30_usd = fiat_values(PEACH_PACK_30_STARS)
+    p100_rub, p100_usd = fiat_values(PEACH_PACK_100_STARS)
     return [
         {
             'id': 'premium',
@@ -311,18 +323,48 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'usd': PREMIUM_WEEKLY_PRICE_USD,
         },
         {
-            'id': 'photo_credit',
-            'emoji': '📸',
-            'title': '+1 фото-кредит' if not en else '+1 photo credit',
+            'id': 'peach_pack_10',
+            'emoji': '🍑',
+            'title': '10 персиков' if not en else '10 peaches',
             'description': (
-                'Один сет фото на заказ — кредит списывается, когда попросишь фото в чате'
+                '10 фото-кредитов разом — хватит на 10 сетов фото по запросу'
                 if not en else
-                'One photo set on demand — the credit is used when you ask for a photo in chat'
+                '10 photo credits at once — enough for 10 on-demand photo sets'
             ),
-            'stars': PHOTO_COST_STARS,
-            'payload': 'photo_pack',
-            'rub': photo_rub,
-            'usd': photo_usd,
+            'stars': PEACH_PACK_10_STARS,
+            'payload': 'peach_pack_10',
+            'rub': p10_rub,
+            'usd': p10_usd,
+        },
+        {
+            'id': 'peach_pack_30',
+            'emoji': '🍑',
+            'title': '30 персиков' if not en else '30 peaches',
+            'description': (
+                '30 фото-кредитов со скидкой 10% — кредит дешевле одиночного'
+                if not en else
+                '30 photo credits with a 10% discount — each credit costs less'
+            ),
+            'stars': PEACH_PACK_30_STARS,
+            'payload': 'peach_pack_30',
+            'rub': p30_rub,
+            'usd': p30_usd,
+            'badge': '−10%',
+        },
+        {
+            'id': 'peach_pack_100',
+            'emoji': '🍑',
+            'title': '100 персиков' if not en else '100 peaches',
+            'description': (
+                '100 фото-кредитов со скидкой 25% — самый выгодный пак'
+                if not en else
+                '100 photo credits with a 25% discount — the best value pack'
+            ),
+            'stars': PEACH_PACK_100_STARS,
+            'payload': 'peach_pack_100',
+            'rub': p100_rub,
+            'usd': p100_usd,
+            'badge': '−25%',
         },
     ]
 
@@ -635,6 +677,95 @@ def character_card_gif(character_id: str) -> Path | None:
         if tile.exists():
             return tile
     return None
+
+
+def builtin_character_ids() -> tuple[str, ...]:
+    """V3.43.1: ids of the built-in heroines (the reference-map keys)."""
+    return tuple(_FACE_REFERENCES)
+
+
+def character_card_live(character_id: str) -> Path | None:
+    """V3.43.1: the i2v-rendered living tile (``card_live.mp4``) of a heroine.
+
+    The owner asked for tiles where the girl actually smiles and blows an air
+    kiss instead of a Ken-Burns zoom; those clips are rendered once per
+    heroine by the admin «живые плитки» job and served as muted loops.
+    """
+    if is_custom_character(character_id):
+        return None
+    rel = _FACE_REFERENCES.get(character_id)
+    if not rel:
+        return None
+    live = ROOT.joinpath('data', rel[0], rel[1]) / 'card_live.mp4'
+    return live if live.exists() else None
+
+
+def canonical_face_bytes(character_id: str, max_side: int = 768) -> bytes | None:
+    """V3.43.1: the canonical face reference as a compact JPEG for i2v."""
+    rel = _FACE_REFERENCES.get(character_id)
+    if not rel:
+        return None
+    folder = ROOT.joinpath('data', rel[0], rel[1])
+    sources = sorted(folder.glob('00_*face*.png')) or sorted(folder.glob('01_*look*.png'))
+    if not sources:
+        return None
+    import io
+    from PIL import Image
+    img = Image.open(sources[0]).convert('RGB')
+    width, height = img.size
+    scale = min(1.0, max_side / max(width, height))
+    if scale < 1.0:
+        img = img.resize((int(width * scale), int(height * scale)), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format='JPEG', quality=88)
+    return buf.getvalue()
+
+
+def write_card_live(character_id: str, video_bytes: bytes) -> Path | None:
+    """V3.43.1: persist a rendered living tile next to the references."""
+    rel = _FACE_REFERENCES.get(character_id)
+    if not rel or not video_bytes:
+        return None
+    path = ROOT.joinpath('data', rel[0], rel[1]) / 'card_live.mp4'
+    path.write_bytes(video_bytes)
+    return path
+
+
+def rebuild_card_tile(character_id: str) -> Path | None:
+    """V3.43.1: re-render the Ken-Burns loop tile from the CURRENT canonicals.
+
+    Swapping reference PNGs used to leave the old storefront «гифка» on disk;
+    this re-renders ``card_preview.webp`` (24-frame sine zoom+pan loop) so new
+    faces reach the grid without a code deploy.
+    """
+    rel = _FACE_REFERENCES.get(character_id)
+    if not rel:
+        return None
+    folder = ROOT.joinpath('data', rel[0], rel[1])
+    sources = sorted(folder.glob('01_*look*.png')) or sorted(folder.glob('00_*face*.png'))
+    if not sources:
+        return None
+    import math
+    from PIL import Image
+    width, height, frames = 300, 400, 16
+    img = Image.open(sources[0]).convert('RGB')
+    w, h = img.size
+    scale = max(width / w, height / h) * 1.14
+    base = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
+    nw, nh = base.size
+    out_frames = []
+    for i in range(frames):
+        t = i / frames
+        zoom = 1.0 + 0.07 * (0.5 - 0.5 * math.cos(2 * math.pi * t))
+        cw = min(nw, int(width * 1.14 / zoom))
+        ch = min(nh, int(height * 1.14 / zoom))
+        px = int((nw - cw) * (0.5 + 0.35 * math.sin(2 * math.pi * t)))
+        py = int((nh - ch) * (0.5 - 0.35 * math.sin(2 * math.pi * t)))
+        out_frames.append(base.crop((px, py, px + cw, py + ch)).resize((width, height), Image.LANCZOS))
+    tile = folder / 'card_preview.webp'
+    out_frames[0].save(tile, save_all=True, append_images=out_frames[1:],
+                       duration=90, loop=0, quality=64)
+    return tile
 
 
 def character_views_map() -> dict[str, int]:

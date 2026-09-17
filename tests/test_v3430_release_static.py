@@ -22,7 +22,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0')
+    assert VERSION in ('3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0')
 
 
 # ── 1. support lives in the dedicated support bot ──────────────────────────

@@ -18,7 +18,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_config_fiat_helpers():
@@ -98,7 +98,8 @@ def test_webapp_service_items_carry_fiat():
     assert "'constructor_usd': CONSTRUCTOR_PRICE_USD," in WEBAPP_SVC
     assert "'usd': FREEKASSA_PREMIUM_PRICE_USD," in WEBAPP_SVC
     assert "'usd': PREMIUM_WEEKLY_PRICE_USD," in WEBAPP_SVC
-    assert "'rub': photo_rub," in WEBAPP_SVC and "'usd': photo_usd," in WEBAPP_SVC
+    # V3.43.1: the single-credit fiat pair became the peach pack fiat pairs.
+    assert "'rub': p10_rub," in WEBAPP_SVC and "'usd': p100_usd," in WEBAPP_SVC
     assert "'rub': rub if rub is not None else fiat_values(s)[0]," in WEBAPP_SVC
     # the constructor item carries its REAL card prices, not the ladder
     assert 'CONSTRUCTOR_COST_RUB if FREEKASSA_ENABLED else None, CONSTRUCTOR_PRICE_USD),' in WEBAPP_SVC

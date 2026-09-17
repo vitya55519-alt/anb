@@ -137,6 +137,9 @@ OPENAI_IMAGE_AVAILABLE = bool(AI_KEY) and os.getenv("OPENAI_IMAGE_AVAILABLE", "f
 # still non-explicit fashion edits. Keep the key server-side in Railway.
 FAL_KEY = os.getenv("FAL_KEY", "").strip()
 FAL_MODEL = os.getenv("FAL_MODEL", "fal-ai/bytedance/seedream/v4.5/edit").strip()
+# V3.43.1: the edit endpoint rejects empty image_urls (HTTP 422), so freeform
+# studio prompts go to the dedicated text-to-image endpoint instead.
+FAL_MODEL_T2I = os.getenv("FAL_MODEL_T2I", "fal-ai/bytedance/seedream/v4.5/text-to-image").strip()
 FAL_IMAGE_SIZE = os.getenv("FAL_IMAGE_SIZE", "portrait_4_3").strip()
 FAL_TIMEOUT_SECONDS = int(os.getenv("FAL_TIMEOUT_SECONDS", "210"))
 FAL_CONNECT_TIMEOUT_SECONDS = int(os.getenv("FAL_CONNECT_TIMEOUT_SECONDS", "20"))
@@ -257,6 +260,13 @@ PREMIUM_WEEKLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_WEEKLY_PHOTO_CREDITS", "3"
 PREMIUM_QUARTERLY_STARS = int(os.getenv("PREMIUM_QUARTERLY_STARS", "1200"))
 PREMIUM_QUARTERLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_QUARTERLY_PHOTO_CREDITS", "36"))
 PHOTO_COST_STARS = int(os.getenv("PHOTO_COST_STARS", "25"))
+# V3.43.1: the peach pack ladder — bulk credits cost less per piece than the
+# single credit (30-pack −10%, 100-pack −25%), like Come Closer's berry packs.
+PEACH_PACK_10_STARS = int(os.getenv("PEACH_PACK_10_STARS", str(PHOTO_COST_STARS * 10)))
+PEACH_PACK_30_STARS = int(os.getenv("PEACH_PACK_30_STARS", str(int(PHOTO_COST_STARS * 30 * 0.9))))
+PEACH_PACK_100_STARS = int(os.getenv("PEACH_PACK_100_STARS", str(int(PHOTO_COST_STARS * 100 * 0.75))))
+PEACH_PACK_STARS = {"peach_pack_10": PEACH_PACK_10_STARS, "peach_pack_30": PEACH_PACK_30_STARS, "peach_pack_100": PEACH_PACK_100_STARS}
+PEACH_PACK_CREDITS = {"peach_pack_10": 10, "peach_pack_30": 30, "peach_pack_100": 100}
 CHAT_PHOTO_OFFER_STARS = int(os.getenv("CHAT_PHOTO_OFFER_STARS", "5"))
 CUSTOM_PHOTO_COST_STARS = int(os.getenv("CUSTOM_PHOTO_COST_STARS", "40"))
 QUEST_REPLAY_STARS = int(os.getenv("QUEST_REPLAY_STARS", "10"))

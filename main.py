@@ -36,6 +36,7 @@ from config import (
     FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
     SUPPORT_BOT_USERNAME,
     CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS,
+    PEACH_PACK_STARS, PEACH_PACK_CREDITS,
     FREEKASSA_MERCHANT_ID, FREEKASSA_API_KEY, FREEKASSA_API_ENABLED,
 )
 from services.user_service import (
@@ -4121,6 +4122,68 @@ async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: in
         _video_jobs.pop(telegram_id, None)
 
 
+# V3.43.1: the «живые плитки» motion script — close-up smile + air kiss are
+# the reliable i2v motions (full-body movement turns into artifacts).
+LIVE_TILE_PROMPT = (
+    'Close-up portrait of the exact same woman from the source photo. '
+    'She looks into the camera, smiles warmly and blows a playful air kiss '
+    'toward the viewer, hand rising gently to her lips. Subtle natural motion '
+    'only: soft smile, hair sway, no face or outfit changes, no camera cuts.'
+)
+
+
+async def _run_live_tiles(admin_id: int) -> None:
+    """V3.43.1: render one i2v living tile per built-in heroine."""
+    engines = []
+    if video_available():
+        engines.append(('gemini', animate_image))
+    if replicate_available():
+        engines.append(('replicate', animate_image_replicate))
+    if fal_available():
+        engines.append(('fal', animate_image_fal))
+    if hf_video_available():
+        engines.append(('hf', animate_image_hf))
+    if not engines:
+        await bot.send_message(admin_id, '🎬 Живые плитки: нет доступного видео-движка.')
+        return
+    for cid in webapp_service.builtin_character_ids():
+        image_bytes = webapp_service.canonical_face_bytes(cid)
+        if not image_bytes:
+            await bot.send_message(admin_id, f'🎬 {cid}: нет канонического фото.')
+            continue
+        video_bytes = None
+        for ename, efn in engines:
+            try:
+                video_bytes = await efn(image_bytes, mime_type='image/jpeg', prompt=LIVE_TILE_PROMPT)
+                record_provider(f'video/{ename}', True)
+                break
+            except Exception as exc:
+                record_provider(f'video/{ename}', False, f'{type(exc).__name__}: {str(exc)[:120]}')
+                logger.warning('live tile engine %s failed char=%s: %s', ename, cid, exc)
+        if not video_bytes:
+            await bot.send_message(admin_id, f'🎬 {cid}: все движки отказали.')
+            continue
+        webapp_service.write_card_live(cid, video_bytes)
+        await bot.send_message(admin_id, f'🎬 {cid}: живая плитка готова ({len(video_bytes) // 1024} KB).')
+    await bot.send_message(admin_id, '🎬 Готово: витрина оживёт после обновления приложения.')
+
+
+@dp.message(Command('livetiles'))
+async def live_tiles_cmd(message: types.Message):
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    await message.answer('🎬 Отрисовываю живые плитки (улыбка + воздушный поцелуй) — статус по каждой героине пришлю сюда…')
+    asyncio.create_task(_run_live_tiles(message.from_user.id))
+
+
+@dp.message(Command('retiles'))
+async def retiles_cmd(message: types.Message):
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    done = [cid for cid in webapp_service.builtin_character_ids() if webapp_service.rebuild_card_tile(cid)]
+    await message.answer(f'🖼 Плитки-гифки пересобраны из текущих канонических фото: {len(done)}.')
+
+
 @dp.message(Command('geministatus'))
 async def gemini_status_cmd(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
@@ -4284,6 +4347,10 @@ def _fk_amount_for(product: str, currency: str) -> int:
         # V3.43.0: the pay-method modal sells a single photo credit in rubles.
         from config import fiat_values
         return fiat_values(PHOTO_COST_STARS)[0]
+    if product in PEACH_PACK_STARS:
+        # V3.43.1: peach packs by card/SBP — the ruble twin of the Stars price.
+        from config import fiat_values
+        return fiat_values(PEACH_PACK_STARS[product])[0]
     if product == 'constructor_rub':
         return CONSTRUCTOR_COST_RUB
     if product.startswith('tokens_'):
@@ -4452,6 +4519,9 @@ async def pre_checkout(query: types.PreCheckoutQuery):
     elif payload=='photo_pack':
         # V3.34.0: standalone +1 photo credit purchased from the Mini App shop.
         ok=amount==PHOTO_COST_STARS
+    elif payload in PEACH_PACK_STARS:
+        # V3.43.1: the peach pack ladder — 10/30/100 credits, bulk discount.
+        ok=amount==PEACH_PACK_STARS[payload]
     elif payload=='premium_month_discount':
         from services.retention_service import discount_info
         info=discount_info(query.from_user.id)
@@ -4513,6 +4583,17 @@ async def successful_payment(message: types.Message):
     payment = message.successful_payment
     payload = payment.invoice_payload
     charge = payment.telegram_payment_charge_id
+    if payload in PEACH_PACK_STARS:
+        # V3.43.1: a peach pack — same record path as the single credit, the
+        # payments layer grants the whole pack size in one go.
+        record_payment(message.from_user.id, payload, payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': payload, 'source': 'webapp'})
+        pack_n = PEACH_PACK_CREDITS[payload]
+        if user_lang(message.from_user.id) == EN:
+            await message.answer(f'done 🍑 +{pack_n} photo credits added — ask me for a photo in chat and they will be used.')
+        else:
+            await message.answer(f'готово 🍑 +{pack_n} фото-кредитов на счету — проси фото в чате, и они спишутся.')
+        return
     if payload == 'photo_pack':
         # V3.34.0: standalone +1 photo credit from the Mini App shop — same
         # product record as a chat photo purchase, so the grant is identical.
@@ -6998,6 +7079,9 @@ async def _fk_notify(request: web.Request) -> web.Response:
         elif product == 'photo':
             # V3.43.0: ruble-paid single photo credit from the app pay modal.
             confirm = '🍑 Фото-кредит оплачен картой! Уже начислен 📸'
+        elif product in PEACH_PACK_CREDITS:
+            # V3.43.1: ruble-paid peach pack from the app pay modal.
+            confirm = f'🍑 Пак на {PEACH_PACK_CREDITS[product]} персиков оплачен! Уже начислены 📸'
         else:
             confirm = '💖 Оплата прошла! Premium активирован на 30 дней. Наслаждайся! 🎉'
         try:
@@ -7233,6 +7317,16 @@ async def _webapp_gif(request: web.Request) -> web.Response:
                         headers={'Cache-Control': 'public, max-age=3600'})
 
 
+async def _webapp_live(request: web.Request) -> web.Response:
+    # V3.43.1: the i2v living tile — a muted looping mp4 where the heroine
+    # smiles and blows an air kiss; the grid plays it instead of the webp.
+    live = webapp_service.character_card_live(request.match_info['character_id'])
+    if not live:
+        return web.Response(status=404)
+    return web.Response(body=live.read_bytes(), content_type='video/mp4',
+                        headers={'Cache-Control': 'public, max-age=3600'})
+
+
 async def _webapp_api_char_view(request: web.Request) -> web.Response:
     # V3.40.0: +1 view when the character page opens — the «👁 427k» badge on
     # the Come Closer cards. Auth like every other write endpoint.
@@ -7370,6 +7464,10 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     # order product keys record_payment knows how to grant
     fk_product = {'premium': 'premium_month', 'premium_week': 'premium_week',
                   'photo_credit': 'photo'}.get(product_id)
+    if not fk_product and product_id in PEACH_PACK_STARS:
+        # V3.43.1: peach packs — the order key is the payload itself, so the
+        # FreeKassa notify and the Wallet Pay webhook grant the pack size.
+        fk_product = product_id
     if not product or not fk_product:
         return web.json_response({'ok': False, 'error': 'unknown_product'}, status=400)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
@@ -8112,6 +8210,8 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/photo/{character_id}', _webapp_photo)
     # V3.40.0: the living storefront — looping GIF tiles and the view counter.
     app.router.add_get('/webapp/gif/{character_id}', _webapp_gif)
+    # V3.43.1: the living tiles — i2v mp4 loops next to the Ken-Burns webp.
+    app.router.add_get('/webapp/live/{character_id}', _webapp_live)
     app.router.add_post('/webapp/api/char_view', _webapp_api_char_view)
     # V3.43.0: the channel-subscribe peach bonus — GET status, POST check+grant.
     app.router.add_route('*', '/webapp/api/channel_bonus', _webapp_api_channel_bonus)

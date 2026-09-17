@@ -53,6 +53,7 @@ def test_admin_diagnostics_cover_gemini_again():
 def test_gemini_photo_gets_transient_retry():
     fn = PHOTO[PHOTO.index('async def _gemini_image_one_frame'):PHOTO.index('async def _run_gemini_set')]
     assert 'retryable_statuses = {408, 429, 500, 502, 503, 504}' in fn
-    assert 'for attempt in range(2):' in fn
-    assert fn.count('- retrying once') >= 3
-    assert 'await asyncio.sleep(2.0)' in fn
+    # V3.43.1: two retries with growing backoff instead of a single one.
+    assert 'for attempt in range(3):' in fn
+    assert fn.count('- retrying') >= 3
+    assert 'await asyncio.sleep(2.0 * (attempt + 1))' in fn

@@ -25,7 +25,7 @@ from config import (
     IMAGE_API_KEY, IMAGE_BASE_URL, IMAGE_MODEL, IMAGE_SIZE, IMAGE_QUALITY, OPENAI_IMAGE_ESTIMATED_COST_USD,
     OPENAI_IMAGE_AVAILABLE,
     FREE_PHOTOS_LEVEL_1_2, FREE_PHOTOS_LEVEL_3_6, PHOTO_COST_STARS,
-    FAL_KEY, FAL_MODEL, FAL_IMAGE_SIZE, FAL_TIMEOUT_SECONDS,
+    FAL_KEY, FAL_MODEL, FAL_MODEL_T2I, FAL_IMAGE_SIZE, FAL_TIMEOUT_SECONDS,
     FAL_CONNECT_TIMEOUT_SECONDS, FAL_WRITE_TIMEOUT_SECONDS, FAL_POOL_TIMEOUT_SECONDS,
     FAL_RETRIES, FAL_RETRY_BACKOFF_SECONDS, FAL_ESTIMATED_COST_USD,
     PHOTO_ROUTER_MODE, PHOTO_SET_SIZE,
@@ -1182,9 +1182,15 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
 
 
 async def _seedream_t2i(prompt: str) -> tuple[bytes, str]:
-    """V3.39.0: Seedream text-to-image for freeform prompts (no reference)."""
+    """V3.39.0: Seedream text-to-image for freeform prompts (no reference).
+
+    V3.43.1: routed to the dedicated text-to-image endpoint — the edit
+    endpoint validates ``image_urls`` as a non-empty sequence and answers
+    HTTP 422 to a reference-free studio prompt.
+    """
     result = await _seedream_request(
         prompt, [], 1, request_label='studio_picture', allow_adult=False,
+        model=FAL_MODEL_T2I,
     )
     images = result.get('images') if isinstance(result, dict) else None
     url = images[0].get('url') if images and isinstance(images[0], dict) else None
@@ -1607,9 +1613,11 @@ async def _gemini_image_one_frame(character: dict, telegram_id: int, request: Ph
     # V3.19.5: one automatic retry on transient failures (timeouts, 408/429/5xx).
     # Google's image API hiccups under load; a single retry turns many
     # "фото сейчас не получилось" moments into delivered photos.
+    # V3.43.1: two retries with growing backoff — a 429 quota burst no
+    # longer kills the studio picture after one unlucky attempt.
     retryable_statuses = {408, 429, 500, 502, 503, 504}
     response = None
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
                 response = await client.post(
@@ -1618,9 +1626,9 @@ async def _gemini_image_one_frame(character: dict, telegram_id: int, request: Ph
                     json=payload,
                 )
         except httpx.TimeoutException as exc:
-            if attempt == 0:
-                logger.warning('Nano Banana timeout user=%s scene=%s frame=%s/%s - retrying once', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE)
-                await asyncio.sleep(2.0)
+            if attempt < 2:
+                logger.warning('Nano Banana timeout user=%s scene=%s frame=%s/%s - retrying', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE)
+                await asyncio.sleep(2.0 * (attempt + 1))
                 continue
             raise PhotoGenerationError('gemini_image', 'timeout') from exc
         except UnicodeEncodeError as exc:
@@ -1628,16 +1636,16 @@ async def _gemini_image_one_frame(character: dict, telegram_id: int, request: Ph
             # error explicit instead of silently masking it behind GPT fallback logs.
             raise PhotoGenerationError('gemini_image', 'header_unicode_error') from exc
         except httpx.HTTPError as exc:
-            if attempt == 0:
-                logger.warning('Nano Banana transport failed user=%s scene=%s frame=%s/%s error=%s - retrying once', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, type(exc).__name__)
-                await asyncio.sleep(2.0)
+            if attempt < 2:
+                logger.warning('Nano Banana transport failed user=%s scene=%s frame=%s/%s error=%s - retrying', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, type(exc).__name__)
+                await asyncio.sleep(2.0 * (attempt + 1))
                 continue
             logger.warning('Nano Banana transport failed user=%s scene=%s frame=%s/%s error=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, type(exc).__name__)
             raise PhotoGenerationError('gemini_image', type(exc).__name__) from exc
 
-        if response.status_code in retryable_statuses and attempt == 0:
-            logger.warning('Nano Banana transient HTTP %s user=%s scene=%s frame=%s/%s - retrying once', response.status_code, telegram_id, request.scene, i + 1, PHOTO_SET_SIZE)
-            await asyncio.sleep(2.0)
+        if response.status_code in retryable_statuses and attempt < 2:
+            logger.warning('Nano Banana transient HTTP %s user=%s scene=%s frame=%s/%s - retrying', response.status_code, telegram_id, request.scene, i + 1, PHOTO_SET_SIZE)
+            await asyncio.sleep(2.0 * (attempt + 1))
             continue
         break
 
@@ -1728,6 +1736,7 @@ async def _seedream_request(
     request_label: str = '',
     *,
     allow_adult: bool = False,
+    model: str | None = None,
 ) -> dict:
     """Call fal/Seedream with explicit phase timeouts and bounded retry.
 
@@ -1738,15 +1747,18 @@ async def _seedream_request(
     if not FAL_KEY:
         raise PhotoGenerationError('seedream45', 'FAL_KEY is not configured')
 
-    endpoint = f"https://fal.run/{FAL_MODEL.strip('/')}"
+    endpoint = f"https://fal.run/{(model or FAL_MODEL).strip('/')}"
     payload = {
         'prompt': prompt,
-        'image_urls': image_urls,
         'image_size': FAL_IMAGE_SIZE,
         'num_images': num_images,
         'max_images': num_images,
         'enable_safety_checker': not allow_adult,
     }
+    if image_urls:
+        # V3.43.1: the edit endpoint rejects an empty image_urls sequence
+        # with HTTP 422, so reference-free calls omit the field entirely.
+        payload['image_urls'] = image_urls
     headers = {'Authorization': f'Key {FAL_KEY}', 'Content-Type': 'application/json'}
     timeout = httpx.Timeout(
         connect=float(FAL_CONNECT_TIMEOUT_SECONDS),

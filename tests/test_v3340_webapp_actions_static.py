@@ -12,7 +12,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_invoice_products_declared():
@@ -20,12 +20,13 @@ def test_invoice_products_declared():
     # credit pack. Payloads must match what the payment handlers validate.
     assert 'def api_invoice_products(' in WEBAPP_SVC
     assert "'payload': 'premium_month'" in WEBAPP_SVC
-    assert "'payload': 'photo_pack'" in WEBAPP_SVC
+    # V3.43.1: the single-credit square became the peach pack ladder.
+    assert "'payload': 'peach_pack_100'" in WEBAPP_SVC
     assert "'id': 'premium'" in WEBAPP_SVC
-    assert "'id': 'photo_credit'" in WEBAPP_SVC
+    assert "'id': 'peach_pack_10'" in WEBAPP_SVC
     # both RU and EN titles exist
-    assert '+1 фото-кредит' in WEBAPP_SVC
-    assert '+1 photo credit' in WEBAPP_SVC
+    assert '10 персиков' in WEBAPP_SVC
+    assert '10 peaches' in WEBAPP_SVC
     # the shop payload exposes the purchasable items
     assert "'purchases': api_invoice_products(lang)" in WEBAPP_SVC
 
@@ -137,6 +138,10 @@ def test_no_unescaped_backend_strings_in_templates():
             # V3.43.0: the pack grid + pay-modal row fragments — every inner
             # backend field (id/emoji/title/rub) is esc()'d at build time.
             'packs', "rows.join('')",
+            # V3.43.1: the pack discount badge fragment — esc()'d inside.
+            'packBadge(x)',
+            # V3.43.1: the living-tile media fragment — esc()'d inside.
+            'cardMedia(c)',
             # V3.43.0: the auth-failure fragment — built from L constants and
             # static markup only, no backend strings inside.
             'authErrHtml()', 'msg',

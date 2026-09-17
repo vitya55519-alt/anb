@@ -24,7 +24,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0',)
+    assert VERSION in ('3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0',)
 
 
 # ── 1. photo banner leads the welcome ──────────────────────────────────────
@@ -134,13 +134,13 @@ def test_character_page_has_strip_cta_and_plot():
     assert "'gallery': [" in WEBAPP_SVC
     assert "add_get('/webapp/photo/{character_id}', _webapp_photo)" in MAIN
     assert "idx = int(request.query.get('i', '0') or 0)" in MAIN
-    # frontend page: strip, «Начать чат», bio, СЮЖЕТ block
+    # frontend page: strip, «Начать чат», bio, the «КАК ВЫ ПОЗНАКОМИТЕСЬ» block
     assert 'id="charview"' in INDEX
     assert 'id="charStrip"' in INDEX
     assert 'id="charStart"' in INDEX
     assert 'id="charPlot"' in INDEX
     assert 'start_chat: \'Начать чат\'' in INDEX
-    assert 'plot: \'СЮЖЕТ\'' in INDEX
+    assert 'plot: \'КАК ВЫ ПОЗНАКОМИТЕСЬ\'' in INDEX
     assert 'function openCharPage(el)' in INDEX
     # a card tap opens the page, the CTA opens the dialog
     assert 'el.addEventListener(\'click\', () => openCharPage(el))' in INDEX
