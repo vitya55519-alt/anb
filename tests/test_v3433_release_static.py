@@ -32,7 +32,8 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION == '3.43.3'
+    # V3.43.3 shipped this; newer releases keep the pin in their own suite.
+    assert VERSION in ('3.43.4', '3.43.3')
 
 
 # ── 1. the grid card is a plain static photo ────────────────────────────────

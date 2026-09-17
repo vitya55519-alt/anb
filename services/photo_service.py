@@ -103,11 +103,11 @@ SCENES = {
     'karaoke': 'a lively personal photo in a modern karaoke lounge with atmospheric lights',
     'rooftop': 'a stylish rooftop photo with city skyline lights in the background',
     'club': 'a glamorous but fully clothed nightlife photo in a modern club',
-    'personal': 'a tasteful private adult lingerie portrait made especially for someone she trusts, non-explicit, with opaque lingerie coverage',
-    'lingerie': 'tasteful adult glamour/boudoir fashion in lingerie, non-explicit and fully covered by the garment',
-    'private_fashion': 'premium private adult fashion portrait, non-explicit, polished and highly personalized',
+    'personal': 'a tasteful private adult lingerie portrait made especially for someone she trusts — a sultry boudoir lace set with a garter belt and sheer-top stockings, warm candlelit bedroom light, confident seductive posing, non-explicit, with opaque lingerie coverage',
+    'lingerie': 'bold adult boudoir glamour: a lace push-up set with a garter belt and sheer-top stockings, a satin robe slipping off one shoulder, sultry warm low light — non-explicit and fully covered by the garment',
+    'private_fashion': 'premium private adult boudoir-fashion portrait: a sheer kimono over lace lingerie, intimate warm lamp light, polished and highly personalized, non-explicit',
     'nude': 'a tasteful artistic nude portrait made in privacy for someone she deeply trusts, confident and warm',
-    'tease': 'a playful sensual photo from behind, teasing and confident, made for someone she deeply trusts',
+    'tease': 'a playful sensual boudoir photo from behind — back softly arched, a smirking glance over her shoulder, her lace set with opaque coverage glowing in warm dim bedroom light, teasing and confident, made for someone she deeply trusts',
     'peek': 'a casual personal smartphone photo where her lingerie believably peeks from under the everyday outfit',
     'dressing': 'a natural relaxed personal photo while she is getting dressed, her underwear still visible before the clothing goes on',
     # V3.30.0: token-priced cosplay photoshoot — the costume itself arrives
@@ -156,11 +156,11 @@ AUTO_CAPTIONS = {
     'karaoke': ('кажется, микрофон мне идёт 🎤', 'караоке-вечер пошёл', 'между песнями успела сфоткаться'),
     'rooftop': ('город сверху выглядит особенно', 'крыша + вечерний свет ✨', 'этот вид просился в кадр'),
     'club': ('сегодня nightlife mood', 'перед танцами успела сделать сет', 'вечером я вот такая'),
-    'personal': ('это уже чуть более личный сет 😌', 'ладно, эти кадры именно тебе'),
-    'lingerie': ('сегодня чуть смелее обычного 😏', 'вот такой приватный fashion-настрой'),
-    'private_fashion': ('это уже мой самый личный fashion-сет 😌', 'этот сет оставлю только здесь'),
+    'personal': ('это уже чуть более личный сет 😌', 'ладно, эти кадры именно тебе', 'этот сет только для тебя 😏🔥'),
+    'lingerie': ('сегодня чуть смелее обычного 😏', 'вот такой приватный fashion-настрой', 'ощущаю себя сегодня опасной 😈'),
+    'private_fashion': ('это уже мой самый личный fashion-сет 😌', 'этот сет оставлю только здесь', 'такой сет больше никому не покажу 🔥'),
     'nude': ('это уже только для тебя 🔥', 'решилась… вот 😌', 'этот кадр — самый личный'),
-    'tease': ('поворачиваюсь спиной… 😏', 'так хочется тебя подразнить', 'видишь? это для тебя'),
+    'tease': ('поворачиваюсь спиной… 😏', 'так хочется тебя подразнить', 'видишь? это для тебя', 'смотри сколько хочешь, но не трогай 😈'),
     'peek': ('ой, кажется, кое-что видно 😏', 'заметила только когда сфоткалась… ну пусть будет'),
     'dressing': ('ещё собираюсь 😌', 'поймала момент до того, как оделась'),
     'cosplay': ('примерила образ специально для тебя 🎭', 'косплей-сет готов 😏', 'как тебе мой костюм? 🎭'),
@@ -334,6 +334,20 @@ POSE_POOL = [
     'arms loosely crossed with a relaxed confident stance',
 ]
 
+# V3.43.4: boudoir posing for the private/intimate scenes only — the everyday
+# POSE_POOL stays neutral for public venues. Sultrier posture notes make the
+# lingerie frames actually feel like boudoir instead of a catalog try-on.
+PRIVATE_POSE_POOL = [
+    'lying on her side on the bed, propped on one elbow, looking into the camera',
+    'seated on the edge of the bed with her back softly arched',
+    'half-turned away with a smirking glance back over her shoulder',
+    'kneeling on the bed facing the camera, shoulders relaxed',
+    'standing with one knee bent, both hands sliding into her hair',
+    'a languid stretch with arms raised and eyes half-closed',
+    'leaning close to the camera with a playful smolder',
+    'sitting cross-legged on the bed, leaning slightly forward',
+]
+
 MAKEUP_POOL = [
     'fresh everyday makeup with soft nude lips',
     'natural glow makeup with peachy blush',
@@ -465,19 +479,19 @@ LEVEL_UNDERLAY_RULES = {
 # more openly at higher levels. Framing stays non-explicit in every tier.
 PRIVATE_SCENE_TIERS = {
     'lingerie': {
-        'standard': 'elegant lingerie catalog framing, realistic lace details, professional studio lighting, fabric texture visible',
-        'suggestive': 'intimate boudoir framing, sheer robe open, lingerie clearly visible underneath, realistic skin and fabric contrast, soft shadows',
-        'revealing': 'professional lingerie photography, bra and panties visible as the outfit, natural skin tones, high-end editorial',
+        'standard': 'elegant boudoir catalog framing, realistic lace details, soft professional lighting, fabric texture visible',
+        'suggestive': 'intimate boudoir framing, sheer robe open, a garter belt and sheer-top stockings with the lace set clearly visible, warm candlelit glow, realistic skin and fabric contrast, soft shadows',
+        'revealing': 'professional boudoir lingerie photography, the lace push-up set with garter belt and stockings IS the outfit, sultry warm lamp light, glossy realistic detail, high-end editorial',
     },
     'personal': {
-        'standard': 'candid personal photo, casual intimate wear visible, natural setting',
-        'suggestive': 'personal intimate moment, underwear clearly visible, authentic bedroom lighting, realistic',
-        'revealing': 'intimate portrait, lingerie clearly visible, private setting, natural soft skin tones',
+        'standard': 'candid personal boudoir photo, her intimate lace set visible, natural bedroom setting',
+        'suggestive': 'a personal intimate moment, her lace set with stockings clearly visible, warm authentic bedroom lamp light, realistic',
+        'revealing': 'an intimate boudoir portrait, her lace lingerie set and garter belt in frame, private setting, warm skin tones in low light',
     },
     'private_fashion': {
-        'standard': 'fashion editorial framing, visible underwear under a sheer blouse, elegant styling',
-        'suggestive': 'intimate fashion framing, lingerie visible through the fabric, realistic sheer material, authentic feminine form',
-        'revealing': 'boudoir-style fashion, lingerie visible as the main outfit, realistic details, professional lighting',
+        'standard': 'fashion editorial framing, lace underwear visible under a sheer blouse, elegant styling',
+        'suggestive': 'intimate fashion framing, her lace set visible through realistic sheer fabric, warm boudoir light, authentic feminine form',
+        'revealing': 'boudoir-style fashion, her lace set with stockings as the main outfit, sultry low-key lighting, glossy realistic details',
     },
     'nude': {
         'standard': 'tasteful fine-art nude portrait, natural warm lighting, confident relaxed pose',
@@ -500,7 +514,9 @@ UNDERWEAR_COLOR_POOL = [
     'powder blue', 'caramel', 'charcoal',
 ]
 
-# Underwear style variety — regular everyday pieces, not always lace.
+# Underwear style variety — everyday pieces plus a boudoir half (V3.43.4
+# «добавь градус»: lace push-up sets, garter belts and satin now share the
+# private-scene wardrobe with the plain everyday pieces).
 UNDERWEAR_STYLE_POOL = [
     'everyday cotton bra and matching panties',
     'smooth microfiber bra and panties',
@@ -514,6 +530,14 @@ UNDERWEAR_STYLE_POOL = [
     'plunge bra and cheeky panties',
     'push-up bra and matching briefs',
     'wireless comfort bra and full-coverage panties',
+    'lace push-up balconette bra and matching panties',
+    'garter belt with sheer-top stockings and a lace bra',
+    'satin bustier corset and matching panties',
+    'plunging lace balconette set with a sheer kimono robe',
+    'velvet plunge bra and high-cut panties',
+    'longline lace mesh bra and Brazilian panties',
+    'strapless lace bandeau set',
+    'white bridal lace set with garters',
 ]
 
 # Bust size must never drift between frames or between sets.
@@ -1405,7 +1429,8 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     expression_rotation = tuple(request.expression_rotation) or (
         () if request.expression_key else shuffled_variety_keys()
     )
-    poses = list(POSE_POOL)
+    # V3.43.4: private/boudoir scenes draw their pose notes from the sultrier pool.
+    poses = list(PRIVATE_POSE_POOL if request.scene in {'personal', 'lingerie', 'private_fashion', 'tease'} else POSE_POOL)
     random.shuffle(poses)
     pose_rotation = tuple(request.pose_rotation) or tuple(poses)
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season,
