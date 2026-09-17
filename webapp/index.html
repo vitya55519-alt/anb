@@ -239,8 +239,12 @@
   .msg img.m { display: block; max-width: 220px; width: 100%; border-radius: 12px; margin-top: 4px; background: var(--card2); }
   .msg video.circle { display: block; width: 180px; height: 180px; object-fit: cover; border-radius: 50%; margin-top: 4px; background: #000; }
   .msg audio { display: block; width: 220px; margin-top: 4px; }
-  .chat-media { display: flex; gap: 4px; width: 100%; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
-  .chat-media button { flex: 0 0 auto; width: 38px; height: 38px; border: 0; border-radius: 12px; background: var(--card); font-size: 17px; cursor: pointer; }
+  .chat-media { display: flex; gap: 6px; width: 100%; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+  /* V3.42.2: readable labeled pills instead of cryptic 38px icon squares — a
+     newcomer must read what each action does, not guess from an emoji. */
+  .chat-media button { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 2px; border: 0; border-radius: 12px; background: var(--card); padding: 6px 10px; cursor: pointer; }
+  .chat-media button .ic { font-size: 17px; line-height: 1; }
+  .chat-media button .lb { font-size: 10px; color: var(--text); white-space: nowrap; }
   .chat-media button:disabled { opacity: .5; }
   /* V3.41.0: 7 feature buttons — the strip scrolls on its own row above the input. */
   .chat-input { flex-wrap: wrap; }
@@ -422,13 +426,12 @@
   <div class="chat-msgs" id="chatMsgs"></div>
   <div class="chat-input">
     <div class="chat-media">
-      <button id="mediaPhoto">📸</button>
-      <button id="mediaVideo">🎬</button>
-      <button id="mediaCircle">🎥</button>
-      <button id="mediaVoice">🎙</button>
-      <button id="featQuest">🎯</button>
-      <button id="featDate">💕</button>
-      <button id="featApt">🏠</button>
+      <button id="mediaPhoto"><span class="ic">📸</span><span class="lb" id="lbMediaPhoto"></span></button>
+      <button id="mediaVideo"><span class="ic">🎬</span><span class="lb" id="lbMediaVideo"></span></button>
+      <button id="mediaCircle"><span class="ic">🎥</span><span class="lb" id="lbMediaCircle"></span></button>
+      <button id="featQuest"><span class="ic">🎯</span><span class="lb" id="lbFeatQuest"></span></button>
+      <button id="featDate"><span class="ic">💕</span><span class="lb" id="lbFeatDate"></span></button>
+      <button id="featApt"><span class="ic">🏠</span><span class="lb" id="lbFeatApt"></span></button>
     </div>
     <input id="chatText" maxlength="4000" placeholder="">
     <button id="chatSend">➤</button>
@@ -560,6 +563,9 @@ const L = LANG === 'en' ? {
   media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
   media_wait_voice: 'Recording her voice…', media_wait_video: 'Rendering a video — 1–3 min…',
   circle_limit: 'No free circles left today — Premium refreshes them daily',
+  // V3.42.2: readable labels for the chat action pills (the voice button is gone).
+  media_photo: 'Photo', media_video: 'Video', media_circle: 'Circle',
+  feat_quest: 'Quest', feat_date: 'Date', feat_apt: 'Apartment',
   // V3.41.0: the app-chat feature sheet (apartment / date / daily quest).
   feat_done_btn: '✅ Done · +5 attention', feat_claimed: 'Already done today ❤️',
   feat_empty: 'Nothing here yet', feat_paid: 'Date paid 💕 she will write in the chat',
@@ -619,6 +625,9 @@ const L = LANG === 'en' ? {
   media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
   media_wait_voice: 'Записываю голос…', media_wait_video: 'Рисую видео — 1–3 минуты…',
   circle_limit: 'Бесплатные кружочки на сегодня кончились — Premium обновляет их каждый день',
+  // V3.42.2: читаемые подписи к кнопкам чата (голосовая кнопка убрана).
+  media_photo: 'Фото', media_video: 'Видео', media_circle: 'Кружок',
+  feat_quest: 'Задание', feat_date: 'Свидание', feat_apt: 'Квартира',
   // V3.41.0: панель фич в чате приложения (квартира / свидание / задание дня).
   feat_done_btn: '✅ Выполнено · +5 внимания', feat_claimed: 'Сегодня уже выполнено ❤️',
   feat_empty: 'Здесь пока пусто', feat_paid: 'Свидание оплачено 💕 она напишет в чат',
@@ -635,6 +644,13 @@ document.getElementById('l_loading').textContent = L.loading;
 document.getElementById('l_chars_hint').textContent = L.chars_hint;
 document.getElementById('segOfficial').textContent = L.seg_official;
 document.getElementById('segCommunity').textContent = L.seg_community;
+// V3.42.2: readable labels under the chat action icons.
+document.getElementById('lbMediaPhoto').textContent = L.media_photo;
+document.getElementById('lbMediaVideo').textContent = L.media_video;
+document.getElementById('lbMediaCircle').textContent = L.media_circle;
+document.getElementById('lbFeatQuest').textContent = L.feat_quest;
+document.getElementById('lbFeatDate').textContent = L.feat_date;
+document.getElementById('lbFeatApt').textContent = L.feat_apt;
 document.querySelectorAll('#bottomnav .lbl').forEach((el, i) => {
   el.textContent = ['Персонажи','Чаты','Картинки','Магазин','Профиль'][i];
   if (LANG === 'en') el.textContent = ['Characters','Chats','Pictures','Shop','Profile'][i];
@@ -1673,7 +1689,6 @@ document.getElementById('chatText').addEventListener('keydown', (e) => {
 document.getElementById('chatSelect').addEventListener('click', () => { if (CHAT) doSelect(CHAT); });
 document.getElementById('mediaPhoto').addEventListener('click', () => requestMedia('photo'));
 document.getElementById('mediaCircle').addEventListener('click', () => requestMedia('circle'));
-document.getElementById('mediaVoice').addEventListener('click', () => requestMedia('voice'));
 // V3.41.0: the app-chat feature buttons — video reuses the media pipeline, the
 // other three open the feature sheet (apartment / date / daily quest).
 document.getElementById('mediaVideo').addEventListener('click', () => requestMedia('video'));

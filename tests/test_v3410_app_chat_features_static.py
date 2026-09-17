@@ -28,7 +28,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0')
+    assert VERSION in ('3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0')
 
 
 # ── p1. every heroine speaks in her own voice ──────────────────────────────
@@ -183,10 +183,10 @@ def test_frontend_has_the_four_feature_buttons_and_sheet():
     assert 'id="featApt"' in INDEX
     assert 'id="featview"' in INDEX
     assert 'id="featBody"' in INDEX
-    # the existing photo/circle/voice buttons stay
+    # the existing photo/circle buttons stay; the crooked voice button is gone (V3.42.2)
     assert 'id="mediaPhoto"' in INDEX
     assert 'id="mediaCircle"' in INDEX
-    assert 'id="mediaVoice"' in INDEX
+    assert 'id="mediaVoice"' not in INDEX
 
 
 def test_frontend_wires_video_and_the_feature_sheet():
