@@ -27,18 +27,18 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.41.0', '3.40.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.42.0', '3.41.0', '3.40.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 # ── config: the program dials live behind env vars ─────────────────────────
 
 def test_partner_config_knobs():
     assert 'PARTNER_ENABLED = os.getenv("PARTNER_ENABLED", "1") == "1"' in CONFIG
-    assert 'REFERRAL_COMMISSION_PCT = float(os.getenv("REFERRAL_COMMISSION_PCT", "40"))' in CONFIG
+    assert 'REFERRAL_COMMISSION_PCT = float(os.getenv("REFERRAL_COMMISSION_PCT", "30"))' in CONFIG
     assert 'PARTNER_MIN_PAYOUT_RUB = int(os.getenv("PARTNER_MIN_PAYOUT_RUB", "500"))' in CONFIG
     assert 'PARTNER_PAYOUT_METHODS = os.getenv(' in CONFIG
     cfg = importlib.import_module('config')
-    assert cfg.REFERRAL_COMMISSION_PCT == 40.0
+    assert cfg.REFERRAL_COMMISSION_PCT == 30.0
     assert cfg.PARTNER_MIN_PAYOUT_RUB == 500
 
 
@@ -110,9 +110,11 @@ def test_partner_bot_screen_and_callbacks():
 
 
 def test_partner_keyboard_button():
-    assert "'partner': ('💰 Партнёрка', '💰 Partner program')" in UI_LANG
-    # V3.38.0: partner shares the bottom row with «👥 Поддержка».
-    assert "['partner', 'support']" in UI_LANG
+    assert "'partner': ('💰 Партнёрская программа', '💰 Partner program')" in UI_LANG
+    # V3.42.0: the partner program is a BIG full-width row; support shares the
+    # bottom row with the legal documents.
+    assert "['partner']" in UI_LANG
+    assert "['support', 'legal']" in UI_LANG
 
 
 # ── Mini App: 5th tab + endpoints ──────────────────────────────────────────

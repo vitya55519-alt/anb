@@ -480,17 +480,23 @@ def _welcome_banner_file():
     return None
 
 
-def _welcome_cta_row(lang: str):
-    """V3.39.0: app + partner CTA row shown above the character picker."""
-    row = []
+def _welcome_back_rows(lang: str):
+    """V3.42.0: the returning-user welcome is a short button list, not a wall —
+    open the app, the partner program (full-width), terms + privacy. The old
+    nine-button character grid is gone: character selection lives in the app."""
+    rows = []
     if PUBLIC_BASE_URL:
-        row.append(InlineKeyboardButton(
+        rows.append([InlineKeyboardButton(
             text='📱 Открыть приложение' if lang == RU else '📱 Open the app',
             web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'),
-        ))
-    row.append(InlineKeyboardButton(
-        text='💰 Партнёрка' if lang == RU else '💰 Partner', callback_data='partner:open'))
-    return row
+        )])
+    rows.append([InlineKeyboardButton(
+        text=kb_label('partner', lang), callback_data='partner:open')])
+    rows.append([
+        InlineKeyboardButton(text='📄 Условия' if lang == RU else '📄 Terms', callback_data='legal:terms'),
+        InlineKeyboardButton(text='🔐 Privacy', callback_data='legal:privacy'),
+    ])
+    return rows
 
 
 def abilities_text(lang: str = RU) -> str:
@@ -991,15 +997,46 @@ def _contextualize_vague_photo(telegram_id: int, text: str, request: PhotoReques
     return request
 
 
+def _premium_tariff_lines(lang: str) -> list[str]:
+    """V3.42.0: the tariff card the owner benchmarked (Come Closer screenshot) —
+    a radio list where the monthly plan shows its per-week price, a savings
+    badge and the struck «instead of» price of buying four separate weeks."""
+    en = lang == EN
+    wk_fiat = fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
+    mo_fiat = fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
+    if FREEKASSA_ENABLED and FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB and FREEKASSA_PREMIUM_PRICE_RUB:
+        unit, week_full, month_full = '₽', FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_RUB
+    else:
+        unit, week_full, month_full = 'Stars', PREMIUM_WEEKLY_STARS, PREMIUM_MONTHLY_STARS
+    was = 4 * week_full
+    save = max(0, round((1 - month_full / was) * 100)) if was else 0
+    month_pw = round(month_full / 4)
+    badge = f'  −{save}%' if save else ''
+    strike = f'   ({"вместо" if not en else "instead of"} {was} {unit})' if save else ''
+    if en:
+        return [
+            '⭐ Plans:',
+            '',
+            f'○  1 week — {PREMIUM_WEEKLY_STARS} Stars{wk_fiat}',
+            f'     {week_full} {unit} per week',
+            f'●  1 month — {PREMIUM_MONTHLY_STARS} Stars{mo_fiat}{badge}',
+            f'     {month_pw} {unit} per week{strike}',
+        ]
+    return [
+        '⭐ Тарифы:',
+        '',
+        f'○  1 неделя — {PREMIUM_WEEKLY_STARS} Stars{wk_fiat}',
+        f'     {week_full} {unit} в неделю',
+        f'●  1 месяц — {PREMIUM_MONTHLY_STARS} Stars{mo_fiat}{badge}',
+        f'     {month_pw} {unit} в неделю{strike}',
+    ]
+
+
 def premium_pitch_text(telegram_id: int) -> str:
     """V3.20.0: paywall pitch with retention hooks — the one-time discount
     countdown when active and a level-6 plateau line for maxed relationships.
     V3.22.0: localized RU/EN."""
     lang = user_lang(telegram_id)
-    # V3.36.0: rub + dollars next to the Stars price — premium's rub is the
-    # real card/SBP charge, its dollars the real Visa/MC price.
-    wk_fiat = fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
-    mo_fiat = fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
     if lang == EN:
         lines = [
             'Premium:',
@@ -1010,12 +1047,6 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 💋 relationship levels 7–8 — “Kindred spirits” and “One whole”',
             '• 2 free replays of alternative quest branches per month',
             '• more memory, initiative and morning/evening messages',
-            f'• plans: a week — {PREMIUM_WEEKLY_STARS} Stars{wk_fiat}, a month — {PREMIUM_MONTHLY_STARS} Stars{mo_fiat}',
-            '',
-            'Free photos depend on intimacy: levels 1–2 — 1/day, 3–6 — 2/day.',
-            'The relationship cannot be bought — it grows from conversation. Custom photos are paid separately.',
-            '',
-            '💳 Digital purchases inside Telegram are paid with Telegram Stars.',
         ]
     else:
         lines = [
@@ -1027,8 +1058,24 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 💋 уровни 7–8 отношений — «Родственные души» и «Одно целое»',
             '• 2 бесплатных replay альтернативных квест-веток в месяц',
             '• больше памяти, инициативы и утренних/вечерних сообщений',
-            f'• тарифы: неделя — {PREMIUM_WEEKLY_STARS} Stars{wk_fiat}, месяц — {PREMIUM_MONTHLY_STARS} Stars{mo_fiat}',
+        ]
+    # V3.42.0: the Come Closer-style tariff card (owner screenshot) — radio
+    # list with per-week prices and a savings badge, then the one-time-payment
+    # footer, then the photo/intimacy and Stars notes.
+    lines.append('')
+    lines.extend(_premium_tariff_lines(lang))
+    lines.append('')
+    lines.append('One-time payment, no auto-renewal.' if lang == EN else 'Разовый платёж, без автопродления.')
+    lines.append('')
+    if lang == EN:
+        lines += [
+            'Free photos depend on intimacy: levels 1–2 — 1/day, 3–6 — 2/day.',
+            'The relationship cannot be bought — it grows from conversation. Custom photos are paid separately.',
             '',
+            '💳 Digital purchases inside Telegram are paid with Telegram Stars.',
+        ]
+    else:
+        lines += [
             'Бесплатные фото зависят от близости: 1–2 уровень — 1/день, 3–6 — 2/день.',
             'Отношения не покупаются — они развиваются из общения. Кастомные фото оплачиваются отдельно.',
             '',
@@ -1610,15 +1657,14 @@ async def start(message: types.Message, command: CommandObject):
         ref_hint = '\n\ninvite friends with /referral — bonuses for both of you.' if lang == EN else '\n\nприглашай друзей командой /referral — бонусы за обоих.'
     if lang == EN:
         welcome_back = (
-            f'welcome back, {name} 🙂 the girls, chats, pictures and the shop live in the app — pick yours 👇'
+            f'welcome back, {name} 🙂 the girls, chats, pictures and the shop live in the app 👇'
         )
     else:
         welcome_back = (
-            f'с возвращением, {name} 🙂 девушки, чаты, картинки и магазин — в приложении. выбирай свою 👇'
+            f'с возвращением, {name} 🙂 девушки, чаты, картинки и магазин — в приложении 👇'
         )
-    rows = [_welcome_cta_row(lang)]
-    rows.extend(_pair_rows(_character_pick_buttons('onboard')))
-    markup = InlineKeyboardMarkup(inline_keyboard=rows)
+    # V3.42.0: no character grid here anymore — a short button list instead.
+    markup = InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang))
     banner = _welcome_banner_file()
     if banner is not None:
         await message.answer_photo(banner, caption=welcome_back, reply_markup=markup)
@@ -5353,9 +5399,11 @@ async def referral_button(message: types.Message):
     await referral_cmd(message)
 
 
-@dp.message(F.text.in_(kb_pair('partner')))
+@dp.message(F.text.in_(kb_pair('partner') + ('💰 Партнёрка',)))
 async def partner_button(message: types.Message):
-    """V3.37.0: the «💰 Партнёрка» reply-keyboard row — stats + payouts."""
+    """V3.37.0: the «💰 Партнёрская программа» reply-keyboard row — stats +
+    payouts. The pre-V3.42.0 «💰 Партнёрка» label still resolves so cached
+    reply keyboards keep working."""
     await referral_cmd(message)
 
 
@@ -5609,6 +5657,24 @@ async def _deliver_support_message(message: types.Message, text_value: str) -> b
             logger.exception('failed to forward support admin=%s', admin_id)
     track_event(ensure_user(message.from_user.id), 'support_request')
     return delivered
+
+
+async def _deliver_admin_reply(message: types.Message, user_id: int) -> None:
+    """V3.42.0: the owner answers a support ticket by REPLYING to the ticket
+    message in his own chat; the reply text is delivered to that user. Before
+    this there was no way to answer — tickets were write-only for the owner."""
+    text = (message.text or '').strip()
+    if not text:
+        return
+    lang = user_lang(user_id)
+    prefix = '💬 support reply:\n\n' if lang == EN else '💬 ответ поддержки:\n\n'
+    try:
+        await bot.send_message(user_id, prefix + text)
+    except Exception:
+        logger.exception('failed to deliver support reply user=%s', user_id)
+        await message.answer('не удалось доставить ответ — пользователь не может получать сообщения.')
+        return
+    await message.answer(f'↩️ отправлено пользователю {user_id} ✔')
 
 
 @dp.message(F.text.in_(kb_pair('legal')))
@@ -6483,6 +6549,17 @@ async def admin_stats_cmd(message: types.Message):
 async def text_message(message: types.Message):
     if (message.text or '').startswith('/'):
         return
+
+    # V3.42.0: the owner answers support tickets by replying to the ticket
+    # message («🛟 Support / user: …») in his own chat — the reply is delivered
+    # straight to that user instead of going to the character.
+    if message.from_user and message.from_user.id in ADMIN_TELEGRAM_IDS:
+        replied_text = (message.reply_to_message.text or '') if message.reply_to_message is not None else ''
+        if replied_text.startswith(('🛟 Support', '💳 Payment support')):
+            ticket = re.search(r'^user: (\d+)', replied_text, re.M)
+            if ticket:
+                await _deliver_admin_reply(message, int(ticket.group(1)))
+                return
 
     # V3.23.0: a paid fantasy constructor is waiting for the scenario text.
     if message.from_user and message.from_user.id in _fantasy_pending:
@@ -7897,7 +7974,7 @@ async def main():
         types.BotCommand(command='voice_anon', description='Анонимный голосовой режим'),
         types.BotCommand(command='profile', description='Прогресс, стрик, достижения'),
         types.BotCommand(command='referral', description='🔗 Моя ссылка для приглашения'),
-        types.BotCommand(command='partner', description='💰 Партнёрка — 40% с покупок друзей'),
+        types.BotCommand(command='partner', description='💰 Партнёрская программа — 30% с покупок друзей'),
         types.BotCommand(command='contest', description='🏆 Гонка пригласивших'),
         types.BotCommand(command='notifications', description='Инициативные сообщения'),
         types.BotCommand(command='wake', description='Будильник: /wake 08:00'),

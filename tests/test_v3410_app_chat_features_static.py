@@ -28,7 +28,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.41.0', '3.40.0', '3.39.0')
+    assert VERSION in ('3.42.0', '3.41.0', '3.40.0', '3.39.0')
 
 
 # ── p1. every heroine speaks in her own voice ──────────────────────────────
@@ -105,8 +105,8 @@ def test_main_keyboard_rows_pin_the_legal_row():
     assert "['app']" in rows
     assert "['credits']" in rows
     assert "['paint']" in rows
-    assert "['partner', 'support']" in rows
-    assert "['legal']" in rows
+    assert "['partner']" in rows
+    assert "['support', 'legal']" in rows
     # character selection is gone from the chat funnel
     assert "['characters']" not in rows
     assert "'legal': ('📜 Документы', '📜 Documents')" in UI_LANG

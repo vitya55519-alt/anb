@@ -359,7 +359,7 @@ FIRST_START_PREMIUM_TRIAL_DAYS = int(os.getenv("FIRST_START_PREMIUM_TRIAL_DAYS",
 # purchase a referred user ever makes, paid out on request. The percent and
 # the payout threshold are env-tunable so the owner can run promos.
 PARTNER_ENABLED = os.getenv("PARTNER_ENABLED", "1") == "1"
-REFERRAL_COMMISSION_PCT = float(os.getenv("REFERRAL_COMMISSION_PCT", "40"))
+REFERRAL_COMMISSION_PCT = float(os.getenv("REFERRAL_COMMISSION_PCT", "30"))
 PARTNER_MIN_PAYOUT_RUB = int(os.getenv("PARTNER_MIN_PAYOUT_RUB", "500"))
 # Shown in the partner FAQ — the payout rails the owner actually supports.
 PARTNER_PAYOUT_METHODS = os.getenv("PARTNER_PAYOUT_METHODS", "карта РФ, СБП, крипта (USDT)")

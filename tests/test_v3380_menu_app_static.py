@@ -26,7 +26,7 @@ NEW_CHARACTERS = ('erika_01', 'sonya_01', 'vika_01', 'alisa_01', 'mila_01')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.41.0', '3.40.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.42.0', '3.41.0', '3.40.0', '3.38.0', '3.39.0')
 
 
 # ── 1. main menu funnel ────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ def test_main_menu_rows_funnel_into_miniapp():
         ('app', "'app': ('📱 Открыть приложение', '📱 Open the app'),"),
         ('credits', "'credits': ('🍑 Добавить персиков', '🍑 Add peaches'),"),
         ('paint', "'paint': ('🖼 Создать картинку', '🖼 Create a picture'),"),
-        ('partner', "'partner': ('💰 Партнёрка', '💰 Partner program'),"),
+        ('partner', "'partner': ('💰 Партнёрская программа', '💰 Partner program'),"),
         ('support', "'support': ('👥 Поддержка', '👥 Support'),"),
     ):
         assert label in UI_LANG, f'missing label: {key}'
@@ -46,7 +46,10 @@ def test_main_menu_rows_funnel_into_miniapp():
     # V3.40.0: the Come Closer menu gives each app action its own full row.
     assert "['credits']," in rows
     assert "['paint']," in rows
-    assert "['partner', 'support']," in rows
+    # V3.42.0: the partner program is a BIG full-width button; support shares
+    # the bottom row with the legal documents.
+    assert "['partner']," in rows
+    assert "['support', 'legal']," in rows
 
 
 def test_menu_buttons_reply_with_webapp_entry():

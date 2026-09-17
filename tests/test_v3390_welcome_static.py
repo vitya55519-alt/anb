@@ -24,7 +24,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.41.0', '3.40.0', '3.39.0',)
+    assert VERSION in ('3.42.0', '3.41.0', '3.40.0', '3.39.0',)
 
 
 # ── 1. photo banner leads the welcome ──────────────────────────────────────
@@ -58,8 +58,8 @@ def test_welcome_caption_is_short_and_punchy():
 
 
 def test_welcome_back_is_compact():
-    assert 'девушки, чаты, картинки и магазин — в приложении. выбирай свою 👇' in MAIN
-    assert 'the girls, chats, pictures and the shop live in the app — pick yours 👇' in MAIN
+    assert 'девушки, чаты, картинки и магазин — в приложении 👇' in MAIN
+    assert 'the girls, chats, pictures and the shop live in the app 👇' in MAIN
     # the referral block left the caption and goes out as its own message
     assert 'await message.answer(ref_hint.strip())' in MAIN
     assert 'welcome_back + ref_hint' not in MAIN
@@ -78,13 +78,16 @@ def test_character_picker_is_two_per_row():
     assert '· доступна' not in MAIN
 
 
-def test_welcome_cta_row_opens_app_and_partner():
-    assert 'def _welcome_cta_row(lang: str)' in MAIN
+def test_welcome_back_rows_open_app_partner_and_legal():
+    # V3.42.0: the returning-user welcome is a short button list (app / partner
+    # program / terms+privacy) — the nine-button character grid is gone.
+    assert 'def _welcome_back_rows(lang: str)' in MAIN
     assert "callback_data='partner:open'" in MAIN
     assert '@dp.callback_query(F.data == \'partner:open\')' in MAIN
     assert 'async def partner_open(cq: types.CallbackQuery)' in MAIN
     assert 'await referral_cmd(cq.message)' in MAIN
-    assert 'rows = [_welcome_cta_row(lang)]' in MAIN
+    assert 'markup = InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang))' in MAIN
+    assert 'rows.extend(_pair_rows(_character_pick_buttons(\'onboard\')))' not in MAIN
 
 
 # ── 3. peach rebrand ───────────────────────────────────────────────────────

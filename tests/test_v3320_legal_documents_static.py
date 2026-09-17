@@ -17,7 +17,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.41.0', '3.40.0', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.42.0', '3.41.0', '3.40.0', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_legal_service_documents_exist():
@@ -90,12 +90,13 @@ def test_support_and_menu_and_splitter():
 def test_legal_row_always_visible_in_main_keyboard():
     # V3.41.0: the owner asked to keep terms/privacy reachable from the main
     # menu, so the «📜 Документы» (Условия + Privacy) row is pinned at the
-    # bottom of MAIN_KB_ROWS again. Compliance is belt-and-braces: the row,
+    # bottom of MAIN_KB_ROWS again. V3.42.0: it now shares the bottom row with
+    # support («['support', 'legal']»). Compliance is belt-and-braces: the row,
     # the /legal command, the cached-keyboard handler, the inline legal menu
     # and the Mini App profile «Документы» row (docsview overlay) all stay.
     assert "'legal': ('📜 Документы', '📜 Documents')," in UI_LANG
     rows = UI_LANG[UI_LANG.index('MAIN_KB_ROWS = ['):UI_LANG.index('LEVEL_NAMES_EN')]
-    assert "['legal']," in rows
+    assert "'legal']," in rows
     INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
     assert 'id="docsview"' in INDEX
     assert 'id="menuDocs"' in INDEX

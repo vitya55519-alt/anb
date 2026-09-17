@@ -23,7 +23,7 @@ LINK = 'https://pay.cloudtips.ru/p/7afc7b16'
 
 
 def test_version_bumped():
-    assert VERSION in ('3.41.0', '3.40.0', '3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.42.0', '3.41.0', '3.40.0', '3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_support_key_added_to_reply_menu():
@@ -32,7 +32,8 @@ def test_support_key_added_to_reply_menu():
     assert "'support': ('👥 Поддержка', '👥 Support')," in UI_LANG
     rows = UI_LANG[UI_LANG.index('MAIN_KB_ROWS = ['):UI_LANG.index('LEVEL_NAMES_EN')]
     assert "'support'" in rows
-    assert "['partner', 'support']" in rows
+    # V3.42.0: support shares the bottom row with the legal documents.
+    assert "['support', 'legal']" in rows
 
 
 def test_donation_service_exposes_reusable_button():

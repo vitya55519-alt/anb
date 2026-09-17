@@ -15,7 +15,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.41.0', '3.40.0', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.42.0', '3.41.0', '3.40.0', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_config_declares_weekly_plan():
@@ -60,9 +60,13 @@ def test_chat_paywall_offers_week_button():
     # the invoice callback shares the chat pipeline
     assert "@dp.callback_query(F.data == 'buy:premium_week')" in MAIN
     assert "'premium_week', PREMIUM_WEEKLY_STARS)" in MAIN
-    # the pitch lists both plans instead of a monthly-only heading
-    assert "f'• тарифы: неделя — {PREMIUM_WEEKLY_STARS} Stars" in MAIN
-    assert "f'• plans: a week — {PREMIUM_WEEKLY_STARS} Stars" in MAIN
+    # V3.42.0: the pitch renders a Come Closer-style tariff card — a radio list
+    # with the weekly plan, the monthly plan, its per-week price and a savings badge
+    assert 'def _premium_tariff_lines(lang: str)' in MAIN
+    assert '⭐ Тарифы:' in MAIN
+    assert '○  1 неделя — {PREMIUM_WEEKLY_STARS} Stars' in MAIN
+    assert '●  1 месяц — {PREMIUM_MONTHLY_STARS} Stars' in MAIN
+    assert 'в неделю' in MAIN
 
 
 def test_rub_prices_next_to_stars():

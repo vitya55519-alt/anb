@@ -46,7 +46,7 @@ KB_LABELS = {
     # V3.37.0: the money affiliate program — the «пригласить» button grew up
     # into a full partner screen (stats, payouts, FAQ). Kept as its own key so
     # old keyboards still resolve; MAIN_KB_ROWS shows partner instead of invite.
-    'partner': ('💰 Партнёрка', '💰 Partner program'),
+    'partner': ('💰 Партнёрская программа', '💰 Partner program'),
     'custom': ('🎨 Мой персонаж', '🎨 My character'),
     # V3.38.0: the main menu funnels users into the Mini App (Come Closer
     # layout): one big «open app» row on top, the two app actions (buy
@@ -71,12 +71,15 @@ KB_LABELS = {
 # V3.41.0: owner asked to keep terms/privacy reachable from the main menu, so
 # the «📜 Документы» (Условия + Privacy) row is pinned at the bottom. Character
 # selection is gone from the chat funnel — it lives in the Mini App now.
+# V3.42.0: the owner wants the partner program to be a BIG full-width button
+# («Партнёрская программа», not «Партнёрка»); support shares the bottom row
+# with the legal documents so compliance stays one tap away.
 MAIN_KB_ROWS = [
     ['app'],
     ['credits'],
     ['paint'],
-    ['partner', 'support'],
-    ['legal'],
+    ['partner'],
+    ['support', 'legal'],
 ]
 
 # English names for the 8-level relationship ladder (RU lives in main.py).

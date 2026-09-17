@@ -26,7 +26,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.41.0', '3.40.0',)
+    assert VERSION in ('3.42.0', '3.41.0', '3.40.0',)
 
 
 # ── 1. main reply keyboard like the Come Closer menu ───────────────────────
@@ -36,7 +36,9 @@ def test_main_menu_is_the_come_closer_layout():
     assert "['app']," in rows
     assert "['credits']," in rows
     assert "['paint']," in rows
-    assert "['partner', 'support']," in rows
+    # V3.42.0: partner is its own full-width row; support sits with the legal row
+    assert "['partner']," in rows
+    assert "['support', 'legal']," in rows
     # the «open app» row is a real web_app tile — the teal direct launch
     kb = MAIN[MAIN.index('def main_keyboard('):MAIN.index('def _character_pick_buttons(')]
     assert "web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp')" in kb
