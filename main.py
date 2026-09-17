@@ -5696,7 +5696,7 @@ async def app_button(message: types.Message):
 
 @dp.message(F.text.in_(kb_pair('credits')))
 async def credits_button(message: types.Message):
-    """V3.38.0: «🍑 Добавить персиков» — buying photo credits now lives in the
+    """V3.38.0: «🍑 Персики» — buying photo credits now lives in the
     app's «Магазин» tab; the button carries the user straight into the app."""
     await _send_app_entry(
         message,
@@ -7660,6 +7660,29 @@ async def _webapp_api_select(request: web.Request) -> web.Response:
     }, headers={'Cache-Control': 'no-store'})
 
 
+async def _webapp_api_spicy(request: web.Request) -> web.Response:
+    """V3.43.5: the «пошлый режим» switch inside the Mini App Settings.
+
+    The owner could not find the chat-side toggle («еле нашел») — the profile
+    screen now carries it too. Same rules as the bot's ``toggle:spicy``
+    callback: enabling requires an active Premium, disabling is always
+    allowed, and the flag survives a lapsed subscription harmlessly.
+    """
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user = get_user(telegram_id)
+    current = bool(getattr(user, 'spicy_mode', False)) if user else False
+    if not current and not is_premium(telegram_id):
+        return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    update_user_settings(telegram_id, spicy_mode=not current)
+    return web.json_response({'ok': True, 'spicy_mode': not current}, headers={'Cache-Control': 'no-store'})
+
+
 async def _webapp_api_chat_history(request: web.Request) -> web.Response:
     # V3.35.0: chat in the app — the dialog the bot and the app share.
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
@@ -8353,6 +8376,7 @@ async def _start_web_server() -> None:
     # V3.43.0: the pay-method modal — card/SBP and crypto payment links.
     app.router.add_post('/webapp/api/pay_link', _webapp_api_pay_link)
     app.router.add_post('/webapp/api/select', _webapp_api_select)
+    app.router.add_post('/webapp/api/spicy', _webapp_api_spicy)
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
     app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)

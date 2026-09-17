@@ -213,6 +213,9 @@ def api_me(telegram_id: int) -> dict:
         'premium': is_premium(telegram_id),
         'streak': (user.streak_count or 0) if user else 0,
         'photo_credits': (user.photo_credits or 0) if user else 0,
+        # V3.43.5: the in-app Settings toggle shows the live flag (Premium is
+        # already in this payload — enabling re-checks it server-side).
+        'spicy_mode': bool(getattr(user, 'spicy_mode', False)) if user else False,
         'selected_character': {
             'id': selected_character,
             'name': (card.display_name if card else selected_character),

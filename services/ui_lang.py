@@ -54,7 +54,9 @@ KB_LABELS = {
     # the bottom. «Поддержка» is now a real ticket flow to the owner (the
     # old «💖 Поддержать проект» donation appeal stays on the legal screen).
     'app': ('📱 Открыть приложение', '📱 Open the app'),
-    'credits': ('🍑 Добавить персиков', '🍑 Add peaches'),
+    # V3.43.5: owner asked for the plain «Персики» label on every credits
+    # button — short, brand-colored, no «добавить/пополнить» verbs.
+    'credits': ('🍑 Персики', '🍑 Peaches'),
     'paint': ('🖼 Создать картинку', '🖼 Create a picture'),
     'support': ('👥 Поддержка', '👥 Support'),
     # V3.32.0: Platega/bank compliance — legal documents must be reachable

@@ -18,7 +18,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0')
+    assert VERSION in ('3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0')
 
 
 # ── the two new rows live on the welcome keyboard ─────────────────────────
@@ -40,7 +40,8 @@ def test_welcome_back_rows_include_credits_and_support():
 
 
 def test_credits_and_support_labels_are_the_localized_pairs():
-    assert "'credits': ('🍑 Добавить персиков', '🍑 Add peaches')," in UI_LANG
+    # V3.43.5: owner shortened the button to the plain «Персики» label.
+    assert "'credits': ('🍑 Персики', '🍑 Peaches')," in UI_LANG
     assert "'support': ('👥 Поддержка', '👥 Support')," in UI_LANG
 
 

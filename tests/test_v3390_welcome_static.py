@@ -24,7 +24,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0',)
+    assert VERSION in ('3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.39.0',)
 
 
 # ── 1. photo banner leads the welcome ──────────────────────────────────────
@@ -94,8 +94,9 @@ def test_welcome_back_rows_open_app_partner_and_legal():
 # ── 3. peach rebrand ───────────────────────────────────────────────────────
 
 def test_peaches_replaced_strawberries():
-    assert "'credits': ('🍑 Добавить персиков', '🍑 Add peaches')," in UI_LANG
-    assert '🍑 Добавить персиков' in MAIN
+    # V3.43.5: the label lost the verb — the plain «Персики» button.
+    assert "'credits': ('🍑 Персики', '🍑 Peaches')," in UI_LANG
+    assert '🍑 Персики' in MAIN
     assert '🍑 peaches (photo credits) are bought in the app' in MAIN
     assert 'Создать · 1 🍑' in INDEX
     assert 'Не хватает 🍑' in INDEX

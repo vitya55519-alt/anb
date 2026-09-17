@@ -28,7 +28,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 def test_version_bumped():
     # V3.43.2 shipped this; newer releases keep the pin in their own suite.
-    assert VERSION in ('3.43.4', '3.43.3', '3.43.2')
+    assert VERSION in ('3.43.5', '3.43.4', '3.43.3', '3.43.2')
 
 
 # ── 1. content-addressed asset URLs ─────────────────────────────────────────

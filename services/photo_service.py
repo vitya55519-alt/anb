@@ -687,10 +687,15 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
     body_spec = visual_identity.get('body_spec') or BODY_SPECS.get(character_id, '')
     if not body_spec and gender == 'female':
         body_spec = DEFAULT_FEMALE_BODY_SPEC
+    # V3.43.5: the declaration must beat the reference images — the owner
+    # watched Emily jump between a full and a flat bust because the reference
+    # photo won the tug-of-war (Anna's lock already had this override wording).
     body_line = (
-        f'BODY IDENTITY: {name} has {body_spec}. Preserve this exact figure in every photo '
-        'regardless of outfit, pose or crop; never flatten, reduce or enlarge the bust, '
-        'never widen the waist or hips. '
+        f'BODY IDENTITY: {name} has {body_spec}. This declared figure is a permanent body trait '
+        'and OVERRIDES the reference images: even if a reference photo shows a smaller or flatter '
+        'bust or a different build, always render the declared figure exactly as stated. '
+        'Preserve this exact figure in every photo regardless of outfit, pose or crop; '
+        'never flatten, reduce or enlarge the bust, never widen the waist or hips. '
     ) if body_spec else ''
     identity = (
         f'PHOTO IDENTITY: Create the SAME fictional adult {gender} character, {name}, age {age}. '

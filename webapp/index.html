@@ -483,6 +483,25 @@
   }
   .menurow .arr { color: var(--muted); }
   .menurow:active { transform: scale(.98); }
+  .menurow .switchVal { color: var(--muted); font-weight: 600; font-size: 13px; }
+  /* V3.43.5: picture-tile style picker (Картинки) + language chips (Настройки) */
+  .styleRow { display: flex; gap: 8px; margin-top: 2px; }
+  .styleTile {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 12px 4px 10px; border-radius: 12px; cursor: pointer;
+    font-size: 12px; font-weight: 600; background: var(--card); color: var(--muted);
+    border: 1.5px solid rgba(255,255,255,.07);
+  }
+  .styleTile svg { width: 30px; height: 30px; display: block; }
+  .styleTile.on { color: #fff; border-color: var(--accent); background: rgba(255,122,198,.14); }
+  .styleTile:active { transform: scale(.97); }
+  .langBox { margin-top: 4px; }
+  .langChips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .langChip {
+    padding: 8px 12px; border-radius: 999px; cursor: pointer; font-size: 13px; font-weight: 600;
+    background: var(--card); color: var(--muted); border: 1.5px solid rgba(255,255,255,.07);
+  }
+  .langChip.on { color: #fff; border-color: var(--accent); background: rgba(255,122,198,.14); }
   .minichar {
     display: flex; align-items: center; gap: 10px;
     background: var(--card); border-radius: 12px; padding: 8px 10px; margin-bottom: 8px;
@@ -672,9 +691,16 @@ try { tg.expand(); } catch (e) {}
 try { tg.setHeaderColor('#1a1023'); tg.setBackgroundColor('#1a1023'); } catch (e) {}
 
 const user0 = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {};
-const LANG = String(user0.language_code || 'ru').toLowerCase().startsWith('en') ? 'en' : 'ru';
+// V3.43.5: the interface language is user-controlled — the pick made in the
+// app Settings (localStorage) beats the Telegram account language.
+// Supported: ru / en / es / it / fr / zh / ja; anything else falls back to en.
+const APP_LANGS = ['ru', 'en', 'es', 'it', 'fr', 'zh', 'ja'];
+const _savedLang = String(localStorage.getItem('app_lang') || '').toLowerCase();
+const _tgLang = String(user0.language_code || 'ru').toLowerCase();
+const LANG = APP_LANGS.includes(_savedLang) ? _savedLang
+  : (_tgLang.startsWith('ru') ? 'ru' : (APP_LANGS.find(x => _tgLang.startsWith(x)) || 'en'));
 
-const L = LANG === 'en' ? {
+const L_EN = {
   chars_title: 'Characters', loading: 'Loading…',
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
@@ -751,7 +777,15 @@ const L = LANG === 'en' ? {
   // V3.41.0: the app-chat feature sheet (apartment / date / daily quest).
   feat_done_btn: '✅ Done · +5 attention', feat_claimed: 'Already done today ❤️',
   feat_empty: 'Nothing here yet', feat_paid: 'Date paid 💕 she will write in the chat',
-} : {
+  // V3.43.5: the in-app Settings section (spicy switch + interface language).
+  settings_title: 'Settings', spicy_title: '🌶 Spicy mode', spicy_on: 'on', spicy_off: 'off',
+  spicy_prem: 'Spicy mode is a Premium perk ⭐', spicy_toast_on: 'Spicy mode is on 🔥',
+  spicy_toast_off: 'Spicy mode is off 🌙', lang_title: '🌐 Interface language',
+};
+
+// V3.43.5: the full Russian dictionary stays the base; five more interface
+// languages arrive below as partial overrides on top of the English one.
+const L_RU = {
   chars_title: 'Персонажи', loading: 'Загрузка…',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
@@ -828,7 +862,148 @@ const L = LANG === 'en' ? {
   // V3.41.0: панель фич в чате приложения (квартира / свидание / задание дня).
   feat_done_btn: '✅ Выполнено · +5 внимания', feat_claimed: 'Сегодня уже выполнено ❤️',
   feat_empty: 'Здесь пока пусто', feat_paid: 'Свидание оплачено 💕 она напишет в чат',
+  // V3.43.5: секция «Настройки» в профиле (пошлый режим + язык интерфейса).
+  settings_title: 'Настройки', spicy_title: '🌶 Пошлый режим', spicy_on: 'вкл', spicy_off: 'выкл',
+  spicy_prem: 'Пошлый режим — фишка Premium ⭐', spicy_toast_on: 'Пошлый режим включён 🔥',
+  spicy_toast_off: 'Пошлый режим выключен 🌙', lang_title: '🌐 Язык интерфейса',
 };
+
+// V3.43.5: partial UI dictionaries — everything missing falls back to the
+// English entry, so the visible chrome switches fully while rarely-seen
+// long tails stay English instead of staying Russian for a Milan user.
+const L_OV = {
+  es: {
+    chars_title: 'Chicas', loading: 'Cargando…',
+    chars_hint: 'Toca una tarjeta: el chat se abre aquí mismo. El historial se comparte con el bot.',
+    active: 'disponible', selected: 'tu chica', shop_title: 'Tienda', profile_title: 'Perfil',
+    premium_on: 'Premium activo', premium_off: 'Cuenta gratuita',
+    streak: 'días seguidos', level: 'nivel de relación', selected_girl: 'chica elegida',
+    open_bot: 'Abre el bot para chatear 💬', docs_title: 'Documentos y precios',
+    partner_title: 'Programa de socios', my_chars: 'MIS PERSONAJES', create_char: '＋ Crear',
+    no_chars: 'Aún no tienes personaje: crea a tu chica.', partner_row: '💰 Programa de socios',
+    docs_row: '📜 Documentos y precios', open_chat: 'chat', start_chat: 'Iniciar chat',
+    make_mine: '❤️ Hacerla tuya', seg_official: '🍑 Oficiales', seg_community: '👥 Comunidad',
+    create_own: 'Crea la tuya', create_sub: 'Apariencia, figura y carácter: ella hablará como tú elijas',
+    chats_title: 'Chats', pic_title: 'Crear imagen',
+    pic_prompt_ph: 'Describe la imagen: quién, dónde, ambiente…', pic_style: 'Estilo',
+    style_anime: 'Anime', style_realistic: 'Realismo', style_fantasy: 'Fantasía',
+    pic_format: 'Formato', pic_square: 'Cuadrado', pic_portrait: 'Vertical',
+    pic_advanced: 'Modo avanzado', pic_cost: 'Una imagen — 1 🍑', pic_generate: 'Crear · 1 🍑',
+    pic_wait: 'Dibujando — hasta un minuto…', pic_gallery: 'Mis imágenes',
+    pic_empty: 'Aún no hay imágenes: tus obras aparecerán aquí.',
+    media_photo: 'Foto', media_video: 'Vídeo', media_circle: 'Círculo', buy: 'Comprar',
+    need_premium: 'Disponible con Premium ⭐', locked: 'Esta chica aún está cerrada',
+    settings_title: 'Ajustes', spicy_title: '🌶 Modo atrevido', spicy_on: 'activado', spicy_off: 'desactivado',
+    spicy_prem: 'El modo atrevido es una ventaja Premium ⭐',
+    spicy_toast_on: 'Modo atrevido activado 🔥', spicy_toast_off: 'Modo atrevido desactivado 🌙',
+    lang_title: '🌐 Idioma de la interfaz',
+  },
+  it: {
+    chars_title: 'Ragazze', loading: 'Caricamento…',
+    chars_hint: 'Tocca una scheda: la chat si apre qui. La cronologia è condivisa con il bot.',
+    active: 'disponibile', selected: 'la tua ragazza', shop_title: 'Negozio', profile_title: 'Profilo',
+    premium_on: 'Premium attivo', premium_off: 'Account gratuito',
+    streak: 'giorni di fila', level: 'livello di relazione', selected_girl: 'ragazza scelta',
+    open_bot: 'Apri il bot per chattare 💬', docs_title: 'Documenti e prezzi',
+    partner_title: 'Programma partner', my_chars: 'I MIEI PERSONAGGI', create_char: '＋ Crea',
+    no_chars: 'Nessun personaggio: crea la tua ragazza.', partner_row: '💰 Programma partner',
+    docs_row: '📜 Documenti e prezzi', open_chat: 'chat', start_chat: 'Avvia la chat',
+    make_mine: '❤️ Rendila tua', seg_official: '🍑 Ufficiali', seg_community: '👥 Community',
+    create_own: 'Crea la tua', create_sub: 'Aspetto, fisico e carattere: parlerà come vorrai tu',
+    chats_title: 'Chat', pic_title: 'Crea immagine',
+    pic_prompt_ph: 'Descrivi l\'immagine: chi, dove, atmosfera…', pic_style: 'Stile',
+    style_anime: 'Anime', style_realistic: 'Realismo', style_fantasy: 'Fantasy',
+    pic_format: 'Formato', pic_square: 'Quadrato', pic_portrait: 'Verticale',
+    pic_advanced: 'Modalità avanzata', pic_cost: 'Un\'immagine — 1 🍑', pic_generate: 'Crea · 1 🍑',
+    pic_wait: 'Disegno — fino a un minuto…', pic_gallery: 'Le mie immagini',
+    pic_empty: 'Ancora nessuna immagine: le tue opere appariranno qui.',
+    media_photo: 'Foto', media_video: 'Video', media_circle: 'Cerchio', buy: 'Acquista',
+    need_premium: 'Disponibile con Premium ⭐', locked: 'Questa ragazza è ancora chiusa',
+    settings_title: 'Impostazioni', spicy_title: '🌶 Modalità audace', spicy_on: 'attiva', spicy_off: 'disattivata',
+    spicy_prem: 'La modalità audace è un vantaggio Premium ⭐',
+    spicy_toast_on: 'Modalità audace attiva 🔥', spicy_toast_off: 'Modalità audace disattivata 🌙',
+    lang_title: '🌐 Lingua dell\'interfaccia',
+  },
+  fr: {
+    chars_title: 'Filles', loading: 'Chargement…',
+    chars_hint: 'Touche une carte : le tchat s\'ouvre ici. L\'historique est partagé avec le bot.',
+    active: 'disponible', selected: 'ta fille', shop_title: 'Boutique', profile_title: 'Profil',
+    premium_on: 'Premium actif', premium_off: 'Compte gratuit',
+    streak: 'jours d\'affilée', level: 'niveau de relation', selected_girl: 'fille choisie',
+    open_bot: 'Ouvre le bot pour discuter 💬', docs_title: 'Documents et tarifs',
+    partner_title: 'Programme de partenariat', my_chars: 'MES PERSONNAGES', create_char: '＋ Créer',
+    no_chars: 'Pas encore de personnage : crée ta fille.', partner_row: '💰 Programme de partenariat',
+    docs_row: '📜 Documents et tarifs', open_chat: 'tchat', start_chat: 'Lancer le tchat',
+    make_mine: '❤️ Fais-en ta fille', seg_official: '🍑 Officielles', seg_community: '👥 Communauté',
+    create_own: 'Crée la tienne', create_sub: 'Look, silhouette et caractère : elle parlera comme tu le choisiras',
+    chats_title: 'Tchats', pic_title: 'Créer une image',
+    pic_prompt_ph: 'Décris l\'image : qui, où, ambiance…', pic_style: 'Style',
+    style_anime: 'Anime', style_realistic: 'Réalisme', style_fantasy: 'Fantasy',
+    pic_format: 'Format', pic_square: 'Carré', pic_portrait: 'Portrait',
+    pic_advanced: 'Mode avancé', pic_cost: 'Une image — 1 🍑', pic_generate: 'Créer · 1 🍑',
+    pic_wait: 'Je dessine — jusqu\'à une minute…', pic_gallery: 'Mes images',
+    pic_empty: 'Pas encore d\'image : tes œuvres apparaîtront ici.',
+    media_photo: 'Photo', media_video: 'Vidéo', media_circle: 'Cercle', buy: 'Acheter',
+    need_premium: 'Disponible avec Premium ⭐', locked: 'Cette fille est encore fermée',
+    settings_title: 'Réglages', spicy_title: '🌶 Mode coquin', spicy_on: 'activé', spicy_off: 'désactivé',
+    spicy_prem: 'Le mode coquin est un avantage Premium ⭐',
+    spicy_toast_on: 'Mode coquin activé 🔥', spicy_toast_off: 'Mode coquin désactivé 🌙',
+    lang_title: '🌐 Langue de l\'interface',
+  },
+  zh: {
+    chars_title: '女孩', loading: '加载中…',
+    chars_hint: '点一下卡片——聊天就在这里打开，记录与机器人共享。',
+    active: '在线', selected: '你的女孩', shop_title: '商店', profile_title: '个人主页',
+    premium_on: 'Premium 已激活', premium_off: '免费账户',
+    streak: '连续天数', level: '关系等级', selected_girl: '当前女孩',
+    open_bot: '打开机器人开始聊天 💬', docs_title: '文档与价格',
+    partner_title: '合作伙伴计划', my_chars: '我的角色', create_char: '＋ 创建',
+    no_chars: '还没有角色——创建属于你的女孩吧。', partner_row: '💰 合作伙伴计划',
+    docs_row: '📜 文档与价格', open_chat: '聊天', start_chat: '开始聊天',
+    make_mine: '❤️ 成为我的女孩', seg_official: '🍑 官方精选', seg_community: '👥 社区',
+    create_own: '创建专属', create_sub: '外貌、身材和性格——她将按你的选择来聊天',
+    chats_title: '聊天', pic_title: '创建图片',
+    pic_prompt_ph: '描述这张图片——人物、场景、氛围…', pic_style: '风格',
+    style_anime: '动漫', style_realistic: '写实', style_fantasy: '奇幻',
+    pic_format: '格式', pic_square: '方形', pic_portrait: '竖版',
+    pic_advanced: '高级模式', pic_cost: '一张图片 — 1 🍑', pic_generate: '创建 · 1 🍑',
+    pic_wait: '绘制中——最多一分钟…', pic_gallery: '我的图片',
+    pic_empty: '还没有图片——你的作品会出现在这里。',
+    media_photo: '照片', media_video: '视频', media_circle: '视频圈', buy: '购买',
+    need_premium: '需要 Premium ⭐', locked: '这位女孩暂时未解锁',
+    settings_title: '设置', spicy_title: '🌶 火辣模式', spicy_on: '已开启', spicy_off: '已关闭',
+    spicy_prem: '火辣模式是 Premium 专属 ⭐',
+    spicy_toast_on: '火辣模式已开启 🔥', spicy_toast_off: '火辣模式已关闭 🌙',
+    lang_title: '🌐 界面语言',
+  },
+  ja: {
+    chars_title: '女の子', loading: '読み込み中…',
+    chars_hint: 'カードをタップすると、ここでチャットが開きます。履歴はボットと共有されます。',
+    active: 'オンライン', selected: 'あなたの女の子', shop_title: 'ショップ', profile_title: 'プロフィール',
+    premium_on: 'Premium 有効', premium_off: '無料アカウント',
+    streak: '連続日数', level: '関係レベル', selected_girl: '選択中の女の子',
+    open_bot: 'ボットを開いてチャット 💬', docs_title: '資料と料金',
+    partner_title: 'パートナープログラム', my_chars: 'マイキャラクター', create_char: '＋ 作成',
+    no_chars: 'まだキャラクターがいません——あなただけの女の子を作りましょう。', partner_row: '💰 パートナープログラム',
+    docs_row: '📜 資料と料金', open_chat: 'チャット', start_chat: 'チャットを始める',
+    make_mine: '❤️ 私のものにする', seg_official: '🍑 公式', seg_community: '👥 コミュニティ',
+    create_own: 'オリジナルを作る', create_sub: '外見・スタイル・性格——あなたが選んだ通りに彼女は話します',
+    chats_title: 'チャット', pic_title: '画像を作る',
+    pic_prompt_ph: '画像を説明してください——誰が、どこで、どんな雰囲気…', pic_style: 'スタイル',
+    style_anime: 'アニメ', style_realistic: 'リアル', style_fantasy: 'ファンタジー',
+    pic_format: 'フォーマット', pic_square: '正方形', pic_portrait: '縦長',
+    pic_advanced: '詳細設定', pic_cost: '1枚 — 1 🍑', pic_generate: '作成 · 1 🍑',
+    pic_wait: '描画中——最大1分…', pic_gallery: 'マイ画像',
+    pic_empty: 'まだ画像がありません——あなたの作品がここに表示されます。',
+    media_photo: '写真', media_video: '動画', media_circle: 'ビデオサークル', buy: '購入',
+    need_premium: 'Premium で利用可能 ⭐', locked: 'この女の子はまだロック中',
+    settings_title: '設定', spicy_title: '🌶 セクシーモード', spicy_on: 'オン', spicy_off: 'オフ',
+    spicy_prem: 'セクシーモードは Premium 特典 ⭐',
+    spicy_toast_on: 'セクシーモードがオンになりました 🔥', spicy_toast_off: 'セクシーモードがオフになりました 🌙',
+    lang_title: '🌐 表示言語',
+  },
+};
+const L = LANG === 'ru' ? L_RU : Object.assign({}, L_EN, (L_OV[LANG] || {}));
 
 document.getElementById('l_chars_title').textContent = L.chars_title;
 document.getElementById('l_shop_title').textContent = L.shop_title;
@@ -853,9 +1028,18 @@ document.getElementById('chanTitle').textContent = L.chan_title;
 document.getElementById('chanWarn').textContent = L.chan_warn;
 document.getElementById('chanGo').textContent = L.chan_go;
 document.getElementById('chanCheck').textContent = L.chan_check;
+// V3.43.5: bottom-nav labels for every supported interface language.
+const NAV_LABELS = {
+  ru: ['Персонажи','Чаты','Картинки','Магазин','Профиль'],
+  en: ['Characters','Chats','Pictures','Shop','Profile'],
+  es: ['Chicas','Chats','Imágenes','Tienda','Perfil'],
+  it: ['Ragazze','Chat','Immagini','Negozio','Profilo'],
+  fr: ['Filles','Tchats','Images','Boutique','Profil'],
+  zh: ['女孩','聊天','图片','商店','我的'],
+  ja: ['女の子','チャット','画像','ショップ','プロフィール'],
+};
 document.querySelectorAll('#bottomnav .lbl').forEach((el, i) => {
-  el.textContent = ['Персонажи','Чаты','Картинки','Магазин','Профиль'][i];
-  if (LANG === 'en') el.textContent = ['Characters','Chats','Pictures','Shop','Profile'][i];
+  el.textContent = (NAV_LABELS[LANG] || NAV_LABELS.en)[i];
 });
 
 function esc(s) {
@@ -1586,15 +1770,30 @@ async function loadChats() {
 }
 
 // ── V3.38.0: the «Картинки» tab — prompt studio + my gallery ─────────────
+// V3.43.5: the style picker is a row of picture tiles (owner: «поставь
+// маленькую картинку, чтоб человек визуально это понимал») — emoji made
+// Аниме/Реализм/Фэнтези indistinguishable at a glance.
+let PIC_STYLE = 'anime';
+const STYLE_ICONS = {
+  anime: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/><ellipse cx="8.7" cy="11" rx="1.8" ry="2.6" fill="currentColor"/><ellipse cx="15.3" cy="11" rx="1.8" ry="2.6" fill="currentColor"/><path d="M9.7 16.1q2.3 1.6 4.6 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M6.2 7.9q1.7-1.5 3.4-.6M17.8 7.9q-1.7-1.5-3.4-.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  realistic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8.5 7l1.2-2.2h4.6L15.5 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="13.5" r="1.1" fill="currentColor"/><circle cx="17.7" cy="9.6" r="0.9" fill="currentColor"/></svg>',
+  fantasy: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6 19.4L14.4 9.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M13.4 6.2l1.5-3 1.5 3 3 1.5-3 1.5-1.5 3-1.5-3-3-1.5z" fill="currentColor"/><path d="M6.1 4.9l.7-1.4.7 1.4 1.4.7-1.4.7-.7 1.4-.7-1.4-1.4-.7z" fill="currentColor" opacity=".85"/><circle cx="18.7" cy="16.9" r="1.1" fill="currentColor" opacity=".85"/></svg>',
+};
 function renderStudio() {
   document.getElementById('studiobody').innerHTML = `
     <textarea id="picPrompt" maxlength="800" placeholder="${esc(L.pic_prompt_ph)}"></textarea>
     <div class="lbl">${esc(L.pic_style)}</div>
-    <select id="picStyle">
-      <option value="anime">🍑 ${esc(L.style_anime)}</option>
-      <option value="realistic">📷 ${esc(L.style_realistic)}</option>
-      <option value="fantasy">🐉 ${esc(L.style_fantasy)}</option>
-    </select>
+    <div class="styleRow" id="picStyleRow">
+      <button type="button" class="styleTile${PIC_STYLE === 'anime' ? ' on' : ''}" data-style="anime">
+        ${STYLE_ICONS.anime}<span>${esc(L.style_anime)}</span>
+      </button>
+      <button type="button" class="styleTile${PIC_STYLE === 'realistic' ? ' on' : ''}" data-style="realistic">
+        ${STYLE_ICONS.realistic}<span>${esc(L.style_realistic)}</span>
+      </button>
+      <button type="button" class="styleTile${PIC_STYLE === 'fantasy' ? ' on' : ''}" data-style="fantasy">
+        ${STYLE_ICONS.fantasy}<span>${esc(L.style_fantasy)}</span>
+      </button>
+    </div>
     <div class="lbl">${esc(L.pic_format)}</div>
     <select id="picFormat">
       <option value="square">⬛ ${esc(L.pic_square)}</option>
@@ -1614,6 +1813,10 @@ function renderStudio() {
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
   });
   document.getElementById('picGen').addEventListener('click', generatePicture);
+  document.querySelectorAll('#picStyleRow .styleTile').forEach(t => t.addEventListener('click', () => {
+    PIC_STYLE = t.dataset.style;
+    document.querySelectorAll('#picStyleRow .styleTile').forEach(x => x.classList.toggle('on', x === t));
+  }));
 }
 
 async function generatePicture() {
@@ -1633,7 +1836,7 @@ async function generatePicture() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: full,
-        style: document.getElementById('picStyle').value,
+        style: PIC_STYLE,
         format: document.getElementById('picFormat').value,
       }),
     });
@@ -1880,6 +2083,10 @@ function renderProfileBody() {
         <button class="cta small" data-chat-id="${esc(c.id)}">${esc(L.open_chat)}</button>
       </div>`).join('')
     : `<div class="note">${esc(L.no_chars)}</div>`;
+  // V3.43.5: чипы языков — локальный фрагмент, значения esc()-обёрнуты.
+  const LANG_NAMES = { ru: 'Русский', en: 'English', es: 'Español', it: 'Italiano', fr: 'Français', zh: '中文', ja: '日本語' };
+  const langChipsHtml = APP_LANGS.map(code =>
+    `<button type="button" class="langChip${code === LANG ? ' on' : ''}" data-lang="${esc(code)}">${esc(LANG_NAMES[code])}</button>`).join('');
   document.getElementById('profilebody').innerHTML = `
     <div class="profile-head">
       <div class="avatar">${esc(initial)}</div>
@@ -1902,6 +2109,15 @@ function renderProfileBody() {
     ${hasMine ? '' : `<button class="cta" id="profileCreate">${esc(L.create_char)}</button>`}
     <div class="menurow" id="menuPartner"><span>${esc(L.partner_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuDocs"><span>${esc(L.docs_row)}</span><span class="arr">›</span></div>
+    <div class="sect-title">${esc(L.settings_title)}</div>
+    <div class="menurow" id="rowSpicy">
+      <span>${esc(L.spicy_title)}</span>
+      <span class="switchVal" id="spicyVal">${m.spicy_mode ? '🔥 ' + esc(L.spicy_on) : esc(L.spicy_off)}</span>
+    </div>
+    <div class="langBox">
+      <div class="lbl" style="margin:10px 0 6px">${esc(L.lang_title)}</div>
+      <div class="langChips" id="langChips">${langChipsHtml}</div>
+    </div>
     <div class="note">${esc(L.open_bot)}</div>`;
   const pc = document.getElementById('profileCreate');
   if (pc) pc.addEventListener('click', openWizard);
@@ -1909,6 +2125,28 @@ function renderProfileBody() {
   if (mp) mp.addEventListener('click', openPartnerOverlay);
   const md = document.getElementById('menuDocs');
   if (md) md.addEventListener('click', openDocsOverlay);
+  // V3.43.5: «пошлый режим» прямо в настройках приложения — раньше
+  // переключатель был спрятан в чате бота, и владелец сам его «еле нашел».
+  const rs = document.getElementById('rowSpicy');
+  if (rs) rs.addEventListener('click', async () => {
+    if (!ME) return;
+    if (!ME.spicy_mode && !ME.premium) { toast(L.spicy_prem); showTab('shop'); return; }
+    try {
+      const r = await fetch('/webapp/api/spicy?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
+      if (r.status === 403) { toast(L.spicy_prem); showTab('shop'); return; }
+      const j = await r.json();
+      if (!j.ok) return;
+      ME.spicy_mode = !!j.spicy_mode;
+      const sv = document.getElementById('spicyVal');
+      if (sv) sv.textContent = ME.spicy_mode ? '🔥 ' + L.spicy_on : L.spicy_off;
+      toast(ME.spicy_mode ? L.spicy_toast_on : L.spicy_toast_off);
+    } catch (e) { toast(String(e.message || '')); }
+  });
+  // V3.43.5: интерфейс на семи языках — выбор в настройках бьёт язык аккаунта.
+  document.querySelectorAll('#langChips .langChip').forEach(ch => ch.addEventListener('click', () => {
+    localStorage.setItem('app_lang', ch.dataset.lang);
+    location.reload();
+  }));
   document.querySelectorAll('#profilebody [data-chat-id]').forEach(b =>
     b.addEventListener('click', () => {
       const c = (CHARS || []).find(x => x.id === b.dataset.chatId);

@@ -2,7 +2,7 @@
 
 Owner request (benchmarking @come_closer_bot screenshots):
 1. the bot's main menu funnels users into the Mini App — reply keyboard rows
-   📱 Открыть приложение / 🍑 Добавить персиков + 🖼 Создать картинку /
+   📱 Открыть приложение / 🍑 Персики + 🖼 Создать картинку /
    💰 Партнёрка + 👥 Поддержка, with the actions living inside the Mini App;
 2. five new characters incl. the requested «30+» women (мать друга и др.),
    each with a photorealistic canonical face/look reference and a cinematic
@@ -26,7 +26,7 @@ NEW_CHARACTERS = ('erika_01', 'sonya_01', 'vika_01', 'alisa_01', 'mila_01')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.38.0', '3.39.0')
 
 
 # ── 1. main menu funnel ────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ def test_main_menu_rows_funnel_into_miniapp():
     # exact label pairs from the owner's screenshot
     for key, label in (
         ('app', "'app': ('📱 Открыть приложение', '📱 Open the app'),"),
-        ('credits', "'credits': ('🍑 Добавить персиков', '🍑 Add peaches'),"),
+        ('credits', "'credits': ('🍑 Персики', '🍑 Peaches'),"),
         ('paint', "'paint': ('🖼 Создать картинку', '🖼 Create a picture'),"),
         ('partner', "'partner': ('💰 Партнёрская программа', '💰 Partner program'),"),
         ('support', "'support': ('👥 Поддержка', '👥 Support'),"),

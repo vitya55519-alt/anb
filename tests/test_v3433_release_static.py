@@ -33,7 +33,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 def test_version_bumped():
     # V3.43.3 shipped this; newer releases keep the pin in their own suite.
-    assert VERSION in ('3.43.4', '3.43.3')
+    assert VERSION in ('3.43.5', '3.43.4', '3.43.3')
 
 
 # ── 1. the grid card is a plain static photo ────────────────────────────────
@@ -114,9 +114,11 @@ def test_body_specs_follow_the_house_archetype():
     # the default for heroines without a spec (and any future one) is NOT flat
     assert 'and a full bust (silicone, Russian size 5, E cup)' in PHOTO_SVC
     assert 'size 4, D cup' not in PHOTO_SVC
-    # the identity prompt carries the BODY IDENTITY line built from the spec
+    # the identity prompt carries the BODY IDENTITY line built from the spec;
+    # V3.43.5: the declaration now explicitly overrides the reference photos
+    # (Emily's flat-bust reference was winning the tug-of-war before).
     assert "body_line = (" in PHOTO_SVC
-    assert "f'BODY IDENTITY: {name} has {body_spec}. Preserve this exact figure in every photo '" in PHOTO_SVC
+    assert "f'BODY IDENTITY: {name} has {body_spec}. This declared figure is a permanent body trait '" in PHOTO_SVC
 
 
 # ── 5. per-character courtship: own tempo, own stage texture ────────────────

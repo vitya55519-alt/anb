@@ -12,7 +12,7 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
+    assert VERSION in ('3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
 def test_invoice_products_declared():
@@ -178,6 +178,17 @@ def test_no_unescaped_backend_strings_in_templates():
             # other only the 'on'/'' thumbnail CSS class from a local map index.
             "status === 'premium' ? L.prem : L.active",
             "i === 0 ? 'on' : ''",
+            # V3.43.5: style-tile class ternaries — PIC_STYLE is local client
+            # state; the result can only ever be ' on' or ''.
+            "PIC_STYLE === 'anime' ? ' on' : ''",
+            "PIC_STYLE === 'realistic' ? ' on' : ''",
+            "PIC_STYLE === 'fantasy' ? ' on' : ''",
+            # V3.43.5: the drawn style icons — static local SVG constants,
+            # no backend data inside.
+            'STYLE_ICONS.anime', 'STYLE_ICONS.realistic', 'STYLE_ICONS.fantasy',
+            # V3.43.5: the language-chip fragment (codes and names esc()'d
+            # inside) and its local class ternary.
+            'langChipsHtml', "code === LANG ? ' on' : ''",
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         raise AssertionError(f'unescaped template value: {expr!r} in INDEX')
