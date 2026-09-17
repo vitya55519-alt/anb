@@ -52,3 +52,9 @@
 - Ничего. Проверка: открой чат с Эмили в приложении → «📸 Фото» → выбери
   «Селфи» или «Зеркало» → сравни грудь с карточкой: теперь кадр идёт через
   те же замки, что и фото в боте.
+
+## Pre-push verification
+- Custom-character references are cached before the first app photo, matching the bot path.
+- Date rewards preserve their actual scene ID, including venue-specific wardrobe and framing.
+- Ten mocked execution cases cover reference preparation order and all date scene IDs, without paid generation.
+- The routing bypass is verified in code. Visual body consistency has not been verified with live provider output; the earlier statements about guaranteed visual results should not be read as a tested guarantee.

@@ -7850,6 +7850,8 @@ async def _webapp_pipeline_photo(telegram_id: int, character_id: str, request: P
     generate_custom_avatar on gallery[0], a face close-up) bypassed every
     lock — which is exactly why the figure kept drifting in the app while
     the bot's photos stayed on-spec."""
+    if is_custom_character(character_id):
+        await ensure_custom_avatar_cached(bot, character_id)
     photos, _ = await generate_photo_set(telegram_id, request, character_id=character_id, frames=1)
     data = await photo_frame_bytes(photos[0])
     if not data:
@@ -7961,12 +7963,11 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
 
 async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str):
     """V3.41.0: an in-character photo for a specific scene — the app-native
-    reward shot for a free/admin date. V3.43.7: through the real photo
-    pipeline too — the date description rides PhotoRequest.location, so the
-    figure follows the declared BODY IDENTITY here as well."""
+    reward shot for a free/admin date. V3.43.7: preserve the date's scene ID
+    so venue-specific wardrobe and framing rules apply in the photo pipeline."""
     return await _webapp_pipeline_photo(
         telegram_id, character_id,
-        PhotoRequest(scene='selfie', location=f'a personal smartphone photo from a date: {scene}'),
+        PhotoRequest(scene=scene, mood='romantic'),
     )
 
 

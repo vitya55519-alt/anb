@@ -24,7 +24,13 @@ V3.43.7:
 4. the endpoint enforces the bot's gates: menu-scene whitelist, relationship
    stage, the 18+ adult confirmation, and the scene-flavored AUTO_CAPTIONS.
 """
+import ast
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
@@ -64,7 +70,7 @@ def test_old_bypass_is_gone():
 def test_date_reward_photo_also_pipelined():
     scene_fn = MAIN[MAIN.index('async def _webapp_media_scene('):MAIN.index('async def _webapp_api_chat_media(')]
     assert 'await _webapp_pipeline_photo(' in scene_fn
-    assert "PhotoRequest(scene='selfie', location=f'a personal smartphone photo from a date: {scene}')" in scene_fn
+    assert "PhotoRequest(scene=scene, mood='romantic')" in scene_fn
 
 
 def test_photo_frame_bytes_helper():
@@ -148,3 +154,62 @@ def test_scene_menu_markup_is_escaped():
     block = INDEX[INDEX.index('function renderPhotoScenes('):INDEX.index('function renderFeature(')]
     assert '${' not in block
     assert "esc(typeof L['sc_' + id] === 'string' ? L['sc_' + id] : id)" in block
+
+
+def _app_photo_namespace():
+    """Execute the actual app helpers with mocked I/O, without starting the bot."""
+    names = {'_webapp_pipeline_photo', '_webapp_media_photo', '_webapp_media_scene'}
+    helpers = [node for node in ast.parse(MAIN).body
+               if isinstance(node, ast.AsyncFunctionDef) and node.name in names]
+    assert {node.name for node in helpers} == names
+    ns = {
+        'PhotoRequest': SimpleNamespace,
+        'PhotoGenerationError': RuntimeError,
+        'bot': object(),
+        'is_custom_character': Mock(return_value=False),
+        'ensure_custom_avatar_cached': AsyncMock(),
+        'generate_photo_set': AsyncMock(return_value=([object()], None)),
+        'photo_frame_bytes': AsyncMock(return_value=b'\x89PNG\r\n\x1a\nframe'),
+    }
+    exec(compile(ast.Module(body=helpers, type_ignores=[]), str(ROOT / 'main.py'), 'exec'), ns)
+    return ns
+
+
+@pytest.mark.parametrize('custom', [False, True])
+def test_app_photo_prepares_custom_reference_before_generation(custom):
+    ns = _app_photo_namespace()
+    ns['is_custom_character'].return_value = custom
+    character_id = 'custom_42' if custom else 'alena_01'
+    frame = object()
+
+    async def generate(telegram_id, request, *, character_id, frames):
+        assert telegram_id == 42
+        assert request.scene == 'park'
+        assert frames == 1
+        if custom:
+            ns['ensure_custom_avatar_cached'].assert_awaited_once_with(ns['bot'], character_id)
+        else:
+            ns['ensure_custom_avatar_cached'].assert_not_awaited()
+        return [frame], request
+
+    ns['generate_photo_set'] = AsyncMock(side_effect=generate)
+    result = asyncio.run(ns['_webapp_media_photo'](42, character_id, 'park'))
+    ns['is_custom_character'].assert_called_once_with(character_id)
+    ns['generate_photo_set'].assert_awaited_once()
+    assert ns['generate_photo_set'].await_args.kwargs['character_id'] == character_id
+    ns['photo_frame_bytes'].assert_awaited_once_with(frame)
+    assert result == (b'\x89PNG\r\n\x1a\nframe', 'image/png', 'png')
+
+
+@pytest.mark.parametrize('scene', [
+    'cafe', 'park', 'cinema', 'embankment', 'restaurant', 'rooftop', 'club', 'evening',
+])
+def test_date_reward_preserves_scene_through_shared_pipeline(scene):
+    ns = _app_photo_namespace()
+    asyncio.run(ns['_webapp_media_scene'](42, 'alena_01', scene))
+    ns['generate_photo_set'].assert_awaited_once()
+    call = ns['generate_photo_set'].await_args
+    assert call.args[0] == 42
+    assert call.args[1].scene == scene
+    assert call.args[1].mood == 'romantic'
+    assert call.kwargs == {'character_id': 'alena_01', 'frames': 1}
