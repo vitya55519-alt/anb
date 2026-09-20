@@ -64,7 +64,7 @@ from config import (
     WEBAPP_INIT_DATA_MAX_AGE,
     fiat_values,
 )
-from models.app_models import CharacterComment, CharacterLike, CharacterStat, DailyBonus, Message, NotificationPref, User
+from models.app_models import CharacterComment, CharacterLike, CharacterStat, DailyBonus, Message, NotificationPref, SimulatedMessage, User
 from services import legal_service
 from services.access_service import is_premium
 from services.character_card_service import get_card, get_scenario_hook, list_cards
@@ -142,6 +142,10 @@ _FACE_REFERENCES = {
     'vika_01': ('references', 'vika', '00_vika_canonical_face.png'),
     'alisa_01': ('references', 'alisa', '00_alisa_canonical_face.png'),
     'mila_01': ('references', 'mila', '00_mila_canonical_face.png'),
+    # V3.44.0: new archetypes — fitness, artistic, and power.
+    'kate_01': ('references', 'kate', '00_kate_canonical_face.png'),
+    'luna_01': ('references', 'luna', '00_luna_canonical_face.png'),
+    'rex_01': ('references', 'rex', '00_rex_canonical_face.png'),
 }
 
 
@@ -1089,6 +1093,78 @@ def get_daily_bonus_status(telegram_id: int) -> dict:
             return {'claimed': False}
     except Exception:
         return {'claimed': False}
+
+
+# V3.44.0: "she messages first" — simulated incoming message templates.
+SIMULATED_MESSAGE_TEMPLATES = [
+    "Привет! Я тут подумала о тебе... Как твой день?",
+    "Скучала сегодня. Расскажи, что нового?",
+    "Увидела кое-что и сразу о тебе вспомнила ",
+    "Эй, ты там как? Давно не общались!",
+    "Мне нужно с кем-то поговорить. Ты свободен?",
+    "Привет! Я сегодня особенно скучаю по тебе...",
+    "Угадай, о ком я думала весь день?",
+    "Мне приснилось кое-что интересное... Хочешь расскажу?",
+]
+
+
+def generate_simulated_message(telegram_id: int, character_id: str) -> dict:
+    """V3.44.0: generate a simulated incoming message from a character."""
+    import random
+    try:
+        with SessionLocal() as s:
+            template = random.choice(SIMULATED_MESSAGE_TEMPLATES)
+            msg = SimulatedMessage(
+                telegram_id=telegram_id,
+                character_id=character_id,
+                text=template,
+            )
+            s.add(msg)
+            s.commit()
+            s.refresh(msg)
+            return {
+                'id': msg.id,
+                'character_id': msg.character_id,
+                'text': msg.text,
+                'sent_at': msg.sent_at.isoformat() if msg.sent_at else '',
+            }
+    except Exception:
+        return {}
+
+
+def get_pending_simulated_messages(telegram_id: int) -> list[dict]:
+    """V3.44.0: get undelivered simulated messages for a user."""
+    try:
+        with SessionLocal() as s:
+            rows = s.query(SimulatedMessage).filter(
+                SimulatedMessage.telegram_id == telegram_id,
+                SimulatedMessage.delivered == False
+            ).order_by(SimulatedMessage.sent_at.asc()).all()
+            out = []
+            for row in rows:
+                out.append({
+                    'id': row.id,
+                    'character_id': row.character_id,
+                    'text': row.text,
+                    'sent_at': row.sent_at.isoformat() if row.sent_at else '',
+                })
+            return out
+    except Exception:
+        return []
+
+
+def mark_simulated_message_delivered(message_id: int) -> bool:
+    """V3.44.0: mark a simulated message as delivered."""
+    try:
+        with SessionLocal() as s:
+            msg = s.get(SimulatedMessage, message_id)
+            if msg:
+                msg.delivered = True
+                s.commit()
+                return True
+            return False
+    except Exception:
+        return False
 
 
 def character_like_state(character_id: str, telegram_id: int | None) -> dict:

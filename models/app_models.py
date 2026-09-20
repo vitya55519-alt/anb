@@ -406,3 +406,14 @@ class DailyBonus(Base):
     reward_peaches: Mapped[int] = mapped_column(Integer, default=0)
     reward_stars: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# V3.44.0: simulated incoming messages — "she messages first" feature.
+class SimulatedMessage(Base):
+    __tablename__ = "simulated_messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    delivered: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
