@@ -354,10 +354,12 @@
   .stripdots i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); opacity: .5; }
   .stripdots i.on { background: var(--accent); opacity: 1; }
   .charlike {
-    position: absolute; top: 14px; right: 12px; z-index: 2; border: 0; border-radius: 14px;
-    background: rgba(10,5,14,.55); color: #fff; font-size: 16px; font-weight: 700; padding: 10px 16px; cursor: pointer;
+    position: absolute; top: 12px; right: 12px; z-index: 2; border: 0; border-radius: 18px;
+    background: rgba(10,5,14,.7); color: #fff; font-size: 20px; font-weight: 700; padding: 12px 20px; cursor: pointer;
+    backdrop-filter: blur(6px); box-shadow: 0 2px 12px rgba(0,0,0,.35); transition: transform .15s;
   }
-  .charlike.on { color: #ff7ab0; }
+  .charlike:active { transform: scale(1.1); }
+  .charlike.on { color: #ff4081; }
   .charhero { padding: 6px 16px 0; }
   .charhero h1 { margin: 6px 0 2px; font-size: 26px; }
   .charcta { display: block; width: calc(100% - 32px); margin: 14px 16px; padding: 14px; border: 0; border-radius: 14px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
@@ -786,7 +788,7 @@ const L_EN = {
   style_anime: 'Anime', style_realistic: 'Realistic', style_fantasy: 'Fantasy',
   pic_square: 'Square', pic_portrait: 'Portrait',
   pic_advanced: 'Advanced mode', pic_extra_ph: 'Extra details (optional)…',
-  pic_cost: 'One picture — 1 🍑', pic_generate: 'Create · 1 🍑',
+  pic_cost: 'One picture — 150 ', pic_generate: 'Create · 150 🍑',
   pic_wait: 'Drawing — up to a minute…', pic_blocked: 'This description is not allowed',
   pic_no_credits: 'Not enough 🍑 — add them in the Shop tab',
   pic_gen_fail: 'Could not draw — try again',
@@ -882,7 +884,7 @@ const L_RU = {
   style_anime: 'Аниме', style_realistic: 'Реализм', style_fantasy: 'Фэнтези',
   pic_square: 'Квадрат', pic_portrait: 'Портрет',
   pic_advanced: 'Продвинутый режим', pic_extra_ph: 'Дополнительные детали (необязательно)…',
-  pic_cost: 'Одна картинка — 1 🍑', pic_generate: 'Создать · 1 🍑',
+  pic_cost: 'Одна картинка — 150 🍑', pic_generate: 'Создать · 150 🍑',
   pic_wait: 'Рисую — до минуты…', pic_blocked: 'Такое описание нельзя',
   pic_no_credits: 'Не хватает 🍑 — добавь во вкладке «Магазин»',
   pic_gen_fail: 'Не получилось нарисовать — попробуй ещё раз',
@@ -938,7 +940,7 @@ const L_OV = {
     pic_prompt_ph: 'Describe la imagen: quién, dónde, ambiente…', pic_style: 'Estilo',
     style_anime: 'Anime', style_realistic: 'Realismo', style_fantasy: 'Fantasía',
     pic_format: 'Formato', pic_square: 'Cuadrado', pic_portrait: 'Vertical',
-    pic_advanced: 'Modo avanzado', pic_cost: 'Una imagen — 1 🍑', pic_generate: 'Crear · 1 🍑',
+    pic_advanced: 'Modo avanzado', pic_cost: 'Una imagen — 150 🍑', pic_generate: 'Crear · 150 🍑',
     pic_wait: 'Dibujando — hasta un minuto…', pic_gallery: 'Mis imágenes',
     pic_empty: 'Aún no hay imágenes: tus obras aparecerán aquí.',
     media_photo: 'Foto', media_video: 'Vídeo', media_circle: 'Círculo', buy: 'Comprar',
@@ -974,7 +976,7 @@ const L_OV = {
     pic_prompt_ph: 'Descrivi l\'immagine: chi, dove, atmosfera…', pic_style: 'Stile',
     style_anime: 'Anime', style_realistic: 'Realismo', style_fantasy: 'Fantasy',
     pic_format: 'Formato', pic_square: 'Quadrato', pic_portrait: 'Verticale',
-    pic_advanced: 'Modalità avanzata', pic_cost: 'Un\'immagine — 1 🍑', pic_generate: 'Crea · 1 🍑',
+    pic_advanced: 'Modalità avanzata', pic_cost: 'Un\'immagine — 150 🍑', pic_generate: 'Crea · 150 🍑',
     pic_wait: 'Disegno — fino a un minuto…', pic_gallery: 'Le mie immagini',
     pic_empty: 'Ancora nessuna immagine: le tue opere appariranno qui.',
     media_photo: 'Foto', media_video: 'Video', media_circle: 'Cerchio', buy: 'Acquista',
@@ -1010,7 +1012,7 @@ const L_OV = {
     pic_prompt_ph: 'Décris l\'image : qui, où, ambiance…', pic_style: 'Style',
     style_anime: 'Anime', style_realistic: 'Réalisme', style_fantasy: 'Fantasy',
     pic_format: 'Format', pic_square: 'Carré', pic_portrait: 'Portrait',
-    pic_advanced: 'Mode avancé', pic_cost: 'Une image — 1 🍑', pic_generate: 'Créer · 1 🍑',
+    pic_advanced: 'Mode avancé', pic_cost: 'Une image — 150 🍑', pic_generate: 'Créer · 150 🍑',
     pic_wait: 'Je dessine — jusqu\'à une minute…', pic_gallery: 'Mes images',
     pic_empty: 'Pas encore d\'image : tes œuvres apparaîtront ici.',
     media_photo: 'Photo', media_video: 'Vidéo', media_circle: 'Cercle', buy: 'Acheter',
@@ -1046,7 +1048,7 @@ const L_OV = {
     pic_prompt_ph: '描述这张图片——人物、场景、氛围…', pic_style: '风格',
     style_anime: '动漫', style_realistic: '写实', style_fantasy: '奇幻',
     pic_format: '格式', pic_square: '方形', pic_portrait: '竖版',
-    pic_advanced: '高级模式', pic_cost: '一张图片 — 1 🍑', pic_generate: '创建 · 1 🍑',
+    pic_advanced: '高级模式', pic_cost: '一张图片 — 150 🍑', pic_generate: '创建 · 150 🍑',
     pic_wait: '绘制中——最多一分钟…', pic_gallery: '我的图片',
     pic_empty: '还没有图片——你的作品会出现在这里。',
     media_photo: '照片', media_video: '视频', media_circle: '视频圈', buy: '购买',
@@ -1082,7 +1084,7 @@ const L_OV = {
     pic_prompt_ph: '画像を説明してください——誰が、どこで、どんな雰囲気…', pic_style: 'スタイル',
     style_anime: 'アニメ', style_realistic: 'リアル', style_fantasy: 'ファンタジー',
     pic_format: 'フォーマット', pic_square: '正方形', pic_portrait: '縦長',
-    pic_advanced: '詳細設定', pic_cost: '1枚 — 1 🍑', pic_generate: '作成 · 1 🍑',
+    pic_advanced: '詳細設定', pic_cost: '1枚 — 150 🍑', pic_generate: '作成 · 150 🍑',
     pic_wait: '描画中——最大1分…', pic_gallery: 'マイ画像',
     pic_empty: 'まだ画像がありません——あなたの作品がここに表示されます。',
     media_photo: '写真', media_video: '動画', media_circle: 'ビデオサークル', buy: '購入',

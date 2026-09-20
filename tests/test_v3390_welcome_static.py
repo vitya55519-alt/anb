@@ -98,7 +98,7 @@ def test_peaches_replaced_strawberries():
     assert "'credits': ('🍑 Персики', '🍑 Peaches')," in UI_LANG
     assert '🍑 Персики' in MAIN
     assert '🍑 peaches (photo credits) are bought in the app' in MAIN
-    assert 'Создать · 1 🍑' in INDEX
+    assert 'Создать · 150 🍑' in INDEX
     assert 'Не хватает 🍑' in INDEX
     # no strawberry branding left anywhere user-facing
     assert '🍓' not in UI_LANG

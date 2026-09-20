@@ -138,7 +138,7 @@ def test_chats_tab_backend_and_frontend():
 
 def test_picture_studio_guards_and_charge_after_success():
     # backend guards in the service
-    assert 'WEBAPP_PICTURE_COST_CREDITS = 1' in WEBAPP_SVC
+    assert 'WEBAPP_PICTURE_COST_CREDITS = 150' in WEBAPP_SVC
     assert 'def picture_prompt_allowed(prompt' in WEBAPP_SVC
     assert 'def picture_final_prompt(' in WEBAPP_SVC
     assert 'PICTURE_PROMPT_SUFFIX' in WEBAPP_SVC

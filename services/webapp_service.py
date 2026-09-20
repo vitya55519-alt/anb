@@ -87,7 +87,7 @@ APP_PICTURES_DIR = ROOT / 'data' / 'app_pictures'
 # One freeform picture costs one photo credit (🍑) — the same balance the bot
 # charges for a photo set, so shop purchases feed both chat photos and the
 # studio.
-WEBAPP_PICTURE_COST_CREDITS = 1
+WEBAPP_PICTURE_COST_CREDITS = 150
 
 # The studio is a public, fully-clothed surface. Prompts that point at minors
 # or coercion are rejected before any engine call; every prompt additionally
