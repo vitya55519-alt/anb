@@ -670,6 +670,13 @@
     <div class="charblock" id="charBio"></div>
     <div class="charblock" id="charPlot" style="display:none"><div class="lbl3" id="charPlotLbl"></div><div id="charPlotText" style="font-style:italic"></div></div>
     <button class="charcta" id="charSelect" style="background:var(--card);color:var(--accent)"></button>
+    <!-- V3.44.0: public comments under character cards -->
+    <div class="charblock" id="charComments" style="display:none">
+      <div class="lbl3" id="charCommentsLbl"></div>
+      <div id="charCommentsList"></div>
+      <textarea id="charCommentInput" placeholder="" style="width:100%;margin-top:10px;padding:10px;border:0;border-radius:10px;background:rgba(255,255,255,.05);color:#fff;font-size:14px;resize:none;height:60px"></textarea>
+      <button id="charCommentBtn" style="margin-top:8px;padding:10px 16px;border:0;border-radius:10px;background:var(--accent);color:#fff;font-size:14px;font-weight:600;cursor:pointer"></button>
+    </div>
   </div>
 </div>
 <!-- V3.35.0: character constructor wizard — build your own girl in the app -->
@@ -797,6 +804,7 @@ const L_EN = {
   partner_row: '💰 Partner program', docs_row: '📜 Documents & prices', open_chat: 'chat',
   // V3.39.0: the Come Closer character page + in-app chat media.
   start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', lb_title: '🏆 Top Popular',
+    comments_lbl: '💬 Comments', comment_placeholder: 'Write a comment...', comment_submit: 'Submit', comment_empty: 'No comments yet — be the first!',
   seg_official: '🍑 Peach Garden', seg_community: '👥 Community',
   media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
   media_wait_voice: 'Recording her voice…', media_wait_video: 'Rendering a video — 1–3 min…',
@@ -893,6 +901,7 @@ const L_RU = {
   partner_row: '💰 Партнёрка', docs_row: '📜 Документы и цены', open_chat: 'чат',
   // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
   start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', lb_title: ' Топ популярных',
+    comments_lbl: '💬 Комментарии', comment_placeholder: 'Напиши комментарий...', comment_submit: 'Отправить', comment_empty: 'Пока нет комментариев — будь первым!',
   seg_official: '🍑 Персиковый сад', seg_community: '👥 Сообщество',
   media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
   media_wait_voice: 'Записываю голос…', media_wait_video: 'Рисую видео — 1–3 минуты…',
@@ -1761,6 +1770,8 @@ function openCharPage(el) {
   const selBtn = document.getElementById('charSelect');
   selBtn.textContent = L.make_mine;
   selBtn.style.display = c.selected ? 'none' : '';
+  // V3.44.0: load comments for this character
+  loadComments(c.id);
   document.getElementById('charview').classList.add('open');
 }
 
@@ -2453,6 +2464,51 @@ document.getElementById('charLike').addEventListener('click', async () => {
     if (r.status === 401) { toast(L.auth_short); return; }
     const j = await r.json();
     if (j.ok) { LIKECACHE[charId] = { count: j.count, liked: j.liked }; setLikeUi(LIKECACHE[charId]); }
+  } catch (e) { toast(L.reply_err); }
+});
+
+// ── V3.44.0: public comments under character cards ────────────────────────
+async function loadComments(charId) {
+  const box = document.getElementById('charComments');
+  const list = document.getElementById('charCommentsList');
+  const lbl = document.getElementById('charCommentsLbl');
+  const input = document.getElementById('charCommentInput');
+  const btn = document.getElementById('charCommentBtn');
+  lbl.textContent = L.comments_lbl;
+  input.placeholder = L.comment_placeholder;
+  btn.textContent = L.comment_submit;
+  try {
+    const r = await fetch('/webapp/api/comments?character_id=' + encodeURIComponent(charId));
+    const j = await r.json();
+    if (!j.ok || !j.comments || !j.comments.length) {
+      list.innerHTML = '<div style="opacity:.6;font-size:13px">' + esc(L.comment_empty) + '</div>';
+    } else {
+      list.innerHTML = j.comments.map(c =>
+        '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">' +
+        '<div style="font-size:12px;opacity:.7">' + esc(c.author) + ' · ' + esc(new Date(c.created_at).toLocaleDateString()) + '</div>' +
+        '<div style="font-size:14px;margin-top:4px">' + esc(c.text) + '</div>' +
+        '</div>'
+      ).join('');
+    }
+    box.style.display = '';
+  } catch (e) { box.style.display = 'none'; }
+}
+document.getElementById('charCommentBtn').addEventListener('click', async () => {
+  const charId = CHARPAGE ? CHARPAGE.id : '';
+  const input = document.getElementById('charCommentInput');
+  const text = input.value.trim();
+  if (!charId || !text) return;
+  try {
+    const r = await fetch('/webapp/api/comment/add?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: charId, text: text }),
+    });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    const j = await r.json();
+    if (j.ok) {
+      input.value = '';
+      loadComments(charId);
+    }
   } catch (e) { toast(L.reply_err); }
 });
 

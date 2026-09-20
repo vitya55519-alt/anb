@@ -370,3 +370,13 @@ class UserConsent(Base):
     privacy_version: Mapped[str] = mapped_column(String(32), default='2026-08-14')
     accepted: Mapped[bool] = mapped_column(Boolean, default=False)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# V3.44.0: public comments under character cards — the social layer.
+class CharacterComment(Base):
+    __tablename__ = "character_comments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

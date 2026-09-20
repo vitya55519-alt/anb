@@ -64,7 +64,7 @@ from config import (
     WEBAPP_INIT_DATA_MAX_AGE,
     fiat_values,
 )
-from models.app_models import CharacterLike, CharacterStat, Message, User
+from models.app_models import CharacterComment, CharacterLike, CharacterStat, Message, User
 from services import legal_service
 from services.access_service import is_premium
 from services.character_card_service import get_card, get_scenario_hook, list_cards
@@ -922,6 +922,54 @@ def character_leaderboard(limit: int = 10) -> list[dict]:
             return out
     except Exception:
         return []
+
+
+def get_character_comments(character_id: str, limit: int = 20) -> list[dict]:
+    """V3.44.0: public comments under a character card."""
+    try:
+        with SessionLocal() as s:
+            rows = (
+                s.query(CharacterComment)
+                .filter(CharacterComment.character_id == character_id)
+                .order_by(CharacterComment.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            out = []
+            for row in rows:
+                user = s.query(User).filter(User.telegram_id == str(row.telegram_id)).first()
+                out.append({
+                    'id': row.id,
+                    'text': row.text,
+                    'author': user.name if user and user.name else f'User {row.telegram_id}',
+                    'created_at': row.created_at.isoformat() if row.created_at else '',
+                })
+            return out
+    except Exception:
+        return []
+
+
+def add_character_comment(character_id: str, telegram_id: int, text: str) -> dict:
+    """V3.44.0: add a comment under a character card."""
+    try:
+        with SessionLocal() as s:
+            comment = CharacterComment(
+                character_id=character_id,
+                telegram_id=telegram_id,
+                text=text,
+            )
+            s.add(comment)
+            s.commit()
+            s.refresh(comment)
+            user = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
+            return {
+                'id': comment.id,
+                'text': comment.text,
+                'author': user.name if user and user.name else f'User {telegram_id}',
+                'created_at': comment.created_at.isoformat() if comment.created_at else '',
+            }
+    except Exception:
+        return {}
 
 
 def character_like_state(character_id: str, telegram_id: int | None) -> dict:

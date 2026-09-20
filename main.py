@@ -7381,6 +7381,33 @@ async def _webapp_api_leaderboard(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'leaderboard': webapp_service.character_leaderboard(limit)})
 
 
+async def _webapp_api_comments(request: web.Request) -> web.Response:
+    """V3.44.0: public comments under character cards."""
+    character_id = request.query.get('character_id', '')
+    if not character_id:
+        return web.json_response({'ok': False, 'error': 'no_character'}, status=400)
+    limit = min(50, max(5, int(request.query.get('limit', '20') or '20')))
+    return web.json_response({'ok': True, 'comments': webapp_service.get_character_comments(character_id, limit)})
+
+
+async def _webapp_api_comment_add(request: web.Request) -> web.Response:
+    """V3.44.0: add a comment under a character card."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    body = await request.json()
+    character_id = str(body.get('character_id', ''))[:64]
+    text = str(body.get('text', ''))[:500].strip()
+    if not character_id or not text:
+        return web.json_response({'ok': False, 'error': 'bad_input'}, status=400)
+    comment = webapp_service.add_character_comment(character_id, telegram_id, text)
+    return web.json_response({'ok': True, 'comment': comment})
+
+
 async def _webapp_api_shop(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'shop': webapp_service.api_shop(request.query.get('lang', 'ru'))})
 
@@ -8419,6 +8446,9 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/characters', _webapp_api_characters)
     # V3.44.0: popularity leaderboard
     app.router.add_get('/webapp/api/leaderboard', _webapp_api_leaderboard)
+    # V3.44.0: public comments under character cards.
+    app.router.add_get('/webapp/api/comments', _webapp_api_comments)
+    app.router.add_post('/webapp/api/comment/add', _webapp_api_comment_add)
     app.router.add_get('/webapp/api/shop', _webapp_api_shop)
     app.router.add_get('/webapp/api/legal', _webapp_api_legal)
     # V3.37.0: the partner tab — stats/link and the payout request.
