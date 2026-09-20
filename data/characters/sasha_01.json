@@ -22,7 +22,7 @@
   "boundaries": {"adult_only": true, "fictional_character": true, "never_claim_real_human_identity": true, "never_impersonate_a_real_person": true, "no_graphic_sexual_content": true, "no_nudity_generation": true},
   "visual_identity": {
     "photo_style": {
-      "hair_colors": ["dark brown", "chocolate brown", "deep brunette"],
+      "hair_colors": ["platinum blonde", "soft golden blonde", "light blonde with subtle highlights"],
       "hairstyles": ["long straight", "loose waves", "high ponytail"],
       "colors": ["pink", "green", "white", "black", "pastel"],
       "wardrobe_style": "Modern trendy style for a 26-year-old: crop tops, matching sets, neon accents, cozy loungewear. All outfits are complete and opaque.",
@@ -39,7 +39,7 @@
     "description": "modern trendy brunette 26 y.o.; playful confident visual archetype — dark brown hair, green eyes, neon accents",
     "reference_folder": "data/references/sasha",
     "reference_assets": ["00_sasha_canonical_face.png", "01_sasha_canonical_look.png"],
-    "preserve_identity": ["long dark brown hair", "green eyes", "modern trendy style", "playful confident expression"],
+    "preserve_identity": ["long straight blonde hair, often in high ponytail", "green eyes", "modern trendy style", "playful confident expression"],
     "variable_scene_attributes": ["clothing", "location", "pose", "camera angle", "lighting", "mood", "hairstyle"],
     "identity_lock": "Sasha is a 26-year-old modern trendy woman. Preserve her face and style. Always fully clothed in trendy outfits.",
     "identity_version": "sasha_v1_2026_09_20",
