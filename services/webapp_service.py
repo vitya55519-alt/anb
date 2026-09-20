@@ -898,6 +898,32 @@ def bump_character_views(character_id: str) -> int:
         return 0
 
 
+def character_leaderboard(limit: int = 10) -> list[dict]:
+    """V3.44.0: top characters by views — the popularity leaderboard."""
+    try:
+        with SessionLocal() as s:
+            rows = (
+                s.query(CharacterStat)
+                .order_by(CharacterStat.views.desc())
+                .limit(limit)
+                .all()
+            )
+            out = []
+            for rank, row in enumerate(rows, 1):
+                card = get_card(row.character_id)
+                if card and card.is_visible:
+                    out.append({
+                        'rank': rank,
+                        'id': row.character_id,
+                        'name': card.display_name,
+                        'emoji': card.button_emoji or '',
+                        'views': row.views or 0,
+                    })
+            return out
+    except Exception:
+        return []
+
+
 def character_like_state(character_id: str, telegram_id: int | None) -> dict:
     """V3.43.0: the «♡ N» counter of a heroine plus whether THIS user already
     liked her — the Come Closer character page badge, per-user aware."""

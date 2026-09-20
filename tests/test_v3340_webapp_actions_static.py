@@ -189,6 +189,8 @@ def test_no_unescaped_backend_strings_in_templates():
             # V3.43.5: the language-chip fragment (codes and names esc()'d
             # inside) and its local class ternary.
             'langChipsHtml', "code === LANG ? ' on' : ''",
+            # V3.44.0: leaderboard medal — local ternary result (emoji or number).
+            'medal',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         raise AssertionError(f'unescaped template value: {expr!r} in INDEX')

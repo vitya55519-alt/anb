@@ -7375,6 +7375,12 @@ async def _webapp_api_characters(request: web.Request) -> web.Response:
                              headers={'Cache-Control': 'no-store'})
 
 
+async def _webapp_api_leaderboard(request: web.Request) -> web.Response:
+    """V3.44.0: popularity leaderboard — top characters by views."""
+    limit = min(20, max(3, int(request.query.get('limit', '10') or '10')))
+    return web.json_response({'ok': True, 'leaderboard': webapp_service.character_leaderboard(limit)})
+
+
 async def _webapp_api_shop(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'shop': webapp_service.api_shop(request.query.get('lang', 'ru'))})
 
@@ -8411,6 +8417,8 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp', _webapp_index)
     app.router.add_get('/webapp/api/me', _webapp_api_me)
     app.router.add_get('/webapp/api/characters', _webapp_api_characters)
+    # V3.44.0: popularity leaderboard
+    app.router.add_get('/webapp/api/leaderboard', _webapp_api_leaderboard)
     app.router.add_get('/webapp/api/shop', _webapp_api_shop)
     app.router.add_get('/webapp/api/legal', _webapp_api_legal)
     # V3.37.0: the partner tab — stats/link and the payout request.
