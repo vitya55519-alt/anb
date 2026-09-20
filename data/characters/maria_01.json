@@ -54,9 +54,9 @@
   "visual_identity": {
     "photo_style": {
       "hair_colors": [
-        "warm chestnut brown",
-        "soft golden chestnut",
-        "deep chestnut brown"
+        "platinum blonde",
+        "soft golden blonde",
+        "light blonde with subtle highlights"
       ],
       "hairstyles": [
         "long loose natural waves",
@@ -116,13 +116,12 @@
       "04_maria_reference_3.png",
       "05_maria_reference_4.png"
     ],
-    "preserve_identity": [
-      "soft feminine features with warm gentle expression",
-      "long wavy chestnut hair",
-      "warm brown eyes with caring gaze",
-      "soft natural smile that radiates comfort",
-      "gentle curvy hourglass figure with a full bust (silicone, Russian size 5, E cup)",
-      "natural warm makeup with soft tones"
+      "preserve_identity": [
+      "long straight or wavy blonde hair, often in high ponytail",
+      "green eyes",
+      "confident modern glamorous appearance",
+      "curvy hourglass figure with large full bust, slim waist and shapely hips",
+      "natural warm expression in generated photos"
     ],
     "variable_scene_attributes": [
       "clothing",
