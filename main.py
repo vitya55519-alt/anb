@@ -7434,6 +7434,31 @@ async def _webapp_api_notif_update(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'prefs': prefs})
 
 
+async def _webapp_api_daily_bonus_status(request: web.Request) -> web.Response:
+    """V3.44.0: check daily bonus status."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    return web.json_response({'ok': True, 'bonus': webapp_service.get_daily_bonus_status(int(telegram_id))})
+
+
+async def _webapp_api_daily_bonus_spin(request: web.Request) -> web.Response:
+    """V3.44.0: spin the daily bonus wheel."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    result = webapp_service.spin_daily_bonus(int(telegram_id))
+    return web.json_response({'ok': True, 'bonus': result})
+
+
 async def _webapp_api_shop(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'shop': webapp_service.api_shop(request.query.get('lang', 'ru'))})
 
@@ -8478,6 +8503,9 @@ async def _start_web_server() -> None:
     # V3.44.0: notification preferences.
     app.router.add_get('/webapp/api/notif/prefs', _webapp_api_notif_prefs)
     app.router.add_post('/webapp/api/notif/update', _webapp_api_notif_update)
+    # V3.44.0: daily bonus wheel.
+    app.router.add_get('/webapp/api/daily_bonus/status', _webapp_api_daily_bonus_status)
+    app.router.add_post('/webapp/api/daily_bonus/spin', _webapp_api_daily_bonus_spin)
     app.router.add_get('/webapp/api/shop', _webapp_api_shop)
     app.router.add_get('/webapp/api/legal', _webapp_api_legal)
     # V3.37.0: the partner tab — stats/link and the payout request.

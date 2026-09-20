@@ -394,3 +394,15 @@ class NotificationPref(Base):
     character_updates: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+# V3.44.0: daily bonus wheel — one spin per calendar day per user.
+class DailyBonus(Base):
+    __tablename__ = "daily_bonuses"
+    __table_args__ = (UniqueConstraint("telegram_id", "date", name="uq_daily_bonus"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    date: Mapped[str] = mapped_column(String(10), nullable=False)  # YYYY-MM-DD
+    reward_peaches: Mapped[int] = mapped_column(Integer, default=0)
+    reward_stars: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

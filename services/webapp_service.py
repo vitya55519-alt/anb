@@ -64,7 +64,7 @@ from config import (
     WEBAPP_INIT_DATA_MAX_AGE,
     fiat_values,
 )
-from models.app_models import CharacterComment, CharacterLike, CharacterStat, Message, NotificationPref, User
+from models.app_models import CharacterComment, CharacterLike, CharacterStat, DailyBonus, Message, NotificationPref, User
 from services import legal_service
 from services.access_service import is_premium
 from services.character_card_service import get_card, get_scenario_hook, list_cards
@@ -1018,6 +1018,77 @@ def update_notification_prefs(telegram_id: int, prefs: dict) -> dict:
             }
     except Exception:
         return {}
+
+
+# V3.44.0: daily bonus wheel rewards — weighted random prizes.
+DAILY_BONUS_REWARDS = [
+    {'peaches': 5, 'stars': 0, 'weight': 40},    # common: 5 peaches
+    {'peaches': 10, 'stars': 0, 'weight': 25},   # uncommon: 10 peaches
+    {'peaches': 25, 'stars': 0, 'weight': 15},   # rare: 25 peaches
+    {'peaches': 50, 'stars': 0, 'weight': 10},   # epic: 50 peaches
+    {'peaches': 0, 'stars': 5, 'weight': 7},     # rare: 5 stars
+    {'peaches': 0, 'stars': 10, 'weight': 3},    # legendary: 10 stars
+]
+
+
+def spin_daily_bonus(telegram_id: int) -> dict:
+    """V3.44.0: spin the daily bonus wheel — one spin per calendar day."""
+    from datetime import date
+    today = date.today().isoformat()
+    try:
+        with SessionLocal() as s:
+            # Check if already claimed today
+            existing = s.query(DailyBonus).filter(
+                DailyBonus.telegram_id == telegram_id,
+                DailyBonus.date == today
+            ).first()
+            if existing:
+                return {'claimed': True, 'peaches': existing.reward_peaches, 'stars': existing.reward_stars}
+            # Weighted random selection
+            import random
+            total_weight = sum(r['weight'] for r in DAILY_BONUS_REWARDS)
+            roll = random.randint(1, total_weight)
+            cumulative = 0
+            reward = DAILY_BONUS_REWARDS[0]
+            for r in DAILY_BONUS_REWARDS:
+                cumulative += r['weight']
+                if roll <= cumulative:
+                    reward = r
+                    break
+            # Record the bonus
+            bonus = DailyBonus(
+                telegram_id=telegram_id,
+                date=today,
+                reward_peaches=reward['peaches'],
+                reward_stars=reward['stars'],
+            )
+            s.add(bonus)
+            # Credit the user
+            user = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
+            if user:
+                user.photo_credits = (user.photo_credits or 0) + reward['peaches']
+                user.token_balance = (user.token_balance or 0) + reward['stars']
+            s.commit()
+            return {'claimed': False, 'peaches': reward['peaches'], 'stars': reward['stars']}
+    except Exception:
+        return {'claimed': False, 'peaches': 0, 'stars': 0}
+
+
+def get_daily_bonus_status(telegram_id: int) -> dict:
+    """V3.44.0: check if daily bonus has been claimed today."""
+    from datetime import date
+    today = date.today().isoformat()
+    try:
+        with SessionLocal() as s:
+            existing = s.query(DailyBonus).filter(
+                DailyBonus.telegram_id == telegram_id,
+                DailyBonus.date == today
+            ).first()
+            if existing:
+                return {'claimed': True, 'peaches': existing.reward_peaches, 'stars': existing.reward_stars}
+            return {'claimed': False}
+    except Exception:
+        return {'claimed': False}
 
 
 def character_like_state(character_id: str, telegram_id: int | None) -> dict:

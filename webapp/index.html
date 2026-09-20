@@ -745,6 +745,7 @@ const L_EN = {
   free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
   profile_title: 'Profile', premium_on: 'Premium active', premium_off: 'Free account',
   streak: 'day streak', level: 'relationship level', selected_girl: 'selected girl',
+  daily_bonus: 'Daily Bonus', bonus_spin: 'SPIN!', bonus_claimed: 'Claimed today', bonus_already: 'Already claimed today!',
   open_bot: 'Open the bot to chat 💬',
   docs_title: 'Documents & prices', checkword: 'code word',
   partner_title: 'Partner program', invited_lbl: 'friends invited', earned_lbl: 'earned',
@@ -842,6 +843,7 @@ const L_RU = {
   free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
   profile_title: 'Профиль', premium_on: 'Premium активен', premium_off: 'Бесплатный аккаунт',
   streak: 'дней подряд', level: 'уровень отношений', selected_girl: 'выбранная девушка',
+  daily_bonus: 'Ежедневный бонус', bonus_spin: 'КРУТИТЬ!', bonus_claimed: 'Получено сегодня', bonus_already: 'Уже получено сегодня!',
   open_bot: 'Открой бота, чтобы общаться 💬',
   docs_title: 'Документы и цены', checkword: 'кодовое слово',
   partner_title: 'Партнёрка', invited_lbl: 'людей приведено', earned_lbl: 'заработано',
@@ -2294,6 +2296,10 @@ function renderProfileBody() {
       <div class="bar"><i style="width:${lvlPct}%"></i></div>
     </div>
     <div class="stat"><span class="k">🔥 ${esc(L.streak)}</span><span class="v">${esc(m.streak)}</span></div>
+    <div class="stat" id="dailyBonusRow" style="cursor:pointer;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:12px;padding:12px 14px;margin:4px 0">
+      <span class="k" style="color:#fff">🎡 ${esc(L.daily_bonus)}</span>
+      <span class="v" id="dailyBonusStatus" style="color:#fff">…</span>
+    </div>
     <div class="stat"><span class="k">🍑 ${esc(L.paid_credit)}</span><span class="v">${esc(m.photo_credits)}</span></div>
     <div class="sect-title">${esc(L.my_chars)}</div>
     ${myCharsHtml}
@@ -2344,6 +2350,46 @@ function renderProfileBody() {
       if (!c) return;
       openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: c.custom, selected: c.selected });
     }));
+  // V3.44.0: daily bonus wheel
+  loadDailyBonusStatus();
+  const dbr = document.getElementById('dailyBonusRow');
+  if (dbr) dbr.addEventListener('click', spinDailyBonus);
+}
+
+async function loadDailyBonusStatus() {
+  try {
+    const r = await fetch('/webapp/api/daily_bonus/status?init_data=' + encodeURIComponent(tg.initData || ''));
+    const j = await r.json();
+    if (j.ok && j.bonus) {
+      const el = document.getElementById('dailyBonusStatus');
+      if (el) {
+        if (j.bonus.claimed) {
+          el.textContent = L.bonus_claimed + ' 🎁';
+        } else {
+          el.textContent = L.bonus_spin;
+        }
+      }
+    }
+  } catch (e) { /* silent */ }
+}
+
+async function spinDailyBonus() {
+  try {
+    const r = await fetch('/webapp/api/daily_bonus/spin?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
+    const j = await r.json();
+    if (j.ok && j.bonus) {
+      if (j.bonus.claimed) {
+        toast(L.bonus_already);
+      } else {
+        const reward = [];
+        if (j.bonus.peaches > 0) reward.push(j.bonus.peaches + ' ');
+        if (j.bonus.stars > 0) reward.push(j.bonus.stars + ' ⭐');
+        toast(' ' + reward.join(' + '));
+        loadDailyBonusStatus();
+        loadMe(); // refresh balance
+      }
+    }
+  } catch (e) { toast(String(e.message || '')); }
 }
 
 // ── documents ─────────────────────────────────────────────────────────────
