@@ -543,9 +543,10 @@ UNDERWEAR_STYLE_POOL = [
 # Bust size must never drift between frames or between sets.
 BUST_CONSISTENCY_RULE = (
     'BUST CONSISTENCY: her bust must look exactly the same size in this frame as in every other photo — '
-    'a full feminine bust with silicone implants (Russian size 5, E cup), neither larger nor smaller, '
+    'a VERY LARGE full feminine bust with silicone implants (Russian size 5, E cup), visibly prominent and heavy, '
     'with the same shape and the same natural fit inside the clothing. '
-    'This bust size is a permanent identity trait and OVERRIDES any smaller or flatter bust visible in the reference photos.'
+    'This bust size is a permanent identity trait and STRICTLY OVERRIDES any smaller or flatter bust visible in the reference photos. '
+    'If the reference shows a smaller bust, IGNORE IT and generate the declared E-cup size.'
 )
 
 SEASON_RULES = {
