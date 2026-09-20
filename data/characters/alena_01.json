@@ -75,7 +75,7 @@
         "cobalt blue",
         "fuchsia"
       ],
-      "wardrobe_style": "Bold modern glamour and expressive street fashion for an adult of 25: statement color, metallic accessories, contemporary denim, and polished city outfits. All clothing is opaque and fully covering, with practical complete ensembles for each setting.",
+      "wardrobe_style": "Athletic sporty glamour for a fit 25-year-old: form-fitting sportswear, tight leggings, crop tops that show the waist, and stylish athleisure. All clothing is opaque and fully covering, with practical complete ensembles for each setting.",
       "wardrobe": {
         "day_casual": [
           "A fitted cobalt blue deep-V top that hugs the bust, tucked into high-waisted black skinny jeans with a thin silver belt",
@@ -110,7 +110,7 @@
       }
     },
     "status": "active",
-    "description": "original synthetic blonde adult character; confident feminine modern-glamour visual archetype",
+    "description": "athletic blonde with big bust, slim waist and juicy butt; sporty confident visual archetype",
     "reference_folder": "data/references/emily",
     "reference_assets": [
       "00_emily_canonical_face.png",
@@ -120,10 +120,10 @@
       "04_emily_reference_3.png"
     ],
     "preserve_identity": [
-      "blonde hair with confident modern-glamour styling",
-      "bright expressive eyes",
-      "confident stylish appearance",
-      "hourglass figure with a full bust (silicone, Russian size 5, E cup)",
+      "blonde hair with athletic sporty styling",
+      "bright blue eyes",
+      "confident athletic appearance",
+      "hourglass figure with large full bust (silicone, Russian size 5, E cup), slim wasp waist, and juicy round butt",
       "natural warm expression in generated photos"
     ],
     "variable_scene_attributes": [
