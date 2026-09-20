@@ -3507,7 +3507,7 @@ async def set_menu_button_cmd(message: types.Message):
         return
     menu_url = f'{PUBLIC_BASE_URL}/webapp'
     try:
-        await bot.set_chat_menu_button(types.MenuButtonWebApp(
+        await bot.set_chat_menu_button(menu_button=types.MenuButtonWebApp(
             text='Открыть приложение',
             web_app=types.WebAppInfo(url=menu_url),
         ))
@@ -8525,7 +8525,7 @@ async def main():
         menu_url = f'{PUBLIC_BASE_URL}/webapp'
         for attempt in range(1, 4):
             try:
-                await bot.set_chat_menu_button(types.MenuButtonWebApp(
+                await bot.set_chat_menu_button(menu_button=types.MenuButtonWebApp(
                     text='Открыть приложение',
                     web_app=types.WebAppInfo(url=menu_url),
                 ))

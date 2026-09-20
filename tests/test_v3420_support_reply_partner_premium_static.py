@@ -134,7 +134,7 @@ def test_premium_pitch_embeds_the_tariff_card():
 # ── p5. the blue «Открыть приложение» menu button stays ───────────────────
 
 def test_webapp_menu_button_is_still_installed_on_startup():
-    assert 'await bot.set_chat_menu_button(types.MenuButtonWebApp(' in MAIN
+    assert 'await bot.set_chat_menu_button(menu_button=types.MenuButtonWebApp(' in MAIN
     assert "text='Открыть приложение'," in MAIN
     assert "web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp')," in MAIN
     # and the v3.33.1 read-back verification is intact
