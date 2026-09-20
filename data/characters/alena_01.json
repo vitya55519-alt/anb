@@ -57,9 +57,9 @@
   "visual_identity": {
     "photo_style": {
       "hair_colors": [
-        "dark brown with blonde highlights",
+        "light brown with blonde highlights",
         "dark blonde",
-        "brunette with light ends"
+        "brunette with caramel highlights"
       ],
       "hairstyles": [
         "smooth center-parted blowout at the existing length",
@@ -120,10 +120,10 @@
       "04_emily_reference_3.png"
     ],
     "preserve_identity": [
-      "long dark brown hair with blonde highlights",
+      "long light brown hair with blonde highlights",
       "green-hazel eyes",
-      "small nose stud piercing",
-      "very curvy hourglass figure with large full silicone-enhanced bust, slim defined waist, wide hips and full thighs",
+      "small nose ring and hoop earrings",
+      "very curvy hourglass figure with large full bust, slim waist and shapely legs",
       "natural warm expression in generated photos"
     ],
     "variable_scene_attributes": [

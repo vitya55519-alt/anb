@@ -144,7 +144,7 @@ _FACE_REFERENCES = {
     'mila_01': ('references', 'mila', '00_mila_canonical_face.png'),
     # V3.44.0: new archetypes — fitness, artistic, and power.
     'kate_01': ('references', 'kate', '00_kate_canonical_face.png'),
-    'luna_01': ('references', 'luna', '00_luna_canonical_face.png'),
+    'sasha_01': ('references', 'sasha', '00_sasha_canonical_face.png'),
     'rex_01': ('references', 'rex', '00_rex_canonical_face.png'),
 }
 
