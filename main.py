@@ -7408,6 +7408,32 @@ async def _webapp_api_comment_add(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'comment': comment})
 
 
+async def _webapp_api_notif_prefs(request: web.Request) -> web.Response:
+    """V3.44.0: get notification preferences."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    return web.json_response({'ok': True, 'prefs': webapp_service.get_notification_prefs(int(telegram_id))})
+
+
+async def _webapp_api_notif_update(request: web.Request) -> web.Response:
+    """V3.44.0: update notification preferences."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    body = await request.json()
+    prefs = webapp_service.update_notification_prefs(int(telegram_id), body)
+    return web.json_response({'ok': True, 'prefs': prefs})
+
+
 async def _webapp_api_shop(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'shop': webapp_service.api_shop(request.query.get('lang', 'ru'))})
 
@@ -8449,6 +8475,9 @@ async def _start_web_server() -> None:
     # V3.44.0: public comments under character cards.
     app.router.add_get('/webapp/api/comments', _webapp_api_comments)
     app.router.add_post('/webapp/api/comment/add', _webapp_api_comment_add)
+    # V3.44.0: notification preferences.
+    app.router.add_get('/webapp/api/notif/prefs', _webapp_api_notif_prefs)
+    app.router.add_post('/webapp/api/notif/update', _webapp_api_notif_update)
     app.router.add_get('/webapp/api/shop', _webapp_api_shop)
     app.router.add_get('/webapp/api/legal', _webapp_api_legal)
     # V3.37.0: the partner tab — stats/link and the payout request.

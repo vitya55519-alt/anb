@@ -64,7 +64,7 @@ from config import (
     WEBAPP_INIT_DATA_MAX_AGE,
     fiat_values,
 )
-from models.app_models import CharacterComment, CharacterLike, CharacterStat, Message, User
+from models.app_models import CharacterComment, CharacterLike, CharacterStat, Message, NotificationPref, User
 from services import legal_service
 from services.access_service import is_premium
 from services.character_card_service import get_card, get_scenario_hook, list_cards
@@ -967,6 +967,54 @@ def add_character_comment(character_id: str, telegram_id: int, text: str) -> dic
                 'text': comment.text,
                 'author': user.name if user and user.name else f'User {telegram_id}',
                 'created_at': comment.created_at.isoformat() if comment.created_at else '',
+            }
+    except Exception:
+        return {}
+
+
+def get_notification_prefs(telegram_id: int) -> dict:
+    """V3.44.0: get notification preferences for a user."""
+    try:
+        with SessionLocal() as s:
+            pref = s.query(NotificationPref).filter(NotificationPref.telegram_id == telegram_id).first()
+            if not pref:
+                pref = NotificationPref(telegram_id=telegram_id)
+                s.add(pref)
+                s.commit()
+                s.refresh(pref)
+            return {
+                'enabled': pref.enabled,
+                'daily_bonus': pref.daily_bonus,
+                'new_messages': pref.new_messages,
+                'character_updates': pref.character_updates,
+            }
+    except Exception:
+        return {'enabled': True, 'daily_bonus': True, 'new_messages': True, 'character_updates': True}
+
+
+def update_notification_prefs(telegram_id: int, prefs: dict) -> dict:
+    """V3.44.0: update notification preferences for a user."""
+    try:
+        with SessionLocal() as s:
+            pref = s.query(NotificationPref).filter(NotificationPref.telegram_id == telegram_id).first()
+            if not pref:
+                pref = NotificationPref(telegram_id=telegram_id)
+                s.add(pref)
+            if 'enabled' in prefs:
+                pref.enabled = bool(prefs['enabled'])
+            if 'daily_bonus' in prefs:
+                pref.daily_bonus = bool(prefs['daily_bonus'])
+            if 'new_messages' in prefs:
+                pref.new_messages = bool(prefs['new_messages'])
+            if 'character_updates' in prefs:
+                pref.character_updates = bool(prefs['character_updates'])
+            s.commit()
+            s.refresh(pref)
+            return {
+                'enabled': pref.enabled,
+                'daily_bonus': pref.daily_bonus,
+                'new_messages': pref.new_messages,
+                'character_updates': pref.character_updates,
             }
     except Exception:
         return {}

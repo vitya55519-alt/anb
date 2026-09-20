@@ -380,3 +380,17 @@ class CharacterComment(Base):
     telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+# V3.44.0: push notification preferences per user.
+class NotificationPref(Base):
+    __tablename__ = "notification_prefs"
+    __table_args__ = (UniqueConstraint("telegram_id", name="uq_notification_pref"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    daily_bonus: Mapped[bool] = mapped_column(Boolean, default=True)
+    new_messages: Mapped[bool] = mapped_column(Boolean, default=True)
+    character_updates: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
