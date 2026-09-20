@@ -33,10 +33,16 @@ ALL_CHARACTERS = [
     'vika_01', 'alisa_01', 'mila_01', 'kate_01', 'luna_01', 'rex_01',
 ]
 
-# Diverse scenes for variety
+# Diverse scenes for variety (V3.44.1: added trending scenes)
 ALL_SCENES = [
+    # Classic public scenes
     'home', 'park', 'cafe', 'street', 'gym', 'mirror',
     'outfit', 'shop', 'car', 'restaurant', 'cinema', 'embankment',
+    # V3.44.1: new trending scenes
+    'beach', 'pool', 'yacht', 'hotel', 'balcony',
+    'garden', 'kitchen', 'bedroom', 'subway', 'bridge',
+    'concert', 'festival', 'rain', 'snow', 'sunset',
+    'night', 'morning', 'spa', 'yoga', 'gaming',
 ]
 
 

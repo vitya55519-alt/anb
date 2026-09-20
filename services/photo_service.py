@@ -113,6 +113,27 @@ SCENES = {
     # V3.30.0: token-priced cosplay photoshoot — the costume itself arrives
     # via PhotoRequest.clothing from the COSPLAY_COSTUMES picker.
     'cosplay': 'a playful cosplay photoshoot portrait where she wears a recognizable costume outfit, fully clothed, styled like a convention cosplay shoot',
+    # V3.44.1: new trending scenes
+    'beach': 'a vibrant personal smartphone photo on a sunny sandy beach with ocean waves in the background',
+    'pool': 'a stylish personal photo by a modern swimming pool, summer vibes with clear blue water',
+    'yacht': 'a luxurious personal photo on a sleek yacht deck with open sea and sky in the background',
+    'hotel': 'a polished personal photo in a modern stylish hotel room with elegant interior',
+    'balcony': 'a personal photo on a city balcony with urban skyline or garden view in the background',
+    'garden': 'a romantic personal photo in a beautiful flower garden with natural sunlight',
+    'kitchen': 'a cozy personal photo in a modern kitchen, casual domestic vibe',
+    'bedroom': 'a relaxed personal photo in a cozy bedroom with soft natural light',
+    'subway': 'an urban personal photo in a modern subway station, city commute aesthetic',
+    'bridge': 'a dramatic personal photo on a city bridge with urban architecture in the background',
+    'concert': 'an energetic personal photo at a live music concert with stage lights in the background',
+    'festival': 'a vibrant personal photo at an outdoor music festival with colorful atmosphere',
+    'rain': 'a moody atmospheric personal photo in the rain with wet city streets and reflections',
+    'snow': 'a cozy winter personal photo in a snowy urban setting with soft falling snow',
+    'sunset': 'a stunning golden-hour personal photo with warm sunset light and dramatic sky',
+    'night': 'a glamorous personal photo in a city at night with neon lights and urban glow',
+    'morning': 'a fresh cozy morning personal photo with soft daylight, coffee and relaxed vibe',
+    'spa': 'a relaxing personal photo in a modern spa setting with candles and serene atmosphere',
+    'yoga': 'a peaceful personal photo during a yoga session in a bright studio or outdoor setting',
+    'gaming': 'a fun personal photo at a gaming setup with RGB lights and modern tech aesthetic',
 }
 
 SCENE_LEVELS = {
@@ -127,6 +148,11 @@ SCENE_LEVELS = {
     # level (owner request) — level 1 removes the gate, so the button shows
     # from the very start of a conversation.
     'cosplay': 1,
+    # V3.44.1: new trending scenes
+    'beach': 1, 'garden': 1, 'kitchen': 1, 'bedroom': 1, 'morning': 1,
+    'pool': 2, 'balcony': 2, 'subway': 2, 'bridge': 2, 'yoga': 2, 'gaming': 2,
+    'yacht': 3, 'hotel': 3, 'concert': 3, 'festival': 3, 'sunset': 3,
+    'night': 4, 'rain': 4, 'snow': 4, 'spa': 4,
     # V3.19.2: 'peek'/'dressing' are retired from generation — every public
     # venue scene must stay fully clothed; lingerie belongs to the private
     # scenes only. They stay in SCENES/AUTO_CAPTIONS for old library photos.
@@ -163,7 +189,29 @@ AUTO_CAPTIONS = {
     'tease': ('поворачиваюсь спиной… 😏', 'так хочется тебя подразнить', 'видишь? это для тебя', 'смотри сколько хочешь, но не трогай 😈'),
     'peek': ('ой, кажется, кое-что видно 😏', 'заметила только когда сфоткалась… ну пусть будет'),
     'dressing': ('ещё собираюсь 😌', 'поймала момент до того, как оделась'),
-    'cosplay': ('примерила образ специально для тебя 🎭', 'косплей-сет готов 😏', 'как тебе мой костюм? 🎭'),
+    'cosplay': ('примерила образ специально для тебя 🎭', 'косплей-сет готов 😏', 'как тебе мой костюм? 🎭'),,
+    # V3.44.1: new trending scene captions
+    'beach': ('пляж сегодня шикарный', 'море + солнце = идеальный сет', 'поймала волну и кадр'),
+    'pool': ('у бассейна', 'летний вайб у воды', 'бассейн + хороший свет'),
+    'yacht': ('сегодня на яхте', 'море и свобода', 'поймала морской бриз в кадр'),
+    'hotel': ('заселилась в красивый отель', 'номер с видом', 'отельный сет для тебя'),
+    'balcony': ('с балкона вид шикарный', 'утренний кофе с видом', 'поймала городской свет'),
+    'garden': ('в саду сегодня красиво', 'цветы + солнце', 'гуляю среди цветов'),
+    'kitchen': ('готовлю завтрак', 'утро на кухне', 'домашний уют'),
+    'bedroom': ('ленивое утро', 'домашнее настроение', 'мягкий свет в спальне'),
+    'subway': ('еду по делам', 'городской ритм', 'метро - мой подиум'),
+    'bridge': ('на мосту с видом на город', 'городские огни за спиной', 'поймала архитектуру в кадр'),
+    'concert': ('на концерте', 'музыка и драйв', 'между треками успела сфоткаться'),
+    'festival': ('фестиваль сегодня', 'музыка + солнце + вайб', 'танцую и фоткаюсь'),
+    'rain': ('попала под дождь', 'мокрый город красиво светится', 'дождь - не повод не фоткаться'),
+    'snow': ('первый снег', 'зимняя сказка', 'снег + городской свет'),
+    'sunset': ('закат сегодня невероятный', 'золотой час', 'поймала последний свет'),
+    'night': ('ночной город', 'неон и огни', 'ночью я вот такая'),
+    'morning': ('доброе утро', 'кофе и мягкий свет', 'утренний вайб'),
+    'spa': ('день в спа', 'релакс и свечи', 'побаловала себя'),
+    'yoga': ('утренняя йога', 'баланс и спокойствие', 'поймала момент после практики'),
+    'gaming': ('геймерский сет', 'RGB и вайб', 'между катками сфоткалась'),
+
 }
 
 SAFE_EXPLICIT = re.compile(
@@ -224,6 +272,14 @@ SCENE_GROUP = {
     # V3.30.0: cosplay wardrobe comes from PhotoRequest.clothing (the chosen
     # costume); the group only feeds the generic outfit fallback pools.
     'cosplay':'fashion',
+    # V3.44.1: new trending scenes
+    'beach':'warm_outdoor', 'pool':'warm_outdoor', 'yacht':'warm_outdoor',
+    'garden':'warm_outdoor', 'balcony':'warm_outdoor', 'bridge':'warm_outdoor',
+    'festival':'warm_outdoor', 'sunset':'warm_outdoor',
+    'hotel':'day_casual', 'kitchen':'home', 'bedroom':'home', 'morning':'home',
+    'subway':'day_casual', 'concert':'evening', 'night':'evening',
+    'rain':'day_casual', 'snow':'day_casual',
+    'spa':'home', 'yoga':'gym', 'gaming':'home',
 }
 
 WARDROBE_LEVEL_POOLS = {
@@ -435,6 +491,27 @@ SHOT_VARIANTS = {
     'private_fashion': ['tasteful private fashion portrait with opaque coverage', 'more polished private fashion portrait with confident styling', 'premium personalized private fashion portrait, non-explicit and opaque'],
     'nude': ['tasteful artistic nude portrait, natural warm light, soft eye contact', 'confident seated nude with soft shadows and relaxed posture', 'premium artistic nude with elegant composition and warm tones'],
     'tease': ['playful rear-view teasing photo with a glance over the shoulder', 'confident from-behind pose with relaxed posture and soft light', 'premium sensual back-view portrait with warm tones'],
+    # V3.44.1: new trending scene angles
+    'beach': ['natural beach selfie with ocean behind', 'stylish three-quarter beach portrait with waves', 'premium full-body beach photo with golden-hour light'],
+    'pool': ['natural poolside selfie', 'stylish three-quarter pool portrait with blue water', 'premium full-body pool photo with summer vibes'],
+    'yacht': ['natural yacht deck selfie with sea behind', 'stylish three-quarter yacht portrait', 'premium full-body yacht photo with open sea'],
+    'hotel': ['natural hotel room selfie', 'stylish three-quarter hotel portrait with elegant interior', 'premium full-body hotel photo with polished composition'],
+    'balcony': ['natural balcony selfie with city view', 'stylish three-quarter balcony portrait', 'premium full-body balcony photo with skyline'],
+    'garden': ['natural garden selfie among flowers', 'stylish three-quarter garden portrait', 'premium full-body garden photo with sunlight'],
+    'kitchen': ['natural kitchen selfie while cooking', 'stylish three-quarter kitchen portrait', 'premium cozy kitchen photo with warm light'],
+    'bedroom': ['natural bedroom selfie with soft light', 'stylish three-quarter bedroom portrait', 'premium cozy bedroom photo with relaxed vibe'],
+    'subway': ['natural subway selfie', 'stylish three-quarter subway portrait', 'premium urban subway photo with city commute vibe'],
+    'bridge': ['natural bridge selfie with city behind', 'stylish three-quarter bridge portrait', 'premium full-body bridge photo with architecture'],
+    'concert': ['natural concert selfie with stage lights', 'stylish three-quarter concert portrait', 'premium energetic concert photo with atmosphere'],
+    'festival': ['natural festival selfie', 'stylish three-quarter festival portrait', 'premium vibrant festival photo with colorful vibe'],
+    'rain': ['natural rainy street selfie', 'stylish three-quarter rain portrait with reflections', 'premium moody rain photo with wet city lights'],
+    'snow': ['natural snowy selfie', 'stylish three-quarter snow portrait', 'premium cozy winter photo with falling snow'],
+    'sunset': ['natural sunset selfie with golden sky', 'stylish three-quarter sunset portrait', 'premium full-body golden-hour photo with dramatic sky'],
+    'night': ['natural night city selfie with neon', 'stylish three-quarter night portrait with urban glow', 'premium glamorous night photo with city lights'],
+    'morning': ['natural morning selfie with coffee', 'stylish three-quarter morning portrait', 'premium cozy morning photo with soft daylight'],
+    'spa': ['natural spa selfie with candles', 'stylish three-quarter spa portrait', 'premium relaxing spa photo with serene atmosphere'],
+    'yoga': ['natural yoga studio selfie', 'stylish three-quarter yoga portrait', 'premium peaceful yoga photo with bright light'],
+    'gaming': ['natural gaming setup selfie with RGB', 'stylish three-quarter gaming portrait', 'premium fun gaming photo with tech aesthetic'],
 }
 
 PACK_TIER_RULES = (
