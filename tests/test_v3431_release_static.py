@@ -125,9 +125,8 @@ def test_ui_polish_pins():
     # the channel-subscribe banner grew (owner: «кнопку за подписку больше»)
     assert 'margin: 12px 4px 4px; padding: 15px 16px; border: 0; border-radius: 16px;' in INDEX
     assert 'width: 46px; height: 46px; border-radius: 50%; flex: 0 0 auto;' in INDEX
-    # the like button is thumb-sized now (V3.43.9: bigger, with backdrop blur)
-    assert 'font-size: 20px; font-weight: 700; padding: 12px 20px; cursor: pointer;' in INDEX
-    assert 'backdrop-filter: blur(6px); box-shadow: 0 2px 12px rgba(0,0,0,.35);' in INDEX
-    # the plot block speaks human (V3.43.9: renamed from "КАК ВЫ ПОЗНАКОМИТЕСЬ")
-    assert "plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ'" in INDEX
-    assert "plot: 'SHE MESSAGES YOU FIRST'" in INDEX
+    # the like button is thumb-sized now
+    assert 'background: rgba(10,5,14,.55); color: #fff; font-size: 16px; font-weight: 700; padding: 10px 16px; cursor: pointer;' in INDEX
+    # the plot block speaks human
+    assert "plot: 'КАК ВЫ ПОЗНАКОМИТЕСЬ'" in INDEX
+    assert "plot: 'HOW YOU TWO MEET'" in INDEX

@@ -1559,14 +1559,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # revealing cuts — she stays fully clothed there; the intimate looks live
     # in the at-home lingerie sets and the private scenes instead.
     season = request.season or _default_season()
-    # V3.43.9: season/weather only affects outdoor scenes. Indoor scenes
-    # (home, selfie, mirror) must NOT get autumn leaves or winter snow in
-    # the background just because the calendar says October.
-    _indoor_scenes = {'selfie', 'home', 'mirror', 'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}
-    if request.scene in _indoor_scenes:
-        season_rule = f'Indoor scene. Season is {season} — this only informs clothing layering, never the background or weather.'
-    else:
-        season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
+    season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
     identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key or (request.expression_rotation[shot_index % len(request.expression_rotation)] if request.expression_rotation else None))
     if adult_scene:
         safety = ADULT_SAFETY

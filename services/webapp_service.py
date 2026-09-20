@@ -645,23 +645,35 @@ def api_partner(user_id: int, telegram_id: int) -> dict:
     }
 
 
+_GALLERY_CACHE: dict[str, list[Path]] = {}
+
+
 def character_gallery(character_id: str) -> list[Path]:
     """V3.39.0: the canonical shots of a character (face first, then look).
 
     The Come Closer character page leads with a horizontal photo strip, so the
     storefront needs every canonical reference, not just the face.
+    V3.43.9: cached to avoid repeated glob() calls on every page load.
     """
+    if character_id in _GALLERY_CACHE:
+        return _GALLERY_CACHE[character_id]
     base = ROOT / 'data'
     if is_custom_character(character_id):
         path = base / 'custom_references' / character_id / 'avatar.jpg'
-        return [path] if path.exists() else []
+        result = [path] if path.exists() else []
+        _GALLERY_CACHE[character_id] = result
+        return result
     rel = _FACE_REFERENCES.get(character_id)
     if not rel:
+        _GALLERY_CACHE[character_id] = []
         return []
     folder = base.joinpath(rel[0], rel[1])
     if not folder.exists():
+        _GALLERY_CACHE[character_id] = []
         return []
-    return sorted(p for p in folder.glob('*.png') if p.name.startswith(('00_', '01_', '02_', '03_', '04_', '05_')))
+    result = sorted(p for p in folder.glob('*.png') if p.name.startswith(('00_', '01_', '02_', '03_', '04_', '05_')))
+    _GALLERY_CACHE[character_id] = result
+    return result
 
 
 def character_card_gif(character_id: str) -> Path | None:
