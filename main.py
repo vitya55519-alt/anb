@@ -3520,6 +3520,72 @@ async def set_menu_button_cmd(message: types.Message):
     except Exception as e:
         await message.answer(f'❌ Ошибка установки кнопки: {e}')
 
+
+# V3.44.0: admin photo replacement tool — /setcardphoto <character_id> then send photo
+_CARD_PHOTO_PENDING: dict[int, str] = {}
+
+
+@dp.message(Command('setcardphoto'))
+async def set_card_photo_cmd(message: types.Message):
+    """Admin: replace a character's card photo. Usage: /setcardphoto emily_01"""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    parts = (message.text or '').split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        chars = ', '.join(c for c in webapp_service._FACE_REFERENCES.keys())
+        await message.answer(
+            f'📷 Использование: /setcardphoto <character_id>\n'
+            f'Затем отправь фото (или несколько) — я сохраню их как галерею.\n\n'
+            f'Доступные персонажи: {chars}'
+        )
+        return
+    char_id = parts[1].strip()
+    if char_id not in webapp_service._FACE_REFERENCES:
+        await message.answer(f'❌ Персонаж «{char_id}» не найден.\nДоступные: {", ".join(webapp_service._FACE_REFERENCES.keys())}')
+        return
+    _CARD_PHOTO_PENDING[message.from_user.id] = char_id
+    folder_name = webapp_service._FACE_REFERENCES[char_id][1]
+    await message.answer(f'✅ Отправь фото для «{char_id}» (папка: {folder_name}).\n' +
+                         f'Можно несколько — первое станет лицом, второе — обликом.')
+
+
+@dp.message(F.photo, lambda m: m.from_user.id in _CARD_PHOTO_PENDING and m.from_user.id in ADMIN_TELEGRAM_IDS)
+async def handle_card_photo(message: types.Message):
+    """Admin: save uploaded photo to character's reference folder."""
+    char_id = _CARD_PHOTO_PENDING.pop(message.from_user.id, None)
+    if not char_id:
+        return
+    rel = webapp_service._FACE_REFERENCES.get(char_id)
+    if not rel:
+        await message.answer('❌ Внутренняя ошибка: персонаж не найден.')
+        return
+    folder = ROOT / 'data' / rel[0] / rel[1]
+    folder.mkdir(parents=True, exist_ok=True)
+    # Get the largest photo resolution
+    photo = message.photo[-1]
+    file_info = await bot.get_file(photo.file_id)
+    file_url = f'https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_info.path}'
+    # Determine next slot number
+    existing = sorted(folder.glob('*.png'))
+    next_num = len(existing)
+    filename = f'{next_num:02d}_{rel[1]}_reference_{next_num - 1 if next_num > 1 else 0}.png'
+    if next_num == 0:
+        filename = f'00_{rel[1]}_canonical_face.png'
+    elif next_num == 1:
+        filename = f'01_{rel[1]}_canonical_look.png'
+    # Download and save
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.get(file_url) as resp:
+            if resp.status == 200:
+                dest = folder / filename
+                dest.write_bytes(await resp.read())
+                # Clear gallery cache so new photo shows immediately
+                webapp_service._GALLERY_CACHE.pop(char_id, None)
+                await message.answer(f'✅ Фото сохранено: {filename}\nГалерея обновлена!')
+            else:
+                await message.answer(f'❌ Не удалось скачать фото (HTTP {resp.status})')
+
 @dp.message(Command('support'))
 async def support_cmd(message: types.Message):
     parts=(message.text or '').split(maxsplit=1)
