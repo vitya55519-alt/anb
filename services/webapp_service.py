@@ -231,12 +231,22 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     visible ``active`` cards, and now the grid also marks which cards are
     user-made (``custom``) and which one is the caller's own creation
     (``mine``), so the app can offer «create your own» and chat entry.
+    V3.43.9: includes relationship level per character for the progress bar.
     """
     selected = None
     if telegram_id:
         user = _user_row(telegram_id)
         selected = (user.selected_character or CHARACTER_ID) if user else None
     views = character_views_map()
+    # V3.43.9: pre-load relationship levels for all characters at once.
+    rel_levels: dict[str, int] = {}
+    if telegram_id:
+        try:
+            from services.photo_service import get_relationship_level
+            for card in list_cards(visible_only=True):
+                rel_levels[card.character_id] = get_relationship_level(telegram_id, card.character_id)
+        except Exception:
+            pass
     out = []
     for card in list_cards(visible_only=True):
         custom = is_custom_character(card.character_id)
@@ -255,7 +265,7 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             # твоего друга", "подруга детства приехала в твой город").
             'hook': get_scenario_hook(card.character_id) or '',
             'status': card.status,
-            'emoji': card.button_emoji or '👩',
+            'emoji': card.button_emoji or '',
             'photo': f"/webapp/photo/{card.character_id}?v={ver}",
             # V3.43.3: the grid card is a PLAIN static photo (owner: «сделай
             # просто фото») — the look shot, not the Ken-Burns webp anymore.
@@ -266,7 +276,7 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
                      else f"/webapp/photo/{card.character_id}?i=1&v={ver}"),
             'live': (f'/webapp/card/{card.character_id}?v={ver}'
                      if ov_ext == '.mp4' else None),
-            # V3.40.0: the «👁 427k» view badge on the card corner.
+            # V3.40.0: the « 427k» view badge on the card corner.
             'views': views.get(card.character_id, 0),
             # V3.39.0: the Come Closer character page opens with a photo strip
             # (face + look references), so the card page needs every shot.
@@ -277,6 +287,8 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             'selected': card.character_id == selected,
             'custom': custom,
             'mine': custom and bool(telegram_id) and card.character_id == custom_character_id(telegram_id),
+            # V3.43.9: relationship level (0-8) for the progress bar.
+            'level': rel_levels.get(card.character_id, 0),
         })
     return out
 

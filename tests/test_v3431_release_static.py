@@ -128,5 +128,5 @@ def test_ui_polish_pins():
     # the like button is thumb-sized now
     assert 'background: rgba(10,5,14,.55); color: #fff; font-size: 16px; font-weight: 700; padding: 10px 16px; cursor: pointer;' in INDEX
     # the plot block speaks human
-    assert "plot: 'КАК ВЫ ПОЗНАКОМИТЕСЬ'" in INDEX
-    assert "plot: 'HOW YOU TWO MEET'" in INDEX
+    assert "plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ'" in INDEX
+    assert "plot: 'SHE MESSAGES YOU FIRST'" in INDEX

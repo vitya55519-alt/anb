@@ -141,7 +141,7 @@ def test_character_page_has_strip_cta_and_plot():
     assert 'id="charStart"' in INDEX
     assert 'id="charPlot"' in INDEX
     assert 'start_chat: \'Начать чат\'' in INDEX
-    assert 'plot: \'КАК ВЫ ПОЗНАКОМИТЕСЬ\'' in INDEX
+    assert 'plot: \'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ\'' in INDEX
     assert 'function openCharPage(el)' in INDEX
     # a card tap opens the page, the CTA opens the dialog
     assert 'el.addEventListener(\'click\', () => openCharPage(el))' in INDEX
