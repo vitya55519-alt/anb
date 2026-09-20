@@ -57,9 +57,9 @@
   "visual_identity": {
     "photo_style": {
       "hair_colors": [
-        "chestnut auburn",
-        "copper auburn",
-        "warm auburn with copper highlights"
+        "dark brown with blonde highlights",
+        "dark blonde",
+        "brunette with light ends"
       ],
       "hairstyles": [
         "smooth center-parted blowout at the existing length",
@@ -120,10 +120,10 @@
       "04_emily_reference_3.png"
     ],
     "preserve_identity": [
-      "long chestnut-auburn hair with copper highlights and side part",
-      "hazel eyes",
-      "confident athletic appearance",
-      "hourglass figure with very large full silicone-enhanced bust, defined narrow waist, toned thighs and rounded lifted athletic glutes",
+      "long dark brown hair with blonde highlights",
+      "green-hazel eyes",
+      "small nose stud piercing",
+      "very curvy hourglass figure with large full silicone-enhanced bust, slim defined waist, wide hips and full thighs",
       "natural warm expression in generated photos"
     ],
     "variable_scene_attributes": [
