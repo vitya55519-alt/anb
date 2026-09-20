@@ -3497,6 +3497,29 @@ async def app_cmd(message: types.Message):
         ]),
     )
 
+@dp.message(Command('setmenubutton'))
+async def set_menu_button_cmd(message: types.Message):
+    """Admin command to force-install the Mini App menu button in the bot profile."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    if not PUBLIC_BASE_URL:
+        await message.answer(' PUBLIC_BASE_URL не задан — кнопка не может быть установлена.')
+        return
+    menu_url = f'{PUBLIC_BASE_URL}/webapp'
+    try:
+        await bot.set_chat_menu_button(types.MenuButtonWebApp(
+            text='Открыть приложение',
+            web_app=types.WebAppInfo(url=menu_url),
+        ))
+        current = await bot.get_chat_menu_button()
+        await message.answer(
+            f'✅ Кнопка «Открыть приложение» установлена!\n'
+            f'URL: {menu_url}\n'
+            f'Текущий тип: {type(current).__name__} / текст: {getattr(current, "text", "")}'
+        )
+    except Exception as e:
+        await message.answer(f'❌ Ошибка установки кнопки: {e}')
+
 @dp.message(Command('support'))
 async def support_cmd(message: types.Message):
     parts=(message.text or '').split(maxsplit=1)
@@ -8527,7 +8550,7 @@ async def main():
     for admin_id in ADMIN_TELEGRAM_IDS:
         try:
             await bot.set_my_commands(
-                public_commands + [types.BotCommand(command='admin', description='🛠 Админка'), types.BotCommand(command='refundstars', description='↩️ Возврат Stars'), types.BotCommand(command='geministatus', description='🧠 Gemini status'), types.BotCommand(command='grant', description='🎁 Выдать premium/токены по @username')],
+                public_commands + [types.BotCommand(command='admin', description='🛠 Админка'), types.BotCommand(command='refundstars', description='↩️ Возврат Stars'), types.BotCommand(command='geministatus', description='🧠 Gemini status'), types.BotCommand(command='grant', description='🎁 Выдать premium/токены по @username'), types.BotCommand(command='setmenubutton', description='🔵 Установить кнопку «Открыть приложение»')],
                 scope=types.BotCommandScopeChat(chat_id=admin_id),
             )
         except Exception:
