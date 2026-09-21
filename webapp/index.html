@@ -168,6 +168,10 @@
     text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0 14px;
   }
   .loading { text-align: center; color: var(--muted); padding: 48px 0; font-size: 14px; }
+  /* V3.44.2: skeleton loader for instant perceived performance */
+  .skeleton-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; }
+  .skeleton-card { aspect-ratio: 3/4; background: linear-gradient(90deg, var(--card) 25%, var(--card2) 50%, var(--card) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: var(--radius); }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
   .err { text-align: center; color: var(--accent); padding: 48px 16px; font-size: 14px; line-height: 1.5; }
   nav#bottomnav {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
@@ -551,7 +555,7 @@
       <span class="t" id="chanBannerText"></span>
       <span class="ar">→</span>
     </button>
-    <div class="grid" id="chargrid"><div class="loading" id="l_loading">Загрузка…</div></div>
+    <div class="grid" id="chargrid"><div class="loading" id="l_loading"><div class="skeleton-grid"><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div></div></div></div>
     <!-- V3.44.0: popularity leaderboard -->
     <div class="leaderboard" id="leaderboard">
       <h3 id="l_lb_title"></h3>
@@ -2601,13 +2605,21 @@ document.getElementById('chanCheck').addEventListener('click', async () => {
 });
 
 renderStudio();
+// V3.44.2: optimized loading - critical calls first, lazy-load the rest
 loadMe();
 loadCharacters();
-loadLeaderboard();
-loadShop();
-loadChats();
-loadPictures();
-loadChannel();
+// Lazy-load non-critical tabs on first switch
+let _shopLoaded=false,_chatsLoaded=false,_picsLoaded=false,_leaderLoaded=false,_channelLoaded=false;
+const _origSwitchTab=switchTab;
+switchTab=function(id){
+  _origSwitchTab(id);
+  if(id==='shop'&&!_shopLoaded){_shopLoaded=true;loadShop();}
+  if(id==='chats'&&!_chatsLoaded){_chatsLoaded=true;loadChats();}
+  if(id==='pics'&&!_picsLoaded){_picsLoaded=true;loadPictures();}
+  if(id==='profile'&&!_leaderLoaded){_leaderLoaded=true;loadLeaderboard();}
+};
+// Channel check after a short delay (non-blocking)
+setTimeout(()=>{if(!_channelLoaded){_channelLoaded=true;loadChannel();}},2000);
 </script>
 </body>
 </html>
