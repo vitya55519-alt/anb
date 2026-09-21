@@ -137,7 +137,7 @@ SCENES = {
     # V3.44.2: new adult scenes (level 6-7)
     'shower': 'an intimate artistic photo in a steamy shower with water droplets on skin, warm bathroom light, tasteful boudoir style',
     'bath': 'a sensual artistic photo in a bubble bath with candles, warm ambient light, elegant boudoir composition',
-    'bedroom_intimate': 'an intimate artistic bedroom photo with soft warm light, elegant lingerie or nude boudoir style, confident posing',
+    'bedroom_intimate': 'a sexy intimate bedroom photo with soft warm candlelight, she wears elegant expensive black or red lace lingerie with garter belt and stockings, confident seductive pose on the bed, no plants or leaves in room, pure bedroom interior with pillows and sheets, tasteful erotic boudoir style',
     'morning_nude': 'an artistic morning nude photo with soft window light, natural relaxed pose, tasteful fine-art boudoir style',
     'changing_room': 'an intimate photo while changing clothes, wardrobe in background, natural candid moment, boudoir style',
     'topless': 'an artistic topless photo with elegant composition, soft warm light, tasteful fine-art boudoir style, confident pose',
@@ -370,7 +370,7 @@ WARDROBE_LEVEL_POOLS = {
         4: ['an elegant black lingerie fashion set with opaque coverage and polished catalog styling'],
         5: ['an elegant black lingerie fashion set with opaque coverage and polished catalog styling', 'an elegant burgundy lingerie fashion set with opaque coverage and polished catalog styling', 'an elegant white lingerie fashion set with opaque coverage and polished catalog styling'],
         6: ['a premium black lingerie fashion set with opaque coverage and polished editorial styling', 'a premium burgundy lingerie fashion set with opaque coverage and polished editorial styling', 'a premium white lingerie fashion set with opaque coverage and polished editorial styling'],
-        7: ['a premium sheer black lingerie set with minimal coverage and bold editorial styling', 'a premium red lace lingerie set with daring cutouts and editorial styling', 'a premium white silk lingerie set with elegant minimal coverage'],
+        7: ['a stunning black French lace lingerie set with garter belt and sheer stockings, expensive luxury brand style', 'a seductive red satin and lace lingerie set with garter belt and thigh-high stockings, bold and elegant', 'a luxurious white silk and lace lingerie set with delicate garter belt and sheer stockings, premium editorial style'],
     },
 }
 # Compatibility name retained for tests/admin tooling.
@@ -519,7 +519,7 @@ SHOT_VARIANTS = {
     # V3.44.2: new adult scene angles
     'shower': ['natural shower selfie with steam', 'stylish three-quarter shower portrait with water droplets', 'premium artistic shower photo with warm bathroom light'],
     'bath': ['natural bath selfie with bubbles', 'stylish three-quarter bath portrait with candles', 'premium artistic bath photo with warm ambient light'],
-    'bedroom_intimate': ['natural bedroom selfie with soft light', 'stylish three-quarter bedroom portrait', 'premium intimate bedroom photo with warm tones'],
+    'bedroom_intimate': ['sexy bedroom selfie in lace lingerie on the bed', 'seductive three-quarter portrait in expensive lingerie with garter belt, candlelight', 'premium erotic bedroom photo in beautiful black or red lace lingerie, stockings, confident pose'],
     'morning_nude': ['natural morning nude with window light', 'stylish three-quarter morning portrait', 'premium artistic morning nude with soft daylight'],
     'changing_room': ['natural changing room selfie', 'stylish three-quarter changing portrait', 'premium candid changing room photo'],
     'topless': ['natural topless selfie with soft light', 'stylish three-quarter topless portrait', 'premium artistic topless photo with elegant composition'],
