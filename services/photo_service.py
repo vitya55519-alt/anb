@@ -134,6 +134,14 @@ SCENES = {
     'spa': 'a relaxing personal photo in a modern spa setting with candles and serene atmosphere',
     'yoga': 'a peaceful personal photo during a yoga session in a bright studio or outdoor setting',
     'gaming': 'a fun personal photo at a gaming setup with RGB lights and modern tech aesthetic',
+    # V3.44.2: new adult scenes (level 6-7)
+    'shower': 'an intimate artistic photo in a steamy shower with water droplets on skin, warm bathroom light, tasteful boudoir style',
+    'bath': 'a sensual artistic photo in a bubble bath with candles, warm ambient light, elegant boudoir composition',
+    'bedroom_intimate': 'an intimate artistic bedroom photo with soft warm light, elegant lingerie or nude boudoir style, confident posing',
+    'morning_nude': 'an artistic morning nude photo with soft window light, natural relaxed pose, tasteful fine-art boudoir style',
+    'changing_room': 'an intimate photo while changing clothes, wardrobe in background, natural candid moment, boudoir style',
+    'topless': 'an artistic topless photo with elegant composition, soft warm light, tasteful fine-art boudoir style, confident pose',
+    'explicit': 'an explicit adult photo with full nudity, intimate pose, warm bedroom light, fine-art erotic photography style',
 }
 
 SCENE_LEVELS = {
@@ -144,6 +152,9 @@ SCENE_LEVELS = {
     'club': 5, 'personal': 5, 'lingerie': 5,
     'private_fashion': 6,
     'nude': 6, 'tease': 6,
+    # V3.44.2: new adult scenes
+    'shower': 6, 'bath': 6, 'bedroom_intimate': 6, 'morning_nude': 6,
+    'changing_room': 6, 'topless': 7, 'explicit': 7,
     # V3.31.5: cosplay is token-priced and now available at EVERY relationship
     # level (owner request) — level 1 removes the gate, so the button shows
     # from the very start of a conversation.
@@ -189,7 +200,7 @@ AUTO_CAPTIONS = {
     'tease': ('поворачиваюсь спиной… 😏', 'так хочется тебя подразнить', 'видишь? это для тебя', 'смотри сколько хочешь, но не трогай 😈'),
     'peek': ('ой, кажется, кое-что видно 😏', 'заметила только когда сфоткалась… ну пусть будет'),
     'dressing': ('ещё собираюсь 😌', 'поймала момент до того, как оделась'),
-    'cosplay': ('примерила образ специально для тебя 🎭', 'косплей-сет готов 😏', 'как тебе мой костюм? 🎭'),,
+    'cosplay': ('примерила образ специально для тебя 🎭', 'косплей-сет готов 😏', 'как тебе мой костюм? 🎭'),
     # V3.44.1: new trending scene captions
     'beach': ('пляж сегодня шикарный', 'море + солнце = идеальный сет', 'поймала волну и кадр'),
     'pool': ('у бассейна', 'летний вайб у воды', 'бассейн + хороший свет'),
@@ -211,6 +222,14 @@ AUTO_CAPTIONS = {
     'spa': ('день в спа', 'релакс и свечи', 'побаловала себя'),
     'yoga': ('утренняя йога', 'баланс и спокойствие', 'поймала момент после практики'),
     'gaming': ('геймерский сет', 'RGB и вайб', 'между катками сфоткалась'),
+    # V3.44.2: new adult scene captions
+    'shower': ('в душе сегодня ', 'тёплая вода + хороший свет', 'поймала момент в душе'),
+    'bath': ('ванна со свечами ', 'релакс-вечер', 'поймала момент в ванне'),
+    'bedroom_intimate': ('спальня сегодня ', 'тёплый свет + настроение', 'этот сет только для тебя'),
+    'morning_nude': ('утро без одежды ', 'мягкий свет из окна', 'решилась на утренний сет'),
+    'changing_room': ('переодеваюсь… ', 'поймала момент', 'ещё не оделась'),
+    'topless': ('сегодня без верха ', 'мягкий свет + уверенность', 'этот кадр только для тебя'),
+    'explicit': ('это уже совсем откровенно ', 'решилась показать всё', 'самый личный сет 🔥'),
 
 }
 
@@ -227,14 +246,14 @@ REAR_VIEW_STYLE = re.compile(r'\b(поп\w*|ягодиц\w*|со спины|сз
 # the 18+ confirmation, and never enter the community pool.
 # V3.22.0: wording stays fine-art/boudoir — fal's API-level moderation rejects
 # explicit body-part phrasing (400/422) even when the model checker is off.
-ADULT_SCENES = {'nude', 'tease'}
+ADULT_SCENES = {'nude', 'tease', 'shower', 'bath', 'bedroom_intimate', 'morning_nude', 'changing_room', 'topless', 'explicit'}
 
 # V3.24.0: every intimate scene routed to Seedream runs with fal's safety
 # checker disabled (the product is 18+ confirmed; Seedream is the engine that
 # can deliver boudoir/lingerie frames). With the checker ON, fal's API-level
 # moderation rejected lingerie prompts (4xx) and the set died on the Gemini
 # fallback (http_400). Level/18+ gates upstream still apply per scene.
-SEEDREAM_ADULT_SCENES = {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}
+SEEDREAM_ADULT_SCENES = {'personal', 'lingerie', 'private_fashion', 'nude', 'tease', 'shower', 'bath', 'bedroom_intimate', 'morning_nude', 'changing_room', 'topless'}
 
 ADULT_SAFETY = (
     'This is a private intimate fine-art photograph made for someone she deeply trusts. '
@@ -268,6 +287,11 @@ SCENE_GROUP = {
     'personal':'adult', 'private_fashion':'personal',
     'lingerie':'adult',
     'nude':'adult', 'tease':'adult',
+    'shower':'adult', 'bath':'adult', 'bedroom_intimate':'adult',
+    'morning_nude':'adult', 'changing_room':'adult', 'topless':'adult', 'explicit':'adult',
+    # V3.44.2: new adult scenes
+    'shower':'adult', 'bath':'adult', 'bedroom_intimate':'adult',
+    'morning_nude':'adult', 'changing_room':'adult', 'topless':'adult', 'explicit':'adult',
     'peek':'home', 'dressing':'home',
     # V3.30.0: cosplay wardrobe comes from PhotoRequest.clothing (the chosen
     # costume); the group only feeds the generic outfit fallback pools.
@@ -491,6 +515,14 @@ SHOT_VARIANTS = {
     'private_fashion': ['tasteful private fashion portrait with opaque coverage', 'more polished private fashion portrait with confident styling', 'premium personalized private fashion portrait, non-explicit and opaque'],
     'nude': ['tasteful artistic nude portrait, natural warm light, soft eye contact', 'confident seated nude with soft shadows and relaxed posture', 'premium artistic nude with elegant composition and warm tones'],
     'tease': ['playful rear-view teasing photo with a glance over the shoulder', 'confident from-behind pose with relaxed posture and soft light', 'premium sensual back-view portrait with warm tones'],
+    # V3.44.2: new adult scene angles
+    'shower': ['natural shower selfie with steam', 'stylish three-quarter shower portrait with water droplets', 'premium artistic shower photo with warm bathroom light'],
+    'bath': ['natural bath selfie with bubbles', 'stylish three-quarter bath portrait with candles', 'premium artistic bath photo with warm ambient light'],
+    'bedroom_intimate': ['natural bedroom selfie with soft light', 'stylish three-quarter bedroom portrait', 'premium intimate bedroom photo with warm tones'],
+    'morning_nude': ['natural morning nude with window light', 'stylish three-quarter morning portrait', 'premium artistic morning nude with soft daylight'],
+    'changing_room': ['natural changing room selfie', 'stylish three-quarter changing portrait', 'premium candid changing room photo'],
+    'topless': ['natural topless selfie with soft light', 'stylish three-quarter topless portrait', 'premium artistic topless photo with elegant composition'],
+    'explicit': ['natural explicit selfie', 'stylish three-quarter explicit portrait', 'premium explicit photo with intimate composition'],
     # V3.44.1: new trending scene angles
     'beach': ['natural beach selfie with ocean behind', 'stylish three-quarter beach portrait with waves', 'premium full-body beach photo with golden-hour light'],
     'pool': ['natural poolside selfie', 'stylish three-quarter pool portrait with blue water', 'premium full-body pool photo with summer vibes'],
