@@ -147,6 +147,65 @@ async def _donation_reminder(bot):
             track_event(uid, 'donation_reminder_sent', metadata={'lang': lang})
         except Exception: logger.exception('donation reminder failed user=%s', uid)
 
+async def _random_gifts(bot):
+    """V3.44.2: random photo gifts from character - sends 1-2 times per day."""
+    now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    fresh_cutoff=now-dt.timedelta(days=RITUAL_MAX_INACTIVE_DAYS)
+    with SessionLocal() as s:
+        users=s.scalars(select(User).where(User.proactive_enabled==True,User.notify_rituals!=False,User.last_active_at>=fresh_cutoff)).all()
+        snapshot=[(u.id,u.telegram_id,u.selected_character or CHARACTER_ID) for u in users]
+    # Random 10% of users get a gift each run
+    for uid,tg_id,char_id in snapshot:
+        if random.random() > 0.1: continue  # 10% chance
+        try:
+            msg=retention_features_service.get_character_gift(char_id)
+            await bot.send_message(int(tg_id), msg)
+            track_event(uid, 'random_gift_sent', metadata={'character_id': char_id})
+        except Exception: logger.exception('random gift failed user=%s',uid)
+
+async def _daily_compatibility(bot):
+    """V3.44.2: daily compatibility forecast - once per day in morning window."""
+    now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    fresh_cutoff=now-dt.timedelta(days=RITUAL_MAX_INACTIVE_DAYS)
+    with SessionLocal() as s:
+        users=s.scalars(select(User).where(User.proactive_enabled==True,User.notify_rituals!=False,User.last_active_at>=fresh_cutoff)).all()
+        snapshot=[(u.id,u.telegram_id,u.selected_character or CHARACTER_ID) for u in users]
+    today_key=now.date().isoformat()
+    for uid,tg_id,char_id in snapshot:
+        try:
+            guard=(uid,'compatibility',today_key)
+            if guard in _ritual_sent: continue
+            forecast=retention_features_service.get_daily_compatibility()
+            await bot.send_message(int(tg_id), forecast)
+            _ritual_sent.add(guard)
+            track_event(uid, 'compatibility_forecast_sent', metadata={'character_id': char_id})
+        except Exception: logger.exception('compatibility forecast failed user=%s',uid)
+
+async def _mood_update(bot):
+    """V3.44.2: update character mood based on user activity."""
+    now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    cutoff=now-dt.timedelta(hours=24)
+    with SessionLocal() as s:
+        users=s.scalars(select(User).where(User.last_active_at>=cutoff)).all()
+        snapshot=[(u.id,u.selected_character or CHARACTER_ID) for u in users]
+    for uid,char_id in snapshot:
+        try:
+            with SessionLocal() as s:
+                state=s.scalar(select(CharacterState).where(CharacterState.user_id==uid,CharacterState.character_id==char_id))
+                if not state: continue
+                # Update mood based on activity
+                hours_since=now - state.updated_at
+                if hours_since.total_seconds() < 3600:  # Active in last hour
+                    state.mood='happy'
+                    state.energy=min(1.0, state.energy + 0.1)
+                elif hours_since.total_seconds() < 86400:  # Active today
+                    state.mood='neutral'
+                else:  # Inactive
+                    state.mood='sad'
+                    state.energy=max(0.0, state.energy - 0.1)
+                s.commit()
+        except Exception: logger.exception('mood update failed user=%s',uid)
+
 def start_scheduler(bot):
     scheduler.add_job(_reminders,'interval',seconds=30,args=[bot],id='reminders',replace_existing=True)
     scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
@@ -154,4 +213,8 @@ def start_scheduler(bot):
         scheduler.add_job(_rituals,'interval',minutes=30,args=[bot],id='rituals',replace_existing=True)
     if DONATION_REMINDER_ENABLED and DONATION_LINK:
         scheduler.add_job(_donation_reminder,'interval',hours=12,args=[bot],id='donation_reminder',replace_existing=True)
+    # V3.44.2: new retention jobs
+    scheduler.add_job(_random_gifts,'interval',hours=6,args=[bot],id='random_gifts',replace_existing=True)
+    scheduler.add_job(_daily_compatibility,'interval',hours=12,args=[bot],id='daily_compatibility',replace_existing=True)
+    scheduler.add_job(_mood_update,'interval',hours=1,args=[bot],id='mood_update',replace_existing=True)
     if not scheduler.running: scheduler.start()
