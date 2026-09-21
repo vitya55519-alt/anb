@@ -611,3 +611,73 @@ def get_retention_text(kind: str, character_id: str = 'anna_01') -> str:
     if getter:
         return getter(character_id)
     return get_character_miss(character_id)
+
+
+# ── Achievement system ─────────────────────────────────────────────────────
+
+ACHIEVEMENTS = {
+    'first_message': {
+        'name': 'Первое сообщение',
+        'description': 'Отправь первое сообщение персонажу',
+        'reward_stars': 10,
+        'check': lambda user, state: True,  # Always true when called
+    },
+    'streak_7': {
+        'name': 'Неделя вместе',
+        'description': 'Общайся 7 дней подряд',
+        'reward_stars': 50,
+        'check': lambda user, state: (user.streak_count or 0) >= 7,
+    },
+    'streak_30': {
+        'name': 'Месяц вместе',
+        'description': 'Общайся 30 дней подряд',
+        'reward_stars': 200,
+        'check': lambda user, state: (user.streak_count or 0) >= 30,
+    },
+    'photos_10': {
+        'name': 'Фотоколлекция',
+        'description': 'Собери 10 фото',
+        'reward_stars': 30,
+        'check': lambda user, state: (user.photo_credits or 0) >= 10,
+    },
+    'level_5': {
+        'name': 'Близкие отношения',
+        'description': 'Достигни 5 уровня близости',
+        'reward_stars': 100,
+        'check': lambda user, state: (state.affection if state else 0) >= 0.75,
+    },
+    'secret_hug': {
+        'name': 'Тайное объятие',
+        'description': 'Используй секретную команду "обними"',
+        'reward_stars': 20,
+        'check': lambda user, state: False,  # Checked separately
+    },
+    'secret_kiss': {
+        'name': 'Тайный поцелуй',
+        'description': 'Используй секретную команду "поцелуй"',
+        'reward_stars': 20,
+        'check': lambda user, state: False,  # Checked separately
+    },
+}
+
+
+def check_achievements(user, character_state) -> list:
+    """Check which achievements user has unlocked. Returns list of achievement keys."""
+    unlocked = []
+    for key, ach in ACHIEVEMENTS.items():
+        try:
+            if ach['check'](user, character_state):
+                unlocked.append(key)
+        except Exception:
+            pass
+    return unlocked
+
+
+def get_achievement_reward(achievement_key: str) -> int:
+    """Get star reward for an achievement."""
+    return ACHIEVEMENTS.get(achievement_key, {}).get('reward_stars', 0)
+
+
+def get_achievement_info(achievement_key: str) -> dict:
+    """Get achievement info."""
+    return ACHIEVEMENTS.get(achievement_key, {})
