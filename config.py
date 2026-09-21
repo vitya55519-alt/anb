@@ -297,6 +297,8 @@ RITUAL_MAX_INACTIVE_DAYS = max(1, int(os.getenv("RITUAL_MAX_INACTIVE_DAYS", "7")
 # a private chat persona (appearance + personality + relationship role) with a
 # generated avatar. Optional user face photo enables face-swap identity.
 CONSTRUCTOR_COST_STARS = max(1, int(os.getenv("CONSTRUCTOR_COST_STARS", "50")))
+# V3.44.2: character constructor cost in peaches (photo credits)
+CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "500")))
 # V3.27.0: ruble side of the shop (FreeKassa): character constructor price,
 # token price/pack (1 token = TOKEN_PRICE_RUB) and the animation token cost.
 CONSTRUCTOR_COST_RUB = max(1, int(os.getenv("CONSTRUCTOR_COST_RUB", "200")))

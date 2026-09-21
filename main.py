@@ -32,6 +32,7 @@ from config import (
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
     CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST, COSPLAY_TOKEN_COST,
+    CONSTRUCTOR_COST_PEACHES,
     CONSTRUCTOR_PRICE_USD, PREMIUM_WEEKLY_PRICE_USD, fiat_suffix,
     FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
     SUPPORT_BOT_USERNAME, SUPPORT_BOT_TOKEN, SUPPORT_WELCOME_TEXT,
@@ -60,7 +61,7 @@ from services.photo_service import (
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
 )
-from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits
+from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
 from services.bot_description import apply_bot_descriptions
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
@@ -6299,6 +6300,7 @@ async def _constructor_confirm(chat_id: int, telegram_id: int):
         price_note = f'Готова родиться за {CONSTRUCTOR_COST_STARS} Stars{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD)} ✨'
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=buy_label, callback_data='constructor:buy')],
+        [InlineKeyboardButton(text=f'🍑 Оплатить персиками ({CONSTRUCTOR_COST_PEACHES})', callback_data='constructor:buy_peaches')],
         [InlineKeyboardButton(text='❌ Отменить', callback_data='constructor:cancel')],
     ])
     await bot.send_message(
@@ -6560,6 +6562,29 @@ async def constructor_buy_cb(cq: types.CallbackQuery):
         f'constructor:{telegram_id}',
         CONSTRUCTOR_COST_STARS,
     )
+
+
+# V3.44.2: pay for constructor with peaches (photo credits)
+@dp.callback_query(F.data == 'constructor:buy_peaches')
+async def constructor_buy_peaches_cb(cq: types.CallbackQuery):
+    telegram_id = cq.from_user.id
+    cons = _constructor_sessions.get(telegram_id)
+    if not cons or not cons.get('params', {}).get('name'):
+        await cq.answer('Сначала собери персонажа до конца 🙂', show_alert=True)
+        return
+    await cq.answer()
+    # Check if user has enough peaches
+    credits = get_photo_credits(telegram_id)
+    if credits < CONSTRUCTOR_COST_PEACHES:
+        await cq.answer(f'Не хватает персиков! Нужно {CONSTRUCTOR_COST_PEACHES}, у тебя {credits} 🍑', show_alert=True)
+        return
+    # Deduct peaches and create character
+    if not spend_peaches(telegram_id, CONSTRUCTOR_COST_PEACHES):
+        await cq.answer('Не удалось списать персики ', show_alert=True)
+        return
+    record_payment(telegram_id, 'constructor_peaches', 0, f'peaches:{telegram_id}:{int(_time.time() * 1000)}', provider='peaches')
+    await cq.message.answer(f'🍑 Списано {CONSTRUCTOR_COST_PEACHES} персиков. Создаю персонажа...')
+    _spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id), payload={'source': 'peaches'})
 
 
 @dp.callback_query(F.data == 'constructor:cancel')

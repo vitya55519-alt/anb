@@ -68,6 +68,18 @@ def consume_photo_credit(telegram_id:int)->bool:
         if not user or (user.photo_credits or 0)<=0: return False
         user.photo_credits-=1; s.commit(); return True
 
+
+# V3.44.2: spend multiple peaches at once (e.g. for constructor)
+def spend_peaches(telegram_id: int, amount: int) -> bool:
+    """Deduct `amount` peaches from user balance. Returns True if successful."""
+    with SessionLocal() as s:
+        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+        if not user or (user.photo_credits or 0) < amount:
+            return False
+        user.photo_credits -= amount
+        s.commit()
+        return True
+
 def get_photo_credits(telegram_id:int)->int:
     with SessionLocal() as s:
         user=s.scalar(select(User).where(User.telegram_id==str(telegram_id)))
