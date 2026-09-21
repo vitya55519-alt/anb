@@ -152,6 +152,23 @@ PHOTO_ROUTER_MODE = os.getenv("PHOTO_ROUTER_MODE", "hybrid").strip().lower()
 SEEDREAM_RELATIONSHIP_LEVEL = int(os.getenv("SEEDREAM_RELATIONSHIP_LEVEL", "5"))
 PHOTO_SET_SIZE = max(1, min(3, int(os.getenv("PHOTO_SET_SIZE", "1"))))
 
+# V3.44.2: Stable Diffusion via RunDiffusion API for uncensored/explicit content.
+# RunDiffusion is a cloud-hosted SD service with API access.
+# Sign up at https://rundiffusion.com, get API key from dashboard.
+# Alternative: self-hosted SD on RunPod/Vast.ai (change BASE_URL).
+RUNDIFFUSION_API_KEY = os.getenv("RUNDIFFUSION_API_KEY", "").strip()
+RUNDIFFUSION_BASE_URL = os.getenv("RUNDIFFUSION_BASE_URL", "https://api.rundiffusion.com/v1").strip().rstrip("/")
+RUNDIFFUSION_MODEL = os.getenv("RUNDIFFUSION_MODEL", "sd_xl_base_1.0").strip()
+# Negative prompt for better quality
+RUNDIFFUSION_NEGATIVE_PROMPT = os.getenv("RUNDIFFUSION_NEGATIVE_PROMPT", "ugly, blurry, low quality, distorted, deformed, bad anatomy, bad hands, missing fingers, extra limbs, watermark, text, signature").strip()
+RUNDIFFUSION_WIDTH = int(os.getenv("RUNDIFFUSION_WIDTH", "768"))
+RUNDIFFUSION_HEIGHT = int(os.getenv("RUNDIFFUSION_HEIGHT", "1024"))
+RUNDIFFUSION_STEPS = int(os.getenv("RUNDIFFUSION_STEPS", "30"))
+RUNDIFFUSION_CFG = float(os.getenv("RUNDIFFUSION_CFG", "7.0"))
+RUNDIFFUSION_TIMEOUT_SECONDS = int(os.getenv("RUNDIFFUSION_TIMEOUT_SECONDS", "120"))
+# Scenes that should use Stable Diffusion (uncensored) instead of Seedream
+SD_EXPLICIT_SCENES = {'explicit', 'topless'}
+
 # V3.19.9: Pollinations.ai was removed (repeated http_500 + wrong-subject
 # renders). Photo providers are now Gemini Image -> OpenAI -> fal/Seedream.
 
