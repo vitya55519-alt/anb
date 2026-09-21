@@ -32,7 +32,6 @@ from config import (
     GEMINI_API_KEY, GEMINI_IMAGE_ENABLED, GEMINI_IMAGE_MODEL, GEMINI_IMAGE_TIMEOUT_SECONDS, GEMINI_IMAGE_ESTIMATED_COST_USD, GEMINI_IMAGE_ASPECT_RATIO, GEMINI_IMAGE_SIZE,
     GEMINI_VIDEO_BASE_URL,
     COMMUNITY_POOL_ENABLED, COMMUNITY_POOL_FIRST,
-    RUNDIFFUSION_API_KEY, SD_EXPLICIT_SCENES,
 )
 from models.app_models import User
 from models.relationship_models import UserCharacterRelationship
@@ -49,7 +48,6 @@ from services.custom_character_service import (
 from services.test_mode import get_stage as get_test_stage
 from services.access_service import is_premium
 from services.user_service import ensure_user, get_state, update_state, is_adult_confirmed
-from services import sd_provider
 from services.payments import consume_photo_credit, get_photo_credits
 from services.adaptation_service import get_visual_preferences
 from services.analytics_service import track_event
@@ -2305,68 +2303,6 @@ async def _run_seedream_set(
     return out
 
 
-# V3.44.2: Stable Diffusion set runner for explicit/uncensored content
-async def _run_sd_set(
-    character: dict,
-    telegram_id: int,
-    request: PhotoRequest,
-    on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
-    *,
-    character_id: str = CHARACTER_ID,
-    frames: int = PHOTO_SET_SIZE,
-) -> list[GeneratedPhoto]:
-    """Generate explicit/uncensored photos via Stable Diffusion (RunDiffusion API)."""
-    ref = _seedream_reference_path(character)
-    out: list[GeneratedPhoto] = []
-    logger.info(
-        'SD set request user=%s scene=%s reference=%s target_count=%s',
-        telegram_id, request.scene, ref.name, frames,
-    )
-    for i in range(frames):
-        prompt = _build_prompt(request, i, seedream=False, relationship_level=get_relationship_level(telegram_id, character_id), character_id=character_id) + (
-            '\nCreate exactly ONE photo for this shot. Uncensored explicit content allowed. '
-            'Keep the same hairstyle, location and face identity as the reference. '
-            'Make this framing clearly different from the previous shot while staying in the same photo session.'
-        )
-        frame_started = time.monotonic()
-        try:
-            # Use img2img to preserve face identity from reference
-            reference_uri = _file_data_uri(ref)
-            result = await sd_provider.sd_img2img(
-                prompt=prompt,
-                init_image_url=reference_uri,
-                strength=0.75,  # Balance between identity preservation and prompt following
-            )
-        except sd_provider.SDGenerationError as exc:
-            track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'stable_diffusion', 'reason': str(exc)})
-            if out:
-                logger.warning('SD partial set user=%s scene=%s delivered=%s/%s stopped_reason=%s', telegram_id, request.scene, len(out), PHOTO_SET_SIZE, exc)
-                break
-            raise PhotoGenerationError('stable_diffusion', str(exc)) from exc
-
-        # Convert SD result to GeneratedPhoto
-        if result.data:
-            # Upload bytes to get a URL (or use base64 data URI)
-            photo = GeneratedPhoto(url=f'data:image/png;base64,{base64.b64encode(result.data).decode()}', provider='stable_diffusion', estimated_cost_usd=0.05)
-        elif result.url:
-            photo = GeneratedPhoto(url=result.url, provider='stable_diffusion', estimated_cost_usd=0.05)
-        else:
-            if out:
-                break
-            raise PhotoGenerationError('stable_diffusion', 'no_image_url')
-
-        out.append(photo)
-        frame_elapsed = time.monotonic() - frame_started
-        track_event(ensure_user(telegram_id), 'photo_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'stable_diffusion'})
-        if i == 0:
-            track_event(ensure_user(telegram_id), 'photo_first_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'provider': 'stable_diffusion'})
-        if on_frame:
-            await on_frame(photo, i)
-    if not out:
-        raise PhotoGenerationError('stable_diffusion', 'no_image_url')
-    return out
-
-
 def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
     mode = PHOTO_ROUTER_MODE
     if mode in {'openai', 'gpt', 'gpt-image-2'}:
@@ -2377,14 +2313,9 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
         return 'gemini_image' if GEMINI_IMAGE_ENABLED else ('openai' if OPENAI_IMAGE_AVAILABLE else 'seedream45')
 
     # HYBRID routing (default):
-    # - explicit/hardcore scenes -> Stable Diffusion (uncensored)
     # - intimate/private/bold scenes -> Seedream
     # - ordinary fully-clothed scenes -> Gemini Image (primary) -> OpenAI (fallback)
     combined = ' '.join([request.scene, request.clothing, request.location, request.angle]).lower()
-    # V3.44.2: explicit scenes route to Stable Diffusion (uncensored)
-    if request.scene in SD_EXPLICIT_SCENES and RUNDIFFUSION_API_KEY:
-        logger.info('Hybrid photo route scene=%s -> stable_diffusion (uncensored)', request.scene)
-        return 'stable_diffusion'
     if request.scene in SEEDREAM_ADULT_SCENES or INTIMATE_STYLE.search(combined):
         logger.info('Hybrid photo route scene=%s -> seedream45', request.scene)
         return 'seedream45'
@@ -2410,15 +2341,6 @@ async def _run_routed_photo_set(
     frames: int = PHOTO_SET_SIZE,
 ) -> list[GeneratedPhoto]:
     try:
-        # V3.44.2: Stable Diffusion for explicit/uncensored content
-        if provider == 'stable_diffusion':
-            try:
-                return await _run_sd_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
-            except PhotoGenerationError as exc:
-                # SD failed: fallback to Seedream
-                logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=stable_diffusion to=seedream45 reason=%s', telegram_id, resolved.scene, exc.reason)
-                track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'stable_diffusion', 'to': 'seedream45', 'reason': exc.reason})
-                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
         if provider == 'seedream45':
             try:
                 return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)

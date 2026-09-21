@@ -136,10 +136,10 @@ OPENAI_IMAGE_AVAILABLE = bool(AI_KEY) and os.getenv("OPENAI_IMAGE_AVAILABLE", "f
 # fal.ai / Seedream 4.5 is used by the hybrid photo router for higher-intimacy,
 # still non-explicit fashion edits. Keep the key server-side in Railway.
 FAL_KEY = os.getenv("FAL_KEY", "").strip()
-FAL_MODEL = os.getenv("FAL_MODEL", "fal-ai/bytedance/seedream/v4.5/edit").strip()
+FAL_MODEL = os.getenv("FAL_MODEL", "fal-ai/bytedance/seedream/v5.0/edit").strip()
 # V3.43.1: the edit endpoint rejects empty image_urls (HTTP 422), so freeform
 # studio prompts go to the dedicated text-to-image endpoint instead.
-FAL_MODEL_T2I = os.getenv("FAL_MODEL_T2I", "fal-ai/bytedance/seedream/v4.5/text-to-image").strip()
+FAL_MODEL_T2I = os.getenv("FAL_MODEL_T2I", "fal-ai/bytedance/seedream/v5.0/text-to-image").strip()
 FAL_IMAGE_SIZE = os.getenv("FAL_IMAGE_SIZE", "portrait_4_3").strip()
 FAL_TIMEOUT_SECONDS = int(os.getenv("FAL_TIMEOUT_SECONDS", "210"))
 FAL_CONNECT_TIMEOUT_SECONDS = int(os.getenv("FAL_CONNECT_TIMEOUT_SECONDS", "20"))
@@ -151,23 +151,6 @@ FAL_ESTIMATED_COST_USD = float(os.getenv("FAL_ESTIMATED_COST_USD", "0.04"))
 PHOTO_ROUTER_MODE = os.getenv("PHOTO_ROUTER_MODE", "hybrid").strip().lower()
 SEEDREAM_RELATIONSHIP_LEVEL = int(os.getenv("SEEDREAM_RELATIONSHIP_LEVEL", "5"))
 PHOTO_SET_SIZE = max(1, min(3, int(os.getenv("PHOTO_SET_SIZE", "1"))))
-
-# V3.44.2: Stable Diffusion via RunDiffusion API for uncensored/explicit content.
-# RunDiffusion is a cloud-hosted SD service with API access.
-# Sign up at https://rundiffusion.com, get API key from dashboard.
-# Alternative: self-hosted SD on RunPod/Vast.ai (change BASE_URL).
-RUNDIFFUSION_API_KEY = os.getenv("RUNDIFFUSION_API_KEY", "").strip()
-RUNDIFFUSION_BASE_URL = os.getenv("RUNDIFFUSION_BASE_URL", "https://api.rundiffusion.com/v1").strip().rstrip("/")
-RUNDIFFUSION_MODEL = os.getenv("RUNDIFFUSION_MODEL", "sd_xl_base_1.0").strip()
-# Negative prompt for better quality
-RUNDIFFUSION_NEGATIVE_PROMPT = os.getenv("RUNDIFFUSION_NEGATIVE_PROMPT", "ugly, blurry, low quality, distorted, deformed, bad anatomy, bad hands, missing fingers, extra limbs, watermark, text, signature").strip()
-RUNDIFFUSION_WIDTH = int(os.getenv("RUNDIFFUSION_WIDTH", "768"))
-RUNDIFFUSION_HEIGHT = int(os.getenv("RUNDIFFUSION_HEIGHT", "1024"))
-RUNDIFFUSION_STEPS = int(os.getenv("RUNDIFFUSION_STEPS", "30"))
-RUNDIFFUSION_CFG = float(os.getenv("RUNDIFFUSION_CFG", "7.0"))
-RUNDIFFUSION_TIMEOUT_SECONDS = int(os.getenv("RUNDIFFUSION_TIMEOUT_SECONDS", "120"))
-# Scenes that should use Stable Diffusion (uncensored) instead of Seedream
-SD_EXPLICIT_SCENES = {'explicit', 'topless'}
 
 # V3.19.9: Pollinations.ai was removed (repeated http_500 + wrong-subject
 # renders). Photo providers are now Gemini Image -> OpenAI -> fal/Seedream.
