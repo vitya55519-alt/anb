@@ -1199,6 +1199,18 @@ def add_tokens(telegram_id: int, amount: int) -> int:
         return new
 
 
+# V3.44.2: grant peaches (photo credits) to users from admin panel
+def add_peaches(telegram_id: int, amount: int) -> int:
+    with SessionLocal() as s:
+        row = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
+        if not row:
+            return 0
+        row.photo_credits = (row.photo_credits or 0) + amount
+        new = int(row.photo_credits)
+        s.commit()
+        return new
+
+
 def consume_constructor_credit(telegram_id: int) -> bool:
     with SessionLocal() as s:
         row = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
@@ -2167,6 +2179,20 @@ async def admin_grant_do_tokens_ask(cq: types.CallbackQuery):
     _admin_grant_sessions[cq.from_user.id] = {'step': 'tokens', 'target': target}
     await cq.answer()
     await cq.message.answer('Сколько токенов выдать? Пришли число, например 5.\n\n/cancel — отменить')
+
+
+# V3.44.2: peaches (photo credits) grant callback
+@dp.callback_query(F.data.startswith('admin:grantdo:peaches:'))
+async def admin_grant_do_peaches_ask(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    try:
+        target = int(cq.data.rsplit(':', 1)[1])
+    except ValueError:
+        return
+    _admin_grant_sessions[cq.from_user.id] = {'step': 'peaches', 'target': target}
+    await cq.answer()
+    await cq.message.answer('Сколько персиков выдать? Пришли число, например 10.\n\n/cancel — отменить')
 
 
 def _resolve_grant_target(ref: str) -> int | None:
@@ -6966,6 +6992,7 @@ async def text_message(message: types.Message):
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text='⭐ Premium 30 дней', callback_data=f'admin:grantdo:premium:{target}')],
                     [InlineKeyboardButton(text='🪙 Токены…', callback_data=f'admin:grantdo:tokens:{target}')],
+                    [InlineKeyboardButton(text='🍑 Персики…', callback_data=f'admin:grantdo:peaches:{target}')],
                     [InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')],
                 ]),
             )
@@ -6991,6 +7018,25 @@ async def text_message(message: types.Message):
                 pass
             await message.answer(
                 f'✅ Выдано {count} токенов пользователю id {target}. Баланс: {balance} 🪙',
+                reply_markup=admin_keyboard(),
+            )
+            return
+        # V3.44.2: peaches (photo credits) grant step
+        if step == 'peaches':
+            if not value.isdigit() or int(value) < 1:
+                await message.answer('Пришли количество персиков числом, например 10.\n\n/cancel — отменить')
+                return
+            count = int(value)
+            target = int(grant_sess['target'])
+            _admin_grant_sessions.pop(message.from_user.id, None)
+            ensure_user(target)
+            balance = add_peaches(target, count)
+            try:
+                await bot.send_message(target, f'🍑 Персики зачислены! Баланс: {balance} 🍑')
+            except Exception:
+                pass
+            await message.answer(
+                f'✅ Выдано {count} персиков пользователю id {target}. Баланс: {balance} 🍑',
                 reply_markup=admin_keyboard(),
             )
             return
