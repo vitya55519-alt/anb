@@ -370,6 +370,7 @@ WARDROBE_LEVEL_POOLS = {
         4: ['an elegant black lingerie fashion set with opaque coverage and polished catalog styling'],
         5: ['an elegant black lingerie fashion set with opaque coverage and polished catalog styling', 'an elegant burgundy lingerie fashion set with opaque coverage and polished catalog styling', 'an elegant white lingerie fashion set with opaque coverage and polished catalog styling'],
         6: ['a premium black lingerie fashion set with opaque coverage and polished editorial styling', 'a premium burgundy lingerie fashion set with opaque coverage and polished editorial styling', 'a premium white lingerie fashion set with opaque coverage and polished editorial styling'],
+        7: ['a premium sheer black lingerie set with minimal coverage and bold editorial styling', 'a premium red lace lingerie set with daring cutouts and editorial styling', 'a premium white silk lingerie set with elegant minimal coverage'],
     },
 }
 # Compatibility name retained for tests/admin tooling.
