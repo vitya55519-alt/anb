@@ -90,6 +90,12 @@ async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str) 
 
 
 async def reply(user_id: int, user_name: str, user_text: str, language_code: str | None = None, character_id: str = CHARACTER_ID) -> str:
+    # V3.44.2: secret commands check
+    from services import retention_features_service
+    secret_response = retention_features_service.process_secret_command(user_text)
+    if secret_response:
+        return secret_response
+    
     db_user_id = ensure_user(user_id, user_name, language_code=language_code)
     observe_message(db_user_id, user_text, character_id)
     delta = infer_delta(user_text)

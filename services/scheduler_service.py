@@ -14,6 +14,7 @@ from services.chat_service import proactive_reply
 from services.analytics_service import track_event
 from services import retention_service
 from services import donation_service
+from services import retention_features_service
 
 logger=logging.getLogger(__name__); scheduler=AsyncIOScheduler()
 
@@ -68,7 +69,9 @@ async def _proactive(bot):
                     kind='jealousy'
                 else:
                     kind='miss'
-                msg=retention_service.pick_text(kind)
+                # V3.44.2: per-character retention texts
+                char_id = CHARACTER_ID if CHARACTER_ID else 'anna_01'
+                msg=retention_features_service.get_retention_text(kind, char_id)
                 await bot.send_message(telegram_id,msg)
                 track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': kind})
             else:
@@ -116,7 +119,9 @@ async def _rituals(bot):
             if not kind: continue
             guard=(uid,kind,today_key)
             if guard in _ritual_sent: continue
-            text=retention_service.pick_text(kind)
+            # V3.44.2: per-character ritual messages
+            char_id = CHARACTER_ID if CHARACTER_ID else 'anna_01'
+            text=retention_features_service.get_retention_text(kind, char_id)
             if streak and streak >= 3:
                 text+=f'\n\nкстати, мы общаемся {streak} дней подряд 🔥 не прерывай серию 😉'
             await bot.send_message(int(tg_id),text)
