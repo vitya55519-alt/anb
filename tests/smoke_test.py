@@ -13,7 +13,7 @@ for ref in ('00_anna_canonical_face_v3.png','01_anna_canonical_look_v3.png'):
     assert (ROOT/character['visual_identity']['reference_folder']/ref).exists(), ref
 cfg=(ROOT/'config.py').read_text(encoding='utf-8')
 assert 'gpt-image-2' in cfg
-assert 'fal-ai/bytedance/seedream/v4.5/edit' in cfg
+assert 'bytedance/seedream/v5/pro/edit' in cfg
 assert 'FAL_KEY' in cfg
 assert 'PHOTO_ROUTER_MODE = os.getenv("PHOTO_ROUTER_MODE", "hybrid")' in cfg
 assert 'PHOTO_SET_SIZE' in cfg
@@ -23,7 +23,7 @@ adapt=(ROOT/'services/adaptation_service.py').read_text(encoding='utf-8')
 models=(ROOT/'models/app_models.py').read_text(encoding='utf-8')
 chat=(ROOT/'services/chat_service.py').read_text(encoding='utf-8')
 assert 'https://fal.run/' in photo
-assert "SEEDREAM_ADULT_SCENES = {'personal', 'lingerie', 'private_fashion', 'nude', 'tease'}" in photo
+assert "SEEDREAM_ADULT_SCENES = {'personal', 'lingerie', 'private_fashion', 'nude', 'tease', 'shower', 'bath', 'bedroom_intimate', 'morning_nude', 'changing_room', 'topless'}" in photo
 assert 'request.scene in SEEDREAM_ADULT_SCENES or INTIMATE_STYLE.search' in photo
 assert "return 'openai'" in photo
 assert 'OUTFIT_POOLS' in photo and 'WARDROBE_LEVEL_POOLS' in photo and 'HAIRSTYLE_POOL' in photo and 'SHOT_VARIANTS' in photo

@@ -25,7 +25,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.43.7', '3.43.6', '3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1')
+    assert VERSION in ('3.44.3', '3.43.7', '3.43.6', '3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1')
 
 
 # ── 1. photo engines: t2i endpoint + 429 backoff ────────────────────────────
@@ -33,7 +33,7 @@ def test_version_bumped():
 def test_seedream_t2i_uses_the_text_to_image_endpoint():
     # the edit endpoint validates image_urls as a non-empty sequence and
     # answered HTTP 422 to every reference-free studio prompt.
-    assert 'FAL_MODEL_T2I = os.getenv("FAL_MODEL_T2I", "fal-ai/bytedance/seedream/v4.5/text-to-image")' in CONFIG
+    assert 'FAL_MODEL_T2I = os.getenv("FAL_MODEL_T2I", "bytedance/seedream/v5/pro/text-to-image")' in CONFIG
     assert 'model=FAL_MODEL_T2I' in PHOTO
     assert "endpoint = f\"https://fal.run/{(model or FAL_MODEL).strip('/')}\"" in PHOTO
     # an empty reference list no longer ships in the payload at all

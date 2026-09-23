@@ -2259,7 +2259,8 @@ async function loadMe() {
 }
 
 function m_chipText(m) {
-  return m.premium ? '⭐ Premium' : ((m.name || '') + (m.photo_credits ? ' · 🍑' + m.photo_credits : ''));
+  // V3.44.3: premium must not hide the peaches balance — show both.
+  return (m.premium ? '⭐ Premium' : (m.name || '')) + (m.photo_credits ? ' · 🍑' + m.photo_credits : '');
 }
 
 // V3.38.0: the Come Closer profile — user card, relationship stats, MY
