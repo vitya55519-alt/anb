@@ -193,7 +193,7 @@ def test_faceswap_uploads_reference_and_locks_identity():
 # ── 7. V3.19.1: admin free constructor + video diagnostics ────────────────
 
 def test_admin_free_constructor():
-    assert 'async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None):' in MAIN
+    assert "async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None, source: str = ''):" in MAIN
     # v3.28.0: constructor spawns are tracked through _spawn_job
     assert "_spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id)" in MAIN
     assert "'✅ Создать · бесплатно (админ)'" in MAIN
@@ -201,6 +201,8 @@ def test_admin_free_constructor():
     assert MAIN.count('_finish_constructor(cq.message.chat.id, None, telegram_id)') >= 2
     # Refund logic only fires for paid runs.
     assert 'if charge:' in MAIN[MAIN.index('constructor avatar generation failed'):]
+    # V3.44.10: paid-with-peaches runs put the balance back when the avatar fails.
+    assert "elif source == 'peaches':" in MAIN
 
 
 def test_video_unavailable_diagnostics_for_admins():

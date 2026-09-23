@@ -1992,6 +1992,14 @@ function renderWizStep() {
     submitWizard(b.id === 'wizCreateStars' ? 'stars' : 'peaches')));
 }
 
+// V3.44.10: a freshly created persona lives in the «Community» segment —
+// flip the switch so she is visible the moment the avatar job finishes
+// instead of looking lost on «Peach Garden».
+function showCommunitySeg() {
+  CHAR_SEG = 'community';
+  document.querySelectorAll('#charSeg button').forEach(b => b.classList.toggle('on', b.dataset.seg === 'community'));
+}
+
 async function submitWizard(method) {
   if (!WIZ.name) return;
   const btn = document.getElementById('wizCreate') || document.getElementById('wizCreatePeaches') || document.getElementById('wizCreateStars');
@@ -2028,6 +2036,7 @@ async function submitWizard(method) {
     if (bj.free) {
       closeWizard();
       toast(L.wiz_paid_toast);
+      showCommunitySeg();
       pollCharacters();
       return;
     }
@@ -2038,6 +2047,7 @@ async function submitWizard(method) {
       if (status === 'paid') {
         closeWizard();
         toast(L.wiz_paid_toast);
+        showCommunitySeg();
         pollCharacters();
       } else if (status === 'failed') {
         toast(L.pay_failed);

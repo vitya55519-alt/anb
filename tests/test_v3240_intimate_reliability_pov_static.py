@@ -43,7 +43,7 @@ def test_fallback_chain_error_names_every_failed_engine():
 
 
 def test_constructor_admin_path_uses_real_user_id():
-    assert 'async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None):' in MAIN
+    assert "async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None, source: str = ''):" in MAIN
     assert 'if telegram_id is None:' in MAIN
     assert '        telegram_id = chat_id' in MAIN
     # v3.28.0: constructor spawns are tracked through _spawn_job

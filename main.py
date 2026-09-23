@@ -6390,12 +6390,14 @@ async def _show_my_character(chat_id: int, telegram_id: int):
         await bot.send_message(chat_id, '\n'.join(lines), reply_markup=markup)
 
 
-async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None):
+async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None, source: str = ''):
     """After Stars payment: generate the avatar, save the persona, open chat.
 
     V3.35.0: takes a chat id instead of a Message — the Mini App constructor
     pays through the same successful_payment pipeline and has no Message to
     reply into; the user's private chat id serves both callers.
+    V3.44.10: ``source`` tells a no-charge run how it was paid ('peaches') so
+    a failed avatar generation can refund peaches instead of going silent.
     """
     # V3.24.0: the admin free path used to pass the callback message, whose
     # from_user is the BOT — the session must be looked up by the real user id.
@@ -6458,6 +6460,19 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             except Exception:
                 logger.exception('constructor refund failed user=%s', telegram_id)
                 await bot.send_message(chat_id, 'аватар не получился 😕 напиши /support — вернём Stars.')
+        elif source == 'peaches':
+            # V3.44.10: peaches were already spent at the buy step — put them
+            # back so a provider outage never eats the balance. The unique
+            # reason sidesteps grant_photo_credits' idempotency marker.
+            try:
+                grant_photo_credits(
+                    telegram_id, CONSTRUCTOR_COST_PEACHES,
+                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}',
+                )
+                await bot.send_message(chat_id, f'аватар сейчас не получился 😕 вернула {CONSTRUCTOR_COST_PEACHES} 🍑 на баланс — попробуй ещё раз чуть позже.')
+            except Exception:
+                logger.exception('constructor peaches refund failed user=%s', telegram_id)
+                await bot.send_message(chat_id, f'аватар не получился 😕 напиши /support — вернём {CONSTRUCTOR_COST_PEACHES} 🍑.')
         else:
             # Admin free run — nothing to refund.
             await bot.send_message(chat_id, 'аватар сейчас не получился 😕 попробуй ещё раз чуть позже.')
@@ -6697,7 +6712,7 @@ async def constructor_buy_peaches_cb(cq: types.CallbackQuery):
         return
     record_payment(telegram_id, 'constructor_peaches', 0, f'peaches:{telegram_id}:{int(_time.time() * 1000)}', provider='peaches')
     await cq.message.answer(f'🍑 Списано {CONSTRUCTOR_COST_PEACHES} персиков. Создаю персонажа...')
-    _spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id), payload={'source': 'peaches'})
+    _spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id, source='peaches'), payload={'source': 'peaches'})
 
 
 @dp.callback_query(F.data == 'constructor:cancel')
@@ -8885,7 +8900,7 @@ async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
             return web.json_response({'ok': False, 'error': 'peach_spend_failed'}, status=500)
         record_payment(telegram_id, 'constructor_peaches', 0, f'peaches:{telegram_id}:{int(_time.time() * 1000)}', provider='peaches')
         track_event(uid, 'webapp_constructor_buy', metadata={'product': 'constructor', 'source': 'webapp_peaches'})
-        _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'webapp_peaches'})
+        _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id, source='peaches'), payload={'source': 'webapp_peaches'})
         return web.json_response({'ok': True, 'free': True, 'peaches': CONSTRUCTOR_COST_PEACHES})
     try:
         link = await bot.create_invoice_link(
