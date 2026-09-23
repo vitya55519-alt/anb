@@ -854,6 +854,16 @@ def api_partner(user_id: int, telegram_id: int) -> dict:
 _GALLERY_CACHE: dict[str, list[Path]] = {}
 
 
+def invalidate_gallery_cache(character_id: str) -> None:
+    """V3.44.13: drop a cached (possibly empty) gallery so a healed avatar shows.
+
+    Custom personas cache an empty list when ``avatar.jpg`` is missing from the
+    ephemeral disk; without this the storefront would 404 until the next boot
+    even after the file was re-downloaded.
+    """
+    _GALLERY_CACHE.pop(character_id, None)
+
+
 def character_gallery(character_id: str) -> list[Path]:
     """V3.39.0: the canonical shots of a character (face first, then look).
 

@@ -121,6 +121,32 @@ class CustomCharacter(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class ConstructorDraft(Base):
+    """V3.44.13: a constructor draft persisted in Postgres.
+
+    The wizard session used to live only in memory, so a Railway redeploy
+    between payment and ``save_custom_character`` silently ate the paid
+    persona (owner: «в итоге отображается только один персонаж»). The draft
+    survives restarts; the startup scan resumes paid-but-unfinished ones.
+    """
+    __tablename__ = "constructor_drafts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    params_json: Mapped[str] = mapped_column(Text, default="{}")
+    # Mini App face-swap reference arrives as a base64 data URL; kept here so a
+    # resumed creation can still anchor her identity.
+    photo_reference_base64: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 'peaches' / 'stars' / 'webapp_admin' / 'webapp_credit' — how she was paid,
+    # so a resumed run refunds through the right branch when the avatar fails.
+    source: Mapped[str] = mapped_column(String(16), default="")
+    paid: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Set while a _finish_constructor run works on her; a fresh claim means a
+    # live run owns the draft, a stale one means the deploy killed it.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AuthorRevenue(Base):
     """V3.44.6: tracks author earnings from spending on their custom characters."""
     __tablename__ = "author_revenue"

@@ -11,7 +11,9 @@ from __future__ import annotations
 import json
 import logging
 
-from models.app_models import CustomCharacter
+from sqlalchemy import select
+
+from models.app_models import CustomCharacter, ConstructorDraft, utcnow
 from services.db import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -368,6 +370,93 @@ def build_persona_context(params: dict, display_name: str, backstory: str = '', 
 
 
 # ── DB operations ──────────────────────────────────────────────────────────
+
+# ── V3.44.13: persisted constructor drafts (survive Railway redeploys) ─────
+
+def save_constructor_draft(telegram_id: int, *, params: dict, photo_reference_base64: str | None = None) -> None:
+    """Upsert the wizard draft; a fresh wizard run resets payment/completion."""
+    payload = json.dumps(params or {}, ensure_ascii=False)
+    with SessionLocal() as session:
+        row = session.scalar(select(ConstructorDraft).where(ConstructorDraft.telegram_id == str(telegram_id)))
+        if row is None:
+            row = ConstructorDraft(telegram_id=str(telegram_id))
+            session.add(row)
+        row.params_json = payload
+        row.photo_reference_base64 = photo_reference_base64
+        row.paid = False
+        row.done = False
+        row.claimed_at = None
+        session.commit()
+
+
+def get_constructor_draft(telegram_id: int) -> ConstructorDraft | None:
+    with SessionLocal() as session:
+        return session.scalar(select(ConstructorDraft).where(ConstructorDraft.telegram_id == str(telegram_id)))
+
+
+def snapshot_constructor_draft(telegram_id: int, *, params: dict, photo_reference_base64: str | None = None) -> None:
+    """Payment-time snapshot: refresh params WITHOUT resetting paid/claimed state.
+
+    A Telegram ``successful_payment`` redelivery must not steal the claim of a
+    live resumed run — only the wizard draft endpoint performs a full reset.
+    """
+    payload = json.dumps(params or {}, ensure_ascii=False)
+    with SessionLocal() as session:
+        row = session.scalar(select(ConstructorDraft).where(ConstructorDraft.telegram_id == str(telegram_id)))
+        if row is None:
+            row = ConstructorDraft(telegram_id=str(telegram_id))
+            session.add(row)
+        row.params_json = payload
+        row.photo_reference_base64 = photo_reference_base64
+        session.commit()
+
+
+def mark_constructor_draft_paid(telegram_id: int, source: str) -> None:
+    """Flag the draft as paid so the startup scan resumes it after a redeploy."""
+    with SessionLocal() as session:
+        row = session.scalar(select(ConstructorDraft).where(ConstructorDraft.telegram_id == str(telegram_id)))
+        if row is not None:
+            row.paid = True
+            row.source = source[:16]
+            session.commit()
+
+
+def claim_constructor_draft(telegram_id: int, *, stale_minutes: int = 15) -> ConstructorDraft | None:
+    """Take ownership of a paid unfinished draft, or None when a live run holds it."""
+    with SessionLocal() as session:
+        row = session.scalar(select(ConstructorDraft).where(ConstructorDraft.telegram_id == str(telegram_id)))
+        if row is None or not row.paid or row.done:
+            return None
+        now = utcnow()
+        if row.claimed_at is not None and (now - row.claimed_at).total_seconds() < stale_minutes * 60:
+            return None
+        row.claimed_at = now
+        session.commit()
+        return row
+
+
+def finish_constructor_draft(telegram_id: int) -> None:
+    """Mark her completed — the startup scan leaves finished drafts alone."""
+    with SessionLocal() as session:
+        row = session.scalar(select(ConstructorDraft).where(ConstructorDraft.telegram_id == str(telegram_id)))
+        if row is not None:
+            row.done = True
+            session.commit()
+
+
+def pending_constructor_drafts() -> list[ConstructorDraft]:
+    """Paid-but-unfinished drafts whose run died (unclaimed or stale claim)."""
+    from datetime import timedelta
+    stale_before = utcnow() - timedelta(minutes=15)
+    with SessionLocal() as session:
+        rows = session.scalars(
+            select(ConstructorDraft).where(
+                ConstructorDraft.paid.is_(True),
+                ConstructorDraft.done.is_(False),
+            )
+        ).all()
+        return [r for r in rows if r.claimed_at is None or r.claimed_at < stale_before]
+
 
 def save_custom_character(
     telegram_id: int,

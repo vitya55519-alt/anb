@@ -133,6 +133,9 @@ from services.custom_character_service import (
     get_custom_character_by_id, save_custom_character,
     summary_lines, step_index, is_custom_character,
     custom_character_params, set_custom_avatar_file_id,
+    save_constructor_draft, snapshot_constructor_draft, get_constructor_draft,
+    mark_constructor_draft_paid, claim_constructor_draft, finish_constructor_draft,
+    pending_constructor_drafts,
 )
 from services.consent_service import has_accepted, accept as accept_consent, delete_user_data, TERMS_VERSION, PRIVACY_VERSION
 from services.collection_service import collection_progress
@@ -4964,6 +4967,18 @@ async def successful_payment(message: types.Message):
         # V3.19.0: paid character constructor — avatar generation may take a
         # minute, so it runs as a task like the video pipeline.
         record_payment(message.from_user.id, 'constructor', payment.total_amount, charge)
+        # V3.44.13: snapshot the wizard session into Postgres and flag it paid
+        # so a redeploy mid-creation resumes her instead of eating the persona.
+        try:
+            _cons = _constructor_sessions.get(message.from_user.id)
+            if _cons and (_cons.get('params') or {}).get('name'):
+                snapshot_constructor_draft(
+                    message.from_user.id, params=_cons['params'],
+                    photo_reference_base64=_cons.get('photo_reference_base64'),
+                )
+            mark_constructor_draft_paid(message.from_user.id, 'stars')
+        except Exception:
+            logger.exception('constructor draft snapshot failed user=%s', message.from_user.id)
         _spawn_job('constructor', message.from_user.id, _finish_constructor(message.chat.id, charge, message.from_user.id), payload={'charge': charge})
         return
 
@@ -6430,6 +6445,23 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         telegram_id = chat_id
     cons = _constructor_sessions.pop(telegram_id, None)
     if not cons:
+        # V3.44.13: a redeploy wipes the in-memory session — fall back to the
+        # persisted draft so a paid creation still completes instead of dying
+        # with «что-то потерялось» (owner: «отображается только один персонаж»).
+        draft = claim_constructor_draft(telegram_id)
+        if draft is not None:
+            try:
+                draft_params = json.loads(draft.params_json or '{}')
+            except ValueError:
+                draft_params = {}
+            cons = {'params': draft_params, 'step': len(CONSTRUCTOR_STEPS)}
+            if draft.photo_reference_base64:
+                cons['photo_reference_base64'] = draft.photo_reference_base64
+            source = source or (draft.source or '')
+        elif get_constructor_draft(telegram_id) is not None:
+            # A resumed run already owns her — stay silent, it sends the messages.
+            return
+    if not cons:
         await bot.send_message(chat_id, 'что-то потерялось 😕 нажми «🎨 Мой персонаж» ещё раз.')
         return
     params = cons['params']
@@ -6611,6 +6643,11 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
                 logger.exception('constructor peaches refund failed user=%s', telegram_id)
                 await bot.send_message(chat_id, f'аватар не получился 😕 напиши /support — вернём {CONSTRUCTOR_COST_PEACHES} 🍑.')
         asyncio.create_task(_retry_constructor_avatar(telegram_id, row.character_id))
+    # V3.44.13: her draft is complete — the startup scan must not resume her.
+    try:
+        finish_constructor_draft(telegram_id)
+    except Exception:
+        logger.exception('constructor draft finish mark failed user=%s', telegram_id)
 
 
 @dp.callback_query(F.data == 'constructor:start')
@@ -7990,11 +8027,28 @@ async def _webapp_api_partner_withdraw(request: web.Request) -> web.Response:
 async def _webapp_photo(request: web.Request) -> web.Response:
     # V3.39.0: ?i= picks a shot from the canonical gallery (0 = face, 1 = look)
     # so the character page can show the Come Closer photo strip.
+    character_id = request.match_info['character_id']
+    if is_custom_character(character_id):
+        # V3.44.13: Railway's disk is ephemeral — a redeploy wipes
+        # data/custom_references/<id>/avatar.jpg and the storefront/cabinet
+        # photo 404s forever. Re-download it from the persisted Telegram
+        # file_id on demand (lazy GENERATION stays in the chat flow — this
+        # route only heals what Telegram already stores).
+        row = get_custom_character_by_id(character_id)
+        if row and row.avatar_file_id:
+            cached = Path(__file__).resolve().parent / 'data' / 'custom_references' / character_id / 'avatar.jpg'
+            if not cached.exists():
+                try:
+                    healed = await ensure_custom_avatar_cached(bot, character_id)
+                    if healed:
+                        webapp_service.invalidate_gallery_cache(character_id)
+                except Exception:
+                    logger.exception('custom avatar heal failed character=%s', character_id)
     try:
         idx = int(request.query.get('i', '0') or 0)
     except ValueError:
         idx = 0
-    photo = webapp_service.character_photo(request.match_info['character_id'], idx)
+    photo = webapp_service.character_photo(character_id, idx)
     if not photo:
         return web.Response(status=404)
     data, content_type = photo
@@ -8927,6 +8981,12 @@ async def _webapp_api_constructor_draft(request: web.Request) -> web.Response:
     if photo_reference_base64:
         session_data['photo_reference_base64'] = photo_reference_base64
     _constructor_sessions[telegram_id] = session_data
+    # V3.44.13: persist the draft so a redeploy between payment and save can
+    # resume the creation from Postgres instead of losing the paid persona.
+    try:
+        save_constructor_draft(telegram_id, params=params, photo_reference_base64=photo_reference_base64)
+    except Exception:
+        logger.exception('constructor draft persist failed user=%s', telegram_id)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     track_event(uid, 'webapp_constructor_draft')
     return web.json_response({
@@ -8953,11 +9013,19 @@ async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     if telegram_id in ADMIN_TELEGRAM_IDS:
         track_event(uid, 'webapp_constructor_buy', metadata={'product': 'constructor', 'source': 'webapp_admin'})
+        try:
+            mark_constructor_draft_paid(telegram_id, 'webapp_admin')
+        except Exception:
+            logger.exception('constructor draft mark failed user=%s', telegram_id)
         _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'webapp_admin'})
         return web.json_response({'ok': True, 'free': True})
     if consume_constructor_credit(telegram_id):
         record_payment(telegram_id, 'constructor', 0, f'freekassa_credit:{telegram_id}:{int(_time.time() * 1000)}')
         track_event(uid, 'webapp_constructor_buy', metadata={'product': 'constructor', 'source': 'webapp_credit'})
+        try:
+            mark_constructor_draft_paid(telegram_id, 'webapp_credit')
+        except Exception:
+            logger.exception('constructor draft mark failed user=%s', telegram_id)
         _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'webapp_credit'})
         return web.json_response({'ok': True, 'free': True})
     try:
@@ -8976,6 +9044,10 @@ async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
             return web.json_response({'ok': False, 'error': 'peach_spend_failed'}, status=500)
         record_payment(telegram_id, 'constructor_peaches', 0, f'peaches:{telegram_id}:{int(_time.time() * 1000)}', provider='peaches')
         track_event(uid, 'webapp_constructor_buy', metadata={'product': 'constructor', 'source': 'webapp_peaches'})
+        try:
+            mark_constructor_draft_paid(telegram_id, 'peaches')
+        except Exception:
+            logger.exception('constructor draft mark failed user=%s', telegram_id)
         _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id, source='peaches'), payload={'source': 'webapp_peaches'})
         return web.json_response({'ok': True, 'free': True, 'peaches': CONSTRUCTOR_COST_PEACHES})
     try:
@@ -9199,6 +9271,17 @@ async def main():
             logger.info('startup recovered_stale_jobs users=%s', len(stale))
     except Exception:
         logger.exception('startup job recovery failed')
+    # V3.44.13: finish constructor creations the previous deploy killed mid-job
+    # — the draft lives in Postgres, so a paid persona never vanishes again.
+    try:
+        pending = pending_constructor_drafts()
+        for _draft in pending:
+            logger.info('startup resuming constructor creation user=%s source=%s', _draft.telegram_id, _draft.source)
+            # through _spawn_job like every creation — a resumed run that dies
+            # again is picked up by the stale-job recovery at the next boot.
+            _spawn_job('constructor', int(_draft.telegram_id), _finish_constructor(int(_draft.telegram_id), None, int(_draft.telegram_id), source=_draft.source or ''), payload={'source': _draft.source or 'resume'})
+    except Exception:
+        logger.exception('startup constructor draft resume failed')
     # V3.29.0: prune wizard sessions nobody touched for over a day.
     try:
         _removed_sessions = dialog_store.cleanup_stale_sessions()
