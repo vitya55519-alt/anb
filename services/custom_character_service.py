@@ -421,7 +421,7 @@ def mark_constructor_draft_paid(telegram_id: int, source: str) -> None:
             session.commit()
 
 
-def claim_constructor_draft(telegram_id: int, *, stale_minutes: int = 15) -> ConstructorDraft | None:
+def claim_constructor_draft(telegram_id: int, *, stale_minutes: int = 12) -> ConstructorDraft | None:
     """Take ownership of a paid unfinished draft, or None when a live run holds it."""
     with SessionLocal() as session:
         row = session.scalar(select(ConstructorDraft).where(ConstructorDraft.telegram_id == str(telegram_id)))
@@ -447,7 +447,7 @@ def finish_constructor_draft(telegram_id: int) -> None:
 def pending_constructor_drafts() -> list[ConstructorDraft]:
     """Paid-but-unfinished drafts whose run died (unclaimed or stale claim)."""
     from datetime import timedelta
-    stale_before = utcnow() - timedelta(minutes=15)
+    stale_before = utcnow() - timedelta(minutes=12)
     with SessionLocal() as session:
         rows = session.scalars(
             select(ConstructorDraft).where(

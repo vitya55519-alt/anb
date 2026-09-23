@@ -21,7 +21,8 @@ def _finish_body() -> str:
 
 def test_persona_saved_even_when_avatar_fails():
     body = _finish_body()
-    assert 'for attempt in (1, 2, 3)' in body
+    assert 'for attempt in (1, 2)' in body
+    assert 'asyncio.wait_for(' in body
     assert 'avatar_failed = avatar_bytes is None' in body
     # the DB save comes AFTER the avatar attempts — she exists no matter what
     assert body.index('save_custom_character(') > body.index('avatar_failed = avatar_bytes is None')

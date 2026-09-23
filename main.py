@@ -6417,7 +6417,9 @@ async def _retry_constructor_avatar(telegram_id: int, character_id: str) -> None
             if not row or row.avatar_file_id:
                 return
             params, name = custom_character_params(character_id)
-            avatar_bytes, _mime = await generate_custom_avatar(build_avatar_prompt(params))
+            avatar_bytes, _mime = await asyncio.wait_for(
+                generate_custom_avatar(build_avatar_prompt(params)), timeout=240,
+            )
             sent = await bot.send_photo(telegram_id, BufferedInputFile(avatar_bytes, filename='avatar.jpg'))
             from services.photo_service import _custom_reference_dir
             avatar_folder = _custom_reference_dir(character_id)
@@ -6428,6 +6430,28 @@ async def _retry_constructor_avatar(telegram_id: int, character_id: str) -> None
             return
         except Exception:
             logger.exception('constructor avatar retry failed user=%s char=%s', telegram_id, character_id)
+
+
+async def _constructor_draft_sweep() -> None:
+    """V3.44.14: resume paid creations whose run died WITHOUT a server restart.
+
+    The V3.44.13 startup scan only covers deploys; an exception between payment
+    and save used to strand the draft forever — peaches spent, persona missing
+    (owner: «её просто нет»). The sweep re-checks every few minutes; the claim
+    freshness window (12 min) is wider than the worst bounded run (~10 min), so
+    a live creation is never double-spawned.
+    """
+    while True:
+        await asyncio.sleep(180)
+        try:
+            for _draft in pending_constructor_drafts():
+                try:
+                    logger.info('sweep resuming constructor creation user=%s source=%s', _draft.telegram_id, _draft.source)
+                    _spawn_job('constructor', int(_draft.telegram_id), _finish_constructor(int(_draft.telegram_id), None, int(_draft.telegram_id), source=_draft.source or ''), payload={'source': _draft.source or 'sweep'})
+                except Exception:
+                    logger.exception('constructor draft sweep resume failed user=%s', _draft.telegram_id)
+        except Exception:
+            logger.exception('constructor draft sweep failed')
 
 
 async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None, source: str = ''):
@@ -6461,6 +6485,13 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         elif get_constructor_draft(telegram_id) is not None:
             # A resumed run already owns her — stay silent, it sends the messages.
             return
+    else:
+        # V3.44.14: stamp ownership on the draft too, so the periodic sweep
+        # never double-spawns while this run is legitimately grinding.
+        try:
+            claim_constructor_draft(telegram_id)
+        except Exception:
+            pass
     if not cons:
         await bot.send_message(chat_id, 'что-то потерялось 😕 нажми «🎨 Мой персонаж» ещё раз.')
         return
@@ -6503,22 +6534,28 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             face_path = None
     # Use photo_reference as the primary identity anchor if available.
     identity_anchor = photo_reference_path or face_path
-    # V3.44.12: three attempts 20s apart — providers hiccup often but rarely
-    # stay down for a minute. Whatever happens, the character is STILL saved
-    # below: an invisible persona was exactly the owner's complaint («создал,
-    # а её нет нигде»). A missing avatar heals lazily on the first photo
-    # request (ensure_custom_avatar_cached) and via the delayed retry task.
+    # V3.44.12/14: two attempts 20s apart, each capped by wait_for — when fal
+    # hangs on every candidate one attempt could otherwise eat ~30 minutes
+    # (3 routes × 3 retries × 210s) and the persona never reached the save.
+    # Whatever happens, the character is STILL saved below within minutes:
+    # an invisible persona was exactly the owner's complaint («создал, а её
+    # нет нигде»). A missing avatar heals lazily on the first photo request
+    # (ensure_custom_avatar_cached), via the delayed retry task, and via the
+    # V3.44.13/14 draft resume (startup scan + periodic sweep).
     avatar_bytes = None
     try:
-        for attempt in (1, 2, 3):
+        for attempt in (1, 2):
             try:
-                avatar_bytes, _mime = await generate_custom_avatar(
-                    build_avatar_prompt(params, face_swap=bool(identity_anchor)), identity_anchor,
+                avatar_bytes, _mime = await asyncio.wait_for(
+                    generate_custom_avatar(
+                        build_avatar_prompt(params, face_swap=bool(identity_anchor)), identity_anchor,
+                    ),
+                    timeout=260,
                 )
                 break
             except Exception:
                 logger.exception('constructor avatar generation failed user=%s attempt=%s', telegram_id, attempt)
-                if attempt < 3:
+                if attempt < 2:
                     await asyncio.sleep(20)
     finally:
         if face_path:
@@ -8996,6 +9033,30 @@ async def _webapp_api_constructor_draft(request: web.Request) -> web.Response:
     })
 
 
+async def _webapp_api_constructor_status(request: web.Request) -> web.Response:
+    # V3.44.14: is a creation in flight? The app shows a live banner («Создаю
+    # Алину…») instead of an empty grid, so a slow avatar reads as progress.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    creating, name = False, ''
+    try:
+        draft = get_constructor_draft(telegram_id)
+        if draft is not None and draft.paid and not draft.done:
+            creating = True
+            try:
+                name = str((json.loads(draft.params_json or '{}') or {}).get('name') or '')
+            except ValueError:
+                name = ''
+    except Exception:
+        logger.exception('constructor status failed user=%s', telegram_id)
+    return web.json_response({'ok': True, 'creating': creating, 'name': name})
+
+
 async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
     # V3.35.0: pay for the app-built persona — admins and rub-credit holders
     # skip the invoice, everyone else gets the same `constructor:<id>` payload
@@ -9136,6 +9197,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/pictures', _webapp_api_pictures)
     app.router.add_get('/webapp/picture/{filename}', _webapp_picture)
     app.router.add_get('/webapp/api/constructor/options', _webapp_api_constructor_options)
+    app.router.add_get('/webapp/api/constructor/status', _webapp_api_constructor_status)
     app.router.add_post('/webapp/api/constructor/draft', _webapp_api_constructor_draft)
     app.router.add_post('/webapp/api/constructor/buy', _webapp_api_constructor_buy)
     runner = web.AppRunner(app)
@@ -9282,6 +9344,9 @@ async def main():
             _spawn_job('constructor', int(_draft.telegram_id), _finish_constructor(int(_draft.telegram_id), None, int(_draft.telegram_id), source=_draft.source or ''), payload={'source': _draft.source or 'resume'})
     except Exception:
         logger.exception('startup constructor draft resume failed')
+    # V3.44.14: and keep resuming them every few minutes — a run can also die
+    # mid-creation without any deploy (exception between payment and save).
+    asyncio.create_task(_constructor_draft_sweep())
     # V3.29.0: prune wizard sessions nobody touched for over a day.
     try:
         _removed_sessions = dialog_store.cleanup_stale_sessions()
