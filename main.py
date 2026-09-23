@@ -7439,6 +7439,29 @@ async def _healthz(request: web.Request) -> web.Response:
     return web.Response(text='ok')
 
 
+async def _diagnostics(request: web.Request) -> web.Response:
+    """V3.44.4: diagnostics endpoint for the owner — shows photo provider status."""
+    from config import (
+        FAL_KEY, GEMINI_API_KEY_VALID, OPENAI_API_KEY,
+        GEMINI_IMAGE_ENABLED, PHOTO_ROUTER_MODE,
+        TELEGRAM_TOKEN, BOT_USERNAME,
+    )
+    return web.json_response({
+        'bot_token_set': bool(TELEGRAM_TOKEN),
+        'bot_username': BOT_USERNAME or '-',
+        'fal_key_set': bool(FAL_KEY),
+        'gemini_key_valid': bool(GEMINI_API_KEY_VALID),
+        'openai_key_set': bool(OPENAI_API_KEY),
+        'gemini_image_enabled': bool(GEMINI_IMAGE_ENABLED),
+        'photo_router_mode': PHOTO_ROUTER_MODE,
+        'providers': {
+            'seedream': bool(FAL_KEY),
+            'gemini_image': bool(GEMINI_IMAGE_ENABLED),
+            'openai': bool(OPENAI_API_KEY),
+        },
+    })
+
+
 async def _fk_check(request: web.Request) -> web.Response:
     """V3.30.2: live FreeKassa diagnostics for the owner («страница платежа
     не загружается»). Probes every piece of the payment path and prints a
@@ -8689,9 +8712,9 @@ async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
             currency='XTR',
             prices=[LabeledPrice(label='Личный персонаж', amount=CONSTRUCTOR_COST_STARS)],
         )
-    except Exception:
-        logger.exception('webapp constructor invoice failed user=%s', telegram_id)
-        return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
+    except Exception as exc:
+        logger.exception('webapp constructor invoice failed user=%s error=%s', telegram_id, exc)
+        return web.json_response({'ok': False, 'error': 'invoice', 'detail': str(exc)[:200]}, status=502)
     track_event(uid, 'webapp_invoice_created', metadata={'product': 'constructor'})
     return web.json_response({'ok': True, 'link': link, 'stars': CONSTRUCTOR_COST_STARS})
 
@@ -8705,6 +8728,7 @@ async def _start_web_server() -> None:
     app.router.add_route('*', '/freekassa/success', _fk_success)
     app.router.add_route('*', '/freekassa/fail', _fk_fail)
     app.router.add_get('/healthz', _healthz)
+    app.router.add_get('/diagnostics', _diagnostics)
     app.router.add_get('/fkcheck', _fk_check)
     # V3.33.0: Mini App storefront (page + JSON API + character portraits).
     app.router.add_get('/webapp', _webapp_index)
