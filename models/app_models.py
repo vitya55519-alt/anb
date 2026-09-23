@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .waifu_models import Base
 
@@ -132,6 +132,23 @@ class AuthorRevenue(Base):
     author_earnings_stars: Mapped[float] = mapped_column(Float, nullable=False)
     revenue_percent: Mapped[float] = mapped_column(Float, default=5.0)
     source: Mapped[str] = mapped_column(String(32), nullable=False)  # 'photo', 'video', 'constructor', etc.
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ChatMedia(Base):
+    """V3.44.8: persistent storage for in-app chat media (photos/circles/voice).
+
+    Railway's ephemeral disk wipes data/app_media on every redeploy, so photo
+    messages in the chat history 404'd afterwards («висят как сообщения»).
+    The bytes live in PostgreSQL; the disk file is only a re-materializable
+    cache served by chat_media_file_path().
+    """
+    __tablename__ = "chat_media"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    filename: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(32), default="application/octet-stream")
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

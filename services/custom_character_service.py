@@ -409,6 +409,15 @@ def get_all_custom_characters(telegram_id: int) -> list[CustomCharacter]:
         return session.query(CustomCharacter).filter_by(telegram_id=str(telegram_id)).all()
 
 
+def get_author_characters(author_telegram_id: str) -> list[CustomCharacter]:
+    """V3.44.8: community-published characters by an author (newest first)."""
+    with SessionLocal() as session:
+        return (session.query(CustomCharacter)
+                .filter_by(author_telegram_id=str(author_telegram_id), community_published=True)
+                .order_by(CustomCharacter.created_at.desc())
+                .all())
+
+
 def get_custom_character_by_id(character_id: str) -> CustomCharacter | None:
     with SessionLocal() as session:
         return session.query(CustomCharacter).filter_by(character_id=character_id).first()

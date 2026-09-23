@@ -64,13 +64,14 @@ from config import (
     WEBAPP_INIT_DATA_MAX_AGE,
     fiat_values,
 )
-from models.app_models import CharacterComment, CharacterLike, CharacterStat, DailyBonus, Message, NotificationPref, SimulatedMessage, User
+from models.app_models import CharacterCard, CharacterComment, CharacterLike, CharacterStat, ChatMedia, DailyBonus, Message, NotificationPref, SimulatedMessage, User
 from services import legal_service
 from services.access_service import is_premium
 from services.character_card_service import get_card, get_scenario_hook, list_cards
 from services.custom_character_service import (
     CONSTRUCTOR_STEPS, OPTION_LABELS_EN, STEP_TITLES_EN,
     custom_character_id, is_custom_character,
+    get_all_custom_characters, get_author_characters, get_custom_character_by_id,
 )
 from services.db import SessionLocal
 from services.ui_lang import EN, user_lang
@@ -239,6 +240,70 @@ def _get_author_earnings(telegram_id: int) -> float:
         return 0.0
 
 
+def _mine_character_ids(telegram_id: int | None) -> set[str]:
+    """V3.44.8: ids of every custom character the caller owns.
+
+    The old check compared the card id against ``custom_character_id(telegram_id)``
+    — a fresh random UUID per call since V3.44.6, so it never matched and the
+    «mine» badge / «MY CHARACTERS» profile block was always empty.
+    """
+    if not telegram_id:
+        return set()
+    try:
+        return {c.character_id for c in get_all_custom_characters(telegram_id)}
+    except Exception:
+        logger.exception('mine ids load failed user=%s', telegram_id)
+        return set()
+
+
+def _batch_rel_levels(telegram_id: int | None, character_ids: list[str]) -> dict[str, int]:
+    """V3.44.8: relationship levels for many characters in ONE query (was N+1
+    ``get_relationship_level`` calls, each opening its own DB session)."""
+    if not telegram_id or not character_ids:
+        return {}
+    try:
+        from services.photo_service import STAGE_INDEX
+        from services.test_mode import get_stage as get_test_stage
+        from models.relationship_models import UserCharacterRelationship
+        override = get_test_stage(telegram_id)
+        if override:
+            return {cid: STAGE_INDEX.get(override, 0) + 1 for cid in character_ids}
+        with SessionLocal() as session:
+            user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+            if not user:
+                return {}
+            rows = session.scalars(
+                select(UserCharacterRelationship).where(
+                    UserCharacterRelationship.user_id == user.id,
+                    UserCharacterRelationship.character_id.in_(character_ids),
+                )
+            ).all()
+            # No relationship row = 'stranger' = level 1 (mirrors get_relationship_level).
+            return {cid: STAGE_INDEX.get('stranger', 0) + 1 for cid in character_ids} | {
+                r.character_id: STAGE_INDEX.get(r.stage, 0) + 1 for r in rows
+            }
+    except Exception:
+        logger.exception('batch rel levels failed user=%s', telegram_id)
+        return {}
+
+
+def _author_brief(character_id: str) -> dict | None:
+    """V3.44.8: public author info for a custom character card."""
+    try:
+        row = get_custom_character_by_id(character_id)
+        if not row or not row.author_telegram_id:
+            return None
+        name = None
+        with SessionLocal() as session:
+            author = session.scalar(select(User).where(User.telegram_id == str(row.author_telegram_id)))
+            if author:
+                name = author.name or (f'@{author.username}' if author.username else None)
+        return {'id': str(row.author_telegram_id), 'name': name or 'Автор'}
+    except Exception:
+        logger.exception('author brief failed char=%s', character_id)
+        return None
+
+
 def api_characters(telegram_id: int | None = None) -> list[dict]:
     """Storefront grid: every visible card plus its storefront photo URL.
 
@@ -247,24 +312,31 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     user-made (``custom``) and which one is the caller's own creation
     (``mine``), so the app can offer «create your own» and chat entry.
     V3.43.9: includes relationship level per character for the progress bar.
+    V3.44.8: ``mine`` comes from the DB (was a never-matching UUID comparison);
+    the author also sees their own not-community-published cards (``private``);
+    relationship levels load in one batched query.
     """
     selected = None
     if telegram_id:
         user = _user_row(telegram_id)
         selected = (user.selected_character or CHARACTER_ID) if user else None
     views = character_views_map()
-    # V3.43.9: pre-load relationship levels for all characters at once.
-    rel_levels: dict[str, int] = {}
-    if telegram_id:
-        try:
-            from services.photo_service import get_relationship_level
-            for card in list_cards(visible_only=True):
-                rel_levels[card.character_id] = get_relationship_level(telegram_id, card.character_id)
-        except Exception:
-            pass
+    # V3.44.8: the caller's own character ids (mine badge + private cards).
+    mine_ids = _mine_character_ids(telegram_id)
+    cards = list_cards(visible_only=True)
+    # V3.44.8: the author always sees their own not-community-published cards
+    # too — previously a «community_no» persona vanished from her owner's app.
+    if mine_ids:
+        visible_ids = {c.character_id for c in cards}
+        for extra in list_cards(visible_only=False):
+            if extra.character_id in mine_ids and extra.character_id not in visible_ids:
+                cards.append(extra)
+    # V3.43.9: relationship levels for the progress bar (batched, one query).
+    rel_levels = _batch_rel_levels(telegram_id, [c.character_id for c in cards])
     out = []
-    for card in list_cards(visible_only=True):
+    for card in cards:
         custom = is_custom_character(card.character_id)
+        mine = card.character_id in mine_ids
         # V3.43.2: cache-buster so a re-rendered tile reaches the grid at
         # once instead of sitting in the WebView cache for an hour.
         ver = asset_version(card.character_id)
@@ -301,7 +373,11 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             ],
             'selected': card.character_id == selected,
             'custom': custom,
-            'mine': custom and bool(telegram_id) and card.character_id == custom_character_id(telegram_id),
+            'mine': mine,
+            # V3.44.8: own not-community-published card — visible only to its author.
+            'private': mine and not card.is_visible,
+            # V3.44.8: public author info so the app can link the author page.
+            'author': _author_brief(card.character_id) if custom else None,
             # V3.43.9: relationship level (0-8) for the progress bar.
             'level': rel_levels.get(card.character_id, 0),
         })
@@ -510,7 +586,9 @@ def api_chat_history(db_user_id: int, character_id: str, limit: int = 30) -> lis
 def api_chat_list(db_user_id: int, telegram_id: int | None = None) -> list[dict]:
     """V3.38.0: the «Чаты» tab — one row per character the user has any
     messages with, newest activity first, carrying the storefront card data
-    (photo, status) so a tap can open the shared in-app chat view."""
+    (photo, status) so a tap can open the shared in-app chat view.
+    V3.44.8: cards batch-load in the same session (was N+1 get_card calls) and
+    «mine» comes from the DB instead of a never-matching UUID comparison."""
     try:
         with SessionLocal() as session:
             rows = session.scalars(
@@ -519,15 +597,18 @@ def api_chat_list(db_user_id: int, telegram_id: int | None = None) -> list[dict]
                 .order_by(Message.created_at.desc())
                 .limit(400)
             ).all()
+            # V3.44.8: batch-load every card in one query (was N+1 get_card).
+            card_map = {c.character_id: c for c in session.query(CharacterCard).all()} if rows else {}
     except Exception:
         return []
     seen: dict[str, Message] = {}
     for m in rows:
         if m.character_id not in seen:
             seen[m.character_id] = m
+    mine_ids = _mine_character_ids(telegram_id)
     out = []
     for character_id, last in seen.items():
-        card = get_card(character_id)
+        card = card_map.get(character_id)
         custom = is_custom_character(character_id)
         try:
             ts = last.created_at.isoformat() if last.created_at else None
@@ -540,13 +621,51 @@ def api_chat_list(db_user_id: int, telegram_id: int | None = None) -> list[dict]
             'emoji': (card.button_emoji if card else None) or '👩',
             'status': card.status if card else ('active' if custom else 'soon'),
             'custom': custom,
-            'mine': custom and bool(telegram_id) and character_id == custom_character_id(telegram_id),
+            'mine': character_id in mine_ids,
             'selected': False,
             'last_message': (last.content or '')[:140],
             'last_role': last.role,
             'last_ts': ts,
         })
     return out[:50]
+
+
+def api_author(author_telegram_id: str) -> dict:
+    """V3.44.8: public author page — profile plus every community-visible
+    character they created, so other users can browse one author's girls."""
+    author_id = str(author_telegram_id or '').strip()
+    if not author_id:
+        return {'ok': False, 'error': 'bad_request'}
+    name = None
+    try:
+        with SessionLocal() as session:
+            author = session.scalar(select(User).where(User.telegram_id == author_id))
+            if author:
+                name = author.name or (f'@{author.username}' if author.username else None)
+    except Exception:
+        logger.exception('author lookup failed author=%s', author_id)
+    characters = []
+    try:
+        visible = {c.character_id for c in list_cards(visible_only=True)}
+        views = character_views_map()
+        for row in get_author_characters(author_id):
+            if row.character_id not in visible:
+                continue
+            card = get_card(row.character_id)
+            if not card:
+                continue
+            ver = asset_version(card.character_id)
+            characters.append({
+                'id': card.character_id,
+                'name': card.display_name,
+                'age': card.age,
+                'bio': card.short_bio or '',
+                'photo': f"/webapp/photo/{card.character_id}?v={ver}",
+                'views': views.get(card.character_id, 0),
+            })
+    except Exception:
+        logger.exception('author characters failed author=%s', author_id)
+    return {'ok': True, 'author': {'id': author_id, 'name': name or 'Автор'}, 'characters': characters}
 
 
 # ── V3.38.0: «Картинки» studio persistence ────────────────────────────────
@@ -1246,18 +1365,51 @@ APP_MEDIA_DIR = ROOT / 'data' / 'app_media'
 _MEDIA_NAME_RE = re.compile(r'^\d+_[0-9a-f]{8}\.(jpg|jpeg|png|mp4|ogg)$')
 
 
-def save_chat_media(telegram_id: int, data: bytes, ext: str) -> str:
-    """Store a generated media file per user; returns the unguessable name."""
+def save_chat_media(telegram_id: int, data: bytes, ext: str, content_type: str = '') -> str:
+    """Store a generated media file per user; returns the unguessable name.
+
+    V3.44.8: the bytes are also persisted in PostgreSQL (chat_media table) —
+    Railway's ephemeral disk wipes data/app_media on every redeploy, and chat
+    history photos must survive it. The disk file is only a cache.
+    """
     folder = APP_MEDIA_DIR / str(int(telegram_id))
     folder.mkdir(parents=True, exist_ok=True)
     name = f'{int(time.time() * 1000)}_{secrets.token_hex(4)}.{ext}'
     (folder / name).write_bytes(data)
+    try:
+        with SessionLocal() as session:
+            session.add(ChatMedia(
+                telegram_id=str(int(telegram_id)), filename=name,
+                content_type=content_type or 'application/octet-stream', data=data,
+            ))
+            session.commit()
+    except Exception:
+        logger.exception('chat media db persist failed user=%s', telegram_id)
     return name
 
 
 def chat_media_file_path(telegram_id: int, filename: str) -> Path | None:
-    """Owner-scoped media path; None when the name is not a server-made one."""
+    """Owner-scoped media path; None when the name is not a server-made one.
+
+    V3.44.8: on a disk-cache miss (post-redeploy) the bytes are restored from
+    PostgreSQL and re-materialized on disk, so history photos keep loading.
+    """
     if not _MEDIA_NAME_RE.match(filename or ''):
         return None
     path = APP_MEDIA_DIR / str(int(telegram_id)) / filename
-    return path if path.exists() else None
+    if path.exists():
+        return path
+    try:
+        with SessionLocal() as session:
+            row = session.scalar(select(ChatMedia).where(
+                ChatMedia.telegram_id == str(int(telegram_id)),
+                ChatMedia.filename == filename,
+            ))
+            if not row:
+                return None
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(row.data)
+            return path
+    except Exception:
+        logger.exception('chat media db restore failed user=%s file=%s', telegram_id, filename)
+        return None

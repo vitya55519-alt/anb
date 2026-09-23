@@ -171,8 +171,11 @@ def test_chat_media_endpoint_and_gates():
 
 
 def test_chat_media_persistence_and_rendering():
-    assert 'def save_chat_media(telegram_id: int, data: bytes, ext: str)' in WEBAPP_SVC
+    # V3.44.8: the signature gained an optional content_type (stored in the
+    # chat_media table so history media survives Railway redeploys).
+    assert 'def save_chat_media(telegram_id: int, data: bytes, ext: str, content_type' in WEBAPP_SVC
     assert 'def chat_media_file_path(telegram_id: int, filename: str)' in WEBAPP_SVC
+    assert 'class ChatMedia(Base)' in WEBAPP_SVC or 'ChatMedia' in WEBAPP_SVC
     assert 'media_kind: Mapped[str | None]' in MODELS
     assert 'media_url: Mapped[str | None]' in MODELS
     assert 'media_kind=media_kind, media_url=media_url' in MEMORY

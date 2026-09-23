@@ -129,7 +129,8 @@ from services.character_dna_service import trait_bars
 from services.photo_reaction_service import react_to_photo
 from services.custom_character_service import (
     CONSTRUCTOR_STEPS, OPTION_LABELS, PARAM_TITLES, build_avatar_prompt,
-    custom_character_id, get_custom_character, get_custom_character_by_id, save_custom_character,
+    custom_character_id, get_all_custom_characters, get_custom_character,
+    get_custom_character_by_id, save_custom_character,
     summary_lines, step_index, is_custom_character,
 )
 from services.consent_service import has_accepted, accept as accept_consent, delete_user_data, TERMS_VERSION, PRIVACY_VERSION
@@ -1518,6 +1519,30 @@ async def _maybe_refund_paid_photo(chat_id: int, telegram_id: int, charge: str |
     return True
 
 
+async def _mirror_delivery_to_chat_history(telegram_id: int, character_id: str) -> None:
+    """V3.44.8: mirror the just-delivered bot photo set into the Mini App chat
+    history. Previously only app-side media was recorded, so photos asked in
+    the bot never appeared in the app chat («висят как сообщения»). Bytes come
+    from the delivery rows (PostgreSQL), so the mirror survives redeploys."""
+    from models.photo_models import PhotoDelivery
+    from services.db import SessionLocal as _Session
+    uid = ensure_user(telegram_id)
+    with _Session() as session:
+        rows = session.scalars(
+            select(PhotoDelivery)
+            .where(PhotoDelivery.user_id == uid)
+            .order_by(PhotoDelivery.created_at.desc(), PhotoDelivery.id.desc())
+            .limit(4)
+        ).all()
+        frames = [r for r in rows if r.full_resolution_bytes]
+    if not frames:
+        return
+    for row in reversed(frames):  # oldest first, so the set reads in order
+        filename = webapp_service.save_chat_media(telegram_id, row.full_resolution_bytes, 'jpg', 'image/jpeg')
+        save_message(uid, character_id, 'assistant', '📸 отправила фото',
+                     media_kind='photo', media_url=f'/webapp/media/{filename}')
+
+
 async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo'):
     uid = ensure_user(telegram_id)
     ping = asyncio.create_task(_photo_progress_ping(chat_id, telegram_id))
@@ -1534,6 +1559,12 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
         async with ChatActionSender.upload_photo(bot=bot, chat_id=chat_id):
             sent = await deliver_photo(bot, chat_id, telegram_id, request, delivery_type, character_id=character_id)
         track_event(uid, 'photo_job_completed', metadata={'scene': request.scene, 'count': len(sent), 'delivery_type': delivery_type})
+        # V3.44.8: bot-delivered photos land in the Mini App chat history too.
+        try:
+            if sent:
+                await _mirror_delivery_to_chat_history(telegram_id, character_id)
+        except Exception:
+            logger.exception('chat history photo mirror failed user=%s', telegram_id)
         # V3.21.0: the couple album keeps one milestone photo per level.
         try:
             if sent:
@@ -6253,9 +6284,8 @@ def _constructor_prompt(step_key: str) -> str:
 
 
 async def _constructor_intro(chat_id: int, telegram_id: int):
-    if get_custom_character(telegram_id):
-        await _show_my_character(chat_id, telegram_id)
-        return
+    # V3.44.6: no character limit — the intro always starts a fresh wizard;
+    # existing characters stay reachable via «🎨 Мой персонаж».
     _constructor_sessions[telegram_id] = {'params': {}, 'step': 0}
     await bot.send_message(
         chat_id,
@@ -6339,21 +6369,23 @@ def _my_character_keyboard(character_id: str):
 
 
 async def _show_my_character(chat_id: int, telegram_id: int):
-    row = get_custom_character(telegram_id)
-    if not row:
+    # V3.44.8: list ALL of the user's characters (was only the first one) —
+    # each gets a chat button, and «create new» always stays available.
+    rows = get_all_custom_characters(telegram_id)
+    if not rows:
         await _constructor_intro(chat_id, telegram_id)
         return
-    try:
-        params = json.loads(row.params_json or '{}')
-    except (TypeError, ValueError):
-        params = {}
-    lines = ['🎨 Твой персонаж готов:', '']
-    lines += summary_lines(params, row.display_name or 'Без имени')
-    if row.face_file_id:
-        lines.append('📷 Внешность — по твоему фото.')
-    markup = _my_character_keyboard(row.character_id)
-    if row.avatar_file_id:
-        await bot.send_photo(chat_id, row.avatar_file_id, caption='\n'.join(lines), reply_markup=markup)
+    lines = ['🎨 Твои персонажи:', '']
+    buttons = []
+    for row in rows:
+        name = row.display_name or 'Без имени'
+        lines.append(f'• {name}')
+        buttons.append([InlineKeyboardButton(text=f'💬 {name}', callback_data=f'mychar:chat:{row.character_id}')])
+    buttons.append([InlineKeyboardButton(text='🆕 Создать нового', callback_data='constructor:restart')])
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    latest = rows[-1]
+    if latest.avatar_file_id:
+        await bot.send_photo(chat_id, latest.avatar_file_id, caption='\n'.join(lines), reply_markup=markup)
     else:
         await bot.send_message(chat_id, '\n'.join(lines), reply_markup=markup)
 
@@ -6681,8 +6713,11 @@ async def my_character_chat_cb(cq: types.CallbackQuery):
     if not is_custom_character(character_id):
         await cq.answer()
         return
-    row = get_custom_character(cq.from_user.id)
-    if not row or row.character_id != character_id:
+    # V3.44.8: the user may own several characters — check the whole list,
+    # not just the first one (which blocked chat for character #2+).
+    row = next((c for c in get_all_custom_characters(cq.from_user.id)
+                if c.character_id == character_id), None)
+    if not row:
         await cq.answer('Это не твой персонаж 🙂', show_alert=True)
         return
     await cq.answer()
@@ -7689,6 +7724,16 @@ async def _webapp_api_leaderboard(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'leaderboard': webapp_service.character_leaderboard(limit)})
 
 
+async def _webapp_api_author(request: web.Request) -> web.Response:
+    """V3.44.8: public author page — profile + every community character they
+    created, so users can browse one author's girls (author revenue funnel)."""
+    author_id = str(request.query.get('author_id', '') or '').strip()[:64]
+    if not author_id:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    return web.json_response(webapp_service.api_author(author_id),
+                             headers={'Cache-Control': 'no-store'})
+
+
 async def _webapp_api_comments(request: web.Request) -> web.Response:
     """V3.44.0: public comments under character cards."""
     character_id = request.query.get('character_id', '')
@@ -8488,7 +8533,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)
     if not data:
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)
-    filename = webapp_service.save_chat_media(telegram_id, data, ext)
+    filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
     url = f'/webapp/media/{filename}'
     if kind == 'photo':
         # V3.43.7: her caption is scene-flavored, the same AUTO_CAPTIONS the
@@ -8681,7 +8726,7 @@ async def _webapp_api_feature_action(request: web.Request) -> web.Response:
         try:
             data, mime, ext = await _webapp_media_scene(telegram_id, character_id, date.scene)
             if data:
-                filename = webapp_service.save_chat_media(telegram_id, data, ext)
+                filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
                 photo_url = f'/webapp/media/{filename}'
                 save_message(uid, character_id, 'assistant', '📸 фото с нашей прогулки', media_kind='photo', media_url=photo_url)
         except Exception:
@@ -8853,6 +8898,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp', _webapp_index)
     app.router.add_get('/webapp/api/me', _webapp_api_me)
     app.router.add_get('/webapp/api/characters', _webapp_api_characters)
+    app.router.add_get('/webapp/api/author', _webapp_api_author)
     # V3.44.0: popularity leaderboard
     app.router.add_get('/webapp/api/leaderboard', _webapp_api_leaderboard)
     # V3.44.0: public comments under character cards.

@@ -679,6 +679,8 @@
     </div>
     <button class="charcta" id="charStart"></button>
     <div class="charblock" id="charBio"></div>
+    <!-- V3.44.8: author link — opens the author's public page (author funnel) -->
+    <button class="charcta" id="charAuthor" style="display:none;background:var(--card);color:var(--accent)"></button>
     <div class="charblock" id="charPlot" style="display:none"><div class="lbl3" id="charPlotLbl"></div><div id="charPlotText" style="font-style:italic"></div></div>
     <button class="charcta" id="charSelect" style="background:var(--card);color:var(--accent)"></button>
     <!-- V3.44.0: public comments under character cards -->
@@ -689,6 +691,17 @@
       <button id="charCommentBtn" style="margin-top:8px;padding:10px 16px;border:0;border-radius:10px;background:var(--accent);color:#fff;font-size:14px;font-weight:600;cursor:pointer"></button>
     </div>
   </div>
+</div>
+<!-- V3.44.8: author page — every community character by one author -->
+<div class="overlay" id="authorview">
+  <div class="chat-head">
+    <button class="iconbtn" id="authorBack">‹</button>
+    <div>
+      <div class="nm" id="authorName"></div>
+      <div class="sub" id="authorSub"></div>
+    </div>
+  </div>
+  <div class="page" id="authorBody" style="padding-bottom:20px"></div>
 </div>
 <!-- V3.35.0: character constructor wizard — build your own girl in the app -->
 <div class="overlay" id="wizview">
@@ -800,6 +813,9 @@ const L_EN = {
   wiz_free: 'free (admin)', wiz_paid_toast: 'Drawing your girl — up to a minute. Her card appears in the grid ✨',
   wiz_exists: 'You already have a character — recreate via the bot chat',
   made_badge: 'user-made', mine_badge: 'yours', mychar_note: 'Your character is created 🎨 recreate via the bot chat',
+  // V3.44.8: author page strings (other languages fall back to these).
+  author_row: name => 'Author: ' + name, author_sub: n => n + ' character' + (n === 1 ? '' : 's'),
+  author_empty: 'No published characters yet',
   // V3.38.0: the Come Closer tabs — chats list, picture studio, profile.
   chats_title: 'Chats', chats_empty: 'No dialogs yet — open a character and she will answer right here.',
   pic_title: 'Create a picture', pic_prompt_ph: 'Describe the picture — who, where, mood…',
@@ -900,6 +916,9 @@ const L_RU = {
   wiz_free: 'бесплатно (админ)', wiz_paid_toast: 'Рисую твою героиню — до минуты. Карточка появится в сетке ✨',
   wiz_exists: 'Персонаж уже создан — создать заново можно в чате бота',
   made_badge: 'создана игроком', mine_badge: 'твоя', mychar_note: 'Твой персонаж создан 🎨 создать заново можно в чате бота',
+  // V3.44.8: строки страницы автора.
+  author_row: name => 'Автор: ' + name, author_sub: n => 'Персонажей: ' + n,
+  author_empty: 'Пока нет опубликованных персонажей',
   // V3.38.0: вкладки в стиле Come Closer — чаты, студия картинок, профиль.
   chats_title: 'Чаты', chats_empty: 'Диалогов пока нет — открой персонажу, и она ответит прямо здесь.',
   pic_title: 'Создать картинку', pic_prompt_ph: 'Опиши картинку — кто, где, настроение…',
@@ -1789,10 +1808,52 @@ function openCharPage(el) {
   const selBtn = document.getElementById('charSelect');
   selBtn.textContent = L.make_mine;
   selBtn.style.display = c.selected ? 'none' : '';
+  // V3.44.8: author link — opens the author's public page (author funnel).
+  const authorBtn = document.getElementById('charAuthor');
+  if (c.custom && c.author && c.author.id) {
+    authorBtn.style.display = '';
+    authorBtn.textContent = '🎨 ' + L.author_row(c.author.name);
+    authorBtn.onclick = () => openAuthor(c.author.id);
+  } else {
+    authorBtn.style.display = 'none';
+  }
   // V3.44.0: load comments for this character
   loadComments(c.id);
   document.getElementById('charview').classList.add('open');
 }
+
+// ── V3.44.8: author page — browse one author's community characters ──────
+async function openAuthor(authorId) {
+  document.getElementById('authorview').classList.add('open');
+  const body = document.getElementById('authorBody');
+  body.innerHTML = `<div class="loading">${esc(L.loading)}</div>`;
+  try {
+    const r = await fetch('/webapp/api/author?author_id=' + encodeURIComponent(authorId), {cache: 'no-store'});
+    const j = await r.json();
+    if (!j.ok) { body.innerHTML = `<div class="err">${esc(L.reply_err)}</div>`; return; }
+    document.getElementById('authorName').textContent = j.author.name;
+    document.getElementById('authorSub').textContent = L.author_sub(j.characters.length);
+    if (!j.characters.length) {
+      body.innerHTML = `<div class="chat-empty">${esc(L.author_empty)}</div>`;
+      return;
+    }
+    body.innerHTML = j.characters.map(c => `
+      <div class="card" data-id="${esc(c.id)}" style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:14px;background:var(--card);margin-bottom:10px;cursor:pointer">
+        <img src="${esc(c.photo)}" alt="" loading="lazy" decoding="async" style="width:56px;height:56px;border-radius:12px;object-fit:cover">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700">${esc(c.name)}</div>
+          <div style="font-size:12px;opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.bio || '')}</div>
+        </div>
+        <span style="font-size:12px;opacity:.6">👁 ${esc(fmtK(c.views))}</span>
+      </div>`).join('');
+    body.querySelectorAll('.card[data-id]').forEach(el =>
+      el.addEventListener('click', () => openCharPage(el)));
+  } catch (e) {
+    body.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+document.getElementById('authorBack').addEventListener('click', () =>
+  document.getElementById('authorview').classList.remove('open'));
 
 // ── V3.35.0: character constructor wizard ─────────────────────────────────
 let WIZ = { steps: [], idx: 0, params: {}, name: '', stars: 0, rub: 0, usd: 0, free: false };
@@ -1851,7 +1912,7 @@ function renderWizStep() {
       const hasPhoto = !!WIZ.params[step.key];
       body.innerHTML = `
         <div class="step-title">${esc(step.title)}</div>
-        ${hasPhoto ? '<div style="color:var(--accent);margin:10px 0">✓ Фото загружено</div>' : ''}
+        ${esc(hasPhoto ? '<div style="color:var(--accent);margin:10px 0">✓ Фото загружено</div>' : '')}
         <div style="display:flex;gap:10px;margin-top:16px">
           <label class="cta" style="cursor:pointer">📷 ${esc(L.wiz_upload_photo || 'Загрузить фото')}
             <input type="file" accept="image/*" id="wizPhotoInput" style="display:none">

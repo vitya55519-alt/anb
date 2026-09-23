@@ -15,3 +15,7 @@ build/
 
 # V3.31.8: cached avatars of constructor personas (downloaded Telegram files)
 data/custom_references/
+# V3.44.8: in-app chat media (photos/circles/voice) — runtime uploads that are
+# persisted in the chat_media DB table and re-materialized on disk on demand,
+# so they must never be committed.
+data/app_media/

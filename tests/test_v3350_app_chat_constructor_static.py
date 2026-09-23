@@ -104,8 +104,11 @@ def test_api_chat_history_payload():
 def test_characters_grid_marks_custom_and_mine():
     fn = WEBAPP_SVC[WEBAPP_SVC.index('def api_characters('):WEBAPP_SVC.index('def api_invoice_products(')]
     assert "'custom': custom," in fn
-    assert "'mine': custom and bool(telegram_id)" in fn
-    assert 'card.character_id == custom_character_id(telegram_id)' in fn
+    # V3.44.8: «mine» comes from the DB (mine_ids) — the old check compared
+    # against custom_character_id(telegram_id), a fresh random UUID per call,
+    # so it never matched and the profile «MY CHARACTERS» block stayed empty.
+    assert "'mine': mine," in fn
+    assert 'mine_ids' in fn
 
 
 # ── chat routes + handlers ─────────────────────────────────────────────────
