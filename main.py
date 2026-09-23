@@ -8629,15 +8629,20 @@ async def _webapp_api_constructor_draft(request: web.Request) -> web.Response:
     name = str(body.get('name') or '').strip()[:24]
     if not isinstance(params_in, dict):
         return web.json_response({'ok': False, 'error': 'invalid_params'}, status=400)
-    if get_custom_character(telegram_id):
-        # One persona per user — recreate via the bot's «Создать заново».
+    existing = get_custom_character(telegram_id)
+    if existing and existing.is_visible and existing.photo_reference_file_id:
+        # One visible persona with photo per user — recreate via the bot's «Создать заново».
         return web.json_response({'ok': False, 'error': 'exists'}, status=409)
     params = {}
     for step in CONSTRUCTOR_STEPS:
         value = str(params_in.get(step['key'], ''))
-        if value not in OPTION_LABELS:
+        # V3.44.4: free_text steps (backstory, personality) accept any text.
+        if step.get('free_text'):
+            params[step['key']] = value[:500]
+        elif value and value not in OPTION_LABELS:
             return web.json_response({'ok': False, 'error': 'invalid_params'}, status=400)
-        params[step['key']] = value
+        else:
+            params[step['key']] = value
     if not name:
         return web.json_response({'ok': False, 'error': 'name_required'}, status=400)
     params['name'] = name
