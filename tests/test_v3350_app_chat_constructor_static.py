@@ -161,21 +161,25 @@ def test_constructor_options_handler():
     assert 'api_constructor_steps(request.query.get(' in handler
     assert "'stars': CONSTRUCTOR_COST_STARS," in handler
     assert "telegram_id in ADMIN_TELEGRAM_IDS" in handler
+    # V3.44.9: the peach price rides along — the in-app wizard's main pay path.
+    assert "'peaches': CONSTRUCTOR_COST_PEACHES," in handler
 
 
 def test_constructor_draft_handler():
     handler = MAIN[MAIN.index('async def _webapp_api_constructor_draft('):MAIN.index('async def _webapp_api_constructor_buy(')]
     assert 'validate_init_data' in handler
-    # one persona per user
-    assert 'get_custom_character(telegram_id)' in handler
-    assert "error': 'exists'" in handler
-    assert 'status=409' in handler
+    # V3.44.6/9: unlimited characters — the old one-persona-per-user 409 block
+    # is gone; every draft starts a fresh wizard session.
+    assert 'get_custom_character(telegram_id)' not in handler
+    assert "error': 'exists'" not in handler
+    assert 'status=409' not in handler
     # every step value must be a declared option
     assert 'for step in CONSTRUCTOR_STEPS:' in handler
-    assert 'value not in OPTION_LABELS' in handler
+    assert 'str(value) not in OPTION_LABELS' in handler
     assert "params['name'] = name" in handler
-    # the draft lands in the same session store the bot wizard uses
-    assert "_constructor_sessions[telegram_id] = {'params': params, 'step': len(CONSTRUCTOR_STEPS)}" in handler
+    # the draft lands in the same session store the bot wizard uses (V3.44.5
+    # wraps it in session_data so a base64 reference photo can ride along)
+    assert "_constructor_sessions[telegram_id] = session_data" in handler
     assert "name = str(body.get('name') or '').strip()[:24]" in handler
 
 
@@ -186,6 +190,12 @@ def test_constructor_buy_handler_reuses_payment_pipeline():
     # admins and rub-credit holders finish for free
     assert 'consume_constructor_credit(telegram_id)' in handler
     assert '_finish_constructor(telegram_id, None, telegram_id)' in handler
+    # V3.44.9: peaches payment straight from the app — the same spend pipeline
+    # as the bot's «Оплатить персиками» button (402 when the balance is short).
+    assert "body.get('method')" in handler
+    assert 'get_photo_credits(telegram_id)' in handler
+    assert 'spend_peaches(telegram_id, CONSTRUCTOR_COST_PEACHES)' in handler
+    assert "error': 'no_peaches'" in handler
     # everyone else pays through the same payload the bot charges
     assert 'await bot.create_invoice_link(' in handler
     assert "payload=f'constructor:{telegram_id}'" in handler
@@ -243,7 +253,8 @@ def test_wizard_frontend_flow():
     assert 'id="wizview"' in INDEX
     assert 'function openWizard()' in INDEX
     assert 'function renderWizStep()' in INDEX
-    assert 'function submitWizard()' in INDEX
+    # V3.44.9: submitWizard takes the pay method — 'peaches' (primary) or 'stars'.
+    assert 'async function submitWizard(method)' in INDEX
     assert 'function closeWizard()' in INDEX
     assert "fetch('/webapp/api/constructor/options'" in INDEX
     assert 'function pollCharacters()' in INDEX

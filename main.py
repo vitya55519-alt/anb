@@ -8782,6 +8782,8 @@ async def _webapp_api_constructor_options(request: web.Request) -> web.Response:
         # V3.36.0: rub + dollar equivalents ride along for the price note.
         'rub': CONSTRUCTOR_COST_RUB,
         'usd': CONSTRUCTOR_PRICE_USD,
+        # V3.44.9: peach (photo credit) price — the in-app wizard's main pay path.
+        'peaches': CONSTRUCTOR_COST_PEACHES,
         'free': free,
     })
 
@@ -8867,6 +8869,24 @@ async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
         track_event(uid, 'webapp_constructor_buy', metadata={'product': 'constructor', 'source': 'webapp_credit'})
         _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'webapp_credit'})
         return web.json_response({'ok': True, 'free': True})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    pay_method = str(body.get('method') or '').strip()[:16]
+    if pay_method == 'peaches' and telegram_id not in ADMIN_TELEGRAM_IDS:
+        # V3.44.9: pay with peaches straight from the app — the same spend
+        # pipeline as the bot's «Оплатить персиками» button.
+        credits = get_photo_credits(telegram_id)
+        if credits < CONSTRUCTOR_COST_PEACHES:
+            return web.json_response({'ok': False, 'error': 'no_peaches', 'need': CONSTRUCTOR_COST_PEACHES, 'have': credits}, status=402)
+        if not spend_peaches(telegram_id, CONSTRUCTOR_COST_PEACHES):
+            return web.json_response({'ok': False, 'error': 'peach_spend_failed'}, status=500)
+        record_payment(telegram_id, 'constructor_peaches', 0, f'peaches:{telegram_id}:{int(_time.time() * 1000)}', provider='peaches')
+        track_event(uid, 'webapp_constructor_buy', metadata={'product': 'constructor', 'source': 'webapp_peaches'})
+        _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'webapp_peaches'})
+        return web.json_response({'ok': True, 'free': True, 'peaches': CONSTRUCTOR_COST_PEACHES})
     try:
         link = await bot.create_invoice_link(
             title='Личный персонаж',

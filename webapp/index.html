@@ -810,6 +810,7 @@ const L_EN = {
   set_main: 'Set as your girl', reply_err: 'Could not reply — try again',
   create_own: 'Create your own', create_sub: 'Looks, figure and personality — she chats the way you pick',
   wiz_step: 'Step', wiz_name_ph: 'Her name? (up to 24 characters)', wiz_create: 'Create',
+    wiz_create_peaches: n => '🎨 Create · 🍑 ' + n, wiz_create_stars: n => '⭐ Create · ' + n + ' Stars',
   wiz_free: 'free (admin)', wiz_paid_toast: 'Drawing your girl — up to a minute. Her card appears in the grid ✨',
   wiz_exists: 'You already have a character — recreate via the bot chat',
   made_badge: 'user-made', mine_badge: 'yours', mychar_note: 'Your character is created 🎨 recreate via the bot chat',
@@ -913,6 +914,7 @@ const L_RU = {
   set_main: 'Сделать твоей девушкой', reply_err: 'Не получилось ответить — попробуй ещё раз',
   create_own: 'Создать свою', create_sub: 'Внешность, фигура и характер — она будет общаться так, как ты выберешь',
   wiz_step: 'Шаг', wiz_name_ph: 'Как её зовут? (до 24 символов)', wiz_create: 'Создать',
+    wiz_create_peaches: n => '🎨 Создать · 🍑 ' + n, wiz_create_stars: n => '⭐ Создать · ' + n + ' Stars',
   wiz_free: 'бесплатно (админ)', wiz_paid_toast: 'Рисую твою героиню — до минуты. Карточка появится в сетке ✨',
   wiz_exists: 'Персонаж уже создан — создать заново можно в чате бота',
   made_badge: 'создана игроком', mine_badge: 'твоя', mychar_note: 'Твой персонаж создан 🎨 создать заново можно в чате бота',
@@ -1261,8 +1263,8 @@ function renderCharacters(list) {
   const shown = list.filter(c => (CHAR_SEG === 'official' ? !c.custom : !!c.custom));
   const grid = document.getElementById('chargrid');
   // V3.35.0: the grid is the chat entry now — tap opens the dialog; the
-  // «create your own» card rides at the end of the grid.
-  const hasMine = shown.some(c => c.mine);
+  // «create your own» card rides at the end of the grid — always live now
+  // (V3.44.9): unlimited characters, so there is no hasMine gate anymore.
   const cards = shown.map(c => {
     const badge = c.status === 'active'
       ? `<span class="badge active">✅ ${esc(L.active)}</span>`
@@ -1298,15 +1300,12 @@ function renderCharacters(list) {
       </div>
     </div>`;
   }).join('');
-  const createCard = CHAR_SEG === 'official' ? '' : (hasMine
-    ? `<div class="card create" style="opacity:.75">
-        <div class="photo" style="display:flex;align-items:center;justify-content:center"><div class="plus">🎨</div></div>
-        <div class="body"><div class="lbl2">${esc(L.mychar_note)}</div></div>
-      </div>`
-    : `<div class="card create" id="createCard">
+  // V3.44.9: unlimited characters for peaches — the create card is always
+  // live, there is no «you already have one» dead placeholder anymore.
+  const createCard = CHAR_SEG === 'official' ? '' : `<div class="card create" id="createCard">
         <div class="photo" style="display:flex;align-items:center;justify-content:center"><div class="plus">➕</div></div>
         <div class="body"><div class="lbl2">${esc(L.create_own)}</div><div class="sub2">${esc(L.create_sub)}</div></div>
-      </div>`);
+      </div>`;
   grid.innerHTML = cards + createCard;
   // V3.43.2: WebView does not always honour the autoplay attribute — kick
   // every living tile by hand, and pause the ones scrolled off screen so
@@ -1856,7 +1855,7 @@ document.getElementById('authorBack').addEventListener('click', () =>
   document.getElementById('authorview').classList.remove('open'));
 
 // ── V3.35.0: character constructor wizard ─────────────────────────────────
-let WIZ = { steps: [], idx: 0, params: {}, name: '', stars: 0, rub: 0, usd: 0, free: false };
+let WIZ = { steps: [], idx: 0, params: {}, name: '', stars: 0, rub: 0, usd: 0, peaches: 0, free: false };
 
 async function openWizard() {
   try {
@@ -1864,7 +1863,7 @@ async function openWizard() {
     const r = await fetch('/webapp/api/constructor/options' + q + 'lang=' + LANG);
     const j = await r.json();
     if (!j.ok || !j.steps || !j.steps.length) { toast(L.invoice_err); return; }
-    WIZ = { steps: j.steps, idx: 0, params: {}, name: '', stars: j.stars || 0, rub: j.rub || 0, usd: j.usd || 0, free: !!j.free };
+    WIZ = { steps: j.steps, idx: 0, params: {}, name: '', stars: j.stars || 0, rub: j.rub || 0, usd: j.usd || 0, peaches: j.peaches || 0, free: !!j.free };
     document.getElementById('wizview').classList.add('open');
     renderWizStep();
   } catch (e) {
@@ -1964,27 +1963,38 @@ function renderWizStep() {
     const chosen = s.options.find(o => o.value === WIZ.params[s.key]);
     return chosen ? `<div>${esc(s.title.replace('?', ''))}: ${esc(chosen.label)}</div>` : '';
   }).filter(Boolean).join('');
+  // V3.44.9: two pay paths — peaches (primary) or Stars (invoice). Admins
+  // and rub-credit holders keep the single free button.
+  const priceLine = WIZ.free
+    ? '✅ ' + esc(L.wiz_free)
+    : '🍑 ' + esc(String(WIZ.peaches || 0)) + ' · ⭐ ' + esc(String(WIZ.stars || 0)) + (WIZ.rub ? ' · ' + esc(WIZ.rub) + ' ₽' : '') + (WIZ.usd ? ' · $' + esc(WIZ.usd) : '');
+  const payButtons = WIZ.free
+    ? `<button class="cta" id="wizCreate" ${WIZ.name ? '' : 'disabled'}>🎨 ${esc(L.wiz_create)}</button>`
+    : `<button class="cta" id="wizCreatePeaches" ${WIZ.name ? '' : 'disabled'}>🎨 ${esc(L.wiz_create_peaches(WIZ.peaches || 0))}</button>`
+      + `<button class="cta ghost" id="wizCreateStars" ${WIZ.name ? '' : 'disabled'}>${esc(L.wiz_create_stars(WIZ.stars || 0))}</button>`;
   body.innerHTML = `
     <div class="step-title">${esc(L.wiz_name_ph)}</div>
     <input class="name" id="wizName" maxlength="24" value="${esc(WIZ.name)}">
     <div class="review">${review}</div>
-    <div class="price-note" id="wizPrice">${WIZ.free ? '✅ ' + esc(L.wiz_free) : '⭐ ' + WIZ.stars + (WIZ.rub ? ' · ' + esc(WIZ.rub) + ' ₽' : '') + (WIZ.usd ? ' · $' + esc(WIZ.usd) : '')}</div>
-    <button class="cta" id="wizCreate" ${WIZ.name ? '' : 'disabled'}>🎨 ${esc(L.wiz_create)}</button>`;
+    <div class="price-note" id="wizPrice">${priceLine}</div>
+    ${payButtons}`;
   const nameInput = document.getElementById('wizName');
-  const createBtn = document.getElementById('wizCreate');
+  const payBtns = ['wizCreate', 'wizCreatePeaches', 'wizCreateStars']
+    .map(id => document.getElementById(id)).filter(Boolean);
   nameInput.addEventListener('input', () => {
     WIZ.name = nameInput.value.trim();
-    createBtn.disabled = !WIZ.name;
+    payBtns.forEach(b => b.disabled = !WIZ.name);
   });
   nameInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && WIZ.name) submitWizard();
+    if (e.key === 'Enter' && WIZ.name) submitWizard('peaches');
   });
-  createBtn.addEventListener('click', submitWizard);
+  payBtns.forEach(b => b.addEventListener('click', () =>
+    submitWizard(b.id === 'wizCreateStars' ? 'stars' : 'peaches')));
 }
 
-async function submitWizard() {
+async function submitWizard(method) {
   if (!WIZ.name) return;
-  const btn = document.getElementById('wizCreate');
+  const btn = document.getElementById('wizCreate') || document.getElementById('wizCreatePeaches') || document.getElementById('wizCreateStars');
   if (btn) btn.disabled = true;
   try {
     // 1. Save the draft — it lands in the same constructor session the bot
@@ -1998,13 +2008,21 @@ async function submitWizard() {
     if (dr.status === 409) { toast(L.wiz_exists); if (btn) btn.disabled = false; return; }
     const dj = await dr.json();
     if (!dj.ok) { toast(L.invoice_err); if (btn) btn.disabled = false; return; }
-    // 2. Pay — admins and rub-credit holders get the free path.
+    // 2. Pay — admins and rub-credit holders get the free path; «peaches»
+    //    spends photo credits server-side, «stars» opens the Telegram invoice.
     const br = await fetch('/webapp/api/constructor/buy?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ method: method || 'peaches' }),
     });
     if (br.status === 401) { toast(L.auth_short); if (btn) btn.disabled = false; return; }
+    if (br.status === 402) {
+      closeWizard();
+      toast(L.pic_no_credits);
+      showTab('shop');
+      if (btn) btn.disabled = false;
+      return;
+    }
     const bj = await br.json();
     if (!bj.ok) { toast(L.invoice_err); if (btn) btn.disabled = false; return; }
     if (bj.free) {
@@ -2013,6 +2031,7 @@ async function submitWizard() {
       pollCharacters();
       return;
     }
+    if (method !== 'stars') { toast(L.invoice_err); if (btn) btn.disabled = false; return; }
     if (typeof tg.openInvoice !== 'function') { toast(L.auth_short); if (btn) btn.disabled = false; return; }
     tg.openInvoice(bj.link, (status) => {
       if (btn) btn.disabled = false;
@@ -2448,7 +2467,7 @@ function renderProfileBody() {
     ${m.author_earnings > 0 ? `<div class="stat"><span class="k">${esc(L.author_earnings)}</span><span class="v" style="color:#ffd700">${esc(L.author_earnings_value(m.author_earnings))}</span></div>` : ''}
     <div class="sect-title">${esc(L.my_chars)}</div>
     ${myCharsHtml}
-    ${hasMine ? '' : `<button class="cta" id="profileCreate">${esc(L.create_char)}</button>`}
+    <button class="cta" id="profileCreate">${esc(L.create_char)}</button>
     <div class="menurow" id="menuPartner"><span>${esc(L.partner_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuDocs"><span>${esc(L.docs_row)}</span><span class="arr">›</span></div>
     <div class="sect-title">${esc(L.settings_title)}</div>

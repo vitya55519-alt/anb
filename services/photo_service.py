@@ -570,6 +570,21 @@ OPENAI_LEVEL_VISUAL_RULES = {
     6: 'Relationship visual level 6/6: strongest premium styling, best accessories, lighting and composition; sophisticated and exclusive, boldest tasteful fashion while fully clothed and general-audience.',
 }
 
+# V3.44.9: hard public decency lock requested by the owner — zero lingerie or
+# underwear visibility in outdoor and public-venue photos. The per-level
+# underlay rules already forbid exposed underwear; this adds an absolute
+# scene-level rule so the model never drags boudoir styling into the street,
+# park, cafe, transport, gym etc. Lingerie lives only in private at-home and
+# boudoir scenes (and the at-home lingerie look at high relationship levels).
+PUBLIC_DRESS_RULE = (
+    'PUBLIC DRESS CODE: this is a public or outdoor photo, so she is fully and neatly dressed '
+    'in attire that is believable for this exact venue, season and time of day — jeans, a dress, '
+    'a skirt-and-top, a coat, or a swimsuit at beach/pool settings. NO lingerie as or over the '
+    'outfit: no visible bra, panties, bra straps, lace edges, garter belts, slips or see-through '
+    'fabric anywhere in the frame; her underwear stays completely hidden under the clothing. '
+    'Boudoir/lingerie styling is for private at-home scenes only, never for public places.'
+)
+
 # How the underwear under her clothes reads on camera, by relationship level.
 # Like real life: she always wears lingerie — and it is there to underline her
 # own femininity, confidence and natural sexuality, never to objectify her.
@@ -1712,6 +1727,15 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         'Use tasteful fashion fit and waist definition while preserving the underlying slim body proportions. ' if seedream else
         'Use a well-fitted outfit that preserves the person\u2019s physique and proportions. Use a natural everyday pose with the visual focus on the person, outfit and environment. '
     )
+    # V3.44.9: public scenes get the hard no-lingerie lock; private boudoir
+    # scenes, adult scenes and the at-home lingerie look are exempt. Under
+    # force_safe even a private scene stays general-audience, so the lock
+    # applies there too.
+    private_look = (
+        adult_scene or home_lingerie
+        or (not force_safe and request.scene in (SEEDREAM_ADULT_SCENES | ADULT_SCENES))
+    )
+    public_dress_rule = '' if private_look else PUBLIC_DRESS_RULE + '\n'
     return (
         f'{identity}\n'
         f'{adult_lock}\n'
@@ -1721,6 +1745,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'PROGRESSION PACK FRAME {shot_index + 1}/{PHOTO_SET_SIZE}: {tier_rule}\n'
         f'WARDROBE: {wardrobe}. {figure_note}'
         'The outfit must be believable for this exact venue, weather and time of day. Do not reuse a heavy sweater or hoodie in a visibly warm summer scene.\n'
+        f'{public_dress_rule}'
         f'UNDER-CLOTHING REALISM: {underlay_rule}\n'
         f'{tier_framing}'
         f'{BUST_CONSISTENCY_RULE}\n'

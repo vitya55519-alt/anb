@@ -183,6 +183,10 @@ def test_no_unescaped_backend_strings_in_templates():
             "PIC_STYLE === 'anime' ? ' on' : ''",
             "PIC_STYLE === 'realistic' ? ' on' : ''",
             "PIC_STYLE === 'fantasy' ? ' on' : ''",
+            # V3.44.9: the wizard's pay fragments — priceLine is only peaches /
+            # Stars numbers and L-constants; payButtons is built from esc()'d
+            # L-functions and the local 'disabled' ternary, no backend strings.
+            'priceLine', 'payButtons',
             # V3.43.5: the drawn style icons — static local SVG constants,
             # no backend data inside.
             'STYLE_ICONS.anime', 'STYLE_ICONS.realistic', 'STYLE_ICONS.fantasy',
