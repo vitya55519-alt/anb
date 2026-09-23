@@ -813,6 +813,7 @@ const L_EN = {
   pic_gen_fail: 'Could not draw — try again',
   pic_gallery: 'My pictures', pic_empty: 'No pictures yet — your works will appear here.',
   my_chars: 'MY CHARACTERS', create_char: '＋ Create', no_chars: 'No character yet — create your own girl.',
+  author_earnings: '💰 Author earnings', author_earnings_value: n => n.toFixed(1) + ' ⭐',
   partner_row: '💰 Partner program', docs_row: '📜 Documents & prices', open_chat: 'chat',
   // V3.39.0: the Come Closer character page + in-app chat media.
   start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', lb_title: '🏆 Top Popular',
@@ -912,6 +913,7 @@ const L_RU = {
   pic_gen_fail: 'Не получилось нарисовать — попробуй ещё раз',
   pic_gallery: 'Мои картинки', pic_empty: 'Картинок пока нет — твои работы появятся здесь.',
   my_chars: 'МОИ ПЕРСОНАЖИ', create_char: '＋ Создать', no_chars: 'Персонажа пока нет — создай свою девушку.',
+  author_earnings: '💰 Авторский доход', author_earnings_value: n => n.toFixed(1) + ' ⭐',
   partner_row: '💰 Партнёрка', docs_row: '📜 Документы и цены', open_chat: 'чат',
   // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
   start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', lb_title: ' Топ популярных',
@@ -2380,6 +2382,7 @@ function renderProfileBody() {
       <span class="v" id="dailyBonusStatus" style="color:#fff">…</span>
     </div>
     <div class="stat"><span class="k">🍑 ${esc(L.paid_credit)}</span><span class="v">${esc(m.photo_credits)}</span></div>
+    ${m.author_earnings > 0 ? `<div class="stat"><span class="k">${esc(L.author_earnings)}</span><span class="v" style="color:#ffd700">${esc(L.author_earnings_value(m.author_earnings))}</span></div>` : ''}
     <div class="sect-title">${esc(L.my_chars)}</div>
     ${myCharsHtml}
     ${hasMine ? '' : `<button class="cta" id="profileCreate">${esc(L.create_char)}</button>`}

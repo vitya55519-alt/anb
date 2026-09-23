@@ -414,6 +414,45 @@ def get_custom_character_by_id(character_id: str) -> CustomCharacter | None:
         return session.query(CustomCharacter).filter_by(character_id=character_id).first()
 
 
+def record_author_revenue(
+    character_id: str,
+    spender_telegram_id: int,
+    amount_stars: float,
+    source: str,
+) -> float:
+    """V3.44.6: record author earnings when someone spends on a custom character.
+    
+    Returns the author's earnings in stars, or 0 if not a custom character.
+    """
+    if not is_custom_character(character_id):
+        return 0.0
+    row = get_custom_character_by_id(character_id)
+    if not row or not row.author_telegram_id:
+        return 0.0
+    earnings = amount_stars * (row.author_revenue_percent / 100.0)
+    from models.app_models import AuthorRevenue
+    with SessionLocal() as session:
+        session.add(AuthorRevenue(
+            author_telegram_id=row.author_telegram_id,
+            character_id=character_id,
+            spender_telegram_id=str(spender_telegram_id),
+            amount_stars=amount_stars,
+            author_earnings_stars=earnings,
+            revenue_percent=row.author_revenue_percent,
+            source=source,
+        ))
+        session.commit()
+    return earnings
+
+
+def get_author_total_earnings(telegram_id: int) -> float:
+    """V3.44.6: get total author earnings for a user."""
+    from models.app_models import AuthorRevenue
+    with SessionLocal() as session:
+        result = session.query(AuthorRevenue).filter_by(author_telegram_id=str(telegram_id)).all()
+        return sum(r.author_earnings_stars for r in result)
+
+
 def custom_character_params(character_id: str) -> tuple[dict, str]:
     """Return (params dict, display name) for a custom character, or ({}, '')."""
     row = get_custom_character_by_id(character_id)

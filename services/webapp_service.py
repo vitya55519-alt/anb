@@ -225,7 +225,18 @@ def api_me(telegram_id: int) -> dict:
             'name': (card.display_name if card else selected_character),
             'level': level,
         },
+        # V3.44.6: author earnings from custom characters.
+        'author_earnings': _get_author_earnings(telegram_id),
     }
+
+
+def _get_author_earnings(telegram_id: int) -> float:
+    """V3.44.6: get total author earnings for a user."""
+    try:
+        from services.custom_character_service import get_author_total_earnings
+        return get_author_total_earnings(telegram_id)
+    except Exception:
+        return 0.0
 
 
 def api_characters(telegram_id: int | None = None) -> list[dict]:

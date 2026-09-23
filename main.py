@@ -8484,6 +8484,13 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
     if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
         logger.warning('webapp chat photo credit race user=%s', telegram_id)
+    # V3.44.6: record author revenue when someone spends on a custom character.
+    if kind == 'photo' and is_custom_character(character_id):
+        try:
+            from services.custom_character_service import record_author_revenue
+            record_author_revenue(character_id, telegram_id, 1.0, 'chat_photo')
+        except Exception:
+            logger.exception('author revenue recording failed char=%s', character_id)
     return web.json_response({
         'ok': True, 'kind': kind, 'url': url, 'content': content,
         'credits_left': get_photo_credits(telegram_id),

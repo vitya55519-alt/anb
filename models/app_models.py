@@ -120,6 +120,21 @@ class CustomCharacter(Base):
     author_revenue_percent: Mapped[float] = mapped_column(Float, default=5.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
+
+class AuthorRevenue(Base):
+    """V3.44.6: tracks author earnings from spending on their custom characters."""
+    __tablename__ = "author_revenue"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    author_telegram_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    spender_telegram_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount_stars: Mapped[float] = mapped_column(Float, nullable=False)
+    author_earnings_stars: Mapped[float] = mapped_column(Float, nullable=False)
+    revenue_percent: Mapped[float] = mapped_column(Float, default=5.0)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)  # 'photo', 'video', 'constructor', etc.
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Message(Base):
     __tablename__ = "messages"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
