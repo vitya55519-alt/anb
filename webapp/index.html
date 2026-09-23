@@ -429,7 +429,14 @@
     background: var(--card); border: 1px solid rgba(255,255,255,.08); color: var(--text);
     font-size: 14px; padding: 10px 14px; border-radius: 14px; cursor: pointer;
   }
-  .wiz .opt.sel { border-color: var(--accent); background: rgba(232, 68, 127, .14); }
+.wiz .opt.sel { border-color: var(--accent); background: rgba(232, 68, 127, .14); }
+  /* V3.44.4: textarea for free_text wizard steps (backstory, personality). */
+  .wiz .wiz-textarea {
+    width: 100%; min-height: 120px; background: var(--card); border: 1px solid rgba(255,255,255,.12);
+    color: var(--text); font-size: 14px; padding: 12px; border-radius: 14px; resize: vertical;
+    font-family: inherit; box-sizing: border-box;
+  }
+  .wiz .wiz-textarea:focus { outline: none; border-color: var(--accent); }
   .wiz input.name {
     width: 100%; background: var(--card); border: 1px solid rgba(255,255,255,.08);
     color: var(--text); font-size: 15px; padding: 12px 14px; border-radius: 14px;
@@ -810,6 +817,7 @@ const L_EN = {
   // V3.39.0: the Come Closer character page + in-app chat media.
   start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', lb_title: '🏆 Top Popular',
     comments_lbl: '💬 Comments', comment_placeholder: 'Write a comment...', comment_submit: 'Submit', comment_empty: 'No comments yet — be the first!',
+  wiz_save: 'Save', wiz_skip: 'Skip', wiz_skip_hint: 'Write or skip...',
   seg_official: '🍑 Peach Garden', seg_community: '👥 Community',
   media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
   media_wait_voice: 'Recording her voice…', media_wait_video: 'Rendering a video — 1–3 min…',
@@ -908,6 +916,7 @@ const L_RU = {
   // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
   start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', lb_title: ' Топ популярных',
     comments_lbl: '💬 Комментарии', comment_placeholder: 'Напиши комментарий...', comment_submit: 'Отправить', comment_empty: 'Пока нет комментариев — будь первым!',
+  wiz_save: 'Сохранить', wiz_skip: 'Пропустить', wiz_skip_hint: 'Напиши или пропусти...',
   seg_official: '🍑 Персиковый сад', seg_community: '👥 Сообщество',
   media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
   media_wait_voice: 'Записываю голос…', media_wait_video: 'Рисую видео — 1–3 минуты…',
@@ -1805,6 +1814,34 @@ function renderWizStep() {
   const body = document.getElementById('wizBody');
   if (WIZ.idx < total) {
     const step = WIZ.steps[WIZ.idx];
+    // V3.44.4: free_text steps (backstory, personality) show a textarea + skip button.
+    if (step.free_text) {
+      const existing = WIZ.params[step.key] || '';
+      body.innerHTML = `
+        <div class="step-title">${esc(step.title)}</div>
+        <textarea class="wiz-textarea" id="wizTextarea" maxlength="500" placeholder="${esc(L.wiz_skip_hint || 'Напиши или пропусти...')}">${esc(existing)}</textarea>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="cta" id="wizTextSave">✓ ${esc(L.wiz_save || 'Сохранить')}</button>
+          <button class="cta ghost" id="wizTextSkip">↦ ${esc(L.wiz_skip || 'Пропустить')}</button>
+        </div>
+        ${WIZ.idx > 0 ? `<button class="cta ghost" id="wizPrev" style="margin-top:10px">↩ ${esc(L.wiz_step)}</button>` : ''}`;
+      const textarea = document.getElementById('wizTextarea');
+      const saveBtn = document.getElementById('wizTextSave');
+      const skipBtn = document.getElementById('wizTextSkip');
+      saveBtn.addEventListener('click', () => {
+        WIZ.params[step.key] = textarea.value.trim();
+        WIZ.idx += 1;
+        renderWizStep();
+      });
+      skipBtn.addEventListener('click', () => {
+        WIZ.params[step.key] = '';
+        WIZ.idx += 1;
+        renderWizStep();
+      });
+      const prev = document.getElementById('wizPrev');
+      if (prev) prev.addEventListener('click', () => { WIZ.idx -= 1; renderWizStep(); });
+      return;
+    }
     const opts = step.options.map(o =>
       `<button class="opt${WIZ.params[step.key] === o.value ? ' sel' : ''}" data-v="${esc(o.value)}">${esc(o.label)}</button>`).join('');
     body.innerHTML = `

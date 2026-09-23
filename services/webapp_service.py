@@ -460,7 +460,8 @@ def api_constructor_steps(lang: str = 'ru') -> list[dict]:
             {'value': value, 'label': (OPTION_LABELS_EN.get(value, label) if en else label)}
             for value, label, _ in step['options']
         ]
-        out.append({'key': step['key'], 'title': title, 'options': options})
+        # V3.44.4: pass free_text flag so the app renders a textarea + skip button.
+        out.append({'key': step['key'], 'title': title, 'options': options, 'free_text': bool(step.get('free_text'))})
     return out
 
 
