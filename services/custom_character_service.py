@@ -145,6 +145,12 @@ CONSTRUCTOR_STEPS: list[dict] = [
             ('role_secret', 'Тайная возлюбленная', 'secret lover'),
         ],
     },
+    # V3.44.5: photo reference step — upload a photo of who she should look like.
+    {
+        'key': 'photo_reference', 'title': 'Загрузи фото человека, на которого она должна быть похожа. Необязательно — можно пропустить.',
+        'options': [],
+        'photo_upload': True,
+    },
     # V3.44.4: extended constructor — backstory, personality, community publishing.
     {
         'key': 'backstory', 'title': 'Напиши её историю (кто она, откуда, что любит). Необязательно — можно пропустить.',

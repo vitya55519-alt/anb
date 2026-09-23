@@ -461,7 +461,12 @@ def api_constructor_steps(lang: str = 'ru') -> list[dict]:
             for value, label, _ in step['options']
         ]
         # V3.44.4: pass free_text flag so the app renders a textarea + skip button.
-        out.append({'key': step['key'], 'title': title, 'options': options, 'free_text': bool(step.get('free_text'))})
+        # V3.44.5: pass photo_upload flag so the app renders a photo upload button.
+        out.append({
+            'key': step['key'], 'title': title, 'options': options,
+            'free_text': bool(step.get('free_text')),
+            'photo_upload': bool(step.get('photo_upload')),
+        })
     return out
 
 

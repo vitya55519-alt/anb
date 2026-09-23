@@ -6377,6 +6377,19 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     display_name = str(params.get('name') or 'Она')[:48]
     await bot.send_message(chat_id, '✨ Отлично! Рисую твою героиню — это займёт до минуты...')
     face_path = None
+    photo_reference_path = None
+    # V3.44.5: download photo reference if user uploaded one.
+    photo_reference_file_id = params.get('photo_reference', '')
+    if photo_reference_file_id:
+        import tempfile
+        photo_reference_path = Path(tempfile.gettempdir()) / f'constructor_photo_ref_{telegram_id}.jpg'
+        try:
+            photo_file = await bot.get_file(photo_reference_file_id)
+            photo_bytes = await bot.download_file(photo_file.file_path)
+            photo_reference_path.write_bytes(photo_bytes)
+        except Exception:
+            logger.exception('constructor photo reference download failed user=%s', telegram_id)
+            photo_reference_path = None
     if cons.get('face_bytes'):
         import tempfile
         face_path = Path(tempfile.gettempdir()) / f'constructor_face_{telegram_id}.jpg'
@@ -6384,9 +6397,11 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             face_path.write_bytes(cons['face_bytes'])
         except OSError:
             face_path = None
+    # Use photo_reference as the primary identity anchor if available.
+    identity_anchor = photo_reference_path or face_path
     try:
         avatar_bytes, _mime = await generate_custom_avatar(
-            build_avatar_prompt(params, face_swap=bool(face_path)), face_path,
+            build_avatar_prompt(params, face_swap=bool(identity_anchor)), identity_anchor,
         )
     except Exception:
         logger.exception('constructor avatar generation failed user=%s', telegram_id)
@@ -6408,6 +6423,11 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
                 face_path.unlink()
             except OSError:
                 pass
+        if photo_reference_path:
+            try:
+                photo_reference_path.unlink()
+            except OSError:
+                pass
     try:
         sent = await bot.send_photo(telegram_id, BufferedInputFile(avatar_bytes, filename='avatar.jpg'))
         avatar_file_id = sent.photo[-1].file_id
@@ -6421,6 +6441,7 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         personality=params.get('personality', ''),
         backstory=params.get('backstory', ''),
         community_published=params.get('community') == 'community_yes',
+        photo_reference_file_id=photo_reference_file_id or None,
     )
     # V3.31.8: creating a persona selects her immediately. Before this the
     # selection stayed on the previous character (Anna by default), so a user
@@ -6545,6 +6566,7 @@ async def constructor_step_cb(cq: types.CallbackQuery):
     cons['step'] = index + 1
     await cq.answer()
     # V3.44.4: handle free_text steps (backstory, personality) and community step.
+    # V3.44.5: handle photo_upload steps (reference photo).
     if cons['step'] < len(CONSTRUCTOR_STEPS):
         next_key = CONSTRUCTOR_STEPS[cons['step']]['key']
         next_step = CONSTRUCTOR_STEPS[cons['step']]
@@ -6552,6 +6574,11 @@ async def constructor_step_cb(cq: types.CallbackQuery):
         if next_step.get('free_text'):
             cons['await'] = f'text_{next_key}'
             await cq.message.answer(f'🎨 {next_step["title"]}\n\nНапиши текст одним сообщением или отправь /skip чтобы пропустить.')
+            return
+        # Photo upload steps: ask for a photo.
+        if next_step.get('photo_upload'):
+            cons['await'] = f'photo_{next_key}'
+            await cq.message.answer(f'📷 {next_step["title"]}\n\nПришли фото одним сообщением или отправь /skip чтобы пропустить.')
             return
         await cq.message.answer(_constructor_prompt(next_key), reply_markup=_constructor_step_keyboard(next_key))
         return
@@ -7248,6 +7275,49 @@ async def text_message(message: types.Message):
         constructor_name_session['params']['name'] = name_value
         constructor_name_session['await'] = None
         await _constructor_face_step(message.chat.id, message.from_user.id)
+        return
+    # V3.44.5: photo reference step — user uploads a photo of who she should look like.
+    if constructor_name_session and constructor_name_session.get('await', '').startswith('photo_'):
+        field = constructor_name_session['await'][6:]  # Remove 'photo_' prefix
+        # Get the photo file_id from the message (largest size).
+        if message.photo:
+            photo = message.photo[-1]  # Largest size
+            constructor_name_session['params'][field] = photo.file_id
+            constructor_name_session['await'] = None
+            constructor_name_session['step'] += 1
+            # Continue to next step.
+            if constructor_name_session['step'] < len(CONSTRUCTOR_STEPS):
+                next_key = CONSTRUCTOR_STEPS[constructor_name_session['step']]['key']
+                next_step = CONSTRUCTOR_STEPS[constructor_name_session['step']]
+                if next_step.get('free_text'):
+                    constructor_name_session['await'] = f'text_{next_key}'
+                    await message.answer(f'🎨 {next_step["title"]}\n\nНапиши текст одним сообщением или отправь /skip чтобы пропустить.')
+                elif next_step.get('photo_upload'):
+                    constructor_name_session['await'] = f'photo_{next_key}'
+                    await message.answer(f' {next_step["title"]}\n\nПришли фото одним сообщением или отправь /skip чтобы пропустить.')
+                else:
+                    await message.answer(_constructor_prompt(next_key), reply_markup=_constructor_step_keyboard(next_key))
+            else:
+                # All steps done — ask for name.
+                constructor_name_session['await'] = 'name'
+                await message.answer('Шаг: как её зовут? Напиши имя одним сообщением (до 24 символов).')
+        elif (message.text or '').strip().lower() == '/skip':
+            constructor_name_session['params'][field] = ''
+            constructor_name_session['await'] = None
+            constructor_name_session['step'] += 1
+            if constructor_name_session['step'] < len(CONSTRUCTOR_STEPS):
+                next_key = CONSTRUCTOR_STEPS[constructor_name_session['step']]['key']
+                next_step = CONSTRUCTOR_STEPS[constructor_name_session['step']]
+                if next_step.get('free_text'):
+                    constructor_name_session['await'] = f'text_{next_key}'
+                    await message.answer(f'🎨 {next_step["title"]}\n\nНапиши текст одним сообщением или отправь /skip чтобы пропустить.')
+                else:
+                    await message.answer(_constructor_prompt(next_key), reply_markup=_constructor_step_keyboard(next_key))
+            else:
+                constructor_name_session['await'] = 'name'
+                await message.answer('Шаг: как её зовут? Напиши имя одним сообщением (до 24 символов).')
+        else:
+            await message.answer('📷 Пришли фото одним сообщением или отправь /skip чтобы пропустить.')
         return
     # V3.44.4: free text steps for backstory and personality.
     if constructor_name_session and constructor_name_session.get('await', '').startswith('text_'):
@@ -8662,6 +8732,9 @@ async def _webapp_api_constructor_draft(request: web.Request) -> web.Response:
         # V3.44.4: free_text steps (backstory, personality) accept any text.
         if step.get('free_text'):
             params[step['key']] = value[:500]
+        # V3.44.5: photo_upload steps accept file_id or data string.
+        elif step.get('photo_upload'):
+            params[step['key']] = value if value and value != 'pending_upload' else ''
         elif value and value not in OPTION_LABELS:
             return web.json_response({'ok': False, 'error': 'invalid_params'}, status=400)
         else:
