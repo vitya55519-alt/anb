@@ -139,9 +139,10 @@ FAL_KEY = os.getenv("FAL_KEY", "").strip()
 FAL_MODEL = os.getenv("FAL_MODEL", "bytedance/seedream/v5/pro/edit").strip()
 # V3.43.1: the edit endpoint rejects empty image_urls (HTTP 422), so freeform
 # studio prompts go to the dedicated text-to-image endpoint instead.
-# V3.44.3: correct v5 paths — fal has no "/v5.0/" route (HTTP 404); Pro lives at
-# bytedance/seedream/v5/pro/*, Lite at fal-ai/bytedance/seedream/v5/lite/*.
-FAL_MODEL_T2I = os.getenv("FAL_MODEL_T2I", "bytedance/seedream/v5/pro/text-to-image").strip()
+# V3.44.3: the "/v5.0/" route does not exist on fal (HTTP 404) and v5 Pro is a
+# Partner model that may need separate API access — the proven t2i default
+# stays on v4.5; adult scenes go through the edit endpoint above.
+FAL_MODEL_T2I = os.getenv("FAL_MODEL_T2I", "fal-ai/bytedance/seedream/v4.5/text-to-image").strip()
 FAL_IMAGE_SIZE = os.getenv("FAL_IMAGE_SIZE", "portrait_4_3").strip()
 FAL_TIMEOUT_SECONDS = int(os.getenv("FAL_TIMEOUT_SECONDS", "210"))
 FAL_CONNECT_TIMEOUT_SECONDS = int(os.getenv("FAL_CONNECT_TIMEOUT_SECONDS", "20"))

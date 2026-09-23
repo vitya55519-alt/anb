@@ -1338,6 +1338,9 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
     # face reference makes Seedream act as a face-swap identity anchor.
     # V3.40.0: every engine attempt bumps the provider counters, so the admin
     # «Отказы» screen shows which leg of the chain is flaky.
+    # V3.44.3: accumulate the whole chain — the studio toast must show WHY
+    # every engine failed, not just the last one.
+    chain_errors: list[str] = []
     if FAL_KEY and reference_path:
         try:
             result = await _seedream_edit(reference_path, prompt)
@@ -1345,6 +1348,7 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
             return result
         except Exception as exc:
             record_provider('photo/seedream_edit', False, f'{type(exc).__name__}: {str(exc)[:120]}')
+            chain_errors.append(f'seedream_edit/{type(exc).__name__}: {str(exc)[:120]}')
             logger.warning('constructor avatar Seedream failed; falling back to Gemini')
     elif FAL_KEY:
         # V3.39.0: freeform renders (the «Картинки» studio) get a real t2i
@@ -1356,6 +1360,7 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
             return result
         except Exception as exc:
             record_provider('photo/seedream_t2i', False, f'{type(exc).__name__}: {str(exc)[:120]}')
+            chain_errors.append(f'seedream_t2i/{type(exc).__name__}: {str(exc)[:120]}')
             logger.warning('studio Seedream t2i failed; falling back to Gemini')
     try:
         result = await _gemini_edit(prompt, reference_path)
@@ -1363,7 +1368,8 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
         return result
     except Exception as exc:
         record_provider('photo/gemini', False, f'{type(exc).__name__}: {str(exc)[:120]}')
-        raise
+        chain_errors.append(f'gemini/{type(exc).__name__}: {str(exc)[:120]}')
+        raise PhotoGenerationError('custom_avatar', ' → '.join(chain_errors)) from exc
 
 
 async def _seedream_t2i(prompt: str) -> tuple[bytes, str]:
@@ -1998,8 +2004,19 @@ async def _seedream_request(
     """
     if not FAL_KEY:
         raise PhotoGenerationError('seedream45', 'FAL_KEY is not configured')
-
-    endpoint = f"https://fal.run/{(model or FAL_MODEL).strip('/')}"
+    
+    # V3.44.3: fal retires/renames routes (v4.5 → v5 lite/pro). When the
+    # configured model answers 404, walk a bounded fallback list of known
+    # routes so a renamed endpoint never kills the whole leg. Policy 4xx
+    # (400/403/422/451) are NOT bypassed — only «path not found».
+    primary = (model or FAL_MODEL).strip('/')
+    if image_urls:
+        candidates = [primary, 'fal-ai/bytedance/seedream/v5/lite/edit', 'fal-ai/bytedance/seedream/v4.5/edit']
+    else:
+        candidates = [primary, 'fal-ai/bytedance/seedream/v5/lite/text-to-image', 'fal-ai/bytedance/seedream/v4.5/text-to-image']
+    seen: set[str] = set()
+    candidates = [c for c in candidates if not (c in seen or seen.add(c))]
+    
     payload = {
         'prompt': prompt,
         'image_size': FAL_IMAGE_SIZE,
@@ -2020,50 +2037,65 @@ async def _seedream_request(
     )
     max_attempts = FAL_RETRIES + 1
     transient_statuses = {408, 425, 429, 500, 502, 503, 504}
-
+    
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        for attempt in range(1, max_attempts + 1):
-            started = time.monotonic()
-            try:
-                response = await client.post(endpoint, headers=headers, json=payload)
-            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
-                elapsed = time.monotonic() - started
-                logger.warning(
-                    'Seedream timeout label=%s attempt=%s/%s elapsed=%.1fs type=%s',
-                    request_label or '-', attempt, max_attempts, elapsed, type(exc).__name__,
-                )
-                if attempt >= max_attempts:
-                    raise PhotoGenerationError('seedream45', 'timeout') from exc
-                await asyncio.sleep(FAL_RETRY_BACKOFF_SECONDS * attempt)
-                continue
-
-            elapsed = time.monotonic() - started
-            logger.info(
-                'Seedream response label=%s attempt=%s/%s status=%s elapsed=%.1fs',
-                request_label or '-', attempt, max_attempts, response.status_code, elapsed,
-            )
-
-            if response.status_code >= 400:
-                body = response.text[:1600]
-                if response.status_code in transient_statuses and attempt < max_attempts:
+        last_error: PhotoGenerationError | None = None
+        for candidate in candidates:
+            endpoint = f"https://fal.run/{candidate}"
+            for attempt in range(1, max_attempts + 1):
+                started = time.monotonic()
+                try:
+                    response = await client.post(endpoint, headers=headers, json=payload)
+                except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
+                    elapsed = time.monotonic() - started
                     logger.warning(
-                        'Seedream transient HTTP status=%s label=%s attempt=%s/%s body=%s',
-                        response.status_code, request_label or '-', attempt, max_attempts, body[:500],
+                        'Seedream timeout label=%s model=%s attempt=%s/%s elapsed=%.1fs type=%s',
+                        request_label or '-', candidate, attempt, max_attempts, elapsed, type(exc).__name__,
                     )
+                    if attempt >= max_attempts:
+                        last_error = PhotoGenerationError('seedream45', 'timeout')
+                        break
                     await asyncio.sleep(FAL_RETRY_BACKOFF_SECONDS * attempt)
                     continue
-                logger.error('Seedream HTTP error status=%s body=%s', response.status_code, body)
-                # V3.25.0: carry a short body excerpt in the reason so the chat
-                # error chain shows WHY fal rejected the request, not just 422.
-                detail = ' '.join(body.split())[:140]
-                raise PhotoGenerationError('seedream45', f'HTTP {response.status_code} {detail}'.strip())
-
-            try:
-                return response.json()
-            except Exception as exc:
-                logger.error('Seedream returned non-JSON response: %s', response.text[:1200])
-                raise PhotoGenerationError('seedream45', 'invalid_json') from exc
-
+    
+                elapsed = time.monotonic() - started
+                logger.info(
+                    'Seedream response label=%s model=%s attempt=%s/%s status=%s elapsed=%.1fs',
+                    request_label or '-', candidate, attempt, max_attempts, response.status_code, elapsed,
+                )
+    
+                if response.status_code >= 400:
+                    body = response.text[:1600]
+                    # V3.44.3: retired/renamed route — try the next candidate.
+                    if response.status_code == 404 and candidate != candidates[-1]:
+                        logger.warning(
+                            'Seedream 404 model=%s label=%s — falling back to next route body=%s',
+                            candidate, request_label or '-', body[:200],
+                        )
+                        last_error = PhotoGenerationError('seedream45', f'HTTP 404 {candidate}')
+                        break
+                    if response.status_code in transient_statuses and attempt < max_attempts:
+                        logger.warning(
+                            'Seedream transient HTTP status=%s label=%s attempt=%s/%s body=%s',
+                            response.status_code, request_label or '-', attempt, max_attempts, body[:500],
+                        )
+                        await asyncio.sleep(FAL_RETRY_BACKOFF_SECONDS * attempt)
+                        continue
+                    logger.error('Seedream HTTP error status=%s body=%s', response.status_code, body)
+                    # V3.25.0: carry a short body excerpt in the reason so the chat
+                    # error chain shows WHY fal rejected the request, not just 422.
+                    detail = ' '.join(body.split())[:140]
+                    last_error = PhotoGenerationError('seedream45', f'HTTP {response.status_code} {detail}'.strip())
+                    break
+    
+                try:
+                    return response.json()
+                except Exception as exc:
+                    logger.error('Seedream returned non-JSON response: %s', response.text[:1200])
+                    raise PhotoGenerationError('seedream45', 'invalid_json') from exc
+    
+    if last_error is not None:
+        raise last_error
     raise PhotoGenerationError('seedream45', 'request_failed')
 
 

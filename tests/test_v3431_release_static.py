@@ -33,9 +33,11 @@ def test_version_bumped():
 def test_seedream_t2i_uses_the_text_to_image_endpoint():
     # the edit endpoint validates image_urls as a non-empty sequence and
     # answered HTTP 422 to every reference-free studio prompt.
-    assert 'FAL_MODEL_T2I = os.getenv("FAL_MODEL_T2I", "bytedance/seedream/v5/pro/text-to-image")' in CONFIG
+    assert 'FAL_MODEL_T2I = os.getenv("FAL_MODEL_T2I", "fal-ai/bytedance/seedream/v4.5/text-to-image")' in CONFIG
     assert 'model=FAL_MODEL_T2I' in PHOTO
-    assert "endpoint = f\"https://fal.run/{(model or FAL_MODEL).strip('/')}\"" in PHOTO
+    # V3.44.3: retired routes fall back to known alternates on 404
+    assert "endpoint = f\"https://fal.run/{candidate}\"" in PHOTO
+    assert "if response.status_code == 404 and candidate != candidates[-1]:" in PHOTO
     # an empty reference list no longer ships in the payload at all
     assert "payload['image_urls'] = image_urls" in PHOTO
     assert "'image_urls': image_urls," not in PHOTO
