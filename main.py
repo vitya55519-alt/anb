@@ -8099,9 +8099,10 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     except Exception:
         logger.exception('webapp picture save failed user=%s', telegram_id)
         return web.json_response({'ok': False, 'error': 'save'}, status=500)
-    # Race window (two concurrent renders) is deliberate: the picture is
-    # already on disk by now, so the user keeps it and we log the unpaid one.
-    if not consume_photo_credit(telegram_id):
+    # V3.44.3: charge the real studio price (150 ), not a single credit.
+    # The balance guard above already used WEBAPP_PICTURE_COST_CREDITS, but
+    # the deduction was the old consume_photo_credit(1) — now aligned.
+    if not spend_peaches(telegram_id, webapp_service.WEBAPP_PICTURE_COST_CREDITS):
         logger.warning('webapp picture credit race user=%s', telegram_id)
     track_event(uid, 'webapp_picture_generated', metadata={'style': style, 'format': fmt})
     return web.json_response({
