@@ -282,6 +282,18 @@ def build_avatar_prompt(params: dict, face_swap: bool = False) -> str:
                 'eye shape. Do not beautify or change the face.'
             )
     parts.append('She looks directly at the viewer with a warm confident smile.')
+    # V3.44.12: the FINAL word before the outfit line is the figure — edit
+    # engines anchor on the last instruction, and without this lock they copy
+    # the reference's body while nailing the face (owner: «лицо передаёт
+    # отлично, а фигуру теряет»). The reference photo donates the face ONLY.
+    body_spec = custom_body_spec(params)
+    if body_spec:
+        parts.append(
+            f'FINAL BODY LOCK (overrides the reference photo): {body_spec}. '
+            'Take from the reference ONLY the face and identity — never its body: '
+            'even if the reference shows a different bust, waist or hips, render '
+            'exactly the figure declared in this lock.'
+        )
     parts.append(
         'Tasteful elegant outfit, fully covered; no nudity. One person only, '
         'no text, no watermark.'
@@ -471,6 +483,19 @@ def set_community_published(character_id: str, published: bool) -> bool:
         if not row:
             return False
         row.community_published = bool(published)
+        session.commit()
+        return True
+
+
+def set_custom_avatar_file_id(character_id: str, avatar_file_id: str) -> bool:
+    """V3.44.12: late avatar — creation-time generation failed (providers
+    down) and the retry pipeline drew it afterwards. Stores the Telegram
+    file_id so ensure_custom_avatar_cached syncs from Telegram as usual."""
+    with SessionLocal() as session:
+        row = session.query(CustomCharacter).filter_by(character_id=character_id).first()
+        if not row:
+            return False
+        row.avatar_file_id = avatar_file_id
         session.commit()
         return True
 

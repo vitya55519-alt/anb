@@ -132,6 +132,7 @@ from services.custom_character_service import (
     custom_character_id, get_all_custom_characters, get_custom_character,
     get_custom_character_by_id, save_custom_character,
     summary_lines, step_index, is_custom_character,
+    custom_character_params, set_custom_avatar_file_id,
 )
 from services.consent_service import has_accepted, accept as accept_consent, delete_user_data, TERMS_VERSION, PRIVACY_VERSION
 from services.collection_service import collection_progress
@@ -6390,6 +6391,30 @@ async def _show_my_character(chat_id: int, telegram_id: int):
         await bot.send_message(chat_id, '\n'.join(lines), reply_markup=markup)
 
 
+async def _retry_constructor_avatar(telegram_id: int, character_id: str) -> None:
+    """V3.44.12: creation-time providers were down — retry the avatar after
+    five and fifteen minutes so she gets a face without any user action. The
+    first photo request also heals her (ensure_custom_avatar_cached)."""
+    for delay in (300, 900):
+        await asyncio.sleep(delay)
+        try:
+            row = get_custom_character_by_id(character_id)
+            if not row or row.avatar_file_id:
+                return
+            params, name = custom_character_params(character_id)
+            avatar_bytes, _mime = await generate_custom_avatar(build_avatar_prompt(params))
+            sent = await bot.send_photo(telegram_id, BufferedInputFile(avatar_bytes, filename='avatar.jpg'))
+            from services.photo_service import _custom_reference_dir
+            avatar_folder = _custom_reference_dir(character_id)
+            avatar_folder.mkdir(parents=True, exist_ok=True)
+            (avatar_folder / 'avatar.jpg').write_bytes(avatar_bytes)
+            set_custom_avatar_file_id(character_id, sent.photo[-1].file_id)
+            await bot.send_message(telegram_id, f'дорисовала аватар для {name} ✅')
+            return
+        except Exception:
+            logger.exception('constructor avatar retry failed user=%s char=%s', telegram_id, character_id)
+
+
 async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None, source: str = ''):
     """After Stars payment: generate the avatar, save the persona, open chat.
 
@@ -6446,37 +6471,23 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             face_path = None
     # Use photo_reference as the primary identity anchor if available.
     identity_anchor = photo_reference_path or face_path
+    # V3.44.12: three attempts 20s apart — providers hiccup often but rarely
+    # stay down for a minute. Whatever happens, the character is STILL saved
+    # below: an invisible persona was exactly the owner's complaint («создал,
+    # а её нет нигде»). A missing avatar heals lazily on the first photo
+    # request (ensure_custom_avatar_cached) and via the delayed retry task.
+    avatar_bytes = None
     try:
-        avatar_bytes, _mime = await generate_custom_avatar(
-            build_avatar_prompt(params, face_swap=bool(identity_anchor)), identity_anchor,
-        )
-    except Exception:
-        logger.exception('constructor avatar generation failed user=%s', telegram_id)
-        if charge:
+        for attempt in (1, 2, 3):
             try:
-                await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge)
-                record_refund(telegram_id, charge, CONSTRUCTOR_COST_STARS, product='constructor')
-                await bot.send_message(chat_id, 'аватар сейчас не получился 😕 Stars вернул автоматически. Попробуй ещё раз чуть позже.')
-            except Exception:
-                logger.exception('constructor refund failed user=%s', telegram_id)
-                await bot.send_message(chat_id, 'аватар не получился 😕 напиши /support — вернём Stars.')
-        elif source == 'peaches':
-            # V3.44.10: peaches were already spent at the buy step — put them
-            # back so a provider outage never eats the balance. The unique
-            # reason sidesteps grant_photo_credits' idempotency marker.
-            try:
-                grant_photo_credits(
-                    telegram_id, CONSTRUCTOR_COST_PEACHES,
-                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}',
+                avatar_bytes, _mime = await generate_custom_avatar(
+                    build_avatar_prompt(params, face_swap=bool(identity_anchor)), identity_anchor,
                 )
-                await bot.send_message(chat_id, f'аватар сейчас не получился 😕 вернула {CONSTRUCTOR_COST_PEACHES} 🍑 на баланс — попробуй ещё раз чуть позже.')
+                break
             except Exception:
-                logger.exception('constructor peaches refund failed user=%s', telegram_id)
-                await bot.send_message(chat_id, f'аватар не получился 😕 напиши /support — вернём {CONSTRUCTOR_COST_PEACHES} 🍑.')
-        else:
-            # Admin free run — nothing to refund.
-            await bot.send_message(chat_id, 'аватар сейчас не получился 😕 попробуй ещё раз чуть позже.')
-        return
+                logger.exception('constructor avatar generation failed user=%s attempt=%s', telegram_id, attempt)
+                if attempt < 3:
+                    await asyncio.sleep(20)
     finally:
         if face_path:
             try:
@@ -6488,12 +6499,17 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
                 photo_reference_path.unlink()
             except OSError:
                 pass
-    try:
-        sent = await bot.send_photo(telegram_id, BufferedInputFile(avatar_bytes, filename='avatar.jpg'))
-        avatar_file_id = sent.photo[-1].file_id
-    except Exception:
-        logger.exception('constructor avatar telegram upload failed user=%s', telegram_id)
-        avatar_file_id = None
+    avatar_failed = avatar_bytes is None
+    if avatar_failed:
+        await bot.send_message(chat_id, 'провайдеры рисования сейчас лежат 😔 создаю её без аватара — фото появится само, как только они оживут.')
+    avatar_file_id = None
+    if avatar_bytes:
+        try:
+            sent = await bot.send_photo(telegram_id, BufferedInputFile(avatar_bytes, filename='avatar.jpg'))
+            avatar_file_id = sent.photo[-1].file_id
+        except Exception:
+            logger.exception('constructor avatar telegram upload failed user=%s', telegram_id)
+            avatar_file_id = None
     row = save_custom_character(
         telegram_id, display_name=display_name, params=params,
         avatar_file_id=avatar_file_id, face_file_id=cons.get('face_file_id'),
@@ -6508,13 +6524,14 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     )
     # V3.44.7: save avatar to disk immediately so the Mini App can serve it
     # without waiting for ensure_custom_avatar_cached to download from Telegram.
-    try:
-        from services.photo_service import _custom_reference_dir
-        avatar_folder = _custom_reference_dir(row.character_id)
-        avatar_folder.mkdir(parents=True, exist_ok=True)
-        (avatar_folder / 'avatar.jpg').write_bytes(avatar_bytes)
-    except Exception:
-        logger.exception('constructor avatar disk save failed user=%s', telegram_id)
+    if avatar_bytes:
+        try:
+            from services.photo_service import _custom_reference_dir
+            avatar_folder = _custom_reference_dir(row.character_id)
+            avatar_folder.mkdir(parents=True, exist_ok=True)
+            (avatar_folder / 'avatar.jpg').write_bytes(avatar_bytes)
+        except Exception:
+            logger.exception('constructor avatar disk save failed user=%s', telegram_id)
     # V3.31.8: creating a persona selects her immediately. Before this the
     # selection stayed on the previous character (Anna by default), so a user
     # who built their own girl and pressed «💕 Свидание» got a date with Anna.
@@ -6569,6 +6586,31 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         f'🎉 Знакомься — это {display_name}! Теперь она твоя личная собеседница.',
         reply_markup=_my_character_keyboard(row.character_id),
     )
+    if avatar_failed:
+        # V3.44.12: the persona exists but the paid product did not fully
+        # deliver (no avatar) — return the money and queue the delayed avatar
+        # retries. The Stars branch mirrors the original V3.35.0 refund.
+        if charge:
+            try:
+                await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge)
+                record_refund(telegram_id, charge, CONSTRUCTOR_COST_STARS, product='constructor')
+                await bot.send_message(chat_id, 'Stars вернула автоматически ✅ персонаж остался у тебя — аватар дорисую позже.')
+            except Exception:
+                logger.exception('constructor refund failed user=%s', telegram_id)
+                await bot.send_message(chat_id, 'не смогла вернуть Stars автоматически 😕 напиши /support — вернём вручную.')
+        elif source == 'peaches':
+            # V3.44.10/12: peaches were already spent at the buy step — put
+            # them back; the unique reason sidesteps the idempotency marker.
+            try:
+                grant_photo_credits(
+                    telegram_id, CONSTRUCTOR_COST_PEACHES,
+                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}',
+                )
+                await bot.send_message(chat_id, f'{CONSTRUCTOR_COST_PEACHES} 🍑 снова на балансе ✅ персонаж остался у тебя — аватар дорисую позже.')
+            except Exception:
+                logger.exception('constructor peaches refund failed user=%s', telegram_id)
+                await bot.send_message(chat_id, f'аватар не получился 😕 напиши /support — вернём {CONSTRUCTOR_COST_PEACHES} 🍑.')
+        asyncio.create_task(_retry_constructor_avatar(telegram_id, row.character_id))
 
 
 @dp.callback_query(F.data == 'constructor:start')

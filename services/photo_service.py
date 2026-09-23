@@ -44,7 +44,7 @@ from services.character_registry import get_character
 from services.custom_character_service import (
     is_custom_character, get_custom_character_by_id, custom_character_params,
     custom_appearance_descriptors, custom_base_character, custom_hair_color,
-    custom_body_spec,
+    custom_body_spec, build_avatar_prompt,
 )
 from services.test_mode import get_stage as get_test_stage
 from services.access_service import is_premium
@@ -1322,33 +1322,50 @@ async def ensure_custom_avatar_cached(bot, character_id: str) -> Path | None:
     the persona is rebuilt (a new file_id re-downloads automatically).
     """
     row = get_custom_character_by_id(character_id)
-    if not row or not row.avatar_file_id:
+    if not row:
         return None
     folder = _custom_reference_dir(character_id)
     target = folder / 'avatar.jpg'
     marker = folder / 'avatar.file_id'
-    try:
-        cached_id = marker.read_text(encoding='utf-8').strip() if marker.exists() else ''
-    except OSError:
-        cached_id = ''
-    if target.exists() and cached_id == row.avatar_file_id:
+    if row.avatar_file_id:
+        try:
+            cached_id = marker.read_text(encoding='utf-8').strip() if marker.exists() else ''
+        except OSError:
+            cached_id = ''
+        if target.exists() and cached_id == row.avatar_file_id:
+            return target
+        try:
+            data = await bot.download(row.avatar_file_id)
+            payload = data.read() if hasattr(data, 'read') else bytes(data)
+        except Exception:
+            logger.exception('custom avatar download failed character=%s', character_id)
+            return target if target.exists() else None
+        if not payload:
+            return target if target.exists() else None
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+            marker.write_text(row.avatar_file_id, encoding='utf-8')
+        except OSError:
+            logger.exception('custom avatar cache write failed character=%s', character_id)
+            return None
+        return target
+    # V3.44.12: the persona was saved without an avatar (providers were down
+    # at creation). Draw it now from her constructor params — the first photo
+    # request heals her instead of failing forever.
+    if target.exists():
         return target
     try:
-        data = await bot.download(row.avatar_file_id)
-        payload = data.read() if hasattr(data, 'read') else bytes(data)
-    except Exception:
-        logger.exception('custom avatar download failed character=%s', character_id)
-        return target if target.exists() else None
-    if not payload:
-        return target if target.exists() else None
-    try:
+        params, _name = custom_character_params(character_id)
+        avatar_bytes, _mime = await generate_custom_avatar(build_avatar_prompt(params))
         folder.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(payload)
-        marker.write_text(row.avatar_file_id, encoding='utf-8')
-    except OSError:
-        logger.exception('custom avatar cache write failed character=%s', character_id)
+        target.write_bytes(avatar_bytes)
+        marker.write_text('generated-on-demand', encoding='utf-8')
+        logger.info('custom avatar drawn on demand character=%s', character_id)
+        return target
+    except Exception:
+        logger.exception('lazy custom avatar generation failed character=%s', character_id)
         return None
-    return target
 
 
 # ── V3.19.0: custom character constructor avatar ─────────────────────────
