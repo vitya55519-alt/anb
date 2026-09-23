@@ -1174,7 +1174,10 @@ async def _sleep_block_reply(message: types.Message) -> None:
     if has_used_demo(message.from_user.id):
         offer_discount(message.from_user.id)
     track_event(uid, 'chat_sleep_block')
-    await message.answer(pick_text('sleep'), reply_markup=_sleep_block_markup(message.from_user.id))
+    # V3.44.16: the moment she "falls asleep" is the exit door — give a
+    # concrete reason to come back tomorrow, not just the premium upsell.
+    text = pick_text('sleep') + '\nа завтра утром на колесе бонуса тебя уже будет ждать подарок 🎁 (приложение → Профиль)'
+    await message.answer(text, reply_markup=_sleep_block_markup(message.from_user.id))
 
 
 # V3.27.0: ruble-shop balances (tokens + constructor credit) live on the users
@@ -7608,6 +7611,12 @@ async def text_message(message: types.Message):
                 f'🔥 {gam["streak_count"]} дней подряд! подарил {gam["streak_reward_credits"]} фото-кредитов за постоянство. '
                 'Заходи завтра — серию нельзя прерывать 😊'
             )
+        elif gam and gam.get('new_streak_day') and int(gam.get('streak_count') or 0) >= 2:
+            # V3.44.16: streaks used to be invisible until the 3-day reward —
+            # a day-2+ user never learned the series exists. Keep it one line.
+            await message.answer(
+                f'🔥 {gam["streak_count"]} дней подряд! приходи завтра — не прерывай серию 😊'
+            )
     except Exception:
         pass
     if message.from_user.id not in ADMIN_TELEGRAM_IDS and not can_send_message(message.from_user.id):
@@ -8537,7 +8546,17 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     try:
         from services import photo_service
-        data, mime = await photo_service.generate_custom_avatar(final_prompt, None)
+        # V3.44.16: the studio rides the same hard cap as chat photos — a hung
+        # fal chain used to leave the studio spinning forever (49% of renders
+        # died; the rest could stall for half an hour).
+        data, mime = await asyncio.wait_for(
+            photo_service.generate_custom_avatar(final_prompt, None),
+            timeout=PHOTO_TOTAL_BUDGET_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning('webapp picture generation timed out user=%s budget=%ss', telegram_id, PHOTO_TOTAL_BUDGET_SECONDS)
+        reason = 'timeout' if telegram_id in ADMIN_TELEGRAM_IDS else None
+        return web.json_response({'ok': False, 'error': 'gen', 'reason': reason}, status=502)
     except Exception as exc:
         logger.exception('webapp picture generation failed user=%s', telegram_id)
         # V3.39.0: the owner sees WHY the render died right in the studio toast.

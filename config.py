@@ -293,6 +293,16 @@ PREMIUM_DISCOUNT_HOURS = max(1, int(os.getenv("PREMIUM_DISCOUNT_HOURS", "24")))
 # hours of silence (cheap, no LLM), the LLM-crafted nudge still fires after
 # PROACTIVE_MIN_HOURS.
 RETENTION_REMINDER_HOURS = max(6, min(48, int(os.getenv("RETENTION_REMINDER_HOURS", "24"))))
+# V3.44.16: recurring retention nudges. The old guard allowed exactly ONE
+# push per user lifetime (last_nudge_at >= last_active_at skipped forever),
+# so D7 collapsed to 1% — now nudges repeat while the user stays away.
+RETENTION_NUDGE_INTERVAL_HOURS = max(6, min(48, int(os.getenv("RETENTION_NUDGE_INTERVAL_HOURS", "24"))))
+RETENTION_MAX_NUDGES = max(1, min(10, int(os.getenv("RETENTION_MAX_NUDGES", "5"))))
+# The day-1 hook: a special "your bonus wheel is waiting" push for YOUNG
+# accounts that went silent — D1 was 5%, the wheel gives a concrete reason
+# to open the app on day 2.
+DAY1_HOOK_MAX_ACCOUNT_HOURS = max(24, int(os.getenv("DAY1_HOOK_MAX_ACCOUNT_HOURS", "72")))
+DAY1_HOOK_MIN_INACTIVE_HOURS = max(6, int(os.getenv("DAY1_HOOK_MIN_INACTIVE_HOURS", "18")))
 # Morning/evening rituals: she writes first in the user's local time windows.
 RITUALS_ENABLED = os.getenv("RITUALS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 RITUAL_MORNING_START_HOUR = max(0, min(23, int(os.getenv("RITUAL_MORNING_START_HOUR", "7"))))

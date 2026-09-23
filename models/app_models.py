@@ -32,6 +32,9 @@ class User(Base):
     # V3.20.0: the moment the one-time 24h premium discount window was opened
     # (nullable = never offered). Auto-migrated by services/db.py.
     discount_offered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # V3.44.16: when the day-1 "bonus wheel is waiting" hook was sent
+    # (nullable = never). Auto-migrated by services/db.py.
+    day1_hook_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     adult_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     # V3.21.0: couple-layer UI pack (pet name, daily quest, rituals toggle,
     # celebrated anniversaries, onboarding tour). Auto-migrated by services/db.py.
@@ -252,6 +255,10 @@ class CharacterState(Base):
     recent_hairstyles_json: Mapped[str] = mapped_column(Text, default='[]')
     pending_hook: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_nudge_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # V3.44.16: how many retention nudges this silence cycle already used —
+    # the scheduler repeats nudges (RETENTION_MAX_NUDGES) instead of the old
+    # one-per-lifetime guard. Reset when the user comes back. Auto-migrated.
+    nudge_count: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 

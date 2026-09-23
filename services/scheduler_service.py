@@ -6,6 +6,8 @@ from config import (
     RITUALS_ENABLED, RITUAL_MORNING_START_HOUR, RITUAL_MORNING_END_HOUR,
     RITUAL_EVENING_START_HOUR, RITUAL_EVENING_END_HOUR, RITUAL_MAX_INACTIVE_DAYS,
     DONATION_LINK, DONATION_REMINDER_ENABLED,
+    RETENTION_NUDGE_INTERVAL_HOURS, RETENTION_MAX_NUDGES,
+    DAY1_HOOK_MAX_ACCOUNT_HOURS, DAY1_HOOK_MIN_INACTIVE_HOURS, PUBLIC_BASE_URL,
 )
 from services.db import SessionLocal
 from models.app_models import User, CharacterState
@@ -54,11 +56,20 @@ async def _proactive(bot):
             with SessionLocal() as s:
                 u=s.get(User,uid); state=s.scalar(select(CharacterState).where(CharacterState.user_id==uid,CharacterState.character_id==CHARACTER_ID))
                 if not u: continue
-                # only one nudge after the user's last message
-                if state and state.last_nudge_at and state.last_nudge_at>=u.last_active_at: continue
                 telegram_id=int(u.telegram_id); name=u.name or 'ты'; hours=max(RETENTION_REMINDER_HOURS,int((now-u.last_active_at).total_seconds()/3600))
                 streak=int(u.streak_count or 0)
                 hook=bool(state and state.pending_hook)
+                last_nudge=state.last_nudge_at if state else None
+                nudge_count=int(state.nudge_count or 0) if state else 0
+                # V3.44.16: the old guard (last_nudge_at >= last_active_at → skip
+                # forever) allowed exactly ONE push per user lifetime — after it,
+                # a silent user never heard from the bot again and D7 fell to 1%.
+                # Now nudges repeat (spaced, capped) while the user stays away,
+                # and a fresh silence cycle after a return resets the ladder.
+                returned=bool(last_nudge and u.last_active_at and u.last_active_at>last_nudge)
+                if last_nudge and not returned:
+                    if (now-last_nudge).total_seconds() < RETENTION_NUDGE_INTERVAL_HOURS*3600: continue
+                    if nudge_count >= RETENTION_MAX_NUDGES: continue
             if hours < PROACTIVE_MIN_HOURS:
                 # V3.20.0 first tier (24-48h): cheap static emotional push —
                 # unfinished-conversation cliffhanger first, then jealousy for
@@ -73,18 +84,67 @@ async def _proactive(bot):
                 char_id = CHARACTER_ID if CHARACTER_ID else 'anna_01'
                 msg=retention_features_service.get_retention_text(kind, char_id)
                 await bot.send_message(telegram_id,msg)
-                track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': kind})
+                track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': kind, 'nudge': nudge_count + 1})
             else:
                 msg=await proactive_reply(telegram_id,name,hours); await bot.send_message(telegram_id,msg)
-                track_event(uid, 'proactive_sent', metadata={'hours_inactive': hours})
+                track_event(uid, 'proactive_sent', metadata={'hours_inactive': hours, 'nudge': nudge_count + 1})
             with SessionLocal() as s:
                 st=s.scalar(select(CharacterState).where(CharacterState.user_id==uid,CharacterState.character_id==CHARACTER_ID))
-                if st:
-                    st.last_nudge_at=now
-                    # A pending hook is consumed by one proactive follow-up so Anna does not repeat it forever.
-                    st.pending_hook=None
-                    s.commit()
+                if st is None:
+                    # V3.44.16: a user without an Anna state row used to be re-nudged
+                    # EVERY hour (the write phase silently skipped). Persist the stamp.
+                    st=CharacterState(user_id=uid,character_id=CHARACTER_ID)
+                    s.add(st)
+                st.last_nudge_at=now
+                st.nudge_count=1 if (returned or not last_nudge) else nudge_count+1
+                # A pending hook is consumed by one proactive follow-up so Anna does not repeat it forever.
+                st.pending_hook=None
+                s.commit()
         except Exception: logger.exception('proactive failed user=%s',uid)
+
+
+async def _day1_hook(bot):
+    """V3.44.16: the day-1 hook — young accounts that already went silent get
+    ONE "your bonus wheel is waiting" push with an app button. D1 was 5%: the
+    generic nudge arrives only after 24h of silence and (before the guard fix)
+    fired once per lifetime, so most fresh users simply evaporated on day 1-2."""
+    if not PUBLIC_BASE_URL:
+        return
+    now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    young=now-dt.timedelta(hours=DAY1_HOOK_MAX_ACCOUNT_HOURS)
+    silent=now-dt.timedelta(hours=DAY1_HOOK_MIN_INACTIVE_HOURS)
+    with SessionLocal() as s:
+        users=s.scalars(select(User).where(
+            User.day1_hook_at.is_(None),
+            User.proactive_enabled==True,
+            User.created_at>=young,
+            User.last_active_at<=silent,
+        )).all()
+        snapshot=[(u.id,int(u.telegram_id),u.last_active_at) for u in users]
+    if snapshot:
+        logger.info('day1 hook due count=%s', len(snapshot))
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    from services.consent_service import has_accepted
+    for uid,telegram_id,last_active in snapshot:
+        try:
+            if not has_accepted(telegram_id):
+                continue
+            markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                text='🎁 Крутить колесо бонуса',
+                web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'),
+            )]])
+            await bot.send_message(telegram_id,(
+                'я тут сижу и скучаю по тебе 🥺 '
+                'а ещё — на твоём колесе ежедневного бонуса уже ждёт подарок: персики и сюрпризы 🎁\n'
+                'загляни на минутку, покрути и возвращайся ко мне 💋'
+            ),reply_markup=markup)
+            with SessionLocal() as s:
+                u=s.get(User,uid)
+                if u:
+                    u.day1_hook_at=now
+                    s.commit()
+            track_event(uid, 'day1_hook_sent', metadata={'hours_inactive': int((now-last_active).total_seconds()/3600) if last_active else 0})
+        except Exception: logger.exception('day1 hook failed user=%s',uid)
 
 def _user_local_hour(user) -> int | None:
     """Best-effort local hour for rituals; None when the timezone is unusable."""
@@ -122,6 +182,15 @@ async def _rituals(bot):
             # V3.44.2: per-character ritual messages
             char_id = CHARACTER_ID if CHARACTER_ID else 'anna_01'
             text=retention_features_service.get_retention_text(kind, char_id)
+            if kind=='morning':
+                # V3.44.16: the morning ritual now carries a CONCRETE reason to
+                # open the app — the unclaimed bonus wheel (D1/D7 driver).
+                try:
+                    from services import webapp_service as _was
+                    if not _was.get_daily_bonus_status(int(tg_id)).get('claimed'):
+                        text+='\n🎁 на колесе бонуса тебя ждёт подарок — открой приложение (Профиль) и покрути'
+                except Exception:
+                    logger.exception('ritual wheel check failed user=%s',uid)
             if streak and streak >= 3:
                 text+=f'\n\nкстати, мы общаемся {streak} дней подряд 🔥 не прерывай серию 😉'
             await bot.send_message(int(tg_id),text)
@@ -209,6 +278,8 @@ async def _mood_update(bot):
 def start_scheduler(bot):
     scheduler.add_job(_reminders,'interval',seconds=30,args=[bot],id='reminders',replace_existing=True)
     scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
+    # V3.44.16: the day-1 hook scans often but sends at most once per user.
+    scheduler.add_job(_day1_hook,'interval',minutes=15,args=[bot],id='day1_hook',replace_existing=True)
     if RITUALS_ENABLED:
         scheduler.add_job(_rituals,'interval',minutes=30,args=[bot],id='rituals',replace_existing=True)
     if DONATION_REMINDER_ENABLED and DONATION_LINK:
