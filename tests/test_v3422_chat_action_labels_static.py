@@ -30,16 +30,18 @@ def test_voice_button_and_listener_removed():
     # the other media/feature actions stay wired; V3.43.7: the photo pill
     # opens the scene menu first, the chosen scene rides the media request
     assert "getElementById('mediaPhoto').addEventListener('click', () => openFeature('photo'))" in INDEX
-    assert "getElementById('mediaCircle').addEventListener('click', () => requestMedia('circle'))" in INDEX
-    assert "getElementById('mediaVideo').addEventListener('click', () => requestMedia('video'))" in INDEX
+    # V3.44.17: the «Видео»/«Кружок» media pills were hidden from the chat
+    # strip too (owner: «скрой из чата кнопки видео и кружок»)
+    assert "getElementById('mediaCircle').addEventListener('click', () => requestMedia('circle'))" not in INDEX
+    assert "getElementById('mediaVideo').addEventListener('click', () => requestMedia('video'))" not in INDEX
 
 
 # ── the strip is now readable labeled pills ───────────────────────────────
 
 def test_action_buttons_carry_localized_labels():
     # each pill renders an icon span + a label span filled from the L dict
-    for btn, lb in (('mediaPhoto', 'lbMediaPhoto'), ('mediaVideo', 'lbMediaVideo'),
-                    ('mediaCircle', 'lbMediaCircle'), ('featQuest', 'lbFeatQuest'),
+    # (V3.44.17: only the pills still on screen — the video/circle ones are gone)
+    for btn, lb in (('mediaPhoto', 'lbMediaPhoto'), ('featQuest', 'lbFeatQuest'),
                     ('featDate', 'lbFeatDate'), ('featApt', 'lbFeatApt')):
         assert f'<span class="lb" id="{lb}"></span>' in INDEX, f'missing label span for {btn}'
         assert f"document.getElementById('{lb}').textContent = L." in INDEX, f'label not localized: {lb}'

@@ -178,20 +178,24 @@ def test_paid_date_mirrors_into_the_app_history():
 
 
 def test_frontend_has_the_four_feature_buttons_and_sheet():
-    assert 'id="mediaVideo"' in INDEX
     assert 'id="featQuest"' in INDEX
     assert 'id="featDate"' in INDEX
     assert 'id="featApt"' in INDEX
     assert 'id="featview"' in INDEX
     assert 'id="featBody"' in INDEX
-    # the existing photo/circle buttons stay; the crooked voice button is gone (V3.42.2)
+    # the existing photo button stays; the crooked voice button is gone (V3.42.2)
     assert 'id="mediaPhoto"' in INDEX
-    assert 'id="mediaCircle"' in INDEX
     assert 'id="mediaVoice"' not in INDEX
+    # V3.44.17: the direct «Видео»/«Кружок» media pills are hidden from the chat
+    # strip (owner request); the backend media endpoints stay for a plain revert
+    assert 'id="mediaVideo"' not in INDEX
+    assert 'id="mediaCircle"' not in INDEX
 
 
 def test_frontend_wires_video_and_the_feature_sheet():
-    assert "document.getElementById('mediaVideo').addEventListener('click', () => requestMedia('video'))" in INDEX
+    # V3.44.17: the direct video button listener left with the button itself —
+    # the app video pipeline (endpoints above) is untouched and renders history
+    assert "document.getElementById('mediaVideo').addEventListener('click', () => requestMedia('video'))" not in INDEX
     assert 'async function openFeature(kind)' in INDEX
     assert 'async function featurePost(payload)' in INDEX
     assert 'function renderFeature(j)' in INDEX

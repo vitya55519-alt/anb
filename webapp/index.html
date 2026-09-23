@@ -644,9 +644,10 @@
   <div class="chat-msgs" id="chatMsgs"></div>
   <div class="chat-input">
     <div class="chat-media">
+      <!-- V3.44.17: «Видео» and «Кружок» pills hidden from the strip (owner:
+           «скрой из чата кнопки видео и кружок»). The backend media endpoints and
+           the i18n keys stay, so restoring these two buttons is a plain revert. -->
       <button id="mediaPhoto"><span class="ic">📸</span><span class="lb" id="lbMediaPhoto"></span></button>
-      <button id="mediaVideo"><span class="ic">🎬</span><span class="lb" id="lbMediaVideo"></span></button>
-      <button id="mediaCircle"><span class="ic">🎥</span><span class="lb" id="lbMediaCircle"></span></button>
       <button id="featQuest"><span class="ic">🎯</span><span class="lb" id="lbFeatQuest"></span></button>
       <button id="featDate"><span class="ic">💕</span><span class="lb" id="lbFeatDate"></span></button>
       <button id="featApt"><span class="ic">🏠</span><span class="lb" id="lbFeatApt"></span></button>
@@ -1197,9 +1198,9 @@ document.getElementById('l_chars_hint').textContent = L.chars_hint;
 document.getElementById('segOfficial').textContent = L.seg_official;
 document.getElementById('segCommunity').textContent = L.seg_community;
 // V3.42.2: readable labels under the chat action icons.
+// V3.44.17: the «Видео»/«Кружок» label assignments are gone together with the
+// buttons themselves — only the pills still on screen get labels.
 document.getElementById('lbMediaPhoto').textContent = L.media_photo;
-document.getElementById('lbMediaVideo').textContent = L.media_video;
-document.getElementById('lbMediaCircle').textContent = L.media_circle;
 document.getElementById('lbFeatQuest').textContent = L.feat_quest;
 document.getElementById('lbFeatDate').textContent = L.feat_date;
 document.getElementById('lbFeatApt').textContent = L.feat_apt;
@@ -2760,10 +2761,10 @@ document.getElementById('chatSelect').addEventListener('click', () => { if (CHAT
 // V3.43.7: the photo button opens the scene menu first (the same picker the
 // bot's photo keyboard shows); the chosen scene rides the media request.
 document.getElementById('mediaPhoto').addEventListener('click', () => openFeature('photo'));
-document.getElementById('mediaCircle').addEventListener('click', () => requestMedia('circle'));
-// V3.41.0: the app-chat feature buttons — video reuses the media pipeline, the
-// other three open the feature sheet (apartment / date / daily quest).
-document.getElementById('mediaVideo').addEventListener('click', () => requestMedia('video'));
+// V3.41.0: the app-chat feature buttons open the feature sheet
+// (apartment / date / daily quest). V3.44.17: the direct video/circle media
+// buttons are hidden from the strip — the photo pipeline (and the bot chat)
+// stay untouched.
 document.getElementById('featQuest').addEventListener('click', () => openFeature('quest'));
 document.getElementById('featDate').addEventListener('click', () => openFeature('date'));
 document.getElementById('featApt').addEventListener('click', () => openFeature('apartment'));
