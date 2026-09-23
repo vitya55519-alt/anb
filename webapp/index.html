@@ -1842,34 +1842,32 @@ function renderWizStep() {
       if (prev) prev.addEventListener('click', () => { WIZ.idx -= 1; renderWizStep(); });
       return;
     }
-    // V3.44.5: photo_upload steps — request a photo via Telegram WebApp API.
+    // V3.44.5: photo_upload steps — use file input for photo upload.
     if (step.photo_upload) {
       const hasPhoto = !!WIZ.params[step.key];
       body.innerHTML = `
         <div class="step-title">${esc(step.title)}</div>
         ${hasPhoto ? '<div style="color:var(--accent);margin:10px 0">✓ Фото загружено</div>' : ''}
         <div style="display:flex;gap:10px;margin-top:16px">
-          <button class="cta" id="wizPhotoUpload">📷 ${esc(L.wiz_upload_photo || 'Загрузить фото')}</button>
+          <label class="cta" style="cursor:pointer">📷 ${esc(L.wiz_upload_photo || 'Загрузить фото')}
+            <input type="file" accept="image/*" id="wizPhotoInput" style="display:none">
+          </label>
           <button class="cta ghost" id="wizPhotoSkip">↦ ${esc(L.wiz_skip || 'Пропустить')}</button>
         </div>
         ${WIZ.idx > 0 ? `<button class="cta ghost" id="wizPrev" style="margin-top:10px">↩ ${esc(L.wiz_step)}</button>` : ''}`;
-      const uploadBtn = document.getElementById('wizPhotoUpload');
+      const fileInput = document.getElementById('wizPhotoInput');
       const skipBtn = document.getElementById('wizPhotoSkip');
-      uploadBtn.addEventListener('click', () => {
-        // Use Telegram WebApp API to request a photo.
-        if (window.Telegram && Telegram.WebApp && Telegram.WebApp.requestMedia) {
-          Telegram.WebApp.requestMedia({ type: 'photo' }, (media) => {
-            if (media && media.photo) {
-              WIZ.params[step.key] = media.photo;  // file_id or data
-              WIZ.idx += 1;
-              renderWizStep();
-            }
-          });
-        } else {
-          // Fallback: store a placeholder and advance.
-          WIZ.params[step.key] = 'pending_upload';
-          WIZ.idx += 1;
-          renderWizStep();
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          // Convert to base64 and store.
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            WIZ.params[step.key] = ev.target.result;  // base64 data URL
+            WIZ.idx += 1;
+            renderWizStep();
+          };
+          reader.readAsDataURL(file);
         }
       });
       skipBtn.addEventListener('click', () => {

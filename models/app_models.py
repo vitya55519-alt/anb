@@ -102,7 +102,8 @@ class CoupleAlbum(Base):
 class CustomCharacter(Base):
     __tablename__ = "custom_characters"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    telegram_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # V3.44.6: allow multiple characters per user — removed unique constraint.
+    telegram_id: Mapped[str] = mapped_column(String(64), index=True)
     character_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(80), default="")
     params_json: Mapped[str] = mapped_column(Text, default="{}")
@@ -114,6 +115,9 @@ class CustomCharacter(Base):
     backstory: Mapped[str | None] = mapped_column(Text, nullable=True)
     community_published: Mapped[bool] = mapped_column(Boolean, default=False)
     photo_reference_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # V3.44.6: author revenue sharing — creator earns % from spending on this character.
+    author_telegram_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    author_revenue_percent: Mapped[float] = mapped_column(Float, default=5.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 class Message(Base):

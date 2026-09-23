@@ -6378,9 +6378,22 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     await bot.send_message(chat_id, '✨ Отлично! Рисую твою героиню — это займёт до минуты...')
     face_path = None
     photo_reference_path = None
-    # V3.44.5: download photo reference if user uploaded one.
+    # V3.44.5: handle base64 photo reference from Mini App.
+    photo_reference_base64 = cons.get('photo_reference_base64')
+    if photo_reference_base64:
+        import tempfile, base64
+        photo_reference_path = Path(tempfile.gettempdir()) / f'constructor_photo_ref_{telegram_id}.jpg'
+        try:
+            # Decode base64 data URL: data:image/jpeg;base64,...
+            header, data = photo_reference_base64.split(',', 1)
+            photo_bytes = base64.b64decode(data)
+            photo_reference_path.write_bytes(photo_bytes)
+        except Exception:
+            logger.exception('constructor base64 photo decode failed user=%s', telegram_id)
+            photo_reference_path = None
+    # V3.44.5: download photo reference if user uploaded via bot (file_id).
     photo_reference_file_id = params.get('photo_reference', '')
-    if photo_reference_file_id:
+    if photo_reference_file_id and photo_reference_file_id != 'base64_pending':
         import tempfile
         photo_reference_path = Path(tempfile.gettempdir()) / f'constructor_photo_ref_{telegram_id}.jpg'
         try:
@@ -6442,6 +6455,9 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         backstory=params.get('backstory', ''),
         community_published=params.get('community') == 'community_yes',
         photo_reference_file_id=photo_reference_file_id or None,
+        # V3.44.6: author revenue sharing — creator earns 5% from spending.
+        author_telegram_id=str(telegram_id),
+        author_revenue_percent=5.0,
     )
     # V3.31.8: creating a persona selects her immediately. Before this the
     # selection stayed on the previous character (Anna by default), so a user
@@ -8722,27 +8738,34 @@ async def _webapp_api_constructor_draft(request: web.Request) -> web.Response:
     name = str(body.get('name') or '').strip()[:24]
     if not isinstance(params_in, dict):
         return web.json_response({'ok': False, 'error': 'invalid_params'}, status=400)
-    existing = get_custom_character(telegram_id)
-    if existing and existing.community_published and existing.photo_reference_file_id:
-        # One visible persona with photo per user — recreate via the bot's «Создать заново».
-        return web.json_response({'ok': False, 'error': 'exists'}, status=409)
+    # V3.44.6: no character limit — users can create unlimited characters.
     params = {}
+    photo_reference_base64 = None
     for step in CONSTRUCTOR_STEPS:
-        value = str(params_in.get(step['key'], ''))
+        value = params_in.get(step['key'], '')
         # V3.44.4: free_text steps (backstory, personality) accept any text.
         if step.get('free_text'):
-            params[step['key']] = value[:500]
-        # V3.44.5: photo_upload steps accept file_id or data string.
+            params[step['key']] = str(value)[:500]
+        # V3.44.5: photo_upload steps accept file_id or base64 data URL.
         elif step.get('photo_upload'):
-            params[step['key']] = value if value and value != 'pending_upload' else ''
-        elif value and value not in OPTION_LABELS:
+            if isinstance(value, str) and value.startswith('data:image'):
+                # Base64 data URL from Mini App file input.
+                photo_reference_base64 = value
+                params[step['key']] = 'base64_pending'
+            else:
+                params[step['key']] = str(value) if value and value != 'pending_upload' else ''
+        elif str(value) and str(value) not in OPTION_LABELS:
             return web.json_response({'ok': False, 'error': 'invalid_params'}, status=400)
         else:
-            params[step['key']] = value
+            params[step['key']] = str(value)
     if not name:
         return web.json_response({'ok': False, 'error': 'name_required'}, status=400)
     params['name'] = name
-    _constructor_sessions[telegram_id] = {'params': params, 'step': len(CONSTRUCTOR_STEPS)}
+    session_data = {'params': params, 'step': len(CONSTRUCTOR_STEPS)}
+    # V3.44.5: store base64 photo data in session for _finish_constructor.
+    if photo_reference_base64:
+        session_data['photo_reference_base64'] = photo_reference_base64
+    _constructor_sessions[telegram_id] = session_data
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     track_event(uid, 'webapp_constructor_draft')
     return web.json_response({

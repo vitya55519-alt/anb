@@ -24,7 +24,9 @@ def is_custom_character(character_id: str | None) -> bool:
 
 
 def custom_character_id(telegram_id: int) -> str:
-    return f'{CUSTOM_CHARACTER_PREFIX}{telegram_id}'
+    """V3.44.6: generate unique character ID — supports multiple chars per user."""
+    import uuid
+    return f'{CUSTOM_CHARACTER_PREFIX}{telegram_id}_{uuid.uuid4().hex[:8]}'
 
 
 # Ordered wizard steps. Each option is (callback value, Russian label,
@@ -367,37 +369,44 @@ def save_custom_character(
     backstory: str | None = None,
     community_published: bool = False,
     photo_reference_file_id: str | None = None,
+    # V3.44.6: author revenue sharing fields.
+    author_telegram_id: str | None = None,
+    author_revenue_percent: float = 5.0,
 ) -> CustomCharacter:
     character_id = custom_character_id(telegram_id)
     with SessionLocal() as session:
-        row = session.query(CustomCharacter).filter_by(telegram_id=str(telegram_id)).first()
-        if row is None:
-            row = CustomCharacter(telegram_id=str(telegram_id), character_id=character_id)
-            session.add(row)
-        row.display_name = display_name
-        row.params_json = json.dumps(params, ensure_ascii=False)
-        if avatar_file_id:
-            row.avatar_file_id = avatar_file_id
-        if face_file_id:
-            row.face_file_id = face_file_id
-        # V3.44.4: extended constructor fields.
-        if description is not None:
-            row.description = description
-        if personality is not None:
-            row.personality = personality
-        if backstory is not None:
-            row.backstory = backstory
-        row.community_published = community_published
-        if photo_reference_file_id:
-            row.photo_reference_file_id = photo_reference_file_id
+        # V3.44.6: always create a new row — users can have multiple characters.
+        row = CustomCharacter(
+            telegram_id=str(telegram_id),
+            character_id=character_id,
+            display_name=display_name,
+            params_json=json.dumps(params, ensure_ascii=False),
+            avatar_file_id=avatar_file_id,
+            face_file_id=face_file_id,
+            description=description,
+            personality=personality,
+            backstory=backstory,
+            community_published=community_published,
+            photo_reference_file_id=photo_reference_file_id,
+            author_telegram_id=author_telegram_id or str(telegram_id),
+            author_revenue_percent=author_revenue_percent,
+        )
+        session.add(row)
         session.commit()
         session.refresh(row)
         return row
 
 
 def get_custom_character(telegram_id: int) -> CustomCharacter | None:
+    """V3.44.6: get the first custom character for a user (legacy compat)."""
     with SessionLocal() as session:
         return session.query(CustomCharacter).filter_by(telegram_id=str(telegram_id)).first()
+
+
+def get_all_custom_characters(telegram_id: int) -> list[CustomCharacter]:
+    """V3.44.6: get all custom characters for a user."""
+    with SessionLocal() as session:
+        return session.query(CustomCharacter).filter_by(telegram_id=str(telegram_id)).all()
 
 
 def get_custom_character_by_id(character_id: str) -> CustomCharacter | None:
