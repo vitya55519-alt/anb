@@ -8653,7 +8653,7 @@ async def _webapp_api_constructor_draft(request: web.Request) -> web.Response:
     if not isinstance(params_in, dict):
         return web.json_response({'ok': False, 'error': 'invalid_params'}, status=400)
     existing = get_custom_character(telegram_id)
-    if existing and existing.is_visible and existing.photo_reference_file_id:
+    if existing and existing.community_published and existing.photo_reference_file_id:
         # One visible persona with photo per user — recreate via the bot's «Создать заново».
         return web.json_response({'ok': False, 'error': 'exists'}, status=409)
     params = {}
