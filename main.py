@@ -26,6 +26,7 @@ from config import (
     PREMIUM_QUARTERLY_STARS,
     PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS,
     ADMIN_TELEGRAM_IDS, CHARACTER_ID, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS,
+    PHOTO_TOTAL_BUDGET_SECONDS,
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
     GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, GALLERY_DOWNLOAD_STARS, WALLET_PAY_ENABLED,
     PREMIUM_DISCOUNT_PERCENT, DEMO_PREMIUM_HOURS,
@@ -135,7 +136,7 @@ from services.custom_character_service import (
     custom_character_params, set_custom_avatar_file_id,
     save_constructor_draft, snapshot_constructor_draft, get_constructor_draft,
     mark_constructor_draft_paid, claim_constructor_draft, finish_constructor_draft,
-    pending_constructor_drafts,
+    pending_constructor_drafts, abandoned_constructor_drafts, MAX_CONSTRUCTOR_ATTEMPTS,
 )
 from services.consent_service import has_accepted, accept as accept_consent, delete_user_data, TERMS_VERSION, PRIVACY_VERSION
 from services.collection_service import collection_progress
@@ -1561,7 +1562,14 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
             except Exception:
                 logger.exception('custom avatar cache failed user=%s character=%s', telegram_id, character_id)
         async with ChatActionSender.upload_photo(bot=bot, chat_id=chat_id):
-            sent = await deliver_photo(bot, chat_id, telegram_id, request, delivery_type, character_id=character_id)
+            # V3.44.15: one delivery, one hard cap. fal's worst-case silent
+            # chain (3 routes x 3 retries x 210s read timeout) could grind
+            # ~30 minutes — she wrote «смотри на меня» and nothing arrived.
+            # The timeout lands in the failure branch: refund + retry button.
+            sent = await asyncio.wait_for(
+                deliver_photo(bot, chat_id, telegram_id, request, delivery_type, character_id=character_id),
+                timeout=PHOTO_TOTAL_BUDGET_SECONDS,
+            )
         track_event(uid, 'photo_job_completed', metadata={'scene': request.scene, 'count': len(sent), 'delivery_type': delivery_type})
         # V3.44.8: bot-delivered photos land in the Mini App chat history too.
         try:
@@ -1595,6 +1603,12 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
             return
         debug_hint = f' ({exc.provider}/{exc.reason})' if exc.reason else ''
         await bot.send_message(chat_id, f'фото сейчас не получилось 😕{debug_hint}\nлимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
+    except asyncio.TimeoutError:
+        logger.warning('photo generation timed out user=%s scene=%s budget=%ss', telegram_id, request.scene, PHOTO_TOTAL_BUDGET_SECONDS)
+        track_event(uid, 'photo_failed', metadata={'scene': request.scene, 'reason': 'total_timeout', 'provider': 'timeout'})
+        if await _maybe_refund_paid_photo(chat_id, telegram_id, charge, amount, product):
+            return
+        await bot.send_message(chat_id, 'фото делалось слишком долго, я остановила 😕 лимит не списан. попробуй ещё раз.', reply_markup=photo_retry_keyboard(request.scene))
     except Exception as exc:
         logger.exception('photo generation failed user=%s', telegram_id)
         track_event(uid, 'photo_failed', metadata={'scene': request.scene, 'reason': type(exc).__name__, 'provider': 'unknown'})
@@ -6440,13 +6454,27 @@ async def _constructor_draft_sweep() -> None:
     (owner: «её просто нет»). The sweep re-checks every few minutes; the claim
     freshness window (12 min) is wider than the worst bounded run (~10 min), so
     a live creation is never double-spawned.
+    V3.44.15: drafts that burned MAX_CONSTRUCTOR_ATTEMPTS tries are abandoned
+    here — refund + honest message — instead of re-drawing her forever.
     """
     while True:
         await asyncio.sleep(180)
         try:
+            for _telegram_id, _source, _name in abandoned_constructor_drafts():
+                try:
+                    if _source == 'peaches':
+                        grant_photo_credits(
+                            _telegram_id, CONSTRUCTOR_COST_PEACHES,
+                            reason=f'constructor_refund:{_telegram_id}:{int(_time.time() * 1000)}',
+                        )
+                        await bot.send_message(_telegram_id, f'не получилось создать {_name or "персонажа"} 😕 {CONSTRUCTOR_COST_PEACHES} 🍑 вернула на баланс — попробуй ещё раз, я уже починила причину.')
+                    else:
+                        await bot.send_message(_telegram_id, f'не получилось создать {_name or "персонажа"} 😕 напиши /support — вернём оплату вручную. попробуй ещё раз, я уже починила причину.')
+                except Exception:
+                    logger.exception('constructor abandon notify failed user=%s', _telegram_id)
             for _draft in pending_constructor_drafts():
                 try:
-                    logger.info('sweep resuming constructor creation user=%s source=%s', _draft.telegram_id, _draft.source)
+                    logger.info('sweep resuming constructor creation user=%s source=%s attempt=%s', _draft.telegram_id, _draft.source, _draft.attempts)
                     _spawn_job('constructor', int(_draft.telegram_id), _finish_constructor(int(_draft.telegram_id), None, int(_draft.telegram_id), source=_draft.source or ''), payload={'source': _draft.source or 'sweep'})
                 except Exception:
                     logger.exception('constructor draft sweep resume failed user=%s', _draft.telegram_id)
@@ -6579,18 +6607,48 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         except Exception:
             logger.exception('constructor avatar telegram upload failed user=%s', telegram_id)
             avatar_file_id = None
-    row = save_custom_character(
-        telegram_id, display_name=display_name, params=params,
-        avatar_file_id=avatar_file_id, face_file_id=cons.get('face_file_id'),
-        description=params.get('backstory', ''),
-        personality=params.get('personality', ''),
-        backstory=params.get('backstory', ''),
-        community_published=params.get('community') == 'community_yes',
-        photo_reference_file_id=photo_reference_file_id or None,
-        # V3.44.6: author revenue sharing — creator earns 5% from spending.
-        author_telegram_id=str(telegram_id),
-        author_revenue_percent=5.0,
-    )
+    # V3.44.15: the save itself used to be the unprotected step — a legacy
+    # UNIQUE index (v3.19.0 schema) on custom_characters.telegram_id rejected
+    # every second persona with IntegrityError, the run crashed silently and
+    # the sweep re-drew her forever. Now: clear message, refund, draft closed.
+    try:
+        row = save_custom_character(
+            telegram_id, display_name=display_name, params=params,
+            avatar_file_id=avatar_file_id, face_file_id=cons.get('face_file_id'),
+            description=params.get('backstory', ''),
+            personality=params.get('personality', ''),
+            backstory=params.get('backstory', ''),
+            community_published=params.get('community') == 'community_yes',
+            photo_reference_file_id=photo_reference_file_id or None,
+            # V3.44.6: author revenue sharing — creator earns 5% from spending.
+            author_telegram_id=str(telegram_id),
+            author_revenue_percent=5.0,
+        )
+    except Exception:
+        logger.exception('constructor persona save failed user=%s name=%s', telegram_id, display_name)
+        try:
+            await bot.send_message(chat_id, f'не получилось сохранить {display_name} 😕 техническая ошибка на моей стороне — попробуй ещё раз через минуту, оплата вернулась.')
+        except Exception:
+            logger.exception('constructor save-fail notify failed user=%s', telegram_id)
+        if charge:
+            try:
+                await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge)
+                record_refund(telegram_id, charge, CONSTRUCTOR_COST_STARS, product='constructor')
+            except Exception:
+                logger.exception('constructor save-fail stars refund failed user=%s', telegram_id)
+        elif source == 'peaches':
+            try:
+                grant_photo_credits(
+                    telegram_id, CONSTRUCTOR_COST_PEACHES,
+                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}',
+                )
+            except Exception:
+                logger.exception('constructor save-fail peach refund failed user=%s', telegram_id)
+        try:
+            finish_constructor_draft(telegram_id)
+        except Exception:
+            logger.exception('constructor draft finish mark failed user=%s', telegram_id)
+        return
     # V3.44.7: save avatar to disk immediately so the Mini App can serve it
     # without waiting for ensure_custom_avatar_cached to download from Telegram.
     if avatar_bytes:
@@ -9046,7 +9104,9 @@ async def _webapp_api_constructor_status(request: web.Request) -> web.Response:
     creating, name = False, ''
     try:
         draft = get_constructor_draft(telegram_id)
-        if draft is not None and draft.paid and not draft.done:
+        # V3.44.15: attempts burned through means the sweep gave up (refund +
+        # message) — the banner must not claim «Создаю» forever.
+        if draft is not None and draft.paid and not draft.done and int(draft.attempts or 0) < MAX_CONSTRUCTOR_ATTEMPTS:
             creating = True
             try:
                 name = str((json.loads(draft.params_json or '{}') or {}).get('name') or '')

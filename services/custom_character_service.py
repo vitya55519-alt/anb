@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 
 CUSTOM_CHARACTER_PREFIX = 'custom_'
 
+# V3.44.15: the sweep/startup resume retries a paid creation at most this many
+# times, then refunds and tells the user — a failing save must never loop
+# forever while fal keeps re-drawing the avatar every cycle.
+MAX_CONSTRUCTOR_ATTEMPTS = 5
+
 
 def is_custom_character(character_id: str | None) -> bool:
     return bool(character_id) and character_id.startswith(CUSTOM_CHARACTER_PREFIX)
@@ -422,15 +427,23 @@ def mark_constructor_draft_paid(telegram_id: int, source: str) -> None:
 
 
 def claim_constructor_draft(telegram_id: int, *, stale_minutes: int = 12) -> ConstructorDraft | None:
-    """Take ownership of a paid unfinished draft, or None when a live run holds it."""
+    """Take ownership of a paid unfinished draft, or None when a live run holds it.
+
+    V3.44.15: every claim counts as an attempt — the sweep stops resuming a
+    draft after MAX_CONSTRUCTOR_ATTEMPTS tries so a hard failure can't grind
+    fal in a circle.
+    """
     with SessionLocal() as session:
         row = session.scalar(select(ConstructorDraft).where(ConstructorDraft.telegram_id == str(telegram_id)))
         if row is None or not row.paid or row.done:
+            return None
+        if (row.attempts or 0) >= MAX_CONSTRUCTOR_ATTEMPTS:
             return None
         now = utcnow()
         if row.claimed_at is not None and (now - row.claimed_at).total_seconds() < stale_minutes * 60:
             return None
         row.claimed_at = now
+        row.attempts = int(row.attempts or 0) + 1
         session.commit()
         return row
 
@@ -455,7 +468,33 @@ def pending_constructor_drafts() -> list[ConstructorDraft]:
                 ConstructorDraft.done.is_(False),
             )
         ).all()
-        return [r for r in rows if r.claimed_at is None or r.claimed_at < stale_before]
+        return [r for r in rows
+                if (r.attempts or 0) < MAX_CONSTRUCTOR_ATTEMPTS
+                and (r.claimed_at is None or r.claimed_at < stale_before)]
+
+
+def abandoned_constructor_drafts() -> list[tuple[int, str, str]]:
+    """V3.44.15: paid drafts that burned all attempts — mark them done and
+    return (telegram_id, source, name) so the sweep refunds and apologizes
+    instead of silently re-drawing her forever."""
+    out: list[tuple[int, str, str]] = []
+    with SessionLocal() as session:
+        rows = session.scalars(
+            select(ConstructorDraft).where(
+                ConstructorDraft.paid.is_(True),
+                ConstructorDraft.done.is_(False),
+                ConstructorDraft.attempts >= MAX_CONSTRUCTOR_ATTEMPTS,
+            )
+        ).all()
+        for row in rows:
+            try:
+                name = str((json.loads(row.params_json or '{}') or {}).get('name') or '')
+            except ValueError:
+                name = ''
+            row.done = True
+            out.append((int(row.telegram_id), (row.source or '')[:16], name))
+        session.commit()
+    return out
 
 
 def save_custom_character(

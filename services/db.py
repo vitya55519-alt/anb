@@ -1,5 +1,8 @@
 from sqlalchemy import BigInteger, create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
+import logging
+
+logger = logging.getLogger(__name__)
 from models.waifu_models import Base
 from models.relationship_models import UserCharacterRelationship, RelationshipEvent, RelationshipMilestone  # noqa
 from models.app_models import User, Message, Memory, CommunicationProfile, CharacterState, CharacterCard, PaymentMethod, Reminder, Subscription, StarTransaction, ProductEvent, UserConsent, BackgroundJob, DialogSession, Referral, PartnerTransaction, ConstructorDraft  # noqa
@@ -98,9 +101,29 @@ def _widen_freekassa_telegram_id():
     with engine.begin() as conn:
         conn.execute(text('ALTER TABLE freekassa_orders ALTER COLUMN telegram_id TYPE BIGINT'))
 
+def _drop_legacy_constructor_unique() -> None:
+    """V3.44.15: v3.19.0 created custom_characters with a UNIQUE index on
+    telegram_id. The V3.44.6 model removed ``unique=`` (multiple personas per
+    user), but create_all never alters existing indexes — production Postgres
+    kept rejecting every second persona with IntegrityError inside
+    _finish_constructor, so the paid draft retried forever (owner: «её просто
+    нет»). Recreate the index as a plain one on both PG and SQLite."""
+    stmts = (
+        'DROP INDEX IF EXISTS ix_custom_characters_telegram_id',
+        'CREATE INDEX IF NOT EXISTS ix_custom_characters_telegram_id ON custom_characters (telegram_id)',
+    )
+    for stmt in stmts:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(stmt))
+        except Exception:
+            logger.warning('legacy index migration skipped: %s', stmt, exc_info=True)
+
+
 def init_db():
     Base.metadata.create_all(engine)
     _widen_freekassa_telegram_id()
+    _drop_legacy_constructor_unique()
     _migrate_existing_users()
     _add_missing_columns('character_states', {
         'recent_outfits_json': "TEXT DEFAULT '[]'",

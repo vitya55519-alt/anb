@@ -144,6 +144,10 @@ class ConstructorDraft(Base):
     # live run owns the draft, a stale one means the deploy killed it.
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     done: Mapped[bool] = mapped_column(Boolean, default=False)
+    # V3.44.15: how many runs already tried her. The sweep gives up after
+    # MAX_CONSTRUCTOR_ATTEMPTS and refunds instead of looping forever
+    # (owner: «он рисует персонажа всё» — a failing save retried every 12 min).
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

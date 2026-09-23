@@ -154,6 +154,11 @@ FAL_ESTIMATED_COST_USD = float(os.getenv("FAL_ESTIMATED_COST_USD", "0.04"))
 PHOTO_ROUTER_MODE = os.getenv("PHOTO_ROUTER_MODE", "hybrid").strip().lower()
 SEEDREAM_RELATIONSHIP_LEVEL = int(os.getenv("SEEDREAM_RELATIONSHIP_LEVEL", "5"))
 PHOTO_SET_SIZE = max(1, min(3, int(os.getenv("PHOTO_SET_SIZE", "1"))))
+# V3.44.15: hard cap for one whole photo delivery (all engines + fallbacks).
+# fal's worst-case silent chain (3 routes x 3 retries x 210s read timeout)
+# could grind ~30 minutes — she said «смотри на меня» and nothing arrived.
+# The cap lands in the failure branch: refund + honest retry message.
+PHOTO_TOTAL_BUDGET_SECONDS = max(60, int(os.getenv("PHOTO_TOTAL_BUDGET_SECONDS", "300")))
 
 # V3.19.9: Pollinations.ai was removed (repeated http_500 + wrong-subject
 # renders). Photo providers are now Gemini Image -> OpenAI -> fal/Seedream.

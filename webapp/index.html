@@ -1232,6 +1232,10 @@ navBtns.forEach(btn => btn.addEventListener('click', () => {
   navBtns.forEach(b => b.classList.toggle('on', b === btn));
   document.querySelectorAll('section.tab').forEach(s =>
     s.classList.toggle('active', s.id === 'tab-' + btn.dataset.tab));
+  // V3.44.15: lazy-load the tab's data on first visit — the V3.44.2 wrapper
+  // assigned an undefined `switchTab`, the ReferenceError killed the wiring
+  // and the shop tab sat on «...» forever.
+  lazyLoadTab(btn.dataset.tab);
 }));
 // V3.39.0: the roster/community segment switch re-renders the cached grid.
 document.querySelectorAll('#charSeg button').forEach(btn => btn.addEventListener('click', () => {
@@ -1242,6 +1246,9 @@ document.querySelectorAll('#charSeg button').forEach(btn => btn.addEventListener
 
 // ── actions (V3.34.0): toasts, tab switch, purchases ─────────────────────
 let ME = null;
+// V3.44.15: lazy tab-loading flags — declared early because the loaders reset
+// them on failure, so the next tab visit retries instead of staying dead.
+let _shopLoaded=false,_chatsLoaded=false,_picsLoaded=false,_leaderLoaded=false,_channelLoaded=false;
 let toastTimer = null;
 function toast(text) {
   const el = document.getElementById('toast');
@@ -1254,6 +1261,9 @@ function showTab(name) {
   navBtns.forEach(b => b.classList.toggle('on', b.dataset.tab === name));
   document.querySelectorAll('section.tab').forEach(s =>
     s.classList.toggle('active', s.id === 'tab-' + name));
+  // V3.44.15: programmatic switches (premium gates send users to the shop)
+  // must lazy-load too, or they land on the dead «...» body.
+  lazyLoadTab(name);
 }
 async function buy(productId, btn) {
   if (btn) btn.disabled = true;
@@ -2173,15 +2183,17 @@ function renderChats(list) {
 
 async function loadChats() {
   try {
-    const r = await fetch('/webapp/api/chats?init_data=' + encodeURIComponent(tg.initData || ''));
+    const signal = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(20000) : undefined;
+    const r = await fetch('/webapp/api/chats?init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store', signal });
     if (r.status === 401) {
       document.getElementById('chatsbody').innerHTML = `${authErrHtml()}`;
       return;
     }
     const j = await r.json();
-    if (!j.ok) return;
+    if (!j.ok) { _chatsLoaded = false; return; }
     renderChats(j.chats || []);
   } catch (e) {
+    _chatsLoaded = false; // V3.44.15: retry on the next tab visit
     document.getElementById('chatsbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
 }
@@ -2279,10 +2291,11 @@ async function loadPictures() {
   const box = document.getElementById('picGallery');
   if (!box) return;
   try {
-    const r = await fetch('/webapp/api/pictures?init_data=' + encodeURIComponent(tg.initData || ''));
+    const signal = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(20000) : undefined;
+    const r = await fetch('/webapp/api/pictures?init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store', signal });
     if (r.status === 401) return;
     const j = await r.json();
-    if (!j.ok) return;
+    if (!j.ok) { _picsLoaded = false; return; }
     const pics = j.pictures || [];
     if (!pics.length) {
       box.innerHTML = `<div class="note">${esc(L.pic_empty)}</div>`;
@@ -2291,6 +2304,7 @@ async function loadPictures() {
     box.innerHTML = `<div class="pgal">${pics.map(p =>
       `<img src="${esc(p.file)}?init_data=${encodeURIComponent(tg.initData || '')}" data-lb="1" alt="" loading="lazy">`).join('')}</div>`;
   } catch (e) {
+    _picsLoaded = false; // V3.44.15: retry on the next tab visit
     box.innerHTML = '';
   }
 }
@@ -2298,9 +2312,13 @@ async function loadPictures() {
 // ── shop ──────────────────────────────────────────────────────────────────
 async function loadShop() {
   try {
-    const r = await fetch('/webapp/api/shop?lang=' + LANG);
+    // V3.44.15: a hard 20s cap — a silently hung request used to leave the
+    // tab on «...» forever; the timeout rejects into the catch, which clears
+    // the loaded flag so the next tab visit retries.
+    const signal = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(20000) : undefined;
+    const r = await fetch('/webapp/api/shop?lang=' + LANG, { cache: 'no-store', signal });
     const j = await r.json();
-    if (!j.ok) return;
+    if (!j.ok) { _shopLoaded = false; return; }
     const s = j.shop, p = s.premium;
     // V3.36.0: every Stars price shows its rub + dollar equivalent.
     const fiat = o => (o.rub ? ` · ${esc(o.rub)} ₽` : '') + (o.usd ? ` · $${esc(o.usd)}` : '');
@@ -2334,6 +2352,7 @@ async function loadShop() {
     document.querySelectorAll('#shopbody [data-pay]').forEach(b =>
       b.addEventListener('click', () => openPay(b.dataset.pay)));
   } catch (e) {
+    _shopLoaded = false; // V3.44.15: retry on the next tab visit
     document.getElementById('shopbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
 }
@@ -2694,7 +2713,8 @@ async function loadCreatorCabinet() {
         ? `<button class="cta small" data-pub-id="${esc(c.id)}" data-pub="0">${esc(L.creator_unpublish)}</button>`
         : `<button class="cta small" data-pub-id="${esc(c.id)}" data-pub="1">${esc(L.creator_publish)}</button>`;
       return `<div class="minichar">
-        <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none'">
+        <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+        <div style="display:none;width:40px;height:40px;border-radius:50%;background:var(--card2);align-items:center;justify-content:center;font-size:20px;flex-shrink:0">👩</div>
         <div class="nm">${esc(c.name)}</div>
         <div class="sub2">👁 ${esc(fmtK(c.views))} · ${esc(L.creator_earned(c.earnings))}</div>
         <div style="display:flex;gap:8px;margin-top:6px;align-items:center">${stateBadge}${pubBtn}</div>
@@ -2907,16 +2927,17 @@ loadMe();
 loadCharacters();
 // V3.44.14: if a paid creation is still in flight, say so above the grid
 checkConstructorStatus();
-// Lazy-load non-critical tabs on first switch
-let _shopLoaded=false,_chatsLoaded=false,_picsLoaded=false,_leaderLoaded=false,_channelLoaded=false;
-const _origSwitchTab=switchTab;
-switchTab=function(id){
-  _origSwitchTab(id);
+// Lazy-load non-critical tabs on first switch (V3.44.2 idea, V3.44.15 fix:
+// the original wrapper assigned an undefined `switchTab` — that ReferenceError
+// killed the wiring at boot, so shop/chats/pics/profile never loaded and the
+// shop tab showed «...» forever). lazyLoadTab is a hoisted declaration, so the
+// nav handler and showTab() above can call it; the flags live near `ME`.
+function lazyLoadTab(id){
   if(id==='shop'&&!_shopLoaded){_shopLoaded=true;loadShop();}
   if(id==='chats'&&!_chatsLoaded){_chatsLoaded=true;loadChats();}
   if(id==='pics'&&!_picsLoaded){_picsLoaded=true;loadPictures();}
   if(id==='profile'&&!_leaderLoaded){_leaderLoaded=true;loadLeaderboard();}
-};
+}
 // Channel check after a short delay (non-blocking)
 setTimeout(()=>{if(!_channelLoaded){_channelLoaded=true;loadChannel();}},2000);
 </script>
