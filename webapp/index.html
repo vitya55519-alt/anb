@@ -703,6 +703,16 @@
   </div>
   <div class="page" id="authorBody" style="padding-bottom:20px"></div>
 </div>
+<!-- V3.44.11: creator cabinet — my characters, earnings, витрина publishing -->
+<div class="overlay" id="creatorview">
+  <div class="chat-head">
+    <button class="iconbtn" id="creatorBack">‹</button>
+    <div>
+      <div class="nm" id="creatorTitle">Кабинет создателя</div>
+    </div>
+  </div>
+  <div class="page" id="creatorBody"><div class="loading">…</div></div>
+</div>
 <!-- V3.35.0: character constructor wizard — build your own girl in the app -->
 <div class="overlay" id="wizview">
   <div class="chat-head">
@@ -831,6 +841,15 @@ const L_EN = {
   pic_gallery: 'My pictures', pic_empty: 'No pictures yet — your works will appear here.',
   my_chars: 'MY CHARACTERS', create_char: '＋ Create', no_chars: 'No character yet — create your own girl.',
   author_earnings: '💰 Author earnings', author_earnings_value: n => n.toFixed(1) + ' ⭐',
+  // V3.44.11: the creator's cabinet in the profile.
+  creator_row: '🎨 Creator cabinet', creator_title: "Creator's cabinet",
+  creator_empty: 'No characters yet — create your own girl and she will appear here.',
+  creator_publish: 'Put on the storefront', creator_unpublish: 'Take off the storefront',
+  creator_on_vitrine: 'on the storefront', creator_private: 'private',
+  creator_published_toast: 'On the storefront ✅ now everyone can see her',
+  creator_unpublished_toast: 'Taken off the storefront — only you see her now',
+  creator_earned: n => '💰 ' + n + ' ⭐ earned',
+  creator_total_earnings: n => 'Total: 💰 ' + n + ' ⭐',
   partner_row: '💰 Partner program', docs_row: '📜 Documents & prices', open_chat: 'chat',
   // V3.39.0: the Come Closer character page + in-app chat media.
   start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', lb_title: '🏆 Top Popular',
@@ -935,6 +954,15 @@ const L_RU = {
   pic_gallery: 'Мои картинки', pic_empty: 'Картинок пока нет — твои работы появятся здесь.',
   my_chars: 'МОИ ПЕРСОНАЖИ', create_char: '＋ Создать', no_chars: 'Персонажа пока нет — создай свою девушку.',
   author_earnings: '💰 Авторский доход', author_earnings_value: n => n.toFixed(1) + ' ⭐',
+  // V3.44.11: кабинет создателя в профиле.
+  creator_row: '🎨 Кабинет создателя', creator_title: 'Кабинет создателя',
+  creator_empty: 'Персонажей пока нет — создай свою, и она появится здесь.',
+  creator_publish: 'На витрину', creator_unpublish: 'Снять с витрины',
+  creator_on_vitrine: 'на витрине', creator_private: 'личная',
+  creator_published_toast: 'На витрине ✅ теперь её видят все',
+  creator_unpublished_toast: 'Снята с витрины — видишь только ты',
+  creator_earned: n => '💰 ' + n + ' ⭐ заработано',
+  creator_total_earnings: n => 'Всего: 💰 ' + n + ' ⭐',
   partner_row: '💰 Партнёрка', docs_row: '📜 Документы и цены', open_chat: 'чат',
   // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
   start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', lb_title: ' Топ популярных',
@@ -2478,6 +2506,7 @@ function renderProfileBody() {
     <div class="sect-title">${esc(L.my_chars)}</div>
     ${myCharsHtml}
     <button class="cta" id="profileCreate">${esc(L.create_char)}</button>
+    <div class="menurow" id="menuCreator"><span>${esc(L.creator_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuPartner"><span>${esc(L.partner_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuDocs"><span>${esc(L.docs_row)}</span><span class="arr">›</span></div>
     <div class="sect-title">${esc(L.settings_title)}</div>
@@ -2496,6 +2525,8 @@ function renderProfileBody() {
   if (mp) mp.addEventListener('click', openPartnerOverlay);
   const md = document.getElementById('menuDocs');
   if (md) md.addEventListener('click', openDocsOverlay);
+const mcr = document.getElementById('menuCreator');
+  if (mcr) mcr.addEventListener('click', openCreatorOverlay);
   // V3.43.5: «пошлый режим» прямо в настройках приложения — раньше
   // переключатель был спрятан в чате бота, и владелец сам его «еле нашел».
   const rs = document.getElementById('rowSpicy');
@@ -2599,6 +2630,78 @@ document.getElementById('partnerBack').addEventListener('click', () => {
 document.getElementById('docsBack').addEventListener('click', () => {
   document.getElementById('docsview').classList.remove('open');
 });
+
+// ── V3.44.11: creator cabinet — my characters + «на витрину» ─────────────
+function openCreatorOverlay() {
+  document.getElementById('creatorview').classList.add('open');
+  loadCreatorCabinet();
+}
+document.getElementById('creatorBack').addEventListener('click', () => {
+  document.getElementById('creatorview').classList.remove('open');
+});
+
+async function loadCreatorCabinet() {
+  const body = document.getElementById('creatorBody');
+  document.getElementById('creatorTitle').textContent = L.creator_title;
+  try {
+    const r = await fetch('/webapp/api/creator/cabinet?init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store' });
+    const j = await r.json();
+    if (!j.ok) { body.innerHTML = `<div class="err">${esc(L.err_auth)}</div>`; return; }
+    const list = j.characters || [];
+    if (!list.length) {
+      body.innerHTML = `<div class="note">${esc(L.creator_empty)}</div><button class="cta" id="cabinetCreate">${esc(L.create_char)}</button>`;
+      const bc = document.getElementById('cabinetCreate');
+      if (bc) bc.addEventListener('click', () => {
+        document.getElementById('creatorview').classList.remove('open');
+        openWizard();
+      });
+      return;
+    }
+    const totalLine = j.total_earnings > 0
+      ? `<div class="note">${esc(L.creator_total_earnings(j.total_earnings))}</div>`
+      : '';
+    // V3.44.11: each row is a locally-built fragment — every backend value is
+    // esc()'d at build time; the ternaries below only pick static markup.
+    const rows = list.map(c => {
+      const stateBadge = c.published
+        ? `<span class="badge active">✅ ${esc(L.creator_on_vitrine)}</span>`
+        : `<span class="badge soon">🔒 ${esc(L.creator_private)}</span>`;
+      const pubBtn = c.published
+        ? `<button class="cta small" data-pub-id="${esc(c.id)}" data-pub="0">${esc(L.creator_unpublish)}</button>`
+        : `<button class="cta small" data-pub-id="${esc(c.id)}" data-pub="1">${esc(L.creator_publish)}</button>`;
+      return `<div class="minichar">
+        <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none'">
+        <div class="nm">${esc(c.name)}</div>
+        <div class="sub2">👁 ${esc(fmtK(c.views))} · ${esc(L.creator_earned(c.earnings))}</div>
+        <div style="display:flex;gap:8px;margin-top:6px;align-items:center">${stateBadge}${pubBtn}</div>
+      </div>`;
+    }).join('');
+    body.innerHTML = totalLine + rows;
+    body.querySelectorAll('[data-pub-id]').forEach(b =>
+      b.addEventListener('click', () => togglePublish(b.dataset.pubId, b.dataset.pub === '1', b)));
+  } catch (e) {
+    body.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+async function togglePublish(id, publish, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/webapp/api/creator/publish?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: id, publish: !!publish }),
+    });
+    const j = await r.json();
+    if (!j.ok) { toast(L.invoice_err); if (btn) btn.disabled = false; return; }
+    toast(publish ? L.creator_published_toast : L.creator_unpublished_toast);
+    loadCreatorCabinet();
+    loadCharacters();
+  } catch (e) {
+    toast(L.invoice_err);
+    if (btn) btn.disabled = false;
+  }
+}
 document.getElementById('chatBack').addEventListener('click', () => {
   document.getElementById('chatview').classList.remove('open');
   CHAT = null;

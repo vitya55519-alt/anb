@@ -67,11 +67,12 @@ from config import (
 from models.app_models import CharacterCard, CharacterComment, CharacterLike, CharacterStat, ChatMedia, DailyBonus, Message, NotificationPref, SimulatedMessage, User
 from services import legal_service
 from services.access_service import is_premium
-from services.character_card_service import get_card, get_scenario_hook, list_cards
+from services.character_card_service import get_card, get_scenario_hook, list_cards, update_card
 from services.custom_character_service import (
     CONSTRUCTOR_STEPS, OPTION_LABELS_EN, STEP_TITLES_EN,
     custom_character_id, is_custom_character,
     get_all_custom_characters, get_author_characters, get_custom_character_by_id,
+    get_author_earnings_by_character, set_community_published,
 )
 from services.db import SessionLocal
 from services.ui_lang import EN, user_lang
@@ -666,6 +667,59 @@ def api_author(author_telegram_id: str) -> dict:
     except Exception:
         logger.exception('author characters failed author=%s', author_id)
     return {'ok': True, 'author': {'id': author_id, 'name': name or 'Автор'}, 'characters': characters}
+
+
+def api_creator_cabinet(telegram_id: int) -> dict:
+    """V3.44.11: the creator's cabinet — every character the caller built, with
+    the generated avatar, views, per-character earnings and the storefront
+    (витрина) publish state, so the author can put a girl on the storefront or
+    take her back private."""
+    rows = get_all_custom_characters(telegram_id)
+    views = character_views_map()
+    earnings = get_author_earnings_by_character(telegram_id)
+    try:
+        visible = {c.character_id for c in list_cards(visible_only=True)}
+    except Exception:
+        logger.exception('cabinet visible cards failed user=%s', telegram_id)
+        visible = set()
+    characters = []
+    for row in rows:
+        try:
+            ver = asset_version(row.character_id)
+            characters.append({
+                'id': row.character_id,
+                'name': row.display_name,
+                'photo': f"/webapp/photo/{row.character_id}?v={ver}",
+                # on the витрина only when BOTH the community flag and the card
+                # visibility agree — the cabinet shows the honest state.
+                'published': bool(row.community_published) and row.character_id in visible,
+                'views': views.get(row.character_id, 0),
+                'earnings': round(earnings.get(row.character_id, 0.0), 2),
+                'created_at': row.created_at.isoformat() if row.created_at else '',
+            })
+        except Exception:
+            logger.exception('cabinet row failed char=%s', row.character_id)
+    total = round(sum(earnings.values()), 2)
+    return {'ok': True, 'characters': characters, 'total_earnings': total}
+
+
+def publish_creator_character(telegram_id: int, character_id: str, publish: bool) -> dict:
+    """V3.44.11: «на витрину» — put one of the caller's own characters on the
+    storefront (everyone in the Community segment sees her generated avatar)
+    or take her back private. Ownership is enforced against the character row."""
+    character_id = str(character_id or '').strip()[:64]
+    if not character_id:
+        return {'ok': False, 'error': 'bad_input'}
+    row = get_custom_character_by_id(character_id)
+    if not row or str(row.telegram_id) != str(telegram_id):
+        return {'ok': False, 'error': 'not_found'}
+    if not set_community_published(character_id, publish):
+        return {'ok': False, 'error': 'not_found'}
+    try:
+        update_card(character_id, is_visible=bool(publish))
+    except Exception:
+        logger.exception('cabinet card visibility failed char=%s', character_id)
+    return {'ok': True, 'published': bool(publish)}
 
 
 # ── V3.38.0: «Картинки» studio persistence ────────────────────────────────

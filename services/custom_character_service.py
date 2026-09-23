@@ -462,6 +462,30 @@ def get_author_total_earnings(telegram_id: int) -> float:
         return sum(r.author_earnings_stars for r in result)
 
 
+def set_community_published(character_id: str, published: bool) -> bool:
+    """V3.44.11: flip the community flag — the creator's cabinet «на витрину»
+    button publishes the character (her generated avatar becomes a storefront
+    card everyone sees) or takes her back private."""
+    with SessionLocal() as session:
+        row = session.query(CustomCharacter).filter_by(character_id=character_id).first()
+        if not row:
+            return False
+        row.community_published = bool(published)
+        session.commit()
+        return True
+
+
+def get_author_earnings_by_character(telegram_id: int) -> dict[str, float]:
+    """V3.44.11: per-character author earnings for the creator's cabinet."""
+    from models.app_models import AuthorRevenue
+    with SessionLocal() as session:
+        rows = session.query(AuthorRevenue).filter_by(author_telegram_id=str(telegram_id)).all()
+        out: dict[str, float] = {}
+        for r in rows:
+            out[r.character_id] = out.get(r.character_id, 0.0) + r.author_earnings_stars
+        return out
+
+
 def custom_character_params(character_id: str) -> tuple[dict, str]:
     """Return (params dict, display name) for a custom character, or ({}, '')."""
     row = get_custom_character_by_id(character_id)

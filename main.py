@@ -7749,6 +7749,40 @@ async def _webapp_api_author(request: web.Request) -> web.Response:
                              headers={'Cache-Control': 'no-store'})
 
 
+async def _webapp_api_creator_cabinet(request: web.Request) -> web.Response:
+    """V3.44.11: the creator's cabinet — the caller's characters with views,
+    earnings and the витрина publish state."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    return web.json_response(webapp_service.api_creator_cabinet(telegram_id),
+                             headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_api_creator_publish(request: web.Request) -> web.Response:
+    """V3.44.11: «на витрину» — put the caller's own character (her generated
+    avatar) on the storefront for everyone, or take her back private."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', '') or '').strip()[:64]
+    if not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_input'}, status=400)
+    return web.json_response(webapp_service.publish_creator_character(
+        telegram_id, character_id, bool(body.get('publish'))))
+
+
 async def _webapp_api_comments(request: web.Request) -> web.Response:
     """V3.44.0: public comments under character cards."""
     character_id = request.query.get('character_id', '')
@@ -8934,6 +8968,10 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/me', _webapp_api_me)
     app.router.add_get('/webapp/api/characters', _webapp_api_characters)
     app.router.add_get('/webapp/api/author', _webapp_api_author)
+    # V3.44.11: the creator's cabinet in the profile — characters, earnings,
+    # and the «на витрину» publish toggle.
+    app.router.add_get('/webapp/api/creator/cabinet', _webapp_api_creator_cabinet)
+    app.router.add_post('/webapp/api/creator/publish', _webapp_api_creator_publish)
     # V3.44.0: popularity leaderboard
     app.router.add_get('/webapp/api/leaderboard', _webapp_api_leaderboard)
     # V3.44.0: public comments under character cards.

@@ -195,6 +195,9 @@ def test_no_unescaped_backend_strings_in_templates():
             'langChipsHtml', "code === LANG ? ' on' : ''",
             # V3.44.0: leaderboard medal — local ternary result (emoji or number).
             'medal',
+            # V3.44.11: the creator-cabinet row fragments — built outside the
+            # template from esc()'d fields and static L-constants only.
+            'stateBadge', 'pubBtn',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         raise AssertionError(f'unescaped template value: {expr!r} in INDEX')
