@@ -43,7 +43,7 @@ FEATURE = MAIN[MAIN.index('async def _webapp_api_feature('):MAIN.index('async de
 
 
 def test_version_bumped():
-    assert VERSION in ('3.44.3', '3.43.7')
+    assert VERSION in ('3.44.4', '3.44.3', '3.43.7')
 
 
 # ── 1. the app photo runs the real identity-locked pipeline ─────────────

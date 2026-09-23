@@ -108,6 +108,12 @@ class CustomCharacter(Base):
     params_json: Mapped[str] = mapped_column(Text, default="{}")
     avatar_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     face_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # V3.44.4: extended constructor fields — backstory, personality, community publishing.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    personality: Mapped[str | None] = mapped_column(Text, nullable=True)
+    backstory: Mapped[str | None] = mapped_column(Text, nullable=True)
+    community_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    photo_reference_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 class Message(Base):

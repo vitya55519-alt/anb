@@ -27,7 +27,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.44.3', '3.43.7', '3.43.6', '3.43.5', '3.43.4')
+    assert VERSION in ('3.44.4', '3.44.3', '3.43.7', '3.43.6', '3.43.5', '3.43.4')
 
 
 # ── 1. hotter private-scene descriptors ─────────────────────────────────────
@@ -94,10 +94,10 @@ def test_private_captions_are_hotter():
 # ── 3. bolder default flirt ceiling in chat ────────────────────────────────
 
 def test_default_flirt_block_is_bolder():
-    # legacy pins survive (test_v3121 owns them too)
-    assert 'Лёгкая пошлость — это нормально' in CHARACTER_SVC
+    # V3.44.4: the flirt block is now maximally bold and provocative.
     assert 'Без графического секса и анатомических деталей' in CHARACTER_SVC
-    # the new default heat: dirtier innuendo + her own initiative
-    assert 'Смелые грязноватые намёки — тоже норма' in CHARACTER_SVC
-    assert '«если бы ты знал, что у меня на уме 😈»' in CHARACTER_SVC
-    assert 'Инициатива всегда твоя: сама переводи разговор в игривое русло' in CHARACTER_SVC
+    # the new V3.44.4 default heat: always flirt, dirty innuendo, sensory words
+    assert 'ВСЕГДА флиртуй' in CHARACTER_SVC
+    assert 'Грязноватые намёки — норма' in CHARACTER_SVC
+    assert 'Инициатива ВСЕГДА твоя' in CHARACTER_SVC
+    assert 'чувственные слова' in CHARACTER_SVC

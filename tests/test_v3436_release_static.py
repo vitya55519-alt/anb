@@ -35,7 +35,7 @@ VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
 def test_version_bumped():
-    assert VERSION in ('3.44.3', '3.43.7', '3.43.6')
+    assert VERSION in ('3.44.4', '3.44.3', '3.43.7', '3.43.6')
 
 
 # ── 1. the engine trailers no longer pull the body from references ──────────

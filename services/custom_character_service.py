@@ -145,6 +145,24 @@ CONSTRUCTOR_STEPS: list[dict] = [
             ('role_secret', 'Тайная возлюбленная', 'secret lover'),
         ],
     },
+    # V3.44.4: extended constructor — backstory, personality, community publishing.
+    {
+        'key': 'backstory', 'title': 'Напиши её историю (кто она, откуда, что любит). Необязательно — можно пропустить.',
+        'options': [],  # Free text input, handled separately in the wizard.
+        'free_text': True,
+    },
+    {
+        'key': 'personality', 'title': 'Опиши её характер подробно (например: дерзкая, любит флирт, обожает споры). Необязательно.',
+        'options': [],
+        'free_text': True,
+    },
+    {
+        'key': 'community', 'title': 'Опубликовать в категории «Сообщество»? Другие пользователи смогут с ней общаться.',
+        'options': [
+            ('community_yes', 'Да, опубликовать', 'published to community'),
+            ('community_no', 'Нет, только для меня', 'private character'),
+        ],
+    },
 ]
 
 # Russian labels per option value for summary screens and logs.
@@ -297,7 +315,7 @@ TEMPERAMENT_STYLE: dict[str, str] = {
 }
 
 
-def build_persona_context(params: dict, display_name: str) -> str:
+def build_persona_context(params: dict, display_name: str, backstory: str = '', personality: str = '') -> str:
     """System-prompt override that makes the chat model play the custom persona."""
     name = display_name or str(params.get('name') or 'она')
     lines = [
@@ -317,6 +335,11 @@ def build_persona_context(params: dict, display_name: str) -> str:
     style = TEMPERAMENT_STYLE.get(str(params.get('temperament', '')))
     if style:
         lines.append(style)
+    # V3.44.4: include backstory and personality if provided.
+    if backstory:
+        lines.append(f'Твоя история: {backstory}')
+    if personality:
+        lines.append(f'Твой характер: {personality}')
     lines.append(
         'Если пользователь прикладывал своё фото при создании — ты выглядишь именно так, '
         'как на нём. Никогда не упоминай, что ты конструктор или шаблон.'
@@ -333,6 +356,11 @@ def save_custom_character(
     params: dict,
     avatar_file_id: str | None = None,
     face_file_id: str | None = None,
+    description: str | None = None,
+    personality: str | None = None,
+    backstory: str | None = None,
+    community_published: bool = False,
+    photo_reference_file_id: str | None = None,
 ) -> CustomCharacter:
     character_id = custom_character_id(telegram_id)
     with SessionLocal() as session:
@@ -346,6 +374,16 @@ def save_custom_character(
             row.avatar_file_id = avatar_file_id
         if face_file_id:
             row.face_file_id = face_file_id
+        # V3.44.4: extended constructor fields.
+        if description is not None:
+            row.description = description
+        if personality is not None:
+            row.personality = personality
+        if backstory is not None:
+            row.backstory = backstory
+        row.community_published = community_published
+        if photo_reference_file_id:
+            row.photo_reference_file_id = photo_reference_file_id
         session.commit()
         session.refresh(row)
         return row
@@ -380,7 +418,11 @@ def custom_persona_context(character_id: str) -> str:
     params, name = custom_character_params(character_id)
     if not params:
         return ''
-    return build_persona_context(params, name)
+    # V3.44.4: include backstory and personality from the DB row.
+    row = get_custom_character_by_id(character_id)
+    backstory = (row.backstory or '') if row else ''
+    personality = (row.personality or '') if row else ''
+    return build_persona_context(params, name, backstory=backstory, personality=personality)
 
 
 def summary_lines(params: dict, display_name: str) -> list[str]:

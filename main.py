@@ -6417,6 +6417,10 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     row = save_custom_character(
         telegram_id, display_name=display_name, params=params,
         avatar_file_id=avatar_file_id, face_file_id=cons.get('face_file_id'),
+        description=params.get('backstory', ''),
+        personality=params.get('personality', ''),
+        backstory=params.get('backstory', ''),
+        community_published=params.get('community') == 'community_yes',
     )
     # V3.31.8: creating a persona selects her immediately. Before this the
     # selection stayed on the previous character (Anna by default), so a user
@@ -6429,19 +6433,30 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         OPTION_LABELS[str(params[key])] for key in PARAM_TITLES
         if key in params and str(params[key]) in OPTION_LABELS
     ]
-    bio = (display_name + ': ' + ', '.join(descriptor_bits).lower())[:900]
+    # V3.44.4: include backstory and personality in the bio if provided.
+    backstory_text = params.get('backstory', '')
+    personality_text = params.get('personality', '')
+    bio_parts = [display_name + ': ' + ', '.join(descriptor_bits).lower()]
+    if backstory_text:
+        bio_parts.append(f'История: {backstory_text}')
+    if personality_text:
+        bio_parts.append(f'Характер: {personality_text}')
+    bio = '. '.join(bio_parts)[:900]
     card_age = AGE_BY_GROUP.get(str(params.get('age')), 25)
+    # V3.44.4: community-published characters are visible to everyone.
+    is_community = params.get('community') == 'community_yes'
     try:
         if get_card(row.character_id):
             update_card(
                 row.character_id, display_name=display_name, age=card_age,
                 short_bio=bio, status='active', card_photo_file_id=avatar_file_id,
+                is_visible=is_community,
             )
         else:
             # V3.37.0: anime personas get their own card emoji.
-            card_emoji = '🌸' if str(params.get('style', '')) == 'style_anime' else '🎨'
+            card_emoji = '🌸' if str(params.get('style', '')) == 'style_anime' else ''
             create_card(row.character_id, display_name, card_age, bio, card_emoji, 'female')
-            update_card(row.character_id, status='active', card_photo_file_id=avatar_file_id)
+            update_card(row.character_id, status='active', card_photo_file_id=avatar_file_id, is_visible=is_community)
     except Exception:
         logger.exception('constructor card registration failed user=%s', telegram_id)
     track_event(
@@ -6529,8 +6544,15 @@ async def constructor_step_cb(cq: types.CallbackQuery):
     cons['params'] = params
     cons['step'] = index + 1
     await cq.answer()
+    # V3.44.4: handle free_text steps (backstory, personality) and community step.
     if cons['step'] < len(CONSTRUCTOR_STEPS):
         next_key = CONSTRUCTOR_STEPS[cons['step']]['key']
+        next_step = CONSTRUCTOR_STEPS[cons['step']]
+        # Free text steps: ask for text input instead of showing buttons.
+        if next_step.get('free_text'):
+            cons['await'] = f'text_{next_key}'
+            await cq.message.answer(f'🎨 {next_step["title"]}\n\nНапиши текст одним сообщением или отправь /skip чтобы пропустить.')
+            return
         await cq.message.answer(_constructor_prompt(next_key), reply_markup=_constructor_step_keyboard(next_key))
         return
     # All inline steps done — ask for the name as plain text.
@@ -7226,6 +7248,30 @@ async def text_message(message: types.Message):
         constructor_name_session['params']['name'] = name_value
         constructor_name_session['await'] = None
         await _constructor_face_step(message.chat.id, message.from_user.id)
+        return
+    # V3.44.4: free text steps for backstory and personality.
+    if constructor_name_session and constructor_name_session.get('await', '').startswith('text_'):
+        field = constructor_name_session['await'][5:]  # Remove 'text_' prefix
+        text_value = (message.text or '').strip()
+        if text_value.lower() == '/skip':
+            constructor_name_session['params'][field] = ''
+        else:
+            constructor_name_session['params'][field] = text_value
+        constructor_name_session['await'] = None
+        constructor_name_session['step'] += 1
+        # Continue to next step.
+        if constructor_name_session['step'] < len(CONSTRUCTOR_STEPS):
+            next_key = CONSTRUCTOR_STEPS[constructor_name_session['step']]['key']
+            next_step = CONSTRUCTOR_STEPS[constructor_name_session['step']]
+            if next_step.get('free_text'):
+                constructor_name_session['await'] = f'text_{next_key}'
+                await message.answer(f'🎨 {next_step["title"]}\n\nНапиши текст одним сообщением или отправь /skip чтобы пропустить.')
+            else:
+                await message.answer(_constructor_prompt(next_key), reply_markup=_constructor_step_keyboard(next_key))
+        else:
+            # All steps done — ask for name.
+            constructor_name_session['await'] = 'name'
+            await message.answer('Шаг: как её зовут? Напиши имя одним сообщением (до 24 символов).')
         return
     try:
         from services.gamification_service import touch_activity, check_first_message
