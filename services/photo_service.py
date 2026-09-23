@@ -44,6 +44,7 @@ from services.character_registry import get_character
 from services.custom_character_service import (
     is_custom_character, get_custom_character_by_id, custom_character_params,
     custom_appearance_descriptors, custom_base_character, custom_hair_color,
+    custom_body_spec,
 )
 from services.test_mode import get_stage as get_test_stage
 from services.access_service import is_premium
@@ -1259,11 +1260,20 @@ def _custom_character_profile(character_id: str) -> dict | None:
     if base is None:
         return None
     params, _name = custom_character_params(character_id)
+    # V3.44.7: scope preserve_identity to FACE/HAIR/COLORING only — the body
+    # follows the declared BODY IDENTITY (body_spec), never the reference avatar.
+    # Previously the preserve list dragged the body from the reference photos
+    # and the bust/waist/hips drifted between generations.
     preserve = custom_appearance_descriptors(params)
+    # Remove body/figure descriptors from preserve — they belong in body_spec
+    preserve = [d for d in preserve if not any(k in d for k in ('figure', 'bust', 'waist', 'hips', 'body'))]
     hair_color = custom_hair_color(params)
     if hair_color:
         preserve.append(f'{hair_color} hair color')
     preserve.append('the exact same face as the canonical avatar reference')
+    # V3.44.7: body_spec from constructor params — the BODY IDENTITY declaration
+    # that overrides the reference avatar's body shape.
+    body_spec = custom_body_spec(params)
     return {
         **base,
         'visual_identity': {
@@ -1275,6 +1285,7 @@ def _custom_character_profile(character_id: str) -> dict | None:
             'seedream_identity_anchor': 'avatar.jpg',
             'seedream_body_anchor': 'avatar.jpg',
             'preserve_identity': preserve,
+            'body_spec': body_spec,
         },
     }
 

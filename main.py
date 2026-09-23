@@ -6459,6 +6459,15 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         author_telegram_id=str(telegram_id),
         author_revenue_percent=5.0,
     )
+    # V3.44.7: save avatar to disk immediately so the Mini App can serve it
+    # without waiting for ensure_custom_avatar_cached to download from Telegram.
+    try:
+        from services.photo_service import _custom_reference_dir
+        avatar_folder = _custom_reference_dir(row.character_id)
+        avatar_folder.mkdir(parents=True, exist_ok=True)
+        (avatar_folder / 'avatar.jpg').write_bytes(avatar_bytes)
+    except Exception:
+        logger.exception('constructor avatar disk save failed user=%s', telegram_id)
     # V3.31.8: creating a persona selects her immediately. Before this the
     # selection stayed on the previous character (Anna by default), so a user
     # who built their own girl and pressed «💕 Свидание» got a date with Anna.
@@ -6466,19 +6475,26 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     track_event(ensure_user(telegram_id), 'character_selected', metadata={'character_id': row.character_id, 'custom': True})
     # Register her as a real character card so photo/relationship pipelines
     # recognize the id; bio carries the appearance description for prompts.
+    # V3.44.7: build a human-readable bio from appearance params only.
+    # Previously it dumped ALL option labels (including "да, опубликовать")
+    # which looked like garbage on the character page.
+    APPEARANCE_KEYS = ('style', 'age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes', 'temperament', 'profession', 'role')
     descriptor_bits = [
-        OPTION_LABELS[str(params[key])] for key in PARAM_TITLES
+        OPTION_LABELS[str(params[key])] for key in APPEARANCE_KEYS
         if key in params and str(params[key]) in OPTION_LABELS
     ]
     # V3.44.4: include backstory and personality in the bio if provided.
     backstory_text = params.get('backstory', '')
     personality_text = params.get('personality', '')
-    bio_parts = [display_name + ': ' + ', '.join(descriptor_bits).lower()]
+    # Build a proper sentence: "Name — appearance. Backstory. Personality."
+    bio_parts = []
+    if descriptor_bits:
+        bio_parts.append(f'{display_name} — {", ".join(descriptor_bits).lower()}.')
     if backstory_text:
-        bio_parts.append(f'История: {backstory_text}')
+        bio_parts.append(backstory_text)
     if personality_text:
-        bio_parts.append(f'Характер: {personality_text}')
-    bio = '. '.join(bio_parts)[:900]
+        bio_parts.append(personality_text)
+    bio = ' '.join(bio_parts)[:900] if bio_parts else f'{display_name} — загадочная незнакомка.'
     card_age = AGE_BY_GROUP.get(str(params.get('age')), 25)
     # V3.44.4: community-published characters are visible to everyone.
     is_community = params.get('community') == 'community_yes'

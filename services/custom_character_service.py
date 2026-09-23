@@ -520,6 +520,54 @@ def custom_hair_color(params: dict) -> str:
     return CUSTOM_HAIR_COLOR_BY_OPTION.get(str(params.get('hair', '')), '')
 
 
+def custom_body_spec(params: dict) -> str:
+    """V3.44.7: build a BODY IDENTITY declaration from constructor figure params.
+
+    Without this the photo engine pulls the body from the reference avatar
+    and the bust/waist/hips drift between generations (the same girl looks
+    different in every photo).  The declaration overrides the reference.
+    """
+    body_map = {
+        'body_slim': 'a slim elegant figure',
+        'body_sport': 'a toned athletic figure',
+        'body_curvy': 'a soft curvy figure',
+        'body_fit': 'a fit gym body',
+    }
+    breast_map = {
+        'breast_small': 'small natural bust',
+        'breast_medium': 'medium natural bust',
+        'breast_large': 'large full bust',
+        'breast_xl': 'very large voluptuous bust',
+    }
+    waist_map = {
+        'waist_thin': 'a very slim wasp waist',
+        'waist_fit': 'a fit toned waist',
+        'waist_soft': 'a soft feminine waistline',
+    }
+    hips_map = {
+        'hips_small': 'slim neat hips',
+        'hips_round': 'round appetizing hips',
+        'hips_big': 'full wide curvy hips',
+        'hips_xl': 'very full voluptuous hips',
+    }
+    parts = []
+    body = body_map.get(str(params.get('body', '')))
+    breast = breast_map.get(str(params.get('breast', '')))
+    waist = waist_map.get(str(params.get('waist', '')))
+    hips = hips_map.get(str(params.get('hips', '')))
+    if body:
+        parts.append(body)
+    if breast:
+        parts.append(f'with {breast}')
+    if waist:
+        parts.append(f'{waist}')
+    if hips:
+        parts.append(f'{hips}')
+    if not parts:
+        return ''
+    return ' and '.join(parts[:2]) + (' with ' + ' and '.join(parts[2:]) if len(parts) > 2 else '')
+
+
 def custom_appearance_descriptors(params: dict) -> list[str]:
     """English appearance descriptors (style/age/face/body/hair/eyes + figure) for identity locks."""
     return [
