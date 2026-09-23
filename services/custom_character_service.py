@@ -550,22 +550,27 @@ def custom_body_spec(params: dict) -> str:
         'hips_big': 'full wide curvy hips',
         'hips_xl': 'very full voluptuous hips',
     }
-    parts = []
     body = body_map.get(str(params.get('body', '')))
     breast = breast_map.get(str(params.get('breast', '')))
     waist = waist_map.get(str(params.get('waist', '')))
     hips = hips_map.get(str(params.get('hips', '')))
-    if body:
-        parts.append(body)
+    # Build a natural English phrase: "a slim elegant figure with a very large
+    # voluptuous bust, a very slim wasp waist and round appetizing hips".
+    details = []
     if breast:
-        parts.append(f'with {breast}')
+        details.append(breast)
     if waist:
-        parts.append(f'{waist}')
+        details.append(waist)
     if hips:
-        parts.append(f'{hips}')
-    if not parts:
+        details.append(hips)
+    if not body and not details:
         return ''
-    return ' and '.join(parts[:2]) + (' with ' + ' and '.join(parts[2:]) if len(parts) > 2 else '')
+    base = body or 'a feminine figure'
+    if not details:
+        return base
+    if len(details) == 1:
+        return f'{base} with {details[0]}'
+    return f"{base} with {', '.join(details[:-1])} and {details[-1]}"
 
 
 def custom_appearance_descriptors(params: dict) -> list[str]:
