@@ -114,6 +114,17 @@ GEMINI_IMAGE_ENABLED = (
     and bool(GEMINI_API_KEY_VALID)
 )
 GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image").strip()
+if "/" in GEMINI_IMAGE_MODEL:
+    # V3.44.19: OpenRouter-style ids (google/gemini-…) are rejected by the
+    # native Google endpoint with 404 — that is how the ordinary-scene leg died
+    # silently while the bill landed on the chat account. The fal-only default
+    # route ignores this leg, so this is a warning, not a refusal.
+    print(
+        f'CONFIG WARNING: GEMINI_IMAGE_MODEL="{GEMINI_IMAGE_MODEL}" contains "/" — '
+        'the native Google endpoint needs a bare model name like gemini-3.1-flash-image. '
+        'The fal-only photo route (V3.44.19) does not use this leg.',
+        flush=True,
+    )
 GEMINI_IMAGE_TIMEOUT_SECONDS = max(30, min(240, int(os.getenv("GEMINI_IMAGE_TIMEOUT_SECONDS", "120"))))
 GEMINI_IMAGE_ESTIMATED_COST_USD = float(os.getenv("GEMINI_IMAGE_ESTIMATED_COST_USD", "0.02"))
 GEMINI_IMAGE_ASPECT_RATIO = os.getenv("GEMINI_IMAGE_ASPECT_RATIO", "3:4").strip()
@@ -123,20 +134,40 @@ CHARACTER_ID = os.getenv("CHARACTER_ID", "anna_01")
 CHARACTER_DIR = Path(os.getenv("CHARACTER_DIR", str(BASE_DIR / "data" / "characters")))
 CHARACTER_FILE = os.getenv("CHARACTER_FILE", str(CHARACTER_DIR / "anna.json"))
 
-# ── Image generation: Gemini primary, Seedream for intimate, OpenAI removed ─
+# ── Image generation: fal/Seedream only (V3.44.19); OpenAI leg optional ─────
+# V3.44.19 owner rule: «фото через fal.ai, OpenRouter — только общение».
+# IMAGE_BASE_URL used to fall back to AI_BASE_URL, which itself defaults to the
+# OpenRouter URL whenever OPENROUTER_API_KEY is set — so a pasted OpenAI/IMAGE
+# key silently billed images on the chat account (the google/gemini-…-image
+# charges in his OpenRouter activity). The image leg no longer inherits the
+# OpenRouter URL and refuses to start when one is set explicitly.
 IMAGE_API_KEY = (os.getenv("IMAGE_API_KEY") or AI_KEY).strip()
-IMAGE_BASE_URL = os.getenv("IMAGE_BASE_URL") or AI_BASE_URL
+_non_or_image_base = AI_BASE_URL if (AI_BASE_URL and "openrouter" not in AI_BASE_URL.lower()) else None
+IMAGE_BASE_URL = os.getenv("IMAGE_BASE_URL") or _non_or_image_base
 IMAGE_MODEL = os.getenv("IMAGE_MODEL", "gpt-image-2")
 IMAGE_SIZE = os.getenv("IMAGE_SIZE", "1024x1536")
 IMAGE_QUALITY = os.getenv("IMAGE_QUALITY", "medium")
 OPENAI_IMAGE_ESTIMATED_COST_USD = float(os.getenv("OPENAI_IMAGE_ESTIMATED_COST_USD", "0"))
 IMAGE_REFERENCE_MODE = os.getenv("IMAGE_REFERENCE_MODE", "edit").lower()
 OPENAI_IMAGE_AVAILABLE = bool(AI_KEY) and os.getenv("OPENAI_IMAGE_AVAILABLE", "false").strip().lower() in {"1", "true", "yes", "on"}
+if OPENAI_IMAGE_AVAILABLE and IMAGE_BASE_URL and "openrouter" in IMAGE_BASE_URL.lower():
+    OPENAI_IMAGE_AVAILABLE = False
+    print(
+        'CONFIG WARNING: IMAGE_BASE_URL points at OpenRouter — the OpenAI image leg is '
+        'DISABLED (photos must never bill the chat account; V3.44.19 owner decision). '
+        'Point IMAGE_BASE_URL at the official OpenAI endpoint or unset it.',
+        flush=True,
+    )
 
-# fal.ai / Seedream 4.5 is used by the hybrid photo router for higher-intimacy,
-# still non-explicit fashion edits. Keep the key server-side in Railway.
+# fal.ai / Seedream is the ONLY photo engine by default (V3.44.19). Keep the
+# key server-side in Railway.
 FAL_KEY = os.getenv("FAL_KEY", "").strip()
-FAL_MODEL = os.getenv("FAL_MODEL", "bytedance/seedream/v5/pro/edit").strip()
+# V3.44.19: the owner picked this model in the fal.ai sandbox
+# (fal.ai/sandbox?models=d96lp9cregjb2a5jepag&op=image.edit_image) — «фото» go
+# through it. fal.run accepts registry ids like this one; if the route is ever
+# retired or renamed, _seedream_request walks the proven Seedream fallback
+# routes (v5/pro -> v5/lite -> v4.5) instead of dying.
+FAL_MODEL = os.getenv("FAL_MODEL", "d96lp9cregjb2a5jepag").strip()
 # V3.43.1: the edit endpoint rejects empty image_urls (HTTP 422), so freeform
 # studio prompts go to the dedicated text-to-image endpoint instead.
 # V3.44.3: the "/v5.0/" route does not exist on fal (HTTP 404) and v5 Pro is a
@@ -151,7 +182,12 @@ FAL_POOL_TIMEOUT_SECONDS = int(os.getenv("FAL_POOL_TIMEOUT_SECONDS", "30"))
 FAL_RETRIES = max(0, min(3, int(os.getenv("FAL_RETRIES", "2"))))
 FAL_RETRY_BACKOFF_SECONDS = float(os.getenv("FAL_RETRY_BACKOFF_SECONDS", "2"))
 FAL_ESTIMATED_COST_USD = float(os.getenv("FAL_ESTIMATED_COST_USD", "0.04"))
-PHOTO_ROUTER_MODE = os.getenv("PHOTO_ROUTER_MODE", "hybrid").strip().lower()
+# V3.44.19: default 'fal' — every photo (ordinary and intimate alike) renders
+# on fal.ai, the account the owner actually watches; a fal failure refunds
+# instead of quietly spending on someone else's engine. 'hybrid' (Gemini
+# native for ordinary scenes + cross-engine fallbacks) and 'gemini'/'openai'
+# remain available via env for anyone who wants them back.
+PHOTO_ROUTER_MODE = os.getenv("PHOTO_ROUTER_MODE", "fal").strip().lower()
 SEEDREAM_RELATIONSHIP_LEVEL = int(os.getenv("SEEDREAM_RELATIONSHIP_LEVEL", "5"))
 PHOTO_SET_SIZE = max(1, min(3, int(os.getenv("PHOTO_SET_SIZE", "1"))))
 # V3.44.15: hard cap for one whole photo delivery (all engines + fallbacks).

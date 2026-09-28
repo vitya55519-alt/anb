@@ -77,11 +77,12 @@ openai_client = AsyncOpenAI(api_key=IMAGE_API_KEY, base_url=IMAGE_BASE_URL) if O
 
 # Startup diagnostic — visible in Railway logs immediately
 logger.info(
-    'PHOTO PROVIDERS: Gemini=%s (model=%s) | OpenAI=%s | fal.ai/Seedream=%s | mode=%s',
+    'PHOTO PROVIDERS: fal.ai/Seedream=%s (model=%s) | Gemini=%s (model=%s) | OpenAI=%s | mode=%s',
+    'READY' if FAL_KEY else 'NO KEY',
+    FAL_MODEL,
     'READY' if GEMINI_IMAGE_ENABLED else 'NO KEY/DISABLED',
     GEMINI_IMAGE_MODEL if GEMINI_IMAGE_ENABLED else '-',
     'READY' if OPENAI_IMAGE_AVAILABLE else 'NO KEY',
-    'READY' if FAL_KEY else 'NO KEY',
     PHOTO_ROUTER_MODE,
 )
 
@@ -2071,8 +2072,12 @@ async def _seedream_request(
     # routes so a renamed endpoint never kills the whole leg. Policy 4xx
     # (400/403/422/451) are NOT bypassed — only «path not found».
     primary = (model or FAL_MODEL).strip('/')
+    # V3.44.19: the primary is the owner's fal sandbox model; the proven
+    # Seedream partner route rides right behind it, so a retired or renamed
+    # registry id can never kill the edit leg — a 404 walks to the next
+    # candidate instantly (policy 4xx are still never bypassed).
     if image_urls:
-        candidates = [primary, 'fal-ai/bytedance/seedream/v5/lite/edit', 'fal-ai/bytedance/seedream/v4.5/edit']
+        candidates = [primary, 'bytedance/seedream/v5/pro/edit', 'fal-ai/bytedance/seedream/v5/lite/edit', 'fal-ai/bytedance/seedream/v4.5/edit']
     else:
         candidates = [primary, 'fal-ai/bytedance/seedream/v5/lite/text-to-image', 'fal-ai/bytedance/seedream/v4.5/text-to-image']
     seen: set[str] = set()
@@ -2421,7 +2426,9 @@ def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
     if mode in {'gemini', 'nano', 'nanobanana', 'nano-banana'}:
         return 'gemini_image' if GEMINI_IMAGE_ENABLED else ('openai' if OPENAI_IMAGE_AVAILABLE else 'seedream45')
 
-    # HYBRID routing (default):
+    # HYBRID routing (opt-in since V3.44.19 — the default is the strict 'fal'
+    # branch above, the owner's decision «фото через fal.ai, OpenRouter —
+    # только общение»):
     # - intimate/private/bold scenes -> Seedream
     # - ordinary fully-clothed scenes -> Gemini Image (primary) -> OpenAI (fallback)
     combined = ' '.join([request.scene, request.clothing, request.location, request.angle]).lower()
@@ -2470,7 +2477,12 @@ async def _run_routed_photo_set(
                 # engine failed FIRST and why, not just the last fallback.
                 chain = [f'seedream45/{exc.reason}']
                 last_error = exc
-                if GEMINI_IMAGE_ENABLED and GEMINI_API_KEY:
+                # V3.44.19: strict fal mode — a fal failure must not quietly
+                # re-route photo money onto other providers' accounts (the
+                # owner's rule: photos on fal.ai only, OpenRouter is chat-only);
+                # the user gets the refund instead. The full engine chain stays
+                # available in 'hybrid' mode via PHOTO_ROUTER_MODE.
+                if PHOTO_ROUTER_MODE == 'hybrid' and GEMINI_IMAGE_ENABLED and GEMINI_API_KEY:
                     try:
                         logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=gemini_image reason=%s', telegram_id, resolved.scene, exc.reason)
                         track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'gemini_image', 'reason': exc.reason})
@@ -2479,7 +2491,7 @@ async def _run_routed_photo_set(
                         logger.warning('PHOTO ROUTE FALLBACK FAILED user=%s scene=%s engine=gemini_image reason=%s', telegram_id, resolved.scene, gemini_exc.reason)
                         chain.append(f'gemini_image/{gemini_exc.reason}')
                         last_error = gemini_exc
-                if OPENAI_IMAGE_AVAILABLE:
+                if PHOTO_ROUTER_MODE == 'hybrid' and OPENAI_IMAGE_AVAILABLE:
                     try:
                         logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=seedream45 to=openai reason=%s', telegram_id, resolved.scene, exc.reason)
                         track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'seedream45', 'to': 'openai', 'reason': exc.reason})
