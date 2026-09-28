@@ -115,7 +115,7 @@ GEMINI_IMAGE_ENABLED = (
 )
 GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image").strip()
 GEMINI_IMAGE_TIMEOUT_SECONDS = max(30, min(240, int(os.getenv("GEMINI_IMAGE_TIMEOUT_SECONDS", "120"))))
-GEMINI_IMAGE_ESTIMATED_COST_USD = float(os.getenv("GEMINI_IMAGE_ESTIMATED_COST_USD", "0"))
+GEMINI_IMAGE_ESTIMATED_COST_USD = float(os.getenv("GEMINI_IMAGE_ESTIMATED_COST_USD", "0.02"))
 GEMINI_IMAGE_ASPECT_RATIO = os.getenv("GEMINI_IMAGE_ASPECT_RATIO", "3:4").strip()
 GEMINI_IMAGE_SIZE = os.getenv("GEMINI_IMAGE_SIZE", "1K").strip()
 
@@ -159,6 +159,29 @@ PHOTO_SET_SIZE = max(1, min(3, int(os.getenv("PHOTO_SET_SIZE", "1"))))
 # could grind ~30 minutes — she said «смотри на меня» and nothing arrived.
 # The cap lands in the failure branch: refund + honest retry message.
 PHOTO_TOTAL_BUDGET_SECONDS = max(60, int(os.getenv("PHOTO_TOTAL_BUDGET_SECONDS", "300")))
+
+# ── V3.44.18: money telemetry and daily brakes ──────────────────────────────
+# The owner billed $14 in five days with only 46 chat messages a day, and the
+# bot could not say where a single cent went: generate_text discarded the
+# provider usage block, photo cost existed only for DELIVERED images, and the
+# main photo engine (Gemini image) carried a unit price of 0 — so «себестоимость
+# фото: $0.00» in /stats was structurally blind, not true.
+# Per-million-token prices used to estimate cost when the provider does not
+# return one (OpenRouter returns usage.cost when asked, Gemini does not).
+LLM_USD_PER_M_INPUT = float(os.getenv("LLM_USD_PER_M_INPUT", "0.23"))
+LLM_USD_PER_M_OUTPUT = float(os.getenv("LLM_USD_PER_M_OUTPUT", "0.96"))
+GEMINI_LLM_USD_PER_M_INPUT = float(os.getenv("GEMINI_LLM_USD_PER_M_INPUT", "0.10"))
+GEMINI_LLM_USD_PER_M_OUTPUT = float(os.getenv("GEMINI_LLM_USD_PER_M_OUTPUT", "0.40"))
+# Ask OpenRouter to bill-report every completion (usage.include). Costs nothing
+# extra; it is the only way to see real spend without opening the dashboard.
+LLM_REPORT_USAGE = os.getenv("LLM_REPORT_USAGE", "true").strip().lower() in {"1", "true", "yes", "on"}
+# Daily brakes, 0 = brake off. Only AUXILIARY LLM work is throttled (memory
+# extraction, style adaptation, relationship pulse, photo ideas/reactions and
+# the humanizer rewrite) — the visible chat reply is never blocked. When the
+# image brake trips, generation is refused BEFORE any provider call and the
+# existing refund path returns the money the user already paid.
+SPEND_LLM_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_LLM_DAILY_BUDGET_USD", "1.0")))
+SPEND_IMAGE_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_IMAGE_DAILY_BUDGET_USD", "2.0")))
 
 # V3.19.9: Pollinations.ai was removed (repeated http_500 + wrong-subject
 # renders). Photo providers are now Gemini Image -> OpenAI -> fal/Seedream.

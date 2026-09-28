@@ -52,6 +52,7 @@ from services.user_service import ensure_user, get_state, update_state, is_adult
 from services.payments import consume_photo_credit, get_photo_credits
 from services.adaptation_service import get_visual_preferences
 from services.analytics_service import track_event
+from services import spend_service
 from services.photo_library_service import choose_unseen_pack, choose_fallback_pack, mark_pack_seen, mark_items_seen
 from services.state_service import ensure_life_state
 
@@ -1476,6 +1477,8 @@ async def _gemini_edit(prompt: str, reference_path: Path | None = None) -> tuple
     if response.status_code >= 400:
         logger.warning('constructor avatar Gemini HTTP %s body=%s', response.status_code, response.text[:400])
         raise PhotoGenerationError('gemini_image', f'http_{response.status_code}')
+    # V3.44.18: the call is billed from here on, even if no image comes back.
+    spend_service.record_image_spend('gemini_image', 'constructor_avatar', GEMINI_IMAGE_ESTIMATED_COST_USD)
     data = response.json()
     for part in ((data.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []:
         inline = part.get('inlineData') or part.get('inline_data') or {}
@@ -1971,6 +1974,11 @@ async def _gemini_image_one_frame(character: dict, telegram_id: int, request: Ph
         logger.warning('Nano Banana HTTP failure user=%s scene=%s frame=%s/%s status=%s', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, response.status_code)
         raise PhotoGenerationError('gemini_image', reason)
 
+    # V3.44.18: a 2xx Gemini call is billed even when the frame later fails to
+    # parse or is discarded. This is the main photo engine and its cost used to
+    # default to $0, so «себестоимость фото» could never show the money it ate.
+    spend_service.record_image_spend('gemini_image', request.scene, GEMINI_IMAGE_ESTIMATED_COST_USD)
+
     try:
         body = response.json()
     except Exception as exc:
@@ -2090,6 +2098,12 @@ async def _seedream_request(
     )
     max_attempts = FAL_RETRIES + 1
     transient_statuses = {408, 425, 429, 500, 502, 503, 504}
+    # V3.44.18: the media brake sits in front of every fal call (chat photos,
+    # studio renders and constructor avatars alike), so nothing is billed after
+    # the daily cap — and the caller's refund path still returns the money.
+    if not spend_service.image_generation_allowed():
+        logger.warning('SEEDREAM blocked by daily image budget label=%s', request_label or '-')
+        raise PhotoGenerationError('budget', 'daily_image_budget_exhausted')
     
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         last_error: PhotoGenerationError | None = None
@@ -2116,6 +2130,13 @@ async def _seedream_request(
                     'Seedream response label=%s model=%s attempt=%s/%s status=%s elapsed=%.1fs',
                     request_label or '-', candidate, attempt, max_attempts, response.status_code, elapsed,
                 )
+                if response.status_code < 400:
+                    # V3.44.18: a 2xx fal call is billed even when we throw the
+                    # frame away afterwards (bad size / validation / quality).
+                    # This money used to be structurally invisible in the stats.
+                    spend_service.record_image_spend(
+                        f'fal/{candidate}', request_label or '-', FAL_ESTIMATED_COST_USD,
+                    )
     
                 if response.status_code >= 400:
                     body = response.text[:1600]
@@ -2186,6 +2207,9 @@ async def _openai_one_frame(character: dict, telegram_id: int, request: PhotoReq
         )
     elapsed = time.monotonic() - started
     photo = replace(_extract_openai_many(result)[0], estimated_cost_usd=OPENAI_IMAGE_ESTIMATED_COST_USD)
+    # V3.44.18: mirror the fal/Gemini legs — an accepted OpenAI edit is billed,
+    # so it lands in the ledger even though this provider is off by default.
+    spend_service.record_image_spend('openai_image', request.scene, OPENAI_IMAGE_ESTIMATED_COST_USD)
     logger.info('OpenAI frame success user=%s scene=%s frame=%s/%s safe_retry=%s single_reference=%s refs=%s elapsed=%.1fs', telegram_id, request.scene, i + 1, PHOTO_SET_SIZE, safe_retry, single_reference, len(refs), elapsed)
     return photo
 
@@ -2425,6 +2449,13 @@ async def _run_routed_photo_set(
     character_id: str = CHARACTER_ID,
     frames: int = PHOTO_SET_SIZE,
 ) -> list[GeneratedPhoto]:
+    # V3.44.18: refuse BEFORE touching any provider once the daily media budget
+    # is gone. Raising here (instead of inside the engines) means the caller's
+    # existing failure branch still refunds the peaches/Stars it charged.
+    if not spend_service.image_generation_allowed():
+        logger.warning('PHOTO ROUTE blocked by daily image budget user=%s scene=%s', telegram_id, resolved.scene)
+        track_event(ensure_user(telegram_id), 'photo_budget_blocked', metadata={'scene': resolved.scene})
+        raise PhotoGenerationError('budget', 'daily_image_budget_exhausted')
     try:
         if provider == 'seedream45':
             try:

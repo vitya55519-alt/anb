@@ -8,7 +8,9 @@ from openai import AsyncOpenAI
 from config import (
     OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL,
     GEMINI_API_KEY, GEMINI_API_KEY_VALID, GEMINI_CHAT_MODEL, GEMINI_OPENAI_BASE_URL,
+    LLM_REPORT_USAGE,
 )
+from services import spend_service
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,42 @@ def _safe(s: str) -> str:
         return s.encode('ascii', errors='replace').decode('ascii')
     except Exception:
         return repr(s)
+
+
+def _record_usage(purpose: str, provider: str, model: str, response) -> None:
+    """V3.44.18: the usage block used to be discarded — the bot literally could
+    not tell its owner what a reply cost. OpenRouter reports a real bill when
+    asked with ``usage.include``; otherwise we price the tokens ourselves."""
+    usage = getattr(response, 'usage', None)
+    if usage is None:
+        return
+    prompt_tokens = int(getattr(usage, 'prompt_tokens', 0) or 0)
+    completion_tokens = int(getattr(usage, 'completion_tokens', 0) or 0)
+    details = getattr(usage, 'completion_tokens_details', None)
+    reasoning_tokens = int(getattr(details, 'reasoning_tokens', 0) or 0) if details else 0
+    # OpenRouter puts its own bill into the usage object as an extra field.
+    reported = None
+    extra = getattr(usage, 'model_extra', None) or {}
+    for key in ('cost', 'total_cost'):
+        raw = extra.get(key) if isinstance(extra, dict) else None
+        if raw is None and hasattr(usage, key):
+            raw = getattr(usage, key, None)
+        if raw is not None:
+            try:
+                reported = float(raw)
+                break
+            except (TypeError, ValueError):
+                continue
+    spend_service.record_llm_usage(
+        purpose, provider, model,
+        prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+        reasoning_tokens=reasoning_tokens, cost_usd=reported,
+    )
+    logger.info(
+        'LLM SPEND purpose=%s provider=%s in=%d out=%d reasoning=%d cost=%s',
+        purpose, provider, prompt_tokens, completion_tokens, reasoning_tokens,
+        f'${reported:.5f} (billed)' if reported is not None else 'estimated',
+    )
 
 # ── Provider clients (chat: OpenRouter primary, Gemini fallback) ─────────
 _openrouter = (
@@ -59,11 +97,24 @@ async def generate_text(
     """
     errors: list[str] = []
 
+    # V3.44.18: the daily money brake. Only the mechanical helper calls are
+    # skipped — the reply the user actually reads always goes through, so the
+    # persona degrades (no memory capture, no auto-rewording) instead of dying.
+    if purpose in spend_service.AUX_PURPOSES and not spend_service.llm_aux_allowed():
+        logger.warning('LLM aux skipped by daily budget purpose=%s', purpose)
+        return LLMResult('', 'budget', 'skipped')
+
     # ── 1. OpenRouter (MiniMax M3 with reasoning) ─────────────────────
     if _openrouter:
         try:
             # MiniMax M3 supports reasoning mode for more natural responses
-            extra = {'reasoning': {'enabled': True}} if purpose == 'dialogue' else None
+            extra = {}
+            if purpose == 'dialogue':
+                extra['reasoning'] = {'enabled': True}
+            if LLM_REPORT_USAGE:
+                # makes OpenRouter attach usage.cost to the response — the only
+                # way to see the real bill per call without the dashboard
+                extra['usage'] = {'include': True}
             kwargs = dict(
                 model=OPENROUTER_MODEL,
                 messages=messages,
@@ -74,6 +125,7 @@ async def generate_text(
                 kwargs['extra_body'] = extra
             r = await _openrouter.chat.completions.create(**kwargs)
             text = (r.choices[0].message.content or '').strip()
+            _record_usage(purpose, 'openrouter', OPENROUTER_MODEL, r)
             logger.info('LLM ok provider=openrouter model=%s purpose=%s len=%d', OPENROUTER_MODEL, purpose, len(text))
             return LLMResult(text, 'openrouter', OPENROUTER_MODEL)
         except Exception as exc:
@@ -90,6 +142,7 @@ async def generate_text(
                 max_tokens=max_tokens,
             )
             text = (r.choices[0].message.content or '').strip()
+            _record_usage(purpose, 'gemini', GEMINI_CHAT_MODEL, r)
             logger.info('LLM ok provider=gemini model=%s purpose=%s len=%d', GEMINI_CHAT_MODEL, purpose, len(text))
             return LLMResult(text, 'gemini', GEMINI_CHAT_MODEL)
         except Exception as exc:

@@ -2854,6 +2854,12 @@ async def admin_stats_button(cq: types.CallbackQuery):
     top_lines = '\n'.join(
         f'· {_character_display_name(cid)} — {cnt} сооб.' for cid, cnt in snap['top_characters']
     ) or '· пока пусто'
+    # V3.44.18: the money block. Until now /stats could only show a photo cost
+    # that counted delivered images at a per-engine price (Gemini: $0), and said
+    # nothing at all about LLM spend — so «$0.00» sat next to a real OpenRouter
+    # bill. These lines name both streams and who ate them.
+    from services import spend_service
+    spend_lines = '\n'.join(spend_service.format_spend_lines(spend_service.spend_snapshot()))
     await cq.message.answer(
         '📊 Статистика пользователей\n\n'
         f'👥 всего: {snap["users_total"]} · новых за 24ч: {snap["new_24h"]} · за 7д: {snap["new_7d"]}\n'
@@ -2864,6 +2870,7 @@ async def admin_stats_button(cq: types.CallbackQuery):
         f'🎨 студия: ✅{photo_ok} ❌{photo_fail} (успешность {studio_rate:.0f}%)\n'
         f'🔁 удержание: D1 {snap["d1_retention"]:.0f}% · D7 {snap["d7_retention"]:.0f}%\n'
         f'💰 Stars за 30д: {snap["stars_30d"]} · себестоимость фото за 24ч: ${snap["photo_cost_24h"]:.2f}\n\n'
+        f'{spend_lines}\n\n'
         f'🏆 топ персонажей (7д):\n{top_lines}'
     )
 

@@ -73,19 +73,34 @@ def _needs_rewrite(user_text: str, answer: str) -> bool:
     return False
 
 
-async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str) -> str:
+def _editor_instructions() -> str:
+    return (
+        "[Редактор] Перепиши как живой человек в личке. Сохрани смысл, но убирай структуру AI-ответа. "
+        "Пиши как в переписке: коротко, небрежно, с эмоциями. Можно сленг, можно с середины мысли. "
+        "Убери «Конечно», «Разумеется», списки, нумерацию и лишние вопросы. "
+        "Если спрошено про AI/реальность — коротко скажи что нет, но без лекций."
+    )
+
+
+async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str, character: dict | None = None) -> str:
     if not _needs_rewrite(user_text, answer):
         return answer
-    rewrite_messages = messages + [
-        {"role": "assistant", "content": answer},
-        {"role": "user", "content": (
-            "[Редактор] Перепиши как живой человек в личке. Сохрани смысл, но убирай структуру AI-ответа. "
-            "Пиши как в переписке: коротко, небрежно, с эмоциями. Можно сленг, можно с середины мысли. "
-            "Убери «Конечно», «Разумеется», списки, нумерацию и лишние вопросы. "
-            "Если спрошено про AI/реальность — коротко скажи что нет, но без лекций."
-        )},
+    # V3.44.18: the editor pass used to re-upload the WHOLE dialogue prompt —
+    # character card + memories + up to 30 history messages, several thousand
+    # input tokens — just to reword one short reply. Carry her name and voice
+    # only; the meaning is already in the answer being rewritten.
+    who = ''
+    if character:
+        who = f"Ты переписываешь ответ от лица {character.get('name', 'Анна')}. "
+    rewrite_messages = [
+        {"role": "system", "content": who + _editor_instructions()},
+        {"role": "user", "content": answer},
     ]
     r = await generate_text(rewrite_messages, max_tokens=280, temperature=0.8, purpose='rewrite')
+    if not r.text.strip():
+        # The daily budget brake (or a dead provider) must never blank out the
+        # message she actually sends — keep the original wording instead.
+        return answer
     return _clean(r.text)
 
 
@@ -190,7 +205,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
     r = await generate_text(messages, max_tokens=token_budget, temperature=0.9, purpose='dialogue')
     answer = _clean(r.text)
-    answer = await _rewrite_if_needed(messages, user_text, answer)
+    answer = await _rewrite_if_needed(messages, user_text, answer, character)
     save_message(db_user_id, character_id, "user", user_text)
     save_message(db_user_id, character_id, "assistant", answer)
     await asyncio.gather(

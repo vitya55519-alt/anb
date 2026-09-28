@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, LargeBinary, String, Text, UniqueConstraint
+from datetime import datetime, timezone, date
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .waifu_models import Base
 
@@ -495,4 +495,49 @@ class SimulatedMessage(Base):
     character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     delivered: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)      
+
+
+# V3.44.18: LLM spend ledger — one row per completion. Before this the usage
+# block came back from the provider and was thrown away, so the only answer to
+# «куда уходят деньги» was the OpenRouter dashboard. Rows are ~a few hundred a
+# day at current traffic; `day` exists so the daily brake sums without scanning.
+class LlmUsage(Base):
+    __tablename__ = "llm_usage"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    # dialogue | rewrite | proactive | memory_extraction | adaptation_analysis
+    # | relationship_pulse | photo_idea | photo_reaction
+    purpose: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    model: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    # reasoning tokens are billed as output; this is what makes MiniMax M3
+    # reasoning mode expensive, so it must be separable from the reply itself.
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    # True when the provider reported the real bill, False when we estimated it
+    # from the configured per-million prices.
+    billed_cost: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+# V3.44.18: image spend ledger — one row per billed provider call, INCLUDING
+# calls whose picture was later thrown away. photo_deliveries.estimated_cost_usd
+# only exists for successful deliveries and priced the main (Gemini) engine at
+# $0, so failed studio renders — half of all attempts — were pure invisible fire.
+class ImageSpend(Base):
+    __tablename__ = "image_spend"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    # seedream45 / gemini_image / openai, plus the concrete fal route when known
+    engine: Mapped[str] = mapped_column(String(48), index=True, nullable=False)
+    scene: Mapped[str] = mapped_column(String(48), nullable=False)
+    # the provider answered 2xx (a billed call) — a later local rejection of the
+    # image does not un-bill it
+    billed: Mapped[bool] = mapped_column(Boolean, default=True)
+    # and the frame actually reached the user
+    success: Mapped[bool] = mapped_column(Boolean, default=True)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
