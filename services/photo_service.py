@@ -2118,14 +2118,19 @@ async def _seedream_request(
                 started = time.monotonic()
                 try:
                     response = await client.post(endpoint, headers=headers, json=payload)
-                except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
+                except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.WriteTimeout, httpx.PoolTimeout, httpx.ReadError, httpx.RemoteProtocolError) as exc:
+                    # V3.44.20: ReadError/RemoteProtocolError (connection reset
+                    # mid-request) used to escape this loop entirely — the photo
+                    # died as «seedream45: ReadError» with ZERO retries and no
+                    # candidate walk. They are transient transport faults like
+                    # timeouts: retry with backoff, then walk to the next route.
                     elapsed = time.monotonic() - started
                     logger.warning(
-                        'Seedream timeout label=%s model=%s attempt=%s/%s elapsed=%.1fs type=%s',
+                        'Seedream transport failed label=%s model=%s attempt=%s/%s elapsed=%.1fs type=%s',
                         request_label or '-', candidate, attempt, max_attempts, elapsed, type(exc).__name__,
                     )
                     if attempt >= max_attempts:
-                        last_error = PhotoGenerationError('seedream45', 'timeout')
+                        last_error = PhotoGenerationError('seedream45', f'transport_{type(exc).__name__}')
                         break
                     await asyncio.sleep(FAL_RETRY_BACKOFF_SECONDS * attempt)
                     continue

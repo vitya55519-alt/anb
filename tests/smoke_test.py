@@ -14,9 +14,9 @@ for ref in ('00_anna_canonical_face_v3.png','01_anna_canonical_look_v3.png'):
 cfg=(ROOT/'config.py').read_text(encoding='utf-8')
 assert 'gpt-image-2' in cfg
 assert 'FAL_KEY' in cfg
-# V3.44.19: photos render on fal.ai only by default — the owner's fal sandbox
-# model (image.edit_image) is the primary edit route.
-assert 'd96lp9cregjb2a5jepag' in cfg
+# V3.44.19/20: photos render on fal.ai only by default — the proven partner
+# route is the primary (the sandbox id is NOT a fal.run route, see config).
+assert 'bytedance/seedream/v5/pro/edit' in cfg
 assert 'PHOTO_ROUTER_MODE = os.getenv("PHOTO_ROUTER_MODE", "fal")' in cfg
 assert 'PHOTO_SET_SIZE' in cfg
 photo=(ROOT/'services/photo_service.py').read_text(encoding='utf-8')

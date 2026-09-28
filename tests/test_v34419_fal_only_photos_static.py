@@ -9,8 +9,9 @@ key silently billed photos on the chat account.
 
 This release:
   - routes every photo (ordinary and intimate alike) to fal/Seedream by default
-    (PHOTO_ROUTER_MODE 'hybrid' -> 'fal', FAL_MODEL -> the owner's sandbox
-    model d96lp9cregjb2a5jepag with the proven Seedream routes behind it),
+    (PHOTO_ROUTER_MODE 'hybrid' -> 'fal', FAL_MODEL -> the proven bytedance
+    partner route; V3.44.20 later found the fal sandbox id is not a fal.run
+    route and reverted the default to v5/pro/edit),
   - makes the OpenAI image leg structurally unable to ride OpenRouter
     (no URL inheritance + a hard availability guard + loud CONFIG WARNING),
   - keeps the cross-engine photo fallbacks only in 'hybrid' mode: in strict fal
@@ -48,14 +49,18 @@ def test_fal_is_the_default_photo_route():
     assert 'PHOTO_ROUTER_MODE = os.getenv("PHOTO_ROUTER_MODE", "fal")' in CONFIG
 
 
-def test_fal_model_is_the_owners_sandbox_model():
-    # fal.ai/sandbox?models=d96lp9cregjb2a5jepag&op=image.edit_image
-    assert 'FAL_MODEL = os.getenv("FAL_MODEL", "d96lp9cregjb2a5jepag")' in CONFIG
+def test_fal_model_default_is_the_proven_partner_route():
+    # V3.44.20: the fal.ai sandbox id d96lp9cregjb2a5jepag is playground-
+    # internal — fal.run answers 404 for it, so it cannot be the API route.
+    # The default is the proven bytedance partner route; the config comment
+    # documents how to swap in a real registry id via the FAL_MODEL env var.
+    assert 'FAL_MODEL = os.getenv("FAL_MODEL", "bytedance/seedream/v5/pro/edit")' in CONFIG
+    assert 'fal.run answers 404 for it' in CONFIG
 
 
-def test_proven_seedream_routes_ride_behind_the_sandbox_model():
+def test_candidate_chain_walks_proven_routes():
     # a retired/renamed registry id must never kill the edit leg: the v5/pro
-    # partner route and the older fal-ai routes walk on 404
+    # partner route and the older fal-ai routes walk on 404/transport failures
     assert "candidates = [primary, 'bytedance/seedream/v5/pro/edit', 'fal-ai/bytedance/seedream/v5/lite/edit', 'fal-ai/bytedance/seedream/v4.5/edit']" in PHOTO
 
 
@@ -111,7 +116,7 @@ def test_openrouter_stays_the_chat_provider():
 
 def test_startup_diagnostic_names_the_fal_model(photo_mod):
     assert photo_mod.PHOTO_ROUTER_MODE == 'fal'
-    assert photo_mod.FAL_MODEL == 'd96lp9cregjb2a5jepag'
+    assert photo_mod.FAL_MODEL == 'bytedance/seedream/v5/pro/edit'
     assert 'PHOTO PROVIDERS: fal.ai/Seedream=%s (model=%s)' in PHOTO
 
 

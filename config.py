@@ -162,12 +162,16 @@ if OPENAI_IMAGE_AVAILABLE and IMAGE_BASE_URL and "openrouter" in IMAGE_BASE_URL.
 # fal.ai / Seedream is the ONLY photo engine by default (V3.44.19). Keep the
 # key server-side in Railway.
 FAL_KEY = os.getenv("FAL_KEY", "").strip()
-# V3.44.19: the owner picked this model in the fal.ai sandbox
-# (fal.ai/sandbox?models=d96lp9cregjb2a5jepag&op=image.edit_image) — «фото» go
-# through it. fal.run accepts registry ids like this one; if the route is ever
-# retired or renamed, _seedream_request walks the proven Seedream fallback
-# routes (v5/pro -> v5/lite -> v4.5) instead of dying.
-FAL_MODEL = os.getenv("FAL_MODEL", "d96lp9cregjb2a5jepag").strip()
+# V3.44.20: the default is the PROVEN partner route bytedance/seedream/v5/pro/edit
+# (fal.run answers 401 "exists, needs auth" for it). The fal.ai SANDBOX id
+# d96lp9cregjb2a5jepag (fal.ai/sandbox?models=d96lp9cregjb2a5jepag&op=
+# image.edit_image) is a playground-internal id — fal.run answers 404 for it,
+# so it CANNOT be the API route (that 404/reset is what killed every photo
+# right after V3.44.19 shipped it as the default). When the owner finds the
+# real registry id behind that sandbox model (the "API" tab on its model
+# page), it can be set here via the FAL_MODEL env var; the request chain walks
+# v5/pro -> v5/lite -> v4.5 on 404s and transport failures either way.
+FAL_MODEL = os.getenv("FAL_MODEL", "bytedance/seedream/v5/pro/edit").strip()
 # V3.43.1: the edit endpoint rejects empty image_urls (HTTP 422), so freeform
 # studio prompts go to the dedicated text-to-image endpoint instead.
 # V3.44.3: the "/v5.0/" route does not exist on fal (HTTP 404) and v5 Pro is a
