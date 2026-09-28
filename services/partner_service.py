@@ -93,7 +93,8 @@ def referred_count(user_id: int) -> int:
 
 
 def _freekassa_amount_rub(provider_payload: str | None) -> float:
-    """Parse ``amount=299.00`` out of the FreeKassa webhook payload."""
+    """Parse ``amount=299.00`` out of an external-kassa webhook payload
+    (FreeKassa historically; Platega since V3.44.21 sends the same shape)."""
     try:
         for part in str(provider_payload or "").split("&"):
             key, _, value = part.partition("=")
@@ -106,7 +107,7 @@ def _freekassa_amount_rub(provider_payload: str | None) -> float:
 
 def payment_rub_value(product: str, stars: int, provider: str, provider_payload: str | None) -> float:
     """Partner-facing ruble value of a payment (0 when not commissionable)."""
-    if provider == "freekassa":
+    if provider in ("freekassa", "platega"):
         return _freekassa_amount_rub(provider_payload)
     stars_value = int(stars or 0)
     if stars_value <= 0:

@@ -1,10 +1,11 @@
 """Static regression tests for v3.31.1: owner can remove payment buttons.
 
-Owner request: «И ДАЙ ВОЗМОЖНОСТЬ МНЕ УБИРАТЬ КНОПКИ». The built-in FreeKassa
+Owner request: «И ДАЙ ВОЗМОЖНОСТЬ МНЕ УБИРАТЬ КНОПКИ». The built-in kassa
 rows of the user payment keyboard were hard-coded — only custom methods could
 be hidden. Now every built-in row is backed by an admin-managed 'builtin'
 PaymentMethod switch (Админка → Способы оплаты → Статус), so any button can be
-removed from the user menu without a deploy.
+removed from the user menu without a deploy. V3.44.21: the built-in rows are
+platega_rub / platega_tokens (FreeKassa's four rows retired with the kassa).
 """
 from pathlib import Path
 
@@ -13,7 +14,7 @@ MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 METHODS = (ROOT / 'services' / 'payment_method_service.py').read_text(encoding='utf-8')
 VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
-BUILTIN_KEYS = ('freekassa_rub', 'freekassa_sbp', 'freekassa_usd', 'freekassa_tokens')
+BUILTIN_KEYS = ('platega_rub', 'platega_tokens')
 
 
 def test_version_bumped():
@@ -21,7 +22,7 @@ def test_version_bumped():
 
 
 def test_builtin_rows_are_seeded_and_system():
-    # The four built-in keyboard rows exist as default methods and cannot be
+    # The built-in keyboard rows exist as default methods and cannot be
     # deleted (is_system), only switched off.
     assert '"builtin": "Встроенная кнопка меню оплаты",' in METHODS
     for key in BUILTIN_KEYS:
@@ -30,6 +31,9 @@ def test_builtin_rows_are_seeded_and_system():
         assert '"method_type": "builtin"' in block
         assert '"is_system": True' in block
         assert '"status": "active"' in block
+    # V3.44.21: the retired FreeKassa rows are switched off, not deleted.
+    assert "PaymentMethod.method_key.like('freekassa_%')" in METHODS
+    assert "row.status = 'disabled'" in METHODS
 
 
 def test_is_button_enabled_helper():
@@ -46,10 +50,6 @@ def test_premium_keyboard_gates_builtin_rows():
     keyboard = keyboard[:keyboard.index('def adult_keyboard(')]
     for key in BUILTIN_KEYS:
         assert f"if is_button_enabled('{key}'):" in keyboard
-    # the legacy (no telegram_id) branch obeys the same switches
-    legacy = keyboard[keyboard.index('elif FREEKASSA_ENABLED:'):]
-    assert "is_button_enabled('freekassa_rub')" in legacy
-    assert "is_button_enabled('freekassa_usd')" in legacy
 
 
 def test_admin_summary_explains_builtin_switch():

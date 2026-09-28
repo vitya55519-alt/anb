@@ -40,11 +40,11 @@ from config import (
     CONSTRUCTOR_COST_STARS,
     CONSTRUCTOR_COST_RUB,
     CONSTRUCTOR_PRICE_USD,
-    FREEKASSA_PREMIUM_PRICE_RUB,
-    FREEKASSA_PREMIUM_PRICE_USD,
-    FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB,
+    PLATEGA_PREMIUM_PRICE_RUB,
+    PLATEGA_PREMIUM_WEEKLY_PRICE_RUB,
+    PREMIUM_PRICE_USD,
     PREMIUM_WEEKLY_PRICE_USD,
-    FREEKASSA_ENABLED,
+    PLATEGA_ENABLED,
     fiat_suffix,
 )
 from services import gifts_service
@@ -190,7 +190,7 @@ def tariffs_text(lang: str = 'ru') -> str:
     gift_min = min(g.cost for g in gifts_service.GIFTS)
     gift_max = max(g.cost for g in gifts_service.GIFTS)
     gift_discount = round(gifts_service.DAILY_DISCOUNT * 100)
-    rub_lines = FREEKASSA_ENABLED
+    rub_lines = PLATEGA_ENABLED
     if lang == 'en':
         lines = [
             '💰 Prices & tariffs',
@@ -198,11 +198,11 @@ def tariffs_text(lang: str = 'ru') -> str:
             f'Actual as of {LEGAL_DATE_SHORT} · every price is shown in the bot before payment',
             '',
             # V3.36.0: every Stars price carries its rub + dollar equivalent.
-            f'⭐ Premium — 30-day subscription: {PREMIUM_MONTHLY_STARS}⭐{fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=rub_lines)}',
+            f'⭐ Premium — 30-day subscription: {PREMIUM_MONTHLY_STARS}⭐{fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD, rub_enabled=rub_lines)}',
             f'Includes: {PREMIUM_MONTHLY_PHOTO_CREDITS} photo credits/month, '
             f'{PREMIUM_MONTHLY_QUEST_REPLAYS} story replays, {VIDEO_PREMIUM_FREE_DAILY} free video '
             'animations per day, wider chat limits and all characters.',
-            f'⭐ Premium — 7-day subscription: {PREMIUM_WEEKLY_STARS}⭐{fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=rub_lines)}',
+            f'⭐ Premium — 7-day subscription: {PREMIUM_WEEKLY_STARS}⭐{fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=rub_lines)}',
             f'Includes: {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits for the week and the same '
             'features as the 30-day plan.',
             '',
@@ -237,11 +237,11 @@ def tariffs_text(lang: str = 'ru') -> str:
         '',
         f'Актуальны на {LEGAL_DATE_SHORT} · любая цена показывается в боте до оплаты',
         '',
-        f'⭐ Premium — подписка на 30 дней: {PREMIUM_MONTHLY_STARS}⭐{fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=rub_lines)}',
+        f'⭐ Premium — подписка на 30 дней: {PREMIUM_MONTHLY_STARS}⭐{fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD, rub_enabled=rub_lines)}',
         f'Входит: {PREMIUM_MONTHLY_PHOTO_CREDITS} фото-кредитов в месяц, '
         f'{PREMIUM_MONTHLY_QUEST_REPLAYS} перезапуска историй, {VIDEO_PREMIUM_FREE_DAILY} бесплатных '
         'видео-оживлений в день, расширенные лимиты общения и все персонажи.',
-        f'⭐ Premium — подписка на 7 дней: {PREMIUM_WEEKLY_STARS}⭐{fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=rub_lines)}',
+        f'⭐ Premium — подписка на 7 дней: {PREMIUM_WEEKLY_STARS}⭐{fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=rub_lines)}',
         f'Входит: {PREMIUM_WEEKLY_PHOTO_CREDITS} фото-кредитов за неделю и те же '
         'возможности, что в подписке на 30 дней.',
         '',

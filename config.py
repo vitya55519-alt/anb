@@ -264,35 +264,31 @@ REPLICATE_VIDEO_MODEL = os.getenv(
 ).strip()
 REPLICATE_VIDEO_TIMEOUT_SECONDS = max(120, min(900, int(os.getenv("REPLICATE_VIDEO_TIMEOUT_SECONDS", "600"))))
 
-# V3.19.6: FreeKassa card/SBP payments — the external (non-Telegram) scenario;
-# Stars stay the in-Telegram method per Telegram policy. All three secrets are
-# required, otherwise the card button and webhook endpoints stay off.
-FREEKASSA_MERCHANT_ID = os.getenv("FREEKASSA_MERCHANT_ID", "").strip()
-FREEKASSA_SECRET1 = os.getenv("FREEKASSA_SECRET1", "").strip()
-FREEKASSA_SECRET2 = os.getenv("FREEKASSA_SECRET2", "").strip()
-FREEKASSA_ENABLED = bool(FREEKASSA_MERCHANT_ID and FREEKASSA_SECRET1 and FREEKASSA_SECRET2)
-# V3.30.0: FreeKassa REST API (https://api.fk.life/v1, JSON). The merchant
-# cabinet issues a separate API key; when it is present, orders are created
-# via POST /orders/create (HMAC-SHA256 signature) and the returned `location`
-# link is handed to the user. Without the key the legacy SCI form link stays.
-FREEKASSA_API_KEY = os.getenv("FREEKASSA_API_KEY", "").strip()
-FREEKASSA_API_ENABLED = bool(FREEKASSA_MERCHANT_ID and FREEKASSA_API_KEY)
-# orders/create requires a real IP (127.0.0.1 is rejected) and Telegram hides
-# the user IP, so we send our own public egress IP (auto-looked-up, cached).
-# Override manually when the auto lookup is blocked on the host.
-FREEKASSA_SERVER_IP = os.getenv("FREEKASSA_SERVER_IP", "").strip()
-FREEKASSA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_RUB", "899")))
+# V3.44.21: Platega card/SBP payments (platega.io) — the external (non-Telegram)
+# scenario; Stars stay the in-Telegram method per Telegram policy. Platega
+# replaced FreeKassa end to end. The MerchantId + API key come from the cabinet
+# (my.platega.io → Настройки → Интеграция и API); both are required, otherwise
+# the card button and the webhook endpoints stay off.
+PLATEGA_MERCHANT_ID = os.getenv("PLATEGA_MERCHANT_ID", "").strip()
+PLATEGA_API_KEY = os.getenv("PLATEGA_API_KEY", "").strip()
+PLATEGA_ENABLED = bool(PLATEGA_MERCHANT_ID and PLATEGA_API_KEY)
+# docs.platega.io «Начало работы»: базовый URL — https://app.platega.io/
+# (verified live: POST /v2/transaction/process returns the payment link,
+# GET /transaction/{id} the status). Override only if Platega moves.
+PLATEGA_API_BASE = os.getenv("PLATEGA_API_BASE", "https://app.platega.io").strip().rstrip("/")
+PLATEGA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_PRICE_RUB", "899")))
 # V3.34.1: card/SBP price of the weekly plan (rub next to the Stars price).
 # V3.43.0: owner benchmarked Come Closer and asked to take their prices —
 # week 299₽ / month 899₽ / 3 months 1799₽.
-FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB", "299")))
+PLATEGA_PREMIUM_WEEKLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_WEEKLY_PRICE_RUB", "299")))
 # V3.43.0: the 3-month plan the competitor card shows (−50% vs buying monthly).
-FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB", "1799")))
-# V3.20.1: international Visa/Mastercard button — the same FreeKassa kassa,
-# invoice currency USD (multi-currency must be enabled in the kassa settings).
-FREEKASSA_PREMIUM_PRICE_USD = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_USD", "5")))
+PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB", "1799")))
+# Display-only dollar equivalent of the monthly plan. V3.20.1 charged it for
+# real through the FreeKassa multi-currency kassa; Platega invoices in rubles
+# (the payer picks SBP/card/crypto on its page), so this is now just a price tag.
+PREMIUM_PRICE_USD = max(1, int(os.getenv("PREMIUM_PRICE_USD", "5")))
 # Public base URL of this Railway service (generated domain). Used in the
-# FreeKassa merchant form (notify/success/fail URLs) and every Mini App entry
+# Platega payment redirects (return/failedUrl) and every Mini App entry
 # point (menu button, /app command, inline buttons).
 # V3.35.0: when the variable is not set explicitly, fall back to Railway's
 # generated public domain so the «Открыть приложение» button cannot silently
@@ -402,8 +398,8 @@ STARS_FIAT_RUB: dict[int, int] = {
 STARS_FIAT_USD: dict[int, float] = {
     5: 0.2, 10: 0.3, 15: 0.5, 20: 0.6, 25: 0.75, 30: 0.85, 40: 1.0, 50: 1.2,
 }
-# The monthly plan's dollars are FREEKASSA_PREMIUM_PRICE_USD (the real
-# Visa/Mastercard charge above); the week has no USD payment yet.
+# The monthly plan's dollars are PREMIUM_PRICE_USD (display-only since the
+# FreeKassa multi-currency kassa retired); the week has no USD price tag.
 PREMIUM_WEEKLY_PRICE_USD = float(os.getenv("PREMIUM_WEEKLY_PRICE_USD", "1.5"))
 CONSTRUCTOR_PRICE_USD = float(os.getenv("CONSTRUCTOR_PRICE_USD", "2.5"))
 
@@ -466,6 +462,10 @@ PARTNER_MIN_PAYOUT_RUB = int(os.getenv("PARTNER_MIN_PAYOUT_RUB", "500"))
 # support bot's token never belongs in this service. «Поддержка» buttons hand
 # the user a t.me link to it instead of arming an in-bot ticket.
 SUPPORT_BOT_USERNAME = os.getenv("SUPPORT_BOT_USERNAME", "Anna67901support_bot").strip().lstrip('@')
+# V3.44.21: THIS bot's own public @username (optional). /diagnostics shows it,
+# and the Platega payment redirects fall back to a t.me deep link when
+# PUBLIC_BASE_URL is not set. Empty default keeps every consumer optional.
+BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip('@')
 # V3.43.3: the support bot lives in this process too — when the (rotated)
 # token is set in the host env, a second aiogram bot polls it, answers /start
 # with SUPPORT_WELCOME_TEXT and forwards every appeal to the admins. The

@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, create_engine, inspect, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 import logging
 
@@ -84,23 +84,6 @@ def _migrate_existing_users():
     }
     _add_missing_columns('users', wanted)
 
-def _widen_freekassa_telegram_id():
-    # V3.26.2: freekassa_orders.telegram_id was created as 32-bit INTEGER;
-    # Telegram IDs above 2^31-1 crashed the order INSERT
-    # (psycopg NumericValueOutOfRange). Widen the live column to BIGINT.
-    # SQLite integers are already 64-bit, so only Postgres needs this.
-    if engine.dialect.name != 'postgresql':
-        return
-    inspector = inspect(engine)
-    if 'freekassa_orders' not in inspector.get_table_names():
-        return
-    cols = {c['name']: c for c in inspector.get_columns('freekassa_orders')}
-    col = cols.get('telegram_id')
-    if col is None or isinstance(col['type'], BigInteger):
-        return
-    with engine.begin() as conn:
-        conn.execute(text('ALTER TABLE freekassa_orders ALTER COLUMN telegram_id TYPE BIGINT'))
-
 def _drop_legacy_constructor_unique() -> None:
     """V3.44.15: v3.19.0 created custom_characters with a UNIQUE index on
     telegram_id. The V3.44.6 model removed ``unique=`` (multiple personas per
@@ -122,7 +105,9 @@ def _drop_legacy_constructor_unique() -> None:
 
 def init_db():
     Base.metadata.create_all(engine)
-    _widen_freekassa_telegram_id()
+    # V3.44.21: the FreeKassa orders table retired with the kassa itself —
+    # platega_orders is created fresh by create_all; the legacy
+    # freekassa_orders table is intentionally left in place (paid history).
     _drop_legacy_constructor_unique()
     _migrate_existing_users()
     _add_missing_columns('character_states', {

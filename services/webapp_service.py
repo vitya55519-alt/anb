@@ -39,10 +39,6 @@ from config import (
     CONSTRUCTOR_COST_STARS,
     CONSTRUCTOR_PRICE_USD,
     CUSTOM_PHOTO_COST_STARS,
-    FREEKASSA_ENABLED,
-    FREEKASSA_PREMIUM_PRICE_RUB,
-    FREEKASSA_PREMIUM_PRICE_USD,
-    FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB,
     FREE_MESSAGES_PER_DAY,
     FREE_PHOTOS_LEVEL_1_2,
     FREE_PHOTOS_LEVEL_3_6,
@@ -51,8 +47,12 @@ from config import (
     PEACH_PACK_30_STARS,
     PEACH_PACK_100_STARS,
     PHOTO_COST_STARS,
+    PLATEGA_ENABLED,
+    PLATEGA_PREMIUM_PRICE_RUB,
+    PLATEGA_PREMIUM_WEEKLY_PRICE_RUB,
     PREMIUM_MONTHLY_PHOTO_CREDITS,
     PREMIUM_MONTHLY_STARS,
+    PREMIUM_PRICE_USD,
     PREMIUM_WEEKLY_PHOTO_CREDITS,
     PREMIUM_WEEKLY_PRICE_USD,
     PREMIUM_WEEKLY_STARS,
@@ -415,8 +415,8 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             ),
             'stars': PREMIUM_MONTHLY_STARS,
             'payload': 'premium_month',
-            'rub': FREEKASSA_PREMIUM_PRICE_RUB if FREEKASSA_ENABLED else None,
-            'usd': FREEKASSA_PREMIUM_PRICE_USD,
+            'rub': PLATEGA_PREMIUM_PRICE_RUB if PLATEGA_ENABLED else None,
+            'usd': PREMIUM_PRICE_USD,
         },
         {
             'id': 'premium_week',
@@ -429,7 +429,7 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             ),
             'stars': PREMIUM_WEEKLY_STARS,
             'payload': 'premium_week',
-            'rub': FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB if FREEKASSA_ENABLED else None,
+            'rub': PLATEGA_PREMIUM_WEEKLY_PRICE_RUB if PLATEGA_ENABLED else None,
             'usd': PREMIUM_WEEKLY_PRICE_USD,
         },
         {
@@ -498,13 +498,13 @@ def api_shop(lang: str = 'ru') -> dict:
         ('🎯', 'Другая ветка истории' if not en else 'Story branch replay', QUEST_REPLAY_STARS, None, None),
         # the constructor has REAL card prices — the ladder would lie about them
         ('👩', 'Создание персонажа' if not en else 'Character creation', CONSTRUCTOR_COST_STARS,
-         CONSTRUCTOR_COST_RUB if FREEKASSA_ENABLED else None, CONSTRUCTOR_PRICE_USD),
+         CONSTRUCTOR_COST_RUB if PLATEGA_ENABLED else None, CONSTRUCTOR_PRICE_USD),
     ]
     return {
         'premium': {
             'stars': PREMIUM_MONTHLY_STARS,
-            'rub': FREEKASSA_PREMIUM_PRICE_RUB if FREEKASSA_ENABLED else None,
-            'usd': FREEKASSA_PREMIUM_PRICE_USD,
+            'rub': PLATEGA_PREMIUM_PRICE_RUB if PLATEGA_ENABLED else None,
+            'usd': PREMIUM_PRICE_USD,
             'photo_credits': PREMIUM_MONTHLY_PHOTO_CREDITS,
             'free_videos_daily': VIDEO_PREMIUM_FREE_DAILY,
             'features': [
@@ -525,11 +525,11 @@ def api_shop(lang: str = 'ru') -> dict:
              'usd': usd if usd is not None else fiat_values(s)[1]}
             for e, n, s, rub, usd in items
         ],
-        'constructor_rub': CONSTRUCTOR_COST_RUB if FREEKASSA_ENABLED else None,
+        'constructor_rub': CONSTRUCTOR_COST_RUB if PLATEGA_ENABLED else None,
         'constructor_usd': CONSTRUCTOR_PRICE_USD,
         # V3.43.0: the pay-method modal only offers rows the backend can sell —
-        # FreeKassa (card/SBP) and Wallet Pay (crypto) are env-gated.
-        'freekassa': FREEKASSA_ENABLED,
+        # Platega (card/SBP) and Wallet Pay (crypto) are env-gated.
+        'platega': PLATEGA_ENABLED,
         'wallet_pay': WALLET_PAY_ENABLED,
         # V3.34.0: what the Mini App can sell right now (Stars invoices via
         # tg.openInvoice) — the rest of the price list stays informational.

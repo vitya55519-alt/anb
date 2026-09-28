@@ -1,12 +1,13 @@
-"""V3.20.1 static pins: USD Visa/Mastercard premium button, spoken circles
-(Veo-native voice), and Gemini 2.5 TTS as the primary voice provider."""
+"""V3.20.1 static pins: spoken circles (Veo-native voice), Gemini 2.5 TTS
+as the primary voice provider, and the USD price tag next to the Stars
+prices (a display-only number since the multi-currency kassa retired in
+V3.44.21 — Platega invoices in rubles)."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = (ROOT / 'config.py').read_text(encoding='utf-8')
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 VOICE = (ROOT / 'services' / 'voice_service.py').read_text(encoding='utf-8')
-FK = (ROOT / 'services' / 'freekassa_service.py').read_text(encoding='utf-8')
 VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 
 
@@ -16,26 +17,9 @@ def test_version_bumped():
 
 
 def test_usd_price_config():
-    assert 'FREEKASSA_PREMIUM_PRICE_USD = max(1, int(os.getenv("FREEKASSA_PREMIUM_PRICE_USD", "5")))' in CONFIG
-
-
-def test_payment_url_supports_currency():
-    assert 'currency: str | None = None' in FK
-    assert '&currency=' in FK
-
-
-def test_usd_button_in_premium_keyboard():
-    kb = MAIN[MAIN.index('def premium_keyboard('):MAIN.index('def adult_keyboard():')]
-    assert "callback_data='fk:premium_usd'" in kb
-    assert 'Visa/Mastercard' in kb
-
-
-def test_usd_handler_invoices_usd():
-    handler = MAIN[MAIN.index("@dp.callback_query(F.data == 'fk:premium_usd')"):
-                   MAIN.index("@dp.callback_query(F.data.startswith('walletpay:'))")]
-    assert 'FREEKASSA_PREMIUM_PRICE_USD' in handler
-    assert "currency='USD'" in handler
-    assert "'premium_month'" in handler
+    # V3.44.21: display-only — the real USD charge died with the FreeKassa
+    # multi-currency kassa; Platega invoices in rubles.
+    assert 'PREMIUM_PRICE_USD = max(1, int(os.getenv("PREMIUM_PRICE_USD", "5")))' in CONFIG
 
 
 def test_circles_are_spoken():

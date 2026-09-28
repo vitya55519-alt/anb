@@ -1,11 +1,11 @@
-"""Static regression tests for v3.27.0: ruble shop (FreeKassa one-click buttons).
+"""Static regression tests for v3.27.0: the ruble shop (kassa one-click rows).
 
-Feature bundle:
+Feature bundle (V3.44.21: the rub path runs on Platega now):
 - character constructor payable in rubles (200 RUB, card/SBP) alongside Stars;
 - token economy: 1 token = 10 RUB, photo animation costs 5 tokens (50 RUB);
-- premium payment is ONE click — the keyboard button itself is a url-button
-  that opens the FreeKassa payment page (order created upfront);
-- payment-system badges on the buttons (SBP / Visa / Mastercard), not plain text.
+- premium payment rows behind the kassa switch — the keyboard carries light
+  callback buttons and the ``platega:`` handler creates the order and sends
+  the payment-page link (the payer picks the method on the page).
 """
 from pathlib import Path
 
@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG = (ROOT / 'config.py').read_text(encoding='utf-8')
 MODELS = (ROOT / 'models' / 'app_models.py').read_text(encoding='utf-8')
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
-FK = (ROOT / 'services' / 'freekassa_service.py').read_text(encoding='utf-8')
+PLATEGA = (ROOT / 'services' / 'platega_service.py').read_text(encoding='utf-8')
 
 
 def test_config_ruble_prices():
@@ -48,24 +48,18 @@ def test_runtime_user_balances_default_zero():
         assert row.constructor_credit == 0
 
 
-def test_premium_keyboard_is_one_click_url_buttons_with_badges():
+def test_premium_keyboard_rows_are_platega_callbacks():
+    # V3.44.21: order creation is a network call, so the rows are callback
+    # buttons; the platega: handler answers with the payment-page link.
     assert 'def premium_keyboard(discount: dict | None = None, telegram_id: int | None = None):' in MAIN
-    assert 'def _fk_pay_button(' in MAIN
-    assert 'link = freekassa_service.payment_url(order_id, str(amount), currency=currency)' in MAIN
-    assert 'if FREEKASSA_ENABLED and telegram_id:' in MAIN
-    # ruble premium: SBP + card badges
-    assert "⚡СБП / карта" in MAIN  # SBP / card
-    assert "'premium_month', FREEKASSA_PREMIUM_PRICE_RUB" in MAIN
-    # USD premium: Visa + Mastercard badges
-    assert "Ⓥ Visa / Ⓜ Mastercard" in MAIN
-    assert "currency='USD'" in MAIN
+    assert 'def _platega_pay_button(' in MAIN
+    assert "callback_data=f'platega:{product}'" in MAIN
+    assert 'if PLATEGA_ENABLED:' in MAIN
+    # ruble premium rows: week / month / quarter
+    assert "'premium_month', PLATEGA_PREMIUM_PRICE_RUB" in MAIN
     # token buttons: 1 token and pack
     assert "'tokens_1', TOKEN_PRICE_RUB" in MAIN
     assert "f'tokens_{TOKEN_PACK_SIZE}'" in MAIN
-    # legacy callback buttons preserved for callers without telegram_id
-    assert 'elif FREEKASSA_ENABLED:' in MAIN
-    assert "callback_data='fk:premium'" in MAIN
-    assert "callback_data='fk:premium_usd'" in MAIN
 
 
 def test_all_premium_keyboard_callers_pass_telegram_id():
@@ -90,7 +84,7 @@ def test_constructor_buy_consumes_ruble_credit_before_stars():
     assert 'def consume_constructor_credit(' in MAIN
     assert 'def add_constructor_credit(' in MAIN
     # unique charge id per purchase (record_payment dedups on charge_id)
-    assert 'freekassa_credit:{telegram_id}:{int(_time.time() * 1000)}' in MAIN
+    assert 'rub_credit:{telegram_id}:{int(_time.time() * 1000)}' in MAIN
     assert '_finish_constructor(cq.message.chat.id, None, telegram_id)' in MAIN
 
 
@@ -106,17 +100,17 @@ def test_video_gate_spends_tokens_before_stars_invoice():
     assert 0 < spend_idx < invoice_idx
 
 
-def test_fk_notify_grants_by_product():
+def test_platega_callback_grants_by_product():
     assert "if product == 'constructor_rub':" in MAIN
     assert "product.startswith('tokens_')" in MAIN
-    assert 'add_constructor_credit(order[\'telegram_id\'], 1)' in MAIN
+    assert "add_constructor_credit(order['telegram_id'], 1)" in MAIN
     assert "int(product.split('_')[1])" in MAIN
-    assert "provider='freekassa'" in MAIN
+    assert "provider='platega'" in MAIN
 
 
 def test_create_order_cleans_stale_pending_duplicates():
-    assert 'from datetime import datetime, timedelta' in FK
-    assert 'cutoff = datetime.utcnow() - timedelta(hours=1)' in FK
-    assert 'FreeKassaOrder.status == \'pending\'' in FK
-    assert 'FreeKassaOrder.created_at < cutoff' in FK
-    assert ').delete()' in FK
+    assert 'from datetime import datetime, timedelta' in PLATEGA
+    assert 'cutoff = datetime.utcnow() - timedelta(hours=1)' in PLATEGA
+    assert "PlategaOrder.status == 'pending'" in PLATEGA
+    assert 'PlategaOrder.created_at < cutoff' in PLATEGA
+    assert ').delete()' in PLATEGA

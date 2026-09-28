@@ -151,8 +151,9 @@ def test_guaranteed_app_entry_points():
 
 
 def test_fkcheck_reports_webapp_diagnostics():
-    # V3.33.1: the owner diagnoses the missing app button via /fkcheck
-    fk = MAIN[MAIN.index('async def _fk_check('):MAIN.index('async def _root(')]
+    # V3.33.1: the owner diagnoses the missing app button via the payment
+    # check page (/platega/check since V3.44.21)
+    fk = MAIN[MAIN.index('async def _platega_check('):MAIN.index('async def _root(')]
     assert 'WEBAPP_PUBLIC_URL=' in fk
     assert 'WEBAPP_SELF_PROBE=' in fk
     assert "'WEBAPP_SELF_PROBE=SKIPPED (PUBLIC_BASE_URL not set)'" in fk

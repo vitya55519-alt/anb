@@ -76,31 +76,31 @@ def test_rub_prices_next_to_stars():
     # V3.34.1 owner request: «рядом со звездочками пропиши цену в рублях» —
     # and the rub price must be a real card/SBP charge, not a display number.
     cfg = importlib.import_module('config')
-    assert cfg.FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB >= 1
-    assert cfg.FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB * 4 > cfg.FREEKASSA_PREMIUM_PRICE_RUB
+    assert cfg.PLATEGA_PREMIUM_WEEKLY_PRICE_RUB >= 1
+    assert cfg.PLATEGA_PREMIUM_WEEKLY_PRICE_RUB * 4 > cfg.PLATEGA_PREMIUM_PRICE_RUB
     kb = MAIN[MAIN.index('def premium_keyboard('):MAIN.index('def adult_keyboard():')]
     # V3.36.0: the stars buttons carry rub + dollar inline via fiat_suffix,
-    # using the real card prices when FreeKassa is on.
-    assert 'fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD' in kb
-    assert 'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD' in kb
-    # the weekly plan is payable by card/SBP: its own fkapi row + price lookup
-    assert "_fk_pay_button(\n                'premium_week', FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB," in MAIN
-    assert "f'💳 Premium на неделю — {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · ⚡СБП / карта'" in MAIN
-    amount_fn = MAIN[MAIN.index('def _fk_amount_for('):MAIN.index('@dp.callback_query(F.data.startswith(\'fkapi:\')')]
+    # using the real card prices when the kassa (Platega since V3.44.21) is on.
+    assert 'fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD' in kb
+    assert 'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD' in kb
+    # the weekly plan is payable by card/SBP: its own Platega row + price lookup
+    assert "_platega_pay_button(\n                'premium_week', PLATEGA_PREMIUM_WEEKLY_PRICE_RUB," in MAIN
+    assert "f'💳 Premium на неделю — {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · СБП / карта'" in MAIN
+    amount_fn = MAIN[MAIN.index('def _platega_amount_for('):MAIN.index("@dp.callback_query(F.data.startswith('platega:'))")]
     assert "if product == 'premium_week':" in amount_fn
-    assert 'return FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB' in amount_fn
+    assert 'return PLATEGA_PREMIUM_WEEKLY_PRICE_RUB' in amount_fn
     # the invoice title and the webhook confirmation name the week correctly
-    assert "title = f'💳 Premium на неделю — {sign}{amount}'" in MAIN
-    assert "elif product == 'premium_week':" in MAIN[MAIN.index('async def _fk_notify('):]
+    assert "title = f'💳 Premium на неделю — {amount} ₽'" in MAIN
+    assert "elif product == 'premium_week':" in MAIN[MAIN.index('async def _platega_callback('):]
     assert "confirm = '💖 Оплата прошла! Premium активирован на 7 дней." in MAIN
     # the Mini App products carry the rub price for both plans
-    assert "'rub': FREEKASSA_PREMIUM_PRICE_RUB if FREEKASSA_ENABLED else None," in WEBAPP_SVC
-    assert "'rub': FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB if FREEKASSA_ENABLED else None," in WEBAPP_SVC
+    assert "'rub': PLATEGA_PREMIUM_PRICE_RUB if PLATEGA_ENABLED else None," in WEBAPP_SVC
+    assert "'rub': PLATEGA_PREMIUM_WEEKLY_PRICE_RUB if PLATEGA_ENABLED else None," in WEBAPP_SVC
     # V3.43.0: the rub prices ride on the shop pack squares now
     assert 'const packs = purchases.map(x => `' in INDEX
     assert "esc(x.rub) + ' ₽'" in INDEX
-    # the legal tariffs price the week in rubles too (Platega) — via fiat_suffix
-    assert 'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD' in LEGAL
+    # the legal tariffs price the week in rubles too — via fiat_suffix
+    assert 'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD' in LEGAL
 
 
 def test_mini_app_sells_week():

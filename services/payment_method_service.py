@@ -54,37 +54,24 @@ DEFAULT_METHODS = {
     # V3.31.1: built-in rows of the user payment keyboard become admin-managed.
     # Switching the status to «выключен» hides the button from every user
     # without a code deploy (owner request: «дай возможность убирать кнопки»).
-    "freekassa_rub": {
-        "display_name": "Кнопка: Premium ₽ · СБП/карта",
+    # V3.44.21: Platega replaced FreeKassa — the payer picks the method (SBP /
+    # card / crypto) on the Platega payment page, so one rub row per product
+    # group replaces the old rub/sbp/usd trio.
+    "platega_rub": {
+        "display_name": "Кнопка: Premium ₽ · СБП/карта (Platega)",
         "method_type": "builtin",
         "status": "active",
         "scope": "external_only",
         "is_system": True,
-        "instructions": "Встроенная рублёвая кнопка FreeKassa (карта РФ / СБП) в меню Premium. Статус «выключен» убирает её у пользователей.",
+        "instructions": "Встроенные рублёвые кнопки Premium (неделя/месяц/3 месяца) через Platega. Статус «выключен» убирает их у пользователей.",
     },
-    "freekassa_sbp": {
-        "display_name": "Кнопка: Premium ₽ · SBP",
+    "platega_tokens": {
+        "display_name": "Кнопка: Токены за рубли (Platega)",
         "method_type": "builtin",
         "status": "active",
         "scope": "external_only",
         "is_system": True,
-        "instructions": "Встроенная кнопка оплаты Premium по СБП. Статус «выключен» убирает её у пользователей.",
-    },
-    "freekassa_usd": {
-        "display_name": "Кнопка: Premium $ · Visa/MC",
-        "method_type": "builtin",
-        "status": "active",
-        "scope": "external_only",
-        "is_system": True,
-        "instructions": "Встроенная кнопка долларовых карт (Visa/MC World). Статус «выключен» убирает её у пользователей.",
-    },
-    "freekassa_tokens": {
-        "display_name": "Кнопка: Токены за рубли",
-        "method_type": "builtin",
-        "status": "active",
-        "scope": "external_only",
-        "is_system": True,
-        "instructions": "Встроенная кнопка покупки токенов за рубли. Статус «выключен» убирает её у пользователей.",
+        "instructions": "Встроенная кнопка покупки токенов за рубли через Platega. Статус «выключен» убирает её у пользователей.",
     },
 }
 
@@ -143,6 +130,15 @@ def ensure_default_payment_methods() -> None:
             if row is None:
                 session.add(PaymentMethod(method_key=method_key, **defaults))
                 changed = True
+        # V3.44.21: FreeKassa retired — switch off its leftover builtin rows so
+        # the admin panel shows no dead kassa buttons.
+        legacy = session.query(PaymentMethod).filter(
+            PaymentMethod.method_key.like('freekassa_%'),
+            PaymentMethod.status == 'active',
+        ).all()
+        for row in legacy:
+            row.status = 'disabled'
+            changed = True
         if changed:
             session.commit()
 

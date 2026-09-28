@@ -5,7 +5,7 @@
    and the Gemini image leg retries a 429 quota burst twice with backoff.
 2. The peach pack ladder (10/30/100 credits, −10%/−25%) replaces the single
    photo-credit square in every payment chain: Stars pre_checkout /
-   successful_payment, FreeKassa notify, Wallet Pay webhook, the pay modal.
+   successful_payment, Platega callback, Wallet Pay webhook, the pay modal.
 3. Storefront tiles: the Ken-Burns «гифка» re-renders from the CURRENT
    canonical references, and an admin job renders i2v living tiles
    (smile + air kiss) served as muted mp4 loops in the grid.
@@ -73,14 +73,14 @@ def test_pack_stars_chain():
 
 
 def test_pack_fiat_and_notify_chains():
-    fk = MAIN[MAIN.index('def _fk_amount_for('):MAIN.index("@dp.callback_query(F.data.startswith('fkapi:'))")]
+    fk = MAIN[MAIN.index('def _platega_amount_for('):MAIN.index("@dp.callback_query(F.data.startswith('platega:'))")]
     assert 'if product in PEACH_PACK_STARS:' in fk
     assert 'return fiat_values(PEACH_PACK_STARS[product])[0]' in fk
-    notify = MAIN[MAIN.index('async def _fk_notify'):]
+    notify = MAIN[MAIN.index('async def _platega_callback'):]
     notify = notify[notify.index("elif product == 'photo':"):notify.index('else:')]
     assert 'elif product in PEACH_PACK_CREDITS:' in notify
     link = MAIN[MAIN.index('async def _webapp_api_pay_link('):MAIN.index('async def _webapp_api_select(')]
-    assert 'if not fk_product and product_id in PEACH_PACK_STARS:' in link
+    assert 'if not order_product and product_id in PEACH_PACK_STARS:' in link
 
 
 def test_pack_squares_and_badges():

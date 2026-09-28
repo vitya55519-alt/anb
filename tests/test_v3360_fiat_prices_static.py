@@ -2,8 +2,8 @@
 its ruble and dollar equivalent — the owner asked for «напротив каждой цены
 звездочек добавь цену в рублях и долларах». The fiat display rides on a
 config ladder (roughly what Stars cost to top up); premium and the character
-constructor reuse their REAL card prices (FREEKASSA_PREMIUM_PRICE_USD is the
-actual Visa/MC charge, not a marketing number).
+constructor reuse their REAL card prices (PREMIUM_PRICE_USD is a display-only
+tag since the multi-currency kassa retired in V3.44.21).
 """
 import importlib
 from pathlib import Path
@@ -72,8 +72,8 @@ def test_main_every_star_price_has_fiat():
         'fiat_suffix(CHAT_PHOTO_OFFER_STARS)',
         'fiat_suffix(QUEST_REPLAY_STARS)',
         'fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD)',
-        'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD',
-        'fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD',
+        'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD',
+        'fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD',
         'fiat_suffix(VIDEO_COST_STARS)',
         'fiat_suffix(CUSTOM_PHOTO_COST_STARS)',
         'fiat_suffix(PHOTO_COST_STARS)',
@@ -96,13 +96,13 @@ def test_main_imports_fiat_helpers():
 
 def test_webapp_service_items_carry_fiat():
     assert "'constructor_usd': CONSTRUCTOR_PRICE_USD," in WEBAPP_SVC
-    assert "'usd': FREEKASSA_PREMIUM_PRICE_USD," in WEBAPP_SVC
+    assert "'usd': PREMIUM_PRICE_USD," in WEBAPP_SVC
     assert "'usd': PREMIUM_WEEKLY_PRICE_USD," in WEBAPP_SVC
     # V3.43.1: the single-credit fiat pair became the peach pack fiat pairs.
     assert "'rub': p10_rub," in WEBAPP_SVC and "'usd': p100_usd," in WEBAPP_SVC
     assert "'rub': rub if rub is not None else fiat_values(s)[0]," in WEBAPP_SVC
     # the constructor item carries its REAL card prices, not the ladder
-    assert 'CONSTRUCTOR_COST_RUB if FREEKASSA_ENABLED else None, CONSTRUCTOR_PRICE_USD),' in WEBAPP_SVC
+    assert 'CONSTRUCTOR_COST_RUB if PLATEGA_ENABLED else None, CONSTRUCTOR_PRICE_USD),' in WEBAPP_SVC
 
 
 def test_frontend_renders_fiat_next_to_stars():
@@ -128,8 +128,8 @@ def test_legal_tariffs_fiat_both_languages():
     assert 'fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD' in LEGAL
     assert 'fiat_suffix(gift_min)' in LEGAL and 'fiat_suffix(gift_max)' in LEGAL
     # premium lines reuse the real card prices in both languages
-    assert LEGAL.count('fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD') == 2
-    assert LEGAL.count('fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD') == 2
+    assert LEGAL.count('fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD') == 2
+    assert LEGAL.count('fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD') == 2
     # the old bare 'Telegram Stars' wording is gone from the tariff list
     assert 'Telegram Stars' not in LEGAL
 
@@ -144,4 +144,4 @@ def test_runtime_tariffs_render_fiat():
             if '⭐' not in line:
                 continue
             assert '$' in line, f'no dollar price: {line}'
-    assert '₽' in ru  # rubs show when FreeKassa is enabled in production
+    assert '₽' in ru  # rubs show when the kassa (Platega) is enabled in production

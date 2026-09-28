@@ -292,16 +292,23 @@ class PaymentMethod(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
-class FreeKassaOrder(Base):
-    """V3.19.6: card/SBP orders created in-bot and paid on the FreeKassa page."""
-    __tablename__ = "freekassa_orders"
+class PlategaOrder(Base):
+    """V3.44.21: card/SBP orders paid on the Platega page (platega.io).
+
+    Replaced the retired FreeKassa orders. ``transaction_id`` is the Platega
+    UUID returned by POST /v2/transaction/process — the status callback
+    carries it back, so the grant lands on exactly this row.
+    """
+    __tablename__ = "platega_orders"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # V3.26.2: BigInteger вЂ” Telegram IDs above 2^31-1 overflowed 32-bit INTEGER
-    # (psycopg NumericValueOutOfRange) and the order INSERT crashed.
+    # V3.26.2 lesson: BigInteger — Telegram IDs above 2^31-1 overflowed the
+    # 32-bit INTEGER and the order INSERT crashed.
     telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
     product: Mapped[str] = mapped_column(String(64), nullable=False)
     amount: Mapped[str] = mapped_column(String(24), nullable=False)
+    # pending / paid / canceled / chargedback
     status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    transaction_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     paid_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

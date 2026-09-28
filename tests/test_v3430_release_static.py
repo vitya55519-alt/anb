@@ -79,17 +79,17 @@ def test_webapp_auth_window_and_reasons():
 
 def test_quarter_product_end_to_end():
     assert 'PREMIUM_QUARTERLY_STARS = int(os.getenv("PREMIUM_QUARTERLY_STARS", "1200"))' in CONFIG
-    assert 'FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB = max(1, int(os.getenv("FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB", "1799")))' in CONFIG
+    assert 'PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB", "1799")))' in CONFIG
     assert '"premium_quarter":PREMIUM_QUARTERLY_STARS' in PAYMENTS
     assert 'days, credits = 90, PREMIUM_QUARTERLY_PHOTO_CREDITS' in PAYMENTS
     assert "@dp.callback_query(F.data == 'buy:premium_quarter')" in MAIN
     # the tariff card shows all three tiers with the competitor's rub prices
-    assert 'FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB' in MAIN
+    assert 'PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, PLATEGA_PREMIUM_PRICE_RUB, PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB' in MAIN
     # card/SBP price lookup knows the quarter plan too
-    fk = MAIN[MAIN.index('def _fk_amount_for('):]
-    fk = fk[:fk.index('@dp.callback_query(F.data.startswith(\'fkapi:\'))')]
+    fk = MAIN[MAIN.index('def _platega_amount_for('):]
+    fk = fk[:fk.index("@dp.callback_query(F.data.startswith('platega:'))")]
     assert "if product == 'premium_quarter':" in fk
-    assert 'FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB' in fk
+    assert 'PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB' in fk
 
 
 # ── 5. menu button install retry ────────────────────────────────────────────
@@ -127,11 +127,10 @@ def test_pay_method_modal_backend():
     handler = MAIN[MAIN.index('async def _webapp_api_pay_link('):]
     handler = handler[:handler.index('async def _webapp_api_select(')]
     assert 'validate_init_data' in handler
-    # sbp → FreeKassa REST order pinned to the SBP payment-system id
+    # sbp → Platega payment page (order row + POST /v2/transaction/process)
     assert "method == 'sbp'" in handler
-    assert 'freekassa_service.create_api_order(' in handler
-    assert 'payment_system=freekassa_service.FK_SBP_QR_PAYMENT_ID' in handler
-    assert 'freekassa_service.payment_url(' in handler
+    assert 'platega_service.create_order(' in handler
+    assert 'platega_service.create_payment(' in handler
     # crypto → Wallet Pay invoice (TON/USDT)
     assert "method == 'crypto'" in handler
     assert 'from services.wallet_pay_service import create_invoice' in handler
@@ -139,11 +138,11 @@ def test_pay_method_modal_backend():
     assert "'photo_credit': 'photo'" in handler
     assert "add_post('/webapp/api/pay_link', _webapp_api_pay_link)" in MAIN
     # the shop payload tells the frontend which rows it may offer
-    assert "'freekassa': FREEKASSA_ENABLED," in WEBAPP_SVC
+    assert "'platega': PLATEGA_ENABLED," in WEBAPP_SVC
     assert "'wallet_pay': WALLET_PAY_ENABLED," in WEBAPP_SVC
-    # ruble-paid photo credit + quarter confirmations in the notify chain
-    notify = MAIN[MAIN.index('async def _fk_notify('):]
-    notify = notify[:notify.index('async def _fk_success(')]
+    # ruble-paid photo credit + quarter confirmations in the callback chain
+    notify = MAIN[MAIN.index('async def _platega_callback('):]
+    notify = notify[:notify.index('async def _platega_success(')]
     assert "elif product == 'photo':" in notify
     assert 'Фото-кредит оплачен картой!' in notify
     assert 'Premium активирован на 90 дней' in notify
@@ -156,7 +155,7 @@ def test_pay_method_modal_frontend():
     # the modal rows: Stars always, SBP and crypto only when the backend sells them
     assert 'id="paymodal"' in INDEX and 'id="payRows"' in INDEX
     assert 'data-m="stars"' in INDEX and 'data-m="sbp"' in INDEX and 'data-m="crypto"' in INDEX
-    assert 'if (x.rub && s.freekassa)' in INDEX
+    assert 'if (x.rub && s.platega)' in INDEX
     assert 'if (s.wallet_pay)' in INDEX
     # Stars reuses the invoice flow; the others open the external payment link
     assert 'buy(id, btn)' in INDEX

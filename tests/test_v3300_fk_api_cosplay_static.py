@@ -1,25 +1,20 @@
-"""V3.30.0 static pins: FreeKassa REST API orders + cosplay photoshoot.
+"""V3.30.0 static pins: the cosplay photoshoot (the FreeKassa REST-API half
+of this release retired with the kassa itself in V3.44.21 — Platega needs
+no request signatures; its X-MerchantId/X-Secret headers are pinned by
+test_v34421).
 
-Owner requirement: FreeKassa must be integrated through the REST API
-(``https://api.fk.life/v1``, JSON), not SCI — HMAC-SHA256 request signature
-(docs 2.2), ``POST /orders/create`` returns the payment link in the
-``location`` field and that link is handed to the user; the notify webhook
-keeps the MD5 SECRET2 signature (docs 1.4/1.7). On top of that the explicit
-adult menu buttons are gone and a token-priced cosplay scene with a costume
-picker exists.
+The surviving v3.30.0 feature: the explicit adult menu buttons are gone and
+a token-priced cosplay scene with a costume picker exists.
 """
 from __future__ import annotations
 
 import ast
-import hashlib
-import hmac
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 CONFIG = (ROOT / 'config.py').read_text(encoding='utf-8')
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
-FK = (ROOT / 'services' / 'freekassa_service.py').read_text(encoding='utf-8')
 PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 
 
@@ -27,79 +22,8 @@ def test_version_bumped():
     assert VERSION in ('3.44.4', '3.44.3', '3.43.7', '3.43.6', '3.43.5', '3.43.4', '3.43.3', '3.43.2', '3.43.1', '3.43.0', '3.42.2', '3.42.1', '3.42.0', '3.41.0', '3.40.0', '3.30.0', '3.30.1', '3.30.2', '3.30.3', '3.30.4', '3.30.5', '3.30.6', '3.30.7', '3.30.8', '3.30.9', '3.31.0', '3.31.1', '3.31.2', '3.31.3', '3.31.4', '3.31.5', '3.31.6', '3.31.7', '3.31.8', '3.32.0', '3.32.1', '3.33.0', '3.33.1', '3.34.0', '3.34.1', '3.35.0', '3.36.0', '3.37.0', '3.38.0', '3.39.0')
 
 
-def test_config_exposes_api_key_and_server_ip():
-    assert 'FREEKASSA_API_KEY = os.getenv("FREEKASSA_API_KEY", "")' in CONFIG
-    assert 'FREEKASSA_API_ENABLED = bool(FREEKASSA_MERCHANT_ID and FREEKASSA_API_KEY)' in CONFIG
-    assert 'FREEKASSA_SERVER_IP = os.getenv("FREEKASSA_SERVER_IP", "")' in CONFIG
+def test_cosplay_token_cost_config():
     assert 'COSPLAY_TOKEN_COST = max(1, int(os.getenv("COSPLAY_TOKEN_COST", "10")))' in CONFIG
-
-
-def test_api_base_and_sbp_qr_id():
-    assert "FK_API_BASE = 'https://api.fk.life/v1'" in FK
-    # i=44 "СБП (НСПК)" is API-only and cannot be opened as a web form.
-    # Web links use i=42 "СБП" which renders the normal payment form.
-    assert 'FK_SBP_QR_PAYMENT_ID = 42' in FK
-
-
-def test_request_signature_is_hmac_sha256_over_ksort_pipe():
-    # docs 2.2: ksort(params), implode('|', values), hash_hmac sha256 api key
-    assert 'def _api_signature(params: dict, key: str) -> str:' in FK
-    assert "base = '|'.join(str(params[k]) for k in sorted(params))" in FK
-    assert 'hashlib.sha256).hexdigest()' in FK
-    # known vector: ksort puts nonce before shopId
-    from services import freekassa_service
-    params = {'shopId': 777, 'nonce': 123456789}
-    expected = hmac.new(b'secret', b'123456789|777', hashlib.sha256).hexdigest()
-    assert freekassa_service._api_signature(params, 'secret') == expected
-
-
-def test_create_api_order_posts_orders_create_and_returns_location():
-    assert 'async def create_api_order(' in FK
-    assert "f'{FK_API_BASE}/orders/create'" in FK
-    # the payment link arrives in `location` and is returned to the caller
-    assert "(data or {}).get('location')" in FK
-    # docs: email = real client email or TGid@telegram.org; ip is required
-    # (127.0.0.1 is rejected), so we send our own public egress IP
-    assert '@telegram.org' in FK
-    assert "'ip': ip," in FK
-    assert 'async def _server_ip() -> str:' in FK
-    # nonce must always be greater than the previous request.
-    # Docs example uses (time() + 10800) * 1000 (Moscow-time ms) but that has
-    # second granularity; v3.30.9 keeps a monotonic counter on top of it.
-    assert 'def _nonce() -> int:' in FK
-    assert 'FK_NONCE_UTC_OFFSET_SECONDS = 10800' in FK
-    assert 'base = (int(time.time()) + FK_NONCE_UTC_OFFSET_SECONDS) * 1000' in FK
-    assert 'candidate = base if base > _last_nonce else _last_nonce + 1' in FK
-    from services import freekassa_service
-    a = freekassa_service._nonce()
-    b = freekassa_service._nonce()
-    c = freekassa_service._nonce()
-    assert a < b < c, 'nonce must be strictly increasing'
-
-
-def test_notify_signature_still_md5_secret2():
-    # docs 1.7: md5(MERCHANT_ID:AMOUNT:SECRET2:MERCHANT_ORDER_ID)
-    assert 'def verify_notify(params: dict) -> tuple[bool, str]:' in FK
-    assert '_md5_sign([FREEKASSA_MERCHANT_ID, amount, FREEKASSA_SECRET2, order_id])' in FK
-    # docs 1.4: webhooks come only from known FreeKassa IPs.
-    assert 'FK_NOTIFY_IPS' in FK
-
-
-def test_keyboard_uses_callback_buttons_and_handler_sends_location():
-    assert 'def _fk_pay_button(' in MAIN
-    assert 'fkapi:{product}:{currency or' in MAIN
-    assert "@dp.callback_query(F.data.startswith('fkapi:'))" in MAIN
-    handler = MAIN[
-        MAIN.index("@dp.callback_query(F.data.startswith('fkapi:'))"):
-        MAIN.index("@dp.callback_query(F.data == 'cosplay:start')")
-    ]
-    assert 'freekassa_service.create_order(cq.from_user.id, product, str(amount))' in handler
-    assert 'freekassa_service.create_api_order(' in handler
-    # SCI form link stays only as a fallback inside the handler
-    assert 'link = freekassa_service.payment_url(order_id, str(amount), currency=currency)' in handler
-    # the SBP row passes the chosen pay_id (now 42 for web form)
-    assert 'pay_id=freekassa_service.FK_SBP_QR_PAYMENT_ID' in MAIN
-    assert '⚡ Premium —' in MAIN and 'SBP' in MAIN
 
 
 def test_photo_menu_has_no_explicit_adult_buttons():

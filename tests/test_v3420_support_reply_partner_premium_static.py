@@ -116,9 +116,10 @@ def test_premium_tariff_card_layout():
     assert "{month_pw} {unit} в неделю{strike}" in card
     assert "{month_pw} {unit} per week{strike}" in card
     assert 'save = max(0, round((1 - month_full / was) * 100))' in card
-    # rub prices take over when FreeKassa is enabled — V3.43.0: the quarter
-    # plan joined the trio, so all three totals come from the kassa constants
-    assert "week_full, month_full, quarter_full = FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB" in card
+    # rub prices take over when the kassa is enabled — V3.43.0: the quarter
+    # plan joined the trio; V3.44.21: all three totals come from the Platega
+    # constants (FreeKassa retired)
+    assert "week_full, month_full, quarter_full = PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, PLATEGA_PREMIUM_PRICE_RUB, PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB" in card
 
 
 def test_premium_pitch_embeds_the_tariff_card():

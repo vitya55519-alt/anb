@@ -2368,7 +2368,7 @@ function openPay(id) {
   document.getElementById('payEmo').textContent = x.emoji;
   document.getElementById('payTitle').textContent = x.title;
   const rows = [`<button class="mrow" data-m="stars"><span class="ico">⭐</span><span class="nm">${esc(L.pay_stars)}</span><span class="pr">${x.stars} ⭐</span></button>`];
-  if (x.rub && s.freekassa) rows.push(`<button class="mrow" data-m="sbp"><span class="ico">🏦</span><span class="nm">${esc(L.pay_sbp)}</span><span class="pr">${esc(x.rub)} ₽</span></button>`);
+  if (x.rub && s.platega) rows.push(`<button class="mrow" data-m="sbp"><span class="ico">🏦</span><span class="nm">${esc(L.pay_sbp)}</span><span class="pr">${esc(x.rub)} ₽</span></button>`);
   if (s.wallet_pay) rows.push(`<button class="mrow" data-m="crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto)}</span><span class="pr">$${esc(x.usd || (x.stars * 0.02).toFixed(2))}</span></button>`);
   document.getElementById('payRows').innerHTML = rows.join('');
   document.querySelectorAll('#payRows [data-m]').forEach(b =>

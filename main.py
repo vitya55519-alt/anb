@@ -35,11 +35,11 @@ from config import (
     CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST, COSPLAY_TOKEN_COST,
     CONSTRUCTOR_COST_PEACHES,
     CONSTRUCTOR_PRICE_USD, PREMIUM_WEEKLY_PRICE_USD, fiat_suffix,
-    FREEKASSA_ENABLED, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
+    PLATEGA_ENABLED, PLATEGA_PREMIUM_PRICE_RUB, PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB, PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
     SUPPORT_BOT_USERNAME, SUPPORT_BOT_TOKEN, SUPPORT_WELCOME_TEXT,
     CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS,
     PEACH_PACK_STARS, PEACH_PACK_CREDITS,
-    FREEKASSA_MERCHANT_ID, FREEKASSA_API_KEY, FREEKASSA_API_ENABLED,
+    PLATEGA_MERCHANT_ID, PLATEGA_API_KEY, PLATEGA_API_BASE,
 )
 from services.user_service import (
     ensure_user, get_user, get_state, update_user_settings, touch_user,
@@ -76,7 +76,7 @@ from services.cloud_video_service import (
     VIDEO_PRESETS,
 )
 from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
-from services import freekassa_service
+from services import platega_service
 from services import jobs_service
 from services import dialog_store
 from aiohttp import web
@@ -150,8 +150,9 @@ from services import donation_service
 from services import legal_service
 from services import webapp_service
 
-# V3.30.2: /fkcheck diagnostics print the deployed build straight from the
-# VERSION file so the owner can confirm Railway picked up the new commit.
+# V3.30.2: payment diagnostics (/platega/check since V3.44.21) print the
+# deployed build straight from the VERSION file so the owner can confirm
+# Railway picked up the new commit.
 VERSION = (Path(__file__).resolve().parent / 'VERSION').read_text(encoding='utf-8').strip()
 # V3.39.0: Come Closer-style /start — the welcome leads with a group photo.
 WELCOME_BANNER_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner.png'
@@ -661,10 +662,10 @@ def characters_keyboard(telegram_id: int | None = None):
     rows = _pair_rows(_character_pick_buttons('view'))
     # V3.19.0: entry point to the personal character constructor.
     rows.append([InlineKeyboardButton(text=f'🎨 Создать свою · {CONSTRUCTOR_COST_STARS}⭐{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD)}', callback_data='constructor:start')])
-    if FREEKASSA_ENABLED and telegram_id:
-        rows.append([_fk_pay_button(
+    if PLATEGA_ENABLED and telegram_id:
+        rows.append([_platega_pay_button(
             'constructor_rub', CONSTRUCTOR_COST_RUB,
-            f'🎭 Персонаж — {CONSTRUCTOR_COST_RUB} ₽ · ⚡СБП / карта')])
+            f'🎭 Персонаж — {CONSTRUCTOR_COST_RUB} ₽ · СБП / карта')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1039,12 +1040,12 @@ def _premium_tariff_lines(lang: str) -> list[str]:
     week, month and 3 months; the longer plans show their per-week price, a
     savings badge and the struck «instead of» price of buying them separately."""
     en = lang == EN
-    wk_fiat = fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
-    mo_fiat = fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
-    q_fiat = fiat_suffix(PREMIUM_QUARTERLY_STARS, rub=FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB, rub_enabled=FREEKASSA_ENABLED)
-    if FREEKASSA_ENABLED and FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB and FREEKASSA_PREMIUM_PRICE_RUB:
+    wk_fiat = fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=PLATEGA_ENABLED)
+    mo_fiat = fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD, rub_enabled=PLATEGA_ENABLED)
+    q_fiat = fiat_suffix(PREMIUM_QUARTERLY_STARS, rub=PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB, rub_enabled=PLATEGA_ENABLED)
+    if PLATEGA_ENABLED and PLATEGA_PREMIUM_WEEKLY_PRICE_RUB and PLATEGA_PREMIUM_PRICE_RUB:
         unit = '₽'
-        week_full, month_full, quarter_full = FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, FREEKASSA_PREMIUM_PRICE_RUB, FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB
+        week_full, month_full, quarter_full = PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, PLATEGA_PREMIUM_PRICE_RUB, PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB
     else:
         unit = 'Stars'
         week_full, month_full, quarter_full = PREMIUM_WEEKLY_STARS, PREMIUM_MONTHLY_STARS, PREMIUM_QUARTERLY_STARS
@@ -1240,15 +1241,12 @@ def add_constructor_credit(telegram_id: int, amount: int = 1) -> None:
         s.commit()
 
 
-def _fk_pay_button(product: str, amount: int, text: str,
-                   currency: str | None = None, pay_id: int | None = None):
-    """V3.30.0: FreeKassa REST API order creation is a network call, so the
-    keyboard carries a lightweight callback button; the ``fkapi:`` handler
-    creates the order and sends back the ``location`` payment link."""
-    data = f'fkapi:{product}:{currency or "RUB"}'
-    if pay_id:
-        data += f':{pay_id}'
-    return InlineKeyboardButton(text=text, callback_data=data)
+def _platega_pay_button(product: str, amount: int, text: str):
+    """V3.44.21: Platega order creation is a network call, so the keyboard
+    carries a lightweight callback button; the ``platega:`` handler creates
+    the order and sends back the payment-page link (the payer picks SBP /
+    card / crypto on the page — no currency or method ids to encode)."""
+    return InlineKeyboardButton(text=text, callback_data=f'platega:{product}')
 
 
 def premium_keyboard(discount: dict | None = None, telegram_id: int | None = None):
@@ -1260,11 +1258,11 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
         buy_label = f'⭐ Premium −{discount["percent"]}% — {discount["price"]} Stars (ещё {discount["hours_left"]:.0f} ч)'
     else:
         # V3.36.0: rub + dollars next to the Stars price — the rub is the real
-        # card/SBP charge while FreeKassa is on, the dollars the Visa/MC price.
-        month_fiat = fiat_suffix(PREMIUM_MONTHLY_STARS, rub=FREEKASSA_PREMIUM_PRICE_RUB, usd=FREEKASSA_PREMIUM_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
+        # card/SBP charge while Platega is on, the dollars a display equivalent.
+        month_fiat = fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD, rub_enabled=PLATEGA_ENABLED)
         buy_label = f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars{month_fiat} / 30 дней'
-    week_fiat = fiat_suffix(PREMIUM_WEEKLY_STARS, rub=FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=FREEKASSA_ENABLED)
-    quarter_fiat = fiat_suffix(PREMIUM_QUARTERLY_STARS, rub=FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB, rub_enabled=FREEKASSA_ENABLED)
+    week_fiat = fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=PLATEGA_ENABLED)
+    quarter_fiat = fiat_suffix(PREMIUM_QUARTERLY_STARS, rub=PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB, rub_enabled=PLATEGA_ENABLED)
     rows = [
         [InlineKeyboardButton(text=buy_label, callback_data='buy:premium')],
         # V3.34.1: the short plan for the undecided — same invoice pipeline.
@@ -1282,53 +1280,34 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
             rows.append([InlineKeyboardButton(text=f'💳 {method.display_name}', url=method.external_url)])
         elif method.method_type == 'qr':
             rows.append([InlineKeyboardButton(text=f'💳 {method.display_name}', callback_data=f'paymethod:{method.id}')])
-    if FREEKASSA_ENABLED and telegram_id:
-        # V3.30.0: REST API orders — callback buttons; the fkapi: handler
-        # creates the order and replies with the `location` payment link.
-        # Payment-system badges stay on the labels; SBP gets its own row.
-        # NOTE: i=44 "СБП (НСПК)" is API-only and does NOT open in a browser
-        # form (FreeKassa shows "Данный метод работает только по API!"), so we
-        # use i=42 "СБП" for the web-form link.
+    if PLATEGA_ENABLED:
+        # V3.44.21: Platega rows — one payment-page link per product; the
+        # payer picks SBP / card / crypto on the Platega page themselves, so
+        # the old rub/sbp/usd trio collapsed into a single rub row set.
         # V3.31.1: each built-in row obeys its admin-managed 'builtin' switch
         # (Админка → Способы оплаты → статус) so the owner can remove any
         # button from the user menu without a deploy.
-        if is_button_enabled('freekassa_rub'):
-            rows.append([_fk_pay_button(
-                'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
-                f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · ⚡СБП / карта')])
+        if is_button_enabled('platega_rub'):
+            rows.append([_platega_pay_button(
+                'premium_month', PLATEGA_PREMIUM_PRICE_RUB,
+                f'💳 Premium — {PLATEGA_PREMIUM_PRICE_RUB} ₽ · СБП / карта')])
             # V3.34.1: the weekly plan is payable by card/SBP too — the rub
             # price shown next to its Stars price is a real charge, not a display.
-            rows.append([_fk_pay_button(
-                'premium_week', FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB,
-                f'💳 Premium на неделю — {FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · ⚡СБП / карта')])
+            rows.append([_platega_pay_button(
+                'premium_week', PLATEGA_PREMIUM_WEEKLY_PRICE_RUB,
+                f'💳 Premium на неделю — {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · СБП / карта')])
             # V3.43.0: the 3-month plan is payable by card/SBP too.
-            rows.append([_fk_pay_button(
-                'premium_quarter', FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB,
-                f'💳 Premium на 3 месяца — {FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB} ₽ · ⚡СБП / карта')])
-        if is_button_enabled('freekassa_sbp'):
-            rows.append([_fk_pay_button(
-                'premium_month', FREEKASSA_PREMIUM_PRICE_RUB,
-                f'⚡ Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ · SBP',
-                pay_id=freekassa_service.FK_SBP_QR_PAYMENT_ID)])
-        if is_button_enabled('freekassa_usd'):
-            rows.append([_fk_pay_button(
-                'premium_month', FREEKASSA_PREMIUM_PRICE_USD,
-                f'💳 Premium — ${FREEKASSA_PREMIUM_PRICE_USD} · Ⓥ Visa / Ⓜ Mastercard',
-                currency='USD')])
-        if is_button_enabled('freekassa_tokens'):
+            rows.append([_platega_pay_button(
+                'premium_quarter', PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB,
+                f'💳 Premium на 3 месяца — {PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB} ₽ · СБП / карта')])
+        if is_button_enabled('platega_tokens'):
             rows.append([
-                _fk_pay_button('tokens_1', TOKEN_PRICE_RUB,
+                _platega_pay_button('tokens_1', TOKEN_PRICE_RUB,
                                f'🪙 1 токен — {TOKEN_PRICE_RUB} ₽'),
-                _fk_pay_button(f'tokens_{TOKEN_PACK_SIZE}',
+                _platega_pay_button(f'tokens_{TOKEN_PACK_SIZE}',
                                TOKEN_PACK_SIZE * TOKEN_PRICE_RUB,
                                f'🪙 {TOKEN_PACK_SIZE} токенов — {TOKEN_PACK_SIZE * TOKEN_PRICE_RUB} ₽'),
             ])
-    elif FREEKASSA_ENABLED:
-        # Callers without telegram_id keep the legacy callback buttons.
-        if is_button_enabled('freekassa_rub'):
-            rows.append([InlineKeyboardButton(text=f'💳 Premium — {FREEKASSA_PREMIUM_PRICE_RUB} ₽ картой / СБП', callback_data='fk:premium')])
-        if is_button_enabled('freekassa_usd'):
-            rows.append([InlineKeyboardButton(text=f'💳 Premium — ${FREEKASSA_PREMIUM_PRICE_USD} · Visa/Mastercard', callback_data='fk:premium_usd')])
     rows.append([video_button])
     rows.append([InlineKeyboardButton(text='🎥 Кружочек от неё — только Premium', callback_data='video:circle')])
     rows.append([InlineKeyboardButton(text='🔒 📞 Звонок с персонажем · скоро', callback_data='future:anna_call')])
@@ -4194,7 +4173,7 @@ async def _video_gate(cq: types.CallbackQuery, delivery: dict, motion_preset: st
             payload={'preset': motion_preset or 'auto'},
         )
         return
-    # V3.27.0: tokens (bought with rubles on FreeKassa) are an alternative to
+    # V3.27.0: tokens (bought with rubles on Platega) are an alternative to
     # Stars — spend them first so card-paying users animate without Stars.
     if spend_tokens(cq.from_user.id, VIDEO_TOKEN_COST):
         track_event(uid, 'tokens_spent', metadata={'amount': VIDEO_TOKEN_COST, 'delivery_id': delivery['id'], 'preset': motion_preset or 'auto'})
@@ -4572,67 +4551,16 @@ async def retention_premium_cb(cq: types.CallbackQuery):
     await cq.message.answer(premium_pitch_text(cq.from_user.id), reply_markup=premium_keyboard(discount_info(cq.from_user.id), telegram_id=cq.from_user.id))
 
 
-@dp.callback_query(F.data == 'fk:premium')
-async def fk_premium(cq: types.CallbackQuery):
-    """V3.19.6: card/SBP premium via FreeKassa payment link."""
-    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
-    if not has_accepted(cq.from_user.id):
-        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
-    if not FREEKASSA_ENABLED:
-        await cq.answer('Оплата картой сейчас выключена — используй Stars ⭐', show_alert=True); return
-    await cq.answer()
-    order_id = freekassa_service.create_order(
-        cq.from_user.id, 'premium_month', str(FREEKASSA_PREMIUM_PRICE_RUB),
-    )
-    # V3.30.0: REST API link first; the SCI form link is only a fallback.
-    link = await freekassa_service.create_api_order(
-        order_id, str(FREEKASSA_PREMIUM_PRICE_RUB), telegram_id=cq.from_user.id,
-    ) or freekassa_service.payment_url(order_id, FREEKASSA_PREMIUM_PRICE_RUB)
-    await bot.send_message(
-        cq.message.chat.id,
-        f'💳 Оплата Premium картой / СБП — {FREEKASSA_PREMIUM_PRICE_RUB} ₽\n\n'
-        f'{link}\n\n'
-        'После оплаты премиум включится автоматически в течение минуты. '
-        'Если что-то пойдёт не так — напиши /support.',
-    )
-
-
-@dp.callback_query(F.data == 'fk:premium_usd')
-async def fk_premium_usd(cq: types.CallbackQuery):
-    """V3.20.1: international Visa/Mastercard premium, invoiced in USD."""
-    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
-    if not has_accepted(cq.from_user.id):
-        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
-    if not FREEKASSA_ENABLED:
-        await cq.answer('Оплата картой сейчас выключена — используй Stars ⭐', show_alert=True); return
-    await cq.answer()
-    order_id = freekassa_service.create_order(
-        cq.from_user.id, 'premium_month', str(FREEKASSA_PREMIUM_PRICE_USD),
-    )
-    # V3.30.0: REST API link first; the SCI form link is only a fallback.
-    link = await freekassa_service.create_api_order(
-        order_id, str(FREEKASSA_PREMIUM_PRICE_USD), currency='USD',
-        telegram_id=cq.from_user.id,
-    ) or freekassa_service.payment_url(order_id, FREEKASSA_PREMIUM_PRICE_USD, currency='USD')
-    await bot.send_message(
-        cq.message.chat.id,
-        f'💳 Оплата Premium картой Visa/Mastercard — ${FREEKASSA_PREMIUM_PRICE_USD}\n\n'
-        f'{link}\n\n'
-        'После оплаты премиум включится автоматически в течение минуты. '
-        'Если что-то пойдёт не так — напиши /support.',
-    )
-
-
-def _fk_amount_for(product: str, currency: str) -> int:
-    """V3.30.0: price lookup behind the fkapi: callback buttons."""
+def _platega_amount_for(product: str) -> int:
+    """V3.44.21: price lookup behind the platega: callback buttons."""
     if product == 'premium_month':
-        return FREEKASSA_PREMIUM_PRICE_USD if currency == 'USD' else FREEKASSA_PREMIUM_PRICE_RUB
+        return PLATEGA_PREMIUM_PRICE_RUB
     if product == 'premium_week':
-        # V3.34.1: card/SBP price of the weekly plan (RUB only).
-        return FREEKASSA_PREMIUM_WEEKLY_PRICE_RUB
+        # V3.34.1: card/SBP price of the weekly plan.
+        return PLATEGA_PREMIUM_WEEKLY_PRICE_RUB
     if product == 'premium_quarter':
         # V3.43.0: the 3-month plan is card/SBP-purchasable too.
-        return FREEKASSA_PREMIUM_QUARTERLY_PRICE_RUB
+        return PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB
     if product == 'photo':
         # V3.43.0: the pay-method modal sells a single photo credit in rubles.
         from config import fiat_values
@@ -4645,47 +4573,55 @@ def _fk_amount_for(product: str, currency: str) -> int:
         return CONSTRUCTOR_COST_RUB
     if product.startswith('tokens_'):
         return int(product.split('_')[1]) * TOKEN_PRICE_RUB
-    return FREEKASSA_PREMIUM_PRICE_RUB
+    return PLATEGA_PREMIUM_PRICE_RUB
 
 
-@dp.callback_query(F.data.startswith('fkapi:'))
-async def fkapi_pay(cq: types.CallbackQuery):
-    """V3.30.0: FreeKassa REST API order — create the row, call
-    POST /orders/create and hand the user the ``location`` payment link."""
+@dp.callback_query(F.data.startswith('platega:'))
+async def platega_pay(cq: types.CallbackQuery):
+    """V3.44.21: Platega card/SBP order — create the row, call
+    POST /v2/transaction/process and hand the user the payment-page link."""
     ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     if not has_accepted(cq.from_user.id):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
-    if not FREEKASSA_ENABLED:
+    if not PLATEGA_ENABLED:
         await cq.answer('Оплата картой сейчас выключена — используй Stars ⭐', show_alert=True); return
-    parts = cq.data.split(':')
-    product, currency = parts[1], parts[2]
-    pay_id = int(parts[3]) if len(parts) > 3 else None
-    amount = _fk_amount_for(product, currency)
+    product = cq.data.split(':', 1)[1]
+    amount = _platega_amount_for(product)
     await cq.answer('создаю счёт…')
-    order_id = freekassa_service.create_order(cq.from_user.id, product, str(amount))
-    link = await freekassa_service.create_api_order(
-        order_id, str(amount), currency=currency,
-        telegram_id=cq.from_user.id, payment_system=pay_id,
+    order_id = platega_service.create_order(cq.from_user.id, product, str(amount))
+    link = await platega_service.create_payment(
+        order_id, str(amount), telegram_id=cq.from_user.id,
+        username=cq.from_user.username,
     )
     if not link:
-        # API unreachable (no key/IP/error) — the SCI form link still pays.
-        link = freekassa_service.payment_url(order_id, str(amount), currency=currency)
-    sign = '$' if currency == 'USD' else '₽'
+        # Platega unreachable (no key / API error) — no SCI fallback exists
+        # (that was a FreeKassa thing), so say so instead of a dead link.
+        await bot.send_message(
+            cq.message.chat.id,
+            'не получилось создать счёт 😔 попробуй ещё раз через минуту '
+            'или оплати Stars прямо в боте ⭐\n\n'
+            '💡 если повторяется — напиши /support',
+        )
+        return
     if product == 'premium_month':
-        title = f'💳 Premium — {sign}{amount}'
+        title = f'💳 Premium — {amount} ₽'
     elif product == 'premium_week':
         # V3.34.1: the weekly card/SBP invoice.
-        title = f'💳 Premium на неделю — {sign}{amount}'
+        title = f'💳 Premium на неделю — {amount} ₽'
+    elif product == 'premium_quarter':
+        # V3.43.0: the 3-month card/SBP invoice.
+        title = f'💳 Premium на 3 месяца — {amount} ₽'
     elif product == 'constructor_rub':
-        title = f'🎭 Персонаж — {sign}{amount}'
+        title = f'🎭 Персонаж — {amount} ₽'
     elif product == 'photo':
         # V3.43.0: ruble-paid single photo credit from the app pay modal.
-        title = f'🍑 Фото-кредит — {sign}{amount}'
+        title = f'🍑 Фото-кредит — {amount} ₽'
     else:
-        title = f'🪙 Токены — {sign}{amount}'
+        title = f'🪙 Токены — {amount} ₽'
     await bot.send_message(
         cq.message.chat.id,
         f'{title} · оплата картой / СБП\n\n{link}\n\n'
+        'Способ оплаты выберешь на странице платежа. '
         'После оплаты всё включится автоматически в течение минуты. '
         'Если что-то пойдёт не так — напиши /support.',
     )
@@ -6862,9 +6798,9 @@ async def constructor_buy_cb(cq: types.CallbackQuery):
     if telegram_id in ADMIN_TELEGRAM_IDS:
         _spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id), payload={'source': 'free'})
         return
-    # V3.27.0: a ruble-paid constructor credit (FreeKassa) skips Stars too.
+    # V3.27.0: a ruble-paid constructor credit (Platega since V3.44.21) skips Stars too.
     if consume_constructor_credit(telegram_id):
-        record_payment(telegram_id, 'constructor', 0, f'freekassa_credit:{telegram_id}:{int(_time.time() * 1000)}')
+        record_payment(telegram_id, 'constructor', 0, f'rub_credit:{telegram_id}:{int(_time.time() * 1000)}')
         _spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id), payload={'source': 'free'})
         return
     await send_stars_invoice(
@@ -7695,82 +7631,109 @@ async def text_message(message: types.Message):
 
 
 # ---------------------------------------------------------------------------
-# V3.19.6: tiny public web server for FreeKassa callbacks (card/SBP premium).
-# Railway injects PORT; the public domain is configured via PUBLIC_BASE_URL.
+# V3.44.21: public web endpoints for Platega card/SBP payments. Railway
+# injects PORT; the public domain is configured via PUBLIC_BASE_URL and the
+# callback URL is pasted into the Platega cabinet (Настройки → Callback URL).
 # ---------------------------------------------------------------------------
 
-async def _fk_notify(request: web.Request) -> web.Response:
-    """FreeKassa server notification: verify SIGN (secret 2) and grant."""
-    # Docs 1.4: notifications should only be accepted from FreeKassa IPs.
-    peer_ip = request.headers.get('X-Real-IP') or request.headers.get('X-Forwarded-For') or request.remote
-    if peer_ip and peer_ip not in freekassa_service.FK_NOTIFY_IPS:
-        logger.warning('FreeKassa notify rejected bad peer_ip=%s', peer_ip)
-        return web.Response(text='NO|bad_ip', status=403)
-    params = dict(request.query)
-    if request.method == 'POST':
-        try:
-            form = await request.post()
-            params.update({k: str(v) for k, v in form.items()})
-        except Exception:
-            pass
-    ok, order_id_or_reason = freekassa_service.verify_notify(params)
-    if not ok:
-        logger.warning('FreeKassa notify rejected reason=%s params=%s', order_id_or_reason, {k: v for k, v in list(params.items())[:12]})
-        return web.Response(text=f'NO|{order_id_or_reason}')
-    order_id = int(order_id_or_reason)
-    order = freekassa_service.get_order(order_id)
-    if order and freekassa_service.mark_paid(order_id, json.dumps(params, ensure_ascii=False)):
-        product = order['product']
-        if product == 'constructor_rub':
-            # V3.27.0: ruble-paid character constructor credit.
-            ensure_user(order['telegram_id'])
-            add_constructor_credit(order['telegram_id'], 1)
-            confirm = ('🎭 Персонаж оплачен картой! Открой «Создать своего персонажа» '
-                       'и собери его — оплата уже зачислена.')
-        elif product.startswith('tokens_'):
-            # V3.27.0: token pack for video animation.
-            ensure_user(order['telegram_id'])
-            balance = add_tokens(order['telegram_id'], int(product.split('_')[1]))
-            confirm = (f'🪙 Токены зачислены! Баланс: {balance} 🪙 '
-                       f'— оживление фото стоит {VIDEO_TOKEN_COST} 🪙.')
-        elif product == 'premium_week':
-            # V3.34.1: ruble-paid weekly Premium — record_payment below grants it.
-            confirm = '💖 Оплата прошла! Premium активирован на 7 дней. Наслаждайся! 🎉'
-        elif product == 'premium_quarter':
-            # V3.43.0: ruble-paid 3-month Premium.
-            confirm = '💖 Оплата прошла! Premium активирован на 90 дней. Наслаждайся! 🎉'
-        elif product == 'photo':
-            # V3.43.0: ruble-paid single photo credit from the app pay modal.
-            confirm = '🍑 Фото-кредит оплачен картой! Уже начислен 📸'
-        elif product in PEACH_PACK_CREDITS:
-            # V3.43.1: ruble-paid peach pack from the app pay modal.
-            confirm = f'🍑 Пак на {PEACH_PACK_CREDITS[product]} персиков оплачен! Уже начислены 📸'
-        else:
-            confirm = '💖 Оплата прошла! Premium активирован на 30 дней. Наслаждайся! 🎉'
-        try:
-            record_payment(
-                order['telegram_id'], order['product'], 0,
-                f'freekassa:{order_id}', provider='freekassa',
-                provider_payload=f'amount={order["amount"]}',
-            )
-        except Exception:
-            logger.exception('FreeKassa grant failed order=%s', order_id)
-        try:
-            await bot.send_message(order['telegram_id'], confirm)
-        except Exception:
-            logger.exception('FreeKassa confirmation message failed order=%s', order_id)
-    # FreeKassa expects a plain YES (or YES|<order id>) on success.
-    return web.Response(text=f'YES|{order_id}')
+async def _platega_callback(request: web.Request) -> web.Response:
+    """Platega status callback: POST JSON + X-MerchantId/X-Secret headers.
+
+    The headers ARE the docs' auth model (there is no payload signature),
+    so a callback that fails the check is rejected with 401. On CONFIRMED
+    the transaction is re-verified via GET /transaction/{id} and the paid
+    amount is checked against the order before anything is granted;
+    CANCELED / CHARGEBACKED only update the order row. Respond 200 OK so
+    the provider stops retrying (it retries 3× every 5 minutes otherwise).
+    """
+    if not platega_service.verify_callback_headers(request.headers):
+        logger.warning('Platega callback rejected (bad X-MerchantId/X-Secret) peer=%s',
+                       request.headers.get('X-Real-IP') or request.remote)
+        return web.Response(text='NO|auth', status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.Response(text='NO|json', status=400)
+    body = body or {}
+    status = str(body.get('status') or '').strip().upper()
+    transaction_id = str(body.get('id') or '').strip()
+    payload = str(body.get('payload') or '')
+    order = platega_service.find_order(transaction_id, payload)
+    if order is None:
+        # Unknown transaction (e.g. a /platega/check probe) — nothing to do.
+        logger.info('Platega callback for unknown transaction=%s', transaction_id or '-')
+        return web.Response(text='OK')
+    if status == platega_service.STATUS_CONFIRMED:
+        # Defense in depth: re-check the transaction at the provider before
+        # granting. If the status API is unreachable the headers stay the
+        # documented contract — grant with a warning in the log.
+        remote = await platega_service.get_transaction(transaction_id)
+        if remote is not None and str(remote.get('status') or '').upper() != platega_service.STATUS_CONFIRMED:
+            logger.warning('Platega callback/status mismatch order=%s transaction=%s callback=%s remote=%s',
+                           order['id'], transaction_id, status, remote.get('status'))
+            return web.Response(text='OK')
+        if not platega_service.amount_covers(body.get('amount'), order['amount']):
+            logger.error('Platega callback amount mismatch order=%s expected=%s paid=%s',
+                         order['id'], order['amount'], body.get('amount'))
+            return web.Response(text='OK')
+        if platega_service.mark_paid(order['id'], json.dumps(body, ensure_ascii=False)):
+            product = order['product']
+            if product == 'constructor_rub':
+                # V3.27.0: ruble-paid character constructor credit.
+                ensure_user(order['telegram_id'])
+                add_constructor_credit(order['telegram_id'], 1)
+                confirm = ('🎭 Персонаж оплачен картой! Открой «Создать своего персонажа» '
+                           'и собери его — оплата уже зачислена.')
+            elif product.startswith('tokens_'):
+                # V3.27.0: token pack for video animation.
+                ensure_user(order['telegram_id'])
+                balance = add_tokens(order['telegram_id'], int(product.split('_')[1]))
+                confirm = (f'🪙 Токены зачислены! Баланс: {balance} 🪙 '
+                           f'— оживление фото стоит {VIDEO_TOKEN_COST} 🪙.')
+            elif product == 'premium_week':
+                # V3.34.1: ruble-paid weekly Premium — record_payment below grants it.
+                confirm = '💖 Оплата прошла! Premium активирован на 7 дней. Наслаждайся! 🎉'
+            elif product == 'premium_quarter':
+                # V3.43.0: ruble-paid 3-month Premium.
+                confirm = '💖 Оплата прошла! Premium активирован на 90 дней. Наслаждайся! 🎉'
+            elif product == 'photo':
+                # V3.43.0: ruble-paid single photo credit from the app pay modal.
+                confirm = '🍑 Фото-кредит оплачен картой! Уже начислен 📸'
+            elif product in PEACH_PACK_CREDITS:
+                # V3.43.1: ruble-paid peach pack from the app pay modal.
+                confirm = f'🍑 Пак на {PEACH_PACK_CREDITS[product]} персиков оплачен! Уже начислены 📸'
+            else:
+                confirm = '💖 Оплата прошла! Premium активирован на 30 дней. Наслаждайся! 🎉'
+            try:
+                record_payment(
+                    order['telegram_id'], order['product'], 0,
+                    f'platega:{order["id"]}', provider='platega',
+                    provider_payload=f'amount={order["amount"]}',
+                )
+            except Exception:
+                logger.exception('Platega grant failed order=%s', order['id'])
+            try:
+                await bot.send_message(order['telegram_id'], confirm)
+            except Exception:
+                logger.exception('Platega confirmation message failed order=%s', order['id'])
+    elif status in (platega_service.STATUS_CANCELED, platega_service.STATUS_CHARGEBACKED):
+        new_status = 'chargedback' if status == platega_service.STATUS_CHARGEBACKED else 'canceled'
+        if platega_service.mark_canceled(order['id'], json.dumps(body, ensure_ascii=False), new_status):
+            logger.warning('Platega order %s -> %s transaction=%s', order['id'], new_status, transaction_id)
+    else:
+        logger.warning('Platega callback unknown status=%s order=%s', status, order['id'])
+    # docs: answer 200 OK on everything processed (or ignored on purpose).
+    return web.Response(text='OK')
 
 
-async def _fk_success(request: web.Request) -> web.Response:
+async def _platega_success(request: web.Request) -> web.Response:
     return web.Response(
         text='✅ Оплата прошла! Premium уже включён — возвращайся в бот 💫',
         content_type='text/html',
     )
 
 
-async def _fk_fail(request: web.Request) -> web.Response:
+async def _platega_fail(request: web.Request) -> web.Response:
     return web.Response(
         text='Оплата не завершена. Попробуй ещё раз или оплати Stars прямо в боте ⭐',
         content_type='text/html',
@@ -7804,43 +7767,35 @@ async def _diagnostics(request: web.Request) -> web.Response:
     })
 
 
-async def _fk_check(request: web.Request) -> web.Response:
-    """V3.30.2: live FreeKassa diagnostics for the owner («страница платежа
+async def _platega_check(request: web.Request) -> web.Response:
+    """V3.44.21: live Platega diagnostics for the owner («страница платежа
     не загружается»). Probes every piece of the payment path and prints a
-    plain-text report: env flags, server-IP lookup, /currencies default
-    payment id, a real API test order (returns the ``location`` link) and
-    the SCI fallback URL for the same order."""
+    plain-text report: env flags, a real API test transaction (returns the
+    payment-page link) and the GET /transaction/{id} status echo for it —
+    the same three calls the production payment flow makes."""
     lines = [
         f'VERSION={VERSION}',
-        f'FREEKASSA_ENABLED={FREEKASSA_ENABLED} merchant={FREEKASSA_MERCHANT_ID or "-"}',
-        f'FREEKASSA_API_ENABLED={FREEKASSA_API_ENABLED} api_key={"set" if FREEKASSA_API_KEY else "MISSING"}',
+        f'PLATEGA_ENABLED={PLATEGA_ENABLED} merchant={PLATEGA_MERCHANT_ID or "-"}',
+        f'PLATEGA_API_KEY={"set" if PLATEGA_API_KEY else "MISSING"}',
+        f'PLATEGA_API_BASE={PLATEGA_API_BASE}',
         f'PUBLIC_BASE_URL={PUBLIC_BASE_URL or "-"}',
     ]
-    ip = await freekassa_service._server_ip()
-    lines.append(f'server_ip={ip or "UNRESOLVED (API orders will be skipped)"}')
-    pay_id = await freekassa_service._default_payment_id('RUB')
-    lines.append(f'default_payment_id(RUB)={pay_id if pay_id else "UNRESOLVED"}')
-    lines.append(f'preferred_RUB={freekassa_service.FK_CURRENCY_PAYMENT_IDS.get("RUB", [])}')
-    # Show the full /currencies response so the owner sees which methods are
-    # actually enabled in the cabinet (SBP/card/wallet).
-    currencies_data = await freekassa_service._currencies_lookup_raw('RUB')
-    lines.append(f'enabled_RUB_methods={str(currencies_data)[:800]}')
-    if FREEKASSA_API_ENABLED and ip:
-        order_id = freekassa_service.create_order(0, 'fkcheck', '10')
-        location = await freekassa_service.create_api_order(
-            order_id, '10', currency='RUB', telegram_id=None,
-        )
+    if PLATEGA_ENABLED:
+        order_id = platega_service.create_order(0, 'plategacheck', '10')
+        url = await platega_service.create_payment(order_id, '10')
         lines.append(f'api_test_order={order_id}')
-        lines.append(f'api_location={location or "API REJECTED ORDER (see bot logs)"}')
-        if location:
-            lines.append(f'api_location_domain={location.split("/")[2]}')
-        lines.append(f'sci_fallback_url={freekassa_service.payment_url(order_id, "10")}')
-        # getOrders sanity check for the order we just created.
-        orders_data = await freekassa_service.get_orders(payment_id=order_id)
-        lines.append(f'get_orders_status={str(orders_data)[:500]}')
+        lines.append(f'payment_url={url or "API REJECTED ORDER (see bot logs)"}')
+        if url:
+            lines.append(f'payment_url_domain={url.split("/")[2]}')
+        order = platega_service.get_order(order_id)
+        transaction_id = (order or {}).get('transaction_id')
+        if transaction_id:
+            tx = await platega_service.get_transaction(transaction_id)
+            lines.append(f'status_check={str(tx)[:500]}')
+        else:
+            lines.append('status_check=SKIPPED (no transaction id stored)')
     else:
-        lines.append('api_test_order=SKIPPED (need FREEKASSA_API_KEY + server ip)')
-        lines.append(f'sci_fallback_url={freekassa_service.payment_url(1, "10")}')
+        lines.append('api_test_order=SKIPPED (need PLATEGA_MERCHANT_ID + PLATEGA_API_KEY)')
     # V3.33.1: Mini App diagnostics — check here when the «Открыть приложение»
     # button does not show up: the public URL and a self-probe of /webapp.
     lines.append(f'WEBAPP_PUBLIC_URL={(PUBLIC_BASE_URL + "/webapp") if PUBLIC_BASE_URL else "-"}')
@@ -8316,8 +8271,8 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     # V3.43.0: the Come Closer pay menu — tapping a shop square opens a modal
     # with Stars / card-SBP / crypto rows. Stars reuses /webapp/api/invoice;
     # this endpoint returns an external payment link for the other two:
-    # FreeKassa REST order (SBP form) and a Wallet Pay invoice (TON/USDT).
-    # Both land in the same granting chain: the FreeKassa notify and the
+    # a Platega payment page (SBP/card) and a Wallet Pay invoice (TON/USDT).
+    # Both land in the same granting chain: the Platega callback and the
     # Wallet Pay webhook call record_payment with these product keys.
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
     if not pairs:
@@ -8335,27 +8290,27 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     lang = user_lang(telegram_id)
     product = next((p for p in webapp_service.api_invoice_products(lang) if p['id'] == product_id), None)
     # order product keys record_payment knows how to grant
-    fk_product = {'premium': 'premium_month', 'premium_week': 'premium_week',
-                  'photo_credit': 'photo'}.get(product_id)
-    if not fk_product and product_id in PEACH_PACK_STARS:
+    order_product = {'premium': 'premium_month', 'premium_week': 'premium_week',
+                     'photo_credit': 'photo'}.get(product_id)
+    if not order_product and product_id in PEACH_PACK_STARS:
         # V3.43.1: peach packs — the order key is the payload itself, so the
-        # FreeKassa notify and the Wallet Pay webhook grant the pack size.
-        fk_product = product_id
-    if not product or not fk_product:
+        # Platega callback and the Wallet Pay webhook grant the pack size.
+        order_product = product_id
+    if not product or not order_product:
         return web.json_response({'ok': False, 'error': 'unknown_product'}, status=400)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     if method == 'sbp':
-        if not FREEKASSA_ENABLED or not product.get('rub'):
+        if not PLATEGA_ENABLED or not product.get('rub'):
             return web.json_response({'ok': False, 'error': 'method_off'}, status=400)
         amount = str(product['rub'])
-        order_id = freekassa_service.create_order(telegram_id, fk_product, amount)
-        link = await freekassa_service.create_api_order(
-            order_id, amount, currency='RUB', telegram_id=telegram_id,
-            payment_system=freekassa_service.FK_SBP_QR_PAYMENT_ID,
+        order_id = platega_service.create_order(telegram_id, order_product, amount)
+        link = await platega_service.create_payment(
+            order_id, amount, telegram_id=telegram_id,
         )
         if not link:
-            # API unreachable (no key/IP/error) — the SCI form link still pays.
-            link = freekassa_service.payment_url(order_id, amount, currency='RUB')
+            # No SCI fallback exists (that was a FreeKassa thing) — 502 so the
+            # frontend toasts its pay-link error instead of a dead tab.
+            return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
         track_event(uid, 'webapp_pay_link', metadata={'product': product_id, 'method': 'sbp'})
         return web.json_response({'ok': True, 'url': link})
     if method == 'crypto':
@@ -8363,7 +8318,7 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
             return web.json_response({'ok': False, 'error': 'method_off'}, status=400)
         from services.wallet_pay_service import create_invoice
         invoice = await create_invoice(
-            telegram_id, fk_product, product['stars'], product['description'],
+            telegram_id, order_product, product['stars'], product['description'],
         )
         if not invoice:
             return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
@@ -9167,7 +9122,7 @@ async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
         _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'webapp_admin'})
         return web.json_response({'ok': True, 'free': True})
     if consume_constructor_credit(telegram_id):
-        record_payment(telegram_id, 'constructor', 0, f'freekassa_credit:{telegram_id}:{int(_time.time() * 1000)}')
+        record_payment(telegram_id, 'constructor', 0, f'rub_credit:{telegram_id}:{int(_time.time() * 1000)}')
         track_event(uid, 'webapp_constructor_buy', metadata={'product': 'constructor', 'source': 'webapp_credit'})
         try:
             mark_constructor_draft_paid(telegram_id, 'webapp_credit')
@@ -9216,14 +9171,14 @@ async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
 async def _start_web_server() -> None:
     app = web.Application()
     app.router.add_get('/', _root)
-    app.router.add_route('*', '/freekassa/notify', _fk_notify)
-    # Success/fail are browser redirects; FreeKassa may send them as GET or
-    # POST depending on the merchant form method dropdown, so accept both.
-    app.router.add_route('*', '/freekassa/success', _fk_success)
-    app.router.add_route('*', '/freekassa/fail', _fk_fail)
+    app.router.add_route('*', '/platega/callback', _platega_callback)
+    # Success/fail are browser redirects off the payment page; keep '*' so
+    # they answer whether the provider sends GET or POST.
+    app.router.add_route('*', '/platega/success', _platega_success)
+    app.router.add_route('*', '/platega/fail', _platega_fail)
     app.router.add_get('/healthz', _healthz)
     app.router.add_get('/diagnostics', _diagnostics)
-    app.router.add_get('/fkcheck', _fk_check)
+    app.router.add_get('/platega/check', _platega_check)
     # V3.33.0: Mini App storefront (page + JSON API + character portraits).
     app.router.add_get('/webapp', _webapp_index)
     app.router.add_get('/webapp/api/me', _webapp_api_me)
@@ -9290,7 +9245,7 @@ async def _start_web_server() -> None:
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', WEB_PORT)
     await site.start()
-    logger.info('web server listening port=%s freekassa=%s base=%s', WEB_PORT, FREEKASSA_ENABLED, PUBLIC_BASE_URL or '-')
+    logger.info('web server listening port=%s platega=%s base=%s', WEB_PORT, PLATEGA_ENABLED, PUBLIC_BASE_URL or '-')
 
 
 async def _run_support_bot() -> None:
@@ -9354,7 +9309,7 @@ async def main():
     await bot.set_my_commands(public_commands)
     # V3.33.0: Mini App — the blue «Открыть приложение» button in the bot's
     # profile plus the «AnnaBot» menu button. Requires PUBLIC_BASE_URL (the
-    # same Railway domain FreeKassa already uses); skipped silently otherwise.
+    # same Railway domain the payment routes use); skipped silently otherwise.
     if PUBLIC_BASE_URL:
         # V3.43.0: the owner reported the blue button missing after a deploy —
         # a single call can silently fail on a cold start / Telegram hiccup,
