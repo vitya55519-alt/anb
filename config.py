@@ -344,6 +344,10 @@ PEACH_PACK_30_RUB = max(1, int(os.getenv("PEACH_PACK_30_RUB", "249")))
 PEACH_PACK_100_RUB = max(1, int(os.getenv("PEACH_PACK_100_RUB", "699")))
 PEACH_PACK_RUB = {"peach_pack_10": PEACH_PACK_10_RUB, "peach_pack_30": PEACH_PACK_30_RUB, "peach_pack_100": PEACH_PACK_100_RUB}
 PEACH_PACK_CREDITS = {"peach_pack_10": 10, "peach_pack_30": 30, "peach_pack_100": 100}
+# V3.44.23: the custom-peach tile — the user types how many peaches they want,
+# and pays at the small-pack per-unit rate (no bulk discount).
+PEACH_CUSTOM_STARS_PER_UNIT = max(1, PEACH_PACK_10_STARS // 10)
+PEACH_CUSTOM_RUB_PER_UNIT = max(1, PEACH_PACK_10_RUB // 10)
 CHAT_PHOTO_OFFER_STARS = int(os.getenv("CHAT_PHOTO_OFFER_STARS", "5"))
 CUSTOM_PHOTO_COST_STARS = int(os.getenv("CUSTOM_PHOTO_COST_STARS", "40"))
 QUEST_REPLAY_STARS = int(os.getenv("QUEST_REPLAY_STARS", "10"))
@@ -491,7 +495,7 @@ SUPPORT_WELCOME_TEXT = os.getenv(
 # V3.43.0: «Бесплатные 🍑 за подписку на канал» — the owner's channel and the
 # one-time peach bonus for being a member (checked via getChatMember).
 CHANNEL_SUBSCRIBE_USERNAME = os.getenv("CHANNEL_SUBSCRIBE_USERNAME", "Anna634212").strip().lstrip('@')
-CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "100"))
+CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "30"))
 # V3.43.0: how long a Telegram WebApp initData stays acceptable. The 24h
 # default broke users who reopen the Mini App from the client's recents —
 # the hash is still verified, only the replay window is wider now.

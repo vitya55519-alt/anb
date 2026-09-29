@@ -49,6 +49,13 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
         elif product in PEACH_PACK_CREDITS:
             # V3.43.1: the peach pack ladder grants the whole pack at once.
             user.photo_credits=(user.photo_credits or 0)+PEACH_PACK_CREDITS[product]
+        elif product.startswith('peach_custom_'):
+            # V3.44.23: the custom-peach tile — the count is encoded in the key.
+            try:
+                _n = max(1, int(product.split('_')[-1]))
+            except (ValueError, IndexError):
+                _n = 1
+            user.photo_credits=(user.photo_credits or 0)+_n
         s.commit()
         payer_user_id = user.id
     # V3.37.0: after the purchase commits, credit the payer's referrer in the

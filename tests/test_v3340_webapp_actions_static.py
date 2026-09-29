@@ -88,7 +88,7 @@ def test_frontend_buys_and_selects():
     # tg.openInvoice with the backend-issued link
     assert 'tg.openInvoice(j.link' in INDEX
     assert "/webapp/api/invoice?init_data=" in INDEX
-    assert "JSON.stringify({ product: productId })" in INDEX
+    assert "Object.assign({ product: productId }, extra || {})" in INDEX
     # purchase squares driven by the backend purchase list — V3.43.0: the
     # Come Closer pack grid; a tap opens the pay-method modal (Stars/SBP/crypto)
     assert 'class="pack" data-pay="${esc(x.id)}"' in INDEX
@@ -201,6 +201,13 @@ def test_no_unescaped_backend_strings_in_templates():
             # V3.44.22: the created-date suffix — a toLocaleDateString() output
             # derived from a parsed Date, no backend markup can survive it.
             'when',
+            # V3.44.23: the custom-peach tile — 'stars' and 'rub' are local
+            # integer computations (n × per-unit constant), 'customTile' is
+            # an HTML fragment built from esc()'d L-constants and fields.
+            'stars', 'rub', 'customTile',
+            # V3.44.23: the crypto USD estimate — a local numeric computation
+            # on the Stars integer, no backend data can survive it.
+            '(stars * 0.02).toFixed(2)',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         raise AssertionError(f'unescaped template value: {expr!r} in INDEX')

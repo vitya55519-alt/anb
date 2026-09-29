@@ -305,6 +305,17 @@
     background: rgba(232, 68, 127, .16); color: var(--accent);
     font-size: 12px; font-weight: 600; cursor: pointer;
   }
+  /* V3.44.23: the custom-peach tile — input + dynamic price button */
+  .pack.custom .amt { display: none; }
+  .pack.custom input[type=number] {
+    width: 100%; border: 1px solid rgba(232,68,127,.2); border-radius: 8px;
+    background: var(--card2); color: var(--text); text-align: center;
+    font-size: 15px; font-weight: 700; padding: 6px 4px; margin-bottom: 6px;
+    -moz-appearance: textfield;
+  }
+  .pack.custom input[type=number]::-webkit-inner-spin-button,
+  .pack.custom input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .pack.custom .get { margin-top: 2px; }
   #paymodal {
     position: fixed; inset: 0; z-index: 46; display: none;
     align-items: center; justify-content: center; background: rgba(10,5,14,.62);
@@ -818,6 +829,7 @@ const L_EN = {
     constructor_price_note: p => 'public — free · private — ' + p + ' 🍑',
   pay_get: 'Get', pay_link_err: 'Could not create the payment — try again',
   pay_opened: 'Payment page opened — finish the payment there',
+  shop_custom_ph: 'How many peaches?', shop_custom_btn: n => n > 0 ? n + ' 🍑 · ' + (n * 10) + ' ⭐' : '🍑',
   input_ph: 'Type a message…', send: 'Send',
   empty_chat: 'Send the first message — she replies right here',
   limit_reached: 'Daily free-message limit reached. Premium lifts it ⭐',
@@ -933,6 +945,7 @@ const L_RU = {
     constructor_price_note: p => 'публично — бесплатно · приватно — ' + p + ' 🍑',
   pay_get: 'Получить', pay_link_err: 'Не удалось создать счёт — попробуй ещё раз',
   pay_opened: 'Платёжная страница открыта — заверши оплату там',
+  shop_custom_ph: 'Сколько персиков?', shop_custom_btn: n => n > 0 ? n + ' 🍑 · ' + (n * 10) + ' ⭐' : '🍑',
   input_ph: 'Напиши сообщение…', send: 'Отправить',
   empty_chat: 'Напиши первое сообщение — она ответит прямо здесь',
   limit_reached: 'Дневной лимит бесплатных сообщений. Premium снимает лимит ⭐',
@@ -1270,14 +1283,14 @@ function showTab(name) {
   // must lazy-load too, or they land on the dead «...» body.
   lazyLoadTab(name);
 }
-async function buy(productId, btn) {
+async function buy(productId, btn, extra) {
   if (btn) btn.disabled = true;
   const done = () => { if (btn) btn.disabled = false; };
   try {
     const r = await fetch('/webapp/api/invoice?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product: productId }),
+      body: JSON.stringify(Object.assign({ product: productId }, extra || {})),
     });
     if (r.status === 401) { toast(L.auth_short); done(); return; }
     const j = await r.json();
@@ -2335,9 +2348,12 @@ async function loadShop() {
     // modal opens (Stars / card-SBP / crypto rows), like the benchmark shop.
     const purchases = s.purchases || [];
     SHOP = s;
+    // V3.44.23: the custom-peach tile renders separately from the fixed packs.
+    const customItem = purchases.find(x => x.custom);
+    const regularPurchases = purchases.filter(x => !x.custom);
     // V3.43.1: the −10%/−25% corner badge on the bigger peach packs.
     const packBadge = x => x.badge ? '<div class="bdg">' + esc(x.badge) + '</div>' : '';
-    const packs = purchases.map(x => `
+    const packs = regularPurchases.map(x => `
       <div class="pack" data-pay="${esc(x.id)}">
         ${packBadge(x)}
         <div class="amt">${x.stars} ⭐</div>
@@ -2345,11 +2361,18 @@ async function loadShop() {
         <div class="rub">${x.rub ? esc(x.rub) + ' ₽' : (x.usd ? '$' + esc(x.usd) : '')}</div>
         <button class="get">${esc(L.pay_get)}</button>
       </div>`).join('');
+    // V3.44.23: the sixth tile — input + dynamic price button.
+    const customTile = customItem ? `
+      <div class="pack custom">
+        <input type="number" id="customN" min="1" max="9999" placeholder="${esc(L.shop_custom_ph)}" inputmode="numeric">
+        <div class="sub">${esc(customItem.emoji)} ${esc(customItem.title)}</div>
+        <button class="get" id="customGet">${esc(L.shop_custom_btn(0))}</button>
+      </div>` : '';
     // V3.44.22: the constructor row carries no star price — public personas
     // are free, private ones cost peaches (constructor_peaches rides along).
     const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars ? i.stars + ' ⭐' + fiat(i) : esc(L.constructor_price_note(s.constructor_peaches))}</span></div>`).join('');
     document.getElementById('shopbody').innerHTML = `
-      <div class="packs">${packs}</div>
+      <div class="packs">${packs}${customTile}</div>
       <div class="hero">
         <div class="title">⭐ Premium</div>
         <div class="price">${price}</div>
@@ -2360,6 +2383,21 @@ async function loadShop() {
       <div class="note">💬 ${s.free_tier.messages_per_day} ${esc(L.msg_day)} · 📸 ${s.free_tier.photos_level_1_2}–${s.free_tier.photos_level_3_6} ${esc(L.photos_day)}</div>`;
     document.querySelectorAll('#shopbody [data-pay]').forEach(b =>
       b.addEventListener('click', () => openPay(b.dataset.pay)));
+    // V3.44.23: wire up the custom-peach tile.
+    const customInput = document.getElementById('customN');
+    const customBtn = document.getElementById('customGet');
+    if (customInput && customBtn) {
+      const updateBtn = () => {
+        const n = Math.max(0, parseInt(customInput.value) || 0);
+        customBtn.textContent = L.shop_custom_btn(n);
+      };
+      customInput.addEventListener('input', updateBtn);
+      customBtn.addEventListener('click', () => {
+        const n = Math.max(1, parseInt(customInput.value) || 0);
+        if (n < 1) { toast(L.shop_custom_ph); return; }
+        openPayCustom(n);
+      });
+    }
   } catch (e) {
     _shopLoaded = false; // V3.44.15: retry on the next tab visit
     document.getElementById('shopbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
@@ -2380,13 +2418,31 @@ function openPay(id) {
   if (s.wallet_pay) rows.push(`<button class="mrow" data-m="crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto)}</span><span class="pr">$${esc(x.usd || (x.stars * 0.02).toFixed(2))}</span></button>`);
   document.getElementById('payRows').innerHTML = rows.join('');
   document.querySelectorAll('#payRows [data-m]').forEach(b =>
-    b.addEventListener('click', () => payVia(x.id, b.dataset.m, b)));
+    b.addEventListener('click', () => payVia(x.id, b.dataset.m, b, {})));
   document.getElementById('paymodal').classList.add('open');
 }
-async function payVia(id, method, btn) {
+// V3.44.23: the custom-peach tile — opens the same pay-method modal with a
+// synthetic product whose stars/rub prices are n × per-unit constants.
+function openPayCustom(n) {
+  const s = SHOP;
+  if (!s) return;
+  const stars = n * 10;
+  const rub = s.platega ? n * 10 : null;
+  const title = n + ' 🍑';
+  document.getElementById('payEmo').textContent = '🍑';
+  document.getElementById('payTitle').textContent = title;
+  const rows = [`<button class="mrow" data-m="stars"><span class="ico">⭐</span><span class="nm">${esc(L.pay_stars)}</span><span class="pr">${stars} ⭐</span></button>`];
+  if (rub) rows.push(`<button class="mrow" data-m="sbp"><span class="ico">🏦</span><span class="nm">${esc(L.pay_sbp)}</span><span class="pr">${rub} ₽</span></button>`);
+  if (s.wallet_pay) rows.push(`<button class="mrow" data-m="crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto)}</span><span class="pr">$${(stars * 0.02).toFixed(2)}</span></button>`);
+  document.getElementById('payRows').innerHTML = rows.join('');
+  document.querySelectorAll('#payRows [data-m]').forEach(b =>
+    b.addEventListener('click', () => payVia('peach_custom', b.dataset.m, b, { amount: n })));
+  document.getElementById('paymodal').classList.add('open');
+}
+async function payVia(id, method, btn, extra) {
   if (method === 'stars') {
     document.getElementById('paymodal').classList.remove('open');
-    buy(id, btn);
+    buy(id, btn, extra);
     return;
   }
   btn.disabled = true;
@@ -2394,7 +2450,7 @@ async function payVia(id, method, btn) {
     const r = await fetch('/webapp/api/pay_link?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product: id, method }),
+      body: JSON.stringify(Object.assign({ product: id, method }, extra || {})),
     });
     if (r.status === 401) { toast(L.auth_short); return; }
     const j = await r.json();
@@ -2898,7 +2954,7 @@ document.getElementById('charCommentBtn').addEventListener('click', async () => 
 });
 
 // ── V3.43.0: channel-subscribe peach bonus (banner + gift modal) ──────────
-let CHAN = { url: 'https://t.me/Anna634212', bonus: 100, granted: false };
+let CHAN = { url: 'https://t.me/Anna634212', bonus: 30, granted: false };
 async function loadChannel() {
   try {
     const r = await fetch('/webapp/api/channel_bonus?init_data=' + encodeURIComponent(tg.initData || ''));

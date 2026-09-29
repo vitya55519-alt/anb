@@ -39,6 +39,7 @@ from config import (
     SUPPORT_BOT_USERNAME, SUPPORT_BOT_TOKEN, SUPPORT_WELCOME_TEXT,
     CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS,
     PEACH_PACK_STARS, PEACH_PACK_CREDITS, PEACH_PACK_RUB,
+    PEACH_CUSTOM_STARS_PER_UNIT, PEACH_CUSTOM_RUB_PER_UNIT,
     PLATEGA_MERCHANT_ID, PLATEGA_API_KEY, PLATEGA_API_BASE,
 )
 from services.user_service import (
@@ -4576,6 +4577,13 @@ def _platega_amount_for(product: str) -> int:
             return max(1, int(product.split('_')[1]))
         except (IndexError, ValueError):
             return PLATEGA_PREMIUM_PRICE_RUB
+    if product.startswith('peach_custom_'):
+        # V3.44.23: custom peach amount — count × per-unit rub price.
+        try:
+            n = max(1, int(product.split('_')[-1]))
+        except (ValueError, IndexError):
+            n = 1
+        return n * PEACH_CUSTOM_RUB_PER_UNIT
     if product == 'constructor_rub':
         return CONSTRUCTOR_COST_RUB
     if product.startswith('tokens_'):
@@ -4626,6 +4634,13 @@ async def platega_pay(cq: types.CallbackQuery):
     elif product.startswith('donation_'):
         # V3.44.22: the support-the-project donation invoice.
         title = f'💜 Поддержать проект — {amount} ₽'
+    elif product.startswith('peach_custom_'):
+        # V3.44.23: custom peach amount invoice.
+        try:
+            _cn = max(1, int(product.split('_')[-1]))
+        except (ValueError, IndexError):
+            _cn = 1
+        title = f'🍑 {_cn} персиков — {amount} ₽'
     else:
         title = f'🪙 Токены — {amount} ₽'
     await bot.send_message(
@@ -4785,6 +4800,14 @@ async def pre_checkout(query: types.PreCheckoutQuery):
     elif payload in PEACH_PACK_STARS:
         # V3.43.1: the peach pack ladder — 10/30/100 credits, bulk discount.
         ok=amount==PEACH_PACK_STARS[payload]
+    elif payload.startswith('peach_custom_'):
+        # V3.44.23: custom peach amount — the count is encoded in the payload.
+        try:
+            _pn = max(1, int(payload.split('_')[-1]))
+        except (ValueError, IndexError):
+            ok = False
+        else:
+            ok = amount == _pn * PEACH_CUSTOM_STARS_PER_UNIT
     elif payload=='premium_month_discount':
         from services.retention_service import discount_info
         info=discount_info(query.from_user.id)
@@ -4856,6 +4879,19 @@ async def successful_payment(message: types.Message):
             await message.answer(f'done 🍑 +{pack_n} photo credits added — ask me for a photo in chat and they will be used.')
         else:
             await message.answer(f'готово 🍑 +{pack_n} фото-кредитов на счету — проси фото в чате, и они спишутся.')
+        return
+    if payload.startswith('peach_custom_'):
+        # V3.44.23: custom peach amount — the count is encoded in the payload.
+        record_payment(message.from_user.id, payload, payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': payload, 'source': 'webapp'})
+        try:
+            _cn = max(1, int(payload.split('_')[-1]))
+        except (ValueError, IndexError):
+            _cn = 1
+        if user_lang(message.from_user.id) == EN:
+            await message.answer(f'done 🍑 +{_cn} photo credits added — ask me for a photo in chat and they will be used.')
+        else:
+            await message.answer(f'готово 🍑 +{_cn} фото-кредитов на счету — проси фото в чате, и они спишутся.')
         return
     if payload == 'photo_pack':
         # V3.34.0: standalone +1 photo credit from the Mini App shop — same
@@ -7756,6 +7792,13 @@ async def _platega_callback(request: web.Request) -> web.Response:
             elif product in PEACH_PACK_CREDITS:
                 # V3.43.1: ruble-paid peach pack from the app pay modal.
                 confirm = f'🍑 Пак на {PEACH_PACK_CREDITS[product]} персиков оплачен! Уже начислены 📸'
+            elif product.startswith('peach_custom_'):
+                # V3.44.23: custom peach amount paid via card/SBP.
+                try:
+                    _cn = max(1, int(product.split('_')[-1]))
+                except (ValueError, IndexError):
+                    _cn = 1
+                confirm = f'🍑 {_cn} персиков оплачены! Уже начислены 📸'
             else:
                 confirm = '💖 Оплата прошла! Premium активирован на 30 дней. Наслаждайся! 🎉'
             try:
@@ -8304,6 +8347,17 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
     product = next((p for p in webapp_service.api_invoice_products(lang) if p['id'] == product_id), None)
     if not product:
         return web.json_response({'ok': False, 'error': 'unknown_product'}, status=400)
+    # V3.44.23: custom peach amount — the frontend sends the desired count in
+    # ``amount``; the stars price and payload are computed dynamically.
+    if product_id == 'peach_custom':
+        try:
+            _ca = max(1, int((body or {}).get('amount', 1)))
+        except (ValueError, TypeError):
+            _ca = 1
+        product = dict(product)
+        product['stars'] = _ca * PEACH_CUSTOM_STARS_PER_UNIT
+        product['payload'] = f'peach_custom_{_ca}'
+        product['title'] = f'🍑 {_ca} персиков' if user_lang(telegram_id) != EN else f'🍑 {_ca} peaches'
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     track_event(uid, 'webapp_invoice_created', metadata={'product': product_id})
     try:
@@ -8343,6 +8397,16 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     method = str((body or {}).get('method', ''))
     lang = user_lang(telegram_id)
     product = next((p for p in webapp_service.api_invoice_products(lang) if p['id'] == product_id), None)
+    # V3.44.23: custom peach amount — compute the dynamic product fields from
+    # the ``amount`` the frontend sends.
+    if product_id == 'peach_custom':
+        try:
+            _ca = max(1, int((body or {}).get('amount', 1)))
+        except (ValueError, TypeError):
+            _ca = 1
+        product = dict(product)
+        product['stars'] = _ca * PEACH_CUSTOM_STARS_PER_UNIT
+        product['rub'] = _ca * PEACH_CUSTOM_RUB_PER_UNIT if PLATEGA_ENABLED else None
     # order product keys record_payment knows how to grant
     order_product = {'premium': 'premium_month', 'premium_week': 'premium_week',
                      'photo_credit': 'photo'}.get(product_id)
@@ -8350,6 +8414,9 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
         # V3.43.1: peach packs — the order key is the payload itself, so the
         # Platega callback and the Wallet Pay webhook grant the pack size.
         order_product = product_id
+    if product_id == 'peach_custom':
+        # V3.44.23: the order key encodes the count so record_payment grants it.
+        order_product = f'peach_custom_{_ca}'
     if not product or not order_product:
         return web.json_response({'ok': False, 'error': 'unknown_product'}, status=400)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))

@@ -49,6 +49,8 @@ from config import (
     PEACH_PACK_10_RUB,
     PEACH_PACK_30_RUB,
     PEACH_PACK_100_RUB,
+    PEACH_CUSTOM_STARS_PER_UNIT,
+    PEACH_CUSTOM_RUB_PER_UNIT,
     PHOTO_COST_STARS,
     PLATEGA_ENABLED,
     PLATEGA_PREMIUM_PRICE_RUB,
@@ -473,6 +475,23 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'rub': PEACH_PACK_100_RUB if PLATEGA_ENABLED else None,
             'usd': None,
             'badge': '−29%',
+        },
+        # V3.44.23: the custom-peach tile — the user types how many peaches
+        # they want; the Stars and rub prices are computed per unit.
+        {
+            'id': 'peach_custom',
+            'emoji': '🍑',
+            'title': 'Своё количество' if not en else 'Custom amount',
+            'description': (
+                'укажи сколько персиков нужно — цена за штуку как в малом паке'
+                if not en else
+                'type how many peaches you need — per-peach price same as the small pack'
+            ),
+            'stars': PEACH_CUSTOM_STARS_PER_UNIT,
+            'payload': 'peach_custom',
+            'rub': PEACH_CUSTOM_RUB_PER_UNIT if PLATEGA_ENABLED else None,
+            'usd': None,
+            'custom': True,
         },
     ]
 

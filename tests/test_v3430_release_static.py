@@ -42,7 +42,7 @@ def test_support_buttons_deep_link_the_support_bot():
 
 def test_channel_bonus_config_and_helpers():
     assert 'CHANNEL_SUBSCRIBE_USERNAME = os.getenv("CHANNEL_SUBSCRIBE_USERNAME", "Anna634212")' in CONFIG
-    assert 'CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "100"))' in CONFIG
+    assert 'CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "30"))' in CONFIG
     # grant is idempotent, revoke mirrors it (unsubscribe annuls the bonus)
     assert 'def has_credit_grant(telegram_id:int, reason:str)->bool:' in PAYMENTS
     assert 'def revoke_photo_credits(telegram_id:int, amount:int, reason:str)->int:' in PAYMENTS
@@ -158,7 +158,7 @@ def test_pay_method_modal_frontend():
     assert 'if (x.rub && s.platega)' in INDEX
     assert 'if (s.wallet_pay)' in INDEX
     # Stars reuses the invoice flow; the others open the external payment link
-    assert 'buy(id, btn)' in INDEX
+    assert 'buy(id, btn, extra)' in INDEX
     assert "/webapp/api/pay_link?init_data=" in INDEX
     assert 'tg.openTelegramLink(j.url)' in INDEX
     # localized row labels in both languages

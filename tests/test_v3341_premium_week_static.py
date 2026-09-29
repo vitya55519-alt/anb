@@ -97,8 +97,9 @@ def test_rub_prices_next_to_stars():
     # the Mini App products carry the rub price for both plans
     assert "'rub': PLATEGA_PREMIUM_PRICE_RUB if PLATEGA_ENABLED else None," in WEBAPP_SVC
     assert "'rub': PLATEGA_PREMIUM_WEEKLY_PRICE_RUB if PLATEGA_ENABLED else None," in WEBAPP_SVC
-    # V3.43.0: the rub prices ride on the shop pack squares now
-    assert 'const packs = purchases.map(x => `' in INDEX
+    # V3.43.0 → V3.44.23: the rub prices ride on the shop pack squares now
+    # (regular packs only — the custom-peach tile renders separately).
+    assert 'const packs = regularPurchases.map(x => `' in INDEX
     assert "esc(x.rub) + ' ₽'" in INDEX
     # the legal tariffs price the week in rubles too — via fiat_suffix
     assert 'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD' in LEGAL
