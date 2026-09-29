@@ -37,9 +37,11 @@ from config import (
     VIDEO_COST_STARS,
     VIDEO_PREMIUM_FREE_DAILY,
     GALLERY_DOWNLOAD_STARS,
-    CONSTRUCTOR_COST_STARS,
-    CONSTRUCTOR_COST_RUB,
-    CONSTRUCTOR_PRICE_USD,
+    CONSTRUCTOR_COST_PEACHES,
+    PEACH_PACK_STARS,
+    PEACH_PACK_RUB,
+    PEACH_PACK_CREDITS,
+    DONATION_AMOUNTS_RUB,
     PLATEGA_PREMIUM_PRICE_RUB,
     PLATEGA_PREMIUM_WEEKLY_PRICE_RUB,
     PREMIUM_PRICE_USD,
@@ -49,9 +51,9 @@ from config import (
 )
 from services import gifts_service
 
-LEGAL_VERSION = '2026-09-15'
-LEGAL_DATE_RU = '15 сентября 2026 г.'
-LEGAL_DATE_SHORT = '15.09.2026'
+LEGAL_VERSION = '2026-09-29'
+LEGAL_DATE_RU = '29 сентября 2026 г.'
+LEGAL_DATE_SHORT = '29.09.2026'
 # The service identity shown in every document header (env-configurable so a
 # renamed bot does not need a code change).
 LEGAL_BOT_USERNAME = os.getenv('LEGAL_BOT_USERNAME', '@Anna67901_bot').strip()
@@ -191,6 +193,17 @@ def tariffs_text(lang: str = 'ru') -> str:
     gift_max = max(g.cost for g in gifts_service.GIFTS)
     gift_discount = round(gifts_service.DAILY_DISCOUNT * 100)
     rub_lines = PLATEGA_ENABLED
+    # V3.44.22: the peach packs, the studio picture and the in-bot donation
+    # chooser joined the sheet — every number comes from the same config the
+    # payment chains charge by. Deferred import: webapp_service imports this
+    # module at load time, so a module-level import here would be a cycle.
+    from services import webapp_service
+    studio_peaches = webapp_service.WEBAPP_PICTURE_COST_CREDITS
+    pack_lines = [
+        f'• {PEACH_PACK_CREDITS[pid]} 🍑 — {stars}⭐{fiat_suffix(stars, rub=PEACH_PACK_RUB[pid], rub_enabled=rub_lines)}'
+        for pid, stars in PEACH_PACK_STARS.items()
+    ]
+    donation_variants = ', '.join(f'{amount} ₽' for amount in DONATION_AMOUNTS_RUB)
     if lang == 'en':
         lines = [
             '💰 Prices & tariffs',
@@ -211,8 +224,12 @@ def tariffs_text(lang: str = 'ru') -> str:
             f'• photos — {FREE_PHOTOS_LEVEL_1_2}/day (relationship levels 1–2), '
             f'{FREE_PHOTOS_LEVEL_3_6}/day (levels 3+)',
             '',
+            '🍑 Peaches (in-app currency):',
+            *pack_lines,
+            '',
             '📸 Photos:',
             f'• new photo set after the free limit — {PHOTO_COST_STARS}⭐{fiat_suffix(PHOTO_COST_STARS)}',
+            f'• studio picture generation (Mini App) — {studio_peaches} 🍑',
             f'• photo by your chat scenario — {CHAT_PHOTO_OFFER_STARS}⭐{fiat_suffix(CHAT_PHOTO_OFFER_STARS)}',
             f'• custom photo by your own description — {CUSTOM_PHOTO_COST_STARS}⭐{fiat_suffix(CUSTOM_PHOTO_COST_STARS)}',
             f'• full-resolution gallery download — {GALLERY_DOWNLOAD_STARS}⭐ per photo{fiat_suffix(GALLERY_DOWNLOAD_STARS)}',
@@ -223,11 +240,11 @@ def tariffs_text(lang: str = 'ru') -> str:
             '',
             '🎯 Stories & characters:',
             f'• alternative story branch — {QUEST_REPLAY_STARS}⭐{fiat_suffix(QUEST_REPLAY_STARS)}',
-            f'• create your own character — {CONSTRUCTOR_COST_STARS}⭐{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD, rub_enabled=rub_lines)}',
+            f'• create your own character — public is free, private — {CONSTRUCTOR_COST_PEACHES} 🍑',
             '',
             f'🎁 Gifts: {gift_min}⭐{fiat_suffix(gift_min)} – {gift_max}⭐{fiat_suffix(gift_max)} · gift of the day −{gift_discount}%',
             '',
-            '💖 Supporting the project is voluntary tips (CloudTips) and never affects access to features.',
+            f'💖 Supporting the project is a voluntary donation ({donation_variants}) by card / SBP / crypto and never affects access to features.',
             '',
             'Prices may change; the actual cost is always shown in the bot before payment.',
         ]
@@ -250,8 +267,12 @@ def tariffs_text(lang: str = 'ru') -> str:
         f'• фото — {FREE_PHOTOS_LEVEL_1_2} в день (уровни отношений 1–2), '
         f'{FREE_PHOTOS_LEVEL_3_6} в день (уровни 3+)',
         '',
+        '🍑 Персики (внутренняя валюта):',
+        *pack_lines,
+        '',
         '📸 Фото:',
         f'• новый сет фото после бесплатного лимита — {PHOTO_COST_STARS}⭐{fiat_suffix(PHOTO_COST_STARS)}',
+        f'• генерация картинки в студии (Mini App) — {studio_peaches} 🍑',
         f'• фото по сценарию из чата — {CHAT_PHOTO_OFFER_STARS}⭐{fiat_suffix(CHAT_PHOTO_OFFER_STARS)}',
         f'• кастомное фото по своему описанию — {CUSTOM_PHOTO_COST_STARS}⭐{fiat_suffix(CUSTOM_PHOTO_COST_STARS)}',
         f'• скачивание из галереи в полном разрешении — {GALLERY_DOWNLOAD_STARS}⭐ за фото{fiat_suffix(GALLERY_DOWNLOAD_STARS)}',
@@ -262,11 +283,11 @@ def tariffs_text(lang: str = 'ru') -> str:
         '',
         '🎯 Истории и персонажи:',
         f'• альтернативная ветка истории — {QUEST_REPLAY_STARS}⭐{fiat_suffix(QUEST_REPLAY_STARS)}',
-        f'• создание своего персонажа — {CONSTRUCTOR_COST_STARS}⭐{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD, rub_enabled=rub_lines)}',
+        f'• создание своего персонажа — публичный бесплатно, приватный — {CONSTRUCTOR_COST_PEACHES} 🍑',
         '',
         f'🎁 Подарки: от {gift_min}⭐{fiat_suffix(gift_min)} до {gift_max}⭐{fiat_suffix(gift_max)} · подарок дня −{gift_discount}%',
         '',
-        '💖 Поддержка проекта — добровольные чаевые (CloudTips) и никак не влияют на доступ к функциям.',
+        f'💖 Поддержка проекта — добровольный донат ({donation_variants}) картой / СБП / криптой; никак не влияет на доступ к функциям.',
         '',
         'Цены могут изменяться; актуальная стоимость всегда указана в боте перед оплатой.',
     ]

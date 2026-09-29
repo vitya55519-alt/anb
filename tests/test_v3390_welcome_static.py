@@ -98,7 +98,7 @@ def test_peaches_replaced_strawberries():
     assert "'credits': ('🍑 Персики', '🍑 Peaches')," in UI_LANG
     assert '🍑 Персики' in MAIN
     assert '🍑 peaches (photo credits) are bought in the app' in MAIN
-    assert 'Создать · 150 🍑' in INDEX
+    assert "wiz_create_peaches: n => '🎨 Создать · 🍑 ' + n" in INDEX
     assert 'Не хватает 🍑' in INDEX
     # no strawberry branding left anywhere user-facing
     assert '🍓' not in UI_LANG
@@ -155,8 +155,10 @@ def test_chat_media_endpoint_and_gates():
     assert "add_post('/webapp/api/chat/media', _webapp_api_chat_media)" in MAIN
     assert "add_get('/webapp/media/{filename}', _webapp_media)" in MAIN
     block = MAIN[MAIN.index('async def _webapp_api_chat_media('):MAIN.index('async def _webapp_media(')]
-    # photo costs 1 🍑, circles are Premium + daily free slot, consent gates all
-    assert 'WEBAPP_PICTURE_COST_CREDITS' in block
+    # photo costs 1 🍑 (guard: fewer than 1 credit left), circles are Premium
+    # + daily free slot, consent gates all — the studio's
+    # WEBAPP_PICTURE_COST_CREDITS price lives in its own generate endpoint
+    assert 'get_photo_credits(telegram_id) < 1' in block
     assert "kind == 'circle'" in block and 'consume_premium_video_free(telegram_id)' in block
     assert 'has_accepted(telegram_id)' in block
     # the bot's own engine chains are reused

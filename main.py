@@ -38,7 +38,7 @@ from config import (
     PLATEGA_ENABLED, PLATEGA_PREMIUM_PRICE_RUB, PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB, PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
     SUPPORT_BOT_USERNAME, SUPPORT_BOT_TOKEN, SUPPORT_WELCOME_TEXT,
     CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS,
-    PEACH_PACK_STARS, PEACH_PACK_CREDITS,
+    PEACH_PACK_STARS, PEACH_PACK_CREDITS, PEACH_PACK_RUB,
     PLATEGA_MERCHANT_ID, PLATEGA_API_KEY, PLATEGA_API_BASE,
 )
 from services.user_service import (
@@ -661,11 +661,12 @@ def characters_keyboard(telegram_id: int | None = None):
     # V3.39.0: two characters per row — the old one-per-row wall was unreadable.
     rows = _pair_rows(_character_pick_buttons('view'))
     # V3.19.0: entry point to the personal character constructor.
-    rows.append([InlineKeyboardButton(text=f'🎨 Создать свою · {CONSTRUCTOR_COST_STARS}⭐{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD)}', callback_data='constructor:start')])
-    if PLATEGA_ENABLED and telegram_id:
-        rows.append([_platega_pay_button(
-            'constructor_rub', CONSTRUCTOR_COST_RUB,
-            f'🎭 Персонаж — {CONSTRUCTOR_COST_RUB} ₽ · СБП / карта')])
+    # V3.44.22: a public persona is free, a private one costs 10 🍑 — the old
+    # 50⭐ teaser contradicted the price the next screen actually charged, and
+    # the separate rub row is gone (private personas simply spend peaches).
+    rows.append([InlineKeyboardButton(
+        text=f'🎨 Создать свою · бесплатно / {CONSTRUCTOR_COST_PEACHES} 🍑',
+        callback_data='constructor:start')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1290,16 +1291,16 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
         if is_button_enabled('platega_rub'):
             rows.append([_platega_pay_button(
                 'premium_month', PLATEGA_PREMIUM_PRICE_RUB,
-                f'💳 Premium — {PLATEGA_PREMIUM_PRICE_RUB} ₽ · СБП / карта')])
+                f'💳 Premium — {PLATEGA_PREMIUM_PRICE_RUB} ₽ · карта / СБП / крипта')])
             # V3.34.1: the weekly plan is payable by card/SBP too — the rub
             # price shown next to its Stars price is a real charge, not a display.
             rows.append([_platega_pay_button(
                 'premium_week', PLATEGA_PREMIUM_WEEKLY_PRICE_RUB,
-                f'💳 Premium на неделю — {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · СБП / карта')])
+                f'💳 Premium на неделю — {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · карта / СБП / крипта')])
             # V3.43.0: the 3-month plan is payable by card/SBP too.
             rows.append([_platega_pay_button(
                 'premium_quarter', PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB,
-                f'💳 Premium на 3 месяца — {PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB} ₽ · СБП / карта')])
+                f'💳 Premium на 3 месяца — {PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB} ₽ · карта / СБП / крипта')])
         if is_button_enabled('platega_tokens'):
             rows.append([
                 _platega_pay_button('tokens_1', TOKEN_PRICE_RUB,
@@ -4565,10 +4566,16 @@ def _platega_amount_for(product: str) -> int:
         # V3.43.0: the pay-method modal sells a single photo credit in rubles.
         from config import fiat_values
         return fiat_values(PHOTO_COST_STARS)[0]
-    if product in PEACH_PACK_STARS:
-        # V3.43.1: peach packs by card/SBP — the ruble twin of the Stars price.
-        from config import fiat_values
-        return fiat_values(PEACH_PACK_STARS[product])[0]
+    if product in PEACH_PACK_RUB:
+        # V3.43.1 → V3.44.22: peach packs by card/SBP — explicit round ruble
+        # prices instead of the old star-ladder guess.
+        return PEACH_PACK_RUB[product]
+    if product.startswith('donation_'):
+        # V3.44.22: «Поддержать проект» — the amount IS the product suffix.
+        try:
+            return max(1, int(product.split('_')[1]))
+        except (IndexError, ValueError):
+            return PLATEGA_PREMIUM_PRICE_RUB
     if product == 'constructor_rub':
         return CONSTRUCTOR_COST_RUB
     if product.startswith('tokens_'):
@@ -4616,15 +4623,45 @@ async def platega_pay(cq: types.CallbackQuery):
     elif product == 'photo':
         # V3.43.0: ruble-paid single photo credit from the app pay modal.
         title = f'🍑 Фото-кредит — {amount} ₽'
+    elif product.startswith('donation_'):
+        # V3.44.22: the support-the-project donation invoice.
+        title = f'💜 Поддержать проект — {amount} ₽'
     else:
         title = f'🪙 Токены — {amount} ₽'
     await bot.send_message(
         cq.message.chat.id,
-        f'{title} · оплата картой / СБП\n\n{link}\n\n'
+        f'{title} · оплата картой / СБП / криптой\n\n{link}\n\n'
         'Способ оплаты выберешь на странице платежа. '
         'После оплаты всё включится автоматически в течение минуты. '
         'Если что-то пойдёт не так — напиши /support.',
     )
+
+
+@dp.callback_query(F.data == 'donate:open')
+async def donate_open_cb(cq: types.CallbackQuery):
+    """V3.44.22: «Поддержать проект» — the owner's 50/100/500 ₽ chooser.
+
+    The button on the weekly reminder / welcome / settings became a callback
+    now that Platega is live; each amount reuses the stock ``platega:``
+    payment path, so the donation rides the same order + callback + ledger
+    chain as any other purchase.
+    """
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    if not PLATEGA_ENABLED:
+        # Normally unreachable — the CTA is a plain URL button while Platega
+        # is off — kept for crafted callback data.
+        await cq.answer('Оплата картой сейчас выключена 🙂', show_alert=True); return
+    await cq.answer()
+    lang = user_lang(cq.from_user.id)
+    if lang == EN:
+        text = ('💖 Support the project\n\nPick an amount — the payment page opens with card / SBP / crypto. '
+                'Every donation keeps new characters, photos and videos coming ❤️')
+    else:
+        text = ('💖 Поддержать проект\n\nВыбери сумму — откроется страница оплаты: карта / СБП / крипта. '
+                'Каждый донат — это новые персонажи, фото и видео ❤️')
+    await cq.message.answer(text, reply_markup=donation_service.donation_amounts_keyboard(lang))
 
 
 @dp.callback_query(F.data.startswith('paymethod:'))
@@ -6297,18 +6334,26 @@ async def _constructor_confirm(chat_id: int, telegram_id: int):
     params = cons['params']
     lines = summary_lines(params, str(params.get('name') or 'Без имени'))
     face_line = '📷 Лицо: по твоему фото (face-swap)' if cons.get('face_bytes') else '🎭 Внешность: полностью AI'
+    is_public = str(params.get('community') or '') == 'community_yes'
     # V3.19.1: admins create their personal character for free.
+    # V3.44.22: so do public personas — a girl published to the «Сообщество»
+    # витрина is free; only a private one costs peaches.
     if telegram_id in ADMIN_TELEGRAM_IDS:
         buy_label = '✅ Создать · бесплатно (админ)'
         price_note = 'Админский доступ: бесплатно.'
+    elif is_public:
+        buy_label = '✅ Создать · бесплатно'
+        price_note = ('Бесплатно: она появится в категории «Сообщество», и другие смогут с ней общаться. '
+                      'Сделать её приватной потом можно в приложении — «Кабинет создателя».')
     else:
-        buy_label = f'✅ Создать · {CONSTRUCTOR_COST_STARS}⭐{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD)}'
-        price_note = f'Готова родиться за {CONSTRUCTOR_COST_STARS} Stars{fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD)} ✨'
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=buy_label, callback_data='constructor:buy')],
-        [InlineKeyboardButton(text=f'🍑 Оплатить персиками ({CONSTRUCTOR_COST_PEACHES})', callback_data='constructor:buy_peaches')],
-        [InlineKeyboardButton(text='❌ Отменить', callback_data='constructor:cancel')],
-    ])
+        buy_label = f'🍑 Создать приватную · {CONSTRUCTOR_COST_PEACHES} 🍑'
+        price_note = f'Приватный персонаж — только для тебя: {CONSTRUCTOR_COST_PEACHES} 🍑.'
+    if telegram_id in ADMIN_TELEGRAM_IDS or is_public:
+        pay_rows = [[InlineKeyboardButton(text=buy_label, callback_data='constructor:buy')]]
+    else:
+        pay_rows = [[InlineKeyboardButton(text=buy_label, callback_data='constructor:buy_peaches')]]
+    pay_rows.append([InlineKeyboardButton(text='❌ Отменить', callback_data='constructor:cancel')])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=pay_rows)
     await bot.send_message(
         chat_id,
         '🎨 Твой персонаж:\n\n' + '\n'.join(lines) + f'\n{face_line}\n\n' + price_note,
@@ -6797,6 +6842,10 @@ async def constructor_buy_cb(cq: types.CallbackQuery):
     # V3.19.1: admins skip the Stars invoice entirely.
     if telegram_id in ADMIN_TELEGRAM_IDS:
         _spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id), payload={'source': 'free'})
+        return
+    # V3.44.22: a persona headed for the «Сообщество» витрина is free.
+    if str(cons['params'].get('community') or '') == 'community_yes':
+        _spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id), payload={'source': 'community_free'})
         return
     # V3.27.0: a ruble-paid constructor credit (Platega since V3.44.21) skips Stars too.
     if consume_constructor_credit(telegram_id):
@@ -7678,6 +7727,11 @@ async def _platega_callback(request: web.Request) -> web.Response:
             return web.Response(text='OK')
         if platega_service.mark_paid(order['id'], json.dumps(body, ensure_ascii=False)):
             product = order['product']
+            if product.startswith('donation_'):
+                # V3.44.22: «Поддержать проект» donation — nothing to grant,
+                # the thank-you IS the product (ledger row below still lands
+                # via record_payment, partner commission included).
+                confirm = '💜 Спасибо за поддержку! Донат получен — это очень помогает проекту 🥹'
             if product == 'constructor_rub':
                 # V3.27.0: ruble-paid character constructor credit.
                 ensure_user(order['telegram_id'])
@@ -8536,9 +8590,9 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     except Exception:
         logger.exception('webapp picture save failed user=%s', telegram_id)
         return web.json_response({'ok': False, 'error': 'save'}, status=500)
-    # V3.44.3: charge the real studio price (150 ), not a single credit.
-    # The balance guard above already used WEBAPP_PICTURE_COST_CREDITS, but
-    # the deduction was the old consume_photo_credit(1) — now aligned.
+    # V3.44.3 → V3.44.22: charge the real studio price (10 🍑 since the
+    # economy rework), not a single credit. The balance guard above already
+    # used WEBAPP_PICTURE_COST_CREDITS, so the deduction stays aligned.
     if not spend_peaches(telegram_id, webapp_service.WEBAPP_PICTURE_COST_CREDITS):
         logger.warning('webapp picture credit race user=%s', telegram_id)
     track_event(uid, 'webapp_picture_generated', metadata={'style': style, 'format': fmt})
@@ -8723,7 +8777,10 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
             return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
     if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS \
-            and get_photo_credits(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS:
+            and get_photo_credits(telegram_id) < 1:
+        # V3.44.22: a chat photo costs ONE credit (consume_photo_credit below) —
+        # the old guard demanded the studio's whole price and blocked users who
+        # had plenty for the actual charge.
         return web.json_response({'ok': False, 'error': 'credits'}, status=402)
     if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS:
         if not is_premium(telegram_id):
@@ -9005,6 +9062,9 @@ async def _webapp_api_constructor_options(request: web.Request) -> web.Response:
         'usd': CONSTRUCTOR_PRICE_USD,
         # V3.44.9: peach (photo credit) price — the in-app wizard's main pay path.
         'peaches': CONSTRUCTOR_COST_PEACHES,
+        # V3.44.22: public personas are free — the app wizard shows a single
+        # free create button when the community step says «publish».
+        'public_free': True,
         'free': free,
     })
 
@@ -9129,6 +9189,15 @@ async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
         except Exception:
             logger.exception('constructor draft mark failed user=%s', telegram_id)
         _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'webapp_credit'})
+        return web.json_response({'ok': True, 'free': True})
+    # V3.44.22: publishing to the «Сообщество» витрина is free — no invoice.
+    if str((cons.get('params') or {}).get('community') or '') == 'community_yes':
+        track_event(uid, 'webapp_constructor_buy', metadata={'product': 'constructor', 'source': 'community_free'})
+        try:
+            mark_constructor_draft_paid(telegram_id, 'community_free')
+        except Exception:
+            logger.exception('constructor draft mark failed user=%s', telegram_id)
+        _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'community_free'})
         return web.json_response({'ok': True, 'free': True})
     try:
         body = await request.json()

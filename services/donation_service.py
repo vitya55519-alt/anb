@@ -1,4 +1,4 @@
-"""V3.31.3 — «Support the project» donation layer (CloudTips).
+"""V3.31.3 — «Support the project» donation layer (Platega since V3.44.22).
 
 The owner asked to (1) show a donation link to every new user in the welcome,
 (2) remind active users about once a week, and (3) craft a message that
@@ -18,9 +18,11 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 
 from config import (
+    DONATION_AMOUNTS_RUB,
     DONATION_LINK,
     DONATION_REMINDER_ACTIVE_DAYS,
     DONATION_REMINDER_INTERVAL_DAYS,
+    PLATEGA_ENABLED,
 )
 from models.app_models import User
 from services.db import SessionLocal
@@ -60,18 +62,35 @@ def donation_appeal(lang: str = RU) -> str:
 
 
 def donation_button(lang: str = RU) -> InlineKeyboardButton:
-    """A single URL button that opens the CloudTips donation link.
+    """The «Поддержать проект» CTA button.
 
     V3.31.4: extracted so the same button can ride inside other inline menus
     (e.g. /settings) as well as stand alone via :func:`donation_keyboard`.
+    V3.44.22: with Platega live the button is a callback that opens the in-bot
+    amount chooser (:func:`donation_amounts_keyboard`); the old CloudTips URL
+    stays only as the fallback shown while Platega is off.
     """
     label = '💖 Support the project' if lang == EN else '💖 Поддержать проект'
+    if PLATEGA_ENABLED:
+        return InlineKeyboardButton(text=label, callback_data='donate:open')
     return InlineKeyboardButton(text=label, url=DONATION_LINK)
 
 
 def donation_keyboard(lang: str = RU) -> InlineKeyboardMarkup:
-    """Single CTA button that opens the CloudTips donation link."""
+    """Single CTA button — the Platega chooser (or the CloudTips fallback)."""
     return InlineKeyboardMarkup(inline_keyboard=[[donation_button(lang)]])
+
+
+def donation_amounts_keyboard(lang: str = RU) -> InlineKeyboardMarkup:
+    """V3.44.22: the 50/100/500 ₽ chooser behind «Поддержать проект».
+
+    Every button reuses the stock ``platega:`` payment handler, so a donation
+    lands in the same order row + callback chain as any other purchase.
+    """
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=f'💸 {amount} ₽', callback_data=f'platega:donation_{amount}')
+        for amount in DONATION_AMOUNTS_RUB
+    ]])
 
 
 def due_donation_pings(now: dt.datetime) -> list[tuple[int, int, str]]:

@@ -327,12 +327,22 @@ PREMIUM_WEEKLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_WEEKLY_PHOTO_CREDITS", "3"
 PREMIUM_QUARTERLY_STARS = int(os.getenv("PREMIUM_QUARTERLY_STARS", "1200"))
 PREMIUM_QUARTERLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_QUARTERLY_PHOTO_CREDITS", "36"))
 PHOTO_COST_STARS = int(os.getenv("PHOTO_COST_STARS", "25"))
-# V3.43.1: the peach pack ladder — bulk credits cost less per piece than the
-# single credit (30-pack −10%, 100-pack −25%), like Come Closer's berry packs.
-PEACH_PACK_10_STARS = int(os.getenv("PEACH_PACK_10_STARS", str(PHOTO_COST_STARS * 10)))
-PEACH_PACK_30_STARS = int(os.getenv("PEACH_PACK_30_STARS", str(int(PHOTO_COST_STARS * 30 * 0.9))))
-PEACH_PACK_100_STARS = int(os.getenv("PEACH_PACK_100_STARS", str(int(PHOTO_COST_STARS * 100 * 0.75))))
+# V3.43.1 → V3.44.22: the peach pack ladder. The star prices used to inherit
+# PHOTO_COST_STARS * N (250/675/1875 ★ — the 100-pack cost more Stars than
+# three months of Premium) and the ruble side was a ladder guess. Now every
+# pack carries explicit round ₽ + ★ prices that read as one story with the
+# Premium plans: 50★/99₽ · 125★/249₽ · 350★/699₽ next to Premium 500★/899₽.
+# One peach lands at ~9.9/8.3/7.0 ₽ — a studio picture (10 🍑) costs about a
+# custom chat photo, not a month of Premium.
+PEACH_PACK_10_STARS = int(os.getenv("PEACH_PACK_10_STARS", "50"))
+PEACH_PACK_30_STARS = int(os.getenv("PEACH_PACK_30_STARS", "125"))
+PEACH_PACK_100_STARS = int(os.getenv("PEACH_PACK_100_STARS", "350"))
 PEACH_PACK_STARS = {"peach_pack_10": PEACH_PACK_10_STARS, "peach_pack_30": PEACH_PACK_30_STARS, "peach_pack_100": PEACH_PACK_100_STARS}
+# V3.44.22: the REAL Platega charge for each pack (was a ladder guess).
+PEACH_PACK_10_RUB = max(1, int(os.getenv("PEACH_PACK_10_RUB", "99")))
+PEACH_PACK_30_RUB = max(1, int(os.getenv("PEACH_PACK_30_RUB", "249")))
+PEACH_PACK_100_RUB = max(1, int(os.getenv("PEACH_PACK_100_RUB", "699")))
+PEACH_PACK_RUB = {"peach_pack_10": PEACH_PACK_10_RUB, "peach_pack_30": PEACH_PACK_30_RUB, "peach_pack_100": PEACH_PACK_100_RUB}
 PEACH_PACK_CREDITS = {"peach_pack_10": 10, "peach_pack_30": 30, "peach_pack_100": 100}
 CHAT_PHOTO_OFFER_STARS = int(os.getenv("CHAT_PHOTO_OFFER_STARS", "5"))
 CUSTOM_PHOTO_COST_STARS = int(os.getenv("CUSTOM_PHOTO_COST_STARS", "40"))
@@ -374,8 +384,10 @@ RITUAL_MAX_INACTIVE_DAYS = max(1, int(os.getenv("RITUAL_MAX_INACTIVE_DAYS", "7")
 # a private chat persona (appearance + personality + relationship role) with a
 # generated avatar. Optional user face photo enables face-swap identity.
 CONSTRUCTOR_COST_STARS = max(1, int(os.getenv("CONSTRUCTOR_COST_STARS", "50")))
-# V3.44.2: character constructor cost in peaches (photo credits)
-CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "500")))
+# V3.44.2 → V3.44.22: a PRIVATE character costs 10 peaches; a character
+# published to the «Сообщество» витрина is free (owner request — the storefront
+# grows with free public personas, privacy costs the peach price).
+CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "10")))
 # V3.27.0: ruble side of the shop (FreeKassa): character constructor price,
 # token price/pack (1 token = TOKEN_PRICE_RUB) and the animation token cost.
 CONSTRUCTOR_COST_RUB = max(1, int(os.getenv("CONSTRUCTOR_COST_RUB", "200")))
@@ -554,6 +566,13 @@ STARS_TO_USD = float(os.getenv("STARS_TO_USD", "0.02"))
 # welcome, then reminded to active users about once a week. The owner can
 # change the link or switch the weekly reminder off via Railway env vars.
 DONATION_LINK = os.getenv("DONATION_LINK", "https://pay.cloudtips.ru/p/7afc7b16").strip()
+# V3.44.22: the «Поддержать проект» button opens an in-bot amount chooser and
+# pays through Platega; the CloudTips link stays as the fallback button shown
+# while Platega is disabled.
+DONATION_AMOUNTS_RUB = tuple(
+    max(1, int(x)) for x in os.getenv("DONATION_AMOUNTS_RUB", "50,100,500").replace(" ", "").split(",")
+    if x.strip().isdigit()
+) or (50, 100, 500)
 DONATION_REMINDER_ENABLED = os.getenv("DONATION_REMINDER_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 DONATION_REMINDER_INTERVAL_DAYS = max(1, int(os.getenv("DONATION_REMINDER_INTERVAL_DAYS", "7")))
 DONATION_REMINDER_ACTIVE_DAYS = max(1, int(os.getenv("DONATION_REMINDER_ACTIVE_DAYS", "30")))

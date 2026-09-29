@@ -65,13 +65,14 @@ def test_fiat_suffix_runtime_shapes():
 
 
 def test_main_every_star_price_has_fiat():
-    # chat photo offer, quest replay, constructor menu, premium pitch +
-    # keyboard (both plans), video animate, custom photo, photo paywall,
-    # gallery texts/buttons, spicy menus, gifts menu, dates menu
+    # chat photo offer, quest replay, premium pitch + keyboard (both plans),
+    # video animate, custom photo, photo paywall, gallery texts/buttons,
+    # spicy menus, gifts menu, dates menu. V3.44.22: the constructor is no
+    # longer star-priced in main.py — public personas are free, private ones
+    # cost peaches, so its fiat line moved to the peach economy pins.
     for needle in (
         'fiat_suffix(CHAT_PHOTO_OFFER_STARS)',
         'fiat_suffix(QUEST_REPLAY_STARS)',
-        'fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD)',
         'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD',
         'fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD',
         'fiat_suffix(VIDEO_COST_STARS)',
@@ -98,11 +99,14 @@ def test_webapp_service_items_carry_fiat():
     assert "'constructor_usd': CONSTRUCTOR_PRICE_USD," in WEBAPP_SVC
     assert "'usd': PREMIUM_PRICE_USD," in WEBAPP_SVC
     assert "'usd': PREMIUM_WEEKLY_PRICE_USD," in WEBAPP_SVC
-    # V3.43.1: the single-credit fiat pair became the peach pack fiat pairs.
-    assert "'rub': p10_rub," in WEBAPP_SVC and "'usd': p100_usd," in WEBAPP_SVC
+    # V3.44.22: packs carry their REAL Platega rub prices (was a ladder pair).
+    assert "'rub': PEACH_PACK_10_RUB if PLATEGA_ENABLED else None," in WEBAPP_SVC
+    assert "'rub': PEACH_PACK_100_RUB if PLATEGA_ENABLED else None," in WEBAPP_SVC
     assert "'rub': rub if rub is not None else fiat_values(s)[0]," in WEBAPP_SVC
-    # the constructor item carries its REAL card prices, not the ladder
-    assert 'CONSTRUCTOR_COST_RUB if PLATEGA_ENABLED else None, CONSTRUCTOR_PRICE_USD),' in WEBAPP_SVC
+    # V3.44.22: the constructor item has no star price — public personas are
+    # free, private ones cost peaches (constructor_peaches rides along).
+    assert "('👩', 'Создание персонажа' if not en else 'Character creation', 0, None, None)," in WEBAPP_SVC
+    assert "'constructor_peaches': CONSTRUCTOR_COST_PEACHES," in WEBAPP_SVC
 
 
 def test_frontend_renders_fiat_next_to_stars():
@@ -113,9 +117,10 @@ def test_frontend_renders_fiat_next_to_stars():
     # V3.43.0: the shop pack squares print the rub price inline from the same
     # payload (the old hero/credit rows that used fiat(p)/fiat(credit) are gone)
     assert "esc(x.rub) + ' ₽'" in INDEX
-    # the constructor wizard price note shows all three tiers
-    assert "WIZ.rub ? ' · ' + esc(WIZ.rub) + ' ₽' : ''" in INDEX
-    assert "WIZ.usd ? ' · $' + esc(WIZ.usd) : ''" in INDEX
+    # V3.44.22: the wizard price note is community-aware — free (public) or
+    # peaches (private); the old three-tier rub/usd line is retired.
+    assert "const isPublic = WIZ.params.community === 'community_yes';" in INDEX
+    assert 'const freeCreate = WIZ.free || isPublic;' in INDEX
 
 
 def test_legal_tariffs_fiat_both_languages():
@@ -125,7 +130,10 @@ def test_legal_tariffs_fiat_both_languages():
     assert 'fiat_suffix(GALLERY_DOWNLOAD_STARS)' in LEGAL
     assert 'fiat_suffix(VIDEO_COST_STARS)' in LEGAL
     assert 'fiat_suffix(QUEST_REPLAY_STARS)' in LEGAL
-    assert 'fiat_suffix(CONSTRUCTOR_COST_STARS, rub=CONSTRUCTOR_COST_RUB, usd=CONSTRUCTOR_PRICE_USD' in LEGAL
+    # V3.44.22: the constructor line is peach-priced (public free / private
+    # peaches) — the old stars+rub+usd tier is retired from the sheet
+    assert 'создание своего персонажа — публичный бесплатно, приватный — {CONSTRUCTOR_COST_PEACHES} 🍑' in LEGAL
+    assert 'fiat_suffix(stars, rub=PEACH_PACK_RUB[pid], rub_enabled=rub_lines)' in LEGAL
     assert 'fiat_suffix(gift_min)' in LEGAL and 'fiat_suffix(gift_max)' in LEGAL
     # premium lines reuse the real card prices in both languages
     assert LEGAL.count('fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD') == 2

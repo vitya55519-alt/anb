@@ -85,7 +85,8 @@ def test_rub_prices_next_to_stars():
     assert 'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD' in kb
     # the weekly plan is payable by card/SBP: its own Platega row + price lookup
     assert "_platega_pay_button(\n                'premium_week', PLATEGA_PREMIUM_WEEKLY_PRICE_RUB," in MAIN
-    assert "f'💳 Premium на неделю — {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · СБП / карта'" in MAIN
+    # V3.44.22: the row label names every method the Platega page accepts
+    assert "f'💳 Premium на неделю — {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · карта / СБП / крипта'" in MAIN
     amount_fn = MAIN[MAIN.index('def _platega_amount_for('):MAIN.index("@dp.callback_query(F.data.startswith('platega:'))")]
     assert "if product == 'premium_week':" in amount_fn
     assert 'return PLATEGA_PREMIUM_WEEKLY_PRICE_RUB' in amount_fn

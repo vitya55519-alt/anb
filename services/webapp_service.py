@@ -30,13 +30,13 @@ import time
 from pathlib import Path
 from urllib.parse import parse_qsl
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from config import (
     CHARACTER_ID,
     CHAT_PHOTO_OFFER_STARS,
+    CONSTRUCTOR_COST_PEACHES,
     CONSTRUCTOR_COST_RUB,
-    CONSTRUCTOR_COST_STARS,
     CONSTRUCTOR_PRICE_USD,
     CUSTOM_PHOTO_COST_STARS,
     FREE_MESSAGES_PER_DAY,
@@ -46,6 +46,9 @@ from config import (
     PEACH_PACK_10_STARS,
     PEACH_PACK_30_STARS,
     PEACH_PACK_100_STARS,
+    PEACH_PACK_10_RUB,
+    PEACH_PACK_30_RUB,
+    PEACH_PACK_100_RUB,
     PHOTO_COST_STARS,
     PLATEGA_ENABLED,
     PLATEGA_PREMIUM_PRICE_RUB,
@@ -86,10 +89,10 @@ logger = logging.getLogger(__name__)
 # outside the character system — one folder per user, meta.json index.
 APP_PICTURES_DIR = ROOT / 'data' / 'app_pictures'
 
-# One freeform picture costs one photo credit (🍑) — the same balance the bot
-# charges for a photo set, so shop purchases feed both chat photos and the
-# studio.
-WEBAPP_PICTURE_COST_CREDITS = 150
+# One freeform picture costs 10 photo credits (🍑) — the same balance the bot
+# charges for photos, so shop purchases feed both chat photos and the studio
+# (V3.44.22: was 150, which priced a picture like five months of Premium).
+WEBAPP_PICTURE_COST_CREDITS = 10
 
 # The studio is a public, fully-clothed surface. Prompts that point at minors
 # or coercion are rejected before any engine call; every prompt additionally
@@ -398,11 +401,6 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
       that replaced the standalone +1 photo credit square.
     """
     en = lang == EN
-    # V3.36.0: every Stars price carries its rub + dollar equivalent so the
-    # storefront can show all three tiers next to each other.
-    p10_rub, p10_usd = fiat_values(PEACH_PACK_10_STARS)
-    p30_rub, p30_usd = fiat_values(PEACH_PACK_30_STARS)
-    p100_rub, p100_usd = fiat_values(PEACH_PACK_100_STARS)
     return [
         {
             'id': 'premium',
@@ -437,44 +435,44 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'emoji': '🍑',
             'title': '10 персиков' if not en else '10 peaches',
             'description': (
-                '10 фото-кредитов разом — хватит на 10 сетов фото по запросу'
+                'как раз на одну картинку в студии или приватного персонажа'
                 if not en else
-                '10 photo credits at once — enough for 10 on-demand photo sets'
+                'exactly one studio picture or one private character'
             ),
             'stars': PEACH_PACK_10_STARS,
             'payload': 'peach_pack_10',
-            'rub': p10_rub,
-            'usd': p10_usd,
+            'rub': PEACH_PACK_10_RUB if PLATEGA_ENABLED else None,
+            'usd': None,
         },
         {
             'id': 'peach_pack_30',
             'emoji': '🍑',
             'title': '30 персиков' if not en else '30 peaches',
             'description': (
-                '30 фото-кредитов со скидкой 10% — кредит дешевле одиночного'
+                '3 картинки в студии — персик дешевле, чем в малом паке'
                 if not en else
-                '30 photo credits with a 10% discount — each credit costs less'
+                '3 studio pictures — each peach costs less than in the small pack'
             ),
             'stars': PEACH_PACK_30_STARS,
             'payload': 'peach_pack_30',
-            'rub': p30_rub,
-            'usd': p30_usd,
-            'badge': '−10%',
+            'rub': PEACH_PACK_30_RUB if PLATEGA_ENABLED else None,
+            'usd': None,
+            'badge': '−16%',
         },
         {
             'id': 'peach_pack_100',
             'emoji': '🍑',
             'title': '100 персиков' if not en else '100 peaches',
             'description': (
-                '100 фото-кредитов со скидкой 25% — самый выгодный пак'
+                '10 картинок в студии — самый выгодный пак'
                 if not en else
-                '100 photo credits with a 25% discount — the best value pack'
+                '10 studio pictures — the best value pack'
             ),
             'stars': PEACH_PACK_100_STARS,
             'payload': 'peach_pack_100',
-            'rub': p100_rub,
-            'usd': p100_usd,
-            'badge': '−25%',
+            'rub': PEACH_PACK_100_RUB if PLATEGA_ENABLED else None,
+            'usd': None,
+            'badge': '−29%',
         },
     ]
 
@@ -496,9 +494,9 @@ def api_shop(lang: str = 'ru') -> dict:
         ('🎬', 'Оживление фото' if not en else 'Photo animation', VIDEO_COST_STARS, None, None),
         ('🖼', 'Скачивание из галереи' if not en else 'Gallery download', GALLERY_DOWNLOAD_STARS, None, None),
         ('🎯', 'Другая ветка истории' if not en else 'Story branch replay', QUEST_REPLAY_STARS, None, None),
-        # the constructor has REAL card prices — the ladder would lie about them
-        ('👩', 'Создание персонажа' if not en else 'Character creation', CONSTRUCTOR_COST_STARS,
-         CONSTRUCTOR_COST_RUB if PLATEGA_ENABLED else None, CONSTRUCTOR_PRICE_USD),
+        # V3.44.22: the constructor is free when published to «Сообщество» and
+        # costs peaches when private — stars/rub columns no longer apply.
+        ('👩', 'Создание персонажа' if not en else 'Character creation', 0, None, None),
     ]
     return {
         'premium': {
@@ -527,6 +525,8 @@ def api_shop(lang: str = 'ru') -> dict:
         ],
         'constructor_rub': CONSTRUCTOR_COST_RUB if PLATEGA_ENABLED else None,
         'constructor_usd': CONSTRUCTOR_PRICE_USD,
+        # V3.44.22: private-persona price in peaches (public ones are free).
+        'constructor_peaches': CONSTRUCTOR_COST_PEACHES,
         # V3.43.0: the pay-method modal only offers rows the backend can sell —
         # Platega (card/SBP) and Wallet Pay (crypto) are env-gated.
         'platega': PLATEGA_ENABLED,
@@ -669,13 +669,27 @@ def api_author(author_telegram_id: str) -> dict:
     return {'ok': True, 'author': {'id': author_id, 'name': name or 'Автор'}, 'characters': characters}
 
 
+def _character_likes_map() -> dict[str, int]:
+    """V3.44.22: total like count per character id (creator cabinet summary)."""
+    try:
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(CharacterLike.character_id, func.count()).group_by(CharacterLike.character_id)
+            ).all()
+            return {str(cid): int(cnt or 0) for cid, cnt in rows}
+    except Exception:
+        logger.exception('character likes map failed')
+        return {}
+
+
 def api_creator_cabinet(telegram_id: int) -> dict:
     """V3.44.11: the creator's cabinet — every character the caller built, with
-    the generated avatar, views, per-character earnings and the storefront
+    the generated avatar, views, likes, per-character earnings and the storefront
     (витрина) publish state, so the author can put a girl on the storefront or
-    take her back private."""
+    take her back private. V3.44.22 adds likes + summary totals."""
     rows = get_all_custom_characters(telegram_id)
     views = character_views_map()
+    likes = _character_likes_map()
     earnings = get_author_earnings_by_character(telegram_id)
     try:
         visible = {c.character_id for c in list_cards(visible_only=True)}
@@ -694,13 +708,20 @@ def api_creator_cabinet(telegram_id: int) -> dict:
                 # visibility agree — the cabinet shows the honest state.
                 'published': bool(row.community_published) and row.character_id in visible,
                 'views': views.get(row.character_id, 0),
+                'likes': likes.get(str(row.character_id), 0),
                 'earnings': round(earnings.get(row.character_id, 0.0), 2),
                 'created_at': row.created_at.isoformat() if row.created_at else '',
             })
         except Exception:
             logger.exception('cabinet row failed char=%s', row.character_id)
     total = round(sum(earnings.values()), 2)
-    return {'ok': True, 'characters': characters, 'total_earnings': total}
+    return {
+        'ok': True,
+        'characters': characters,
+        'total_earnings': total,
+        'total_views': sum(int(c.get('views') or 0) for c in characters),
+        'total_likes': sum(int(c.get('likes') or 0) for c in characters),
+    }
 
 
 def publish_creator_character(telegram_id: int, character_id: str, publish: bool) -> dict:

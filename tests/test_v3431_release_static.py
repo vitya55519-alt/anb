@@ -53,9 +53,14 @@ def test_gemini_image_retries_quota_bursts_twice():
 # ── 2. the peach pack ladder ────────────────────────────────────────────────
 
 def test_pack_prices_and_grants():
-    assert 'PEACH_PACK_10_STARS = int(os.getenv("PEACH_PACK_10_STARS", str(PHOTO_COST_STARS * 10)))' in CONFIG
-    assert 'PEACH_PACK_30_STARS = int(os.getenv("PEACH_PACK_30_STARS", str(int(PHOTO_COST_STARS * 30 * 0.9))))' in CONFIG
-    assert 'PEACH_PACK_100_STARS = int(os.getenv("PEACH_PACK_100_STARS", str(int(PHOTO_COST_STARS * 100 * 0.75))))' in CONFIG
+    # V3.44.22: explicit round prices — the PHOTO_COST_STARS × N ladder that
+    # priced 100 peaches above three months of Premium is retired.
+    assert 'PEACH_PACK_10_STARS = int(os.getenv("PEACH_PACK_10_STARS", "50"))' in CONFIG
+    assert 'PEACH_PACK_30_STARS = int(os.getenv("PEACH_PACK_30_STARS", "125"))' in CONFIG
+    assert 'PEACH_PACK_100_STARS = int(os.getenv("PEACH_PACK_100_STARS", "350"))' in CONFIG
+    assert 'PEACH_PACK_10_RUB = max(1, int(os.getenv("PEACH_PACK_10_RUB", "99")))' in CONFIG
+    assert 'PEACH_PACK_30_RUB = max(1, int(os.getenv("PEACH_PACK_30_RUB", "249")))' in CONFIG
+    assert 'PEACH_PACK_100_RUB = max(1, int(os.getenv("PEACH_PACK_100_RUB", "699")))' in CONFIG
     assert 'PEACH_PACK_CREDITS = {"peach_pack_10": 10, "peach_pack_30": 30, "peach_pack_100": 100}' in CONFIG
     # payments: priced in PRODUCTS, granted in one go
     assert '"peach_pack_10":PEACH_PACK_10_STARS' in PAYMENTS
@@ -74,8 +79,9 @@ def test_pack_stars_chain():
 
 def test_pack_fiat_and_notify_chains():
     fk = MAIN[MAIN.index('def _platega_amount_for('):MAIN.index("@dp.callback_query(F.data.startswith('platega:'))")]
-    assert 'if product in PEACH_PACK_STARS:' in fk
-    assert 'return fiat_values(PEACH_PACK_STARS[product])[0]' in fk
+    # V3.44.22: the card charge is the pack's REAL rub price, not a ladder guess
+    assert 'if product in PEACH_PACK_RUB:' in fk
+    assert 'return PEACH_PACK_RUB[product]' in fk
     notify = MAIN[MAIN.index('async def _platega_callback'):]
     notify = notify[notify.index("elif product == 'photo':"):notify.index('else:')]
     assert 'elif product in PEACH_PACK_CREDITS:' in notify
@@ -86,7 +92,8 @@ def test_pack_fiat_and_notify_chains():
 def test_pack_squares_and_badges():
     assert "'id': 'peach_pack_100'" in WEBAPP_SVC
     assert "'payload': 'peach_pack_30'" in WEBAPP_SVC
-    assert "'badge': '−25%'" in WEBAPP_SVC
+    assert "'badge': '−16%'" in WEBAPP_SVC
+    assert "'badge': '−29%'" in WEBAPP_SVC
     assert '100 персиков' in WEBAPP_SVC and '100 peaches' in WEBAPP_SVC
     # frontend: the discount corner badge + the pay modal reuse the grid
     assert 'const packBadge = x => x.badge' in INDEX

@@ -162,5 +162,7 @@ def test_pay_method_modal_frontend():
     assert "/webapp/api/pay_link?init_data=" in INDEX
     assert 'tg.openTelegramLink(j.url)' in INDEX
     # localized row labels in both languages
-    assert "pay_sbp: 'СБП / карта'" in INDEX and "pay_sbp: 'SBP / card'" in INDEX
+    # V3.44.22: the row label is honest — the Platega page takes card,
+    # SBP and crypto, so the button must not promise SBP/card only
+    assert "pay_sbp: 'Карта / СБП / крипта'" in INDEX and "pay_sbp: 'Card / SBP / crypto'" in INDEX
     assert "pay_crypto: 'Крипта (TON/USDT)'" in INDEX and "pay_crypto: 'Crypto (TON/USDT)'" in INDEX

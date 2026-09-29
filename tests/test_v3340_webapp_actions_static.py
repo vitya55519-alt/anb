@@ -198,6 +198,9 @@ def test_no_unescaped_backend_strings_in_templates():
             # V3.44.11: the creator-cabinet row fragments — built outside the
             # template from esc()'d fields and static L-constants only.
             'stateBadge', 'pubBtn',
+            # V3.44.22: the created-date suffix — a toLocaleDateString() output
+            # derived from a parsed Date, no backend markup can survive it.
+            'when',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         raise AssertionError(f'unescaped template value: {expr!r} in INDEX')

@@ -40,7 +40,7 @@ def test_legal_service_documents_exist():
     ):
         assert section in LEGAL, f'user agreement missing: {section}'
     # the documents are dated and identify the service
-    assert "LEGAL_VERSION = '2026-09-15'" in LEGAL
+    assert "LEGAL_VERSION = '2026-09-29'" in LEGAL
     assert 'LEGAL_DATE_RU' in LEGAL
     assert "os.getenv('LEGAL_BOT_USERNAME', '@Anna67901_bot')" in LEGAL
 
@@ -66,8 +66,10 @@ def test_tariffs_render_live_prices():
         'VIDEO_PREMIUM_FREE_DAILY',
         'GALLERY_DOWNLOAD_STARS',
         'QUEST_REPLAY_STARS',
-        'CONSTRUCTOR_COST_STARS',
-        'CONSTRUCTOR_COST_RUB',
+        'CONSTRUCTOR_COST_PEACHES',
+        'PEACH_PACK_STARS',
+        'PEACH_PACK_RUB',
+        'DONATION_AMOUNTS_RUB',
         'FREE_MESSAGES_PER_DAY',
         'FREE_PHOTOS_LEVEL_1_2',
         'FREE_PHOTOS_LEVEL_3_6',
@@ -76,6 +78,12 @@ def test_tariffs_render_live_prices():
     # gifts range and the daily discount come from the gift catalog itself
     assert 'gifts_service.GIFTS' in LEGAL
     assert 'gifts_service.DAILY_DISCOUNT' in LEGAL
+    # V3.44.22: the constructor is public-free / private-peaches, and the
+    # peach packs + the in-bot donation chooser are priced on the sheet too
+    assert 'создание своего персонажа — публичный бесплатно, приватный' in LEGAL
+    assert 'PEACH_PACK_RUB[pid]' in LEGAL
+    assert 'WEBAPP_PICTURE_COST_CREDITS' in LEGAL
+    assert "f'💖 Поддержка проекта — добровольный донат ({donation_variants})" in LEGAL
 
 
 def test_support_and_menu_and_splitter():
