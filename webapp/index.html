@@ -1747,12 +1747,12 @@ function renderFeature(j) {
   });
 }
 
-// ── V3.45.22: «Наедине» wizard (category → type → location → mood) ────────
+// ── V3.45.22: «Наедине» wizard (category → type → [color] → location → mood) ──
 let _hotData = null; // cached feature response
-let _hotSel = { cat: '', type: '', loc: '', mood: '' };
+let _hotSel = { cat: '', type: '', loc: '', mood: '', color: '' };
 
 function hotSelectCategory(catId) {
-  _hotSel = { cat: catId, type: '', loc: '', mood: '' };
+  _hotSel = { cat: catId, type: '', loc: '', mood: '', color: '' };
   const cat = (_hotData?.items || []).find(i => i.id === catId);
   if (!cat) return;
   const box = document.getElementById('featBody');
@@ -1767,18 +1767,40 @@ function hotSelectCategory(catId) {
 
 function hotSelectType(typeId) {
   _hotSel.type = typeId;
+  const cat = (_hotData?.items || []).find(i => i.id === _hotSel.cat) || {};
+  // V3.45.26: apparel categories offer a colour step before the location.
+  if (cat.has_color) return hotSelectColor();
+  return hotSelectLocation('');
+}
+
+function hotSelectColor() {
+  const box = document.getElementById('featBody');
+  document.getElementById('featTitle').textContent = 'Цвет';
+  const colors = _hotData?.colors || [];
+  box.innerHTML = '<div class="featlist">' + colors.map(c =>
+    '<div class="featitem" data-id="' + esc(c.id) + '" data-locked="0"><div class="fet"><div class="fen">' + esc(c.name) + '</div></div></div>'
+  ).join('') + '</div><div style="padding:12px;text-align:center"><button class="btn-back" id="hotBack">← Назад</button></div>';
+  box.querySelectorAll('.featitem').forEach(el => el.onclick = () => { _hotSel.color = el.dataset.id; hotSelectLocation(''); });
+  document.getElementById('hotBack').onclick = () => hotSelectCategory(_hotSel.cat);
+}
+
+function hotSelectLocation(locId) {
+  if (locId) _hotSel.loc = locId;
   const box = document.getElementById('featBody');
   document.getElementById('featTitle').textContent = 'Обстановка';
   const locs = _hotData?.locations || [];
   box.innerHTML = '<div class="featlist">' + locs.map(l =>
     '<div class="featitem" data-id="' + esc(l.id) + '" data-locked="0"><div class="fet"><div class="fen">' + esc(l.name) + '</div></div></div>'
   ).join('') + '</div><div style="padding:12px;text-align:center"><button class="btn-back" id="hotBack">← Назад</button></div>';
-  box.querySelectorAll('.featitem').forEach(el => el.onclick = () => hotSelectLocation(el.dataset.id));
-  document.getElementById('hotBack').onclick = () => hotSelectCategory(_hotSel.cat);
+  box.querySelectorAll('.featitem').forEach(el => el.onclick = () => hotSelectMood(el.dataset.id));
+  document.getElementById('hotBack').onclick = () => {
+    const cat = (_hotData?.items || []).find(i => i.id === _hotSel.cat) || {};
+    if (cat.has_color) hotSelectColor(); else hotSelectType(_hotSel.type);
+  };
 }
 
-function hotSelectLocation(locId) {
-  _hotSel.loc = locId;
+function hotSelectMood(moodId) {
+  _hotSel.loc = moodId;
   const box = document.getElementById('featBody');
   document.getElementById('featTitle').textContent = 'Настроение';
   const moods = _hotData?.moods || [];
@@ -1786,13 +1808,14 @@ function hotSelectLocation(locId) {
     '<div class="featitem" data-id="' + esc(m.id) + '" data-locked="0"><div class="fet"><div class="fen">' + esc(m.name) + '</div></div></div>'
   ).join('') + '</div><div style="padding:12px;text-align:center"><button class="btn-back" id="hotBack">← Назад</button></div>';
   box.querySelectorAll('.featitem').forEach(el => el.onclick = () => hotGenerate(el.dataset.id));
-  document.getElementById('hotBack').onclick = () => hotSelectType(_hotSel.type);
+  document.getElementById('hotBack').onclick = () => hotSelectLocation(_hotSel.loc);
 }
 
 function hotGenerate(moodId) {
   _hotSel.mood = moodId;
   closeFeature();
-  requestMedia('hot', _hotSel.cat + ':' + _hotSel.type + ':' + _hotSel.loc + ':' + _hotSel.mood);
+  // scene = cat:type:loc:mood:color (backend reads colour as the 5th part)
+  requestMedia('hot', [_hotSel.cat, _hotSel.type, _hotSel.loc, _hotSel.mood, _hotSel.color].join(':'));
 }
 
 

@@ -9145,6 +9145,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     type_id = parts[1] if len(parts) > 1 else ''
     loc_id = parts[2] if len(parts) > 2 else 'bedroom'
     mood_id = parts[3] if len(parts) > 3 else 'sensual'
+    color_id = parts[4] if len(parts) > 4 else ''  # V3.45.26: lingerie colour
     peach_cost = get_category_cost(cat_id) if not cosplay else COSPLAY_PHOTO_PEACH_COST
     # Check balance: free daily or peaches
     free_used = consume_free_private_photo(telegram_id, 'cosplay' if cosplay else cat_id)
@@ -9163,7 +9164,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         if not type_id:
             type_id = types[0]['id'] if types else 'default'
         req = PrivatePhotoRequest(category=cat_id, type_id=type_id, location_id=loc_id,
-                                  mood_id=mood_id, character_id=character_id)
+                                  mood_id=mood_id, character_id=character_id, color=color_id or None)
     # V3.45.23: nude categories cannot be produced by image-to-image edit (the
     # model keeps a clothed reference clothed) — render them via text-to-image
     # instead, anchoring identity with the text visual-lock only.
@@ -9509,6 +9510,7 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
         import re
         from services.private_photo_service import (
             PRIVATE_PHOTO_CATEGORIES, get_private_photo_usage, get_category_cost, LOCATIONS, MOODS,
+            LINGERIE_COLORS,
         )
         usage = get_private_photo_usage(telegram_id)
         items = []
@@ -9525,12 +9527,15 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
                 'subtitle': f"{cost} \U0001f351",
                 'locked': False,
                 'types': [{"id": t["id"], "name": t.get(name_key, t["name_ru"])} for t in cat_data.get('types', [])],
+                # V3.45.26: colour step is shown only for apparel categories
+                'has_color': cat_id in ('lingerie', 'suggestive', 'roleplay'),
             })
         locations = [{'id': loc['id'], 'name': loc.get(f'name_{"en" if lang == EN else "ru"}', loc['name_ru'])} for loc in LOCATIONS]
         moods = [{'id': m['id'], 'name': m.get(f'name_{"en" if lang == EN else "ru"}', m['name_ru'])} for m in MOODS]
+        colors = [{'id': c['id'], 'name': c.get(f'name_{"en" if lang == EN else "ru"}', c['name_ru'])} for c in LINGERIE_COLORS]
         title = 'Private' if lang == EN else 'Наедине'
         return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items,
-                                  'locations': locations, 'moods': moods})
+                                  'locations': locations, 'moods': moods, 'colors': colors})
     # V3.45.0: Косплей — персонажи
     if kind == 'cosplay':
         from services.private_photo_service import COSPLAY_CHARACTERS, get_private_photo_usage

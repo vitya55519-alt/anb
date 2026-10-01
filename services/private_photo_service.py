@@ -195,6 +195,20 @@ MOODS = [
     {"id": "random", "name_ru": "🎲 Случайное", "name_en": "🎲 Random"},
 ]
 
+# V3.45.26: цвета белья/одежды — выбор игрока в мастере «Наедине».
+# `word` — английское описание цвета для промпта.
+LINGERIE_COLORS = [
+    {"id": "black",   "name_ru": "🖤 Чёрное",    "name_en": "Black",   "word": "black"},
+    {"id": "white",   "name_ru": "🤍 Белое",     "name_en": "White",   "word": "white"},
+    {"id": "red",     "name_ru": "❤️ Красное",    "name_en": "Red",     "word": "red"},
+    {"id": "burgundy","name_ru": "🍷 Бордовое",   "name_en": "Burgundy","word": "deep burgundy / wine red"},
+    {"id": "nude",    "name_ru": "🤎 Бежевое",    "name_en": "Nude",    "word": "nude beige"},
+    {"id": "emerald", "name_ru": "💚 Изумрудное",  "name_en": "Emerald", "word": "emerald green"},
+    {"id": "royal",   "name_ru": "💙 Синее",      "name_en": "Royal blue", "word": "royal blue"},
+    {"id": "purple",  "name_ru": "💜 Фиолетовое", "name_en": "Purple",  "word": "purple / violet"},
+    {"id": "pink",    "name_ru": "🌸 Розовое",    "name_en": "Pink",    "word": "soft pink"},
+]
+
 
 # ─── Модели для хранения состояния ─────────────────────────────────────────────
 
@@ -206,6 +220,8 @@ class PrivatePhotoRequest:
     location_id: str  # ID обстановки
     mood_id: str  # ID настроения
     character_id: str = CHARACTER_ID
+    # V3.45.26: бельё/одежда — выбранный игроком цвет
+    color: Optional[str] = None
     # Для косплея
     cosplay_id: Optional[str] = None
 
@@ -326,36 +342,18 @@ def activate_hot_pass(telegram_id: int, duration_days: int) -> datetime:
 
 
 def _build_visual_identity_lock(character_id: str) -> str:
-    """V3.45.19: build a visual identity description (face, hair, body) for
-    private photo prompts. Uses the same character card / visual_identity data
-    as the regular photo pipeline."""
-    from services.character_card_service import get_card
-    from services.photo_service import resolve_character, BODY_SPECS, DEFAULT_FEMALE_BODY_SPEC
-    card = get_card(character_id)
-    character = resolve_character(character_id)
-    name = card.display_name if card else (character.get('name') or character_id)
+    """V3.45.26: delegate to the CANONICAL identity builder used by the regular
+    photo pipeline, so «Наедине» renders the exact same figure as an ordinary
+    photo. The old private copy drifted: it forced an exaggerated E-cup /
+    round-hips body onto constructor characters whose chosen bust is small.
+    """
+    from services.photo_service import _character_identity_lock
     try:
-        age = int(character.get('age') or 25)
-    except (TypeError, ValueError):
-        age = 25
-    visual_identity = character.get('visual_identity', {})
-    preserve = visual_identity.get('preserve_identity', [])
-    preserve_text = '; '.join(preserve) if preserve else 'consistent facial features, hair color and body proportions'
-    body_spec = visual_identity.get('body_spec') or ''
-    if not body_spec:
-        body_spec = BODY_SPECS.get(character_id, '') or DEFAULT_FEMALE_BODY_SPEC
-    lock = (
-        f'PHOTO IDENTITY — HIGHEST PRIORITY. Create the SAME fictional adult woman, {name}, age {age}. '
-        f'Preserve these exact traits: {preserve_text}. '
-        f'BODY IDENTITY: {name} has {body_spec}. This declared figure is a permanent body trait '
-        f'and STRICTLY OVERRIDES the reference images: even if a reference photo shows a smaller, '
-        f'flatter or different bust/build, always render the declared figure exactly as stated. '
-        f'Preserve this same figure — bust, waist, hips and silhouette — in every photo regardless of '
-        f'outfit, pose, angle or crop; never flatten, reduce or enlarge the bust, never widen the waist or hips. '
-        f'Do not substitute another person, do not change age, ethnicity, hair color or body type. '
-        f'She is the same woman in every photo.'
-    )
-    return lock
+        identity, _personal, _safety, _expression = _character_identity_lock(character_id)
+    except Exception as exc:  # pragma: no cover — defensive, keep generation alive
+        logger.warning('identity lock delegate failed for %s: %s', character_id, exc)
+        return ''
+    return identity
 
 # V3.45.23: pose & camera variety — without it every generation lands on the
 # same default standing/sitting pose (players noticed «одна и та же поза»).
@@ -402,22 +400,11 @@ def build_private_photo_prompt(
     """
     parts = []
     
-    # V3.45.19: use VISUAL identity (face, body, hair) instead of personality DNA
+    # V3.45.26: identity/body comes from the CANONICAL builder (same as the
+    # regular photo pipeline). It already embeds the face-scoped REFERENCE
+    # PROTOCOL and the BODY IDENTITY override, so no duplicate protocol here.
     visual_lock = _build_visual_identity_lock(request.character_id)
     if visual_lock:
-        if use_reference:
-            # V3.45.25: references are scoped to the FACE only. Letting the model
-            # read the body off reference image 2 was the figure-drift source —
-            # the lingerie references are inconsistent, so the bust/waist/hips
-            # jumped between photos. The BODY IDENTITY text below now overrides.
-            parts.append(
-                'REFERENCE PROTOCOL: Image 1 and Image 2 are identity references for her '
-                'FACE, hair color, skin tone and overall likeness ONLY. Do NOT copy the '
-                'body shape, bust size or proportions from the reference images — her figure '
-                'is fixed by the BODY IDENTITY declaration below, which overrides the references. '
-                'Keep the same face and the same declared figure in every photo.'
-            )
-        # Always add the text body spec as identity anchor (needed for t2i nude)
         parts.append(visual_lock)
     else:
         parts.append(f"Subject: {character_description}")
@@ -456,6 +443,11 @@ def build_private_photo_prompt(
             )
         elif request.category == "nude_art":
             parts.append('OUTFIT: artistic nude, bare skin, elegant and tasteful composition.')
+        # V3.45.26: player-picked colour for lingerie / apparel categories.
+        if request.color and request.category in ("lingerie", "suggestive", "roleplay"):
+            color_data = next((c for c in LINGERIE_COLORS if c["id"] == request.color), None)
+            if color_data:
+                parts.append(f"COLOR: her lingerie/outfit is {color_data['word']} — the whole set is this color.")
     
     # V3.45.23: random pose + camera so consecutive photos never repeat.
     import random
