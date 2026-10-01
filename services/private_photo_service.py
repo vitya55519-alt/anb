@@ -119,7 +119,6 @@ PRIVATE_PHOTO_CATEGORIES = {
             {"id": "coat", "name_ru": "Пальто на голое тело", "name_en": "Coat on bare body"},
             {"id": "dress", "name_ru": "Вечернее платье", "name_en": "Evening dress"},
             {"id": "shorts", "name_ru": "🩳 Короткие шорты + топ", "name_en": "🩳 Short shorts + top"},
-            {"id": "scarf", "name_ru": "Шарф и каблуки", "name_en": "Scarf and heels"},
             {"id": "wet", "name_ru": "🌧️ Мокрая футболка", "name_en": "🌧️ Wet t-shirt"},
         ]
     },
@@ -128,7 +127,7 @@ PRIVATE_PHOTO_CATEGORIES = {
 # Косплей — 25 образов из игр/аниме/поп-культуры
 COSPLAY_CHARACTERS = [
     {"id": "2b", "name": "🐱 2B (NieR: Automata)", "hair": "silver-white short bob", "outfit": "black gothic lolita dress with thigh-high slit, black thigh-high boots, black gloves", "accessories": "black blindfold over eyes"},
-    {"id": "mikasa", "name": "🔴 Микаса (Attack on Titan)", "hair": "long straight black hair", "outfit": "white shirt unbuttoned at top, brown corset belt, short brown skirt, brown knee-high boots", "accessories": "red scarf wrapped around neck, brown harness straps on thighs"},
+    {"id": "mikasa", "name": "🔴 Микаса (Attack on Titan)", "hair": "long straight black hair", "outfit": "white shirt unbuttoned at top, brown corset belt, short brown skirt, brown knee-high boots", "accessories": "brown harness straps on thighs"},
     {"id": "rei", "name": "💜 Рей Аянами (Evangelion)", "hair": "short blue bob", "outfit": "blue plugsuit (tight bodysuit) with deep V-neckline, blue and white color scheme", "accessories": "none"},
     {"id": "yor", "name": "🗡️ Йор Форджер (Spy x Family)", "hair": "long black hair in loose waves", "outfit": "black backless dress with deep side cutouts, black thigh-high heels", "accessories": "two long golden hair pins crossing at the back of head, red hair ribbon"},
     {"id": "tifa", "name": "🐉 Тифа (Final Fantasy VII)", "hair": "very long straight black hair past waist", "outfit": "white cropped tank top, black mini skirt, black suspenders", "accessories": "black leather gloves, red materia bracelet"},

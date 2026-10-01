@@ -477,7 +477,6 @@ ACCESSORY_POOL = [
     'small hoop earrings',
     'a thin bracelet',
     'an elegant wristwatch',
-    'a light silk scarf',
     'a small stylish handbag',
     'a subtle choker',
     'minimal stud earrings',
