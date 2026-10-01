@@ -415,8 +415,9 @@ async def _spicyapi_call(method: str, path: str, headers: dict = None, **kwargs)
             method, url, headers=default_headers, timeout=aiohttp.ClientTimeout(total=30), **kwargs
         ) as resp:
             body = await resp.json()
+            logger.info(f"SpicyAPI {method} {path}: status={resp.status}, body={body}")
             if body.get("code") != 200:
-                raise RuntimeError(f'SpicyAPI error: {body.get("code")} {body.get("msg")}')
+                raise RuntimeError(f'SpicyAPI error: {body.get("code")} {body.get("msg")} — full: {body}')
             return body.get("data", {})
 
 
@@ -438,14 +439,16 @@ async def generate_private_photo_real(
     try:
         # 1. Создаём задачу
         idempotency_key = str(uuid.uuid4())
+        logger.info(f"SpicyAPI: creating task, model={SPICYAPI_IMAGE_MODEL}")
         task_data = await _spicyapi_call(
             "POST", "/jobs/createTask",
             headers={"Idempotency-Key": idempotency_key},
             json={"model": SPICYAPI_IMAGE_MODEL, "input": {"prompt": prompt}}
         )
         task_id = task_data.get("taskId")
+        logger.info(f"SpicyAPI: task created, id={task_id}, data={task_data}")
         if not task_id:
-            logger.error("No taskId in SpicyAPI response")
+            logger.error(f"No taskId in SpicyAPI response: {task_data}")
             return None
         
         logger.info(f"SpicyAPI task: {task_id}")
