@@ -25,7 +25,8 @@ from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, asdict
 from sqlalchemy import select, func
 from services.db import SessionLocal
-from models.app_models import User, ensure_user, PrivateGallery
+from models.app_models import User, PrivateGallery
+from services.user_service import ensure_user
 from config import (
     PRIVATE_PHOTO_FREE_DAILY,
     COSPLAY_PHOTO_FREE_DAILY,
