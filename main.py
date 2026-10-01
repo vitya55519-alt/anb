@@ -9164,13 +9164,16 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         return cached, 'image/jpeg', 'jpg'
     # Generate via SpicyAPI (or fal.ai Seedream fallback)
     image_bytes = await generate_private_photo_real(req, dna_ctx)
+    engine_used = 'spicyapi'
     if not image_bytes:
         # Fallback: try fal.ai Seedream text-to-image
+        engine_used = 'fal_ai'
         try:
             from services.photo_service import _seedream_t2i
             image_bytes, _ = await _seedream_t2i(prompt)
         except Exception as exc:
             logger.warning('hot fal.ai fallback failed: %s', exc)
+    logger.info('hot generated user=%s engine=%s ok=%s', telegram_id, engine_used, bool(image_bytes))
     if not image_bytes:
         raise PhotoGenerationError('hot', 'all_providers_failed')
     # Charge peaches if free limit was not used
