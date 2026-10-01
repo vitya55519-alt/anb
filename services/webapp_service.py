@@ -1264,14 +1264,14 @@ def update_notification_prefs(telegram_id: int, prefs: dict) -> dict:
         return {}
 
 
-# V3.44.0: daily bonus wheel rewards — random Stars from 0.01 to 0.27.
-DAILY_BONUS_MIN_STARS = 0.01
-DAILY_BONUS_MAX_STARS = 0.27
+# V3.44.0: daily bonus wheel rewards — random peaches 0.01 to 0.27.
+DAILY_BONUS_MIN_PEACHES = 0.01
+DAILY_BONUS_MAX_PEACHES = 0.27
 
 
 def spin_daily_bonus(telegram_id: int) -> dict:
     """V3.44.0: spin the daily bonus wheel — one spin per calendar day.
-    V3.45: reward is random 0.01–0.27 ⭐."""
+    V3.45: reward is random 0.01–0.27 🍑 (peaches)."""
     from datetime import date
     import random
     today = date.today().isoformat()
@@ -1282,23 +1282,23 @@ def spin_daily_bonus(telegram_id: int) -> dict:
                 DailyBonus.date == today
             ).first()
             if existing:
-                return {'claimed': True, 'peaches': existing.reward_peaches, 'stars': existing.reward_stars}
-            # Random bonus: 0.01 to 0.27 Stars
-            stars_reward = round(random.uniform(DAILY_BONUS_MIN_STARS, DAILY_BONUS_MAX_STARS), 2)
+                return {'claimed': True, 'peaches': existing.reward_peaches, 'stars': 0}
+            # Random bonus: 0.01 to 0.27 peaches
+            peach_reward = round(random.uniform(DAILY_BONUS_MIN_PEACHES, DAILY_BONUS_MAX_PEACHES), 2)
             # Record the bonus
             bonus = DailyBonus(
                 telegram_id=telegram_id,
                 date=today,
-                reward_peaches=0,
-                reward_stars=stars_reward,
+                reward_peaches=peach_reward,
+                reward_stars=0,
             )
             s.add(bonus)
-            # Credit the user balance
+            # Credit the user peaches
             user = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
             if user:
-                user.token_balance = float(user.token_balance or 0) + stars_reward
+                user.photo_credits = float(user.photo_credits or 0) + peach_reward
             s.commit()
-            return {'claimed': False, 'peaches': 0, 'stars': stars_reward}
+            return {'claimed': False, 'peaches': peach_reward, 'stars': 0}
     except Exception:
         return {'claimed': False, 'peaches': 0, 'stars': 0}
 

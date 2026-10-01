@@ -570,15 +570,18 @@ def record_author_revenue(
     source: str,
 ) -> float:
     """V3.44.6: record author earnings when someone spends on a custom character.
+    V3.45: earnings stored in RUBLES (1 Star ≈ 2.5 ₽).
     
-    Returns the author's earnings in stars, or 0 if not a custom character.
+    Returns the author's earnings in rubles, or 0 if not a custom character.
     """
     if not is_custom_character(character_id):
         return 0.0
     row = get_custom_character_by_id(character_id)
     if not row or not row.author_telegram_id:
         return 0.0
-    earnings = amount_stars * (row.author_revenue_percent / 100.0)
+    # Convert Stars to Rubles: 1 Star ≈ 2.5 ₽
+    RUB_PER_STAR = 2.5
+    earnings_rub = round(amount_stars * RUB_PER_STAR * (row.author_revenue_percent / 100.0), 2)
     from models.app_models import AuthorRevenue
     with SessionLocal() as session:
         session.add(AuthorRevenue(
@@ -586,12 +589,12 @@ def record_author_revenue(
             character_id=character_id,
             spender_telegram_id=str(spender_telegram_id),
             amount_stars=amount_stars,
-            author_earnings_stars=earnings,
+            author_earnings_stars=earnings_rub,  # now stores RUBLES
             revenue_percent=row.author_revenue_percent,
             source=source,
         ))
         session.commit()
-    return earnings
+    return earnings_rub
 
 
 def get_author_total_earnings(telegram_id: int) -> float:
