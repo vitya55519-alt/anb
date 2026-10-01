@@ -308,6 +308,35 @@ def activate_hot_pass(telegram_id: int, duration_days: int) -> datetime:
 
 # ─── Промпт-конструктор ────────────────────────────────────────────────────────
 
+
+def _build_visual_identity_lock(character_id: str) -> str:
+    """V3.45.19: build a visual identity description (face, hair, body) for
+    private photo prompts. Uses the same character card / visual_identity data
+    as the regular photo pipeline."""
+    from services.character_card_service import get_card
+    from services.photo_service import resolve_character, BODY_SPECS, DEFAULT_FEMALE_BODY_SPEC
+    card = get_card(character_id)
+    character = resolve_character(character_id)
+    name = card.display_name if card else (character.get('name') or character_id)
+    try:
+        age = int(character.get('age') or 25)
+    except (TypeError, ValueError):
+        age = 25
+    visual_identity = character.get('visual_identity', {})
+    preserve = visual_identity.get('preserve_identity', [])
+    preserve_text = '; '.join(preserve) if preserve else 'consistent facial features, hair color and body proportions'
+    body_spec = visual_identity.get('body_spec') or ''
+    if not body_spec:
+        body_spec = BODY_SPECS.get(character_id, '') or DEFAULT_FEMALE_BODY_SPEC
+    lock = (
+        f'PHOTO IDENTITY — HIGHEST PRIORITY. Create the SAME fictional adult woman, {name}, age {age}. '
+        f'Preserve these exact traits: {preserve_text}. '
+        f'BODY IDENTITY: {name} has {body_spec}. This figure is permanent and overrides any reference. '
+        f'Do not substitute another person, do not change age, ethnicity, hair color or body type. '
+        f'She is the same woman in every photo.'
+    )
+    return lock
+
 def build_private_photo_prompt(
     request: PrivatePhotoRequest,
     character_description: str,
@@ -316,13 +345,17 @@ def build_private_photo_prompt(
     Строит промпт для SpicyAPI.
     
     Структура:
-    [персонаж из ДНК] + [категория] + [тип] + [обстановка] + [настроение]
+    [визуальная идентичность] + [категория] + [тип] + [обстановка] + [настроение]
     + [правило волос для косплея]
     """
     parts = []
     
-    # Базовый персонаж
-    parts.append(f"Subject: {character_description}")
+    # V3.45.19: use VISUAL identity (face, body, hair) instead of personality DNA
+    visual_lock = _build_visual_identity_lock(request.character_id)
+    if visual_lock:
+        parts.append(visual_lock)
+    else:
+        parts.append(f"Subject: {character_description}")
     
     # Обстановка
     location = next((loc for loc in LOCATIONS if loc["id"] == request.location_id), None)
