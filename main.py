@@ -9162,10 +9162,17 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         if not free_used:
             spend_peaches(telegram_id, PRIVATE_PHOTO_PEACH_COST)
         return cached, 'image/jpeg', 'jpg'
-    # Generate via SpicyAPI
-    image_bytes = await generate_private_photo_real(prompt)
+    # Generate via SpicyAPI (or fal.ai Seedream fallback)
+    image_bytes = await generate_private_photo_real(req, dna_ctx)
     if not image_bytes:
-        raise PhotoGenerationError('hot', 'spicyapi_failed')
+        # Fallback: try fal.ai Seedream text-to-image
+        try:
+            from services.photo_service import _seedream_t2i
+            image_bytes, _ = await _seedream_t2i(prompt)
+        except Exception as exc:
+            logger.warning('hot fal.ai fallback failed: %s', exc)
+    if not image_bytes:
+        raise PhotoGenerationError('hot', 'all_providers_failed')
     # Charge peaches if free limit was not used
     if not free_used:
         spend_peaches(telegram_id, PRIVATE_PHOTO_PEACH_COST)
@@ -9580,46 +9587,35 @@ async def _webapp_api_feature_action(request: web.Request) -> web.Response:
     from services.gamification_service import (
         completed_date_ids, consume_free_date, has_free_date, unlock_achievement,
     )
-    if telegram_id in ADMIN_TELEGRAM_IDS or has_free_date(telegram_id):
-        # Free weekly-streak date (or admin test): deliver app-native, no Stars.
-        if telegram_id not in ADMIN_TELEGRAM_IDS:
-            consume_free_date(telegram_id)
-        await record_user_message(telegram_id, user_name, relationship=date.affection, intimacy=date.affection / 2,
-                                  event_type='date', reason=f'date:{date.id}', character_id=character_id)
-        unlock_achievement(telegram_id, 'first_date')
-        completed = completed_date_ids(telegram_id)
-        if len(completed) >= 10:
-            unlock_achievement(telegram_id, 'ten_dates')
-        if len(completed) >= len(dates_service.get_all()):
-            unlock_achievement(telegram_id, 'date_collector')
-        track_event(uid, 'webapp_date_free', metadata={'date': date.id})
-        narration = f'{date.emoji} {date.text}'
-        save_message(uid, character_id, 'assistant', narration)
-        photo_url = None
-        try:
-            data, mime, ext = await _webapp_media_scene(telegram_id, character_id, date.scene)
-            if data:
-                filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
-                photo_url = f'/webapp/media/{filename}'
-                save_message(uid, character_id, 'assistant', '📸 фото с нашей прогулки', media_kind='photo', media_url=photo_url)
-        except Exception:
-            logger.warning('webapp date photo failed user=%s date=%s', telegram_id, date.id)
-        return web.json_response({'ok': True, 'kind': kind, 'delivered': True,
-                                  'text': narration, 'photo_url': photo_url})
+    # V3.45: dates cost peaches (not Stars). Free-streak / admin bypass.
+    if telegram_id not in ADMIN_TELEGRAM_IDS and not has_free_date(telegram_id):
+        if get_photo_credits(telegram_id) < date.cost:
+            return web.json_response({'ok': False, 'error': 'insufficient_peaches', 'cost': date.cost}, status=402)
+        spend_peaches(telegram_id, date.cost)
+    elif has_free_date(telegram_id):
+        consume_free_date(telegram_id)
+    await record_user_message(telegram_id, user_name, relationship=date.affection, intimacy=date.affection / 2,
+                              event_type='date', reason=f'date:{date.id}', character_id=character_id)
+    unlock_achievement(telegram_id, 'first_date')
+    completed = completed_date_ids(telegram_id)
+    if len(completed) >= 10:
+        unlock_achievement(telegram_id, 'ten_dates')
+    if len(completed) >= len(dates_service.get_all()):
+        unlock_achievement(telegram_id, 'date_collector')
+    track_event(uid, 'webapp_date_delivered', metadata={'date': date.id})
+    narration = f'{date.emoji} {date.text}'
+    save_message(uid, character_id, 'assistant', narration)
+    photo_url = None
     try:
-        link = await bot.create_invoice_link(
-            title=f'Свидание: {date.name}',
-            description=f'{date.emoji} {date.name}. В конце она пришлёт фото с прогулки 📸',
-            payload=f'date:{date.id}',
-            provider_token='',
-            currency='XTR',
-            prices=[LabeledPrice(label=date.name, amount=date.cost)],
-        )
+        data, mime, ext = await _webapp_media_scene(telegram_id, character_id, date.scene)
+        if data:
+            filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+            photo_url = f'/webapp/media/{filename}'
+            save_message(uid, character_id, 'assistant', '📸 фото с нашей прогулки', media_kind='photo', media_url=photo_url)
     except Exception:
-        logger.exception('webapp date invoice failed user=%s date=%s', telegram_id, date.id)
-        return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
-    track_event(uid, 'webapp_date_invoice', metadata={'date': date.id})
-    return web.json_response({'ok': True, 'kind': kind, 'delivered': False, 'invoice': link, 'cost': date.cost})
+        logger.warning('webapp date photo failed user=%s date=%s', telegram_id, date.id)
+    return web.json_response({'ok': True, 'kind': kind, 'delivered': True,
+                              'text': narration, 'photo_url': photo_url})
 
 
 async def _webapp_picture(request: web.Request) -> web.Response:

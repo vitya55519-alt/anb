@@ -1775,6 +1775,11 @@ async function featurePost(payload) {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
     if (r.status === 401) { toast(L.auth_short); return; }
+    if (r.status === 402) {
+      const je = await r.json().catch(() => ({}));
+      toast('Нужно ' + (je.cost || '?') + ' 🍑 — не хватает персиков');
+      return;
+    }
     if (r.status === 403) {
       const je = await r.json().catch(() => ({}));
       toast(je.error === 'consent' ? L.consent_needed : (je.error === 'premium_required' ? L.need_premium : L.locked));
