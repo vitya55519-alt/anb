@@ -1264,56 +1264,41 @@ def update_notification_prefs(telegram_id: int, prefs: dict) -> dict:
         return {}
 
 
-# V3.44.0: daily bonus wheel rewards — weighted random prizes.
-DAILY_BONUS_REWARDS = [
-    {'peaches': 5, 'stars': 0, 'weight': 40},    # common: 5 peaches
-    {'peaches': 10, 'stars': 0, 'weight': 25},   # uncommon: 10 peaches
-    {'peaches': 25, 'stars': 0, 'weight': 15},   # rare: 25 peaches
-    {'peaches': 50, 'stars': 0, 'weight': 10},   # epic: 50 peaches
-    {'peaches': 0, 'stars': 5, 'weight': 7},     # rare: 5 stars
-    {'peaches': 0, 'stars': 10, 'weight': 3},    # legendary: 10 stars
-]
+# V3.44.0: daily bonus wheel rewards — random Stars from 0.01 to 0.27.
+DAILY_BONUS_MIN_STARS = 0.01
+DAILY_BONUS_MAX_STARS = 0.27
 
 
 def spin_daily_bonus(telegram_id: int) -> dict:
-    """V3.44.0: spin the daily bonus wheel — one spin per calendar day."""
+    """V3.44.0: spin the daily bonus wheel — one spin per calendar day.
+    V3.45: reward is random 0.01–0.27 ⭐."""
     from datetime import date
+    import random
     today = date.today().isoformat()
     try:
         with SessionLocal() as s:
-            # Check if already claimed today
             existing = s.query(DailyBonus).filter(
                 DailyBonus.telegram_id == telegram_id,
                 DailyBonus.date == today
             ).first()
             if existing:
                 return {'claimed': True, 'peaches': existing.reward_peaches, 'stars': existing.reward_stars}
-            # Weighted random selection
-            import random
-            total_weight = sum(r['weight'] for r in DAILY_BONUS_REWARDS)
-            roll = random.randint(1, total_weight)
-            cumulative = 0
-            reward = DAILY_BONUS_REWARDS[0]
-            for r in DAILY_BONUS_REWARDS:
-                cumulative += r['weight']
-                if roll <= cumulative:
-                    reward = r
-                    break
+            # Random bonus: 0.01 to 0.27 Stars
+            stars_reward = round(random.uniform(DAILY_BONUS_MIN_STARS, DAILY_BONUS_MAX_STARS), 2)
             # Record the bonus
             bonus = DailyBonus(
                 telegram_id=telegram_id,
                 date=today,
-                reward_peaches=reward['peaches'],
-                reward_stars=reward['stars'],
+                reward_peaches=0,
+                reward_stars=stars_reward,
             )
             s.add(bonus)
-            # Credit the user
+            # Credit the user balance
             user = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
             if user:
-                user.photo_credits = (user.photo_credits or 0) + reward['peaches']
-                user.token_balance = (user.token_balance or 0) + reward['stars']
+                user.token_balance = float(user.token_balance or 0) + stars_reward
             s.commit()
-            return {'claimed': False, 'peaches': reward['peaches'], 'stars': reward['stars']}
+            return {'claimed': False, 'peaches': 0, 'stars': stars_reward}
     except Exception:
         return {'claimed': False, 'peaches': 0, 'stars': 0}
 

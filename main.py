@@ -9130,6 +9130,53 @@ async def _webapp_media_photo(telegram_id: int, character_id: str, scene: str = 
     return await _webapp_pipeline_photo(telegram_id, character_id, PhotoRequest(scene=scene))
 
 
+async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, cosplay: bool = False):
+    """V3.45: generate a private/cosplay photo via SpicyAPI."""
+    from services.private_photo_service import (
+        PrivatePhotoRequest, build_private_photo_prompt, generate_private_photo_real,
+        get_private_photo_usage, consume_free_private_photo, cache_get, cache_save,
+        gallery_save, check_achievements, COSPLAY_CHARACTERS, PRIVATE_PHOTO_CATEGORIES,
+    )
+    from services.character_dna_service import character_dna_context
+    # Check balance: free daily or peaches
+    free_used = consume_free_private_photo(telegram_id, 'cosplay' if cosplay else category)
+    if not free_used:
+        if get_photo_credits(telegram_id) < PRIVATE_PHOTO_PEACH_COST:
+            raise PhotoGenerationError('hot', 'insufficient_peaches')
+    # Build request
+    dna_ctx = character_dna_context(character_id)
+    if cosplay:
+        cos_char = next((c for c in COSPLAY_CHARACTERS if c['id'] == category), COSPLAY_CHARACTERS[0])
+        req = PrivatePhotoRequest(category='cosplay', type_id='default', location_id='bedroom',
+                                  mood_id='playful', character_id=character_id, cosplay_id=category)
+    else:
+        cat_data = PRIVATE_PHOTO_CATEGORIES.get(category, {})
+        types = cat_data.get('types', [])
+        type_id = types[0]['id'] if types else 'default'
+        req = PrivatePhotoRequest(category=category, type_id=type_id, location_id='bedroom',
+                                  mood_id='sensual', character_id=character_id)
+    prompt = build_private_photo_prompt(req, dna_ctx)
+    # Check cache
+    cached = cache_get(prompt, character_id)
+    if cached:
+        if not free_used:
+            spend_peaches(telegram_id, PRIVATE_PHOTO_PEACH_COST)
+        return cached, 'image/jpeg', 'jpg'
+    # Generate via SpicyAPI
+    image_bytes = await generate_private_photo_real(prompt)
+    if not image_bytes:
+        raise PhotoGenerationError('hot', 'spicyapi_failed')
+    # Charge peaches if free limit was not used
+    if not free_used:
+        spend_peaches(telegram_id, PRIVATE_PHOTO_PEACH_COST)
+    # Save to cache + gallery
+    type_id = req.type_id
+    cache_save(prompt, character_id, category, type_id, image_bytes)
+    gallery_save(telegram_id, character_id, category, type_id, image_bytes)
+    check_achievements(telegram_id)
+    return image_bytes, 'image/jpeg', 'jpg'
+
+
 async def _webapp_media_circle(telegram_id: int, character_id: str):
     """V3.39.0: a video circle from the canonical face — same engine chain the
     bot's «🎥 кружочек» uses (Gemini → Replicate → fal → HF)."""
@@ -9254,7 +9301,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', ''))
     kind = str(body.get('kind', ''))
     scene = str(body.get('scene') or 'selfie')[:40]
-    if kind not in ('photo', 'circle', 'voice', 'video') or not character_id:
+    if kind not in ('photo', 'circle', 'voice', 'video', 'hot', 'cosplay') or not character_id:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     if is_custom_character(character_id):
         if not get_custom_character_by_id(character_id):
@@ -9305,6 +9352,10 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             data, mime, ext = await _webapp_media_circle(telegram_id, character_id)
         elif kind == 'video':
             data, mime, ext = await _webapp_media_video(telegram_id, character_id)
+        elif kind == 'hot':
+            data, mime, ext = await _webapp_media_hot(telegram_id, character_id, scene)
+        elif kind == 'cosplay':
+            data, mime, ext = await _webapp_media_hot(telegram_id, character_id, scene, cosplay=True)
         else:
             data, mime, ext = await _webapp_media_voice(telegram_id, character_id)
     except Exception:
@@ -9315,12 +9366,15 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
     url = f'/webapp/media/{filename}'
     if kind == 'photo':
-        # V3.43.7: her caption is scene-flavored, the same AUTO_CAPTIONS the
-        # bot's photo delivery attaches.
-        content = f'📸 {random.choice(AUTO_CAPTIONS.get(scene, ("отправила фото",)))}'
+        _default_cap = ('\u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0444\u043e\u0442\u043e',)
+        content = f'\U0001f4f8 {random.choice(AUTO_CAPTIONS.get(scene, _default_cap))}'
+    elif kind in ('hot', 'cosplay'):
+        content = '\U0001f48b \u043d\u0430\u0435\u0434\u0438\u043d\u0435...' if kind == 'hot' else '\U0001f3ad \u043a\u043e\u0441\u043f\u043b\u0435\u0439 \u0434\u043b\u044f \u0442\u0435\u0431\u044f'
     else:
-        content = {'circle': '🎥 отправила кружочек',
-                   'voice': '🎙 отправила голосовое', 'video': '🎬 отправила видео'}[kind]
+        _media_caps = {'circle': '\U0001f3a5 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u043a\u0440\u0443\u0436\u043e\u0447\u0435\u043a',
+                       'voice': '\U0001f399 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0433\u043e\u043b\u043e\u0441\u043e\u0432\u043e\u0435',
+                       'video': '\U0001f3ac \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0432\u0438\u0434\u0435\u043e'}
+        content = _media_caps.get(kind, '')
     save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
     if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
         logger.warning('webapp chat photo credit race user=%s', telegram_id)
@@ -9423,14 +9477,15 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
         usage = get_private_photo_usage(telegram_id)
         items = []
         for cat_id, cat_data in PRIVATE_PHOTO_CATEGORIES.items():
+            name_key = f'name_{"en" if lang == EN else "ru"}'
             items.append({
                 'id': cat_id,
-                'emoji': cat_data['name_ru'].split(' ')[0],
-                'title': cat_data.get(f'name_{"en" if lang == EN else "ru"}', cat_data['name_ru']),
-                'subtitle': f"{PRIVATE_PHOTO_PEACH_COST} 🍑" if not usage['hot_pass_active'] and usage['private_left'] <= 0 else '🔥 Hot Pass',
+                'emoji': '',
+                'title': cat_data.get(name_key, cat_data['name_ru']),
+                'subtitle': f"{PRIVATE_PHOTO_PEACH_COST} \U0001f351",
                 'locked': False,
             })
-        title = '💋 Private' if lang == EN else '💋 Наедине'
+        title = '\U0001f48b Private' if lang == EN else '\U0001f48b \u041d\u0430\u0435\u0434\u0438\u043d\u0435'
         return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
     # V3.45.0: Косплей — персонажи
     if kind == 'cosplay':

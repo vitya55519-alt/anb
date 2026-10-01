@@ -1733,6 +1733,9 @@ function renderFeature(j) {
       if (el.dataset.locked === '1') { toast(el.dataset.hint || L.locked); return; }
       if (j.kind === 'apartment') toggleRoomActions(el);
       else if (j.kind === 'date') featurePost({ kind: 'date', id: el.dataset.id });
+      else if (j.kind === 'hot') { closeFeature(); requestMedia('hot', el.dataset.id); }
+      else if (j.kind === 'cosplay') { closeFeature(); requestMedia('cosplay', el.dataset.id); }
+      else if (j.kind === 'video') { closeFeature(); requestMedia('video', 'animate'); }
     });
   });
   box.querySelectorAll('.featactions button').forEach(b => {
@@ -2704,9 +2707,9 @@ async function spinDailyBonus() {
         toast(L.bonus_already);
       } else {
         const reward = [];
-        if (j.bonus.peaches > 0) reward.push(j.bonus.peaches + ' ');
-        if (j.bonus.stars > 0) reward.push(j.bonus.stars + ' ⭐');
-        toast(' ' + reward.join(' + '));
+        if (j.bonus.peaches > 0) reward.push(j.bonus.peaches + ' 🍑');
+        if (j.bonus.stars > 0) reward.push(j.bonus.stars.toFixed(2) + ' ⭐');
+        toast('🎡 ' + reward.join(' + '));
         loadDailyBonusStatus();
         loadMe(); // refresh balance
       }
