@@ -30,6 +30,7 @@ from config import (
 )
 from models.app_models import PartnerTransaction, ProductEvent, Referral, User
 from services.db import SessionLocal
+from services.user_service import ensure_user
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,22 @@ def accrue_commission(
             referrer_id, payer_user_id, product, rub_value, amount,
         )
         return {"id": row.id, "user_id": referrer_id, "amount_rub": amount, "product": product}
+
+
+def credit_manual_rubles(telegram_id: int, amount_rub: float, reason: str = 'conversion') -> None:
+    """V3.45: credit rubles to a user's partner balance (e.g. peach conversion)."""
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as s:
+        row = PartnerTransaction(
+            user_id=uid,
+            kind="commission",
+            amount_rub=amount_rub,
+            status="done",
+            product=reason,
+            source_charge_id=f"conv_{uid}_{reason}_{int(amount_rub*100)}",
+        )
+        s.add(row)
+        s.commit()
 
 
 def partner_stats(user_id: int) -> dict:

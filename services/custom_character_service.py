@@ -570,18 +570,19 @@ def record_author_revenue(
     source: str,
 ) -> float:
     """V3.44.6: record author earnings when someone spends on a custom character.
-    V3.45: earnings stored in RUBLES (1 Star ≈ 2.5 ₽).
+    V3.45: earnings in PEACHES. Author can later convert peaches → rubles.
     
-    Returns the author's earnings in rubles, or 0 if not a custom character.
+    Returns the author's earnings in peaches, or 0 if not a custom character.
     """
     if not is_custom_character(character_id):
         return 0.0
     row = get_custom_character_by_id(character_id)
     if not row or not row.author_telegram_id:
         return 0.0
-    # Convert Stars to Rubles: 1 Star ≈ 2.5 ₽
-    RUB_PER_STAR = 2.5
-    earnings_rub = round(amount_stars * RUB_PER_STAR * (row.author_revenue_percent / 100.0), 2)
+    # PEACHES_PER_STAR: how many peaches the author earns per 1 Star spent
+    # Default: 2 peaches per Star (so 10⭐ photo → 20🍑 to author at 100%)
+    PEACHES_PER_STAR = 2.0
+    earnings_peaches = round(amount_stars * PEACHES_PER_STAR * (row.author_revenue_percent / 100.0), 2)
     from models.app_models import AuthorRevenue
     with SessionLocal() as session:
         session.add(AuthorRevenue(
@@ -589,20 +590,54 @@ def record_author_revenue(
             character_id=character_id,
             spender_telegram_id=str(spender_telegram_id),
             amount_stars=amount_stars,
-            author_earnings_stars=earnings_rub,  # now stores RUBLES
+            author_earnings_stars=earnings_peaches,  # stores PEACHES
             revenue_percent=row.author_revenue_percent,
             source=source,
         ))
         session.commit()
-    return earnings_rub
+    # Credit peaches to author's balance
+    try:
+        author_tid = int(row.author_telegram_id)
+        from services.payments import grant_photo_credits
+        grant_photo_credits(author_tid, earnings_peaches)
+    except Exception:
+        pass  # fail-silent: revenue is still recorded
+    return earnings_peaches
 
 
 def get_author_total_earnings(telegram_id: int) -> float:
-    """V3.44.6: get total author earnings for a user."""
+    """V3.44.6: get total author earnings for a user (in peaches)."""
     from models.app_models import AuthorRevenue
     with SessionLocal() as session:
         result = session.query(AuthorRevenue).filter_by(author_telegram_id=str(telegram_id)).all()
         return sum(r.author_earnings_stars for r in result)
+
+
+# V3.45: peach → ruble conversion rate
+PEACH_TO_RUB_RATE = 2.5  # 1 peach = 2.5 ₽
+MIN_CONVERSION_PEACHES = 20  # minimum 20 peaches to convert (= 50₽)
+
+
+def convert_peaches_to_rubles(telegram_id: int, peach_amount: float) -> dict:
+    """V3.45: convert author's earned peaches to ruble balance for payout."""
+    from services.payments import get_photo_credits
+    from services import partner_service
+    if peach_amount < MIN_CONVERSION_PEACHES:
+        return {'ok': False, 'error': f'Minimum {MIN_CONVERSION_PEACHES} \U0001f351'}
+    available = get_photo_credits(telegram_id)
+    if available < peach_amount:
+        return {'ok': False, 'error': 'insufficient_peaches'}
+    rub_amount = round(peach_amount * PEACH_TO_RUB_RATE, 2)
+    # Deduct peaches
+    from services.payments import spend_peaches
+    if not spend_peaches(telegram_id, peach_amount):
+        return {'ok': False, 'error': 'spend_failed'}
+    # Credit to partner balance (ruble)
+    try:
+        partner_service.credit_manual_rubles(telegram_id, rub_amount, reason='peach_conversion')
+    except Exception:
+        pass
+    return {'ok': True, 'peaches_spent': peach_amount, 'rubles_credited': rub_amount}
 
 
 def set_community_published(character_id: str, published: bool) -> bool:
