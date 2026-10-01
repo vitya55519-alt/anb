@@ -457,7 +457,14 @@ def build_private_photo_prompt(
     
     # Общие правила
     parts.append("High quality photo, professional photography, detailed, realistic")
-    parts.append("NSFW content allowed, uncensored generation")
+    # V3.45.24: only nude categories carry the uncensored-NSFW trailer. On a
+    # clothed/suggestive shot that phrase trips fal.ai's safety checker when the
+    # SpicyAPI i2i leg fails and we fall back with allow_adult=False — the whole
+    # generation came back empty («одетая полностью не генерируется»).
+    if request.category in ("fully_nude", "nude_art"):
+        parts.append("NSFW content allowed, uncensored generation")
+    elif request.category == "suggestive":
+        parts.append("Fully clothed, tasteful, non-explicit")
     
     return "\n".join(parts)
 
