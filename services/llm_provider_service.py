@@ -92,6 +92,14 @@ class LLMResult:
     model: str
 
 
+import re
+_THINK_RE = re.compile(r'<think(?:ing)?>.*?</think(?:ing)?>', re.DOTALL | re.IGNORECASE)
+
+def _strip_thinking(text: str) -> str:
+    """V3.45: remove / tags that MiniMax/reasoning models leak."""
+    return _THINK_RE.sub('', text).strip()
+
+
 async def generate_text(
     messages: list[dict],
     *,
@@ -132,7 +140,7 @@ async def generate_text(
             if extra:
                 kwargs['extra_body'] = extra
             r = await _openrouter.chat.completions.create(**kwargs)
-            text = (r.choices[0].message.content or '').strip()
+            text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'openrouter', OPENROUTER_MODEL, r)
             logger.info('LLM ok provider=openrouter model=%s purpose=%s len=%d', OPENROUTER_MODEL, purpose, len(text))
             return LLMResult(text, 'openrouter', OPENROUTER_MODEL)
@@ -150,7 +158,7 @@ async def generate_text(
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            text = (r.choices[0].message.content or '').strip()
+            text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'minimax', MINIMAX_MODEL, r)
             logger.info('LLM ok provider=minimax model=%s purpose=%s len=%d', MINIMAX_MODEL, purpose, len(text))
             return LLMResult(text, 'minimax', MINIMAX_MODEL)
@@ -167,7 +175,7 @@ async def generate_text(
                 messages=messages,
                 max_tokens=max_tokens,
             )
-            text = (r.choices[0].message.content or '').strip()
+            text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'gemini', GEMINI_CHAT_MODEL, r)
             logger.info('LLM ok provider=gemini model=%s purpose=%s len=%d', GEMINI_CHAT_MODEL, purpose, len(text))
             return LLMResult(text, 'gemini', GEMINI_CHAT_MODEL)

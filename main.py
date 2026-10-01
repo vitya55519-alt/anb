@@ -9368,7 +9368,7 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
     kind = str(request.query.get('kind', ''))
-    if kind not in ('apartment', 'date', 'quest', 'photo'):
+    if kind not in ('apartment', 'date', 'quest', 'photo', 'video', 'cosplay', 'hot'):
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     character_id = str(request.query.get('character_id', '')) or get_user_character(telegram_id)
     ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
@@ -9417,7 +9417,42 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
         } for scene in PHOTO_MENU_ORDER]
         title = '📸 Photo' if lang == EN else '📸 Фото'
         return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
-    from services import couple_service
+    # V3.45.0: Фото наедине — категории
+    if kind == 'hot':
+        from services.private_photo_service import PRIVATE_PHOTO_CATEGORIES, get_private_photo_usage
+        usage = get_private_photo_usage(telegram_id)
+        items = []
+        for cat_id, cat_data in PRIVATE_PHOTO_CATEGORIES.items():
+            items.append({
+                'id': cat_id,
+                'emoji': cat_data['name_ru'].split(' ')[0],
+                'title': cat_data.get(f'name_{"en" if lang == EN else "ru"}', cat_data['name_ru']),
+                'subtitle': f"{PRIVATE_PHOTO_PEACH_COST} 🍑" if not usage['hot_pass_active'] and usage['private_left'] <= 0 else '🔥 Hot Pass',
+                'locked': False,
+            })
+        title = '💋 Private' if lang == EN else '💋 Наедине'
+        return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
+    # V3.45.0: Косплей — персонажи
+    if kind == 'cosplay':
+        from services.private_photo_service import COSPLAY_CHARACTERS, get_private_photo_usage
+        usage = get_private_photo_usage(telegram_id)
+        items = []
+        for c in COSPLAY_CHARACTERS:
+            items.append({
+                'id': c['id'],
+                'emoji': '🎭',
+                'title': c['name'],
+                'subtitle': c.get('outfit', '')[:40],
+                'locked': False,
+            })
+        title = '🎭 Cosplay' if lang == EN else '🎭 Косплей'
+        return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
+    # V3.45.0: Видео
+    if kind == 'video':
+        items = [{'id': 'video', 'emoji': '🎬', 'title': 'Сделать видео из фото' if lang == RU else 'Make video from photo',
+                  'subtitle': f'{5} 🍑' if lang == RU else '5 🍑', 'locked': False}]
+        title = '🎬 Video' if lang == EN else '🎬 Видео'
+        return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
     _, quest_text = couple_service.daily_quest(telegram_id)
     user = get_user(telegram_id)
     claimed = bool(user and (user.quest_claimed_date or '') == couple_service._today_key())
