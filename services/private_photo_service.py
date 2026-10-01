@@ -443,7 +443,15 @@ async def generate_private_photo_real(
         task_data = await _spicyapi_call(
             "POST", "/jobs/createTask",
             headers={"Idempotency-Key": idempotency_key},
-            json={"model": SPICYAPI_IMAGE_MODEL, "input": {"prompt": prompt}}
+            json={
+                "model": SPICYAPI_IMAGE_MODEL,
+                "input": {
+                    "prompt": prompt,
+                    "resolution": "1k",
+                    "aspect_ratio": "3:4",
+                    "output_format": "jpeg",
+                }
+            }
         )
         task_id = task_data.get("taskId")
         logger.info(f"SpicyAPI: task created, id={task_id}, data={task_data}")

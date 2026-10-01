@@ -63,7 +63,7 @@ VOICE_PHOTO_PEACH_COST = max(1, int(os.getenv("VOICE_PHOTO_PEACH_COST", "3")))
 # Серия фото (3-5 штук в одном образе)
 PHOTO_SERIES_PEACH_COST = max(1, int(os.getenv("PHOTO_SERIES_PEACH_COST", "5")))
 # SpicyAPI модель для uncensored генерации
-SPICYAPI_IMAGE_MODEL = os.getenv("SPICYAPI_IMAGE_MODEL", "seedream-5-pro").strip()
+SPICYAPI_IMAGE_MODEL = os.getenv("SPICYAPI_IMAGE_MODEL", "bytedance/seedream-5.0-pro/text-to-image").strip()
 SPICYAPI_IMAGE_TIMEOUT = max(30, min(180, int(os.getenv("SPICYAPI_IMAGE_TIMEOUT", "90"))))
 
 # Legacy OpenAI key — kept ONLY for optional TTS/Whisper/moderation.
