@@ -120,16 +120,31 @@ async def generate_text(
         logger.warning('LLM aux skipped by daily budget purpose=%s', purpose)
         return LLMResult('', 'budget', 'skipped')
 
-    # ── 1. OpenRouter (primary chat provider) ─────────────────────────
+    # ── 1. MiniMax (V3.45: primary chat provider) ─────────────────────
+    if _minimax:
+        try:
+            r = await _minimax.chat.completions.create(
+                model=MINIMAX_MODEL,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            text = _strip_thinking((r.choices[0].message.content or '').strip())
+            _record_usage(purpose, 'minimax', MINIMAX_MODEL, r)
+            logger.info('LLM ok provider=minimax model=%s purpose=%s len=%d', MINIMAX_MODEL, purpose, len(text))
+            return LLMResult(text, 'minimax', MINIMAX_MODEL)
+        except Exception as exc:
+            detail = f'MiniMax({MINIMAX_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
+            errors.append(detail)
+            logger.warning('MiniMax FAILED purpose=%s %s', purpose, detail)
+
+    # ── 2. OpenRouter (fallback) ─────────────────────────────────────
     if _openrouter:
         try:
-            # MiniMax M3 supports reasoning mode for more natural responses
             extra = {}
             if purpose == 'dialogue':
                 extra['reasoning'] = {'enabled': True}
             if LLM_REPORT_USAGE:
-                # makes OpenRouter attach usage.cost to the response — the only
-                # way to see the real bill per call without the dashboard
                 extra['usage'] = {'include': True}
             kwargs = dict(
                 model=OPENROUTER_MODEL,
@@ -148,24 +163,6 @@ async def generate_text(
             detail = f'OpenRouter({OPENROUTER_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
             errors.append(detail)
             logger.warning('OpenRouter FAILED purpose=%s %s', purpose, detail)
-
-    # ── 2. MiniMax (V3.45: backup — дешевле, но пока нестабилен) ────
-    if _minimax:
-        try:
-            r = await _minimax.chat.completions.create(
-                model=MINIMAX_MODEL,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            text = _strip_thinking((r.choices[0].message.content or '').strip())
-            _record_usage(purpose, 'minimax', MINIMAX_MODEL, r)
-            logger.info('LLM ok provider=minimax model=%s purpose=%s len=%d', MINIMAX_MODEL, purpose, len(text))
-            return LLMResult(text, 'minimax', MINIMAX_MODEL)
-        except Exception as exc:
-            detail = f'MiniMax({MINIMAX_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
-            errors.append(detail)
-            logger.warning('MiniMax FAILED purpose=%s %s', purpose, detail)
 
     # ── 2. Gemini fallback ────────────────────────────────────────────
     if _gemini:
