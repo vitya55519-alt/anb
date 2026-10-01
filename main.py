@@ -9473,19 +9473,23 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
         return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
     # V3.45.0: Фото наедине — категории
     if kind == 'hot':
+        import re
         from services.private_photo_service import PRIVATE_PHOTO_CATEGORIES, get_private_photo_usage
         usage = get_private_photo_usage(telegram_id)
         items = []
         for cat_id, cat_data in PRIVATE_PHOTO_CATEGORIES.items():
             name_key = f'name_{"en" if lang == EN else "ru"}'
+            raw_name = cat_data.get(name_key, cat_data['name_ru'])
+            # Strip leading emoji characters from category name
+            clean_name = re.sub(r'^[^\w\s]+\s*', '', raw_name).strip() or raw_name
             items.append({
                 'id': cat_id,
                 'emoji': '',
-                'title': cat_data.get(name_key, cat_data['name_ru']),
+                'title': clean_name,
                 'subtitle': f"{PRIVATE_PHOTO_PEACH_COST} \U0001f351",
                 'locked': False,
             })
-        title = '\U0001f48b Private' if lang == EN else '\U0001f48b \u041d\u0430\u0435\u0434\u0438\u043d\u0435'
+        title = 'Private' if lang == EN else 'Наедине'
         return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
     # V3.45.0: Косплей — персонажи
     if kind == 'cosplay':

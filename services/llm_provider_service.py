@@ -120,24 +120,7 @@ async def generate_text(
         logger.warning('LLM aux skipped by daily budget purpose=%s', purpose)
         return LLMResult('', 'budget', 'skipped')
 
-    # ── 1. Gemini (V3.45: free, always works) ─────────────────────────
-    if _gemini:
-        try:
-            r = await _gemini.chat.completions.create(
-                model=GEMINI_CHAT_MODEL,
-                messages=messages,
-                max_tokens=max_tokens,
-            )
-            text = _strip_thinking((r.choices[0].message.content or '').strip())
-            _record_usage(purpose, 'gemini', GEMINI_CHAT_MODEL, r)
-            logger.info('LLM ok provider=gemini model=%s purpose=%s len=%d', GEMINI_CHAT_MODEL, purpose, len(text))
-            return LLMResult(text, 'gemini', GEMINI_CHAT_MODEL)
-        except Exception as exc:
-            detail = f'Gemini({GEMINI_CHAT_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
-            errors.append(detail)
-            logger.warning('Gemini FAILED purpose=%s %s', purpose, detail)
-
-    # ── 2. MiniMax (V3.45: needs correct key in Railway) ─────────────
+    # ── 1. MiniMax (V3.45: primary chat provider) ─────────────────────
     if _minimax:
         try:
             r = await _minimax.chat.completions.create(
@@ -154,6 +137,23 @@ async def generate_text(
             detail = f'MiniMax({MINIMAX_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
             errors.append(detail)
             logger.warning('MiniMax FAILED purpose=%s %s', purpose, detail)
+
+    # ── 2. Gemini (free fallback) ────────────────────────────────────
+    if _gemini:
+        try:
+            r = await _gemini.chat.completions.create(
+                model=GEMINI_CHAT_MODEL,
+                messages=messages,
+                max_tokens=max_tokens,
+            )
+            text = _strip_thinking((r.choices[0].message.content or '').strip())
+            _record_usage(purpose, 'gemini', GEMINI_CHAT_MODEL, r)
+            logger.info('LLM ok provider=gemini model=%s purpose=%s len=%d', GEMINI_CHAT_MODEL, purpose, len(text))
+            return LLMResult(text, 'gemini', GEMINI_CHAT_MODEL)
+        except Exception as exc:
+            detail = f'Gemini({GEMINI_CHAT_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
+            errors.append(detail)
+            logger.warning('Gemini FAILED purpose=%s %s', purpose, detail)
 
     # ── 3. OpenRouter (fallback, needs balance) ──────────────────────
     if _openrouter:
