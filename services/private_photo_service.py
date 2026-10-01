@@ -354,8 +354,13 @@ def build_private_photo_prompt(
     # V3.45.19: use VISUAL identity (face, body, hair) instead of personality DNA
     visual_lock = _build_visual_identity_lock(request.character_id)
     if visual_lock:
-        # For image-to-image edit mode: keep identity brief, reference does the work
-        parts.append('Keep the same woman from the reference photo — her exact face, hair color, body proportions and identity. Do not substitute another person.')
+        # For image-to-image edit mode: reference images provide identity
+        parts.append(
+            'REFERENCE PROTOCOL: Image 1 defines her exact FACE, hair color and identity. '
+            'Image 2 defines her BODY — bust size, waist, hips, silhouette. '
+            'Preserve BOTH: same face AND same figure (bust, waist, hips) in the result. '
+            'Do not substitute another person, do not flatten or enlarge the bust, do not change body proportions.'
+        )
     else:
         parts.append(f"Subject: {character_description}")
     
@@ -470,9 +475,12 @@ async def generate_private_photo_real(
     prompt = build_private_photo_prompt(request, character_description)
     logger.info(f"Private photo: category={request.category}, type={request.type_id}")
     
-    # Build reference image URL (public endpoint, no auth)
-    ref_url = f"{PUBLIC_BASE_URL}/webapp/photo/{request.character_id}"
-    logger.info(f"SpicyAPI i2i: reference={ref_url}")
+    # Build reference image URLs (public endpoint, no auth)
+    # i=0 = face identity, i=1 = body/look silhouette
+    ref_face_url = f"{PUBLIC_BASE_URL}/webapp/photo/{request.character_id}?i=0"
+    ref_body_url = f"{PUBLIC_BASE_URL}/webapp/photo/{request.character_id}?i=1"
+    image_urls = [ref_face_url, ref_body_url]
+    logger.info(f"SpicyAPI i2i: refs={ref_face_url}, {ref_body_url}")
     
     try:
         # 1. Создаём задачу (edit mode: image_urls + prompt)
@@ -484,7 +492,7 @@ async def generate_private_photo_real(
             json={
                 "model": SPICYAPI_IMAGE_MODEL,
                 "input": {
-                    "image_urls": [ref_url],
+                    "image_urls": image_urls,
                     "prompt": prompt,
                     "size": "1728*2304",  # 3:4 portrait
                     "output_format": "jpeg",
