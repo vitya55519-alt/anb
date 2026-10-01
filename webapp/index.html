@@ -399,13 +399,14 @@
   .msg img.m { display: block; max-width: 220px; width: 100%; border-radius: 12px; margin-top: 4px; background: var(--card2); }
   .msg video.circle { display: block; width: 180px; height: 180px; object-fit: cover; border-radius: 50%; margin-top: 4px; background: #000; }
   .msg audio { display: block; width: 220px; margin-top: 4px; }
-  .chat-media { display: flex; gap: 6px; width: 100%; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+  .chat-media { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
   /* V3.42.2: readable labeled pills instead of cryptic 38px icon squares — a
      newcomer must read what each action does, not guess from an emoji. */
   .chat-media button { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 2px; border: 0; border-radius: 12px; background: var(--card); padding: 6px 10px; cursor: pointer; }
   .chat-media button .ic { font-size: 17px; line-height: 1; }
   .chat-media button .lb { font-size: 10px; color: var(--text); white-space: nowrap; }
   .chat-media button:disabled { opacity: .5; }
+  .chat-media button.hot { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
   /* V3.41.0: 7 feature buttons — the strip scrolls on its own row above the input. */
   .chat-input { flex-wrap: wrap; }
   .msg video.m { display: block; max-width: 220px; width: 100%; border-radius: 12px; margin-top: 4px; background: #000; }
@@ -693,13 +694,13 @@
   <div class="chat-msgs" id="chatMsgs"></div>
   <div class="chat-input">
     <div class="chat-media">
-      <!-- V3.44.17: «Видео» and «Кружок» pills hidden from the strip (owner:
-           «скрой из чата кнопки видео и кружок»). The backend media endpoints and
-           the i18n keys stay, so restoring these two buttons is a plain revert. -->
       <button id="mediaPhoto"><span class="ic">📸</span><span class="lb" id="lbMediaPhoto"></span></button>
       <button id="featQuest"><span class="ic">🎯</span><span class="lb" id="lbFeatQuest"></span></button>
       <button id="featDate"><span class="ic">💕</span><span class="lb" id="lbFeatDate"></span></button>
       <button id="featApt"><span class="ic">🏠</span><span class="lb" id="lbFeatApt"></span></button>
+      <button id="featVideo"><span class="ic">🎬</span><span class="lb" id="lbFeatVideo"></span></button>
+      <button id="featCosplay"><span class="ic">🎭</span><span class="lb" id="lbFeatCosplay"></span></button>
+      <button id="featHot" class="hot"><span class="ic">💋</span><span class="lb" id="lbFeatHot"></span></button>
     </div>
     <input id="chatText" maxlength="4000" placeholder="">
     <button id="chatSend">➤</button>
@@ -918,6 +919,8 @@ const L_EN = {
   // V3.42.2: readable labels for the chat action pills (the voice button is gone).
   media_photo: 'Photo', media_video: 'Video', media_circle: 'Circle',
   feat_quest: 'Quest', feat_date: 'Date', feat_apt: 'Apartment',
+  // V3.45.0: new chat buttons
+  feat_video: 'Video', feat_cosplay: 'Cosplay', feat_hot: 'Private',
   // V3.41.0: the app-chat feature sheet (apartment / date / daily quest).
   feat_done_btn: '✅ Done · +5 attention', feat_claimed: 'Already done today ❤️',
   feat_empty: 'Nothing here yet', feat_paid: 'Date paid 💕 she will write in the chat',
@@ -1034,6 +1037,8 @@ const L_RU = {
   // V3.42.2: читаемые подписи к кнопкам чата (голосовая кнопка убрана).
   media_photo: 'Фото', media_video: 'Видео', media_circle: 'Кружок',
   feat_quest: 'Задание', feat_date: 'Свидание', feat_apt: 'Квартира',
+  // V3.45.0: новые кнопки в чате
+  feat_video: 'Видео', feat_cosplay: 'Косплей', feat_hot: 'Наедине',
   // V3.41.0: панель фич в чате приложения (квартира / свидание / задание дня).
   feat_done_btn: '✅ Выполнено · +5 внимания', feat_claimed: 'Сегодня уже выполнено ❤️',
   feat_empty: 'Здесь пока пусто', feat_paid: 'Свидание оплачено 💕 она напишет в чат',
@@ -1259,6 +1264,10 @@ document.getElementById('lbMediaPhoto').textContent = L.media_photo;
 document.getElementById('lbFeatQuest').textContent = L.feat_quest;
 document.getElementById('lbFeatDate').textContent = L.feat_date;
 document.getElementById('lbFeatApt').textContent = L.feat_apt;
+// V3.45.0: новые кнопки
+if(document.getElementById('lbFeatVideo')) document.getElementById('lbFeatVideo').textContent = L.feat_video;
+if(document.getElementById('lbFeatCosplay')) document.getElementById('lbFeatCosplay').textContent = L.feat_cosplay;
+if(document.getElementById('lbFeatHot')) document.getElementById('lbFeatHot').textContent = L.feat_hot;
 document.getElementById('chanBannerText').textContent = L.chan_banner;
 document.getElementById('chanTitle').textContent = L.chan_title;
 document.getElementById('chanWarn').textContent = L.chan_warn;
@@ -2879,6 +2888,10 @@ document.getElementById('mediaPhoto').addEventListener('click', () => openFeatur
 document.getElementById('featQuest').addEventListener('click', () => openFeature('quest'));
 document.getElementById('featDate').addEventListener('click', () => openFeature('date'));
 document.getElementById('featApt').addEventListener('click', () => openFeature('apartment'));
+// V3.45.0: новые кнопки — Видео, Косплей, Фото наедине
+if(document.getElementById('featVideo')) document.getElementById('featVideo').addEventListener('click', () => openFeature('video'));
+if(document.getElementById('featCosplay')) document.getElementById('featCosplay').addEventListener('click', () => openFeature('cosplay'));
+if(document.getElementById('featHot')) document.getElementById('featHot').addEventListener('click', () => openFeature('hot'));
 document.getElementById('featBack').addEventListener('click', closeFeature);
 document.getElementById('charBack').addEventListener('click', () => {
   document.getElementById('charview').classList.remove('open');
