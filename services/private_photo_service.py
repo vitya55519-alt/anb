@@ -40,6 +40,7 @@ from config import (
     SPICYAPI_IMAGE_MODEL,
     SPICYAPI_IMAGE_TIMEOUT,
     CHARACTER_ID,
+    PUBLIC_BASE_URL,
 )
 
 logger = logging.getLogger(__name__)
@@ -353,7 +354,8 @@ def build_private_photo_prompt(
     # V3.45.19: use VISUAL identity (face, body, hair) instead of personality DNA
     visual_lock = _build_visual_identity_lock(request.character_id)
     if visual_lock:
-        parts.append(visual_lock)
+        # For image-to-image edit mode: keep identity brief, reference does the work
+        parts.append('Keep the same woman from the reference photo — her exact face, hair color, body proportions and identity. Do not substitute another person.')
     else:
         parts.append(f"Subject: {character_description}")
     
@@ -458,7 +460,7 @@ async def generate_private_photo_real(
     character_description: str,
 ) -> Optional[bytes]:
     """
-    Генерирует приватное фото через SpicyAPI.
+    Генерирует приватное фото через SpicyAPI Seedream 5.0 Lite edit (image-to-image).
     Возвращает bytes изображения или None при ошибке.
     """
     if not SPICYAPI_KEY:
@@ -468,8 +470,12 @@ async def generate_private_photo_real(
     prompt = build_private_photo_prompt(request, character_description)
     logger.info(f"Private photo: category={request.category}, type={request.type_id}")
     
+    # Build reference image URL (public endpoint, no auth)
+    ref_url = f"{PUBLIC_BASE_URL}/webapp/photo/{request.character_id}"
+    logger.info(f"SpicyAPI i2i: reference={ref_url}")
+    
     try:
-        # 1. Создаём задачу
+        # 1. Создаём задачу (edit mode: image_urls + prompt)
         idempotency_key = str(uuid.uuid4())
         logger.info(f"SpicyAPI: creating task, model={SPICYAPI_IMAGE_MODEL}")
         task_data = await _spicyapi_call(
@@ -478,9 +484,9 @@ async def generate_private_photo_real(
             json={
                 "model": SPICYAPI_IMAGE_MODEL,
                 "input": {
+                    "image_urls": [ref_url],
                     "prompt": prompt,
-                    "resolution": "1k",
-                    "aspect_ratio": "3:4",
+                    "size": "1728*2304",  # 3:4 portrait
                     "output_format": "jpeg",
                 }
             }
