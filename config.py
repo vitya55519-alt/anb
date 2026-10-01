@@ -36,6 +36,36 @@ OPENROUTER_MODEL = (
     or "minimax/minimax-m3"
 ).strip()
 
+# ── MiniMax (V3.45: primary chat provider, замена OpenRouter) ──────────────
+MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "").strip()
+MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.chat/v1").strip().rstrip("/")
+MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M1").strip()
+
+# ── SpicyAPI (V3.45: uncensored Seedream для фото «наедине» и «косплей») ──
+SPICYAPI_KEY = os.getenv("SPICYAPI_KEY", "").strip()
+SPICYAPI_BASE_URL = os.getenv("SPICYAPI_BASE_URL", "https://api.spicyapi.ai/v1").strip().rstrip("/")
+
+# ── V3.45: Фото «наедине» и «Косплей» — монетизация через персики ──────────
+# Бесплатные лимиты (1 наедине + 1 косплей = 2 всего в день)
+PRIVATE_PHOTO_FREE_DAILY = max(0, int(os.getenv("PRIVATE_PHOTO_FREE_DAILY", "1")))
+COSPLAY_PHOTO_FREE_DAILY = max(0, int(os.getenv("COSPLAY_PHOTO_FREE_DAILY", "1")))
+# Цена после бесплатного лимита (в персиках)
+PRIVATE_PHOTO_PEACH_COST = max(1, int(os.getenv("PRIVATE_PHOTO_PEACH_COST", "2")))
+COSPLAY_PHOTO_PEACH_COST = max(1, int(os.getenv("COSPLAY_PHOTO_PEACH_COST", "2")))
+# Hot Pass — безлимитная подписка на фото «наедине» и «косплей»
+HOT_PASS_DAY_PEACHES = max(1, int(os.getenv("HOT_PASS_DAY_PEACHES", "5")))
+HOT_PASS_WEEK_PEACHES = max(1, int(os.getenv("HOT_PASS_WEEK_PEACHES", "25")))
+HOT_PASS_MONTH_PEACHES = max(1, int(os.getenv("HOT_PASS_MONTH_PEACHES", "80")))
+# Видео за персики (альтернатива звёздам)
+VIDEO_PEACH_COST = max(1, int(os.getenv("VIDEO_PEACH_COST", "5")))
+# Голос + фото комбо
+VOICE_PHOTO_PEACH_COST = max(1, int(os.getenv("VOICE_PHOTO_PEACH_COST", "3")))
+# Серия фото (3-5 штук в одном образе)
+PHOTO_SERIES_PEACH_COST = max(1, int(os.getenv("PHOTO_SERIES_PEACH_COST", "5")))
+# SpicyAPI модель для uncensored генерации
+SPICYAPI_IMAGE_MODEL = os.getenv("SPICYAPI_IMAGE_MODEL", "seedream-5-pro").strip()
+SPICYAPI_IMAGE_TIMEOUT = max(30, min(180, int(os.getenv("SPICYAPI_IMAGE_TIMEOUT", "90"))))
+
 # Legacy OpenAI key — kept ONLY for optional TTS/Whisper/moderation.
 # No longer required for chat or image generation.
 AI_KEY = (os.getenv("OPENAI_API_KEY") or os.getenv("AI_KEY") or "").strip()

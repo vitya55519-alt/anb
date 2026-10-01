@@ -42,6 +42,12 @@ from config import (
     PEACH_CUSTOM_STARS_PER_UNIT, PEACH_CUSTOM_RUB_PER_UNIT,
     PLATEGA_MERCHANT_ID, PLATEGA_API_KEY, PLATEGA_API_BASE,
 )
+# V3.45.0: фото «наедине» и «косплей» — монетизация через персики
+from config import (
+    PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST,
+    HOT_PASS_DAY_PEACHES, HOT_PASS_WEEK_PEACHES, HOT_PASS_MONTH_PEACHES,
+    VOICE_PHOTO_PEACH_COST,
+)
 from services.user_service import (
     ensure_user, get_user, get_state, update_user_settings, touch_user,
     set_adult_confirmed, is_adult_confirmed,
@@ -1367,6 +1373,37 @@ def photo_keyboard(telegram_id: int):
             text=f'🎭 Косплей-фотосет — {COSPLAY_TOKEN_COST}🪙',
             callback_data='cosplay:start',
         )])
+    # V3.45.0: фото «наедине» и «косплей» — отдельная монетизация через персики.
+    # Доступны на ЛЮБОМ уровне отношений, дополняют бесплатную прогрессию.
+    from services.private_photo_service import get_private_photo_usage
+    usage = get_private_photo_usage(telegram_id)
+    private_free = usage['private_left']
+    cosplay_free = usage['cosplay_left']
+    hot_pass = ' 🔥' if usage['hot_pass_active'] else ''
+    # Кнопка «Фото наедине»
+    private_label = f'💋 Фото наедине{hot_pass}'
+    if private_free > 0 and not usage['hot_pass_active']:
+        private_label += f' ({private_free} бесплатн.)'
+    rows.append([InlineKeyboardButton(
+        text=private_label,
+        callback_data='private_photo:start',
+    )])
+    # Кнопка «Косплей» (V3.45 — отдельная от старого косплей-фотосета)
+    cosplay_label = f'🎭 Косплей{hot_pass}'
+    if cosplay_free > 0 and not usage['hot_pass_active']:
+        cosplay_label += f' ({cosplay_free} бесплатн.)'
+    rows.append([InlineKeyboardButton(
+        text=cosplay_label,
+        callback_data='private_cosplay:start',
+    )])
+    # V3.45.0: приватная галерея и достижения
+    from services.private_photo_service import gallery_count, get_achievements
+    gal_count = gallery_count(telegram_id)
+    ach_count = len(get_achievements(telegram_id))
+    rows.append([
+        InlineKeyboardButton(text=f'🖼️ Галерея ({gal_count})', callback_data='private_gallery:view'),
+        InlineKeyboardButton(text=f'🏆 Ачивки ({ach_count})', callback_data='private_achievements:view'),
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -4738,6 +4775,403 @@ async def cosplay_pick(cq: types.CallbackQuery):
         add_tokens(cq.from_user.id, COSPLAY_TOKEN_COST)
     else:
         await cq.message.answer(f'🎭 снимаю сет в образе «{costume[0]}»… {COSPLAY_TOKEN_COST}🪙 списала')
+
+
+# ─── V3.45.0: Фото «наедине» и «Косплей» — монетизация через персики ──────────
+
+@dp.callback_query(F.data == 'private_photo:start')
+async def private_photo_start(cq: types.CallbackQuery):
+    """V3.45.0: начало выбора фото «наедине»."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    await cq.answer()
+    from services.private_photo_service import PRIVATE_PHOTO_CATEGORIES, get_private_photo_usage
+    usage = get_private_photo_usage(cq.from_user.id)
+    lang = user_lang(cq.from_user.id)
+    rows = []
+    for cat_id, cat_data in PRIVATE_PHOTO_CATEGORIES.items():
+        name = cat_data['name_ru'] if lang == RU else cat_data.get('name_en', cat_data['name_ru'])
+        rows.append([InlineKeyboardButton(text=name, callback_data=f'private_photo:cat:{cat_id}')])
+    if not usage['hot_pass_active']:
+        rows.append([InlineKeyboardButton(
+            text=f'🔥 Hot Pass день — {HOT_PASS_DAY_PEACHES} 🍑',
+            callback_data='private_photo:hotpass:day',
+        )])
+    rows.append([InlineKeyboardButton(text='⬅️ Назад', callback_data='photo_menu:open')])
+    if usage['hot_pass_active']:
+        limit_text = '🔥 Hot Pass активен — безлимит!'
+    else:
+        limit_text = f'Бесплатно сегодня: {usage["private_left"]} фото'
+    await cq.message.answer(
+        f'💋 Фото наедине\n\n{limit_text}\n\nВыбери категорию:',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+@dp.callback_query(F.data == 'private_cosplay:start')
+async def private_cosplay_start(cq: types.CallbackQuery):
+    """V3.45.0: начало выбора косплея."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    await cq.answer()
+    from services.private_photo_service import COSPLAY_CHARACTERS, get_private_photo_usage
+    usage = get_private_photo_usage(cq.from_user.id)
+    rows = []
+    for i in range(0, len(COSPLAY_CHARACTERS), 2):
+        row = []
+        for char in COSPLAY_CHARACTERS[i:i+2]:
+            row.append(InlineKeyboardButton(
+                text=char['name'],
+                callback_data=f'private_cosplay:char:{char["id"]}',
+            ))
+        rows.append(row)
+    if not usage['hot_pass_active']:
+        rows.append([InlineKeyboardButton(
+            text=f'🔥 Hot Pass день — {HOT_PASS_DAY_PEACHES} 🍑',
+            callback_data='private_photo:hotpass:day',
+        )])
+    rows.append([InlineKeyboardButton(text='⬅️ Назад', callback_data='photo_menu:open')])
+    if usage['hot_pass_active']:
+        limit_text = '🔥 Hot Pass активен — безлимит!'
+    else:
+        limit_text = f'Бесплатно сегодня: {usage["cosplay_left"]} фото'
+    await cq.message.answer(
+        f'🎭 Косплей\n\n{limit_text}\n\nВыбери образ:',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+# ─── V3.45.0: Многошаговый выбор «Фото наедине» ─────────────────────────────
+
+@dp.callback_query(F.data.startswith('private_photo:cat:'))
+async def private_photo_category(cq: types.CallbackQuery):
+    cat_id = cq.data.split(':')[2]
+    from services.private_photo_service import PRIVATE_PHOTO_CATEGORIES
+    cat_data = PRIVATE_PHOTO_CATEGORIES.get(cat_id)
+    if not cat_data:
+        await cq.answer('категория не найдена', show_alert=True); return
+    await cq.answer()
+    lang = user_lang(cq.from_user.id)
+    rows = []
+    for i in range(0, len(cat_data['types']), 2):
+        row = []
+        for t in cat_data['types'][i:i+2]:
+            name = t['name_ru'] if lang == RU else t.get('name_en', t['name_ru'])
+            row.append(InlineKeyboardButton(text=name, callback_data=f'private_photo:type:{cat_id}:{t["id"]}'))
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text='⬅️ Назад', callback_data='private_photo:start')])
+    await cq.message.answer(
+        f'{cat_data["name_ru"]}\n\nВыбери тип:',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+@dp.callback_query(F.data.startswith('private_photo:type:'))
+async def private_photo_type(cq: types.CallbackQuery):
+    parts = cq.data.split(':')
+    cat_id, type_id = parts[2], parts[3]
+    from services.private_photo_service import LOCATIONS
+    await cq.answer()
+    lang = user_lang(cq.from_user.id)
+    rows = []
+    for i in range(0, len(LOCATIONS), 2):
+        row = []
+        for loc in LOCATIONS[i:i+2]:
+            name = loc['name_ru'] if lang == RU else loc.get('name_en', loc['name_ru'])
+            row.append(InlineKeyboardButton(text=name, callback_data=f'private_photo:loc:{cat_id}:{type_id}:{loc["id"]}'))
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text='⬅️ Назад', callback_data=f'private_photo:cat:{cat_id}')])
+    await cq.message.answer('🏠 Выбери обстановку:', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@dp.callback_query(F.data.startswith('private_photo:loc:'))
+async def private_photo_location(cq: types.CallbackQuery):
+    parts = cq.data.split(':')
+    cat_id, type_id, loc_id = parts[2], parts[3], parts[4]
+    from services.private_photo_service import MOODS
+    await cq.answer()
+    lang = user_lang(cq.from_user.id)
+    rows = []
+    for i in range(0, len(MOODS), 2):
+        row = []
+        for mood in MOODS[i:i+2]:
+            name = mood['name_ru'] if lang == RU else mood.get('name_en', mood['name_ru'])
+            row.append(InlineKeyboardButton(text=name, callback_data=f'private_photo:go:{cat_id}:{type_id}:{loc_id}:{mood["id"]}'))
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text='⬅️ Назад', callback_data=f'private_photo:type:{cat_id}:{type_id}')])
+    await cq.message.answer('💫 Выбери настроение:', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@dp.callback_query(F.data.startswith('private_photo:go:'))
+async def private_photo_generate(cq: types.CallbackQuery):
+    """V3.45.0: генерация фото «наедине» через SpicyAPI."""
+    parts = cq.data.split(':')
+    cat_id, type_id, loc_id, mood_id = parts[2], parts[3], parts[4], parts[5]
+    from services.private_photo_service import (
+        PrivatePhotoRequest, consume_free_private_photo,
+        get_private_photo_usage, get_type_name, generate_private_photo_real,
+    )
+    usage = get_private_photo_usage(cq.from_user.id)
+    is_free = consume_free_private_photo(cq.from_user.id, cat_id)
+    if not is_free and not usage['hot_pass_active']:
+        from services.payments import spend_peaches
+        if not spend_peaches(cq.from_user.id, PRIVATE_PHOTO_PEACH_COST):
+            await cq.answer(f'Нужно {PRIVATE_PHOTO_PEACH_COST} 🍑 — персиков не хватает', show_alert=True)
+            return
+    await cq.answer()
+    type_name = get_type_name(cat_id, type_id, user_lang(cq.from_user.id))
+    status_msg = await cq.message.answer(f'💋 Генерирую «{type_name}»...\n⏳ 30-60 сек')
+    request = PrivatePhotoRequest(
+        category=cat_id, type_id=type_id, location_id=loc_id, mood_id=mood_id,
+        character_id=get_user_character(cq.from_user.id),
+    )
+    # Получаем описание персонажа из ДНК
+    from services.character_dna_service import character_dna_context
+    from services.private_photo_service import (
+        cache_get, cache_save, gallery_save, check_achievements,
+        build_private_photo_prompt,
+    )
+    char_desc = character_dna_context(get_user_character(cq.from_user.id))
+    # Проверяем кэш
+    prompt = build_private_photo_prompt(request, char_desc)
+    image_bytes = cache_get(prompt, get_user_character(cq.from_user.id))
+    if not image_bytes:
+        image_bytes = await generate_private_photo_real(request, char_desc)
+        if image_bytes:
+            cache_save(prompt, get_user_character(cq.from_user.id), cat_id, type_id, image_bytes)
+    if image_bytes:
+        gallery_save(cq.from_user.id, get_user_character(cq.from_user.id), cat_id, type_id, image_bytes)
+        # Увеличиваем счётчик и проверяем достижения
+        from services.user_service import get_user
+        user = get_user(cq.from_user.id)
+        if user:
+            user.total_private_photos = (user.total_private_photos or 0) + 1
+            from services.db import SessionLocal
+            with SessionLocal() as session:
+                from sqlalchemy import select as sa_select
+                from models.app_models import User as UserModel
+                db_user = session.scalar(sa_select(UserModel).where(UserModel.id == user.id))
+                if db_user:
+                    db_user.total_private_photos = (db_user.total_private_photos or 0) + 1
+                    session.commit()
+        new_ach = check_achievements(cq.from_user.id)
+        await status_msg.delete()
+        await cq.message.answer_photo(
+            photo=types.BufferedInputFile(image_bytes, filename='private_photo.jpg'),
+            caption=f'💋 {type_name}',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='🔄 Ещё такое', callback_data=f'private_photo:go:{cat_id}:{type_id}:{loc_id}:{mood_id}')],
+                [InlineKeyboardButton(text='💋 Ещё фото наедине', callback_data='private_photo:start')],
+                [InlineKeyboardButton(text='🖼️ Моя галерея', callback_data='private_gallery:view')],
+            ]),
+        )
+        if new_ach:
+            from services.private_photo_service import ACHIEVEMENTS
+            ach_names = [ACHIEVEMENTS[a]["name"] for a in new_ach if a in ACHIEVEMENTS]
+            if ach_names:
+                await cq.message.answer(f'🏆 Новые достижения:\n' + '\n'.join(ach_names))
+    else:
+        await status_msg.edit_text('😔 Не получилось сгенерировать. Попробуй ещё раз — персики не спишутся.')
+
+
+# ─── V3.45.0: Многошаговый выбор «Косплей» ───────────────────────────────────
+
+@dp.callback_query(F.data.startswith('private_cosplay:char:'))
+async def private_cosplay_character(cq: types.CallbackQuery):
+    cosplay_id = cq.data.split(':')[2]
+    from services.private_photo_service import LOCATIONS, get_cosplay_name
+    await cq.answer()
+    lang = user_lang(cq.from_user.id)
+    rows = []
+    for i in range(0, len(LOCATIONS), 2):
+        row = []
+        for loc in LOCATIONS[i:i+2]:
+            name = loc['name_ru'] if lang == RU else loc.get('name_en', loc['name_ru'])
+            row.append(InlineKeyboardButton(text=name, callback_data=f'private_cosplay:loc:{cosplay_id}:{loc["id"]}'))
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text='⬅️ Назад', callback_data='private_cosplay:start')])
+    await cq.message.answer(f'🎭 {get_cosplay_name(cosplay_id)}\n\n🏠 Выбери обстановку:', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@dp.callback_query(F.data.startswith('private_cosplay:loc:'))
+async def private_cosplay_location(cq: types.CallbackQuery):
+    parts = cq.data.split(':')
+    cosplay_id, loc_id = parts[2], parts[3]
+    from services.private_photo_service import MOODS, get_cosplay_name
+    await cq.answer()
+    lang = user_lang(cq.from_user.id)
+    rows = []
+    for i in range(0, len(MOODS), 2):
+        row = []
+        for mood in MOODS[i:i+2]:
+            name = mood['name_ru'] if lang == RU else mood.get('name_en', mood['name_ru'])
+            row.append(InlineKeyboardButton(text=name, callback_data=f'private_cosplay:go:{cosplay_id}:{loc_id}:{mood["id"]}'))
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text='⬅️ Назад', callback_data=f'private_cosplay:char:{cosplay_id}')])
+    await cq.message.answer(f'🎭 {get_cosplay_name(cosplay_id)}\n\n💫 Выбери настроение:', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@dp.callback_query(F.data.startswith('private_cosplay:go:'))
+async def private_cosplay_generate(cq: types.CallbackQuery):
+    """V3.45.0: генерация косплей-фото через SpicyAPI."""
+    parts = cq.data.split(':')
+    cosplay_id, loc_id, mood_id = parts[2], parts[3], parts[4]
+    from services.private_photo_service import (
+        PrivatePhotoRequest, consume_free_private_photo,
+        get_private_photo_usage, get_cosplay_name, generate_private_photo_real,
+    )
+    usage = get_private_photo_usage(cq.from_user.id)
+    is_free = consume_free_private_photo(cq.from_user.id, 'cosplay')
+    if not is_free and not usage['hot_pass_active']:
+        from services.payments import spend_peaches
+        if not spend_peaches(cq.from_user.id, COSPLAY_PHOTO_PEACH_COST):
+            await cq.answer(f'Нужно {COSPLAY_PHOTO_PEACH_COST} 🍑 — персиков не хватает', show_alert=True)
+            return
+    await cq.answer()
+    char_name = get_cosplay_name(cosplay_id)
+    status_msg = await cq.message.answer(f'🎭 Генерирую «{char_name}»...\n⏳ 30-60 сек')
+    request = PrivatePhotoRequest(
+        category='cosplay', type_id=cosplay_id, cosplay_id=cosplay_id,
+        location_id=loc_id, mood_id=mood_id,
+        character_id=get_user_character(cq.from_user.id),
+    )
+    from services.character_dna_service import character_dna_context
+    from services.private_photo_service import (
+        cache_get, cache_save, gallery_save, check_achievements,
+        build_private_photo_prompt,
+    )
+    char_desc = character_dna_context(get_user_character(cq.from_user.id))
+    prompt = build_private_photo_prompt(request, char_desc)
+    image_bytes = cache_get(prompt, get_user_character(cq.from_user.id))
+    if not image_bytes:
+        image_bytes = await generate_private_photo_real(request, char_desc)
+        if image_bytes:
+            cache_save(prompt, get_user_character(cq.from_user.id), 'cosplay', cosplay_id, image_bytes)
+    if image_bytes:
+        gallery_save(cq.from_user.id, get_user_character(cq.from_user.id), 'cosplay', cosplay_id, image_bytes)
+        from services.user_service import get_user
+        user = get_user(cq.from_user.id)
+        if user:
+            from services.db import SessionLocal
+            from sqlalchemy import select as sa_select
+            from models.app_models import User as UserModel
+            with SessionLocal() as session:
+                db_user = session.scalar(sa_select(UserModel).where(UserModel.id == user.id))
+                if db_user:
+                    db_user.total_private_photos = (db_user.total_private_photos or 0) + 1
+                    session.commit()
+        new_ach = check_achievements(cq.from_user.id)
+        await status_msg.delete()
+        await cq.message.answer_photo(
+            photo=types.BufferedInputFile(image_bytes, filename='cosplay_photo.jpg'),
+            caption=f'🎭 {char_name}',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='🔄 Ещё такой образ', callback_data=f'private_cosplay:go:{cosplay_id}:{loc_id}:{mood_id}')],
+                [InlineKeyboardButton(text='🎭 Другой косплей', callback_data='private_cosplay:start')],
+                [InlineKeyboardButton(text='🖼️ Моя галерея', callback_data='private_gallery:view')],
+            ]),
+        )
+        if new_ach:
+            from services.private_photo_service import ACHIEVEMENTS
+            ach_names = [ACHIEVEMENTS[a]["name"] for a in new_ach if a in ACHIEVEMENTS]
+            if ach_names:
+                await cq.message.answer(f'🏆 Новые достижения:\n' + '\n'.join(ach_names))
+    else:
+        await status_msg.edit_text('😔 Не получилось. Попробуй ещё раз — персики не спишутся.')
+
+
+# ─── V3.45.0: Hot Pass покупка ───────────────────────────────────────────────
+
+@dp.callback_query(F.data.startswith('private_photo:hotpass:'))
+async def private_photo_hotpass(cq: types.CallbackQuery):
+    duration = cq.data.split(':')[2]
+    durations = {'day': (HOT_PASS_DAY_PEACHES, 1), 'week': (HOT_PASS_WEEK_PEACHES, 7), 'month': (HOT_PASS_MONTH_PEACHES, 30)}
+    if duration not in durations:
+        await cq.answer('неверный тариф', show_alert=True); return
+    cost, days = durations[duration]
+    from services.payments import spend_peaches
+    if not spend_peaches(cq.from_user.id, cost):
+        await cq.answer(f'Нужно {cost} 🍑 — персиков не хватает', show_alert=True); return
+    from services.private_photo_service import activate_hot_pass
+    expires = activate_hot_pass(cq.from_user.id, days)
+    await cq.answer()
+    await cq.message.answer(
+        f'🔥 Hot Pass активирован на {days} дн.!\n\n'
+        f'Безлимитные фото «наедине» и «косплей» до {expires.strftime("%d.%m.%Y %H:%M")}\n\n'
+        f'Списано {cost} 🍑',
+    )
+
+
+# ─── V3.45.0: Приватная галерея ─────────────────────────────────────────────
+
+@dp.callback_query(F.data == 'private_gallery:view')
+async def private_gallery_view(cq: types.CallbackQuery):
+    """V3.45.0: просмотр приватной галереи."""
+    from services.private_photo_service import gallery_list, gallery_count
+    items = gallery_list(cq.from_user.id, limit=10)
+    total = gallery_count(cq.from_user.id)
+    if not items:
+        await cq.answer()
+        await cq.message.answer('🖼️ Галерея пуста. Купи фото «наедине» или «косплей» — они сохранятся здесь.')
+        return
+    await cq.answer()
+    await cq.message.answer(f'🖼️ Приватная галерея ({total} фото):\n\nПоследние 10:')
+    for item in items:
+        if item['image_bytes']:
+            from services.private_photo_service import get_type_name, get_cosplay_name
+            if item['category'] == 'cosplay':
+                label = get_cosplay_name(item['type_id'])
+            else:
+                label = get_type_name(item['category'], item['type_id'])
+            await cq.message.answer_photo(
+                photo=types.BufferedInputFile(item['image_bytes'], filename='gallery.jpg'),
+                caption=f'{label}\n{item["created_at"].strftime("%d.%m.%Y")}',
+            )
+
+
+# ─── V3.45.0: Достижения ─────────────────────────────────────────────────────
+
+@dp.callback_query(F.data == 'private_achievements:view')
+async def private_achievements_view(cq: types.CallbackQuery):
+    """V3.45.0: просмотр достижений."""
+    from services.private_photo_service import get_achievements, ACHIEVEMENTS
+    earned = get_achievements(cq.from_user.id)
+    all_ach = [f'{v["name"]} {"✅" if k in [a for a in earned] else "⬜️"}' for k, v in ACHIEVEMENTS.items()]
+    await cq.answer()
+    await cq.message.answer(f'🏆 Достижения:\n\n' + '\n'.join(all_ach))
+
+
+# ─── V3.45.0: Голос + фото комбо ───────────────────────────────────────────
+
+@dp.callback_query(F.data.startswith('private_voice:'))
+async def private_voice_combo(cq: types.CallbackQuery):
+    """V3.45.0: голос + фото комбо."""
+    parts = cq.data.split(':')
+    cat_id, type_id, loc_id, mood_id = parts[2], parts[3], parts[4], parts[5]
+    from services.private_photo_service import (
+        PrivatePhotoRequest, generate_voice_photo_combo, VOICE_PHOTO_PEACH_COST,
+    )
+    from services.payments import spend_peaches
+    if not spend_peaches(cq.from_user.id, VOICE_PHOTO_PEACH_COST):
+        await cq.answer(f'Нужно {VOICE_PHOTO_PEACH_COST} 🍑 — персиков не хватает', show_alert=True)
+        return
+    await cq.answer()
+    request = PrivatePhotoRequest(
+        category=cat_id, type_id=type_id, location_id=loc_id, mood_id=mood_id,
+        character_id=get_user_character(cq.from_user.id),
+    )
+    from services.character_dna_service import character_dna_context
+    char_desc = character_dna_context(get_user_character(cq.from_user.id))
+    status_msg = await cq.message.answer('💋🎙️ Генерирую фото + голос...\n⏳ 30-60 сек')
+    ok = await generate_voice_photo_combo(cq.from_user.id, request, char_desc, bot)
+    if ok:
+        await status_msg.delete()
+    else:
+        await status_msg.edit_text('😔 Не получилось. Персики возвращены.')
+        from services.payments import grant_peaches
+        grant_peaches(cq.from_user.id, VOICE_PHOTO_PEACH_COST)
 
 
 @dp.callback_query(F.data.startswith('walletpay:'))

@@ -58,6 +58,16 @@ class User(Base):
     # Stays True when Premium lapses — the chat gate re-checks is_premium per
     # message, so the flag simply waits for the next subscription.
     spicy_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    # V3.45.0: фото «наедине» и «косплей» — лимиты и Hot Pass. Auto-migrated.
+    private_photo_used: Mapped[int] = mapped_column(Integer, default=0)
+    private_photo_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    cosplay_photo_used: Mapped[int] = mapped_column(Integer, default=0)
+    cosplay_photo_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    hot_pass_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # V3.45.0: достижения и ежедневный подарок. Auto-migrated.
+    achievements: Mapped[str] = mapped_column(String(512), default="")
+    last_daily_gift_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    total_private_photos: Mapped[int] = mapped_column(Integer, default=0)
 
 
 # V3.37.0: money affiliate program. One row per converted referral — the
@@ -96,6 +106,20 @@ class CoupleAlbum(Base):
     user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     level: Mapped[int] = mapped_column(Integer, nullable=False)
     delivery_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# V3.45.0: приватная галерея фото «наедине» и «косплей». Кэш + пересмотр.
+class PrivateGallery(Base):
+    __tablename__ = "private_gallery"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    character_id: Mapped[str] = mapped_column(String(64), default="")
+    category: Mapped[str] = mapped_column(String(32), nullable=False)  # lingerie/nude_art/roleplay/suggestive/cosplay
+    type_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_hash: Mapped[str] = mapped_column(String(64), index=True)  # для кэша
+    image_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    telegram_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

@@ -275,6 +275,31 @@ async def _mood_update(bot):
                 s.commit()
         except Exception: logger.exception('mood update failed user=%s',uid)
 
+# V3.45.0: ежедневный подарок «Подарок от неё» — бесплатное фото раз в день
+async def _daily_gift(bot):
+    try:
+        today = dt.date.today()
+        with SessionLocal() as s:
+            users = s.execute(select(User).where(
+                (User.last_daily_gift_date != today) | (User.last_daily_gift_date.is_(None))
+            )).scalars().all()
+            user_ids = [u.telegram_id for u in users if u.telegram_id]
+        if not user_ids:
+            return
+        # Отправляем подарок случайным активным пользователям (макс 50 в день)
+        import random
+        targets = random.sample(user_ids, min(50, len(user_ids)))
+        from services.private_photo_service import send_daily_gift
+        for tid in targets:
+            try:
+                await send_daily_gift(tid, bot)
+                await asyncio.sleep(1)  # Не перегружать API
+            except Exception:
+                logger.exception('daily gift failed user=%s', tid)
+        logger.info('daily gifts sent count=%s', len(targets))
+    except Exception:
+        logger.exception('daily gift job failed')
+
 def start_scheduler(bot):
     scheduler.add_job(_reminders,'interval',seconds=30,args=[bot],id='reminders',replace_existing=True)
     scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
@@ -288,4 +313,6 @@ def start_scheduler(bot):
     scheduler.add_job(_random_gifts,'interval',hours=6,args=[bot],id='random_gifts',replace_existing=True)
     scheduler.add_job(_daily_compatibility,'interval',hours=12,args=[bot],id='daily_compatibility',replace_existing=True)
     scheduler.add_job(_mood_update,'interval',hours=1,args=[bot],id='mood_update',replace_existing=True)
+    # V3.45.0: ежедневный подарок — раз в день в 12:00
+    scheduler.add_job(_daily_gift,'cron',hour=12,minute=0,args=[bot],id='daily_gift',replace_existing=True)
     if not scheduler.running: scheduler.start()

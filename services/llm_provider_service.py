@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 from config import (
     OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL,
     GEMINI_API_KEY, GEMINI_API_KEY_VALID, GEMINI_CHAT_MODEL, GEMINI_OPENAI_BASE_URL,
+    MINIMAX_API_KEY, MINIMAX_BASE_URL, MINIMAX_MODEL,
     LLM_REPORT_USAGE,
 )
 from services import spend_service
@@ -67,13 +68,20 @@ _gemini = (
     AsyncOpenAI(api_key=GEMINI_API_KEY, base_url=GEMINI_OPENAI_BASE_URL)
     if GEMINI_API_KEY_VALID else None
 )
+# V3.45.0: MiniMax — primary chat provider (дешевле OpenRouter)
+_minimax = (
+    AsyncOpenAI(api_key=MINIMAX_API_KEY, base_url=MINIMAX_BASE_URL)
+    if MINIMAX_API_KEY else None
+)
 
 logger.info(
-    'LLM providers: OpenRouter=%s model=%s | Gemini=%s model=%s',
+    'LLM providers: OpenRouter=%s model=%s | Gemini=%s model=%s | MiniMax=%s model=%s',
     'READY' if _openrouter else 'NO KEY',
     OPENROUTER_MODEL,
     'READY' if _gemini else 'NO KEY',
     GEMINI_CHAT_MODEL,
+    'READY' if _minimax else 'NO KEY',
+    MINIMAX_MODEL,
 )
 
 
@@ -104,7 +112,25 @@ async def generate_text(
         logger.warning('LLM aux skipped by daily budget purpose=%s', purpose)
         return LLMResult('', 'budget', 'skipped')
 
-    # ── 1. OpenRouter (MiniMax M3 with reasoning) ─────────────────────
+    # ── 1. MiniMax (V3.45: primary chat provider — дешевле OpenRouter) ────
+    if _minimax:
+        try:
+            r = await _minimax.chat.completions.create(
+                model=MINIMAX_MODEL,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            text = (r.choices[0].message.content or '').strip()
+            _record_usage(purpose, 'minimax', MINIMAX_MODEL, r)
+            logger.info('LLM ok provider=minimax model=%s purpose=%s len=%d', MINIMAX_MODEL, purpose, len(text))
+            return LLMResult(text, 'minimax', MINIMAX_MODEL)
+        except Exception as exc:
+            detail = f'MiniMax({MINIMAX_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
+            errors.append(detail)
+            logger.warning('MiniMax FAILED purpose=%s %s', purpose, detail)
+
+    # ── 2. OpenRouter (fallback) ─────────────────────────────────────
     if _openrouter:
         try:
             # MiniMax M3 supports reasoning mode for more natural responses
@@ -158,6 +184,9 @@ async def generate_text(
 
 def provider_status() -> dict:
     return {
+        'minimax_key_present': bool(MINIMAX_API_KEY),
+        'minimax_model': MINIMAX_MODEL,
+        'minimax_base_url': MINIMAX_BASE_URL,
         'openrouter_key_present': bool(OPENROUTER_API_KEY),
         'openrouter_model': OPENROUTER_MODEL,
         'openrouter_base_url': OPENROUTER_BASE_URL,
