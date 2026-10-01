@@ -347,7 +347,11 @@ def _build_visual_identity_lock(character_id: str) -> str:
     lock = (
         f'PHOTO IDENTITY — HIGHEST PRIORITY. Create the SAME fictional adult woman, {name}, age {age}. '
         f'Preserve these exact traits: {preserve_text}. '
-        f'BODY IDENTITY: {name} has {body_spec}. This figure is permanent and overrides any reference. '
+        f'BODY IDENTITY: {name} has {body_spec}. This declared figure is a permanent body trait '
+        f'and STRICTLY OVERRIDES the reference images: even if a reference photo shows a smaller, '
+        f'flatter or different bust/build, always render the declared figure exactly as stated. '
+        f'Preserve this same figure — bust, waist, hips and silhouette — in every photo regardless of '
+        f'outfit, pose, angle or crop; never flatten, reduce or enlarge the bust, never widen the waist or hips. '
         f'Do not substitute another person, do not change age, ethnicity, hair color or body type. '
         f'She is the same woman in every photo.'
     )
@@ -371,12 +375,12 @@ PRIVATE_POSE_POOL = [
 ]
 
 PRIVATE_CAMERA_POOL = [
-    'eye-level medium shot',
+    'eye-level full-body shot, neutral focal length',
     'slightly high angle, full body in frame',
-    'low angle looking up at her',
-    'close-up portrait framing from the hips up',
-    'wide shot showing the whole room and her in it',
-    'POV shot as if seen from her partner\u2019s eyes',
+    'standing eye-level shot showing her whole figure',
+    'three-quarter framing from the knees up, eye level',
+    'wide shot showing the whole room and her full figure in it',
+    'straight-on mirror selfie framing the full body',
 ]
 
 
@@ -402,13 +406,16 @@ def build_private_photo_prompt(
     visual_lock = _build_visual_identity_lock(request.character_id)
     if visual_lock:
         if use_reference:
-            # For image-to-image edit mode: reference images provide identity
+            # V3.45.25: references are scoped to the FACE only. Letting the model
+            # read the body off reference image 2 was the figure-drift source —
+            # the lingerie references are inconsistent, so the bust/waist/hips
+            # jumped between photos. The BODY IDENTITY text below now overrides.
             parts.append(
-                'REFERENCE PROTOCOL: Image 1 defines her exact FACE, hair color and identity. '
-                'Image 2 defines her BODY — bust size, waist, hips, silhouette. '
-                'Preserve BOTH: same face AND same figure (bust, waist, hips) in the result. '
-                'Do not substitute another person, do not flatten or enlarge the bust, do not change body proportions. '
-                'CRITICAL: her bust size, waist and hips from image 2 are PERMANENT and must match exactly.'
+                'REFERENCE PROTOCOL: Image 1 and Image 2 are identity references for her '
+                'FACE, hair color, skin tone and overall likeness ONLY. Do NOT copy the '
+                'body shape, bust size or proportions from the reference images — her figure '
+                'is fixed by the BODY IDENTITY declaration below, which overrides the references. '
+                'Keep the same face and the same declared figure in every photo.'
             )
         # Always add the text body spec as identity anchor (needed for t2i nude)
         parts.append(visual_lock)
