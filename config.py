@@ -38,8 +38,8 @@ OPENROUTER_MODEL = (
 
 # ── MiniMax (V3.45: primary chat provider, замена OpenRouter) ──────────────
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "").strip()
-MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.chat/v1").strip().rstrip("/")
-MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-Text-01").strip()
+MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io/v1").strip().rstrip("/")
+MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M3").strip()
 
 # ── SpicyAPI (V3.45: uncensored Seedream для фото «наедине» и «косплей») ──
 SPICYAPI_KEY = os.getenv("SPICYAPI_KEY", "").strip()
