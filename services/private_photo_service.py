@@ -353,9 +353,37 @@ def _build_visual_identity_lock(character_id: str) -> str:
     )
     return lock
 
+# V3.45.23: pose & camera variety — without it every generation lands on the
+# same default standing/sitting pose (players noticed «одна и та же поза»).
+PRIVATE_POSE_POOL = [
+    'lying on her side, propped on one elbow, looking at the camera',
+    'sitting on the edge of the bed, legs crossed, slight head tilt',
+    'standing by the window, over-the-shoulder glance back at camera',
+    'reclining against pillows, arms stretched above head',
+    'sitting on the floor leaning against the wall, knees up',
+    'standing in front of a mirror, phone POV selfie angle',
+    'on all fours looking back over her shoulder at the camera',
+    'sitting in a chair, legs draped over one armrest',
+    'lying on her back, shot from above at a slight angle',
+    'standing arching her back, hands in hair, eyes closed',
+    'perched on a windowsill, ankles crossed',
+    'kneeling on the bed, turning to face the camera',
+]
+
+PRIVATE_CAMERA_POOL = [
+    'eye-level medium shot',
+    'slightly high angle, full body in frame',
+    'low angle looking up at her',
+    'close-up portrait framing from the hips up',
+    'wide shot showing the whole room and her in it',
+    'POV shot as if seen from her partner\u2019s eyes',
+]
+
+
 def build_private_photo_prompt(
     request: PrivatePhotoRequest,
     character_description: str,
+    use_reference: bool = True,
 ) -> str:
     """
     Строит промпт для SpicyAPI.
@@ -363,21 +391,26 @@ def build_private_photo_prompt(
     Структура:
     [визуальная идентичность] + [категория] + [тип] + [обстановка] + [настроение]
     + [правило волос для косплея]
+
+    V3.45.23: ``use_reference`` toggles the image-to-image REFERENCE PROTOCOL.
+    Nude categories render via text-to-image, so they must not mention
+    «Image 1 / Image 2»; the text visual-lock carries identity instead.
     """
     parts = []
     
     # V3.45.19: use VISUAL identity (face, body, hair) instead of personality DNA
     visual_lock = _build_visual_identity_lock(request.character_id)
     if visual_lock:
-        # For image-to-image edit mode: reference images provide identity
-        parts.append(
-            'REFERENCE PROTOCOL: Image 1 defines her exact FACE, hair color and identity. '
-            'Image 2 defines her BODY — bust size, waist, hips, silhouette. '
-            'Preserve BOTH: same face AND same figure (bust, waist, hips) in the result. '
-            'Do not substitute another person, do not flatten or enlarge the bust, do not change body proportions. '
-            'CRITICAL: her bust size, waist and hips from image 2 are PERMANENT and must match exactly.'
-        )
-        # Also add the text body spec as a backup anchor
+        if use_reference:
+            # For image-to-image edit mode: reference images provide identity
+            parts.append(
+                'REFERENCE PROTOCOL: Image 1 defines her exact FACE, hair color and identity. '
+                'Image 2 defines her BODY — bust size, waist, hips, silhouette. '
+                'Preserve BOTH: same face AND same figure (bust, waist, hips) in the result. '
+                'Do not substitute another person, do not flatten or enlarge the bust, do not change body proportions. '
+                'CRITICAL: her bust size, waist and hips from image 2 are PERMANENT and must match exactly.'
+            )
+        # Always add the text body spec as identity anchor (needed for t2i nude)
         parts.append(visual_lock)
     else:
         parts.append(f"Subject: {character_description}")
@@ -407,6 +440,20 @@ def build_private_photo_prompt(
         type_data = next((t for t in category_data.get("types", []) if t["id"] == request.type_id), None)
         if type_data:
             parts.append(f"Style: {type_data['name_en']}")
+        # V3.45.23: explicit nudity directive — without it the model leaves her
+        # clothed: the type names are only locations («On bed», «In shower»).
+        if request.category == "fully_nude":
+            parts.append(
+                'OUTFIT: completely nude, naked, no clothing at all, bare breasts, '
+                'nipples and genitals visible, no censorship, no blur.'
+            )
+        elif request.category == "nude_art":
+            parts.append('OUTFIT: artistic nude, bare skin, elegant and tasteful composition.')
+    
+    # V3.45.23: random pose + camera so consecutive photos never repeat.
+    import random
+    parts.append(f"POSE: {random.choice(PRIVATE_POSE_POOL)}.")
+    parts.append(f"CAMERA: {random.choice(PRIVATE_CAMERA_POOL)}.")
     
     # Общие правила
     parts.append("High quality photo, professional photography, detailed, realistic")
@@ -481,16 +528,21 @@ async def _spicyapi_call(method: str, path: str, headers: dict = None, **kwargs)
 async def generate_private_photo_real(
     request: PrivatePhotoRequest,
     character_description: str,
+    prompt: Optional[str] = None,
 ) -> Optional[bytes]:
     """
     Генерирует приватное фото через SpicyAPI Seedream 5.0 Lite edit (image-to-image).
     Возвращает bytes изображения или None при ошибке.
+
+    V3.45.23: accepts a prebuilt ``prompt`` so the caller's random pose/camera
+    matches the cache key (build_private_photo_prompt is non-deterministic).
     """
     if not SPICYAPI_KEY:
         logger.error("SPICYAPI_KEY not configured")
         return None
     
-    prompt = build_private_photo_prompt(request, character_description)
+    if prompt is None:
+        prompt = build_private_photo_prompt(request, character_description)
     logger.info(f"Private photo: category={request.category}, type={request.type_id}")
     
     # Build reference image URLs (public endpoint, no auth)

@@ -9164,22 +9164,36 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
             type_id = types[0]['id'] if types else 'default'
         req = PrivatePhotoRequest(category=cat_id, type_id=type_id, location_id=loc_id,
                                   mood_id=mood_id, character_id=character_id)
-    prompt = build_private_photo_prompt(req, dna_ctx)
+    # V3.45.23: nude categories cannot be produced by image-to-image edit (the
+    # model keeps a clothed reference clothed) — render them via text-to-image
+    # instead, anchoring identity with the text visual-lock only.
+    is_adult = (not cosplay) and cat_id in ('fully_nude', 'nude_art')
+    prompt = build_private_photo_prompt(req, dna_ctx, use_reference=not is_adult)
     # Check cache
     cached = cache_get(prompt, character_id)
     if cached:
         if not free_used:
             spend_peaches(telegram_id, peach_cost)
         return cached, 'image/jpeg', 'jpg'
-    # Generate via SpicyAPI (or fal.ai Seedream fallback)
-    image_bytes = await generate_private_photo_real(req, dna_ctx)
+    # Generate: adult → fal.ai t2i (safety checker off); others → SpicyAPI i2i
+    image_bytes = None
     engine_used = 'spicyapi'
-    if not image_bytes:
-        # Fallback: try fal.ai Seedream text-to-image
+    if is_adult:
+        engine_used = 'fal_ai_t2i'
+        try:
+            from services.photo_service import _seedream_t2i
+            image_bytes, _ = await _seedream_t2i(prompt, allow_adult=True)
+        except Exception as exc:
+            logger.warning('hot adult t2i failed: %s', exc)
+    else:
+        image_bytes = await generate_private_photo_real(req, dna_ctx, prompt)
+    if not image_bytes and not is_adult:
+        # Fallback for non-adult: SpicyAPI i2i failed, try fal.ai Seedream t2i
+        # (safety checker on — these are clothed/lingerie shots).
         engine_used = 'fal_ai'
         try:
             from services.photo_service import _seedream_t2i
-            image_bytes, _ = await _seedream_t2i(prompt)
+            image_bytes, _ = await _seedream_t2i(prompt, allow_adult=False)
         except Exception as exc:
             logger.warning('hot fal.ai fallback failed: %s', exc)
     logger.info('hot generated user=%s engine=%s ok=%s', telegram_id, engine_used, bool(image_bytes))

@@ -1416,15 +1416,18 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
         raise PhotoGenerationError('custom_avatar', ' → '.join(chain_errors)) from exc
 
 
-async def _seedream_t2i(prompt: str) -> tuple[bytes, str]:
+async def _seedream_t2i(prompt: str, allow_adult: bool = False) -> tuple[bytes, str]:
     """V3.39.0: Seedream text-to-image for freeform prompts (no reference).
 
     V3.43.1: routed to the dedicated text-to-image endpoint — the edit
     endpoint validates ``image_urls`` as a non-empty sequence and answers
     HTTP 422 to a reference-free studio prompt.
+
+    V3.45.23: ``allow_adult`` disables fal's safety checker so the uncensored
+    «Наедине»/nude leg can actually return an image instead of failing.
     """
     result = await _seedream_request(
-        prompt, [], 1, request_label='studio_picture', allow_adult=False,
+        prompt, [], 1, request_label='studio_picture', allow_adult=allow_adult,
         model=FAL_MODEL_T2I,
     )
     images = result.get('images') if isinstance(result, dict) else None
