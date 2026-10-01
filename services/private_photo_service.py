@@ -116,11 +116,26 @@ PRIVATE_PHOTO_CATEGORIES = {
         "name_ru": "В одежде пикантно",
         "name_en": "Suggestive clothed",
         "types": [
-            {"id": "shirt", "name_ru": "👔 Мужская рубашка", "name_en": "👔 Men's shirt"},
+            {"id": "shirt", "name_ru": "Мужская рубашка", "name_en": "Men's shirt"},
             {"id": "coat", "name_ru": "Пальто на голое тело", "name_en": "Coat on bare body"},
             {"id": "dress", "name_ru": "Вечернее платье", "name_en": "Evening dress"},
-            {"id": "shorts", "name_ru": "🩳 Короткие шорты + топ", "name_en": "🩳 Short shorts + top"},
-            {"id": "wet", "name_ru": "🌧️ Мокрая футболка", "name_en": "🌧️ Wet t-shirt"},
+            {"id": "shorts", "name_ru": "Короткие шорты + топ", "name_en": "Short shorts + top"},
+            {"id": "wet", "name_ru": "Мокрая футболка", "name_en": "Wet t-shirt"},
+        ]
+    },
+    "fully_nude": {
+        "name_ru": "Обнажённая",
+        "name_en": "Fully nude",
+        "peach_cost": 4,
+        "types": [
+            {"id": "bed", "name_ru": "На кровати", "name_en": "On bed"},
+            {"id": "shower", "name_ru": "В душе", "name_en": "In shower"},
+            {"id": "mirror", "name_ru": "У зеркала", "name_en": "By mirror"},
+            {"id": "window", "name_ru": "У окна", "name_en": "By window"},
+            {"id": "bathtub", "name_ru": "В ванной", "name_en": "In bathtub"},
+            {"id": "outdoor", "name_ru": "На природе", "name_en": "Outdoor"},
+            {"id": "candles", "name_ru": "При свечах", "name_en": "By candlelight"},
+            {"id": "silk_sheets", "name_ru": "На шёлковом белье", "name_en": "On silk sheets"},
         ]
     },
 }
@@ -359,8 +374,11 @@ def build_private_photo_prompt(
             'REFERENCE PROTOCOL: Image 1 defines her exact FACE, hair color and identity. '
             'Image 2 defines her BODY — bust size, waist, hips, silhouette. '
             'Preserve BOTH: same face AND same figure (bust, waist, hips) in the result. '
-            'Do not substitute another person, do not flatten or enlarge the bust, do not change body proportions.'
+            'Do not substitute another person, do not flatten or enlarge the bust, do not change body proportions. '
+            'CRITICAL: her bust size, waist and hips from image 2 are PERMANENT and must match exactly.'
         )
+        # Also add the text body spec as a backup anchor
+        parts.append(visual_lock)
     else:
         parts.append(f"Subject: {character_description}")
     
@@ -543,6 +561,12 @@ async def generate_private_photo_real(
 
 
 # ─── Вспомогательные функции ───────────────────────────────────────────────────
+
+def get_category_cost(category: str) -> int:
+    """V3.45.22: per-category peach cost (fully_nude = 4, others = 2)."""
+    cat = PRIVATE_PHOTO_CATEGORIES.get(category, {})
+    return cat.get('peach_cost', PRIVATE_PHOTO_PEACH_COST)
+
 
 def get_category_name(category: str, lang: str = "ru") -> str:
     """Получить название категории на нужном языке."""

@@ -1734,7 +1734,7 @@ function renderFeature(j) {
       if (el.dataset.locked === '1') { toast(el.dataset.hint || L.locked); return; }
       if (j.kind === 'apartment') toggleRoomActions(el);
       else if (j.kind === 'date') featurePost({ kind: 'date', id: el.dataset.id });
-      else if (j.kind === 'hot') { closeFeature(); requestMedia('hot', el.dataset.id); }
+      else if (j.kind === 'hot') hotSelectCategory(el.dataset.id);
       else if (j.kind === 'cosplay') { closeFeature(); requestMedia('cosplay', el.dataset.id); }
       else if (j.kind === 'video') { closeFeature(); requestMedia('video', 'animate'); }
     });
@@ -1746,6 +1746,55 @@ function renderFeature(j) {
     });
   });
 }
+
+// ── V3.45.22: «Наедине» wizard (category → type → location → mood) ────────
+let _hotData = null; // cached feature response
+let _hotSel = { cat: '', type: '', loc: '', mood: '' };
+
+function hotSelectCategory(catId) {
+  _hotSel = { cat: catId, type: '', loc: '', mood: '' };
+  const cat = (_hotData?.items || []).find(i => i.id === catId);
+  if (!cat) return;
+  const box = document.getElementById('featBody');
+  document.getElementById('featTitle').textContent = cat.title;
+  const types = cat.types || [];
+  box.innerHTML = '<div class="featlist">' + types.map(t =>
+    '<div class="featitem" data-id="' + esc(t.id) + '" data-locked="0"><div class="fet"><div class="fen">' + esc(t.name) + '</div></div></div>'
+  ).join('') + '</div><div style="padding:12px;text-align:center"><button class="btn-back" id="hotBack">← Назад</button></div>';
+  box.querySelectorAll('.featitem').forEach(el => el.onclick = () => hotSelectType(el.dataset.id));
+  document.getElementById('hotBack').onclick = () => renderFeature(_hotData);
+}
+
+function hotSelectType(typeId) {
+  _hotSel.type = typeId;
+  const box = document.getElementById('featBody');
+  document.getElementById('featTitle').textContent = 'Обстановка';
+  const locs = _hotData?.locations || [];
+  box.innerHTML = '<div class="featlist">' + locs.map(l =>
+    '<div class="featitem" data-id="' + esc(l.id) + '" data-locked="0"><div class="fet"><div class="fen">' + esc(l.name) + '</div></div></div>'
+  ).join('') + '</div><div style="padding:12px;text-align:center"><button class="btn-back" id="hotBack">← Назад</button></div>';
+  box.querySelectorAll('.featitem').forEach(el => el.onclick = () => hotSelectLocation(el.dataset.id));
+  document.getElementById('hotBack').onclick = () => hotSelectCategory(_hotSel.cat);
+}
+
+function hotSelectLocation(locId) {
+  _hotSel.loc = locId;
+  const box = document.getElementById('featBody');
+  document.getElementById('featTitle').textContent = 'Настроение';
+  const moods = _hotData?.moods || [];
+  box.innerHTML = '<div class="featlist">' + moods.map(m =>
+    '<div class="featitem" data-id="' + esc(m.id) + '" data-locked="0"><div class="fet"><div class="fen">' + esc(m.name) + '</div></div></div>'
+  ).join('') + '</div><div style="padding:12px;text-align:center"><button class="btn-back" id="hotBack">← Назад</button></div>';
+  box.querySelectorAll('.featitem').forEach(el => el.onclick = () => hotGenerate(el.dataset.id));
+  document.getElementById('hotBack').onclick = () => hotSelectType(_hotSel.type);
+}
+
+function hotGenerate(moodId) {
+  _hotSel.mood = moodId;
+  closeFeature();
+  requestMedia('hot', _hotSel.cat + ':' + _hotSel.type + ':' + _hotSel.loc + ':' + _hotSel.mood);
+}
+
 
 async function openFeature(kind) {
   if (!CHAT) return;
@@ -1759,6 +1808,7 @@ async function openFeature(kind) {
     if (r.status === 401) { toast(L.auth_short); closeFeature(); return; }
     const j = await r.json();
     if (!j.ok) { document.getElementById('featBody').innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; return; }
+    if (kind === 'hot') _hotData = j;
     document.getElementById('featTitle').textContent = (kind === 'photo') ? L.photo_menu_title : (j.title || '');
     renderFeature(j);
   } catch (e) {

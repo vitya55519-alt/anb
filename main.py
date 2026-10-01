@@ -9138,29 +9138,38 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         gallery_save, check_achievements, COSPLAY_CHARACTERS, PRIVATE_PHOTO_CATEGORIES,
     )
     from services.character_dna_service import character_dna_context
+    from services.private_photo_service import get_category_cost
+    # V3.45.22: parse compound scene "cat:type:loc:mood" from Mini App wizard
+    parts = category.split(':') if not cosplay else [category]
+    cat_id = parts[0]
+    type_id = parts[1] if len(parts) > 1 else ''
+    loc_id = parts[2] if len(parts) > 2 else 'bedroom'
+    mood_id = parts[3] if len(parts) > 3 else 'sensual'
+    peach_cost = get_category_cost(cat_id) if not cosplay else COSPLAY_PHOTO_PEACH_COST
     # Check balance: free daily or peaches
-    free_used = consume_free_private_photo(telegram_id, 'cosplay' if cosplay else category)
+    free_used = consume_free_private_photo(telegram_id, 'cosplay' if cosplay else cat_id)
     if not free_used:
-        if get_photo_credits(telegram_id) < PRIVATE_PHOTO_PEACH_COST:
+        if get_photo_credits(telegram_id) < peach_cost:
             raise PhotoGenerationError('hot', 'insufficient_peaches')
     # Build request
     dna_ctx = character_dna_context(character_id)
     if cosplay:
-        cos_char = next((c for c in COSPLAY_CHARACTERS if c['id'] == category), COSPLAY_CHARACTERS[0])
+        cos_char = next((c for c in COSPLAY_CHARACTERS if c['id'] == cat_id), COSPLAY_CHARACTERS[0])
         req = PrivatePhotoRequest(category='cosplay', type_id='default', location_id='bedroom',
-                                  mood_id='playful', character_id=character_id, cosplay_id=category)
+                                  mood_id='playful', character_id=character_id, cosplay_id=cat_id)
     else:
-        cat_data = PRIVATE_PHOTO_CATEGORIES.get(category, {})
+        cat_data = PRIVATE_PHOTO_CATEGORIES.get(cat_id, {})
         types = cat_data.get('types', [])
-        type_id = types[0]['id'] if types else 'default'
-        req = PrivatePhotoRequest(category=category, type_id=type_id, location_id='bedroom',
-                                  mood_id='sensual', character_id=character_id)
+        if not type_id:
+            type_id = types[0]['id'] if types else 'default'
+        req = PrivatePhotoRequest(category=cat_id, type_id=type_id, location_id=loc_id,
+                                  mood_id=mood_id, character_id=character_id)
     prompt = build_private_photo_prompt(req, dna_ctx)
     # Check cache
     cached = cache_get(prompt, character_id)
     if cached:
         if not free_used:
-            spend_peaches(telegram_id, PRIVATE_PHOTO_PEACH_COST)
+            spend_peaches(telegram_id, peach_cost)
         return cached, 'image/jpeg', 'jpg'
     # Generate via SpicyAPI (or fal.ai Seedream fallback)
     image_bytes = await generate_private_photo_real(req, dna_ctx)
@@ -9178,11 +9187,11 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         raise PhotoGenerationError('hot', 'all_providers_failed')
     # Charge peaches if free limit was not used
     if not free_used:
-        spend_peaches(telegram_id, PRIVATE_PHOTO_PEACH_COST)
+        spend_peaches(telegram_id, peach_cost)
     # Save to cache + gallery
     type_id = req.type_id
-    cache_save(prompt, character_id, category, type_id, image_bytes)
-    gallery_save(telegram_id, character_id, category, type_id, image_bytes)
+    cache_save(prompt, character_id, cat_id, type_id, image_bytes)
+    gallery_save(telegram_id, character_id, cat_id, type_id, image_bytes)
     check_achievements(telegram_id)
     return image_bytes, 'image/jpeg', 'jpg'
 
@@ -9310,7 +9319,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     body = body or {}
     character_id = str(body.get('character_id', ''))
     kind = str(body.get('kind', ''))
-    scene = str(body.get('scene') or 'selfie')[:40]
+    scene = str(body.get('scene') or 'selfie')[:80]
     if kind not in ('photo', 'circle', 'voice', 'video', 'hot', 'cosplay') or not character_id:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     if is_custom_character(character_id):
@@ -9484,7 +9493,9 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
     # V3.45.0: Фото наедине — категории
     if kind == 'hot':
         import re
-        from services.private_photo_service import PRIVATE_PHOTO_CATEGORIES, get_private_photo_usage
+        from services.private_photo_service import (
+            PRIVATE_PHOTO_CATEGORIES, get_private_photo_usage, get_category_cost, LOCATIONS, MOODS,
+        )
         usage = get_private_photo_usage(telegram_id)
         items = []
         for cat_id, cat_data in PRIVATE_PHOTO_CATEGORIES.items():
@@ -9492,15 +9503,20 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
             raw_name = cat_data.get(name_key, cat_data['name_ru'])
             # Strip leading emoji characters from category name
             clean_name = re.sub(r'^[^\w\s]+\s*', '', raw_name).strip() or raw_name
+            cost = get_category_cost(cat_id)
             items.append({
                 'id': cat_id,
                 'emoji': '',
                 'title': clean_name,
-                'subtitle': f"{PRIVATE_PHOTO_PEACH_COST} \U0001f351",
+                'subtitle': f"{cost} \U0001f351",
                 'locked': False,
+                'types': [{"id": t["id"], "name": t.get(name_key, t["name_ru"])} for t in cat_data.get('types', [])],
             })
+        locations = [{'id': loc['id'], 'name': loc.get(f'name_{"en" if lang == EN else "ru"}', loc['name_ru'])} for loc in LOCATIONS]
+        moods = [{'id': m['id'], 'name': m.get(f'name_{"en" if lang == EN else "ru"}', m['name_ru'])} for m in MOODS]
         title = 'Private' if lang == EN else 'Наедине'
-        return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
+        return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items,
+                                  'locations': locations, 'moods': moods})
     # V3.45.0: Косплей — персонажи
     if kind == 'cosplay':
         from services.private_photo_service import COSPLAY_CHARACTERS, get_private_photo_usage
