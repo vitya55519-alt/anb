@@ -469,43 +469,9 @@ def build_private_photo_prompt(
 
 
 # ─── SpicyAPI интеграция ───────────────────────────────────────────────────────
-
-async def generate_private_photo(
-    request: PrivatePhotoRequest,
-    character_description: str,
-) -> Optional[bytes]:
-    """
-    Генерирует приватное фото через SpicyAPI.
-    Возвращает bytes изображения или None при ошибке.
-    """
-    if not SPICYAPI_KEY:
-        logger.error("SPICYAPI_KEY not configured")
-        return None
-    
-    prompt = build_private_photo_prompt(request, character_description)
-    
-    # TODO: Реализовать HTTP запрос к SpicyAPI
-    # Пример:
-    # async with aiohttp.ClientSession() as session:
-    #     async with session.post(
-    #         f"{SPICYAPI_BASE_URL}/generate",
-    #         headers={"Authorization": f"Bearer {SPICYAPI_KEY}"},
-    #         json={
-    #             "model": SPICYAPI_IMAGE_MODEL,
-    #             "prompt": prompt,
-    #             "timeout": SPICYAPI_IMAGE_TIMEOUT,
-    #         }
-    #     ) as resp:
-    #         if resp.status == 200:
-    #             data = await resp.json()
-    #             return base64.b64decode(data["image"])
-    
-    logger.info(f"Private photo request: category={request.category}, type={request.type_id}")
-    logger.debug(f"Prompt: {prompt}")
-    
-    # Заглушка — вернуть None, реализовать позже
-    return None
-
+# NOTE: the real generation pipeline lives in ``generate_private_photo_real``
+# below (task create → poll → download) — the old ``generate_private_photo``
+# stub that only returned None has been removed (V3.45.27).
 
 SPICYAPI_TASK_BASE = "https://api.spicyapi.ai/api/v1"
 

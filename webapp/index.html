@@ -552,6 +552,16 @@
   .minichar img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--card2); }
   .minichar .nm { font-size: 14px; font-weight: 600; flex: 1; }
   .minichar button { flex-shrink: 0; }
+  /* V3.45.27: achievements board + private gallery */
+  .achrow {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px;
+  }
+  .achrow .nm { font-size: 14px; font-weight: 600; }
+  .achrow .achicon { font-size: 22px; width: 30px; text-align: center; flex-shrink: 0; }
+  .achrow.lock { opacity: .5; filter: grayscale(.6); }
+  .galgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .galgrid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; background: var(--card2); }
 </style>
 </head>
 <body>
@@ -729,6 +739,39 @@
   </div>
   <div class="page" id="creatorBody"><div class="loading">…</div></div>
 </div>
+<!-- V3.45.27: author edit form (name / bio / age) for her own character -->
+<div class="overlay" id="creatorEdit">
+  <div class="chat-head">
+    <button class="iconbtn" id="creatorEditBack">‹</button>
+    <div>
+      <div class="nm" id="creatorEditTitle">Редактировать персонажа</div>
+    </div>
+  </div>
+  <div class="page">
+    <div class="wlab" id="ceNameLab" style="display:block;margin:8px 0 4px;font-size:13px;opacity:.8">Имя</div>
+    <input id="ceName" maxlength="48" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:0;border-radius:10px;background:rgba(255,255,255,.05);color:#fff;font-size:15px">
+    <div class="wlab" id="ceBioLab" style="display:block;margin:12px 0 4px;font-size:13px;opacity:.8">Описание</div>
+    <textarea id="ceBio" maxlength="900" rows="5" style="width:100%;box-sizing:border-box;padding:10px;border:0;border-radius:10px;background:rgba(255,255,255,.05);color:#fff;font-size:15px;resize:none"></textarea>
+    <div class="wlab" id="ceAgeLab" style="display:block;margin:12px 0 4px;font-size:13px;opacity:.8">Возраст</div>
+    <input id="ceAge" inputmode="numeric" maxlength="2" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:0;border-radius:10px;background:rgba(255,255,255,.05);color:#fff;font-size:15px">
+    <button class="cta" id="creatorEditSave" style="margin-top:16px">Сохранить</button>
+  </div>
+</div>
+<!-- V3.45.27: unified achievements board + private gallery -->
+<div class="overlay" id="achview">
+  <div class="chat-head">
+    <button class="iconbtn" id="achBack">‹</button>
+    <div><div class="nm" id="achTitle">Достижения</div></div>
+  </div>
+  <div class="page" id="achBody"><div class="loading">…</div></div>
+</div>
+<div class="overlay" id="galview">
+  <div class="chat-head">
+    <button class="iconbtn" id="galBack">‹</button>
+    <div><div class="nm" id="galTitle">Моя галерея</div></div>
+  </div>
+  <div class="page" id="galBody"><div class="loading">…</div></div>
+</div>
 <!-- V3.35.0: character constructor wizard — build your own girl in the app -->
 <div class="overlay" id="wizview">
   <div class="chat-head">
@@ -869,6 +912,11 @@ const L_EN = {
   creator_earned: n => '💰 ' + n + ' ⭐ earned',
   creator_total_earnings: n => 'Total: 💰 ' + n + ' ⭐',
   creator_summary: s => 'Your characters: ' + s, creator_chat: 'Chat with her',
+  creator_edit: 'Edit', creator_delete: 'Delete', creator_delete_confirm: 'Delete for real?', creator_delete_again: 'Tap again to confirm',
+  edit_title: 'Edit character', edit_name: 'Name', edit_bio: 'Description', edit_age: 'Age',
+  edit_save: 'Save', edit_saved: 'Saved ✅', edit_name_required: 'Name is required', edit_age_bad: 'Age must be 18–99', delete_done: 'Character deleted', cancel: 'Cancel',
+  achievements_row: '🏆 Achievements', gallery_row: '🖼️ My gallery',
+  ach_title: 'Achievements', gal_title: 'My gallery', gal_empty: 'No photos yet — generate one in “Alone”.', gal_count: n => n + ' photos',
   partner_row: '💰 Partner program', docs_row: '📜 Documents & prices', open_chat: 'chat',
   // V3.39.0: the Come Closer character page + in-app chat media.
   start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', lb_title: '🏆 Top Popular',
@@ -987,6 +1035,11 @@ const L_RU = {
   creator_earned: n => '💰 ' + n + ' ⭐ заработано',
   creator_total_earnings: n => 'Всего: 💰 ' + n + ' ⭐',
   creator_summary: s => 'Твои персонажи: ' + s, creator_chat: 'Написать ей',
+  creator_edit: 'Изменить', creator_delete: 'Удалить', creator_delete_confirm: 'Удалить навсегда?', creator_delete_again: 'Нажми ещё раз для подтверждения',
+  edit_title: 'Редактировать персонажа', edit_name: 'Имя', edit_bio: 'Описание', edit_age: 'Возраст',
+  edit_save: 'Сохранить', edit_saved: 'Сохранено ✅', edit_name_required: 'Имя обязательно', edit_age_bad: 'Возраст 18–99', delete_done: 'Персонаж удалён', cancel: 'Отмена',
+  achievements_row: '🏆 Достижения', gallery_row: '🖼️ Моя галерея',
+  ach_title: 'Достижения', gal_title: 'Моя галерея', gal_empty: 'Фото пока нет — создай его в «Наедине».', gal_count: n => n + ' фото',
   partner_row: '💰 Партнёрка', docs_row: '📜 Документы и цены', open_chat: 'чат',
   // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
   start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', lb_title: ' Топ популярных',
@@ -2706,6 +2759,8 @@ function renderProfileBody() {
     ${myCharsHtml}
     <button class="cta" id="profileCreate">${esc(L.create_char)}</button>
     <div class="menurow" id="menuCreator"><span>${esc(L.creator_row)}</span><span class="arr">›</span></div>
+    <div class="menurow" id="menuAch"><span>${esc(L.achievements_row)}</span><span class="arr">›</span></div>
+    <div class="menurow" id="menuGal"><span>${esc(L.gallery_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuPartner"><span>${esc(L.partner_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuDocs"><span>${esc(L.docs_row)}</span><span class="arr">›</span></div>
     <div class="sect-title">${esc(L.settings_title)}</div>
@@ -2726,6 +2781,11 @@ function renderProfileBody() {
   if (md) md.addEventListener('click', openDocsOverlay);
 const mcr = document.getElementById('menuCreator');
   if (mcr) mcr.addEventListener('click', openCreatorOverlay);
+  // V3.45.27: achievements board + private gallery now live inside the app.
+  const ma = document.getElementById('menuAch');
+  if (ma) ma.addEventListener('click', openAchievements);
+  const mg = document.getElementById('menuGal');
+  if (mg) mg.addEventListener('click', openGallery);
   // V3.43.5: «пошлый режим» прямо в настройках приложения — раньше
   // переключатель был спрятан в чате бота, и владелец сам его «еле нашел».
   const rs = document.getElementById('rowSpicy');
@@ -2876,7 +2936,7 @@ async function loadCreatorCabinet() {
         <div style="display:none;width:40px;height:40px;border-radius:50%;background:var(--card2);align-items:center;justify-content:center;font-size:20px;flex-shrink:0">👩</div>
         <div class="nm">${esc(c.name)}</div>
         <div class="sub2">👁 ${esc(fmtK(c.views))} · 👍 ${esc(fmtK(c.likes || 0))} · ${esc(L.creator_earned(c.earnings))}${when}</div>
-        <div style="display:flex;gap:8px;margin-top:6px;align-items:center">${stateBadge}${pubBtn}<button class="cta small ghost" data-chat-id="${esc(c.id)}" data-chat-name="${esc(c.name)}" data-chat-photo="${esc(c.photo)}" title="${esc(L.creator_chat)}">💬</button></div>
+        <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">${stateBadge}${pubBtn}<button class="cta small ghost" data-edit-id="${esc(c.id)}" title="${esc(L.creator_edit)}">✏️</button><button class="cta small ghost" data-del-id="${esc(c.id)}" title="${esc(L.creator_delete)}">🗑</button><button class="cta small ghost" data-chat-id="${esc(c.id)}" data-chat-name="${esc(c.name)}" data-chat-photo="${esc(c.photo)}" title="${esc(L.creator_chat)}">💬</button></div>
       </div>`;
     }).join('');
     body.innerHTML = totalLine + rows;
@@ -2888,6 +2948,11 @@ async function loadCreatorCabinet() {
         document.getElementById('creatorview').classList.remove('open');
         openChat({ id: b.dataset.chatId, name: b.dataset.chatName, photo: b.dataset.chatPhoto, emoji: '👩', custom: true, status: 'active', selected: false });
       }));
+    // V3.45.27: ✏️ opens the author edit form; 🗑 deletes (double-tap confirm).
+    body.querySelectorAll('[data-edit-id]').forEach(b =>
+      b.addEventListener('click', () => openCreatorEdit(b.dataset.editId)));
+    body.querySelectorAll('[data-del-id]').forEach(b =>
+      b.addEventListener('click', () => confirmDeleteCharacter(b)));
   } catch (e) {
     body.innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
@@ -2909,6 +2974,91 @@ async function togglePublish(id, publish, btn) {
   } catch (e) {
     toast(L.invoice_err);
     if (btn) btn.disabled = false;
+  }
+}
+
+// V3.45.27: author edit form (name / bio / age) + delete for her own character.
+let CREATOR_EDIT_ID = null;
+async function openCreatorEdit(id) {
+  document.getElementById('creatorEditTitle').textContent = L.edit_title;
+  document.getElementById('ceNameLab').textContent = L.edit_name;
+  document.getElementById('ceBioLab').textContent = L.edit_bio;
+  document.getElementById('ceAgeLab').textContent = L.edit_age;
+  document.getElementById('creatorEditSave').textContent = L.edit_save;
+  document.getElementById('ceName').value = '';
+  document.getElementById('ceBio').value = '';
+  document.getElementById('ceAge').value = '';
+  document.getElementById('creatorEdit').classList.add('open');
+  try {
+    const r = await fetch('/webapp/api/creator/character?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(id), { cache: 'no-store' });
+    const j = await r.json();
+    if (!j.ok) { toast(L.err_auth); document.getElementById('creatorEdit').classList.remove('open'); return; }
+    CREATOR_EDIT_ID = j.id;
+    document.getElementById('ceName').value = j.name || '';
+    document.getElementById('ceBio').value = j.bio || '';
+    document.getElementById('ceAge').value = j.age || '';
+  } catch (e) {
+    toast(L.invoice_err);
+    document.getElementById('creatorEdit').classList.remove('open');
+  }
+}
+document.getElementById('creatorEditBack').addEventListener('click', () => {
+  document.getElementById('creatorEdit').classList.remove('open');
+});
+async function saveCreatorEdit() {
+  if (!CREATOR_EDIT_ID) return;
+  const name = document.getElementById('ceName').value.trim();
+  const bio = document.getElementById('ceBio').value.trim();
+  const age = document.getElementById('ceAge').value.trim();
+  if (!name) { toast(L.edit_name_required); return; }
+  if (age && (!/^\d+$/.test(age) || +age < 18 || +age > 99)) { toast(L.edit_age_bad); return; }
+  const btn = document.getElementById('creatorEditSave');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/webapp/api/creator/edit?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: CREATOR_EDIT_ID, name, bio, age }),
+    });
+    const j = await r.json();
+    if (!j.ok) { toast(j.error === 'bad_age' ? L.edit_age_bad : L.invoice_err); return; }
+    toast(L.edit_saved);
+    document.getElementById('creatorEdit').classList.remove('open');
+    loadCreatorCabinet();
+    loadCharacters();
+  } catch (e) {
+    toast(L.invoice_err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+document.getElementById('creatorEditSave').addEventListener('click', saveCreatorEdit);
+function confirmDeleteCharacter(btn) {
+  // V3.45.27: Telegram disables native confirm — a second tap arms the delete.
+  if (btn.dataset.armed === '1') {
+    deleteCreatorCharacter(btn.dataset.delId);
+    return;
+  }
+  btn.dataset.armed = '1';
+  const label = btn.textContent;
+  btn.dataset.label = label;
+  btn.textContent = '⚠️';
+  btn.title = L.creator_delete_again;
+  toast(L.creator_delete_confirm);
+  setTimeout(() => { btn.dataset.armed = '0'; btn.textContent = label; }, 3000);
+}
+async function deleteCreatorCharacter(id) {
+  try {
+    const r = await fetch('/webapp/api/creator/delete?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: id }),
+    });
+    const j = await r.json();
+    if (!j.ok) { toast(L.invoice_err); return; }
+    toast(L.delete_done);
+    loadCreatorCabinet();
+    loadCharacters();
+  } catch (e) {
+    toast(L.invoice_err);
   }
 }
 document.getElementById('chatBack').addEventListener('click', () => {
@@ -3110,20 +3260,51 @@ function lazyLoadTab(id){
 // Channel check after a short delay (non-blocking)
 setTimeout(()=>{if(!_channelLoaded){_channelLoaded=true;loadChannel();}},2000);
 
-// V3.45.0: Фото наедине + Косплей + Галерея + Ачивки
-function openPrivatePhoto(category) {
-  const names = {lingerie: 'В белье', nude_art: 'Арт-нюдо', roleplay: 'Ролевая', cosplay: 'Косплей'};
-  showToast(`💋 ${names[category] || category} — скоро!`);
-  // TODO: open full-screen modal with type/location/mood selection
-}
-function openGallery() {
-  showToast('🖼️ Галерея — скоро!');
-  // TODO: open gallery modal with saved photos
-}
+// V3.45.27: Галерея + Ачивки — реальные экраны приложения (были заглушки).
 function openAchievements() {
-  showToast('🏆 Ачивки — скоро!');
-  // TODO: open achievements modal
+  document.getElementById('achTitle').textContent = L.ach_title;
+  const body = document.getElementById('achBody');
+  body.innerHTML = '<div class="loading">…</div>';
+  document.getElementById('achview').classList.add('open');
+  fetch('/webapp/api/achievements?init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store' })
+    .then(r => r.json())
+    .then(j => {
+      if (!j.ok) { body.innerHTML = `<div class="err">${esc(L.err_auth)}</div>`; return; }
+      const items = j.items || [];
+      const pct = j.total ? Math.round(j.unlocked / j.total * 100) : 0;
+      const head = `<div class="note">${j.unlocked} / ${j.total} · ${pct}%</div>`
+        + `<div class="bar" style="margin:6px 0 14px"><i style="width:${pct}%"></i></div>`;
+      body.innerHTML = head + items.map(it => `<div class="achrow${it.unlocked ? '' : ' lock'}">
+        <div class="achicon">${it.unlocked ? '🏆' : '🔒'}</div>
+        <div style="flex:1"><div class="nm">${esc(it.name)}</div>${it.description ? `<div class="sub2">${esc(it.description)}</div>` : ''}</div>
+      </div>`).join('');
+    })
+    .catch(() => { body.innerHTML = `<div class="err">${esc(L.invoice_err)}</div>`; });
 }
+document.getElementById('achBack').addEventListener('click', () => {
+  document.getElementById('achview').classList.remove('open');
+});
+function openGallery() {
+  document.getElementById('galTitle').textContent = L.gal_title;
+  const body = document.getElementById('galBody');
+  body.innerHTML = '<div class="loading">…</div>';
+  document.getElementById('galview').classList.add('open');
+  fetch('/webapp/api/gallery?init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store' })
+    .then(r => r.json())
+    .then(j => {
+      if (!j.ok) { body.innerHTML = `<div class="err">${esc(L.err_auth)}</div>`; return; }
+      const items = j.items || [];
+      if (!items.length) { body.innerHTML = `<div class="note">${esc(L.gal_empty)}</div>`; return; }
+      body.innerHTML = `<div class="note">${esc(L.gal_count(items.length))}</div>`
+        + `<div class="galgrid">` + items.map(it =>
+            `<img loading="lazy" src="${esc(it.url)}?init_data=${encodeURIComponent(tg.initData || '')}" alt="">`).join('')
+          + `</div>`;
+    })
+    .catch(() => { body.innerHTML = `<div class="err">${esc(L.invoice_err)}</div>`; });
+}
+document.getElementById('galBack').addEventListener('click', () => {
+  document.getElementById('galview').classList.remove('open');
+});
 </script>
 </body>
 </html>

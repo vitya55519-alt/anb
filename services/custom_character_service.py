@@ -653,6 +653,40 @@ def set_community_published(character_id: str, published: bool) -> bool:
         return True
 
 
+def update_custom_character_text(
+    character_id: str,
+    *,
+    display_name: str | None = None,
+    description: str | None = None,
+) -> bool:
+    """V3.45.27: author text edit for her own persona (name + bio). Keeps the
+    CustomCharacter row in sync with the storefront card so the chat persona and
+    the vitrina card never diverge. Only non-None fields are written."""
+    with SessionLocal() as session:
+        row = session.query(CustomCharacter).filter_by(character_id=character_id).first()
+        if not row:
+            return False
+        if display_name is not None:
+            row.display_name = display_name
+        if description is not None:
+            row.description = description
+        session.commit()
+        return True
+
+
+def delete_custom_character(character_id: str) -> bool:
+    """V3.45.27: permanently remove the caller's own persona row. Ownership is
+    checked by the caller (webapp_service). The storefront card is hidden
+    separately so her avatar leaves the community grid."""
+    with SessionLocal() as session:
+        row = session.query(CustomCharacter).filter_by(character_id=character_id).first()
+        if not row:
+            return False
+        session.delete(row)
+        session.commit()
+        return True
+
+
 def set_custom_avatar_file_id(character_id: str, avatar_file_id: str) -> bool:
     """V3.44.12: late avatar — creation-time generation failed (providers
     down) and the retry pipeline drew it afterwards. Stores the Telegram

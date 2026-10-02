@@ -334,6 +334,12 @@ if not _PUBLIC_BASE_URL_RAW:
 PUBLIC_BASE_URL = _PUBLIC_BASE_URL_RAW
 WEB_PORT = int(os.getenv("PORT", "8080"))
 
+# V3.45.27: «чат только в Mini App». When true a plain conversational message
+# typed at the BOT no longer calls the LLM — the bot shows the menu and points
+# to the app instead (structured buttons/photo/constructor keep working). It is
+# auto-disabled if PUBLIC_BASE_URL is missing so the bot never dead-ends.
+BOT_CHAT_REDIRECT = os.getenv("BOT_CHAT_REDIRECT", "1").strip() not in ("0", "false", "no", "off")
+
 FAL_KEY = os.getenv("FAL_KEY", "").strip()
 FAL_VIDEO_ENDPOINT = os.getenv("FAL_VIDEO_ENDPOINT", "fal-ai/wan2.2/image-to-video").strip()
 FAL_VIDEO_TIMEOUT_SECONDS = max(120, min(900, int(os.getenv("FAL_VIDEO_TIMEOUT_SECONDS", "600"))))

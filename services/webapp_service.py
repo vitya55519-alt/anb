@@ -78,6 +78,7 @@ from services.custom_character_service import (
     custom_character_id, is_custom_character,
     get_all_custom_characters, get_author_characters, get_custom_character_by_id,
     get_author_earnings_by_character, set_community_published,
+    update_custom_character_text, delete_custom_character,
 )
 from services.db import SessionLocal
 from services.ui_lang import EN, user_lang
@@ -760,6 +761,129 @@ def publish_creator_character(telegram_id: int, character_id: str, publish: bool
     except Exception:
         logger.exception('cabinet card visibility failed char=%s', character_id)
     return {'ok': True, 'published': bool(publish)}
+
+
+def api_creator_character(telegram_id: int, character_id: str) -> dict:
+    """V3.45.27: fetch one of the caller's own characters for the edit form
+    (prefilled name / bio / age). Ownership is enforced against the row."""
+    character_id = str(character_id or '').strip()[:64]
+    if not character_id:
+        return {'ok': False, 'error': 'bad_input'}
+    row = get_custom_character_by_id(character_id)
+    if not row or str(row.telegram_id) != str(telegram_id):
+        return {'ok': False, 'error': 'not_found'}
+    age = ''
+    bio = row.description or ''
+    try:
+        card = get_card(character_id)
+        if card:
+            age = str(card.age) if card.age else ''
+            bio = card.short_bio or bio
+    except Exception:
+        logger.exception('cabinet edit card load failed char=%s', character_id)
+    return {
+        'ok': True,
+        'id': row.character_id,
+        'name': row.display_name or '',
+        'bio': bio,
+        'age': age,
+    }
+
+
+def edit_creator_character(
+    telegram_id: int, character_id: str,
+    *, name: str | None = None, bio: str | None = None, age: str | None = None,
+) -> dict:
+    """V3.45.27: the author edits her own character's text fields (name, bio,
+    age). Updates BOTH the storefront card and the persona row so chat and
+    vitrina stay consistent. No avatar regeneration (v1 = text only)."""
+    character_id = str(character_id or '').strip()[:64]
+    if not character_id:
+        return {'ok': False, 'error': 'bad_input'}
+    row = get_custom_character_by_id(character_id)
+    if not row or str(row.telegram_id) != str(telegram_id):
+        return {'ok': False, 'error': 'not_found'}
+    name = str(name).strip()[:48] if name is not None else ''
+    bio = str(bio).strip()[:900] if bio is not None else ''
+    if not name:
+        return {'ok': False, 'error': 'name_required'}
+    age_int: int | None = None
+    if age not in (None, ''):
+        if not str(age).isdigit() or not 18 <= int(age) <= 99:
+            return {'ok': False, 'error': 'bad_age'}
+        age_int = int(age)
+    card_changes: dict = {'display_name': name}
+    if bio:
+        card_changes['short_bio'] = bio
+    if age_int is not None:
+        card_changes['age'] = age_int
+    try:
+        update_card(character_id, **card_changes)
+    except Exception:
+        logger.exception('cabinet edit card failed char=%s', character_id)
+        return {'ok': False, 'error': 'save_failed'}
+    update_custom_character_text(character_id, display_name=name, description=bio or None)
+    return {'ok': True, 'id': character_id, 'name': name, 'bio': bio, 'age': age_int}
+
+
+def delete_creator_character(telegram_id: int, character_id: str) -> dict:
+    """V3.45.27: the author permanently removes her own character — deletes the
+    persona row and hides the storefront card so she leaves the community grid."""
+    character_id = str(character_id or '').strip()[:64]
+    if not character_id:
+        return {'ok': False, 'error': 'bad_input'}
+    row = get_custom_character_by_id(character_id)
+    if not row or str(row.telegram_id) != str(telegram_id):
+        return {'ok': False, 'error': 'not_found'}
+    try:
+        update_card(character_id, is_visible=False, status='soon')
+    except Exception:
+        logger.exception('cabinet delete hide-card failed char=%s', character_id)
+    if not delete_custom_character(character_id):
+        return {'ok': False, 'error': 'not_found'}
+    return {'ok': True, 'id': character_id}
+
+
+# ── V3.45.27: unified achievements + private gallery for the Mini App ───────
+
+def api_achievements(telegram_id: int) -> dict:
+    """The app achievements board — one merged catalog with an honest total."""
+    try:
+        from services.gamification_service import get_unified_progress
+        progress = get_unified_progress(telegram_id)
+    except Exception:
+        logger.exception('app achievements failed user=%s', telegram_id)
+        progress = {'total': 0, 'unlocked': 0, 'items': []}
+    return {'ok': True, **progress}
+
+
+def api_gallery(telegram_id: int, limit: int = 60) -> dict:
+    """The app gallery of the caller's «Наедине» photos (newest first). Images
+    are served by id through /webapp/gallery/image/{id}."""
+    from services.private_photo_service import gallery_list
+    items = []
+    for row in gallery_list(telegram_id, limit=limit):
+        created = row.get('created_at')
+        items.append({
+            'id': row['id'],
+            'category': row.get('category'),
+            'type_id': row.get('type_id'),
+            'url': f"/webapp/gallery/image/{row['id']}",
+            'created_at': created.isoformat() if created else '',
+        })
+    return {'ok': True, 'count': len(items), 'items': items}
+
+
+def gallery_image_bytes(telegram_id: int, image_id: int) -> bytes | None:
+    """Return one gallery photo's bytes, but only when it belongs to the caller."""
+    from models.app_models import PrivateGallery
+    from services.private_photo_service import ensure_user
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as session:
+        row = session.get(PrivateGallery, image_id)
+        if not row or row.user_id != uid:
+            return None
+        return row.image_bytes
 
 
 # ── V3.38.0: «Картинки» studio persistence ────────────────────────────────

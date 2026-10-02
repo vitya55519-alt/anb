@@ -261,3 +261,41 @@ def check_first_message(telegram_id: int) -> None:
     user = get_user(telegram_id)
     if user and (user.attention_points or 0) <= 1:
         unlock_achievement(telegram_id, 'first_message')
+
+
+def get_unified_progress(telegram_id: int) -> dict:
+    """V3.45.27: ONE achievements board for the whole app and bot.
+
+    The system grew three catalogs that never talked to each other; only two
+    are actually live and persist unlocks — this module's lifecycle set (kept
+    in the Achievement table) and the private-photo set (kept in the
+    ``user.achievements`` CSV). We merge them here into a single ordered list
+    with an honest total, so the Mini App shows a correct «N из M» instead of
+    the old per-catalog number that matched nothing.
+    """
+    unlocked_lifecycle = {a.achievement_key for a in list_achievements(telegram_id)}
+    unlocked_private: set[str] = set()
+    private_names: dict[str, str] = {}
+    try:
+        from services.private_photo_service import ACHIEVEMENTS as PRIVATE_ACH
+        private_names = {k: v.get('name', k) for k, v in PRIVATE_ACH.items()}
+        user = get_user(telegram_id)
+        if user:
+            with SessionLocal() as session:
+                row = session.scalar(select(User).where(User.id == user.id))
+                if row:
+                    unlocked_private = set((row.achievements or '').split(',')) - {''}
+    except Exception:
+        logger.exception('private achievements merge failed user=%s', telegram_id)
+    items: list[dict] = []
+    for key, (name, desc) in ACHIEVEMENTS.items():
+        items.append({'key': key, 'name': name, 'description': desc,
+                      'unlocked': key in unlocked_lifecycle, 'group': 'lifecycle'})
+    for key, name in private_names.items():
+        items.append({'key': key, 'name': name, 'description': '',
+                      'unlocked': key in unlocked_private, 'group': 'private'})
+    return {
+        'total': len(items),
+        'unlocked': sum(1 for it in items if it['unlocked']),
+        'items': items,
+    }

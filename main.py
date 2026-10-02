@@ -36,6 +36,7 @@ from config import (
     CONSTRUCTOR_COST_PEACHES,
     CONSTRUCTOR_PRICE_USD, PREMIUM_WEEKLY_PRICE_USD, fiat_suffix,
     PLATEGA_ENABLED, PLATEGA_PREMIUM_PRICE_RUB, PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB, PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
+    BOT_CHAT_REDIRECT,
     SUPPORT_BOT_USERNAME, SUPPORT_BOT_TOKEN, SUPPORT_WELCOME_TEXT,
     CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS,
     PEACH_PACK_STARS, PEACH_PACK_CREDITS, PEACH_PACK_RUB,
@@ -1397,12 +1398,15 @@ def photo_keyboard(telegram_id: int):
         callback_data='private_cosplay:start',
     )])
     # V3.45.0: приватная галерея и достижения
-    from services.private_photo_service import gallery_count, get_achievements
+    # V3.45.27: achievements come from the single unified registry (lifecycle +
+    # private photos) so the bot and the Mini App show the same «N из M».
+    from services.private_photo_service import gallery_count
+    from services.gamification_service import get_unified_progress
     gal_count = gallery_count(telegram_id)
-    ach_count = len(get_achievements(telegram_id))
+    _ach = get_unified_progress(telegram_id)
     rows.append([
         InlineKeyboardButton(text=f'🖼️ Галерея ({gal_count})', callback_data='private_gallery:view'),
-        InlineKeyboardButton(text=f'🏆 Ачивки ({ach_count})', callback_data='private_achievements:view'),
+        InlineKeyboardButton(text=f'🏆 Ачивки ({_ach["unlocked"]}/{_ach["total"]})', callback_data='private_achievements:view'),
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -5135,12 +5139,19 @@ async def private_gallery_view(cq: types.CallbackQuery):
 
 @dp.callback_query(F.data == 'private_achievements:view')
 async def private_achievements_view(cq: types.CallbackQuery):
-    """V3.45.0: просмотр достижений."""
-    from services.private_photo_service import get_achievements, ACHIEVEMENTS
-    earned = get_achievements(cq.from_user.id)
-    all_ach = [f'{v["name"]} {"✅" if k in [a for a in earned] else "⬜️"}' for k, v in ACHIEVEMENTS.items()]
+    """V3.45.0: просмотр достижений. V3.45.27: единый реестр (жизненный цикл +
+    приватные фото) — тот же список и тот же «N из M», что и в Mini App."""
+    from services.gamification_service import get_unified_progress
+    data = get_unified_progress(cq.from_user.id)
+    if not data['items']:
+        await cq.answer()
+        await cq.message.answer('🏆 Достижения пока не открыты.')
+        return
+    lines = [f'{it["name"]} {"✅" if it["unlocked"] else "⬜️"}' for it in data['items']]
+    pct = round(data['unlocked'] / data['total'] * 100) if data['total'] else 0
     await cq.answer()
-    await cq.message.answer(f'🏆 Достижения:\n\n' + '\n'.join(all_ach))
+    await cq.message.answer(
+        f'🏆 Достижения: {data["unlocked"]} из {data["total"]} ({pct}%)\n\n' + '\n'.join(lines))
 
 
 # ─── V3.45.0: Голос + фото комбо ───────────────────────────────────────────
@@ -8110,6 +8121,20 @@ async def text_message(message: types.Message):
             await handle_photo_request(message.chat.id, message.from_user.id, request)
             touch_user(message.from_user.id)
             return
+        # V3.45.27: «чат только в Mini App». A plain conversational message in
+        # the bot no longer calls the LLM — we surface the menu and point to the
+        # app. Photo requests / photo-offer acceptance / constructor / admin
+        # card-edit flows all `return` earlier, so only pure small talk reaches
+        # here. If PUBLIC_BASE_URL is missing we fall through to classic chat so
+        # the bot never dead-ends.
+        if BOT_CHAT_REDIRECT and PUBLIC_BASE_URL:
+            _lang = user_lang(message.from_user.id)
+            _hint = ('💬 наше общение теперь в приложении — нажми «📱 Открыть приложение» 👇'
+                     if _lang != EN else
+                     '💬 our chat now lives in the app — tap “📱 Open the app” 👇')
+            await message.answer(_hint, reply_markup=main_keyboard(message.from_user.id in ADMIN_TELEGRAM_IDS, message.from_user.id))
+            touch_user(message.from_user.id)
+            return
         before_level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
         # Instant game-like feedback: sometimes react to messages that grew the
         # bond (care/flirt signals), so the user feels the relationship moving.
@@ -8457,6 +8482,102 @@ async def _webapp_api_creator_publish(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'bad_input'}, status=400)
     return web.json_response(webapp_service.publish_creator_character(
         telegram_id, character_id, bool(body.get('publish'))))
+
+
+async def _webapp_api_creator_character(request: web.Request) -> web.Response:
+    """V3.45.27: fetch the caller's own character to prefill the edit form."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    character_id = str(request.query.get('character_id', '') or '').strip()[:64]
+    return web.json_response(webapp_service.api_creator_character(telegram_id, character_id),
+                             headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_api_creator_edit(request: web.Request) -> web.Response:
+    """V3.45.27: the author edits her own character's text fields."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', '') or '').strip()[:64]
+    if not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_input'}, status=400)
+    return web.json_response(webapp_service.edit_creator_character(
+        telegram_id, character_id,
+        name=body.get('name'), bio=body.get('bio'), age=body.get('age')))
+
+
+async def _webapp_api_creator_delete(request: web.Request) -> web.Response:
+    """V3.45.27: the author permanently removes her own character."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', '') or '').strip()[:64]
+    if not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_input'}, status=400)
+    return web.json_response(webapp_service.delete_creator_character(telegram_id, character_id))
+
+
+async def _webapp_api_achievements(request: web.Request) -> web.Response:
+    """V3.45.27: the unified achievements board for the Mini App."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    return web.json_response(webapp_service.api_achievements(telegram_id),
+                             headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_api_gallery(request: web.Request) -> web.Response:
+    """V3.45.27: the caller's «Наедине" photo gallery for the Mini App."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    return web.json_response(webapp_service.api_gallery(telegram_id),
+                             headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_gallery_image(request: web.Request) -> web.Response:
+    """V3.45.27: serve one private-gallery photo to its owner only."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.Response(status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.Response(status=401)
+    try:
+        image_id = int(request.match_info['image_id'])
+    except (TypeError, ValueError):
+        return web.Response(status=404)
+    data = webapp_service.gallery_image_bytes(telegram_id, image_id)
+    if not data:
+        return web.Response(status=404)
+    return web.Response(body=data, content_type='image/jpeg',
+                        headers={'Cache-Control': 'private, max-age=86400'})
 
 
 async def _webapp_api_comments(request: web.Request) -> web.Response:
@@ -9886,6 +10007,13 @@ async def _start_web_server() -> None:
     # and the «на витрину» publish toggle.
     app.router.add_get('/webapp/api/creator/cabinet', _webapp_api_creator_cabinet)
     app.router.add_post('/webapp/api/creator/publish', _webapp_api_creator_publish)
+    app.router.add_get('/webapp/api/creator/character', _webapp_api_creator_character)
+    app.router.add_post('/webapp/api/creator/edit', _webapp_api_creator_edit)
+    app.router.add_post('/webapp/api/creator/delete', _webapp_api_creator_delete)
+    # V3.45.27: unified achievements board + private gallery in the Mini App.
+    app.router.add_get('/webapp/api/achievements', _webapp_api_achievements)
+    app.router.add_get('/webapp/api/gallery', _webapp_api_gallery)
+    app.router.add_get('/webapp/gallery/image/{image_id}', _webapp_gallery_image)
     # V3.44.0: popularity leaderboard
     app.router.add_get('/webapp/api/leaderboard', _webapp_api_leaderboard)
     # V3.44.0: public comments under character cards.
