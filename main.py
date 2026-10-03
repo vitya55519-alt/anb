@@ -669,11 +669,10 @@ def characters_keyboard(telegram_id: int | None = None):
     # V3.39.0: two characters per row — the old one-per-row wall was unreadable.
     rows = _pair_rows(_character_pick_buttons('view'))
     # V3.19.0: entry point to the personal character constructor.
-    # V3.44.22: a public persona is free, a private one costs 10 🍑 — the old
-    # 50⭐ teaser contradicted the price the next screen actually charged, and
-    # the separate rub row is gone (private personas simply spend peaches).
+    # V3.45.28: creating any character costs peaches — the «public is free»
+    # perk is retired, so the teaser shows the single real price.
     rows.append([InlineKeyboardButton(
-        text=f'🎨 Создать свою · бесплатно / {CONSTRUCTOR_COST_PEACHES} 🍑',
+        text=f'🎨 Создать свою · {CONSTRUCTOR_COST_PEACHES} 🍑',
         callback_data='constructor:start')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -6815,23 +6814,15 @@ async def _constructor_confirm(chat_id: int, telegram_id: int):
     params = cons['params']
     lines = summary_lines(params, str(params.get('name') or 'Без имени'))
     face_line = '📷 Лицо: по твоему фото (face-swap)' if cons.get('face_bytes') else '🎭 Внешность: полностью AI'
-    is_public = str(params.get('community') or '') == 'community_yes'
-    # V3.19.1: admins create their personal character for free.
-    # V3.44.22: so do public personas — a girl published to the «Сообщество»
-    # витрина is free; only a private one costs peaches.
+    # V3.45.28: creation always costs peaches (the free «Сообщество» perk is
+    # retired — every avatar is drawn on our GPU bill). Admins stay free.
     if telegram_id in ADMIN_TELEGRAM_IDS:
         buy_label = '✅ Создать · бесплатно (админ)'
         price_note = 'Админский доступ: бесплатно.'
-    elif is_public:
-        buy_label = '✅ Создать · бесплатно'
-        price_note = ('Бесплатно: она появится в категории «Сообщество», и другие смогут с ней общаться. '
-                      'Сделать её приватной потом можно в приложении — «Кабинет создателя».')
-    else:
-        buy_label = f'🍑 Создать приватную · {CONSTRUCTOR_COST_PEACHES} 🍑'
-        price_note = f'Приватный персонаж — только для тебя: {CONSTRUCTOR_COST_PEACHES} 🍑.'
-    if telegram_id in ADMIN_TELEGRAM_IDS or is_public:
         pay_rows = [[InlineKeyboardButton(text=buy_label, callback_data='constructor:buy')]]
     else:
+        buy_label = f'🍑 Создать · {CONSTRUCTOR_COST_PEACHES} 🍑'
+        price_note = f'Создание персонажа — {CONSTRUCTOR_COST_PEACHES} 🍑: аватар рисуется за наш счёт.'
         pay_rows = [[InlineKeyboardButton(text=buy_label, callback_data='constructor:buy_peaches')]]
     pay_rows.append([InlineKeyboardButton(text='❌ Отменить', callback_data='constructor:cancel')])
     keyboard = InlineKeyboardMarkup(inline_keyboard=pay_rows)
@@ -7323,10 +7314,6 @@ async def constructor_buy_cb(cq: types.CallbackQuery):
     # V3.19.1: admins skip the Stars invoice entirely.
     if telegram_id in ADMIN_TELEGRAM_IDS:
         _spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id), payload={'source': 'free'})
-        return
-    # V3.44.22: a persona headed for the «Сообщество» витрина is free.
-    if str(cons['params'].get('community') or '') == 'community_yes':
-        _spawn_job('constructor', telegram_id, _finish_constructor(cq.message.chat.id, None, telegram_id), payload={'source': 'community_free'})
         return
     # V3.27.0: a ruble-paid constructor credit (Platega since V3.44.21) skips Stars too.
     if consume_constructor_credit(telegram_id):
@@ -9812,9 +9799,8 @@ async def _webapp_api_constructor_options(request: web.Request) -> web.Response:
         'usd': CONSTRUCTOR_PRICE_USD,
         # V3.44.9: peach (photo credit) price — the in-app wizard's main pay path.
         'peaches': CONSTRUCTOR_COST_PEACHES,
-        # V3.44.22: public personas are free — the app wizard shows a single
-        # free create button when the community step says «publish».
-        'public_free': True,
+        # V3.45.28: creation always costs peaches — the free-public perk is gone.
+        'public_free': False,
         'free': free,
     })
 
@@ -9940,15 +9926,8 @@ async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
             logger.exception('constructor draft mark failed user=%s', telegram_id)
         _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'webapp_credit'})
         return web.json_response({'ok': True, 'free': True})
-    # V3.44.22: publishing to the «Сообщество» витрина is free — no invoice.
-    if str((cons.get('params') or {}).get('community') or '') == 'community_yes':
-        track_event(uid, 'webapp_constructor_buy', metadata={'product': 'constructor', 'source': 'community_free'})
-        try:
-            mark_constructor_draft_paid(telegram_id, 'community_free')
-        except Exception:
-            logger.exception('constructor draft mark failed user=%s', telegram_id)
-        _spawn_job('constructor', telegram_id, _finish_constructor(telegram_id, None, telegram_id), payload={'source': 'community_free'})
-        return web.json_response({'ok': True, 'free': True})
+    # V3.45.28: the free «Сообщество» path is retired — a public persona pays
+    # peaches too; publishing to the витрина is handled by the community step.
     try:
         body = await request.json()
     except Exception:

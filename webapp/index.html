@@ -436,10 +436,10 @@
   .typing { align-self: flex-start; color: var(--muted); font-size: 13px; padding: 4px 12px; }
   .wiz { flex: 1; overflow-y: auto; padding: 16px; }
   .wiz .step-title { font-size: 17px; font-weight: 700; margin: 6px 0 12px; }
-  .wiz .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .wiz .opts { display: flex; flex-wrap: wrap; gap: 12px; }
   .wiz .opt {
     background: var(--card); border: 1px solid rgba(255,255,255,.08); color: var(--text);
-    font-size: 14px; padding: 10px 14px; border-radius: 14px; cursor: pointer;
+    font-size: 15px; padding: 14px 18px; border-radius: 16px; cursor: pointer;
   }
 .wiz .opt.sel { border-color: var(--accent); background: rgba(232, 68, 127, .14); }
   /* V3.44.4: textarea for free_text wizard steps (backstory, personality). */
@@ -870,7 +870,7 @@ const L_EN = {
   pay_failed: 'Payment failed', pay_cancelled: 'Payment cancelled',
   invoice_err: 'Could not open payment — try again',
   pay_stars: 'Telegram Stars', pay_sbp: 'Card / SBP / crypto', pay_crypto: 'Crypto (TON/USDT)',
-    constructor_price_note: p => 'public — free · private — ' + p + ' 🍑',
+    constructor_price_note: p => 'creation — ' + p + ' 🍑',
   pay_get: 'Get', pay_link_err: 'Could not create the payment — try again',
   pay_opened: 'Payment page opened — finish the payment there',
   shop_custom_ph: 'How many peaches?', shop_custom_btn: n => n > 0 ? n + ' 🍑 · ' + (n * 10) + ' ⭐' : '🍑',
@@ -904,7 +904,7 @@ const L_EN = {
   author_earnings: '💰 Author earnings', author_earnings_value: n => n.toFixed(1) + ' 🍑',
   // V3.44.11: the creator's cabinet in the profile.
   creator_row: '🎨 Creator cabinet', creator_title: "Creator's cabinet",
-  creator_empty: 'No characters yet. A public persona is free, a private one costs peaches 🍑',
+  creator_empty: 'No characters yet. Creating a character costs peaches 🍑',
   creator_publish: 'Put on the storefront', creator_unpublish: 'Take off the storefront',
   creator_on_vitrine: 'on the storefront', creator_private: 'private',
   creator_published_toast: 'On the storefront ✅ now everyone can see her',
@@ -993,7 +993,7 @@ const L_RU = {
   pay_failed: 'Оплата не прошла', pay_cancelled: 'Оплата отменена',
   invoice_err: 'Не удалось открыть оплату — попробуй ещё раз',
   pay_stars: 'Telegram Stars', pay_sbp: 'Карта / СБП / крипта', pay_crypto: 'Крипта (TON/USDT)',
-    constructor_price_note: p => 'публично — бесплатно · приватно — ' + p + ' 🍑',
+    constructor_price_note: p => 'создание — ' + p + ' 🍑',
   pay_get: 'Получить', pay_link_err: 'Не удалось создать счёт — попробуй ещё раз',
   pay_opened: 'Платёжная страница открыта — заверши оплату там',
   shop_custom_ph: 'Сколько персиков?', shop_custom_btn: n => n > 0 ? n + ' 🍑 · ' + (n * 10) + ' ⭐' : '🍑',
@@ -1027,7 +1027,7 @@ const L_RU = {
   author_earnings: '💰 Авторский доход', author_earnings_value: n => n.toFixed(1) + ' 🍑',
   // V3.44.11: кабинет создателя в профиле.
   creator_row: '🎨 Кабинет создателя', creator_title: 'Кабинет создателя',
-  creator_empty: 'Персонажей пока нет. Публичный персонаж — бесплатно, приватный — за персики 🍑',
+  creator_empty: 'Персонажей пока нет. Создание персонажа — за персики 🍑',
   creator_publish: 'На витрину', creator_unpublish: 'Снять с витрины',
   creator_on_vitrine: 'на витрине', creator_private: 'личная',
   creator_published_toast: 'На витрине ✅ теперь её видят все',
@@ -2166,13 +2166,10 @@ function renderWizStep() {
     const chosen = s.options.find(o => o.value === WIZ.params[s.key]);
     return chosen ? `<div>${esc(s.title.replace('?', ''))}: ${esc(chosen.label)}</div>` : '';
   }).filter(Boolean).join('');
-  // V3.44.9 → V3.44.22: the community step decides the price — a persona
-  // published to «Сообщество» is free, a private one costs peaches. Admins
-  // keep their own free button; the Stars fallback row is retired.
-  const isPublic = WIZ.params.community === 'community_yes';
-  const freeCreate = WIZ.free || isPublic;
+  // V3.45.28: creation always costs peaches — only admins get the free button.
+  const freeCreate = WIZ.free;
   const priceLine = freeCreate
-    ? '✅ ' + esc(WIZ.free ? L.wiz_free : L.wiz_free_public)
+    ? '✅ ' + esc(L.wiz_free)
     : '🍑 ' + esc(String(WIZ.peaches || 0));
   const payButtons = freeCreate
     ? `<button class="cta" id="wizCreate" ${WIZ.name ? '' : 'disabled'}>🎨 ${esc(L.wiz_create)}</button>`
@@ -2720,15 +2717,8 @@ function renderProfileBody() {
   const m = ME;
   const initial = (m.name || user0.first_name || 'A').trim().charAt(0).toUpperCase();
   const lvlPct = Math.min(100, Math.round(m.selected_character.level / 8 * 100));
-  const mine = (CHARS || []).filter(c => c.mine);
-  const hasMine = mine.length > 0;
-  const myCharsHtml = hasMine
-    ? mine.map(c => `<div class="minichar">
-        <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none'">
-        <div class="nm">${esc(c.name)}</div>
-        <button class="cta small" data-chat-id="${esc(c.id)}">${esc(L.open_chat)}</button>
-      </div>`).join('')
-    : `<div class="note">${esc(L.no_chars)}</div>`;
+  // V3.45.28: the «МОИ ПЕРСОНАЖИ» block left the Profile — a user's characters
+  // now live only in the creator cabinet, so this markup is no longer built here.
   // V3.43.5: чипы языков — локальный фрагмент, значения esc()-обёрнуты.
   const LANG_NAMES = { ru: 'Русский', en: 'English', es: 'Español', it: 'Italiano', fr: 'Français', zh: '中文', ja: '日本語' };
   const langChipsHtml = APP_LANGS.map(code =>
@@ -2755,8 +2745,6 @@ function renderProfileBody() {
     </div>
     <div class="stat"><span class="k">🍑 ${esc(L.paid_credit)}</span><span class="v">${esc(m.photo_credits)}</span></div>
     ${m.author_earnings > 0 ? `<div class="stat"><span class="k">${esc(L.author_earnings)}</span><span class="v" style="color:#ffd700">${esc(L.author_earnings_value(m.author_earnings))}</span></div>` : ''}
-    <div class="sect-title">${esc(L.my_chars)}</div>
-    ${myCharsHtml}
     <button class="cta" id="profileCreate">${esc(L.create_char)}</button>
     <div class="menurow" id="menuCreator"><span>${esc(L.creator_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuAch"><span>${esc(L.achievements_row)}</span><span class="arr">›</span></div>

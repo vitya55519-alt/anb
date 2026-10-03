@@ -424,10 +424,11 @@ RITUAL_MAX_INACTIVE_DAYS = max(1, int(os.getenv("RITUAL_MAX_INACTIVE_DAYS", "7")
 # a private chat persona (appearance + personality + relationship role) with a
 # generated avatar. Optional user face photo enables face-swap identity.
 CONSTRUCTOR_COST_STARS = max(1, int(os.getenv("CONSTRUCTOR_COST_STARS", "50")))
-# V3.44.2 → V3.44.22: a PRIVATE character costs 10 peaches; a character
-# published to the «Сообщество» витрина is free (owner request — the storefront
-# grows with free public personas, privacy costs the peach price).
-CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "10")))
+# V3.44.2 → V3.44.22 → V3.45.28: creating a character always costs peaches.
+# The «public is free» perk is retired — every avatar is drawn on our GPU bill,
+# so a flat peach price funds it and throttles spam. Publishing to the
+# «Сообщество» витрина is a separate step (moderation comes next release).
+CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "20")))
 # V3.27.0: ruble side of the shop (FreeKassa): character constructor price,
 # token price/pack (1 token = TOKEN_PRICE_RUB) and the animation token cost.
 CONSTRUCTOR_COST_RUB = max(1, int(os.getenv("CONSTRUCTOR_COST_RUB", "200")))
