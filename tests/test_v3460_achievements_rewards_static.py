@@ -151,4 +151,15 @@ def test_app_missions_tab_present():
     assert "_missionsLoaded=false" in INDEX
     # CTA routes to existing SPA functions only
     assert 'function _missionAction(action)' in INDEX
-    assert 'fetch(\'/webapp/api/missions' in INDEX
+    assert "fetch('/webapp/api/missions" in INDEX
+
+
+def test_app_i18n_and_unlock_banner():
+    # the new tab label exists for every interface language (en fallback needs
+    # at least L_EN + L_RU; all seven are provided)
+    assert INDEX.count('missions_title:') >= 7
+    # NAV_LABELS arrays carry the missions entry (6 slots, index 4)
+    assert "en: ['Characters','Chats','Pictures','Shop','Missions','Profile']," in INDEX
+    assert "document.getElementById('l_missions_title').textContent = L.missions_title;" in INDEX
+    # V3.46.0 inc 4: unlock banner in the app
+    assert "'anbMissionsSeen'" in INDEX
