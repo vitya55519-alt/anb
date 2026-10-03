@@ -70,6 +70,80 @@ def reward_preview(reward: list | None) -> str:
     return '🎖'
 
 
+# V3.46.0: the missions funnel. Every lifecycle achievement is placed in one of
+# three roadmap groups, and the actionable ones carry a CTA to an existing bot
+# callback (all verified to exist). Private-photo CSV badges are not missions.
+MISSION_GROUP: dict[str, str] = {
+    'first_message': 'start', 'three_day_streak': 'start', 'seven_day_streak': 'start',
+    'voice_user': 'start', 'hundred_messages': 'start',
+    'first_gift': 'romance', 'first_date': 'romance', 'ten_dates': 'romance',
+    'date_collector': 'romance', 'photo_collector': 'romance', 'premium_member': 'romance',
+    'anniv_7': 'romance', 'anniv_30': 'romance', 'anniv_90': 'romance',
+    'first_creation': 'creator', 'community_publish': 'creator', 'views_100': 'creator',
+    'first_video': 'creator', 'first_spicy_photo': 'creator',
+}
+# key → (button label, bot callback_data). CTAs reuse live handlers only.
+MISSION_CTA: dict[str, tuple[str, str]] = {
+    'first_creation': ('🎨 Создать персонажа', 'constructor:start'),
+    'community_publish': ('🌍 Опубликовать', 'constructor:start'),
+    'views_100': ('📈 Кабинет создателя', 'constructor:start'),
+    'first_video': ('🎬 Оживить фото', 'video:animate_last'),
+    'first_spicy_photo': ('🔥 Пикантное фото', 'spicy:menu'),
+    'photo_collector': ('📸 Фото-сюжеты', 'photo_menu:open'),
+}
+
+
+def achievement_unlock_text(key: str) -> str:
+    """V3.46.0: the message sent when an achievement (mission) unlocks."""
+    if key not in ACHIEVEMENTS:
+        return ''
+    name, desc, reward = ACHIEVEMENTS[key]
+    chip = reward_preview(reward)
+    tail = f' · награда: {chip}' if chip and chip != '🎖' else ''
+    return f'🏆 Достижение открыто: {name}{tail}\n{desc}'
+
+
+def try_unlock(telegram_id: int, key: str) -> str:
+    """V3.46.0: unlock a mission and, if it was NEW, return the notify text.
+    Returns '' when already unlocked / unknown so the caller skips the ping.
+    The reward itself is handed out inside unlock_achievement."""
+    return achievement_unlock_text(key) if unlock_achievement(telegram_id, key) else ''
+
+
+def get_missions(telegram_id: int) -> dict:
+    """V3.46.0: the roadmap board — every lifecycle achievement with unlock
+    state, reward chip, a progress pair where we have a real counter, and a CTA.
+    Ordered by group (start → romance → creator)."""
+    board = {it['key']: it for it in get_unified_progress(telegram_id)['items']}
+    user = get_user(telegram_id)
+    streak = (user.streak_count or 0) if user else 0
+    order = {'start': 0, 'romance': 1, 'creator': 2}
+    items: list[dict] = []
+    for key, (name, desc, reward) in ACHIEVEMENTS.items():
+        group = MISSION_GROUP.get(key, 'start')
+        cta = MISSION_CTA.get(key)
+        progress = None
+        if key == 'three_day_streak':
+            progress = (min(streak, 3), 3)
+        elif key == 'seven_day_streak':
+            progress = (min(streak, 7), 7)
+        items.append({
+            'key': key, 'name': name, 'description': desc,
+            'unlocked': board.get(key, {}).get('unlocked', False),
+            'reward': reward_preview(reward), 'group': group,
+            'progress': progress,
+            'cta_label': cta[0] if cta else '', 'cta_cb': cta[1] if cta else '',
+        })
+    items.sort(key=lambda it: (order.get(it['group'], 9), it['key']))
+    total = len(items)
+    unlocked = sum(1 for it in items if it['unlocked'])
+    return {
+        'total': total, 'unlocked': unlocked,
+        'pct': round(unlocked / total * 100) if total else 0,
+        'items': items,
+    }
+
+
 def _today() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 

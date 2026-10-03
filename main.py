@@ -1409,6 +1409,9 @@ def photo_keyboard(telegram_id: int):
         InlineKeyboardButton(text=f'🖼️ Галерея ({gal_count})', callback_data='private_gallery:view'),
         InlineKeyboardButton(text=f'🏆 Ачивки ({_ach["unlocked"]}/{_ach["total"]})', callback_data='private_achievements:view'),
     ])
+    # V3.46.0: missions funnel — a discoverable roadmap screen (same data as
+    # the Mini App «Миссии» tab).
+    rows.append([InlineKeyboardButton(text='🎯 Миссии', callback_data='missions:view')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -4012,6 +4015,9 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
     chain. The user only hears about a failure when every available engine
     failed; a paid run is then refunded.
     """
+    # V3.46.0: mission — ordering any animated video/circle unlocks «Живое
+    # видео» (voucher). All order paths funnel through here.
+    await _notify_unlock(chat_id, telegram_id, 'first_video')
     engine_errors: list[str] = []
     engine_names: list[str] = []
     try:
@@ -4346,6 +4352,8 @@ async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: in
     """V3.20.0: generate the circle through the same engine chain and deliver it
     as a Telegram video note; falls back to a normal video if the note format
     is rejected. Auto-refunds Stars when every engine fails."""
+    # V3.46.0: mission — a video-note circle also counts as «Живое видео».
+    await _notify_unlock(chat_id, telegram_id, 'first_video')
     engine_errors: list[str] = []
     engine_names: list[str] = []
     try:
@@ -4977,6 +4985,8 @@ async def private_photo_generate(cq: types.CallbackQuery):
             ach_names = [ACHIEVEMENTS[a]["name"] for a in new_ach if a in ACHIEVEMENTS]
             if ach_names:
                 await cq.message.answer(f'🏆 Новые достижения:\n' + '\n'.join(ach_names))
+        # V3.46.0: mission — ordering a first private/spicy photo unlocks «Искра».
+        await _notify_unlock(cq.message.chat.id, cq.from_user.id, 'first_spicy_photo')
     else:
         await status_msg.edit_text('😔 Не получилось сгенерировать. Попробуй ещё раз — персики не спишутся.')
 
@@ -5153,6 +5163,73 @@ async def private_achievements_view(cq: types.CallbackQuery):
     await cq.answer()
     await cq.message.answer(
         f'🏆 Достижения: {data["unlocked"]} из {data["total"]} ({pct}%)\n\n' + '\n'.join(lines))
+
+
+# ─── V3.46.0: Миссии — воронка достижений ────────────────────────────────────
+
+_MISSION_GROUP_TITLES = {
+    'start': '🌱 Первые шаги',
+    'romance': '❤️ Романтика',
+    'creator': '🎨 Творчество',
+}
+
+
+def _missions_screen(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    """V3.46.0: the «/миссии» roadmap — grouped list, each row is a status icon
+    + reward chip, plus one CTA button per still-locked actionable mission. Every
+    CTA reuses an existing live callback (constructor:start / video:animate_last /
+    spicy:menu / photo_menu:open) so there is nothing new to route."""
+    from services.gamification_service import get_missions
+    data = get_missions(telegram_id)
+    lines = [f'🎯 Миссии: {data["unlocked"]} из {data["total"]} ({data["pct"]}%)', '']
+    rows: list[list[InlineKeyboardButton]] = []
+    seen_cta: set[str] = set()
+    current_group: str | None = None
+    for it in data['items']:
+        if it['group'] != current_group:
+            current_group = it['group']
+            lines.append(_MISSION_GROUP_TITLES.get(current_group, current_group))
+        status = '✅' if it['unlocked'] else '🔒'
+        prog = f' ({it["progress"][0]}/{it["progress"][1]})' if it['progress'] else ''
+        chip = f' · {it["reward"]}' if it['reward'] and it['reward'] != '🎖' else ''
+        lines.append(f'{status} {it["name"]}{prog}{chip}')
+        cb = it['cta_cb']
+        if cb and not it['unlocked'] and cb not in seen_cta:
+            seen_cta.add(cb)
+            rows.append([InlineKeyboardButton(text=it['cta_label'], callback_data=cb)])
+    if not rows:
+        rows.append([InlineKeyboardButton(text='🏆 Все достижения', callback_data='private_achievements:view')])
+    return '\n'.join(lines).rstrip(), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _notify_unlock(chat_id: int, telegram_id: int, key: str) -> None:
+    """V3.46.0: fire a mission/achievement unlock (the reward is handed out
+    inside) and ping the user ONLY when it was genuinely new. Idempotent, so a
+    repeat trigger never re-pings and never double-grants."""
+    from services.gamification_service import try_unlock
+    text = try_unlock(telegram_id, key)
+    if not text:
+        return
+    try:
+        await bot.send_message(chat_id, text)
+    except Exception:
+        logger.exception('mission unlock notify failed user=%s key=%s', telegram_id, key)
+
+
+@dp.callback_query(F.data == 'missions:view')
+async def missions_view_cb(cq: types.CallbackQuery):
+    await cq.answer()
+    text, kb = _missions_screen(cq.from_user.id)
+    await cq.message.answer(text, reply_markup=kb)
+
+
+@dp.message(Command('missions'))
+async def missions_cmd(message: types.Message):
+    if not has_accepted(message.from_user.id):
+        await message.answer('Сначала /start и подтверждение 18+.')
+        return
+    text, kb = _missions_screen(message.from_user.id)
+    await message.answer(text, reply_markup=kb)
 
 
 # ─── V3.45.0: Голос + фото комбо ───────────────────────────────────────────
@@ -7003,6 +7080,13 @@ async def charmod_cb(cq: types.CallbackQuery):
         )
     except Exception:
         logger.exception('charmod author notify failed char=%s', character_id)
+    # V3.46.0: mission — a persona actually reaching the «Сообщество» витрина
+    # (only on approval) unlocks its author's «Голос сообщества».
+    if approve:
+        try:
+            await _notify_unlock(int(row.telegram_id), int(row.telegram_id), 'community_publish')
+        except Exception:
+            logger.exception('community_publish unlock failed char=%s', character_id)
 
 
 async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None, source: str = ''):
@@ -7243,6 +7327,11 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         f'🎉 Знакомься — это {display_name}! Теперь она твоя личная собеседница.',
         reply_markup=_my_character_keyboard(row.character_id),
     )
+    # V3.46.0: mission — the user has now built their own character (covers the
+    # bot Stars flow, the peach flow and the Mini App wizard, all of which land
+    # here).
+    if telegram_id:
+        await _notify_unlock(chat_id, telegram_id, 'first_creation')
     # V3.45.28: publishing to the «Сообщество» витрина goes through a human
     # first — ping every admin with approve/reject and tell the owner why she
     # is not live yet. A private persona skips this entirely.
@@ -8898,7 +8987,17 @@ async def _webapp_api_char_view(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'body'}, status=400)
     if not get_card(character_id):
         return web.json_response({'ok': False, 'error': 'character'}, status=404)
-    return web.json_response({'ok': True, 'views': webapp_service.bump_character_views(character_id)})
+    new_views = webapp_service.bump_character_views(character_id)
+    # V3.46.0: mission — a custom persona crossing 100 views unlocks her
+    # author's «100 просмотров» (scene reward granted inside unlock_achievement).
+    if new_views == 100:
+        try:
+            author = get_custom_character_by_id(character_id)
+            if author and author.telegram_id:
+                await _notify_unlock(int(author.telegram_id), int(author.telegram_id), 'views_100')
+        except Exception:
+            logger.exception('views_100 unlock failed char=%s', character_id)
+    return web.json_response({'ok': True, 'views': new_views})
 
 
 async def _webapp_api_channel_bonus(request: web.Request) -> web.Response:

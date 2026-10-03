@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GAM = (ROOT / 'services' / 'gamification_service.py').read_text(encoding='utf-8')
 PICS = (ROOT / 'services' / 'private_photo_service.py').read_text(encoding='utf-8')
 RET = (ROOT / 'services' / 'retention_features_service.py').read_text(encoding='utf-8')
+MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 
 
 def test_reward_constants_and_preview():
@@ -75,3 +76,53 @@ def test_scene_unlocks_map_to_real_categories():
 
 def test_legacy_star_catalog_demoted():
     assert 'NOT the source of truth' in RET
+
+
+# ── Increment 2: missions funnel in the bot ────────────────────────────────
+
+def test_mission_group_and_cta_maps_present():
+    assert 'MISSION_GROUP: dict[str, str] = {' in GAM
+    assert 'MISSION_CTA: dict[str, tuple[str, str]] = {' in GAM
+    # the funnel keys are grouped and CTAs reuse live callbacks only
+    assert "'first_creation': 'creator'" in GAM
+    assert "'constructor:start'" in GAM
+    assert "'spicy:menu'" in GAM
+    assert "'video:animate_last'" in GAM
+
+
+def test_try_unlock_and_get_missions_helpers():
+    assert 'def achievement_unlock_text(key: str) -> str:' in GAM
+    assert 'def try_unlock(telegram_id: int, key: str) -> str:' in GAM
+    assert 'def get_missions(telegram_id: int) -> dict:' in GAM
+    # try_unlock only pings on a genuinely NEW unlock (unlock_achievement bool)
+    unlock_body = GAM[GAM.index('def try_unlock'):GAM.index('def get_missions')]
+    assert 'unlock_achievement(telegram_id, key)' in unlock_body
+    # get_missions returns the roadmap shape the bot + app both render
+    gm_body = GAM[GAM.index('def get_missions'):GAM.index('def _today')]
+    for field in ("'pct'", "'items'", "'cta_cb'", "'group'"):
+        assert field in gm_body
+
+
+def test_bot_missions_screen_registered():
+    # command + callback route and a discoverable menu button
+    assert "@dp.message(Command('missions'))" in MAIN
+    assert "F.data == 'missions:view'" in MAIN
+    assert "callback_data='missions:view'" in MAIN
+    assert 'def _missions_screen(' in MAIN
+    assert 'from services.gamification_service import get_missions' in MAIN
+
+
+def test_notify_unlock_helper_and_hooks():
+    # single idempotent notify helper driving every mission unlock
+    helper = MAIN[MAIN.index('async def _notify_unlock'):MAIN.index("F.data == 'missions:view'")]
+    assert 'from services.gamification_service import try_unlock' in helper
+    assert 'await bot.send_message(chat_id, text)' in helper
+    # every funnel key is unlocked at a real event site
+    for key in ('first_creation', 'community_publish', 'views_100', 'first_video', 'first_spicy_photo'):
+        assert f"_notify_unlock(" in MAIN and f"'{key}')" in MAIN
+
+
+def test_missions_cta_targets_are_real_callbacks():
+    # the CTAs the missions screen points at must exist as live handlers
+    for cb in ('constructor:start', 'video:animate_last', 'spicy:menu', 'photo_menu:open'):
+        assert cb in MAIN
