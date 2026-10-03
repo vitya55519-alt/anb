@@ -108,6 +108,16 @@ def admin_snapshot() -> dict:
             .order_by(func.count(Message.id).desc())
             .limit(5)
         ).all()
+        # V3.47.0: acquisition-source breakdown of new users over the last 30d,
+        # so a $100 buy-in is measurable — how many installs each ?start=src_
+        # tag produced (organic = empty tag). Empty share: tag groups per source.
+        src_rows = s.execute(
+            select(User.source_tag, func.count(User.id).label('cnt'))
+            .where(User.created_at >= d30)
+            .group_by(User.source_tag)
+            .order_by(func.count(User.id).desc())
+            .limit(20)
+        ).all()
     failure_rate = (failures_24h / photo_requests_24h * 100.0) if photo_requests_24h else 0.0
     proactive_reply_rate = (proactive_replied_7d / proactive_sent_7d * 100.0) if proactive_sent_7d else 0.0
     return {
@@ -121,4 +131,5 @@ def admin_snapshot() -> dict:
         'new_24h': int(new_24h), 'premium_active': int(premium_active), 'messages_7d': int(messages_7d),
         'circles_24h': int(circles_24h), 'videos_24h': int(videos_24h),
         'top_characters': [[cid, int(cnt)] for cid, cnt in top_rows],
+        'sources': [[(tag or 'organic'), int(cnt)] for tag, cnt in src_rows],
     }

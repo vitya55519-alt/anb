@@ -522,6 +522,29 @@ FIRST_START_PREMIUM_TRIAL_DAYS = int(os.getenv("FIRST_START_PREMIUM_TRIAL_DAYS",
 PARTNER_ENABLED = os.getenv("PARTNER_ENABLED", "1") == "1"
 REFERRAL_COMMISSION_PCT = float(os.getenv("REFERRAL_COMMISSION_PCT", "30"))
 PARTNER_MIN_PAYOUT_RUB = int(os.getenv("PARTNER_MIN_PAYOUT_RUB", "500"))
+# V3.47.0: referral bonus tiers — a one-time reward the moment a referrer
+# crosses an invite count. Format "count:credits:premium_days,..." So 3 invites
+# → +10 🍑; 10 → +30 🍑 and 7 days Premium; 25 → +100 🍑 and 30 days Premium.
+# Each tier is granted at most once per user (guarded by a marker event). Empty
+# string disables the whole ladder.
+REFERRAL_BONUS_TIERS_RAW = os.getenv(
+    "REFERRAL_BONUS_TIERS", "3:10:0,10:30:7,25:100:30").strip()
+
+
+def _parse_referral_tiers(raw: str) -> list[tuple[int, int, int]]:
+    tiers: list[tuple[int, int, int]] = []
+    for chunk in raw.split(","):
+        parts = chunk.strip().split(":")
+        if len(parts) != 3:
+            continue
+        try:
+            tiers.append((int(parts[0]), int(parts[1]), int(parts[2])))
+        except (TypeError, ValueError):
+            continue
+    return sorted(tiers, key=lambda t: t[0])
+
+
+REFERRAL_BONUS_TIERS = _parse_referral_tiers(REFERRAL_BONUS_TIERS_RAW)
 # V3.43.0: support moved to a DEDICATED bot the owner reads personally
 # (@Anna67901support_bot). Only the public username is configured here — the
 # support bot's token never belongs in this service. «Поддержка» buttons hand

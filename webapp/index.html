@@ -584,6 +584,7 @@
   .misrow { display: flex; align-items: center; gap: 12px;
     background: var(--card); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
   .misrow.lock { opacity: .62; }
+  .misrow.tappable { cursor: pointer; }
   .misrow .misicon { font-size: 20px; width: 28px; text-align: center; flex-shrink: 0; }
   .misrow .mis-body { flex: 1; min-width: 0; }
   .misrow .nm { font-size: 14px; font-weight: 600; }
@@ -598,6 +599,16 @@
   .misrow .misdone { font-size: 18px; flex-shrink: 0; }
   .galgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .galgrid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; background: var(--card2); }
+  /* V3.47.0: gallery share tiles + referral CTAs */
+  .galcell { position: relative; }
+  .galshare { position: absolute; right: 5px; bottom: 5px; border: 0; border-radius: 8px;
+    padding: 5px 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+    background: rgba(0,0,0,.55); color: #fff; backdrop-filter: blur(2px); }
+  .galcta { margin: 2px 0 10px; }
+  .galcta button, .gencta button { border: 0; border-radius: 12px; padding: 10px 14px;
+    font-size: 14px; font-weight: 600; cursor: pointer; width: 100%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+  .gencta { margin: 8px 0 4px; }
 </style>
 </head>
 <body>
@@ -880,6 +891,7 @@ const L_EN = {
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
   shop_title: 'Shop', missions_title: 'Missions', month: '/ 30 days', week: '7 days', pay_hint: 'Tap a plan — pick how to pay: Stars here, card/SBP or crypto on the payment page.',
+  share_img: '📤 Share', invite_cta: '🍑 Invite a friend', invite_got: 'Link copied — share it and you both get 🍑', share_fail: 'Could not share', gal_share_hint: 'Share this photo — a friend who starts gets 🍑, and you too',
   free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
   profile_title: 'Profile', premium_on: 'Premium active', premium_off: 'Free account',
   streak: 'day streak', level: 'relationship level', selected_girl: 'selected girl',
@@ -1007,6 +1019,7 @@ const L_RU = {
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
   shop_title: 'Магазин', missions_title: 'Миссии', month: '/ 30 дней', week: '7 дней', pay_hint: 'Нажми на тариф — выбери способ: Stars здесь, карта/СБП или крипта на платёжной странице.',
+  share_img: '📤 Поделиться', invite_cta: '🍑 Позвать друга', invite_got: 'Ссылка скопирована — делись, и вам обоим капнет 🍑', share_fail: 'Не удалось поделиться', gal_share_hint: 'Поделись фото — друг получит 🍑 за старт, и тебе тоже',
   free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
   profile_title: 'Профиль', premium_on: 'Premium активен', premium_off: 'Бесплатный аккаунт',
   streak: 'дней подряд', level: 'уровень отношений', selected_girl: 'выбранная девушка',
@@ -1769,6 +1782,13 @@ async function requestMedia(kind, scene) {
     // key / transport error) while a normal user still gets the generic text.
     if (!j.ok) { toast(j.reason || L.reply_err); return; }
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
+    // V3.47.0: referral CTA right after a delivered media (not voice) — the
+    // peak-emotion moment to share the invite link and earn a friend a 🍑.
+    if (j.url && j.kind !== 'voice') {
+      box.insertAdjacentHTML('beforeend', `<div class="gencta"><button type="button">${esc(L.invite_cta)}</button></div>`);
+      const _gc = box.querySelectorAll('.gencta button');
+      if (_gc.length) _gc[_gc.length - 1].addEventListener('click', inviteFriends);
+    }
     box.scrollTop = box.scrollHeight;
     if (ME && j.credits_left != null) ME.photo_credits = j.credits_left;
   } catch (e) {
@@ -3338,11 +3358,26 @@ setTimeout(()=>{if(!_channelLoaded){_channelLoaded=true;loadChannel();}},2000);
 // V3.46.0: Миссии — the funnel roadmap. Each still-locked actionable mission
 // carries a CTA routed to an existing SPA action (never a new screen).
 const _MISSION_GROUP_TITLES = { start: '🌱 Первые шаги', romance: '❤️ Романтика', creator: '🎨 Творчество' };
-const _MISSION_CTA_LABEL = { construct: '🎨 Создать', shop: '🔥 Открыть', creator: '📈 Кабинет' };
+const _MISSION_CTA_LABEL = { construct: '🎨 Создать', shop: '🔥 Открыть', creator: '📈 Кабинет', chats: '💬 Начать', pictures: '🖼 Смотреть' };
+// V3.46.2: every locked mission routes to the screen where it can actually be
+// done — previously only 6 missions had a CTA button and the row itself had no
+// click handler, so tapping any other «задание» did nothing. This KEY→action map
+// covers the whole roadmap and reuses only existing SPA actions.
+const _MISSION_ACTION = {
+  first_message: 'chats', hundred_messages: 'chats', voice_user: 'chats',
+  three_day_streak: 'chats', seven_day_streak: 'chats',
+  first_gift: 'chats', first_date: 'chats', ten_dates: 'chats', date_collector: 'chats',
+  photo_collector: 'pictures', first_video: 'pictures', first_spicy_photo: 'chats',
+  premium_member: 'shop',
+  anniv_7: 'chats', anniv_30: 'chats', anniv_90: 'chats',
+  first_creation: 'construct', community_publish: 'creator', views_100: 'creator',
+};
 function _missionAction(action) {
   if (action === 'construct') { openWizard(); }
   else if (action === 'creator') { openCreatorOverlay(); }
   else if (action === 'shop') { showTab('shop'); }
+  else if (action === 'chats') { showTab('chats'); }
+  else if (action === 'pictures') { showTab('pictures'); }
 }
 async function loadMissions() {
   const body = document.getElementById('missionsbody');
@@ -3390,10 +3425,13 @@ async function loadMissions() {
           <div class="misdone">✅</div>
         </div>`;
       } else {
-        const cta = it.cta
-          ? `<button class="miscta" data-cta="${esc(it.cta)}">${esc(_MISSION_CTA_LABEL[it.cta] || '▶')}</button>`
+        // V3.46.2: route by mission key (fallback to any backend cta); the whole
+        // row becomes the tap target so «clicking a mission» always does something.
+        const action = _MISSION_ACTION[it.key] || it.cta || '';
+        const cta = action
+          ? `<button class="miscta" data-cta="${esc(action)}">${esc(_MISSION_CTA_LABEL[action] || '▶')}</button>`
           : '';
-        html += `<div class="misrow lock">
+        html += `<div class="misrow lock${action ? ' tappable' : ''}"${action ? ` data-cta="${esc(action)}"` : ''}>
           <div class="misicon">🔒</div>
           <div class="mis-body"><div class="nm">${esc(it.name)} ${reward}</div><div class="sub2">${esc(it.description)}</div>${prog}</div>
           ${cta}
@@ -3401,7 +3439,8 @@ async function loadMissions() {
       }
     });
     body.innerHTML = html;
-    body.querySelectorAll('.miscta').forEach(b => b.addEventListener('click', () => _missionAction(b.dataset.cta)));
+    body.querySelectorAll('.misrow[data-cta]').forEach(r =>
+      r.addEventListener('click', () => _missionAction(r.dataset.cta)));
   } catch (e) {
     _missionsLoaded = false;
     body.innerHTML = `<div class="err">${esc(L.invoice_err)}</div>`;
@@ -3432,6 +3471,52 @@ function openAchievements() {
 document.getElementById('achBack').addEventListener('click', () => {
   document.getElementById('achview').classList.remove('open');
 });
+// V3.47.0: viral sharing. The gallery offers a watermarked image export via
+// /webapp/gallery/share/{id}; both the gallery and the post-generation CTA fall
+// back to a plain invite share. All links carry ?start=src_share_<uid> so a
+// friend who installs is attributed to this channel AND credits the sharer.
+function _inviteLink() { return (ME && ME.invite) || ''; }
+function _shareText() { return L.gal_share_hint || 'AnnaBot'; }
+function _fallbackShare() {
+  const invite = _inviteLink();
+  if (invite && typeof tg.openTelegramLink === 'function') {
+    tg.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(invite) + '&text=' + encodeURIComponent(_shareText()));
+    return true;
+  }
+  return false;
+}
+async function _shareAny(payload) {
+  try {
+    if (navigator.share && (!payload.files || (navigator.canShare && navigator.canShare({ files: payload.files })))) {
+      await navigator.share(payload);
+      return true;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return true;  // user closed the sheet
+  }
+  return _fallbackShare();
+}
+// Share the watermarked export of one gallery photo (image + invite link).
+async function sharePhotoImage(shareUrl) {
+  if (!shareUrl) { _fallbackShare(); return; }
+  try {
+    const r = await fetch(shareUrl + '?init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store' });
+    if (!r.ok) throw new Error('http ' + r.status);
+    const blob = await r.blob();
+    const file = new File([blob], 'annabot.jpg', { type: blob.type || 'image/jpeg' });
+    const ok = await _shareAny({ title: 'AnnaBot', text: _shareText(), files: [file], url: _inviteLink() || undefined });
+    if (!ok) toast(L.share_fail);
+  } catch (e) {
+    if (!_fallbackShare()) toast(L.share_fail);
+  }
+}
+// The referral CTA: share just the invite link (no image).
+async function inviteFriends() {
+  const invite = _inviteLink();
+  const ok = await _shareAny({ title: 'AnnaBot', text: _shareText(), url: invite || undefined });
+  if (!ok) toast(L.share_fail);
+}
+
 function openGallery() {
   document.getElementById('galTitle').textContent = L.gal_title;
   const body = document.getElementById('galBody');
@@ -3442,11 +3527,20 @@ function openGallery() {
     .then(j => {
       if (!j.ok) { body.innerHTML = `<div class="err">${esc(L.err_auth)}</div>`; return; }
       const items = j.items || [];
+      if (j.invite && ME) ME.invite = j.invite;
       if (!items.length) { body.innerHTML = `<div class="note">${esc(L.gal_empty)}</div>`; return; }
-      body.innerHTML = `<div class="note">${esc(L.gal_count(items.length))}</div>`
+      body.innerHTML = `<div class="galcta"><button type="button" id="galInvite">${esc(L.invite_cta)}</button></div>`
+        + `<div class="note">${esc(L.gal_count(items.length))}</div>`
         + `<div class="galgrid">` + items.map(it =>
-            `<img loading="lazy" src="${esc(it.url)}?init_data=${encodeURIComponent(tg.initData || '')}" alt="">`).join('')
+            `<div class="galcell">`
+            + `<img loading="lazy" src="${esc(it.url)}?init_data=${encodeURIComponent(tg.initData || '')}" alt="">`
+            + `<button type="button" class="galshare" data-share="${esc(it.share_url || '')}">${esc(L.share_img)}</button>`
+            + `</div>`).join('')
           + `</div>`;
+      const gi = document.getElementById('galInvite');
+      if (gi) gi.addEventListener('click', inviteFriends);
+      body.querySelectorAll('.galshare').forEach(b =>
+        b.addEventListener('click', (ev) => { ev.stopPropagation(); sharePhotoImage(b.dataset.share); }));
     })
     .catch(() => { body.innerHTML = `<div class="err">${esc(L.invoice_err)}</div>`; });
 }

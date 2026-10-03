@@ -92,6 +92,51 @@ def parse_referral_payload(args: str | None) -> int | None:
     return None
 
 
+def parse_source_payload(args: str | None) -> tuple[str | None, int | None]:
+    """V3.47.0: return (source_tag, share_referrer_id) from a deep-link payload.
+
+    Supports ``src_<tag>`` (an ad / content / catalogue source code) and
+    ``src_share_<uid>`` (a friend's shared photo — tags the installer
+    ``share:<uid>`` AND lets the caller credit ``uid`` as the referrer). Any
+    other payload (a plain ``ref_`` link) returns ``(None, None)`` so the
+    existing referral path is left completely untouched.
+    """
+    if not args:
+        return None, None
+    a = args.strip().lower()
+    if not a.startswith("src"):
+        return None, None
+    payload = a[3:].lstrip("_-")
+    if not payload:
+        return None, None
+    if payload.startswith("share"):
+        uid = payload[5:].lstrip("_")
+        if uid.isdigit():
+            return f"share:{uid}", int(uid)
+        return "share", None
+    return payload[:48], None
+
+
+def set_source(telegram_id: int, source_tag: str) -> bool:
+    """Persist the acquisition source on the user's FIRST touch only.
+
+    Never overwrites an existing tag (first touch wins), so re-running /start or
+    a later ad click can't hijack the original attribution. Returns True when a
+    new tag was written. Fail-silent for a non-existent row.
+    """
+    if not source_tag:
+        return False
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as s:
+        user = s.scalar(select(User).where(User.id == uid))
+        if not user or (user.source_tag or ""):
+            return False
+        user.source_tag = str(source_tag)[:48]
+        s.commit()
+    track_event(uid, "source_attribution", metadata={"src": str(source_tag)[:48]})
+    return True
+
+
 def _is_freshly_created(telegram_id: int) -> bool:
     uid = ensure_user(telegram_id)
     with SessionLocal() as s:
@@ -215,6 +260,13 @@ def apply_referral(invitee_telegram_id: int, referrer_telegram_id: int) -> dict:
         logger.exception("partner link registration failed referrer=%s invitee=%s",
                          referrer_telegram_id, invitee_telegram_id)
 
+    # V3.47.0: the invite count just moved — grant any newly-crossed bonus tier
+    # for the referrer (idempotent, must never break the bonus grant itself).
+    try:
+        maybe_grant_referral_tiers(referrer_telegram_id)
+    except Exception:
+        logger.exception("referral tier grant failed referrer=%s", referrer_telegram_id)
+
     logger.info(
         "referral awarded referrer=%s invitee=%s referrer_credits=%s invitee_credits=%s",
         referrer_telegram_id, invitee_telegram_id, REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
@@ -285,6 +337,84 @@ def referral_rank(telegram_id: int, period_days: int | None = 30) -> tuple[int, 
 
 def referral_link(bot_username: str, telegram_id: int) -> str:
     return f"https://t.me/{bot_username}?start=ref_{telegram_id}"
+
+
+def share_link(bot_username: str, telegram_id: int) -> str:
+    """V3.47.0: the viral/share deep link. It tags the installer's source as
+    'share:<uid>' AND credits <uid> as the referrer (handled in /start), so a
+    shared photo both measures the channel and pays the sharer."""
+    return f"https://t.me/{bot_username}?start=src_share_{telegram_id}"
+
+
+def _tier_marker_event(idx: int) -> str:
+    return f"referral_tier_{idx}"
+
+
+def _tier_already_granted(uid: int, idx: int) -> bool:
+    return _event_count(uid, _tier_marker_event(idx)) > 0
+
+
+def maybe_grant_referral_tiers(telegram_id: int) -> list[dict]:
+    """V3.47.0: grant every bonus tier the user has newly crossed, once each.
+
+    Idempotent via a per-tier referral_tier_<idx> marker event written in the
+    SAME transaction as the credit bump, so a crash can neither double-grant nor
+    grant the reward without recording the marker. Returns the tiers granted this
+    call (empty when nothing new). Premium is applied after the commit.
+    """
+    from config import REFERRAL_BONUS_TIERS
+    if not REFERRAL_BONUS_TIERS:
+        return []
+    import json as _json
+    uid = ensure_user(telegram_id)
+    count = referral_count(telegram_id)
+    granted: list[dict] = []
+    for idx, (need, credits, premium_days) in enumerate(REFERRAL_BONUS_TIERS):
+        if count < need:
+            break  # tiers are sorted ascending; nothing further is reachable
+        if _tier_already_granted(uid, idx):
+            continue
+        with SessionLocal() as s:
+            user = s.scalar(select(User).where(User.id == uid))
+            if not user:
+                break
+            if credits > 0:
+                user.photo_credits = (user.photo_credits or 0) + credits
+            s.add(ProductEvent(
+                user_id=uid,
+                event_name=_tier_marker_event(idx),
+                value=float(credits),
+                metadata_json=_json.dumps(
+                    {"invites": need, "credits": credits, "premium_days": premium_days},
+                    ensure_ascii=False),
+            ))
+            s.commit()
+        if premium_days > 0:
+            from services.payments import grant_premium
+            try:
+                grant_premium(telegram_id, days=premium_days)
+            except Exception:
+                logger.exception("tier premium grant failed user=%s tier=%s", telegram_id, idx)
+        track_event(uid, "referral_tier_granted",
+                    metadata={"tier": idx, "invites": need, "credits": credits, "premium_days": premium_days})
+        granted.append({"tier": idx, "invites": need, "credits": credits, "premium_days": premium_days})
+    return granted
+
+
+def referral_tier_progress(telegram_id: int) -> dict:
+    """V3.47.0: the invite count + tier ladder with reached/granted flags, plus
+    the next milestone to chase — for the partner screen and /contest."""
+    from config import REFERRAL_BONUS_TIERS
+    uid = ensure_user(telegram_id)
+    count = referral_count(telegram_id)
+    tiers = []
+    for idx, (need, credits, premium_days) in enumerate(REFERRAL_BONUS_TIERS):
+        tiers.append({
+            "invites": need, "credits": credits, "premium_days": premium_days,
+            "reached": count >= need, "granted": _tier_already_granted(uid, idx),
+        })
+    nxt = next((t for t in tiers if not t["reached"]), None)
+    return {"count": count, "tiers": tiers, "next": nxt}
 
 
 def _converted_in_window(start: datetime, end: datetime) -> list[tuple[int, int]]:

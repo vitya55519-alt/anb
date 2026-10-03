@@ -76,6 +76,9 @@ from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
     referral_user_lock, pending_referral, remember_referral, referral_leaderboard, referral_rank,
     settle_monthly_contest,
+    # V3.47.0: source attribution + referral bonus tiers (share links / ladder)
+    parse_source_payload, set_source, share_link,
+    maybe_grant_referral_tiers, referral_tier_progress,
 )
 from services.gemini_video_service import animate_image, video_available
 from services.cloud_video_service import (
@@ -1741,6 +1744,17 @@ async def start(message: types.Message, command: CommandObject):
     if has_referral:
         remember_referral(message.from_user.id, referrer_id)
         track_event(uid, 'referral_link_opened', metadata={'referrer_id': str(referrer_id)})
+    # V3.47.0: acquisition-source attribution. src_<tag> tags the ad/content/
+    # catalogue channel; src_share_<uid> additionally credits the sharer as the
+    # referrer (this is how a watermarked shared photo pays the person who sent
+    # it). First touch wins — set_source never overwrites an existing tag.
+    source_tag, share_referrer = parse_source_payload(command.args)
+    if source_tag:
+        if set_source(message.from_user.id, source_tag):
+            track_event(uid, 'source_opened', metadata={'src': source_tag})
+        if share_referrer and share_referrer != message.from_user.id:
+            remember_referral(message.from_user.id, share_referrer)
+            has_referral = True
     track_event(uid, 'onboarding_completed')
 
     if not has_accepted(message.from_user.id):
@@ -3529,6 +3543,48 @@ async def contest_cmd(message: types.Message):
     lines.append('призы: топ-3 по итогам месяца автоматически получают Premium на месяц. конкурс обновляется каждый месяц.')
     if settlement and not settlement['already_settled'] and settlement['winners']:
         lines.append(f"🎉 итоги за {settlement['month']}: победители уже получили Premium!")
+    # V3.47.0: opening /contest also settles any bonus tier the user has newly
+    # crossed (invite-count ladder), then shows their progress and the money
+    # affiliate board — real earners, not just volume.
+    try:
+        newly = maybe_grant_referral_tiers(message.from_user.id)
+    except Exception:
+        logger.exception('contest tier grant failed user=%s', message.from_user.id)
+        newly = []
+    if newly:
+        for g in newly:
+            reward = f'+{g["credits"]} 🍑'
+            if g['premium_days']:
+                reward += f' и {g["premium_days"]} дн. Premium'
+            lines.append(f'🎁-tier пройден: {g["invites"]} приглашений → {reward}')
+        lines.append('')
+    try:
+        prog = referral_tier_progress(message.from_user.id)
+    except Exception:
+        prog = {'count': 0, 'tiers': [], 'next': None}
+    if prog['tiers']:
+        lines.append('📊 бонус-тиры (за количество друзей):')
+        for t in prog['tiers']:
+            mark = '✅' if t['granted'] else ('▶' if t['reached'] else '🔒')
+            bonus = f'+{t["credits"]} 🍑' + (f' +{t["premium_days"]}д Premium' if t['premium_days'] else '')
+            lines.append(f"  {mark} {t['invites']} пригл. → {bonus}")
+        if prog['next']:
+            need = prog['next']['invites'] - prog['count']
+            lines.append(f"  осталось {need} до следующего тира 🔥")
+        lines.append('')
+    try:
+        from services import partner_service as _ps
+        earners = _ps.affiliate_leaderboard(limit=5, period_days=30)
+    except Exception:
+        earners = []
+    if earners:
+        lines.append('💰 топ партнёров по заработку за 30 дней:')
+        medals = {1: '🥇', 2: '🥈', 3: '🥉'}
+        for row in earners:
+            medal = medals.get(row['rank'], f"{row['rank']}.")
+            me = ' (это ты!)' if row['telegram_id'] == message.from_user.id else ''
+            lines.append(f"  {medal} {row['name']}{me} — {row['earned_rub']:g} ₽ · {row['invited']} пригл.")
+        lines.append('')
     if rank > 0:
         lines.append(f'\nты сейчас на {rank} месте из {total} — пригласи ещё друзей командой /referral!')
     else:
@@ -8571,7 +8627,15 @@ async def _webapp_api_me(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     track_event(uid, 'webapp_opened')
-    return web.json_response({'ok': True, 'me': webapp_service.api_me(telegram_id)})
+    me = webapp_service.api_me(telegram_id)
+    # V3.47.0: the viral invite link (src_share attribution + credits this user
+    # as referrer) rides along so the share / post-gen CTA works anywhere.
+    try:
+        _me_bot = await bot.get_me()
+        me['invite'] = share_link(_me_bot.username or 'bot', telegram_id)
+    except Exception:
+        logger.exception('invite link resolution failed user=%s', telegram_id)
+    return web.json_response({'ok': True, 'me': me})
 
 
 async def _webapp_api_characters(request: web.Request) -> web.Response:
@@ -8736,8 +8800,35 @@ async def _webapp_api_gallery(request: web.Request) -> web.Response:
     telegram_id = webapp_service.init_data_user(pairs).get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
-    return web.json_response(webapp_service.api_gallery(telegram_id),
-                             headers={'Cache-Control': 'no-store'})
+    data = webapp_service.api_gallery(telegram_id)
+    # V3.47.0: attach the sharer's own invite link so the gallery / post-gen CTA
+    # and the share sheet carry attribution that credits this user as referrer.
+    try:
+        me = await bot.get_me()
+        data['invite'] = share_link(me.username or 'bot', telegram_id)
+    except Exception:
+        logger.exception('gallery invite link resolution failed user=%s', telegram_id)
+    return web.json_response(data, headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_gallery_share(request: web.Request) -> web.Response:
+    """V3.47.0: serve the watermarked export copy of a gallery photo to its owner
+    only, for viral sharing (the in-app view / paid download stay unwatermarked)."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.Response(status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.Response(status=401)
+    try:
+        image_id = int(request.match_info['image_id'])
+    except (TypeError, ValueError):
+        return web.Response(status=404)
+    data = webapp_service.share_image_bytes(telegram_id, image_id)
+    if not data:
+        return web.Response(status=404)
+    return web.Response(body=data, content_type='image/jpeg',
+                        headers={'Cache-Control': 'private, no-store'})
 
 
 async def _webapp_gallery_image(request: web.Request) -> web.Response:
@@ -10233,6 +10324,8 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/missions', _webapp_api_missions)
     app.router.add_get('/webapp/api/gallery', _webapp_api_gallery)
     app.router.add_get('/webapp/gallery/image/{image_id}', _webapp_gallery_image)
+    # V3.47.0: watermarked export copy for the viral «Поделиться» sheet.
+    app.router.add_get('/webapp/gallery/share/{image_id}', _webapp_gallery_share)
     # V3.44.0: popularity leaderboard
     app.router.add_get('/webapp/api/leaderboard', _webapp_api_leaderboard)
     # V3.44.0: public comments under character cards.

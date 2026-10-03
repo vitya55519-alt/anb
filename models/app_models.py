@@ -14,6 +14,10 @@ class User(Base):
     # V3.31.0: last seen @username so the owner can grant premium/tokens
     # manually by username (alternative off-bot payment flow). Auto-migrated.
     username: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # V3.47.0: acquisition source captured from a ?start=src_<tag> deep link on
+    # the user's first-ever /start (empty = organic). 'share:<uid>' when they
+    # arrived from a friend's shared photo. Auto-migrated by services/db.py.
+    source_tag: Mapped[str] = mapped_column(String(48), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_active_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     memory_enabled: Mapped[bool] = mapped_column(Boolean, default=True)

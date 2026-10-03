@@ -93,6 +93,53 @@ def referred_count(user_id: int) -> int:
         ) or 0)
 
 
+def affiliate_leaderboard(limit: int = 10, period_days: int | None = 30) -> list[dict]:
+    """V3.47.0: the money affiliate leaderboard — top partners by commission
+    actually earned in the period, each with their lifetime invite count.
+    period_days=None means all-time. Complements the invite-count /contest race
+    so real revenue-driving affiliates get visible status, not just volume."""
+    from datetime import datetime, timedelta, timezone
+    cutoff = None
+    if period_days is not None:
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=period_days)
+    with SessionLocal() as s:
+        q = (
+            select(
+                PartnerTransaction.user_id,
+                func.coalesce(func.sum(PartnerTransaction.amount_rub), 0.0).label("rub"),
+            )
+            .where(PartnerTransaction.kind == "commission")
+        )
+        if cutoff is not None:
+            q = q.where(PartnerTransaction.created_at >= cutoff)
+        q = q.group_by(PartnerTransaction.user_id)
+        q = q.order_by(func.sum(PartnerTransaction.amount_rub).desc()).limit(limit)
+        rows = s.execute(q).all()
+        uids = [r[0] for r in rows if r[0] is not None]
+        users = {}
+        invites: dict[int, int] = {}
+        if uids:
+            for u in s.scalars(select(User).where(User.id.in_(uids))).all():
+                users[u.id] = u
+            for row in s.execute(
+                select(Referral.referrer_user_id, func.count())
+                .where(Referral.referrer_user_id.in_(uids))
+                .group_by(Referral.referrer_user_id)
+            ).all():
+                invites[row[0]] = int(row[1])
+    board = []
+    for idx, r in enumerate(rows):
+        u = users.get(r[0])
+        board.append({
+            "rank": idx + 1,
+            "telegram_id": int(u.telegram_id) if u and u.telegram_id else 0,
+            "name": (u.name if u and u.name else "ты"),
+            "earned_rub": round(float(r[1]), 2),
+            "invited": invites.get(r[0], 0),
+        })
+    return board
+
+
 def _freekassa_amount_rub(provider_payload: str | None) -> float:
     """Parse ``amount=299.00`` out of an external-kassa webhook payload
     (FreeKassa historically; Platega since V3.44.21 sends the same shape)."""

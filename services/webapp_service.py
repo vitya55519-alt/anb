@@ -946,6 +946,7 @@ def api_gallery(telegram_id: int, limit: int = 60) -> dict:
             'category': row.get('category'),
             'type_id': row.get('type_id'),
             'url': f"/webapp/gallery/image/{row['id']}",
+            'share_url': f"/webapp/gallery/share/{row['id']}",
             'created_at': created.isoformat() if created else '',
         })
     return {'ok': True, 'count': len(items), 'items': items}
@@ -961,6 +962,22 @@ def gallery_image_bytes(telegram_id: int, image_id: int) -> bytes | None:
         if not row or row.user_id != uid:
             return None
         return row.image_bytes
+
+
+def share_image_bytes(telegram_id: int, image_id: int) -> bytes | None:
+    """V3.47.0: the watermarked EXPORT copy of a gallery photo for viral
+    sharing. Owner-only (reuses gallery_image_bytes), and the watermark is
+    burned in here — the in-app view and the paid download stay clean."""
+    raw = gallery_image_bytes(telegram_id, image_id)
+    if not raw:
+        return None
+    try:
+        from services.watermark_service import apply_share_watermark
+        from config import BOT_USERNAME
+        return apply_share_watermark(raw, BOT_USERNAME, telegram_id)
+    except Exception:
+        logger.exception('share watermark failed user=%s image=%s', telegram_id, image_id)
+        return raw
 
 
 # ── V3.38.0: «Картинки» studio persistence ────────────────────────────────
@@ -1041,6 +1058,17 @@ def api_partner(user_id: int, telegram_id: int) -> dict:
     lang = user_lang(telegram_id)
     en = lang == EN
     stats = partner_service.partner_stats(user_id)
+    # V3.47.0: bonus-tier ladder + the affiliate money leaderboard, surfaced on
+    # the same screen so real earners (not just volume) get visible status.
+    try:
+        from services.referral_service import referral_tier_progress
+        tier = referral_tier_progress(telegram_id)
+    except Exception:
+        tier = {'count': 0, 'tiers': [], 'next': None}
+    try:
+        top_earners = partner_service.affiliate_leaderboard(limit=5, period_days=30)
+    except Exception:
+        top_earners = []
     pct = int(REFERRAL_COMMISSION_PCT) if float(REFERRAL_COMMISSION_PCT).is_integer() else REFERRAL_COMMISSION_PCT
     faq = [
         {
@@ -1089,6 +1117,11 @@ def api_partner(user_id: int, telegram_id: int) -> dict:
         'payout_methods': PARTNER_PAYOUT_METHODS,
         'link': None,  # filled by the caller — only the bot knows its username
         'faq': faq,
+        # V3.47.0 growth additions
+        'referral_count': tier['count'],
+        'tiers': tier['tiers'],
+        'tier_next': tier['next'],
+        'top_earners': top_earners,
     }
 
 
