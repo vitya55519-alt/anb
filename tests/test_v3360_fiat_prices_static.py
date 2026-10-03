@@ -117,10 +117,11 @@ def test_frontend_renders_fiat_next_to_stars():
     # V3.43.0: the shop pack squares print the rub price inline from the same
     # payload (the old hero/credit rows that used fiat(p)/fiat(credit) are gone)
     assert "esc(x.rub) + ' ₽'" in INDEX
-    # V3.44.22: the wizard price note is community-aware — free (public) or
-    # peaches (private); the old three-tier rub/usd line is retired.
-    assert "const isPublic = WIZ.params.community === 'community_yes';" in INDEX
-    assert 'const freeCreate = WIZ.free || isPublic;' in INDEX
+    # V3.45.28: the wizard price is no longer community-aware — every creation
+    # costs peaches (only admins get the free button); the old three-tier
+    # rub/usd line and the free-public branch are both retired.
+    assert "const isPublic = WIZ.params.community === 'community_yes';" not in INDEX
+    assert 'const freeCreate = WIZ.free;' in INDEX
 
 
 def test_legal_tariffs_fiat_both_languages():

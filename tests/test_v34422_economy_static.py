@@ -78,41 +78,48 @@ def test_chat_photo_guard_matches_its_one_credit_charge():
     assert 'get_photo_credits(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS' in MAIN
 
 
-# ── 3. constructor: public free, private 10 🍑 ─────────────────────────────
+# ── 3. constructor: V3.45.28 — every creation costs 20 🍑 (only admins free) ─
 
 
 def test_constructor_peaches_config():
-    assert 'CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "10")))' in CONFIG
+    # V3.45.28: the free-public perk is retired, the flat price went 10 → 20 🍑.
+    assert 'CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "20")))' in CONFIG
 
 
-def test_chat_constructor_branches_on_community():
-    assert "is_public = str(params.get('community') or '') == 'community_yes'" in MAIN
-    assert "'✅ Создать · бесплатно'" in MAIN
-    assert "f'🍑 Создать приватную · {CONSTRUCTOR_COST_PEACHES} 🍑'" in MAIN
-    # both the confirm keyboard and the buy handler free the public path
-    assert "if str(cons['params'].get('community') or '') == 'community_yes':" in MAIN
-    assert "'source': 'community_free'" in MAIN
+def test_chat_constructor_always_costs_peaches():
+    # V3.45.28: the community branch is gone — non-admins always pay peaches,
+    # only admins keep the free button.
+    assert "is_public = str(params.get('community')" not in MAIN
+    assert "'✅ Создать · бесплатно (админ)'" in MAIN
+    assert "f'🍑 Создать · {CONSTRUCTOR_COST_PEACHES} 🍑'" in MAIN
+    # the bot no longer frees the public path
+    assert "'source': 'community_free'" not in MAIN
 
 
-def test_webapp_constructor_free_path():
-    assert "if str((cons.get('params') or {}).get('community') or '') == 'community_yes':" in MAIN
-    assert "'public_free': True," in MAIN
+def test_webapp_constructor_public_path_is_retired():
+    # V3.45.28: the app reports public_free=False and drops the free branch.
+    assert "'public_free': False," in MAIN
+    assert "'source': 'community_free'" not in MAIN
 
 
 def test_characters_keyboard_teaser_matches_new_economy():
-    assert 'Создать свою · бесплатно / {CONSTRUCTOR_COST_PEACHES} 🍑' in MAIN
+    # a single honest price teaser (no «бесплатно /» split)
+    assert 'Создать свою · {CONSTRUCTOR_COST_PEACHES} 🍑' in MAIN
+    assert 'Создать свою · бесплатно / {CONSTRUCTOR_COST_PEACHES} 🍑' not in MAIN
     # the contradicting 50⭐ teaser and the separate rub row are gone
     assert 'Создать свою · {CONSTRUCTOR_COST_STARS}⭐' not in MAIN
     assert "'constructor_rub', CONSTRUCTOR_COST_RUB," not in MAIN
 
 
 def test_wizard_frontend_community_pricing():
-    assert "const isPublic = WIZ.params.community === 'community_yes';" in INDEX
-    assert "const freeCreate = WIZ.free || isPublic;" in INDEX
-    # the Stars fallback row is retired — private personas pay peaches only
+    # V3.45.28: the community step no longer decides the price — only admins
+    # get the free create button, everyone else spends peaches.
+    assert "const isPublic = WIZ.params.community === 'community_yes';" not in INDEX
+    assert "const freeCreate = WIZ.free;" in INDEX
+    # the Stars fallback row stays retired — creation pays peaches only
     assert 'id="wizCreateStars"' not in INDEX
-    assert "wiz_free_public: 'бесплатно — она появится в «Сообществе»'" in INDEX
-    assert "constructor_price_note: p => 'публично — бесплатно · приватно — ' + p + ' 🍑'" in INDEX
+    assert "constructor_price_note: p => 'создание — ' + p + ' 🍑'" in INDEX
+    assert "constructor_price_note: p => 'creation — ' + p + ' 🍑'" in INDEX
     assert "'constructor_peaches': CONSTRUCTOR_COST_PEACHES," in WEBAPP_SVC
 
 
@@ -192,5 +199,5 @@ def test_env_example_documents_new_knobs():
     assert 'PEACH_PACK_10_RUB=99' in ENV
     assert 'PEACH_PACK_30_RUB=249' in ENV
     assert 'PEACH_PACK_100_RUB=699' in ENV
-    assert 'CONSTRUCTOR_COST_PEACHES=10' in ENV
+    assert 'CONSTRUCTOR_COST_PEACHES=20' in ENV
     assert 'DONATION_AMOUNTS_RUB=50,100,500' in ENV

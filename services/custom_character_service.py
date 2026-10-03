@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from sqlalchemy import select
 
@@ -34,6 +35,53 @@ def custom_character_id(telegram_id: int) -> str:
     """V3.44.6: generate unique character ID — supports multiple chars per user."""
     import uuid
     return f'{CUSTOM_CHARACTER_PREFIX}{telegram_id}_{uuid.uuid4().hex[:8]}'
+
+
+# V3.45.28: free-text tags typed in the wizard get sanitized before they can
+# reach the storefront. The owner picked «free input» (Come Closer style), so we
+# lean on this filter to keep the community grid clean: split on every common
+# separator, normalize, drop links/handles/symbol garbage and one-char junk,
+# dedupe, and cap both per-tag length and the total count.
+TAG_MAX = 15
+TAG_LEN = 24
+_TAG_SPLIT = re.compile(r'[,\n;#|]+')
+_TAG_ALLOWED = re.compile(r'^[\w\s.\-]+$', re.UNICODE)
+_TAG_SPAM = ('http', 'www.', '.com', '.ru', '.net', '@', 't.me', 'telegram', 'vpn', 'casino', 'porn')
+
+
+def normalize_tags(raw: object) -> str:
+    """Turn a free-text tag blob into a clean comma-joined string.
+
+    Returns '' when nothing survives — an empty tag field is the safe default
+    and never renders an empty chip on the card.
+    """
+    if not raw:
+        return ''
+    seen: set[str] = set()
+    out: list[str] = []
+    for token in _TAG_SPLIT.split(str(raw)):
+        tag = re.sub(r'\s+', ' ', token).strip().lower()
+        if len(tag) < 2 or len(tag) > TAG_LEN:
+            continue
+        if any(h in tag for h in _TAG_SPAM):
+            continue
+        if not _TAG_ALLOWED.match(tag):
+            continue
+        if tag in seen:
+            continue
+        seen.add(tag)
+        out.append(tag)
+        if len(out) >= TAG_MAX:
+            break
+    return ', '.join(out)
+
+
+def parse_tags(csv: str | None) -> list[str]:
+    """Split a stored tag string back into a list (for API responses)."""
+    if not csv:
+        return []
+    return [t.strip() for t in str(csv).split(',') if t.strip()]
+
 
 
 # Ordered wizard steps. Each option is (callback value, Russian label,
@@ -171,6 +219,12 @@ CONSTRUCTOR_STEPS: list[dict] = [
         'options': [],
         'free_text': True,
     },
+    # V3.45.28: free-text tags — how she is found on the community витрина.
+    {
+        'key': 'tags', 'title': 'Добавь теги через запятую (например: спорт, путешествия, флирт, аниме). Необязательно.',
+        'options': [],
+        'free_text': True,
+    },
     {
         'key': 'community', 'title': 'Опубликовать в категории «Сообщество»? Другие пользователи смогут с ней общаться.',
         'options': [
@@ -240,6 +294,7 @@ STEP_TITLES_EN: dict[str, str] = {
     'temperament': 'Her personality?',
     'profession': 'What does she do?',
     'role': 'Who is she to you?',
+    'tags': 'Tags to find her (comma-separated)?',
 }
 
 
@@ -509,6 +564,8 @@ def save_custom_character(
     backstory: str | None = None,
     community_published: bool = False,
     photo_reference_file_id: str | None = None,
+    # V3.45.28: sanitized comma-joined free-text tags.
+    tags: str | None = None,
     # V3.44.6: author revenue sharing fields.
     author_telegram_id: str | None = None,
     author_revenue_percent: float = 5.0,
@@ -528,6 +585,7 @@ def save_custom_character(
             backstory=backstory,
             community_published=community_published,
             photo_reference_file_id=photo_reference_file_id,
+            tags=tags or None,
             author_telegram_id=author_telegram_id or str(telegram_id),
             author_revenue_percent=author_revenue_percent,
         )

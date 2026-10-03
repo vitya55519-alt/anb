@@ -208,8 +208,13 @@ def test_characters_tab_has_segment_switch():
     # the switch filters the cached grid and moves create-card to community
     assert "let CHAR_SEG = 'official'" in INDEX
     assert 'CHAR_SEG = btn.dataset.seg' in INDEX
-    assert "list.filter(c => (CHAR_SEG === 'official' ? !c.custom : !!c.custom))" in INDEX
+    # V3.45.28: the filter became a block so the community tab can also honour
+    # the free-text search — the segment gate is now this early-return line.
+    assert "if (CHAR_SEG === 'official' ? !!c.custom : !c.custom) return false;" in INDEX
     assert "const createCard = CHAR_SEG === 'official' ? ''" in INDEX
+    # V3.45.28: the community search box + name/bio/tag filter ride along.
+    assert 'id="charSearch"' in INDEX and "let CHAR_QUERY = ''" in INDEX
+    assert "getElementById('charSearch').addEventListener('input'" in INDEX
 
 
 # ── 8. studio reliability ────────────────────────────────────────────────

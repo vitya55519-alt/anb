@@ -142,6 +142,10 @@ class CustomCharacter(Base):
     backstory: Mapped[str | None] = mapped_column(Text, nullable=True)
     community_published: Mapped[bool] = mapped_column(Boolean, default=False)
     photo_reference_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # V3.45.28: free-text tags typed at creation (normalized server-side), stored
+    # as a comma-joined string. Drives the storefront «tags» chips + community
+    # filter. Nullable so legacy rows simply render without tags.
+    tags: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # V3.44.6: author revenue sharing — creator earns % from spending on this character.
     author_telegram_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     author_revenue_percent: Mapped[float] = mapped_column(Float, default=5.0)

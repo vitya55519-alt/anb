@@ -140,6 +140,7 @@ from services.custom_character_service import (
     CONSTRUCTOR_STEPS, OPTION_LABELS, PARAM_TITLES, build_avatar_prompt,
     custom_character_id, get_all_custom_characters, get_custom_character,
     get_custom_character_by_id, save_custom_character,
+    normalize_tags,
     summary_lines, step_index, is_custom_character,
     custom_character_params, set_custom_avatar_file_id,
     save_constructor_draft, snapshot_constructor_draft, get_constructor_draft,
@@ -7083,6 +7084,8 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             backstory=params.get('backstory', ''),
             community_published=params.get('community') == 'community_yes',
             photo_reference_file_id=photo_reference_file_id or None,
+            # V3.45.28: sanitized free-text tags for the storefront + filter.
+            tags=normalize_tags(params.get('tags', '')),
             # V3.44.6: author revenue sharing — creator earns 5% from spending.
             author_telegram_id=str(telegram_id),
             author_revenue_percent=5.0,

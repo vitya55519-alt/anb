@@ -79,6 +79,7 @@ from services.custom_character_service import (
     get_all_custom_characters, get_author_characters, get_custom_character_by_id,
     get_author_earnings_by_character, set_community_published,
     update_custom_character_text, delete_custom_character,
+    parse_tags,
 )
 from services.db import SessionLocal
 from services.ui_lang import EN, user_lang
@@ -311,6 +312,30 @@ def _author_brief(character_id: str) -> dict | None:
         return None
 
 
+def _batch_tags(character_ids: list[str]) -> dict[str, str]:
+    """V3.45.28: {character_id: raw tags} for the storefront grid in one query.
+
+    Only custom personas carry tags, so the caller filters the id list first;
+    an empty list short-circuits without touching the DB.
+    """
+    if not character_ids:
+        return {}
+    from models.app_models import CustomCharacter
+    out: dict[str, str] = {}
+    try:
+        with SessionLocal() as session:
+            rows = session.scalars(
+                select(CustomCharacter).where(CustomCharacter.character_id.in_(character_ids))
+            ).all()
+            for r in rows:
+                if r.tags:
+                    out[r.character_id] = r.tags
+    except Exception:
+        logger.exception('batch tags read failed')
+        return {}
+    return out
+
+
 def api_characters(telegram_id: int | None = None) -> list[dict]:
     """Storefront grid: every visible card plus its storefront photo URL.
 
@@ -340,6 +365,10 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
                 cards.append(extra)
     # V3.43.9: relationship levels for the progress bar (batched, one query).
     rel_levels = _batch_rel_levels(telegram_id, [c.character_id for c in cards])
+    # V3.45.28: one batched read of the free-text tags for every custom card
+    # present, so the storefront can render chips + power the community filter
+    # without a per-card query.
+    tags_by_id = _batch_tags([c.character_id for c in cards if is_custom_character(c.character_id)])
     out = []
     for card in cards:
         custom = is_custom_character(card.character_id)
@@ -387,6 +416,8 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             'author': _author_brief(card.character_id) if custom else None,
             # V3.43.9: relationship level (0-8) for the progress bar.
             'level': rel_levels.get(card.character_id, 0),
+            # V3.45.28: sanitized tags for custom personas ([] for built-ins).
+            'tags': parse_tags(tags_by_id.get(card.character_id)),
         })
     return out
 

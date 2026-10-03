@@ -73,10 +73,11 @@ def test_all_premium_keyboard_callers_pass_telegram_id():
 
 
 def test_characters_keyboard_teaser_matches_peach_economy():
-    # V3.44.22: the separate ruble constructor row is retired — public
-    # personas are free, private ones cost peaches; the teaser says so.
+    # V3.44.22: the separate ruble constructor row is retired; V3.45.28 made
+    # every creation cost peaches (the free-public perk is gone), so the teaser
+    # shows a single honest peach price.
     assert 'def characters_keyboard(telegram_id: int | None = None):' in MAIN
-    assert 'Создать свою · бесплатно / {CONSTRUCTOR_COST_PEACHES} 🍑' in MAIN
+    assert 'Создать свою · {CONSTRUCTOR_COST_PEACHES} 🍑' in MAIN
     assert 'characters_keyboard(telegram_id=viewer_id)' in MAIN
     assert 'characters_keyboard(telegram_id=message.from_user.id)' in MAIN
 
