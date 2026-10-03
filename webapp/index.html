@@ -1764,7 +1764,10 @@ async function requestMedia(kind, scene) {
       return;
     }
     const j = await r.json();
-    if (!j.ok) { toast(L.reply_err); return; }
+    // V3.46.1: on a generation failure the backend only fills `reason` for
+    // ADMIN_TELEGRAM_IDS, so an admin sees the real provider cause (missing
+    // key / transport error) while a normal user still gets the generic text.
+    if (!j.ok) { toast(j.reason || L.reply_err); return; }
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
     box.scrollTop = box.scrollHeight;
     if (ME && j.credits_left != null) ME.photo_credits = j.credits_left;

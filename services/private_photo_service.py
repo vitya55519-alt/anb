@@ -38,6 +38,7 @@ from config import (
     SPICYAPI_KEY,
     SPICYAPI_BASE_URL,
     SPICYAPI_IMAGE_MODEL,
+    SPICYAPI_T2I_MODEL,
     SPICYAPI_IMAGE_TIMEOUT,
     CHARACTER_ID,
     PUBLIC_BASE_URL,
@@ -507,7 +508,10 @@ def build_private_photo_prompt(
 # below (task create → poll → download) — the old ``generate_private_photo``
 # stub that only returned None has been removed (V3.45.27).
 
-SPICYAPI_TASK_BASE = "https://api.spicyapi.ai/api/v1"
+# V3.46.1: honour the configurable base (config.SPICYAPI_BASE_URL) instead of a
+# hardcoded literal, so the endpoint can be corrected from Railway/env vars
+# without a redeploy. Default keeps the previously-working …/api/v1 path.
+SPICYAPI_TASK_BASE = SPICYAPI_BASE_URL
 
 
 async def _spicyapi_call(method: str, path: str, headers: dict = None, **kwargs) -> dict:
@@ -531,6 +535,65 @@ async def _spicyapi_call(method: str, path: str, headers: dict = None, **kwargs)
             return body.get("data", {})
 
 
+async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[str]]) -> Optional[bytes]:
+    """Shared SpicyAPI task flow: createTask → poll → download.
+
+    ``image_urls`` empty/None → text-to-image; otherwise image-to-image edit.
+    Returns image bytes or None on any failure (missing key, no taskId, task
+    failed/expired, timeout, download error). Never raises — callers treat None
+    as «this engine produced nothing».
+    """
+    if not SPICYAPI_KEY:
+        logger.error("SPICYAPI_KEY not configured")
+        return None
+    try:
+        input_block: Dict[str, Any] = {
+            "prompt": prompt,
+            "size": "1728*2304",  # 3:4 portrait
+            "output_format": "jpeg",
+        }
+        if image_urls:
+            input_block["image_urls"] = image_urls
+        idempotency_key = str(uuid.uuid4())
+        logger.info(f"SpicyAPI: creating task, model={model}, refs={len(image_urls) if image_urls else 0}")
+        task_data = await _spicyapi_call(
+            "POST", "/jobs/createTask",
+            headers={"Idempotency-Key": idempotency_key},
+            json={"model": model, "input": input_block},
+        )
+        task_id = task_data.get("taskId")
+        if not task_id:
+            logger.error(f"No taskId in SpicyAPI response: {task_data}")
+            return None
+        logger.info(f"SpicyAPI task: {task_id}")
+
+        deadline = asyncio.get_event_loop().time() + SPICYAPI_IMAGE_TIMEOUT
+        wait = 2.0
+        while asyncio.get_event_loop().time() < deadline:
+            await asyncio.sleep(wait)
+            wait = min(wait * 1.5, 15.0)
+            task_info = await _spicyapi_call("GET", f"/jobs/recordInfo?taskId={task_id}")
+            state = task_info.get("state")
+            if state == "succeeded":
+                assets = task_info.get("output", {}).get("assets", [])
+                asset_url = next((a["url"] for a in assets if a.get("url")), None)
+                if not asset_url:
+                    return None
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(asset_url) as resp:
+                        if resp.status == 200:
+                            return await resp.read()
+                return None
+            elif state in ("failed", "expired", "canceled"):
+                logger.error(f"SpicyAPI task {state}: {task_info.get('errorMessage')}")
+                return None
+        logger.error(f"SpicyAPI timeout: {task_id}")
+        return None
+    except Exception as e:
+        logger.exception(f"SpicyAPI failed: {e}")
+        return None
+
+
 async def generate_private_photo_real(
     request: PrivatePhotoRequest,
     character_description: str,
@@ -546,76 +609,28 @@ async def generate_private_photo_real(
     if not SPICYAPI_KEY:
         logger.error("SPICYAPI_KEY not configured")
         return None
-    
+
     if prompt is None:
         prompt = build_private_photo_prompt(request, character_description)
     logger.info(f"Private photo: category={request.category}, type={request.type_id}")
-    
+
     # Build reference image URLs (public endpoint, no auth)
     # i=0 = face identity, i=1 = body/look silhouette
     ref_face_url = f"{PUBLIC_BASE_URL}/webapp/photo/{request.character_id}?i=0"
     ref_body_url = f"{PUBLIC_BASE_URL}/webapp/photo/{request.character_id}?i=1"
-    image_urls = [ref_face_url, ref_body_url]
-    logger.info(f"SpicyAPI i2i: refs={ref_face_url}, {ref_body_url}")
-    
-    try:
-        # 1. Создаём задачу (edit mode: image_urls + prompt)
-        idempotency_key = str(uuid.uuid4())
-        logger.info(f"SpicyAPI: creating task, model={SPICYAPI_IMAGE_MODEL}")
-        task_data = await _spicyapi_call(
-            "POST", "/jobs/createTask",
-            headers={"Idempotency-Key": idempotency_key},
-            json={
-                "model": SPICYAPI_IMAGE_MODEL,
-                "input": {
-                    "image_urls": image_urls,
-                    "prompt": prompt,
-                    "size": "1728*2304",  # 3:4 portrait
-                    "output_format": "jpeg",
-                }
-            }
-        )
-        task_id = task_data.get("taskId")
-        logger.info(f"SpicyAPI: task created, id={task_id}, data={task_data}")
-        if not task_id:
-            logger.error(f"No taskId in SpicyAPI response: {task_data}")
-            return None
-        
-        logger.info(f"SpicyAPI task: {task_id}")
-        
-        # 2. Поллим статус
-        deadline = asyncio.get_event_loop().time() + SPICYAPI_IMAGE_TIMEOUT
-        wait = 2.0
-        
-        while asyncio.get_event_loop().time() < deadline:
-            await asyncio.sleep(wait)
-            wait = min(wait * 1.5, 15.0)
-            
-            task_info = await _spicyapi_call("GET", f"/jobs/recordInfo?taskId={task_id}")
-            state = task_info.get("state")
-            
-            if state == "succeeded":
-                assets = task_info.get("output", {}).get("assets", [])
-                asset_url = next((a["url"] for a in assets if a.get("url")), None)
-                if not asset_url:
-                    return None
-                
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(asset_url) as resp:
-                        if resp.status == 200:
-                            return await resp.read()
-                return None
-            
-            elif state in ("failed", "expired", "canceled"):
-                logger.error(f"SpicyAPI task {state}: {task_info.get('errorMessage')}")
-                return None
-        
-        logger.error(f"SpicyAPI timeout: {task_id}")
-        return None
-        
-    except Exception as e:
-        logger.exception(f"SpicyAPI failed: {e}")
-        return None
+    return await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, [ref_face_url, ref_body_url])
+
+
+async def generate_private_photo_t2i(prompt: str) -> Optional[bytes]:
+    """V3.46.1: uncensored text-to-image for the nude «Наедине» categories.
+
+    The fal Seedream t2i route is censored and will not return full nudity, and
+    SpicyAPI image-to-image keeps a clothed reference clothed — so nude shots
+    go through the UNCENSORED SpicyAPI engine with no reference (identity is
+    carried by the text visual-lock). ``SPICYAPI_T2I_MODEL`` is env-overridable
+    because the exact provider model id is account-specific.
+    """
+    return await _spicyapi_render(SPICYAPI_T2I_MODEL, prompt, None)
 
 
 # ─── Вспомогательные функции ───────────────────────────────────────────────────

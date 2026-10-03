@@ -9444,6 +9444,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     """V3.45: generate a private/cosplay photo via SpicyAPI."""
     from services.private_photo_service import (
         PrivatePhotoRequest, build_private_photo_prompt, generate_private_photo_real,
+        generate_private_photo_t2i,
         get_private_photo_usage, consume_free_private_photo, cache_get, cache_save,
         gallery_save, check_achievements, COSPLAY_CHARACTERS, PRIVATE_PHOTO_CATEGORIES,
     )
@@ -9487,17 +9488,42 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
             spend_peaches(telegram_id, peach_cost)
         return cached, 'image/jpeg', 'jpg'
     # Generate: adult → fal.ai t2i (safety checker off); others → SpicyAPI i2i
+    # V3.46.1: track the real provider failure so the admin toast can show WHY
+    # nothing arrived (missing key vs transport error vs engine reject) instead
+    # of the old silent «all_providers_failed». Normal users still get the
+    # generic message — the detail is only surfaced for ADMIN_TELEGRAM_IDS.
     image_bytes = None
     engine_used = 'spicyapi'
+    provider_error = None
     if is_adult:
-        engine_used = 'fal_ai_t2i'
-        try:
-            from services.photo_service import _seedream_t2i
-            image_bytes, _ = await _seedream_t2i(prompt, allow_adult=True)
-        except Exception as exc:
-            logger.warning('hot adult t2i failed: %s', exc)
+        # V3.46.1: nude goes to the UNCENSORED SpicyAPI engine — the fal Seedream
+        # route is censored and returns HTTP 422 content_policy_violation on the
+        # nude prompt (confirmed in production logs), so it can never deliver
+        # full nudity. Order: SpicyAPI text-to-image (no clothed reference to
+        # drag her back to clothed) → SpicyAPI image-to-image (the engine that
+        # already renders lingerie fine) → fal t2i as a last resort.
+        engine_used = 'spicyapi_t2i'
+        image_bytes = await generate_private_photo_t2i(prompt)
+        if not image_bytes:
+            engine_used = 'spicyapi_i2i'
+            image_bytes = await generate_private_photo_real(req, dna_ctx, prompt)
+        if not image_bytes:
+            from config import SPICYAPI_KEY as _spicy_key
+            provider_error = 'spicyapi_empty_result' + ('' if _spicy_key else ' (SPICYAPI_KEY not set)')
+        if not image_bytes:
+            engine_used = 'fal_ai_t2i'
+            try:
+                from services.photo_service import _seedream_t2i
+                image_bytes, _ = await _seedream_t2i(prompt, allow_adult=True)
+            except Exception as exc:
+                fb = f'fal_t2i {type(exc).__name__}: {str(exc)[:120]}'
+                provider_error = f'{provider_error}; {fb}' if provider_error else fb
+                logger.warning('hot adult fal t2i fallback failed: %s', exc)
     else:
         image_bytes = await generate_private_photo_real(req, dna_ctx, prompt)
+        if not image_bytes:
+            from config import SPICYAPI_KEY as _spicy_key
+            provider_error = 'spicyapi_empty_result' + ('' if _spicy_key else ' (SPICYAPI_KEY not set)')
     if not image_bytes and not is_adult:
         # Fallback for non-adult: SpicyAPI i2i failed, try fal.ai Seedream t2i
         # (safety checker on — these are clothed/lingerie shots).
@@ -9506,10 +9532,12 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
             from services.photo_service import _seedream_t2i
             image_bytes, _ = await _seedream_t2i(prompt, allow_adult=False)
         except Exception as exc:
+            fb = f'fal_fallback {type(exc).__name__}: {str(exc)[:120]}'
+            provider_error = f'{provider_error}; {fb}' if provider_error else fb
             logger.warning('hot fal.ai fallback failed: %s', exc)
-    logger.info('hot generated user=%s engine=%s ok=%s', telegram_id, engine_used, bool(image_bytes))
+    logger.info('hot generated user=%s engine=%s ok=%s reason=%s', telegram_id, engine_used, bool(image_bytes), provider_error)
     if not image_bytes:
-        raise PhotoGenerationError('hot', 'all_providers_failed')
+        raise PhotoGenerationError('hot', provider_error or 'all_providers_failed')
     # Charge peaches if free limit was not used
     if not free_used:
         spend_peaches(telegram_id, peach_cost)
@@ -9702,6 +9730,14 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             data, mime, ext = await _webapp_media_hot(telegram_id, character_id, scene, cosplay=True)
         else:
             data, mime, ext = await _webapp_media_voice(telegram_id, character_id)
+    except PhotoGenerationError as exc:
+        # V3.46.1: surface the real provider reason to the owner/admin only; a
+        # normal user gets reason=null so index.html falls back to the generic
+        # L.pic_gen_fail toast (no internal keys/endpoints leak to clients).
+        logger.warning('webapp chat media gen failed user=%s kind=%s provider=%s reason=%s',
+                       telegram_id, kind, exc.provider, exc.reason)
+        reason = exc.reason if telegram_id in ADMIN_TELEGRAM_IDS else None
+        return web.json_response({'ok': False, 'error': 'gen', 'reason': reason}, status=502)
     except Exception:
         logger.exception('webapp chat media failed user=%s kind=%s', telegram_id, kind)
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)

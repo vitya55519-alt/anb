@@ -43,7 +43,12 @@ MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M3").strip()
 
 # ── SpicyAPI (V3.45: uncensored Seedream для фото «наедине» и «косплей») ──
 SPICYAPI_KEY = os.getenv("SPICYAPI_KEY", "").strip()
-SPICYAPI_BASE_URL = os.getenv("SPICYAPI_BASE_URL", "https://api.spicyapi.ai/v1").strip().rstrip("/")
+# V3.46.1: this is the base the photo engine actually calls. It was previously
+# hardcoded in private_photo_service (…/api/v1) while this config value (…/v1)
+# was dead and pointed at the wrong path — so the endpoint could not be
+# overridden from the environment. The real (working) path is now the default
+# and remains overridable via SPICYAPI_BASE_URL without a code change.
+SPICYAPI_BASE_URL = os.getenv("SPICYAPI_BASE_URL", "https://api.spicyapi.ai/api/v1").strip().rstrip("/")
 
 # ── V3.45: Фото «наедине» и «Косплей» — монетизация через персики ──────────
 # Бесплатные лимиты (1 наедине + 1 косплей = 2 всего в день)
@@ -64,6 +69,13 @@ VOICE_PHOTO_PEACH_COST = max(1, int(os.getenv("VOICE_PHOTO_PEACH_COST", "3")))
 PHOTO_SERIES_PEACH_COST = max(1, int(os.getenv("PHOTO_SERIES_PEACH_COST", "5")))
 # SpicyAPI модель для uncensored генерации
 SPICYAPI_IMAGE_MODEL = os.getenv("SPICYAPI_IMAGE_MODEL", "bytedance/seedream-5.0-lite/edit").strip()
+# V3.46.1: the nude «Наедине» categories must render text-to-image (no clothed
+# reference — i2i keeps a clothed subject clothed, V3.45.23) on the UNCENSORED
+# SpicyAPI engine, because the fal Seedream route is censored and refuses full
+# nudity. The exact t2i model id is provider-specific, so it is env-overridable;
+# if the default is wrong the admin toast now shows the real SpicyAPI error and
+# this can be corrected from Railway without a redeploy.
+SPICYAPI_T2I_MODEL = os.getenv("SPICYAPI_T2I_MODEL", "bytedance/seedream-5.0-lite/text-to-image").strip()
 SPICYAPI_IMAGE_TIMEOUT = max(30, min(180, int(os.getenv("SPICYAPI_IMAGE_TIMEOUT", "90"))))
 
 # Legacy OpenAI key — kept ONLY for optional TTS/Whisper/moderation.
