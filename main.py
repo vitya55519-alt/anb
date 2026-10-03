@@ -8716,6 +8716,18 @@ async def _webapp_api_achievements(request: web.Request) -> web.Response:
                              headers={'Cache-Control': 'no-store'})
 
 
+async def _webapp_api_missions(request: web.Request) -> web.Response:
+    """V3.46.0: the missions funnel roadmap for the Mini App «Миссии» tab."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    return web.json_response(webapp_service.api_missions(telegram_id),
+                             headers={'Cache-Control': 'no-store'})
+
+
 async def _webapp_api_gallery(request: web.Request) -> web.Response:
     """V3.45.27: the caller's «Наедине" photo gallery for the Mini App."""
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
@@ -10181,6 +10193,8 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/creator/delete', _webapp_api_creator_delete)
     # V3.45.27: unified achievements board + private gallery in the Mini App.
     app.router.add_get('/webapp/api/achievements', _webapp_api_achievements)
+    # V3.46.0: missions funnel tab (roadmap + in-app CTAs).
+    app.router.add_get('/webapp/api/missions', _webapp_api_missions)
     app.router.add_get('/webapp/api/gallery', _webapp_api_gallery)
     app.router.add_get('/webapp/gallery/image/{image_id}', _webapp_gallery_image)
     # V3.44.0: popularity leaderboard

@@ -908,6 +908,32 @@ def api_achievements(telegram_id: int) -> dict:
     return {'ok': True, **progress}
 
 
+# V3.46.0: the missions funnel CTA. The roadmap is shared with the bot /missions
+# screen, but a Mini App button must call something that already exists in the
+# SPA — so each bot callback maps onto a real in-app action (never a new route).
+_MISSION_APP_ACTION = {
+    'constructor:start': 'construct',
+    'video:animate_last': 'shop',
+    'spicy:menu': 'shop',
+    'photo_menu:open': 'shop',
+}
+
+
+def api_missions(telegram_id: int) -> dict:
+    """V3.46.0: the missions roadmap for the Mini App — the same data the bot
+    shows, with each still-locked actionable mission carrying a `cta` action the
+    SPA can route to an existing function (openWizard / shop / creator cabinet)."""
+    try:
+        from services.gamification_service import get_missions
+        data = get_missions(telegram_id)
+    except Exception:
+        logger.exception('app missions failed user=%s', telegram_id)
+        return {'ok': True, 'total': 0, 'unlocked': 0, 'pct': 0, 'items': []}
+    for it in data.get('items', []):
+        it['cta'] = _MISSION_APP_ACTION.get(it.get('cta_cb') or '', '')
+    return {'ok': True, **data}
+
+
 def api_gallery(telegram_id: int, limit: int = 60) -> dict:
     """The app gallery of the caller's «Наедине» photos (newest first). Images
     are served by id through /webapp/gallery/image/{id}."""

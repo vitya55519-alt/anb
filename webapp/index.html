@@ -578,6 +578,24 @@
   .achrow .nm { font-size: 14px; font-weight: 600; }
   .achrow .achicon { font-size: 22px; width: 30px; text-align: center; flex-shrink: 0; }
   .achrow.lock { opacity: .5; filter: grayscale(.6); }
+  /* V3.46.0: missions funnel rows + reward chips */
+  .mis-group { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+    opacity: .6; margin: 14px 2px 6px; }
+  .misrow { display: flex; align-items: center; gap: 12px;
+    background: var(--card); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
+  .misrow.lock { opacity: .62; }
+  .misrow .misicon { font-size: 20px; width: 28px; text-align: center; flex-shrink: 0; }
+  .misrow .mis-body { flex: 1; min-width: 0; }
+  .misrow .nm { font-size: 14px; font-weight: 600; }
+  .misrow .sub2 { font-size: 12px; opacity: .7; }
+  .misrow .misprog { font-size: 12px; opacity: .7; margin-top: 2px; }
+  .misrow .misprog .bar { display: inline-block; vertical-align: middle;
+    width: 70px; margin-left: 6px; }
+  .miscta { flex-shrink: 0; border: 0; border-radius: 10px; padding: 8px 12px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    background: var(--accent); color: #fff; white-space: nowrap; }
+  .misrow.done { opacity: .85; }
+  .misrow .misdone { font-size: 18px; flex-shrink: 0; }
   .galgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .galgrid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; background: var(--card2); }
 </style>
@@ -629,6 +647,11 @@
     <h2 id="l_shop_title">Магазин</h2>
     <div id="shopbody"><div class="loading">…</div></div>
   </section>
+  <!-- V3.46.0: missions funnel — a dedicated roadmap tab with per-mission CTAs -->
+  <section class="tab" id="tab-missions">
+    <h2 id="l_missions_title">Миссии</h2>
+    <div id="missionsbody"><div class="loading">…</div></div>
+  </section>
   <section class="tab" id="tab-profile">
     <h2 id="l_profile_title">Профиль</h2>
     <div id="profilebody"><div class="loading">…</div></div>
@@ -642,6 +665,7 @@
   <button data-tab="chats"><span class="ico">💬</span><span class="lbl">Чаты</span></button>
   <button data-tab="pictures"><span class="ico">🖼</span><span class="lbl">Картинки</span></button>
   <button data-tab="shop"><span class="ico">🛒</span><span class="lbl">Магазин</span></button>
+  <button data-tab="missions"><span class="ico">🏅</span><span class="lbl">Миссии</span></button>
   <button data-tab="profile"><span class="ico">👤</span><span class="lbl">Профиль</span></button>
 </nav>
 <div id="toast"></div>
@@ -1366,7 +1390,7 @@ document.getElementById('charSearch').addEventListener('input', e => {
 let ME = null;
 // V3.44.15: lazy tab-loading flags — declared early because the loaders reset
 // them on failure, so the next tab visit retries instead of staying dead.
-let _shopLoaded=false,_chatsLoaded=false,_picsLoaded=false,_leaderLoaded=false,_channelLoaded=false;
+let _shopLoaded=false,_chatsLoaded=false,_picsLoaded=false,_leaderLoaded=false,_channelLoaded=false,_missionsLoaded=false;
 let toastTimer = null;
 function toast(text) {
   const el = document.getElementById('toast');
@@ -3302,9 +3326,64 @@ function lazyLoadTab(id){
   if(id==='chats'&&!_chatsLoaded){_chatsLoaded=true;loadChats();}
   if(id==='pics'&&!_picsLoaded){_picsLoaded=true;loadPictures();}
   if(id==='profile'&&!_leaderLoaded){_leaderLoaded=true;loadLeaderboard();}
+  if(id==='missions'&&!_missionsLoaded){_missionsLoaded=true;loadMissions();}
 }
 // Channel check after a short delay (non-blocking)
 setTimeout(()=>{if(!_channelLoaded){_channelLoaded=true;loadChannel();}},2000);
+
+// V3.46.0: Миссии — the funnel roadmap. Each still-locked actionable mission
+// carries a CTA routed to an existing SPA action (never a new screen).
+const _MISSION_GROUP_TITLES = { start: '🌱 Первые шаги', romance: '❤️ Романтика', creator: '🎨 Творчество' };
+const _MISSION_CTA_LABEL = { construct: '🎨 Создать', shop: '🔥 Открыть', creator: '📈 Кабинет' };
+function _missionAction(action) {
+  if (action === 'construct') { openWizard(); }
+  else if (action === 'creator') { openCreatorOverlay(); }
+  else if (action === 'shop') { showTab('shop'); }
+}
+async function loadMissions() {
+  const body = document.getElementById('missionsbody');
+  body.innerHTML = '<div class="loading">…</div>';
+  try {
+    const r = await fetch('/webapp/api/missions?init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store' });
+    const j = await r.json();
+    if (!j.ok) { _missionsLoaded = false; body.innerHTML = `<div class="err">${esc(L.err_auth)}</div>`; return; }
+    const items = j.items || [];
+    const head = `<div class="note">${j.unlocked} / ${j.total} · ${j.pct}%</div>`
+      + `<div class="bar" style="margin:6px 0 14px"><i style="width:${j.pct}%"></i></div>`;
+    let html = head, lastGroup = null;
+    items.forEach(it => {
+      if (it.group !== lastGroup) {
+        lastGroup = it.group;
+        html += `<div class="mis-group">${esc(_MISSION_GROUP_TITLES[it.group] || it.group)}</div>`;
+      }
+      const reward = (it.reward && it.reward !== '🎖') ? `<span class="chip">${esc(it.reward)}</span>` : '';
+      const prog = it.progress
+        ? `<div class="misprog">${it.progress[0]}/${it.progress[1]}<span class="bar"><i style="width:${Math.round(it.progress[0] / it.progress[1] * 100)}%"></i></span></div>`
+        : '';
+      if (it.unlocked) {
+        html += `<div class="misrow done">
+          <div class="misicon">🏆</div>
+          <div class="mis-body"><div class="nm">${esc(it.name)} ${reward}</div><div class="sub2">${esc(it.description)}</div>${prog}</div>
+          <div class="misdone">✅</div>
+        </div>`;
+      } else {
+        const cta = it.cta
+          ? `<button class="miscta" data-cta="${esc(it.cta)}">${esc(_MISSION_CTA_LABEL[it.cta] || '▶')}</button>`
+          : '';
+        html += `<div class="misrow lock">
+          <div class="misicon">🔒</div>
+          <div class="mis-body"><div class="nm">${esc(it.name)} ${reward}</div><div class="sub2">${esc(it.description)}</div>${prog}</div>
+          ${cta}
+        </div>`;
+      }
+    });
+    body.innerHTML = html;
+    body.querySelectorAll('.miscta').forEach(b => b.addEventListener('click', () => _missionAction(b.dataset.cta)));
+  } catch (e) {
+    _missionsLoaded = false;
+    body.innerHTML = `<div class="err">${esc(L.invoice_err)}</div>`;
+  }
+}
 
 // V3.45.27: Галерея + Ачивки — реальные экраны приложения (были заглушки).
 function openAchievements() {

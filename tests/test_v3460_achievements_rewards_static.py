@@ -16,6 +16,8 @@ GAM = (ROOT / 'services' / 'gamification_service.py').read_text(encoding='utf-8'
 PICS = (ROOT / 'services' / 'private_photo_service.py').read_text(encoding='utf-8')
 RET = (ROOT / 'services' / 'retention_features_service.py').read_text(encoding='utf-8')
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
+WEB = (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')
+INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
 def test_reward_constants_and_preview():
@@ -126,3 +128,27 @@ def test_missions_cta_targets_are_real_callbacks():
     # the CTAs the missions screen points at must exist as live handlers
     for cb in ('constructor:start', 'video:animate_last', 'spicy:menu', 'photo_menu:open'):
         assert cb in MAIN
+
+
+# ── Increment 3: missions API + dedicated Mini App tab ───────────────────────
+
+def test_app_missions_api_and_route():
+    assert 'def api_missions(telegram_id: int) -> dict:' in WEB
+    assert 'from services.gamification_service import get_missions' in WEB
+    # the SPA CTA only ever routes to an existing in-app action
+    assert "'constructor:start': 'construct'" in WEB
+    # route + handler wired on the aiohttp app
+    assert "'/webapp/api/missions', _webapp_api_missions" in MAIN
+    assert 'async def _webapp_api_missions(' in MAIN
+
+
+def test_app_missions_tab_present():
+    # a real bottom-nav tab (not a profile row) with a lazy loader
+    assert 'data-tab="missions"' in INDEX
+    assert 'id="tab-missions"' in INDEX
+    assert "if(id==='missions'&&!_missionsLoaded)" in INDEX
+    assert 'async function loadMissions()' in INDEX
+    assert "_missionsLoaded=false" in INDEX
+    # CTA routes to existing SPA functions only
+    assert 'function _missionAction(action)' in INDEX
+    assert 'fetch(\'/webapp/api/missions' in INDEX
