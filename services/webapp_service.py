@@ -74,7 +74,7 @@ from services import legal_service
 from services.access_service import is_premium
 from services.character_card_service import get_card, get_scenario_hook, list_cards, update_card
 from services.custom_character_service import (
-    CONSTRUCTOR_STEPS, OPTION_LABELS_EN, STEP_TITLES_EN,
+    CONSTRUCTOR_STEPS, OPTION_LABELS_EN, STEP_TITLES_EN, STEP_GROUPS,
     custom_character_id, is_custom_character,
     get_all_custom_characters, get_author_characters, get_custom_character_by_id,
     get_author_earnings_by_character, set_community_published,
@@ -605,6 +605,9 @@ def api_constructor_steps(lang: str = 'ru') -> list[dict]:
             'key': step['key'], 'title': title, 'options': options,
             'free_text': bool(step.get('free_text')),
             'photo_upload': bool(step.get('photo_upload')),
+            # V3.45.28: which visual group this field belongs to on the
+            # one-screen wizard (appearance / character / story / share).
+            'group': STEP_GROUPS.get(step['key'], 'other'),
         })
     return out
 

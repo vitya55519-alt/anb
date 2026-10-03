@@ -252,7 +252,12 @@ def test_chat_frontend_flow():
 def test_wizard_frontend_flow():
     assert 'id="wizview"' in INDEX
     assert 'function openWizard()' in INDEX
-    assert 'function renderWizStep()' in INDEX
+    # V3.45.28: the wizard is one scrollable screen now — grouped structured
+    # fields replace the old step-by-step renderWizStep() flow.
+    assert 'function renderWizScreen()' in INDEX
+    assert "const WIZ_GROUP_ORDER = ['appearance', 'character', 'story', 'reference', 'share'];" in INDEX
+    assert 'function _wizFieldHtml(step)' in INDEX
+    assert 'renderWizStep' not in INDEX
     # V3.44.9: submitWizard takes the pay method — 'peaches' (primary) or 'stars'.
     assert 'async function submitWizard(method)' in INDEX
     assert 'function closeWizard()' in INDEX

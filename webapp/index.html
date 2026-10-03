@@ -463,6 +463,17 @@
   }
   .wiz .review { font-size: 13px; color: var(--muted); line-height: 1.7; margin: 10px 0; }
   .wiz .price-note { color: var(--premium); font-size: 13px; margin: 8px 0 4px; }
+  /* V3.45.28: one-screen wizard — grouped fields on a single scrollable form. */
+  .wiz .grp { margin: 2px 0 20px; }
+  .wiz .grp > h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--accent); margin: 0 0 12px; font-weight: 800; }
+  .wiz .field { margin-bottom: 15px; }
+  .wiz .field > .flab { font-size: 14px; font-weight: 700; margin: 0 0 8px; }
+  .wiz .opts.sm { gap: 8px; }
+  .wiz .opts.sm .opt { font-size: 13px; padding: 10px 14px; border-radius: 13px; }
+  .wiz .wiz-textarea.sm { min-height: 76px; font-size: 13px; padding: 10px; }
+  .wiz .photoline { display: flex; gap: 10px; align-items: center; }
+  .wiz .photoset { font-size: 13px; }
   .card.create .plus { font-size: 40px; }
   .card.create .lbl2 { font-weight: 600; font-size: 15px; }
   .card.create .sub2 { color: var(--muted); font-size: 12px; margin-top: 4px; padding: 0 12px 14px; }
@@ -890,6 +901,7 @@ const L_EN = {
   consent_needed: 'Confirm 18+ first — open the bot and press /start',
   set_main: 'Set as your girl', reply_err: 'Could not reply — try again',
   create_own: 'Create your own', create_sub: 'Looks, figure and personality — she chats the way you pick',
+  wiz_groups: { appearance: 'Appearance', character: 'Character', story: 'Story & tags', reference: 'Look-alike photo', share: 'Publishing' },
   wiz_step: 'Step', wiz_name_ph: 'Her name? (up to 24 characters)', wiz_create: 'Create',
     wiz_create_peaches: n => '🎨 Create · 🍑 ' + n, wiz_create_stars: n => '⭐ Create · ' + n + ' Stars',
   wiz_free_public: 'free — she will appear in «Community»', wiz_free: 'free (admin)', wiz_paid_toast: 'Drawing your girl — up to a minute. Her card appears in the grid ✨', creating_banner: 'Creating {name} — usually a minute or two. Her card appears on its own ✨',
@@ -1016,6 +1028,7 @@ const L_RU = {
   consent_needed: 'Сначала подтверди 18+ — открой бота и нажми /start',
   set_main: 'Сделать твоей девушкой', reply_err: 'Не получилось ответить — попробуй ещё раз',
   create_own: 'Создать свою', create_sub: 'Внешность, фигура и характер — она будет общаться так, как ты выберешь',
+    wiz_groups: { appearance: 'Внешность', character: 'Характер', story: 'История и теги', reference: 'Фото-референс', share: 'Публикация' },
   wiz_step: 'Шаг', wiz_name_ph: 'Как её зовут? (до 24 символов)', wiz_create: 'Создать',
     wiz_create_peaches: n => '🎨 Создать · 🍑 ' + n, wiz_create_stars: n => '⭐ Создать · ' + n + ' Stars',
   wiz_free_public: 'бесплатно — она появится в «Сообществе»', wiz_free: 'бесплатно (админ)', wiz_paid_toast: 'Рисую твою героиню — до минуты. Карточка появится в сетке ✨', creating_banner: 'Создаю {name} — обычно минута-две. Карточка появится сама ✨',
@@ -2112,119 +2125,105 @@ async function openWizard() {
     const j = await r.json();
     if (!j.ok || !j.steps || !j.steps.length) { toast(L.invoice_err); return; }
     WIZ = { steps: j.steps, idx: 0, params: {}, name: '', stars: j.stars || 0, rub: j.rub || 0, usd: j.usd || 0, peaches: j.peaches || 0, free: !!j.free };
+    // V3.45.28: one-screen form — pre-select the first option of every
+    // structured field so the persona is always complete (face/body/breast
+    // consistency is guaranteed even if the user only types a name).
+    WIZ.steps.forEach(s => {
+      if (!s.free_text && !s.photo_upload && s.options && s.options.length) {
+        WIZ.params[s.key] = WIZ.params[s.key] || s.options[0].value;
+      }
+    });
     document.getElementById('wizview').classList.add('open');
-    renderWizStep();
+    renderWizScreen();
   } catch (e) {
     toast(L.invoice_err);
   }
 }
 
-function renderWizStep() {
-  const total = WIZ.steps.length;
-  document.getElementById('wizTitle').textContent = L.create_own;
-  document.getElementById('wizSub').textContent = L.wiz_step + ' ' + (WIZ.idx + 1) + '/' + (total + 1);
-  const body = document.getElementById('wizBody');
-  if (WIZ.idx < total) {
-    const step = WIZ.steps[WIZ.idx];
-    // V3.44.4: free_text steps (backstory, personality) show a textarea + skip button.
-    if (step.free_text) {
-      const existing = WIZ.params[step.key] || '';
-      body.innerHTML = `
-        <div class="step-title">${esc(step.title)}</div>
-        <textarea class="wiz-textarea" id="wizTextarea" maxlength="500" placeholder="${esc(L.wiz_skip_hint || 'Напиши или пропусти...')}">${esc(existing)}</textarea>
-        <div style="display:flex;gap:10px;margin-top:16px">
-          <button class="cta" id="wizTextSave">✓ ${esc(L.wiz_save || 'Сохранить')}</button>
-          <button class="cta ghost" id="wizTextSkip">↦ ${esc(L.wiz_skip || 'Пропустить')}</button>
-        </div>
-        ${WIZ.idx > 0 ? `<button class="cta ghost" id="wizPrev" style="margin-top:10px">↩ ${esc(L.wiz_step)}</button>` : ''}`;
-      const textarea = document.getElementById('wizTextarea');
-      const saveBtn = document.getElementById('wizTextSave');
-      const skipBtn = document.getElementById('wizTextSkip');
-      saveBtn.addEventListener('click', () => {
-        WIZ.params[step.key] = textarea.value.trim();
-        WIZ.idx += 1;
-        renderWizStep();
-      });
-      skipBtn.addEventListener('click', () => {
-        WIZ.params[step.key] = '';
-        WIZ.idx += 1;
-        renderWizStep();
-      });
-      const prev = document.getElementById('wizPrev');
-      if (prev) prev.addEventListener('click', () => { WIZ.idx -= 1; renderWizStep(); });
-      return;
-    }
-    // V3.44.5: photo_upload steps — use file input for photo upload.
-    if (step.photo_upload) {
-      const hasPhoto = !!WIZ.params[step.key];
-      body.innerHTML = `
-        <div class="step-title">${esc(step.title)}</div>
-        ${esc(hasPhoto ? '<div style="color:var(--accent);margin:10px 0">✓ Фото загружено</div>' : '')}
-        <div style="display:flex;gap:10px;margin-top:16px">
-          <label class="cta" style="cursor:pointer">📷 ${esc(L.wiz_upload_photo || 'Загрузить фото')}
-            <input type="file" accept="image/*" id="wizPhotoInput" style="display:none">
-          </label>
-          <button class="cta ghost" id="wizPhotoSkip">↦ ${esc(L.wiz_skip || 'Пропустить')}</button>
-        </div>
-        ${WIZ.idx > 0 ? `<button class="cta ghost" id="wizPrev" style="margin-top:10px">↩ ${esc(L.wiz_step)}</button>` : ''}`;
-      const fileInput = document.getElementById('wizPhotoInput');
-      const skipBtn = document.getElementById('wizPhotoSkip');
-      fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          // Convert to base64 and store.
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            WIZ.params[step.key] = ev.target.result;  // base64 data URL
-            WIZ.idx += 1;
-            renderWizStep();
-          };
-          reader.readAsDataURL(file);
-        }
-      });
-      skipBtn.addEventListener('click', () => {
-        WIZ.params[step.key] = '';
-        WIZ.idx += 1;
-        renderWizStep();
-      });
-      const prev = document.getElementById('wizPrev');
-      if (prev) prev.addEventListener('click', () => { WIZ.idx -= 1; renderWizStep(); });
-      return;
-    }
-    const opts = step.options.map(o =>
-      `<button class="opt${WIZ.params[step.key] === o.value ? ' sel' : ''}" data-v="${esc(o.value)}">${esc(o.label)}</button>`).join('');
-    body.innerHTML = `
-      <div class="step-title">${esc(step.title)}</div>
-      <div class="opts">${opts}</div>
-      ${WIZ.idx > 0 ? `<button class="cta ghost" id="wizPrev">↩ ${esc(L.wiz_step)}</button>` : ''}`;
-    body.querySelectorAll('.opt').forEach(b => b.addEventListener('click', () => {
-      WIZ.params[WIZ.steps[WIZ.idx].key] = b.dataset.v;
-      WIZ.idx += 1;
-      renderWizStep();
-    }));
-    const prev = document.getElementById('wizPrev');
-    if (prev) prev.addEventListener('click', () => { WIZ.idx -= 1; renderWizStep(); });
-    return;
+// V3.45.28: group render order — mirrors the backend STEP_GROUP_ORDER.
+const WIZ_GROUP_ORDER = ['appearance', 'character', 'story', 'reference', 'share'];
+
+// One field of the one-screen form: structured chips, a textarea, or the
+// optional look-alike photo upload — all keyed by step.key.
+function _wizFieldHtml(step) {
+  if (step.photo_upload) {
+    const has = !!WIZ.params[step.key];
+    return `<div class="field" data-fkey="${esc(step.key)}">
+      <div class="flab">${esc(step.title)}</div>
+      <div class="photoline">
+        <label class="cta ghost" style="cursor:pointer">📷 ${esc(L.wiz_upload_photo)}
+          <input type="file" accept="image/*" class="wizPhotoInput" style="display:none">
+        </label>
+        <span class="photoset" style="color:var(--accent)${has ? '' : ';display:none'}">✓ ${esc(L.wiz_save)}</span>
+      </div>
+    </div>`;
   }
-  // Final step: the name + a review of every choice + the price.
-  const review = WIZ.steps.map(s => {
-    const chosen = s.options.find(o => o.value === WIZ.params[s.key]);
-    return chosen ? `<div>${esc(s.title.replace('?', ''))}: ${esc(chosen.label)}</div>` : '';
-  }).filter(Boolean).join('');
+  if (step.free_text) {
+    const existing = WIZ.params[step.key] || '';
+    return `<div class="field" data-fkey="${esc(step.key)}">
+      <div class="flab">${esc(step.title)}</div>
+      <textarea class="wiz-textarea sm wizText" maxlength="500" placeholder="${esc(L.wiz_skip_hint)}">${esc(existing)}</textarea>
+    </div>`;
+  }
+  const opts = step.options.map(o =>
+    `<button type="button" class="opt${WIZ.params[step.key] === o.value ? ' sel' : ''}" data-v="${esc(o.value)}">${esc(o.label)}</button>`).join('');
+  return `<div class="field" data-fkey="${esc(step.key)}">
+    <div class="flab">${esc(step.title)}</div>
+    <div class="opts sm">${opts}</div>
+  </div>`;
+}
+
+function renderWizScreen() {
+  document.getElementById('wizTitle').textContent = L.create_own;
+  document.getElementById('wizSub').textContent = L.create_sub;
+  const body = document.getElementById('wizBody');
+  // Bucket the fields under their section headings, in the group order.
+  const byGroup = {};
+  WIZ.steps.forEach(s => { const g = s.group || 'other'; (byGroup[g] = byGroup[g] || []).push(s); });
+  const order = WIZ_GROUP_ORDER.filter(g => byGroup[g])
+    .concat(Object.keys(byGroup).filter(g => !WIZ_GROUP_ORDER.includes(g)));
+  const sections = order.map(g => {
+    const name = (L.wiz_groups && L.wiz_groups[g]) || '';
+    const head = name ? `<h3>${esc(name)}</h3>` : '';
+    return `<div class="grp">${head}${byGroup[g].map(_wizFieldHtml).join('')}</div>`;
+  }).join('');
   // V3.45.28: creation always costs peaches — only admins get the free button.
   const freeCreate = WIZ.free;
-  const priceLine = freeCreate
-    ? '✅ ' + esc(L.wiz_free)
-    : '🍑 ' + esc(String(WIZ.peaches || 0));
+  const priceLine = freeCreate ? '✅ ' + esc(L.wiz_free) : '🍑 ' + esc(String(WIZ.peaches || 0));
   const payButtons = freeCreate
     ? `<button class="cta" id="wizCreate" ${WIZ.name ? '' : 'disabled'}>🎨 ${esc(L.wiz_create)}</button>`
     : `<button class="cta" id="wizCreatePeaches" ${WIZ.name ? '' : 'disabled'}>🎨 ${esc(L.wiz_create_peaches(WIZ.peaches || 0))}</button>`;
-  body.innerHTML = `
-    <div class="step-title">${esc(L.wiz_name_ph)}</div>
-    <input class="name" id="wizName" maxlength="24" value="${esc(WIZ.name)}">
-    <div class="review">${review}</div>
-    <div class="price-note" id="wizPrice">${priceLine}</div>
-    ${payButtons}`;
+  body.innerHTML = sections + `
+    <div class="grp">
+      <div class="field"><div class="flab">${esc(L.wiz_name_ph)}</div>
+        <input class="name" id="wizName" maxlength="24" value="${esc(WIZ.name)}"></div>
+      <div class="price-note" id="wizPrice">${priceLine}</div>
+      ${payButtons}
+    </div>`;
+  // Wire each field: chips single-select, textareas update live, photo reads base64.
+  body.querySelectorAll('.field').forEach(field => {
+    const key = field.dataset.fkey;
+    const step = WIZ.steps.find(s => s.key === key);
+    if (!step) return;
+    field.querySelectorAll('.opt').forEach(btn => btn.addEventListener('click', () => {
+      WIZ.params[key] = btn.dataset.v;
+      field.querySelectorAll('.opt').forEach(b => b.classList.toggle('sel', b === btn));
+    }));
+    const ta = field.querySelector('.wizText');
+    if (ta) ta.addEventListener('input', () => { WIZ.params[key] = ta.value.trim(); });
+    const fi = field.querySelector('.wizPhotoInput');
+    if (fi) fi.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        WIZ.params[key] = ev.target.result;  // base64 data URL
+        const mark = field.querySelector('.photoset');
+        if (mark) mark.style.display = '';
+      };
+      reader.readAsDataURL(file);
+    });
+  });
   const nameInput = document.getElementById('wizName');
   const payBtns = ['wizCreate', 'wizCreatePeaches', 'wizCreateStars']
     .map(id => document.getElementById(id)).filter(Boolean);
@@ -3144,7 +3143,7 @@ document.getElementById('charStart').addEventListener('click', () => {
 });
 document.getElementById('charSelect').addEventListener('click', () => { if (CHARPAGE) doSelect(CHARPAGE); });
 document.getElementById('wizBack').addEventListener('click', () => {
-  if (WIZ.idx > 0) { WIZ.idx -= 1; renderWizStep(); return; }
+  // V3.45.28: the wizard is one screen now — back simply dismisses it.
   closeWizard();
 });
 

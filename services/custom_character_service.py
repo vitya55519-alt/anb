@@ -234,6 +234,21 @@ CONSTRUCTOR_STEPS: list[dict] = [
     },
 ]
 
+# V3.45.28: single-screen app wizard — every structured step is bucketed into a
+# visual group so the Mini App can render one scrollable form instead of a
+# 17-tap wizard. The bot inline flow still walks CONSTRUCTOR_STEPS in order.
+STEP_GROUPS: dict[str, str] = {
+    'style': 'appearance', 'age': 'appearance', 'face': 'appearance',
+    'body': 'appearance', 'breast': 'appearance', 'waist': 'appearance',
+    'hips': 'appearance', 'hair': 'appearance', 'eyes': 'appearance',
+    'temperament': 'character', 'profession': 'character', 'role': 'character',
+    'backstory': 'story', 'personality': 'story', 'tags': 'story',
+    'photo_reference': 'reference',
+    'community': 'share',
+}
+# Group render order for the one-screen wizard (appearance first, share last).
+STEP_GROUP_ORDER: list[str] = ['appearance', 'character', 'story', 'reference', 'share']
+
 # Russian labels per option value for summary screens and logs.
 OPTION_LABELS: dict[str, str] = {
     value: label
