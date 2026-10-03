@@ -141,6 +141,7 @@ from services.custom_character_service import (
     custom_character_id, get_all_custom_characters, get_custom_character,
     get_custom_character_by_id, save_custom_character,
     normalize_tags,
+    request_community_review, moderate_community_submission, set_moderation_status,
     summary_lines, step_index, is_custom_character,
     custom_character_params, set_custom_avatar_file_id,
     save_constructor_draft, snapshot_constructor_draft, get_constructor_draft,
@@ -6946,6 +6947,64 @@ async def _constructor_draft_sweep() -> None:
             logger.exception('constructor draft sweep failed')
 
 
+async def _request_character_moderation(character_id: str, owner_tgid: int, display_name: str, avatar_file_id: str | None = None) -> None:
+    """V3.45.28: ping every admin with a submitted persona + approve/reject
+    buttons. A missing avatar (providers were down at creation) still routes a
+    text-only review card — better to queue her than publish her unreviewed."""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text='✅ Одобрить', callback_data=f'charmod:approve:{character_id}'),
+        InlineKeyboardButton(text='❌ Отклонить', callback_data=f'charmod:reject:{character_id}'),
+    ]])
+    caption = (f'🛡 На модерацию в «Сообщество»:\n{display_name}\n'
+               f'id: {character_id}\nавтор: {owner_tgid}')
+    for admin_id in ADMIN_TELEGRAM_IDS:
+        try:
+            if avatar_file_id:
+                await bot.send_photo(admin_id, avatar_file_id, caption=caption, reply_markup=keyboard)
+            else:
+                await bot.send_message(admin_id, caption, reply_markup=keyboard)
+        except Exception:
+            logger.exception('character moderation ping failed admin=%s char=%s', admin_id, character_id)
+
+
+@dp.callback_query(F.data.startswith('charmod:'))
+async def charmod_cb(cq: types.CallbackQuery):
+    """V3.45.28: an admin passes or rejects a community persona. Approving
+    publishes her storefront card; rejecting keeps her private to the author."""
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer('только для владельца')
+        return
+    parts = (cq.data or '').split(':', 2)
+    if len(parts) != 3 or parts[1] not in ('approve', 'reject'):
+        await cq.answer('bad request')
+        return
+    approve = parts[1] == 'approve'
+    character_id = parts[2][:64]
+    row = moderate_community_submission(character_id, approve)
+    if not row:
+        await cq.answer('персонаж не найден')
+        return
+    try:
+        update_card(character_id, is_visible=bool(approve))
+    except Exception:
+        logger.exception('charmod card visibility failed char=%s', character_id)
+    await cq.answer('одобрена ✅' if approve else 'отклонена ❌')
+    try:
+        await cq.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    try:
+        await bot.send_message(
+            int(row.telegram_id),
+            (f'🎉 {row.display_name} одобрена и появилась на витрине «Сообщество» — теперь с ней могут общаться другие.'
+             if approve else
+             f'😔 модератор не пропустил {row.display_name} в «Сообщество». она осталась твоей личной — '
+             'можно отредактировать и отправить снова из «Кабинета создателя».'),
+        )
+    except Exception:
+        logger.exception('charmod author notify failed char=%s', character_id)
+
+
 async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int | None = None, source: str = ''):
     """After Stars payment: generate the avatar, save the persona, open chat.
 
@@ -7075,6 +7134,7 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     # UNIQUE index (v3.19.0 schema) on custom_characters.telegram_id rejected
     # every second persona with IntegrityError, the run crashed silently and
     # the sweep re-drew her forever. Now: clear message, refund, draft closed.
+    is_community = params.get('community') == 'community_yes'
     try:
         row = save_custom_character(
             telegram_id, display_name=display_name, params=params,
@@ -7082,10 +7142,13 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             description=params.get('backstory', ''),
             personality=params.get('personality', ''),
             backstory=params.get('backstory', ''),
-            community_published=params.get('community') == 'community_yes',
+            # V3.45.28: a community submit is NOT auto-published — she waits in
+            # the moderation queue, so the storefront flag stays off for now.
+            community_published=False,
             photo_reference_file_id=photo_reference_file_id or None,
             # V3.45.28: sanitized free-text tags for the storefront + filter.
             tags=normalize_tags(params.get('tags', '')),
+            moderation_status='pending' if is_community else 'none',
             # V3.44.6: author revenue sharing — creator earns 5% from spending.
             author_telegram_id=str(telegram_id),
             author_revenue_percent=5.0,
@@ -7153,20 +7216,21 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         bio_parts.append(personality_text)
     bio = ' '.join(bio_parts)[:900] if bio_parts else f'{display_name} — загадочная незнакомка.'
     card_age = AGE_BY_GROUP.get(str(params.get('age')), 25)
-    # V3.44.4: community-published characters are visible to everyone.
+    # V3.45.28: a community persona is queued for review, so her card stays
+    # hidden until an admin approves; is_community still drives the ping below.
     is_community = params.get('community') == 'community_yes'
     try:
         if get_card(row.character_id):
             update_card(
                 row.character_id, display_name=display_name, age=card_age,
                 short_bio=bio, status='active', card_photo_file_id=avatar_file_id,
-                is_visible=is_community,
+                is_visible=False,
             )
         else:
             # V3.37.0: anime personas get their own card emoji.
             card_emoji = '🌸' if str(params.get('style', '')) == 'style_anime' else ''
             create_card(row.character_id, display_name, card_age, bio, card_emoji, 'female')
-            update_card(row.character_id, status='active', card_photo_file_id=avatar_file_id, is_visible=is_community)
+            update_card(row.character_id, status='active', card_photo_file_id=avatar_file_id, is_visible=False)
     except Exception:
         logger.exception('constructor card registration failed user=%s', telegram_id)
     track_event(
@@ -7179,6 +7243,19 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         f'🎉 Знакомься — это {display_name}! Теперь она твоя личная собеседница.',
         reply_markup=_my_character_keyboard(row.character_id),
     )
+    # V3.45.28: publishing to the «Сообщество» витрина goes through a human
+    # first — ping every admin with approve/reject and tell the owner why she
+    # is not live yet. A private persona skips this entirely.
+    if is_community:
+        try:
+            await bot.send_message(
+                chat_id,
+                '🕓 она отправлена на модерацию в «Сообщество» — как только админ её '
+                'одобрит, она появится на витрине для всех. пока она полностью твоя.',
+            )
+        except Exception:
+            logger.exception('constructor moderation owner-notify failed user=%s', telegram_id)
+        await _request_character_moderation(row.character_id, telegram_id, display_name, avatar_file_id)
     if avatar_failed:
         # V3.44.12: the persona exists but the paid product did not fully
         # deliver (no avatar) — return the money and queue the delayed avatar
@@ -8470,8 +8547,19 @@ async def _webapp_api_creator_publish(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', '') or '').strip()[:64]
     if not character_id:
         return web.json_response({'ok': False, 'error': 'bad_input'}, status=400)
-    return web.json_response(webapp_service.publish_creator_character(
-        telegram_id, character_id, bool(body.get('publish'))))
+    result = webapp_service.publish_creator_character(
+        telegram_id, character_id, bool(body.get('publish')))
+    # V3.45.28: an app submit-to-витрина now queues her for review — ping the
+    # admins with the same approve/reject card the bot constructor path sends.
+    if result.get('ok') and result.get('moderation'):
+        try:
+            row = get_custom_character_by_id(character_id)
+            if row:
+                await _request_character_moderation(
+                    character_id, telegram_id, row.display_name, row.avatar_file_id)
+        except Exception:
+            logger.exception('webapp publish moderation ping failed char=%s', character_id)
+    return web.json_response(result)
 
 
 async def _webapp_api_creator_character(request: web.Request) -> web.Response:

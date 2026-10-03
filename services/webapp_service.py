@@ -79,7 +79,7 @@ from services.custom_character_service import (
     get_all_custom_characters, get_author_characters, get_custom_character_by_id,
     get_author_earnings_by_character, set_community_published,
     update_custom_character_text, delete_custom_character,
-    parse_tags,
+    parse_tags, request_community_review, set_moderation_status,
 )
 from services.db import SessionLocal
 from services.ui_lang import EN, user_lang
@@ -758,6 +758,8 @@ def api_creator_cabinet(telegram_id: int) -> dict:
                 # on the витрина only when BOTH the community flag and the card
                 # visibility agree — the cabinet shows the honest state.
                 'published': bool(row.community_published) and row.character_id in visible,
+                # V3.45.28: review state so the cabinet can show «на модерации».
+                'moderation': getattr(row, 'moderation_status', 'none') or 'none',
                 'views': views.get(row.character_id, 0),
                 'likes': likes.get(str(row.character_id), 0),
                 'earnings': round(earnings.get(row.character_id, 0.0), 2),
@@ -778,20 +780,35 @@ def api_creator_cabinet(telegram_id: int) -> dict:
 def publish_creator_character(telegram_id: int, character_id: str, publish: bool) -> dict:
     """V3.44.11: «на витрину» — put one of the caller's own characters on the
     storefront (everyone in the Community segment sees her generated avatar)
-    or take her back private. Ownership is enforced against the character row."""
+    or take her back private. Ownership is enforced against the character row.
+    V3.45.28: publishing now routes through admin moderation — a submit puts
+    her in the review queue and keeps her OFF the storefront until an admin
+    approves (the caller fires the admin ping from the async route handler)."""
     character_id = str(character_id or '').strip()[:64]
     if not character_id:
         return {'ok': False, 'error': 'bad_input'}
     row = get_custom_character_by_id(character_id)
     if not row or str(row.telegram_id) != str(telegram_id):
         return {'ok': False, 'error': 'not_found'}
-    if not set_community_published(character_id, publish):
+    if publish:
+        # V3.45.28: submitting to the витрина queues her for review, not live.
+        reviewed = request_community_review(character_id)
+        try:
+            update_card(character_id, is_visible=False)
+        except Exception:
+            logger.exception('cabinet card visibility (pending) failed char=%s', character_id)
+        return {
+            'ok': True, 'moderation': True, 'status': 'pending',
+            'name': reviewed.display_name if reviewed else row.display_name,
+        }
+    if not set_community_published(character_id, False):
         return {'ok': False, 'error': 'not_found'}
+    set_moderation_status(character_id, 'none')
     try:
-        update_card(character_id, is_visible=bool(publish))
+        update_card(character_id, is_visible=False)
     except Exception:
         logger.exception('cabinet card visibility failed char=%s', character_id)
-    return {'ok': True, 'published': bool(publish)}
+    return {'ok': True, 'published': False}
 
 
 def api_creator_character(telegram_id: int, character_id: str) -> dict:

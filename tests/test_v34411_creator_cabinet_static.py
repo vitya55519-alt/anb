@@ -57,8 +57,14 @@ def test_publish_service_enforces_ownership():
     assert 'get_custom_character_by_id(character_id)' in body
     assert 'str(row.telegram_id) != str(telegram_id)' in body
     assert "'error': 'not_found'" in body
-    assert 'set_community_published(character_id, publish)' in body
-    assert 'update_card(character_id, is_visible=bool(publish))' in body
+    # V3.45.28: a publish now queues for admin review instead of going live —
+    # she stays OFF the storefront until a moderator approves the submission.
+    assert 'request_community_review(character_id)' in body
+    assert "'moderation': True" in body
+    assert "'status': 'pending'" in body
+    assert 'update_card(character_id, is_visible=False)' in body
+    # taking her back private still clears the storefront + moderation flag
+    assert 'set_community_published(character_id, False)' in body
 
 
 def test_custom_character_service_helpers():

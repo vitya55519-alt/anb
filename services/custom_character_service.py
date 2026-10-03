@@ -566,6 +566,8 @@ def save_custom_character(
     photo_reference_file_id: str | None = None,
     # V3.45.28: sanitized comma-joined free-text tags.
     tags: str | None = None,
+    # V3.45.28: moderation gate state ('none' / 'pending' / 'approved' / 'rejected').
+    moderation_status: str = 'none',
     # V3.44.6: author revenue sharing fields.
     author_telegram_id: str | None = None,
     author_revenue_percent: float = 5.0,
@@ -586,6 +588,7 @@ def save_custom_character(
             community_published=community_published,
             photo_reference_file_id=photo_reference_file_id,
             tags=tags or None,
+            moderation_status=moderation_status or 'none',
             author_telegram_id=author_telegram_id or str(telegram_id),
             author_revenue_percent=author_revenue_percent,
         )
@@ -709,6 +712,59 @@ def set_community_published(character_id: str, published: bool) -> bool:
         row.community_published = bool(published)
         session.commit()
         return True
+
+
+# V3.45.28: a persona only reaches the public витрина after a human passes her.
+# These helpers move the review state on the CustomCharacter row; the caller
+# (main.py) owns the storefront card visibility and the admin/author pings.
+MOD_NONE = 'none'
+MOD_PENDING = 'pending'
+MOD_APPROVED = 'approved'
+MOD_REJECTED = 'rejected'
+
+
+def set_moderation_status(character_id: str, status: str) -> bool:
+    with SessionLocal() as session:
+        row = session.query(CustomCharacter).filter_by(character_id=character_id).first()
+        if not row:
+            return False
+        row.moderation_status = status
+        session.commit()
+        return True
+
+
+def request_community_review(character_id: str) -> CustomCharacter | None:
+    """Submit a persona to the витрина — she goes to admin review and stays off
+    the storefront until approved. Returns the row (for the admin ping) or None.
+    Re-submitting a still-pending persona is allowed and just refreshes the row."""
+    with SessionLocal() as session:
+        row = session.query(CustomCharacter).filter_by(character_id=character_id).first()
+        if not row:
+            return None
+        row.moderation_status = MOD_PENDING
+        row.community_published = False
+        session.commit()
+        session.refresh(row)
+        return row
+
+
+def moderate_community_submission(character_id: str, approve: bool) -> CustomCharacter | None:
+    """An admin decision. Approve publishes her (community flag on); reject
+    leaves her private. The storefront card visibility is flipped by the caller.
+    Returns the row so the caller can notify the author, or None when unknown."""
+    with SessionLocal() as session:
+        row = session.query(CustomCharacter).filter_by(character_id=character_id).first()
+        if not row:
+            return None
+        if approve:
+            row.moderation_status = MOD_APPROVED
+            row.community_published = True
+        else:
+            row.moderation_status = MOD_REJECTED
+            row.community_published = False
+        session.commit()
+        session.refresh(row)
+        return row
 
 
 def update_custom_character_text(

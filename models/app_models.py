@@ -141,6 +141,11 @@ class CustomCharacter(Base):
     personality: Mapped[str | None] = mapped_column(Text, nullable=True)
     backstory: Mapped[str | None] = mapped_column(Text, nullable=True)
     community_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    # V3.45.28: human moderation gate for the «Сообщество» витрина. Only the
+    # submit-to-community action routes a persona through admin review — a
+    # private creation stays 'none'. Existing rows default to 'none' and keep
+    # their current storefront visibility untouched.
+    moderation_status: Mapped[str] = mapped_column(String(16), default="none")
     photo_reference_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # V3.45.28: free-text tags typed at creation (normalized server-side), stored
     # as a comma-joined string. Drives the storefront «tags» chips + community

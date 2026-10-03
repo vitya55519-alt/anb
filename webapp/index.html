@@ -917,6 +917,8 @@ const L_EN = {
   creator_empty: 'No characters yet. Creating a character costs peaches 🍑',
   creator_publish: 'Put on the storefront', creator_unpublish: 'Take off the storefront',
   creator_on_vitrine: 'on the storefront', creator_private: 'private',
+  // V3.45.28: community publishing routes through a human moderator first.
+  creator_pending: 'under review', creator_pending_toast: 'Sent to moderation 🕒 an admin will check and publish her',
   creator_published_toast: 'On the storefront ✅ now everyone can see her',
   creator_unpublished_toast: 'Taken off the storefront — only you see her now',
   creator_earned: n => '💰 ' + n + ' ⭐ earned',
@@ -1041,6 +1043,8 @@ const L_RU = {
   creator_empty: 'Персонажей пока нет. Создание персонажа — за персики 🍑',
   creator_publish: 'На витрину', creator_unpublish: 'Снять с витрины',
   creator_on_vitrine: 'на витрине', creator_private: 'личная',
+  // V3.45.28: публикация в «Сообщество» теперь идёт через модератора.
+  creator_pending: 'на модерации', creator_pending_toast: 'Отправлена на модерацию 🕒 админ проверит и опубликует',
   creator_published_toast: 'На витрине ✅ теперь её видят все',
   creator_unpublished_toast: 'Снята с витрины — видишь только ты',
   creator_earned: n => '💰 ' + n + ' ⭐ заработано',
@@ -2953,12 +2957,25 @@ async function loadCreatorCabinet() {
     // V3.44.11: each row is a locally-built fragment — every backend value is
     // esc()'d at build time; the ternaries below only pick static markup.
     const rows = list.map(c => {
-      const stateBadge = c.published
-        ? `<span class="badge active">✅ ${esc(L.creator_on_vitrine)}</span>`
-        : `<span class="badge soon">🔒 ${esc(L.creator_private)}</span>`;
-      const pubBtn = c.published
-        ? `<button class="cta small" data-pub-id="${esc(c.id)}" data-pub="0">${esc(L.creator_unpublish)}</button>`
-        : `<button class="cta small" data-pub-id="${esc(c.id)}" data-pub="1">${esc(L.creator_publish)}</button>`;
+      // V3.45.28: community submissions queue for admin review — a pending row
+      // shows a 🕒 badge and no publish toggle until a moderator decides.
+      const pending = c.moderation === 'pending';
+      let stateBadge;
+      if (pending) {
+        stateBadge = `<span class="badge soon">🕒 ${esc(L.creator_pending)}</span>`;
+      } else if (c.published) {
+        stateBadge = `<span class="badge active">✅ ${esc(L.creator_on_vitrine)}</span>`;
+      } else {
+        stateBadge = `<span class="badge soon">🔒 ${esc(L.creator_private)}</span>`;
+      }
+      let pubBtn;
+      if (pending) {
+        pubBtn = '';
+      } else if (c.published) {
+        pubBtn = `<button class="cta small" data-pub-id="${esc(c.id)}" data-pub="0">${esc(L.creator_unpublish)}</button>`;
+      } else {
+        pubBtn = `<button class="cta small" data-pub-id="${esc(c.id)}" data-pub="1">${esc(L.creator_publish)}</button>`;
+      }
       const when = c.created_at ? ' · ' + new Date(c.created_at).toLocaleDateString() : '';
       return `<div class="minichar">
         <img src="${esc(c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
@@ -2997,7 +3014,8 @@ async function togglePublish(id, publish, btn) {
     });
     const j = await r.json();
     if (!j.ok) { toast(L.invoice_err); if (btn) btn.disabled = false; return; }
-    toast(publish ? L.creator_published_toast : L.creator_unpublished_toast);
+    // V3.45.28: a publish tap routes to moderation — confirm it queued, not live.
+    toast(j.moderation ? L.creator_pending_toast : (publish ? L.creator_published_toast : L.creator_unpublished_toast));
     loadCreatorCabinet();
     loadCharacters();
   } catch (e) {
