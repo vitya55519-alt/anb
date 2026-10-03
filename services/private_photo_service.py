@@ -281,6 +281,34 @@ def get_private_photo_usage(telegram_id: int) -> Dict[str, Any]:
         }
 
 
+# V3.46.0: achievement rewards of kind 'scene' permanently unlock one sealed
+# private-photo category (no new generation — reuses existing content). The
+# reward payload key is written into user.achievements (same CSV the unified
+# board reads); when present, the mapped category is free forever. Fully_nude
+# is reserved for the rarest achievement (90-day anniversary).
+ACHIEVEMENT_SCENE_UNLOCKS: Dict[str, str] = {
+    "ach_seven": "suggestive",
+    "ach_hundred": "lingerie",
+    "ach_photo_collector": "roleplay",
+    "ach_date_collector": "cosplay",
+    "ach_anniv7": "lingerie",
+    "ach_anniv30": "nude_art",
+    "ach_anniv90": "fully_nude",
+    "ach_views100": "roleplay",
+}
+
+
+def unlocked_scene_categories(telegram_id: int) -> set:
+    """V3.46.0: sealed categories this user unlocked via achievement scenes."""
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as session:
+        user = session.scalar(select(User).where(User.id == uid))
+        if not user:
+            return set()
+        keys = set((user.achievements or "").split(",")) - {""}
+    return {cat for key, cat in ACHIEVEMENT_SCENE_UNLOCKS.items() if key in keys}
+
+
 def consume_free_private_photo(telegram_id: int, category: str) -> bool:
     """
     Использовать бесплатный лимит.
@@ -293,6 +321,12 @@ def consume_free_private_photo(telegram_id: int, category: str) -> bool:
         user = session.scalar(select(User).where(User.id == uid))
         if not user:
             return False
+        
+        # V3.46.0: a sealed category unlocked by an achievement is free forever
+        # and never burns the daily limit.
+        keys = set((user.achievements or "").split(",")) - {""}
+        if any(ACHIEVEMENT_SCENE_UNLOCKS.get(k) == category for k in keys):
+            return True
         
         # Проверяем Hot Pass
         if hasattr(user, 'hot_pass_expires') and user.hot_pass_expires:

@@ -19,23 +19,55 @@ logger = logging.getLogger(__name__)
 # consumed on the next date the user starts.
 FREE_DATE_STREAK = 7
 
+# V3.46.0: achievement rewards are NON-monetized perks only — a free date
+# voucher (the same rail the streak uses), a permanently-unlocked sealed
+# private-photo category (private_photo_service.ACHIEVEMENT_SCENE_UNLOCKS),
+# or a purely cosmetic badge. NO peaches, NO Stars (owner decision) so the
+# 20🍑 creation and the paid-photo loop are never diluted.
+REWARD_VOUCHER = 'voucher'
+REWARD_SCENE = 'scene'
+
+# The lifecycle achievement board. Each entry is (name, description, reward)
+# where reward is a list of (kind, payload) perks granted once on unlock.
 ACHIEVEMENTS = {
-    'first_message': ('Первое сообщение', 'Вы начали общение'),
-    'three_day_streak': ('3 дня подряд', 'Три дня общения без перерыва'),
-    'seven_day_streak': ('7 дней подряд', 'Неделя ежедневного общения'),
-    'voice_user': ('Голосовой собеседник', 'Отправили голосовое сообщение'),
-    'photo_collector': ('Коллекционер', 'Открыли все фото одного уровня'),
-    'premium_member': ('Premium', 'Оформили подписку Premium'),
-    'hundred_messages': ('100 сообщений', 'Общались более 100 раз'),
-    'first_gift': ('Первый подарок', 'Подарили ей первый подарок'),
-    'first_date': ('Первое свидание', 'Сходили на первое свидание'),
-    'ten_dates': ('10 свиданий', 'Десять свиданий — настоящий роман'),
-    'date_collector': ('Сердцеед', 'Прошли все свидания из каталога'),
+    # (name, description, reward list of (kind, payload)). Empty reward list =
+    # a cosmetic badge only.
+    'first_message': ('Первое сообщение', 'Вы начали общение', []),
+    'three_day_streak': ('3 дня подряд', 'Три дня общения без перерыва', []),
+    'seven_day_streak': ('7 дней подряд', 'Неделя ежедневного общения', [('scene', 'ach_seven')]),
+    'voice_user': ('Голосовой собеседник', 'Отправили голосовое сообщение', []),
+    'photo_collector': ('Коллекционер', 'Открыли все фото одного уровня', [('scene', 'ach_photo_collector')]),
+    'premium_member': ('Premium', 'Оформили подписку Premium', []),
+    'hundred_messages': ('100 сообщений', 'Общались более 100 раз', [('scene', 'ach_hundred')]),
+    'first_gift': ('Первый подарок', 'Подарили ей первый подарок', []),
+    'first_date': ('Первое свидание', 'Сходили на первое свидание', []),
+    'ten_dates': ('10 свиданий', 'Десять свиданий — настоящий роман', [('voucher', None)]),
+    'date_collector': ('Сердцеед', 'Прошли все свидания из каталога', [('scene', 'ach_date_collector')]),
     # V3.21.0: couple anniversaries.
-    'anniv_7': ('Неделя вместе', '7 дней общей истории'),
-    'anniv_30': ('Месяц вместе', '30 дней — уже серьёзно'),
-    'anniv_90': ('90 дней вместе', 'Целый сезон вашей истории'),
+    'anniv_7': ('Неделя вместе', '7 дней общей истории', [('scene', 'ach_anniv7')]),
+    'anniv_30': ('Месяц вместе', '30 дней — уже серьёзно', [('scene', 'ach_anniv30'), ('voucher', None)]),
+    'anniv_90': ('90 дней вместе', 'Целый сезон вашей истории', [('scene', 'ach_anniv90')]),
+    # V3.46.0: missions funnel — behaviour that nudges toward paid/creator
+    # actions. Unlock hooks fire where the event happens (bot/app, Incr 2/3).
+    'first_creation': ('Персонаж с нуля', 'Создал(а) своего персонажа в конструкторе', []),
+    'community_publish': ('Голос сообщества', 'Опубликовал(а) персонажа в «Сообществе»', []),
+    'views_100': ('100 просмотров', 'Твой персонаж посмотрели 100 раз', [('scene', 'ach_views100')]),
+    'first_video': ('Живое видео', 'Заказал(а) первое видео или видеокружок', [('voucher', None)]),
+    'first_spicy_photo': ('Искра', 'Заказал(а) первое пикантное фото', []),
 }
+
+
+def reward_preview(reward: list | None) -> str:
+    """V3.46.0: a short chip label for the reward shown on the board / missions
+    screen before it is claimed. Badge (empty list) reads as a plain trophy."""
+    kinds = [k for k, _ in (reward or [])]
+    if REWARD_VOUCHER in kinds and REWARD_SCENE in kinds:
+        return '🔓🎟'
+    if REWARD_VOUCHER in kinds:
+        return '🎟 свидание'
+    if REWARD_SCENE in kinds:
+        return '🔓 sealed-фото'
+    return '🎖'
 
 
 def _today() -> datetime:
@@ -178,7 +210,7 @@ def unlock_achievement(telegram_id: int, key: str) -> bool:
     user = get_user(telegram_id)
     if not user:
         return False
-    display_name, _ = ACHIEVEMENTS[key]
+    display_name, _desc, reward = ACHIEVEMENTS[key]
     with SessionLocal() as session:
         existing = session.scalar(
             select(Achievement).where(
@@ -197,7 +229,26 @@ def unlock_achievement(telegram_id: int, key: str) -> bool:
         )
         session.commit()
     logger.info('achievement unlocked user=%s key=%s', telegram_id, key)
+    # V3.46.0: hand out the perk — only reached on the one successful insert, so
+    # a re-trigger (or a duplicate call) can never double-grant.
+    _grant_achievement_reward(telegram_id, reward)
     return True
+
+
+def _grant_achievement_reward(telegram_id: int, reward: list | None) -> None:
+    """V3.46.0: dispatch a non-monetized achievement perk. voucher → the same
+    free-date rail the streak uses; scene → a sealed private-photo category
+    unlocked forever (recorded in user.achievements, honored by
+    private_photo_service.consume_free_private_photo). badge/none → nothing."""
+    for kind, payload in (reward or []):
+        try:
+            if kind == REWARD_VOUCHER:
+                grant_free_date_voucher(telegram_id)
+            elif kind == REWARD_SCENE and payload:
+                from services.private_photo_service import grant_achievement
+                grant_achievement(telegram_id, payload)
+        except Exception:
+            logger.exception('achievement reward grant failed user=%s kind=%s', telegram_id, kind)
 
 
 def list_achievements(telegram_id: int) -> list[Achievement]:
@@ -288,12 +339,15 @@ def get_unified_progress(telegram_id: int) -> dict:
     except Exception:
         logger.exception('private achievements merge failed user=%s', telegram_id)
     items: list[dict] = []
-    for key, (name, desc) in ACHIEVEMENTS.items():
+    for key, (name, desc, reward) in ACHIEVEMENTS.items():
         items.append({'key': key, 'name': name, 'description': desc,
-                      'unlocked': key in unlocked_lifecycle, 'group': 'lifecycle'})
+                      'unlocked': key in unlocked_lifecycle, 'group': 'lifecycle',
+                      # V3.46.0: the perk chip shown on the board / missions.
+                      'reward': reward_preview(reward)})
     for key, name in private_names.items():
         items.append({'key': key, 'name': name, 'description': '',
-                      'unlocked': key in unlocked_private, 'group': 'private'})
+                      'unlocked': key in unlocked_private, 'group': 'private',
+                      'reward': ''})
     return {
         'total': len(items),
         'unlocked': sum(1 for it in items if it['unlocked']),

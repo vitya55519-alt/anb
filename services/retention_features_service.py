@@ -674,7 +674,13 @@ def check_achievements(user, character_state) -> list:
 
 
 def get_achievement_reward(achievement_key: str) -> int:
-    """Get star reward for an achievement."""
+    """Get star reward for an achievement.
+
+    V3.46.0: NOT the source of truth — this legacy catalog is not part of the
+    unified board and its rewards are never dispatched. The real achievement
+    perks live in gamification_service.ACHIEVEMENTS (voucher / sealed scene /
+    badge only, never peaches or Stars). Kept only for historical callers.
+    """
     return ACHIEVEMENTS.get(achievement_key, {}).get('reward_stars', 0)
 
 
