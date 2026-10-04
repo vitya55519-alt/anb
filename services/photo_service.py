@@ -1648,9 +1648,12 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     # V3.31.7: variety rotations. A chat-mood expression still wins over the
     # rotation; otherwise every frame of the pack walks its own shuffled
     # expression and pose note instead of repeating one fixed look.
-    from services.photo_expression_service import shuffled_variety_keys
+    from services.photo_expression_service import shuffled_sensual_variety_keys
+    # V3.51.4: the owner wants sensual facial emotion walked on EVERY photo, public
+    # scenes included, so the default per-frame rotation is the sensual pool for all
+    # scenes. An explicit chat-mood expression_key still overrides the rotation.
     expression_rotation = tuple(request.expression_rotation) or (
-        () if request.expression_key else shuffled_variety_keys()
+        () if request.expression_key else shuffled_sensual_variety_keys()
     )
     # V3.43.4: private/boudoir scenes draw their pose notes from the sultrier pool.
     poses = list(PRIVATE_POSE_POOL if request.scene in {'personal', 'lingerie', 'private_fashion', 'tease'} else POSE_POOL)

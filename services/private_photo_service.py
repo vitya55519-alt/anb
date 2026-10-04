@@ -17,6 +17,7 @@ V3.45.0 — Фото «наедине» и «Косплей» — монетиз
 import logging
 import hashlib
 import json
+import random
 import uuid
 import asyncio
 import aiohttp
@@ -695,6 +696,39 @@ def cache_get(prompt: str, character_id: str) -> Optional[bytes]:
         if row and row.image_bytes:
             return row.image_bytes
     return None
+
+
+# V3.51.3: stockpile reuse threshold. Once a character has at least this many
+# ready shots for the same scene (category + type), send a random one instead of
+# paying the provider again — the owner's «зачем генерировать новые, если можно
+# отправить готовое». Raise it (or set very high) to effectively disable reuse.
+PRIVATE_POOL_MIN = 10
+
+
+def pool_get(character_id: str, category: str, type_id: str,
+             min_count: int = PRIVATE_POOL_MIN) -> Optional[bytes]:
+    """Return a random already-generated photo for this character + scene when the
+    shared cache stockpile (user_id=0 rows) holds at least ``min_count`` shots for
+    it, so the caller can skip a fresh provider render. ``None`` -> generate.
+
+    Matched on the stable category + type_id (pose) columns only; the volatile
+    full-prompt hash (which carries the per-frame expression/pose rotation) almost
+    never repeats, so the exact cache_get rarely hits — this reuses the stockpile
+    that actually accumulates. Location/mood/colour nuance is not matched."""
+    with SessionLocal() as session:
+        stmt = select(PrivateGallery).where(
+            PrivateGallery.user_id == 0,
+            PrivateGallery.character_id == character_id,
+            PrivateGallery.category == category,
+            PrivateGallery.image_bytes.isnot(None),
+        )
+        if type_id:
+            stmt = stmt.where(PrivateGallery.type_id == type_id)
+        rows = session.execute(stmt).scalars().all()
+    shots = [r.image_bytes for r in rows if r.image_bytes]
+    if len(shots) < max(1, min_count):
+        return None
+    return random.choice(shots)
 
 
 def cache_save(prompt: str, character_id: str, category: str, type_id: str, image_bytes: bytes):

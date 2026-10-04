@@ -6163,7 +6163,7 @@ async def _deliver_date_reward(chat_id: int, telegram_id: int, user_name: str, d
     except Exception:
         logger.warning('date history mirror failed user=%s date=%s', telegram_id, date.id)
     await _send_voice_note(chat_id, telegram_id, date.text)
-    await _start_photo_background(chat_id, telegram_id, PhotoRequest(scene=date.scene, mood='romantic', angle=dates_service.DATE_POV_ANGLE), 'story')
+    await _start_photo_background(chat_id, telegram_id, PhotoRequest(scene=date.scene, mood='romantic'), 'story')
 
 @dp.message(F.text.in_(kb_pair('apartment')))
 async def apartment_cmd(message: types.Message):
@@ -10084,7 +10084,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         PrivatePhotoRequest, build_private_photo_prompt, generate_private_photo_real,
         generate_private_photo_t2i,
         get_private_photo_usage, consume_free_private_photo, cache_get, cache_save,
-        gallery_save, check_achievements, COSPLAY_CHARACTERS, PRIVATE_PHOTO_CATEGORIES,
+        pool_get, gallery_save, check_achievements, COSPLAY_CHARACTERS, PRIVATE_PHOTO_CATEGORIES,
     )
     from services.character_dna_service import character_dna_context
     from services.private_photo_service import get_category_cost
@@ -10125,6 +10125,19 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         if not free_used:
             spend_peaches(telegram_id, peach_cost)
         return cached, 'image/jpeg', 'jpg'
+    # V3.51.3: pool reuse — once this character's shared cache has stockpiled
+    # enough ready shots for the SAME scene (category + pose/type), send a
+    # random one and skip paying the provider again. The user is still charged;
+    # only the redundant render is saved. The volatile per-frame expression
+    # rotation makes the exact prompt-hash cache_get almost never repeat, so
+    # this reads the accumulated stockpile matched on stable columns instead.
+    pooled = pool_get(character_id, cat_id, req.type_id)
+    if pooled:
+        if not free_used:
+            spend_peaches(telegram_id, peach_cost)
+        gallery_save(telegram_id, character_id, cat_id, req.type_id, pooled)
+        check_achievements(telegram_id)
+        return pooled, 'image/jpeg', 'jpg'
     # Generate: adult → fal.ai t2i (safety checker off); others → SpicyAPI i2i
     # V3.46.1: track the real provider failure so the admin toast can show WHY
     # nothing arrived (missing key vs transport error vs engine reject) instead
@@ -10281,15 +10294,13 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
     raise last_error or PhotoGenerationError('video', 'no_video_result')
 
 
-async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str, angle: str = ''):
+async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str):
     """V3.41.0: an in-character photo for a specific scene — the app-native
     reward shot for a free/admin date. V3.43.7: preserve the date's scene ID
-    so venue-specific wardrobe and framing rules apply in the photo pipeline.
-    V3.51.2: an optional angle overrides the shot framing (used by dates to
-    render a first-person POV so it feels like the user was really there)."""
+    so venue-specific wardrobe and framing rules apply in the photo pipeline."""
     return await _webapp_pipeline_photo(
         telegram_id, character_id,
-        PhotoRequest(scene=scene, mood='romantic', angle=angle),
+        PhotoRequest(scene=scene, mood='romantic'),
     )
 
 
@@ -10694,7 +10705,7 @@ async def _webapp_api_feature_action(request: web.Request) -> web.Response:
     save_message(uid, character_id, 'assistant', narration)
     photo_url = None
     try:
-        data, mime, ext = await _webapp_media_scene(telegram_id, character_id, date.scene, dates_service.DATE_POV_ANGLE)
+        data, mime, ext = await _webapp_media_scene(telegram_id, character_id, date.scene)
         if data:
             filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
             photo_url = f'/webapp/media/{filename}'

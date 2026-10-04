@@ -70,7 +70,7 @@ def test_old_bypass_is_gone():
 def test_date_reward_photo_also_pipelined():
     scene_fn = MAIN[MAIN.index('async def _webapp_media_scene('):MAIN.index('async def _webapp_api_chat_media(')]
     assert 'await _webapp_pipeline_photo(' in scene_fn
-    assert "PhotoRequest(scene=scene, mood='romantic', angle=angle)" in scene_fn
+    assert "PhotoRequest(scene=scene, mood='romantic')" in scene_fn
 
 
 def test_photo_frame_bytes_helper():

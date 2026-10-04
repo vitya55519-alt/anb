@@ -83,7 +83,7 @@ def test_photo_request_and_prompt_use_rotations():
     assert 'expression_rotation: tuple[str, ...] = ()' in PHOTO
     assert 'pose_rotation: tuple[str, ...] = ()' in PHOTO
     assert 'POSE_POOL = [' in PHOTO
-    assert 'shuffled_variety_keys()' in PHOTO
+    assert 'shuffled_sensual_variety_keys()' in PHOTO  # V3.51.4: rotation now defaults to the sensual pool
     # per-frame picks inside _build_prompt
     assert 'request.expression_rotation[shot_index % len(request.expression_rotation)]' in PHOTO
     assert 'POSE NOTE: {request.pose_rotation[shot_index % len(request.pose_rotation)]}' in PHOTO

@@ -132,7 +132,46 @@ EXPRESSIONS: dict[str, str] = {
         'a slightly shy bashful expression: faint closed-lip smile, soft glance from '
         'under the lashes, a subtle tilt of the head. Tender and believable.'
     ),
+    # V3.51.3: sensual mimicry for the private/intimate scenes ONLY (never public).
+    # The owner wanted the boudoir shots to actually look desirous instead of the
+    # same tasteful smile — tongue, bitten lip, heavy-lidded gaze. Still kept
+    # believable and non-grotesque so identity and image quality hold.
+    'desire': (
+        'a sensual desiring expression: the tip of her tongue lightly grazing her '
+        'lower lip, heavy-lidded eyes locked on the camera. Confident and alluring, '
+        'not exaggerated or cartoonish.'
+    ),
+    'biting_lip': (
+        'a flirty expression biting her lower lip: soft half-smile held back by her '
+        'teeth, warm inviting eyes, a hint of a blush. Playful and seductive.'
+    ),
+    'bedroom_eyes': (
+        'a seductive smolder: relaxed half-closed heavy-lidded eyes, slightly parted '
+        'lips, slow confident gaze into the camera. Sultry and calm.'
+    ),
+    'blow_kiss': (
+        'a playful affectionate moment leaning toward the camera to blow a kiss, one '
+        'hand near her lips, warm bright eyes and a soft smile. Flirty and endearing.'
+    ),
+    'licking_lips': (
+        'a hungry sensual expression: the tongue slowly running up over her lower lip, '
+        'glossy lips slightly parted, eyes half-lidded and fixed on the camera. Covetous '
+        'and alluring — not a wide open mouth, not cartoonish.'
+    ),
+    'pouty_seductive': (
+        'a soft seductive pout: lower lip pushed out and caught between a faint smile, '
+        'warm inviting eyes tilted toward the camera, head slightly lowered. Sultry and '
+        'approachable — not a childish pout.'
+    ),
 }
+
+# V3.51.3/V3.51.4: the sensual pool. The owner wants this desirous mimicry walked on
+# EVERY photo (public scenes included), so it is now the default per-frame rotation
+# everywhere — kept deliberately wide so consecutive shots still look varied.
+SENSUAL_KEYS: tuple[str, ...] = (
+    'desire', 'biting_lip', 'bedroom_eyes', 'licking_lips', 'pouty_seductive',
+    'teasing', 'blow_kiss', 'confident',
+)
 
 # V3.31.7: pleasant-expression keys used for the per-frame rotation when the
 # chat mood did not pin an explicit expression. Upset/concerned stay mood-only:
@@ -149,6 +188,16 @@ def shuffled_variety_keys() -> tuple[str, ...]:
     longer repeat the same facial expression.
     """
     keys = list(VARIETY_KEYS)
+    random.shuffle(keys)
+    return tuple(keys)
+
+
+def shuffled_sensual_variety_keys() -> tuple[str, ...]:
+    """V3.51.3/V3.51.4: the default per-frame rotation for EVERY scene — desirous
+    mimicry (tongue, bitten lip, smolder, pout) instead of the everyday tasteful
+    smiles. The owner asked for sensual emotion across all photos, not just the
+    private ones."""
+    keys = list(SENSUAL_KEYS)
     random.shuffle(keys)
     return tuple(keys)
 
