@@ -10467,6 +10467,11 @@ async def _webapp_api_feature_impl(request: web.Request) -> web.Response:
                   'subtitle': f'{5} 🍑' if lang == RU else '5 🍑', 'locked': False}]
         title = '🎬 Video' if lang == EN else '🎬 Видео'
         return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
+    # V3.50.1: this fall-through branch is the daily-quest menu. couple_service
+    # is imported locally (like the POST action branch and the bot handler) —
+    # without it V3.49.0 raised NameError here, the V3.48.3 wrapper turned it
+    # into 'temporarily_unavailable', and the app-chat «Задание» button broke.
+    from services import couple_service
     quests = couple_service.daily_quests_state(telegram_id)
     _, quest_text = couple_service.daily_quest(telegram_id)
     user = get_user(telegram_id)
