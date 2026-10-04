@@ -551,6 +551,79 @@ def get_character_evening(character_id: str) -> str:
     return random.choice(messages)
 
 
+# ── V3.47.2: owner-uploaded media pool for the morning/evening rituals ─────
+# The admin loads ~20 varied photos/GIFs/videos; a ritual message picks one at
+# random so a proactive ping lands as real media from the character, not text.
+# V3.47.3: kind is 'photo' | 'gif' | 'video', each with its own size ceiling.
+PROACTIVE_PHOTO_MAX_BYTES = 8 * 1024 * 1024
+PROACTIVE_GIF_MAX_BYTES = 20 * 1024 * 1024
+PROACTIVE_VIDEO_MAX_BYTES = 20 * 1024 * 1024
+PROACTIVE_MEDIA_KINDS = ('photo', 'gif', 'video')
+
+
+def proactive_max_bytes(kind: str) -> int:
+    if kind == 'gif':
+        return PROACTIVE_GIF_MAX_BYTES
+    if kind == 'video':
+        return PROACTIVE_VIDEO_MAX_BYTES
+    return PROACTIVE_PHOTO_MAX_BYTES
+
+
+def add_proactive_photo(data: bytes, content_type: str = 'image/jpeg', kind: str = 'photo') -> bool:
+    from models.app_models import ProactivePhoto
+    if not data or kind not in PROACTIVE_MEDIA_KINDS:
+        return False
+    if len(data) > proactive_max_bytes(kind):
+        return False
+    try:
+        with SessionLocal() as s:
+            s.add(ProactivePhoto(image_bytes=data, content_type=content_type or 'image/jpeg', kind=kind))
+            s.commit()
+        return True
+    except Exception:
+        return False
+
+
+def list_proactive_photos() -> list[dict]:
+    from models.app_models import ProactivePhoto
+    try:
+        with SessionLocal() as s:
+            rows = s.scalars(select(ProactivePhoto).order_by(ProactivePhoto.id)).all()
+            return [{'id': r.id, 'kind': getattr(r, 'kind', None) or 'photo',
+                     'created_at': r.created_at.isoformat() if r.created_at else ''}
+                    for r in rows]
+    except Exception:
+        return []
+
+
+def delete_proactive_photo(photo_id: int) -> bool:
+    from models.app_models import ProactivePhoto
+    try:
+        with SessionLocal() as s:
+            row = s.get(ProactivePhoto, photo_id)
+            if not row:
+                return False
+            s.delete(row)
+            s.commit()
+        return True
+    except Exception:
+        return False
+
+
+def random_proactive_photo() -> tuple[bytes, str, str] | None:
+    """A (bytes, content_type, kind) pick from the pool, or None when empty."""
+    from models.app_models import ProactivePhoto
+    try:
+        with SessionLocal() as s:
+            rows = s.scalars(select(ProactivePhoto)).all()
+            if not rows:
+                return None
+            row = random.choice(rows)
+            return row.image_bytes, (row.content_type or 'image/jpeg'), (getattr(row, 'kind', None) or 'photo')
+    except Exception:
+        return None
+
+
 def get_character_miss(character_id: str) -> str:
     """Get a random miss-you message for a character."""
     messages = MISS_TEXTS.get(character_id, MISS_TEXTS['anna_01'])

@@ -363,6 +363,10 @@ ADAPTATION_ANALYZE_EVERY = max(3, min(20, int(os.getenv("ADAPTATION_ANALYZE_EVER
 ADAPTATION_MAX_EXPRESSIONS = max(3, min(20, int(os.getenv("ADAPTATION_MAX_EXPRESSIONS", "12"))))
 
 FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "20"))
+# V3.47.2: a brand-new user gets unlimited TEXT messages for this many hours
+# after registration (activation lever, mirrors the benchmark's «первые 24 часа
+# текст бесплатно»). Photo/video gates are untouched — text only.
+NEW_USER_UNLIMITED_HOURS = max(0, int(os.getenv("NEW_USER_UNLIMITED_HOURS", "24")))
 FREE_PHOTOS_LEVEL_1_2 = int(os.getenv("FREE_PHOTOS_LEVEL_1_2", "1"))
 FREE_PHOTOS_LEVEL_3_6 = int(os.getenv("FREE_PHOTOS_LEVEL_3_6", "2"))
 PREMIUM_MONTHLY_STARS = int(os.getenv("PREMIUM_MONTHLY_STARS", "500"))
@@ -553,7 +557,7 @@ SUPPORT_BOT_USERNAME = os.getenv("SUPPORT_BOT_USERNAME", "Anna67901support_bot")
 # V3.44.21: THIS bot's own public @username (optional). /diagnostics shows it,
 # and the Platega payment redirects fall back to a t.me deep link when
 # PUBLIC_BASE_URL is not set. Empty default keeps every consumer optional.
-BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip('@')
+BOT_USERNAME = os.getenv("BOT_USERNAME", "Anna67901_bot").strip().lstrip('@')
 # V3.43.3: the support bot lives in this process too — when the (rotated)
 # token is set in the host env, a second aiogram bot polls it, answers /start
 # with SUPPORT_WELCOME_TEXT and forwards every appeal to the admins. The

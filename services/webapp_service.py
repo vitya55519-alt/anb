@@ -905,6 +905,9 @@ def api_achievements(telegram_id: int) -> dict:
     except Exception:
         logger.exception('app achievements failed user=%s', telegram_id)
         progress = {'total': 0, 'unlocked': 0, 'items': []}
+    # V3.47.1: expose the admin-uploaded art URL for any achievement that has one.
+    for it in progress.get('items', []):
+        it['badge_url'] = f"/webapp/badge/{it['key']}" if it.get('has_badge') else ''
     return {'ok': True, **progress}
 
 

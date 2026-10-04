@@ -222,6 +222,32 @@ class ChatMedia(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class AchievementBadge(Base):
+    """V3.47.1: admin-uploaded art attached to an achievement/mission. The bytes
+    live in PostgreSQL (Railway's disk is ephemeral, like ChatMedia) so a badge
+    survives redeploys. One image per achievement ``key``."""
+    __tablename__ = "achievement_badges"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    image_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(32), default="image/jpeg")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ProactivePhoto(Base):
+    """V3.47.2: the owner's pool of media the bot attaches at random to the
+    morning/evening ritual messages, so a proactive ping reads as a real photo
+    from the character. V3.47.3: the pool also holds GIFs and short videos —
+    'kind' is 'photo' | 'gif' | 'video'. Bytes live in PostgreSQL
+    (ephemeral disk safe)."""
+    __tablename__ = "proactive_photos"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    image_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(32), default="image/jpeg")
+    kind: Mapped[str] = mapped_column(String(8), default="photo")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Message(Base):
     __tablename__ = "messages"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

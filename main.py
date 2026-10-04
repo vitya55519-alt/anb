@@ -387,6 +387,15 @@ _character_card_edit_sessions: dict[int, dict] = {}
 # for a character — populated by the «📥 Медиа витрины» button in the admin panel.
 CARD_MEDIA_WAIT: dict[int, str] = {}
 
+# V3.47.1: admin ids waiting to send the art (photo) for an achievement/mission
+# badge — populated by the «🖼 Поставить арт» button in the badges screen.
+BADGE_MEDIA_WAIT: dict[int, str] = {}
+
+# V3.47.2: admin ids waiting to send media into the morning/evening ritual
+# pool — populated by the «➕ Добавить» button in the pool screen.
+# V3.47.3: the pool accepts photos, GIFs and short videos.
+PROPHOTO_WAIT: set[int] = set()
+
 # Owner-only editor state for configurable payment methods. Payment rows live in PostgreSQL.
 _payment_method_edit_sessions: dict[int, dict] = {}
 
@@ -691,6 +700,8 @@ def admin_keyboard():
         [InlineKeyboardButton(text='📚 Библиотека фото', callback_data='admin:library_help')],
         [InlineKeyboardButton(text='🖼 Общая галерея (модерация)', callback_data='poolmod:view')],
         [InlineKeyboardButton(text='💡 Идеи для фото', callback_data='admin:ideas')],
+        [InlineKeyboardButton(text='🏆 Арт достижений/миссий', callback_data='admin:badges')],
+        [InlineKeyboardButton(text='📸 Медиа для утра/вечера', callback_data='admin:prophoto')],
         [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats'),
          InlineKeyboardButton(text='🩺 Отказы', callback_data='admin:providers')],
         [InlineKeyboardButton(text='🎁 Выдать премиум/токены', callback_data='admin:grant')],
@@ -2683,6 +2694,187 @@ async def admin_card_media_upload(message: types.Message):
         reply_markup=admin_card_keyboard(character_id))
 
 
+# ── V3.47.1: admin achievement/mission art (badges) ──────────────────────────
+def admin_badges_keyboard():
+    from services.gamification_service import badge_catalog, badge_keys
+    have = badge_keys()
+    rows = [[InlineKeyboardButton(
+        text=f'{"✅" if key in have else "⬜️"} {name}',
+        callback_data=f'admin:badge:{key}')]
+        for key, name in badge_catalog()]
+    rows.append([InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_badge_keyboard(key: str, name: str):
+    from services.gamification_service import badge_keys
+    have = key in badge_keys()
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='🖼 Поставить арт', callback_data=f'admin:badge:set:{key}')],
+        [InlineKeyboardButton(text='🗑 Убрать арт', callback_data=f'admin:badge:clear:{key}')],
+        [InlineKeyboardButton(text='⬅️ К списку', callback_data='admin:badges')],
+    ]), have
+
+
+@dp.callback_query(F.data == 'admin:badges')
+async def admin_badges_view(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    await cq.answer()
+    await cq.message.answer(
+        '🏆 Арт достижений и миссий\n\n'
+        'Выберите награду и пришлите ей картинку — она будет приходить в '
+        'момент открытия и показываться в разделе «Достижения». Без артa '
+        'уведомление остаётся текстом.',
+        reply_markup=admin_badges_keyboard())
+
+
+@dp.callback_query(F.data.startswith('admin:badge:')
+                   & ~F.data.startswith('admin:badge:set:')
+                   & ~F.data.startswith('admin:badge:clear:'))
+async def admin_badge_one(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    key = cq.data.split(':', 2)[2]
+    from services.gamification_service import badge_catalog
+    name = dict(badge_catalog()).get(key, key)
+    kb, have = admin_badge_keyboard(key, name)
+    await cq.answer()
+    await cq.message.answer(f'🖼 Арт для «{name}»\n\nСейчас: {"есть" if have else "нет"}.', reply_markup=kb)
+
+
+@dp.callback_query(F.data.startswith('admin:badge:set:'))
+async def admin_badge_wait(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    key = cq.data.split(':', 3)[3]
+    BADGE_MEDIA_WAIT[cq.from_user.id] = key
+    await cq.answer()
+    await cq.message.answer(
+        f'📥 Пришли фото (до 8 MB) для награды {key}.\n\n/cancel — отменить')
+
+
+@dp.callback_query(F.data.startswith('admin:badge:clear:'))
+async def admin_badge_clear(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    key = cq.data.split(':', 3)[3]
+    from services.gamification_service import clear_badge
+    removed = clear_badge(key)
+    await cq.answer('арт убран' if removed else 'арта не было')
+    await cq.message.answer(f'🏆 Готово: {"арт убран" if removed else "арта не было"}.',
+                            reply_markup=admin_badges_keyboard())
+
+
+@dp.message(lambda m: m.from_user is not None and m.from_user.id in BADGE_MEDIA_WAIT, F.photo)
+async def admin_badge_upload(message: types.Message):
+    """V3.47.1: the photo the admin sends becomes that achievement's badge art."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    key = BADGE_MEDIA_WAIT.get(message.from_user.id)
+    if not key:
+        return
+    photo = message.photo[-1]
+    if (photo.file_size or 0) > 8 * 1024 * 1024:
+        await message.answer('файл тяжелее 8 MB — пришли полегче.')
+        return
+    buf = io.BytesIO()
+    await bot.download(photo.file_id, destination=buf)
+    from services.gamification_service import set_badge
+    ok = set_badge(key, buf.getvalue(), 'image/jpeg')
+    BADGE_MEDIA_WAIT.pop(message.from_user.id, None)
+    await message.answer(
+        f'✅ Арт для «{key}» сохранён.' if ok else '⚠️ Не удалось сохранить арт.',
+        reply_markup=admin_badges_keyboard())
+
+
+# ── V3.47.2: morning/evening ritual media pool (admin uploads many) ────────
+# V3.47.3: photos, GIFs and videos — kind drives both storage limit and send.
+_PROPHOTO_KIND_EMOJI = {'photo': '📸', 'gif': '🎞', 'video': '🎬'}
+
+
+def admin_prophoto_keyboard():
+    from services import retention_features_service as rfs
+    photos = rfs.list_proactive_photos()
+    rows = [[InlineKeyboardButton(text='➕ Добавить фото / GIF / видео', callback_data='admin:prophoto:add')]]
+    del_row = [InlineKeyboardButton(
+        text=f"🗑 {_PROPHOTO_KIND_EMOJI.get(p.get('kind'), '📸')} #{p['id']}",
+        callback_data=f'admin:prophoto:del:{p["id"]}')
+        for p in photos]
+    for i in range(0, len(del_row), 6):
+        rows.append(del_row[i:i + 6])
+    rows.append([InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')])
+    return InlineKeyboardMarkup(inline_keyboard=rows), len(photos)
+
+
+@dp.callback_query(F.data == 'admin:prophoto')
+async def admin_prophoto_view(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    kb, n = admin_prophoto_keyboard()
+    await cq.answer()
+    await cq.message.answer(
+        f'📸 Медиа для утра/вечера — в пуле: {n}\n\n'
+        'Загрузите ~20 разных фото, GIF или коротких видео. Когда бот пишет '
+        'первой утром или вечером, он случайно приложит одно из них — чтобы '
+        'это выглядело как реальное сообщение от неё, а не просто текст.',
+        reply_markup=kb)
+
+
+@dp.callback_query(F.data == 'admin:prophoto:add')
+async def admin_prophoto_wait(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    PROPHOTO_WAIT.add(cq.from_user.id)
+    await cq.answer()
+    await cq.message.answer(
+        '📥 Пришли фото (до 8 MB), GIF или видео (до 20 MB) — оно попадёт в пул.\n\n'
+        '/cancel — отменить')
+
+
+@dp.callback_query(F.data.startswith('admin:prophoto:del:'))
+async def admin_prophoto_del(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    try:
+        photo_id = int(cq.data.split(':', 3)[3])
+    except (TypeError, ValueError):
+        await cq.answer('не то id', show_alert=True)
+        return
+    from services import retention_features_service as rfs
+    removed = rfs.delete_proactive_photo(photo_id)
+    kb, n = admin_prophoto_keyboard()
+    await cq.answer('удалено' if removed else 'не найдено')
+    await cq.message.answer(f'📸 В пуле теперь: {n}', reply_markup=kb)
+
+
+@dp.message(lambda m: m.from_user is not None and m.from_user.id in PROPHOTO_WAIT,
+            (F.photo | F.animation | F.video))
+async def admin_prophoto_upload(message: types.Message):
+    """V3.47.2/3: a photo, GIF or video the admin sends is appended to the pool."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import retention_features_service as rfs
+    if message.photo:
+        file, kind, ctype = message.photo[-1], 'photo', 'image/jpeg'
+    elif message.animation:
+        file, kind, ctype = message.animation, 'gif', (message.animation.mime_type or 'video/mp4')
+    else:
+        file, kind, ctype = message.video, 'video', (message.video.mime_type or 'video/mp4')
+    limit = rfs.proactive_max_bytes(kind)
+    if (file.file_size or 0) > limit:
+        await message.answer(f'файл тяжелее {limit // (1024 * 1024)} MB — пришли полегче.')
+        return
+    buf = io.BytesIO()
+    await bot.download(file.file_id, destination=buf)
+    ok = rfs.add_proactive_photo(buf.getvalue(), ctype, kind)
+    PROPHOTO_WAIT.discard(message.from_user.id)
+    kb, n = admin_prophoto_keyboard()
+    await message.answer(
+        f'✅ Добавлено ({kind}). В пуле: {n}.' if ok else '⚠️ Не удалось сохранить.',
+        reply_markup=kb)
+
+
 def _admin_gender_keyboard(prefix: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='👨 Мужской', callback_data=f'{prefix}:male'),
@@ -2939,6 +3131,15 @@ async def admin_providers_button(cq: types.CallbackQuery):
 
 @dp.message(Command('cancel'))
 async def cancel_admin_edit(message: types.Message):
+    if message.from_user.id in PROPHOTO_WAIT:
+        PROPHOTO_WAIT.discard(message.from_user.id)
+        kb, _n = admin_prophoto_keyboard()
+        await message.answer('отменено', reply_markup=kb)
+        return
+    if message.from_user.id in BADGE_MEDIA_WAIT:
+        BADGE_MEDIA_WAIT.pop(message.from_user.id, None)
+        await message.answer('отменено', reply_markup=admin_badges_keyboard())
+        return
     if message.from_user.id in CARD_MEDIA_WAIT:
         character_id = CARD_MEDIA_WAIT.pop(message.from_user.id)
         await message.answer('отменено', reply_markup=admin_card_keyboard(character_id))
@@ -5216,9 +5417,34 @@ async def private_achievements_view(cq: types.CallbackQuery):
         return
     lines = [f'{it["name"]} {"✅" if it["unlocked"] else "⬜️"}' for it in data['items']]
     pct = round(data['unlocked'] / data['total'] * 100) if data['total'] else 0
+    # V3.47.1: an unlocked achievement with owner-uploaded art gets a «🖼» button
+    # that reveals the badge photo on demand.
+    art = [it for it in data['items'] if it['unlocked'] and it.get('has_badge')]
+    kb = None
+    if art:
+        rows = [[InlineKeyboardButton(text=f'🖼 {it["name"]}', callback_data=f'ach:badge:{it["key"]}')]
+                for it in art]
+        kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await cq.answer()
     await cq.message.answer(
-        f'🏆 Достижения: {data["unlocked"]} из {data["total"]} ({pct}%)\n\n' + '\n'.join(lines))
+        f'🏆 Достижения: {data["unlocked"]} из {data["total"]} ({pct}%)\n\n' + '\n'.join(lines),
+        reply_markup=kb)
+
+
+@dp.callback_query(F.data.startswith('ach:badge:'))
+async def achievement_badge_view(cq: types.CallbackQuery):
+    """V3.47.1: send the owner-uploaded art of one unlocked achievement."""
+    key = cq.data.split(':', 2)[2]
+    from services.gamification_service import get_badge
+    badge = get_badge(key)
+    if not badge:
+        await cq.answer('арт не загружен', show_alert=True)
+        return
+    await cq.answer()
+    try:
+        await bot.send_photo(cq.from_user.id, types.BufferedInputFile(badge[0], filename='badge.jpg'))
+    except Exception:
+        logger.exception('achievement badge send failed key=%s', key)
 
 
 # ─── V3.46.0: Миссии — воронка достижений ────────────────────────────────────
@@ -5235,7 +5461,7 @@ def _missions_screen(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
     + reward chip, plus one CTA button per still-locked actionable mission. Every
     CTA reuses an existing live callback (constructor:start / video:animate_last /
     spicy:menu / photo_menu:open) so there is nothing new to route."""
-    from services.gamification_service import get_missions
+    from services.gamification_service import get_missions, MISSION_NAV
     data = get_missions(telegram_id)
     lines = [f'🎯 Миссии: {data["unlocked"]} из {data["total"]} ({data["pct"]}%)', '']
     rows: list[list[InlineKeyboardButton]] = []
@@ -5255,6 +5481,11 @@ def _missions_screen(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
             rows.append([InlineKeyboardButton(text=it['cta_label'], callback_data=cb)])
     if not rows:
         rows.append([InlineKeyboardButton(text='🏆 Все достижения', callback_data='private_achievements:view')])
+    # V3.47.1: always leave a navigation row so a tap on the roadmap lands
+    # somewhere real even when every remaining mission is passive.
+    nav = [[InlineKeyboardButton(text=l, callback_data=cb) for l, cb in MISSION_NAV[i:i + 2]]
+           for i in range(0, len(MISSION_NAV), 2)]
+    rows.extend(nav)
     return '\n'.join(lines).rstrip(), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -5267,7 +5498,18 @@ async def _notify_unlock(chat_id: int, telegram_id: int, key: str) -> None:
     if not text:
         return
     try:
-        await bot.send_message(chat_id, text)
+        # V3.47.1: if the owner uploaded art for this achievement, the unlock
+        # lands as a photo (the wow-moment); otherwise it stays plain text.
+        badge = None
+        try:
+            from services.gamification_service import get_badge
+            badge = get_badge(key)
+        except Exception:
+            badge = None
+        if badge:
+            await bot.send_photo(chat_id, types.BufferedInputFile(badge[0], filename='badge.jpg'), caption=text)
+        else:
+            await bot.send_message(chat_id, text)
     except Exception:
         logger.exception('mission unlock notify failed user=%s key=%s', telegram_id, key)
 
@@ -8635,6 +8877,13 @@ async def _webapp_api_me(request: web.Request) -> web.Response:
         me['invite'] = share_link(_me_bot.username or 'bot', telegram_id)
     except Exception:
         logger.exception('invite link resolution failed user=%s', telegram_id)
+    # V3.47.2: seconds left in the new-user unlimited-text window (0 = no offer),
+    # so the Mini App can show the «осталось 23:58» activation banner.
+    try:
+        from services.access_service import unlimited_text_remaining
+        me['unlimited_remaining'] = unlimited_text_remaining(telegram_id)
+    except Exception:
+        me['unlimited_remaining'] = 0
     return web.json_response({'ok': True, 'me': me})
 
 
@@ -8848,6 +9097,47 @@ async def _webapp_gallery_image(request: web.Request) -> web.Response:
         return web.Response(status=404)
     return web.Response(body=data, content_type='image/jpeg',
                         headers={'Cache-Control': 'private, max-age=86400'})
+
+
+async def _webapp_badge(request: web.Request) -> web.Response:
+    """V3.47.1: serve the admin-uploaded art of an achievement. Generic marketing
+    art (no personal data), so it is served by key and cacheable."""
+    key = (request.match_info.get('key') or '').strip()
+    from services.gamification_service import get_badge
+    badge = get_badge(key)
+    if not badge:
+        return web.Response(status=404)
+    body, ctype = badge
+    return web.Response(body=body, content_type=ctype,
+                        headers={'Cache-Control': 'public, max-age=3600'})
+
+
+async def _webapp_gallery_save(request: web.Request) -> web.Response:
+    """V3.47.1: deliver the watermarked photo into the user's own chat as a real
+    image. Telegram Desktop has no web file-share, so this is the reliable
+    'share a photo' path — the user forwards the message to a friend."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    try:
+        body = await request.json()
+        image_id = int(body.get('image_id'))
+    except Exception:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    data = webapp_service.share_image_bytes(int(telegram_id), image_id)
+    if not data:
+        return web.json_response({'ok': False, 'error': 'not_found'}, status=404)
+    try:
+        me = await bot.get_me()
+        caption = f'\u2764\ufe0f\u0445\u043e\u0447\u0435\u0448\u044c \u0442\u0430\u043a \u0436\u0435? \u043d\u0430\u0447\u043d\u0438 \u0437\u0434\u0435\u0441\u044c \u2192 {share_link(me.username or "bot", int(telegram_id))}'
+        await bot.send_photo(int(telegram_id), types.BufferedInputFile(data, filename='share.jpg'), caption=caption)
+    except Exception:
+        logger.exception('gallery save-to-chat failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'send_failed'}, status=502)
+    return web.json_response({'ok': True})
 
 
 async def _webapp_api_comments(request: web.Request) -> web.Response:
@@ -10326,6 +10616,9 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/gallery/image/{image_id}', _webapp_gallery_image)
     # V3.47.0: watermarked export copy for the viral «Поделиться» sheet.
     app.router.add_get('/webapp/gallery/share/{image_id}', _webapp_gallery_share)
+    # V3.47.1: achievement art (Mini App board) + reliable photo share-to-chat.
+    app.router.add_get('/webapp/badge/{key}', _webapp_badge)
+    app.router.add_post('/webapp/api/gallery/save', _webapp_gallery_save)
     # V3.44.0: popularity leaderboard
     app.router.add_get('/webapp/api/leaderboard', _webapp_api_leaderboard)
     # V3.44.0: public comments under character cards.

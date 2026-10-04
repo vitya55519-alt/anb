@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from config import FREE_MESSAGES_PER_DAY, CHARACTER_ID, STREAK_REWARDS
-from models.app_models import Achievement, StarTransaction, User
+from models.app_models import Achievement, StarTransaction, User, AchievementBadge
 from services.db import SessionLocal
 from services.user_service import ensure_user, get_user
 
@@ -90,7 +90,29 @@ MISSION_CTA: dict[str, tuple[str, str]] = {
     'first_video': ('🎬 Оживить фото', 'video:animate_last'),
     'first_spicy_photo': ('🔥 Пикантное фото', 'spicy:menu'),
     'photo_collector': ('📸 Фото-сюжеты', 'photo_menu:open'),
+    # V3.47.1: cover the remaining actionable missions with verified live
+    # handlers so a tap in the chat roadmap always lands somewhere real.
+    'premium_member': ('⭐ Оформить Premium', 'buy:premium'),
+    'first_message': ('💬 Написать ей', 'private_photo:start'),
+    'hundred_messages': ('💬 Продолжить общение', 'photo_menu:open'),
+    'voice_user': ('🎙 Голос и фото', 'private_photo:start'),
+    'first_gift': ('🎁 Сюжеты и свидания', 'quest:list'),
+    'first_date': ('❤️ К свиданиям', 'quest:list'),
+    'ten_dates': ('❤️ К свиданиям', 'quest:list'),
+    'date_collector': ('❤️ К свиданиям', 'quest:list'),
+    'three_day_streak': ('💬 Заглянуть в чат', 'photo_menu:open'),
+    'seven_day_streak': ('💬 Заглянуть в чат', 'photo_menu:open'),
 }
+# V3.47.1: the persistent navigation row at the bottom of the chat missions
+# screen — every button reuses a verified live callback, so there is always
+# somewhere to tap even when a mission is passive (anniversaries, streaks).
+MISSION_NAV: tuple[tuple[str, str], ...] = (
+    ('💬 Чат', 'photo_menu:open'),
+    ('🖼 Галерея', 'private_gallery:view'),
+    ('🔥 Наедине', 'private_photo:start'),
+    ('⭐ Premium', 'buy:premium'),
+    ('🎨 Создать', 'constructor:start'),
+)
 
 
 def achievement_unlock_text(key: str) -> str:
@@ -132,6 +154,7 @@ def get_missions(telegram_id: int) -> dict:
             'unlocked': board.get(key, {}).get('unlocked', False),
             'reward': reward_preview(reward), 'group': group,
             'progress': progress,
+            'has_badge': board.get(key, {}).get('has_badge', False),
             'cta_label': cta[0] if cta else '', 'cta_cb': cta[1] if cta else '',
         })
     items.sort(key=lambda it: (order.get(it['group'], 9), it['key']))
@@ -413,17 +436,102 @@ def get_unified_progress(telegram_id: int) -> dict:
     except Exception:
         logger.exception('private achievements merge failed user=%s', telegram_id)
     items: list[dict] = []
+    badges = badge_keys()
     for key, (name, desc, reward) in ACHIEVEMENTS.items():
         items.append({'key': key, 'name': name, 'description': desc,
                       'unlocked': key in unlocked_lifecycle, 'group': 'lifecycle',
                       # V3.46.0: the perk chip shown on the board / missions.
-                      'reward': reward_preview(reward)})
+                      'reward': reward_preview(reward),
+                      # V3.47.1: whether the owner uploaded art for this badge.
+                      'has_badge': key in badges})
     for key, name in private_names.items():
         items.append({'key': key, 'name': name, 'description': '',
                       'unlocked': key in unlocked_private, 'group': 'private',
-                      'reward': ''})
+                      'reward': '', 'has_badge': key in badges})
     return {
         'total': len(items),
         'unlocked': sum(1 for it in items if it['unlocked']),
         'items': items,
     }
+
+
+# ── V3.47.1: admin-uploaded achievement art (badges) ────────────────────────
+# One image per achievement/mission key, stored as bytes in PostgreSQL so it
+# survives Railway redeploys. The art rides on the unlock notification and on
+# the achievements board; nothing changes for achievements with no badge.
+BADGE_MAX_BYTES = 8 * 1024 * 1024
+
+
+def badge_keys() -> set[str]:
+    """The achievement keys that currently have an uploaded badge."""
+    try:
+        with SessionLocal() as session:
+            return {k for (k,) in session.execute(select(AchievementBadge.key)).all()}
+    except Exception:
+        logger.exception('badge_keys failed')
+        return set()
+
+
+def get_badge(key: str) -> tuple[bytes, str] | None:
+    """Return (image_bytes, content_type) for an achievement's art, if any."""
+    if not key:
+        return None
+    try:
+        with SessionLocal() as session:
+            row = session.scalar(select(AchievementBadge).where(AchievementBadge.key == key))
+            if not row:
+                return None
+            return row.image_bytes, (row.content_type or 'image/jpeg')
+    except Exception:
+        logger.exception('get_badge failed key=%s', key)
+        return None
+
+
+def set_badge(key: str, data: bytes, content_type: str = 'image/jpeg') -> bool:
+    """Upsert the admin-uploaded art for an achievement key."""
+    if not key or not data:
+        return False
+    try:
+        with SessionLocal() as session:
+            row = session.scalar(select(AchievementBadge).where(AchievementBadge.key == key))
+            if row:
+                row.image_bytes = data
+                row.content_type = content_type or 'image/jpeg'
+                row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            else:
+                session.add(AchievementBadge(key=key, image_bytes=data,
+                                             content_type=content_type or 'image/jpeg'))
+            session.commit()
+        return True
+    except Exception:
+        logger.exception('set_badge failed key=%s', key)
+        return False
+
+
+def clear_badge(key: str) -> bool:
+    """Drop an achievement's art so its message falls back to plain text."""
+    if not key:
+        return False
+    try:
+        with SessionLocal() as session:
+            row = session.scalar(select(AchievementBadge).where(AchievementBadge.key == key))
+            if not row:
+                return False
+            session.delete(row)
+            session.commit()
+        return True
+    except Exception:
+        logger.exception('clear_badge failed key=%s', key)
+        return False
+
+
+def badge_catalog() -> list[tuple[str, str]]:
+    """Ordered (key, name) list of every achievement/mission the admin can art.
+    Lifecycle missions first (grouped), then the private-photo achievements."""
+    catalog: list[tuple[str, str]] = [(k, v[0]) for k, v in ACHIEVEMENTS.items()]
+    try:
+        from services.private_photo_service import ACHIEVEMENTS as PRIVATE_ACH
+        catalog += [(k, v.get('name', k)) for k, v in PRIVATE_ACH.items()]
+    except Exception:
+        logger.exception('private badge catalog merge failed')
+    return catalog

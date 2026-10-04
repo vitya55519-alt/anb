@@ -193,7 +193,21 @@ async def _rituals(bot):
                     logger.exception('ritual wheel check failed user=%s',uid)
             if streak and streak >= 3:
                 text+=f'\n\nкстати, мы общаемся {streak} дней подряд 🔥 не прерывай серию 😉'
-            await bot.send_message(int(tg_id),text)
+            # V3.47.2: if the owner loaded a media pool, the ritual arrives as a
+            # real photo from her (clean, no watermark); else plain text.
+            # V3.47.3: the pool also holds GIFs and videos — send by kind.
+            shot = retention_features_service.random_proactive_photo()
+            if shot:
+                from aiogram.types import BufferedInputFile
+                data, ctype, kind = shot
+                if kind == 'gif':
+                    await bot.send_animation(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=text)
+                elif kind == 'video':
+                    await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=text)
+                else:
+                    await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=text)
+            else:
+                await bot.send_message(int(tg_id),text)
             _ritual_sent.add(guard)
             track_event(uid, f'ritual_{kind}_sent', metadata={'streak': streak, 'tz': tz})
         except Exception: logger.exception('ritual failed user=%s',uid)

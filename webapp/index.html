@@ -609,6 +609,21 @@
     font-size: 14px; font-weight: 600; cursor: pointer; width: 100%;
     background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
   .gencta { margin: 8px 0 4px; }
+  /* V3.47.1: gallery save-to-chat tile + achievement art thumbnails */
+  .galsave { position: absolute; left: 5px; bottom: 5px; border: 0; border-radius: 8px;
+    padding: 5px 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+    background: rgba(0,0,0,.55); color: #fff; backdrop-filter: blur(2px); }
+  .achrow .achicon .achimg { width: 30px; height: 30px; object-fit: cover; border-radius: 8px; display: block; }
+  /* V3.47.2: new-user unlimited-text activation banner */
+  .unlim { display: flex; align-items: center; gap: 10px; margin: 8px 12px 4px;
+    padding: 10px 12px; border-radius: 14px; border: 1px solid #e8447f55;
+    background: linear-gradient(135deg, #3a1d3f, #2a1230); }
+  .unlim .uico { font-size: 20px; }
+  .unlim .utxt { flex: 1; min-width: 0; }
+  .unlim .ut { font-size: 13px; font-weight: 700; }
+  .unlim .us { font-size: 11px; opacity: .75; line-height: 1.3; }
+  .unlim .utime { font-size: 12px; font-weight: 700; white-space: nowrap;
+    padding: 4px 8px; border-radius: 10px; background: rgba(0,0,0,.35); }
 </style>
 </head>
 <body>
@@ -647,6 +662,12 @@
   </section>
   <section class="tab" id="tab-chats">
     <h2 id="l_chats_title2">Чаты</h2>
+    <!-- V3.47.2: new-user unlimited-text activation banner (live countdown) -->
+    <div id="unlimBanner" class="unlim" style="display:none">
+      <span class="uico">✨</span>
+      <div class="utxt"><div class="ut" id="unlimTitle"></div><div class="us" id="unlimSub"></div></div>
+      <div class="utime" id="unlimTime"></div>
+    </div>
     <div id="chatsbody"><div class="loading">…</div></div>
   </section>
   <!-- V3.38.0: the «Картинки» studio — freeform picture generation for 🍑 -->
@@ -891,7 +912,8 @@ const L_EN = {
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
   shop_title: 'Shop', missions_title: 'Missions', month: '/ 30 days', week: '7 days', pay_hint: 'Tap a plan — pick how to pay: Stars here, card/SBP or crypto on the payment page.',
-  share_img: '📤 Share', invite_cta: '🍑 Invite a friend', invite_got: 'Link copied — share it and you both get 🍑', share_fail: 'Could not share', gal_share_hint: 'Share this photo — a friend who starts gets 🍑, and you too',
+  share_img: '📤 Share', invite_cta: '🍑 Invite a friend', invite_got: 'Link copied — share it and you both get 🍑', share_fail: 'Could not share', gal_share_hint: 'Share this photo — a friend who starts gets 🍑, and you too', save_img: '📥 Save', save_ok: 'Photo sent to your chat — forward it to a friend',
+    unlim_title: 'Unlimited messages', unlim_sub: 'First 24 hours after sign-up — text is free', unlim_left: 'left',
   free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
   profile_title: 'Profile', premium_on: 'Premium active', premium_off: 'Free account',
   streak: 'day streak', level: 'relationship level', selected_girl: 'selected girl',
@@ -1019,7 +1041,8 @@ const L_RU = {
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
   shop_title: 'Магазин', missions_title: 'Миссии', month: '/ 30 дней', week: '7 дней', pay_hint: 'Нажми на тариф — выбери способ: Stars здесь, карта/СБП или крипта на платёжной странице.',
-  share_img: '📤 Поделиться', invite_cta: '🍑 Позвать друга', invite_got: 'Ссылка скопирована — делись, и вам обоим капнет 🍑', share_fail: 'Не удалось поделиться', gal_share_hint: 'Поделись фото — друг получит 🍑 за старт, и тебе тоже',
+  share_img: '📤 Поделиться', invite_cta: '🍑 Позвать друга', invite_got: 'Ссылка скопирована — делись, и вам обоим капнет 🍑', share_fail: 'Не удалось поделиться', gal_share_hint: 'Поделись фото — друг получит 🍑 за старт, и тебе тоже', save_img: '📥 Сохранить', save_ok: 'Фото отправлено в чат — перешли его другу',
+    unlim_title: 'Безлимитные сообщения', unlim_sub: 'Первые 24 часа после регистрации — текст бесплатно', unlim_left: 'осталось',
   free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
   profile_title: 'Профиль', premium_on: 'Premium активен', premium_off: 'Бесплатный аккаунт',
   streak: 'дней подряд', level: 'уровень отношений', selected_girl: 'выбранная девушка',
@@ -2789,6 +2812,7 @@ async function loadMe() {
     ME = j.me;
     chip.textContent = m_chipText(ME);
     chip.className = 'chip' + (ME.premium ? ' premium' : '');
+    renderUnlimitedBanner();
     renderProfileBody();
   } catch (e) {
     document.getElementById('profilebody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
@@ -2799,6 +2823,37 @@ function m_chipText(m) {
   // V3.44.3: premium must not hide the peaches balance — show both.
   return (m.premium ? '⭐ Premium' : (m.name || '')) + (m.photo_credits ? ' · 🍑' + m.photo_credits : '');
 }
+
+// ── V3.47.2: new-user unlimited-text banner — live HH:MM:SS countdown ─────
+// /webapp/api/me reports unlimited_remaining (seconds); the tick runs locally
+// so the number keeps moving without refetching, and the banner hides itself
+// the moment the grace window closes.
+let _unlimEndsAt = 0;
+function renderUnlimitedBanner() {
+  const el = document.getElementById('unlimBanner');
+  if (!el) return;
+  const left = (ME && ME.unlimited_remaining) || 0;
+  if (left <= 0) { el.style.display = 'none'; _unlimEndsAt = 0; return; }
+  _unlimEndsAt = Date.now() + left * 1000;
+  el.style.display = 'flex';
+  document.getElementById('unlimTitle').textContent = L.unlim_title;
+  document.getElementById('unlimSub').textContent = L.unlim_sub;
+  _unlimTick();
+}
+function _fmtHMS(sec) {
+  const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+  const m = String(Math.floor(sec % 3600 / 60)).padStart(2, '0');
+  const s = String(Math.floor(sec % 60)).padStart(2, '0');
+  return h + ':' + m + ':' + s;
+}
+function _unlimTick() {
+  const el = document.getElementById('unlimBanner');
+  if (!el || el.style.display === 'none') return;
+  const left = Math.max(0, Math.round((_unlimEndsAt - Date.now()) / 1000));
+  if (left <= 0) { renderUnlimitedBanner(); return; }
+  document.getElementById('unlimTime').textContent = L.unlim_left + ' ' + _fmtHMS(left);
+}
+setInterval(_unlimTick, 1000);
 
 // V3.38.0: the Come Closer profile — user card, relationship stats, MY
 // CHARACTERS with a create button, and the partner/documents entries that
@@ -3461,10 +3516,15 @@ function openAchievements() {
       const pct = j.total ? Math.round(j.unlocked / j.total * 100) : 0;
       const head = `<div class="note">${j.unlocked} / ${j.total} · ${pct}%</div>`
         + `<div class="bar" style="margin:6px 0 14px"><i style="width:${pct}%"></i></div>`;
-      body.innerHTML = head + items.map(it => `<div class="achrow${it.unlocked ? '' : ' lock'}">
-        <div class="achicon">${it.unlocked ? '🏆' : '🔒'}</div>
+      body.innerHTML = head + items.map(it => {
+        const icon = it.badge_url
+          ? `<img class="achimg" src="${esc(it.badge_url)}" alt="" loading="lazy">`
+          : (it.unlocked ? '🏆' : '🔒');
+        return `<div class="achrow${it.unlocked ? '' : ' lock'}">
+        <div class="achicon">${icon}</div>
         <div style="flex:1"><div class="nm">${esc(it.name)}</div>${it.description ? `<div class="sub2">${esc(it.description)}</div>` : ''}</div>
-      </div>`).join('');
+      </div>`;
+      }).join('');
     })
     .catch(() => { body.innerHTML = `<div class="err">${esc(L.invoice_err)}</div>`; });
 }
@@ -3516,6 +3576,19 @@ async function inviteFriends() {
   const ok = await _shareAny({ title: 'AnnaBot', text: _shareText(), url: invite || undefined });
   if (!ok) toast(L.share_fail);
 }
+// V3.47.1: reliable 'share a real photo' on every client — the bot posts the
+// watermarked export into the user's own chat, and they forward it onward.
+async function savePhotoToChat(imageId) {
+  if (!imageId) { toast(L.share_fail); return; }
+  try {
+    const r = await fetch('/webapp/api/gallery/save?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_id: imageId }),
+    });
+    const j = await r.json();
+    toast(j && j.ok ? L.save_ok : L.share_fail);
+  } catch (e) { toast(L.share_fail); }
+}
 
 function openGallery() {
   document.getElementById('galTitle').textContent = L.gal_title;
@@ -3533,14 +3606,17 @@ function openGallery() {
         + `<div class="note">${esc(L.gal_count(items.length))}</div>`
         + `<div class="galgrid">` + items.map(it =>
             `<div class="galcell">`
-            + `<img loading="lazy" src="${esc(it.url)}?init_data=${encodeURIComponent(tg.initData || '')}" alt="">`
+            + `<img loading="lazy" data-lb="1" src="${esc(it.url)}?init_data=${encodeURIComponent(tg.initData || '')}" alt="">`
             + `<button type="button" class="galshare" data-share="${esc(it.share_url || '')}">${esc(L.share_img)}</button>`
+            + `<button type="button" class="galsave" data-id="${esc(it.id)}">${esc(L.save_img)}</button>`
             + `</div>`).join('')
           + `</div>`;
       const gi = document.getElementById('galInvite');
       if (gi) gi.addEventListener('click', inviteFriends);
       body.querySelectorAll('.galshare').forEach(b =>
         b.addEventListener('click', (ev) => { ev.stopPropagation(); sharePhotoImage(b.dataset.share); }));
+      body.querySelectorAll('.galsave').forEach(b =>
+        b.addEventListener('click', (ev) => { ev.stopPropagation(); savePhotoToChat(b.dataset.id); }));
     })
     .catch(() => { body.innerHTML = `<div class="err">${esc(L.invoice_err)}</div>`; });
 }
