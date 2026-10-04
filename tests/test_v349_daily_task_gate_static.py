@@ -55,7 +55,9 @@ def test_story_gate_requires_level_and_tasks():
 
 def test_bonus_media_never_mints_peaches():
     feat = MAIN[MAIN.index('def _deliver_bonus_media('):MAIN.index('async def _webapp_api_feature_action(')]
-    assert 'random_proactive_photo()' in feat
+    # V3.51.1: the free drop now renders the actual character (was the generic
+    # owner pool); it still must not touch the peach/credit balance.
+    assert '_webapp_media_photo(' in feat
     assert 'save_chat_media(' in feat
     assert 'photo_credits' not in feat
 

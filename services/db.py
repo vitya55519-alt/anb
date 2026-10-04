@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 from models.waifu_models import Base
 from models.relationship_models import UserCharacterRelationship, RelationshipEvent, RelationshipMilestone  # noqa
-from models.app_models import User, Message, Memory, CommunicationProfile, CharacterState, CharacterCard, PaymentMethod, Reminder, Subscription, StarTransaction, ProductEvent, UserConsent, BackgroundJob, DialogSession, Referral, PartnerTransaction, ConstructorDraft, AchievementBadge, ProactivePhoto, PageGalleryShot, CardOverride  # noqa
+from models.app_models import User, Message, Memory, CommunicationProfile, CharacterState, CharacterCard, PaymentMethod, Reminder, Subscription, StarTransaction, ProductEvent, UserConsent, BackgroundJob, UserGeneration, DialogSession, Referral, PartnerTransaction, ConstructorDraft, AchievementBadge, ProactivePhoto, PageGalleryShot, CardOverride  # noqa
 from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer, PhotoLibraryPack, PhotoLibraryItem, UserSeenPhotoPack, UserSeenPhotoItem, AdminPhotoIdea  # noqa
 from models.quest_models import UserQuestProgress, QuestReplayOffer  # noqa
 from config import DATABASE_URL

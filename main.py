@@ -651,9 +651,10 @@ def delete_confirm_keyboard():
 
 
 def stories_keyboard(telegram_id: int):
-    level = get_relationship_level(telegram_id, get_user_character(telegram_id))
+    cid = get_user_character(telegram_id)
+    level = get_relationship_level(telegram_id, cid)
     rows = []
-    for item in story_status(telegram_id, level):
+    for item in story_status(telegram_id, level, cid):
         if item['unlocked']:
             count = len(item['done']); total = len(item['routes'])
             if not item.get('canonical'):
@@ -669,7 +670,7 @@ def stories_keyboard(telegram_id: int):
 
 
 def quest_routes_keyboard(telegram_id: int, quest_key: str):
-    q=get_quest(quest_key); status=next((x for x in story_status(telegram_id,get_relationship_level(telegram_id, get_user_character(telegram_id))) if x['key']==quest_key),None)
+    q=get_quest(quest_key); status=next((x for x in story_status(telegram_id,get_relationship_level(telegram_id, get_user_character(telegram_id)), get_user_character(telegram_id)) if x['key']==quest_key),None)
     rows=[]
     for key,route in q['routes'].items():
         if key in (status or {}).get('done',[]):
@@ -7171,17 +7172,15 @@ async def circle_button(message: types.Message):
 
 
 async def _bot_deliver_bonus_media(cq: types.CallbackQuery):
-    """V3.49.0: mirror the app's spontaneous free photo in the bot chat — same
-    owner pool, never mints peaches/Stars."""
+    """V3.51.1: mirror the app's spontaneous free photo in the bot chat, now of
+    the character actually being talked to (V3.49.0 used the owner's generic
+    pool -> wrong face for community girls). Never mints peaches/Stars."""
     try:
-        from services import retention_features_service
-        pick = retention_features_service.random_proactive_photo()
-        if not pick:
+        character_id = get_user_character(cq.from_user.id)
+        data, mime, ext = await _webapp_media_photo(cq.from_user.id, character_id, 'selfie')
+        if not data:
             return
-        data, content_type, kind = pick
-        if kind != 'photo' or not data:
-            return
-        await cq.message.answer_photo(BufferedInputFile(data, filename='bonus.jpg'),
+        await cq.message.answer_photo(BufferedInputFile(data, filename=f'bonus.{ext}'),
                                       caption='захотелось поделиться с тобой этим кадром 📸')
     except Exception:
         logger.exception('bot bonus media delivery failed')
@@ -8209,7 +8208,7 @@ async def linked_library_video(cq: types.CallbackQuery):
 async def _notify_quest_unlocks(chat_id: int, telegram_id: int, before_level: int, after_level: int):
     if after_level <= before_level:
         return
-    for item in newly_unlocked_quests(telegram_id, before_level, after_level):
+    for item in newly_unlocked_quests(telegram_id, before_level, after_level, get_user_character(telegram_id)):
         await bot.send_message(
             chat_id,
             f'🎯 Открылась новая история: «{item["title"]}» ✨\n\n{item.get("teaser", "У Анны появился новый выбор, на который можешь повлиять.")}',
@@ -9913,6 +9912,8 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
             if data:
                 filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
                 url = f'/webapp/media/{filename}'
+                # V3.51.1: audit the chat photo-on-request (user's own words).
+                webapp_service.record_generation(telegram_id, 'photo', character_id, text, filename)
                 _fallback = ('отправила фото',)
                 cap = '📸 ' + random.choice(AUTO_CAPTIONS.get(scene, _fallback))
                 save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
@@ -10016,6 +10017,8 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
         folder.mkdir(parents=True, exist_ok=True)
         (folder / filename).write_bytes(data)
         webapp_service.save_picture(telegram_id, filename, prompt)
+        # V3.51.1: audit the freeform studio render for the owner's admin feed.
+        webapp_service.record_generation(telegram_id, 'picture', None, prompt, filename)
     except Exception:
         logger.exception('webapp picture save failed user=%s', telegram_id)
         return web.json_response({'ok': False, 'error': 'save'}, status=500)
@@ -10363,6 +10366,10 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)
     filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
     url = f'/webapp/media/{filename}'
+    # V3.51.1: audit the user-requested media (photo/hot/cosplay/video/circle);
+    # voice carries no image, so it is left out of the visual admin feed.
+    if kind != 'voice':
+        webapp_service.record_generation(telegram_id, kind, character_id, scene, filename)
     if kind == 'photo':
         _default_cap = ('\u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0444\u043e\u0442\u043e',)
         content = f'\U0001f4f8 {random.choice(AUTO_CAPTIONS.get(scene, _default_cap))}'
@@ -10559,20 +10566,17 @@ async def _webapp_api_feature_impl(request: web.Request) -> web.Response:
                               'next_unlock': next_unlock})
 
 
-def _deliver_bonus_media(telegram_id: int, character_id: str, uid: int):
-    """V3.49.0: drop a spontaneous free photo from the owner's proactive pool
-    into the shared dialog. Never mints peaches/Stars (V3.46.0 rule) - it only
-    reuses an already-owned pool image. Returns the /webapp/media URL when a
-    photo was attached, or None when the pool is empty / pick is not a photo."""
+async def _deliver_bonus_media(telegram_id: int, character_id: str, uid: int):
+    """V3.51.1: drop a spontaneous free photo of the ACTUAL character into the
+    shared dialog. V3.49.0 pulled from the owner's generic Anna pool, which
+    showed the wrong face for community girls. Never mints peaches/Stars
+    (V3.46.0 rule) - it renders one safe everyday frame through the normal app
+    photo path. Returns the /webapp/media URL, or None when the render fails."""
     try:
-        from services import retention_features_service
-        pick = retention_features_service.random_proactive_photo()
-        if not pick:
+        data, mime, ext = await _webapp_media_photo(telegram_id, character_id, 'selfie')
+        if not data:
             return None
-        data, content_type, kind = pick
-        if kind != 'photo' or not data:
-            return None
-        filename = webapp_service.save_chat_media(telegram_id, data, 'jpg', content_type or 'image/jpeg')
+        filename = webapp_service.save_chat_media(telegram_id, data, ext, mime or 'image/jpeg')
         url = f'/webapp/media/{filename}'
         save_message(uid, character_id, 'assistant',
                      'захотелось поделиться с тобой этим кадром 📸',
@@ -10639,7 +10643,7 @@ async def _webapp_api_feature_action(request: web.Request) -> web.Response:
         text = ('mmm, nice 😊 +5 attention points. she noticed.' if user_lang(telegram_id) == EN
                 else 'ммм, приятно 😊 +5 очков внимания. она заметила.')
         save_message(uid, character_id, 'assistant', text)
-        bonus_url = _deliver_bonus_media(telegram_id, character_id, uid) if result.get('bonus_media') else None
+        bonus_url = await _deliver_bonus_media(telegram_id, character_id, uid) if result.get('bonus_media') else None
         return web.json_response({'ok': True, 'kind': kind, 'text': text,
                                   'quests_completed': result.get('quests_completed'),
                                   'bonus_media': bool(bonus_url),
@@ -10698,7 +10702,7 @@ async def _webapp_api_story(request: web.Request) -> web.Response:
     ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     level = get_relationship_level(telegram_id, character_id)
     stories = []
-    for st in story_status(telegram_id, level):
+    for st in story_status(telegram_id, level, character_id):
         q = get_quest(st['key'])
         routes = [{'key': rk, 'label': rv.get('label', ''), 'done': rk in st['done'],
                    'beat': bool(route_branch(st['key'], rk))} for rk, rv in q['routes'].items()]
@@ -10737,7 +10741,7 @@ async def _webapp_api_story_action(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     level = get_relationship_level(telegram_id, character_id)
-    st = next((x for x in story_status(telegram_id, level) if x['key'] == quest_key), None)
+    st = next((x for x in story_status(telegram_id, level, character_id) if x['key'] == quest_key), None)
     if not st or not st['unlocked']:
         return web.json_response({'ok': False, 'error': 'locked'}, status=403)
     uname = user_info.get('first_name') or ''
@@ -10798,6 +10802,53 @@ async def _webapp_picture(request: web.Request) -> web.Response:
     if not path:
         return web.Response(status=404)
     return web.FileResponse(path, headers={'Cache-Control': 'private, max-age=3600'})
+
+
+async def _webapp_api_admin_generations(request: web.Request) -> web.Response:
+    # V3.51.1: the owner's Mini App feed of what users generate. Admin-only
+    # (re-checked server-side on every call), newest first, each row enriched
+    # with a resolved character name and an admin-scoped thumbnail path.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id or not webapp_service._is_admin(telegram_id):
+        return web.json_response({'ok': False, 'error': 'forbidden'}, status=403)
+    try:
+        offset = max(0, int(request.query.get('offset', '0')))
+    except Exception:
+        offset = 0
+    rows = webapp_service.list_generations(limit=60, offset=offset)
+    for r in rows:
+        card = webapp_service.get_card(r['character_id']) if r['character_id'] else None
+        r['character'] = card.display_name if card else (r['character_id'] or '')
+        r['thumb'] = (f"/webapp/api/admin/gen_media/{r['user']}/{r['filename']}"
+                      if r['filename'] else None)
+    return web.json_response({'ok': True, 'generations': rows})
+
+
+async def _webapp_api_admin_gen_media(request: web.Request) -> web.Response:
+    # V3.51.1: serve any user's generated file to an admin — both the studio
+    # picture folder and the chat-media folder are tried for the given owner.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.Response(status=401)
+    admin_id = webapp_service.init_data_user(pairs).get('id')
+    if not admin_id or not webapp_service._is_admin(admin_id):
+        return web.Response(status=403)
+    try:
+        owner = int(request.match_info['owner'])
+    except Exception:
+        return web.Response(status=404)
+    filename = request.match_info['filename']
+    path = (webapp_service.chat_media_file_path(owner, filename)
+            or webapp_service.picture_file_path(owner, filename))
+    if not path:
+        return web.Response(status=404)
+    ctype = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+             'webp': 'image/webp', 'mp4': 'video/mp4'}.get(path.suffix.lstrip('.'), 'application/octet-stream')
+    return web.Response(body=path.read_bytes(), content_type=ctype,
+                        headers={'Cache-Control': 'private, max-age=3600'})
 
 
 async def _webapp_api_constructor_options(request: web.Request) -> web.Response:
@@ -11074,6 +11125,9 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/picture', _webapp_api_picture_generate)
     app.router.add_get('/webapp/api/pictures', _webapp_api_pictures)
     app.router.add_get('/webapp/picture/{filename}', _webapp_picture)
+    # V3.51.1: admin-only feed of what users generate in the Mini App.
+    app.router.add_get('/webapp/api/admin/generations', _webapp_api_admin_generations)
+    app.router.add_get('/webapp/api/admin/gen_media/{owner}/{filename}', _webapp_api_admin_gen_media)
     app.router.add_get('/webapp/api/constructor/options', _webapp_api_constructor_options)
     app.router.add_get('/webapp/api/constructor/status', _webapp_api_constructor_status)
     app.router.add_post('/webapp/api/constructor/draft', _webapp_api_constructor_draft)

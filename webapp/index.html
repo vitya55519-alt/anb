@@ -953,6 +953,16 @@
   </div>
   <div class="page" id="storyBody"><div class="loading">…</div></div>
 </div>
+<!-- V3.51.1: admin-only feed of what users generate in the Mini App -->
+<div class="overlay" id="genview">
+  <div class="chat-head">
+    <button class="iconbtn" id="genBack">‹</button>
+    <div>
+      <div class="nm" id="genTitle"></div>
+    </div>
+  </div>
+  <div class="page" id="genBody"><div class="loading">…</div></div>
+</div>
 <script>
 const tg = window.Telegram.WebApp;
 tg.ready();
@@ -1071,6 +1081,8 @@ const L_EN = {
       story_done: 'Completed', story_canon: ' · your path', story_play: 'Play', story_choose: 'Choose how it goes',
       story_result: 'What happened', story_reaction: 'Her reaction', story_axis_up: 'Path moved toward passion', story_axis_down: 'Path moved toward tenderness', story_axis_same: 'The path stayed balanced',
       story_beat: 'A moment later…', story_photo: '📸 A frame for our story', story_empty: 'No stories yet', story_hint: 'Your choices here move the «Relationship path» on her card.',
+      // V3.51.1: admin-only feed of what users generate in the Mini App.
+      gen_row: '🛠 User generations', gen_title: 'User generations', gen_empty: 'Nothing generated yet', gen_more: 'Load more',
     comments_lbl: '💬 Comments', comment_placeholder: 'Write a comment...', comment_submit: 'Submit', comment_empty: 'No comments yet — be the first!',
   wiz_save: 'Save', wiz_skip: 'Skip', wiz_skip_hint: 'Write or skip...', wiz_upload_photo: 'Upload photo',
   seg_official: '🍑 Peach Garden', seg_community: '👥 Community',
@@ -1209,6 +1221,8 @@ const L_RU = {
       story_done: 'Пройдено', story_canon: ' · твой путь', story_play: 'Играть', story_choose: 'Выбери, как будет',
       story_result: 'Что произошло', story_reaction: 'Её реакция', story_axis_up: 'Путь сдвинулся к страсти', story_axis_down: 'Путь сдвинулся к нежности', story_axis_same: 'Путь остался равновесным',
       story_beat: 'Через миг…', story_photo: '📸 Кадр к нашей истории', story_empty: 'Пока нет историй', story_hint: 'Твой выбор здесь двигает шкалу «Характер связи» на её карточке.',
+      // V3.51.1: админ-лента того, что генерируют пользователи в Mini App.
+      gen_row: '🛠 Генерации пользователей', gen_title: 'Генерации пользователей', gen_empty: 'Пока ничего не сгенерировано', gen_more: 'Загрузить ещё',
     comments_lbl: '💬 Комментарии', comment_placeholder: 'Напиши комментарий...', comment_submit: 'Отправить', comment_empty: 'Пока нет комментариев — будь первым!',
   wiz_save: 'Сохранить', wiz_skip: 'Пропустить', wiz_skip_hint: 'Напиши или пропусти...', wiz_upload_photo: 'Загрузить фото',
   seg_official: '🍑 Персиковый сад', seg_community: '👥 Сообщество',
@@ -2384,6 +2398,53 @@ function renderStoryResult(j) {
   });
 }
 
+// ── V3.51.1: admin-only generation feed ──────────────────────────────────
+let GEN_OFFSET = 0;
+function closeGen() { document.getElementById('genview').classList.remove('open'); }
+
+async function openGenFeed() {
+  document.getElementById('genTitle').textContent = L.gen_title;
+  document.getElementById('genview').classList.add('open');
+  await loadGenFeed(true);
+}
+
+async function loadGenFeed(reset) {
+  const box = document.getElementById('genBody');
+  if (reset) { box.innerHTML = '<div class="loading">' + esc(L.loading) + '</div>'; GEN_OFFSET = 0; }
+  try {
+    const r = await fetch('/webapp/api/admin/generations?init_data=' + encodeURIComponent(tg.initData) + '&offset=' + GEN_OFFSET);
+    if (r.status === 401) { toast(L.auth_short); closeGen(); return; }
+    if (r.status === 403) { box.innerHTML = '<div class="chat-empty">' + esc(L.locked) + '</div>'; return; }
+    const j = await r.json();
+    if (!j.ok) { box.innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; return; }
+    renderGenFeed(j.generations || [], reset);
+  } catch (e) { box.innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; }
+}
+
+function renderGenFeed(rows, reset) {
+  const box = document.getElementById('genBody');
+  if (reset) box.innerHTML = '';
+  if (!rows.length) { box.innerHTML = '<div class="chat-empty">' + esc(L.gen_empty) + '</div>'; return; }
+  let html = '';
+  rows.forEach(g => {
+    const thumb = g.thumb
+      ? ('<img style="width:100%;border-radius:12px;margin-bottom:6px" loading="lazy" decoding="async" src="' + esc(g.thumb + '?init_data=' + encodeURIComponent(tg.initData || '')) + '" alt="">')
+      : '';
+    let when = '';
+    try { when = g.ts ? new Date(g.ts + 'Z').toLocaleString() : ''; } catch (e) { when = g.ts || ''; }
+    html += '<div style="background:rgba(255,255,255,.05);border-radius:14px;padding:10px 12px;margin:8px 0">'
+      + thumb
+      + '<div style="font-size:12px;opacity:.8;margin-bottom:4px">' + esc(String(g.kind || '')) + ' · ' + esc(g.character || '—') + ' · id ' + esc(String(g.user || '')) + (when ? (' · ' + esc(when)) : '') + '</div>'
+      + '<div style="font-size:13px;white-space:pre-wrap;word-break:break-word">' + esc(g.prompt || '') + '</div>'
+      + '</div>';
+  });
+  if (rows.length >= 60) html += '<div style="text-align:center;margin:10px 0"><button class="btn-back" id="genMore">' + esc(L.gen_more) + '</button></div>';
+  box.insertAdjacentHTML('beforeend', html);
+  GEN_OFFSET += rows.length;
+  const more = document.getElementById('genMore');
+  if (more) more.onclick = () => { more.remove(); loadGenFeed(false); };
+}
+
 // ── V3.39.0: the Come Closer character page (strip → CTA → bio → СЮЖЕТ) ────
 let CHARPAGE = null;
 function openCharPage(el) {
@@ -3237,6 +3298,7 @@ function renderProfileBody() {
     <div class="menurow" id="menuGal"><span>${esc(L.gallery_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuPartner"><span>${esc(L.partner_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuDocs"><span>${esc(L.docs_row)}</span><span class="arr">›</span></div>
+    ${m.admin ? `<div class="menurow" id="menuGen"><span>${esc(L.gen_row)}</span><span class="arr">›</span></div>` : ''}
     <div class="sect-title">${esc(L.settings_title)}</div>
     <div class="menurow" id="rowSpicy">
       <span>${esc(L.spicy_title)}</span>
@@ -3253,6 +3315,8 @@ function renderProfileBody() {
   if (mp) mp.addEventListener('click', openPartnerOverlay);
   const md = document.getElementById('menuDocs');
   if (md) md.addEventListener('click', openDocsOverlay);
+  const mgen = document.getElementById('menuGen');
+  if (mgen) mgen.addEventListener('click', openGenFeed);
 const mcr = document.getElementById('menuCreator');
   if (mcr) mcr.addEventListener('click', openCreatorOverlay);
   // V3.45.27: achievements board + private gallery now live inside the app.
@@ -3572,6 +3636,7 @@ document.getElementById('featQuest').addEventListener('click', () => openFeature
 // button closes the overlay.
 if (document.getElementById('featStory')) document.getElementById('featStory').addEventListener('click', () => openStory(CHAT ? CHAT.id : ''));
 if (document.getElementById('storyBack')) document.getElementById('storyBack').addEventListener('click', closeStory);
+if (document.getElementById('genBack')) document.getElementById('genBack').addEventListener('click', closeGen);
 document.getElementById('featDate').addEventListener('click', () => openFeature('date'));
 document.getElementById('featApt').addEventListener('click', () => openFeature('apartment'));
 // V3.45.0: новые кнопки — Видео, Косплей, Фото наедине

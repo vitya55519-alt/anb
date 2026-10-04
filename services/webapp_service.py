@@ -232,6 +232,9 @@ def api_me(telegram_id: int) -> dict:
         'name': (user.name or '') if user else '',
         'lang': lang,
         'premium': is_premium(telegram_id),
+        # V3.51.1: the owner's Mini App sees the admin generation feed only
+        # when this is true (the server re-checks on every admin API call).
+        'admin': _is_admin(telegram_id),
         'streak': (user.streak_count or 0) if user else 0,
         'photo_credits': (user.photo_credits or 0) if user else 0,
         # V3.43.5: the in-app Settings toggle shows the live flag (Premium is
@@ -1082,6 +1085,57 @@ def picture_file_path(telegram_id: int, filename: str) -> Path | None:
         return None
     path = _picture_folder(telegram_id) / safe_name
     return path if path.exists() else None
+
+
+# ── V3.51.1: user-generation audit feed (admin-only) ──────────────────────
+def _is_admin(telegram_id) -> bool:
+    try:
+        from config import ADMIN_TELEGRAM_IDS
+        return int(telegram_id) in ADMIN_TELEGRAM_IDS
+    except Exception:
+        return False
+
+
+def record_generation(telegram_id, kind, character_id, prompt, filename) -> None:
+    """Log one Mini App generation for the owner's admin feed. Fire-and-forget:
+    an audit hiccup must never break the user's render or cost them a credit."""
+    try:
+        from models.app_models import UserGeneration
+        with SessionLocal() as s:
+            s.add(UserGeneration(
+                telegram_id=int(telegram_id),
+                kind=str(kind or '')[:16],
+                character_id=(str(character_id)[:64] if character_id else None),
+                prompt=str(prompt or '')[:1000],
+                filename=(str(filename)[:255] if filename else None),
+            ))
+            s.commit()
+    except Exception:
+        logger.exception('record generation failed user=%s', telegram_id)
+
+
+def list_generations(limit: int = 60, offset: int = 0) -> list[dict]:
+    """Newest-first feed of user generations for the admin overlay."""
+    from models.app_models import UserGeneration
+    limit = max(1, min(100, int(limit)))
+    offset = max(0, int(offset))
+    try:
+        with SessionLocal() as s:
+            rows = s.scalars(
+                select(UserGeneration).order_by(UserGeneration.id.desc()).offset(offset).limit(limit)
+            ).all()
+            return [{
+                'id': r.id,
+                'user': r.telegram_id,
+                'kind': r.kind,
+                'character_id': r.character_id,
+                'prompt': r.prompt or '',
+                'filename': r.filename,
+                'ts': r.created_at.isoformat() if r.created_at else None,
+            } for r in rows]
+    except Exception:
+        logger.exception('list generations failed')
+        return []
 
 
 def api_legal(lang: str = 'ru') -> dict:

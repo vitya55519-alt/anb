@@ -408,7 +408,12 @@ def _apply_path(session, uid: int, character_id: str, inclination: str) -> None:
         UserCharacterRelationship.character_id == character_id,
     ))
     if row is None:
-        return
+        # V3.51.1: playing a story for a character you never chatted with must
+        # still open *her* path — create the relationship row (all scores are
+        # neutral by default) so the axis persists and the card scale appears.
+        row = UserCharacterRelationship(user_id=uid, character_id=character_id, path_axis=0.0)
+        session.add(row)
+        session.flush()
     delta = -PATH_STEP if inclination == 'romance' else PATH_STEP
     row.path_axis = max(-100.0, min(100.0, (getattr(row, 'path_axis', 0.0) or 0.0) + delta))
 
@@ -661,10 +666,14 @@ PATH_EVENT_PHOTO_SCENE = {('tender', 'deep'): 'emotional', ('bold', 'deep'): 'pe
 
 def get_quest(key: str): return QUESTS.get(key)
 
-def progress(telegram_id: int, quest_key: str):
+def progress(telegram_id: int, quest_key: str, character_id: str | None = None):
+    # V3.51.1: story progress is per-character, so every girl keeps her own
+    # canonical route and the per-character path axis can actually move. The
+    # CHARACTER_ID default keeps the old single-character pins green.
     uid = ensure_user(telegram_id)
+    char_id = character_id or CHARACTER_ID
     with SessionLocal() as s:
-        return s.scalar(select(UserQuestProgress).where(UserQuestProgress.user_id == uid, UserQuestProgress.character_id == CHARACTER_ID, UserQuestProgress.quest_key == quest_key))
+        return s.scalar(select(UserQuestProgress).where(UserQuestProgress.user_id == uid, UserQuestProgress.character_id == char_id, UserQuestProgress.quest_key == quest_key))
 
 def complete_route(telegram_id: int, quest_key: str, route_key: str, paid_replay: bool = False, character_id: str | None = None) -> dict:
     # V3.50.0: the path axis belongs to the character the user actually chats
@@ -672,9 +681,9 @@ def complete_route(telegram_id: int, quest_key: str, route_key: str, paid_replay
     char_id = character_id or CHARACTER_ID
     quest = QUESTS[quest_key]; route = quest['routes'][route_key]; uid = ensure_user(telegram_id)
     with SessionLocal() as s:
-        row = s.scalar(select(UserQuestProgress).where(UserQuestProgress.user_id == uid, UserQuestProgress.character_id == CHARACTER_ID, UserQuestProgress.quest_key == quest_key))
+        row = s.scalar(select(UserQuestProgress).where(UserQuestProgress.user_id == uid, UserQuestProgress.character_id == char_id, UserQuestProgress.quest_key == quest_key))
         if not row:
-            row = UserQuestProgress(user_id=uid, character_id=CHARACTER_ID, quest_key=quest_key, started_at=_now())
+            row = UserQuestProgress(user_id=uid, character_id=char_id, quest_key=quest_key, started_at=_now())
             s.add(row)
         done = set(json.loads(row.completed_routes_json or '[]'))
         first = row.canonical_route is None
@@ -686,9 +695,9 @@ def complete_route(telegram_id: int, quest_key: str, route_key: str, paid_replay
             memory_text=route.get('memory')
             if memory_text:
                 key=f'quest:{quest_key}:canonical'
-                mem=s.scalar(select(Memory).where(Memory.user_id==uid, Memory.character_id==CHARACTER_ID, Memory.memory_key==key))
+                mem=s.scalar(select(Memory).where(Memory.user_id==uid, Memory.character_id==char_id, Memory.memory_key==key))
                 if not mem:
-                    mem=Memory(user_id=uid,character_id=CHARACTER_ID,memory_key=key,content=memory_text,memory_type='story',confidence=1.0,importance=0.75)
+                    mem=Memory(user_id=uid,character_id=char_id,memory_key=key,content=memory_text,memory_type='story',confidence=1.0,importance=0.75)
                     s.add(mem)
                 else:
                     mem.content=memory_text
@@ -768,7 +777,7 @@ def complete_beat(telegram_id: int, quest_key: str, route_key: str, opt_key: str
     with SessionLocal() as s:
         row = s.scalar(select(UserQuestProgress).where(
             UserQuestProgress.user_id == uid,
-            UserQuestProgress.character_id == CHARACTER_ID,
+            UserQuestProgress.character_id == char_id,
             UserQuestProgress.quest_key == quest_key,
         ))
         if not row or row.canonical_route != route_key:
@@ -782,9 +791,9 @@ def complete_beat(telegram_id: int, quest_key: str, route_key: str, opt_key: str
             memory_text = opt.get('memory')
             if memory_text:
                 mkey = f'quest:{quest_key}:beat:{route_key}:{opt_key}'
-                mem = s.scalar(select(Memory).where(Memory.user_id == uid, Memory.character_id == CHARACTER_ID, Memory.memory_key == mkey))
+                mem = s.scalar(select(Memory).where(Memory.user_id == uid, Memory.character_id == char_id, Memory.memory_key == mkey))
                 if not mem:
-                    mem = Memory(user_id=uid, character_id=CHARACTER_ID, memory_key=mkey, content=memory_text, memory_type='story', confidence=1.0, importance=0.7)
+                    mem = Memory(user_id=uid, character_id=char_id, memory_key=mkey, content=memory_text, memory_type='story', confidence=1.0, importance=0.7)
                     s.add(mem)
                 else:
                     mem.content = memory_text
@@ -921,7 +930,7 @@ def quest_task_threshold(quest_key: str) -> int:
     return 5 * int(q['min_level']) if q else 0
 
 
-def newly_unlocked_quests(telegram_id: int, previous_level: int, current_level: int) -> list[dict]:
+def newly_unlocked_quests(telegram_id: int, previous_level: int, current_level: int, character_id: str | None = None) -> list[dict]:
     """Return quests unlocked by a real relationship-level transition.
 
     This is intentionally transition-based: ordinary messages at the same level do
@@ -940,7 +949,7 @@ def newly_unlocked_quests(telegram_id: int, previous_level: int, current_level: 
         if previous_level < int(quest['min_level']) <= current_level:
             if completed < 5 * int(quest['min_level']):
                 continue
-            p = progress(telegram_id, key)
+            p = progress(telegram_id, key, character_id)
             if p and p.canonical_route:
                 continue
             out.append({
@@ -953,7 +962,7 @@ def newly_unlocked_quests(telegram_id: int, previous_level: int, current_level: 
     return out
 
 
-def story_status(telegram_id: int, relationship_level: int) -> list[dict]:
+def story_status(telegram_id: int, relationship_level: int, character_id: str | None = None) -> list[dict]:
     # V3.49.0: a story opens only when BOTH gates pass — the relationship level
     # (romance core loop) AND the cumulative daily-task counter on the
     # 5/10/15... ladder. ``unlocked`` stays the single source of truth read by
@@ -962,7 +971,7 @@ def story_status(telegram_id: int, relationship_level: int) -> list[dict]:
     completed = _quests_completed(telegram_id)
     out = []
     for i, (key, q) in enumerate(QUESTS.items()):
-        p = progress(telegram_id, key); done = []; canonical = None
+        p = progress(telegram_id, key, character_id); done = []; canonical = None
         if p:
             done = json.loads(p.completed_routes_json or '[]'); canonical = p.canonical_route
         need_tasks = 5 * int(q['min_level'])

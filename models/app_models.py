@@ -434,6 +434,23 @@ class BackgroundJob(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class UserGeneration(Base):
+    """V3.51.1: an audit row for every media a user asks the Mini App to render
+    (picture studio, chat photo-on-request, private/cosplay/video). The owner
+    browses these in the app's admin feed. The prompt/scene is stored so review
+    survives even after the ephemeral image file is gone on a Railway redeploy.
+    Auto-created by services/db.py."""
+    __tablename__ = "user_generations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    # picture | photo | circle | video | hot | cosplay
+    kind: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
+    character_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    prompt: Mapped[str] = mapped_column(Text, default="")
+    filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 # V3.29.0: persistent multi-step dialog wizards (character constructor, paid
 # fantasy input, photo offers...). In-memory dicts died with the process;
 # these rows let a redeploy keep the conversation mid-wizard.
