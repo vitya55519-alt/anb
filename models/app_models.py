@@ -248,6 +248,20 @@ class ProactivePhoto(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class PageGalleryShot(Base):
+    """V3.47.4: admin-set visuals for the character-page carousel ONLY — pure
+    storefront art that never touches the canonical references, so generated
+    photos keep the locked appearance. Bytes live in PostgreSQL (ephemeral
+    disk safe); URLs carry the row id, so a swap is instantly cache-busted."""
+    __tablename__ = "page_gallery_shots"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    image_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(32), default="image/jpeg")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Message(Base):
     __tablename__ = "messages"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

@@ -47,8 +47,9 @@ def test_asset_version_helper_stamps_every_storefront_url():
 
 
 def test_asset_routes_are_immutable_now_that_urls_carry_the_stamp():
-    # four public storefront routes (photo, gif tile, live clip, card media)
-    assert MAIN.count("headers={'Cache-Control': 'public, max-age=604800'})") == 4
+    # five public storefront routes (photo, gif tile, live clip, card media,
+    # and V3.47.4's page-carousel shot — its URL carries the row id)
+    assert MAIN.count("headers={'Cache-Control': 'public, max-age=604800'})") == 5
     assert 'public, max-age=3600' not in MAIN.split('async def _webapp_photo')[1].split('async def _webapp_api_char_view')[0]
 
 

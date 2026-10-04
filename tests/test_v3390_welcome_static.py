@@ -132,7 +132,8 @@ def test_new_characters_have_curvy_figure_anchors():
 
 def test_character_page_has_strip_cta_and_plot():
     assert 'def character_gallery(character_id: str)' in WEBAPP_SVC
-    assert "'gallery': [" in WEBAPP_SVC
+    # V3.47.4: the payload list became an override-or-canon expression
+    assert "'gallery': (" in WEBAPP_SVC
     assert "add_get('/webapp/photo/{character_id}', _webapp_photo)" in MAIN
     assert "idx = int(request.query.get('i', '0') or 0)" in MAIN
     # frontend page: strip, «Начать чат», bio, the «КАК ВЫ ПОЗНАКОМИТЕСЬ» block

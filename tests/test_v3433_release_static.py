@@ -71,7 +71,8 @@ def test_admin_panel_media_swap_flow():
     assert 'await bot.download(file_id, destination=buf)' in MAIN
     assert 'if size > 20 * 1024 * 1024:' in MAIN
     # the summary line shows what the grid renders right now
-    assert "f'Медиа витрины: {_admin_card_media_label(character_id)}\\n\\n'" in MAIN
+    # (V3.47.4 appended the page-carousel line after it, so one \n now)
+    assert "f'Медиа витрины: {_admin_card_media_label(character_id)}\\n'" in MAIN
     # /cancel drops the wait session
     assert 'if message.from_user.id in CARD_MEDIA_WAIT:' in MAIN
 

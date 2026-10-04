@@ -396,6 +396,10 @@ BADGE_MEDIA_WAIT: dict[int, str] = {}
 # V3.47.3: the pool accepts photos, GIFs and short videos.
 PROPHOTO_WAIT: set[int] = set()
 
+# V3.47.4: admin ids waiting to send carousel photos for one character page —
+# pure storefront visuals (DB-backed), the canonical references stay intact.
+PGAL_MEDIA_WAIT: dict[int, str] = {}
+
 # Owner-only editor state for configurable payment methods. Payment rows live in PostgreSQL.
 _payment_method_edit_sessions: dict[int, dict] = {}
 
@@ -740,6 +744,9 @@ def admin_card_keyboard(character_id: str):
         # straight from the admin chat, no deploy needed.
         [InlineKeyboardButton(text='📥 Медиа витрины', callback_data=f'admin:cardmedia:{character_id}'),
          InlineKeyboardButton(text='🧹 Убрать медиа', callback_data=f'admin:cardclear:{character_id}')],
+        # V3.47.4: the character-PAGE carousel visuals (storefront only, the
+        # canonical references behind generation are untouched).
+        [InlineKeyboardButton(text='🎠 Карусель страницы', callback_data=f'admin:pgal:{character_id}')],
         [InlineKeyboardButton(text='↩️ Сбросить карточку', callback_data=f'admin:reset:{character_id}')],
     ]
     from services.character_card_service import DEFAULT_CARDS
@@ -933,7 +940,8 @@ def _admin_card_summary(character_id: str) -> str:
         f'Статус: {card.status_label}\n'
         f'Видимость: {"да" if card.is_visible else "нет"}\n'
         f'Фото: {"установлено" if card.card_photo_file_id else "нет"}\n'
-        f'Медиа витрины: {_admin_card_media_label(character_id)}\n\n'
+        f'Медиа витрины: {_admin_card_media_label(character_id)}\n'
+        f'Карусель страницы: {len(webapp_service.page_gallery_shots(character_id))} фото (витрина, на генерацию не влияет)\n\n'
         f'{card.short_bio or "Описание не заполнено."}\n\n'
         'ℹ️ Статус «активна» открывает персонажа для выбора в чате. Premium — за платный доступ.'
     )
@@ -2875,6 +2883,113 @@ async def admin_prophoto_upload(message: types.Message):
         reply_markup=kb)
 
 
+# ── V3.47.4: character-page carousel — admin-set visuals, storefront only ──
+# The owner can hang any pictures on the character page without touching the
+# canonical references: generated photos keep the locked appearance. Shots are
+# stored in PostgreSQL (survives redeploys) and the URL carries the row id.
+def admin_pgal_keyboard(character_id: str):
+    shots = webapp_service.page_gallery_shots(character_id)
+    rows = [[InlineKeyboardButton(text='➕ Добавить фото', callback_data=f'admin:pgal:add:{character_id}')]]
+    del_row = [InlineKeyboardButton(text=f'🗑 {i + 1}', callback_data=f'admin:pgal:del:{character_id}:{sh["id"]}')
+               for i, sh in enumerate(shots)]
+    for i in range(0, len(del_row), 6):
+        rows.append(del_row[i:i + 6])
+    if shots:
+        rows.append([InlineKeyboardButton(text='🧹 Очистить всё', callback_data=f'admin:pgal:clear:{character_id}')])
+    rows.append([InlineKeyboardButton(text='⬅️ Карточка', callback_data=f'admin:card:{character_id}')])
+    return InlineKeyboardMarkup(inline_keyboard=rows), len(shots)
+
+
+@dp.callback_query(F.data.startswith('admin:pgal:add:'))
+async def admin_pgal_wait(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    character_id = cq.data.split(':', 3)[3]
+    PGAL_MEDIA_WAIT[cq.from_user.id] = character_id
+    await cq.answer()
+    await cq.message.answer(
+        f'📥 Пришли фото для карусели «{character_id}» — можно несколько подряд, '
+        f'каждое встанет следующим слайдом (до 8 MB, максимум '
+        f'{webapp_service.PAGE_GALLERY_MAX_SHOTS}).\n\n'
+        '⚠️ Это только витрина: на генерацию фото не влияет.\n\n'
+        '/cancel — закончить')
+
+
+@dp.callback_query(F.data.startswith('admin:pgal:del:'))
+async def admin_pgal_del(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    parts = cq.data.split(':', 4)
+    try:
+        character_id, shot_id = parts[3], int(parts[4])
+    except (IndexError, ValueError):
+        await cq.answer('не то id', show_alert=True)
+        return
+    removed = webapp_service.delete_page_gallery_shot(shot_id)
+    kb, n = admin_pgal_keyboard(character_id)
+    await cq.answer('удалено' if removed else 'не найдено')
+    await cq.message.answer(f'🎠 Фото в карусели «{character_id}»: {n}', reply_markup=kb)
+
+
+@dp.callback_query(F.data.startswith('admin:pgal:clear:'))
+async def admin_pgal_clear(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    character_id = cq.data.split(':', 3)[3]
+    removed = webapp_service.clear_page_gallery(character_id)
+    kb, n = admin_pgal_keyboard(character_id)
+    await cq.answer(f'убрано: {removed}' if removed else 'пусто')
+    await cq.message.answer(
+        f'🎠 Карусель «{character_id}» очищена — страница вернулась на канонические фото.'
+        if removed else f'🎠 В карусели «{character_id}» и так нет фото',
+        reply_markup=kb)
+
+
+@dp.callback_query(F.data.startswith('admin:pgal:')
+                   & ~F.data.startswith('admin:pgal:add:')
+                   & ~F.data.startswith('admin:pgal:del:')
+                   & ~F.data.startswith('admin:pgal:clear:'))
+async def admin_pgal_view(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    character_id = cq.data.split(':', 2)[2]
+    kb, n = admin_pgal_keyboard(character_id)
+    await cq.answer()
+    await cq.message.answer(
+        f'🎠 Карусель на странице «{character_id}» — фото: {n} из '
+        f'{webapp_service.PAGE_GALLERY_MAX_SHOTS}\n\n'
+        'Эти картинки видны только в витрине (карусель страницы персонажа) и '
+        'никак не влияют на генерацию — каноны не трогаем. Пустая карусель = '
+        'показываются канонические фото.',
+        reply_markup=kb)
+
+
+@dp.message(lambda m: m.from_user is not None and m.from_user.id in PGAL_MEDIA_WAIT, F.photo)
+async def admin_pgal_upload(message: types.Message):
+    """V3.47.4: every photo the admin sends becomes the next carousel slide."""
+    character_id = PGAL_MEDIA_WAIT.get(message.from_user.id)
+    if not character_id or message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    photo = message.photo[-1]
+    if (photo.file_size or 0) > webapp_service.PAGE_GALLERY_MAX_BYTES:
+        await message.answer('файл тяжелее 8 MB — пришли полегче.')
+        return
+    buf = io.BytesIO()
+    await bot.download(photo.file_id, destination=buf)
+    ok = webapp_service.add_page_gallery_shot(character_id, buf.getvalue(), 'image/jpeg')
+    kb, n = admin_pgal_keyboard(character_id)
+    if not ok:
+        PGAL_MEDIA_WAIT.pop(message.from_user.id, None)
+        await message.answer(
+            f'⚠️ Не удалось добавить (лимит {webapp_service.PAGE_GALLERY_MAX_SHOTS} фото или размер).',
+            reply_markup=kb)
+        return
+    # stay in the wait state — the owner usually sends the whole set at once
+    await message.answer(
+        f'✅ Фото №{n} в карусели «{character_id}». Присылай следующее или /cancel.',
+        reply_markup=kb)
+
+
 def _admin_gender_keyboard(prefix: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='👨 Мужской', callback_data=f'{prefix}:male'),
@@ -3131,6 +3246,11 @@ async def admin_providers_button(cq: types.CallbackQuery):
 
 @dp.message(Command('cancel'))
 async def cancel_admin_edit(message: types.Message):
+    if message.from_user.id in PGAL_MEDIA_WAIT:
+        character_id = PGAL_MEDIA_WAIT.pop(message.from_user.id)
+        kb, _n = admin_pgal_keyboard(character_id)
+        await message.answer('отменено', reply_markup=kb)
+        return
     if message.from_user.id in PROPHOTO_WAIT:
         PROPHOTO_WAIT.discard(message.from_user.id)
         kb, _n = admin_prophoto_keyboard()
@@ -9333,6 +9453,20 @@ async def _webapp_photo(request: web.Request) -> web.Response:
     return web.Response(body=data, content_type=content_type, headers={'Cache-Control': 'public, max-age=604800'})
 
 
+async def _webapp_pgal(request: web.Request) -> web.Response:
+    # V3.47.4: an admin-set character-page carousel shot — public storefront
+    # art from PostgreSQL. The URL carries the row id, so every swap is a new
+    # address and the week-long cache never shows a stale slide.
+    try:
+        shot_id = int(request.match_info['shot_id'])
+    except (TypeError, ValueError):
+        return web.Response(status=404)
+    shot = webapp_service.get_page_gallery_shot(shot_id)
+    if not shot:
+        return web.Response(status=404)
+    return web.Response(body=shot[0], content_type=shot[1], headers={'Cache-Control': 'public, max-age=604800'})
+
+
 async def _webapp_gif(request: web.Request) -> web.Response:
     # V3.40.0: the animated card preview — a public storefront asset with the
     # same caching as the static photo (the grid shows it instead of the JPEG).
@@ -10639,6 +10773,8 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/partner', _webapp_api_partner)
     app.router.add_post('/webapp/api/partner/withdraw', _webapp_api_partner_withdraw)
     app.router.add_get('/webapp/photo/{character_id}', _webapp_photo)
+    # V3.47.4: admin-set page-carousel shots (pure storefront visuals).
+    app.router.add_get('/webapp/pgal/{character_id}/{shot_id}', _webapp_pgal)
     # V3.40.0: the living storefront — looping GIF tiles and the view counter.
     app.router.add_get('/webapp/gif/{character_id}', _webapp_gif)
     # V3.43.1: the living tiles — i2v mp4 loops next to the Ken-Burns webp.

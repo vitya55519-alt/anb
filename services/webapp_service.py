@@ -403,10 +403,16 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             'views': views.get(card.character_id, 0),
             # V3.39.0: the Come Closer character page opens with a photo strip
             # (face + look references), so the card page needs every shot.
-            'gallery': [
-                f'/webapp/photo/{card.character_id}?i={idx}&v={ver}'
-                for idx in range(min(4, len(character_gallery(card.character_id))))
-            ],
+            # V3.47.4: admin-set carousel visuals win — pure storefront art
+            # that never touches the canonical references behind generation.
+            'gallery': (
+                [f'/webapp/pgal/{card.character_id}/{sh["id"]}'
+                 for sh in page_gallery_shots(card.character_id)]
+                or [
+                    f'/webapp/photo/{card.character_id}?i={idx}&v={ver}'
+                    for idx in range(min(4, len(character_gallery(card.character_id))))
+                ]
+            ),
             'selected': card.character_id == selected,
             'custom': custom,
             'mine': mine,
@@ -1242,6 +1248,92 @@ def clear_card_override(character_id: str) -> bool:
             stale.unlink()
             removed = True
     return removed
+
+
+# ── V3.47.4: character-page carousel visuals (admin-set, DB-backed) ───────
+# Pure storefront: these shots replace ONLY the photo strip on the character
+# page. The canonical references keep driving generated photos, so the hero's
+# locked appearance is untouched. Bytes live in PostgreSQL; URLs carry the row
+# id, so every swap is instantly cache-busted without a deploy.
+PAGE_GALLERY_MAX_SHOTS = 6
+PAGE_GALLERY_MAX_BYTES = 8 * 1024 * 1024
+
+
+def page_gallery_shots(character_id: str) -> list[dict]:
+    """The admin-set carousel shots of a character, in display order."""
+    from models.app_models import PageGalleryShot
+    try:
+        with SessionLocal() as s:
+            rows = s.scalars(
+                select(PageGalleryShot)
+                .where(PageGalleryShot.character_id == character_id)
+                .order_by(PageGalleryShot.position, PageGalleryShot.id)
+            ).all()
+            return [{'id': r.id, 'content_type': r.content_type or 'image/jpeg'} for r in rows]
+    except Exception:
+        return []
+
+
+def add_page_gallery_shot(character_id: str, data: bytes, content_type: str = 'image/jpeg') -> bool:
+    from models.app_models import PageGalleryShot
+    if not data or len(data) > PAGE_GALLERY_MAX_BYTES:
+        return False
+    try:
+        with SessionLocal() as s:
+            existing = s.scalars(
+                select(PageGalleryShot).where(PageGalleryShot.character_id == character_id)
+            ).all()
+            if len(existing) >= PAGE_GALLERY_MAX_SHOTS:
+                return False
+            next_pos = max([r.position or 0 for r in existing], default=-1) + 1
+            s.add(PageGalleryShot(character_id=character_id, image_bytes=data,
+                                  content_type=content_type or 'image/jpeg', position=next_pos))
+            s.commit()
+        return True
+    except Exception:
+        return False
+
+
+def delete_page_gallery_shot(shot_id: int) -> bool:
+    from models.app_models import PageGalleryShot
+    try:
+        with SessionLocal() as s:
+            row = s.get(PageGalleryShot, shot_id)
+            if not row:
+                return False
+            s.delete(row)
+            s.commit()
+        return True
+    except Exception:
+        return False
+
+
+def clear_page_gallery(character_id: str) -> int:
+    from models.app_models import PageGalleryShot
+    try:
+        with SessionLocal() as s:
+            rows = s.scalars(
+                select(PageGalleryShot).where(PageGalleryShot.character_id == character_id)
+            ).all()
+            for r in rows:
+                s.delete(r)
+            s.commit()
+        return len(rows)
+    except Exception:
+        return 0
+
+
+def get_page_gallery_shot(shot_id: int) -> tuple[bytes, str] | None:
+    """(bytes, content_type) of one carousel shot for the public route."""
+    from models.app_models import PageGalleryShot
+    try:
+        with SessionLocal() as s:
+            row = s.get(PageGalleryShot, shot_id)
+            if not row:
+                return None
+            return row.image_bytes, (row.content_type or 'image/jpeg')
+    except Exception:
+        return None
 
 
 def character_card_live(character_id: str) -> Path | None:
