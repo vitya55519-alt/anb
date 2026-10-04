@@ -444,6 +444,11 @@
   .card .tags span { font-size: 11px; color: var(--accent); background: rgba(232,68,127,.12);
     border: 1px solid rgba(232,68,127,.25); padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
   .seg button.on { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+  /* V3.48.2: character cards are paginated 6 per page in both segments. */
+  .charpager { display: none; align-items: center; justify-content: center; gap: 14px; margin: 12px 14px 4px; }
+  .charpager .ppage { border: 1px solid rgba(255,255,255,.14); background: var(--card); color: var(--text); width: 40px; height: 40px; border-radius: 12px; font-size: 20px; line-height: 1; cursor: pointer; }
+  .charpager .ppage[disabled] { opacity: .35; cursor: default; }
+  .charpager .pinfo { font-size: 14px; font-weight: 700; color: var(--muted); min-width: 54px; text-align: center; }
   .typing { align-self: flex-start; color: var(--muted); font-size: 13px; padding: 4px 12px; }
   .wiz { flex: 1; overflow-y: auto; padding: 16px; }
   .wiz .step-title { font-size: 17px; font-weight: 700; margin: 6px 0 12px; }
@@ -657,6 +662,8 @@
       <span class="ar">→</span>
     </button>
     <div class="grid" id="chargrid"><div class="loading" id="l_loading"><div class="skeleton-grid"><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div></div></div></div>
+    <!-- V3.48.2: 6 cards per page — prev/next under the grid, both segments. -->
+    <div class="charpager" id="charPager"></div>
     <!-- V3.44.0: popularity leaderboard -->
     <div class="leaderboard" id="leaderboard">
       <h3 id="l_lb_title"></h3>
@@ -1417,12 +1424,14 @@ document.querySelectorAll('#charSeg button').forEach(btn => btn.addEventListener
   CHAR_SEG = btn.dataset.seg;
   // V3.45.28: leaving the community tab drops the active search text.
   if (CHAR_SEG !== 'community') CHAR_QUERY = '';
+  CHAR_PAGE = 0; // V3.48.2: a segment switch always lands on page 1
   document.querySelectorAll('#charSeg button').forEach(b => b.classList.toggle('on', b === btn));
   renderCharacters(CHARS);
 }));
 // V3.45.28: typing in the community search re-filters the cached grid live.
 document.getElementById('charSearch').addEventListener('input', e => {
   CHAR_QUERY = e.target.value || '';
+  CHAR_PAGE = 0; // V3.48.2: a new search resets to page 1
   renderCharacters(CHARS);
 });
 
@@ -1481,6 +1490,9 @@ let CHARS = [];
 let CHAR_SEG = 'official';
 // V3.45.28: the community search text — filters the витрина by name/bio/tag.
 let CHAR_QUERY = '';
+// V3.48.2: both segments show the grid 6 character cards per page.
+let CHAR_PAGE = 0;
+const CHAR_PAGE_SIZE = 6;
 function renderCharacters(list) {
   CHARS = list;
   // V3.39.0: the segment switch — the official roster lives in the «Peach
@@ -1502,7 +1514,12 @@ function renderCharacters(list) {
   // V3.35.0: the grid is the chat entry now — tap opens the dialog; the
   // «create your own» card rides at the end of the grid — always live now
   // (V3.44.9): unlimited characters, so there is no hasMine gate anymore.
-  const cards = shown.map(c => {
+  // V3.48.2: paginate the segment — 6 character cards per page (2 cols x 3 rows).
+  const pages = Math.max(1, Math.ceil(shown.length / CHAR_PAGE_SIZE));
+  if (CHAR_PAGE > pages - 1) CHAR_PAGE = pages - 1;
+  if (CHAR_PAGE < 0) CHAR_PAGE = 0;
+  const pageItems = shown.slice(CHAR_PAGE * CHAR_PAGE_SIZE, CHAR_PAGE * CHAR_PAGE_SIZE + CHAR_PAGE_SIZE);
+  const cards = pageItems.map(c => {
     const badge = c.status === 'active'
       ? `<span class="badge active">✅ ${esc(L.active)}</span>`
       : c.status === 'premium'
@@ -1550,6 +1567,7 @@ function renderCharacters(list) {
         <div class="body"><div class="lbl2">${esc(L.create_own)}</div><div class="sub2">${esc(L.create_sub)}</div></div>
       </div>`;
   grid.innerHTML = cards + createCard;
+  renderCharPager(pages);
   // V3.43.2: WebView does not always honour the autoplay attribute — kick
   // every living tile by hand, and pause the ones scrolled off screen so
   // eight mp4 loops do not drag the grid down.
@@ -1566,6 +1584,26 @@ function renderCharacters(list) {
   if (ME) renderProfileBody();
 }
 
+// V3.48.2: prev/next control under the grid. Hidden while the segment (or an
+// active search) fits on one page, so the roster and short lists stay clean.
+function renderCharPager(pages) {
+  const p = document.getElementById('charPager');
+  if (!p) return;
+  if (pages <= 1) { p.style.display = 'none'; p.innerHTML = ''; return; }
+  p.style.display = 'flex';
+  p.innerHTML =
+    '<button class="ppage" id="pagerPrev"' + (CHAR_PAGE === 0 ? ' disabled' : '') + '>\u2039</button>' +
+    '<span class="pinfo">' + (CHAR_PAGE + 1) + ' / ' + pages + '</span>' +
+    '<button class="ppage" id="pagerNext"' + (CHAR_PAGE === pages - 1 ? ' disabled' : '') + '>\u203a</button>';
+  const prev = document.getElementById('pagerPrev'), next = document.getElementById('pagerNext');
+  if (prev) prev.addEventListener('click', () => { if (CHAR_PAGE > 0) { CHAR_PAGE--; renderCharacters(CHARS); scrollGridTop(); } });
+  if (next) next.addEventListener('click', () => { if (CHAR_PAGE < pages - 1) { CHAR_PAGE++; renderCharacters(CHARS); scrollGridTop(); } });
+}
+function scrollGridTop() {
+  const g = document.getElementById('chargrid');
+  if (g) g.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 async function loadCharacters() {
   try {
     // With initData the grid also knows which girl is selected (V3.34.0 —
@@ -1576,6 +1614,7 @@ async function loadCharacters() {
     if (!j.ok || !j.characters.length) {
       document.getElementById('chargrid').innerHTML = '<div class="loading">—</div>'; return;
     }
+    CHAR_PAGE = 0; // V3.48.2: a fresh character load starts on page 1
     renderCharacters(j.characters);
   } catch (e) {
     document.getElementById('chargrid').innerHTML = `<div class="err">${esc(e.message)}</div>`;

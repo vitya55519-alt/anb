@@ -1222,19 +1222,43 @@ def card_media_folder(character_id: str) -> Path:
 
 
 def character_card_override(character_id: str) -> Path | None:
-    """V3.43.3: the active storefront media override of a character, if any."""
+    """V3.43.3: the active storefront media override of a character, if any.
+
+    V3.48.1: PostgreSQL is now the source of truth. The bytes live in the
+    ``card_overrides`` table; the file under ``data/card_media/`` is only a cache.
+    After a Railway redeploy wipes the ephemeral disk, the first lookup restores
+    the file from the DB and re-materializes it, so the owner never has to
+    re-upload the showcase media again.
+    """
+    from models.app_models import CardOverride
     folder = card_media_folder(character_id)
-    if not folder.exists():
+    if folder.exists():
+        for ext in CARD_OVERRIDE_EXTS:
+            item = folder / f'card_override{ext}'
+            if item.exists():
+                return item
+    # disk-cache miss (post-redeploy): restore from PostgreSQL and re-materialize.
+    try:
+        with SessionLocal() as s:
+            row = s.scalar(select(CardOverride).where(CardOverride.character_id == character_id))
+            if not row:
+                return None
+            folder.mkdir(parents=True, exist_ok=True)
+            target = folder / f'card_override{row.ext}'
+            target.write_bytes(row.image_bytes)
+            return target
+    except Exception:
+        logger.exception('card override db restore failed character=%s', character_id)
         return None
-    for ext in CARD_OVERRIDE_EXTS:
-        item = folder / f'card_override{ext}'
-        if item.exists():
-            return item
-    return None
 
 
 def set_card_override(character_id: str, data: bytes, ext: str) -> Path:
-    """V3.43.3: replace the card media of a character (admin panel upload)."""
+    """V3.43.3: replace the card media of a character (admin panel upload).
+
+    V3.48.1: persist the bytes to PostgreSQL (survives the ephemeral-disk wipe)
+    and mirror them to the disk cache so the grid keeps serving immediately.
+    """
+    from models.app_models import CardOverride, utcnow
     folder = card_media_folder(character_id)
     folder.mkdir(parents=True, exist_ok=True)
     for stale_ext in CARD_OVERRIDE_EXTS:
@@ -1243,11 +1267,31 @@ def set_card_override(character_id: str, data: bytes, ext: str) -> Path:
             stale.unlink()
     target = folder / f'card_override{ext}'
     target.write_bytes(data)
+    try:
+        content_type = {'.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+                        '.gif': 'image/gif', '.mp4': 'video/mp4'}.get(ext.lower(), 'application/octet-stream')
+        with SessionLocal() as s:
+            row = s.scalar(select(CardOverride).where(CardOverride.character_id == character_id))
+            if not row:
+                row = CardOverride(character_id=character_id)
+                s.add(row)
+            row.ext = ext
+            row.content_type = content_type
+            row.image_bytes = data
+            row.updated_at = utcnow()
+            s.commit()
+    except Exception:
+        logger.exception('card override db persist failed character=%s', character_id)
     return target
 
 
 def clear_card_override(character_id: str) -> bool:
-    """V3.43.3: drop the override so the card falls back to the plain photo."""
+    """V3.43.3: drop the override so the card falls back to the plain photo.
+
+    V3.48.1: also delete the PostgreSQL row, otherwise the disk cache would be
+    silently re-materialized from the DB on the next lookup.
+    """
+    from models.app_models import CardOverride
     folder = card_media_folder(character_id)
     removed = False
     for stale_ext in CARD_OVERRIDE_EXTS:
@@ -1255,6 +1299,15 @@ def clear_card_override(character_id: str) -> bool:
         if stale.exists():
             stale.unlink()
             removed = True
+    try:
+        with SessionLocal() as s:
+            row = s.scalar(select(CardOverride).where(CardOverride.character_id == character_id))
+            if row:
+                s.delete(row)
+                s.commit()
+                removed = True
+    except Exception:
+        logger.exception('card override db delete failed character=%s', character_id)
     return removed
 
 

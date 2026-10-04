@@ -262,6 +262,22 @@ class PageGalleryShot(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class CardOverride(Base):
+    """V3.48.1: the admin-set storefront media (photo/gif/webp/mp4) of one
+    character. V3.43.3 kept it ONLY as a file under ``data/card_media/<id>/``,
+    which lives on Railway's ephemeral disk — so the owner had to re-upload every
+    card after every redeploy. The bytes now live in PostgreSQL; the disk file is
+    a re-materializable cache served by ``character_card_override()``. One active
+    override per ``character_id`` (mirrors the single ``card_override.<ext>``)."""
+    __tablename__ = "card_overrides"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    character_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    ext: Mapped[str] = mapped_column(String(8), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(32), default="image/jpeg")
+    image_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Message(Base):
     __tablename__ = "messages"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
