@@ -3,6 +3,7 @@ and anniversaries. Pure service code; main.py wires the Telegram UI."""
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import random
 from datetime import datetime, timezone
@@ -38,25 +39,94 @@ def _today_key(now: datetime | None = None) -> str:
     return (now or datetime.now(timezone.utc).replace(tzinfo=None)).date().isoformat()
 
 
+def daily_quests(telegram_id: int) -> list[tuple[str, str]]:
+    """V3.49.0: 2-3 deterministic quests for this user/day (key, text). Both the
+    count and the rotation derive from the day+user seed, so a given day always
+    shows the same short list while consecutive days feel different."""
+    seed = int(hashlib.md5(f'{_today_key()}:{telegram_id}'.encode('utf-8')).hexdigest(), 16)
+    count = 3 if seed % 2 == 0 else 2
+    start = seed % len(DAILY_QUESTS)
+    return [DAILY_QUESTS[(start + i) % len(DAILY_QUESTS)] for i in range(count)]
+
+
 def daily_quest(telegram_id: int) -> tuple[str, str]:
-    """Deterministic per-user per-day quest (key, text)."""
-    seed = hashlib.md5(f'{_today_key()}:{telegram_id}'.encode('utf-8')).hexdigest()
-    return DAILY_QUESTS[int(seed, 16) % len(DAILY_QUESTS)]
+    """Backward-compatible: the primary (first) quest of today's list."""
+    return daily_quests(telegram_id)[0]
 
 
-def claim_daily_quest(telegram_id: int) -> bool:
-    """Once per day. Returns True when the claim is fresh (also +5 attention)."""
+def _claims_map(user) -> dict:
+    try:
+        data = json.loads(user.quest_claims or '{}')
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def claimed_keys_today(telegram_id: int) -> list[str]:
     today = _today_key()
     with SessionLocal() as session:
         user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
         if not user:
-            return False
-        if (user.quest_claimed_date or '') == today:
-            return False
-        user.quest_claimed_date = today
+            return []
+        return list(_claims_map(user).get(today, []))
+
+
+def daily_quests_state(telegram_id: int) -> list[dict]:
+    """Today's quests with per-item claimed flags (drives the app checklist)."""
+    done = set(claimed_keys_today(telegram_id))
+    return [{'key': k, 'text': t, 'claimed': k in done} for k, t in daily_quests(telegram_id)]
+
+
+def _bonus_media_roll(user) -> bool:
+    """~20% chance a spontaneous free photo drops, at most once per day. Marks
+    ``bonus_media_date`` on success so the caller can deliver the media."""
+    today = _today_key()
+    if (user.bonus_media_date or '') == today:
+        return False
+    if random.random() < 0.20:
+        user.bonus_media_date = today
+        return True
+    return False
+
+
+def claim_quest(telegram_id: int, quest_key: str) -> dict | None:
+    """V3.49.0: claim one of today's quests by key. Returns a result dict on a
+    fresh claim (attention +5, quests_completed +1, bonus-media roll) or None
+    when the key is not today's quest or was already claimed today."""
+    today = _today_key()
+    todays = {k for k, _ in daily_quests(telegram_id)}
+    if quest_key not in todays:
+        return None
+    with SessionLocal() as session:
+        user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+        if not user:
+            return None
+        claims = _claims_map(user)
+        done = list(claims.get(today, []))
+        if quest_key in done:
+            return None
+        done.append(quest_key)
+        claims[today] = done
+        # keep only the last few days so the JSON column never grows unbounded
+        recent = sorted(claims.keys())[-5:]
+        claims = {d: claims[d] for d in recent}
+        user.quest_claims = json.dumps(claims, ensure_ascii=False)
+        user.quest_claimed_date = today  # legacy field kept in sync for old clients
         user.attention_points = (user.attention_points or 0) + 5
+        user.quests_completed = (user.quests_completed or 0) + 1
+        bonus = _bonus_media_roll(user)
         session.commit()
-    return True
+        return {
+            'attention': 5,
+            'quests_completed': user.quests_completed or 0,
+            'bonus_media': bonus,
+        }
+
+
+def claim_daily_quest(telegram_id: int) -> bool:
+    """Legacy single-quest entry point: claims today's primary quest. Returns
+    True on a fresh claim (kept for the bot's old callback and V3.21 pins)."""
+    return claim_quest(telegram_id, daily_quest(telegram_id)[0]) is not None
 
 
 def get_pet_name(telegram_id: int) -> str | None:

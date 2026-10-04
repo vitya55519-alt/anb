@@ -390,6 +390,14 @@
   .relbar-label span:first-child { color: var(--accent); font-weight: 600; }
   .relbar-track { height: 8px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; }
   .relbar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px; transition: width .4s ease; }
+    /* V3.50.0: the centered tenderness<->passion swing bar on the character card */
+    .pathbar .relbar-label span:last-child { color: var(--text); font-weight: 600; opacity: .85; }
+    .path-track { position: relative; height: 8px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; }
+    .path-center { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(255,255,255,.28); z-index: 2; }
+    .path-fill { position: absolute; top: 0; bottom: 0; width: 0; border-radius: 4px; transition: width .4s ease; }
+    .path-fill.left { right: 50%; background: linear-gradient(270deg, #ff8fb1, #7c6cff); }
+    .path-fill.right { left: 50%; background: linear-gradient(90deg, #ff6a3d, #ff2d78); }
+    .path-ends { display: flex; justify-content: space-between; font-size: 11px; opacity: .55; margin-top: 5px; }
   /* V3.44.0: popularity leaderboard */
   .leaderboard { margin: 16px; padding: 14px; background: var(--card); border-radius: 14px; }
   .leaderboard h3 { margin: 0 0 10px; font-size: 15px; color: var(--accent); }
@@ -433,6 +441,9 @@
   .featquest .qtext { background: var(--card); border-radius: 14px; padding: 14px; line-height: 1.5; margin-bottom: 12px; }
   .featdone { display: block; width: 100%; border: 0; border-radius: 14px; padding: 14px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
   .featdone:disabled { opacity: .5; }
+    /* V3.49.0: the daily-task checklist rows and progress hints */
+    .featquest .qrow { margin-bottom: 14px; }
+    .featquest .qprog { color: rgba(255,255,255,.55); font-size: 13px; line-height: 1.45; margin-top: 2px; }
   /* V3.39.0: the Come Closer segment switch — our roster vs the community */
   .seg { display: flex; gap: 6px; margin: 4px 14px 10px; background: var(--card); border-radius: 14px; padding: 4px; }
   .seg button { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 10px 8px; border-radius: 11px; font-size: 14px; font-weight: 700; cursor: pointer; }
@@ -790,6 +801,16 @@
       <div class="relbar-label"><span id="charRelLbl"></span><span id="charRelPct"></span></div>
       <div class="relbar-track"><div class="relbar-fill" id="charRelFill"></div></div>
     </div>
+    <!-- V3.50.0: relationship path (tenderness <-> passion), centered swing bar -->
+    <div class="relbar-wrap pathbar" id="charPathBar" style="display:none">
+      <div class="relbar-label"><span id="charPathLbl"></span><span id="charPathTag"></span></div>
+      <div class="path-track">
+        <div class="path-fill left" id="charPathLeft"></div>
+        <div class="path-center"></div>
+        <div class="path-fill right" id="charPathRight"></div>
+      </div>
+      <div class="path-ends"><span id="charPathEndL"></span><span id="charPathEndR"></span></div>
+    </div>
     <button class="charcta" id="charStart"></button>
     <div class="charblock" id="charBio"></div>
     <!-- V3.44.8: author link — opens the author's public page (author funnel) -->
@@ -1012,6 +1033,7 @@ const L_EN = {
   partner_row: '💰 Partner program', docs_row: '📜 Documents & prices', open_chat: 'chat',
   // V3.39.0: the Come Closer character page + in-app chat media.
   start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', lb_title: '🏆 Top Popular',
+    path_lbl: '💞 Relationship path', path_tender: 'Tender', path_balanced: 'Balanced', path_free: 'Uninhibited', path_end_l: 'Tenderness', path_end_r: 'Passion',
     comments_lbl: '💬 Comments', comment_placeholder: 'Write a comment...', comment_submit: 'Submit', comment_empty: 'No comments yet — be the first!',
   wiz_save: 'Save', wiz_skip: 'Skip', wiz_skip_hint: 'Write or skip...', wiz_upload_photo: 'Upload photo',
   seg_official: '🍑 Peach Garden', seg_community: '👥 Community',
@@ -1026,6 +1048,8 @@ const L_EN = {
   feat_video: 'Video', feat_cosplay: 'Cosplay', feat_hot: 'Private',
   // V3.41.0: the app-chat feature sheet (apartment / date / daily quest).
   feat_done_btn: '✅ Done · +5 attention', feat_claimed: 'Already done today ❤️',
+  // V3.49.0: daily-task checklist progress (2-3 tasks a day, story ladder).
+  feat_tasks_left: 'more tasks to unlock', feat_total: 'tasks done in total',
   feat_empty: 'Nothing here yet', feat_paid: 'Date paid 💕 she will write in the chat',
   // V3.43.5: the in-app Settings section (spicy switch + interface language).
   settings_title: 'Settings', spicy_title: '🌶 Spicy mode', spicy_on: 'on', spicy_off: 'off',
@@ -1141,6 +1165,7 @@ const L_RU = {
   partner_row: '💰 Партнёрка', docs_row: '📜 Документы и цены', open_chat: 'чат',
   // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
   start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', lb_title: ' Топ популярных',
+    path_lbl: '💞 Характер связи', path_tender: 'Нежная', path_balanced: 'Сбалансированная', path_free: 'Раскрепощённая', path_end_l: 'Нежность', path_end_r: 'Страсть',
     comments_lbl: '💬 Комментарии', comment_placeholder: 'Напиши комментарий...', comment_submit: 'Отправить', comment_empty: 'Пока нет комментариев — будь первым!',
   wiz_save: 'Сохранить', wiz_skip: 'Пропустить', wiz_skip_hint: 'Напиши или пропусти...', wiz_upload_photo: 'Загрузить фото',
   seg_official: '🍑 Персиковый сад', seg_community: '👥 Сообщество',
@@ -1155,6 +1180,8 @@ const L_RU = {
   feat_video: 'Видео', feat_cosplay: 'Косплей', feat_hot: 'Наедине',
   // V3.41.0: панель фич в чате приложения (квартира / свидание / задание дня).
   feat_done_btn: '✅ Выполнено · +5 внимания', feat_claimed: 'Сегодня уже выполнено ❤️',
+  // V3.49.0: чек-лист заданий дня (2-3 в день, лесенка историй).
+  feat_tasks_left: 'ещё заданий до', feat_total: 'заданий выполнено всего',
   feat_empty: 'Здесь пока пусто', feat_paid: 'Свидание оплачено 💕 она напишет в чат',
   // V3.43.5: секция «Настройки» в профиле (пошлый режим + язык интерфейса).
   settings_title: 'Настройки', spicy_title: '🌶 Пошлый режим', spicy_on: 'вкл', spicy_off: 'выкл',
@@ -1942,12 +1969,25 @@ function renderFeature(j) {
   const box = document.getElementById('featBody');
   if (j.kind === 'photo') { renderPhotoScenes(j); return; }
   if (j.kind === 'quest') {
-    const done = j.claimed;
-    box.innerHTML = '<div class="featquest"><div class="qtext">\ud83c\udfaf ' + esc(j.text) + '</div>' +
-      '<button class="featdone" id="questDone"' + (done ? ' disabled' : '') + '>' +
-      esc(done ? L.feat_claimed : L.feat_done_btn) + '</button></div>';
-    const qbtn = document.getElementById('questDone');
-    if (qbtn && !done) qbtn.addEventListener('click', () => featurePost({ kind: 'quest' }));
+    const quests = (j.quests && j.quests.length) ? j.quests : [{ key: '', text: j.text, claimed: j.claimed }];
+    let html = '<div class="featquest">';
+    quests.forEach(q => {
+      const btn = q.claimed
+        ? '<button class="featdone" disabled>' + esc(L.feat_claimed) + '</button>'
+        : '<button class="featdone" data-qkey="' + esc(q.key) + '">' + esc(L.feat_done_btn) + '</button>';
+      html += '<div class="qrow"><div class="qtext">\ud83c\udfaf ' + esc(q.text) + '</div>' + btn + '</div>';
+    });
+    if (j.next_unlock && j.next_unlock.remaining > 0) {
+      html += '<div class="qprog">\ud83d\udd13 ' + j.next_unlock.remaining + ' ' + esc(L.feat_tasks_left) + ' \u00ab' + esc(j.next_unlock.title) + '\u00bb</div>';
+    }
+    if (j.quests_completed != null) {
+      html += '<div class="qprog">\u2705 ' + j.quests_completed + ' ' + esc(L.feat_total) + '</div>';
+    }
+    html += '</div>';
+    box.innerHTML = html;
+    box.querySelectorAll('.featdone[data-qkey]').forEach(b => {
+      b.addEventListener('click', () => featurePost({ kind: 'quest', quest_key: b.getAttribute('data-qkey') }));
+    });
     return;
   }
   const items = j.items || [];
@@ -2049,18 +2089,25 @@ async function openFeature(kind) {
   document.getElementById('featBody').innerHTML = '<div class="loading">' + esc(L.loading) + '</div>';
   document.getElementById('featTitle').textContent = '';
   document.getElementById('featview').classList.add('open');
-  try {
-    const r = await fetch('/webapp/api/feature?init_data=' + encodeURIComponent(tg.initData) +
-      '&kind=' + encodeURIComponent(kind) + '&character_id=' + encodeURIComponent(CHAT.id));
-    if (r.status === 401) { toast(L.auth_short); closeFeature(); return; }
-    const j = await r.json();
-    if (!j.ok) { document.getElementById('featBody').innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; return; }
-    if (kind === 'hot') _hotData = j;
-    document.getElementById('featTitle').textContent = (kind === 'photo') ? L.photo_menu_title : (j.title || '');
-    renderFeature(j);
-  } catch (e) {
-    document.getElementById('featBody').innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>';
+  const url = '/webapp/api/feature?init_data=' + encodeURIComponent(tg.initData) +
+    '&kind=' + encodeURIComponent(kind) + '&character_id=' + encodeURIComponent(CHAT.id);
+  const fail = () => { document.getElementById('featBody').innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; };
+  let j = null;
+  // V3.48.3: ride out a transient 5xx / dropped connection (cold-start DB blip)
+  // with one silent retry before showing «try again».
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await fetch(url);
+      if (r.status === 401) { toast(L.auth_short); closeFeature(); return; }
+      const parsed = await r.json();
+      if (parsed && parsed.ok) { j = parsed; break; }
+    } catch (e) { /* transient — retry below */ }
+    if (attempt === 0) await new Promise(res => setTimeout(res, 450));
   }
+  if (!j) { fail(); return; }
+  if (kind === 'hot') _hotData = j;
+  document.getElementById('featTitle').textContent = (kind === 'photo') ? L.photo_menu_title : (j.title || '');
+  renderFeature(j);
 }
 
 async function featurePost(payload) {
@@ -2095,11 +2142,17 @@ async function featurePost(payload) {
       });
       return;
     }
-    closeFeature();
     const empty = box.querySelector('.chat-empty'); if (empty) empty.remove();
     if (j.text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.text, ts: null }));
     if (j.photo_url) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
     box.scrollTop = box.scrollHeight;
+    if (payload.kind === 'quest') {
+      // V3.49.0: keep the sheet open and refresh the checklist + progress.
+      openFeature('quest');
+      if (typeof loadMe === 'function') loadMe();
+      return;
+    }
+    closeFeature();
   } catch (e) { toast(L.reply_err); }
 }
 
@@ -2177,6 +2230,21 @@ function openCharPage(el) {
     document.getElementById('charRelFill').style.width = pct + '%';
   } else {
     relBar.style.display = 'none';
+  }
+  // V3.50.0: the tenderness<->passion swing bar (qualitative only, no raw axis).
+  const pathBar = document.getElementById('charPathBar');
+  if (typeof c.path === 'number') {
+    pathBar.style.display = '';
+    const ax = Math.max(-100, Math.min(100, c.path));
+    const half = Math.abs(ax) / 2;  // percent of the full track, from center
+    document.getElementById('charPathLeft').style.width = (ax < 0 ? half : 0) + '%';
+    document.getElementById('charPathRight').style.width = (ax > 0 ? half : 0) + '%';
+    document.getElementById('charPathLbl').textContent = L.path_lbl;
+    document.getElementById('charPathTag').textContent = ax <= -20 ? L.path_tender : (ax >= 20 ? L.path_free : L.path_balanced);
+    document.getElementById('charPathEndL').textContent = L.path_end_l;
+    document.getElementById('charPathEndR').textContent = L.path_end_r;
+  } else {
+    pathBar.style.display = 'none';
   }
   const selBtn = document.getElementById('charSelect');
   selBtn.textContent = L.make_mine;

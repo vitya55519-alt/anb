@@ -5,7 +5,8 @@ from sqlalchemy import select
 from services.db import SessionLocal
 from services.user_service import ensure_user
 from models.quest_models import UserQuestProgress, QuestReplayOffer
-from models.app_models import ProductEvent, Memory
+from models.relationship_models import UserCharacterRelationship
+from models.app_models import ProductEvent, Memory, User
 from config import CHARACTER_ID, QUEST_REPLAY_STARS, PREMIUM_MONTHLY_QUEST_REPLAYS
 from services.access_service import is_premium
 
@@ -307,11 +308,107 @@ QUESTS = {
             },
         },
     },
+    # V3.50.0: explicit dilemma quests — each pair is a clean romance/bold fork
+    # that visibly nudges the per-character relationship path.
+    'late_night_text': {
+        'title': 'Поздно ночью',
+        'min_level': 5,
+        'teaser': 'Позний вечер: Анна выбирает, кем быть для тебя сегодня — нежной или смелой.',
+        'unlock_message': 'Открыта дилемма «Поздно ночью» — ваш путь становится заметнее.',
+        'intro': 'уже поздно, а мне не спится. хочешь, я буду нежной и уютной до утра… или чуть более смелой? 😉',
+        'routes': {
+            'tender': {
+                'label': '🌙 Нежно и уютно',
+                'result': 'тогда укрываю тебя словами. расскажи, о чём мечтаешь, когда тишина — я слушаю самое важное ❤️',
+                'photo_scene': 'home',
+                'memory': 'В дилемме «Поздно ночью» пользователь выбрал нежность; Анна была тёплой и уютной до утра.',
+            },
+            'daring': {
+                'label': '🔥 Посмелее',
+                'result': 'ну держись… сегодня я не буду прятать, что мне нравится, когда ты рядом. шёпотом, но честно 😏',
+                'photo_scene': 'personal',
+                'memory': 'В дилемме «Поздно ночью» пользователь выбрал смелый тон; Анна стала откровеннее и игривее.',
+            },
+        },
+    },
+    'candle_or_adrenaline': {
+        'title': 'Свечи или адреналин',
+        'min_level': 6,
+        'teaser': 'Анна предлагает вечер на выбор: медленная романтика при свечах или дерзкий драйв.',
+        'unlock_message': 'Открыта дилемма «Свечи или адреналин» — финальный акцент вашей связи.',
+        'intro': 'вечер только наш: приглушить свет, зажечь свечи и никуда не спешить… или добавить адреналина? 🕯️',
+        'routes': {
+            'candles': {
+                'label': '🕯️ Свечи и тишина',
+                'result': 'медленно, тепло, только ты и я. иногда самая большая близость — это когда не нужно ничего лишнего ❤️',
+                'photo_scene': 'home',
+                'memory': 'В дилемме «Свечи или адреналин» пользователь выбрал романтику при свечах.',
+            },
+            'adrenaline': {
+                'label': '⚡ Адреналин',
+                'result': 'вот это по нам. быстрее, громче, без тормозов — и ты рядом, чтобы это выдержать 😏',
+                'photo_scene': 'rooftop',
+                'memory': 'В дилемме «Свечи или адреналин» пользователь выбрал дерзкий вечер с адреналином.',
+            },
+        },
+    },
 }
 
 
 
 def _now(): return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+# V3.50.0: which way each quest answer nudges the per-character relationship
+# path. 'romance' pulls toward tenderness (path_axis negative), 'bold' toward
+# debauchery (positive); anything unlisted stays neutral. Only the FIRST
+# (canonical) choice of a story counts, so paid replays can't farm the axis.
+ROUTE_INCLINATION = {
+    ('morning_routine', 'cozy'): 'romance',
+    ('photo_hint', 'dreamy'): 'romance',
+    ('photo_hint', 'confident'): 'bold',
+    ('lost_key', 'coffee'): 'romance',
+    ('rainy_day', 'blanket'): 'romance',
+    ('rainy_day', 'umbrella'): 'bold',
+    ('compliment_trade', 'warm'): 'romance',
+    ('compliment_trade', 'playful'): 'bold',
+    ('future_self', 'calm'): 'romance',
+    ('future_self', 'fire'): 'bold',
+    ('small_secret', 'childhood'): 'romance',
+    ('small_secret', 'dream'): 'romance',
+    ('night_ride', 'silence'): 'romance',
+    ('night_ride', 'music'): 'bold',
+    ('outfit_choice', 'soft'): 'romance',
+    ('outfit_choice', 'bold'): 'bold',
+    ('evening_choice', 'home'): 'romance',
+    ('weekend_choice', 'cinema'): 'romance',
+    ('date_mood', 'restaurant'): 'romance',
+    ('date_mood', 'rooftop'): 'bold',
+    ('surprise_choice', 'personal'): 'bold',
+    ('our_story_choice', 'embankment'): 'romance',
+    ('late_night_text', 'tender'): 'romance',
+    ('late_night_text', 'daring'): 'bold',
+    ('candle_or_adrenaline', 'candles'): 'romance',
+    ('candle_or_adrenaline', 'adrenaline'): 'bold',
+}
+
+PATH_STEP = 8.0  # axis movement per canonical quest answer
+
+
+def _apply_path(session, uid: int, character_id: str, inclination: str) -> None:
+    """V3.50.0: nudge the per-character path axis. Romance -> negative,
+    bold -> positive, clamped to [-100, 100]. No-op for neutral or when the
+    relationship row does not exist yet."""
+    if inclination not in ('romance', 'bold'):
+        return
+    row = session.scalar(select(UserCharacterRelationship).where(
+        UserCharacterRelationship.user_id == uid,
+        UserCharacterRelationship.character_id == character_id,
+    ))
+    if row is None:
+        return
+    delta = -PATH_STEP if inclination == 'romance' else PATH_STEP
+    row.path_axis = max(-100.0, min(100.0, (getattr(row, 'path_axis', 0.0) or 0.0) + delta))
 
 def get_quest(key: str): return QUESTS.get(key)
 
@@ -320,7 +417,10 @@ def progress(telegram_id: int, quest_key: str):
     with SessionLocal() as s:
         return s.scalar(select(UserQuestProgress).where(UserQuestProgress.user_id == uid, UserQuestProgress.character_id == CHARACTER_ID, UserQuestProgress.quest_key == quest_key))
 
-def complete_route(telegram_id: int, quest_key: str, route_key: str, paid_replay: bool = False) -> dict:
+def complete_route(telegram_id: int, quest_key: str, route_key: str, paid_replay: bool = False, character_id: str | None = None) -> dict:
+    # V3.50.0: the path axis belongs to the character the user actually chats
+    # with; callers pass get_user_character(...), the default keeps old pins.
+    char_id = character_id or CHARACTER_ID
     quest = QUESTS[quest_key]; route = quest['routes'][route_key]; uid = ensure_user(telegram_id)
     with SessionLocal() as s:
         row = s.scalar(select(UserQuestProgress).where(UserQuestProgress.user_id == uid, UserQuestProgress.character_id == CHARACTER_ID, UserQuestProgress.quest_key == quest_key))
@@ -331,6 +431,9 @@ def complete_route(telegram_id: int, quest_key: str, route_key: str, paid_replay
         first = row.canonical_route is None
         if first:
             row.canonical_route = route_key
+            # V3.50.0: only the first (canonical) answer moves the path, so
+            # paid replays can't farm the axis in both directions.
+            _apply_path(s, uid, char_id, ROUTE_INCLINATION.get((quest_key, route_key), 'neutral'))
             memory_text=route.get('memory')
             if memory_text:
                 key=f'quest:{quest_key}:canonical'
@@ -378,19 +481,45 @@ def consume_premium_replay(telegram_id: int, quest_key: str, route_key: str) -> 
         s.commit()
     return True
 
+def _quests_completed(telegram_id: int) -> int:
+    """V3.49.0: lifetime count of claimed daily tasks (the story-unlock
+    currency). Read straight from the User row."""
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as s:
+        u = s.get(User, uid)
+        return int(getattr(u, 'quests_completed', 0) or 0) if u else 0
+
+
+def quest_task_threshold(quest_key: str) -> int:
+    """V3.49.0: cumulative completed daily tasks required to open a story.
+    The ladder is 5 x (definition order + 1): 5, 10, 15, ..."""
+    order = list(QUESTS.keys())
+    try:
+        i = order.index(quest_key)
+    except ValueError:
+        return 0
+    return 5 * (i + 1)
+
+
 def newly_unlocked_quests(telegram_id: int, previous_level: int, current_level: int) -> list[dict]:
     """Return quests unlocked by a real relationship-level transition.
 
     This is intentionally transition-based: ordinary messages at the same level do
     not spam unlock notifications. L1 is surfaced during onboarding instead.
+    V3.49.0: a level transition alone is no longer enough — the daily-task
+    counter must also have reached the story's threshold, so we never announce a
+    quest the player still has to earn tasks for.
     """
     previous_level = max(1, min(6, int(previous_level)))
     current_level = max(1, min(6, int(current_level)))
     if current_level <= previous_level:
         return []
+    completed = _quests_completed(telegram_id)
     out = []
-    for key, quest in QUESTS.items():
+    for i, (key, quest) in enumerate(QUESTS.items()):
         if previous_level < int(quest['min_level']) <= current_level:
+            if completed < 5 * (i + 1):
+                continue
             p = progress(telegram_id, key)
             if p and p.canonical_route:
                 continue
@@ -405,10 +534,26 @@ def newly_unlocked_quests(telegram_id: int, previous_level: int, current_level: 
 
 
 def story_status(telegram_id: int, relationship_level: int) -> list[dict]:
-    out=[]
-    for key,q in QUESTS.items():
-        p=progress(telegram_id,key); done=[]; canonical=None
+    # V3.49.0: a story opens only when BOTH gates pass — the relationship level
+    # (romance core loop) AND the cumulative daily-task counter on the
+    # 5/10/15... ladder. ``unlocked`` stays the single source of truth read by
+    # the bot keyboard and the app; the extra fields drive the "N tasks to go"
+    # progress UI without leaking raw scores.
+    completed = _quests_completed(telegram_id)
+    out = []
+    for i, (key, q) in enumerate(QUESTS.items()):
+        p = progress(telegram_id, key); done = []; canonical = None
         if p:
-            done=json.loads(p.completed_routes_json or '[]'); canonical=p.canonical_route
-        out.append({'key':key,'title':q['title'],'teaser':q.get('teaser',''),'unlocked':relationship_level>=q['min_level'],'min_level':q['min_level'],'done':done,'canonical':canonical,'routes':q['routes']})
+            done = json.loads(p.completed_routes_json or '[]'); canonical = p.canonical_route
+        need_tasks = 5 * (i + 1)
+        level_ok = relationship_level >= q['min_level']
+        tasks_ok = completed >= need_tasks
+        out.append({
+            'key': key, 'title': q['title'], 'teaser': q.get('teaser', ''),
+            'unlocked': level_ok and tasks_ok, 'min_level': q['min_level'],
+            'unlock_tasks': need_tasks, 'tasks_done': completed,
+            'tasks_remaining': max(0, need_tasks - completed),
+            'level_ok': level_ok, 'tasks_ok': tasks_ok,
+            'done': done, 'canonical': canonical, 'routes': q['routes'],
+        })
     return out

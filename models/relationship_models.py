@@ -22,6 +22,13 @@ class UserCharacterRelationship(Base):
     familiarity_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     continuity_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     connection_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    # V3.50.0: the per-character relationship *path* — a swing axis from
+    # romance (negative) to debauchery (positive), clamped to [-100, 100].
+    # Quest route answers nudge it; it colors the chat tone and gates the
+    # boldest spicy content (still behind adult_confirmed + level). This is a
+    # distinct dimension from intimacy_score (closeness growth), never shown as
+    # a raw number to the user. Auto-migrated by services/db.py.
+    path_axis: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     stage: Mapped[str] = mapped_column(String(32), default="stranger", nullable=False)
 
     first_interaction_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

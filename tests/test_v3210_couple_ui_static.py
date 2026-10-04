@@ -82,9 +82,9 @@ def test_daily_quest_flow():
     assert 'def daily_quest(telegram_id: int)' in COUPLE
     assert 'def claim_daily_quest(telegram_id: int)' in COUPLE
     assert "attention_points = (user.attention_points or 0) + 5" in COUPLE
-    handler = MAIN[MAIN.index('async def daily_quest_button('):MAIN.index('@dp.callback_query(F.data == \'questday:claim\')')]
+    handler = MAIN[MAIN.index('async def daily_quest_button('):MAIN.index('@dp.callback_query(F.data.startswith(\'questday:claim\'))')]
     assert 'couple_service.daily_quest(' in handler
-    assert "callback_data='questday:claim'" in handler
+    assert "questday:claim" in handler
     claim = MAIN[MAIN.index('async def daily_quest_claim('):MAIN.index('@dp.callback_query(F.data == \'toggle:rituals\')')]
     assert 'claim_daily_quest(' in claim
 

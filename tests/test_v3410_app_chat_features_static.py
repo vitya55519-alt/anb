@@ -161,7 +161,7 @@ def test_feature_action_reuses_the_existing_services():
     assert 'apartment_service.room_action_reply(room_id, action_id)' in act
     assert 'await record_user_message(telegram_id, user_name, relationship=rel_delta, intimacy=int_delta' in act
     # quest: the character-agnostic couple_service claim (+5 attention)
-    assert 'couple_service.claim_daily_quest(telegram_id)' in act
+    assert 'couple_service.claim_quest(telegram_id, quest_key)' in act
     assert "status=409" in act
     # date: free/admin delivers app-native, paid returns a Stars invoice that
     # reuses the bot's existing «date:» payment + reward path
@@ -204,7 +204,7 @@ def test_frontend_wires_video_and_the_feature_sheet():
     assert 'else if (m.media_kind === \'video\') body = `<video class="m" src="${esc(src)}" controls playsinline></video>`;' in INDEX
     # the invoice path reuses tg.openInvoice; the free path appends bubbles
     assert 'tg.openInvoice(j.invoice' in INDEX
-    assert "featurePost({ kind: 'quest' })" in INDEX
+    assert "featurePost({ kind: 'quest', quest_key:" in INDEX
     assert "featurePost({ kind: 'date', id: el.dataset.id })" in INDEX
     # the wait-string for video is localized in both languages
     assert "media_wait_video: 'Rendering a video — 1–3 min…'" in INDEX

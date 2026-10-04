@@ -28,6 +28,10 @@ STAGE_RULES = (
     ("stranger", 0, 0, 0),
 )
 
+# V3.50.0: how far the quest-driven path axis (-100..+100) must swing before
+# it starts coloring the chat tone in either direction.
+PATH_TONE_THRESHOLD = 40
+
 STAGE_ORDER = ["stranger", "acquaintance", "close", "intimate", "deeply_connected", "committed", "devoted", "soulmate"]
 
 # New-user gates. Existing users are never pushed backwards by the migration.
@@ -256,6 +260,18 @@ def get_state(session: Session, user_id: int, character_id: str):
     )
 
 
+def get_path_axis(user_id: int, character_id: str) -> float:
+    """V3.50.0: the romance<->bold path (-100..+100) of one user<->character
+    pair, in its own session. 0.0 when no relationship row exists yet."""
+    from services.db import SessionLocal
+    try:
+        with SessionLocal() as session:
+            row = get_state(session, user_id, character_id)
+            return float(getattr(row, 'path_axis', 0.0) or 0.0) if row else 0.0
+    except Exception:
+        return 0.0
+
+
 def get_milestones(session: Session, row: UserCharacterRelationship | None, limit: int = 4) -> list[RelationshipMilestone]:
     if row is None:
         return []
@@ -453,6 +469,17 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
         extra = f" Недавние достижения отношений, которые можно иногда естественно обыграть без системных формулировок: {titles}."
     bond_title, bond_hint = bond_character(row)
     extra += f" Характер вашей связи сейчас: {bond_title} — {bond_hint}. Пусть он естественно окрашивает тон общения."
+    # V3.50.0: the quest-driven relationship path colors the tone too — one
+    # qualitative line, never the raw axis number. The stage frame below
+    # always stays the hard limit; the path only tilts the style inside it.
+    axis = float(getattr(row, 'path_axis', 0.0) or 0.0) if row is not None else 0.0
+    if axis <= -PATH_TONE_THRESHOLD:
+        extra += (" Ветвь вашей связи сейчас тяготеет к нежности: больше романтики, "
+                  "теплых пауз, деликатного внимания и чувств без откровенности.")
+    elif axis >= PATH_TONE_THRESHOLD:
+        extra += (" Ветвь вашей связи сейчас тяготеет к страсти: смелее, игривее, "
+                  "дерзче в формулировках и сильнее флиртуй — но строго в рамках "
+                  "текущего этапа: никаких графических описаний, пока этап их не допускает.")
     # V3.31.8: the stage narratives name the selected character, not Anna.
     # V3.43.3: plus her own tempo hint — the same stage must feel different
     # from heroine to heroine, not like one girl in different dresses.

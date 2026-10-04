@@ -303,6 +303,30 @@ def _batch_rel_levels(telegram_id: int | None, character_ids: list[str]) -> dict
         return {}
 
 
+def _batch_path_axis(telegram_id: int | None, character_ids: list[str]) -> dict[str, float]:
+    """V3.50.0: the per-character relationship *path* (-100 romance .. +100
+    bold) for the character-card indicator, in ONE query. Characters without
+    a relationship row simply have no key (the app hides the bar)."""
+    if not telegram_id or not character_ids:
+        return {}
+    try:
+        from models.relationship_models import UserCharacterRelationship
+        with SessionLocal() as session:
+            user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+            if not user:
+                return {}
+            rows = session.scalars(
+                select(UserCharacterRelationship).where(
+                    UserCharacterRelationship.user_id == user.id,
+                    UserCharacterRelationship.character_id.in_(character_ids),
+                )
+            ).all()
+            return {r.character_id: float(getattr(r, 'path_axis', 0.0) or 0.0) for r in rows}
+    except Exception:
+        logger.exception('batch path axis failed user=%s', telegram_id)
+        return {}
+
+
 def _author_brief(character_id: str) -> dict | None:
     """V3.44.8: public author info for a custom character card."""
     try:
@@ -377,6 +401,8 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     # present, so the storefront can render chips + power the community filter
     # without a per-card query.
     tags_by_id = _batch_tags([c.character_id for c in cards if is_custom_character(c.character_id)])
+    # V3.50.0: batched read of the romance<->bold path for the card indicator.
+    path_axes = _batch_path_axis(telegram_id, [c.character_id for c in cards])
     out = []
     for card in cards:
         custom = is_custom_character(card.character_id)
@@ -430,6 +456,9 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             'author': _author_brief(card.character_id) if custom else None,
             # V3.43.9: relationship level (0-8) for the progress bar.
             'level': rel_levels.get(card.character_id, 0),
+            # V3.50.0: relationship path (-100 tenderness .. +100 passion);
+            # None until a relationship row exists for this character.
+            'path': path_axes.get(card.character_id),
             # V3.45.28: sanitized tags for custom personas ([] for built-ins).
             'tags': parse_tags(tags_by_id.get(card.character_id)),
         })

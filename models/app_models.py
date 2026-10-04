@@ -47,6 +47,16 @@ class User(Base):
     tour_done: Mapped[bool] = mapped_column(Boolean, default=False)
     notify_rituals: Mapped[bool] = mapped_column(Boolean, default=True)
     anniversaries: Mapped[str] = mapped_column(String(64), default="")
+    # V3.49.0: daily-task retention loop. ``quests_completed`` is the lifetime
+    # count of claimed daily tasks — the currency that unlocks story quests on
+    # the 5/10/15... ladder. ``quest_claims`` is a small JSON map
+    # {"YYYY-MM-DD": ["key", ...]} of which of today's 2-3 tasks are already
+    # done (the legacy single ``quest_claimed_date`` stays for old clients).
+    # ``bonus_media_date`` throttles the ~20% spontaneous free-photo drop to
+    # at most one per day. All auto-migrated by services/db.py.
+    quests_completed: Mapped[int] = mapped_column(Integer, default=0)
+    quest_claims: Mapped[str] = mapped_column(String(64), default="")
+    bonus_media_date: Mapped[str] = mapped_column(String(10), default="")
     # V3.22.0: the chosen character survives restarts/redeploys. Empty = Anna.
     selected_character: Mapped[str] = mapped_column(String(64), default="")
     # V3.22.0: interface language ('ru'/'en'); empty = Russian (legacy).

@@ -37,6 +37,10 @@ class SpicySet:
     mood: str          # mood injected into the PhotoRequest
     text: str          # RU narration sent with the set
     text_en: str
+    # V3.50.0: extra relationship-path requirement (-100 tenderness .. +100
+    # passion). The boldest set also asks for an uninhibited path; the level
+    # and the one-time 18+ confirmation always stay the primary gates.
+    min_path: int = 0
 
 
 @dataclass(frozen=True)
@@ -72,6 +76,7 @@ SPICY_SETS: tuple[SpicySet, ...] = (
         'intimate, trusting',
         'Самое личное, что она может доверить. Только для твоих глаз.',
         'The most personal thing she can entrust. Only for your eyes.',
+        min_path=30,
     ),
 )
 

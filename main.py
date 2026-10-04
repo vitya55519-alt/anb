@@ -4363,10 +4363,10 @@ async def quest_view_cb(cq: types.CallbackQuery):
 @dp.callback_query(F.data.startswith('quest:route:'))
 async def quest_route_cb(cq: types.CallbackQuery):
     _,_,quest_key,route_key=cq.data.split(':',3)
-    result=complete_route(cq.from_user.id,quest_key,route_key,paid_replay=False)
+    result=complete_route(cq.from_user.id,quest_key,route_key,paid_replay=False,character_id=get_user_character(cq.from_user.id))
     if result.get('needs_payment'):
         if consume_premium_replay(cq.from_user.id,quest_key,route_key):
-            result=complete_route(cq.from_user.id,quest_key,route_key,paid_replay=True)
+            result=complete_route(cq.from_user.id,quest_key,route_key,paid_replay=True,character_id=get_user_character(cq.from_user.id))
             await cq.answer('Premium replay использован ✨')
             await cq.message.answer('👑 Premium replay\n\n'+result['route']['result'], reply_markup=quest_routes_keyboard(cq.from_user.id,quest_key))
             scene=result['route'].get('photo_scene')
@@ -5785,9 +5785,12 @@ async def pre_checkout(query: types.PreCheckoutQuery):
         ok = bool(date) and amount == date.cost and date.min_level <= get_relationship_level(query.from_user.id, get_user_character(query.from_user.id))
     elif payload.startswith('spicy:'):
         # V3.23.0: paid hot sets — amount, level gate and 18+ are re-checked here.
+        # V3.50.0: the boldest set also needs an uninhibited relationship path.
+        from services.relationship_engine import get_path_axis
         item = spicy_service.get_spicy_set(payload.split(':', 1)[1])
         ok = (bool(item) and amount == item.cost
               and item.min_level <= get_relationship_level(query.from_user.id, get_user_character(query.from_user.id))
+              and get_path_axis(ensure_user(query.from_user.id), get_user_character(query.from_user.id)) >= item.min_path
               and is_adult_confirmed(query.from_user.id))
     elif payload.startswith('pgift:'):
         gift = spicy_service.get_private_gift(payload.split(':', 1)[1])
@@ -5879,7 +5882,7 @@ async def successful_payment(message: types.Message):
         if not offer:
             await message.answer('Оплата прошла, но эта ветка уже устарела. Напиши /support — разберёмся.')
             return
-        result=complete_route(message.from_user.id,offer['quest_key'],offer['route_key'],paid_replay=True)
+        result=complete_route(message.from_user.id,offer['quest_key'],offer['route_key'],paid_replay=True,character_id=get_user_character(message.from_user.id))
         record_payment(message.from_user.id,'quest_replay',payment.total_amount,charge)
         track_event(ensure_user(message.from_user.id),'stars_purchase',value=payment.total_amount,metadata={'product':'quest_replay','quest':offer['quest_key'],'route':offer['route_key']})
         await message.answer('↩️ Альтернативная ветка открыта ✨\n\n'+result['route']['result'],reply_markup=quest_routes_keyboard(message.from_user.id,offer['quest_key']))
@@ -6303,12 +6306,18 @@ def _spicy_menu_text(telegram_id: int, lang: str) -> str:
 
 def _spicy_menu_keyboard(telegram_id: int, lang: str) -> InlineKeyboardMarkup:
     level = get_relationship_level(telegram_id, get_user_character(telegram_id))
+    # V3.50.0: the boldest set additionally asks for a passionate path.
+    from services.relationship_engine import get_path_axis
+    axis = get_path_axis(ensure_user(telegram_id), get_user_character(telegram_id))
     lock_suffix = 'ур.' if lang == RU else 'lvl '
     rows: list[list[InlineKeyboardButton]] = []
     for item in spicy_service.SPICY_SETS:
         name = item.name_en if lang == EN else item.name
-        if item.min_level <= level:
+        if item.min_level <= level and axis >= item.min_path:
             rows.append([InlineKeyboardButton(text=f'{item.emoji} {name} · {item.cost}⭐{fiat_suffix(item.cost)}', callback_data=f'spicy:set:{item.id}')])
+        elif item.min_level <= level:
+            hint = f'🔒 {name} · нужна страсть в вашей связи' if lang == RU else f'🔒 {name} · needs a passionate path'
+            rows.append([InlineKeyboardButton(text=hint, callback_data=f'spicy:locked:{item.min_level}')])
         else:
             rows.append([InlineKeyboardButton(text=f'🔒 {name} · {lock_suffix}{item.min_level}', callback_data=f'spicy:locked:{item.min_level}')])
     for gift in spicy_service.PRIVATE_GIFTS:
@@ -6348,6 +6357,11 @@ async def spicy_set_callback(cq: types.CallbackQuery):
     level = get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
     if item.min_level > level:
         await cq.answer(f'Откроется на уровне {item.min_level} 😉', show_alert=True)
+        return
+    # V3.50.0: the boldest set is additionally gated by the relationship path.
+    from services.relationship_engine import get_path_axis
+    if item.min_path and get_path_axis(ensure_user(cq.from_user.id), get_user_character(cq.from_user.id)) < item.min_path:
+        await cq.answer('этот сет она покажет только когда между нами будет больше страсти 🔥', show_alert=True)
         return
     if not is_adult_confirmed(cq.from_user.id):
         await cq.answer()
@@ -7116,47 +7130,69 @@ async def circle_button(message: types.Message):
     )
 
 
+async def _bot_deliver_bonus_media(cq: types.CallbackQuery):
+    """V3.49.0: mirror the app's spontaneous free photo in the bot chat — same
+    owner pool, never mints peaches/Stars."""
+    try:
+        from services import retention_features_service
+        pick = retention_features_service.random_proactive_photo()
+        if not pick:
+            return
+        data, content_type, kind = pick
+        if kind != 'photo' or not data:
+            return
+        await cq.message.answer_photo(BufferedInputFile(data, filename='bonus.jpg'),
+                                      caption='захотелось поделиться с тобой этим кадром 📸')
+    except Exception:
+        logger.exception('bot bonus media delivery failed')
+
+
 @dp.message(F.text.in_(kb_pair('quest')))
 async def daily_quest_button(message: types.Message):
-    """V3.21.0: one small request from her per day; claiming it grants attention."""
+    """V3.21.0 / V3.49.0: a few small requests from her per day (2-3), each one
+    claimable on its own for +5 attention; every claim also feeds the story
+    unlock ladder."""
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     from services import couple_service
     uid = ensure_user(message.from_user.id)
-    _, quest_text = couple_service.daily_quest(message.from_user.id)
-    user = get_user(message.from_user.id)
-    claimed = (user.quest_claimed_date or '') == couple_service._today_key()
     lang = user_lang(message.from_user.id)
-    if claimed:
-        if lang == EN:
-            await message.answer(f'🎯 daily quest: {quest_text}\n\nyou already completed it today ❤️ she can feel it.')
+    user = get_user(message.from_user.id)
+    completed = int(getattr(user, 'quests_completed', 0) or 0) if user else 0
+    quests = couple_service.daily_quests_state(message.from_user.id)
+    rows = []
+    for q in quests:
+        if q['claimed']:
+            label = '✅ ' + q['text'] + (' · done' if lang == EN else ' · готово')
         else:
-            await message.answer(f'🎯 задание дня: {quest_text}\n\nты уже выполнил его сегодня ❤️ она это чувствует.')
-        return
+            label = '🎯 ' + q['text'] + ' · +5'
+        rows.append([InlineKeyboardButton(text=label, callback_data='questday:claim:' + q['key'])])
     if lang == EN:
-        await message.answer(
-            f'🎯 daily quest: {quest_text}\n\nwhen you do it, tap “Done” and I will notice 😊 (+5 attention)',
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text='✅ Done · +5 attention', callback_data='questday:claim')],
-            ]),
-        )
+        header = f"🎯 today's quests · {completed} completed in total\n\ntap a task when you have done it — she will notice 😊"
     else:
-        await message.answer(
-            f'🎯 задание дня: {quest_text}\n\nкак сделаешь — нажми «выполнено», и я это замечу 😊 (+5 внимания)',
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text='✅ Выполнено · +5 внимания', callback_data='questday:claim')],
-            ]),
-        )
-    track_event(uid, 'daily_quest_view', metadata={'quest': couple_service.daily_quest(message.from_user.id)[0]})
+        header = f"🎯 задания дня · всего выполнено: {completed}\n\nнажми на задание, когда сделаешь — она заметит 😊"
+    await message.answer(header, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    track_event(uid, 'daily_quest_view', metadata={
+        'quests': [q['key'] for q in quests],
+        'primary': couple_service.daily_quest(message.from_user.id)[0],
+    })
 
 
-@dp.callback_query(F.data == 'questday:claim')
+@dp.callback_query(F.data.startswith('questday:claim'))
 async def daily_quest_claim(cq: types.CallbackQuery):
     from services import couple_service
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
-    if couple_service.claim_daily_quest(cq.from_user.id):
+    data = cq.data or ''
+    quest_key = data.split(':', 2)[2] if data.count(':') >= 2 else ''
+    if quest_key:
+        result = couple_service.claim_quest(cq.from_user.id, quest_key)
+    else:
+        result = {'attention': 5} if couple_service.claim_daily_quest(cq.from_user.id) else None
+    if result:
         track_event(uid, 'daily_quest_claimed')
         await cq.answer('+5 внимания ❤️')
         await cq.message.answer('ммм, приятно 😊 +5 очков внимания. она запомнила.')
+        if result.get('bonus_media'):
+            await _bot_deliver_bonus_media(cq)
     else:
         await cq.answer('сегодня уже выполнено', show_alert=True)
 
@@ -10306,6 +10342,19 @@ async def _webapp_media(request: web.Request) -> web.Response:
 
 
 async def _webapp_api_feature(request: web.Request) -> web.Response:
+    # V3.48.3: exception-guarded wrapper. A transient DB blip in the shared
+    # prologue (get_relationship_level -> ensure_user writes on every call) used
+    # to surface as a raw 500, which the Mini App rendered as the useless «Не
+    # получилось ответить — попробуй ещё раз» on the daily-quest button. Log the
+    # real cause and answer with a clean JSON error the SPA retries once.
+    try:
+        return await _webapp_api_feature_impl(request)
+    except Exception:
+        logger.exception('webapp feature menu failed')
+        return web.json_response({'ok': False, 'error': 'temporarily_unavailable'})
+
+
+async def _webapp_api_feature_impl(request: web.Request) -> web.Response:
     # V3.41.0: the app-chat feature buttons (🏠 Квартира, 💕 Свидание,
     # 🎯 Задание дня) all render their menu from this one endpoint. Same auth
     # as the rest of the Mini App API; the character comes from the open chat.
@@ -10418,12 +10467,48 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
                   'subtitle': f'{5} 🍑' if lang == RU else '5 🍑', 'locked': False}]
         title = '🎬 Video' if lang == EN else '🎬 Видео'
         return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
+    quests = couple_service.daily_quests_state(telegram_id)
     _, quest_text = couple_service.daily_quest(telegram_id)
     user = get_user(telegram_id)
+    completed = int(getattr(user, 'quests_completed', 0) or 0) if user else 0
     claimed = bool(user and (user.quest_claimed_date or '') == couple_service._today_key())
+    # V3.49.0: the next story still gated behind the daily-task ladder, so the
+    # sheet can show "N more tasks -> story «...» unlocks". Legacy 'text'/
+    # 'claimed' stay for old clients; 'quests' is the new 2-3 item checklist.
+    next_unlock = None
+    for st in story_status(telegram_id, level):
+        if not st['unlocked'] and not st['tasks_ok']:
+            next_unlock = {'title': st['title'], 'remaining': st['tasks_remaining']}
+            break
     title = '🎯 Daily quest' if lang == EN else '🎯 Задание дня'
     return web.json_response({'ok': True, 'kind': kind, 'title': title,
-                              'text': quest_text, 'claimed': claimed})
+                              'text': quest_text, 'claimed': claimed,
+                              'quests': quests, 'quests_completed': completed,
+                              'next_unlock': next_unlock})
+
+
+def _deliver_bonus_media(telegram_id: int, character_id: str, uid: int):
+    """V3.49.0: drop a spontaneous free photo from the owner's proactive pool
+    into the shared dialog. Never mints peaches/Stars (V3.46.0 rule) - it only
+    reuses an already-owned pool image. Returns the /webapp/media URL when a
+    photo was attached, or None when the pool is empty / pick is not a photo."""
+    try:
+        from services import retention_features_service
+        pick = retention_features_service.random_proactive_photo()
+        if not pick:
+            return None
+        data, content_type, kind = pick
+        if kind != 'photo' or not data:
+            return None
+        filename = webapp_service.save_chat_media(telegram_id, data, 'jpg', content_type or 'image/jpeg')
+        url = f'/webapp/media/{filename}'
+        save_message(uid, character_id, 'assistant',
+                     'захотелось поделиться с тобой этим кадром 📸',
+                     media_kind='photo', media_url=url)
+        return url
+    except Exception:
+        logger.exception('bonus media delivery failed')
+        return None
 
 
 async def _webapp_api_feature_action(request: web.Request) -> web.Response:
@@ -10472,13 +10557,21 @@ async def _webapp_api_feature_action(request: web.Request) -> web.Response:
 
     if kind == 'quest':
         from services import couple_service
-        if not couple_service.claim_daily_quest(telegram_id):
+        # V3.49.0: claim one of today's 2-3 tasks by key (falls back to the
+        # primary quest for old clients that send no quest_key).
+        quest_key = str(body.get('quest_key', '')) or couple_service.daily_quest(telegram_id)[0]
+        result = couple_service.claim_quest(telegram_id, quest_key)
+        if not result:
             return web.json_response({'ok': False, 'error': 'already'}, status=409)
-        track_event(uid, 'daily_quest_claimed', metadata={'source': 'webapp'})
+        track_event(uid, 'daily_quest_claimed', metadata={'source': 'webapp', 'quest': quest_key})
         text = ('mmm, nice 😊 +5 attention points. she noticed.' if user_lang(telegram_id) == EN
                 else 'ммм, приятно 😊 +5 очков внимания. она заметила.')
         save_message(uid, character_id, 'assistant', text)
-        return web.json_response({'ok': True, 'kind': kind, 'text': text})
+        bonus_url = _deliver_bonus_media(telegram_id, character_id, uid) if result.get('bonus_media') else None
+        return web.json_response({'ok': True, 'kind': kind, 'text': text,
+                                  'quests_completed': result.get('quests_completed'),
+                                  'bonus_media': bool(bonus_url),
+                                  'photo_url': bonus_url})
 
     date = dates_service.get(str(body.get('id', '')))
     if not date or date.min_level > level:
