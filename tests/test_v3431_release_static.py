@@ -134,8 +134,9 @@ def test_ui_polish_pins():
     # the channel-subscribe banner grew (owner: «кнопку за подписку больше»)
     assert 'margin: 12px 4px 4px; padding: 15px 16px; border: 0; border-radius: 16px;' in INDEX
     assert 'width: 46px; height: 46px; border-radius: 50%; flex: 0 0 auto;' in INDEX
-    # the like button is thumb-sized now
-    assert 'background: rgba(10,5,14,.7); color: #fff; font-size: 20px; font-weight: 700; padding: 12px 20px; cursor: pointer;' in INDEX
+    # the like button is thumb-sized now (V3.48.0: it moved into the hero
+    # header row and shrank a bit so it no longer covers the carousel)
+    assert 'background: rgba(10,5,14,.7); color: #fff; font-size: 15px; font-weight: 700; padding: 8px 14px; cursor: pointer;' in INDEX
     assert 'backdrop-filter: blur(6px); box-shadow: 0 2px 12px rgba(0,0,0,.35);' in INDEX
     # the plot block speaks human
     assert "plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ'" in INDEX

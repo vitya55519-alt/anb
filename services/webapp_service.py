@@ -155,6 +155,14 @@ _FACE_REFERENCES = {
     'kate_01': ('references', 'kate', '00_kate_canonical_face.png'),
     'sasha_01': ('references', 'sasha', '00_sasha_canonical_face.png'),
     'rex_01': ('references', 'rex', '00_rex_canonical_face.png'),
+    # V3.48.0: the owner-photo character pack — seven new heroines.
+    'violetta_01': ('references', 'violetta', '00_violetta_canonical_face.png'),
+    'darina_01': ('references', 'darina', '00_darina_canonical_face.png'),
+    'eva_01': ('references', 'eva', '00_eva_canonical_face.png'),
+    'romina_01': ('references', 'romina', '00_romina_canonical_face.png'),
+    'kristina_01': ('references', 'kristina', '00_kristina_canonical_face.png'),
+    'zlata_01': ('references', 'zlata', '00_zlata_canonical_face.png'),
+    'veronika_01': ('references', 'veronika', '00_veronika_canonical_face.png'),
 }
 
 
