@@ -22,6 +22,10 @@ def test_user_columns_added():
 def test_daily_quests_returns_2_to_3_with_legacy_wrapper():
     assert 'def daily_quests(telegram_id: int)' in COUPLE
     assert 'count = 3 if seed % 2 == 0 else 2' in COUPLE
+    # V3.51.0: premium gets exactly 4 daily tasks (lazy is_premium import)
+    assert 'from services.access_service import is_premium' in COUPLE
+    assert 'if is_premium(telegram_id):' in COUPLE
+    assert 'count = 4' in COUPLE
     # the single-quest entry point survives so the V3.21 pins stay green
     assert 'def daily_quest(telegram_id: int)' in COUPLE
     assert 'return daily_quests(telegram_id)[0]' in COUPLE
@@ -40,7 +44,11 @@ def test_bonus_media_roll_is_capped_and_once_per_day():
 
 
 def test_story_gate_requires_level_and_tasks():
-    assert "need_tasks = 5 * (i + 1)" in QUESTS
+    # V3.51.0: the ladder is tied to the story's own level (5 x min_level), so
+    # a level-5 dilemma costs 25 tasks, not 75. All three sources agree.
+    assert "need_tasks = 5 * int(q['min_level'])" in QUESTS
+    assert "return 5 * int(q['min_level']) if q else 0" in QUESTS
+    assert "if completed < 5 * int(quest['min_level']):" in QUESTS
     assert "'unlocked': level_ok and tasks_ok" in QUESTS
     assert "'tasks_remaining': max(0, need_tasks - completed)" in QUESTS
 

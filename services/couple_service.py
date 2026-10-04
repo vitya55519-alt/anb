@@ -40,11 +40,16 @@ def _today_key(now: datetime | None = None) -> str:
 
 
 def daily_quests(telegram_id: int) -> list[tuple[str, str]]:
-    """V3.49.0: 2-3 deterministic quests for this user/day (key, text). Both the
-    count and the rotation derive from the day+user seed, so a given day always
-    shows the same short list while consecutive days feel different."""
+    """V3.49.0 / V3.51.0: deterministic daily quests (key, text). Free users get
+    2-3 a day; Premium gets exactly 4. Both the count and the rotation derive
+    from the day+user seed, so a given day always shows the same short list
+    while consecutive days feel different."""
     seed = int(hashlib.md5(f'{_today_key()}:{telegram_id}'.encode('utf-8')).hexdigest(), 16)
-    count = 3 if seed % 2 == 0 else 2
+    from services.access_service import is_premium
+    if is_premium(telegram_id):
+        count = 4
+    else:
+        count = 3 if seed % 2 == 0 else 2
     start = seed % len(DAILY_QUESTS)
     return [DAILY_QUESTS[(start + i) % len(DAILY_QUESTS)] for i in range(count)]
 

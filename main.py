@@ -153,7 +153,7 @@ from services.custom_character_service import (
 )
 from services.consent_service import has_accepted, accept as accept_consent, delete_user_data, TERMS_VERSION, PRIVACY_VERSION
 from services.collection_service import collection_progress
-from services.quest_service import QUESTS, QUEST_REPLAY_STARS, story_status, get_quest, complete_route, create_replay_offer, consume_replay_offer, premium_replays_left, consume_premium_replay, newly_unlocked_quests
+from services.quest_service import QUESTS, QUEST_REPLAY_STARS, story_status, get_quest, complete_route, create_replay_offer, consume_replay_offer, premium_replays_left, consume_premium_replay, newly_unlocked_quests, resolve_story_choice, resolve_story_beat, route_branch
 from services.payment_method_service import (
     list_payment_methods, get_payment_method, create_payment_method,
     update_payment_method, delete_payment_method, ensure_default_payment_methods,
@@ -679,6 +679,17 @@ def quest_routes_keyboard(telegram_id: int, quest_key: str):
             rows.append([InlineKeyboardButton(text=f"🔒 {route['label']} · replay {QUEST_REPLAY_STARS}⭐{fiat_suffix(QUEST_REPLAY_STARS)}", callback_data=f"quest:route:{quest_key}:{key}")])
         else:
             rows.append([InlineKeyboardButton(text=route['label'], callback_data=f"quest:route:{quest_key}:{key}")])
+    rows.append([InlineKeyboardButton(text='⬅️ Истории', callback_data='quest:list')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def quest_beat_keyboard(quest_key: str, route_key: str):
+    # V3.51.0: the second-beat options hanging off a canonical first choice.
+    branch = route_branch(quest_key, route_key)
+    if not branch:
+        return None
+    rows = [[InlineKeyboardButton(text=opt['label'], callback_data=f'quest:beat:{quest_key}:{route_key}:{opt_key}')]
+            for opt_key, opt in branch['options'].items()]
     rows.append([InlineKeyboardButton(text='⬅️ Истории', callback_data='quest:list')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -4360,28 +4371,57 @@ async def quest_view_cb(cq: types.CallbackQuery):
         await cq.answer('пока закрыто', show_alert=True); return
     await cq.answer(); await cq.message.answer(f'🎯 {q["title"]}\n\n{q.get("teaser", "")}\n\n{q["intro"]}\n\nПервый выбор станет частью вашей основной истории.', reply_markup=quest_routes_keyboard(cq.from_user.id,key))
 
+async def _deliver_story_result(cq, result, quest_key, route_key, *, crown=False):
+    # V3.51.0: shared delivery for a first choice and its second beat — the
+    # story line, her live reaction, any threshold scene (with a photo on the
+    # deep crossings), the route's reward photo, then the beat prompt or the
+    # routes keyboard. The reaction is already persisted to the shared dialog by
+    # the resolver, so the Mini App shows it too.
+    prefix = '👑 Premium replay\n\n' if crown else ''
+    await cq.message.answer(prefix + (result.get('result_text') or ''))
+    if result.get('reaction'):
+        await cq.message.answer(result['reaction'])
+    for ev in result.get('path_events', []):
+        if ev.get('text'):
+            await cq.message.answer('💫 ' + ev['text'])
+        if ev.get('photo_scene'):
+            await _start_photo_background(cq.message.chat.id, cq.from_user.id, PhotoRequest(scene=ev['photo_scene']), 'story')
+    scene = result.get('photo_scene')
+    if scene:
+        await _start_photo_background(cq.message.chat.id, cq.from_user.id, PhotoRequest(scene=scene), 'story')
+    beat = result.get('beat_options')
+    if beat:
+        await cq.message.answer('💭 ' + beat['prompt'], reply_markup=quest_beat_keyboard(quest_key, route_key))
+    else:
+        await cq.message.answer('Твой выбор стал частью вашей истории 🌿', reply_markup=quest_routes_keyboard(cq.from_user.id, quest_key))
+
 @dp.callback_query(F.data.startswith('quest:route:'))
 async def quest_route_cb(cq: types.CallbackQuery):
     _,_,quest_key,route_key=cq.data.split(':',3)
-    result=complete_route(cq.from_user.id,quest_key,route_key,paid_replay=False,character_id=get_user_character(cq.from_user.id))
+    cid=get_user_character(cq.from_user.id); uname=cq.from_user.first_name or ''
+    result=await resolve_story_choice(cq.from_user.id,cid,quest_key,route_key,paid_replay=False,user_name=uname)
     if result.get('needs_payment'):
         if consume_premium_replay(cq.from_user.id,quest_key,route_key):
-            result=complete_route(cq.from_user.id,quest_key,route_key,paid_replay=True,character_id=get_user_character(cq.from_user.id))
+            result=await resolve_story_choice(cq.from_user.id,cid,quest_key,route_key,paid_replay=True,user_name=uname)
             await cq.answer('Premium replay использован ✨')
-            await cq.message.answer('👑 Premium replay\n\n'+result['route']['result'], reply_markup=quest_routes_keyboard(cq.from_user.id,quest_key))
-            scene=result['route'].get('photo_scene')
-            if scene: await _start_photo_background(cq.message.chat.id,cq.from_user.id,PhotoRequest(scene=scene),'story')
+            await _deliver_story_result(cq,result,quest_key,route_key,crown=True)
             return
         offer_id=create_replay_offer(cq.from_user.id,quest_key,route_key)
         await cq.answer()
         await send_stars_invoice(cq.message.chat.id,'Альтернативная история',f'Посмотреть другой вариант: {get_quest(quest_key)["title"]}',f'quest_replay:{offer_id}',QUEST_REPLAY_STARS)
         return
     await cq.answer(); track_event(ensure_user(cq.from_user.id),'quest_route_completed',metadata={'quest':quest_key,'route':route_key,'canonical':result.get('canonical',False)})
-    await cq.message.answer(result['route']['result'], reply_markup=quest_routes_keyboard(cq.from_user.id,quest_key))
-    scene=result['route'].get('photo_scene')
-    if scene:
-        # Story reward: generate/deliver without consuming the daily free quota.
-        await _start_photo_background(cq.message.chat.id,cq.from_user.id,PhotoRequest(scene=scene),'story')
+    await _deliver_story_result(cq,result,quest_key,route_key)
+
+@dp.callback_query(F.data.startswith('quest:beat:'))
+async def quest_beat_cb(cq: types.CallbackQuery):
+    _,_,quest_key,route_key,opt_key=cq.data.split(':',4)
+    cid=get_user_character(cq.from_user.id); uname=cq.from_user.first_name or ''
+    result=await resolve_story_beat(cq.from_user.id,cid,quest_key,route_key,opt_key,user_name=uname)
+    if result.get('error'):
+        await cq.answer('это продолжение уже закрыто 🙂', show_alert=True); return
+    await cq.answer(); track_event(ensure_user(cq.from_user.id),'quest_beat_completed',metadata={'quest':quest_key,'route':route_key,'beat':opt_key})
+    await _deliver_story_result(cq,result,quest_key,route_key)
 
 async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None, motion_preset: str | None = None) -> None:
     """Animate a delivered photo with automatic engine fallback.
@@ -9853,6 +9893,33 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'limit'}, status=429)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     track_event(uid, 'webapp_chat_message', metadata={'character_id': character_id})
+    # V3.51.0: a photo request typed in the Mini App chat used to be answered
+    # with text only («держи 📸» and nothing attached) because this endpoint
+    # never ran the bot's photo-intent routing (main.py chat handler). Parse it
+    # here and, when the scene clears the same stage/adult/credit gates the app
+    # photo button enforces, deliver a real photo into the shared dialog.
+    photo_request = _contextualize_vague_photo(telegram_id, text, parse_photo_request(text))
+    if photo_request:
+        scene = photo_request.scene if photo_request.scene in PHOTO_MENU_ORDER else 'selfie'
+        stage_ok = scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id))
+        adult_ok = not (requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id))
+        pay_ok = telegram_id in ADMIN_TELEGRAM_IDS or get_photo_credits(telegram_id) >= 1
+        if stage_ok and adult_ok and pay_ok:
+            try:
+                data, mime, ext = await _webapp_media_photo(telegram_id, character_id, scene)
+            except Exception:
+                logger.exception('webapp chat photo-on-request failed user=%s scene=%s', telegram_id, scene)
+                data = None
+            if data:
+                filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+                url = f'/webapp/media/{filename}'
+                _fallback = ('отправила фото',)
+                cap = '📸 ' + random.choice(AUTO_CAPTIONS.get(scene, _fallback))
+                save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
+                if telegram_id not in ADMIN_TELEGRAM_IDS:
+                    consume_photo_credit(telegram_id)
+                return web.json_response({'ok': True, 'reply': cap, 'photo_url': url,
+                                          'credits_left': get_photo_credits(telegram_id)})
     try:
         answer = await anna_reply(
             telegram_id, user_info.get('first_name') or 'ты', text,
@@ -10615,6 +10682,108 @@ async def _webapp_api_feature_action(request: web.Request) -> web.Response:
                               'text': narration, 'photo_url': photo_url})
 
 
+async def _webapp_api_story(request: web.Request) -> web.Response:
+    # V3.51.0: the Mini App story player list. The same story_status the bot
+    # keyboard reads, serialized for the SPA (labels only; results/reactions come
+    # from the action endpoint). The path axis itself is shown on the character
+    # card, so here we only expose the qualitative gates.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    character_id = str(request.query.get('character_id', '')) or get_user_character(telegram_id)
+    ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    level = get_relationship_level(telegram_id, character_id)
+    stories = []
+    for st in story_status(telegram_id, level):
+        q = get_quest(st['key'])
+        routes = [{'key': rk, 'label': rv.get('label', ''), 'done': rk in st['done'],
+                   'beat': bool(route_branch(st['key'], rk))} for rk, rv in q['routes'].items()]
+        stories.append({'key': st['key'], 'title': st['title'], 'teaser': st.get('teaser', ''),
+                        'intro': q.get('intro', ''), 'unlocked': st['unlocked'], 'min_level': st['min_level'],
+                        'unlock_tasks': st['unlock_tasks'], 'tasks_remaining': st['tasks_remaining'],
+                        'level_ok': st['level_ok'], 'tasks_ok': st['tasks_ok'],
+                        'canonical': st['canonical'], 'routes': routes})
+    return web.json_response({'ok': True, 'kind': 'story', 'level': level, 'stories': stories})
+
+
+async def _webapp_api_story_action(request: web.Request) -> web.Response:
+    # V3.51.0: play a story choice (or its second beat) from the Mini App. Runs
+    # the exact resolver the bot uses, so branching, threshold scenes and the
+    # live reaction behave identically; the reaction is persisted to the shared
+    # dialog. A reward photo (route or deep-crossing event) is generated here
+    # only when the current stage allows that scene.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    if not has_accepted(telegram_id):
+        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    character_id = str(body.get('character_id', '')) or get_user_character(telegram_id)
+    quest_key = str(body.get('quest_key', ''))
+    q = get_quest(quest_key)
+    if not q:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    level = get_relationship_level(telegram_id, character_id)
+    st = next((x for x in story_status(telegram_id, level) if x['key'] == quest_key), None)
+    if not st or not st['unlocked']:
+        return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+    uname = user_info.get('first_name') or ''
+    beat = body.get('beat')
+    if isinstance(beat, dict) and beat.get('route_key') and beat.get('opt_key'):
+        result = await resolve_story_beat(telegram_id, character_id, quest_key,
+                                          str(beat['route_key']), str(beat['opt_key']), user_name=uname)
+    else:
+        route_key = str(body.get('route_key', ''))
+        if route_key not in q['routes']:
+            return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+        result = await resolve_story_choice(telegram_id, character_id, quest_key, route_key,
+                                            paid_replay=False, user_name=uname)
+    if result.get('error'):
+        return web.json_response({'ok': False, 'error': result['error']}, status=400)
+    if result.get('needs_payment'):
+        # Alternative branches are a Stars-replay flow that lives in the bot.
+        return web.json_response({'ok': False, 'error': 'replay_locked'}, status=402)
+    scene = None
+    for ev in result.get('path_events', []):
+        if ev.get('photo_scene'):
+            scene = ev['photo_scene']
+            break
+    if not scene and result.get('photo_scene'):
+        scene = result['photo_scene']
+    photo_url = None
+    if scene and scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
+        try:
+            data, mime, ext = await _webapp_media_scene(telegram_id, character_id, scene)
+            if data:
+                filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+                photo_url = f'/webapp/media/{filename}'
+                save_message(uid, character_id, 'assistant', '\U0001f4f8 \u043a\u0430\u0434\u0440 \u043a \u043d\u0430\u0448\u0435\u0439 \u0438\u0441\u0442\u043e\u0440\u0438\u0438',
+                             media_kind='photo', media_url=photo_url)
+        except Exception:
+            logger.warning('webapp story photo failed user=%s scene=%s', telegram_id, scene)
+    return web.json_response({
+        'ok': True, 'kind': 'story',
+        'result_text': result.get('result_text'), 'reaction': result.get('reaction'),
+        'path_axis': result.get('path_axis'), 'path_delta': result.get('path_delta'),
+        'path_events': [{'text': ev.get('text', ''), 'photo': bool(ev.get('photo_scene'))}
+                        for ev in result.get('path_events', [])],
+        'beat_options': result.get('beat_options'), 'photo_url': photo_url,
+    })
+
+
 async def _webapp_picture(request: web.Request) -> web.Response:
     # V3.38.0: serve a gallery image to its owner. The file name is an
     # unguessable server-generated token and the lookup is scoped to the
@@ -10898,6 +11067,9 @@ async def _start_web_server() -> None:
     # V3.41.0: the app-chat feature buttons — apartment / date / daily quest.
     app.router.add_get('/webapp/api/feature', _webapp_api_feature)
     app.router.add_post('/webapp/api/feature/action', _webapp_api_feature_action)
+    # V3.51.0: the Mini App story player (branching quests that move the path).
+    app.router.add_get('/webapp/api/story', _webapp_api_story)
+    app.router.add_post('/webapp/api/story/action', _webapp_api_story_action)
     app.router.add_get('/webapp/media/{filename}', _webapp_media)
     app.router.add_post('/webapp/api/picture', _webapp_api_picture_generate)
     app.router.add_get('/webapp/api/pictures', _webapp_api_pictures)

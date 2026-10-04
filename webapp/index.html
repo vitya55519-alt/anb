@@ -444,6 +444,24 @@
     /* V3.49.0: the daily-task checklist rows and progress hints */
     .featquest .qrow { margin-bottom: 14px; }
     .featquest .qprog { color: rgba(255,255,255,.55); font-size: 13px; line-height: 1.45; margin-top: 2px; }
+  /* V3.51.0: the story player — list, intro, result and second-beat. */
+  .storyitem { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; background: var(--card); border: 1px solid rgba(255,255,255,.08); color: var(--text); border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; }
+  .storyitem.locked { opacity: .55; cursor: default; }
+  .storyitem.done { border-color: rgba(120,220,150,.4); }
+  .storyitem .sic { font-size: 20px; flex: 0 0 auto; }
+  .storyitem .set { flex: 1; min-width: 0; }
+  .storyitem .sen { font-weight: 700; font-size: 15px; }
+  .storyitem .ses { color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.35; }
+  .stintro { background: var(--card); border-radius: 14px; padding: 14px; line-height: 1.5; margin-bottom: 14px; font-size: 14.5px; }
+  .stbtn { display: block; width: 100%; text-align: left; background: var(--card2); border: 1px solid rgba(255,255,255,.1); color: var(--text); font-size: 14.5px; padding: 12px 14px; border-radius: 13px; margin-bottom: 8px; cursor: pointer; }
+  .stbtn.done { opacity: .6; }
+  .stresult { background: var(--card); border-radius: 14px; padding: 14px; line-height: 1.55; font-size: 15px; margin-bottom: 12px; }
+  .streaction { background: rgba(232,68,127,.12); border-left: 3px solid var(--accent); border-radius: 10px; padding: 12px 14px; line-height: 1.5; font-size: 14.5px; margin-bottom: 12px; font-style: italic; }
+  .stevent { background: rgba(120,180,255,.12); border-radius: 12px; padding: 12px 14px; line-height: 1.5; font-size: 14px; margin-bottom: 10px; }
+  .staxis { display: inline-block; font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 12px; }
+  .stimg { width: 100%; border-radius: 14px; margin-bottom: 12px; display: block; }
+  .stbeatlab { font-size: 14.5px; line-height: 1.5; margin: 6px 0 10px; color: var(--text); }
+  .btn-back { background: var(--card); border: 1px solid rgba(255,255,255,.12); color: var(--text); font-size: 14px; padding: 10px 16px; border-radius: 12px; cursor: pointer; }
   /* V3.39.0: the Come Closer segment switch — our roster vs the community */
   .seg { display: flex; gap: 6px; margin: 4px 14px 10px; background: var(--card); border-radius: 14px; padding: 4px; }
   .seg button { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 10px 8px; border-radius: 11px; font-size: 14px; font-weight: 700; cursor: pointer; }
@@ -767,6 +785,7 @@
     <div class="chat-media">
       <button id="mediaPhoto"><span class="ic">📸</span><span class="lb" id="lbMediaPhoto"></span></button>
       <button id="featQuest"><span class="ic">🎯</span><span class="lb" id="lbFeatQuest"></span></button>
+      <button id="featStory"><span class="ic">📖</span><span class="lb" id="lbFeatStory"></span></button>
       <button id="featDate"><span class="ic">💕</span><span class="lb" id="lbFeatDate"></span></button>
       <button id="featApt"><span class="ic">🏠</span><span class="lb" id="lbFeatApt"></span></button>
       <button id="featVideo"><span class="ic">🎬</span><span class="lb" id="lbFeatVideo"></span></button>
@@ -811,6 +830,8 @@
       </div>
       <div class="path-ends"><span id="charPathEndL"></span><span id="charPathEndR"></span></div>
     </div>
+    <!-- V3.51.0: story player entry, right under the path bar (choice -> result) -->
+    <button class="charcta" id="charStories" style="display:none"></button>
     <button class="charcta" id="charStart"></button>
     <div class="charblock" id="charBio"></div>
     <!-- V3.44.8: author link — opens the author's public page (author funnel) -->
@@ -921,6 +942,16 @@
     </div>
   </div>
   <div class="page" id="featBody"><div class="loading">…</div></div>
+</div>
+<!-- V3.51.0: the story player — playable branching quests that move the path -->
+<div class="overlay" id="storyview">
+  <div class="chat-head">
+    <button class="iconbtn" id="storyBack">‹</button>
+    <div>
+      <div class="nm" id="storyTitle"></div>
+    </div>
+  </div>
+  <div class="page" id="storyBody"><div class="loading">…</div></div>
 </div>
 <script>
 const tg = window.Telegram.WebApp;
@@ -1034,6 +1065,12 @@ const L_EN = {
   // V3.39.0: the Come Closer character page + in-app chat media.
   start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', lb_title: '🏆 Top Popular',
     path_lbl: '💞 Relationship path', path_tender: 'Tender', path_balanced: 'Balanced', path_free: 'Uninhibited', path_end_l: 'Tenderness', path_end_r: 'Passion',
+      // V3.51.0: the story player (playable branching quests that move the path).
+      story_btn: 'Stories', story_title: 'Stories', story_back: '← To stories',
+      story_locked_level: lvl => '🔒 Opens at relationship level ' + lvl, story_locked_tasks: n => '🔒 ' + n + ' more daily tasks to unlock',
+      story_done: 'Completed', story_canon: ' · your path', story_play: 'Play', story_choose: 'Choose how it goes',
+      story_result: 'What happened', story_reaction: 'Her reaction', story_axis_up: 'Path moved toward passion', story_axis_down: 'Path moved toward tenderness', story_axis_same: 'The path stayed balanced',
+      story_beat: 'A moment later…', story_photo: '📸 A frame for our story', story_empty: 'No stories yet', story_hint: 'Your choices here move the «Relationship path» on her card.',
     comments_lbl: '💬 Comments', comment_placeholder: 'Write a comment...', comment_submit: 'Submit', comment_empty: 'No comments yet — be the first!',
   wiz_save: 'Save', wiz_skip: 'Skip', wiz_skip_hint: 'Write or skip...', wiz_upload_photo: 'Upload photo',
   seg_official: '🍑 Peach Garden', seg_community: '👥 Community',
@@ -1166,6 +1203,12 @@ const L_RU = {
   // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
   start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', lb_title: ' Топ популярных',
     path_lbl: '💞 Характер связи', path_tender: 'Нежная', path_balanced: 'Сбалансированная', path_free: 'Раскрепощённая', path_end_l: 'Нежность', path_end_r: 'Страсть',
+      // V3.51.0: проигрыватель историй (играбельные квесты, двигающие путь).
+      story_btn: 'Истории', story_title: 'Истории', story_back: '← К историям',
+      story_locked_level: lvl => '🔒 Откроется на уровне близости ' + lvl, story_locked_tasks: n => '🔒 Ещё ' + n + ' заданий до открытия',
+      story_done: 'Пройдено', story_canon: ' · твой путь', story_play: 'Играть', story_choose: 'Выбери, как будет',
+      story_result: 'Что произошло', story_reaction: 'Её реакция', story_axis_up: 'Путь сдвинулся к страсти', story_axis_down: 'Путь сдвинулся к нежности', story_axis_same: 'Путь остался равновесным',
+      story_beat: 'Через миг…', story_photo: '📸 Кадр к нашей истории', story_empty: 'Пока нет историй', story_hint: 'Твой выбор здесь двигает шкалу «Характер связи» на её карточке.',
     comments_lbl: '💬 Комментарии', comment_placeholder: 'Напиши комментарий...', comment_submit: 'Отправить', comment_empty: 'Пока нет комментариев — будь первым!',
   wiz_save: 'Сохранить', wiz_skip: 'Пропустить', wiz_skip_hint: 'Напиши или пропусти...', wiz_upload_photo: 'Загрузить фото',
   seg_official: '🍑 Персиковый сад', seg_community: '👥 Сообщество',
@@ -1406,6 +1449,7 @@ document.getElementById('charSearch').placeholder = L.char_search_ph;
 // buttons themselves — only the pills still on screen get labels.
 document.getElementById('lbMediaPhoto').textContent = L.media_photo;
 document.getElementById('lbFeatQuest').textContent = L.feat_quest;
+if (document.getElementById('lbFeatStory')) document.getElementById('lbFeatStory').textContent = L.story_btn;
 document.getElementById('lbFeatDate').textContent = L.feat_date;
 document.getElementById('lbFeatApt').textContent = L.feat_apt;
 // V3.45.0: новые кнопки
@@ -1823,7 +1867,13 @@ async function sendChat() {
     }
     const j = await r.json();
     if (!j.ok) { toast(L.reply_err); return; }
-    box.insertAdjacentHTML('beforeend', chatBubble('bot', j.reply, null));
+    // V3.51.0: a photo request typed in the app chat now comes back with a real
+    // photo attached (photo_url) alongside the short caption — render both.
+    if (j.photo_url) {
+      box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
+    } else {
+      box.insertAdjacentHTML('beforeend', chatBubble('bot', j.reply, null));
+    }
     box.scrollTop = box.scrollHeight;
   } catch (e) {
     toast(L.reply_err);
@@ -2156,6 +2206,184 @@ async function featurePost(payload) {
   } catch (e) { toast(L.reply_err); }
 }
 
+// ── V3.51.0: the story player — playable branching quests that move the path ─
+// Same resolvers the bot uses, reached over /webapp/api/story*. Built with
+// string concatenation + esc() so every dynamic value is escaped (no raw
+// template interpolation). The path-bar render is shared with the card.
+function renderPathBar(axis) {
+  const ax = Math.max(-100, Math.min(100, Number(axis) || 0));
+  const half = Math.abs(ax) / 2;  // percent of the full track, from center
+  document.getElementById('charPathLeft').style.width = (ax < 0 ? half : 0) + '%';
+  document.getElementById('charPathRight').style.width = (ax > 0 ? half : 0) + '%';
+  document.getElementById('charPathLbl').textContent = L.path_lbl;
+  document.getElementById('charPathTag').textContent = ax <= -20 ? L.path_tender : (ax >= 20 ? L.path_free : L.path_balanced);
+  document.getElementById('charPathEndL').textContent = L.path_end_l;
+  document.getElementById('charPathEndR').textContent = L.path_end_r;
+}
+
+// Push a fresh axis onto the character card (and the roster cache) so the swing
+// bar reflects the choice the moment the story action returns.
+function applyAxisToCard(characterId, axis) {
+  if (typeof axis !== 'number') return;
+  const c = CHARS.find(x => x.id === characterId);
+  if (c) c.path = axis;
+  if (CHARPAGE && CHARPAGE.id === characterId) {
+    CHARPAGE.path = axis;
+    document.getElementById('charPathBar').style.display = '';
+    renderPathBar(axis);
+  }
+}
+
+const STORY = { characterId: '', questKey: '', routeKey: '' };
+function closeStory() { document.getElementById('storyview').classList.remove('open'); }
+
+async function openStory(characterId) {
+  if (!characterId) { if (CHAT) characterId = CHAT.id; }
+  if (!characterId) { toast(L.auth_short); return; }
+  if (!tg.initData) { toast(L.auth_short); return; }
+  STORY.characterId = characterId;
+  const box = document.getElementById('storyBody');
+  box.innerHTML = '<div class="loading">' + esc(L.loading) + '</div>';
+  document.getElementById('storyTitle').textContent = L.story_title;
+  document.getElementById('storyview').classList.add('open');
+  const url = '/webapp/api/story?init_data=' + encodeURIComponent(tg.initData) +
+    '&character_id=' + encodeURIComponent(characterId);
+  try {
+    const r = await fetch(url);
+    if (r.status === 401) { toast(L.auth_short); closeStory(); return; }
+    const j = await r.json();
+    if (!j.ok) { box.innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; return; }
+    renderStoryList(j);
+  } catch (e) { box.innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; }
+}
+
+function renderStoryList(j) {
+  const box = document.getElementById('storyBody');
+  const stories = j.stories || [];
+  if (!stories.length) { box.innerHTML = '<div class="chat-empty">' + esc(L.story_empty) + '</div>'; return; }
+  let html = '<div class="featlist"><div class="fes" style="padding:0 2px 8px">' + esc(L.story_hint) + '</div>';
+  stories.forEach((s, i) => {
+    const doneCls = s.canonical ? ' done' : '';
+    const lockCls = s.unlocked ? '' : ' locked';
+    let icon = '🟢', sub;
+    if (s.canonical) { icon = '✅'; sub = L.story_done + L.story_canon; }
+    else if (!s.unlocked) {
+      icon = '🔒';
+      sub = !s.level_ok ? L.story_locked_level(s.min_level) : L.story_locked_tasks(s.tasks_remaining);
+    } else { sub = s.teaser || L.story_play; }
+    html += '<div class="storyitem' + lockCls + doneCls + '" data-idx="' + i + '" data-locked="' + (s.unlocked ? '0' : '1') + '">' +
+      '<div class="sic">' + icon + '</div><div class="set"><div class="sen">' + esc(s.title) + '</div>' +
+      '<div class="ses">' + esc(sub) + '</div></div></div>';
+  });
+  html += '</div>';
+  box.innerHTML = html;
+  box.querySelectorAll('.storyitem').forEach(el => {
+    el.addEventListener('click', () => {
+      const s = stories[Number(el.dataset.idx)];
+      if (el.dataset.locked === '1') { toast(L.story_locked_tasks(s.tasks_remaining || s.unlock_tasks)); return; }
+      renderStoryIntro(s);
+    });
+  });
+}
+
+function renderStoryIntro(s) {
+  STORY.questKey = s.key; STORY.routeKey = '';
+  const box = document.getElementById('storyBody');
+  document.getElementById('storyTitle').textContent = s.title;
+  let html = '<div class="featlist">';
+  if (s.intro) html += '<div class="stintro">' + esc(s.intro) + '</div>';
+  html += '<div class="ses" style="margin-bottom:10px">' + esc(L.story_choose) + '</div>';
+  (s.routes || []).forEach(rt => {
+    const isCanon = s.canonical === rt.key;
+    const done = rt.done;
+    const suffix = done ? (' \u2705' + (isCanon ? L.story_canon : '')) : '';
+    // A finished route can't be re-picked here (replay lives in the bot), and
+    // once a canon is set the other routes are locked for this character.
+    const clickable = !done && !s.canonical;
+    html += '<button class="stbtn' + (done ? ' done' : '') + '" data-rk="' + esc(rt.key) + '" data-locked="' + (clickable ? '0' : '1') + '">' +
+      esc(rt.label) + suffix + '</button>';
+  });
+  html += '<div style="margin-top:8px"><button class="btn-back" id="storyListBack">' + esc(L.story_back) + '</button></div>';
+  html += '</div>';
+  box.innerHTML = html;
+  document.getElementById('storyListBack').onclick = () => openStory(STORY.characterId);
+  box.querySelectorAll('.stbtn').forEach(b => {
+    b.addEventListener('click', () => {
+      if (b.dataset.locked === '1') { toast(L.story_done); return; }
+      storyPost({ quest_key: s.key, route_key: b.dataset.rk });
+    });
+  });
+}
+
+async function storyPost(payload) {
+  if (!tg.initData) { toast(L.auth_short); return; }
+  payload.character_id = STORY.characterId;
+  const box = document.getElementById('storyBody');
+  const wasBusy = box.querySelector('.loading');
+  box.innerHTML = '<div class="loading">' + esc(L.loading) + '</div>';
+  try {
+    const r = await fetch('/webapp/api/story/action?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    if (r.status === 402) { box.innerHTML = '<div class="chat-empty">' + esc(L.story_done) + '</div>'; openStory(STORY.characterId); return; }
+    if (r.status === 403) {
+      const je = await r.json().catch(() => ({}));
+      toast(je.error === 'consent' ? L.consent_needed : L.locked);
+      openStory(STORY.characterId); return;
+    }
+    const j = await r.json();
+    if (!j.ok) { toast(L.reply_err); openStory(STORY.characterId); return; }
+    if (payload.quest_key) STORY.questKey = payload.quest_key;
+    if (payload.route_key) STORY.routeKey = payload.route_key;
+    else if (payload.beat && payload.beat.route_key) STORY.routeKey = payload.beat.route_key;
+    renderStoryResult(j);
+    applyAxisToCard(STORY.characterId, j.path_axis);
+    // The reaction is saved into the shared dialog, so refresh the chat bubbles
+    // if this character's dialog happens to be open behind the overlay.
+    if (typeof CHAT !== 'undefined' && CHAT && CHAT.id === STORY.characterId) { if (!wasBusy) loadChatHistory(CHAT.id); }
+  } catch (e) { toast(L.reply_err); openStory(STORY.characterId); }
+}
+
+function renderStoryResult(j) {
+  const box = document.getElementById('storyBody');
+  document.getElementById('storyTitle').textContent = L.story_result;
+  let html = '<div class="featlist">';
+  if (j.result_text) html += '<div class="stresult">' + esc(j.result_text) + '</div>';
+  if (j.reaction) html += '<div class="ses" style="margin:0 0 4px">' + esc(L.story_reaction) + '</div><div class="streaction">' + esc(j.reaction) + '</div>';
+  const delta = Number(j.path_delta) || 0;
+  if (delta !== 0) {
+    html += '<div class="staxis">' + esc(delta > 0 ? L.story_axis_up : L.story_axis_down) + ' · ' + (delta > 0 ? '+' : '') + delta + '</div>';
+  }
+  (j.path_events || []).forEach(ev => {
+    if (!ev || !ev.text) return;
+    html += '<div class="stevent">' + esc(ev.text) + (ev.photo ? ('<br>' + esc(L.story_photo)) : '') + '</div>';
+  });
+  if (j.photo_url) {
+    const src = j.photo_url + '?init_data=' + encodeURIComponent(tg.initData || '');
+    html += '<img class="stimg" src="' + esc(src) + '" alt="" loading="lazy" decoding="async">';
+  }
+  const bo = j.beat_options;
+  if (bo && bo.options && Object.keys(bo.options).length) {
+    html += '<div class="stbeatlab">' + esc(bo.prompt || L.story_beat) + '</div>';
+    Object.keys(bo.options).forEach(ok => {
+      html += '<button class="stbtn" data-ok="' + esc(ok) + '">' + esc(bo.options[ok].label) + '</button>';
+    });
+    html += '<div style="margin-top:6px"><button class="btn-back" id="storySkipBeat">' + esc(L.story_back) + '</button></div>';
+  } else {
+    html += '<div style="margin-top:8px"><button class="btn-back" id="storyListBack2">' + esc(L.story_back) + '</button></div>';
+  }
+  html += '</div>';
+  box.innerHTML = html;
+  const sb = document.getElementById('storyListBack2'); if (sb) sb.onclick = () => openStory(STORY.characterId);
+  const sk = document.getElementById('storySkipBeat'); if (sk) sk.onclick = () => openStory(STORY.characterId);
+  box.querySelectorAll('.stbtn[data-ok]').forEach(b => {
+    b.addEventListener('click', () => {
+      storyPost({ quest_key: STORY.questKey, beat: { route_key: STORY.routeKey, opt_key: b.dataset.ok } });
+    });
+  });
+}
+
 // ── V3.39.0: the Come Closer character page (strip → CTA → bio → СЮЖЕТ) ────
 let CHARPAGE = null;
 function openCharPage(el) {
@@ -2235,16 +2463,17 @@ function openCharPage(el) {
   const pathBar = document.getElementById('charPathBar');
   if (typeof c.path === 'number') {
     pathBar.style.display = '';
-    const ax = Math.max(-100, Math.min(100, c.path));
-    const half = Math.abs(ax) / 2;  // percent of the full track, from center
-    document.getElementById('charPathLeft').style.width = (ax < 0 ? half : 0) + '%';
-    document.getElementById('charPathRight').style.width = (ax > 0 ? half : 0) + '%';
-    document.getElementById('charPathLbl').textContent = L.path_lbl;
-    document.getElementById('charPathTag').textContent = ax <= -20 ? L.path_tender : (ax >= 20 ? L.path_free : L.path_balanced);
-    document.getElementById('charPathEndL').textContent = L.path_end_l;
-    document.getElementById('charPathEndR').textContent = L.path_end_r;
+    renderPathBar(c.path);
   } else {
     pathBar.style.display = 'none';
+  }
+  // V3.51.0: story player entry — sits right under the path bar so the player
+  // sees «this choice moves that scale». Show it for any openable character.
+  const storyBtn = document.getElementById('charStories');
+  if (storyBtn) {
+    storyBtn.textContent = '📖 ' + L.story_btn;
+    storyBtn.style.display = '';
+    storyBtn.onclick = () => openStory(c.id);
   }
   const selBtn = document.getElementById('charSelect');
   selBtn.textContent = L.make_mine;
@@ -3339,6 +3568,10 @@ document.getElementById('mediaPhoto').addEventListener('click', () => openFeatur
 // buttons are hidden from the strip — the photo pipeline (and the bot chat)
 // stay untouched.
 document.getElementById('featQuest').addEventListener('click', () => openFeature('quest'));
+// V3.51.0: story player — from the chat pill (needs an open dialog) and the back
+// button closes the overlay.
+if (document.getElementById('featStory')) document.getElementById('featStory').addEventListener('click', () => openStory(CHAT ? CHAT.id : ''));
+if (document.getElementById('storyBack')) document.getElementById('storyBack').addEventListener('click', closeStory);
 document.getElementById('featDate').addEventListener('click', () => openFeature('date'));
 document.getElementById('featApt').addEventListener('click', () => openFeature('apartment'));
 // V3.45.0: новые кнопки — Видео, Косплей, Фото наедине

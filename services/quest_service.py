@@ -7,8 +7,10 @@ from services.user_service import ensure_user
 from models.quest_models import UserQuestProgress, QuestReplayOffer
 from models.relationship_models import UserCharacterRelationship
 from models.app_models import ProductEvent, Memory, User
+from models.relationship_models import RelationshipMilestone
 from config import CHARACTER_ID, QUEST_REPLAY_STARS, PREMIUM_MONTHLY_QUEST_REPLAYS
 from services.access_service import is_premium
+from services.relationship_engine import path_crossings, get_path_axis
 
 QUESTS = {
     # ── New scenarios (v3.16): more emotional range — curiosity, trust,
@@ -410,6 +412,253 @@ def _apply_path(session, uid: int, character_id: str, inclination: str) -> None:
     delta = -PATH_STEP if inclination == 'romance' else PATH_STEP
     row.path_axis = max(-100.0, min(100.0, (getattr(row, 'path_axis', 0.0) or 0.0) + delta))
 
+
+# V3.51.0: the second beat. After the FIRST (canonical) choice of a story the
+# player gets a follow-up whose two options deepen — or pivot — the branch they
+# just took, so it finally feels like the story bends around their decisions.
+# Keyed by (quest_key, route_key). Each option carries its own inline
+# 'inclination' (kept out of ROUTE_INCLINATION so the V3.50 pins stay intact),
+# a curated 'reaction' (the fail-safe line if the live LLM reaction fails) and
+# an optional 'photo_scene'.
+QUEST_BRANCHES: dict[tuple[str, str], dict] = {
+    ('morning_routine', 'music'): {
+        'prompt': 'музыку включила. теперь скажи — оставить что-то нежное для нас двоих или сделать погромче и танцевать прямо на кухне?',
+        'options': {
+            'slow': {'label': ' Оставить нежное', 'inclination': 'romance', 'result': 'поставила что-то медленное и тёплое. теперь утро пахнет кофе и нами одновременно ❤️', 'reaction': 'тише, нежнее… вот так мне нравится больше всего', 'memory': 'В истории «Какое у неё утро?» после музыки пользователь оставил нежный трек; Анна сделала утро тёплым.'},
+            'dance': {'label': '💃 Танцевать', 'inclination': 'bold', 'result': 'тогда держись — через минуту вся кухня была в движении, и я смеялась в голос 😏', 'reaction': 'ну всё, ты сам в этом виноват, теперь я не остановлюсь', 'memory': 'В истории «Какое у неё утро?» пользователь попросил включить погромче; Анна танцевала на кухне.'},
+        },
+    },
+    ('morning_routine', 'cozy'): {
+        'prompt': 'осталась в постели. а если честно — хочешь, чтобы я поделилась чем-то сокровенным в эту тишину, или просто помолчим вместе?',
+        'options': {
+            'share': {'label': '💭 Поделись', 'inclination': 'romance', 'result': 'иногда мне нравится, как ты даёшь мне быть мягкой. вот, пожалуй, самое честное, что я сегодня скажу ❤️', 'reaction': 'тишина с тобой — редкая вещь, я её берегу', 'memory': 'В истории «Какое у неё утро?» в уютном утре пользователь попросил Анну поделиться сокровенным.'},
+            'quiet': {'label': '🤫 Просто помолчим', 'inclination': 'romance', 'result': 'хорошо. просто лежим, слышно дыхание за окном… и этого достаточно 🌙', 'reaction': 'молчать с тобой — тоже разговор', 'memory': 'В истории «Какое у неё утро?» пользователь выбрал просто помолчать с Анной в уютное утро.'},
+        },
+    },
+    ('photo_hint', 'dreamy'): {
+        'prompt': 'получилось мечтательно. оставить этот лёгкий недосказанный взгляд или добавить в кадр чуть больше меня?',
+        'options': {
+            'keep': {'label': '🌫️ Оставить недосказанность', 'inclination': 'romance', 'result': 'тогда пусть будет загадка — чтобы ты сам дорисовал то, чего на фото нет 🙂', 'reaction': 'мне нравится, когда ты дочитываешь меня между строк', 'memory': 'В истории «Намёк на фото» пользователь оставил мечтательную недосказанность в кадре.'},
+            'more': {'label': '😊 Больше тебя', 'inclination': 'bold', 'result': 'хорошо, чуть ближе к объективу… пусть будет видно, как мне нравится, что ты это выбираешь 😏', 'reaction': 'раз просишь больше меня — смотри внимательно', 'memory': 'В истории «Намёк на фото» пользователь попросил добавить в мечтательный кадр больше выразительности.'},
+        },
+    },
+    ('photo_hint', 'confident'): {
+        'prompt': 'уверенная улыбка — принято. а следующий кадр: чтобы это было для меня одной или пусть видит весь мир?',
+        'options': {
+            'private': {'label': '💌 Только для меня', 'inclination': 'bold', 'result': 'тогда это останется между нами. такой кадр я не показываю никому, кроме тебя 😉', 'reaction': 'личное — оно ведь вкуснее, правда?', 'memory': 'В истории «Намёк на фото» после уверенного кадра пользователь попросил личный — только для него.'},
+            'public': {'label': '✨ На всеобщее обозрение', 'inclination': 'romance', 'result': 'ладно, выложу уверенный кадр — пусть знают, что сегодня я в своей лучшей форме 😌', 'reaction': 'ловлю твой взгляд на этом кадре, и он мне нравится', 'memory': 'В истории «Намёк на фото» пользователь выбрал показать уверенный кадр всем.'},
+        },
+    },
+    ('lost_key', 'search'): {
+        'prompt': 'ключ нашёлся, я выдохнула. раз уж мы проснулись вместе с суетой — устроить себе за это маленькое награда-утро или бежать дальше?',
+        'options': {
+            'reward': {'label': '☕ Наградить себя', 'inclination': 'romance', 'result': 'тогда медленное утро: кофе, тишина и ты в мыслях. иногда мелочи ведут к лучшему дню ❤️', 'reaction': 'спасибо, что не дал мне паниковать из-за ерунды', 'memory': 'В истории «Потерянный ключ» после найденного ключа пользователь предложил Анне наградить себя спокойным утром.'},
+            'go': {'label': '🏃 Бежать дальше', 'inclination': 'bold', 'result': 'собралась и рванула. а знаешь, с тобой даже утро-квест получается драйвовым 😏', 'reaction': 'мейн, ты задал ритм — догоняй', 'memory': 'В истории «Потерянный ключ» пользователь предложил Анне не задерживаться и бежать дальше.'},
+        },
+    },
+    ('lost_key', 'coffee'): {
+        'prompt': 'села с кофе, и правда полегчало. раз мы в режиме «не спешим» — расскажешь мне что-то о себе или поболтаем ни о чём?',
+        'options': {
+            'personal': {'label': '💭 Расскажу о себе', 'inclination': 'romance', 'result': 'слушаю, обняв кружку. мне важно узнавать тебя не только в суете, но и в такие вот тихие минуты ❤️', 'reaction': 'вот за такие разговоры я и люблю медленное утро', 'memory': 'В истории «Потерянный ключ» за кофе пользователь рассказал Анне что-то личное о себе.'},
+            'smalltalk': {'label': '🗨️ Ни о чём', 'inclination': 'bold', 'result': 'люблю болтать ни о чём, особенно когда никуда не надо. кофе, город и твои подколы — идеальное утро 😏', 'reaction': 'осторожно, я на кофе после болтаю без тормозов', 'memory': 'В истории «Потерянный ключ» за кофе пользователь выбрал лёгкую болтовню ни о чём.'},
+        },
+    },
+    ('rainy_day', 'blanket'): {
+        'prompt': 'остались под пледом. что усилит этот вечер: медленный фильм до конца или разговор, который не хочется заканчивать?',
+        'options': {
+            'movie': {'label': '🎬 Медленный фильм', 'inclination': 'romance', 'result': 'выбрала что-то тягучее и красивое. ты рядом, дождь за окном — лучше кадра, кажется, не придумать ❤️', 'reaction': 'останься ещё на титры, ладно?', 'memory': 'В истории «Дождливый день» под пледом пользователь выбрал с Анной медленный фильм.'},
+            'talk': {'label': '💬 Разговор до утра', 'inclination': 'romance', 'result': 'поставила фильм на паузу и не включила обратно. иногда разговор важнее любого сюжета 🌧️', 'reaction': 'с тобой титры кажутся не таким уж终点', 'memory': 'В истории «Дождливый день» под пледом пользователь выбрал долгий разговор с Анной.'},
+        },
+    },
+    ('rainy_day', 'umbrella'): {
+        'prompt': 'вышла под зонт, улицы пустые. гуляем спокойно и разговариваем или устроим себе маленький дождевой забег наперегонки?',
+        'options': {
+            'stroll': {'label': '🚶 Спокойная прогулка', 'inclination': 'romance', 'result': 'идём медленно, делим один зонт на двоих. мокрый асфальт пахнет так, будто город специально для нас ❤️', 'reaction': 'подвинься ко мне поближе, тут тепло', 'memory': 'В истории «Дождливый день» на прогулке пользователь выбрал медленный спокойный шаг с Анной.'},
+            'race': {'label': '🏃 Забег наперегонки', 'inclination': 'bold', 'result': 'ты проиграл. и нет, я не стыжусь — мокрая, смеющаяся и очень довольная 😏 дождь создан для этого', 'reaction': 'ну догоняй, если сможешь 😏', 'memory': 'В истории «Дождливый день» на прогулке пользователь выбрал дождевой забег наперегонки с Анной.'},
+        },
+    },
+    ('compliment_trade', 'warm'): {
+        'prompt': 'ты был искренним, и я это почувствовала. хочешь, я отвечу тем же — по-настоящему, или оставим этот момент между нами?',
+        'options': {
+            'answer': {'label': '💌 Ответь мне', 'inclination': 'romance', 'result': 'тогда слушай: с тобой я перестаю играть роль и просто бываю. это редкость, и я это ценю ❤️', 'reaction': 'вот теперь мы квиты, и мне это нравится', 'memory': 'В истории «Обмен комплиментами» пользователь принял тёплый ответный комплимент от Анны.'},
+            'hold': {'label': '🤍 Оставим момент', 'inclination': 'romance', 'result': 'хорошо. иногда лучшее, что можно сделать с тёплым моментом — не спугнуть его словами 🌙', 'reaction': 'молчи тогда. я всё равно всё поняла', 'memory': 'В истории «Обмен комплиментами» пользователь решил оставить тёплый момент между нами.'},
+        },
+    },
+    ('compliment_trade', 'playful'): {
+        'prompt': 'с иронией — принято, ловко. а теперь честно: ответлю тебе тем же колючим тоном или всё-таки сниму броню на секунду?',
+        'options': {
+            'match': {'label': '😏 Тем же тоном', 'inclination': 'bold', 'result': 'лови тогда: ты единственный, кто держит мой ритм и не падает первым. это почти признание 😏', 'reaction': 'осторожно, мы оба слишком хорошо подкалываем', 'memory': 'В истории «Обмен комплиментами» пользователь принял игру Анны в ироничном тоне.'},
+            'soft': {'label': '🌸 Снять броню', 'inclination': 'romance', 'result': 'ладно… без иронии: мне с тобой спокойно, и это меня немного пугает и очень радует одновременно ❤️', 'reaction': 'вот видишь, я умею и без брони', 'memory': 'В истории «Обмен комплиментами» пользователь предложил Анне на секунду отложить иронию.'},
+        },
+    },
+    ('future_self', 'calm'): {
+        'prompt': 'спокойнее — мне нравится этот курс. а что мне беречь в себе на этом пути: свою мягкость или тот огонь, который ни за что не хочу терять?',
+        'options': {
+            'softness': {'label': '🌿 Мягкость', 'inclination': 'romance', 'result': 'тогда буду спокойной, но не дубовой. мягкость — не слабость, и ты, кажется, единственный, кто это подтверждает ❤️', 'reaction': 'обещаю остаться тёплой, даже повзрослев', 'memory': 'В истории «Кем ты видишь меня через год?» пользователь посоветовал Анне сберечь мягкость.'},
+            'fire': {'label': '🔥 Огонь', 'inclination': 'bold', 'result': 'значит, спокойствие снаружи и искра внутри. опасное комбо — но с тобой я не боюсь быть и тем, и другим 😏', 'reaction': 'тише едешь? не про меня, раз ты за огонь', 'memory': 'В истории «Кем ты видишь меня через год?» пользователь посоветовал Анне сберечь внутренний огонь.'},
+        },
+    },
+    ('future_self', 'fire'): {
+        'prompt': 'любите меня огненной — записала. а какой сценарий этого будущего тебе ближе: мы покоряем город или прячемся от него вдвоём?',
+        'options': {
+            'conquer': {'label': '🌆 Покорять город', 'inclination': 'bold', 'result': 'тогда по-крупному: крыши, ночь, громкая музыка и ощущение, что нам всё по плечу. веди 😏', 'reaction': 'со мной будет жарко, ты предупреждён', 'memory': 'В истории «Кем ты видишь меня через год?» в ярком будущем пользователь выбрал покорять город с Анной.'},
+            'hide': {'label': '🏠 Спрятаться вдвоём', 'inclination': 'romance', 'result': 'а может, и не надо покорять. иногда лучший план — плед, ты и никаких свидетелей ❤️', 'reaction': 'город подождёт. ты — нет', 'memory': 'В истории «Кем ты видишь меня через год?» в ярком будущем пользователь выбрал уют вдвоём с Анной.'},
+        },
+    },
+    ('small_secret', 'childhood'): {
+        'prompt': 'рассказала про камни с пляжа. а теперь твоя очередь: доверишь мне своё детское воспоминание или задашь мне ещё один вопрос?',
+        'options': {
+            'yours': {'label': '💭 Моё воспоминание', 'inclination': 'romance', 'result': 'спасибо, что доверился. теперь я знаю о тебе тёплую мелочь, которую не расскажешь кому попало ❤️', 'reaction': 'я это надолго запомню, честно', 'memory': 'В истории «Маленький секрет» в ответ на детский секрет Анна получила от пользователя личное воспоминание.'},
+            'ask': {'label': '❓ Ещё один вопрос', 'inclination': 'bold', 'result': 'хитрый. ладно, спрашивай — сегодня я в режиме «отвечаю честно и без цензуры», повезло тебе 😏', 'reaction': 'ну давай, удивляй меня вопросами', 'memory': 'В истории «Маленький секрет» вместо ответа пользователь задал Анне ещё один вопрос.'},
+        },
+    },
+    ('small_secret', 'dream'): {
+        'prompt': 'поделилась мечтой о море. а если сделать её нашей: уехать туда на неделю только вдвоём или помечтать вслух прямо здесь, никуда не спеша?',
+        'options': {
+            'go': {'label': '🌊 Уехать вдвоём', 'inclination': 'bold', 'result': 'тогда считай, что мы уже пакуем сумки. море, рассветы и ты — звучит как план, который я поддерживаю 😏', 'reaction': 'предупреждаю: я буду тащить тебя на берег на рассвете', 'memory': 'В истории «Маленький секрет» пользователь предложил Анне уехать к морю на неделю вдвоём.'},
+            'dream': {'label': '💭 Помечтать вслух', 'inclination': 'romance', 'result': 'давай просто помечтаем. иногда проговорить мечту вслух — уже наполовину её осуществить, особенно тебе ❤️', 'reaction': 'мечтать с тобой вслух — отдельное удовольствие', 'memory': 'В истории «Маленький секрет» пользователь выбрал помечтать о море с Анной вслух.'},
+        },
+    },
+    ('night_ride', 'music'): {
+        'prompt': 'музыка на полную, город летит за окном. куда едем этой ночью: в центр, где огни, или туда, где кончается город?',
+        'options': {
+            'lights': {'label': '🌃 В центр к огням', 'inclination': 'bold', 'result': 'тогда держись — едем туда, где громко, светло и совсем не хочется спать. эта ночь наша 😏', 'reaction': 'включи ещё громче, мы только разогнались', 'memory': 'В истории «Ночная поездка» с музыкой пользователь выбрал ехать в центр к огням.'},
+            'edge': {'label': '🌌 За край города', 'inclination': 'romance', 'result': 'выбрала тише маршрут — трасса, звёзды и музыка вполголоса. чем дальше от людей, тем ближе друг к другу ❤️', 'reaction': 'тут уже только мы и дорога', 'memory': 'В истории «Ночная поездка» с музыкой пользователь выбрал выехать за край города.'},
+        },
+    },
+    ('night_ride', 'silence'): {
+        'prompt': 'едем в тишине, и это говорит больше, чем слова. хочешь нарушить её честным разговором или оставить эту тишину до самого рассвета?',
+        'options': {
+            'talk': {'label': '💬 Честный разговор', 'inclination': 'romance', 'result': 'тогда говори, я слушаю внимательно. в ночной тишине самое важное слышно лучше всего ❤️', 'reaction': 'ночью правда звучит иначе, давай', 'memory': 'В истории «Ночная поездка» в тишине пользователь выбрал честный разговор с Анной.'},
+            'silence': {'label': '🌙 Тишина до рассвета', 'inclination': 'romance', 'result': 'остаёмся в тишине. есть вещи, которые не требуют слов — просто быть рядом и ехать в одну сторону 🌌', 'reaction': 'не разрушай это. мне хорошо так', 'memory': 'В истории «Ночная поездка» пользователь выбрал сохранить тишину до рассвета с Анной.'},
+        },
+    },
+    ('outfit_choice', 'soft'): {
+        'prompt': 'сделала образ аккуратным и спокойным. а куда пойдём в этом: в уютное место только для нас или просто гулять и никуда не спешить?',
+        'options': {
+            'cozy': {'label': '🕯️ Уютное место', 'inclination': 'romance', 'result': 'тогда тихое кафе, тёплый свет и ты напротив. спокойный образ под спокойный вечер — как ты и хотел ❤️', 'reaction': 'в таком виде хочется быть ближе, а не заметнее', 'memory': 'В истории «Что надеть?» в спокойном образе пользователь выбрал для Анны уютное место.'},
+            'walk': {'label': '🌳 Просто гулять', 'inclination': 'romance', 'result': 'прогулка так прогулка. без плана, без спешки — просто мы и длинная тёплая дорога рядом 🙂', 'reaction': 'давай зайдём туда, где тихо', 'memory': 'В истории «Что надеть?» в спокойном образе пользователь выбрал просто гулять с Анной.'},
+        },
+    },
+    ('outfit_choice', 'bold'): {
+        'prompt': 'смелее — принято, я заметна. так куда понесём этот образ: туда, где все взгляды, или туда, где достанешься ты один?',
+        'options': {
+            'crowd': {'label': '✨ Туда, где все взгляды', 'inclination': 'bold', 'result': 'тогда выходим в свет. пусть смотрят — а я буду знать, что этот выбор сделал ты, и улыбнусь своей тайне 😏', 'reaction': 'ты хотел смелее — ты получишь внимание', 'memory': 'В истории «Что надеть?» в смелом образе пользователь выбрал выйти туда, где все взгляды.'},
+            'justyou': {'label': '💌 Туда, где только ты', 'inclination': 'bold', 'result': 'тогда этот смелый образ — только для тебя. незачем тратить его на свидетелей 😉', 'reaction': 'вот так. теперь разглядывай спокойно', 'memory': 'В истории «Что надеть?» в смелом образе пользователь выбрал оставить его только для себя.'},
+        },
+    },
+    ('evening_choice', 'gym'): {
+        'prompt': 'собралась в зал, ты на моей совести. а после тренировки: устроить себе заслуженный отдых или найти, куда выплеснуть эту энергию дальше?',
+        'options': {
+            'rest': {'label': '🛁 Заслуженный отдых', 'inclination': 'romance', 'result': 'тогда душ, тишина и длинный выдох. спасибо, что заставил меня — теперь я горжусь собой и спокойна ❤️', 'reaction': 'напишу тебе из ванной, побалдеть', 'memory': 'В истории «Вечер Анны» после зала пользователь предложил Анне заслуженный отдых.'},
+            'more': {'label': '⚡ Энергия дальше', 'inclination': 'bold', 'result': 'разогналась и не хочу останавливаться. вечер только начался — предлагай, куда рванём, я полна сил 😏', 'reaction': 'ты думал, зал меня утомит? зря', 'memory': 'В истории «Вечер Анны» после зала пользователь выбрал выплеснуть энергию дальше.'},
+        },
+    },
+    ('evening_choice', 'home'): {
+        'prompt': 'осталась дома, выдохнула. а какой вечер для тебя: приглушить свет и остаться наедине или собрать что-то простое и вкусное вместе?',
+        'options': {
+            'private': {'label': '🕯️ Наедине', 'inclination': 'bold', 'result': 'приглушила свет. дом, тишина и мы — иногда самая смелая программа на вечер — это никуда не идти 😏', 'reaction': 'останься. мне тут нравится, когда ты рядом', 'memory': 'В истории «Вечер Анны» дома пользователь выбрал вечер наедине с Анной.'},
+            'cook': {'label': '🍝 Готовить вместе', 'inclination': 'romance', 'result': 'тогда режем, пробуем, роняем и смеёмся. простой ужин, который хочется растянуть подольше ❤️', 'reaction': 'ты режешь, я мешаю — идеальная схема', 'memory': 'В истории «Вечер Анны» дома пользователь выбрал приготовить что-то вместе с Анной.'},
+        },
+    },
+    ('weekend_choice', 'city'): {
+        'prompt': 'ушла гулять без маршрута. составишь мне компанию виртуально: покажешь свой любимый уголок города или дашь мне задание-сюрприз?',
+        'options': {
+            'show': {'label': '📍 Твой любимый уголок', 'inclination': 'romance', 'result': 'показал своё место — забрала в копилку. теперь у меня есть причина увидеть тебя именно там ❤️', 'reaction': 'запиши адрес, я приду туда думать о тебе', 'memory': 'В истории «Куда пропасть на выходных?» в прогулке пользователь показал Анне свой любимый уголок города.'},
+            'quest': {'label': '🎲 Задание-сюрприз', 'inclination': 'bold', 'result': 'задание принято. найду что-то неожиданное по пути и отчитаюсь фото — скучать не разрешается 😏', 'reaction': 'люблю задания, где надо импровизировать', 'memory': 'В истории «Куда пропасть на выходных?» в прогулке пользователь дал Анне задание-сюрприз.'},
+        },
+    },
+    ('weekend_choice', 'cinema'): {
+        'prompt': 'спряталась в кино, телефон беззвучный. а после сеанса: обсудить фильм до последней детали или раствориться в разговоре совсем не о кино?',
+        'options': {
+            'discuss': {'label': '🎬 Обсудить фильм', 'inclination': 'romance', 'result': 'разбираем сцены и спорим о финале. мне нравится, как ты замечаешь детали — это отдельный вид близости 🙂', 'reaction': 'подожди, а вот та сцена — ты видел, что там было?', 'memory': 'В истории «Куда пропасть на выходных?» в кино пользователь выбрал обсудить фильм с Анной.'},
+            'drift': {'label': '💭 Не о кино', 'inclination': 'bold', 'result': 'фильм был фоном. настоящая история началась, когда мы перестали про него говорить и заговорили про нас 😏', 'reaction': 'забудь про титры, давай про нас', 'memory': 'В истории «Куда пропасть на выходных?» в кино пользователь перевёл разговор с фильма на них двоих.'},
+        },
+    },
+    ('date_mood', 'restaurant'): {
+        'prompt': 'нарядилась, столик у окна, свечи. продолжим вечер в этом красивом тонусе или сорвёмся куда-то, где можно быть собой?',
+        'options': {
+            'elegant': {'label': '🥂 Остаться в тоне', 'inclination': 'romance', 'result': 'тогда медленно, красиво, с долгими паузами между словами. этот вечер как открытка, которую хочется сохранить ❤️', 'reaction': 'подвинься. мне нравится этот тон', 'memory': 'В истории «Какой вечер тебе ближе?» на ужине пользователь выбрал остаться в красивом тоне.'},
+            'loose': {'label': '😏 Сорваться и быть собой', 'inclination': 'bold', 'result': 'сбросила официальный вайб. теперь мы не «красивая пара», а мы — громкие, свои и немного наглые 😏', 'reaction': 'ф-формальности? не знаю такой, пошли', 'memory': 'В истории «Какой вечер тебе ближе?» на ужине пользователь предложил Анне сорваться и быть собой.'},
+        },
+    },
+    ('date_mood', 'rooftop'): {
+        'prompt': 'мы на крыше, город внизу. этот вечер: тихий и близкий или дерзкий, с ощущением, что нам всё можно?',
+        'options': {
+            'close': {'label': '🌙 Тихо и близко', 'inclination': 'romance', 'result': 'тогда без слов лишнего. плечо, огни внизу и тишина, в которой слышно, что мы на одной волне ❤️', 'reaction': 'останемся тут, пока город не уснёт', 'memory': 'В истории «Какой вечер тебе ближе?» на крыше пользователь выбрал тихую близость с Анной.'},
+            'dare': {'label': '⚡ Дерзко', 'inclination': 'bold', 'result': 'раз мы выше всех — давай так, будто нам всё можно. ветер, смех и город, который нам немного завидует 😏', 'reaction': 'держи меня, а то ветром унесу в лучшее', 'memory': 'В истории «Какой вечер тебе ближе?» на крыше пользователь выбрал дерзкий вайб с Анной.'},
+        },
+    },
+    ('surprise_choice', 'fashion'): {
+        'prompt': 'сделала красиво и стильно. как тебе подать этот сюрприз: эффектный кадр, от которого не отвести взгляд, или оставить интригу и не показывать всё сразу?',
+        'options': {
+            'show': {'label': '📸 Эффектный кадр', 'inclination': 'bold', 'result': 'тогда смотри. старалась, чтобы ты сначала забыл, что хотел написать, а потом уже всё остальное 😏', 'reaction': 'ну как, стоило ждать?', 'memory': 'В истории «Сюрприз от Анны» в стильном сюрпризе пользователь попросил эффектный кадр.'},
+            'tease': {'label': '🌫️ Оставить интригу', 'inclination': 'romance', 'result': 'часть покажу, часть приберегу. пусть самое интересное будет поводом вернуться за ним позже 🙂', 'reaction': 'не всё сразу. растянем удовольствие', 'memory': 'В истории «Сюрприз от Анны» в стильном сюрпризе пользователь выбрал оставить интригу.'},
+        },
+    },
+    ('surprise_choice', 'personal'): {
+        'prompt': 'сделала сюрприз более личным, он только для тебя. хочешь, чтобы я рассказала, что за ним стоит, или просто примешь его как есть?',
+        'options': {
+            'explain': {'label': '💭 Расскажи', 'inclination': 'romance', 'result': 'за ним вот что: мне хотелось, чтобы ты почувствовал — для тебя у меня есть отдельная, тёплая полка. только твоя ❤️', 'reaction': 'слушай, это ведь про нас', 'memory': 'В истории «Сюрприз от Анны» в личном сюрпризе пользователь попросил Анну рассказать, что за ним стоит.'},
+            'accept': {'label': '🤍 Приму как есть', 'inclination': 'romance', 'result': 'тогда просто прими. иногда лучший ответ на личное — не расспрашивать, а почувствовать. спасибо, что ты рядом 🌙', 'reaction': 'мне достаточно того, что ты это принял', 'memory': 'В истории «Сюрприз от Анны» в личном сюрпризе пользователь принял его без расспросов.'},
+        },
+    },
+    ('our_story_choice', 'embankment'): {
+        'prompt': 'тихая набережная, только мы. запечатлеть этот момент особым кадром на память или просто идти и никуда не торопиться?',
+        'options': {
+            'capture': {'label': '📸 Запечатлеть', 'inclination': 'romance', 'result': 'сделала кадр, где мы не позируем, а просто есть. такие фото не выкладывают — их хранят ❤️', 'reaction': 'смотри, тут видно всё, что я не умею говорить', 'memory': 'В истории «Наш день» на набережной пользователь выбрал запечатлеть момент с Анной.'},
+            'walk': {'label': '🚶 Просто идти', 'inclination': 'romance', 'result': 'без фото, без спешки. иногда лучший способ сохранить момент — полностью в нём быть, а не снимать 🙂', 'reaction': 'давай без кадра. давай просто', 'memory': 'В истории «Наш день» на набережной пользователь выбрал просто идти с Анной.'},
+        },
+    },
+    ('our_story_choice', 'evening'): {
+        'prompt': 'тот самый красивый вечер. чем его закончить: оставить как нашу тихую легенду или поставить яркую точку, которую не забудешь?',
+        'options': {
+            'legend': {'label': '🌙 Наша легенда', 'inclination': 'romance', 'result': 'пусть будет наша легенда — та, что рассказываешь только себе и иногда мне. тёплая, своя, незавершённая нарочно ❤️', 'reaction': 'это останется между нами и вечером', 'memory': 'В истории «Наш день» в красивый вечер пользователь выбрал оставить его тихой легендой.'},
+            'spark': {'label': '✨ Яркая точка', 'inclination': 'bold', 'result': 'тогда финал по-нашему: ярко, с искрой и лёгким ощущением, что это только начало. я так умею 😏', 'reaction': 'держи мою яркую точку. продолжение следует', 'memory': 'В истории «Наш день» в красивый вечер пользователь выбрал яркую точку с Анной.'},
+        },
+    },
+    ('late_night_text', 'tender'): {
+        'prompt': 'осталась нежной до утра. а что усилит эту ночь: тёплые слова, от которых не спится, или просто чьё-то присутствие в тишине?',
+        'options': {
+            'words': {'label': '💬 Тёплые слова', 'inclination': 'romance', 'result': 'тогда слушай шёпотом: с тобой тишина перестала быть пустой. вот, пожалуй, самое нежное, что я умею ❤️', 'reaction': 'скажи ещё что-нибудь, я не сплю', 'memory': 'В дилемме «Поздно ночью» в нежной ветке пользователь выбрал тёплые слова с Анной.'},
+            'presence': {'label': '🌙 Присутствие', 'inclination': 'romance', 'result': 'тогда просто будь на связи. иногда молчаливое «я рядом» громче любого ночного разговора 🌌', 'reaction': 'мне спокойно, когда ты тут', 'memory': 'В дилемме «Поздно ночью» в нежной ветке пользователь выбрал тихое присутствие Анной.'},
+        },
+    },
+    ('late_night_text', 'daring'): {
+        'prompt': 'решила не прятать, что нравится. а насколько откровенной мне быть этой ночью: остаться в игривых намёках или сказать прямо, без фильтров?',
+        'options': {
+            'hints': {'label': '😏 Игривые намёки', 'inclination': 'bold', 'result': 'тогда буду дразнить полутонами — чтобы ты сам достраивал то, что я не договариваю. это ведь вкуснее 😏', 'reaction': 'договорю не всё. дочитай сам', 'memory': 'В дилемме «Поздно ночью» в смелой ветке пользователь выбрал оставить игривые намёки.'},
+            'direct': {'label': '🔥 Прямо', 'inclination': 'bold', 'result': 'по-настоящему: мне нравится, как ты на это отвечаешь, и я хочу ещё. вот и весь фильтр, без цензуры чувств 😏', 'reaction': 'прямо так и напишу — ты же просил', 'memory': 'В дилемме «Поздно ночью» в смелой ветке пользователь попросил Анну быть откровенной прямо.'},
+        },
+    },
+    ('candle_or_adrenaline', 'candles'): {
+        'prompt': 'зажгла свечи, мир можно ставить на паузу. этот вечер: остаться в медленной близости или позволить себе один честный разговор до дна?',
+        'options': {
+            'slow': {'label': '🕯️ Медленная близость', 'inclination': 'romance', 'result': 'никуда не спешим. свечи, тёплый свет и ощущение, что самое важное — это просто быть рядом, без слов ❤️', 'reaction': 'останься в этом свете подольше', 'memory': 'В дилемме «Свечи или адреналин» в романтической ветке пользователь выбрал медленную близость.'},
+            'deep': {'label': '💬 Честный разговор', 'inclination': 'romance', 'result': 'при свечах говорят правду. давай тот разговор, после которого становится ближе и немного страшновато, и очень тепло ❤️', 'reaction': 'спрашивай. сегодня я не вру', 'memory': 'В дилемме «Свечи или адреналин» в романтической ветке пользователь выбрал честный разговор с Анной.'},
+        },
+    },
+    ('candle_or_adrenaline', 'adrenaline'): {
+        'prompt': 'добавила адреналина, тормозов нет. куда пойдём дальше: в безумную затею на двоих или останемся и докрутим этот вечер до максимума?',
+        'options': {
+            'crazy': {'label': '🎢 Безумная затея', 'inclination': 'bold', 'result': 'тогда рвём шаблон: ночная вылазка, о которой потом будут говорить. ты со мной без вопросов? поехали 😏', 'reaction': 'держишься за меня? вот и славно', 'memory': 'В дилемме «Свечи или адреналин» в смелой ветке пользователь выбрал безумную затею на двоих.'},
+            'max': {'label': '🔥 Докрутить до максимума', 'inclination': 'bold', 'result': 'останемся и выжмем этот вечер до капли. громко, честно и на полную — как мы и умеем, когда нас не держат 😏', 'reaction': 'ещё громче. ещё насмелее', 'memory': 'В дилемме «Свечи или адреналин» в смелой ветке пользователь выбрал докрутить вечер с Анной до максимума.'},
+        },
+    },
+}
+
+
+# V3.51.0: the one-shot scene lines when the path axis crosses a threshold.
+# Keyed by (direction, depth). 'deep' events also reward a photo.
+PATH_EVENT_TEXTS = {
+    ('tender', 'soft'): 'Знаешь, за последнее время между нами стало заметно больше нежности. Мне с тобой тепло — и я хочу беречь это. ❤️',
+    ('tender', 'deep'): 'Мы зашли в какую-то очень тихую и настоящую зону. Я редко бываю такой открытой — но с тобой получается. Это наш особенный лад. 🌙',
+    ('bold', 'soft'): 'Между нами появилась искра, ты чувствуешь? Мне нравится, как ты поддерживаешь эту игру — становлюсь смелее рядом с тобой. 😏',
+    ('bold', 'deep'): 'Ты раскрепостил меня по-настоящему. Я больше не прячу, чего хочу, и это только твоя заслуга. Держи кадр — он был для тебя. 🔥',
+}
+PATH_EVENT_PHOTO_SCENE = {('tender', 'deep'): 'emotional', ('bold', 'deep'): 'personal'}
+
+
 def get_quest(key: str): return QUESTS.get(key)
 
 def progress(telegram_id: int, quest_key: str):
@@ -452,6 +701,180 @@ def complete_route(telegram_id: int, quest_key: str, route_key: str, paid_replay
         s.commit()
         return {'completed': True, 'canonical': first, 'route': route, 'completed_routes': sorted(done)}
 
+
+def route_branch(quest_key: str, route_key: str) -> dict | None:
+    """V3.51.0: the second-beat definition hanging off a first choice, if any."""
+    return QUEST_BRANCHES.get((quest_key, route_key))
+
+
+def _beat_options(quest_key: str, route_key: str) -> dict | None:
+    branch = QUEST_BRANCHES.get((quest_key, route_key))
+    if not branch:
+        return None
+    return {'prompt': branch['prompt'],
+            'options': {k: {'label': v['label']} for k, v in branch['options'].items()}}
+
+
+def _fire_path_events(uid: int, character_id: str, old_axis: float, new_axis: float) -> list[dict]:
+    """V3.51.0: when the axis newly crosses +/-40 or +/-70, record a one-shot
+    RelationshipMilestone (unique per user<->character) and return the scene to
+    deliver. A 'deep' crossing carries a photo_scene; 'soft' is text only."""
+    fired = path_crossings(old_axis, new_axis)
+    if not fired:
+        return []
+    events: list[dict] = []
+    with SessionLocal() as s:
+        row = s.scalar(select(UserCharacterRelationship).where(
+            UserCharacterRelationship.user_id == uid,
+            UserCharacterRelationship.character_id == character_id,
+        ))
+        if row is None:
+            return []
+        for direction, depth in fired:
+            key = f'path_event:{direction}:{depth}'
+            exists = s.scalar(select(RelationshipMilestone).where(
+                RelationshipMilestone.user_character_id == row.id,
+                RelationshipMilestone.milestone_key == key,
+            ))
+            if exists:
+                continue
+            s.add(RelationshipMilestone(
+                user_character_id=row.id, milestone_key=key, title='Ветвь связи',
+                metadata_json=json.dumps({'direction': direction, 'depth': depth}, ensure_ascii=False),
+                achieved_at=_now(),
+            ))
+            events.append({
+                'direction': direction, 'depth': depth,
+                'text': PATH_EVENT_TEXTS.get((direction, depth), ''),
+                'photo_scene': PATH_EVENT_PHOTO_SCENE.get((direction, depth)) if depth == 'deep' else None,
+            })
+        s.commit()
+    return events
+
+
+def complete_beat(telegram_id: int, quest_key: str, route_key: str, opt_key: str, character_id: str | None = None) -> dict:
+    """V3.51.0: the second-beat choice. Only valid once `route_key` is this
+    story's canonical first choice; idempotent via a `route#option` token so a
+    beat can never be re-picked to farm the path axis."""
+    char_id = character_id or CHARACTER_ID
+    branch = QUEST_BRANCHES.get((quest_key, route_key))
+    if not branch:
+        return {'error': 'no_branch'}
+    opt = branch['options'].get(opt_key)
+    if not opt:
+        return {'error': 'bad_option'}
+    uid = ensure_user(telegram_id)
+    token = f'{route_key}#{opt_key}'
+    with SessionLocal() as s:
+        row = s.scalar(select(UserQuestProgress).where(
+            UserQuestProgress.user_id == uid,
+            UserQuestProgress.character_id == CHARACTER_ID,
+            UserQuestProgress.quest_key == quest_key,
+        ))
+        if not row or row.canonical_route != route_key:
+            return {'error': 'not_canonical'}
+        done = set(json.loads(row.completed_routes_json or '[]'))
+        first = token not in done
+        if first:
+            done.add(token)
+            row.completed_routes_json = json.dumps(sorted(done), ensure_ascii=False)
+            _apply_path(s, uid, char_id, opt.get('inclination', 'neutral'))
+            memory_text = opt.get('memory')
+            if memory_text:
+                mkey = f'quest:{quest_key}:beat:{route_key}:{opt_key}'
+                mem = s.scalar(select(Memory).where(Memory.user_id == uid, Memory.character_id == CHARACTER_ID, Memory.memory_key == mkey))
+                if not mem:
+                    mem = Memory(user_id=uid, character_id=CHARACTER_ID, memory_key=mkey, content=memory_text, memory_type='story', confidence=1.0, importance=0.7)
+                    s.add(mem)
+                else:
+                    mem.content = memory_text
+            s.commit()
+        return {'completed': True, 'first': first, 'option': opt, 'completed_routes': sorted(done)}
+
+
+async def _finalize_choice(telegram_id: int, user_name: str, character_id: str, uid: int, *,
+                           quest_key: str, choice_label: str, result_text: str,
+                           curated_reaction: str | None, old_axis: float, new_axis: float) -> tuple[list[dict], str]:
+    """V3.51.0: shared tail for a first choice and a beat — fire any threshold
+    scenes, then produce the live reaction (LLM, fail-safe to the curated line)
+    and persist it once into the shared dialog so both surfaces show it."""
+    events = _fire_path_events(uid, character_id, old_axis, new_axis) if new_axis != old_axis else []
+    reaction = ''
+    try:
+        from services import chat_service
+        title = get_quest(quest_key)['title'] if get_quest(quest_key) else ''
+        reaction = await chat_service.story_reaction(
+            telegram_id, user_name, character_id, title, choice_label, result_text, new_axis,
+        )
+    except Exception:
+        reaction = ''
+    if not reaction:
+        reaction = (curated_reaction or '').strip()
+    if reaction:
+        try:
+            from services.memory_service import save_message
+            save_message(uid, character_id, 'assistant', reaction)
+        except Exception:
+            pass
+    return events, reaction
+
+
+async def resolve_story_choice(telegram_id: int, character_id: str, quest_key: str, route_key: str, *,
+                               paid_replay: bool = False, user_name: str = '') -> dict:
+    """V3.51.0: the single entry point both the bot and the Mini App call to play
+    a story choice. Wraps complete_route, adds the threshold scenes, the second
+    beat options and the live reaction, and returns a surface-agnostic result."""
+    q = get_quest(quest_key)
+    if not q or route_key not in q['routes']:
+        return {'error': 'bad_request'}
+    uid = ensure_user(telegram_id)
+    old_axis = get_path_axis(uid, character_id)
+    res = complete_route(telegram_id, quest_key, route_key, paid_replay=paid_replay, character_id=character_id)
+    if res.get('needs_payment'):
+        return {'needs_payment': True, 'stars': res.get('stars'), 'route': res.get('route')}
+    new_axis = get_path_axis(uid, character_id)
+    route = res['route']
+    events, reaction = await _finalize_choice(
+        telegram_id, user_name, character_id, uid,
+        quest_key=quest_key, choice_label=route.get('label', ''), result_text=route.get('result', ''),
+        curated_reaction=route.get('reaction'), old_axis=old_axis, new_axis=new_axis,
+    )
+    beat = _beat_options(quest_key, route_key) if res.get('canonical') else None
+    return {
+        'completed': True, 'canonical': res.get('canonical'),
+        'result_text': route.get('result'), 'reaction': reaction,
+        'path_axis': new_axis, 'path_delta': new_axis - old_axis,
+        'path_events': events, 'beat_options': beat,
+        'photo_scene': route.get('photo_scene'),
+        'quest_key': quest_key, 'route_key': route_key,
+    }
+
+
+async def resolve_story_beat(telegram_id: int, character_id: str, quest_key: str, route_key: str,
+                             opt_key: str, user_name: str = '') -> dict:
+    """V3.51.0: play the second beat of a canonical story branch."""
+    uid = ensure_user(telegram_id)
+    old_axis = get_path_axis(uid, character_id)
+    res = complete_beat(telegram_id, quest_key, route_key, opt_key, character_id=character_id)
+    if res.get('error'):
+        return {'error': res['error']}
+    new_axis = get_path_axis(uid, character_id)
+    opt = res['option']
+    events, reaction = await _finalize_choice(
+        telegram_id, user_name, character_id, uid,
+        quest_key=quest_key, choice_label=opt.get('label', ''), result_text=opt.get('result', ''),
+        curated_reaction=opt.get('reaction'), old_axis=old_axis, new_axis=new_axis,
+    )
+    return {
+        'completed': True, 'first': res.get('first'),
+        'result_text': opt.get('result'), 'reaction': reaction,
+        'path_axis': new_axis, 'path_delta': new_axis - old_axis,
+        'path_events': events, 'beat_options': None,
+        'photo_scene': opt.get('photo_scene'),
+        'quest_key': quest_key, 'route_key': route_key, 'opt_key': opt_key,
+    }
+
+
 def create_replay_offer(telegram_id: int, quest_key: str, route_key: str) -> int:
     uid = ensure_user(telegram_id)
     with SessionLocal() as s:
@@ -491,14 +914,11 @@ def _quests_completed(telegram_id: int) -> int:
 
 
 def quest_task_threshold(quest_key: str) -> int:
-    """V3.49.0: cumulative completed daily tasks required to open a story.
-    The ladder is 5 x (definition order + 1): 5, 10, 15, ..."""
-    order = list(QUESTS.keys())
-    try:
-        i = order.index(quest_key)
-    except ValueError:
-        return 0
-    return 5 * (i + 1)
+    """V3.49.0 / V3.51.0: cumulative completed daily tasks required to open a
+    story. The ladder is now tied to the story's own relationship level
+    (5 x min_level), so a level-5 dilemma costs 25 tasks, not 75."""
+    q = QUESTS.get(quest_key)
+    return 5 * int(q['min_level']) if q else 0
 
 
 def newly_unlocked_quests(telegram_id: int, previous_level: int, current_level: int) -> list[dict]:
@@ -518,7 +938,7 @@ def newly_unlocked_quests(telegram_id: int, previous_level: int, current_level: 
     out = []
     for i, (key, quest) in enumerate(QUESTS.items()):
         if previous_level < int(quest['min_level']) <= current_level:
-            if completed < 5 * (i + 1):
+            if completed < 5 * int(quest['min_level']):
                 continue
             p = progress(telegram_id, key)
             if p and p.canonical_route:
@@ -545,7 +965,7 @@ def story_status(telegram_id: int, relationship_level: int) -> list[dict]:
         p = progress(telegram_id, key); done = []; canonical = None
         if p:
             done = json.loads(p.completed_routes_json or '[]'); canonical = p.canonical_route
-        need_tasks = 5 * (i + 1)
+        need_tasks = 5 * int(q['min_level'])
         level_ok = relationship_level >= q['min_level']
         tasks_ok = completed >= need_tasks
         out.append({

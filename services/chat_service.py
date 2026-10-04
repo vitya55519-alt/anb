@@ -246,3 +246,43 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
     answer = _clean(r.text)
     save_message(db_user_id, character_id, "assistant", answer)
     return answer
+
+
+async def story_reaction(user_id: int, user_name: str, character_id: str, quest_title: str,
+                         choice_label: str, result_text: str, axis: float) -> str:
+    """V3.51.0: one short, live in-character reaction right after the player makes
+    a story choice, so the branch feels personal rather than a canned line. It
+    reads the current path tilt (axis) and stays inside the stage frame. Fully
+    fail-silent: any error or empty output returns '' so the caller falls back to
+    the curated reaction and the story never blanks out."""
+    try:
+        try:
+            from services.custom_character_service import custom_base_character
+            persona = custom_base_character(character_id)
+            character = persona or get_character(character_id)
+        except Exception:
+            character = get_character(character_id)
+        name = (character or {}).get('name', 'Анна')
+        try:
+            from services.relationship_service import get_context
+            rel = await get_context(user_id, character_id=character_id) or ''
+        except Exception:
+            rel = ''
+        axis_word = ('нежность и романтика' if axis <= -20
+                     else ('страсть и игривость' if axis >= 20 else 'равновесие'))
+        system = (
+            f'Ты {name}. В интерактивной истории «{quest_title}» пользователь только что сделал выбор: «{choice_label}». '
+            f'Ты уже отыграла это так: «{result_text}» Теперь дай одну короткую личную реакцию на его выбор — живую, '
+            f'от первого лица, в одно предложение. Общий тон вашей связи сейчас: {axis_word}; флирт или тепло уместны, '
+            f'но оставайся в рамках текущего этапа и без графических описаний. Не объясняй механику, не называй уровни '
+            f'и скрытые метрики, не используй системные фразы. {rel}'
+        )
+        messages = [{'role': 'system', 'content': system},
+                    {'role': 'user', 'content': (result_text or choice_label or 'продолжим')}]
+        r = await generate_text(messages, max_tokens=90, temperature=0.95, purpose='dialogue')
+        out = (r.text or '').strip()
+        out = re.sub(r'\*\*(.+?)\*\*', r'\1', out)
+        out = re.sub(r'\n{2,}', '\n', out).strip()
+        return out[:400]
+    except Exception:
+        return ''

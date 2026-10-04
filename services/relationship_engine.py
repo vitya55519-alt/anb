@@ -32,6 +32,35 @@ STAGE_RULES = (
 # it starts coloring the chat tone in either direction.
 PATH_TONE_THRESHOLD = 40
 
+# V3.51.0: the two milestones on the path axis that fire a one-shot scene. A
+# 'soft' event is a text moment; a 'deep' event additionally rewards a photo.
+# Directions follow the axis sign: negative -> tenderness, positive -> passion.
+PATH_EVENT_SOFT = 40
+PATH_EVENT_DEEP = 70
+
+
+def path_crossings(old_axis: float, new_axis: float) -> list[tuple[str, str]]:
+    """V3.51.0: which path-event thresholds the axis newly crossed this step.
+
+    Returns a list of (direction, depth) for every threshold moved across in
+    this single update, so the caller can fire each one-shot scene exactly when
+    the player reaches it (never on a replay that does not cross a new line).
+    direction is 'tender' (axis going negative) or 'bold' (positive); depth is
+    'soft' (+/-40) or 'deep' (+/-70).
+    """
+    old = float(old_axis or 0.0)
+    new = float(new_axis or 0.0)
+    fired: list[tuple[str, str]] = []
+    if new <= -PATH_EVENT_DEEP < old:
+        fired.append(('tender', 'deep'))
+    elif new <= -PATH_EVENT_SOFT < old:
+        fired.append(('tender', 'soft'))
+    if new >= PATH_EVENT_DEEP > old:
+        fired.append(('bold', 'deep'))
+    elif new >= PATH_EVENT_SOFT > old:
+        fired.append(('bold', 'soft'))
+    return fired
+
 STAGE_ORDER = ["stranger", "acquaintance", "close", "intimate", "deeply_connected", "committed", "devoted", "soulmate"]
 
 # New-user gates. Existing users are never pushed backwards by the migration.
