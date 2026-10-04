@@ -154,8 +154,11 @@ def test_picture_studio_guards_and_charge_after_success():
     assert "status=402" in gen and 'WEBAPP_PICTURE_COST_CREDITS' in gen
     assert "status=403" in gen and 'has_accepted(' in gen
     assert 'picture_prompt_allowed(prompt)' in gen
-    assert 'picture_final_prompt(prompt, style, fmt)' in gen
+    assert 'picture_final_prompt(prompt, style, fmt, adult=adult_ok)' in gen
     assert 'generate_custom_avatar(final_prompt, None)' in gen
+    # V3.51.2: adult-confirmed studio renders ride the uncensored SpicyAPI t2i
+    assert 'adult_ok = is_adult_confirmed(telegram_id)' in gen
+    assert 'generate_private_photo_t2i(final_prompt)' in gen
     assert 'save_picture(telegram_id, filename, prompt)' in gen
     assert 'consume_photo_credit(telegram_id)' in gen
     assert gen.index('save_picture(') < gen.index('consume_photo_credit(')

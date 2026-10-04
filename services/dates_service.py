@@ -4,6 +4,19 @@ from the date scene as the reward. Payment handling lives in main.py."""
 from dataclasses import dataclass
 
 
+# V3.51.2: date reward photos are shot as a first-person POV so it feels like the
+# user was really there — his hand holding hers in the foreground, her seen ahead
+# at arm's length. Passed as PhotoRequest.angle, which _shot_variant honours
+# verbatim, so it overrides the shared scene framing only for dates.
+DATE_POV_ANGLE = (
+    "first-person POV shot from her boyfriend's eyes on the date: only his hand "
+    "and forearm reach into the lower foreground, holding her hand; she is seen "
+    "just ahead and to the side at natural arm's length, facing the camera, while "
+    "no other person's body or face appears in the frame; a candid perspective of "
+    "a real photo taken during the date"
+)
+
+
 @dataclass(frozen=True)
 class Date:
     id: str

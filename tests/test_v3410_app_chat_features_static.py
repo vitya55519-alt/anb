@@ -127,7 +127,7 @@ def test_chat_media_endpoint_gains_the_video_kind():
 def test_video_and_scene_helpers_exist_and_chain_the_engines():
     assert '_WEBAPP_VIDEO_PROMPT = (' in MAIN
     assert 'async def _webapp_media_video(telegram_id: int, character_id: str):' in MAIN
-    assert 'async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str):' in MAIN
+    assert "async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str, angle: str = ''):" in MAIN
     video = MAIN[MAIN.index('async def _webapp_media_video('):MAIN.index('async def _webapp_media_scene(')]
     # the same engine chain the bot's «Оживить фото» uses
     assert 'engines.append(animate_image)' in video
@@ -166,7 +166,7 @@ def test_feature_action_reuses_the_existing_services():
     # date: free/admin delivers app-native, paid returns a Stars invoice that
     # reuses the bot's existing «date:» payment + reward path
     assert 'has_free_date(telegram_id)' in act
-    assert 'await _webapp_media_scene(telegram_id, character_id, date.scene)' in act
+    assert 'await _webapp_media_scene(telegram_id, character_id, date.scene, dates_service.DATE_POV_ANGLE)' in act
     assert "payload=f'date:{date.id}'" in act
     assert "currency='XTR'" in act
 

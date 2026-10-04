@@ -61,7 +61,7 @@ def test_backend_media_endpoints_stay_for_a_plain_revert():
     # buttons are hidden, the feature is not torn out
     assert 'async def _webapp_media_video(telegram_id: int, character_id: str):' in MAIN
     assert 'async def _webapp_media_circle(' in MAIN
-    assert 'async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str):' in MAIN
+    assert "async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str, angle: str = ''):" in MAIN
 
 
 def test_history_renderers_stay():

@@ -6163,7 +6163,7 @@ async def _deliver_date_reward(chat_id: int, telegram_id: int, user_name: str, d
     except Exception:
         logger.warning('date history mirror failed user=%s date=%s', telegram_id, date.id)
     await _send_voice_note(chat_id, telegram_id, date.text)
-    await _start_photo_background(chat_id, telegram_id, PhotoRequest(scene=date.scene, mood='romantic'), 'story')
+    await _start_photo_background(chat_id, telegram_id, PhotoRequest(scene=date.scene, mood='romantic', angle=dates_service.DATE_POV_ANGLE), 'story')
 
 @dp.message(F.text.in_(kb_pair('apartment')))
 async def apartment_cmd(message: types.Message):
@@ -9988,17 +9988,34 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'credits'}, status=402)
     style = str(body.get('style', 'anime'))[:16]
     fmt = str(body.get('format', 'square'))[:16]
-    final_prompt = webapp_service.picture_final_prompt(prompt, style, fmt)
+    # V3.51.2: adult-confirmed users get the studio's uncensored route — the
+    # censored fal Seedream answers HTTP 422 content_policy_violation on an
+    # explicit prompt, so those renders ride the same SpicyAPI text-to-image
+    # the «Наедине» nude flow uses. Minors/coercion are hard-blocked above and
+    # never reach any engine.
+    adult_ok = is_adult_confirmed(telegram_id)
+    final_prompt = webapp_service.picture_final_prompt(prompt, style, fmt, adult=adult_ok)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     try:
         from services import photo_service
         # V3.44.16: the studio rides the same hard cap as chat photos — a hung
         # fal chain used to leave the studio spinning forever (49% of renders
         # died; the rest could stall for half an hour).
-        data, mime = await asyncio.wait_for(
-            photo_service.generate_custom_avatar(final_prompt, None),
-            timeout=PHOTO_TOTAL_BUDGET_SECONDS,
-        )
+        data = None
+        mime = None
+        if adult_ok:
+            from services.private_photo_service import generate_private_photo_t2i
+            data = await asyncio.wait_for(
+                generate_private_photo_t2i(final_prompt),
+                timeout=PHOTO_TOTAL_BUDGET_SECONDS,
+            )
+            if data:
+                mime = 'image/jpeg'
+        if not data:
+            data, mime = await asyncio.wait_for(
+                photo_service.generate_custom_avatar(final_prompt, None),
+                timeout=PHOTO_TOTAL_BUDGET_SECONDS,
+            )
     except asyncio.TimeoutError:
         logger.warning('webapp picture generation timed out user=%s budget=%ss', telegram_id, PHOTO_TOTAL_BUDGET_SECONDS)
         reason = 'timeout' if telegram_id in ADMIN_TELEGRAM_IDS else None
@@ -10264,13 +10281,15 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
     raise last_error or PhotoGenerationError('video', 'no_video_result')
 
 
-async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str):
+async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str, angle: str = ''):
     """V3.41.0: an in-character photo for a specific scene — the app-native
     reward shot for a free/admin date. V3.43.7: preserve the date's scene ID
-    so venue-specific wardrobe and framing rules apply in the photo pipeline."""
+    so venue-specific wardrobe and framing rules apply in the photo pipeline.
+    V3.51.2: an optional angle overrides the shot framing (used by dates to
+    render a first-person POV so it feels like the user was really there)."""
     return await _webapp_pipeline_photo(
         telegram_id, character_id,
-        PhotoRequest(scene=scene, mood='romantic'),
+        PhotoRequest(scene=scene, mood='romantic', angle=angle),
     )
 
 
@@ -10675,7 +10694,7 @@ async def _webapp_api_feature_action(request: web.Request) -> web.Response:
     save_message(uid, character_id, 'assistant', narration)
     photo_url = None
     try:
-        data, mime, ext = await _webapp_media_scene(telegram_id, character_id, date.scene)
+        data, mime, ext = await _webapp_media_scene(telegram_id, character_id, date.scene, dates_service.DATE_POV_ANGLE)
         if data:
             filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
             photo_url = f'/webapp/media/{filename}'

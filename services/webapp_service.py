@@ -112,6 +112,12 @@ PICTURE_PROMPT_SUFFIX = (
     ', fully clothed, elegant outfit, safe for work, no nudity, '
     'high quality, detailed, cinematic lighting'
 )
+# V3.51.2: the studio's uncensored leg (adult-confirmed users only) drops the
+# SFW constraint and keeps just a quality tail, so the user's own prompt drives
+# the content while minors/coercion stay hard-blocked by picture_prompt_allowed.
+PICTURE_PROMPT_SUFFIX_ADULT = (
+    ', high quality, detailed, cinematic lighting, natural skin, realistic'
+)
 PICTURE_PROMPT_MAX_LEN = 800
 PICTURE_PROMPT_MIN_LEN = 4
 
@@ -133,12 +139,14 @@ def picture_prompt_allowed(prompt: str) -> bool:
     return not _PICTURE_BLOCKED_RE.search(prompt or '')
 
 
-def picture_final_prompt(prompt: str, style: str = 'anime', fmt: str = 'square') -> str:
-    """User text + the chosen style/format + the standing SFW constraint."""
+def picture_final_prompt(prompt: str, style: str = 'anime', fmt: str = 'square', adult: bool = False) -> str:
+    """User text + the chosen style/format + the standing constraint. V3.51.2:
+    an adult render swaps the mandatory SFW tail for a quality-only tail."""
     base = (prompt or '').strip()[:PICTURE_PROMPT_MAX_LEN]
     prefix = PICTURE_STYLE_PREFIXES.get(style, PICTURE_STYLE_PREFIXES['anime'])
     suffix = PICTURE_FORMAT_SUFFIXES.get(fmt, PICTURE_FORMAT_SUFFIXES['square'])
-    return prefix + base + suffix + PICTURE_PROMPT_SUFFIX
+    tail = PICTURE_PROMPT_SUFFIX_ADULT if adult else PICTURE_PROMPT_SUFFIX
+    return prefix + base + suffix + tail
 
 # Canonical face references used for storefront photos (no network needed).
 _FACE_REFERENCES = {

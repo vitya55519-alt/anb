@@ -112,7 +112,9 @@ def test_successful_payment_handles_gift_and_date():
     # The shared reward path ends with a fresh photo set from the date scene.
     helper = MAIN[MAIN.index('async def _deliver_date_reward('):]
     helper = helper[:helper.index('@dp.message')]
-    assert "PhotoRequest(scene=date.scene, mood='romantic')" in helper
+    assert "PhotoRequest(scene=date.scene, mood='romantic', angle=dates_service.DATE_POV_ANGLE)" in helper
+    # V3.51.2: date reward photos are a first-person POV (his hand holding hers)
+    assert 'angle=dates_service.DATE_POV_ANGLE' in helper
     assert '_start_photo_background(chat_id, telegram_id' in helper
 
 
