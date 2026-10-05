@@ -23,7 +23,9 @@ def test_video_pricing_and_free_slots():
 
 
 def test_retention_config_flags():
-    assert 'FREE_MESSAGES_PER_DAY", "20"' in CONFIG
+    # V3.52.1: the free daily text allowance was raised 20 → 50 (owner: give
+    # non-premium users more room before the paywall bites).
+    assert 'FREE_MESSAGES_PER_DAY", "50"' in CONFIG
     assert 'DEMO_PREMIUM_HOURS", "3"' in CONFIG
     assert 'PREMIUM_DISCOUNT_PERCENT", "30"' in CONFIG
     assert 'PREMIUM_DISCOUNT_HOURS", "24"' in CONFIG

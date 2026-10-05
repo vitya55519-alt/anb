@@ -162,6 +162,10 @@ def test_donation_confirm_and_ledger():
     callback = MAIN[MAIN.index('async def _platega_callback(request: web.Request)'):MAIN.index('async def _platega_success')]
     assert "if product.startswith('donation_'):" in callback
     assert 'Спасибо за поддержку' in callback
+    # V3.52.1 regression: a donation must NOT fall through to the premium `else`.
+    # The branch after the donation `if` is an `elif`, so the whole grant logic
+    # is one chain and «Premium активирован» can never be shown to a donor.
+    assert "elif product == 'constructor_rub':" in callback
 
 
 # ── honest pay-method labels ───────────────────────────────────────────────

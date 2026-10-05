@@ -7324,6 +7324,35 @@ async def _react_to_user_photo(message: types.Message):
         pass
 
 
+# ── V3.52.0: «Жизнь без тебя» one-tap reply continuation ──────────────────
+@dp.callback_query(F.data.startswith('life_reply:'))
+async def on_life_reply_tap(cq: types.CallbackQuery):
+    """A life-event push ends with two low-friction buttons. Tapping one feeds a
+    natural user line into the SAME reply pipeline the typed chat uses, so she
+    continues her own moment in context (memory, persona, relationship) instead
+    of a canned answer. Guarded by the daily message limit like a normal turn."""
+    parts = cq.data.split(':', 2)
+    character_id = parts[1] if len(parts) > 1 else get_user_character(cq.from_user.id)
+    key = parts[2] if len(parts) > 2 else 'tell_more'
+    from services.life_event_service import tap_reply_text
+    user_line = tap_reply_text(key)
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS and not can_send_message(cq.from_user.id):
+        await cq.answer('лимит сообщений на сегодня', show_alert=True)
+        return
+    await cq.answer()
+    try:
+        async with ChatActionSender.typing(bot=bot, chat_id=cq.message.chat.id):
+            answer = await anna_reply(
+                cq.from_user.id, cq.from_user.first_name or 'ты', user_line,
+                language_code=cq.from_user.language_code, character_id=character_id,
+            )
+        answer, _ = _strip_fake_photo(answer)
+        if answer:
+            await cq.message.answer(answer)
+    except Exception:
+        logger.exception('life_reply tap failed user=%s', cq.from_user.id)
+
+
 # ── V3.19.0: personal character constructor ─────────────────────────────────
 
 # V3.29.0: the wizard's state lives in dialog_sessions, so a redeploy keeps it.
@@ -8872,11 +8901,15 @@ async def _platega_callback(request: web.Request) -> web.Response:
         if platega_service.mark_paid(order['id'], json.dumps(body, ensure_ascii=False)):
             product = order['product']
             if product.startswith('donation_'):
-                # V3.44.22: «Поддержать проект» donation — nothing to grant,
-                # the thank-you IS the product (ledger row below still lands
-                # via record_payment, partner commission included).
-                confirm = '💜 Спасибо за поддержку! Донат получен — это очень помогает проекту 🥹'
-            if product == 'constructor_rub':
+                # V3.52.1: «Поддержать проект» donation — nothing to grant, the
+                # thank-you IS the product (ledger row below still lands via
+                # record_payment, partner commission included). This must NOT
+                # fall through to the premium `else` at the end of the chain —
+                # it used to tell a 50₽ donor «Premium активирован на 30 дней».
+                # The next branch is an `elif` now, so the whole thing is a single
+                # if/elif/else chain and a donation never reaches the default.
+                confirm = '💜 Оплата прошла! Спасибо за поддержку — очень ценно, что ты остаёшься с нами 🥰'
+            elif product == 'constructor_rub':
                 # V3.27.0: ruble-paid character constructor credit.
                 ensure_user(order['telegram_id'])
                 add_constructor_credit(order['telegram_id'], 1)
@@ -8932,8 +8965,12 @@ async def _platega_callback(request: web.Request) -> web.Response:
 
 
 async def _platega_success(request: web.Request) -> web.Response:
+    # V3.52.1: this page is shared by every product (premium, peaches, donation
+    # …), so it must not claim «Premium уже включён» — a donor saw that and
+    # thought a 50₽ gift bought a subscription. Neutral wording + the real grant
+    # always arrives as the bot message on /platega/callback.
     return web.Response(
-        text='✅ Оплата прошла! Premium уже включён — возвращайся в бот 💫',
+        text='✅ Оплата прошла! Возвращайся в бот — всё уже учтено 💫',
         content_type='text/html',
     )
 
@@ -9853,6 +9890,9 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
         limit = int(request.query.get('limit', '30'))
     except ValueError:
         limit = 30
+    # V3.52.0: opening the conversation in the app marks it read — the «Чаты»
+    # badge clears and only a later proactive/life message will light it up again.
+    webapp_service.mark_chat_read(telegram_id, character_id)
     return web.json_response({'ok': True, 'history': webapp_service.api_chat_history(uid, character_id, limit)})
 
 

@@ -89,6 +89,38 @@ WEBAPP_INDEX = ROOT / 'webapp' / 'index.html'
 
 logger = logging.getLogger(__name__)
 
+# V3.52.0: read-state for the «Чаты» tab — which conversation the user last
+# opened in the app. It lives in dialog_sessions (dict-compatible DialogStore)
+# so a Railway redeploy never re-lights the «new» badge on chats already read,
+# and no new column/migration is needed.
+from services import dialog_store as _dialog_store
+_chat_reads = _dialog_store.DialogStore('chat_reads')  # telegram_id -> {character_id: iso_utc}
+
+
+def _utcnow_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+
+
+def mark_chat_read(telegram_id, character_id):
+    """Remember the user has just read this conversation (called on app open and
+    on every conversational reply, so only a later proactive/life message shows
+    as new). Fail-silent — a read stamp is never worth breaking a reply."""
+    try:
+        tg = int(telegram_id)
+        current = dict(_chat_reads.get(tg) or {})
+        current[str(character_id)] = _utcnow_iso()
+        _chat_reads[tg] = current
+    except Exception:
+        logger.warning('mark_chat_read failed tg=%s', telegram_id)
+
+
+def _chat_reads_map(telegram_id) -> dict:
+    try:
+        return dict(_chat_reads.get(int(telegram_id)) or {})
+    except Exception:
+        return {}
+
 # V3.38.0: user-generated pictures from the «Картинки» studio tab live
 # outside the character system — one folder per user, meta.json index.
 APP_PICTURES_DIR = ROOT / 'data' / 'app_pictures'
@@ -714,6 +746,37 @@ def api_chat_list(db_user_id: int, telegram_id: int | None = None) -> list[dict]
     for m in rows:
         if m.character_id not in seen:
             seen[m.character_id] = m
+    # V3.52.0: unread = how many messages she wrote after the user's last turn OR
+    # after they last opened the chat (whichever is later). So a conversational
+    # reply the user already saw never counts as new, but a later proactive / life
+    # moment does. Legacy assistant-only chats (never opened) surface a single
+    # «new» so a fresh «she wrote you» is visible without flooding old history.
+    from datetime import datetime as _dt
+    read_map = _chat_reads_map(telegram_id) if telegram_id else {}
+    last_user_ts: dict[str, object] = {}
+    for m in rows:
+        if m.role == 'user' and m.character_id not in last_user_ts:
+            last_user_ts[m.character_id] = m.created_at
+    unread_counts: dict[str, int] = {}
+    for m in rows:
+        if m.role != 'assistant':
+            continue
+        anchor = last_user_ts.get(m.character_id)
+        read_ts = None
+        raw = read_map.get(m.character_id)
+        if raw:
+            try:
+                read_ts = _dt.fromisoformat(str(raw))
+            except Exception:
+                read_ts = None
+        thresholds = [t for t in (anchor, read_ts) if t]
+        if not thresholds:
+            if unread_counts.get(m.character_id, 0) < 1:
+                unread_counts[m.character_id] = 1
+            continue
+        thr = max(thresholds)
+        if m.created_at and m.created_at > thr:
+            unread_counts[m.character_id] = unread_counts.get(m.character_id, 0) + 1
     mine_ids = _mine_character_ids(telegram_id)
     out = []
     for character_id, last in seen.items():
@@ -735,6 +798,7 @@ def api_chat_list(db_user_id: int, telegram_id: int | None = None) -> list[dict]
             'last_message': (last.content or '')[:140],
             'last_role': last.role,
             'last_ts': ts,
+            'unread': int(unread_counts.get(character_id, 0) or 0),
         })
     return out[:50]
 

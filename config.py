@@ -362,7 +362,7 @@ ADAPTATION_ENABLED = os.getenv("ADAPTATION_ENABLED", "true").strip().lower() not
 ADAPTATION_ANALYZE_EVERY = max(3, min(20, int(os.getenv("ADAPTATION_ANALYZE_EVERY", "5"))))
 ADAPTATION_MAX_EXPRESSIONS = max(3, min(20, int(os.getenv("ADAPTATION_MAX_EXPRESSIONS", "12"))))
 
-FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "20"))
+FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "50"))
 # V3.47.2: a brand-new user gets unlimited TEXT messages for this many hours
 # after registration (activation lever, mirrors the benchmark's «первые 24 часа
 # текст бесплатно»). Photo/video gates are untouched — text only.
@@ -435,6 +435,23 @@ RITUAL_MORNING_END_HOUR = max(0, min(23, int(os.getenv("RITUAL_MORNING_END_HOUR"
 RITUAL_EVENING_START_HOUR = max(0, min(23, int(os.getenv("RITUAL_EVENING_START_HOUR", "21"))))
 RITUAL_EVENING_END_HOUR = max(0, min(23, int(os.getenv("RITUAL_EVENING_END_HOUR", "23"))))
 RITUAL_MAX_INACTIVE_DAYS = max(1, int(os.getenv("RITUAL_MAX_INACTIVE_DAYS", "7")))
+
+# V3.52.0: «Жизнь без тебя» — proactive, personality-grounded life moments she
+# sends on her own (a slice of her day, a memory callback, an open loop), for the
+# character the user actually selected. This is a curiosity hook, NOT a guilt
+# nudge: it only targets recently-active, opted-in users. Photos come from the
+# existing media pool only (never a fresh provider render) → near-zero extra cost.
+LIFE_EVENTS_ENABLED = os.getenv("LIFE_EVENTS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+LIFE_EVENTS_MAX_PER_DAY = max(0, min(4, int(os.getenv("LIFE_EVENTS_MAX_PER_DAY", "2"))))
+LIFE_EVENTS_SCAN_MINUTES = max(10, min(120, int(os.getenv("LIFE_EVENTS_SCAN_MINUTES", "20"))))
+# Only users active within this window get life events (reward showing up, not
+# chasing the churned — that path is _proactive/retention).
+LIFE_EVENTS_ACTIVE_WINDOW_DAYS = max(1, int(os.getenv("LIFE_EVENTS_ACTIVE_WINDOW_DAYS", "7")))
+# Never write during the user's local quiet hours [start, end) (wrap-aware).
+LIFE_EVENTS_QUIET_START_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_START_HOUR", "23"))))
+LIFE_EVENTS_QUIET_END_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_END_HOUR", "7"))))
+# Probability of attaching a pool photo to a life moment (0 disables).
+LIFE_EVENTS_PHOTO_CHANCE = max(0.0, min(1.0, float(os.getenv("LIFE_EVENTS_PHOTO_CHANCE", "0.25"))))
 
 # V3.19.0: personal character constructor — one-time Stars payment that builds
 # a private chat persona (appearance + personality + relationship role) with a

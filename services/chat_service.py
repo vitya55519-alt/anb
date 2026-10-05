@@ -213,6 +213,15 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         maybe_analyze_profile(db_user_id, character_id),
     )
     softly_evolve_state(user_id, user_text)
+    # V3.52.0: a conversational reply is "read" the instant it is produced (the
+    # user sees it live in both the bot chat and the Mini App), so the «Чаты»
+    # unread badge only lights up again on a LATER proactive/life message. Lazy
+    # import avoids any module-level cycle with webapp_service.
+    try:
+        from services import webapp_service
+        webapp_service.mark_chat_read(user_id, character_id)
+    except Exception:
+        pass
     return answer
 
 

@@ -8,6 +8,8 @@ from config import (
     DONATION_LINK, DONATION_REMINDER_ENABLED,
     RETENTION_NUDGE_INTERVAL_HOURS, RETENTION_MAX_NUDGES,
     DAY1_HOOK_MAX_ACCOUNT_HOURS, DAY1_HOOK_MIN_INACTIVE_HOURS, PUBLIC_BASE_URL,
+    LIFE_EVENTS_ENABLED, LIFE_EVENTS_MAX_PER_DAY, LIFE_EVENTS_SCAN_MINUTES,
+    LIFE_EVENTS_ACTIVE_WINDOW_DAYS, LIFE_EVENTS_QUIET_START_HOUR, LIFE_EVENTS_QUIET_END_HOUR,
 )
 from services.db import SessionLocal
 from models.app_models import User, CharacterState
@@ -17,8 +19,15 @@ from services.analytics_service import track_event
 from services import retention_service
 from services import donation_service
 from services import retention_features_service
+from services import dialog_store
 
 logger=logging.getLogger(__name__); scheduler=AsyncIOScheduler()
+
+# V3.52.0: «Жизнь без тебя» dedup lives in dialog_sessions (DictStore), NOT an
+# in-memory set. Railway redeploys are frequent here and wiped _ritual_sent, so a
+# push could double-fire the same day; a persisted slot log keyed by telegram_id
+# ({'date': iso, 'slots': [daypart, ...]}) survives restarts with zero new schema.
+_life_events_store = dialog_store.DialogStore('life_events')
 
 # V3.20.0: in-memory guard so each ritual fires at most once per user/day/kind.
 # A Railway redeploy can theoretically duplicate one ritual message that day —
@@ -314,6 +323,116 @@ async def _daily_gift(bot):
     except Exception:
         logger.exception('daily gift job failed')
 
+def _user_local_hour_simple(tz_name) -> int | None:
+    """Same as _user_local_hour but takes a raw timezone string (the session that
+    loaded the User row is already closed when the life-events loop runs)."""
+    try:
+        from zoneinfo import ZoneInfo
+        return dt.datetime.now(ZoneInfo(tz_name or 'UTC')).hour
+    except Exception:
+        return dt.datetime.now(dt.timezone.utc).hour
+
+
+def _daypart(hour: int | None) -> str:
+    if hour is None:
+        return 'day'
+    if 5 <= hour < 11:
+        return 'morning'
+    if 11 <= hour < 17:
+        return 'day'
+    if 17 <= hour < 22:
+        return 'evening'
+    return 'night'
+
+
+def _in_quiet_hours(hour: int | None) -> bool:
+    """Wrap-aware quiet window [start, end). 23→7 blocks 23,0..6 but allows 8..22."""
+    if hour is None:
+        return False
+    start, end = LIFE_EVENTS_QUIET_START_HOUR, LIFE_EVENTS_QUIET_END_HOUR
+    if start == end:
+        return False
+    if start < end:
+        return start <= hour < end
+    return hour >= start or hour < end
+
+
+async def _life_events(bot):
+    """V3.52.0: «Жизнь без тебя» — she occasionally writes first about something
+    from her own day (grounded in HER personality + shared memory), never as a
+    guilt/«why don't you text» nudge. Only for recently-active opted-in users;
+    photos come from the existing media pool only (no provider render). The
+    message is persisted into the shared dialog so it lights up the Mini App
+    «Чаты» tab as new, and carries one-tap reply buttons to move reply-rate."""
+    if not LIFE_EVENTS_ENABLED or LIFE_EVENTS_MAX_PER_DAY <= 0:
+        return
+    from services.consent_service import has_accepted
+    from services.life_event_service import build_life_moment
+    from services.memory_service import save_message
+    from services import webapp_service
+    from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    fresh_cutoff = now - dt.timedelta(days=LIFE_EVENTS_ACTIVE_WINDOW_DAYS)
+    with SessionLocal() as s:
+        users = s.scalars(select(User).where(
+            User.proactive_enabled == True,
+            User.notify_rituals != False,
+            User.last_active_at >= fresh_cutoff,
+        )).all()
+        snapshot = [(u.id, int(u.telegram_id), u.name or 'ты',
+                     (u.selected_character or CHARACTER_ID), u.timezone) for u in users]
+    today_key = now.date().isoformat()
+    for uid, tg_id, _name, char_id, tz in snapshot:
+        try:
+            if not has_accepted(tg_id):
+                continue
+            local_hour = _user_local_hour_simple(tz)
+            if _in_quiet_hours(local_hour):
+                continue
+            part = _daypart(local_hour)
+            prior = _life_events_store.get(tg_id) or {}
+            slots = list(prior.get('slots') or []) if prior.get('date') == today_key else []
+            if part in slots or len(slots) >= LIFE_EVENTS_MAX_PER_DAY:
+                continue
+            # Sprinkle sends across the scan window instead of firing at the
+            # boundary for everyone at once (also keeps the LLM load flat).
+            if random.random() > 0.35:
+                continue
+            moment = await build_life_moment(tg_id, char_id, when=part)
+            # Consume the slot whether or not text came back, so an empty/no-LLM
+            # day does not retry the provider every scan.
+            slots.append(part)
+            _life_events_store[tg_id] = {'date': today_key, 'slots': slots}
+            if not moment or not moment.get('text'):
+                continue
+            text = moment['text']
+            photo = moment.get('photo')
+            markup = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=lbl, callback_data=cb)] for lbl, cb in (moment.get('options') or [])
+            ])
+            media_kind = media_url = None
+            if photo:
+                data, ctype, pkind = photo
+                ext = 'jpg' if pkind not in ('gif', 'video') else 'mp4'
+                media_kind = 'video' if pkind in ('gif', 'video') else 'photo'
+                filename = webapp_service.save_chat_media(tg_id, data, ext, ctype)
+                media_url = f'/webapp/media/{filename}'
+            # Persist into the SHARED dialog BEFORE delivering, so the Mini App
+            # «Чаты» badge (assistant msg newer than last read) lights up.
+            save_message(uid, char_id, 'assistant', text, media_kind=media_kind, media_url=media_url)
+            if media_url:
+                if pkind == 'gif':
+                    await bot.send_animation(tg_id, BufferedInputFile(data, filename='life.mp4'), caption=text, reply_markup=markup)
+                elif pkind == 'video':
+                    await bot.send_video(tg_id, BufferedInputFile(data, filename='life.mp4'), caption=text, reply_markup=markup)
+                else:
+                    await bot.send_photo(tg_id, BufferedInputFile(data, filename='life.jpg'), caption=text, reply_markup=markup)
+            else:
+                await bot.send_message(tg_id, text, reply_markup=markup)
+            track_event(uid, 'life_event_sent', metadata={'character_id': char_id, 'when': part, 'has_photo': bool(media_url)})
+        except Exception:
+            logger.exception('life event failed user=%s', uid)
+
 def start_scheduler(bot):
     scheduler.add_job(_reminders,'interval',seconds=30,args=[bot],id='reminders',replace_existing=True)
     scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
@@ -329,4 +448,8 @@ def start_scheduler(bot):
     scheduler.add_job(_mood_update,'interval',hours=1,args=[bot],id='mood_update',replace_existing=True)
     # V3.45.0: ежедневный подарок — раз в день в 12:00
     scheduler.add_job(_daily_gift,'cron',hour=12,minute=0,args=[bot],id='daily_gift',replace_existing=True)
+    # V3.52.0: «Жизнь без тебя» — scans often, but the persisted slot log caps each
+    # user to LIFE_EVENTS_MAX_PER_DAY spontaneous messages per day.
+    if LIFE_EVENTS_ENABLED:
+        scheduler.add_job(_life_events,'interval',minutes=LIFE_EVENTS_SCAN_MINUTES,args=[bot],id='life_events',replace_existing=True)
     if not scheduler.running: scheduler.start()

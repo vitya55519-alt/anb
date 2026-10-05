@@ -104,7 +104,10 @@ def test_video_gate_spends_tokens_before_stars_invoice():
 
 
 def test_platega_callback_grants_by_product():
-    assert "if product == 'constructor_rub':" in MAIN
+    # V3.52.1: the constructor branch is an `elif` of the SAME if/elif/else chain
+    # that opens with the donation branch — a standalone `if` here let a donation
+    # fall through to the premium `else` and wrongly say «Premium активирован».
+    assert "elif product == 'constructor_rub':" in MAIN
     assert "product.startswith('tokens_')" in MAIN
     assert "add_constructor_credit(order['telegram_id'], 1)" in MAIN
     assert "int(product.split('_')[1])" in MAIN

@@ -1834,6 +1834,9 @@ function openChat(c) {
   document.getElementById('chatMsgs').innerHTML = `<div class="loading">${esc(L.loading)}</div>`;
   document.getElementById('chatview').classList.add('open');
   loadChatHistory(c.id);
+  // V3.52.0: opening a chat marks it read on the server; drop the cached «Чаты»
+  // list so the badge is cleared the next time the tab is visited.
+  _chatsLoaded = false;
 }
 
 async function loadChatHistory(characterId) {
@@ -2835,6 +2838,12 @@ function renderChats(list) {
   }
   box.innerHTML = list.map(c => {
     const prev = (c.last_role === 'user' ? '✓ ' : '') + (c.last_message || '…');
+    // V3.52.0: «she wrote you» badge — proactive / life messages the user has not
+    // opened yet light up a pill; opening the chat marks it read server-side.
+    const un = Math.max(0, parseInt(c.unread || 0, 10) || 0);
+    const badge = un > 0
+      ? `<span style="display:inline-block;min-width:18px;height:18px;line-height:18px;padding:0 5px;border-radius:9px;background:#ff4d6d;color:#fff;font-size:12px;font-weight:700;text-align:center;margin-left:6px;vertical-align:middle">${un > 9 ? '9+' : un}</span>`
+      : '';
     return `<div class="chat-row" data-id="${esc(c.id)}">
       <img class="p" src="${esc(c.photo)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
       <div class="p pdiv" style="display:none">${esc(c.emoji)}</div>
@@ -2842,7 +2851,7 @@ function renderChats(list) {
         <div class="nm">${esc(c.name)}</div>
         <div class="prev">${esc(prev)}</div>
       </div>
-      <div class="tm">${esc(fmtDay(c.last_ts))}</div>
+      <div class="tm">${esc(fmtDay(c.last_ts))}${badge}</div>
     </div>`;
   }).join('');
   box.querySelectorAll('.chat-row').forEach(el => el.addEventListener('click', () => {
