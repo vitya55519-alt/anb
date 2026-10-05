@@ -130,6 +130,10 @@ GALLERY_DOWNLOAD_STARS = max(1, int(os.getenv("GALLERY_DOWNLOAD_STARS", "30")))
 # Premium perk: this many photo animations per day are free for Premium users;
 # any extra animation on the same day is sold for VIDEO_COST_STARS Stars.
 VIDEO_PREMIUM_FREE_DAILY = max(0, int(os.getenv("VIDEO_PREMIUM_FREE_DAILY", "2")))
+# V3.53.0: «Собери галерею» — every GALLERY_SET_SIZE delivered photos of one
+# character (bot chat + Mini App chat/private/circle/video) completes a gallery
+# set («quest done»), then the next set begins. One rolling counter per character.
+GALLERY_SET_SIZE = max(1, int(os.getenv("GALLERY_SET_SIZE", "50")))
 
 # Community photo pool: AI-generated photos are shared between users requesting
 # the same character+scene. New photos are generated only when the pool has no

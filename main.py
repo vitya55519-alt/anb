@@ -8,6 +8,7 @@ import random
 import re
 import secrets
 import sys
+import tempfile
 import time as _time
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -9261,6 +9262,19 @@ async def _webapp_api_achievements(request: web.Request) -> web.Response:
                              headers={'Cache-Control': 'no-store'})
 
 
+async def _webapp_api_collection(request: web.Request) -> web.Response:
+    """V3.53.0: the «Собери галерею» photo-set progress for one character."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    character_id = request.query.get('character_id') or CHARACTER_ID
+    return web.json_response(webapp_service.api_collection(telegram_id, character_id),
+                             headers={'Cache-Control': 'no-store'})
+
+
 async def _webapp_api_missions(request: web.Request) -> web.Response:
     """V3.46.0: the missions funnel roadmap for the Mini App «Миссии» tab."""
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
@@ -9959,8 +9973,14 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
                 save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
                 if telegram_id not in ADMIN_TELEGRAM_IDS:
                     consume_photo_credit(telegram_id)
+                # V3.53.0: after this photo counts, tell the SPA if a gallery set
+                # (50 photos of her) just completed so it can celebrate.
+                from services.collection_service import gallery_set_progress, note_gallery_set
+                _sets_done_now = note_gallery_set(telegram_id, character_id)
                 return web.json_response({'ok': True, 'reply': cap, 'photo_url': url,
-                                          'credits_left': get_photo_credits(telegram_id)})
+                                          'credits_left': get_photo_credits(telegram_id),
+                                          'set_completed': _sets_done_now,
+                                          'gallery': gallery_set_progress(telegram_id, character_id)})
     try:
         answer = await anna_reply(
             telegram_id, user_info.get('first_name') or 'ты', text,
@@ -10028,12 +10048,26 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'credits'}, status=402)
     style = str(body.get('style', 'anime'))[:16]
     fmt = str(body.get('format', 'square'))[:16]
+    # V3.54.0: an optional uploaded reference photo turns the studio into
+    # image-to-image (the person's identity/look is kept, the prompt + style
+    # restyle it). The file is written to a throwaway temp path and deleted
+    # right after the render — it is never persisted.
+    ref_path = None
+    if body.get('image'):
+        decoded = webapp_service.decode_data_image(str(body.get('image')))
+        if not decoded:
+            return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+        raw, _mime, ext = decoded
+        tf = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}')
+        tf.write(raw); tf.close()
+        ref_path = Path(tf.name)
     # V3.51.2: adult-confirmed users get the studio's uncensored route — the
     # censored fal Seedream answers HTTP 422 content_policy_violation on an
     # explicit prompt, so those renders ride the same SpicyAPI text-to-image
     # the «Наедине» nude flow uses. Minors/coercion are hard-blocked above and
-    # never reach any engine.
-    adult_ok = is_adult_confirmed(telegram_id)
+    # never reach any engine. V3.54.0: a real uploaded face NEVER routes to the
+    # uncensored engine — img2img stays on the censored Seedream/Gemini chain.
+    adult_ok = is_adult_confirmed(telegram_id) and ref_path is None
     final_prompt = webapp_service.picture_final_prompt(prompt, style, fmt, adult=adult_ok)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     try:
@@ -10053,7 +10087,7 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
                 mime = 'image/jpeg'
         if not data:
             data, mime = await asyncio.wait_for(
-                photo_service.generate_custom_avatar(final_prompt, None),
+                photo_service.generate_custom_avatar(final_prompt, ref_path),
                 timeout=PHOTO_TOTAL_BUDGET_SECONDS,
             )
     except asyncio.TimeoutError:
@@ -10065,6 +10099,13 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
         # V3.39.0: the owner sees WHY the render died right in the studio toast.
         reason = f'{type(exc).__name__}: {str(exc)[:100]}' if telegram_id in ADMIN_TELEGRAM_IDS else None
         return web.json_response({'ok': False, 'error': 'gen', 'reason': reason}, status=502)
+    finally:
+        # V3.54.0: the uploaded reference never lingers, whatever the outcome.
+        if ref_path is not None:
+            try:
+                ref_path.unlink(missing_ok=True)
+            except Exception:
+                pass
     if not data:
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)
     ext = 'png' if 'png' in (mime or '') else 'jpg'
@@ -10088,6 +10129,105 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     return web.json_response({
         'ok': True,
         'file': f'/webapp/picture/{filename}',
+        'credits_left': get_photo_credits(telegram_id),
+    })
+
+
+async def _webapp_api_studio_video(request: web.Request) -> web.Response:
+    """V3.54.0: «Собери видео» — animate the user's own uploaded photo (or a
+    prompt-generated frame) into a short clip for WEBAPP_VIDEO_COST_CREDITS 🍑,
+    charged only after a successful render. The uploaded photo is used in-memory
+    and never persisted."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    prompt = str(body.get('prompt', '')).strip()[:webapp_service.PICTURE_PROMPT_MAX_LEN]
+    if prompt and not webapp_service.picture_prompt_allowed(prompt):
+        return web.json_response({'ok': False, 'error': 'blocked'}, status=400)
+    if not has_accepted(telegram_id):
+        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    if get_photo_credits(telegram_id) < webapp_service.WEBAPP_VIDEO_COST_CREDITS:
+        return web.json_response({'ok': False, 'error': 'credits'}, status=402)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+
+    # 1) source frame: the uploaded photo, else render one from the prompt
+    #    through the same censored studio engine (a real face never routes to the
+    #    uncensored nude engine).
+    image_bytes = None
+    mime = 'image/jpeg'
+    if body.get('image'):
+        decoded = webapp_service.decode_data_image(str(body.get('image')))
+        if not decoded:
+            return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+        image_bytes, mime, _ext = decoded
+    elif len(prompt) >= webapp_service.PICTURE_PROMPT_MIN_LEN:
+        try:
+            from services import photo_service
+            final_prompt = webapp_service.picture_final_prompt(prompt, 'realistic', 'square', adult=False)
+            image_bytes, mime = await asyncio.wait_for(
+                photo_service.generate_custom_avatar(final_prompt, None),
+                timeout=PHOTO_TOTAL_BUDGET_SECONDS,
+            )
+        except Exception:
+            logger.exception('studio video frame gen failed user=%s', telegram_id)
+            image_bytes = None
+    if not image_bytes:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+
+    # 2) the shared video engine chain (Gemini/Veo -> Replicate -> fal -> HF).
+    engines = []
+    if video_available():
+        engines.append(('gemini', animate_image))
+    if replicate_available():
+        engines.append(('replicate', animate_image_replicate))
+    if fal_available():
+        engines.append(('fal', animate_image_fal))
+    if hf_video_available():
+        engines.append(('hf', animate_image_hf))
+    if not engines:
+        return web.json_response({'ok': False, 'error': 'no_engine'}, status=503)
+    # Neutral motion only — a user's own photo is never sent to a sensual prompt.
+    motion = prompt or None
+    video_bytes = None
+    used_engine = None
+    last_error = None
+    for engine_name, engine_fn in engines:
+        try:
+            video_bytes = await engine_fn(image_bytes, mime_type=mime, prompt=motion)
+            used_engine = engine_name
+            record_provider(f'studio_video/{engine_name}', True)
+            break
+        except Exception as exc:
+            last_error = exc
+            record_provider(f'studio_video/{engine_name}', False, f'{type(exc).__name__}: {str(exc)[:120]}')
+            logger.warning('studio video engine %s failed user=%s error=%s', engine_name, telegram_id, str(exc)[:200])
+    if not video_bytes:
+        reason = f'{type(last_error).__name__}: {str(last_error)[:100]}' if (last_error and telegram_id in ADMIN_TELEGRAM_IDS) else None
+        return web.json_response({'ok': False, 'error': 'gen', 'reason': reason}, status=502)
+
+    # 3) persist + charge. save_chat_media keeps the bytes in Postgres (survives
+    #    the ephemeral-disk wipe); the credit is spent only now, after success.
+    try:
+        filename = webapp_service.save_chat_media(telegram_id, video_bytes, 'mp4', 'video/mp4')
+        webapp_service.record_generation(telegram_id, 'video', None, prompt, filename)
+    except Exception:
+        logger.exception('studio video save failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'save'}, status=500)
+    if not spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS):
+        logger.warning('studio video credit race user=%s', telegram_id)
+    track_event(uid, 'webapp_studio_video_generated', metadata={'engine': used_engine})
+    return web.json_response({
+        'ok': True,
+        'file': f'/webapp/media/{filename}',
         'credits_left': get_photo_credits(telegram_id),
     })
 
@@ -10460,9 +10600,20 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             record_author_revenue(character_id, telegram_id, 1.0, 'chat_photo')
         except Exception:
             logger.exception('author revenue recording failed char=%s', character_id)
+    # V3.53.0: a delivered photo/circle/video/hot/cosplay advances the character's
+    # gallery-set counter; tell the SPA when a set (50 photos) just completed so it
+    # can celebrate. Voice is not a photo, so it never counts and never celebrates.
+    _set_completed = 0
+    _gallery = None
+    if kind != 'voice':
+        from services.collection_service import gallery_set_progress, note_gallery_set
+        _set_completed = note_gallery_set(telegram_id, character_id)
+        _gallery = gallery_set_progress(telegram_id, character_id)
     return web.json_response({
         'ok': True, 'kind': kind, 'url': url, 'content': content,
         'credits_left': get_photo_credits(telegram_id),
+        'set_completed': _set_completed,
+        'gallery': _gallery,
     })
 
 
@@ -11132,6 +11283,8 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/creator/delete', _webapp_api_creator_delete)
     # V3.45.27: unified achievements board + private gallery in the Mini App.
     app.router.add_get('/webapp/api/achievements', _webapp_api_achievements)
+    # V3.53.0: «Собери галерею» rolling photo-set bar on the character page.
+    app.router.add_get('/webapp/api/collection', _webapp_api_collection)
     # V3.46.0: missions funnel tab (roadmap + in-app CTAs).
     app.router.add_get('/webapp/api/missions', _webapp_api_missions)
     app.router.add_get('/webapp/api/gallery', _webapp_api_gallery)
@@ -11193,6 +11346,9 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/story/action', _webapp_api_story_action)
     app.router.add_get('/webapp/media/{filename}', _webapp_media)
     app.router.add_post('/webapp/api/picture', _webapp_api_picture_generate)
+    # V3.54.0: «Собери видео» — image-to-video of the user's own photo / a
+    # prompt-generated frame, priced at WEBAPP_VIDEO_COST_CREDITS 🍑.
+    app.router.add_post('/webapp/api/studio/video', _webapp_api_studio_video)
     app.router.add_get('/webapp/api/pictures', _webapp_api_pictures)
     app.router.add_get('/webapp/picture/{filename}', _webapp_picture)
     # V3.51.1: admin-only feed of what users generate in the Mini App.

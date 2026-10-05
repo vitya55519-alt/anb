@@ -1,7 +1,15 @@
 from sqlalchemy import select, func
 from services.db import SessionLocal
 from services.user_service import ensure_user
-from models.photo_models import PhotoLibraryPack, PhotoLibraryItem, UserSeenPhotoItem, UserSeenPhotoPack
+from models.photo_models import PhotoLibraryPack, PhotoLibraryItem, UserSeenPhotoItem, UserSeenPhotoPack, PhotoDelivery
+from models.app_models import UserGeneration
+from services import dialog_store
+from config import GALLERY_SET_SIZE
+
+# V3.53.0: «Собери галерею» rolling set announcements. Keyed by telegram_id,
+# value is {character_id: announced_sets_done}. Lives in the existing
+# dialog_sessions table, so it is redeploy-safe and needs no schema change.
+_gallery_sets = dialog_store.DialogStore('gallery_sets')
 
 
 def mark_items_seen(telegram_id: int, item_ids: list[int]):
@@ -67,3 +75,75 @@ def collection_progress(telegram_id: int, character_id: str, relationship_level:
             seen = len(set(ids) & seen_ids) if lv <= level else 0
             per_level.append({'level': lv, 'total': int(total), 'seen': int(seen), 'unlocked': lv <= level})
     return {'seen': len(seen_ids), 'total': len(accessible_ids), 'per_level': per_level}
+
+
+# ── V3.53.0 «Собери галерею» — rolling photo-set counter ─────────────────────
+# For one character, every photo the user has actually received counts toward a
+# set of GALLERY_SET_SIZE (default 50). Reaching a multiple completes one gallery
+# set («quest done»), then the next set begins. Two DISJOINT sources are summed:
+# the bot writes PhotoDelivery but never UserGeneration, and the Mini App writes
+# UserGeneration but never PhotoDelivery — so nothing is double counted.
+
+_APP_PHOTO_KINDS = ('photo', 'circle', 'video', 'hot', 'cosplay')
+
+
+def collected_photo_count(telegram_id: int, character_id: str) -> int:
+    """How many photos of this character the user has received (bot + app)."""
+    try:
+        uid = ensure_user(telegram_id)
+        tg = int(telegram_id)
+        with SessionLocal() as s:
+            bot_n = s.scalar(
+                select(func.count(PhotoDelivery.id)).where(
+                    PhotoDelivery.user_id == uid,
+                    PhotoDelivery.character_id == character_id,
+                )
+            ) or 0
+            app_n = s.scalar(
+                select(func.count(UserGeneration.id)).where(
+                    UserGeneration.telegram_id == tg,
+                    UserGeneration.character_id == character_id,
+                    UserGeneration.kind.in_(_APP_PHOTO_KINDS),
+                )
+            ) or 0
+        return int(bot_n) + int(app_n)
+    except Exception:
+        return 0
+
+
+def gallery_set_progress(telegram_id: int, character_id: str) -> dict:
+    """The rolling «N из 50» gallery-set progress for one character."""
+    per = max(1, int(GALLERY_SET_SIZE))
+    count = collected_photo_count(telegram_id, character_id)
+    sets_done = count // per
+    progress = count % per
+    return {
+        'count': count,
+        'per_set': per,
+        'sets_done': sets_done,
+        'progress': progress,
+        'remaining': per - progress,
+        'complete': progress == 0 and count > 0,
+    }
+
+
+def note_gallery_set(telegram_id: int, character_id: str) -> int:
+    """Return how many gallery sets were newly completed since we last announced
+    this character, and stamp the announced count. Fail-silent (0)."""
+    try:
+        tg = int(telegram_id)
+        sets_done = gallery_set_progress(telegram_id, character_id)['sets_done']
+        current = dict(_gallery_sets.get(tg) or {})
+        prior_n = int(current.get(str(character_id), 0) or 0)
+        if sets_done > prior_n:
+            current[str(character_id)] = sets_done
+            _gallery_sets[tg] = current
+            return sets_done - prior_n
+        if str(character_id) not in current:
+            # First sight: stamp without celebrating so an existing historical
+            # collection does not instantly fire a stale 'quest done'.
+            current[str(character_id)] = sets_done
+            _gallery_sets[tg] = current
+        return 0
+    except Exception:
+        return 0

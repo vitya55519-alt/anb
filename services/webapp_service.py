@@ -20,6 +20,7 @@ import this service — no circular imports).
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -130,6 +131,17 @@ APP_PICTURES_DIR = ROOT / 'data' / 'app_pictures'
 # (V3.44.22: was 150, which priced a picture like five months of Premium).
 WEBAPP_PICTURE_COST_CREDITS = 10
 
+# V3.54.0: the studio video (image-to-video of the user's own photo, or a
+# prompt-generated frame) costs the same 10 🍑 as a picture, charged only after a
+# successful render.
+WEBAPP_VIDEO_COST_CREDITS = 10
+
+# V3.54.0: an uploaded reference photo is accepted only as these common web
+# image types and only up to this decoded size, so a stray huge file or a
+# non-image never reaches an engine.
+STUDIO_UPLOAD_MAX_BYTES = 8 * 1024 * 1024
+STUDIO_UPLOAD_MIME_EXT = {'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}
+
 # The studio is a public, fully-clothed surface. Prompts that point at minors
 # or coercion are rejected before any engine call; every prompt additionally
 # gets the SFW constraint appended so the output stays within the same
@@ -179,6 +191,32 @@ def picture_final_prompt(prompt: str, style: str = 'anime', fmt: str = 'square',
     suffix = PICTURE_FORMAT_SUFFIXES.get(fmt, PICTURE_FORMAT_SUFFIXES['square'])
     tail = PICTURE_PROMPT_SUFFIX_ADULT if adult else PICTURE_PROMPT_SUFFIX
     return prefix + base + suffix + tail
+
+
+def decode_data_image(data_url: str):
+    """V3.54.0: turn a ``data:<mime>;base64,<payload>`` upload into
+    ``(bytes, mime, ext)``. Returns ``None`` for a missing / oversized /
+    disallowed-type / undecodable payload so the caller can reject cleanly."""
+    try:
+        if not data_url or not isinstance(data_url, str):
+            return None
+        header, _, payload = data_url.partition(',')
+        if ';' not in header or 'base64' not in header:
+            return None
+        # the header is ``data:<mime>;base64`` — the ``data:`` scheme itself
+        # must not leak into the mime lookup below.
+        mime = header.split(';', 1)[0].strip().lower()
+        if mime.startswith('data:'):
+            mime = mime[len('data:'):]
+        ext = STUDIO_UPLOAD_MIME_EXT.get(mime)
+        if not ext:
+            return None
+        raw = base64.b64decode(payload, validate=True)
+        if not raw or len(raw) > STUDIO_UPLOAD_MAX_BYTES:
+            return None
+        return raw, mime, ext
+    except Exception:
+        return None
 
 # Canonical face references used for storefront photos (no network needed).
 _FACE_REFERENCES = {
@@ -1027,6 +1065,21 @@ def api_achievements(telegram_id: int) -> dict:
     for it in progress.get('items', []):
         it['badge_url'] = f"/webapp/badge/{it['key']}" if it.get('has_badge') else ''
     return {'ok': True, **progress}
+
+
+def api_collection(telegram_id: int, character_id: str) -> dict:
+    """V3.53.0: the «Собери галерею» rolling photo-set progress for one character
+    (50 photos = a set). Returns the live bar plus any sets newly completed since
+    the last announcement. Fail-silent → {} so a hiccup never blocks the page."""
+    try:
+        from services.collection_service import gallery_set_progress, note_gallery_set
+        prog = gallery_set_progress(telegram_id, character_id)
+        prog['just_completed'] = note_gallery_set(telegram_id, character_id)
+        prog['ok'] = True
+        return prog
+    except Exception:
+        logger.exception('app collection failed user=%s', telegram_id)
+        return {}
 
 
 # V3.46.0: the missions funnel CTA. The roadmap is shared with the bot /missions
