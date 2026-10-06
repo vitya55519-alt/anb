@@ -89,6 +89,70 @@ def set_premium_checker(fn):
     _premium_checker = fn
 
 
+# V3.55.6: premium floor for premium characters. main.py registers a callback
+# (internal user_id, character_id) -> bool — true when the user holds Premium AND
+# the character card is premium-status. Same decoupling pattern as
+# _premium_checker: the engine never learns about access itself.
+_premium_floor_provider = None
+
+
+def set_premium_floor_provider(fn):
+    global _premium_floor_provider
+    _premium_floor_provider = fn
+
+
+# The floor is exactly the level-6 gate: raw axes from STAGE_RULES, hidden
+# dimensions from DIMENSION_GATES — derived, so a future rebalance propagates.
+_PREMIUM_FLOOR_RAW = {s: (r, t, i) for s, r, t, i in STAGE_RULES}['committed']
+_PREMIUM_FLOOR_DIMS = DIMENSION_GATES['committed']
+
+
+def _premium_floor_applies(user_id: int, character_id: str) -> bool:
+    if _premium_floor_provider is None:
+        return False
+    try:
+        return bool(_premium_floor_provider(user_id, character_id))
+    except Exception:
+        return False
+
+
+def _raise_to_premium_floor(row: UserCharacterRelationship):
+    # Raise-only on every axis: a higher real progress is never pushed down.
+    r, t, i = _PREMIUM_FLOOR_RAW
+    f, c, x = _PREMIUM_FLOOR_DIMS
+    row.relationship_score = max(row.relationship_score, float(r))
+    row.trust_score = max(row.trust_score, float(t))
+    row.intimacy_score = max(row.intimacy_score, float(i))
+    row.familiarity_score = max(row.familiarity_score, float(f))
+    row.continuity_score = max(row.continuity_score, float(c))
+    row.connection_score = max(row.connection_score, float(x))
+
+
+def apply_premium_floor(
+    session: Session,
+    user_id: int,
+    character_id: str,
+    *,
+    now: datetime | None = None,
+) -> UserCharacterRelationship | None:
+    """V3.55.6: lift a premium user's bond with a premium character to level 6
+    ('committed') right away. Idempotent, never demotes; returns None when the
+    floor does not apply (free user, non-premium character)."""
+    if not _premium_floor_applies(user_id, character_id):
+        return None
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    row = _get_or_create(session, user_id, character_id, now)
+    old_stage = row.stage or 'stranger'
+    _raise_to_premium_floor(row)
+    new_stage = _dimension_stage(row)
+    if old_stage in STAGE_ORDER and STAGE_ORDER.index(old_stage) > STAGE_ORDER.index(new_stage):
+        new_stage = old_stage
+    row.stage = new_stage
+    session.commit()
+    session.refresh(row)
+    return row
+
+
 @dataclass(frozen=True)
 class RelationshipDelta:
     relationship: float = 0.0
@@ -248,6 +312,12 @@ def apply_delta(
     row.total_messages += 1
 
     _update_hidden_dimensions(row, delta, now)
+    # V3.55.6: premium floor — with a premium character the level-6 gates act as
+    # a floor for premium users, so ordinary deltas can never sink the bond below
+    # 'committed'. Levels 7-8 stay reachable and are never pushed down (the
+    # old_stage guard below covers that); free users keep the V3.21.0 clamp.
+    if _premium_floor_applies(user_id, character_id):
+        _raise_to_premium_floor(row)
     new_stage = _dimension_stage(row)
     # Migration safety: do not silently lower an existing user's level because the new hidden dimensions start at zero.
     if old_stage in STAGE_ORDER and STAGE_ORDER.index(old_stage) > STAGE_ORDER.index(new_stage):

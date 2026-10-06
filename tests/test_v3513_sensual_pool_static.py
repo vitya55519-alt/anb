@@ -40,8 +40,11 @@ def test_sensual_rotation_applies_to_all_scenes():
     # V3.51.4: the sensual pool is now the default rotation on EVERY scene — no
     # per-scene branch back to the tasteful rotation is left in the resolver.
     assert 'expression_rotation = tuple(request.expression_rotation) or (' in PHOTO
-    assert '() if request.expression_key else shuffled_sensual_variety_keys()' in PHOTO
-    assert 'shuffled_variety_keys()' not in PHOTO
+    # V3.55.6: the tender-persona branch is the ONLY way the soft pool reaches
+    # the resolver — the sensual pool stays the default for every scene.
+    assert '() if request.expression_key else (' in PHOTO
+    assert 'shuffled_variety_keys() if _persona_style_is_tender(telegram_id, character_id)' in PHOTO
+    assert 'else shuffled_sensual_variety_keys()' in PHOTO
     # the sensual-only helper is what the resolver imports and calls
     assert 'from services.photo_expression_service import shuffled_sensual_variety_keys' in PHOTO
     # an explicit chat-mood expression still short-circuits the rotation

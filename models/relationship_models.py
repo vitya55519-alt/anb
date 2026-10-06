@@ -29,6 +29,10 @@ class UserCharacterRelationship(Base):
     # distinct dimension from intimacy_score (closeness growth), never shown as
     # a raw number to the user. Auto-migrated by services/db.py.
     path_axis: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    # V3.55.6: the user's chosen manner for premium characters — 'tender' /
+    # 'passionate' / None (not chosen yet). Colors the chat tone and picks the
+    # photo expression pool. Auto-migrated by services/db.py.
+    persona_style: Mapped[str | None] = mapped_column(String(16), nullable=True)
     stage: Mapped[str] = mapped_column(String(32), default="stranger", nullable=False)
 
     first_interaction_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

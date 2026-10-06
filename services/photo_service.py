@@ -1595,6 +1595,26 @@ def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season:
     return tuple(picks)
 
 
+def _persona_style_is_tender(telegram_id: int, character_id: str) -> bool:
+    # V3.55.6: the «tender» manner chosen in the premium character's app chat
+    # softens the photo expression pool too. Fail-silent: any doubt -> False.
+    try:
+        from sqlalchemy import select
+        from services.db import SessionLocal
+        from models.relationship_models import UserCharacterRelationship
+        uid = ensure_user(telegram_id)
+        with SessionLocal() as session:
+            style = session.scalar(
+                select(UserCharacterRelationship.persona_style).where(
+                    UserCharacterRelationship.user_id == uid,
+                    UserCharacterRelationship.character_id == character_id,
+                )
+            )
+        return style == 'tender'
+    except Exception:
+        return False
+
+
 def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: str = CHARACTER_ID) -> PhotoRequest:
     state = ensure_life_state(telegram_id)
     season = request.season or _default_season()
@@ -1649,12 +1669,18 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     # V3.31.7: variety rotations. A chat-mood expression still wins over the
     # rotation; otherwise every frame of the pack walks its own shuffled
     # expression and pose note instead of repeating one fixed look.
-    from services.photo_expression_service import shuffled_sensual_variety_keys
+    from services.photo_expression_service import shuffled_sensual_variety_keys, shuffled_variety_keys
     # V3.51.4: the owner wants sensual facial emotion walked on EVERY photo, public
     # scenes included, so the default per-frame rotation is the sensual pool for all
     # scenes. An explicit chat-mood expression_key still overrides the rotation.
+    # V3.55.6: the chosen «tender» manner swaps the sensual pool for the soft
+    # everyday one (smile/laughing/thoughtful/shy/...); unset or «passionate»
+    # keeps the V3.51.4 default.
     expression_rotation = tuple(request.expression_rotation) or (
-        () if request.expression_key else shuffled_sensual_variety_keys()
+        () if request.expression_key else (
+            shuffled_variety_keys() if _persona_style_is_tender(telegram_id, character_id)
+            else shuffled_sensual_variety_keys()
+        )
     )
     # V3.43.4: private/boudoir scenes draw their pose notes from the sultrier pool.
     poses = list(PRIVATE_POSE_POOL if request.scene in {'personal', 'lingerie', 'private_fashion', 'tease'} else POSE_POOL)

@@ -193,8 +193,38 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             )
     except Exception:
         spicy_line = ''
+    # V3.55.6: the user's tender/passionate choice for a premium character (set in
+    # the Mini App chat) steers her manner in every dialog with him — bot and app
+    # share this pipeline. Fail-silent: no row / no choice = no extra line.
+    style_line = ''
+    try:
+        from sqlalchemy import select
+        from services.db import SessionLocal
+        from models.relationship_models import UserCharacterRelationship
+        with SessionLocal() as session:
+            persona_style = session.scalar(
+                select(UserCharacterRelationship.persona_style)
+                .where(
+                    UserCharacterRelationship.user_id == db_user_id,
+                    UserCharacterRelationship.character_id == character_id,
+                )
+            )
+        if persona_style == 'tender':
+            style_line = (
+                'НЕЖНЫЙ СТИЛЬ (его выбор): будь мягче и ласковее — тёплые слова, '
+                'забота, шёпот, невинные комплименты, нежность в каждой реплике; '
+                'страсть — только тонкий намёк.'
+            )
+        elif persona_style == 'passionate':
+            style_line = (
+                'СТРАСТНЫЙ СТИЛЬ (его выбор): смелее и дерзче — открытый флирт, '
+                'дразни, наглые комплименты, чувственное напряжение в каждой '
+                'реплике; графических анатомических описаний избегай.'
+            )
+    except Exception:
+        style_line = ''
     system = build_system_prompt(
-        character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + (spicy_line + '\n' if spicy_line else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation,
+        character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + (spicy_line + '\n' if spicy_line else '') + (style_line + '\n' if style_line else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation,
         time_context=_time_context(user_id),
         character_id=character_id,
     )

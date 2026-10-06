@@ -8555,6 +8555,27 @@ from services.relationship_engine import set_premium_checker
 set_premium_checker(_premium_by_internal_uid)
 
 
+# V3.55.6: premium floor — a Premium user meeting a premium-status character
+# (built-in lineup or a constructor persona flipped to «premium») starts at level 6
+# («Наша история»). Admins count as premium here. The engine keeps zero access
+# logic: it only asks this callback.
+def _premium_floor_needs(uid: int, character_id: str) -> bool:
+    try:
+        with SessionLocal() as session:
+            user = session.get(User, uid)
+            tid = int(user.telegram_id) if user else 0
+        if not (tid in ADMIN_TELEGRAM_IDS or is_premium(tid)):
+            return False
+        card = get_card(character_id)
+        return bool(card and card.status == 'premium')
+    except Exception:
+        return False
+
+
+from services.relationship_engine import set_premium_floor_provider
+set_premium_floor_provider(_premium_floor_needs)
+
+
 @dp.message(F.voice)
 async def voice_message(message: types.Message):
     uid = ensure_user(message.from_user.id, message.from_user.first_name)
@@ -10262,7 +10283,20 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
     # V3.52.0: opening the conversation in the app marks it read — the «Чаты»
     # badge clears and only a later proactive/life message will light it up again.
     webapp_service.mark_chat_read(telegram_id, character_id)
-    return web.json_response({'ok': True, 'history': webapp_service.api_chat_history(uid, character_id, limit)})
+    # V3.55.6: a premium user opens a premium character — the level-6 floor is
+    # applied right here so the level shows before the first message, and the
+    # chat tells the SPA whether the tender/passionate choice is still pending.
+    persona_info = {'needed': False, 'style': None}
+    try:
+        from services.relationship_engine import apply_premium_floor
+        with SessionLocal() as session:
+            rel_row = apply_premium_floor(session, uid, character_id)
+        if rel_row is not None:
+            persona_info = {'needed': rel_row.persona_style is None, 'style': rel_row.persona_style}
+    except Exception:
+        logger.exception('premium floor on chat open failed user=%s character=%s', telegram_id, character_id)
+    return web.json_response({'ok': True, 'history': webapp_service.api_chat_history(uid, character_id, limit),
+                              'persona': persona_info})
 
 
 def _custom_premium_gate_block(character_id: str, telegram_id: int) -> bool:
@@ -10371,6 +10405,57 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
         logger.exception('webapp chat reply failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
     return web.json_response({'ok': True, 'reply': answer})
+
+
+async def _webapp_api_chat_persona(request: web.Request) -> web.Response:
+    # V3.55.6: the user picks her manner for this premium character — tender or
+    # passionate. Stored on the relationship row; colors chat tone (bot + app)
+    # and the photo expression pool. Only meaningful on the premium floor pair.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))
+    style = str(body.get('style', '')).strip().lower()
+    if not character_id or style not in ('tender', 'passionate'):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    # Same access gates as sending a message in this chat.
+    if is_custom_character(character_id):
+        if not get_custom_character_by_id(character_id):
+            return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+        if _custom_premium_gate_block(character_id, telegram_id):
+            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    else:
+        card = get_card(character_id)
+        if not card or card.status not in ('active', 'premium'):
+            return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+        if card.status == 'premium' and not is_premium(telegram_id):
+            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    if not has_accepted(telegram_id):
+        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    from services.relationship_engine import apply_premium_floor
+    try:
+        with SessionLocal() as session:
+            row = apply_premium_floor(session, uid, character_id)
+            if row is None:
+                # not a premium user + premium character pair — no choice to make
+                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+            row.persona_style = style
+            session.commit()
+    except Exception:
+        logger.exception('chat persona save failed user=%s character=%s', telegram_id, character_id)
+        return web.json_response({'ok': False, 'error': 'save'}, status=500)
+    track_event(uid, 'webapp_chat_persona', metadata={'character_id': character_id, 'style': style})
+    return web.json_response({'ok': True, 'style': style})
 
 
 async def _webapp_api_chats(request: web.Request) -> web.Response:
@@ -11746,6 +11831,7 @@ async def _start_web_server() -> None:
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
     app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)
+    app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)
     app.router.add_post('/webapp/api/chat/media', _webapp_api_chat_media)

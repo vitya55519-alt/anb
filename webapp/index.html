@@ -146,6 +146,14 @@
     border-radius: 12px; color: #fff; font-size: 15px; outline: none; text-transform: uppercase;
   }
   .promoinp:focus { border-color: var(--accent); }
+  /* V3.55.6: the premium-character persona picker above the chat input. */
+  #personaBanner {
+    padding: 10px 14px 12px; background: rgba(20, 12, 28, .96);
+    border-top: 1px solid rgba(232, 68, 127, .25); flex-shrink: 0;
+  }
+  #personaBanner .personatext { font-size: 13px; color: var(--text); text-align: center; margin-bottom: 8px; line-height: 1.4; }
+  #personaBanner .personarow { display: flex; gap: 8px; }
+  #personaBanner .personarow .cta { flex: 1; margin: 0; }
   .row-item .buy-cell { display: flex; align-items: center; gap: 10px; }
   #toast {
     position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-90px);
@@ -827,6 +835,8 @@
     <button class="iconbtn" id="chatSelect" style="font-size:13px">❤️</button>
   </div>
   <div class="chat-msgs" id="chatMsgs"></div>
+  <!-- V3.55.6: one-time tender/passionate picker for premium characters -->
+  <div id="personaBanner" style="display:none"></div>
   <div class="chat-input">
     <div class="chat-media">
       <button id="mediaPhoto"><span class="ic">📸</span><span class="lb" id="lbMediaPhoto"></span></button>
@@ -1045,6 +1055,8 @@ const L_EN = {
   // V3.55.5: daily streak gift + promo code block in the shop (the wheel is gone)
   gift_title: 'Daily gift', gift_day: n => `Day ${n} of 7`, gift_claim: n => `Claim +${n} 🍑`,
   gift_taken: 'Already claimed — refreshes at 03:00', gift_capped: 'Piggy bank full (15 🍑) — spend some, then claim', gift_jackpot: '3 🍑',
+      // V3.55.6: premium-character tender/passionate picker
+      persona_q: 'What should I be with you — tender or passionate? Choose once, I will remember 🍑', persona_tender: 'Tender', persona_passionate: 'Passionate', persona_saved_tender: 'Now I am your tender one 🌸', persona_saved_passionate: 'Now I am your passionate one 🔥',
   promo_title: 'Promo code', promo_ph: 'Enter code', promo_btn: 'Activate', promo_ok: n => `Code activated: +${n} 🍑`,
   promo_err_unknown: 'Code not found — check the spelling', promo_err_expired: 'This code has expired', promo_err_exhausted: 'All activations are taken',
   promo_err_inactive: 'This code is disabled', promo_err_duplicate: 'You already used this code', promo_err_consent: 'Accept the terms in the bot first', promo_err_auth: 'Open the bot first',
@@ -1205,6 +1217,8 @@ const L_RU = {
   // V3.55.5: серия дневных подарков + промокод в магазине (колесо убрано)
   gift_title: 'Дневной подарок', gift_day: n => `День ${n} из 7`, gift_claim: n => `Забрать +${n} 🍑`,
   gift_taken: 'Уже взято — обновится в 03:00', gift_capped: 'Копилка полная (15 🍑) — потрать и забирай', gift_jackpot: '3 🍑',
+      // V3.55.6: выбор манеры premium-персонажа — нежная/страстная
+      persona_q: 'Кем я буду с тобой — нежной или страстной? Выбери один раз, я запомню 🍑', persona_tender: 'Нежная', persona_passionate: 'Страстная', persona_saved_tender: 'Теперь я твоя нежная 🌸', persona_saved_passionate: 'Теперь я твоя страстная 🔥',
   promo_title: 'Промокод', promo_ph: 'Введи код', promo_btn: 'Активировать', promo_ok: n => `Код активирован: +${n} 🍑`,
   promo_err_unknown: 'Такого кода нет — проверь написание', promo_err_expired: 'Срок действия кода истёк', promo_err_exhausted: 'Все активации уже разобрали',
   promo_err_inactive: 'Этот код отключён', promo_err_duplicate: 'Ты уже активировал этот код', promo_err_consent: 'Сначала прими условия в боте', promo_err_auth: 'Сначала открой бота',
@@ -1400,6 +1414,8 @@ const L_OV = {
     adult_confirm_needed: 'Confirma primero 18+ en el chat del bot',
     gift_title: 'Regalo diario', gift_day: n => `Día ${n} de 7`, gift_claim: n => `Recibir +${n} 🍑`,
     gift_taken: 'Ya reclamado — vuelve a las 03:00', gift_capped: 'Hucha llena (15 🍑) — gasta y reclama', gift_jackpot: '3 🍑',
+        // V3.55.6: selector tierna/apasionada para personajes premium
+        persona_q: '¿Cómo quieres que sea contigo — tierna o apasionada? Elige una vez, lo recordaré 🍑', persona_tender: 'Tierna', persona_passionate: 'Apasionada', persona_saved_tender: 'Ahora soy tu tierna 🌸', persona_saved_passionate: 'Ahora soy tu apasionada 🔥',
     promo_title: 'Código promocional', promo_ph: 'Introduce el código', promo_btn: 'Activar', promo_ok: n => `Código activado: +${n} 🍑`,
     promo_err_unknown: 'Código no encontrado', promo_err_expired: 'El código ha caducado', promo_err_exhausted: 'Activaciones agotadas',
     promo_err_inactive: 'Código desactivado', promo_err_duplicate: 'Ya usaste este código', promo_err_consent: 'Acepta los términos en el bot', promo_err_auth: 'Abre el bot primero',
@@ -1452,6 +1468,8 @@ const L_OV = {
     adult_confirm_needed: 'Conferma prima 18+ nella chat del bot',
     gift_title: 'Regalo giornaliero', gift_day: n => `Giorno ${n} di 7`, gift_claim: n => `Ritira +${n} 🍑`,
     gift_taken: 'Già ritirato — torna alle 03:00', gift_capped: 'Salvadanaio pieno (15 🍑) — spendi e ritira', gift_jackpot: '3 🍑',
+        // V3.55.6: selettore dolce/passionale per i personaggi premium
+        persona_q: 'Come vuoi che sia con te — dolce o passionale? Scegli una volta, ricorderò 🍑', persona_tender: 'Dolce', persona_passionate: 'Passionale', persona_saved_tender: 'Ora sono la tua dolce 🌸', persona_saved_passionate: 'Ora sono la tua passione 🔥',
     promo_title: 'Codice promozionale', promo_ph: 'Inserisci il codice', promo_btn: 'Attiva', promo_ok: n => `Codice attivato: +${n} 🍑`,
     promo_err_unknown: 'Codice non trovato', promo_err_expired: 'Il codice è scaduto', promo_err_exhausted: 'Attivazioni esaurite',
     promo_err_inactive: 'Codice disattivato', promo_err_duplicate: 'Hai già usato questo codice', promo_err_consent: 'Accetta i termini nel bot', promo_err_auth: 'Apri prima il bot',
@@ -1504,6 +1522,8 @@ const L_OV = {
     adult_confirm_needed: 'Confirme d\'abord 18+ dans le chat du bot',
     gift_title: 'Cadeau du jour', gift_day: n => `Jour ${n} sur 7`, gift_claim: n => `Récupérer +${n} 🍑`,
     gift_taken: 'Déjà récupéré — reviens à 03:00', gift_capped: 'Tirelire pleine (15 🍑) — dépense et reviens', gift_jackpot: '3 🍑',
+        // V3.55.6 : sélecteur tendre/passionnée des personnages premium
+        persona_q: 'Comment veux-tu que je sois — tendre ou passionnée ? Choisis une fois, je m’en souviendrai 🍑', persona_tender: 'Tendre', persona_passionate: 'Passionnée', persona_saved_tender: 'Je suis ta tendre 🌸', persona_saved_passionate: 'Je suis ta passion 🔥',
     promo_title: 'Code promo', promo_ph: 'Saisis le code', promo_btn: 'Activer', promo_ok: n => `Code activé : +${n} 🍑`,
     promo_err_unknown: 'Code introuvable', promo_err_expired: 'Code expiré', promo_err_exhausted: 'Activations épuisées',
     promo_err_inactive: 'Code désactivé', promo_err_duplicate: 'Tu as déjà utilisé ce code', promo_err_consent: 'Accepte les termes dans le bot', promo_err_auth: 'Ouvre le bot d\'abord',
@@ -1556,6 +1576,8 @@ const L_OV = {
     adult_confirm_needed: '请先在机器人聊天中确认 18+',
     gift_title: '每日礼物', gift_day: n => `第 ${n} / 7 天`, gift_claim: n => `领取 +${n} 🍑`,
     gift_taken: '今日已领 — 03:00 刷新', gift_capped: '存钱罐已满 (15 🍑) — 花掉后再领', gift_jackpot: '3 🍑',
+        // V3.55.6: 高级角色的温柔/热情方式选择
+        persona_q: '你想我怎么陪你——温柔还是热情？选一次，我会记住 🍑', persona_tender: '温柔', persona_passionate: '热情', persona_saved_tender: '现在我是你的温柔版 🌸', persona_saved_passionate: '现在我是你的热情版 🔥',
     promo_title: '优惠码', promo_ph: '输入优惠码', promo_btn: '激活', promo_ok: n => `优惠码已激活：+${n} 🍑`,
     promo_err_unknown: '未找到该优惠码', promo_err_expired: '优惠码已过期', promo_err_exhausted: '激活名额已满',
     promo_err_inactive: '优惠码已停用', promo_err_duplicate: '你已使用过该优惠码', promo_err_consent: '请先在机器人里接受条款', promo_err_auth: '请先打开机器人',
@@ -1608,6 +1630,8 @@ const L_OV = {
     adult_confirm_needed: 'まずボットのチャットで18+を確認してください',
     gift_title: '今日のギフト', gift_day: n => `${n} / 7 日目`, gift_claim: n => `+${n} 🍑 を受け取る`,
     gift_taken: '受け取り済み — 03:00 に更新', gift_capped: '貯金が満杯 (15 🍑) — 使ってから受け取ろう', gift_jackpot: '3 🍑',
+        // V3.55.6: プレミアムキャラクターの甘え/情熱セレクター
+        persona_q: 'あなたとの私を選んで——甘えん坊と情熱的、どっちにする？一度だけ、覚えておくね 🍑', persona_tender: '甘えん坊', persona_passionate: '情熱的', persona_saved_tender: 'これからは甘えん坊の私 🌸', persona_saved_passionate: 'これからは情熱的な私 🔥',
     promo_title: 'プロモコード', promo_ph: 'コードを入力', promo_btn: '有効化', promo_ok: n => `コード有効化：+${n} 🍑`,
     promo_err_unknown: 'コードが見つかりません', promo_err_expired: 'このコードは期限切れです', promo_err_exhausted: '利用枠が満杯です',
     promo_err_inactive: 'このコードは無効です', promo_err_duplicate: 'このコードは既に使いました', promo_err_consent: 'まずボットで利用規約に同意してください', promo_err_auth: 'まずボットを開いてください',
@@ -2045,17 +2069,54 @@ function openChat(c) {
 }
 
 async function loadChatHistory(characterId) {
+  const banner = document.getElementById('personaBanner');
+  if (banner) banner.style.display = 'none';
   try {
     const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId));
     if (r.status === 401) { toast(L.auth_short); return; }
     const j = await r.json();
     const box = document.getElementById('chatMsgs');
     if (!j.ok) { box.innerHTML = `<div class="chat-empty">${esc(L.reply_err)}</div>`; return; }
-    if (!j.history.length) { box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`; return; }
-    box.innerHTML = j.history.map(m => chatBubble(m)).join('');
+    if (!j.history.length) { box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`; }
+    else { box.innerHTML = j.history.map(m => chatBubble(m)).join(''); }
+    // V3.55.6: the server says this premium pair has no manner chosen yet —
+    // show the one-time tender/passionate picker above the input.
+    if (j.persona && j.persona.needed) renderPersonaBanner(characterId);
     box.scrollTop = box.scrollHeight;
   } catch (e) {
     document.getElementById('chatMsgs').innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
+  }
+}
+
+function renderPersonaBanner(characterId) {
+  const b = document.getElementById('personaBanner');
+  if (!b) return;
+  b.innerHTML = '<div class="personatext">' + esc(L.persona_q) + '</div>' +
+    '<div class="personarow">' +
+    '<button class="cta" id="personaTender">🌸 ' + esc(L.persona_tender) + '</button>' +
+    '<button class="cta" id="personaPassionate">🔥 ' + esc(L.persona_passionate) + '</button>' +
+    '</div>';
+  b.style.display = '';
+  document.getElementById('personaTender').addEventListener('click', () => choosePersona(characterId, 'tender'));
+  document.getElementById('personaPassionate').addEventListener('click', () => choosePersona(characterId, 'passionate'));
+}
+
+async function choosePersona(characterId, style) {
+  try {
+    const r = await fetch('/webapp/api/chat/persona?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: characterId, style: style }),
+    });
+    const j = await r.json();
+    if (j && j.ok) {
+      const b = document.getElementById('personaBanner');
+      if (b) b.style.display = 'none';
+      toast(style === 'tender' ? L.persona_saved_tender : L.persona_saved_passionate);
+    } else {
+      toast(L.reply_err);
+    }
+  } catch (e) {
+    toast(L.reply_err);
   }
 }
 
@@ -4059,6 +4120,8 @@ async function deleteCreatorCharacter(id) {
 }
 document.getElementById('chatBack').addEventListener('click', () => {
   document.getElementById('chatview').classList.remove('open');
+  const _pb = document.getElementById('personaBanner');
+  if (_pb) _pb.style.display = 'none';
   CHAT = null;
   // a reply may have landed — refresh the dialog list preview
   loadChats();
