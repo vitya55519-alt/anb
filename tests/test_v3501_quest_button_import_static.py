@@ -30,7 +30,9 @@ def test_get_feature_branch_imports_couple_service_before_use():
 
 
 def test_post_action_branch_still_imports_before_claim():
-    body = _func_body('async def _webapp_api_feature_action(')
+    # V3.55.7: the action body moved into _webapp_api_feature_action_impl behind
+    # the new exception-guarded wrapper (mirroring the GET _impl); anchor there.
+    body = _func_body('async def _webapp_api_feature_action_impl(')
     assert 'from services import couple_service' in body
     assert body.index('from services import couple_service') < body.index(
         'couple_service.claim_quest('

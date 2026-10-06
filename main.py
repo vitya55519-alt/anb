@@ -11301,6 +11301,19 @@ async def _deliver_bonus_media(telegram_id: int, character_id: str, uid: int):
 
 
 async def _webapp_api_feature_action(request: web.Request) -> web.Response:
+    # V3.55.7: exception-guarded wrapper, mirroring the V3.48.3 GET wrapper. A
+    # transient DB blip in the shared prologue (ensure_user / get_relationship_level
+    # write on every call) used to surface as a raw HTTP 500 whose HTML body the
+    # Mini App could not parse — so the «Задание» sheet showed «Не получилось
+    # ответить — попробуй ещё раз». Log the real cause and answer with clean JSON.
+    try:
+        return await _webapp_api_feature_action_impl(request)
+    except Exception:
+        logger.exception('webapp feature action failed')
+        return web.json_response({'ok': False, 'error': 'temporarily_unavailable'})
+
+
+async def _webapp_api_feature_action_impl(request: web.Request) -> web.Response:
     # V3.41.0: perform a feature action from the app chat. Apartment actions and
     # the daily quest resolve instantly into the shared dialog; a free/admin date
     # is delivered right here, while a paid date returns a Stars invoice link that
@@ -11352,11 +11365,21 @@ async def _webapp_api_feature_action(request: web.Request) -> web.Response:
         result = couple_service.claim_quest(telegram_id, quest_key)
         if not result:
             return web.json_response({'ok': False, 'error': 'already'}, status=409)
-        track_event(uid, 'daily_quest_claimed', metadata={'source': 'webapp', 'quest': quest_key})
+        # V3.55.7: claim_quest has committed the +5 by this point. The event
+        # track, the dialog echo and the best-effort bonus photo must never turn
+        # a successful claim into a raw 500 — a transient DB blip here used to
+        # make the sheet say «Не получилось ответить» even though the quest had
+        # in fact counted. Guard the tail and always answer ok for a fresh claim.
         text = ('mmm, nice 😊 +5 attention points. she noticed.' if user_lang(telegram_id) == EN
                 else 'ммм, приятно 😊 +5 очков внимания. она заметила.')
-        save_message(uid, character_id, 'assistant', text)
-        bonus_url = await _deliver_bonus_media(telegram_id, character_id, uid) if result.get('bonus_media') else None
+        bonus_url = None
+        try:
+            track_event(uid, 'daily_quest_claimed', metadata={'source': 'webapp', 'quest': quest_key})
+            save_message(uid, character_id, 'assistant', text)
+            if result.get('bonus_media'):
+                bonus_url = await _deliver_bonus_media(telegram_id, character_id, uid)
+        except Exception:
+            logger.exception('webapp quest post-claim tail failed user=%s quest=%s', telegram_id, quest_key)
         return web.json_response({'ok': True, 'kind': kind, 'text': text,
                                   'quests_completed': result.get('quests_completed'),
                                   'bonus_media': bool(bonus_url),
