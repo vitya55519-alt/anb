@@ -55,7 +55,10 @@ class User(Base):
     # ``bonus_media_date`` throttles the ~20% spontaneous free-photo drop to
     # at most one per day. All auto-migrated by services/db.py.
     quests_completed: Mapped[int] = mapped_column(Integer, default=0)
-    quest_claims: Mapped[str] = mapped_column(String(64), default="")
+    # V3.55.8: the 5-day claims map outgrew varchar(64) in Postgres
+    # (StringDataRightTruncation killed every later quest claim of the day) —
+    # the JSON needs Text. Type widened by services/db.py.
+    quest_claims: Mapped[str] = mapped_column(Text, default="")
     bonus_media_date: Mapped[str] = mapped_column(String(10), default="")
     # V3.22.0: the chosen character survives restarts/redeploys. Empty = Anna.
     selected_character: Mapped[str] = mapped_column(String(64), default="")

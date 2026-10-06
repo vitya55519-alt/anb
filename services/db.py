@@ -103,12 +103,29 @@ def _drop_legacy_constructor_unique() -> None:
             logger.warning('legacy index migration skipped: %s', stmt, exc_info=True)
 
 
+def _widen_quest_claims_column() -> None:
+    """V3.55.8: users.quest_claims shipped as String(64) in V3.49.0, but the
+    5-day JSON map ({"YYYY-MM-DD": [keys...]}) crosses 64 chars by the second
+    day — Postgres then rejected every later claim with
+    StringDataRightTruncation (the app quest sheet showed «Не получилось
+    ответить» on a committed +5). The model is Text now; create_all and
+    _auto_migrate_all_tables never alter existing column types, so widen it
+    here. SQLite ignores varchar lengths entirely, so a failure is expected
+    and harmless there."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text('ALTER TABLE users ALTER COLUMN quest_claims TYPE TEXT'))
+    except Exception:
+        logger.info('quest_claims widen migration skipped (sqlite or already TEXT)')
+
+
 def init_db():
     Base.metadata.create_all(engine)
     # V3.44.21: the FreeKassa orders table retired with the kassa itself —
     # platega_orders is created fresh by create_all; the legacy
     # freekassa_orders table is intentionally left in place (paid history).
     _drop_legacy_constructor_unique()
+    _widen_quest_claims_column()
     _migrate_existing_users()
     _add_missing_columns('character_states', {
         'recent_outfits_json': "TEXT DEFAULT '[]'",
