@@ -40,9 +40,19 @@ def test_legal_service_documents_exist():
     ):
         assert section in LEGAL, f'user agreement missing: {section}'
     # the documents are dated and identify the service
-    assert "LEGAL_VERSION = '2026-09-29'" in LEGAL
+    assert "LEGAL_VERSION = '2026-10-06'" in LEGAL
     assert 'LEGAL_DATE_RU' in LEGAL
     assert "os.getenv('LEGAL_BOT_USERNAME', '@Anna67901_bot')" in LEGAL
+    # V3.55.4: liability clauses for uploaded face photos, refusal to render,
+    # complaint review, and the one-shot handling of reference images
+    for clause in (
+        'изображён он сам либо лицо, давшее согласие',
+        'вправе отказать в генерации изображения',
+        'рассматривать материалы, о которых ей стало известно из обращений',
+        'немедленно удаляются из технической инфраструктуры',
+        'самоудостоверении Пользователя при одноразовом подтверждении возраста',
+    ):
+        assert clause in LEGAL, f'V3.55.4 legal clause missing: {clause}'
 
 
 def test_no_personal_registration_data_in_legal_texts():
@@ -145,5 +155,6 @@ def test_legal_command_registered():
 
 
 def test_consent_versions_bumped_for_new_documents():
-    assert "TERMS_VERSION = '2026-09-15'" in CONSENT
-    assert "PRIVACY_VERSION = '2026-09-15'" in CONSENT
+    # V3.55.4: the 06.10.2026 revision is re-accepted by every user once.
+    assert "TERMS_VERSION = '2026-10-06'" in CONSENT
+    assert "PRIVACY_VERSION = '2026-10-06'" in CONSENT

@@ -9,8 +9,11 @@ from models.quest_models import UserQuestProgress, QuestReplayOffer
 
 # V3.32.0: full legal documents (Platega bank approval) — the consent gate
 # re-asks existing users once so the new revision is actually accepted.
-TERMS_VERSION = '2026-09-15'
-PRIVACY_VERSION = '2026-09-15'
+# V3.55.4: revision of 06.10.2026 adds the uploaded-image guarantees (4.4–4.5),
+# the complaint-review right (6.3) and the reference-photo privacy note (2.4) —
+# re-asked once BEFORE any wide marketing push, so every user accepts it.
+TERMS_VERSION = '2026-10-06'
+PRIVACY_VERSION = '2026-10-06'
 
 
 def _now():

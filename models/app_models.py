@@ -82,6 +82,13 @@ class User(Base):
     achievements: Mapped[str] = mapped_column(String(512), default="")
     last_daily_gift_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     total_private_photos: Mapped[int] = mapped_column(Integer, default=0)
+    # V3.55.5: daily streak gift (1/1/1/1/1/1/3 🍑, cap 15). Own columns so
+    # the gift streak never mixes with the chat streak_count/streak_last_date
+    # gamification rail or the V3.45 free-photo last_daily_gift_date push.
+    # ``gift_last_day`` = which 03:00-MSK day key was already consumed.
+    # Auto-migrated by services/db.py.
+    gift_last_day: Mapped[date | None] = mapped_column(Date, nullable=True)
+    gift_streak: Mapped[int] = mapped_column(Integer, default=0)
 
 
 # V3.37.0: money affiliate program. One row per converted referral — the
@@ -93,6 +100,24 @@ class Referral(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     referrer_user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     invitee_user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# V3.55.5: promo codes table — one row per code. Redemption is one-per-user
+# (idempotent via grant_photo_credits reason `promo_<CODE>`), the global cap is
+# enforced by an atomic `UPDATE ... WHERE activated_count < max_activations`.
+# max_activations=0 means unlimited; expires_at is naive UTC (nullable = never);
+# source_tag feeds the growth attribution events.
+class PromoCode(Base):
+    __tablename__ = "promo_codes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(24), unique=True, index=True)
+    credits: Mapped[int] = mapped_column(Integer, default=0)
+    max_activations: Mapped[int] = mapped_column(Integer, default=0)
+    activated_count: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    source_tag: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

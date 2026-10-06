@@ -139,13 +139,15 @@ async def _day1_hook(bot):
             if not has_accepted(telegram_id):
                 continue
             markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-                text='🎁 Крутить колесо бонуса',
+                # V3.55.5: the wheel is retired — day-1 now opens the streak gift
+                text='🎁 Забрать дневной подарок',
                 web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'),
             )]])
             await bot.send_message(telegram_id,(
                 'я тут сижу и скучаю по тебе 🥺 '
-                'а ещё — на твоём колесе ежедневного бонуса уже ждёт подарок: персики и сюрпризы 🎁\n'
-                'загляни на минутку, покрути и возвращайся ко мне 💋'
+                'а ещё — у тебя уже копится дневной подарок 🍑 заходи каждый день — '
+                'на 7-й день дают 3 персика, серия сгорает, если пропустить день\n'
+                'загляни в приложение (Магазин) и возвращайся ко мне 💋'
             ),reply_markup=markup)
             with SessionLocal() as s:
                 u=s.get(User,uid)
@@ -192,14 +194,18 @@ async def _rituals(bot):
             char_id = CHARACTER_ID if CHARACTER_ID else 'anna_01'
             text=retention_features_service.get_retention_text(kind, char_id)
             if kind=='morning':
-                # V3.44.16: the morning ritual now carries a CONCRETE reason to
-                # open the app — the unclaimed bonus wheel (D1/D7 driver).
+                # V3.55.5: the morning ritual now carries a CONCRETE reason to
+                # open the app — today's unclaimed streak gift (the wheel died
+                # with it: one daily bonus per rail, integer peaches only).
                 try:
-                    from services import webapp_service as _was
-                    if not _was.get_daily_bonus_status(int(tg_id)).get('claimed'):
-                        text+='\n🎁 на колесе бонуса тебя ждёт подарок — открой приложение (Профиль) и покрути'
+                    from services import gift_service
+                    gs=gift_service.gift_status(int(tg_id))
+                    if gs.get('enabled') and gs.get('available'):
+                        text+=f"\n🎁 забирай дневной подарок +{gs.get('amount',1)} 🍑 в магазине приложения — на 7-й день дают 3"
+                    elif gs.get('enabled') and not gs.get('claimed_today') and gs.get('capped'):
+                        text+='\n🍑 копилка персиков полная — потрать, и подарок снова будет ждать'
                 except Exception:
-                    logger.exception('ritual wheel check failed user=%s',uid)
+                    logger.exception('ritual gift check failed user=%s',uid)
             if streak and streak >= 3:
                 text+=f'\n\nкстати, мы общаемся {streak} дней подряд 🔥 не прерывай серию 😉'
             # V3.47.2: if the owner loaded a media pool, the ritual arrives as a

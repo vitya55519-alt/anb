@@ -61,8 +61,11 @@ COSPLAY_PHOTO_PEACH_COST = max(1, int(os.getenv("COSPLAY_PHOTO_PEACH_COST", "2")
 HOT_PASS_DAY_PEACHES = max(1, int(os.getenv("HOT_PASS_DAY_PEACHES", "5")))
 HOT_PASS_WEEK_PEACHES = max(1, int(os.getenv("HOT_PASS_WEEK_PEACHES", "25")))
 HOT_PASS_MONTH_PEACHES = max(1, int(os.getenv("HOT_PASS_MONTH_PEACHES", "80")))
-# Видео за персики (альтернатива звёздам)
-VIDEO_PEACH_COST = max(1, int(os.getenv("VIDEO_PEACH_COST", "5")))
+# Видео за персики — ЕДИНАЯ цена видео-продукта на персиковом рельсе:
+# студия Mini App (webapp_service.WEBAPP_VIDEO_COST_CREDITS читает её).
+# V3.55.5: 5 -> 20 🍑 — клип сжигает картинковый рендер + видео-движок.
+# Звёздный/токеновый рельсы бота (VIDEO_COST_STARS/VIDEO_TOKEN_COST) — свои.
+VIDEO_PEACH_COST = max(1, int(os.getenv("VIDEO_PEACH_COST", "20")))
 # Голос + фото комбо
 VOICE_PHOTO_PEACH_COST = max(1, int(os.getenv("VOICE_PHOTO_PEACH_COST", "3")))
 # Серия фото (3-5 штук в одном образе)
@@ -549,6 +552,27 @@ FIRST_START_BONUS_CREDITS = int(os.getenv("FIRST_START_BONUS_CREDITS", "2"))
 # A short Premium taste granted to brand-new users so they can sample premium
 # photo routes on day one. 0 disables. Days, not stars.
 FIRST_START_PREMIUM_TRIAL_DAYS = int(os.getenv("FIRST_START_PREMIUM_TRIAL_DAYS", "0"))
+
+# V3.55.5: daily streak gift — days 1..6 pay DAY_AMOUNT, every JACKPOT_DAY-th
+# day pays JACKPOT_AMOUNT (cycle restarts after it). A missed day resets the
+# streak to 1. If the balance is at or above BALANCE_CAP the grant is skipped
+# WITHOUT consuming the day (the user spends, then claims). Day boundary is
+# 03:00 MSK == 00:00 UTC (no DST), so key = now_utc.date().
+# PROMO_MAX_CREDITS caps the nominal
+# of an admin-created promo code (no Premium-day grants on this rail).
+DAILY_GIFT_ENABLED = os.getenv("DAILY_GIFT_ENABLED", "1") == "1"
+DAILY_GIFT_DAY_AMOUNT = int(os.getenv("DAILY_GIFT_DAY_AMOUNT", "1"))
+DAILY_GIFT_JACKPOT_DAY = int(os.getenv("DAILY_GIFT_JACKPOT_DAY", "7"))
+DAILY_GIFT_JACKPOT_AMOUNT = int(os.getenv("DAILY_GIFT_JACKPOT_AMOUNT", "3"))
+DAILY_GIFT_BALANCE_CAP = int(os.getenv("DAILY_GIFT_BALANCE_CAP", "15"))
+PROMO_MAX_CREDITS = int(os.getenv("PROMO_MAX_CREDITS", "20"))
+# V3.55.5: полка welcome — сеется на старте, чтобы новых юзеров хватало на
+# самое дешёвое платное действие: копилка стрика 15 🍑 + 5 🍑 за код = 20 🍑
+# студийного видео. Отключается PROMO_WELCOME_ENABLED=0.
+PROMO_WELCOME_ENABLED = os.getenv("PROMO_WELCOME_ENABLED", "1") == "1"
+PROMO_WELCOME_CODE = (os.getenv("PROMO_WELCOME_CODE", "ANNA5").strip().upper() or "ANNA5")
+PROMO_WELCOME_CREDITS = max(1, min(PROMO_MAX_CREDITS, int(os.getenv("PROMO_WELCOME_CREDITS", "5"))))
+PROMO_WELCOME_CAP = max(0, int(os.getenv("PROMO_WELCOME_CAP", "1000")))
 
 # V3.37.0: the affiliate (partner) program — money commission with every
 # purchase a referred user ever makes, paid out on request. The percent and

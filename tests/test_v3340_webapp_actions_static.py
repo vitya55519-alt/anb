@@ -118,6 +118,9 @@ def test_no_unescaped_backend_strings_in_templates():
         # V3.43.0: the channel-bonus L-functions interpolate the peach amount
         # (a config integer) into their localized template.
         'b',
+        # V3.55.5: the gift/promo L-functions interpolate the streak day number
+        # and the peach amount — both config integers (1..7, 1/3/5...).
+        'n',
         's.free_tier.messages_per_day', 's.free_tier.photos_level_1_2',
         's.free_tier.photos_level_3_6',
         # V3.37.0: partner tab percent — always numeric from config, and the
@@ -236,6 +239,9 @@ def test_no_unescaped_backend_strings_in_templates():
             'Math.round(it.progress[0] / it.progress[1] * 100)',
             # Notification badge cap — a local integer ternary.
             "un > 9 ? '9+' : un",
+            # V3.55.5: the shop gift block — 'dots' is a static emoji cell
+            # fragment, 'btn' is built from esc()'d L-constants only.
+            'dots', 'btn',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         violations.append(expr)

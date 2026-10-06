@@ -16,6 +16,7 @@ Static pins only (no imports -> the suite runs without a DB or an LLM key)."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CONFIG = (ROOT / 'config.py').read_text(encoding='utf-8')
 WEBAPP_SVC = (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 SPA = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
@@ -26,8 +27,10 @@ VIDEO_FN = MAIN[_VID_START:MAIN.index('async def _webapp_pipeline_photo(', _VID_
 
 
 def test_service_video_price_and_upload_guardrails():
-    # the price is pinned to the picture price and charged only on success
-    assert 'WEBAPP_VIDEO_COST_CREDITS = 10' in WEBAPP_SVC
+    # V3.55.5: the video price is the single unified peach-rail knob from
+    # config (VIDEO_PEACH_COST, default 20 🍑), charged only on success
+    assert 'WEBAPP_VIDEO_COST_CREDITS = VIDEO_PEACH_COST' in WEBAPP_SVC
+    assert 'VIDEO_PEACH_COST = max(1, int(os.getenv("VIDEO_PEACH_COST", "20")))' in CONFIG
     # the decoder is fail-safe and bounded: 8 MB cap + mime allowlist
     assert 'def decode_data_image(' in WEBAPP_SVC
     assert 'STUDIO_UPLOAD_MAX_BYTES = 8 * 1024 * 1024' in WEBAPP_SVC

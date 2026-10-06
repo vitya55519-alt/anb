@@ -1019,7 +1019,12 @@ const L_EN = {
   free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
   profile_title: 'Profile', premium_on: 'Premium active', premium_off: 'Free account',
   streak: 'day streak', level: 'relationship level', selected_girl: 'selected girl',
-  daily_bonus: 'Daily Bonus', bonus_spin: 'SPIN!', bonus_claimed: 'Claimed today', bonus_already: 'Already claimed today!',
+  // V3.55.5: daily streak gift + promo code block in the shop (the wheel is gone)
+  gift_title: 'Daily gift', gift_day: n => `Day ${n} of 7`, gift_claim: n => `Claim +${n} 🍑`,
+  gift_taken: 'Already claimed — refreshes at 03:00', gift_capped: 'Piggy bank full (15 🍑) — spend some, then claim', gift_jackpot: '3 🍑',
+  promo_title: 'Promo code', promo_ph: 'Enter code', promo_btn: 'Activate', promo_ok: n => `Code activated: +${n} 🍑`,
+  promo_err_unknown: 'Code not found — check the spelling', promo_err_expired: 'This code has expired', promo_err_exhausted: 'All activations are taken',
+  promo_err_inactive: 'This code is disabled', promo_err_duplicate: 'You already used this code', promo_err_consent: 'Accept the terms in the bot first', promo_err_auth: 'Open the bot first',
   open_bot: 'Open the bot to chat 💬',
   docs_title: 'Documents & prices', checkword: 'code word',
   partner_title: 'Partner program', invited_lbl: 'friends invited', earned_lbl: 'earned',
@@ -1086,7 +1091,7 @@ const L_EN = {
   mode_pic: 'Picture', mode_video: 'Video',
   upload_photo: 'Own photo', upload_hint: 'JPG / PNG / WebP · up to 8 MB', upload_remove: 'Remove',
   video_prompt_ph: 'What happens in the video… (or just attach a photo)',
-  video_cost: 'One video — 10 🍑', video_generate: 'Create video · 10 🍑',
+  video_cost: 'One video — 20 🍑', video_generate: 'Create video · 20 🍑',
   video_wait: 'Rendering the video — 1–3 minutes…', video_fail: 'Could not make the video — try again',
   need_prompt_or_photo: 'Describe the scene or attach your own photo',
   // V3.55.0: «My videos» gallery + 🎬 motion presets.
@@ -1174,7 +1179,12 @@ const L_RU = {
   free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
   profile_title: 'Профиль', premium_on: 'Premium активен', premium_off: 'Бесплатный аккаунт',
   streak: 'дней подряд', level: 'уровень отношений', selected_girl: 'выбранная девушка',
-  daily_bonus: 'Ежедневный бонус', bonus_spin: 'КРУТИТЬ!', bonus_claimed: 'Получено сегодня', bonus_already: 'Уже получено сегодня!',
+  // V3.55.5: серия дневных подарков + промокод в магазине (колесо убрано)
+  gift_title: 'Дневной подарок', gift_day: n => `День ${n} из 7`, gift_claim: n => `Забрать +${n} 🍑`,
+  gift_taken: 'Уже взято — обновится в 03:00', gift_capped: 'Копилка полная (15 🍑) — потрать и забирай', gift_jackpot: '3 🍑',
+  promo_title: 'Промокод', promo_ph: 'Введи код', promo_btn: 'Активировать', promo_ok: n => `Код активирован: +${n} 🍑`,
+  promo_err_unknown: 'Такого кода нет — проверь написание', promo_err_expired: 'Срок действия кода истёк', promo_err_exhausted: 'Все активации уже разобрали',
+  promo_err_inactive: 'Этот код отключён', promo_err_duplicate: 'Ты уже активировал этот код', promo_err_consent: 'Сначала прими условия в боте', promo_err_auth: 'Сначала открой бота',
   open_bot: 'Открой бота, чтобы общаться 💬',
   docs_title: 'Документы и цены', checkword: 'кодовое слово',
   partner_title: 'Партнёрка', invited_lbl: 'людей приведено', earned_lbl: 'заработано',
@@ -1241,7 +1251,7 @@ const L_RU = {
   mode_pic: 'Картинка', mode_video: 'Видео',
   upload_photo: 'Своё фото', upload_hint: 'JPG / PNG / WebP · до 8 МБ', upload_remove: 'Убрать',
   video_prompt_ph: 'Что происходит в видео… (или просто приложи фото)',
-  video_cost: 'Одно видео — 10 🍑', video_generate: 'Создать видео · 10 🍑',
+  video_cost: 'Одно видео — 20 🍑', video_generate: 'Создать видео · 20 🍑',
   video_wait: 'Рендерю видео — 1–3 минуты…', video_fail: 'Не получилось создать видео — попробуй ещё раз',
   need_prompt_or_photo: 'Опиши сцену или приложи своё фото',
   // V3.55.0: галерея «Мои видео» + пресеты движения режима 🎬.
@@ -1341,7 +1351,7 @@ const L_OV = {
     mode_pic: 'Imagen', mode_video: 'Vídeo',
     upload_photo: 'Foto propia', upload_hint: 'JPG / PNG / WebP · máx. 8 MB', upload_remove: 'Quitar',
     video_prompt_ph: 'Qué pasa en el vídeo… (o solo adjunta una foto)',
-    video_cost: 'Un vídeo — 10 🍑', video_generate: 'Crear vídeo · 10 🍑',
+    video_cost: 'Un vídeo — 20 🍑', video_generate: 'Crear vídeo · 20 🍑',
     video_wait: 'Renderizando el vídeo — 1–3 minutos…', video_fail: 'No se pudo crear el vídeo — inténtalo de nuevo',
     need_prompt_or_photo: 'Describe la escena o adjunta tu foto',
     videos_title: 'Mis vídeos', videos_empty: 'Aún no hay vídeos: tus clips aparecerán aquí.',
@@ -1365,6 +1375,11 @@ const L_OV = {
     sc_bar: '🍸 Bar', sc_karaoke: '🎤 Karaoke', sc_rooftop: '🌃 Azotea', sc_club: '💃 Discoteca',
     sc_personal: '💌 Foto personal', sc_lingerie: '🖤 Moda privada', sc_private_fashion: '🔐 Premium privado',
     adult_confirm_needed: 'Confirma primero 18+ en el chat del bot',
+    gift_title: 'Regalo diario', gift_day: n => `Día ${n} de 7`, gift_claim: n => `Recibir +${n} 🍑`,
+    gift_taken: 'Ya reclamado — vuelve a las 03:00', gift_capped: 'Hucha llena (15 🍑) — gasta y reclama', gift_jackpot: '3 🍑',
+    promo_title: 'Código promocional', promo_ph: 'Introduce el código', promo_btn: 'Activar', promo_ok: n => `Código activado: +${n} 🍑`,
+    promo_err_unknown: 'Código no encontrado', promo_err_expired: 'El código ha caducado', promo_err_exhausted: 'Activaciones agotadas',
+    promo_err_inactive: 'Código desactivado', promo_err_duplicate: 'Ya usaste este código', promo_err_consent: 'Acepta los términos en el bot', promo_err_auth: 'Abre el bot primero',
   },
   it: {
     chars_title: 'Ragazze', loading: 'Caricamento…',
@@ -1388,7 +1403,7 @@ const L_OV = {
     mode_pic: 'Immagine', mode_video: 'Video',
     upload_photo: 'Foto tua', upload_hint: 'JPG / PNG / WebP · max 8 MB', upload_remove: 'Rimuovi',
     video_prompt_ph: 'Cosa succede nel video… (o allega solo una foto)',
-    video_cost: 'Un video — 10 🍑', video_generate: 'Crea video · 10 🍑',
+    video_cost: 'Un video — 20 🍑', video_generate: 'Crea video · 20 🍑',
     video_wait: 'Rendering del video — 1–3 minuti…', video_fail: 'Impossibile creare il video — riprova',
     need_prompt_or_photo: 'Descrivi la scena o allega una tua foto',
     videos_title: 'Miei video', videos_empty: 'Ancora nessun video: i tuoi clip appariranno qui.',
@@ -1412,6 +1427,11 @@ const L_OV = {
     sc_bar: '🍸 Bar', sc_karaoke: '🎤 Karaoke', sc_rooftop: '🌃 Terrazza', sc_club: '💃 Discoteca',
     sc_personal: '💌 Foto personale', sc_lingerie: '🖤 Moda privata', sc_private_fashion: '🔐 Premium privato',
     adult_confirm_needed: 'Conferma prima 18+ nella chat del bot',
+    gift_title: 'Regalo giornaliero', gift_day: n => `Giorno ${n} di 7`, gift_claim: n => `Ritira +${n} 🍑`,
+    gift_taken: 'Già ritirato — torna alle 03:00', gift_capped: 'Salvadanaio pieno (15 🍑) — spendi e ritira', gift_jackpot: '3 🍑',
+    promo_title: 'Codice promozionale', promo_ph: 'Inserisci il codice', promo_btn: 'Attiva', promo_ok: n => `Codice attivato: +${n} 🍑`,
+    promo_err_unknown: 'Codice non trovato', promo_err_expired: 'Il codice è scaduto', promo_err_exhausted: 'Attivazioni esaurite',
+    promo_err_inactive: 'Codice disattivato', promo_err_duplicate: 'Hai già usato questo codice', promo_err_consent: 'Accetta i termini nel bot', promo_err_auth: 'Apri prima il bot',
   },
   fr: {
     chars_title: 'Filles', loading: 'Chargement…',
@@ -1435,7 +1455,7 @@ const L_OV = {
     mode_pic: 'Image', mode_video: 'Vidéo',
     upload_photo: 'Ta photo', upload_hint: 'JPG / PNG / WebP · max 8 Mo', upload_remove: 'Retirer',
     video_prompt_ph: 'Ce qui se passe dans la vidéo… (ou joins juste une photo)',
-    video_cost: 'Une vidéo — 10 🍑', video_generate: 'Créer la vidéo · 10 🍑',
+    video_cost: 'Une vidéo — 20 🍑', video_generate: 'Créer la vidéo · 20 🍑',
     video_wait: 'Rendu de la vidéo — 1–3 minutes…', video_fail: 'Impossible de créer la vidéo — réessaie',
     need_prompt_or_photo: 'Décris la scène ou joins ta photo',
     videos_title: 'Mes vidéos', videos_empty: 'Pas encore de vidéo : tes clips apparaîtront ici.',
@@ -1459,6 +1479,11 @@ const L_OV = {
     sc_bar: '🍸 Bar', sc_karaoke: '🎤 Karaoké', sc_rooftop: '🌃 Toit-terrasse', sc_club: '💃 Club',
     sc_personal: '💌 Photo perso', sc_lingerie: '🖤 Mode privée', sc_private_fashion: '🔐 Premium privé',
     adult_confirm_needed: 'Confirme d\'abord 18+ dans le chat du bot',
+    gift_title: 'Cadeau du jour', gift_day: n => `Jour ${n} sur 7`, gift_claim: n => `Récupérer +${n} 🍑`,
+    gift_taken: 'Déjà récupéré — reviens à 03:00', gift_capped: 'Tirelire pleine (15 🍑) — dépense et reviens', gift_jackpot: '3 🍑',
+    promo_title: 'Code promo', promo_ph: 'Saisis le code', promo_btn: 'Activer', promo_ok: n => `Code activé : +${n} 🍑`,
+    promo_err_unknown: 'Code introuvable', promo_err_expired: 'Code expiré', promo_err_exhausted: 'Activations épuisées',
+    promo_err_inactive: 'Code désactivé', promo_err_duplicate: 'Tu as déjà utilisé ce code', promo_err_consent: 'Accepte les termes dans le bot', promo_err_auth: 'Ouvre le bot d\'abord',
   },
   zh: {
     chars_title: '女孩', loading: '加载中…',
@@ -1482,7 +1507,7 @@ const L_OV = {
     mode_pic: '图片', mode_video: '视频',
     upload_photo: '自己的照片', upload_hint: 'JPG / PNG / WebP · 最大 8 MB', upload_remove: '移除',
     video_prompt_ph: '视频里发生什么…（也可以只附一张照片）',
-    video_cost: '一段视频 — 10 🍑', video_generate: '创建视频 · 10 🍑',
+    video_cost: '一段视频 — 20 🍑', video_generate: '创建视频 · 20 🍑',
     video_wait: '视频渲染中——需要 1–3 分钟…', video_fail: '视频创建失败——请重试',
     need_prompt_or_photo: '描述场景或附上自己的照片',
     videos_title: '我的视频', videos_empty: '还没有视频——你的短片会出现在这里。',
@@ -1506,6 +1531,11 @@ const L_OV = {
     sc_bar: '🍸 酒吧', sc_karaoke: '🎤 K歌', sc_rooftop: '🌃 天台', sc_club: '💃 夜店',
     sc_personal: '💌 私人照片', sc_lingerie: '🖤 私密时尚', sc_private_fashion: '🔐 高级私密',
     adult_confirm_needed: '请先在机器人聊天中确认 18+',
+    gift_title: '每日礼物', gift_day: n => `第 ${n} / 7 天`, gift_claim: n => `领取 +${n} 🍑`,
+    gift_taken: '今日已领 — 03:00 刷新', gift_capped: '存钱罐已满 (15 🍑) — 花掉后再领', gift_jackpot: '3 🍑',
+    promo_title: '优惠码', promo_ph: '输入优惠码', promo_btn: '激活', promo_ok: n => `优惠码已激活：+${n} 🍑`,
+    promo_err_unknown: '未找到该优惠码', promo_err_expired: '优惠码已过期', promo_err_exhausted: '激活名额已满',
+    promo_err_inactive: '优惠码已停用', promo_err_duplicate: '你已使用过该优惠码', promo_err_consent: '请先在机器人里接受条款', promo_err_auth: '请先打开机器人',
   },
   ja: {
     chars_title: '女の子', loading: '読み込み中…',
@@ -1529,7 +1559,7 @@ const L_OV = {
     mode_pic: '画像', mode_video: '動画',
     upload_photo: 'マイフォト', upload_hint: 'JPG / PNG / WebP · 最大8MB', upload_remove: '削除',
     video_prompt_ph: '動画で何が起きるか…（写真だけの添付でもOK）',
-    video_cost: '1本 — 10 🍑', video_generate: '動画を作る · 10 🍑',
+    video_cost: '1本 — 20 🍑', video_generate: '動画を作る · 20 🍑',
     video_wait: '動画レンダリング中——1〜3分かかります…', video_fail: '動画を作成できませんでした——もう一度お試しください',
     need_prompt_or_photo: 'シーンを説明するか写真を添付してください',
     videos_title: 'マイ動画', videos_empty: 'まだ動画がありません——クリップがここに表示されます。',
@@ -1553,6 +1583,11 @@ const L_OV = {
     sc_bar: '🍸 バー', sc_karaoke: '🎤 カラオケ', sc_rooftop: '🌃 屋上', sc_club: '💃 クラブ',
     sc_personal: '💌 プライベート写真', sc_lingerie: '🖤 プライベートファッション', sc_private_fashion: '🔐 プレミアムプライベート',
     adult_confirm_needed: 'まずボットのチャットで18+を確認してください',
+    gift_title: '今日のギフト', gift_day: n => `${n} / 7 日目`, gift_claim: n => `+${n} 🍑 を受け取る`,
+    gift_taken: '受け取り済み — 03:00 に更新', gift_capped: '貯金が満杯 (15 🍑) — 使ってから受け取ろう', gift_jackpot: '3 🍑',
+    promo_title: 'プロモコード', promo_ph: 'コードを入力', promo_btn: '有効化', promo_ok: n => `コード有効化：+${n} 🍑`,
+    promo_err_unknown: 'コードが見つかりません', promo_err_expired: 'このコードは期限切れです', promo_err_exhausted: '利用枠が満杯です',
+    promo_err_inactive: 'このコードは無効です', promo_err_duplicate: 'このコードは既に使いました', promo_err_consent: 'まずボットで利用規約に同意してください', promo_err_auth: 'まずボットを開いてください',
   },
 };
 const L = LANG === 'ru' ? L_RU : Object.assign({}, L_EN, (L_OV[LANG] || {}));
@@ -3234,7 +3269,7 @@ async function generatePicture() {
 }
 
 // V3.54.0: «🎬 Видео» — animate the uploaded photo (or, with no photo, a frame
-// rendered from the prompt server-side). Charged 10 🍑 only after a success.
+// rendered from the prompt server-side). Charged 20 🍑 only after a success.
 async function generateStudioVideo() {
   const btn = document.getElementById('vidGen');
   if (btn && btn.disabled) return;
@@ -3358,6 +3393,7 @@ async function loadShop() {
     const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars ? i.stars + ' ⭐' + fiat(i) : esc(L.constructor_price_note(s.constructor_peaches))}</span></div>`).join('');
     document.getElementById('shopbody').innerHTML = `
       <div class="packs">${packs}${customTile}</div>
+      <div id="giftBlock"></div>
       <div class="hero">
         <div class="title">⭐ Premium</div>
         <div class="price">${price}</div>
@@ -3383,10 +3419,104 @@ async function loadShop() {
         openPayCustom(n);
       });
     }
+    renderGiftBlock();
   } catch (e) {
     _shopLoaded = false; // V3.44.15: retry on the next tab visit
     document.getElementById('shopbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
+}
+
+// ── V3.55.5: daily streak gift + promo code — the shop block ──────────────
+// Replaces the V3.44.0 bonus wheel (which paid fractional peaches into an
+// INTEGER balance and doubled up with this rail). The 7 dots mirror the
+// 1/1/1/1/1/1/3 series; every money rule (once per 03:00-MSK day, 15 🍑 cap
+// that does NOT eat the day, one redemption per user per code) is enforced
+// server-side in services/gift_service.py — this is pure display + calls.
+let _giftBusy = false;
+function _giftChip() {
+  const chip = document.getElementById('userchip');
+  if (chip && ME) { chip.textContent = m_chipText(ME); chip.className = 'chip' + (ME.premium ? ' premium' : ''); }
+}
+function renderGiftBlock() {
+  const box = document.getElementById('giftBlock');
+  if (!box) return;
+  if (!ME || !ME.gift_enabled) { box.innerHTML = ''; return; }
+  const streak = ME.gift_streak || 0;
+  let dots = '';
+  for (let i = 1; i <= 7; i++) {
+    const on = i <= streak;
+    const label = (i === 7 && !on) ? '3🍑' : (on ? '🍑' : '·');
+    dots += '<span style="display:inline-flex;align-items:center;justify-content:center;' +
+      'min-width:30px;height:30px;margin:2px;border-radius:50%;font-size:13px;' +
+      'background:' + (on ? 'var(--accent)' : 'rgba(255,255,255,.08)') + '">' + label + '</span>';
+  }
+  const nextDay = ME.gift_claimed_today ? streak : (streak % 7) + 1;
+  let btn;
+  if (ME.gift_claimed_today) btn = '<button class="cta" disabled style="opacity:.55">' + esc(L.gift_taken) + '</button>';
+  else if (ME.gift_capped) btn = '<button class="cta" disabled style="opacity:.55">' + esc(L.gift_capped) + '</button>';
+  else btn = '<button class="cta" id="giftClaimBtn">' + esc(L.gift_claim(ME.gift_amount || 1)) + '</button>';
+  box.innerHTML = `
+    <div style="border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;margin:10px 0">
+      <div style="font-weight:600;margin-bottom:6px">🎁 ${esc(L.gift_title)} · ${esc(L.gift_day(nextDay))}</div>
+      <div style="display:flex;flex-wrap:wrap;margin-bottom:8px">${dots}</div>
+      ${btn}
+      <div style="font-weight:600;margin:12px 0 6px">🎟 ${esc(L.promo_title)}</div>
+      <div style="display:flex;gap:8px">
+        <input id="promoInput" type="text" autocomplete="off" autocapitalize="characters"
+          placeholder="${esc(L.promo_ph)}" maxlength="24"
+          style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px;color:#fff">
+        <button class="cta" id="promoBtn" style="margin:0;flex:0 0 auto">${esc(L.promo_btn)}</button>
+      </div>
+    </div>`;
+  const gc = document.getElementById('giftClaimBtn');
+  if (gc) gc.addEventListener('click', claimDailyGift);
+  const pb = document.getElementById('promoBtn');
+  if (pb) pb.addEventListener('click', redeemPromoCode);
+}
+function _applyGiftState(j) {
+  const st = j.state || null;
+  if (st) {
+    ME.gift_available = !!st.available; ME.gift_claimed_today = !!st.claimed_today;
+    ME.gift_streak = st.streak | 0; ME.gift_capped = !!st.capped; ME.gift_amount = st.amount | 0;
+  } else if (j.ok) {
+    ME.gift_available = false; ME.gift_claimed_today = true;
+    if (typeof j.streak === 'number') ME.gift_streak = j.streak;
+  }
+  if (typeof j.balance === 'number') { ME.photo_credits = j.balance; _giftChip(); }
+  renderGiftBlock();
+}
+async function claimDailyGift() {
+  if (_giftBusy) return;
+  _giftBusy = true;
+  try {
+    const r = await fetch('/webapp/api/gift/claim?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (j.ok) { toast('🎁 +' + j.amount + ' 🍑'); _applyGiftState(j); }
+    else if (j.error === 'duplicate') { toast(L.gift_taken); _applyGiftState(j); }
+    else if (j.error === 'capped') { toast(L.gift_capped); }
+    else if (j.error === 'consent' || j.error === 'auth') { toast(L.promo_err_consent); }
+    else { toast(L.gift_taken); }
+  } catch (e) { toast(String(e.message || '')); }
+  _giftBusy = false;
+}
+async function redeemPromoCode() {
+  const inp = document.getElementById('promoInput');
+  const code = ((inp && inp.value) || '').trim().toUpperCase();
+  if (!code) { toast(L.promo_ph); return; }
+  try {
+    const r = await fetch('/webapp/api/promo?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (j.ok) {
+      toast(L.promo_ok(j.credits));
+      if (inp) inp.value = '';
+      if (typeof j.balance === 'number') { ME.photo_credits = j.balance; _giftChip(); }
+    } else {
+      toast(L['promo_err_' + (j.error || 'unknown')] || L.promo_err_unknown);
+    }
+  } catch (e) { toast(String(e.message || '')); }
 }
 
 // ── V3.43.0: pay-method modal — tap a square, pick Stars / SBP / crypto ───
@@ -3543,6 +3673,8 @@ async function loadMe() {
     chip.className = 'chip' + (ME.premium ? ' premium' : '');
     renderUnlimitedBanner();
     renderProfileBody();
+    // V3.55.5: the shop gift series mirrors ME — repaint it if the tab is open.
+    renderGiftBlock();
   } catch (e) {
     document.getElementById('profilebody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
@@ -3615,10 +3747,6 @@ function renderProfileBody() {
       <div class="bar"><i style="width:${lvlPct}%"></i></div>
     </div>
     <div class="stat"><span class="k">🔥 ${esc(L.streak)}</span><span class="v">${esc(m.streak)}</span></div>
-    <div class="stat" id="dailyBonusRow" style="cursor:pointer;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:12px;padding:12px 14px;margin:4px 0">
-      <span class="k" style="color:#fff">🎡 ${esc(L.daily_bonus)}</span>
-      <span class="v" id="dailyBonusStatus" style="color:#fff">…</span>
-    </div>
     <div class="stat"><span class="k">🍑 ${esc(L.paid_credit)}</span><span class="v">${esc(m.photo_credits)}</span></div>
     ${m.author_earnings > 0 ? `<div class="stat"><span class="k">${esc(L.author_earnings)}</span><span class="v" style="color:#ffd700">${esc(L.author_earnings_value(m.author_earnings))}</span></div>` : ''}
     <button class="cta" id="profileCreate">${esc(L.create_char)}</button>
@@ -3639,7 +3767,10 @@ function renderProfileBody() {
     </div>
     <div class="note">${esc(L.open_bot)}</div>`;
   const pc = document.getElementById('profileCreate');
-  if (pc) pc.addEventListener('click', openWizard);
+  // V3.55.5: openWizard(premiumMode) takes an argument — passing the click
+  // event itself made it truthy and the admin-profile button minted a PREMIUM
+  // persona instead of a public one. Wrap it in a zero-arg lambda.
+  if (pc) pc.addEventListener('click', () => openWizard());
   const mp = document.getElementById('menuPartner');
   if (mp) mp.addEventListener('click', openPartnerOverlay);
   const md = document.getElementById('menuDocs');
@@ -3681,46 +3812,6 @@ const mcr = document.getElementById('menuCreator');
       if (!c) return;
       openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: c.custom, selected: c.selected });
     }));
-  // V3.44.0: daily bonus wheel
-  loadDailyBonusStatus();
-  const dbr = document.getElementById('dailyBonusRow');
-  if (dbr) dbr.addEventListener('click', spinDailyBonus);
-}
-
-async function loadDailyBonusStatus() {
-  try {
-    const r = await fetch('/webapp/api/daily_bonus/status?init_data=' + encodeURIComponent(tg.initData || ''));
-    const j = await r.json();
-    if (j.ok && j.bonus) {
-      const el = document.getElementById('dailyBonusStatus');
-      if (el) {
-        if (j.bonus.claimed) {
-          el.textContent = L.bonus_claimed + ' 🎁';
-        } else {
-          el.textContent = L.bonus_spin;
-        }
-      }
-    }
-  } catch (e) { /* silent */ }
-}
-
-async function spinDailyBonus() {
-  try {
-    const r = await fetch('/webapp/api/daily_bonus/spin?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
-    const j = await r.json();
-    if (j.ok && j.bonus) {
-      if (j.bonus.claimed) {
-        toast(L.bonus_already);
-      } else {
-        const reward = [];
-        if (j.bonus.peaches > 0) reward.push(j.bonus.peaches.toFixed(2) + ' 🍑');
-        if (j.bonus.stars > 0) reward.push(j.bonus.stars + ' ⭐');
-        toast('🎡 ' + reward.join(' + '));
-        loadDailyBonusStatus();
-        loadMe(); // refresh balance
-      }
-    }
-  } catch (e) { toast(String(e.message || '')); }
 }
 
 // ── documents ─────────────────────────────────────────────────────────────

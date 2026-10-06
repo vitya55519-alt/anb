@@ -56,8 +56,9 @@ def test_day1_hook_job():
     assert 'User.day1_hook_at.is_(None)' in hook
     assert 'User.created_at>=young' in hook
     assert 'User.last_active_at<=silent' in hook
-    # the message promises the wheel and opens the app
-    assert 'колесе ежедневного бонуса' in hook
+    # the message promises the daily streak gift and opens the app
+    # (V3.55.5: the bonus wheel was replaced by the streak gift rail)
+    assert 'копится дневной подарок' in hook
     assert 'WebAppInfo(url=f\'{PUBLIC_BASE_URL}/webapp\')' in hook
     # exactly once per user
     assert 'u.day1_hook_at=now' in hook
@@ -66,10 +67,12 @@ def test_day1_hook_job():
     assert "scheduler.add_job(_day1_hook,'interval',minutes=15" in SCHEDULER
 
 
-def test_morning_ritual_mentions_unclaimed_wheel():
+def test_morning_ritual_mentions_unclaimed_gift():
+    # V3.55.5: the morning ritual now points at the unclaimed streak gift
+    # (the V3.44.0 wheel check is gone with the wheel itself).
     rituals = SCHEDULER[SCHEDULER.index('async def _rituals(bot):'):SCHEDULER.index('async def _donation_reminder(bot):')]
-    assert "get_daily_bonus_status(int(tg_id)).get('claimed')" in rituals
-    assert 'на колесе бонуса тебя ждёт подарок' in rituals
+    assert "gift_service.gift_status(int(tg_id))" in rituals
+    assert 'забирай дневной подарок' in rituals
 
 
 def test_model_columns_for_retention():
@@ -79,7 +82,7 @@ def test_model_columns_for_retention():
 
 def test_sleep_block_promises_tomorrow():
     block = MAIN[MAIN.index('async def _sleep_block_reply('):MAIN.index('# V3.27.0: ruble-shop balances')]
-    assert "pick_text('sleep') + '\\nа завтра утром на колесе бонуса" in block
+    assert "pick_text('sleep') + '\\nа завтра утром будет дневной подарок" in block
 
 
 def test_streak_visible_from_day_two():

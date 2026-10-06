@@ -65,12 +65,13 @@ from config import (
     QUEST_REPLAY_STARS,
     TELEGRAM_TOKEN,
     VIDEO_COST_STARS,
+    VIDEO_PEACH_COST,
     VIDEO_PREMIUM_FREE_DAILY,
     WALLET_PAY_ENABLED,
     WEBAPP_INIT_DATA_MAX_AGE,
     fiat_values,
 )
-from models.app_models import CharacterCard, CharacterComment, CharacterLike, CharacterStat, ChatMedia, DailyBonus, Message, NotificationPref, SimulatedMessage, User
+from models.app_models import CharacterCard, CharacterComment, CharacterLike, CharacterStat, ChatMedia, Message, NotificationPref, SimulatedMessage, User
 from services import legal_service
 from services.access_service import is_premium
 from services.character_card_service import get_card, get_scenario_hook, list_cards, update_card
@@ -132,9 +133,11 @@ APP_PICTURES_DIR = ROOT / 'data' / 'app_pictures'
 WEBAPP_PICTURE_COST_CREDITS = 10
 
 # V3.54.0: the studio video (image-to-video of the user's own photo, or a
-# prompt-generated frame) costs the same 10 🍑 as a picture, charged only after a
-# successful render.
-WEBAPP_VIDEO_COST_CREDITS = 10
+# prompt-generated frame) is charged only after a successful render.
+# V3.55.5: unified — the price is the single peach-rail video knob from config
+# (20 🍑): no shadow per-surface prices anymore; a clip burns a picture render
+# plus the video engine, hence double the still picture (10 🍑).
+WEBAPP_VIDEO_COST_CREDITS = VIDEO_PEACH_COST
 
 # V3.54.0: an uploaded reference photo is accepted only as these common web
 # image types and only up to this decoded size, so a stray huge file or a
@@ -318,6 +321,9 @@ def api_me(telegram_id: int) -> dict:
         # V3.43.5: the in-app Settings toggle shows the live flag (Premium is
         # already in this payload — enabling re-checks it server-side).
         'spicy_mode': bool(getattr(user, 'spicy_mode', False)) if user else False,
+        # V3.55.5: daily streak gift state for the shop block (replaces the
+        # V3.44.0 bonus wheel). Read-only — claiming is a POST.
+        **_gift_me_fields(telegram_id),
         'selected_character': {
             'id': selected_character,
             'name': (card.display_name if card else selected_character),
@@ -326,6 +332,25 @@ def api_me(telegram_id: int) -> dict:
         # V3.44.6: author earnings from custom characters.
         'author_earnings': _get_author_earnings(telegram_id),
     }
+
+
+def _gift_me_fields(telegram_id: int) -> dict:
+    """V3.55.5: api_me piggy-backs the streak-gift status. Any failure simply
+    hides the block in the SPA (gift_available=False)."""
+    try:
+        from services import gift_service
+        gs = gift_service.gift_status(telegram_id)
+        return {
+            'gift_available': bool(gs.get('available')),
+            'gift_enabled': bool(gs.get('enabled')),
+            'gift_streak': int(gs.get('streak') or 0),
+            'gift_capped': bool(gs.get('capped')),
+            'gift_claimed_today': bool(gs.get('claimed_today')),
+            'gift_amount': int(gs.get('amount') or 0),
+        }
+    except Exception:
+        return {'gift_available': False, 'gift_enabled': False, 'gift_streak': 0,
+                'gift_capped': False, 'gift_claimed_today': False, 'gift_amount': 0}
 
 
 def _get_author_earnings(telegram_id: int) -> float:
@@ -1891,60 +1916,11 @@ def update_notification_prefs(telegram_id: int, prefs: dict) -> dict:
         return {}
 
 
-# V3.44.0: daily bonus wheel rewards — random peaches 0.01 to 0.27.
-DAILY_BONUS_MIN_PEACHES = 0.01
-DAILY_BONUS_MAX_PEACHES = 0.27
-
-
-def spin_daily_bonus(telegram_id: int) -> dict:
-    """V3.44.0: spin the daily bonus wheel — one spin per calendar day.
-    V3.45: reward is random 0.01–0.27 🍑 (peaches)."""
-    from datetime import date
-    import random
-    today = date.today().isoformat()
-    try:
-        with SessionLocal() as s:
-            existing = s.query(DailyBonus).filter(
-                DailyBonus.telegram_id == telegram_id,
-                DailyBonus.date == today
-            ).first()
-            if existing:
-                return {'claimed': True, 'peaches': existing.reward_peaches, 'stars': 0}
-            # Random bonus: 0.01 to 0.27 peaches
-            peach_reward = round(random.uniform(DAILY_BONUS_MIN_PEACHES, DAILY_BONUS_MAX_PEACHES), 2)
-            # Record the bonus
-            bonus = DailyBonus(
-                telegram_id=telegram_id,
-                date=today,
-                reward_peaches=peach_reward,
-                reward_stars=0,
-            )
-            s.add(bonus)
-            # Credit the user peaches
-            user = s.query(User).filter(User.telegram_id == str(telegram_id)).first()
-            if user:
-                user.photo_credits = float(user.photo_credits or 0) + peach_reward
-            s.commit()
-            return {'claimed': False, 'peaches': peach_reward, 'stars': 0}
-    except Exception:
-        return {'claimed': False, 'peaches': 0, 'stars': 0}
-
-
-def get_daily_bonus_status(telegram_id: int) -> dict:
-    """V3.44.0: check if daily bonus has been claimed today."""
-    from datetime import date
-    today = date.today().isoformat()
-    try:
-        with SessionLocal() as s:
-            existing = s.query(DailyBonus).filter(
-                DailyBonus.telegram_id == telegram_id,
-                DailyBonus.date == today
-            ).first()
-            if existing:
-                return {'claimed': True, 'peaches': existing.reward_peaches, 'stars': existing.reward_stars}
-            return {'claimed': False}
-    except Exception:
-        return {'claimed': False}
+# V3.55.5: the V3.44.0 daily bonus wheel (spin_daily_bonus / get_daily_bonus_status,
+# 0.01–0.27 🍑) is retired — it wrote float peaches into the INTEGER photo_credits
+# column and coexisted with the new streak gift rail (services/gift_service.py).
+# The daily_bonus NotificationPref flag above stays: it now gates gift reminders.
+# The DailyBonus table remains in the DB as paid history (legacy rows untouched).
 
 
 # V3.44.0: "she messages first" — simulated incoming message templates.

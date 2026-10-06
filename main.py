@@ -413,6 +413,10 @@ _photo_idea_edit_sessions: dict[int, dict] = {}
 # V3.31.2: owner-only state for the «🎁 Выдать премиум/токены» button flow.
 _admin_grant_sessions: dict[int, dict] = {}
 
+# V3.55.5: owner-only state for the «🎟 Промокоды» create wizard
+# (code → credits → max activations → TTL → source tag).
+_admin_promo_sessions: dict[int, dict] = {}
+
 # Scenes that admins may attach photo ideas to (private scenes stay untouched).
 ALLOWED_IDEA_SCENES = tuple(sorted(k for k in SCENES if k not in {'personal', 'lingerie', 'private_fashion'}))
 
@@ -725,6 +729,8 @@ def admin_keyboard():
         [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats'),
          InlineKeyboardButton(text='🩺 Отказы', callback_data='admin:providers')],
         [InlineKeyboardButton(text='🎁 Выдать премиум/токены', callback_data='admin:grant')],
+        # V3.55.5: promo codes — create / list / toggle off.
+        [InlineKeyboardButton(text='🎟 Промокоды', callback_data='admin:promos')],
         [InlineKeyboardButton(text=f'⭐ Premium себе (тесты): {premium_state}', callback_data='admin:premium_toggle')],
     ])
 
@@ -1227,7 +1233,8 @@ async def _sleep_block_reply(message: types.Message) -> None:
     track_event(uid, 'chat_sleep_block')
     # V3.44.16: the moment she "falls asleep" is the exit door — give a
     # concrete reason to come back tomorrow, not just the premium upsell.
-    text = pick_text('sleep') + '\nа завтра утром на колесе бонуса тебя уже будет ждать подарок 🎁 (приложение → Профиль)'
+    # V3.55.5: the wheel became the daily streak gift (app → Магазин, or /profile).
+    text = pick_text('sleep') + '\nа завтра утром будет дневной подарок 🍑 — заберёшь в приложении (Магазин) или через /profile'
     await message.answer(text, reply_markup=_sleep_block_markup(message.from_user.id))
 
 
@@ -2146,6 +2153,7 @@ async def admin_panel(message: types.Message):
     _payment_method_edit_sessions.pop(message.from_user.id, None)
     _photo_idea_edit_sessions.pop(message.from_user.id, None)
     _admin_grant_sessions.pop(message.from_user.id, None)
+    _admin_promo_sessions.pop(message.from_user.id, None)
     CARD_MEDIA_WAIT.pop(message.from_user.id, None)
     ensure_default_cards()
     await message.answer('⚙️ Админка AnnaBot', reply_markup=admin_keyboard())
@@ -2233,6 +2241,7 @@ async def admin_home(cq: types.CallbackQuery):
     _payment_method_edit_sessions.pop(cq.from_user.id, None)
     _photo_idea_edit_sessions.pop(cq.from_user.id, None)
     _admin_grant_sessions.pop(cq.from_user.id, None)
+    _admin_promo_sessions.pop(cq.from_user.id, None)
     CARD_MEDIA_WAIT.pop(cq.from_user.id, None)
     await cq.answer()
     await cq.message.answer('⚙️ Админка AnnaBot', reply_markup=admin_keyboard())
@@ -2324,6 +2333,82 @@ async def admin_grant_do_peaches_ask(cq: types.CallbackQuery):
     _admin_grant_sessions[cq.from_user.id] = {'step': 'peaches', 'target': target}
     await cq.answer()
     await cq.message.answer('Сколько персиков выдать? Пришли число, например 10.\n\n/cancel — отменить')
+
+
+# ---------------------------------------------------------------------------
+# V3.55.5: «🎟 Промокоды» — owner section: list with activation counters,
+# toggle codes off/on, and a 4-step creation wizard (code → peaches → max
+# activations → TTL → source tag). Redemption itself lives in gift_service.
+# ---------------------------------------------------------------------------
+def _promo_admin_keyboard():
+    from models.app_models import PromoCode
+    try:
+        with SessionLocal() as s:
+            codes = s.scalars(select(PromoCode).order_by(PromoCode.id.desc()).limit(12)).all()
+    except Exception:
+        logger.exception('promo list read failed')
+        codes = []
+    rows = []
+    for pc in codes:
+        cap = '∞' if not pc.max_activations else pc.max_activations
+        flag = '✅' if pc.active else '⛔️'
+        ttl = ''
+        if pc.expires_at:
+            ttl = f' · до {pc.expires_at:%d.%m %H:%M} UTC'
+        rows.append([InlineKeyboardButton(
+            text=f'{flag} {pc.code} · +{pc.credits}🍑 · {pc.activated_count}/{cap}{ttl}',
+            callback_data=f'admin:promotgl:{pc.id}')])
+    rows.append([InlineKeyboardButton(text='➕ Создать код', callback_data='admin:promoadd:start')])
+    rows.append([InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@dp.callback_query(F.data == 'admin:promos')
+async def admin_promos_view(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    await cq.answer()
+    await cq.message.answer(
+        '🎟 Промокоды — персики за код\n\n'
+        '· один юзер — одна активация на код\n'
+        '· тап по коду — вкл/выкл\n'
+        '· номинал ограничен сверху (Premium-дни кодами не выдаются)',
+        reply_markup=_promo_admin_keyboard(),
+    )
+
+
+@dp.callback_query(F.data == 'admin:promoadd:start')
+async def admin_promo_add_start(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _admin_promo_sessions[cq.from_user.id] = {'step': 'code'}
+    await cq.answer()
+    await cq.message.answer(
+        'Пришли сам код: 4–24 символа, A–Z и 0–9 (регистр не важен).\n'
+        'Например WELCOME5.\n\n/cancel — отменить'
+    )
+
+
+@dp.callback_query(F.data.startswith('admin:promotgl:'))
+async def admin_promo_toggle(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    try:
+        pc_id = int(cq.data.rsplit(':', 1)[1])
+    except ValueError:
+        return
+    from models.app_models import PromoCode
+    with SessionLocal() as s:
+        pc = s.scalar(select(PromoCode).where(PromoCode.id == pc_id))
+        if not pc:
+            await cq.answer('код не найден')
+            return
+        pc.active = not pc.active
+        s.commit()
+        state = 'включён' if pc.active else 'отключён'
+        code = pc.code
+    await cq.answer(f'{code}: {state}')
+    await cq.message.answer(f'🎟 Код {code} — {state}.', reply_markup=_promo_admin_keyboard())
 
 
 def _resolve_grant_target(ref: str) -> int | None:
@@ -3300,6 +3385,11 @@ async def cancel_admin_edit(message: types.Message):
         _admin_grant_sessions.pop(message.from_user.id, None)
         await message.answer('выдача отменена', reply_markup=admin_keyboard())
         return
+    # V3.55.5: abort the promo-code creation wizard.
+    if message.from_user.id in _admin_promo_sessions:
+        _admin_promo_sessions.pop(message.from_user.id, None)
+        await message.answer('промокод не создан', reply_markup=admin_keyboard())
+        return
     # V3.19.0: abort an in-flight constructor wizard (name/face entry steps).
     if message.from_user.id in _constructor_sessions:
         _constructor_sessions.pop(message.from_user.id, None)
@@ -3570,6 +3660,7 @@ async def help_cmd(message: types.Message):
         '/photo — фото персонажа\n'
         '/premium · /buy — Premium и кредиты (Stars + Wallet Pay)\n'
         '/profile — прогресс, стрик, достижения и кредиты\n'
+        '/promo КОД — активировать промокод\n'
         '/collection — коллекция\n/stories — истории\n'
         '/voice · /voice_anon — голосовые ответы и анонимный режим\n'
         '/settings — настройки\n'
@@ -3643,7 +3734,135 @@ async def profile_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     from services.gamification_service import get_profile_summary, format_profile_summary
     summary = get_profile_summary(message.from_user.id, get_user_character(message.from_user.id))
-    await message.answer(format_profile_summary(summary))
+    text = format_profile_summary(summary)
+    # V3.55.5: daily streak gift row + claim button — replaces the V3.44.0
+    # bonus wheel (two daily bonuses on one rail made no sense, and the wheel
+    # paid fractional peaches into an INTEGER balance).
+    from services import gift_service
+    markup = None
+    try:
+        gs = gift_service.gift_status(message.from_user.id)
+    except Exception:
+        gs = None
+    if gs and gs.get('enabled'):
+        lang = user_lang(message.from_user.id)
+        if gs.get('claimed_today'):
+            if lang == EN:
+                text += f"\n🎁 Gift: day {gs['streak']}/7 — already taken, back after 03:00"
+                label = '🎁 Already claimed — after 03:00'
+            else:
+                text += f"\n🎁 Подарок: день {gs['streak']}/7 — уже взят, обновится в 03:00"
+                label = '🎁 Уже взят — жди 03:00'
+        elif gs.get('capped'):
+            if lang == EN:
+                text += '\n🎁 Gift: piggy bank full (15 🍑) — spend some, then claim'
+                label = '🎁 Piggy bank full'
+            else:
+                text += '\n🎁 Подарок: копилка полная (15 🍑) — потрать и забирай'
+                label = '🎁 Копилка полная'
+        else:
+            # slot of the NEXT claim within the 1..7 cycle (7 wraps to 1)
+            next_day = ((gs.get('streak') or 0) % 7) + 1
+            amount = gs.get('amount', 1)
+            if lang == EN:
+                text += f'\n🎁 Gift: day {next_day}/7 — +{amount} 🍑'
+                label = f'🎁 Claim +{amount} 🍑'
+            else:
+                text += f'\n🎁 Подарок: день {next_day}/7 — +{amount} 🍑'
+                label = f'🎁 Забрать +{amount} 🍑'
+        markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=label, callback_data='gift:claim')]])
+    await message.answer(text, reply_markup=markup)
+
+
+@dp.callback_query(F.data == 'gift:claim')
+async def gift_claim_cb(cq: types.CallbackQuery):
+    """V3.55.5: claim today's streak gift from /profile. All the money rules
+    (once-per-day, 7th-day jackpot, 15 🍑 cap without eating the day) live in
+    gift_service.claim_daily_gift — this is just the Telegram skin."""
+    from services import gift_service
+    res = gift_service.claim_daily_gift(cq.from_user.id)
+    lang = user_lang(cq.from_user.id)
+    if res.get('ok'):
+        amount, streak = res['amount'], res['streak']
+        if lang == EN:
+            toast = f'+{amount} 🍑'
+            body = (f'🎉 day {streak}/7 — jackpot +{amount} 🍑! Balance: {res["balance"]} 🍑'
+                    if amount > 1 else
+                    f'🎁 +{amount} 🍑 for day {streak}/7. Balance: {res["balance"]} 🍑 — come back tomorrow!')
+        else:
+            toast = f'+{amount} 🍑'
+            body = (f'🎉 день {streak}/7 — джекпот +{amount} 🍑! Баланс: {res["balance"]} 🍑'
+                    if amount > 1 else
+                    f'🎁 +{amount} 🍑 за день {streak}/7. Баланс: {res["balance"]} 🍑 — завтра будет ещё!')
+        await cq.answer(toast)
+        await cq.message.answer(body)
+        return
+    error = res.get('error')
+    if res.get('capped') or error == 'capped':
+        await cq.answer('копилка полная' if lang != EN else 'piggy bank full', show_alert=True)
+    elif error == 'duplicate':
+        await cq.answer('уже взято — обнулится в 03:00' if lang != EN else 'already claimed — 03:00', show_alert=True)
+    elif error == 'consent':
+        await cq.answer('сначала /start' if lang != EN else 'press /start first', show_alert=True)
+    elif error == 'inactive':
+        await cq.answer('подарок сейчас выключен' if lang != EN else 'gift is off right now', show_alert=True)
+    else:
+        await cq.answer('не получилось, попробуй позже', show_alert=True)
+
+
+PROMO_ERROR_RU = {
+    'unknown': 'такого кода я не нашла 🤔 проверь раскладку и пробелы',
+    'expired': 'срок действия кода истёк ⏳',
+    'exhausted': 'все активации по этому коду уже разобрали 😔',
+    'inactive': 'этот код отключён',
+    'duplicate': 'ты этот код уже активировал — повтор нельзя',
+    'consent': 'сначала нужно пройти /start и подтвердить условия',
+    'auth': 'сначала нажми /start',
+}
+PROMO_ERROR_EN = {
+    'unknown': 'I could not find that code 🤔 check spelling and spaces',
+    'expired': 'that code has expired ⏳',
+    'exhausted': 'all activations of that code are taken 😔',
+    'inactive': 'that code is disabled',
+    'duplicate': 'you already redeemed that code',
+    'consent': 'press /start and accept the terms first',
+    'auth': 'press /start first',
+}
+
+
+@dp.message(Command('promo'))
+async def promo_cmd(message: types.Message, command: CommandObject):
+    """V3.55.5: /promo CODE — redeem a promo code for peaches. Codes are minted
+    in the admin panel («🎟 Промокоды»); one redemption per user per code, the
+    same rail lives in the Mini App shop."""
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    from services import gift_service
+    lang = user_lang(message.from_user.id)
+    code = (command.args or '').strip().upper()
+    if not code:
+        rows = []
+        if PUBLIC_BASE_URL:
+            app_label = '🛍 Open the app (shop)' if lang == EN else '🛍 Открыть приложение (магазин)'
+            rows.append([InlineKeyboardButton(text=app_label, web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'))])
+        await message.answer(
+            '🎟 Промокод активируется так: /promo КОД\n\n'
+            'или в приложении — блок «Промокод» в магазине.\n'
+            'Коды дают в наших постах и у партнёров.' if lang != EN else
+            '🎟 Redeem a promo code: /promo CODE\n\n'
+            'or in the app — the promo field inside the shop.\n'
+            'We hand codes out in our posts and via partners.',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None,
+        )
+        return
+    res = gift_service.redeem_promo(message.from_user.id, code)
+    if res.get('ok'):
+        await message.answer(
+            f'🎁 Код {code} активирован: +{res["credits"]} 🍑! Баланс: {res["balance"]} 🍑' if lang != EN else
+            f'🎁 Code {code} redeemed: +{res["credits"]} 🍑! Balance: {res["balance"]} 🍑')
+        return
+    err = res.get('error', 'unknown')
+    await message.answer((PROMO_ERROR_RU if lang != EN else PROMO_ERROR_EN).get(err, PROMO_ERROR_RU['unknown']))
 
 
 @dp.message(Command('referral', 'invite', 'partner'))
@@ -8557,6 +8776,86 @@ async def text_message(message: types.Message):
             )
             return
 
+    # V3.55.5: «🎟 Промокоды» create wizard — code → peaches → max activations
+    # → TTL hours → source tag. PROMO_MAX_CREDITS caps the nominal so a code
+    # can never hand out Premium-day value on the peach rail.
+    promo_sess = _admin_promo_sessions.get(message.from_user.id)
+    if message.from_user.id in ADMIN_TELEGRAM_IDS and promo_sess:
+        from services import gift_service
+        from config import PROMO_MAX_CREDITS
+        value = (message.text or '').strip()
+        step = promo_sess.get('step')
+        if step == 'code':
+            code = value.upper()
+            if not gift_service.PROMO_CODE_RE.match(code):
+                await message.answer('Код — это 4–24 символа A–Z/0–9 без пробелов.\n\nПопробуй ещё раз или /cancel')
+                return
+            from models.app_models import PromoCode
+            with SessionLocal() as s:
+                if s.scalar(select(PromoCode).where(PromoCode.code == code)):
+                    await message.answer(f'Код {code} уже есть в базе.\n\nПришли другой или /cancel')
+                    return
+            promo_sess['code'] = code
+            promo_sess['step'] = 'credits'
+            await message.answer(
+                f'Код {code} ✔\nСколько персиков выдать? Число от 1 до {PROMO_MAX_CREDITS}.\n\n/cancel — отменить')
+            return
+        if step == 'credits':
+            if not value.isdigit() or not (1 <= int(value) <= PROMO_MAX_CREDITS):
+                await message.answer(f'Пришли целое число от 1 до {PROMO_MAX_CREDITS}.\n\n/cancel — отменить')
+                return
+            promo_sess['credits'] = int(value)
+            promo_sess['step'] = 'max'
+            await message.answer('Максимум активаций (общее число юзеров)? Например 500.\n0 — без лимита.\n\n/cancel — отменить')
+            return
+        if step == 'max':
+            if not value.isdigit():
+                await message.answer('Пришли число. 0 — без лимита.\n\n/cancel — отменить')
+                return
+            promo_sess['max_activations'] = int(value)
+            promo_sess['step'] = 'ttl'
+            await message.answer('Через сколько часов сгорает код? Например 48.\n0 — бессрочный.\n\n/cancel — отменить')
+            return
+        if step == 'ttl':
+            if not value.isdigit():
+                await message.answer('Пришли число часов. 0 — бессрочный.\n\n/cancel — отменить')
+                return
+            promo_sess['expires_in_hours'] = int(value)
+            promo_sess['step'] = 'src'
+            await message.answer(
+                'Тег источника для аналитики (например kol_tg, event_0312)? '
+                'Одно слово или «нет» — и создам код.'
+            )
+            return
+        if step == 'src':
+            from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+            from models.app_models import PromoCode
+            src = value.replace(' ', '_')[:48]
+            if src.lower() in {'нет', 'no', '-'}:
+                src = ''
+            hours = int(promo_sess.get('expires_in_hours') or 0)
+            expires_at = None if hours <= 0 else _dt.now(_tz.utc).replace(tzinfo=None) + _td(hours=hours)
+            with SessionLocal() as s:
+                s.add(PromoCode(
+                    code=promo_sess['code'],
+                    credits=int(promo_sess['credits']),
+                    max_activations=int(promo_sess.get('max_activations') or 0),
+                    expires_at=expires_at,
+                    source_tag=src or None,
+                    active=True,
+                ))
+                s.commit()
+            cap = '∞' if not promo_sess.get('max_activations') else promo_sess['max_activations']
+            ttl = 'бессрочный' if hours <= 0 else f'{hours} ч'
+            _admin_promo_sessions.pop(message.from_user.id, None)
+            await message.answer(
+                f'✅ Код {promo_sess["code"]} создан: +{promo_sess["credits"]} 🍑, '
+                f'активаций до {cap}, {ttl}'
+                + (f', источник {src}' if src else ''),
+                reply_markup=_promo_admin_keyboard(),
+            )
+            return
+
     payment_edit = _payment_method_edit_sessions.get(message.from_user.id)
     if message.from_user.id in ADMIN_TELEGRAM_IDS and payment_edit:
         value = (message.text or '').strip()
@@ -9470,8 +9769,11 @@ async def _webapp_api_notif_update(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'prefs': prefs})
 
 
-async def _webapp_api_daily_bonus_status(request: web.Request) -> web.Response:
-    """V3.44.0: check daily bonus status."""
+async def _webapp_api_gift_claim(request: web.Request) -> web.Response:
+    """V3.55.5: claim today's streak gift from the Mini App shop — the same
+    rail as the bot's gift:claim button (once-per-day, 7th-day jackpot, 15 🍑
+    cap without eating the day all live in gift_service). Replaces the V3.44.0
+    daily_bonus/spin wheel."""
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
     if not pairs:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
@@ -9479,11 +9781,25 @@ async def _webapp_api_daily_bonus_status(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
-    return web.json_response({'ok': True, 'bonus': webapp_service.get_daily_bonus_status(int(telegram_id))})
+    from services import gift_service
+    res = gift_service.claim_daily_gift(int(telegram_id))
+    status_map = {'auth': 401, 'consent': 403, 'inactive': 403,
+                  'capped': 409, 'duplicate': 409}
+    if not res.get('ok'):
+        status = status_map.get(res.get('error', ''), 409)
+        return web.json_response(res, status=status, headers={'Cache-Control': 'no-store'})
+    # fresh state so the SPA can repaint the series dots without a second call
+    res['state'] = gift_service.gift_status(int(telegram_id))
+    return web.json_response(res, headers={'Cache-Control': 'no-store'})
 
 
-async def _webapp_api_daily_bonus_spin(request: web.Request) -> web.Response:
-    """V3.44.0: spin the daily bonus wheel."""
+GIFT_PROMO_ERROR_HTTP = {'auth': 401, 'consent': 403, 'unknown': 404, 'inactive': 403,
+                         'expired': 410, 'exhausted': 429, 'duplicate': 409}
+
+
+async def _webapp_api_promo(request: web.Request) -> web.Response:
+    """V3.55.5: redeem a promo code inside the Mini App shop (one per user per
+    code; global activation cap enforced atomically server-side)."""
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
     if not pairs:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
@@ -9491,8 +9807,16 @@ async def _webapp_api_daily_bonus_spin(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
-    result = webapp_service.spin_daily_bonus(int(telegram_id))
-    return web.json_response({'ok': True, 'bonus': result})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    from services import gift_service
+    res = gift_service.redeem_promo(int(telegram_id), str(body.get('code', ''))[:48])
+    if not res.get('ok'):
+        status = GIFT_PROMO_ERROR_HTTP.get(res.get('error', ''), 404)
+        return web.json_response(res, status=status, headers={'Cache-Control': 'no-store'})
+    return web.json_response(res, headers={'Cache-Control': 'no-store'})
 
 
 async def _webapp_api_simulated_messages(request: web.Request) -> web.Response:
@@ -11389,9 +11713,9 @@ async def _start_web_server() -> None:
     # V3.44.0: notification preferences.
     app.router.add_get('/webapp/api/notif/prefs', _webapp_api_notif_prefs)
     app.router.add_post('/webapp/api/notif/update', _webapp_api_notif_update)
-    # V3.44.0: daily bonus wheel.
-    app.router.add_get('/webapp/api/daily_bonus/status', _webapp_api_daily_bonus_status)
-    app.router.add_post('/webapp/api/daily_bonus/spin', _webapp_api_daily_bonus_spin)
+    # V3.55.5: daily streak gift + promo codes (replaces the V3.44.0 bonus wheel).
+    app.router.add_post('/webapp/api/gift/claim', _webapp_api_gift_claim)
+    app.router.add_post('/webapp/api/promo', _webapp_api_promo)
     # V3.44.0: simulated incoming messages — "she messages first".
     app.router.add_get('/webapp/api/simulated_messages', _webapp_api_simulated_messages)
     app.router.add_post('/webapp/api/simulated_message/deliver', _webapp_api_simulated_message_deliver)
@@ -11505,6 +11829,7 @@ async def main():
         types.BotCommand(command='voice', description='Голосовые ответы'),
         types.BotCommand(command='voice_anon', description='Анонимный голосовой режим'),
         types.BotCommand(command='profile', description='Прогресс, стрик, достижения'),
+        types.BotCommand(command='promo', description='🎟 Активировать промокод'),
         types.BotCommand(command='referral', description='🔗 Моя ссылка для приглашения'),
         types.BotCommand(command='partner', description='💰 Партнёрская программа — 30% с покупок друзей'),
         types.BotCommand(command='contest', description='🏆 Гонка пригласивших'),
@@ -11555,6 +11880,10 @@ async def main():
             logger.exception('failed to install admin command scope chat_id=%s', admin_id)
     ensure_default_cards()
     ensure_default_payment_methods()
+    # V3.55.5: seed the welcome promo shelf (ANNA5 · +5 🍑) — idempotent,
+    # fail-silent; the owner manages/toggles it later in «🎟 Промокоды».
+    from services import gift_service
+    gift_service.ensure_welcome_promo()
     start_scheduler(bot)
     try:
         active_reminders = due_reminders()
