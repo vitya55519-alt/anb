@@ -294,6 +294,9 @@ _fantasy_pending = dialog_store.DialogStore('fantasy_pending')
 # the bot waits for the user's support message (next plain text is forwarded
 # to the owner instead of being read by the character).
 _support_pending = dialog_store.DialogStore('support_pending')
+# V3.55.1: one-per-day paywall nudge for users who keep voice replies on
+# without Premium (telegram_id -> ISO date of the last hint).
+_voice_premium_hint = dialog_store.DialogStore('voice_premium_hint')
 _PHOTO_OFFER_TTL = 120  # offer expires after 2 minutes
 
 # Regex: Anna offered a photo in her response
@@ -1139,6 +1142,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 12 extra photo credits',
             '• 2 free photo animations every day 🎬',
             '• 🎥 video circles from me — Premium only',
+            '• 🎙 voice replies — Premium only',
             '• 💋 relationship levels 7–8 — “Kindred spirits” and “One whole”',
             '• 2 free replays of alternative quest branches per month',
             '• more memory, initiative and morning/evening messages',
@@ -1150,6 +1154,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 12 дополнительных photo credits',
             '• 2 бесплатных оживления фото каждый день 🎬',
             '• 🎥 видео-кружочки от меня — только для Premium',
+            '• 🎙 голосовые ответы — только для Premium',
             '• 💋 уровни 7–8 отношений — «Родственные души» и «Одно целое»',
             '• 2 бесплатных replay альтернативных квест-веток в месяц',
             '• больше памяти, инициативы и утренних/вечерних сообщений',
@@ -1993,7 +1998,8 @@ async def onboarding_character_select(cq: types.CallbackQuery):
         await cq.message.answer(
             f'⭐ {card.display_name} доступна с Premium.\n\n'
             f'Premium — {PREMIUM_MONTHLY_STARS} Stars на 30 дней.\n'
-            'Нежная, заботливая и очень сексуальная — она будет спрашивать про твой день, слушать и создавать уют.\n',
+            'Премиум-персонажи открываются вместе с подпиской — сразу после '
+            'оплаты можно выбрать её в «Персонажах».\n',
             reply_markup=premium_keyboard(telegram_id=cq.from_user.id),
         )
         return
@@ -6657,7 +6663,11 @@ async def voice_toggle(message: types.Message):
     user = get_user(message.from_user.id)
     new = not user.voice_enabled
     update_user_settings(message.from_user.id, voice_enabled=new)
-    await message.answer('голосовые ответы включены 🎙️' if new else 'голосовые ответы выключены')
+    # V3.55.1: the toggle survives, but voice only actually fires on Premium.
+    if new and not is_premium(message.from_user.id) and message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await message.answer('голосовые ответы включены 🎙️\nно голос — привилегия Premium: с тобой заговорю голосом, когда оформишь подписку 😉')
+    else:
+        await message.answer('голосовые ответы включены 🎙️' if new else 'голосовые ответы выключены')
 
 
 @dp.message(Command('voice_anon'))
@@ -6800,7 +6810,10 @@ async def testlevel(message: types.Message):
 
 async def send_answer(message: types.Message, text: str):
     user = get_user(message.from_user.id)
-    if user and user.voice_enabled:
+    # V3.55.1: voice replies are a Premium perk (owner decision — the shop
+    # card line «голосовые ответы» becomes literally true). Non-premium keeps
+    # the toggle, gets text, and the once-a-day nudge at the bottom.
+    if user and user.voice_enabled and (is_premium(message.from_user.id) or message.from_user.id in ADMIN_TELEGRAM_IDS):
         try:
             character_id = get_user_character(message.from_user.id)
             audio = await synthesize_bytes(text, user.voice_style, character_id=character_id)
@@ -6819,6 +6832,19 @@ async def send_answer(message: types.Message, text: str):
                 await asyncio.sleep(0.35)
             return
     await message.answer(text)
+    # V3.55.1: once per day, a voice user without Premium hears how to unlock it.
+    try:
+        if user and user.voice_enabled and not is_premium(message.from_user.id) \
+                and message.from_user.id not in ADMIN_TELEGRAM_IDS:
+            today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+            if _voice_premium_hint.get(message.from_user.id) != today:
+                _voice_premium_hint[message.from_user.id] = today
+                hint = ('🎙 Voice replies are a Premium perk — subscribe and I\'ll speak to you in my real voice 😉'
+                        if user_lang(message.from_user.id) == EN else
+                        '🎙 Голосовые ответы — привилегия Premium: оформи подписку, и я заговорю с тобой настоящим голосом 😉')
+                await message.answer(hint)
+    except Exception:
+        logger.warning('voice premium hint failed user=%s', message.from_user.id)
 
 
 @dp.message(F.text.in_(kb_pair('chat')))
@@ -7826,18 +7852,23 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     # V3.45.28: a community persona is queued for review, so her card stays
     # hidden until an admin approves; is_community still drives the ping below.
     is_community = params.get('community') == 'community_yes'
+    # V3.55.3: a persona drafted on the «⭐ Premium» tab by an admin registers
+    # with the premium card status — the same flag the admin panel sets and
+    # every existing premium gate keys on.
+    card_status = ('premium' if cons.get('premium') and telegram_id in ADMIN_TELEGRAM_IDS
+                   else 'active')
     try:
         if get_card(row.character_id):
             update_card(
                 row.character_id, display_name=display_name, age=card_age,
-                short_bio=bio, status='active', card_photo_file_id=avatar_file_id,
+                short_bio=bio, status=card_status, card_photo_file_id=avatar_file_id,
                 is_visible=False,
             )
         else:
             # V3.37.0: anime personas get their own card emoji.
             card_emoji = '🌸' if str(params.get('style', '')) == 'style_anime' else ''
             create_card(row.character_id, display_name, card_age, bio, card_emoji, 'female')
-            update_card(row.character_id, status='active', card_photo_file_id=avatar_file_id, is_visible=False)
+            update_card(row.character_id, status=card_status, card_photo_file_id=avatar_file_id, is_visible=False)
     except Exception:
         logger.exception('constructor card registration failed user=%s', telegram_id)
     track_event(
@@ -9910,6 +9941,28 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'history': webapp_service.api_chat_history(uid, character_id, limit)})
 
 
+def _custom_premium_gate_block(character_id: str, telegram_id: int) -> bool:
+    """V3.55.3: constructor personas carry the same premium gate as built-ins.
+
+    A card flipped to ``premium`` (admin panel or the premium-tab constructor)
+    used to be bypassed by the custom-character branches of the app chat
+    endpoints, which only checked existence — the status now applies to every
+    persona. The author keeps access to her own creation.
+    """
+    try:
+        card = get_card(character_id)
+    except Exception:
+        return False
+    if not card or card.status != 'premium':
+        return False
+    if is_premium(telegram_id) or telegram_id in ADMIN_TELEGRAM_IDS:
+        return False
+    try:
+        return str(telegram_id) not in webapp_service._mine_character_ids(telegram_id)
+    except Exception:
+        return True
+
+
 async def _webapp_api_chat_send(request: web.Request) -> web.Response:
     # V3.35.0: a message typed in the app goes through the exact pipeline the
     # bot chat uses (memory, relationships, persona) — same gates too: 18+
@@ -9934,6 +9987,10 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
         # Constructor personas are public: anyone can open a dialog with her.
         if not get_custom_character_by_id(character_id):
             return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+        # V3.55.3: a premium-status custom persona is closed for non-premium
+        # users too — the built-in gate below never ran on the custom branch.
+        if _custom_premium_gate_block(character_id, telegram_id):
+            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
     else:
         card = get_card(character_id)
         if not card or card.status not in ('active', 'premium'):
@@ -10528,6 +10585,9 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     if is_custom_character(character_id):
         if not get_custom_character_by_id(character_id):
             return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+        # V3.55.3: same premium gate as the built-ins (was skipped here too).
+        if _custom_premium_gate_block(character_id, telegram_id):
+            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
     else:
         card = get_card(character_id)
         if not card or card.status not in ('active', 'premium'):
@@ -10565,6 +10625,10 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
         if not consume_premium_video_free(telegram_id):
             return web.json_response({'ok': False, 'error': 'video_limit'}, status=402)
+    if kind == 'voice' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+        # V3.55.1: voice is a Premium perk now (owner) — the SPA already maps
+        # premium_required to the paywall toast and the shop tab.
+        return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     track_event(uid, 'webapp_chat_media', metadata={'character_id': character_id, 'kind': kind, 'scene': scene})
     try:
@@ -11160,6 +11224,10 @@ async def _webapp_api_constructor_draft(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'name_required'}, status=400)
     params['name'] = name
     session_data = {'params': params, 'step': len(CONSTRUCTOR_STEPS)}
+    # V3.55.3: the premium tab's ➕ flags its draft; only an admin can set it
+    # server-side, so a forged body flag can never mint a premium persona.
+    if body.get('premium') and telegram_id in ADMIN_TELEGRAM_IDS:
+        session_data['premium'] = True
     # V3.44.5: store base64 photo data in session for _finish_constructor.
     if photo_reference_base64:
         session_data['photo_reference_base64'] = photo_reference_base64

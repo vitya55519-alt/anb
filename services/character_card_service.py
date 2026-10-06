@@ -57,7 +57,9 @@ DEFAULT_CARDS = {
         "gender": "female",
         "age": 24,
         "short_bio": "Тихая снаружи, огонь внутри. Готовит так, что хочется остаться навсегда. А когда остаётесь наедине — показывает, чего стоит её нежность.",
-        "status": "premium",
+        # V3.55.3: owner returned Maria to the common roster — premium
+        # characters are now his own constructor creations.
+        "status": "active",
         "button_emoji": "💃",
         "is_visible": True,
     },
@@ -343,6 +345,13 @@ def ensure_default_cards() -> None:
                 changed = True
             # Emily defaults to active now; sync if still at old "soon" default.
             if character_id == "alena_01" and row.status == "soon":
+                row.status = defaults["status"]
+                changed = True
+            # V3.55.3: Maria is back in the common roster (owner will build the
+            # premium lineup himself) — sync the production row the same way.
+            # If Maria ever needs to be premium again, REMOVE this line first:
+            # it reverts any admin-panel flip on every bot start.
+            if character_id == "maria_01" and row.status == "premium":
                 row.status = defaults["status"]
                 changed = True
             # One-time backfill for rows created before gender/age/short_bio existed

@@ -370,7 +370,10 @@ ADAPTATION_ENABLED = os.getenv("ADAPTATION_ENABLED", "true").strip().lower() not
 ADAPTATION_ANALYZE_EVERY = max(3, min(20, int(os.getenv("ADAPTATION_ANALYZE_EVERY", "5"))))
 ADAPTATION_MAX_EXPRESSIONS = max(3, min(20, int(os.getenv("ADAPTATION_MAX_EXPRESSIONS", "12"))))
 
-FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "50"))
+# V3.55.1: owner tightened the free tier 50 → 30 messages/day for non-premium
+# (Premium's «безлимит сообщений» must actually bite). The new-user 24h
+# unlimited window below stays the activation lever.
+FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "30"))
 # V3.47.2: a brand-new user gets unlimited TEXT messages for this many hours
 # after registration (activation lever, mirrors the benchmark's «первые 24 часа
 # текст бесплатно»). Photo/video gates are untouched — text only.

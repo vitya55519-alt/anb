@@ -17,8 +17,11 @@ def test_page_size_is_six_per_segment():
     assert 'const CHAR_PAGE_SIZE = 6;' in INDEX
     assert 'let CHAR_PAGE = 0;' in INDEX
     # the slice drives the grid, not the full filtered list
+    # V3.55.3: three segments now (official / community / premium) and each
+    # paginates the whole visible `shown` list; the card builder is `cardHTML`.
     assert 'const pageItems = shown.slice(CHAR_PAGE * CHAR_PAGE_SIZE, CHAR_PAGE * CHAR_PAGE_SIZE + CHAR_PAGE_SIZE);' in INDEX
-    assert 'const cards = pageItems.map(c => {' in INDEX
+    assert 'const cardHTML = c => {' in INDEX
+    assert "const cards = pageItems.map(cardHTML).join('');" in INDEX
 
 
 def test_pager_rendered_and_control_handlers():
@@ -35,7 +38,7 @@ def test_pager_rendered_and_control_handlers():
 
 def test_page_resets_on_segment_search_and_fresh_load():
     # a segment switch lands on page 1
-    assert "if (CHAR_SEG !== 'community') CHAR_QUERY = '';\n  CHAR_PAGE = 0;" in INDEX
+    assert "if (CHAR_SEG !== 'community' && CHAR_SEG !== 'prem') CHAR_QUERY = '';\n  CHAR_PAGE = 0;" in INDEX
     # typing a new community search resets to page 1
     assert "CHAR_QUERY = e.target.value || '';\n  CHAR_PAGE = 0;" in INDEX
     # a fresh character load starts on page 1

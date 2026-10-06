@@ -208,11 +208,20 @@ def test_characters_tab_has_segment_switch():
     assert "seg_community: '👥 Community'" in INDEX
     # the switch filters the cached grid and moves create-card to community
     assert "let CHAR_SEG = 'official'" in INDEX
-    assert 'CHAR_SEG = btn.dataset.seg' in INDEX
+    # V3.55.3: the segment handler reads the key first (a non-premium user is
+    # refused on the new «⭐ Premium» tab before CHAR_SEG is ever assigned).
+    assert 'const seg = btn.dataset.seg;' in INDEX
+    assert 'CHAR_SEG = seg;' in INDEX
     # V3.45.28: the filter became a block so the community tab can also honour
-    # the free-text search — the segment gate is now this early-return line.
-    assert "if (CHAR_SEG === 'official' ? !!c.custom : !c.custom) return false;" in INDEX
-    assert "const createCard = CHAR_SEG === 'official' ? ''" in INDEX
+    # the free-text search. V3.55.3: the block grew to three buckets — premium
+    # girls only ride the «⭐ Premium» tab, the official/community tabs exclude
+    # them so a persona never appears on two tabs at once.
+    assert "if (CHAR_SEG === 'prem') {" in INDEX
+    assert "if (!!c.custom || c.status === 'premium') return false;" in INDEX
+    assert "} else if (!c.custom || c.status === 'premium') return false;" in INDEX
+    # V3.55.3: the always-live ➕ now belongs to the community tab only (the
+    # premium tab has its own admin-only create card, id="premCreateCard").
+    assert "const createCard = (CHAR_SEG === 'community') ?" in INDEX
     # V3.45.28: the community search box + name/bio/tag filter ride along.
     assert 'id="charSearch"' in INDEX and "let CHAR_QUERY = ''" in INDEX
     assert "getElementById('charSearch').addEventListener('input'" in INDEX

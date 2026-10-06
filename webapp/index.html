@@ -481,6 +481,10 @@
   .charpager .ppage { border: 1px solid rgba(255,255,255,.14); background: var(--card); color: var(--text); width: 40px; height: 40px; border-radius: 12px; font-size: 20px; line-height: 1; cursor: pointer; }
   .charpager .ppage[disabled] { opacity: .35; cursor: default; }
   .charpager .pinfo { font-size: 14px; font-weight: 700; color: var(--muted); min-width: 54px; text-align: center; }
+  /* V3.55.2: «Премиум-персонажи» — отдельная секция под сеткой персонажей */
+  /* V3.55.3: the third segment is the premium roster — a locked non-premium
+     tab dims so the paywall reads before the tap. */
+  #charSeg button.lockedseg { opacity: .55; }
   .typing { align-self: flex-start; color: var(--muted); font-size: 13px; padding: 4px 12px; }
   .wiz { flex: 1; overflow-y: auto; padding: 16px; }
   .wiz .step-title { font-size: 17px; font-weight: 700; margin: 6px 0 12px; }
@@ -689,10 +693,13 @@
   <section class="tab" id="tab-characters">
     <h2 id="l_chars_title">Персонажи</h2>
     <!-- V3.39.0: the Come Closer segment switch — our roster (the «Peach
-         Garden») vs girls created by the community (constructor personas). -->
+         Garden») vs girls created by the community (constructor personas).
+         V3.55.3: a third tab holds the premium-status roster; it is closed
+         for non-premium users (tap → paywall toast + shop). -->
     <div class="seg" id="charSeg">
       <button class="on" data-seg="official" id="segOfficial"></button>
       <button data-seg="community" id="segCommunity"></button>
+      <button data-seg="prem" id="segPrem"></button>
     </div>
     <!-- V3.45.28: community search — filter the витрина by name / bio / tag.
          Hidden on the official roster (tags only live on constructor girls). -->
@@ -1004,6 +1011,8 @@ const L_EN = {
   chars_title: 'Characters', loading: 'Loading…',
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
+  // V3.55.2: the premium-characters section under the grid
+  prem_chars_title: 'Premium characters', prem_chars_hint: 'Unlocked with a Premium subscription', prem_chars_owned: 'Open with your subscription',
   shop_title: 'Shop', missions_title: 'Missions', month: '/ 30 days', week: '7 days', pay_hint: 'Tap a plan — pick how to pay: Stars here, card/SBP or crypto on the payment page.',
   share_img: '📤 Share', invite_cta: '🍑 Invite a friend', invite_got: 'Link copied — share it and you both get 🍑', share_fail: 'Could not share', gal_share_hint: 'Share this photo — a friend who starts gets 🍑, and you too', save_img: '📥 Save', save_ok: 'Photo sent to your chat — forward it to a friend',
     unlim_title: 'Unlimited messages', unlim_sub: 'First 24 hours after sign-up — text is free', unlim_left: 'left',
@@ -1119,7 +1128,7 @@ const L_EN = {
       gen_row: '🛠 User generations', gen_title: 'User generations', gen_empty: 'Nothing generated yet', gen_more: 'Load more',
     comments_lbl: '💬 Comments', comment_placeholder: 'Write a comment...', comment_submit: 'Submit', comment_empty: 'No comments yet — be the first!',
   wiz_save: 'Save', wiz_skip: 'Skip', wiz_skip_hint: 'Write or skip...', wiz_upload_photo: 'Upload photo',
-  seg_official: '🍑 Peach Garden', seg_community: '👥 Community',
+  seg_official: '🍑 Peach Garden', seg_community: '👥 Community', seg_premium: '⭐ Premium',
   char_search_ph: 'Search the community by name or #tag…',
   media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
   media_wait_voice: 'Recording her voice…', media_wait_video: 'Rendering a video — 1–3 min…',
@@ -1157,6 +1166,8 @@ const L_RU = {
   chars_title: 'Персонажи', loading: 'Загрузка…',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
+  // V3.55.2: секция премиум-персонажей под сеткой
+  prem_chars_title: 'Премиум-персонажи', prem_chars_hint: 'Открываются подпиской Premium', prem_chars_owned: 'Открыты твоей подпиской',
   shop_title: 'Магазин', missions_title: 'Миссии', month: '/ 30 дней', week: '7 дней', pay_hint: 'Нажми на тариф — выбери способ: Stars здесь, карта/СБП или крипта на платёжной странице.',
   share_img: '📤 Поделиться', invite_cta: '🍑 Позвать друга', invite_got: 'Ссылка скопирована — делись, и вам обоим капнет 🍑', share_fail: 'Не удалось поделиться', gal_share_hint: 'Поделись фото — друг получит 🍑 за старт, и тебе тоже', save_img: '📥 Сохранить', save_ok: 'Фото отправлено в чат — перешли его другу',
     unlim_title: 'Безлимитные сообщения', unlim_sub: 'Первые 24 часа после регистрации — текст бесплатно', unlim_left: 'осталось',
@@ -1272,7 +1283,7 @@ const L_RU = {
       gen_row: '🛠 Генерации пользователей', gen_title: 'Генерации пользователей', gen_empty: 'Пока ничего не сгенерировано', gen_more: 'Загрузить ещё',
     comments_lbl: '💬 Комментарии', comment_placeholder: 'Напиши комментарий...', comment_submit: 'Отправить', comment_empty: 'Пока нет комментариев — будь первым!',
   wiz_save: 'Сохранить', wiz_skip: 'Пропустить', wiz_skip_hint: 'Напиши или пропусти...', wiz_upload_photo: 'Загрузить фото',
-  seg_official: '🍑 Персиковый сад', seg_community: '👥 Сообщество',
+  seg_official: '🍑 Персиковый сад', seg_community: '👥 Сообщество', seg_premium: '⭐ Премиум',
   char_search_ph: 'Поиск по сообществу: имя или #тег…',
   media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
   media_wait_voice: 'Записываю голос…', media_wait_video: 'Рисую видео — 1–3 минуты…',
@@ -1318,7 +1329,7 @@ const L_OV = {
     partner_title: 'Programa de socios', my_chars: 'MIS PERSONAJES', create_char: '＋ Crear',
     no_chars: 'Aún no tienes personaje: crea a tu chica.', partner_row: '💰 Programa de socios',
     docs_row: '📜 Documentos y precios', open_chat: 'chat', start_chat: 'Iniciar chat',
-    make_mine: '❤️ Hacerla tuya', seg_official: '🍑 Oficiales', seg_community: '👥 Comunidad',
+    make_mine: '❤️ Hacerla tuya', seg_official: '🍑 Oficiales', seg_community: '👥 Comunidad', seg_premium: '⭐ Premium',
     create_own: 'Crea la tuya', create_sub: 'Apariencia, figura y carácter: ella hablará como tú elijas',
     chats_title: 'Chats', pic_title: 'Crear imagen',
     pic_prompt_ph: 'Describe la imagen: quién, dónde, ambiente…', pic_style: 'Estilo',
@@ -1340,6 +1351,7 @@ const L_OV = {
     need_premium: 'Disponible con Premium ⭐', locked: 'Esta chica aún está cerrada',
     settings_title: 'Ajustes', spicy_title: '🌶 Modo atrevido', spicy_on: 'activado', spicy_off: 'desactivado',
     spicy_prem: 'El modo atrevido es una ventaja Premium ⭐',
+    prem_chars_title: 'Personajes Premium', prem_chars_hint: 'Se desbloquean con Premium', prem_chars_owned: 'Disponible con tu suscripción',
     spicy_toast_on: 'Modo atrevido activado 🔥', spicy_toast_off: 'Modo atrevido desactivado 🌙',
     lang_title: '🌐 Idioma de la interfaz',
     photo_menu_title: '📸 ¿Qué foto?',
@@ -1364,7 +1376,7 @@ const L_OV = {
     partner_title: 'Programma partner', my_chars: 'I MIEI PERSONAGGI', create_char: '＋ Crea',
     no_chars: 'Nessun personaggio: crea la tua ragazza.', partner_row: '💰 Programma partner',
     docs_row: '📜 Documenti e prezzi', open_chat: 'chat', start_chat: 'Avvia la chat',
-    make_mine: '❤️ Rendila tua', seg_official: '🍑 Ufficiali', seg_community: '👥 Community',
+    make_mine: '❤️ Rendila tua', seg_official: '🍑 Ufficiali', seg_community: '👥 Community', seg_premium: '⭐ Premium',
     create_own: 'Crea la tua', create_sub: 'Aspetto, fisico e carattere: parlerà come vorrai tu',
     chats_title: 'Chat', pic_title: 'Crea immagine',
     pic_prompt_ph: 'Descrivi l\'immagine: chi, dove, atmosfera…', pic_style: 'Stile',
@@ -1386,6 +1398,7 @@ const L_OV = {
     need_premium: 'Disponibile con Premium ⭐', locked: 'Questa ragazza è ancora chiusa',
     settings_title: 'Impostazioni', spicy_title: '🌶 Modalità audace', spicy_on: 'attiva', spicy_off: 'disattivata',
     spicy_prem: 'La modalità audace è un vantaggio Premium ⭐',
+    prem_chars_title: 'Personaggi Premium', prem_chars_hint: 'Si sbloccano con Premium', prem_chars_owned: 'Disponibile con il tuo abbonamento',
     spicy_toast_on: 'Modalità audace attiva 🔥', spicy_toast_off: 'Modalità audace disattivata 🌙',
     lang_title: '🌐 Lingua dell\'interfaccia',
     photo_menu_title: '📸 Quale foto?',
@@ -1410,7 +1423,7 @@ const L_OV = {
     partner_title: 'Programme de partenariat', my_chars: 'MES PERSONNAGES', create_char: '＋ Créer',
     no_chars: 'Pas encore de personnage : crée ta fille.', partner_row: '💰 Programme de partenariat',
     docs_row: '📜 Documents et tarifs', open_chat: 'tchat', start_chat: 'Lancer le tchat',
-    make_mine: '❤️ Fais-en ta fille', seg_official: '🍑 Officielles', seg_community: '👥 Communauté',
+    make_mine: '❤️ Fais-en ta fille', seg_official: '🍑 Officielles', seg_community: '👥 Communauté', seg_premium: '⭐ Premium',
     create_own: 'Crée la tienne', create_sub: 'Look, silhouette et caractère : elle parlera comme tu le choisiras',
     chats_title: 'Tchats', pic_title: 'Créer une image',
     pic_prompt_ph: 'Décris l\'image : qui, où, ambiance…', pic_style: 'Style',
@@ -1432,6 +1445,7 @@ const L_OV = {
     need_premium: 'Disponible avec Premium ⭐', locked: 'Cette fille est encore fermée',
     settings_title: 'Réglages', spicy_title: '🌶 Mode coquin', spicy_on: 'activé', spicy_off: 'désactivé',
     spicy_prem: 'Le mode coquin est un avantage Premium ⭐',
+    prem_chars_title: 'Personnages Premium', prem_chars_hint: 'Débloqués avec Premium', prem_chars_owned: 'Ouvert avec votre abonnement',
     spicy_toast_on: 'Mode coquin activé 🔥', spicy_toast_off: 'Mode coquin désactivé 🌙',
     lang_title: '🌐 Langue de l\'interface',
     photo_menu_title: '📸 Quelle photo ?',
@@ -1456,7 +1470,7 @@ const L_OV = {
     partner_title: '合作伙伴计划', my_chars: '我的角色', create_char: '＋ 创建',
     no_chars: '还没有角色——创建属于你的女孩吧。', partner_row: '💰 合作伙伴计划',
     docs_row: '📜 文档与价格', open_chat: '聊天', start_chat: '开始聊天',
-    make_mine: '❤️ 成为我的女孩', seg_official: '🍑 官方精选', seg_community: '👥 社区',
+    make_mine: '❤️ 成为我的女孩', seg_official: '🍑 官方精选', seg_community: '👥 社区', seg_premium: '⭐ 高级',
     create_own: '创建专属', create_sub: '外貌、身材和性格——她将按你的选择来聊天',
     chats_title: '聊天', pic_title: '创建图片',
     pic_prompt_ph: '描述这张图片——人物、场景、氛围…', pic_style: '风格',
@@ -1478,6 +1492,7 @@ const L_OV = {
     need_premium: '需要 Premium ⭐', locked: '这位女孩暂时未解锁',
     settings_title: '设置', spicy_title: '🌶 火辣模式', spicy_on: '已开启', spicy_off: '已关闭',
     spicy_prem: '火辣模式是 Premium 专属 ⭐',
+    prem_chars_title: 'Premium 角色', prem_chars_hint: '订阅 Premium 后解锁', prem_chars_owned: '随你的订阅开放',
     spicy_toast_on: '火辣模式已开启 🔥', spicy_toast_off: '火辣模式已关闭 🌙',
     lang_title: '🌐 界面语言',
     photo_menu_title: '📸 想要哪种照片？',
@@ -1502,7 +1517,7 @@ const L_OV = {
     partner_title: 'パートナープログラム', my_chars: 'マイキャラクター', create_char: '＋ 作成',
     no_chars: 'まだキャラクターがいません——あなただけの女の子を作りましょう。', partner_row: '💰 パートナープログラム',
     docs_row: '📜 資料と料金', open_chat: 'チャット', start_chat: 'チャットを始める',
-    make_mine: '❤️ 私のものにする', seg_official: '🍑 公式', seg_community: '👥 コミュニティ',
+    make_mine: '❤️ 私のものにする', seg_official: '🍑 公式', seg_community: '👥 コミュニティ', seg_premium: '⭐ プレミアム',
     create_own: 'オリジナルを作る', create_sub: '外見・スタイル・性格——あなたが選んだ通りに彼女は話します',
     chats_title: 'チャット', pic_title: '画像を作る',
     pic_prompt_ph: '画像を説明してください——誰が、どこで、どんな雰囲気…', pic_style: 'スタイル',
@@ -1524,6 +1539,7 @@ const L_OV = {
     need_premium: 'Premium で利用可能 ⭐', locked: 'この女の子はまだロック中',
     settings_title: '設定', spicy_title: '🌶 セクシーモード', spicy_on: 'オン', spicy_off: 'オフ',
     spicy_prem: 'セクシーモードは Premium 特典 ⭐',
+    prem_chars_title: 'プレミアムキャラクター', prem_chars_hint: 'プレミアム登録で解放', prem_chars_owned: 'ご契約で解放済み',
     spicy_toast_on: 'セクシーモードがオンになりました 🔥', spicy_toast_off: 'セクシーモードがオフになりました 🌙',
     lang_title: '🌐 表示言語',
     photo_menu_title: '📸 どの写真にする？',
@@ -1553,6 +1569,7 @@ document.getElementById('l_loading').textContent = L.loading;
 document.getElementById('l_chars_hint').textContent = L.chars_hint;
 document.getElementById('segOfficial').textContent = L.seg_official;
 document.getElementById('segCommunity').textContent = L.seg_community;
+document.getElementById('segPrem').textContent = L.seg_premium;
 // V3.45.28: community search placeholder (lives in the characters tab).
 document.getElementById('charSearch').placeholder = L.char_search_ph;
 // V3.42.2: readable labels under the chat action icons.
@@ -1602,10 +1619,18 @@ navBtns.forEach(btn => btn.addEventListener('click', () => {
   lazyLoadTab(btn.dataset.tab);
 }));
 // V3.39.0: the roster/community segment switch re-renders the cached grid.
+// V3.55.3: the third «⭐ Premium» tab is closed for non-premium users — the
+// tap does not switch; it toasts and opens the shop instead.
 document.querySelectorAll('#charSeg button').forEach(btn => btn.addEventListener('click', () => {
-  CHAR_SEG = btn.dataset.seg;
+  const seg = btn.dataset.seg;
+  if (seg === 'prem' && !(ME && ME.premium)) {
+    toast(L.need_premium);
+    showTab('shop');
+    return;
+  }
+  CHAR_SEG = seg;
   // V3.45.28: leaving the community tab drops the active search text.
-  if (CHAR_SEG !== 'community') CHAR_QUERY = '';
+  if (CHAR_SEG !== 'community' && CHAR_SEG !== 'prem') CHAR_QUERY = '';
   CHAR_PAGE = 0; // V3.48.2: a segment switch always lands on page 1
   document.querySelectorAll('#charSeg button').forEach(b => b.classList.toggle('on', b === btn));
   renderCharacters(CHARS);
@@ -1681,27 +1706,39 @@ function renderCharacters(list) {
   // Garden», constructor personas made by people live in the «Community».
   const q = CHAR_QUERY.trim().toLowerCase();
   const shown = list.filter(c => {
-    if (CHAR_SEG === 'official' ? !!c.custom : !c.custom) return false;
+    // V3.55.3: three segments — premium-status girls (built-in OR constructor)
+    // live only on «⭐ Premium»; the other two walk the non-premium pool.
+    if (CHAR_SEG === 'prem') {
+      if (c.status !== 'premium') return false;
+    } else if (CHAR_SEG === 'official') {
+      if (!!c.custom || c.status === 'premium') return false;
+    } else if (!c.custom || c.status === 'premium') return false;
     // V3.45.28: in the community tab the search narrows by name, bio or tag.
-    if (CHAR_SEG === 'community' && q) {
+    // V3.55.3: the premium витрина reuses the same search box.
+    if ((CHAR_SEG === 'community' || CHAR_SEG === 'prem') && q) {
       const hay = (c.name + ' ' + (c.bio || '') + ' ' + ((c.tags || []).join(' '))).toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
   const grid = document.getElementById('chargrid');
-  // V3.45.28: the search box only belongs to the community витрина.
+  // V3.45.28: the search box belongs to the community + premium витрины.
   const cs = document.getElementById('charSearch');
-  if (cs) cs.style.display = CHAR_SEG === 'community' ? 'block' : 'none';
+  if (cs) cs.style.display = (CHAR_SEG === 'community' || CHAR_SEG === 'prem') ? 'block' : 'none';
+  // V3.55.3: a non-premium user sees the ⭐ tab dimmed (it is closed to her).
+  const sp = document.getElementById('segPrem');
+  if (sp) sp.classList.toggle('lockedseg', !(ME && ME.premium));
   // V3.35.0: the grid is the chat entry now — tap opens the dialog; the
   // «create your own» card rides at the end of the grid — always live now
   // (V3.44.9): unlimited characters, so there is no hasMine gate anymore.
+  // V3.55.3: the tab split replaced the V3.55.2 under-grid section, so
+  // pagination walks the whole visible segment again.
   // V3.48.2: paginate the segment — 6 character cards per page (2 cols x 3 rows).
   const pages = Math.max(1, Math.ceil(shown.length / CHAR_PAGE_SIZE));
   if (CHAR_PAGE > pages - 1) CHAR_PAGE = pages - 1;
   if (CHAR_PAGE < 0) CHAR_PAGE = 0;
   const pageItems = shown.slice(CHAR_PAGE * CHAR_PAGE_SIZE, CHAR_PAGE * CHAR_PAGE_SIZE + CHAR_PAGE_SIZE);
-  const cards = pageItems.map(c => {
+  const cardHTML = c => {
     const badge = c.status === 'active'
       ? `<span class="badge active">✅ ${esc(L.active)}</span>`
       : c.status === 'premium'
@@ -1741,15 +1778,26 @@ function renderCharacters(list) {
         ${tagChips}
       </div>
     </div>`;
-  }).join('');
+  };
+  const cards = pageItems.map(cardHTML).join('');
   // V3.44.9: unlimited characters for peaches — the create card is always
   // live, there is no «you already have one» dead placeholder anymore.
-  const createCard = CHAR_SEG === 'official' ? '' : `<div class="card create" id="createCard">
+  // V3.55.3: on the premium tab only an admin gets the ➕ — premium personas
+  // are added by the owner through the same constructor (with a premium flag).
+  const createCard = (CHAR_SEG === 'community') ? `<div class="card create" id="createCard">
         <div class="photo" style="display:flex;align-items:center;justify-content:center"><div class="plus">➕</div></div>
         <div class="body"><div class="lbl2">${esc(L.create_own)}</div><div class="sub2">${esc(L.create_sub)}</div></div>
-      </div>`;
+      </div>` : '';
   grid.innerHTML = cards + createCard;
   renderCharPager(pages);
+  // V3.55.3: the admin-only premium create card rides next to the ➕ in the
+  // same grid; it opens the wizard with the premium flag on.
+  if (CHAR_SEG === 'prem' && ME && ME.admin) {
+    grid.innerHTML += `<div class="card create" id="premCreateCard">
+        <div class="photo" style="display:flex;align-items:center;justify-content:center"><div class="plus">➕</div></div>
+        <div class="body"><div class="lbl2">⭐ ${esc(L.create_own)}</div><div class="sub2">${esc(L.create_sub)}</div></div>
+      </div>`;
+  }
   // V3.43.2: WebView does not always honour the autoplay attribute — kick
   // every living tile by hand, and pause the ones scrolled off screen so
   // eight mp4 loops do not drag the grid down.
@@ -1760,7 +1808,9 @@ function renderCharacters(list) {
   grid.querySelectorAll('.card[data-id]').forEach(el =>
     el.addEventListener('click', () => openCharPage(el)));
   const cc = document.getElementById('createCard');
-  if (cc) cc.addEventListener('click', openWizard);
+  if (cc) cc.addEventListener('click', () => openWizard());
+  const pcc = document.getElementById('premCreateCard');
+  if (pcc) pcc.addEventListener('click', () => openWizard(true));
   // V3.38.0: the profile «MY CHARACTERS» block lists mine cards — re-render
   // it once the grid data arrives (loadMe usually finishes first).
   if (ME) renderProfileBody();
@@ -2706,7 +2756,11 @@ document.getElementById('authorBack').addEventListener('click', () =>
 // ── V3.35.0: character constructor wizard ─────────────────────────────────
 let WIZ = { steps: [], idx: 0, params: {}, name: '', stars: 0, rub: 0, usd: 0, peaches: 0, free: false };
 
-async function openWizard() {
+async function openWizard(premiumMode) {
+  // V3.55.3: the premium tab's admin-only ➕ flags the draft as a premium
+  // persona; the backend double-checks ADMIN_TELEGRAM_IDS, the flag alone
+  // buys nothing.
+  WIZ.premium = !!premiumMode;
   try {
     const q = tg.initData ? ('?init_data=' + encodeURIComponent(tg.initData) + '&') : '?';
     const r = await fetch('/webapp/api/constructor/options' + q + 'lang=' + LANG);
@@ -2828,10 +2882,12 @@ function renderWizScreen() {
 
 // V3.44.10: a freshly created persona lives in the «Community» segment —
 // flip the switch so she is visible the moment the avatar job finishes
-// instead of looking lost on «Peach Garden».
-function showCommunitySeg() {
-  CHAR_SEG = 'community';
-  document.querySelectorAll('#charSeg button').forEach(b => b.classList.toggle('on', b.dataset.seg === 'community'));
+// instead of looking lost on «Peach Garden». V3.55.3: a premium-flagged
+// creation lands on the new «⭐ Premium» tab instead.
+function segForCreate(isPremium) {
+  CHAR_SEG = isPremium ? 'prem' : 'community';
+  document.querySelectorAll('#charSeg button').forEach(b =>
+    b.classList.toggle('on', b.dataset.seg === CHAR_SEG));
 }
 
 async function submitWizard(method) {
@@ -2844,7 +2900,7 @@ async function submitWizard(method) {
     const dr = await fetch('/webapp/api/constructor/draft?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ params: WIZ.params, name: WIZ.name }),
+      body: JSON.stringify({ params: WIZ.params, name: WIZ.name, premium: !!WIZ.premium }),
     });
     if (dr.status === 401) { toast(L.auth_short); if (btn) btn.disabled = false; return; }
     if (dr.status === 409) { toast(L.wiz_exists); if (btn) btn.disabled = false; return; }
@@ -2870,7 +2926,7 @@ async function submitWizard(method) {
     if (bj.free) {
       closeWizard();
       toast(L.wiz_paid_toast);
-      showCommunitySeg();
+      segForCreate(WIZ.premium);
       pollCharacters();
       checkConstructorStatus();
       return;
@@ -2882,7 +2938,7 @@ async function submitWizard(method) {
       if (status === 'paid') {
         closeWizard();
         toast(L.wiz_paid_toast);
-        showCommunitySeg();
+        segForCreate(WIZ.premium);
         pollCharacters();
         checkConstructorStatus();
       } else if (status === 'failed') {

@@ -251,7 +251,8 @@ def test_chat_frontend_flow():
 
 def test_wizard_frontend_flow():
     assert 'id="wizview"' in INDEX
-    assert 'function openWizard()' in INDEX
+    # V3.55.3: openWizard takes an optional premium flag (premium-tab admin ➕).
+    assert 'function openWizard(premiumMode)' in INDEX
     # V3.45.28: the wizard is one scrollable screen now — grouped structured
     # fields replace the old step-by-step renderWizStep() flow.
     assert 'function renderWizScreen()' in INDEX
@@ -270,4 +271,6 @@ def test_grid_custom_badges_and_create_card():
     assert 'L.mine_badge' in INDEX
     assert 'L.made_badge' in INDEX
     assert "id='createCard'" in INDEX or 'id="createCard"' in INDEX
-    assert "cc.addEventListener('click', openWizard)" in INDEX
+    # V3.55.3: the create-card handler wraps the call so openWizard() runs with
+    # no argument (the premium ➕ passes true).
+    assert "cc.addEventListener('click', () => openWizard())" in INDEX

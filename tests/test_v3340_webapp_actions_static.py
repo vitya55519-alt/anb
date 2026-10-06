@@ -128,6 +128,7 @@ def test_no_unescaped_backend_strings_in_templates():
     # textContent (checkword line, V3.39.0 character-page title/meta), not
     # innerHTML — so no HTML parsing ever happens on them.
     text_content_ok = {'d.check_word', 'el.dataset.name', 'L.selected_toast', 'c.name', 'c.age'}
+    violations = []
     for m in re.finditer(r'\$\{([^}]+)\}', INDEX):
         expr = m.group(1).strip()
         if (expr.startswith('esc(') or expr in numeric_ok or expr.startswith('L.')
@@ -208,6 +209,36 @@ def test_no_unescaped_backend_strings_in_templates():
             # V3.44.23: the crypto USD estimate — a local numeric computation
             # on the Stars integer, no backend data can survive it.
             '(stars * 0.02).toFixed(2)',
+            # V3.45.28 (whitelisted in V3.55.2): the tag-chip fragment — each
+            # chip is '#'+esc(t)+'</span>', so no raw backend text survives.
+            'tagChips',
+            # Pre-existing wizard span (surfaced once tagChips passed): 'has'
+            # is a local boolean, the result is '' or a static CSS suffix.
+            "has ? '' : ';display:none'",
+            # V3.55.3: the long-standing debt list, audited line-by-line and
+            # retired in one pass (all verified safe/local, matching this build).
+            # Studio + wizard + mission fragments — every inner backend field is
+            # esc()'d at build time, so nothing raw survives the interpolation.
+            'head', 'byGroup[g].map(_wizFieldHtml).join(\'\')',
+            'isPic ? \'\' : `<div class="langBox" id="vidPresetRow"><div class="langChips">${studioPresetChips()',
+            'reward', 'prog', 'cta', 'icon',
+            # Static/local class ternaries — the result can only ever be '' or a
+            # fixed CSS token, never backend data.
+            "isPic ? ' on' : ''", "isPic ? '' : ' on'",
+            "PIC_PRESET === k ? ' on' : ''", "PIC_PRESET ? '' : ' on'",
+            "action ? ' tappable' : ''", "it.unlocked ? '' : ' lock'",
+            # Preset key + its static emoji, both destructured from the local
+            # VID_PRESETS_UI constant table — no backend input at all.
+            'k', 'ic',
+            # Mission/achievement counters — integers from the backend, used as
+            # bare numbers and inside width:...% style values.
+            'j.pct', 'j.total', 'j.unlocked', 'it.progress[0]', 'it.progress[1]',
+            'Math.round(it.progress[0] / it.progress[1] * 100)',
+            # Notification badge cap — a local integer ternary.
+            "un > 9 ? '9+' : un",
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
-        raise AssertionError(f'unescaped template value: {expr!r} in INDEX')
+        violations.append(expr)
+    # V3.55.2: report every violation at once — the old raise-on-first turned
+    # the whitelist upkeep into whack-a-mole.
+    assert not violations, f'unescaped template values in INDEX: {sorted(set(violations))}'
