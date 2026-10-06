@@ -882,6 +882,7 @@ OPENAI_GENERAL_AUDIENCE_BLOCK = (
 NEGATIVE_BLOCK = (
     'Avoid identity drift, generic doll-like face, plastic skin, asymmetrical eyes, warped hands, extra fingers, '
     'duplicate limbs, distorted anatomy, text, watermark, random accessories, overprocessed beauty filters, '
+    'a long fully protruding or extra tongue, fake plastic-looking tongue, deformed mouth interior, teeth clipping through lips, '
     'and underwear worn over the outfit: bra over the top, panties over jeans or any lingerie as outerwear.'
 )
 

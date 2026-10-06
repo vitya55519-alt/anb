@@ -137,9 +137,11 @@ EXPRESSIONS: dict[str, str] = {
     # same tasteful smile — tongue, bitten lip, heavy-lidded gaze. Still kept
     # believable and non-grotesque so identity and image quality hold.
     'desire': (
-        'a sensual desiring expression: the tip of her tongue lightly grazing her '
-        'lower lip, heavy-lidded eyes locked on the camera. Confident and alluring, '
-        'not exaggerated or cartoonish.'
+        'a sensual desiring expression: just the tip of her tongue grazing her '
+        'lower lip between relaxed slightly parted lips — a single anatomically '
+        'correct tongue with natural soft pink colour and realistic moist texture, '
+        'never a long fully protruding tongue. Heavy-lidded eyes locked on the '
+        'camera. Confident and alluring, not exaggerated or cartoonish.'
     ),
     'biting_lip': (
         'a flirty expression biting her lower lip: soft half-smile held back by her '
@@ -154,14 +156,48 @@ EXPRESSIONS: dict[str, str] = {
         'hand near her lips, warm bright eyes and a soft smile. Flirty and endearing.'
     ),
     'licking_lips': (
-        'a hungry sensual expression: the tongue slowly running up over her lower lip, '
-        'glossy lips slightly parted, eyes half-lidded and fixed on the camera. Covetous '
-        'and alluring — not a wide open mouth, not cartoonish.'
+        'a hungry sensual expression: the tongue slowly running up over her lower '
+        'lip, tip only visible between the lips — a single anatomically correct '
+        'tongue with natural pink moist texture, never sticking far out of the '
+        'mouth. Glossy lips slightly parted, eyes half-lidded and fixed on the '
+        'camera. Covetous and alluring — not a wide open mouth, not cartoonish.'
     ),
     'pouty_seductive': (
         'a soft seductive pout: lower lip pushed out and caught between a faint smile, '
         'warm inviting eyes tilted toward the camera, head slightly lowered. Sultry and '
         'approachable — not a childish pout.'
+    ),
+    # V3.55.5: the owner asked for more mimicry after a playful tongue-out selfie —
+    # the look stays, the artefacts go: every mouth/tongue/hand expression now
+    # carries an explicit anatomical anchor (single correct tongue, tip only,
+    # natural colour; five-finger natural hand) and a never-protruding clause,
+    # because the raw wording rendered fake-looking tongues on weaker engines.
+    'tongue_out_playful': (
+        'a cute playful brat expression: the very tip of her tongue peeking out '
+        'between a mischievous smile, bright laughing eyes, head tilted. A single '
+        'anatomically correct tongue with natural soft pink texture, just the tip '
+        'showing between the lips — not a long hanging tongue, not cartoonish or '
+        'grotesque.'
+    ),
+    'wink': (
+        'a flirty wink with one eye closed naturally and a soft playful smile; the '
+        'winking eyelid relaxed with a believable crease and lashes, not a squeezed '
+        'distorted eye. Light, cheeky and photogenic.'
+    ),
+    'shush': (
+        'a conspirative playful look: index finger gently pressed to her lips in a '
+        'mute gesture, bright eyes with a hint of a smile, head slightly tilted. The '
+        'hand is a natural slender female hand with five correct fingers.'
+    ),
+    'surprised': (
+        'a charmed surprised expression: softly raised brows, bright widened eyes '
+        'and a small open-mouth "oh" with relaxed lips. Delight rather than shock — '
+        'natural and understated, no exaggerated gape.'
+    ),
+    'sleepy_soft': (
+        'a cozy just-woke-up expression: heavy relaxed eyes half-open, a faint lazy '
+        'half-smile, head slightly sunk as if savouring warmth. Drowsy and tender, '
+        'still photogenic — no distorted face.'
     ),
 }
 
@@ -171,6 +207,8 @@ EXPRESSIONS: dict[str, str] = {
 SENSUAL_KEYS: tuple[str, ...] = (
     'desire', 'biting_lip', 'bedroom_eyes', 'licking_lips', 'pouty_seductive',
     'teasing', 'blow_kiss', 'confident',
+    # V3.55.5: playful mimicry joins the default rotation (all anatomy-anchored).
+    'tongue_out_playful', 'wink', 'shush',
 )
 
 # V3.31.7: pleasant-expression keys used for the per-frame rotation when the
@@ -178,6 +216,8 @@ SENSUAL_KEYS: tuple[str, ...] = (
 # a random pack must never look sad without a reason.
 VARIETY_KEYS: tuple[str, ...] = (
     'smile', 'laughing', 'teasing', 'confident', 'thoughtful', 'shy', 'neutral',
+    # V3.55.5: wider everyday pool for the mood-less rotation.
+    'wink', 'surprised', 'sleepy_soft',
 )
 
 
