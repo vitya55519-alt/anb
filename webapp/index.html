@@ -138,13 +138,14 @@
     opacity: 1; cursor: default; background: rgba(255,255,255,.06);
     border: 1px solid rgba(255,255,255,.12); color: var(--muted); font-weight: 600;
   }
-  .promorow { display: flex; gap: 8px; }
-  .promorow input {
-    flex: 1; min-width: 0; height: 44px; box-sizing: border-box; padding: 0 12px;
+  /* V3.55.5: promo code — a full-width line with the button UNDER it: the
+     side-by-side row lost to .cta's width:100% and squeezed the input stub. */
+  .promoinp {
+    display: block; width: 100%; box-sizing: border-box; height: 44px; padding: 0 12px;
     background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.15);
     border-radius: 12px; color: #fff; font-size: 15px; outline: none; text-transform: uppercase;
   }
-  .promorow button { flex: 0 0 auto; height: 44px; margin: 0; padding: 0 16px; font-size: 14px; white-space: nowrap; border-radius: 12px; }
+  .promoinp:focus { border-color: var(--accent); }
   .row-item .buy-cell { display: flex; align-items: center; gap: 10px; }
   #toast {
     position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-90px);
@@ -3486,15 +3487,15 @@ function renderGiftBlock() {
       <div class="giftdots">${dots}</div>
       ${btn}
       <div style="font-weight:700;font-size:14px;margin:16px 0 8px">🎟 ${esc(L.promo_title)}</div>
-      <div class="promorow">
-        <input id="promoInput" type="text" autocomplete="off" autocapitalize="characters" placeholder="${esc(L.promo_ph)}" maxlength="24">
-        <button class="cta" id="promoBtn">${esc(L.promo_btn)}</button>
-      </div>
+      <input class="promoinp" id="promoInput" type="text" autocomplete="off" autocapitalize="characters" placeholder="${esc(L.promo_ph)}" maxlength="24">
+      <button class="cta" id="promoBtn" style="margin-top:8px">${esc(L.promo_btn)}</button>
     </div>`;
   const gc = document.getElementById('giftClaimBtn');
   if (gc) gc.addEventListener('click', claimDailyGift);
   const pb = document.getElementById('promoBtn');
   if (pb) pb.addEventListener('click', redeemPromoCode);
+  const pi = document.getElementById('promoInput');
+  if (pi) pi.addEventListener('keydown', e => { if (e.key === 'Enter') redeemPromoCode(); });
 }
 function _applyGiftState(j) {
   const st = j.state || null;
