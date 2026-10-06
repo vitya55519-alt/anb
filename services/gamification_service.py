@@ -54,6 +54,10 @@ ACHIEVEMENTS = {
     'views_100': ('100 просмотров', 'Твой персонаж посмотрели 100 раз', [('scene', 'ach_views100')]),
     'first_video': ('Живое видео', 'Заказал(а) первое видео или видеокружок', [('voucher', None)]),
     'first_spicy_photo': ('Искра', 'Заказал(а) первое пикантное фото', []),
+    # V3.55.0: gallery-set collecting (V3.53.0 backlog). Cosmetic-only perks —
+    # no peaches, no Stars, per the standing owner decision above.
+    'gallery_set_first': ('Первый сет', 'Собрал(а) галерею персонажа — 50 фото', []),
+    'gallery_set_five': ('Марафонец галерей', 'Собрано пять сетов', []),
 }
 
 
@@ -81,6 +85,8 @@ MISSION_GROUP: dict[str, str] = {
     'anniv_7': 'romance', 'anniv_30': 'romance', 'anniv_90': 'romance',
     'first_creation': 'creator', 'community_publish': 'creator', 'views_100': 'creator',
     'first_video': 'creator', 'first_spicy_photo': 'creator',
+    # V3.55.0: gallery-set collecting sits with the other photo-loop missions.
+    'gallery_set_first': 'romance', 'gallery_set_five': 'romance',
 }
 # key → (button label, bot callback_data). CTAs reuse live handlers only.
 MISSION_CTA: dict[str, tuple[str, str]] = {
@@ -89,6 +95,8 @@ MISSION_CTA: dict[str, tuple[str, str]] = {
     'views_100': ('📈 Кабинет создателя', 'constructor:start'),
     'first_video': ('🎬 Оживить фото', 'video:animate_last'),
     'first_spicy_photo': ('🔥 Пикантное фото', 'spicy:menu'),
+    # V3.55.0: the gallery-set badge nudges back to the character page bar.
+    'gallery_set_first': ('🖼 К персонажу', 'photo_menu:open'),
     'photo_collector': ('📸 Фото-сюжеты', 'photo_menu:open'),
     # V3.47.1: cover the remaining actionable missions with verified live
     # handlers so a tap in the chat roadmap always lands somewhere real.

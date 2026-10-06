@@ -1,10 +1,11 @@
-"""V3.44.23: custom-peach tile + channel bonus 100 → 30.
+"""V3.44.23: custom-peach tile + channel bonus 100 → 30 (→ 20 in V3.55.0).
 
 1. The shop grid's sixth tile lets the user type any number of peaches;
    the per-unit price matches the small pack (PEACH_PACK_10 rates).
 2. All three payment chains (Stars, Platega, Wallet Pay) carry the custom
    amount through to record_payment, which grants the exact count.
-3. The channel-subscribe bonus default dropped from 100 to 30 peaches.
+3. The channel-subscribe bonus default dropped from 100 to 30 peaches
+   (repriced to 20 in V3.55.0 — the pins track the current default).
 """
 from pathlib import Path
 
@@ -23,8 +24,8 @@ def test_custom_peach_constants_derived_from_pack10():
     assert 'PEACH_CUSTOM_RUB_PER_UNIT = max(1, PEACH_PACK_10_RUB // 10)' in CONFIG
 
 
-def test_channel_bonus_default_is_thirty():
-    assert 'CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "30"))' in CONFIG
+def test_channel_bonus_default_is_twenty():
+    assert 'CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "20"))' in CONFIG
 
 
 # ── 2. webapp_service: the custom product in the invoice list ───────────────
@@ -140,8 +141,8 @@ def test_pay_via_accepts_extra():
 
 # ── 11. frontend: CHAN default matches the new bonus ────────────────────────
 
-def test_chan_default_bonus_is_thirty():
-    assert "bonus: 30" in INDEX
+def test_chan_default_bonus_is_twenty():
+    assert "bonus: 20" in INDEX
 
 
 # ── 12. platega_pay invoice title for custom peaches ────────────────────────

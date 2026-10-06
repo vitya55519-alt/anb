@@ -1199,6 +1199,35 @@ def api_picture_list(telegram_id: int) -> list[dict]:
     return out
 
 
+def api_video_list(telegram_id: int, limit: int = 40) -> list[dict]:
+    """V3.55.0: newest-first gallery of the user's app videos (studio 🎬 +
+    chat-requested videos; circles stay in the chat history). The audit rows
+    live in UserGeneration while the bytes sit in Postgres ChatMedia, so the
+    list survives a Railway disk wipe — /webapp/media re-materializes each
+    file on first hit. Fail-silent: a DB hiccup shows an empty gallery."""
+    try:
+        from models.app_models import UserGeneration
+        with SessionLocal() as s:
+            rows = s.scalars(
+                select(UserGeneration)
+                .where(
+                    UserGeneration.telegram_id == int(telegram_id),
+                    UserGeneration.kind == 'video',
+                    UserGeneration.filename.is_not(None),
+                )
+                .order_by(UserGeneration.created_at.desc())
+                .limit(max(1, int(limit)))
+            ).all()
+        return [{
+            'file': f"/webapp/media/{row.filename}",
+            'prompt': (row.prompt or '')[:120],
+            'created': row.created_at.isoformat() if row.created_at is not None else '',
+        } for row in rows]
+    except Exception:
+        logger.exception('app video list failed user=%s', telegram_id)
+        return []
+
+
 def picture_file_path(telegram_id: int, filename: str) -> Path | None:
     """Resolve a gallery image for serving; None unless it belongs to the user.
 

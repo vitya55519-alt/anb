@@ -67,8 +67,9 @@ def test_studio_video_uses_shared_engine_chain_and_neutral_motion():
     ):
         assert pin in VIDEO_FN
     # an uploaded photo is animated with a neutral hint — never the bot's
-    # sensual preset, whatever the prompt says
-    assert 'motion = prompt or None' in VIDEO_FN
+    # sensual preset, whatever the prompt says (V3.55.0: the free-text branch
+    # survives as the fallback behind a chosen motion preset)
+    assert 'else (prompt or None)' in VIDEO_FN
     assert 'SENSUAL' not in VIDEO_FN
 
 

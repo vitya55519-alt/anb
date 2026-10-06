@@ -322,17 +322,21 @@ PLATEGA_ENABLED = bool(PLATEGA_MERCHANT_ID and PLATEGA_API_KEY)
 # (verified live: POST /v2/transaction/process returns the payment link,
 # GET /transaction/{id} the status). Override only if Platega moves.
 PLATEGA_API_BASE = os.getenv("PLATEGA_API_BASE", "https://app.platega.io").strip().rstrip("/")
-PLATEGA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_PRICE_RUB", "899")))
+# V3.55.0: owner repriced the monthly plan 899 → 699 ₽ (Come Closer benchmark
+# was 899; the cut is a conversion bet for the RU audience).
+PLATEGA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_PRICE_RUB", "699")))
 # V3.34.1: card/SBP price of the weekly plan (rub next to the Stars price).
 # V3.43.0: owner benchmarked Come Closer and asked to take their prices —
 # week 299₽ / month 899₽ / 3 months 1799₽.
-PLATEGA_PREMIUM_WEEKLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_WEEKLY_PRICE_RUB", "299")))
+# V3.55.0: weekly repriced 299 → 199 ₽.
+PLATEGA_PREMIUM_WEEKLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_WEEKLY_PRICE_RUB", "199")))
 # V3.43.0: the 3-month plan the competitor card shows (−50% vs buying monthly).
 PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB", "1799")))
 # Display-only dollar equivalent of the monthly plan. V3.20.1 charged it for
 # real through the FreeKassa multi-currency kassa; Platega invoices in rubles
 # (the payer picks SBP/card/crypto on its page), so this is now just a price tag.
-PREMIUM_PRICE_USD = max(1, int(os.getenv("PREMIUM_PRICE_USD", "5")))
+# V3.55.0: price tag raised $5 → $8 (round marketing number, not an FX quote).
+PREMIUM_PRICE_USD = max(1, int(os.getenv("PREMIUM_PRICE_USD", "8")))
 # Public base URL of this Railway service (generated domain). Used in the
 # Platega payment redirects (return/failedUrl) and every Mini App entry
 # point (menu button, /app command, inline buttons).
@@ -387,7 +391,9 @@ PHOTO_COST_STARS = int(os.getenv("PHOTO_COST_STARS", "25"))
 # PHOTO_COST_STARS * N (250/675/1875 ★ — the 100-pack cost more Stars than
 # three months of Premium) and the ruble side was a ladder guess. Now every
 # pack carries explicit round ₽ + ★ prices that read as one story with the
-# Premium plans: 50★/99₽ · 125★/249₽ · 350★/699₽ next to Premium 500★/899₽.
+# Premium plans: 50★/99₽ · 125★/249₽ · 350★/699₽ next to Premium 500★ (699₽
+# after the V3.55.0 repricing — the 100-pack and a Premium month now cost the
+# same in rubles, which pushes regulars toward Premium: perks on top).
 # One peach lands at ~9.9/8.3/7.0 ₽ — a studio picture (10 🍑) costs about a
 # custom chat photo, not a month of Premium.
 PEACH_PACK_10_STARS = int(os.getenv("PEACH_PACK_10_STARS", "50"))
@@ -478,7 +484,7 @@ COSPLAY_TOKEN_COST = max(1, int(os.getenv("COSPLAY_TOKEN_COST", "10")))
 # V3.36.0: fiat equivalents next to every Stars price (owner request:
 # «напротив каждой цены звездочек добавь цену в рублях и долларах»).
 # Premium and the constructor reuse their REAL charges — the card prices
-# FreeKassa actually bills (rub + the existing $5 Visa/MC premium); every
+# FreeKassa actually bills (rub + the $8 price tag since V3.55.0); every
 # other product shows the ladder below, which is roughly what the Stars
 # themselves cost to top up inside Telegram. Dollars are round marketing
 # numbers, not FX quotes.
@@ -591,8 +597,11 @@ SUPPORT_WELCOME_TEXT = os.getenv(
 ).strip()
 # V3.43.0: «Бесплатные 🍑 за подписку на канал» — the owner's channel and the
 # one-time peach bonus for being a member (checked via getChatMember).
+# V3.55.0: owner repriced the funnel hook 30 → 20 🍑 (a 10🍑 picture/video is
+# now exactly two subscriptions deep, so the free taste stays generous without
+# giving away a full render per sign-up).
 CHANNEL_SUBSCRIBE_USERNAME = os.getenv("CHANNEL_SUBSCRIBE_USERNAME", "Anna634212").strip().lstrip('@')
-CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "30"))
+CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "20"))
 # V3.43.0: how long a Telegram WebApp initData stays acceptable. The 24h
 # default broke users who reopen the Mini App from the client's recents —
 # the hash is still verified, only the replay window is wider now.

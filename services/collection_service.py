@@ -138,6 +138,18 @@ def note_gallery_set(telegram_id: int, character_id: str) -> int:
         if sets_done > prior_n:
             current[str(character_id)] = sets_done
             _gallery_sets[tg] = current
+            # V3.55.0: the gallery-set achievement badges (cosmetic-only).
+            # unlock_achievement is idempotent (an existing row returns False)
+            # and the whole hook is fail-silent — a board hiccup must never
+            # break the delivery response or the character page. The five-set
+            # threshold reads the announced stamp across all characters.
+            try:
+                from services.gamification_service import unlock_achievement
+                unlock_achievement(tg, 'gallery_set_first')
+                if sum(int(v or 0) for v in current.values()) >= 5:
+                    unlock_achievement(tg, 'gallery_set_five')
+            except Exception:
+                pass
             return sets_done - prior_n
         if str(character_id) not in current:
             # First sight: stamp without celebrating so an existing historical

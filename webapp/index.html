@@ -574,6 +574,9 @@
   .studio .hint { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.5; }
   .pgal { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 10px; }
   .pgal img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; display: block; background: var(--card2); }
+    /* V3.55.0: «Мои видео» — portrait tiles, the clips render in place */
+    .vgal { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .vgal video { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 12px; display: block; background: #000; }
   .sect-title {
     color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
     margin: 18px 0 10px; text-align: center;
@@ -1077,6 +1080,10 @@ const L_EN = {
   video_cost: 'One video — 10 🍑', video_generate: 'Create video · 10 🍑',
   video_wait: 'Rendering the video — 1–3 minutes…', video_fail: 'Could not make the video — try again',
   need_prompt_or_photo: 'Describe the scene or attach your own photo',
+  // V3.55.0: «My videos» gallery + 🎬 motion presets.
+  videos_title: 'My videos', videos_empty: 'No videos yet — your clips will appear here.',
+  preset_auto: 'Auto', preset_kiss: 'Kiss', preset_wink: 'Wink', preset_turn: 'Turn',
+  preset_whisper: 'Whisper', preset_touch: 'Touch', preset_caress: 'Caress',
   my_chars: 'MY CHARACTERS', create_char: '＋ Create', no_chars: 'No character yet — create your own girl.',
   author_earnings: '💰 Author earnings', author_earnings_value: n => n.toFixed(1) + ' 🍑',
   // V3.44.11: the creator's cabinet in the profile.
@@ -1226,6 +1233,10 @@ const L_RU = {
   video_cost: 'Одно видео — 10 🍑', video_generate: 'Создать видео · 10 🍑',
   video_wait: 'Рендерю видео — 1–3 минуты…', video_fail: 'Не получилось создать видео — попробуй ещё раз',
   need_prompt_or_photo: 'Опиши сцену или приложи своё фото',
+  // V3.55.0: галерея «Мои видео» + пресеты движения режима 🎬.
+  videos_title: 'Мои видео', videos_empty: 'Видео пока нет — твои ролики появятся здесь.',
+  preset_auto: 'Авто', preset_kiss: 'Поцелуй', preset_wink: 'Подмигивание', preset_turn: 'Оборот',
+  preset_whisper: 'Шёпот', preset_touch: 'Касание', preset_caress: 'Ласка',
   my_chars: 'МОИ ПЕРСОНАЖИ', create_char: '＋ Создать', no_chars: 'Персонажа пока нет — создай свою девушку.',
   author_earnings: '💰 Авторский доход', author_earnings_value: n => n.toFixed(1) + ' 🍑',
   // V3.44.11: кабинет создателя в профиле.
@@ -1322,6 +1333,9 @@ const L_OV = {
     video_cost: 'Un vídeo — 10 🍑', video_generate: 'Crear vídeo · 10 🍑',
     video_wait: 'Renderizando el vídeo — 1–3 minutos…', video_fail: 'No se pudo crear el vídeo — inténtalo de nuevo',
     need_prompt_or_photo: 'Describe la escena o adjunta tu foto',
+    videos_title: 'Mis vídeos', videos_empty: 'Aún no hay vídeos: tus clips aparecerán aquí.',
+    preset_auto: 'Auto', preset_kiss: 'Beso', preset_wink: 'Guiño', preset_turn: 'Giro',
+    preset_whisper: 'Susurro', preset_touch: 'Tacto', preset_caress: 'Caricia',
     media_photo: 'Foto', media_video: 'Vídeo', media_circle: 'Círculo', buy: 'Comprar',
     need_premium: 'Disponible con Premium ⭐', locked: 'Esta chica aún está cerrada',
     settings_title: 'Ajustes', spicy_title: '🌶 Modo atrevido', spicy_on: 'activado', spicy_off: 'desactivado',
@@ -1365,6 +1379,9 @@ const L_OV = {
     video_cost: 'Un video — 10 🍑', video_generate: 'Crea video · 10 🍑',
     video_wait: 'Rendering del video — 1–3 minuti…', video_fail: 'Impossibile creare il video — riprova',
     need_prompt_or_photo: 'Descrivi la scena o allega una tua foto',
+    videos_title: 'Miei video', videos_empty: 'Ancora nessun video: i tuoi clip appariranno qui.',
+    preset_auto: 'Auto', preset_kiss: 'Bacio', preset_wink: 'Ammicca', preset_turn: 'Svolta',
+    preset_whisper: 'Sussurro', preset_touch: 'Tocco', preset_caress: 'Carezza',
     media_photo: 'Foto', media_video: 'Video', media_circle: 'Cerchio', buy: 'Acquista',
     need_premium: 'Disponibile con Premium ⭐', locked: 'Questa ragazza è ancora chiusa',
     settings_title: 'Impostazioni', spicy_title: '🌶 Modalità audace', spicy_on: 'attiva', spicy_off: 'disattivata',
@@ -1408,6 +1425,9 @@ const L_OV = {
     video_cost: 'Une vidéo — 10 🍑', video_generate: 'Créer la vidéo · 10 🍑',
     video_wait: 'Rendu de la vidéo — 1–3 minutes…', video_fail: 'Impossible de créer la vidéo — réessaie',
     need_prompt_or_photo: 'Décris la scène ou joins ta photo',
+    videos_title: 'Mes vidéos', videos_empty: 'Pas encore de vidéo : tes clips apparaîtront ici.',
+    preset_auto: 'Auto', preset_kiss: 'Baiser', preset_wink: 'Clin d\'œil', preset_turn: 'Tour',
+    preset_whisper: 'Murmure', preset_touch: 'Toucher', preset_caress: 'Caresse',
     media_photo: 'Photo', media_video: 'Vidéo', media_circle: 'Cercle', buy: 'Acheter',
     need_premium: 'Disponible avec Premium ⭐', locked: 'Cette fille est encore fermée',
     settings_title: 'Réglages', spicy_title: '🌶 Mode coquin', spicy_on: 'activé', spicy_off: 'désactivé',
@@ -1451,6 +1471,9 @@ const L_OV = {
     video_cost: '一段视频 — 10 🍑', video_generate: '创建视频 · 10 🍑',
     video_wait: '视频渲染中——需要 1–3 分钟…', video_fail: '视频创建失败——请重试',
     need_prompt_or_photo: '描述场景或附上自己的照片',
+    videos_title: '我的视频', videos_empty: '还没有视频——你的短片会出现在这里。',
+    preset_auto: '自动', preset_kiss: '亲吻', preset_wink: '眨眼', preset_turn: '转身',
+    preset_whisper: '耳语', preset_touch: '触摸', preset_caress: '爱抚',
     media_photo: '照片', media_video: '视频', media_circle: '视频圈', buy: '购买',
     need_premium: '需要 Premium ⭐', locked: '这位女孩暂时未解锁',
     settings_title: '设置', spicy_title: '🌶 火辣模式', spicy_on: '已开启', spicy_off: '已关闭',
@@ -1494,6 +1517,9 @@ const L_OV = {
     video_cost: '1本 — 10 🍑', video_generate: '動画を作る · 10 🍑',
     video_wait: '動画レンダリング中——1〜3分かかります…', video_fail: '動画を作成できませんでした——もう一度お試しください',
     need_prompt_or_photo: 'シーンを説明するか写真を添付してください',
+    videos_title: 'マイ動画', videos_empty: 'まだ動画がありません——クリップがここに表示されます。',
+    preset_auto: 'オート', preset_kiss: 'キス', preset_wink: 'ウインク', preset_turn: '振り向き',
+    preset_whisper: 'ささやき', preset_touch: 'タッチ', preset_caress: 'なでしお',
     media_photo: '写真', media_video: '動画', media_circle: 'ビデオサークル', buy: '購入',
     need_premium: 'Premium で利用可能 ⭐', locked: 'この女の子はまだロック中',
     settings_title: '設定', spicy_title: '🌶 セクシーモード', spicy_on: 'オン', spicy_off: 'オフ',
@@ -2981,6 +3007,19 @@ let PIC_STYLE = 'anime';
 // stores the uploaded photo itself — only the generated picture/video.
 let PIC_MODE = 'pic';
 let PIC_UPLOAD = null;
+// V3.55.0: the 🎬 studio motion preset — a key of the server-side
+// VIDEO_PRESETS ("" = auto: the user's own words or the engines' calm
+// default). The client sends only the key, never free text as the motion.
+let PIC_PRESET = '';
+const VID_PRESETS_UI = [
+  ['kiss', '💋'], ['wink', '😏'], ['turn', '💨'],
+  ['whisper', '🥶'], ['touch', '🖐'], ['caress', '🔥'],
+];
+function studioPresetChips() {
+  const auto = `<button type="button" class="langChip${PIC_PRESET ? '' : ' on'}" data-preset="">🎞️ ${esc(L.preset_auto)}</button>`;
+  return auto + VID_PRESETS_UI.map(([k, ic]) =>
+    `<button type="button" class="langChip${PIC_PRESET === k ? ' on' : ''}" data-preset="${k}">${ic} ${esc(L['preset_' + k] || k)}</button>`).join('');
+}
 const STYLE_ICONS = {
   anime: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/><ellipse cx="8.7" cy="11" rx="1.8" ry="2.6" fill="currentColor"/><ellipse cx="15.3" cy="11" rx="1.8" ry="2.6" fill="currentColor"/><path d="M9.7 16.1q2.3 1.6 4.6 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M6.2 7.9q1.7-1.5 3.4-.6M17.8 7.9q-1.7-1.5-3.4-.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
   realistic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8.5 7l1.2-2.2h4.6L15.5 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="13.5" r="1.1" fill="currentColor"/><circle cx="17.7" cy="9.6" r="0.9" fill="currentColor"/></svg>',
@@ -2994,6 +3033,7 @@ function renderStudio() {
       <button type="button" class="modeBtn${isPic ? '' : ' on'}" data-mode="video">🎬 ${esc(L.mode_video)}</button>
     </div>
     <textarea id="picPrompt" maxlength="800" placeholder="${esc(isPic ? L.pic_prompt_ph : L.video_prompt_ph)}"></textarea>
+    ${isPic ? '' : `<div class="langBox" id="vidPresetRow"><div class="langChips">${studioPresetChips()}</div></div>`}
     ${isPic ? `
     <div class="lbl">${esc(L.pic_style)}</div>
     <div class="styleRow" id="picStyleRow">
@@ -3030,6 +3070,9 @@ function renderStudio() {
       ? `<button class="cta" id="picGen">${esc(L.pic_generate)}</button>`
       : `<button class="cta" id="vidGen">🎬 ${esc(L.video_generate)}</button>`}
     <div id="picResult"></div>
+    ${isPic ? '' : `
+    <div class="sect-title">🎬 ${esc(L.videos_title)}</div>
+    <div id="vidGallery"></div>`}
     <div class="sect-title">${esc(L.pic_gallery)}</div>
     <div id="picGallery"></div>`;
   document.querySelectorAll('#picModeSeg .modeBtn').forEach(b => b.addEventListener('click', () => switchStudioMode(b.dataset.mode)));
@@ -3048,6 +3091,13 @@ function renderStudio() {
     }));
   } else {
     document.getElementById('vidGen').addEventListener('click', generateStudioVideo);
+    // V3.55.0: single-select chips; re-tapping the active one (or «Авто»)
+    // clears the preset back to the prompt/neutral default.
+    document.querySelectorAll('#vidPresetRow .langChip').forEach(c => c.addEventListener('click', () => {
+      const k = c.dataset.preset || '';
+      PIC_PRESET = (k === PIC_PRESET) ? '' : k;
+      document.querySelectorAll('#vidPresetRow .langChip').forEach(x => x.classList.toggle('on', (x.dataset.preset || '') === PIC_PRESET));
+    }));
   }
   paintUploadPreview();
 }
@@ -3064,6 +3114,8 @@ function switchStudioMode(mode) {
   const ta2 = document.getElementById('picPrompt');
   if (ta2) ta2.value = keep;
   loadPictures();
+  // V3.55.0: entering 🎬 mode repopulates the «Мои видео» section too.
+  if (PIC_MODE === 'video') loadStudioVideos();
 }
 
 // V3.54.0: the picked file becomes a data URL held only in memory. Client-side
@@ -3140,7 +3192,7 @@ async function generateStudioVideo() {
     const r = await fetch('/webapp/api/studio/video?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, ...(PIC_UPLOAD ? { image: PIC_UPLOAD } : {}) }),
+      body: JSON.stringify({ prompt, ...(PIC_PRESET ? { preset: PIC_PRESET } : {}), ...(PIC_UPLOAD ? { image: PIC_UPLOAD } : {}) }),
     });
     if (r.status === 401) { toast(L.auth_short); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     if (r.status === 402) { toast(L.pic_no_credits); showTab('shop'); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
@@ -3151,11 +3203,36 @@ async function generateStudioVideo() {
     result.innerHTML = `<video controls playsinline preload="metadata" src="${esc(j.file)}?init_data=${encodeURIComponent(tg.initData || '')}" style="width:100%;border-radius:14px;margin-top:10px;display:block;background:#000"></video>`;
     toast('🍑 ' + (j.credits_left != null ? j.credits_left : ''));
     loadMe();
+    loadStudioVideos();
   } catch (e) {
     toast(L.video_fail);
     result.innerHTML = '';
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+// V3.55.0: «Мои видео» — the app-rendered clips (studio + chat videos), the
+// newest first. Bytes live in Postgres, so the gallery survives redeploys;
+// each src carries init_data because /webapp/media is owner-scoped.
+async function loadStudioVideos() {
+  const box = document.getElementById('vidGallery');
+  if (!box || !tg.initData) return;
+  try {
+    const signal = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(20000) : undefined;
+    const r = await fetch('/webapp/api/videos?init_data=' + encodeURIComponent(tg.initData), { cache: 'no-store', signal });
+    if (r.status === 401) return;
+    const j = await r.json();
+    if (!j.ok) return;
+    const vids = j.videos || [];
+    if (!vids.length) {
+      box.innerHTML = `<div class="note">${esc(L.videos_empty)}</div>`;
+      return;
+    }
+    box.innerHTML = `<div class="vgal">${vids.map(v =>
+      `<video controls playsinline preload="metadata" src="${esc(v.file)}?init_data=${encodeURIComponent(tg.initData || '')}"></video>`).join('')}</div>`;
+  } catch (e) {
+    box.innerHTML = ''; // silent — retried on the next mode switch / tab visit
   }
 }
 
@@ -3980,7 +4057,7 @@ document.getElementById('charCommentBtn').addEventListener('click', async () => 
 });
 
 // ── V3.43.0: channel-subscribe peach bonus (banner + gift modal) ──────────
-let CHAN = { url: 'https://t.me/Anna634212', bonus: 30, granted: false };
+let CHAN = { url: 'https://t.me/Anna634212', bonus: 20, granted: false };
 async function loadChannel() {
   try {
     const r = await fetch('/webapp/api/channel_bonus?init_data=' + encodeURIComponent(tg.initData || ''));
@@ -4035,7 +4112,7 @@ checkConstructorStatus();
 function lazyLoadTab(id){
   if(id==='shop'&&!_shopLoaded){_shopLoaded=true;loadShop();}
   if(id==='chats'&&!_chatsLoaded){_chatsLoaded=true;loadChats();}
-  if(id==='pics'&&!_picsLoaded){_picsLoaded=true;loadPictures();}
+  if(id==='pics'&&!_picsLoaded){_picsLoaded=true;loadPictures();if(PIC_MODE==='video')loadStudioVideos();}
   if(id==='profile'&&!_leaderLoaded){_leaderLoaded=true;loadLeaderboard();}
   if(id==='missions'&&!_missionsLoaded){_missionsLoaded=true;loadMissions();}
 }

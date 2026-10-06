@@ -19,7 +19,7 @@ def test_version_bumped():
 def test_usd_price_config():
     # V3.44.21: display-only — the real USD charge died with the FreeKassa
     # multi-currency kassa; Platega invoices in rubles.
-    assert 'PREMIUM_PRICE_USD = max(1, int(os.getenv("PREMIUM_PRICE_USD", "5")))' in CONFIG
+    assert 'PREMIUM_PRICE_USD = max(1, int(os.getenv("PREMIUM_PRICE_USD", "8")))' in CONFIG
 
 
 def test_circles_are_spoken():

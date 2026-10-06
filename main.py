@@ -10018,6 +10018,20 @@ async def _webapp_api_pictures(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'pictures': webapp_service.api_picture_list(telegram_id)})
 
 
+async def _webapp_api_videos(request: web.Request) -> web.Response:
+    # V3.55.0: the user's «Мои видео» gallery — app-rendered videos only
+    # (studio 🎬 + chat-requested clips). Same owner-scoped auth model as
+    # /webapp/api/pictures; the bytes are served by /webapp/media/{filename}.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    return web.json_response({'ok': True, 'videos': webapp_service.api_video_list(telegram_id)})
+
+
 async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     # V3.38.0: the «Картинки» studio — freeform generation for one photo credit
     # (🍑). The prompt passes a hard minors/coercion filter, gets the standing
@@ -10195,8 +10209,13 @@ async def _webapp_api_studio_video(request: web.Request) -> web.Response:
         engines.append(('hf', animate_image_hf))
     if not engines:
         return web.json_response({'ok': False, 'error': 'no_engine'}, status=503)
-    # Neutral motion only — a user's own photo is never sent to a sensual prompt.
-    motion = prompt or None
+    # V3.55.0: a studio motion preset — the same server-side VIDEO_PRESETS the
+    # bot ships (the client sends only a key, never free text into the engine
+    # prompt). Without a preset: the user's own words as a light motion hint,
+    # else the engines' calm default. The scene-gated sensual preset stays
+    # unreachable here — a user's own photo never rides it.
+    preset = str(body.get('preset', '')).strip()
+    motion = VIDEO_PRESETS[preset][1] if preset in VIDEO_PRESETS else (prompt or None)
     video_bytes = None
     used_engine = None
     last_error = None
@@ -10224,7 +10243,7 @@ async def _webapp_api_studio_video(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'save'}, status=500)
     if not spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS):
         logger.warning('studio video credit race user=%s', telegram_id)
-    track_event(uid, 'webapp_studio_video_generated', metadata={'engine': used_engine})
+    track_event(uid, 'webapp_studio_video_generated', metadata={'engine': used_engine, 'preset': preset})
     return web.json_response({
         'ok': True,
         'file': f'/webapp/media/{filename}',
@@ -11350,6 +11369,8 @@ async def _start_web_server() -> None:
     # prompt-generated frame, priced at WEBAPP_VIDEO_COST_CREDITS 🍑.
     app.router.add_post('/webapp/api/studio/video', _webapp_api_studio_video)
     app.router.add_get('/webapp/api/pictures', _webapp_api_pictures)
+    # V3.55.0: «Мои видео» — the app video gallery (Postgres-backed media).
+    app.router.add_get('/webapp/api/videos', _webapp_api_videos)
     app.router.add_get('/webapp/picture/{filename}', _webapp_picture)
     # V3.51.1: admin-only feed of what users generate in the Mini App.
     app.router.add_get('/webapp/api/admin/generations', _webapp_api_admin_generations)

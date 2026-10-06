@@ -53,11 +53,12 @@ def test_config_platega_block():
     assert 'PLATEGA_API_KEY = os.getenv("PLATEGA_API_KEY", "").strip()' in CONFIG
     assert 'PLATEGA_ENABLED = bool(PLATEGA_MERCHANT_ID and PLATEGA_API_KEY)' in CONFIG
     assert 'PLATEGA_API_BASE = os.getenv("PLATEGA_API_BASE", "https://app.platega.io").strip().rstrip("/")' in CONFIG
-    assert 'PLATEGA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_PRICE_RUB", "899")))' in CONFIG
-    assert 'PLATEGA_PREMIUM_WEEKLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_WEEKLY_PRICE_RUB", "299")))' in CONFIG
+    # V3.55.0: monthly repriced 899 → 699 ₽, the $ tag 5 → 8 (pins track defaults).
+    assert 'PLATEGA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_PRICE_RUB", "699")))' in CONFIG
+    assert 'PLATEGA_PREMIUM_WEEKLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_WEEKLY_PRICE_RUB", "199")))' in CONFIG
     assert 'PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB", "1799")))' in CONFIG
     # the USD premium price survived as a display-only tag
-    assert 'PREMIUM_PRICE_USD = max(1, int(os.getenv("PREMIUM_PRICE_USD", "5")))' in CONFIG
+    assert 'PREMIUM_PRICE_USD = max(1, int(os.getenv("PREMIUM_PRICE_USD", "8")))' in CONFIG
 
 
 def test_order_model_is_platega():

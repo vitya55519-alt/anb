@@ -42,7 +42,8 @@ def test_support_buttons_deep_link_the_support_bot():
 
 def test_channel_bonus_config_and_helpers():
     assert 'CHANNEL_SUBSCRIBE_USERNAME = os.getenv("CHANNEL_SUBSCRIBE_USERNAME", "Anna634212")' in CONFIG
-    assert 'CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "30"))' in CONFIG
+    # V3.55.0: owner repriced the bonus 30 → 20 🍑, the pin tracks the default.
+    assert 'CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "20"))' in CONFIG
     # grant is idempotent, revoke mirrors it (unsubscribe annuls the bonus)
     assert 'def has_credit_grant(telegram_id:int, reason:str)->bool:' in PAYMENTS
     assert 'def revoke_photo_credits(telegram_id:int, amount:int, reason:str)->int:' in PAYMENTS
