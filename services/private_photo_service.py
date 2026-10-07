@@ -584,17 +584,20 @@ async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[st
         # Money is committed the moment the task is accepted — ledger it before
         # polling so a later timeout/failure still counts against the budget.
         deadline = asyncio.get_event_loop().time() + SPICYAPI_IMAGE_TIMEOUT
-        wait = 2.0
+        # V3.56.5: the old backoff (2s start, ×1.5, 15s cap) slept up to 15s
+        # AFTER the job was done — the owner's log lost ~13s to it. recordInfo
+        # is free, so poll tight: detection latency ≤ 3s.
+        wait = 1.0
         while asyncio.get_event_loop().time() < deadline:
             await asyncio.sleep(wait)
-            wait = min(wait * 1.5, 15.0)
+            wait = min(wait * 1.25, 3.0)
             task_info = await _spicyapi_call("GET", f"/jobs/recordInfo?taskId={task_id}")
             state = task_info.get("state")
             if state == "succeeded":
                 assets = task_info.get("output", {}).get("assets", [])
                 asset_url = next((a["url"] for a in assets if a.get("url")), None)
                 if asset_url:
-                    async with aiohttp.ClientSession() as session:
+                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
                         async with session.get(asset_url) as resp:
                             if resp.status == 200:
                                 result = await resp.read()

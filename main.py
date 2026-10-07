@@ -9462,11 +9462,66 @@ async def _root(request: web.Request) -> web.Response:
 # JSON endpoints; /webapp/photo/<id> serves canonical character portraits.
 # ---------------------------------------------------------------------------
 
+_WEBAPP_PAGE_CACHE: dict = {}
+
 async def _webapp_index(request: web.Request) -> web.Response:
+    # V3.56.6: the SPA is one 280KB+ file and every open used to re-download it
+    # uncompressed (FileResponse never gzips, never 304s) — the owner's «сама
+    # загрузка мини приложения долго». Now: bytes cached in memory, gzip once,
+    # ETag revalidation so a repeat open costs 304-not-Moved, not 280KB.
     index = webapp_service.WEBAPP_INDEX
-    if index.exists():
-        return web.FileResponse(index, headers={'Cache-Control': 'no-cache'})
-    return web.Response(text='webapp is not deployed', status=500)
+    if not index.exists():
+        return web.Response(text='webapp is not deployed', status=500)
+    import gzip as _gzip
+    import hashlib as _hashlib
+    stat = index.stat()
+    cached = _WEBAPP_PAGE_CACHE.get('page')
+    if cached is None or cached[0] != stat.st_mtime or cached[1] != stat.st_size:
+        raw = index.read_bytes()
+        cached = (stat.st_mtime, stat.st_size, raw, _gzip.compress(raw, 6),
+                  '"' + _hashlib.sha1(raw).hexdigest()[:16] + '"')
+        _WEBAPP_PAGE_CACHE['page'] = cached
+    _mtime, _size, raw, gz, etag = cached
+    base_headers = {'ETag': etag, 'Cache-Control': 'no-cache', 'Vary': 'Accept-Encoding'}
+    if request.headers.get('If-None-Match') == etag:
+        return web.Response(status=304, headers=base_headers)
+    if 'gzip' in (request.headers.get('Accept-Encoding') or ''):
+        return web.Response(body=gz, content_type='text/html',
+                            headers={**base_headers, 'Content-Encoding': 'gzip'})
+    return web.Response(body=raw, content_type='text/html', headers=base_headers)
+
+
+@web.middleware
+async def _webapp_gzip(request: web.Request, handler) -> web.StreamResponse:
+    # V3.56.6: compress JSON/text API payloads (characters, chats, history —
+    # tens of KB each) for the app. Small bodies and already-encoded responses
+    # pass through untouched; FileResponse/photo bytes are skipped (content type).
+    response = await handler(request)
+    try:
+        if not isinstance(response, web.Response) or response.status != 200:
+            return response
+        ctype = response.content_type or ''
+        if not (ctype.startswith('application/json') or ctype.startswith('text/')):
+            return response
+        if response.headers.get('Content-Encoding'):
+            return response
+        if 'gzip' not in (request.headers.get('Accept-Encoding') or ''):
+            return response
+        payload = response.body
+        if payload is None or len(payload) < 1024:
+            return response
+        import gzip as _gzip
+        compressed = _gzip.compress(payload, 5)
+        if len(compressed) >= len(payload):
+            return response
+        headers = dict(response.headers)
+        headers.pop('Content-Length', None)
+        headers['Content-Encoding'] = 'gzip'
+        headers['Vary'] = 'Accept-Encoding'
+        return web.Response(status=response.status, body=compressed, headers=headers)
+    except Exception:
+        logger.warning('gzip middleware failed for %s', request.path, exc_info=True)
+        return response
 
 
 async def _webapp_api_me(request: web.Request) -> web.Response:
@@ -11864,6 +11919,8 @@ async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
 
 async def _start_web_server() -> None:
     app = web.Application()
+    # V3.56.6: gzip every JSON/text API response the app fetches on boot.
+    app.middlewares.append(_webapp_gzip)
     app.router.add_get('/', _root)
     app.router.add_route('*', '/platega/callback', _platega_callback)
     # Success/fail are browser redirects off the payment page; keep '*' so
