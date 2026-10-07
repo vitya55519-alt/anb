@@ -139,7 +139,7 @@ from services.character_card_service import (
     get_scenario_hook,
 )
 from services.character_dna_service import trait_bars
-from services.photo_reaction_service import react_to_photo
+from services.photo_reaction_service import react_to_photo, MAX_BASE64_BYTES
 from services.custom_character_service import (
     CONSTRUCTOR_STEPS, OPTION_LABELS, PARAM_TITLES, build_avatar_prompt,
     custom_character_id, get_all_custom_characters, get_custom_character,
@@ -10496,26 +10496,9 @@ def _custom_premium_gate_block(character_id: str, telegram_id: int) -> bool:
         return True
 
 
-async def _webapp_api_chat_send(request: web.Request) -> web.Response:
-    # V3.35.0: a message typed in the app goes through the exact pipeline the
-    # bot chat uses (memory, relationships, persona) — same gates too: 18+
-    # consent and the daily free-message limit.
-    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
-    if not pairs:
-        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    user_info = webapp_service.init_data_user(pairs)
-    telegram_id = user_info.get('id')
-    if not telegram_id:
-        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    body = body or {}
-    character_id = str(body.get('character_id', ''))
-    text = str(body.get('text', '')).strip()[:4000]
-    if not character_id or not text:
-        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+def _webapp_chat_gate(character_id: str, telegram_id: int):
+    """V3.57.0: the shared access gate for one app-chat turn (text/voice/photo) —
+    the same checks the bot chat runs: character access, 18+ consent, daily limit."""
     if is_custom_character(character_id):
         # Constructor personas are public: anyone can open a dialog with her.
         if not get_custom_character_by_id(character_id):
@@ -10534,6 +10517,38 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
     if telegram_id not in ADMIN_TELEGRAM_IDS and not can_send_message(telegram_id):
         return web.json_response({'ok': False, 'error': 'limit'}, status=429)
+    return None
+
+
+async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str):
+    """V3.57.0: synthesize her voice note for an app-chat reply when allowed —
+    same rules as the Telegram _send_voice_note: the voice_enabled toggle plus
+    Premium (admins bypass). Returns the saved media URL or None on any failure:
+    a broken TTS must never eat the text reply."""
+    try:
+        user = get_user(telegram_id)
+        if not user or not getattr(user, 'voice_enabled', False):
+            return None
+        if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+            return None
+        clean = ''.join(ch for ch in text if ch.isalnum() or ch in ' .,!?:;-—…()«»\'\n')[:600]
+        if not clean.strip():
+            return None
+        audio = await synthesize_bytes(clean, user.voice_style, character_id=character_id)
+        filename = webapp_service.save_chat_media(telegram_id, audio, 'ogg', 'audio/ogg')
+        return f'/webapp/media/{filename}'
+    except Exception:
+        logger.warning('webapp reply voice failed user=%s', telegram_id)
+        return None
+
+
+async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str,
+                            text: str, extra: dict | None = None) -> web.Response:
+    # V3.35.0: a message typed in the app goes through the exact pipeline the
+    # bot chat uses (memory, relationships, persona) — same gates too: 18+
+    # consent and the daily free-message limit.
+    # V3.57.0: shared by the text and voice endpoints; a text reply may come
+    # back with her voice attached when the user has voice replies enabled.
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     track_event(uid, 'webapp_chat_message', metadata={'character_id': character_id})
     # V3.51.0: a photo request typed in the Mini App chat used to be answered
@@ -10570,7 +10585,8 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
                 return web.json_response({'ok': True, 'reply': cap, 'photo_url': url,
                                           'credits_left': get_photo_credits(telegram_id),
                                           'set_completed': _sets_done_now,
-                                          'gallery': gallery_set_progress(telegram_id, character_id)})
+                                          'gallery': gallery_set_progress(telegram_id, character_id),
+                                          **(extra or {})})
     try:
         answer = await anna_reply(
             telegram_id, user_info.get('first_name') or 'ты', text,
@@ -10579,7 +10595,129 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
     except Exception:
         logger.exception('webapp chat reply failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
-    return web.json_response({'ok': True, 'reply': answer})
+    payload = {'ok': True, 'reply': answer}
+    voice_url = await _webapp_reply_voice_url(telegram_id, character_id, answer)
+    if voice_url:
+        payload['voice_url'] = voice_url
+    payload.update(extra or {})
+    return web.json_response(payload)
+
+
+async def _webapp_api_chat_send(request: web.Request) -> web.Response:
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))
+    text = str(body.get('text', '')).strip()[:4000]
+    if not character_id or not text:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    gate = _webapp_chat_gate(character_id, telegram_id)
+    if gate:
+        return gate
+    return await _webapp_chat_turn(telegram_id, user_info, character_id, text)
+
+
+async def _webapp_api_chat_voice(request: web.Request) -> web.Response:
+    """V3.57.0: a voice message from the Mini App — the mic recording arrives as
+    base64, Whisper transcribes it, and the turn continues through the exact
+    text pipeline. user_text goes back so the SPA can show what was heard."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))
+    audio_b64 = str(body.get('audio', ''))
+    if not character_id or not audio_b64:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    gate = _webapp_chat_gate(character_id, telegram_id)
+    if gate:
+        return gate
+    try:
+        data = base64.b64decode(audio_b64)
+    except Exception:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    if not data or len(data) > 5 * 1024 * 1024:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    try:
+        heard = await transcribe(io.BytesIO(data))
+    except Exception:
+        logger.exception('webapp stt failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'stt'}, status=502)
+    heard = (heard or '').strip()[:4000]
+    if not heard:
+        return web.json_response({'ok': False, 'error': 'no_speech'}, status=400)
+    return await _webapp_chat_turn(telegram_id, user_info, character_id, heard,
+                                   extra={'user_text': heard})
+
+
+async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
+    """V3.57.0: the user sends a photo (a selfie, for example) in the app chat —
+    the vision model looks at it and she reacts in character (compliments him).
+    Same pipeline as the bot's V3.19.0 photo reaction; the picture is stored as
+    ordinary chat media so the dialog keeps its context."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))
+    image_b64 = str(body.get('image', ''))
+    mime = str(body.get('mime', 'image/jpeg'))
+    if not character_id or not image_b64 or mime not in ('image/jpeg', 'image/png', 'image/webp'):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    gate = _webapp_chat_gate(character_id, telegram_id)
+    if gate:
+        return gate
+    if not PHOTO_REACTION_ENABLED:
+        return web.json_response({'ok': False, 'error': 'disabled'}, status=400)
+    now = _time.time()
+    if now - _photo_reaction_ts.get(telegram_id, 0) < PHOTO_REACTION_COOLDOWN_SECONDS:
+        return web.json_response({'ok': False, 'error': 'cooldown'}, status=429)
+    try:
+        data = base64.b64decode(image_b64)
+    except Exception:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    if len(data) < 100 or len(data) > MAX_BASE64_BYTES:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    _photo_reaction_ts[telegram_id] = now
+    try:
+        reaction = await react_to_photo(image_b64, mime_type=mime, character_id=character_id)
+    except Exception:
+        logger.exception('webapp photo reaction failed user=%s', telegram_id)
+        reaction = None
+    if not reaction:
+        return web.json_response({'ok': False, 'error': 'reply'}, status=502)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    filename = webapp_service.save_chat_media(telegram_id, data, 'jpg', mime)
+    url = f'/webapp/media/{filename}'
+    save_message(uid, character_id, 'user', '📷', media_kind='photo', media_url=url)
+    save_message(uid, character_id, 'assistant', reaction)
+    track_event(uid, 'photo_reaction_sent', metadata={'character_id': character_id, 'source': 'webapp'})
+    return web.json_response({'ok': True, 'reply': reaction, 'user_photo_url': url})
 
 
 async def _webapp_api_chat_persona(request: web.Request) -> web.Response:
@@ -12077,6 +12215,8 @@ async def _start_web_server() -> None:
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
     app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)
+    app.router.add_post('/webapp/api/chat/voice', _webapp_api_chat_voice)
+    app.router.add_post('/webapp/api/chat/photo', _webapp_api_chat_photo)
     app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)

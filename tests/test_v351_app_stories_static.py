@@ -30,7 +30,8 @@ def test_story_endpoints_declared_and_mounted():
 
 
 def test_chat_send_routes_photo_intent_before_the_text_model():
-    body = MAIN[MAIN.index('async def _webapp_api_chat_send('):MAIN.index('async def _webapp_api_chat_send') + 6000]
+    # V3.57.0: the pipeline moved into the shared _webapp_chat_turn helper
+    body = MAIN[MAIN.index('async def _webapp_chat_turn('):MAIN.index('async def _webapp_chat_turn') + 6000]
     assert 'parse_photo_request(' in body
     assert '_contextualize_vague_photo(' in body
     assert 'await anna_reply(' in body

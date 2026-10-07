@@ -242,6 +242,9 @@ def test_no_unescaped_backend_strings_in_templates():
             # V3.55.5: the shop gift block — 'dots' is a static emoji cell
             # fragment, 'btn' is built from esc()'d L-constants only.
             'dots', 'btn',
+            # V3.57.0: the local blob: preview URL of a photo picked on the
+            # device — never backend data.
+            'URL.createObjectURL(file)',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         violations.append(expr)

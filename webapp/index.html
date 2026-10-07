@@ -263,6 +263,10 @@
     font-size: 16px; padding: 0 18px; border-radius: 14px; cursor: pointer;
   }
   .chat-input button:disabled { opacity: .5; }
+  /* V3.57.0: user upload buttons — ghost styling; the mic glows red while recording */
+  .chat-input button.ghost { background: var(--card); border: 1px solid rgba(255,255,255,.12); padding: 0 12px; font-size: 15px; }
+  .chat-input button.rec { background: linear-gradient(135deg, #e74c3c, #c0392b); border: none; animation: recpulse 1.2s ease-in-out infinite; font-size: 12px; min-width: 62px; }
+  @keyframes recpulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
   /* V3.39.0: Come Closer character page — photo strip, CTA, plot block */
   .strip { display: flex; gap: 8px; overflow-x: auto; padding: 12px 14px 4px; }
   .strip img { width: 74px; height: 96px; object-fit: cover; border-radius: 12px; border: 2px solid transparent; cursor: pointer; flex: 0 0 auto; background: var(--card2); }
@@ -849,7 +853,10 @@
       <button id="featHot" class="hot"><span class="ic">💋</span><span class="lb" id="lbFeatHot"></span></button>
     </div>
     <input id="chatText" maxlength="4000" placeholder="">
+    <button id="chatAttach" class="ghost" type="button">📎</button>
+    <button id="chatMic" class="ghost" type="button">🎤</button>
     <button id="chatSend">➤</button>
+    <input type="file" id="chatFileIn" accept="image/*" style="display:none">
   </div>
 </div>
 <!-- V3.39.0: the Come Closer character page — photo strip, «Начать чат»,
@@ -1172,6 +1179,7 @@ const L_EN = {
   char_search_ph: 'Search the community by name or #tag…',
   media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
   media_wait_voice: 'Recording her voice…', media_wait_video: 'Rendering a video — 1–3 min…',
+  stt_wait: 'Reading your voice message…', mic_denied: 'No microphone access — allow it in the browser settings', mic_short: 'Too short — say something 🙂', mic_nospeech: 'Could not make out the words — try again', mic_err: 'Voice message failed — try again', attach_err: 'Could not send the photo', attach_big: 'Photo too heavy — send a lighter one',
   circle_limit: 'No free circles left today — Premium refreshes them daily',
   // V3.42.2: readable labels for the chat action pills (the voice button is gone).
   media_photo: 'Photo', media_video: 'Video', media_circle: 'Circle',
@@ -1334,6 +1342,7 @@ const L_RU = {
   char_search_ph: 'Поиск по сообществу: имя или #тег…',
   media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
   media_wait_voice: 'Записываю голос…', media_wait_video: 'Рисую видео — 1–3 минуты…',
+  stt_wait: 'Узнаю твой голос…', mic_denied: 'Нет доступа к микрофону — разреши его в настройках', mic_short: 'Слишком коротко — скажи что-нибудь 🙂', mic_nospeech: 'Не смогла разобрать слова — попробуй ещё раз', mic_err: 'Голосовое не отправилось — попробуй ещё раз', attach_err: 'Не удалось отправить фото', attach_big: 'Фото слишком тяжёлое — пришли полегче',
   circle_limit: 'Бесплатные кружочки на сегодня кончились — Premium обновляет их каждый день',
   // V3.42.2: читаемые подписи к кнопкам чата (голосовая кнопка убрана).
   media_photo: 'Фото', media_video: 'Видео', media_circle: 'Кружок',
@@ -2150,21 +2159,7 @@ async function sendChat() {
     }
     const j = await r.json();
     if (!j.ok) { toast(L.reply_err); return; }
-    // V3.51.0: a photo request typed in the app chat now comes back with a real
-    // photo attached (photo_url) alongside the short caption — render both.
-    if (j.photo_url) {
-      box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
-    } else {
-      box.insertAdjacentHTML('beforeend', chatBubble('bot', j.reply, null));
-    }
-    box.scrollTop = box.scrollHeight;
-    // V3.53.0: a photo-on-request can complete a 50-photo gallery set.
-    if (j.set_completed > 0) {
-      toast(L.collect_done);
-      if (j.gallery && typeof CHARPAGE !== 'undefined' && CHARPAGE && CHARPAGE.id === CHAT.id) {
-        renderCollectBar(Object.assign({ ok: true }, j.gallery));
-      }
-    }
+    renderChatReply(j);
   } catch (e) {
     toast(L.reply_err);
   } finally {
@@ -2172,6 +2167,155 @@ async function sendChat() {
     if (typing) typing.remove();
     chatBusy = false;
     input.focus();
+  }
+}
+
+// ── V3.57.0: voice messages and user photos in the app chat ──────────────
+function renderChatReply(j) {
+  // V3.51.0: a photo request comes back with a real photo attached;
+  // V3.57.0: a text reply may carry her voice note (voice_url).
+  const box = document.getElementById('chatMsgs');
+  if (j.photo_url) {
+    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
+  } else if (j.voice_url) {
+    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'voice', media_url: j.voice_url, ts: null }));
+  } else {
+    box.insertAdjacentHTML('beforeend', chatBubble('bot', j.reply, null));
+  }
+  box.scrollTop = box.scrollHeight;
+  // V3.53.0: a photo-on-request can complete a 50-photo gallery set.
+  if (j.set_completed > 0) {
+    toast(L.collect_done);
+    if (j.gallery && typeof CHARPAGE !== 'undefined' && CHARPAGE && CHARPAGE.id === CHAT.id) {
+      renderCollectBar(Object.assign({ ok: true }, j.gallery));
+    }
+  }
+}
+
+function blobToB64(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
+let _rec = null, _recChunks = [], _recStart = 0, _recTick = null;
+
+function _micIdle() {
+  const btn = document.getElementById('chatMic');
+  btn.classList.remove('rec');
+  btn.textContent = '🎤';
+  if (_recTick) { clearInterval(_recTick); _recTick = null; }
+}
+
+async function toggleChatMic() {
+  // tap once = start recording, tap again (or 60 s) = stop and send
+  if (_rec) { _rec.stop(); return; }
+  if (!CHAT || chatBusy) return;
+  if (!tg.initData) { toast(L.auth_short); return; }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) { toast(L.mic_denied); return; }
+  const mime = (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) ? 'audio/ogg;codecs=opus' : '';
+  try {
+    _rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+  } catch (e) {
+    _rec = null; stream.getTracks().forEach(t => t.stop()); toast(L.mic_err); return;
+  }
+  _recChunks = [];
+  _rec.ondataavailable = (e) => { if (e.data && e.data.size) _recChunks.push(e.data); };
+  _rec.onstop = () => {
+    const blob = new Blob(_recChunks, { type: mime || 'audio/webm' });
+    _recChunks = []; _rec = null;
+    stream.getTracks().forEach(t => t.stop());
+    _micIdle();
+    const secs = (Date.now() - _recStart) / 1000;
+    if (secs < 0.8 || blob.size < 1500) { toast(L.mic_short); return; }
+    sendChatVoice(blob);
+  };
+  _rec.start();
+  _recStart = Date.now();
+  const btn = document.getElementById('chatMic');
+  btn.classList.add('rec');
+  btn.textContent = '⏹ 0"';
+  _recTick = setInterval(() => {
+    const s = Math.floor((Date.now() - _recStart) / 1000);
+    btn.textContent = '⏹ ' + s + '"';
+    if (s >= 60 && _rec) _rec.stop();
+  }, 400);
+}
+
+async function sendChatVoice(blob) {
+  if (!CHAT || chatBusy) return;
+  chatBusy = true;
+  const box = document.getElementById('chatMsgs');
+  const empty = box.querySelector('.chat-empty');
+  if (empty) empty.remove();
+  box.insertAdjacentHTML('beforeend', `<div class="typing" id="chatTyping">${esc(L.stt_wait)}</div>`);
+  box.scrollTop = box.scrollHeight;
+  try {
+    const b64 = await blobToB64(blob);
+    const r = await fetch('/webapp/api/chat/voice?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: CHAT.id, audio: b64 }),
+    });
+    let j = null;
+    try { j = await r.json(); } catch (e) {}
+    if (!j || !j.ok) {
+      const err = j && j.error;
+      toast(err === 'no_speech' ? L.mic_nospeech : (err === 'limit' ? L.limit_reached : L.mic_err));
+      if (err === 'limit') showTab('shop');
+      return;
+    }
+    // his bubble — what the speech recognition actually heard
+    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'user', content: '🎤 ' + (j.user_text || ''), ts: null }));
+    renderChatReply(j);
+  } catch (e) {
+    toast(L.mic_err);
+  } finally {
+    const typing = document.getElementById('chatTyping');
+    if (typing) typing.remove();
+    chatBusy = false;
+  }
+}
+
+async function sendChatPhoto(file) {
+  // V3.57.0: he sends a photo (a selfie) — she looks at it and compliments him.
+  if (!CHAT || chatBusy) return;
+  if (!tg.initData) { toast(L.auth_short); return; }
+  if (file.size > 4 * 1024 * 1024) { toast(L.attach_big); return; }
+  chatBusy = true;
+  const box = document.getElementById('chatMsgs');
+  const empty = box.querySelector('.chat-empty');
+  if (empty) empty.remove();
+  box.insertAdjacentHTML('beforeend', `<div class="msg user"><img class="m" src="${URL.createObjectURL(file)}" alt=""></div>`);
+  box.insertAdjacentHTML('beforeend', `<div class="typing" id="chatTyping">${esc(CHAT.name)} …</div>`);
+  box.scrollTop = box.scrollHeight;
+  try {
+    const b64 = await blobToB64(file);
+    const r = await fetch('/webapp/api/chat/photo?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: CHAT.id, image: b64, mime: file.type || 'image/jpeg' }),
+    });
+    let j = null;
+    try { j = await r.json(); } catch (e) {}
+    if (!j || !j.ok) {
+      const err = j && j.error;
+      toast(err === 'limit' ? L.limit_reached : L.attach_err);
+      if (err === 'limit') showTab('shop');
+      return;
+    }
+    if (j.reply) box.insertAdjacentHTML('beforeend', chatBubble('bot', j.reply, null));
+    box.scrollTop = box.scrollHeight;
+  } catch (e) {
+    toast(L.attach_err);
+  } finally {
+    const typing = document.getElementById('chatTyping');
+    if (typing) typing.remove();
+    chatBusy = false;
   }
 }
 
@@ -4134,6 +4278,14 @@ document.getElementById('chatBack').addEventListener('click', () => {
 document.getElementById('chatSend').addEventListener('click', sendChat);
 document.getElementById('chatText').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendChat();
+});
+// V3.57.0: mic (voice message) and 📎 (his photo → her compliment)
+document.getElementById('chatMic').addEventListener('click', toggleChatMic);
+document.getElementById('chatAttach').addEventListener('click', () => document.getElementById('chatFileIn').click());
+document.getElementById('chatFileIn').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (f) sendChatPhoto(f);
 });
 document.getElementById('chatSelect').addEventListener('click', () => { if (CHAT) doSelect(CHAT); });
 // V3.43.7: the photo button opens the scene menu first (the same picker the

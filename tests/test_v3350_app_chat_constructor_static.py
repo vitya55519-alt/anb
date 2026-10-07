@@ -127,7 +127,9 @@ def test_chat_history_handler():
 
 
 def test_chat_send_handler_reuses_bot_pipeline():
-    handler = MAIN[MAIN.index('async def _webapp_api_chat_send('):MAIN.index('async def _webapp_api_constructor_options(')]
+    # V3.57.0: gates and the pipeline live in the shared _webapp_chat_gate /
+    # _webapp_chat_turn helpers used by the text, voice and photo endpoints.
+    handler = MAIN[MAIN.index('def _webapp_chat_gate('):MAIN.index('async def _webapp_api_chat_persona(')]
     assert 'validate_init_data' in handler
     assert "status=401" in handler
     # custom personas are public — anyone can open a dialog with her
