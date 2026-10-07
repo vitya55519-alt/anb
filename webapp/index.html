@@ -4,12 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AnnaBot</title>
+<!-- V3.57.2: load-speed hints — warm the DNS/TLS for the SDK origin and start
+     its download during HTML parsing instead of at the blocking <script> tag. -->
+<link rel="preconnect" href="https://telegram.org" crossorigin>
+<link rel="preload" as="script" href="https://telegram.org/js/telegram-web-app.js">
 <!-- The official Telegram WebApp SDK. It is the platform bridge (tg.*) and
      is intentionally NOT SRI-pinned: Telegram serves it unversioned and updates
      it in place, so a pinned hash would break the Mini App on their next
      release. Inside the Telegram client the client-side copy takes precedence
      anyway; this tag is the fallback for external browsers. -->
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://telegram.org/js/telegram-web-app.js" fetchpriority="high"></script>
 <style>
   :root {
     --bg: #1a1023;

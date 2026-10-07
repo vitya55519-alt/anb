@@ -58,8 +58,8 @@ def test_persona_endpoint_and_route():
     body = MAIN[MAIN.index('async def _webapp_api_chat_persona'):MAIN.index('async def _webapp_api_chats')]
     assert "style not in ('tender', 'passionate')" in body
     # the same chat gates run first: consent + premium
-    assert "error': 'consent'" in body
-    assert "error': 'premium_required'" in body
+    assert "return 'consent'" in body
+    assert "return 'premium_required'" in body
     assert 'row.persona_style = style' in body
 
 

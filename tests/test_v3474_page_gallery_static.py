@@ -50,7 +50,7 @@ def test_pgal_route():
     assert "async def _webapp_pgal(request: web.Request) -> web.Response:" in MAIN
     assert "app.router.add_get('/webapp/pgal/{character_id}/{shot_id}', _webapp_pgal)" in MAIN
     route = MAIN[MAIN.index('async def _webapp_pgal('):MAIN.index('async def _webapp_gif(')]
-    assert 'webapp_service.get_page_gallery_shot(shot_id)' in route
+    assert 'webapp_service.get_page_gallery_shot, shot_id' in route
     assert "headers={'Cache-Control': 'public, max-age=604800'}" in route
 
 

@@ -183,7 +183,7 @@ def test_pay_link_sbp_uses_platega():
     handler = MAIN[MAIN.index('async def _webapp_api_pay_link('):]
     handler = handler[:handler.index('async def _webapp_api_select(')]
     assert 'if not PLATEGA_ENABLED or not product.get(\'rub\'):' in handler
-    assert 'platega_service.create_order(telegram_id, order_product, amount)' in handler
+    assert 'platega_service.create_order, telegram_id, order_product, amount' in handler
     assert 'await platega_service.create_payment(' in handler
     # no SCI fallback — a failed link is a 502, not a dead tab
     assert "{'ok': False, 'error': 'invoice'}, status=502" in handler

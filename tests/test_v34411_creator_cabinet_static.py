@@ -25,7 +25,7 @@ def test_creator_cabinet_handler_auth():
     handler = MAIN[MAIN.index('async def _webapp_api_creator_cabinet('):MAIN.index('async def _webapp_api_creator_publish(')]
     assert 'validate_init_data' in handler
     assert 'init_data_user(pairs)' in handler
-    assert 'api_creator_cabinet(telegram_id)' in handler
+    assert 'webapp_service.api_creator_cabinet, telegram_id' in handler
     assert "'Cache-Control': 'no-store'" in handler
     assert "status=401" in handler
 
@@ -35,7 +35,7 @@ def test_creator_publish_handler_auth_and_ownership():
     assert 'validate_init_data' in handler
     assert "body.get('character_id', '')" in handler
     assert "status=400" in handler
-    assert 'publish_creator_character(' in handler
+    assert 'publish_creator_character,' in handler
     assert "bool(body.get('publish'))" in handler
 
 

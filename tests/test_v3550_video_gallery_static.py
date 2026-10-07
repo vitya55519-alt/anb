@@ -45,7 +45,7 @@ def test_videos_route_registered_and_authed():
     # a user without an id both answer 401 before anything is listed
     assert VIDLIST_FN.count("'error': 'auth'}, status=401") >= 2
     assert 'validate_init_data' in VIDLIST_FN
-    assert 'webapp_service.api_video_list(telegram_id)' in VIDLIST_FN
+    assert 'webapp_service.api_video_list, telegram_id' in VIDLIST_FN
 
 
 def test_studio_video_preset_key_only_motion():

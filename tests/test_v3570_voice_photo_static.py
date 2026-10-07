@@ -23,7 +23,8 @@ def test_shared_gate_and_turn_helpers():
     assert 'def _webapp_chat_gate(' in MAIN
     assert 'async def _webapp_chat_turn(' in MAIN
     # the text, voice and photo endpoints all pass through the same gate
-    assert MAIN.count('gate = _webapp_chat_gate(character_id, telegram_id)') == 3
+    # V3.57.2: the gate is PostgreSQL reads, so it runs off the event loop
+    assert MAIN.count('gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)') == 3
     assert MAIN.count('return await _webapp_chat_turn(') == 2
 
 
@@ -42,8 +43,8 @@ def test_reply_voice_note_keeps_the_premium_gate():
     # same rules as the Telegram _send_voice_note: toggle + Premium (admins bypass)
     assert "getattr(user, 'voice_enabled', False)" in body
     assert 'if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):' in body
-    assert 'await synthesize_bytes(clean, user.voice_style, character_id=character_id)' in body
-    assert "save_chat_media(telegram_id, audio, 'ogg', 'audio/ogg')" in body
+    assert 'await synthesize_bytes(clean, voice_style, character_id=character_id)' in body
+    assert "save_chat_media, telegram_id, audio, 'ogg', 'audio/ogg'" in body
     # a broken TTS must never eat the text reply
     assert 'return None' in body
     # and the reply payload carries it

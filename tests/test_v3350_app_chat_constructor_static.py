@@ -160,7 +160,7 @@ def test_constructor_routes_registered():
 
 def test_constructor_options_handler():
     handler = MAIN[MAIN.index('async def _webapp_api_constructor_options('):MAIN.index('async def _webapp_api_constructor_draft(')]
-    assert 'api_constructor_steps(request.query.get(' in handler
+    assert 'api_constructor_steps, request.query.get(' in handler
     assert "'stars': CONSTRUCTOR_COST_STARS," in handler
     assert "telegram_id in ADMIN_TELEGRAM_IDS" in handler
     # V3.44.9: the peach price rides along — the in-app wizard's main pay path.

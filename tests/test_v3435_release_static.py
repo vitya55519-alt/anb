@@ -81,7 +81,7 @@ def test_spicy_endpoint_lives_in_the_webapp_api():
     assert "return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)" in handler
     # the flag actually flips
     assert 'update_user_settings(telegram_id, spicy_mode=not current)' in handler
-    assert "return web.json_response({'ok': True, 'spicy_mode': not current}" in handler
+    assert "return web.json_response({'ok': True, 'spicy_mode': flipped}" in handler
 
 
 def test_api_me_exposes_spicy_mode():

@@ -53,8 +53,8 @@ def test_channel_bonus_endpoint():
     handler = MAIN[MAIN.index('async def _webapp_api_channel_bonus('):]
     handler = handler[:handler.index('async def _webapp_api_char_like(')]
     assert 'get_chat_member(' in handler
-    assert 'grant_photo_credits(' in handler
-    assert 'revoke_photo_credits(' in handler
+    assert 'grant_photo_credits,' in handler
+    assert 'revoke_photo_credits,' in handler
     assert "add_route('*', '/webapp/api/channel_bonus', _webapp_api_channel_bonus)" in MAIN
     # frontend banner + gift modal
     assert 'id="chanBanner"' in INDEX or 'chanbanner' in INDEX
@@ -130,7 +130,7 @@ def test_pay_method_modal_backend():
     assert 'validate_init_data' in handler
     # sbp → Platega payment page (order row + POST /v2/transaction/process)
     assert "method == 'sbp'" in handler
-    assert 'platega_service.create_order(' in handler
+    assert 'platega_service.create_order,' in handler
     assert 'platega_service.create_payment(' in handler
     # crypto → Wallet Pay invoice (TON/USDT)
     assert "method == 'crypto'" in handler

@@ -9626,9 +9626,14 @@ async def _webapp_api_me(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-    track_event(uid, 'webapp_opened')
-    me = webapp_service.api_me(telegram_id)
+    # V3.57.2: the boot call — ensure_user may INSERT and api_me reads several
+    # tables; off the loop so one user's cold start never stalls the others.
+    def _boot():
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        track_event(uid, 'webapp_opened')
+        return webapp_service.api_me(telegram_id)
+
+    me = await asyncio.to_thread(_boot)
     # V3.47.0: the viral invite link (src_share attribution + credits this user
     # as referrer) rides along so the share / post-gen CTA works anywhere.
     try:
@@ -9658,14 +9663,18 @@ async def _webapp_api_characters(request: web.Request) -> web.Response:
             telegram_id = webapp_service.init_data_user(pairs).get('id')
     # V3.43.2: no-store — a heuristically cached JSON kept handing the grid
     # the previous payload (stale cards, missing live tiles) after deploys.
-    return web.json_response({'ok': True, 'characters': webapp_service.api_characters(telegram_id)},
+    # V3.57.2: the whole SQLAlchemy read runs off the event loop — one slow
+    # storefront query must never freeze every other request in the process.
+    characters = await asyncio.to_thread(webapp_service.api_characters, telegram_id)
+    return web.json_response({'ok': True, 'characters': characters},
                              headers={'Cache-Control': 'no-store'})
 
 
 async def _webapp_api_leaderboard(request: web.Request) -> web.Response:
     """V3.44.0: popularity leaderboard — top characters by views."""
     limit = min(20, max(3, int(request.query.get('limit', '10') or '10')))
-    return web.json_response({'ok': True, 'leaderboard': webapp_service.character_leaderboard(limit)})
+    board = await asyncio.to_thread(webapp_service.character_leaderboard, limit)
+    return web.json_response({'ok': True, 'leaderboard': board})
 
 
 async def _webapp_api_author(request: web.Request) -> web.Response:
@@ -9674,7 +9683,8 @@ async def _webapp_api_author(request: web.Request) -> web.Response:
     author_id = str(request.query.get('author_id', '') or '').strip()[:64]
     if not author_id:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    return web.json_response(webapp_service.api_author(author_id),
+    # V3.57.2: reads the author's whole character list — off the loop.
+    return web.json_response(await asyncio.to_thread(webapp_service.api_author, author_id),
                              headers={'Cache-Control': 'no-store'})
 
 
@@ -9687,7 +9697,7 @@ async def _webapp_api_creator_cabinet(request: web.Request) -> web.Response:
     telegram_id = webapp_service.init_data_user(pairs).get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
-    return web.json_response(webapp_service.api_creator_cabinet(telegram_id),
+    return web.json_response(await asyncio.to_thread(webapp_service.api_creator_cabinet, telegram_id),
                              headers={'Cache-Control': 'no-store'})
 
 
@@ -9708,13 +9718,13 @@ async def _webapp_api_creator_publish(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', '') or '').strip()[:64]
     if not character_id:
         return web.json_response({'ok': False, 'error': 'bad_input'}, status=400)
-    result = webapp_service.publish_creator_character(
-        telegram_id, character_id, bool(body.get('publish')))
+    result = await asyncio.to_thread(
+        webapp_service.publish_creator_character, telegram_id, character_id, bool(body.get('publish')))
     # V3.45.28: an app submit-to-витрина now queues her for review — ping the
     # admins with the same approve/reject card the bot constructor path sends.
     if result.get('ok') and result.get('moderation'):
         try:
-            row = get_custom_character_by_id(character_id)
+            row = await asyncio.to_thread(get_custom_character_by_id, character_id)
             if row:
                 await _request_character_moderation(
                     character_id, telegram_id, row.display_name, row.avatar_file_id)
@@ -9732,7 +9742,7 @@ async def _webapp_api_creator_character(request: web.Request) -> web.Response:
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
     character_id = str(request.query.get('character_id', '') or '').strip()[:64]
-    return web.json_response(webapp_service.api_creator_character(telegram_id, character_id),
+    return web.json_response(await asyncio.to_thread(webapp_service.api_creator_character, telegram_id, character_id),
                              headers={'Cache-Control': 'no-store'})
 
 
@@ -9752,8 +9762,8 @@ async def _webapp_api_creator_edit(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', '') or '').strip()[:64]
     if not character_id:
         return web.json_response({'ok': False, 'error': 'bad_input'}, status=400)
-    return web.json_response(webapp_service.edit_creator_character(
-        telegram_id, character_id,
+    return web.json_response(await asyncio.to_thread(
+        webapp_service.edit_creator_character, telegram_id, character_id,
         name=body.get('name'), bio=body.get('bio'), age=body.get('age')))
 
 
@@ -9773,7 +9783,8 @@ async def _webapp_api_creator_delete(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', '') or '').strip()[:64]
     if not character_id:
         return web.json_response({'ok': False, 'error': 'bad_input'}, status=400)
-    return web.json_response(webapp_service.delete_creator_character(telegram_id, character_id))
+    return web.json_response(await asyncio.to_thread(
+        webapp_service.delete_creator_character, telegram_id, character_id))
 
 
 async def _webapp_api_achievements(request: web.Request) -> web.Response:
@@ -9784,7 +9795,7 @@ async def _webapp_api_achievements(request: web.Request) -> web.Response:
     telegram_id = webapp_service.init_data_user(pairs).get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
-    return web.json_response(webapp_service.api_achievements(telegram_id),
+    return web.json_response(await asyncio.to_thread(webapp_service.api_achievements, telegram_id),
                              headers={'Cache-Control': 'no-store'})
 
 
@@ -9797,8 +9808,8 @@ async def _webapp_api_collection(request: web.Request) -> web.Response:
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
     character_id = request.query.get('character_id') or CHARACTER_ID
-    return web.json_response(webapp_service.api_collection(telegram_id, character_id),
-                             headers={'Cache-Control': 'no-store'})
+    payload = await asyncio.to_thread(webapp_service.api_collection, telegram_id, character_id)
+    return web.json_response(payload, headers={'Cache-Control': 'no-store'})
 
 
 async def _webapp_api_missions(request: web.Request) -> web.Response:
@@ -9809,7 +9820,7 @@ async def _webapp_api_missions(request: web.Request) -> web.Response:
     telegram_id = webapp_service.init_data_user(pairs).get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
-    return web.json_response(webapp_service.api_missions(telegram_id),
+    return web.json_response(await asyncio.to_thread(webapp_service.api_missions, telegram_id),
                              headers={'Cache-Control': 'no-store'})
 
 
@@ -9821,7 +9832,7 @@ async def _webapp_api_gallery(request: web.Request) -> web.Response:
     telegram_id = webapp_service.init_data_user(pairs).get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
-    data = webapp_service.api_gallery(telegram_id)
+    data = await asyncio.to_thread(webapp_service.api_gallery, telegram_id)
     # V3.47.0: attach the sharer's own invite link so the gallery / post-gen CTA
     # and the share sheet carry attribution that credits this user as referrer.
     try:
@@ -9845,7 +9856,7 @@ async def _webapp_gallery_share(request: web.Request) -> web.Response:
         image_id = int(request.match_info['image_id'])
     except (TypeError, ValueError):
         return web.Response(status=404)
-    data = webapp_service.share_image_bytes(telegram_id, image_id)
+    data = await asyncio.to_thread(webapp_service.share_image_bytes, telegram_id, image_id)
     if not data:
         return web.Response(status=404)
     return web.Response(body=data, content_type='image/jpeg',
@@ -9864,7 +9875,7 @@ async def _webapp_gallery_image(request: web.Request) -> web.Response:
         image_id = int(request.match_info['image_id'])
     except (TypeError, ValueError):
         return web.Response(status=404)
-    data = webapp_service.gallery_image_bytes(telegram_id, image_id)
+    data = await asyncio.to_thread(webapp_service.gallery_image_bytes, telegram_id, image_id)
     if not data:
         return web.Response(status=404)
     return web.Response(body=data, content_type='image/jpeg',
@@ -9876,7 +9887,7 @@ async def _webapp_badge(request: web.Request) -> web.Response:
     art (no personal data), so it is served by key and cacheable."""
     key = (request.match_info.get('key') or '').strip()
     from services.gamification_service import get_badge
-    badge = get_badge(key)
+    badge = await asyncio.to_thread(get_badge, key)
     if not badge:
         return web.Response(status=404)
     body, ctype = badge
@@ -9899,7 +9910,7 @@ async def _webapp_gallery_save(request: web.Request) -> web.Response:
         image_id = int(body.get('image_id'))
     except Exception:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    data = webapp_service.share_image_bytes(int(telegram_id), image_id)
+    data = await asyncio.to_thread(webapp_service.share_image_bytes, int(telegram_id), image_id)
     if not data:
         return web.json_response({'ok': False, 'error': 'not_found'}, status=404)
     try:
@@ -9918,7 +9929,8 @@ async def _webapp_api_comments(request: web.Request) -> web.Response:
     if not character_id:
         return web.json_response({'ok': False, 'error': 'no_character'}, status=400)
     limit = min(50, max(5, int(request.query.get('limit', '20') or '20')))
-    return web.json_response({'ok': True, 'comments': webapp_service.get_character_comments(character_id, limit)})
+    return web.json_response({'ok': True, 'comments': await asyncio.to_thread(
+        webapp_service.get_character_comments, character_id, limit)})
 
 
 async def _webapp_api_comment_add(request: web.Request) -> web.Response:
@@ -9935,7 +9947,8 @@ async def _webapp_api_comment_add(request: web.Request) -> web.Response:
     text = str(body.get('text', ''))[:500].strip()
     if not character_id or not text:
         return web.json_response({'ok': False, 'error': 'bad_input'}, status=400)
-    comment = webapp_service.add_character_comment(character_id, telegram_id, text)
+    comment = await asyncio.to_thread(
+        webapp_service.add_character_comment, character_id, telegram_id, text)
     return web.json_response({'ok': True, 'comment': comment})
 
 
@@ -9948,7 +9961,8 @@ async def _webapp_api_notif_prefs(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
-    return web.json_response({'ok': True, 'prefs': webapp_service.get_notification_prefs(int(telegram_id))})
+    return web.json_response({'ok': True, 'prefs': await asyncio.to_thread(
+        webapp_service.get_notification_prefs, int(telegram_id))})
 
 
 async def _webapp_api_notif_update(request: web.Request) -> web.Response:
@@ -9961,7 +9975,7 @@ async def _webapp_api_notif_update(request: web.Request) -> web.Response:
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
     body = await request.json()
-    prefs = webapp_service.update_notification_prefs(int(telegram_id), body)
+    prefs = await asyncio.to_thread(webapp_service.update_notification_prefs, int(telegram_id), body)
     return web.json_response({'ok': True, 'prefs': prefs})
 
 
@@ -9978,14 +9992,14 @@ async def _webapp_api_gift_claim(request: web.Request) -> web.Response:
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
     from services import gift_service
-    res = gift_service.claim_daily_gift(int(telegram_id))
+    res = await asyncio.to_thread(gift_service.claim_daily_gift, int(telegram_id))
     status_map = {'auth': 401, 'consent': 403, 'inactive': 403,
                   'capped': 409, 'duplicate': 409}
     if not res.get('ok'):
         status = status_map.get(res.get('error', ''), 409)
         return web.json_response(res, status=status, headers={'Cache-Control': 'no-store'})
     # fresh state so the SPA can repaint the series dots without a second call
-    res['state'] = gift_service.gift_status(int(telegram_id))
+    res['state'] = await asyncio.to_thread(gift_service.gift_status, int(telegram_id))
     return web.json_response(res, headers={'Cache-Control': 'no-store'})
 
 
@@ -10008,7 +10022,7 @@ async def _webapp_api_promo(request: web.Request) -> web.Response:
     except Exception:
         body = {}
     from services import gift_service
-    res = gift_service.redeem_promo(int(telegram_id), str(body.get('code', ''))[:48])
+    res = await asyncio.to_thread(gift_service.redeem_promo, int(telegram_id), str(body.get('code', ''))[:48])
     if not res.get('ok'):
         status = GIFT_PROMO_ERROR_HTTP.get(res.get('error', ''), 404)
         return web.json_response(res, status=status, headers={'Cache-Control': 'no-store'})
@@ -10024,7 +10038,7 @@ async def _webapp_api_simulated_messages(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
-    messages = webapp_service.get_pending_simulated_messages(int(telegram_id))
+    messages = await asyncio.to_thread(webapp_service.get_pending_simulated_messages, int(telegram_id))
     return web.json_response({'ok': True, 'messages': messages})
 
 
@@ -10037,17 +10051,20 @@ async def _webapp_api_simulated_message_deliver(request: web.Request) -> web.Res
     message_id = int(body.get('message_id', 0))
     if not message_id:
         return web.json_response({'ok': False, 'error': 'bad_input'}, status=400)
-    ok = webapp_service.mark_simulated_message_delivered(message_id)
+    ok = await asyncio.to_thread(webapp_service.mark_simulated_message_delivered, message_id)
     return web.json_response({'ok': ok})
 
 
 async def _webapp_api_shop(request: web.Request) -> web.Response:
-    return web.json_response({'ok': True, 'shop': webapp_service.api_shop(request.query.get('lang', 'ru'))})
+    # V3.57.2: the catalogue reads prices/settings from PostgreSQL.
+    return web.json_response({'ok': True, 'shop': await asyncio.to_thread(
+        webapp_service.api_shop, request.query.get('lang', 'ru'))})
 
 
 async def _webapp_api_legal(request: web.Request) -> web.Response:
     # The Platega-required documents, visible in the Mini App as well.
-    return web.json_response({'ok': True, 'legal': webapp_service.api_legal(request.query.get('lang', 'ru'))})
+    return web.json_response({'ok': True, 'legal': await asyncio.to_thread(
+        webapp_service.api_legal, request.query.get('lang', 'ru'))})
 
 
 async def _webapp_api_partner(request: web.Request) -> web.Response:
@@ -10059,8 +10076,12 @@ async def _webapp_api_partner(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-    payload = webapp_service.api_partner(uid, telegram_id)
+    # V3.57.2: partner stats aggregate the referral table — off the loop.
+    def _load():
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        return webapp_service.api_partner(uid, telegram_id)
+
+    payload = await asyncio.to_thread(_load)
     try:
         me = await bot.get_me()
         payload['link'] = referral_link(me.username or 'bot', telegram_id)
@@ -10080,7 +10101,7 @@ async def _webapp_api_partner_withdraw(request: web.Request) -> web.Response:
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
     from services import partner_service
-    result = partner_service.request_payout(telegram_id)
+    result = await asyncio.to_thread(partner_service.request_payout, telegram_id)
     if not result.get('ok'):
         status = 409 if result.get('reason') == 'pending_exists' else 400
         return web.json_response({'ok': False, 'error': result.get('reason', 'failed')}, status=status)
@@ -10109,10 +10130,10 @@ async def _webapp_photo(request: web.Request) -> web.Response:
         # photo 404s forever. Re-download it from the persisted Telegram
         # file_id on demand (lazy GENERATION stays in the chat flow — this
         # route only heals what Telegram already stores).
-        row = get_custom_character_by_id(character_id)
+        row = await asyncio.to_thread(get_custom_character_by_id, character_id)
         if row and row.avatar_file_id:
             cached = Path(__file__).resolve().parent / 'data' / 'custom_references' / character_id / 'avatar.jpg'
-            if not cached.exists():
+            if not await asyncio.to_thread(cached.exists):
                 try:
                     healed = await ensure_custom_avatar_cached(bot, character_id)
                     if healed:
@@ -10123,7 +10144,7 @@ async def _webapp_photo(request: web.Request) -> web.Response:
         idx = int(request.query.get('i', '0') or 0)
     except ValueError:
         idx = 0
-    photo = webapp_service.character_photo(character_id, idx)
+    photo = await asyncio.to_thread(webapp_service.character_photo, character_id, idx)
     if not photo:
         return web.Response(status=404)
     data, content_type = photo
@@ -10138,7 +10159,7 @@ async def _webapp_pgal(request: web.Request) -> web.Response:
         shot_id = int(request.match_info['shot_id'])
     except (TypeError, ValueError):
         return web.Response(status=404)
-    shot = webapp_service.get_page_gallery_shot(shot_id)
+    shot = await asyncio.to_thread(webapp_service.get_page_gallery_shot, shot_id)
     if not shot:
         return web.Response(status=404)
     return web.Response(body=shot[0], content_type=shot[1], headers={'Cache-Control': 'public, max-age=604800'})
@@ -10147,34 +10168,34 @@ async def _webapp_pgal(request: web.Request) -> web.Response:
 async def _webapp_gif(request: web.Request) -> web.Response:
     # V3.40.0: the animated card preview — a public storefront asset with the
     # same caching as the static photo (the grid shows it instead of the JPEG).
-    gif = webapp_service.character_card_gif(request.match_info['character_id'])
+    gif = await asyncio.to_thread(webapp_service.character_card_gif, request.match_info['character_id'])
     if not gif:
         return web.Response(status=404)
     content_type = 'image/webp' if gif.suffix.lower() == '.webp' else 'image/gif'
-    return web.Response(body=gif.read_bytes(), content_type=content_type,
+    return web.Response(body=await asyncio.to_thread(gif.read_bytes), content_type=content_type,
                         headers={'Cache-Control': 'public, max-age=604800'})
 
 
 async def _webapp_live(request: web.Request) -> web.Response:
     # V3.43.1: the i2v living tile — a muted looping mp4 where the heroine
     # smiles and blows an air kiss; the grid plays it instead of the webp.
-    live = webapp_service.character_card_live(request.match_info['character_id'])
+    live = await asyncio.to_thread(webapp_service.character_card_live, request.match_info['character_id'])
     if not live:
         return web.Response(status=404)
-    return web.Response(body=live.read_bytes(), content_type='video/mp4',
+    return web.Response(body=await asyncio.to_thread(live.read_bytes), content_type='video/mp4',
                         headers={'Cache-Control': 'public, max-age=604800'})
 
 
 async def _webapp_card(request: web.Request) -> web.Response:
     # V3.43.3: the admin-uploaded storefront media (photo/gif/mp4) — same
     # immutable caching as the other ?v=-stamped assets.
-    override = webapp_service.character_card_override(request.match_info['character_id'])
+    override = await asyncio.to_thread(webapp_service.character_card_override, request.match_info['character_id'])
     if not override:
         return web.Response(status=404)
     content_type = {'.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
                     '.gif': 'image/gif', '.mp4': 'video/mp4'}.get(
         override.suffix.lower(), 'application/octet-stream')
-    return web.Response(body=override.read_bytes(), content_type=content_type,
+    return web.Response(body=await asyncio.to_thread(override.read_bytes), content_type=content_type,
                         headers={'Cache-Control': 'public, max-age=604800'})
 
 
@@ -10189,19 +10210,28 @@ async def _webapp_api_char_view(request: web.Request) -> web.Response:
         character_id = str(body.get('character_id') or '').strip()
     except Exception:
         return web.json_response({'ok': False, 'error': 'body'}, status=400)
-    if not get_card(character_id):
+    # V3.57.2: the view counter used to open its own transaction per page view —
+    # the hottest write in the storefront, so the card lookup and the increment
+    # both leave the event loop.
+    if not await asyncio.to_thread(get_card, character_id):
         return web.json_response({'ok': False, 'error': 'character'}, status=404)
-    new_views = webapp_service.bump_character_views(character_id)
+    new_views = await asyncio.to_thread(webapp_service.bump_character_views, character_id)
     # V3.46.0: mission — a custom persona crossing 100 views unlocks her
     # author's «100 просмотров» (scene reward granted inside unlock_achievement).
     if new_views == 100:
         try:
-            author = get_custom_character_by_id(character_id)
+            author = await asyncio.to_thread(get_custom_character_by_id, character_id)
             if author and author.telegram_id:
                 await _notify_unlock(int(author.telegram_id), int(author.telegram_id), 'views_100')
         except Exception:
             logger.exception('views_100 unlock failed char=%s', character_id)
     return web.json_response({'ok': True, 'views': new_views})
+
+
+def _track_channel_bonus(telegram_id: int, event: str, balance: int) -> None:
+    """V3.57.2: worker-thread helper — ensure_user + track_event are both writes,
+    so the channel-bonus legs call them inside one offloaded function."""
+    track_event(ensure_user(telegram_id), event, metadata={'credits': balance})
 
 
 async def _webapp_api_channel_bonus(request: web.Request) -> web.Response:
@@ -10218,11 +10248,15 @@ async def _webapp_api_channel_bonus(request: web.Request) -> web.Response:
     user_info = webapp_service.init_data_user(pairs) if pairs else {}
     telegram_id = user_info.get('id')
     if request.method != 'POST':
-        granted = bool(telegram_id) and has_credit_grant(telegram_id, 'channel_subscribe')
+        # V3.57.2: every credits/grant read below is a PostgreSQL round trip.
+        granted = bool(telegram_id) and await asyncio.to_thread(
+            has_credit_grant, telegram_id, 'channel_subscribe')
         return web.json_response({**base, 'granted': granted})
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    await asyncio.to_thread(
+        ensure_user, telegram_id, user_info.get('first_name') or '',
+        language_code=user_info.get('language_code'))
     try:
         member = await bot.get_chat_member(chat_id=f'@{CHANNEL_SUBSCRIBE_USERNAME}', user_id=telegram_id)
         subscribed = member.status in ('member', 'administrator', 'creator')
@@ -10230,35 +10264,38 @@ async def _webapp_api_channel_bonus(request: web.Request) -> web.Response:
         logger.exception('channel membership check failed user=%s channel=@%s', telegram_id, CHANNEL_SUBSCRIBE_USERNAME)
         return web.json_response({'ok': False, 'error': 'check'}, status=502)
     if subscribed:
-        balance = grant_photo_credits(telegram_id, CHANNEL_SUBSCRIBE_BONUS_CREDITS, reason='channel_subscribe')
+        balance = await asyncio.to_thread(
+            grant_photo_credits, telegram_id, CHANNEL_SUBSCRIBE_BONUS_CREDITS, 'channel_subscribe')
         if balance == -1:
             return web.json_response({**base, 'subscribed': True, 'granted': False,
-                                        'already': True, 'credits': get_photo_credits(telegram_id)})
-        track_event(ensure_user(telegram_id), 'channel_bonus_granted', metadata={'credits': balance})
+                                        'already': True,
+                                        'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
+        await asyncio.to_thread(_track_channel_bonus, telegram_id, 'channel_bonus_granted', balance)
         return web.json_response({**base, 'subscribed': True, 'granted': True, 'credits': balance})
-    if has_credit_grant(telegram_id, 'channel_subscribe'):
-        balance = revoke_photo_credits(telegram_id, CHANNEL_SUBSCRIBE_BONUS_CREDITS, 'channel_subscribe')
-        track_event(ensure_user(telegram_id), 'channel_bonus_revoked', metadata={'credits': balance})
+    if await asyncio.to_thread(has_credit_grant, telegram_id, 'channel_subscribe'):
+        balance = await asyncio.to_thread(
+            revoke_photo_credits, telegram_id, CHANNEL_SUBSCRIBE_BONUS_CREDITS, 'channel_subscribe')
+        await asyncio.to_thread(_track_channel_bonus, telegram_id, 'channel_bonus_revoked', balance)
         return web.json_response({**base, 'subscribed': False, 'granted': False,
                                     'revoked': True, 'credits': balance})
     return web.json_response({**base, 'subscribed': False, 'granted': False,
-                                'credits': get_photo_credits(telegram_id)})
+                                'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
 
 
 async def _webapp_api_char_like(request: web.Request) -> web.Response:
     # V3.43.0: the «♡ N» like on the character page — GET returns the counter
     # and whether this user liked her, POST toggles it (one like per user).
     character_id = str(request.query.get('character_id') or '').strip()
-    if not get_card(character_id):
+    if not await asyncio.to_thread(get_card, character_id):
         return web.json_response({'ok': False, 'error': 'character'}, status=404)
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
     telegram_id = webapp_service.init_data_user(pairs).get('id') if pairs else None
     if request.method != 'POST':
-        state = webapp_service.character_like_state(character_id, telegram_id)
+        state = await asyncio.to_thread(webapp_service.character_like_state, character_id, telegram_id)
         return web.json_response({'ok': True, **state})
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    state = webapp_service.toggle_character_like(character_id, telegram_id)
+    state = await asyncio.to_thread(webapp_service.toggle_character_like, character_id, telegram_id)
     return web.json_response({'ok': True, **state})
 
 
@@ -10279,8 +10316,15 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
     except Exception:
         body = {}
     product_id = str((body or {}).get('product', ''))
-    lang = user_lang(telegram_id)
-    product = next((p for p in webapp_service.api_invoice_products(lang) if p['id'] == product_id), None)
+    # V3.57.2: the shop catalogue and the user's language are DB reads, so the
+    # priced product list is built in a worker thread.
+    lang = await asyncio.to_thread(user_lang, telegram_id)
+
+    def _catalogue():
+        return webapp_service.api_invoice_products(lang)
+
+    _products = await asyncio.to_thread(_catalogue)
+    product = next((p for p in _products if p['id'] == product_id), None)
     if not product:
         return web.json_response({'ok': False, 'error': 'unknown_product'}, status=400)
     # V3.44.23: custom peach amount — the frontend sends the desired count in
@@ -10294,8 +10338,10 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
         product['stars'] = _ca * PEACH_CUSTOM_STARS_PER_UNIT
         product['payload'] = f'peach_custom_{_ca}'
         product['title'] = f'🍑 {_ca} персиков' if user_lang(telegram_id) != EN else f'🍑 {_ca} peaches'
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-    track_event(uid, 'webapp_invoice_created', metadata={'product': product_id})
+    uid = await asyncio.to_thread(
+        ensure_user, telegram_id, user_info.get('first_name') or '',
+        language_code=user_info.get('language_code'))
+    await asyncio.to_thread(track_event, uid, 'webapp_invoice_created', metadata={'product': product_id})
     try:
         link = await bot.create_invoice_link(
             title=product['title'],
@@ -10331,8 +10377,14 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
         body = {}
     product_id = str((body or {}).get('product', ''))
     method = str((body or {}).get('method', ''))
-    lang = user_lang(telegram_id)
-    product = next((p for p in webapp_service.api_invoice_products(lang) if p['id'] == product_id), None)
+    # V3.57.2: language + catalogue reads leave the loop (see /api/invoice).
+    lang = await asyncio.to_thread(user_lang, telegram_id)
+
+    def _catalogue():
+        return webapp_service.api_invoice_products(lang)
+
+    _products = await asyncio.to_thread(_catalogue)
+    product = next((p for p in _products if p['id'] == product_id), None)
     # V3.44.23: custom peach amount — compute the dynamic product fields from
     # the ``amount`` the frontend sends.
     if product_id == 'peach_custom':
@@ -10355,12 +10407,14 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
         order_product = f'peach_custom_{_ca}'
     if not product or not order_product:
         return web.json_response({'ok': False, 'error': 'unknown_product'}, status=400)
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    uid = await asyncio.to_thread(
+        ensure_user, telegram_id, user_info.get('first_name') or '',
+        language_code=user_info.get('language_code'))
     if method == 'sbp':
         if not PLATEGA_ENABLED or not product.get('rub'):
             return web.json_response({'ok': False, 'error': 'method_off'}, status=400)
         amount = str(product['rub'])
-        order_id = platega_service.create_order(telegram_id, order_product, amount)
+        order_id = await asyncio.to_thread(platega_service.create_order, telegram_id, order_product, amount)
         link = await platega_service.create_payment(
             order_id, amount, telegram_id=telegram_id,
         )
@@ -10368,7 +10422,7 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
             # No SCI fallback exists (that was a FreeKassa thing) — 502 so the
             # frontend toasts its pay-link error instead of a dead tab.
             return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
-        track_event(uid, 'webapp_pay_link', metadata={'product': product_id, 'method': 'sbp'})
+        await asyncio.to_thread(track_event, uid, 'webapp_pay_link', metadata={'product': product_id, 'method': 'sbp'})
         return web.json_response({'ok': True, 'url': link})
     if method == 'crypto':
         if not WALLET_PAY_ENABLED:
@@ -10379,7 +10433,7 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
         )
         if not invoice:
             return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
-        track_event(uid, 'webapp_pay_link', metadata={'product': product_id, 'method': 'crypto'})
+        await asyncio.to_thread(track_event, uid, 'webapp_pay_link', metadata={'product': product_id, 'method': 'crypto'})
         return web.json_response({'ok': True, 'url': invoice['payment_link']})
     return web.json_response({'ok': False, 'error': 'unknown_method'}, status=400)
 
@@ -10400,19 +10454,26 @@ async def _webapp_api_select(request: web.Request) -> web.Response:
     except Exception:
         body = {}
     character_id = str((body or {}).get('character_id', ''))
-    card = get_card(character_id)
-    if not card or card.status not in ('active', 'premium'):
-        return web.json_response({'ok': False, 'error': 'locked'}, status=400)
-    if card.status == 'premium' and not is_premium(telegram_id):
-        return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-    set_user_character(telegram_id, character_id)
-    track_event(uid, 'character_selected', metadata={'character_id': character_id, 'source': 'webapp'})
-    return web.json_response({
-        'ok': True,
-        'me': webapp_service.api_me(telegram_id),
-        'characters': webapp_service.api_characters(telegram_id),
-    }, headers={'Cache-Control': 'no-store'})
+    # V3.57.2: selecting a girl re-renders the whole storefront — gate read,
+    # three writes and two full API payloads used to freeze the loop for the
+    # duration of every one of those queries.
+    def _apply():
+        card = get_card(character_id)
+        if not card or card.status not in ('active', 'premium'):
+            return 'locked'
+        if card.status == 'premium' and not is_premium(telegram_id):
+            return 'premium_required'
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        set_user_character(telegram_id, character_id)
+        track_event(uid, 'character_selected', metadata={'character_id': character_id, 'source': 'webapp'})
+        return {'me': webapp_service.api_me(telegram_id),
+                'characters': webapp_service.api_characters(telegram_id)}
+
+    result = await asyncio.to_thread(_apply)
+    if isinstance(result, str):
+        return web.json_response({'ok': False, 'error': result},
+                                 status=403 if result == 'premium_required' else 400)
+    return web.json_response({'ok': True, **result}, headers={'Cache-Control': 'no-store'})
 
 
 async def _webapp_api_spicy(request: web.Request) -> web.Response:
@@ -10430,12 +10491,19 @@ async def _webapp_api_spicy(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    user = get_user(telegram_id)
-    current = bool(getattr(user, 'spicy_mode', False)) if user else False
-    if not current and not is_premium(telegram_id):
+    # V3.57.2: the read, the premium check and the write all leave the loop.
+    def _toggle():
+        user = get_user(telegram_id)
+        current = bool(getattr(user, 'spicy_mode', False)) if user else False
+        if not current and not is_premium(telegram_id):
+            return None
+        update_user_settings(telegram_id, spicy_mode=not current)
+        return not current
+
+    flipped = await asyncio.to_thread(_toggle)
+    if flipped is None:
         return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-    update_user_settings(telegram_id, spicy_mode=not current)
-    return web.json_response({'ok': True, 'spicy_mode': not current}, headers={'Cache-Control': 'no-store'})
+    return web.json_response({'ok': True, 'spicy_mode': flipped}, headers={'Cache-Control': 'no-store'})
 
 
 async def _webapp_api_chat_history(request: web.Request) -> web.Response:
@@ -10450,28 +10518,33 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
     character_id = str(request.query.get('character_id', ''))
     if not character_id:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     try:
         limit = int(request.query.get('limit', '30'))
     except ValueError:
         limit = 30
-    # V3.52.0: opening the conversation in the app marks it read — the «Чаты»
-    # badge clears and only a later proactive/life message will light it up again.
-    webapp_service.mark_chat_read(telegram_id, character_id)
-    # V3.55.6: a premium user opens a premium character — the level-6 floor is
-    # applied right here so the level shows before the first message, and the
-    # chat tells the SPA whether the tender/passionate choice is still pending.
-    persona_info = {'needed': False, 'style': None}
-    try:
-        from services.relationship_engine import apply_premium_floor
-        with SessionLocal() as session:
-            rel_row = apply_premium_floor(session, uid, character_id)
-        if rel_row is not None:
-            persona_info = {'needed': rel_row.persona_style is None, 'style': rel_row.persona_style}
-    except Exception:
-        logger.exception('premium floor on chat open failed user=%s character=%s', telegram_id, character_id)
-    return web.json_response({'ok': True, 'history': webapp_service.api_chat_history(uid, character_id, limit),
-                              'persona': persona_info})
+    # V3.57.2: the whole blocking open-the-dialog block (ensure_user write,
+    # mark-read, premium floor, history read) runs in a worker thread.
+    def _load():
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        # V3.52.0: opening the conversation in the app marks it read — the «Чаты»
+        # badge clears and only a later proactive/life message will light it up again.
+        webapp_service.mark_chat_read(telegram_id, character_id)
+        # V3.55.6: a premium user opens a premium character — the level-6 floor is
+        # applied right here so the level shows before the first message, and the
+        # chat tells the SPA whether the tender/passionate choice is still pending.
+        persona_info = {'needed': False, 'style': None}
+        try:
+            from services.relationship_engine import apply_premium_floor
+            with SessionLocal() as session:
+                rel_row = apply_premium_floor(session, uid, character_id)
+            if rel_row is not None:
+                persona_info = {'needed': rel_row.persona_style is None, 'style': rel_row.persona_style}
+        except Exception:
+            logger.exception('premium floor on chat open failed user=%s character=%s', telegram_id, character_id)
+        return webapp_service.api_chat_history(uid, character_id, limit), persona_info
+
+    history, persona_info = await asyncio.to_thread(_load)
+    return web.json_response({'ok': True, 'history': history, 'persona': persona_info})
 
 
 def _custom_premium_gate_block(character_id: str, telegram_id: int) -> bool:
@@ -10526,16 +10599,25 @@ async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str
     Premium (admins bypass). Returns the saved media URL or None on any failure:
     a broken TTS must never eat the text reply."""
     try:
-        user = get_user(telegram_id)
-        if not user or not getattr(user, 'voice_enabled', False):
-            return None
-        if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+        # V3.57.2: the permission read and the media write are PostgreSQL/disk
+        # work — off the loop, only the synthesis itself stays awaited.
+        def _allowed():
+            user = get_user(telegram_id)
+            if not user or not getattr(user, 'voice_enabled', False):
+                return None
+            if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+                return None
+            return user.voice_style or 'nova'
+
+        voice_style = await asyncio.to_thread(_allowed)
+        if not voice_style:
             return None
         clean = ''.join(ch for ch in text if ch.isalnum() or ch in ' .,!?:;-—…()«»\'\n')[:600]
         if not clean.strip():
             return None
-        audio = await synthesize_bytes(clean, user.voice_style, character_id=character_id)
-        filename = webapp_service.save_chat_media(telegram_id, audio, 'ogg', 'audio/ogg')
+        audio = await synthesize_bytes(clean, voice_style, character_id=character_id)
+        filename = await asyncio.to_thread(
+            webapp_service.save_chat_media, telegram_id, audio, 'ogg', 'audio/ogg')
         return f'/webapp/media/{filename}'
     except Exception:
         logger.warning('webapp reply voice failed user=%s', telegram_id)
@@ -10549,44 +10631,54 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     # consent and the daily free-message limit.
     # V3.57.0: shared by the text and voice endpoints; a text reply may come
     # back with her voice attached when the user has voice replies enabled.
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-    track_event(uid, 'webapp_chat_message', metadata={'character_id': character_id})
-    # V3.51.0: a photo request typed in the Mini App chat used to be answered
-    # with text only («держи 📸» and nothing attached) because this endpoint
-    # never ran the bot's photo-intent routing (main.py chat handler). Parse it
-    # here and, when the scene clears the same stage/adult/credit gates the app
-    # photo button enforces, deliver a real photo into the shared dialog.
-    photo_request = _contextualize_vague_photo(telegram_id, text, parse_photo_request(text))
-    if photo_request:
+    # V3.57.2: everything around the model call is PostgreSQL work (user
+    # upsert, event track, stage/credit reads, message writes) — it runs in one
+    # worker thread so a chat turn never blocks the loop the other users share.
+    def _prelude():
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        track_event(uid, 'webapp_chat_message', metadata={'character_id': character_id})
+        # V3.51.0: a photo request typed in the Mini App chat used to be answered
+        # with text only («держи 📸» and nothing attached) because this endpoint
+        # never ran the bot's photo-intent routing (main.py chat handler). Parse it
+        # here and, when the scene clears the same stage/adult/credit gates the app
+        # photo button enforces, deliver a real photo into the shared dialog.
+        photo_request = _contextualize_vague_photo(telegram_id, text, parse_photo_request(text))
+        if not photo_request:
+            return uid, None
         scene = photo_request.scene if photo_request.scene in PHOTO_MENU_ORDER else 'selfie'
         stage_ok = scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id))
         adult_ok = not (requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id))
         pay_ok = telegram_id in ADMIN_TELEGRAM_IDS or get_photo_credits(telegram_id) >= 1
-        if stage_ok and adult_ok and pay_ok:
-            try:
-                data, mime, ext = await _webapp_media_photo(telegram_id, character_id, scene)
-            except Exception:
-                logger.exception('webapp chat photo-on-request failed user=%s scene=%s', telegram_id, scene)
-                data = None
-            if data:
+        return uid, scene if (stage_ok and adult_ok and pay_ok) else None
+
+    uid, photo_scene = await asyncio.to_thread(_prelude)
+    if photo_scene:
+        try:
+            data, mime, ext = await _webapp_media_photo(telegram_id, character_id, photo_scene)
+        except Exception:
+            logger.exception('webapp chat photo-on-request failed user=%s scene=%s', telegram_id, photo_scene)
+            data = None
+        if data:
+            cap = '📸 ' + random.choice(AUTO_CAPTIONS.get(photo_scene, ('отправила фото',)))
+
+            def _deliver():
                 filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
                 url = f'/webapp/media/{filename}'
                 # V3.51.1: audit the chat photo-on-request (user's own words).
                 webapp_service.record_generation(telegram_id, 'photo', character_id, text, filename)
-                _fallback = ('отправила фото',)
-                cap = '📸 ' + random.choice(AUTO_CAPTIONS.get(scene, _fallback))
                 save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
                 if telegram_id not in ADMIN_TELEGRAM_IDS:
                     consume_photo_credit(telegram_id)
                 # V3.53.0: after this photo counts, tell the SPA if a gallery set
                 # (50 photos of her) just completed so it can celebrate.
                 from services.collection_service import gallery_set_progress, note_gallery_set
-                _sets_done_now = note_gallery_set(telegram_id, character_id)
-                return web.json_response({'ok': True, 'reply': cap, 'photo_url': url,
-                                          'credits_left': get_photo_credits(telegram_id),
-                                          'set_completed': _sets_done_now,
-                                          'gallery': gallery_set_progress(telegram_id, character_id),
-                                          **(extra or {})})
+                return {'ok': True, 'reply': cap, 'photo_url': url,
+                        'credits_left': get_photo_credits(telegram_id),
+                        'set_completed': note_gallery_set(telegram_id, character_id),
+                        'gallery': gallery_set_progress(telegram_id, character_id),
+                        **(extra or {})}
+
+            return web.json_response(await asyncio.to_thread(_deliver))
     try:
         answer = await anna_reply(
             telegram_id, user_info.get('first_name') or 'ты', text,
@@ -10620,7 +10712,8 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
     text = str(body.get('text', '')).strip()[:4000]
     if not character_id or not text:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    gate = _webapp_chat_gate(character_id, telegram_id)
+    # V3.57.2: the gate is four PostgreSQL reads — off the event loop.
+    gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)
     if gate:
         return gate
     return await _webapp_chat_turn(telegram_id, user_info, character_id, text)
@@ -10646,7 +10739,8 @@ async def _webapp_api_chat_voice(request: web.Request) -> web.Response:
     audio_b64 = str(body.get('audio', ''))
     if not character_id or not audio_b64:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    gate = _webapp_chat_gate(character_id, telegram_id)
+    # V3.57.2: the gate is four PostgreSQL reads — off the event loop.
+    gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)
     if gate:
         return gate
     try:
@@ -10689,7 +10783,8 @@ async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
     mime = str(body.get('mime', 'image/jpeg'))
     if not character_id or not image_b64 or mime not in ('image/jpeg', 'image/png', 'image/webp'):
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    gate = _webapp_chat_gate(character_id, telegram_id)
+    # V3.57.2: the gate is four PostgreSQL reads — off the event loop.
+    gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)
     if gate:
         return gate
     if not PHOTO_REACTION_ENABLED:
@@ -10711,12 +10806,19 @@ async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
         reaction = None
     if not reaction:
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-    filename = webapp_service.save_chat_media(telegram_id, data, 'jpg', mime)
-    url = f'/webapp/media/{filename}'
-    save_message(uid, character_id, 'user', '📷', media_kind='photo', media_url=url)
-    save_message(uid, character_id, 'assistant', reaction)
-    track_event(uid, 'photo_reaction_sent', metadata={'character_id': character_id, 'source': 'webapp'})
+    # V3.57.2: the user upsert, the media write and the two dialog rows are
+    # disk + PostgreSQL work; they go to a worker thread once the vision
+    # answer is back.
+    def _store():
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        filename = webapp_service.save_chat_media(telegram_id, data, 'jpg', mime)
+        url = f'/webapp/media/{filename}'
+        save_message(uid, character_id, 'user', '📷', media_kind='photo', media_url=url)
+        save_message(uid, character_id, 'assistant', reaction)
+        track_event(uid, 'photo_reaction_sent', metadata={'character_id': character_id, 'source': 'webapp'})
+        return url
+
+    url = await asyncio.to_thread(_store)
     return web.json_response({'ok': True, 'reply': reaction, 'user_photo_url': url})
 
 
@@ -10740,34 +10842,42 @@ async def _webapp_api_chat_persona(request: web.Request) -> web.Response:
     style = str(body.get('style', '')).strip().lower()
     if not character_id or style not in ('tender', 'passionate'):
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    # Same access gates as sending a message in this chat.
-    if is_custom_character(character_id):
-        if not get_custom_character_by_id(character_id):
-            return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
-        if _custom_premium_gate_block(character_id, telegram_id):
-            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-    else:
-        card = get_card(character_id)
-        if not card or card.status not in ('active', 'premium'):
-            return web.json_response({'ok': False, 'error': 'locked'}, status=403)
-        if card.status == 'premium' and not is_premium(telegram_id):
-            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-    if not has_accepted(telegram_id):
-        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-    from services.relationship_engine import apply_premium_floor
-    try:
+    # Same access gates as sending a message in this chat. V3.57.2: the gate,
+    # the relationship write and the event track run in one worker thread.
+    def _save():
+        if is_custom_character(character_id):
+            if not get_custom_character_by_id(character_id):
+                return 'unknown_character'
+            if _custom_premium_gate_block(character_id, telegram_id):
+                return 'premium_required'
+        else:
+            card = get_card(character_id)
+            if not card or card.status not in ('active', 'premium'):
+                return 'locked'
+            if card.status == 'premium' and not is_premium(telegram_id):
+                return 'premium_required'
+        if not has_accepted(telegram_id):
+            return 'consent'
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        from services.relationship_engine import apply_premium_floor
         with SessionLocal() as session:
             row = apply_premium_floor(session, uid, character_id)
             if row is None:
                 # not a premium user + premium character pair — no choice to make
-                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+                return 'premium_required'
             row.persona_style = style
             session.commit()
+        track_event(uid, 'webapp_chat_persona', metadata={'character_id': character_id, 'style': style})
+        return None
+
+    try:
+        blocked = await asyncio.to_thread(_save)
     except Exception:
         logger.exception('chat persona save failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'save'}, status=500)
-    track_event(uid, 'webapp_chat_persona', metadata={'character_id': character_id, 'style': style})
+    if blocked:
+        status = 400 if blocked == 'unknown_character' else 403
+        return web.json_response({'ok': False, 'error': blocked}, status=status)
     return web.json_response({'ok': True, 'style': style})
 
 
@@ -10781,8 +10891,13 @@ async def _webapp_api_chats(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-    return web.json_response({'ok': True, 'chats': webapp_service.api_chat_list(uid, telegram_id)})
+    # V3.57.2: ensure_user writes on first touch — keep it off the loop too.
+    def _load():
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        return webapp_service.api_chat_list(uid, telegram_id)
+
+    chats = await asyncio.to_thread(_load)
+    return web.json_response({'ok': True, 'chats': chats})
 
 
 async def _webapp_api_pictures(request: web.Request) -> web.Response:
@@ -10794,7 +10909,7 @@ async def _webapp_api_pictures(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    return web.json_response({'ok': True, 'pictures': webapp_service.api_picture_list(telegram_id)})
+    return web.json_response({'ok': True, 'pictures': await asyncio.to_thread(webapp_service.api_picture_list, telegram_id)})
 
 
 async def _webapp_api_videos(request: web.Request) -> web.Response:
@@ -10808,7 +10923,7 @@ async def _webapp_api_videos(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    return web.json_response({'ok': True, 'videos': webapp_service.api_video_list(telegram_id)})
+    return web.json_response({'ok': True, 'videos': await asyncio.to_thread(webapp_service.api_video_list, telegram_id)})
 
 
 async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
@@ -11248,15 +11363,19 @@ async def _webapp_media_circle(telegram_id: int, character_id: str):
 
 async def _webapp_media_voice(telegram_id: int, character_id: str):
     """V3.39.0: her voice — synthesizes her last reply (or the scenario hook)."""
-    user = get_user(telegram_id)
-    history = webapp_service.api_chat_history(user.id if user else 0, character_id, 10)
-    text = next((m['content'] for m in reversed(history)
-                 if m['role'] == 'assistant' and not m.get('media_url')), '')
-    if not text:
-        text = get_scenario_hook(character_id) or 'привет, я скучала 🙂'
+    # V3.57.2: the user read and the last-ten-messages read leave the loop.
+    def _pick_line():
+        user = get_user(telegram_id)
+        history = webapp_service.api_chat_history(user.id if user else 0, character_id, 10)
+        text = next((m['content'] for m in reversed(history)
+                     if m['role'] == 'assistant' and not m.get('media_url')), '')
+        if not text:
+            text = get_scenario_hook(character_id) or 'привет, я скучала 🙂'
+        return text, (user.voice_style if user else None) or 'nova'
+
+    text, voice_style = await asyncio.to_thread(_pick_line)
     clean = ''.join(ch for ch in text if ch.isalnum() or ch in ' .,!?:;-—…()«»\'\n')[:600]
-    audio = await synthesize_bytes(clean, (user.voice_style if user else None) or 'nova',
-                                   character_id=character_id)
+    audio = await synthesize_bytes(clean, voice_style, character_id=character_id)
     return audio, 'audio/ogg', 'ogg'
 
 
@@ -11275,7 +11394,8 @@ _WEBAPP_VIDEO_PROMPT = (
 async def _webapp_media_video(telegram_id: int, character_id: str):
     """V3.41.0: a short AI video from the canonical face — the app-chat twin of
     the bot's «🎬 Оживить фото», rendered as a normal (non-round) clip."""
-    photo = webapp_service.character_photo(character_id)
+    # V3.57.2: the canonical shot may be a PostgreSQL large-object read.
+    photo = await asyncio.to_thread(webapp_service.character_photo, character_id)
     if not photo:
         raise PhotoGenerationError('video', 'no_source_photo')
     image_bytes = photo[0]
@@ -11336,55 +11456,64 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     scene = str(body.get('scene') or 'selfie')[:80]
     if kind not in ('photo', 'circle', 'voice', 'video', 'hot', 'cosplay') or not character_id:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    if is_custom_character(character_id):
-        if not get_custom_character_by_id(character_id):
-            return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
-        # V3.55.3: same premium gate as the built-ins (was skipped here too).
-        if _custom_premium_gate_block(character_id, telegram_id):
+    # V3.57.2: the whole access chain is PostgreSQL reads/writes (card, consent,
+    # stage, credits, premium slots) — one worker thread, never the loop.
+    def _gate():
+        if is_custom_character(character_id):
+            if not get_custom_character_by_id(character_id):
+                return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+            # V3.55.3: same premium gate as the built-ins (was skipped here too).
+            if _custom_premium_gate_block(character_id, telegram_id):
+                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+        else:
+            card = get_card(character_id)
+            if not card or card.status not in ('active', 'premium'):
+                return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+            if card.status == 'premium' and not is_premium(telegram_id):
+                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+        if not has_accepted(telegram_id):
+            return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+        if kind == 'photo':
+            # V3.43.7: the scene comes from the app's picker — it must be one of
+            # the menu scenes and clear the same relationship/adult gates the
+            # bot's photo keyboard enforces.
+            if scene not in PHOTO_MENU_ORDER:
+                return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+            if not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
+                return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+            if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
+                return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
+        if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS \
+                and get_photo_credits(telegram_id) < 1:
+            # V3.44.22: a chat photo costs ONE credit (consume_photo_credit below) —
+            # the old guard demanded the studio's whole price and blocked users who
+            # had plenty for the actual charge.
+            return web.json_response({'ok': False, 'error': 'credits'}, status=402)
+        if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS:
+            if not is_premium(telegram_id):
+                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+            if not consume_premium_video_free(telegram_id):
+                return web.json_response({'ok': False, 'error': 'circle_limit'}, status=402)
+        if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS:
+            # V3.41.0: app video shares the Premium free-animation slots, exactly
+            # like the bot's «🎬 Оживить фото»; a separate gate keeps the circle
+            # branch (and its static test) untouched.
+            if not is_premium(telegram_id):
+                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+            if not consume_premium_video_free(telegram_id):
+                return web.json_response({'ok': False, 'error': 'video_limit'}, status=402)
+        if kind == 'voice' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+            # V3.55.1: voice is a Premium perk now (owner) — the SPA already maps
+            # premium_required to the paywall toast and the shop tab.
             return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-    else:
-        card = get_card(character_id)
-        if not card or card.status not in ('active', 'premium'):
-            return web.json_response({'ok': False, 'error': 'locked'}, status=403)
-        if card.status == 'premium' and not is_premium(telegram_id):
-            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-    if not has_accepted(telegram_id):
-        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
-    if kind == 'photo':
-        # V3.43.7: the scene comes from the app's picker — it must be one of
-        # the menu scenes and clear the same relationship/adult gates the
-        # bot's photo keyboard enforces.
-        if scene not in PHOTO_MENU_ORDER:
-            return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-        if not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
-            return web.json_response({'ok': False, 'error': 'locked'}, status=403)
-        if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
-            return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
-    if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS \
-            and get_photo_credits(telegram_id) < 1:
-        # V3.44.22: a chat photo costs ONE credit (consume_photo_credit below) —
-        # the old guard demanded the studio's whole price and blocked users who
-        # had plenty for the actual charge.
-        return web.json_response({'ok': False, 'error': 'credits'}, status=402)
-    if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS:
-        if not is_premium(telegram_id):
-            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-        if not consume_premium_video_free(telegram_id):
-            return web.json_response({'ok': False, 'error': 'circle_limit'}, status=402)
-    if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS:
-        # V3.41.0: app video shares the Premium free-animation slots, exactly
-        # like the bot's «🎬 Оживить фото»; a separate gate keeps the circle
-        # branch (and its static test) untouched.
-        if not is_premium(telegram_id):
-            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-        if not consume_premium_video_free(telegram_id):
-            return web.json_response({'ok': False, 'error': 'video_limit'}, status=402)
-    if kind == 'voice' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
-        # V3.55.1: voice is a Premium perk now (owner) — the SPA already maps
-        # premium_required to the paywall toast and the shop tab.
-        return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-    track_event(uid, 'webapp_chat_media', metadata={'character_id': character_id, 'kind': kind, 'scene': scene})
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        track_event(uid, 'webapp_chat_media', metadata={'character_id': character_id, 'kind': kind, 'scene': scene})
+        return uid
+
+    gated = await asyncio.to_thread(_gate)
+    if not isinstance(gated, int):
+        return gated
+    uid = gated
     try:
         if kind == 'photo':
             data, mime, ext = await _webapp_media_photo(telegram_id, character_id, scene)
@@ -11411,56 +11540,59 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)
     if not data:
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)
-    filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
-    url = f'/webapp/media/{filename}'
-    # V3.51.1: audit the user-requested media (photo/hot/cosplay/video/circle);
-    # voice carries no image, so it is left out of the visual admin feed.
-    if kind != 'voice':
-        # V3.56.0: hot/cosplay carry an exact engine+cost hint stashed by
-        # _webapp_media_hot (cache/pool=$0, spicyapi/fal=$real); other kinds
-        # record with no engine so the feed shows them unlabelled rather than
-        # guessing.
-        hint = _HOT_MEDIA_HINT.pop(telegram_id, None) if kind in ('hot', 'cosplay') else None
-        if hint:
-            webapp_service.record_generation(telegram_id, kind, character_id, scene, filename,
-                                             engine=hint[0], cost_usd=hint[1])
+    # V3.57.2: storing the media, auditing it, charging the credit and the
+    # gallery-set reads all leave the loop.
+    def _finish():
+        filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+        url = f'/webapp/media/{filename}'
+        # V3.51.1: audit the user-requested media (photo/hot/cosplay/video/circle);
+        # voice carries no image, so it is left out of the visual admin feed.
+        if kind != 'voice':
+            # V3.56.0: hot/cosplay carry an exact engine+cost hint stashed by
+            # _webapp_media_hot (cache/pool=$0, spicyapi/fal=$real); other kinds
+            # record with no engine so the feed shows them unlabelled rather than
+            # guessing.
+            hint = _HOT_MEDIA_HINT.pop(telegram_id, None) if kind in ('hot', 'cosplay') else None
+            if hint:
+                webapp_service.record_generation(telegram_id, kind, character_id, scene, filename,
+                                                 engine=hint[0], cost_usd=hint[1])
+            else:
+                webapp_service.record_generation(telegram_id, kind, character_id, scene, filename)
+        if kind == 'photo':
+            _default_cap = ('\u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0444\u043e\u0442\u043e',)
+            content = f'\U0001f4f8 {random.choice(AUTO_CAPTIONS.get(scene, _default_cap))}'
+        elif kind in ('hot', 'cosplay'):
+            content = '\U0001f48b \u043d\u0430\u0435\u0434\u0438\u043d\u0435...' if kind == 'hot' else '\U0001f3ad \u043a\u043e\u0441\u043f\u043b\u0435\u0439 \u0434\u043b\u044f \u0442\u0435\u0431\u044f'
         else:
-            webapp_service.record_generation(telegram_id, kind, character_id, scene, filename)
-    if kind == 'photo':
-        _default_cap = ('\u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0444\u043e\u0442\u043e',)
-        content = f'\U0001f4f8 {random.choice(AUTO_CAPTIONS.get(scene, _default_cap))}'
-    elif kind in ('hot', 'cosplay'):
-        content = '\U0001f48b \u043d\u0430\u0435\u0434\u0438\u043d\u0435...' if kind == 'hot' else '\U0001f3ad \u043a\u043e\u0441\u043f\u043b\u0435\u0439 \u0434\u043b\u044f \u0442\u0435\u0431\u044f'
-    else:
-        _media_caps = {'circle': '\U0001f3a5 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u043a\u0440\u0443\u0436\u043e\u0447\u0435\u043a',
-                       'voice': '\U0001f399 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0433\u043e\u043b\u043e\u0441\u043e\u0432\u043e\u0435',
-                       'video': '\U0001f3ac \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0432\u0438\u0434\u0435\u043e'}
-        content = _media_caps.get(kind, '')
-    save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
-    if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
-        logger.warning('webapp chat photo credit race user=%s', telegram_id)
-    # V3.44.6: record author revenue when someone spends on a custom character.
-    if kind == 'photo' and is_custom_character(character_id):
-        try:
-            from services.custom_character_service import record_author_revenue
-            record_author_revenue(character_id, telegram_id, 1.0, 'chat_photo')
-        except Exception:
-            logger.exception('author revenue recording failed char=%s', character_id)
-    # V3.53.0: a delivered photo/circle/video/hot/cosplay advances the character's
-    # gallery-set counter; tell the SPA when a set (50 photos) just completed so it
-    # can celebrate. Voice is not a photo, so it never counts and never celebrates.
-    _set_completed = 0
-    _gallery = None
-    if kind != 'voice':
-        from services.collection_service import gallery_set_progress, note_gallery_set
-        _set_completed = note_gallery_set(telegram_id, character_id)
-        _gallery = gallery_set_progress(telegram_id, character_id)
-    return web.json_response({
-        'ok': True, 'kind': kind, 'url': url, 'content': content,
-        'credits_left': get_photo_credits(telegram_id),
-        'set_completed': _set_completed,
-        'gallery': _gallery,
-    })
+            _media_caps = {'circle': '\U0001f3a5 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u043a\u0440\u0443\u0436\u043e\u0447\u0435\u043a',
+                           'voice': '\U0001f399 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0433\u043e\u043b\u043e\u0441\u043e\u0432\u043e\u0435',
+                           'video': '\U0001f3ac \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0432\u0438\u0434\u0435\u043e'}
+            content = _media_caps.get(kind, '')
+        save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
+        if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
+            logger.warning('webapp chat photo credit race user=%s', telegram_id)
+        # V3.44.6: record author revenue when someone spends on a custom character.
+        if kind == 'photo' and is_custom_character(character_id):
+            try:
+                from services.custom_character_service import record_author_revenue
+                record_author_revenue(character_id, telegram_id, 1.0, 'chat_photo')
+            except Exception:
+                logger.exception('author revenue recording failed char=%s', character_id)
+        # V3.53.0: a delivered photo/circle/video/hot/cosplay advances the character's
+        # gallery-set counter; tell the SPA when a set (50 photos) just completed so it
+        # can celebrate. Voice is not a photo, so it never counts and never celebrates.
+        _set_completed = 0
+        _gallery = None
+        if kind != 'voice':
+            from services.collection_service import gallery_set_progress, note_gallery_set
+            _set_completed = note_gallery_set(telegram_id, character_id)
+            _gallery = gallery_set_progress(telegram_id, character_id)
+        return {'ok': True, 'kind': kind, 'url': url, 'content': content,
+                'credits_left': get_photo_credits(telegram_id),
+                'set_completed': _set_completed,
+                'gallery': _gallery}
+
+    return web.json_response(await asyncio.to_thread(_finish))
 
 
 async def _webapp_media(request: web.Request) -> web.Response:
@@ -11473,13 +11605,17 @@ async def _webapp_media(request: web.Request) -> web.Response:
     telegram_id = webapp_service.init_data_user(pairs).get('id')
     if not telegram_id:
         return web.Response(status=401)
-    path = webapp_service.chat_media_file_path(telegram_id, request.match_info['filename'])
+    # V3.57.2: path lookup may hit PostgreSQL (re-heal after an ephemeral-disk
+    # wipe) and the read is blocking — both leave the event loop.
+    path = await asyncio.to_thread(webapp_service.chat_media_file_path, telegram_id, request.match_info['filename'])
     if not path:
         return web.Response(status=404)
+    body = await asyncio.to_thread(path.read_bytes)
     ctype = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
              'mp4': 'video/mp4', 'ogg': 'audio/ogg'}.get(path.suffix.lstrip('.'), 'application/octet-stream')
-    return web.Response(body=path.read_bytes(), content_type=ctype,
-                        headers={'Cache-Control': 'private, max-age=3600'})
+    # the file name is an unguessable immutable token — a day of cache is free
+    return web.Response(body=body, content_type=ctype,
+                        headers={'Cache-Control': 'private, max-age=86400, immutable'})
 
 
 async def _webapp_api_feature(request: web.Request) -> web.Response:
@@ -11488,14 +11624,17 @@ async def _webapp_api_feature(request: web.Request) -> web.Response:
     # to surface as a raw 500, which the Mini App rendered as the useless «Не
     # получилось ответить — попробуй ещё раз» on the daily-quest button. Log the
     # real cause and answer with a clean JSON error the SPA retries once.
+    # V3.57.2: the whole menu builder is synchronous PostgreSQL work (it holds
+    # no awaits), so it runs end to end in a worker thread instead of freezing
+    # the event loop for every feature-button tap.
     try:
-        return await _webapp_api_feature_impl(request)
+        return await asyncio.to_thread(_webapp_api_feature_impl, request)
     except Exception:
         logger.exception('webapp feature menu failed')
         return web.json_response({'ok': False, 'error': 'temporarily_unavailable'})
 
 
-async def _webapp_api_feature_impl(request: web.Request) -> web.Response:
+def _webapp_api_feature_impl(request: web.Request) -> web.Response:
     # V3.41.0: the app-chat feature buttons (🏠 Квартира, 💕 Свидание,
     # 🎯 Задание дня) all render their menu from this one endpoint. Same auth
     # as the rest of the Mini App API; the character comes from the open chat.
@@ -11643,12 +11782,14 @@ async def _deliver_bonus_media(telegram_id: int, character_id: str, uid: int):
         data, mime, ext = await _webapp_media_photo(telegram_id, character_id, 'selfie')
         if not data:
             return None
-        filename = webapp_service.save_chat_media(telegram_id, data, ext, mime or 'image/jpeg')
-        url = f'/webapp/media/{filename}'
-        save_message(uid, character_id, 'assistant',
-                     'захотелось поделиться с тобой этим кадром 📸',
-                     media_kind='photo', media_url=url)
-        return url
+        # V3.57.2: the two dialog writes are PostgreSQL round-trips
+        def _store():
+            filename = webapp_service.save_chat_media(telegram_id, data, ext, mime or 'image/jpeg')
+            save_message(uid, character_id, 'assistant',
+                         'захотелось поделиться с тобой этим кадром 📸',
+                         media_kind='photo', media_url=f'/webapp/media/{filename}')
+            return f'/webapp/media/{filename}'
+        return await asyncio.to_thread(_store)
     except Exception:
         logger.exception('bonus media delivery failed')
         return None
@@ -11687,12 +11828,18 @@ async def _webapp_api_feature_action_impl(request: web.Request) -> web.Response:
     kind = str(body.get('kind', ''))
     if kind not in ('apartment', 'date', 'quest'):
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    if not has_accepted(telegram_id):
+    # V3.57.2: the consent/selection/level prologue is four PostgreSQL reads
+    def _prologue():
+        if not has_accepted(telegram_id):
+            return None
+        cid = str(body.get('character_id', '')) or get_user_character(telegram_id)
+        uid_ = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        return cid, uid_, get_relationship_level(telegram_id, cid)
+    prepared = await asyncio.to_thread(_prologue)
+    if prepared is None:
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
-    character_id = str(body.get('character_id', '')) or get_user_character(telegram_id)
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    character_id, uid, level = prepared
     user_name = user_info.get('first_name') or ''
-    level = get_relationship_level(telegram_id, character_id)
 
     if kind == 'apartment':
         room_id = str(body.get('id', ''))
@@ -11777,6 +11924,12 @@ async def _webapp_api_feature_action_impl(request: web.Request) -> web.Response:
 
 
 async def _webapp_api_story(request: web.Request) -> web.Response:
+    # V3.57.2: the story list reads the ladder, the quests and the relationship
+    # row — all synchronous PostgreSQL work, off the event loop.
+    return await asyncio.to_thread(_webapp_api_story_impl, request)
+
+
+def _webapp_api_story_impl(request: web.Request) -> web.Response:
     # V3.51.0: the Mini App story player list. The same story_status the bot
     # keyboard reads, serialized for the SPA (labels only; results/reactions come
     # from the action endpoint). The path axis itself is shown on the character
@@ -11822,18 +11975,29 @@ async def _webapp_api_story_action(request: web.Request) -> web.Response:
     except Exception:
         body = {}
     body = body or {}
-    if not has_accepted(telegram_id):
-        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
-    character_id = str(body.get('character_id', '')) or get_user_character(telegram_id)
-    quest_key = str(body.get('quest_key', ''))
-    q = get_quest(quest_key)
-    if not q:
-        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-    level = get_relationship_level(telegram_id, character_id)
-    st = next((x for x in story_status(telegram_id, level, character_id) if x['key'] == quest_key), None)
-    if not st or not st['unlocked']:
+    # V3.57.2: the whole gate prologue is a chain of PostgreSQL reads
+    def _prologue():
+        if not has_accepted(telegram_id):
+            return 'consent'
+        cid = str(body.get('character_id', '')) or get_user_character(telegram_id)
+        qk = str(body.get('quest_key', ''))
+        quest = get_quest(qk)
+        if not quest:
+            return 'bad_request'
+        uid_ = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        lvl = get_relationship_level(telegram_id, cid)
+        st_ = next((x for x in story_status(telegram_id, lvl, cid) if x['key'] == qk), None)
+        if not st_ or not st_['unlocked']:
+            return 'locked'
+        return cid, qk, quest, uid_, lvl, st_
+    prepared = await asyncio.to_thread(_prologue)
+    if isinstance(prepared, str):
+        if prepared == 'consent':
+            return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+        if prepared == 'bad_request':
+            return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
         return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+    character_id, quest_key, q, uid, level, st = prepared
     uname = user_info.get('first_name') or ''
     beat = body.get('beat')
     if isinstance(beat, dict) and beat.get('route_key') and beat.get('opt_key'):
@@ -11858,7 +12022,10 @@ async def _webapp_api_story_action(request: web.Request) -> web.Response:
     if not scene and result.get('photo_scene'):
         scene = result['photo_scene']
     photo_url = None
-    if scene and scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
+    # V3.57.2: the stage lookup is a PostgreSQL read
+    rstage = await asyncio.to_thread(get_relationship_stage, telegram_id, character_id)
+    stage_ok = bool(scene) and await asyncio.to_thread(scene_allowed_for_stage, scene, rstage)
+    if stage_ok:
         try:
             data, mime, ext = await _webapp_media_scene(telegram_id, character_id, scene)
             if data:
@@ -11888,7 +12055,8 @@ async def _webapp_picture(request: web.Request) -> web.Response:
     telegram_id = webapp_service.init_data_user(pairs).get('id')
     if not telegram_id:
         return web.Response(status=401)
-    path = webapp_service.picture_file_path(telegram_id, request.match_info['filename'])
+    # V3.57.2: the owner-folder resolution touches the media store — off the loop
+    path = await asyncio.to_thread(webapp_service.picture_file_path, telegram_id, request.match_info['filename'])
     if not path:
         return web.Response(status=404)
     return web.FileResponse(path, headers={'Cache-Control': 'private, max-age=3600'})
@@ -11956,9 +12124,11 @@ async def _webapp_api_constructor_options(request: web.Request) -> web.Response:
         if pairs:
             telegram_id = webapp_service.init_data_user(pairs).get('id')
             free = bool(telegram_id) and telegram_id in ADMIN_TELEGRAM_IDS
+    # V3.57.2: wizard steps are read from the DB — off the event loop
+    steps = await asyncio.to_thread(webapp_service.api_constructor_steps, request.query.get('lang', 'ru'))
     return web.json_response({
         'ok': True,
-        'steps': webapp_service.api_constructor_steps(request.query.get('lang', 'ru')),
+        'steps': steps,
         'stars': CONSTRUCTOR_COST_STARS,
         # V3.36.0: rub + dollar equivalents ride along for the price note.
         'rub': CONSTRUCTOR_COST_RUB,
@@ -12245,6 +12415,12 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/constructor/buy', _webapp_api_constructor_buy)
     runner = web.AppRunner(app)
     await runner.setup()
+    # V3.57.2: asyncio.to_thread shares the loop's default executor (5 threads
+    # by default) — every offloaded endpoint competes in it, so grow it to
+    # match the Postgres pool below.
+    from concurrent.futures import ThreadPoolExecutor
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(max_workers=16, thread_name_prefix='offload'))
     site = web.TCPSite(runner, '0.0.0.0', WEB_PORT)
     await site.start()
     logger.info('web server listening port=%s platega=%s base=%s', WEB_PORT, PLATEGA_ENABLED, PUBLIC_BASE_URL or '-')

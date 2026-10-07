@@ -81,7 +81,8 @@ def test_photo_pack_payment_flow():
 def test_characters_endpoint_knows_selection():
     handler = MAIN[MAIN.index('async def _webapp_api_characters('):MAIN.index('async def _webapp_api_shop(')]
     assert 'init_data' in handler
-    assert 'api_characters(telegram_id)' in handler
+    # V3.57.2: the read moved to a worker thread but still carries the selection
+    assert 'asyncio.to_thread(webapp_service.api_characters, telegram_id)' in handler
 
 
 def test_frontend_buys_and_selects():

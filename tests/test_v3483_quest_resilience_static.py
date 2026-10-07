@@ -17,9 +17,9 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 def test_feature_endpoint_is_exception_guarded():
     # the public name stays the route target; it now wraps a try/except over impl
     assert 'async def _webapp_api_feature(request: web.Request) -> web.Response:' in MAIN
-    assert 'async def _webapp_api_feature_impl(request: web.Request) -> web.Response:' in MAIN
-    wrapper = MAIN[MAIN.index('async def _webapp_api_feature('):MAIN.index('async def _webapp_api_feature_impl(')]
-    assert 'return await _webapp_api_feature_impl(request)' in wrapper
+    assert 'def _webapp_api_feature_impl(request: web.Request) -> web.Response:' in MAIN
+    wrapper = MAIN[MAIN.index('async def _webapp_api_feature('):MAIN.index('def _webapp_api_feature_impl(')]
+    assert 'return await asyncio.to_thread(_webapp_api_feature_impl, request)' in wrapper
     assert "logger.exception('webapp feature menu failed')" in wrapper
     assert "'temporarily_unavailable'" in wrapper
     # the route still registers the guarded wrapper, not the impl

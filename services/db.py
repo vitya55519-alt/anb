@@ -11,7 +11,11 @@ from models.quest_models import UserQuestProgress, QuestReplayOffer  # noqa
 from config import DATABASE_URL
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
+# V3.57.2: the Mini App offloads blocking reads to a 16-thread executor, so the
+# pool must not starve at the default 5+10 — Railway's Postgres round-trip is
+# tens of ms and a cold connection costs a full new TCP+auth handshake.
+_pool_kwargs = {} if DATABASE_URL.startswith("sqlite") else {"pool_size": 10, "max_overflow": 20, "pool_recycle": 1800}
+engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True, **_pool_kwargs)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 def _add_missing_columns(table, wanted):

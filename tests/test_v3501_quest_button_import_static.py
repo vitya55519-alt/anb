@@ -19,7 +19,7 @@ def _func_body(marker: str) -> str:
 
 
 def test_get_feature_branch_imports_couple_service_before_use():
-    body = _func_body('async def _webapp_api_feature_impl(')
+    body = _func_body('def _webapp_api_feature_impl(')
     assert 'from services import couple_service' in body, (
         'GET feature endpoint must import couple_service locally before the '
         'daily-quest fall-through branch'

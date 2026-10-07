@@ -87,7 +87,7 @@ def test_view_counter_end_to_end():
     assert 'def character_views_map()' in WEBAPP_SVC
     assert "'views': views.get(card.character_id, 0)," in WEBAPP_SVC
     assert "add_post('/webapp/api/char_view', _webapp_api_char_view)" in MAIN
-    assert 'webapp_service.bump_character_views(character_id)' in MAIN
+    assert 'webapp_service.bump_character_views, character_id' in MAIN
     # frontend: the «👁 427k» pill + the fire-and-forget bump on page open
     assert '.card .views {' in INDEX
     assert 'function fmtK(n)' in INDEX

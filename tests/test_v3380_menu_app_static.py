@@ -164,7 +164,7 @@ def test_picture_studio_guards_and_charge_after_success():
     assert gen.index('save_picture(') < gen.index('consume_photo_credit(')
     # serving is owner-scoped with an unguessable server-generated name
     assert "add_get('/webapp/picture/{filename}', _webapp_picture)" in MAIN
-    assert 'picture_file_path(telegram_id' in MAIN
+    assert 'webapp_service.picture_file_path, telegram_id' in MAIN
 
 
 def test_picture_studio_frontend():

@@ -59,7 +59,8 @@ def test_characters_json_served_no_store():
     chars = MAIN[MAIN.index('async def _webapp_api_characters'):]
     chars = chars[:chars.index('async def _webapp_api_shop')]
     assert "headers={'Cache-Control': 'no-store'})" in chars
-    select = MAIN[MAIN.index("'characters': webapp_service.api_characters(telegram_id),\n    }, headers="):]
+    select = MAIN[MAIN.index('async def _webapp_api_select('):MAIN.index('async def _start_web_server(')]
+    assert 'webapp_service.api_characters(telegram_id)' in select
     assert "headers={'Cache-Control': 'no-store'})" in select
     # and the grid fetch itself refuses the browser cache
     assert "fetch('/webapp/api/characters' + q, {cache: 'no-store'})" in INDEX
