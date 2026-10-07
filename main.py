@@ -398,7 +398,11 @@ BADGE_MEDIA_WAIT: dict[int, str] = {}
 # V3.47.2: admin ids waiting to send media into the morning/evening ritual
 # pool — populated by the «➕ Добавить» button in the pool screen.
 # V3.47.3: the pool accepts photos, GIFs and short videos.
-PROPHOTO_WAIT: set[int] = set()
+# V3.56.7: admin id -> character id the next uploaded media belongs to
+# (the pool is per-character now — a stranger's face must never ping
+# another girl's user). And admin id -> photo id currently being re-tagged.
+PROPHOTO_WAIT: dict[int, str] = {}
+PROPHOTO_TAG_WAIT: dict[int, int] = {}
 
 # V3.47.4: admin ids waiting to send carousel photos for one character page —
 # pure storefront visuals (DB-backed), the canonical references stay intact.
@@ -2916,18 +2920,57 @@ async def admin_badge_upload(message: types.Message):
 _PROPHOTO_KIND_EMOJI = {'photo': '📸', 'gif': '🎞', 'video': '🎬'}
 
 
+def _prophoto_char_names() -> dict:
+    # V3.56.7: id -> display name for pool labels (built-in + constructor
+    # personas all live in the card registry).
+    from services.character_card_service import list_cards
+    try:
+        return {c.character_id: (c.display_name or c.character_id) for c in list_cards(visible_only=False)}
+    except Exception:
+        return {}
+
+
 def admin_prophoto_keyboard():
     from services import retention_features_service as rfs
     photos = rfs.list_proactive_photos()
+    names = _prophoto_char_names()
     rows = [[InlineKeyboardButton(text='➕ Добавить фото / GIF / видео', callback_data='admin:prophoto:add')]]
-    del_row = [InlineKeyboardButton(
-        text=f"🗑 {_PROPHOTO_KIND_EMOJI.get(p.get('kind'), '📸')} #{p['id']}",
-        callback_data=f'admin:prophoto:del:{p["id"]}')
-        for p in photos]
+    del_row = []
+    for p in photos:
+        _cid = p.get('character_id') or ''
+        tag = names.get(_cid, _cid)[:10] if _cid else '❓'
+        del_row.append(InlineKeyboardButton(
+            text=f"🗑 {_PROPHOTO_KIND_EMOJI.get(p.get('kind'), '📸')} #{p['id']} {tag}",
+            callback_data=f'admin:prophoto:del:{p["id"]}'))
+        del_row.append(InlineKeyboardButton(
+            text=f"🏷 #{p['id']}", callback_data=f'admin:prophoto:tag:{p["id"]}'))
     for i in range(0, len(del_row), 6):
         rows.append(del_row[i:i + 6])
     rows.append([InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')])
     return InlineKeyboardMarkup(inline_keyboard=rows), len(photos)
+
+
+def _prophoto_choose_keyboard():
+    # V3.56.7: whose face is the next media? Every pool shot is tied to one
+    # character and only ever sent in her chats.
+    from services.character_card_service import list_cards
+    rows = []
+    line = []
+    try:
+        cards = list_cards(visible_only=False)
+    except Exception:
+        cards = []
+    for c in cards:
+        line.append(InlineKeyboardButton(
+            text=(c.display_name or c.character_id)[:12],
+            callback_data=f'admin:prophoto:pick:{c.character_id}'))
+        if len(line) == 2:
+            rows.append(line)
+            line = []
+    if line:
+        rows.append(line)
+    rows.append([InlineKeyboardButton(text='❌ Отменить', callback_data='admin:prophoto')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @dp.callback_query(F.data == 'admin:prophoto')
@@ -2938,9 +2981,9 @@ async def admin_prophoto_view(cq: types.CallbackQuery):
     await cq.answer()
     await cq.message.answer(
         f'📸 Медиа для утра/вечера — в пуле: {n}\n\n'
-        'Загрузите ~20 разных фото, GIF или коротких видео. Когда бот пишет '
-        'первой утром или вечером, он случайно приложит одно из них — чтобы '
-        'это выглядело как реальное сообщение от неё, а не просто текст.',
+        'Каждое фото/GIF/видео принадлежит ОДНОЙ героине и приходит только '
+        'её пользователям — так «утреннее селфи» Нади больше не будет лицом '
+        'совершенно другой девушки. Кнопка 🏷 — сменить героиню у кадра.',
         reply_markup=kb)
 
 
@@ -2948,10 +2991,45 @@ async def admin_prophoto_view(cq: types.CallbackQuery):
 async def admin_prophoto_wait(cq: types.CallbackQuery):
     if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
-    PROPHOTO_WAIT.add(cq.from_user.id)
+    PROPHOTO_TAG_WAIT.pop(cq.from_user.id, None)
     await cq.answer()
     await cq.message.answer(
-        '📥 Пришли фото (до 8 MB), GIF или видео (до 20 MB) — оно попадёт в пул.\n\n'
+        'Чьё это фото / GIF / видео? Пришлите кадр после выбора героини.',
+        reply_markup=_prophoto_choose_keyboard())
+
+
+@dp.callback_query(F.data.startswith('admin:prophoto:tag:'))
+async def admin_prophoto_tag_wait(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    try:
+        photo_id = int(cq.data.split(':', 3)[3])
+    except (TypeError, ValueError):
+        await cq.answer('не то id', show_alert=True)
+        return
+    PROPHOTO_TAG_WAIT[cq.from_user.id] = photo_id
+    await cq.answer()
+    await cq.message.answer(f'Кому теперь принадлежит кадр #{photo_id}?')
+
+
+@dp.callback_query(F.data.startswith('admin:prophoto:pick:'))
+async def admin_prophoto_pick(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    char_id = cq.data.split(':', 3)[3]
+    from services import retention_features_service as rfs
+    tag_id = PROPHOTO_TAG_WAIT.pop(cq.from_user.id, None)
+    await cq.answer()
+    if tag_id is not None:
+        ok = rfs.set_proactive_photo_character(tag_id, char_id)
+        kb, n = admin_prophoto_keyboard()
+        await cq.message.answer(
+            f'✅ Кадр #{tag_id} — теперь {char_id}. В пуле: {n}.' if ok else '⚠️ Кадр не найден.',
+            reply_markup=kb)
+        return
+    PROPHOTO_WAIT[cq.from_user.id] = char_id
+    await cq.message.answer(
+        f'📥 Пришли фото (до 8 MB), GIF или видео (до 20 MB) — оно попадёт в пул для «{char_id}».\n\n'
         '/cancel — отменить')
 
 
@@ -2974,7 +3052,8 @@ async def admin_prophoto_del(cq: types.CallbackQuery):
 @dp.message(lambda m: m.from_user is not None and m.from_user.id in PROPHOTO_WAIT,
             (F.photo | F.animation | F.video))
 async def admin_prophoto_upload(message: types.Message):
-    """V3.47.2/3: a photo, GIF or video the admin sends is appended to the pool."""
+    """V3.47.2/3: a photo, GIF or video the admin sends is appended to the pool.
+    V3.56.7: it lands under the character picked right before the upload."""
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
     from services import retention_features_service as rfs
@@ -2990,8 +3069,9 @@ async def admin_prophoto_upload(message: types.Message):
         return
     buf = io.BytesIO()
     await bot.download(file.file_id, destination=buf)
-    ok = rfs.add_proactive_photo(buf.getvalue(), ctype, kind)
-    PROPHOTO_WAIT.discard(message.from_user.id)
+    ok = rfs.add_proactive_photo(buf.getvalue(), ctype, kind,
+                                 character_id=PROPHOTO_WAIT.get(message.from_user.id))
+    PROPHOTO_WAIT.pop(message.from_user.id, None)
     kb, n = admin_prophoto_keyboard()
     await message.answer(
         f'✅ Добавлено ({kind}). В пуле: {n}.' if ok else '⚠️ Не удалось сохранить.',
@@ -3367,7 +3447,8 @@ async def cancel_admin_edit(message: types.Message):
         await message.answer('отменено', reply_markup=kb)
         return
     if message.from_user.id in PROPHOTO_WAIT:
-        PROPHOTO_WAIT.discard(message.from_user.id)
+        PROPHOTO_WAIT.pop(message.from_user.id, None)
+        PROPHOTO_TAG_WAIT.pop(message.from_user.id, None)
         kb, _n = admin_prophoto_keyboard()
         await message.answer('отменено', reply_markup=kb)
         return

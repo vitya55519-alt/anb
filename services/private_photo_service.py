@@ -890,8 +890,11 @@ async def send_daily_gift(telegram_id: int, bot) -> bool:
             return False
         if user.last_daily_gift_date == today:
             return False
+        # V3.56.7: the gift photo must be THE GIRL HE CHATS with — the pool is
+        # per-character now, picked by the user's selected character.
+        gift_char = user.selected_character or CHARACTER_ID
     from services import retention_features_service
-    shot = retention_features_service.random_proactive_photo()
+    shot = retention_features_service.random_proactive_photo(gift_char)
     if not shot:
         return False  # no free pool image — skip, never pay for a push
     data, _ctype, _kind = shot
@@ -911,7 +914,7 @@ async def send_daily_gift(telegram_id: int, bot) -> bool:
     try:
         from services import webapp_service
         webapp_service.record_generation(
-            telegram_id, 'gift', CHARACTER_ID, 'daily_gift', None,
+            telegram_id, 'gift', gift_char, 'daily_gift', None,
             engine='pool', cost_usd=0.0,
         )
     except Exception:

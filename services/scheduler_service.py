@@ -225,9 +225,9 @@ async def _rituals(bot):
     with SessionLocal() as s:
         # V3.21.0: notify_rituals is the per-user opt-out (NULL = legacy on).
         users=s.scalars(select(User).where(User.proactive_enabled==True,User.notify_rituals!=False,User.last_active_at>=fresh_cutoff)).all()
-        snapshot=[(u.id,u.telegram_id,u.name or 'ты',u.streak_count or 0,u.timezone) for u in users]
+        snapshot=[(u.id,u.telegram_id,u.name or 'ты',u.streak_count or 0,u.timezone,u.selected_character or '') for u in users]
     today_key=now.date().isoformat()
-    for uid,tg_id,name,streak,tz in snapshot:
+    for uid,tg_id,name,streak,tz,sel_char in snapshot:
         try:
             with SessionLocal() as s:
                 u=s.get(User,uid)
@@ -242,7 +242,10 @@ async def _rituals(bot):
             guard=(uid,kind,today_key)
             if guard in _ritual_sent: continue
             # V3.44.2: per-character ritual messages
-            char_id = CHARACTER_ID if CHARACTER_ID else 'anna_01'
+            # V3.56.7: the ritual belongs to the character the USER chats with,
+            # and so does the attached pool photo — the global CHARACTER_ID
+            # used to dress every girl's morning ping in Anna's media.
+            char_id = sel_char or CHARACTER_ID or 'anna_01'
             text=retention_features_service.get_retention_text(kind, char_id)
             if kind=='morning':
                 # V3.55.5: the morning ritual now carries a CONCRETE reason to
@@ -262,7 +265,7 @@ async def _rituals(bot):
             # V3.47.2: if the owner loaded a media pool, the ritual arrives as a
             # real photo from her (clean, no watermark); else plain text.
             # V3.47.3: the pool also holds GIFs and videos — send by kind.
-            shot = retention_features_service.random_proactive_photo()
+            shot = retention_features_service.random_proactive_photo(char_id)
             if shot:
                 from aiogram.types import BufferedInputFile
                 data, ctype, kind = shot

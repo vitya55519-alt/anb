@@ -283,6 +283,10 @@ class ProactivePhoto(Base):
     image_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     content_type: Mapped[str] = mapped_column(String(32), default="image/jpeg")
     kind: Mapped[str] = mapped_column(String(8), default="photo")
+    # V3.56.7: every pool shot belongs to ONE character — a proactive photo is
+    # her face or it is nobody's. NULL = legacy untagged row: never sent, the
+    # owner re-tags or deletes it in the admin pool screen.
+    character_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

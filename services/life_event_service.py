@@ -142,7 +142,9 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
         if LIFE_EVENTS_PHOTO_CHANCE and random.random() < LIFE_EVENTS_PHOTO_CHANCE:
             try:
                 from services.retention_features_service import random_proactive_photo
-                photo = random_proactive_photo()
+                # V3.56.7: only this character's own pool shots — never a
+                # stranger's face dressed up as her.
+                photo = random_proactive_photo(character_id)
             except Exception:
                 photo = None
         options = [(lbl, f'life_reply:{character_id}:{key}') for lbl, key in _REPLY_OPTIONS]

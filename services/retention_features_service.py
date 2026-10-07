@@ -799,7 +799,8 @@ def proactive_max_bytes(kind: str) -> int:
     return PROACTIVE_PHOTO_MAX_BYTES
 
 
-def add_proactive_photo(data: bytes, content_type: str = 'image/jpeg', kind: str = 'photo') -> bool:
+def add_proactive_photo(data: bytes, content_type: str = 'image/jpeg', kind: str = 'photo',
+                        character_id: str | None = None) -> bool:
     from models.app_models import ProactivePhoto
     if not data or kind not in PROACTIVE_MEDIA_KINDS:
         return False
@@ -807,7 +808,8 @@ def add_proactive_photo(data: bytes, content_type: str = 'image/jpeg', kind: str
         return False
     try:
         with SessionLocal() as s:
-            s.add(ProactivePhoto(image_bytes=data, content_type=content_type or 'image/jpeg', kind=kind))
+            s.add(ProactivePhoto(image_bytes=data, content_type=content_type or 'image/jpeg',
+                                 kind=kind, character_id=character_id or None))
             s.commit()
         return True
     except Exception:
@@ -820,10 +822,27 @@ def list_proactive_photos() -> list[dict]:
         with SessionLocal() as s:
             rows = s.scalars(select(ProactivePhoto).order_by(ProactivePhoto.id)).all()
             return [{'id': r.id, 'kind': getattr(r, 'kind', None) or 'photo',
+                     'character_id': getattr(r, 'character_id', None) or '',
                      'created_at': r.created_at.isoformat() if r.created_at else ''}
                     for r in rows]
     except Exception:
         return []
+
+
+def set_proactive_photo_character(photo_id: int, character_id: str) -> bool:
+    """V3.56.7: re-tag a pool shot with its real character (legacy rows and
+    mistagged uploads)."""
+    from models.app_models import ProactivePhoto
+    try:
+        with SessionLocal() as s:
+            row = s.get(ProactivePhoto, photo_id)
+            if not row:
+                return False
+            row.character_id = character_id or None
+            s.commit()
+        return True
+    except Exception:
+        return False
 
 
 def delete_proactive_photo(photo_id: int) -> bool:
@@ -840,12 +859,21 @@ def delete_proactive_photo(photo_id: int) -> bool:
         return False
 
 
-def random_proactive_photo() -> tuple[bytes, str, str] | None:
-    """A (bytes, content_type, kind) pick from the pool, or None when empty."""
+def random_proactive_photo(character_id: str | None = None) -> tuple[bytes, str, str] | None:
+    """A (bytes, content_type, kind) pick from the pool, or None when empty.
+
+    V3.56.7: with a character the pick is STRICT — only her own shots. An
+    untagged or foreign photo must never land in her chat: the owner's log
+    showed Nadya delivering a stranger's picture. Empty per-character pool
+    simply means «no photo», the caller falls back to plain text."""
     from models.app_models import ProactivePhoto
     try:
         with SessionLocal() as s:
-            rows = s.scalars(select(ProactivePhoto)).all()
+            if character_id:
+                rows = s.scalars(select(ProactivePhoto).where(
+                    ProactivePhoto.character_id == character_id)).all()
+            else:
+                rows = s.scalars(select(ProactivePhoto)).all()
             if not rows:
                 return None
             row = random.choice(rows)

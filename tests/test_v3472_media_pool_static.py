@@ -35,7 +35,8 @@ def test_proactive_media_model_and_registration():
 def test_pool_service_is_kind_aware():
     assert "PROACTIVE_MEDIA_KINDS = ('photo', 'gif', 'video')" in RFS
     assert 'def proactive_max_bytes(kind: str) -> int:' in RFS
-    assert "def add_proactive_photo(data: bytes, content_type: str = 'image/jpeg', kind: str = 'photo') -> bool:" in RFS
+    assert "def add_proactive_photo(data: bytes, content_type: str = 'image/jpeg', kind: str = 'photo'," in RFS
+    assert "character_id: str | None = None) -> bool:" in RFS  # V3.56.7 per-character pool
     assert "if len(data) > proactive_max_bytes(kind):" in RFS
     assert "'kind': getattr(r, 'kind', None) or 'photo'," in RFS
     # the random pick reports the kind so the sender can route by it
@@ -45,7 +46,7 @@ def test_pool_service_is_kind_aware():
 # ── delivery: the ritual sends photo / GIF / video by kind ─────────────────
 def test_ritual_sends_media_by_kind():
     ritual = SCHED[SCHED.index('async def _rituals(bot):'):SCHED.index('async def _donation_reminder(bot):')]
-    assert 'shot = retention_features_service.random_proactive_photo()' in ritual
+    assert 'shot = retention_features_service.random_proactive_photo(char_id)' in ritual
     assert "data, ctype, kind = shot" in ritual
     assert 'await bot.send_animation(int(tg_id), BufferedInputFile(data, filename=\'ritual.mp4\'), caption=text)' in ritual
     assert 'await bot.send_video(int(tg_id), BufferedInputFile(data, filename=\'ritual.mp4\'), caption=text)' in ritual
@@ -61,7 +62,8 @@ def test_admin_pool_upload_accepts_all_media():
     assert "file, kind, ctype = message.animation, 'gif', (message.animation.mime_type or 'video/mp4')" in upload
     assert "file, kind, ctype = message.video, 'video', (message.video.mime_type or 'video/mp4')" in upload
     assert 'limit = rfs.proactive_max_bytes(kind)' in upload
-    assert 'ok = rfs.add_proactive_photo(buf.getvalue(), ctype, kind)' in upload
+    assert 'ok = rfs.add_proactive_photo(buf.getvalue(), ctype, kind,' in upload
+    assert 'character_id=PROPHOTO_WAIT.get(message.from_user.id))' in upload  # V3.56.7
     # admin surface mentions all three media kinds
     assert "callback_data='admin:prophoto'" in MAIN
     assert '➕ Добавить фото / GIF / видео' in MAIN

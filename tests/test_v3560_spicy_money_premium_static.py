@@ -60,7 +60,7 @@ def test_render_ledgers_every_billed_job():
 
 # ── item 1: the gift cannon no longer spends money ────────────────────────────
 def test_daily_gift_is_pool_only():
-    assert 'retention_features_service.random_proactive_photo()' in GIFT
+    assert 'retention_features_service.random_proactive_photo(gift_char)' in GIFT  # V3.56.7 per-character
     # the paid render is gone from the gift path entirely
     assert 'generate_private_photo_real' not in GIFT
     assert 'return False  # no free pool image' in GIFT
