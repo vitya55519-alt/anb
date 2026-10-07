@@ -80,6 +80,17 @@ SPICYAPI_IMAGE_MODEL = os.getenv("SPICYAPI_IMAGE_MODEL", "bytedance/seedream-5.0
 # this can be corrected from Railway without a redeploy.
 SPICYAPI_T2I_MODEL = os.getenv("SPICYAPI_T2I_MODEL", "bytedance/seedream-5.0-lite/text-to-image").strip()
 SPICYAPI_IMAGE_TIMEOUT = max(30, min(180, int(os.getenv("SPICYAPI_IMAGE_TIMEOUT", "90"))))
+# V3.56.0: the real per-job SpicyAPI bill (observed $0.0345 on the console).
+# Every intimate render (Наедине/косплей/взрослая студия) is charged whether or
+# not the image comes back, so this is ledgered on the createTask event — the
+# old blind spot that made /stats report «картинки $0.080» while the balance
+# actually drained ~$3-4/day.
+SPICYAPI_ESTIMATED_COST_USD = float(os.getenv("SPICYAPI_ESTIMATED_COST_USD", "0.0345"))
+# V3.56.1: owner's call — SpicyAPI renders EVERY photo scene (Наедине-качество
+# выше, чем у fal, а джоб дешевле: $0.0345 vs $0.04). With this on the scene
+# router picks spicyapi first for all chat/studio scenes; fal stays as the
+# safety leg when SpicyAPI is down or returns nothing.
+PHOTO_SPICY_FIRST = os.getenv("PHOTO_SPICY_FIRST", "1") == "1"
 
 # Legacy OpenAI key — kept ONLY for optional TTS/Whisper/moderation.
 # No longer required for chat or image generation.
@@ -269,8 +280,11 @@ LLM_REPORT_USAGE = os.getenv("LLM_REPORT_USAGE", "true").strip().lower() in {"1"
 # the humanizer rewrite) — the visible chat reply is never blocked. When the
 # image brake trips, generation is refused BEFORE any provider call and the
 # existing refund path returns the money the user already paid.
+# V3.56.2: the owner removed the photo brake — SpicyAPI renders every scene
+# now, so the image brake ships OFF (SPEND_IMAGE_DAILY_BUDGET_USD>0 on Railway
+# turns it back on). The ledger keeps counting either way.
 SPEND_LLM_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_LLM_DAILY_BUDGET_USD", "1.0")))
-SPEND_IMAGE_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_IMAGE_DAILY_BUDGET_USD", "2.0")))
+SPEND_IMAGE_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_IMAGE_DAILY_BUDGET_USD", "0")))
 
 # V3.19.9: Pollinations.ai was removed (repeated http_500 + wrong-subject
 # renders). Photo providers are now Gemini Image -> OpenAI -> fal/Seedream.

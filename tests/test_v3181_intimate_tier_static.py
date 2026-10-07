@@ -183,7 +183,10 @@ class TestSeedreamRequestAdult:
 # --- Provider routing tests -------------------------------------------------
 
 class TestProviderRoutingAdult:
-    def test_choose_provider_routes_adult_to_seedream(self, photo_mod):
+    def test_choose_provider_routes_adult_to_seedream(self, photo_mod, monkeypatch):
+        # V3.56.1: spicy rides first while the key is present; this pins the
+        # no-key fallback leg — adult scenes still never reach Gemini/OpenAI.
+        monkeypatch.setattr(photo_mod, 'SPICYAPI_KEY', '')
         req = photo_mod.PhotoRequest(scene='nude')
         assert photo_mod.choose_photo_provider(0, req) == 'seedream45'
         req = photo_mod.PhotoRequest(scene='tease')

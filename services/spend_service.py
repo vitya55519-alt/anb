@@ -188,11 +188,14 @@ def format_spend_lines(snap: dict) -> list[str]:
         f'· токены: вход {snap.get("prompt_tokens", 0)} · выход {snap.get("completion_tokens", 0)} '
         f'· reasoning {snap.get("reasoning_tokens", 0)}'
     )
-    if snap.get('llm_budget'):
+    if snap.get('llm_budget') or snap.get('image_budget'):
+        # V3.56.2: budget<=0 means the brake itself is off, not tripped —
+        # say so, otherwise the owner reads "$0.00 (активен)" and is confused.
+        llm_state = 'выключен' if SPEND_LLM_DAILY_BUDGET_USD <= 0 or not llm_aux_allowed() else 'активен'
+        img_state = 'выключен' if SPEND_IMAGE_DAILY_BUDGET_USD <= 0 or not image_generation_allowed() else 'активен'
         lines.append(
             f'· тормоза: LLM лимит ${snap["llm_budget"]:.2f}/сутки '
-            f'({"выключен" if not llm_aux_allowed() else "активен"}), '
-            f'картинки ${snap["image_budget"]:.2f}/сутки '
-            f'({"выключен" if not image_generation_allowed() else "активен"})'
+            f'({llm_state}), '
+            f'картинки ${snap["image_budget"]:.2f}/сутки ({img_state})'
         )
     return lines

@@ -41,9 +41,11 @@ from config import (
     SPICYAPI_IMAGE_MODEL,
     SPICYAPI_T2I_MODEL,
     SPICYAPI_IMAGE_TIMEOUT,
+    SPICYAPI_ESTIMATED_COST_USD,
     CHARACTER_ID,
     PUBLIC_BASE_URL,
 )
+from services import spend_service  # V3.56.0: ledger every billed SpicyAPI job
 
 logger = logging.getLogger(__name__)
 
@@ -536,17 +538,23 @@ async def _spicyapi_call(method: str, path: str, headers: dict = None, **kwargs)
             return body.get("data", {})
 
 
-async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[str]]) -> Optional[bytes]:
+async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private') -> Optional[bytes]:
     """Shared SpicyAPI task flow: createTask → poll → download.
 
     ``image_urls`` empty/None → text-to-image; otherwise image-to-image edit.
     Returns image bytes or None on any failure (missing key, no taskId, task
     failed/expired, timeout, download error). Never raises — callers treat None
     as «this engine produced nothing».
+
+    V3.56.0: once createTask returns a taskId the provider bills the job whether
+    or not the image ever comes back, so the cost is ledgered on that event with
+    the true success flag — the fix for intimate renders being invisible in
+    /stats (the «картинки $0.080» blind spot).
     """
     if not SPICYAPI_KEY:
         logger.error("SPICYAPI_KEY not configured")
         return None
+    result: Optional[bytes] = None
     try:
         input_block: Dict[str, Any] = {
             "prompt": prompt,
@@ -567,7 +575,8 @@ async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[st
             logger.error(f"No taskId in SpicyAPI response: {task_data}")
             return None
         logger.info(f"SpicyAPI task: {task_id}")
-
+        # Money is committed the moment the task is accepted — ledger it before
+        # polling so a later timeout/failure still counts against the budget.
         deadline = asyncio.get_event_loop().time() + SPICYAPI_IMAGE_TIMEOUT
         wait = 2.0
         while asyncio.get_event_loop().time() < deadline:
@@ -578,21 +587,25 @@ async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[st
             if state == "succeeded":
                 assets = task_info.get("output", {}).get("assets", [])
                 asset_url = next((a["url"] for a in assets if a.get("url")), None)
-                if not asset_url:
-                    return None
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(asset_url) as resp:
-                        if resp.status == 200:
-                            return await resp.read()
-                return None
+                if asset_url:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(asset_url) as resp:
+                            if resp.status == 200:
+                                result = await resp.read()
+                break
             elif state in ("failed", "expired", "canceled"):
                 logger.error(f"SpicyAPI task {state}: {task_info.get('errorMessage')}")
-                return None
-        logger.error(f"SpicyAPI timeout: {task_id}")
-        return None
+                break
+        if result is None:
+            logger.error(f"SpicyAPI no image (timeout or empty): {task_id}")
     except Exception as e:
         logger.exception(f"SpicyAPI failed: {e}")
-        return None
+    # A task that reached createTask is billed regardless of the outcome.
+    spend_service.record_image_spend(
+        'spicyapi', scene, SPICYAPI_ESTIMATED_COST_USD,
+        billed=True, success=bool(result),
+    )
+    return result
 
 
 async def generate_private_photo_real(
@@ -619,7 +632,7 @@ async def generate_private_photo_real(
     # i=0 = face identity, i=1 = body/look silhouette
     ref_face_url = f"{PUBLIC_BASE_URL}/webapp/photo/{request.character_id}?i=0"
     ref_body_url = f"{PUBLIC_BASE_URL}/webapp/photo/{request.character_id}?i=1"
-    return await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, [ref_face_url, ref_body_url])
+    return await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, [ref_face_url, ref_body_url], scene=str(request.category or 'private'))
 
 
 async def generate_private_photo_t2i(prompt: str) -> Optional[bytes]:
@@ -631,7 +644,7 @@ async def generate_private_photo_t2i(prompt: str) -> Optional[bytes]:
     carried by the text visual-lock). ``SPICYAPI_T2I_MODEL`` is env-overridable
     because the exact provider model id is account-specific.
     """
-    return await _spicyapi_render(SPICYAPI_T2I_MODEL, prompt, None)
+    return await _spicyapi_render(SPICYAPI_T2I_MODEL, prompt, None, scene='nude_t2i')
 
 
 # ─── Вспомогательные функции ───────────────────────────────────────────────────
@@ -850,7 +863,12 @@ def get_achievements(telegram_id: int) -> list:
 # ─── Ежедневный подарок «Подарок от неё» ────────────────────────────────────
 
 async def send_daily_gift(telegram_id: int, bot) -> bool:
-    """Отправить ежедневный бесплатный подарок. Возвращает True если отправлен."""
+    """V3.56.0: the daily «Подарок от неё» photo is served ONLY from the owner's
+    free media pool now. It used to render a fresh paid SpicyAPI image per
+    recipient — up to 50/day fired at 12:00 UTC, ~$1.70 burned every single day
+    and invisible in /stats because the gift path never ledgered or audited.
+    An empty pool simply means no photo gift today; a proactive push never
+    spends money. The gift date is only stamped once the photo actually lands."""
     uid = ensure_user(telegram_id)
     today = date.today()
     with SessionLocal() as session:
@@ -859,35 +877,33 @@ async def send_daily_gift(telegram_id: int, bot) -> bool:
             return False
         if user.last_daily_gift_date == today:
             return False
-        user.last_daily_gift_date = today
-        session.commit()
-    # Генерируем случайное фото «наедине»
-    import random
-    cat = random.choice(list(PRIVATE_PHOTO_CATEGORIES.keys()))
-    types = PRIVATE_PHOTO_CATEGORIES[cat]["types"]
-    type_id = random.choice(types)["id"]
-    loc = random.choice(LOCATIONS)["id"]
-    mood = random.choice(MOODS)["id"]
-    request = PrivatePhotoRequest(
-        category=cat, type_id=type_id, location_id=loc, mood_id=mood,
-        character_id=CHARACTER_ID,
+    from services import retention_features_service
+    shot = retention_features_service.random_proactive_photo()
+    if not shot:
+        return False  # no free pool image — skip, never pay for a push
+    data, _ctype, _kind = shot
+    from aiogram.types import BufferedInputFile
+    await bot.send_photo(
+        chat_id=telegram_id,
+        photo=BufferedInputFile(data, filename='daily_gift.jpg'),
+        caption='🎁 Я скучала... вот, держи 💋',
     )
-    from services.character_dna_service import character_dna_context
-    char_desc = character_dna_context(CHARACTER_ID)
-    image_bytes = await generate_private_photo_real(request, char_desc)
-    if image_bytes:
-        import io
-        from aiogram.types import BufferedInputFile
-        type_name = get_type_name(cat, type_id)
-        await bot.send_photo(
-            chat_id=telegram_id,
-            photo=BufferedInputFile(image_bytes, filename='daily_gift.jpg'),
-            caption=f'🎁 Я скучала... вот, держи 💋\n\n{type_name}',
+    with SessionLocal() as session:
+        user = session.scalar(select(User).where(User.id == uid))
+        if user:
+            user.last_daily_gift_date = today
+            session.commit()
+    # V3.56.0: audit the gift into the admin feed (free pool, $0) so the owner
+    # finally sees proactive sends next to the paid renders.
+    try:
+        from services import webapp_service
+        webapp_service.record_generation(
+            telegram_id, 'gift', CHARACTER_ID, 'daily_gift', None,
+            engine='pool', cost_usd=0.0,
         )
-        # Сохраняем в галерею
-        gallery_save(telegram_id, CHARACTER_ID, cat, type_id, image_bytes)
-        return True
-    return False
+    except Exception:
+        pass
+    return True
 
 
 # ─── Голос + фото комбо ─────────────────────────────────────────────────────

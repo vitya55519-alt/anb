@@ -364,24 +364,35 @@ async def _mood_update(bot):
 async def _daily_gift(bot):
     try:
         today = dt.date.today()
+        # V3.56.0: the gift photo now comes from the free pool (see
+        # send_daily_gift), but we still only push to users who opted in and
+        # were recently active — a dead account gets nothing, and the cap is
+        # trimmed from 50 to 15 so even pool sends stay a courtesy, not spam.
+        fresh_cutoff = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - dt.timedelta(days=RITUAL_MAX_INACTIVE_DAYS)
         with SessionLocal() as s:
             users = s.execute(select(User).where(
-                (User.last_daily_gift_date != today) | (User.last_daily_gift_date.is_(None))
+                ((User.last_daily_gift_date != today) | (User.last_daily_gift_date.is_(None))),
+                User.proactive_enabled == True,
+                User.last_active_at >= fresh_cutoff,
             )).scalars().all()
             user_ids = [u.telegram_id for u in users if u.telegram_id]
         if not user_ids:
             return
-        # Отправляем подарок случайным активным пользователям (макс 50 в день)
+        # Отправляем подарок случайным активным пользователям (макс 15 в день)
         import random
-        targets = random.sample(user_ids, min(50, len(user_ids)))
+        targets = random.sample(user_ids, min(15, len(user_ids)))
         from services.private_photo_service import send_daily_gift
+        sent = 0
         for tid in targets:
             try:
-                await send_daily_gift(tid, bot)
+                if await send_daily_gift(tid, bot):
+                    sent += 1
                 await asyncio.sleep(1)  # Не перегружать API
+            except TelegramForbiddenError:
+                _mark_blocked(int(tid))
             except Exception:
                 logger.exception('daily gift failed user=%s', tid)
-        logger.info('daily gifts sent count=%s', len(targets))
+        logger.info('daily gifts sent count=%s/%s', sent, len(targets))
     except Exception:
         logger.exception('daily gift job failed')
 

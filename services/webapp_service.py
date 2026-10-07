@@ -1275,9 +1275,12 @@ def _is_admin(telegram_id) -> bool:
         return False
 
 
-def record_generation(telegram_id, kind, character_id, prompt, filename) -> None:
+def record_generation(telegram_id, kind, character_id, prompt, filename, *,
+                      engine=None, cost_usd=0.0) -> None:
     """Log one Mini App generation for the owner's admin feed. Fire-and-forget:
-    an audit hiccup must never break the user's render or cost them a credit."""
+    an audit hiccup must never break the user's render or cost them a credit.
+    V3.56.0: also carries the rendering engine and its cost so the feed shows
+    the money trail (SpicyAPI/fal/gemini/pool), not just the picture."""
     try:
         from models.app_models import UserGeneration
         with SessionLocal() as s:
@@ -1287,6 +1290,8 @@ def record_generation(telegram_id, kind, character_id, prompt, filename) -> None
                 character_id=(str(character_id)[:64] if character_id else None),
                 prompt=str(prompt or '')[:1000],
                 filename=(str(filename)[:255] if filename else None),
+                engine=(str(engine)[:48] if engine else None),
+                cost_usd=max(0.0, float(cost_usd or 0.0)),
             ))
             s.commit()
     except Exception:
@@ -1310,6 +1315,8 @@ def list_generations(limit: int = 60, offset: int = 0) -> list[dict]:
                 'character_id': r.character_id,
                 'prompt': r.prompt or '',
                 'filename': r.filename,
+                'engine': r.engine or '',
+                'cost_usd': float(r.cost_usd or 0.0),
                 'ts': r.created_at.isoformat() if r.created_at else None,
             } for r in rows]
     except Exception:

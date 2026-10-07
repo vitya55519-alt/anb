@@ -82,11 +82,11 @@ def test_photo_frame_bytes_helper():
 
 def test_frames_parameter_threaded_through_every_engine():
     for fn in ('_run_gemini_set', '_run_openai_set', '_run_seedream_set',
-               '_run_routed_photo_set', 'generate_photo_set'):
+               '_run_spicy_set', '_run_routed_photo_set', 'generate_photo_set'):
         assert f'async def {fn}(' in PHOTO_SVC
     # every set-runner accepts the frame count and the router threads it
-    # into all of its branches and fallbacks
-    assert PHOTO_SVC.count('frames: int = PHOTO_SET_SIZE') == 5
+    # into all of its branches and fallbacks (V3.56.1 added _run_spicy_set)
+    assert PHOTO_SVC.count('frames: int = PHOTO_SET_SIZE') == 6
     assert 'frames=frames' in PHOTO_SVC
 
 

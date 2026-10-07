@@ -35,9 +35,9 @@ def test_pricing_and_budget_config():
     assert 'GEMINI_LLM_USD_PER_M_INPUT = float(os.getenv("GEMINI_LLM_USD_PER_M_INPUT", "0.10"))' in CONFIG
     assert 'GEMINI_LLM_USD_PER_M_OUTPUT = float(os.getenv("GEMINI_LLM_USD_PER_M_OUTPUT", "0.40"))' in CONFIG
     assert 'LLM_REPORT_USAGE = os.getenv("LLM_REPORT_USAGE", "true")' in CONFIG
-    # daily brakes, clamped non-negative, default sane
+    # daily brakes, clamped non-negative; V3.56.2: the image brake ships OFF
     assert 'SPEND_LLM_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_LLM_DAILY_BUDGET_USD", "1.0")))' in CONFIG
-    assert 'SPEND_IMAGE_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_IMAGE_DAILY_BUDGET_USD", "2.0")))' in CONFIG
+    assert 'SPEND_IMAGE_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_IMAGE_DAILY_BUDGET_USD", "0")))' in CONFIG
 
 
 def test_spend_ledger_tables_exist():

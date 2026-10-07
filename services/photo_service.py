@@ -29,6 +29,8 @@ from config import (
     FAL_CONNECT_TIMEOUT_SECONDS, FAL_WRITE_TIMEOUT_SECONDS, FAL_POOL_TIMEOUT_SECONDS,
     FAL_RETRIES, FAL_RETRY_BACKOFF_SECONDS, FAL_ESTIMATED_COST_USD,
     PHOTO_ROUTER_MODE, PHOTO_SET_SIZE,
+    SPICYAPI_KEY, SPICYAPI_IMAGE_MODEL, SPICYAPI_ESTIMATED_COST_USD, PHOTO_SPICY_FIRST,
+    PUBLIC_BASE_URL,
     GEMINI_API_KEY, GEMINI_IMAGE_ENABLED, GEMINI_IMAGE_MODEL, GEMINI_IMAGE_TIMEOUT_SECONDS, GEMINI_IMAGE_ESTIMATED_COST_USD, GEMINI_IMAGE_ASPECT_RATIO, GEMINI_IMAGE_SIZE,
     GEMINI_VIDEO_BASE_URL,
     COMMUNITY_POOL_ENABLED, COMMUNITY_POOL_FIRST,
@@ -2454,7 +2456,63 @@ async def _run_seedream_set(
     return out
 
 
+async def _run_spicy_set(
+    character: dict,
+    telegram_id: int,
+    request: PhotoRequest,
+    on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None,
+    *,
+    character_id: str = CHARACTER_ID,
+    frames: int = PHOTO_SET_SIZE,
+) -> list[GeneratedPhoto]:
+    """V3.56.1: the owner's primary scene engine — SpicyAPI Seedream 5.0 edit.
+
+    Same seedream-flavoured prompt the fal leg builds (identity lock, per-frame
+    rotation), the same two canonical reference URLs the «Наедине» pipeline uses
+    (i=0 face, i=1 body), but every scene — public ones included — renders here
+    because the owner judged its quality above fal's. `_spicyapi_render` never
+    raises: None means «this engine produced nothing» and the caller walks to
+    fal. The spend is ledgered inside `_spicyapi_render` on the createTask event.
+    """
+    from services.private_photo_service import _spicyapi_render
+    refs = [f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0',
+            f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=1']
+    out: list[GeneratedPhoto] = []
+    logger.info('SpicyAPI set request user=%s scene=%s target_count=%s', telegram_id, request.scene, frames)
+    for i in range(frames):
+        prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id, character_id), character_id=character_id) + (
+            '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location and face identity '
+            'as the other photos in this set; her body always follows the declared BODY IDENTITY — never the reference silhouette. '
+            'Make this framing clearly different from the previous shot while staying in the same photo session.'
+        )
+        frame_started = time.monotonic()
+        data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs, scene=f'scene:{request.scene}')
+        record_provider('spicyapi', bool(data), None if data else 'empty_result')
+        if not data:
+            track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'spicyapi', 'reason': 'empty_result'})
+            if out:
+                logger.warning('SpicyAPI partial set user=%s scene=%s delivered=%s/%s', telegram_id, request.scene, len(out), frames)
+                break
+            raise PhotoGenerationError('spicyapi', 'empty_result')
+        photo = GeneratedPhoto(data=data, provider='spicyapi', estimated_cost_usd=SPICYAPI_ESTIMATED_COST_USD)
+        out.append(photo)
+        frame_elapsed = time.monotonic() - frame_started
+        track_event(ensure_user(telegram_id), 'photo_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'spicyapi'})
+        if i == 0:
+            track_event(ensure_user(telegram_id), 'photo_first_frame_ready', value=frame_elapsed, metadata={'scene': request.scene, 'provider': 'spicyapi'})
+        if on_frame:
+            await on_frame(photo, i)
+    if not out:
+        raise PhotoGenerationError('spicyapi', 'no_image')
+    return out
+
+
 def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
+    # V3.56.1: owner's call — SpicyAPI renders every scene (better identity and
+    # quality than fal, and cheaper per job). It rides first whenever the key is
+    # present; _run_routed_photo_set walks to fal when SpicyAPI produces nothing.
+    if PHOTO_SPICY_FIRST and SPICYAPI_KEY:
+        return 'spicyapi'
     mode = PHOTO_ROUTER_MODE
     if mode in {'openai', 'gpt', 'gpt-image-2'}:
         return 'openai' if OPENAI_IMAGE_AVAILABLE else ('gemini_image' if GEMINI_IMAGE_ENABLED else 'seedream45')
@@ -2501,6 +2559,16 @@ async def _run_routed_photo_set(
         track_event(ensure_user(telegram_id), 'photo_budget_blocked', metadata={'scene': resolved.scene})
         raise PhotoGenerationError('budget', 'daily_image_budget_exhausted')
     try:
+        if provider == 'spicyapi':
+            # V3.56.1: primary scene engine per owner; on any total failure walk
+            # to the proven fal leg so the user still gets a photo (the daily
+            # budget brake above already guarded both).
+            try:
+                return await _run_spicy_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
+            except PhotoGenerationError as exc:
+                logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=spicyapi to=seedream45 reason=%s', telegram_id, resolved.scene, exc.reason)
+                track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'spicyapi', 'to': 'seedream45', 'reason': exc.reason})
+                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
         if provider == 'seedream45':
             try:
                 return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)

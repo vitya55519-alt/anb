@@ -120,16 +120,25 @@ def test_startup_diagnostic_names_the_fal_model(photo_mod):
     assert 'PHOTO PROVIDERS: fal.ai/Seedream=%s (model=%s)' in PHOTO
 
 
-def test_ordinary_scene_routes_to_fal_at_runtime(photo_mod):
-    # the whole point: an ordinary fully-clothed scene no longer picks the
-    # Gemini leg by default — it goes to fal like every other photo
+def test_ordinary_scene_routes_to_fal_at_runtime(photo_mod, monkeypatch):
+    # V3.56.1: the owner put SpicyAPI in front of every scene while the key is
+    # present; with no key the strict fal chain below still holds exactly as
+    # before (this is the fallback leg the router walks to).
     req = photo_mod.PhotoRequest(scene='selfie')
+    monkeypatch.setattr(photo_mod, 'PHOTO_SPICY_FIRST', True)
+    monkeypatch.setattr(photo_mod, 'SPICYAPI_KEY', 'test-key')
+    assert photo_mod.choose_photo_provider(0, req) == 'spicyapi'
+    monkeypatch.setattr(photo_mod, 'SPICYAPI_KEY', '')
     assert photo_mod.choose_photo_provider(0, req) == 'seedream45'
     req = photo_mod.PhotoRequest(scene='cafe')
     assert photo_mod.choose_photo_provider(0, req) == 'seedream45'
 
 
-def test_adult_scenes_still_route_to_fal(photo_mod):
+def test_adult_scenes_still_route_to_fal(photo_mod, monkeypatch):
+    # no-key path: adult scenes keep walking the fal leg (V3.44.19 policy is
+    # now the FALLBACK policy, still intact under PHOTO_SPICY_FIRST=0/keyless)
+    monkeypatch.setattr(photo_mod, 'PHOTO_SPICY_FIRST', True)
+    monkeypatch.setattr(photo_mod, 'SPICYAPI_KEY', '')
     for scene in ('nude', 'tease', 'lingerie'):
         req = photo_mod.PhotoRequest(scene=scene)
         assert photo_mod.choose_photo_provider(0, req) == 'seedream45'

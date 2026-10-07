@@ -173,6 +173,20 @@ def revoke_premium(telegram_id:int)->bool:
         s.commit(); return True
 
 
+def revoke_all_premium()->int:
+    """V3.56.0 admin tool: cancel every currently-active Premium subscription in
+    one shot (the test/admin grants). History rows are kept and photo credits
+    are left untouched — only the live entitlement is pulled. Returns the number
+    of subscriptions revoked."""
+    now=datetime.now(timezone.utc).replace(tzinfo=None)
+    with SessionLocal() as s:
+        active=s.scalars(select(Subscription).where(Subscription.status=="active",Subscription.expires_at>now)).all()
+        for sub in active:
+            sub.status='cancelled'; sub.expires_at=now
+        s.commit()
+        return len(active)
+
+
 def _today_utc() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 

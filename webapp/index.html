@@ -2700,13 +2700,16 @@ async function loadGenFeed(reset) {
     if (r.status === 403) { box.innerHTML = '<div class="chat-empty">' + esc(L.locked) + '</div>'; return; }
     const j = await r.json();
     if (!j.ok) { box.innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; return; }
-    renderGenFeed(j.generations || [], reset);
+    renderGenFeed(j.generations || [], reset, j.spent_today_usd);
   } catch (e) { box.innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; }
 }
 
-function renderGenFeed(rows, reset) {
+function renderGenFeed(rows, reset, spentToday) {
   const box = document.getElementById('genBody');
   if (reset) box.innerHTML = '';
+  if (reset && typeof spentToday === 'number') {
+    box.insertAdjacentHTML('beforeend', '<div style="font-size:12px;opacity:.85;margin:2px 0 8px">💸 сожжено на картинки сегодня: <b>$' + spentToday.toFixed(3) + '</b></div>');
+  }
   if (!rows.length) { box.innerHTML = '<div class="chat-empty">' + esc(L.gen_empty) + '</div>'; return; }
   let html = '';
   rows.forEach(g => {
@@ -2715,9 +2718,11 @@ function renderGenFeed(rows, reset) {
       : '';
     let when = '';
     try { when = g.ts ? new Date(g.ts + 'Z').toLocaleString() : ''; } catch (e) { when = g.ts || ''; }
+    const cost = Number(g.cost_usd || 0);
+    const money = (g.engine ? (' · ' + esc(String(g.engine))) : '') + (' · ' + (cost > 0 ? ('$' + cost.toFixed(4)) : '$0'));
     html += '<div style="background:rgba(255,255,255,.05);border-radius:14px;padding:10px 12px;margin:8px 0">'
       + thumb
-      + '<div style="font-size:12px;opacity:.8;margin-bottom:4px">' + esc(String(g.kind || '')) + ' · ' + esc(g.character || '—') + ' · id ' + esc(String(g.user || '')) + (when ? (' · ' + esc(when)) : '') + '</div>'
+      + '<div style="font-size:12px;opacity:.8;margin-bottom:4px">' + esc(String(g.kind || '')) + ' · ' + esc(g.character || '—') + ' · id ' + esc(String(g.user || '')) + (when ? (' · ' + esc(when)) : '') + money + '</div>'
       + '<div style="font-size:13px;white-space:pre-wrap;word-break:break-word">' + esc(g.prompt || '') + '</div>'
       + '</div>';
   });

@@ -161,6 +161,12 @@ def init_db():
         'age': 'INTEGER',
         'short_bio': 'TEXT',
     })
+    # V3.56.0: the admin generation feed now carries the engine and per-job cost
+    # so intimate (SpicyAPI) renders stop being invisible in the money trail.
+    _add_missing_columns('user_generations', {
+        'engine': 'VARCHAR(48)',
+        'cost_usd': 'FLOAT DEFAULT 0',
+    })
     # Final safety net: any model column missing from an existing table gets added
     # automatically. This prevents future "UndefinedColumn" crashes when new fields
     # are added to models but forgotten in explicit migrations.

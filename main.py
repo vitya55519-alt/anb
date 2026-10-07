@@ -2159,6 +2159,17 @@ async def admin_panel(message: types.Message):
     await message.answer('⚙️ Админка AnnaBot', reply_markup=admin_keyboard())
 
 
+@dp.message(Command('revoke_all_premium'))
+async def admin_revoke_all_premium(message: types.Message):
+    """V3.56.0: pull every live Premium entitlement in one shot (the test/admin
+    grants). Admin-only; keeps subscription history and photo credits intact."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services.payments import revoke_all_premium
+    n = revoke_all_premium()
+    await message.answer(f'⭐ Снято active Premium у всех: {n} подписок отключено.')
+
+
 @dp.message(F.text.in_(kb_pair('admin')))
 async def admin_panel_button(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
@@ -5594,11 +5605,25 @@ async def private_photo_generate(cq: types.CallbackQuery):
     # Проверяем кэш
     prompt = build_private_photo_prompt(request, char_desc)
     image_bytes = cache_get(prompt, get_user_character(cq.from_user.id))
+    rendered = False
     if not image_bytes:
         image_bytes = await generate_private_photo_real(request, char_desc)
+        rendered = bool(image_bytes)
         if image_bytes:
             cache_save(prompt, get_user_character(cq.from_user.id), cat_id, type_id, image_bytes)
     if image_bytes:
+        # V3.56.0: audit the Telegram «наедине» render into the admin feed too —
+        # only a fresh paid SpicyAPI job carries cost; a cache hit is $0.
+        try:
+            from config import SPICYAPI_ESTIMATED_COST_USD as _spicy_cost
+            webapp_service.record_generation(
+                cq.from_user.id, 'hot', get_user_character(cq.from_user.id),
+                f'{cat_id}:{type_id}', None,
+                engine=('spicyapi' if rendered else 'cache'),
+                cost_usd=(_spicy_cost if rendered else 0.0),
+            )
+        except Exception:
+            pass
         gallery_save(cq.from_user.id, get_user_character(cq.from_user.id), cat_id, type_id, image_bytes)
         # Увеличиваем счётчик и проверяем достижения
         from services.user_service import get_user
@@ -5704,11 +5729,25 @@ async def private_cosplay_generate(cq: types.CallbackQuery):
     char_desc = character_dna_context(get_user_character(cq.from_user.id))
     prompt = build_private_photo_prompt(request, char_desc)
     image_bytes = cache_get(prompt, get_user_character(cq.from_user.id))
+    rendered = False
     if not image_bytes:
         image_bytes = await generate_private_photo_real(request, char_desc)
+        rendered = bool(image_bytes)
         if image_bytes:
             cache_save(prompt, get_user_character(cq.from_user.id), 'cosplay', cosplay_id, image_bytes)
     if image_bytes:
+        # V3.56.0: audit the Telegram cosplay render into the admin feed (paid
+        # SpicyAPI job carries cost, cache hit is $0).
+        try:
+            from config import SPICYAPI_ESTIMATED_COST_USD as _spicy_cost
+            webapp_service.record_generation(
+                cq.from_user.id, 'cosplay', get_user_character(cq.from_user.id),
+                f'cosplay:{cosplay_id}', None,
+                engine=('spicyapi' if rendered else 'cache'),
+                cost_usd=(_spicy_cost if rendered else 0.0),
+            )
+        except Exception:
+            pass
         gallery_save(cq.from_user.id, get_user_character(cq.from_user.id), 'cosplay', cosplay_id, image_bytes)
         from services.user_service import get_user
         user = get_user(cq.from_user.id)
@@ -10565,6 +10604,23 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
             )
             if data:
                 mime = 'image/jpeg'
+        if not data and ref_path is None:
+            # V3.56.1: owner's call — studio scenes ride SpicyAPI too (better
+            # than fal) whenever no uploaded reference pins the fal edit leg:
+            # canonical face+body refs of the user's selected character.
+            from services.private_photo_service import (
+                generate_private_photo_real, PrivatePhotoRequest,
+            )
+            from services.character_dna_service import character_dna_context
+            _char = get_user_character(telegram_id)
+            _req = PrivatePhotoRequest(category='studio', type_id='custom', location_id='',
+                                       mood_id='', character_id=_char)
+            data = await asyncio.wait_for(
+                generate_private_photo_real(_req, character_dna_context(_char), final_prompt),
+                timeout=PHOTO_TOTAL_BUDGET_SECONDS,
+            )
+            if data:
+                mime = 'image/jpeg'
         if not data:
             data, mime = await asyncio.wait_for(
                 photo_service.generate_custom_avatar(final_prompt, ref_path),
@@ -10743,6 +10799,13 @@ async def _webapp_media_photo(telegram_id: int, character_id: str, scene: str = 
     return await _webapp_pipeline_photo(telegram_id, character_id, PhotoRequest(scene=scene))
 
 
+# V3.56.0: _webapp_media_hot knows the real engine (cache/pool/fal/spicyapi) and
+# its cost, but the generic chat-media recorder that writes the admin feed runs
+# one level up. This per-user stash carries the hint across that boundary so the
+# feed shows the true money trail; the caller pops it on the same event loop tick.
+_HOT_MEDIA_HINT: dict = {}
+
+
 async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, cosplay: bool = False):
     """V3.45: generate a private/cosplay photo via SpicyAPI."""
     from services.private_photo_service import (
@@ -10789,6 +10852,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     if cached:
         if not free_used:
             spend_peaches(telegram_id, peach_cost)
+        _HOT_MEDIA_HINT[telegram_id] = ('cache', 0.0)
         return cached, 'image/jpeg', 'jpg'
     # V3.51.3: pool reuse — once this character's shared cache has stockpiled
     # enough ready shots for the SAME scene (category + pose/type), send a
@@ -10802,6 +10866,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
             spend_peaches(telegram_id, peach_cost)
         gallery_save(telegram_id, character_id, cat_id, req.type_id, pooled)
         check_achievements(telegram_id)
+        _HOT_MEDIA_HINT[telegram_id] = ('pool', 0.0)
         return pooled, 'image/jpeg', 'jpg'
     # Generate: adult → fal.ai t2i (safety checker off); others → SpicyAPI i2i
     # V3.46.1: track the real provider failure so the admin toast can show WHY
@@ -10815,14 +10880,12 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         # V3.46.1: nude goes to the UNCENSORED SpicyAPI engine — the fal Seedream
         # route is censored and returns HTTP 422 content_policy_violation on the
         # nude prompt (confirmed in production logs), so it can never deliver
-        # full nudity. Order: SpicyAPI text-to-image (no clothed reference to
-        # drag her back to clothed) → SpicyAPI image-to-image (the engine that
-        # already renders lingerie fine) → fal t2i as a last resort.
+        # full nudity. V3.56.0: only ONE paid SpicyAPI attempt — the old t2i→i2i
+        # retry billed a second $0.0345 job on the same prompt (and i2i drags a
+        # nude back toward the clothed reference anyway), so a failed nude cost
+        # double for nothing. Order now: SpicyAPI text-to-image → fal t2i last.
         engine_used = 'spicyapi_t2i'
         image_bytes = await generate_private_photo_t2i(prompt)
-        if not image_bytes:
-            engine_used = 'spicyapi_i2i'
-            image_bytes = await generate_private_photo_real(req, dna_ctx, prompt)
         if not image_bytes:
             from config import SPICYAPI_KEY as _spicy_key
             provider_error = 'spicyapi_empty_result' + ('' if _spicy_key else ' (SPICYAPI_KEY not set)')
@@ -10862,6 +10925,14 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     cache_save(prompt, character_id, cat_id, type_id, image_bytes)
     gallery_save(telegram_id, character_id, cat_id, type_id, image_bytes)
     check_achievements(telegram_id)
+    # V3.56.0: carry the true engine+cost to the admin-feed recorder upstream.
+    from config import SPICYAPI_ESTIMATED_COST_USD as _spicy_cost, FAL_ESTIMATED_COST_USD as _fal_cost
+    if engine_used.startswith('spicyapi'):
+        _HOT_MEDIA_HINT[telegram_id] = ('spicyapi', _spicy_cost)
+    elif engine_used.startswith('fal'):
+        _HOT_MEDIA_HINT[telegram_id] = ('fal', _fal_cost)
+    else:
+        _HOT_MEDIA_HINT[telegram_id] = (engine_used, 0.0)
     return image_bytes, 'image/jpeg', 'jpg'
 
 
@@ -11071,7 +11142,16 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     # V3.51.1: audit the user-requested media (photo/hot/cosplay/video/circle);
     # voice carries no image, so it is left out of the visual admin feed.
     if kind != 'voice':
-        webapp_service.record_generation(telegram_id, kind, character_id, scene, filename)
+        # V3.56.0: hot/cosplay carry an exact engine+cost hint stashed by
+        # _webapp_media_hot (cache/pool=$0, spicyapi/fal=$real); other kinds
+        # record with no engine so the feed shows them unlabelled rather than
+        # guessing.
+        hint = _HOT_MEDIA_HINT.pop(telegram_id, None) if kind in ('hot', 'cosplay') else None
+        if hint:
+            webapp_service.record_generation(telegram_id, kind, character_id, scene, filename,
+                                             engine=hint[0], cost_usd=hint[1])
+        else:
+            webapp_service.record_generation(telegram_id, kind, character_id, scene, filename)
     if kind == 'photo':
         _default_cap = ('\u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0444\u043e\u0442\u043e',)
         content = f'\U0001f4f8 {random.choice(AUTO_CAPTIONS.get(scene, _default_cap))}'
@@ -11560,7 +11640,12 @@ async def _webapp_api_admin_generations(request: web.Request) -> web.Response:
         r['character'] = card.display_name if card else (r['character_id'] or '')
         r['thumb'] = (f"/webapp/api/admin/gen_media/{r['user']}/{r['filename']}"
                       if r['filename'] else None)
-    return web.json_response({'ok': True, 'generations': rows})
+    # V3.56.0: the owner wants the money trail, not just the pictures — surface
+    # today's authoritative billed image spend (spend_service, includes SpicyAPI
+    # failures) next to the feed.
+    from services import spend_service
+    spent_today = spend_service.image_cost_today()
+    return web.json_response({'ok': True, 'generations': rows, 'spent_today_usd': round(spent_today, 4)})
 
 
 async def _webapp_api_admin_gen_media(request: web.Request) -> web.Response:

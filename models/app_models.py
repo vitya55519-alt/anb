@@ -476,6 +476,11 @@ class UserGeneration(Base):
     character_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     prompt: Mapped[str] = mapped_column(Text, default="")
     filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # V3.56.0: which engine actually rendered this and what it cost the owner,
+    # so the admin feed shows the money trail (spicyapi/fal/gemini/pool) instead
+    # of just the picture. Auto-added by services/db.py for existing rows.
+    engine: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    cost_usd: Mapped[float] = mapped_column(default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
