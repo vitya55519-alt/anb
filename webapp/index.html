@@ -269,13 +269,17 @@
   .chat-input button:disabled { opacity: .5; }
   /* V3.57.1: Telegram-style — 📎/🎤 live INSIDE the text field, ➤ keeps its own spot */
   .chat-field { position: relative; flex: 1; min-width: 0; display: flex; }
-  .chat-field input { flex: 1; min-width: 0; padding-right: 88px; }
+  .chat-field input { flex: 1; min-width: 0; padding-right: 48px; }
   .chat-field .inbtn {
     position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px;
     padding: 0; border: none; border-radius: 50%; background: transparent;
     color: var(--muted); font-size: 17px; cursor: pointer;
   }
-  #chatAttach { right: 48px; }
+  /* V3.57.4: the owner removed sending photos to the character. The 📎 control is
+     hidden and the intake is switched off server-side (PHOTO_REACTION_ENABLED now
+     defaults to false), so both the app endpoint and the bot's vision reaction are
+     dead. The markup and JS stay in place — flipping the flag back restores it. */
+  #chatAttach { display: none; }
   #chatMic { right: 8px; }
   .chat-field .inbtn.rec { right: 8px; width: auto; padding: 0 12px; border-radius: 17px; background: linear-gradient(135deg, #e74c3c, #c0392b); color: #fff; font-size: 12px; animation: recpulse 1.2s ease-in-out infinite; }
   @keyframes recpulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }

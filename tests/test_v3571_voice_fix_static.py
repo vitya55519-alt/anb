@@ -35,7 +35,7 @@ def test_gemini_stt_fallback_leg():
 def test_spa_buttons_live_inside_the_field():
     # Telegram layout: input + icons in one wrapper, send button stays outside
     assert '.chat-field { position: relative;' in SPA
-    assert '.chat-field input { flex: 1; min-width: 0; padding-right: 88px; }' in SPA
+    assert '.chat-field input { flex: 1; min-width: 0; padding-right: 48px; }' in SPA
     assert '<div class="chat-field">' in SPA
     assert 'class="inbtn"' in SPA
     field = SPA[SPA.index('<div class="chat-field">'):SPA.index('</div>\n    <button id="chatSend">')]
