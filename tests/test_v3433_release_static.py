@@ -104,17 +104,20 @@ def test_support_bot_welcome_and_forward():
     assert 'SUPPORT_BOT_TOKEN empty — the support bot stays offline' in MAIN
 
 
-# ── 4. the declared figure: one house archetype, no flat girls ──────────────
+# ── 4. the declared figure: per-girl sizes, no flat girls ──────────────
 
 def test_body_specs_follow_the_house_archetype():
-    # every built-in heroine is declared as size 5, E cup — the owner's
-    # «большая грудь, спортивная, пышная, талия тонкая, плоских не генерировать»
-    for cid in ('alena_01', 'maria_01', 'erika_01', 'sonya_01', 'vika_01', 'alisa_01', 'mila_01'):
+    # V3.56.8: the owner diversified the roster («разный размер у разных») —
+    # each girl keeps a declared C/D/E cup, nobody is flat and nobody is
+    # exaggerated.
+    expected = {'alena_01': 'size 4, D cup', 'maria_01': 'size 5, E cup', 'erika_01': 'size 3, C cup',
+                'sonya_01': 'size 3, C cup', 'vika_01': 'size 4, D cup', 'alisa_01': 'size 5, E cup',
+                'mila_01': 'size 4, D cup'}
+    for cid, size in expected.items():
         line = next((ln for ln in PHOTO_SVC.splitlines() if f"'{cid}':" in ln and 'hourglass' in ln), '')
-        assert 'wasp waist' in line and 'Russian size 5, E cup' in line, cid
+        assert ('wasp waist' in line or 'narrow waist' in line) and size in line, cid
     # the default for heroines without a spec (and any future one) is NOT flat
-    assert 'and a full bust (silicone, Russian size 5, E cup)' in PHOTO_SVC
-    assert 'size 4, D cup' not in PHOTO_SVC
+    assert 'and a natural full bust (silicone, Russian size 4, D cup)' in PHOTO_SVC
     # the identity prompt carries the BODY IDENTITY line built from the spec;
     # V3.43.5: the declaration now explicitly overrides the reference photos
     # (Emily's flat-bust reference was winning the tug-of-war before).

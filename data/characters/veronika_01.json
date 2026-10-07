@@ -39,7 +39,7 @@
     "description": "original synthetic adult woman 36 y.o.; elegant mature caretress archetype — voluminous dark wavy hair, deep brown eyes with refined makeup, nude lips, pearl and gold jewelry, polka-dot silk blouse, curvy confident figure",
     "reference_folder": "data/references/veronika",
     "reference_assets": ["00_veronika_canonical_face.png", "01_veronika_canonical_look.png"],
-    "preserve_identity": ["voluminous dark brown wavy hair with body waves", "deep brown almond eyes with refined winged makeup", "full nude-rose lips with soft contour", "mature curvy hourglass figure with a full bust (silicone, Russian size 5, E cup)", "poised confident gaze and elegant jewelry"],
+    "preserve_identity": ["voluminous dark brown wavy hair with body waves", "deep brown almond eyes with refined winged makeup", "full nude-rose lips with soft contour", "mature curvy hourglass figure with a natural full bust (silicone, Russian size 4, D cup)", "poised confident gaze and elegant jewelry"],
     "variable_scene_attributes": ["clothing", "location", "pose", "camera angle", "lighting", "mood", "hairstyle"],
     "identity_lock": "Veronika is an elegant, caring 36-year-old woman. Preserve her face and figure from the canonical references in every photo. Always fully clothed, always age-appropriate sophistication.",
     "identity_version": "veronika_v1_2026_10_04",

@@ -121,11 +121,11 @@ def test_new_character_references_are_the_v3_shoots():
 
 def test_new_characters_have_curvy_figure_anchors():
     # owner: «грудь вообще доска у всех новых» — the identity anchors now
-    # carry the hourglass/full-bust line and the v4 looks match it.
+    # carry an hourglass/bust line; V3.56.8 gives each girl her own cup.
     for character_id in ('erika_01', 'sonya_01', 'vika_01', 'alisa_01', 'mila_01'):
         profile = json.loads((ROOT / 'data' / 'characters' / f'{character_id}.json').read_text(encoding='utf-8'))
         anchors = ' '.join(profile['visual_identity']['preserve_identity'])
-        assert 'curvy hourglass figure with a full bust' in anchors, character_id
+        assert 'hourglass figure with a' in anchors, character_id
 
 
 # ── 5. Come Closer character page ──────────────────────────────────────

@@ -79,20 +79,29 @@ def test_non_anna_identity_carries_reference_protocol():
 
 def test_bust_consistency_rule_overrides_references():
     # BUST CONSISTENCY is injected into every prompt unconditionally —
-    # now it states the override explicitly.
-    assert "'This bust size is a permanent identity trait and OVERRIDES any smaller or flatter bust visible in the reference photos.'" in PHOTO_SVC
+    # V3.56.8: it no longer hardcodes E cup, it pins the DECLARED size.
+    assert "'This bust size is a permanent identity trait and OVERRIDES any different bust visible in the reference photos. '" in PHOTO_SVC
 
 
 # ── 3. the heroine JSON anchors declare the house bust size ─────────────────
 
-HEROINE_BUST_ANCHOR = 'silicone, Russian size 5, E cup'
+# per-girl sizes since V3.56.8 («разный размер у разных»)
+HEROINE_BUST_ANCHORS = {
+    'alena_01': 'silicone, Russian size 4, D cup',
+    'maria_01': 'silicone, Russian size 5, E cup',
+    'erika_01': 'silicone, Russian size 3, C cup',
+    'sonya_01': 'silicone, Russian size 3, C cup',
+    'vika_01': 'silicone, Russian size 4, D cup',
+    'alisa_01': 'silicone, Russian size 5, E cup',
+    'mila_01': 'silicone, Russian size 4, D cup',
+}
 
 
 def test_every_heroine_json_declares_the_house_bust():
-    for cid in ('alena_01', 'maria_01', 'erika_01', 'sonya_01', 'vika_01', 'alisa_01', 'mila_01'):
+    for cid, anchor in HEROINE_BUST_ANCHORS.items():
         profile = json.loads((ROOT / 'data' / 'characters' / f'{cid}.json').read_text(encoding='utf-8'))
         anchors = ' '.join(profile['visual_identity']['preserve_identity'])
-        assert HEROINE_BUST_ANCHOR in anchors, cid
+        assert anchor in anchors, cid
 
 
 def test_contradictory_weak_anchors_are_gone():
@@ -103,9 +112,9 @@ def test_contradictory_weak_anchors_are_gone():
 
 
 def test_new_heroine_curvy_pin_survives():
-    # the v3.39.0 pin: the five newer heroines keep the curvy-hourglass
-    # anchor substring (the size was appended inside the same phrase).
+    # the v3.39.0 pin, re-worded for V3.56.8: every one of the five keeps a
+    # declared natural bust in the same phrase — nobody went back to flat.
     for cid in ('erika_01', 'sonya_01', 'vika_01', 'alisa_01', 'mila_01'):
         profile = json.loads((ROOT / 'data' / 'characters' / f'{cid}.json').read_text(encoding='utf-8'))
         anchors = ' '.join(profile['visual_identity']['preserve_identity'])
-        assert 'curvy hourglass figure with a full bust' in anchors, cid
+        assert 'hourglass figure with a' in anchors, cid

@@ -39,7 +39,7 @@
     "description": "original synthetic adult woman 23 y.o.; bratty glam teaser archetype — long jet-black wavy hair, striking bright blue eyes, heavy winged eyeliner, bold red matte lips, playful tongue-out energy, rooftop city backdrops",
     "reference_folder": "data/references/zlata",
     "reference_assets": ["00_zlata_canonical_face.png", "01_zlata_canonical_look.png"],
-    "preserve_identity": ["long jet-black wavy hair", "striking bright blue eyes", "heavy winged eyeliner and bold red matte lips", "curvy hourglass figure with a full bust (silicone, Russian size 5, E cup) and a snatched waist", "playful mischievous expression"],
+    "preserve_identity": ["long jet-black wavy hair", "striking bright blue eyes", "heavy winged eyeliner and bold red matte lips", "hourglass figure with a natural modest bust (silicone, Russian size 3, C cup) and a snatched waist", "playful mischievous expression"],
     "variable_scene_attributes": ["clothing", "location", "pose", "camera angle", "lighting", "mood", "hairstyle"],
     "identity_lock": "Zlata is a playful 23-year-old teaser. Preserve her face and figure from the canonical references in every photo. Always fully clothed.",
     "identity_version": "zlata_v1_2026_10_04",

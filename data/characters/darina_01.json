@@ -39,7 +39,7 @@
     "description": "original synthetic adult woman 23 y.o.; cozy caretaker archetype — long straight dark chestnut hair, soft brown eyes, natural minimal makeup, warm neutral knitwear, gentle home atmosphere",
     "reference_folder": "data/references/darina",
     "reference_assets": ["00_darina_canonical_face.png", "01_darina_canonical_look.png"],
-    "preserve_identity": ["long straight dark chestnut hair with a center part", "soft warm brown eyes", "natural minimal makeup with bare lips", "curvy hourglass figure with a full bust (silicone, Russian size 5, E cup)", "calm gentle expression"],
+    "preserve_identity": ["long straight dark chestnut hair with a center part", "soft warm brown eyes", "natural minimal makeup with bare lips", "hourglass figure with a natural modest bust (silicone, Russian size 3, C cup)", "calm gentle expression"],
     "variable_scene_attributes": ["clothing", "location", "pose", "camera angle", "lighting", "mood", "hairstyle"],
     "identity_lock": "Darina is a caring 23-year-old homebody. Preserve her face and figure from the canonical references in every photo. Always fully clothed in cozy neutral-toned outfits.",
     "identity_version": "darina_v1_2026_10_04",

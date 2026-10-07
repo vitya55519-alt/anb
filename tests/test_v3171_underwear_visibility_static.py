@@ -47,8 +47,9 @@ def test_peek_and_dressing_scenes_retired_from_generation():
 
 
 def test_bust_bumped_to_size_five():
+    # V3.56.8: Anna keeps her canonical size 5 (E cup); the roster itself is
+    # diversified now, so the old «no D cup anywhere» pin is retired.
     assert 'Russian size 5, E cup' in PHOTO
-    assert 'Russian size 4, D cup' not in PHOTO
     anna_card = (ROOT / 'data' / 'characters' / 'anna.json').read_text(encoding='utf-8')
     assert 'Russian size 5, E cup' in anna_card
 

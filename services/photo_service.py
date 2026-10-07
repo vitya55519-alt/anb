@@ -604,6 +604,16 @@ LEVEL_UNDERLAY_RULES = {
     6: 'Her outfit fully covers her; the lingerie beneath stays completely invisible — no straps, lace edges or underwear details read through or outside the clothing, the lingerie is never on top of the outfit. Only in a dedicated lingerie/private scene is the lingerie the outfit itself, as directed by the scene framing.',
 }
 
+# V3.56.8: the owner's rooftop shot came back with the lace bra worn OVER the
+# blouse — once a prompt names lingerie next to an outfit, Seedream happily
+# stacks it outside the clothes. One blunt layering lock rides along in every
+# clothed scene; lingerie-as-outfit scenes (nude/home set) skip it.
+LINGERIE_LAYERING_LOCK = (
+    ' LINGERIE LAYERING LOCK: she wears exactly ONE outer outfit and the lingerie sits BENEATH the '
+    'fabric, completely invisible through it — never draw a bra, lace cups, straps, garters or '
+    'panties on top of, outside or over her clothing.'
+)
+
 # Private scenes escalate with the relationship level: the same scene reads
 # more openly at higher levels. Framing stays non-explicit in every tier.
 PRIVATE_SCENE_TIERS = {
@@ -670,12 +680,16 @@ UNDERWEAR_STYLE_POOL = [
 ]
 
 # Bust size must never drift between frames or between sets.
+# V3.56.8: the rule used to hardcode «very large … E cup» for everybody, which
+# stacked on the per-character declaration and inflated every heroine. The size
+# itself now comes only from BODY IDENTITY; this rule just pins it against drift
+# (and the 'neither larger nor smaller' wording the old static tests expect).
 BUST_CONSISTENCY_RULE = (
     'BUST CONSISTENCY: her bust must look exactly the same size in this frame as in every other photo — '
-    'a VERY LARGE full feminine bust with silicone implants (Russian size 5, E cup), visibly prominent and heavy, '
+    'the bust size declared in her BODY IDENTITY, neither larger nor smaller, '
     'with the same shape and the same natural fit inside the clothing. '
-    'This bust size is a permanent identity trait and STRICTLY OVERRIDES any smaller or flatter bust visible in the reference photos. '
-    'If the reference shows a smaller bust, IGNORE IT and generate the declared E-cup size.'
+    'This bust size is a permanent identity trait and OVERRIDES any different bust visible in the reference photos. '
+    'If the reference shows another size, IGNORE IT and generate the declared one.'
 )
 
 SEASON_RULES = {
@@ -730,24 +744,33 @@ ORDINARY_REFERENCE_PROTOCOL = (
 # "jump" between photos of the same girl. Every identity prompt now names
 # the declared figure explicitly, and a DNA json may override it per
 # character via visual_identity.body_spec.
-# The owner set ONE house archetype («большая грудь, спортивная, пышная,
-# талия тонкая — плоских не генерировать»): a full silicone bust, Russian
-# size 5, E cup, for every built-in heroine — no flat girls, no drift.
-# V3.56.4: the specs used to OPEN with 'slim athletic' — Seedream latched onto
-# that and rendered a dry fitness torso (visible abs, modest bust). The bust is
-# now the leading trait and the softness clause rides with it everywhere.
+# The owner's house archetype used to be ONE size for all («плоских не
+# генерировать»). V3.56.8 flipside: after the voluptuous-first rewrite every
+# heroine came back with an oversized bust («у всех персонажей очень большая
+# грудь»), so the roster is diversified again — C/D/E per girl, no flat frames,
+# the softness clause stays. A DNA json may still override via
+# visual_identity.body_spec.
 BODY_SPECS = {
-    'alena_01': 'a voluptuous athletic hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'alena_01': 'a curvy athletic hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
     'maria_01': 'a voluptuous soft hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
-    'erika_01': 'a voluptuous athletic hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
-    'sonya_01': 'a voluptuous fit hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
-    'vika_01': 'a voluptuous athletic hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'erika_01': 'a feminine athletic hourglass build with a narrow waist, round lifted hips and a natural modest bust (silicone, Russian size 3, C cup)',
+    'sonya_01': 'a feminine fit hourglass build with a narrow waist, round lifted hips and a natural modest bust (silicone, Russian size 3, C cup)',
+    'vika_01': 'a curvy athletic hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
     'alisa_01': 'a voluptuous fit hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
-    'mila_01': 'a voluptuous soft hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'mila_01': 'a curvy soft hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    # V3.56.8: the newer heroines used to fall through to the E-cup default —
+    # they get declared sizes too.
+    'veronika_01': 'a curvy soft hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    'eva_01': 'a feminine fit hourglass build with a narrow waist, round lifted hips and a natural modest bust (silicone, Russian size 3, C cup)',
+    'darina_01': 'a feminine soft hourglass build with a narrow waist, round lifted hips and a natural modest bust (silicone, Russian size 3, C cup)',
+    'kristina_01': 'a voluptuous soft hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'romina_01': 'a voluptuous soft hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'violetta_01': 'a curvy fit hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    'zlata_01': 'a feminine fit hourglass build with a narrow waist, round lifted hips and a natural modest bust (silicone, Russian size 3, C cup)',
 }
 DEFAULT_FEMALE_BODY_SPEC = (
-    'a voluptuous athletic feminine hourglass build with a wasp waist, round lifted wide hips '
-    'and a full bust (silicone, Russian size 5, E cup)'
+    'a curvy feminine hourglass build with a wasp waist, round lifted hips '
+    'and a natural full bust (silicone, Russian size 4, D cup)'
 )
 ORDINARY_IDENTITY_LOCK = ANNA_FACE_IDENTITY + ' ' + ORDINARY_BODY_IDENTITY + ' ' + ORDINARY_REFERENCE_PROTOCOL
 BODY_REINFORCEMENT = (
@@ -831,7 +854,7 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
         'Preserve this exact figure in every photo regardless of outfit, pose or crop; '
         'never flatten, reduce or enlarge the bust, never widen the waist. '
         'Her torso stays soft and feminine — never render visible abdominal muscles, a toned gym '
-        'torso or a boyish athletic frame; her bust reads large and heavy under every outfit. '
+        'torso or a boyish athletic frame. '
     ) if body_spec else ''
     # V3.43.6: references are scoped to the FACE — the preserve list used to
     # drag the body off the reference photos too («fit feminine physique»),
@@ -1806,7 +1829,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'WARDROBE: {wardrobe}. {figure_note}'
         'The outfit must be believable for this exact venue, weather and time of day. Do not reuse a heavy sweater or hoodie in a visibly warm summer scene.\n'
         f'{public_dress_rule}'
-        f'UNDER-CLOTHING REALISM: {underlay_rule}\n'
+        f'UNDER-CLOTHING REALISM: {underlay_rule}{"" if (adult_scene or home_lingerie) else LINGERIE_LAYERING_LOCK}\n'
         f'{tier_framing}'
         f'{BUST_CONSISTENCY_RULE}\n'
         f'HAIRSTYLE: {request.hairstyle}. This is her one and only hairstyle in the frame — '
@@ -2498,9 +2521,9 @@ async def _run_spicy_set(
         prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id, character_id), character_id=character_id) + (
             '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location and face identity '
             'as the other photos in this set; her body always follows the declared BODY IDENTITY — never the reference silhouette. '
-            'Her figure is locked for this entire shoot: very voluptuous hourglass silhouette, large full bust, '
-            'extremely narrow waist, wide round hips, soft feminine torso with no visible abs — '
-            'never draw her slimmer, flatter or smaller-chested than declared. '
+            'Her figure is locked for this entire shoot: exactly the silhouette, bust size, waist and hips '
+            'declared in her BODY IDENTITY, soft feminine torso with no visible abs — '
+            'never draw her bigger, slimmer, flatter or smaller-chested than declared. '
             'Make this framing clearly different from the previous shot while staying in the same photo session.'
         )
         if prev_url:

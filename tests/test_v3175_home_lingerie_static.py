@@ -50,8 +50,9 @@ def test_pool_protection_for_home_lingerie_sets():
 
 
 def test_bust_stays_size_5_e_cup():
+    # Anna's home-lingerie scenes keep her canonical E cup (V3.56.8 retired
+    # the «no D cup anywhere» pin — the roster is per-girl sized now).
     assert 'Russian size 5, E cup' in PHOTO
-    assert 'Russian size 4, D cup' not in PHOTO
 
 
 def test_runtime_home_scene_level6_is_lingerie_only():

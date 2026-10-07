@@ -39,7 +39,7 @@
     "description": "original synthetic adult woman 24 y.o.; girl-next-door archetype — light brown hair in a casual ponytail, warm brown eyes, natural fresh face with a bright smile, white tank and jeans",
     "reference_folder": "data/references/eva",
     "reference_assets": ["00_eva_canonical_face.png", "01_eva_canonical_look.png"],
-    "preserve_identity": ["light brown hair worn back casually", "warm brown eyes", "natural fresh face with minimal makeup", "bright genuine smile", "curvy hourglass figure with a full bust (silicone, Russian size 5, E cup)"],
+    "preserve_identity": ["light brown hair worn back casually", "warm brown eyes", "natural fresh face with minimal makeup", "bright genuine smile", "hourglass figure with a natural modest bust (silicone, Russian size 3, C cup)"],
     "variable_scene_attributes": ["clothing", "location", "pose", "camera angle", "lighting", "mood", "hairstyle"],
     "identity_lock": "Eva is an easygoing 24-year-old girl next door. Preserve her face and figure from the canonical references in every photo. Always fully clothed in fresh casual outfits.",
     "identity_version": "eva_v1_2026_10_04",
