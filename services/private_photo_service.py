@@ -538,7 +538,7 @@ async def _spicyapi_call(method: str, path: str, headers: dict = None, **kwargs)
             return body.get("data", {})
 
 
-async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private') -> Optional[bytes]:
+async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private', *, return_url: bool = False):
     """Shared SpicyAPI task flow: createTask → poll → download.
 
     ``image_urls`` empty/None → text-to-image; otherwise image-to-image edit.
@@ -550,11 +550,17 @@ async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[st
     or not the image ever comes back, so the cost is ledgered on that event with
     the true success flag — the fix for intimate renders being invisible in
     /stats (the «картинки $0.080» blind spot).
+
+    V3.56.3: ``return_url=True`` switches the result to a ``(bytes, url)`` pair —
+    the provider's signed asset URL (valid ~20 min) lets the scene router chain
+    frames so every next shot copies the figure of the previous one. Callers
+    without the flag keep the old bytes-or-None contract untouched.
     """
     if not SPICYAPI_KEY:
         logger.error("SPICYAPI_KEY not configured")
-        return None
+        return (None, None) if return_url else None
     result: Optional[bytes] = None
+    result_url: Optional[str] = None
     try:
         input_block: Dict[str, Any] = {
             "prompt": prompt,
@@ -573,7 +579,7 @@ async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[st
         task_id = task_data.get("taskId")
         if not task_id:
             logger.error(f"No taskId in SpicyAPI response: {task_data}")
-            return None
+            return (None, None) if return_url else None
         logger.info(f"SpicyAPI task: {task_id}")
         # Money is committed the moment the task is accepted — ledger it before
         # polling so a later timeout/failure still counts against the budget.
@@ -592,6 +598,8 @@ async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[st
                         async with session.get(asset_url) as resp:
                             if resp.status == 200:
                                 result = await resp.read()
+                                if result is not None:
+                                    result_url = asset_url
                 break
             elif state in ("failed", "expired", "canceled"):
                 logger.error(f"SpicyAPI task {state}: {task_info.get('errorMessage')}")
@@ -605,6 +613,8 @@ async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[st
         'spicyapi', scene, SPICYAPI_ESTIMATED_COST_USD,
         billed=True, success=bool(result),
     )
+    if return_url:
+        return (result, result_url if result else None)
     return result
 
 

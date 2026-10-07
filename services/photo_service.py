@@ -2469,8 +2469,10 @@ async def _run_spicy_set(
 
     Same seedream-flavoured prompt the fal leg builds (identity lock, per-frame
     rotation), the same two canonical reference URLs the «Наедине» pipeline uses
-    (i=0 face, i=1 body), but every scene — public ones included — renders here
-    because the owner judged its quality above fal's. `_spicyapi_render` never
+    (i=0 face, i=1 look — both portrait crops, so the body rides on the BODY
+    IDENTITY text plus V3.56.3 frame chaining), but every scene — public ones
+    included — renders here because the owner judged its quality above fal's.
+    `_spicyapi_render` never
     raises: None means «this engine produced nothing» and the caller walks to
     fal. The spend is ledgered inside `_spicyapi_render` on the createTask event.
     """
@@ -2478,15 +2480,31 @@ async def _run_spicy_set(
     refs = [f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0',
             f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=1']
     out: list[GeneratedPhoto] = []
+    # V3.56.3: figure chaining. The canonical references are face crops, so the
+    # BODY IDENTITY text is the only body anchor — and Seedream re-improvises the
+    # figure every frame (the owner watched bust and hips «jump» inside one set).
+    # Frames 2..N therefore also receive the previous shot as a third reference
+    # (the provider's signed asset URL, alive ~20 min — a frame takes ~1) and are
+    # ordered to copy that body exactly.
+    prev_url: str | None = None
     logger.info('SpicyAPI set request user=%s scene=%s target_count=%s', telegram_id, request.scene, frames)
     for i in range(frames):
+        frame_refs = refs + ([prev_url] if prev_url else [])
         prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id, character_id), character_id=character_id) + (
             '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location and face identity '
             'as the other photos in this set; her body always follows the declared BODY IDENTITY — never the reference silhouette. '
+            'Her figure is locked for this entire shoot: very voluptuous hourglass silhouette, large full bust, '
+            'extremely narrow waist, wide round hips — never draw her slimmer, flatter or smaller-chested than declared. '
             'Make this framing clearly different from the previous shot while staying in the same photo session.'
         )
+        if prev_url:
+            prompt += (
+                ' REFERENCE IMAGE 3 is the PREVIOUS photo of this same shoot: reproduce her exact body from image 3 — '
+                'same bust size and shape, same waist width, same hip and rear proportions — so both photos show one identical body. '
+                'Take face and hair identity from images 1–2 only.'
+            )
         frame_started = time.monotonic()
-        data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs, scene=f'scene:{request.scene}')
+        data, frame_url = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, frame_refs, scene=f'scene:{request.scene}', return_url=True)
         record_provider('spicyapi', bool(data), None if data else 'empty_result')
         if not data:
             track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'spicyapi', 'reason': 'empty_result'})
@@ -2494,6 +2512,7 @@ async def _run_spicy_set(
                 logger.warning('SpicyAPI partial set user=%s scene=%s delivered=%s/%s', telegram_id, request.scene, len(out), frames)
                 break
             raise PhotoGenerationError('spicyapi', 'empty_result')
+        prev_url = frame_url
         photo = GeneratedPhoto(data=data, provider='spicyapi', estimated_cost_usd=SPICYAPI_ESTIMATED_COST_USD)
         out.append(photo)
         frame_elapsed = time.monotonic() - frame_started
