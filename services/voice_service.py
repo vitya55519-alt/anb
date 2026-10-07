@@ -173,6 +173,7 @@ async def _transcribe_gemini(voice_bytes: io.BytesIO) -> str:
     """V3.57.1: multimodal Gemini transcription of the ogg/opus note."""
     import httpx
 
+    global _stt_good_model
     voice_bytes.seek(0)
     audio_b64 = base64.b64encode(voice_bytes.read()).decode('ascii')
     payload = {'contents': [{'parts': [
@@ -203,7 +204,6 @@ async def _transcribe_gemini(voice_bytes: io.BytesIO) -> str:
         if not text:
             last_error = RuntimeError('gemini_stt_empty')
             continue
-        global _stt_good_model
         _stt_good_model = model
         return text
     raise last_error or RuntimeError('gemini_stt_no_model')
