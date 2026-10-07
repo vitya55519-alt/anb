@@ -67,7 +67,8 @@ def test_spa_mic_and_attach_buttons_exist():
     assert 'id="chatMic"' in SPA
     assert 'id="chatAttach"' in SPA
     assert 'id="chatFileIn"' in SPA
-    assert "document.getElementById('chatMic').addEventListener('click', toggleChatMic)" in SPA
+    # V3.57.1: the mic moved to pointer events (hold-to-send like Telegram)
+    assert "_micBtn.addEventListener('pointerdown'" in SPA
     assert "document.getElementById('chatFileIn').addEventListener('change'" in SPA
 
 

@@ -263,9 +263,17 @@
     font-size: 16px; padding: 0 18px; border-radius: 14px; cursor: pointer;
   }
   .chat-input button:disabled { opacity: .5; }
-  /* V3.57.0: user upload buttons — ghost styling; the mic glows red while recording */
-  .chat-input button.ghost { background: var(--card); border: 1px solid rgba(255,255,255,.12); padding: 0 12px; font-size: 15px; }
-  .chat-input button.rec { background: linear-gradient(135deg, #e74c3c, #c0392b); border: none; animation: recpulse 1.2s ease-in-out infinite; font-size: 12px; min-width: 62px; }
+  /* V3.57.1: Telegram-style — 📎/🎤 live INSIDE the text field, ➤ keeps its own spot */
+  .chat-field { position: relative; flex: 1; min-width: 0; display: flex; }
+  .chat-field input { flex: 1; min-width: 0; padding-right: 88px; }
+  .chat-field .inbtn {
+    position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px;
+    padding: 0; border: none; border-radius: 50%; background: transparent;
+    color: var(--muted); font-size: 17px; cursor: pointer;
+  }
+  #chatAttach { right: 48px; }
+  #chatMic { right: 8px; }
+  .chat-field .inbtn.rec { right: 8px; width: auto; padding: 0 12px; border-radius: 17px; background: linear-gradient(135deg, #e74c3c, #c0392b); color: #fff; font-size: 12px; animation: recpulse 1.2s ease-in-out infinite; }
   @keyframes recpulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
   /* V3.39.0: Come Closer character page — photo strip, CTA, plot block */
   .strip { display: flex; gap: 8px; overflow-x: auto; padding: 12px 14px 4px; }
@@ -852,9 +860,11 @@
       <button id="featCosplay"><span class="ic">🎭</span><span class="lb" id="lbFeatCosplay"></span></button>
       <button id="featHot" class="hot"><span class="ic">💋</span><span class="lb" id="lbFeatHot"></span></button>
     </div>
-    <input id="chatText" maxlength="4000" placeholder="">
-    <button id="chatAttach" class="ghost" type="button">📎</button>
-    <button id="chatMic" class="ghost" type="button">🎤</button>
+    <div class="chat-field">
+      <input id="chatText" maxlength="4000" placeholder="">
+      <button id="chatAttach" class="inbtn" type="button">📎</button>
+      <button id="chatMic" class="inbtn" type="button">🎤</button>
+    </div>
     <button id="chatSend">➤</button>
     <input type="file" id="chatFileIn" accept="image/*" style="display:none">
   </div>
@@ -2201,7 +2211,7 @@ function blobToB64(blob) {
   });
 }
 
-let _rec = null, _recChunks = [], _recStart = 0, _recTick = null;
+let _rec = null, _recChunks = [], _recStart = 0, _recTick = null, _recHold = false;
 
 function _micIdle() {
   const btn = document.getElementById('chatMic');
@@ -2210,9 +2220,21 @@ function _micIdle() {
   if (_recTick) { clearInterval(_recTick); _recTick = null; }
 }
 
-async function toggleChatMic() {
-  // tap once = start recording, tap again (or 60 s) = stop and send
+// V3.57.1: Telegram behavior — hold the mic and release to send; a quick tap
+// keeps recording hands-free until the next tap.
+function micDown() {
   if (_rec) { _rec.stop(); return; }
+  _recHold = true;
+  startChatVoice();
+}
+
+function micUp() {
+  if (!_rec || !_recHold) return;
+  _recHold = false;
+  if ((Date.now() - _recStart) > 450) _rec.stop();
+}
+
+async function startChatVoice() {
   if (!CHAT || chatBusy) return;
   if (!tg.initData) { toast(L.auth_short); return; }
   let stream;
@@ -4279,8 +4301,11 @@ document.getElementById('chatSend').addEventListener('click', sendChat);
 document.getElementById('chatText').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendChat();
 });
-// V3.57.0: mic (voice message) and 📎 (his photo → her compliment)
-document.getElementById('chatMic').addEventListener('click', toggleChatMic);
+// V3.57.0/1: mic (voice message, hold or tap-toggle) and 📎 (his photo → her compliment)
+const _micBtn = document.getElementById('chatMic');
+_micBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); micDown(); });
+window.addEventListener('pointerup', micUp);
+window.addEventListener('pointercancel', micUp);
 document.getElementById('chatAttach').addEventListener('click', () => document.getElementById('chatFileIn').click());
 document.getElementById('chatFileIn').addEventListener('change', (e) => {
   const f = e.target.files && e.target.files[0];

@@ -3,7 +3,8 @@
 Provider priority:
   TTS: Gemini 2.5 TTS (natural human-like voices, V3.20.1)
        → edge-tts (free, no API key) → OpenAI TTS (if key present)
-  STT: faster-whisper (local, free) → OpenAI Whisper (if key present)
+  STT: faster-whisper (local, free, singleton model since V3.57.1)
+       → Gemini flash audio (V3.57.1) → OpenAI Whisper (if key present)
 """
 import asyncio
 import base64
@@ -103,24 +104,48 @@ if OPENAI_VOICE_AVAILABLE:
 async def transcribe(voice_bytes: io.BytesIO) -> str:
     """Transcribe voice message (ogg/opus) to text."""
     # Try faster-whisper first (local, free, no API)
+    last_error: Exception | None = None
     try:
         return await _transcribe_faster_whisper(voice_bytes)
     except ImportError:
         pass
     except Exception as exc:
-        logger.warning('faster-whisper failed: %s; falling back to OpenAI', exc)
+        last_error = exc
+        logger.warning('faster-whisper failed: %s; falling back', exc)
+
+    # V3.57.1: Gemini flash listens to audio too — the key is already live for
+    # TTS/photos, so it rescues the whisper cold-start/model-download failures.
+    if GEMINI_API_KEY:
+        try:
+            return await _transcribe_gemini(voice_bytes)
+        except Exception as exc:
+            last_error = exc
+            logger.warning('gemini stt failed: %s; falling back to OpenAI', exc)
 
     # Fallback to OpenAI Whisper (requires API key)
     if _openai_client:
         return await _transcribe_openai(voice_bytes)
 
-    raise RuntimeError('No STT provider available. Install faster-whisper: pip install faster-whisper')
+    raise last_error or RuntimeError('No STT provider available. Install faster-whisper: pip install faster-whisper')
+
+
+# V3.57.1: the Whisper model is heavy (~75 MB) and loading it cost seconds on
+# EVERY transcription — the first voice message after a deploy timed out. Keep
+# one warm instance for the lifetime of the process.
+_whisper_model = None
+
+
+def _get_whisper_model():
+    global _whisper_model
+    if _whisper_model is None:
+        from faster_whisper import WhisperModel
+        _whisper_model = WhisperModel('base', device='cpu', compute_type='int8')
+    return _whisper_model
 
 
 async def _transcribe_faster_whisper(voice_bytes: io.BytesIO) -> str:
     """Use faster-whisper for local speech-to-text."""
     import asyncio
-    from faster_whisper import WhisperModel
 
     voice_bytes.seek(0)
     audio_data = voice_bytes.read()
@@ -132,12 +157,56 @@ async def _transcribe_faster_whisper(voice_bytes: io.BytesIO) -> str:
 
     try:
         loop = asyncio.get_event_loop()
-        model = WhisperModel('base', device='cpu', compute_type='int8')
+        model = await loop.run_in_executor(None, _get_whisper_model)
         segments, _ = await loop.run_in_executor(None, model.transcribe, tmp_path)
         text = ' '.join(seg.text for seg in segments).strip()
         return text
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+
+_STT_MODEL_CHAIN = ('gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest')
+_stt_good_model: str | None = None
+
+
+async def _transcribe_gemini(voice_bytes: io.BytesIO) -> str:
+    """V3.57.1: multimodal Gemini transcription of the ogg/opus note."""
+    import httpx
+
+    voice_bytes.seek(0)
+    audio_b64 = base64.b64encode(voice_bytes.read()).decode('ascii')
+    payload = {'contents': [{'parts': [
+        {'text': 'Transcribe this voice message exactly, preserving the spoken '
+                 'language. Output only the transcript text, nothing else.'},
+        {'inline_data': {'mime_type': 'audio/ogg', 'data': audio_b64}},
+    ]}], 'generationConfig': {'temperature': 0.0}}
+    headers = {'x-goog-api-key': GEMINI_API_KEY, 'Content-Type': 'application/json'}
+    models = ((_stt_good_model,) + _STT_MODEL_CHAIN) if _stt_good_model else _STT_MODEL_CHAIN
+    last_error: Exception | None = None
+    for model in models:
+        url = f'{GEMINI_VIDEO_BASE_URL}/models/{model}:generateContent'
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=20.0)) as client:
+                r = await client.post(url, headers=headers, json=payload)
+            if r.status_code >= 400:
+                logger.warning('gemini stt model=%s status=%s', model, r.status_code)
+                last_error = RuntimeError(f'gemini_stt_http_{r.status_code}')
+                continue
+            data = r.json()
+        except Exception as exc:
+            last_error = exc
+            continue
+        text = ''.join(
+            (part.get('text') or '')
+            for part in ((data.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []
+        ).strip()
+        if not text:
+            last_error = RuntimeError('gemini_stt_empty')
+            continue
+        global _stt_good_model
+        _stt_good_model = model
+        return text
+    raise last_error or RuntimeError('gemini_stt_no_model')
 
 
 async def _transcribe_openai(voice_bytes: io.BytesIO) -> str:
