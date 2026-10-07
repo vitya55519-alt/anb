@@ -439,6 +439,11 @@ RETENTION_REMINDER_HOURS = max(6, min(48, int(os.getenv("RETENTION_REMINDER_HOUR
 # so D7 collapsed to 1% — now nudges repeat while the user stays away.
 RETENTION_NUDGE_INTERVAL_HOURS = max(6, min(48, int(os.getenv("RETENTION_NUDGE_INTERVAL_HOURS", "24"))))
 RETENTION_MAX_NUDGES = max(1, min(10, int(os.getenv("RETENTION_MAX_NUDGES", "5"))))
+# V3.55.9: ghost window — a user silent longer than this is churned: no more
+# retention/LLM pushes at all (a real return re-arms the ladder). Before this,
+# every failed send (user blocked the bot) left the user eligible again the
+# next hour, so the hourly scan re-burned the proactive LLM budget on ghosts.
+PROACTIVE_MAX_INACTIVE_DAYS = max(3, min(30, int(os.getenv("PROACTIVE_MAX_INACTIVE_DAYS", "10"))))
 # The day-1 hook: a special "your bonus wheel is waiting" push for YOUNG
 # accounts that went silent — D1 was 5%, the wheel gives a concrete reason
 # to open the app on day 2.

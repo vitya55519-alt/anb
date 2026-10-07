@@ -7,6 +7,7 @@ from config import (
     RITUAL_EVENING_START_HOUR, RITUAL_EVENING_END_HOUR, RITUAL_MAX_INACTIVE_DAYS,
     DONATION_LINK, DONATION_REMINDER_ENABLED,
     RETENTION_NUDGE_INTERVAL_HOURS, RETENTION_MAX_NUDGES,
+    PROACTIVE_MAX_INACTIVE_DAYS,
     DAY1_HOOK_MAX_ACCOUNT_HOURS, DAY1_HOOK_MIN_INACTIVE_HOURS, PUBLIC_BASE_URL,
     LIFE_EVENTS_ENABLED, LIFE_EVENTS_MAX_PER_DAY, LIFE_EVENTS_SCAN_MINUTES,
     LIFE_EVENTS_ACTIVE_WINDOW_DAYS, LIFE_EVENTS_QUIET_START_HOUR, LIFE_EVENTS_QUIET_END_HOUR,
@@ -20,8 +21,24 @@ from services import retention_service
 from services import donation_service
 from services import retention_features_service
 from services import dialog_store
+from aiogram.exceptions import TelegramForbiddenError
 
 logger=logging.getLogger(__name__); scheduler=AsyncIOScheduler()
+
+
+def _mark_blocked(uid: int) -> None:
+    """V3.55.9: Telegram answered 403 (bot blocked / account deleted) — switch
+    the user's proactive rail off so no scheduler job wastes LLM calls or API
+    hits on someone who can never read them. The in-chat settings toggle can
+    bring it back; we never auto-re-enable (that would trample a real opt-out)."""
+    try:
+        with SessionLocal() as s:
+            u = s.get(User, uid)
+            if u:
+                u.proactive_enabled = False
+                s.commit()
+    except Exception:
+        logger.exception('mark blocked failed user=%s', uid)
 
 # V3.52.0: «Жизнь без тебя» dedup lives in dialog_sessions (DictStore), NOT an
 # in-memory set. Railway redeploys are frequent here and wiped _ritual_sent, so a
@@ -53,12 +70,22 @@ async def _reminders(bot):
                 await asyncio.to_thread(mark_after_send,r.id,idx==len(wake_msgs)-1,delays[idx])
             else:
                 await bot.send_message(telegram_id,f"напоминаю: {r.text}"); await asyncio.to_thread(mark_after_send,r.id,True)
+        except TelegramForbiddenError:
+            # V3.55.9: blocked user — drop the reminder instead of retrying it
+            # every 30 seconds forever, and take the proactive rail off too.
+            await asyncio.to_thread(mark_after_send,r.id,True)
+            _mark_blocked(r.user_id)
+            logger.info('reminder dropped (user blocked bot) id=%s', r.id)
         except Exception: logger.exception('reminder failed id=%s', r.id if r else None)
 
 async def _proactive(bot):
     now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None); cutoff=now-dt.timedelta(hours=RETENTION_REMINDER_HOURS)
+    # V3.55.9: ghost window — users silent longer than PROACTIVE_MAX_INACTIVE_DAYS
+    # are treated as churned; chasing them with a 6th «скучаю» never worked and
+    # only burns budget. A real return (last_active_at moves) re-arms the ladder.
+    ghost_cutoff=now-dt.timedelta(days=PROACTIVE_MAX_INACTIVE_DAYS)
     with SessionLocal() as s:
-        users=s.scalars(select(User).where(User.proactive_enabled==True,User.last_active_at<=cutoff)).all()
+        users=s.scalars(select(User).where(User.proactive_enabled==True,User.last_active_at<=cutoff,User.last_active_at>=ghost_cutoff)).all()
         ids=[u.id for u in users]
     for uid in ids:
         try:
@@ -79,6 +106,22 @@ async def _proactive(bot):
                 if last_nudge and not returned:
                     if (now-last_nudge).total_seconds() < RETENTION_NUDGE_INTERVAL_HOURS*3600: continue
                     if nudge_count >= RETENTION_MAX_NUDGES: continue
+                # V3.55.9: consume the slot BEFORE spending money. The stamp used
+                # to be written only after a successful send, so every failed send
+                # (user blocked the bot, flood-wait, Telegram 4xx) left the user
+                # eligible again an hour later — the hourly scan re-burned the
+                # whole proactive LLM budget on unreachable users.
+                st=state
+                if st is None:
+                    # V3.44.16: a user without an Anna state row used to be re-nudged
+                    # EVERY hour (the write phase silently skipped). Persist the stamp.
+                    st=CharacterState(user_id=uid,character_id=CHARACTER_ID)
+                    s.add(st)
+                st.last_nudge_at=now
+                st.nudge_count=1 if (returned or not last_nudge) else nudge_count+1
+                # A pending hook is consumed by one proactive follow-up so Anna does not repeat it forever.
+                st.pending_hook=None
+                s.commit()
             if hours < PROACTIVE_MIN_HOURS:
                 # V3.20.0 first tier (24-48h): cheap static emotional push —
                 # unfinished-conversation cliffhanger first, then jealousy for
@@ -95,20 +138,19 @@ async def _proactive(bot):
                 await bot.send_message(telegram_id,msg)
                 track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': kind, 'nudge': nudge_count + 1})
             else:
-                msg=await proactive_reply(telegram_id,name,hours); await bot.send_message(telegram_id,msg)
+                msg=await proactive_reply(telegram_id,name,hours)
+                if not msg:
+                    # Provider hiccup: the slot is already spent — do not send
+                    # an empty message (that used to raise and re-arm the retry).
+                    logger.warning('proactive empty reply user=%s', telegram_id)
+                    continue
+                await bot.send_message(telegram_id,msg)
                 track_event(uid, 'proactive_sent', metadata={'hours_inactive': hours, 'nudge': nudge_count + 1})
-            with SessionLocal() as s:
-                st=s.scalar(select(CharacterState).where(CharacterState.user_id==uid,CharacterState.character_id==CHARACTER_ID))
-                if st is None:
-                    # V3.44.16: a user without an Anna state row used to be re-nudged
-                    # EVERY hour (the write phase silently skipped). Persist the stamp.
-                    st=CharacterState(user_id=uid,character_id=CHARACTER_ID)
-                    s.add(st)
-                st.last_nudge_at=now
-                st.nudge_count=1 if (returned or not last_nudge) else nudge_count+1
-                # A pending hook is consumed by one proactive follow-up so Anna does not repeat it forever.
-                st.pending_hook=None
-                s.commit()
+        except TelegramForbiddenError:
+            # V3.55.9: 403 = the user blocked or deleted the bot — switch the
+            # whole proactive rail off for them instead of retrying every hour.
+            _mark_blocked(uid)
+            logger.info('proactive disabled for blocked user=%s', uid)
         except Exception: logger.exception('proactive failed user=%s',uid)
 
 
@@ -155,6 +197,15 @@ async def _day1_hook(bot):
                     u.day1_hook_at=now
                     s.commit()
             track_event(uid, 'day1_hook_sent', metadata={'hours_inactive': int((now-last_active).total_seconds()/3600) if last_active else 0})
+        except TelegramForbiddenError:
+            # V3.55.9: blocked — burn the hook slot so the 15-min scan stops
+            # re-pinging an address that can never receive it.
+            _mark_blocked(uid)
+            with SessionLocal() as s:
+                u=s.get(User,uid)
+                if u:
+                    u.day1_hook_at=now
+                    s.commit()
         except Exception: logger.exception('day1 hook failed user=%s',uid)
 
 def _user_local_hour(user) -> int | None:
@@ -225,6 +276,11 @@ async def _rituals(bot):
                 await bot.send_message(int(tg_id),text)
             _ritual_sent.add(guard)
             track_event(uid, f'ritual_{kind}_sent', metadata={'streak': streak, 'tz': tz})
+        except TelegramForbiddenError:
+            # V3.55.9: blocked — consume today's ritual slot and switch the
+            # proactive rail off (the 30-min scan used to retry all day).
+            _ritual_sent.add((uid,'blocked',today_key))
+            _mark_blocked(uid)
         except Exception: logger.exception('ritual failed user=%s',uid)
 
 async def _donation_reminder(bot):
@@ -436,6 +492,10 @@ async def _life_events(bot):
             else:
                 await bot.send_message(tg_id, text, reply_markup=markup)
             track_event(uid, 'life_event_sent', metadata={'character_id': char_id, 'when': part, 'has_photo': bool(media_url)})
+        except TelegramForbiddenError:
+            # V3.55.9: blocked — the slot is already consumed above; take the
+            # whole proactive rail off so no LLM money goes to this user.
+            _mark_blocked(uid)
         except Exception:
             logger.exception('life event failed user=%s', uid)
 
