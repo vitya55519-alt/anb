@@ -151,4 +151,4 @@ def test_body_identity_overrides_reference_images():
     # the declaration wins the tug-of-war with the canonical references
     assert "f'BODY IDENTITY: {name} has {body_spec}. This declared figure is a permanent body trait '" in PHOTO_SVC
     assert "'and OVERRIDES the reference images: even if a reference photo shows a smaller or flatter '" in PHOTO_SVC
-    assert "'never flatten, reduce or enlarge the bust, never widen the waist or hips. '" in PHOTO_SVC
+    assert "'never flatten, reduce or enlarge the bust, never widen the waist. '" in PHOTO_SVC

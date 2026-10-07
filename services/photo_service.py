@@ -733,17 +733,20 @@ ORDINARY_REFERENCE_PROTOCOL = (
 # The owner set ONE house archetype («большая грудь, спортивная, пышная,
 # талия тонкая — плоских не генерировать»): a full silicone bust, Russian
 # size 5, E cup, for every built-in heroine — no flat girls, no drift.
+# V3.56.4: the specs used to OPEN with 'slim athletic' — Seedream latched onto
+# that and rendered a dry fitness torso (visible abs, modest bust). The bust is
+# now the leading trait and the softness clause rides with it everywhere.
 BODY_SPECS = {
-    'alena_01': 'a slim athletic hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
-    'maria_01': 'a slim hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
-    'erika_01': 'a slim athletic hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
-    'sonya_01': 'a slim fit hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
-    'vika_01': 'a slim athletic hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
-    'alisa_01': 'a slim fit hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
-    'mila_01': 'a slim hourglass build with a wasp waist, round lifted hips and a full bust (silicone, Russian size 5, E cup)',
+    'alena_01': 'a voluptuous athletic hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'maria_01': 'a voluptuous soft hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'erika_01': 'a voluptuous athletic hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'sonya_01': 'a voluptuous fit hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'vika_01': 'a voluptuous athletic hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'alisa_01': 'a voluptuous fit hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'mila_01': 'a voluptuous soft hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
 }
 DEFAULT_FEMALE_BODY_SPEC = (
-    'a slim athletic feminine hourglass build with a wasp waist, round lifted hips '
+    'a voluptuous athletic feminine hourglass build with a wasp waist, round lifted wide hips '
     'and a full bust (silicone, Russian size 5, E cup)'
 )
 ORDINARY_IDENTITY_LOCK = ANNA_FACE_IDENTITY + ' ' + ORDINARY_BODY_IDENTITY + ' ' + ORDINARY_REFERENCE_PROTOCOL
@@ -826,7 +829,9 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
         'and OVERRIDES the reference images: even if a reference photo shows a smaller or flatter '
         'bust or a different build, always render the declared figure exactly as stated. '
         'Preserve this exact figure in every photo regardless of outfit, pose or crop; '
-        'never flatten, reduce or enlarge the bust, never widen the waist or hips. '
+        'never flatten, reduce or enlarge the bust, never widen the waist. '
+        'Her torso stays soft and feminine — never render visible abdominal muscles, a toned gym '
+        'torso or a boyish athletic frame; her bust reads large and heavy under every outfit. '
     ) if body_spec else ''
     # V3.43.6: references are scoped to the FACE — the preserve list used to
     # drag the body off the reference photos too («fit feminine physique»),
@@ -2494,7 +2499,8 @@ async def _run_spicy_set(
             '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location and face identity '
             'as the other photos in this set; her body always follows the declared BODY IDENTITY — never the reference silhouette. '
             'Her figure is locked for this entire shoot: very voluptuous hourglass silhouette, large full bust, '
-            'extremely narrow waist, wide round hips — never draw her slimmer, flatter or smaller-chested than declared. '
+            'extremely narrow waist, wide round hips, soft feminine torso with no visible abs — '
+            'never draw her slimmer, flatter or smaller-chested than declared. '
             'Make this framing clearly different from the previous shot while staying in the same photo session.'
         )
         if prev_url:
