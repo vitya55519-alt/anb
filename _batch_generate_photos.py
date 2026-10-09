@@ -13,15 +13,41 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
 # Add parent to path so we can import services
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+
+def _load_dotenv() -> None:
+    """V3.57.5: config.py reads plain environment variables and never loads .env
+    itself, so running this script from a fresh terminal died on
+    'TELEGRAM_TOKEN is not configured'. Fill the environment from the local .env,
+    never overriding what the shell already exports and never accepting an empty
+    value (the checked-in .env is a stub with blank keys).
+    """
+    env_file = Path(__file__).resolve().parent / '.env'
+    if not env_file.exists():
+        return
+    text = env_file.read_bytes().decode('utf-8-sig', errors='ignore').replace('\x00', '')
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        if key and value and not os.environ.get(key):
+            os.environ[key] = value
+
+
+_load_dotenv()
+
 from config import CHARACTER_ID
-from services.character_registry import resolve_character
-from services.photo_service import PhotoRequest, generate_photo_set
+# V3.57.5: resolve_character lives in photo_service (it also resolves constructor
+# personas); the old character_registry import has been dead for a long while.
+from services.photo_service import PhotoRequest, generate_photo_set, resolve_character
 from services import webapp_service
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
@@ -46,8 +72,16 @@ ALL_SCENES = [
 ]
 
 
-async def generate_for_character(character_id: str, scenes: list[str], count: int) -> int:
-    """Generate `count` photo sets for a character across the given scenes."""
+async def generate_for_character(character_id: str, scenes: list[str], count: int,
+                                 out_dir: str | None = None) -> int:
+    """Generate `count` photo sets for a character across the given scenes.
+
+    V3.57.5: `out_dir` writes the pictures to a separate folder (promo packs,
+    drafts) instead of the character's reference folder. The reference images
+    feed the appearance lock for every future generation, so promo frames must
+    never be dumped in there — that is how the storefront and the chat photos
+    start drifting off-model.
+    """
     try:
         character = resolve_character(character_id)
         logger.info(f'Generating {count} sets for {character_id} ({character.get("display_name", character_id)})')
@@ -61,11 +95,11 @@ async def generate_for_character(character_id: str, scenes: list[str], count: in
         logger.error(f'No reference folder mapping for {character_id}')
         return 0
     
-    ref_folder = Path('data') / rel[0] / rel[1]
-    ref_folder.mkdir(parents=True, exist_ok=True)
+    target_folder = Path(out_dir) if out_dir else Path('data') / rel[0] / rel[1]
+    target_folder.mkdir(parents=True, exist_ok=True)
     
     # Find next available slot number
-    existing = sorted(ref_folder.glob('*.png'))
+    existing = sorted(target_folder.glob('*.png'))
     next_slot = len(existing)
 
     generated = 0
@@ -82,22 +116,31 @@ async def generate_for_character(character_id: str, scenes: list[str], count: in
                 frames=1,  # one photo per set for reference
             )
             if photos:
-                # Save each photo to the reference folder
                 for photo in photos:
-                    if hasattr(photo, 'url') and photo.url:
-                        # Download and save
+                    payload: bytes | None = None
+                    if getattr(photo, 'url', None):
+                        # Providers that hand back a hosted file (fal/OpenAI)
                         import aiohttp
                         async with aiohttp.ClientSession() as session:
                             async with session.get(photo.url) as resp:
                                 if resp.status == 200:
-                                    filename = f'{next_slot:02d}_{rel[1]}_reference_{next_slot}.png'
-                                    dest = ref_folder / filename
-                                    dest.write_bytes(await resp.read())
-                                    logger.info(f'    Saved: {filename}')
-                                    next_slot += 1
-                                    generated += 1
+                                    payload = await resp.read()
                                 else:
                                     logger.warning(f'    Failed to download: HTTP {resp.status}')
+                    elif getattr(photo, 'data', None):
+                        # Gemini/Seedream can return inline bytes instead of a url
+                        payload = photo.data
+                    if not payload:
+                        logger.warning('    No image bytes returned')
+                        continue
+                    if out_dir:
+                        filename = f'{character_id}_{scene}_{next_slot:02d}.png'
+                    else:
+                        filename = f'{next_slot:02d}_{rel[1]}_reference_{next_slot}.png'
+                    (target_folder / filename).write_bytes(payload)
+                    logger.info(f'    Saved: {filename}')
+                    next_slot += 1
+                    generated += 1
             else:
                 logger.warning(f'    No photos returned')
         except Exception as e:
@@ -114,6 +157,9 @@ async def main():
                         help='Scenes to rotate through (default: all public scenes)')
     parser.add_argument('--count', type=int, default=2,
                         help='Number of photo sets per character (default: 2)')
+    parser.add_argument('--out-dir', default=None,
+                        help='Write the pictures here instead of the character reference '
+                             'folders (promo/social drafts, e.g. data/promo/anna)')
     parser.add_argument('--dry-run', action='store_true',
                         help='Print what would be generated without actually generating')
     args = parser.parse_args()
@@ -133,7 +179,7 @@ async def main():
 
     total_generated = 0
     for cid in args.characters:
-        n = await generate_for_character(cid, args.scenes, args.count)
+        n = await generate_for_character(cid, args.scenes, args.count, out_dir=args.out_dir)
         total_generated += n
 
     logger.info(f'Done! Generated {total_generated} photo(s) total')

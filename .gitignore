@@ -19,3 +19,6 @@ data/custom_references/
 # persisted in the chat_media DB table and re-materialized on disk on demand,
 # so they must never be committed.
 data/app_media/
+# V3.57.5: promo/social drafts (_batch_generate_photos.py --out-dir) — heavy
+# binaries for Instagram/Pinterest, never part of the deployed app.
+data/promo/
