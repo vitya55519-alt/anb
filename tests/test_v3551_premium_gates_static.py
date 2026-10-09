@@ -19,9 +19,9 @@ MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 
 
 def test_free_message_limit_is_thirty():
-    # V3.57.6: the owner lifted the chat brake 30 → 3000/day (fair-use ceiling).
-    # The test name keeps the old number as history; the pin tracks the default.
-    assert 'FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "3000"))' in CONFIG
+    # V3.57.6 lifted the brake to 3000/day; V3.57.7 put it back — the owner keeps
+    # 30/day for non-premium, which is what the published tariff says.
+    assert 'FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "30"))' in CONFIG
 
 
 def test_send_answer_voice_requires_premium():

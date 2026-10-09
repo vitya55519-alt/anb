@@ -222,10 +222,10 @@ def tariffs_text(lang: str = 'ru') -> str:
         for pid, stars in PEACH_PACK_STARS.items()
     ]
     donation_variants = ', '.join(f'{amount} ₽' for amount in DONATION_AMOUNTS_RUB)
-    # V3.57.6: the free chat ceiling moved to a fair-use number (3000/day). A
-    # tariff document reading «3000 сообщений в день» looks like a broken paywall,
-    # so anything past 1000 is published as unlimited while the code keeps the
-    # numeric cap as an abuse guard.
+    # V3.57.6: tariff lines must not hardcode the chat ceiling. V3.57.7 put it back
+    # to the published 30/day for non-premium, so this normally prints the number;
+    # the «unlimited» branch only speaks up if the ceiling ever goes ≥ 1000 again
+    # (an absurd counter in a legal document reads like a broken paywall).
     chat_free_en = ('unlimited messages' if FREE_MESSAGES_PER_DAY >= 1000
                     else f'{FREE_MESSAGES_PER_DAY} messages per day')
     chat_free_ru = ('без ограничения количества сообщений' if FREE_MESSAGES_PER_DAY >= 1000

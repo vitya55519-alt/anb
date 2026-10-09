@@ -3654,9 +3654,9 @@ async function loadShop() {
     // V3.44.22: the constructor row carries no star price — public personas
     // are free, private ones cost peaches (constructor_peaches rides along).
     const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars ? i.stars + ' ⭐' + fiat(i) : esc(L.constructor_price_note(s.constructor_peaches))}</span></div>`).join('');
-    // V3.57.6: the free chat ceiling became a fair-use number (3000/day), so the
-    // shop line says «unlimited» instead of printing an absurd counter — the cap
-    // itself stays in the code purely as an abuse guard.
+    // V3.57.6: the shop note must not hardcode the chat ceiling (V3.57.7 restored
+    // the published 30/day). It prints the number normally and falls back to
+    // «unlimited» only if the ceiling is ever raised past a fair-use 1000.
     const chatNote = s.free_tier.messages_per_day >= 1000
       ? esc(L.unlim_title)
       : `${s.free_tier.messages_per_day} ${esc(L.msg_day)}`;
