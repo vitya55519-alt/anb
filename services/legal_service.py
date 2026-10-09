@@ -222,6 +222,14 @@ def tariffs_text(lang: str = 'ru') -> str:
         for pid, stars in PEACH_PACK_STARS.items()
     ]
     donation_variants = ', '.join(f'{amount} ₽' for amount in DONATION_AMOUNTS_RUB)
+    # V3.57.6: the free chat ceiling moved to a fair-use number (3000/day). A
+    # tariff document reading «3000 сообщений в день» looks like a broken paywall,
+    # so anything past 1000 is published as unlimited while the code keeps the
+    # numeric cap as an abuse guard.
+    chat_free_en = ('unlimited messages' if FREE_MESSAGES_PER_DAY >= 1000
+                    else f'{FREE_MESSAGES_PER_DAY} messages per day')
+    chat_free_ru = ('без ограничения количества сообщений' if FREE_MESSAGES_PER_DAY >= 1000
+                    else f'{FREE_MESSAGES_PER_DAY} сообщений в день')
     if lang == 'en':
         lines = [
             '💰 Prices & tariffs',
@@ -238,7 +246,7 @@ def tariffs_text(lang: str = 'ru') -> str:
             'features as the 30-day plan.',
             '',
             'Free tier:',
-            f'• chat — {FREE_MESSAGES_PER_DAY} messages per day',
+            f'• chat — {chat_free_en}',
             f'• photos — {FREE_PHOTOS_LEVEL_1_2}/day (relationship levels 1–2), '
             f'{FREE_PHOTOS_LEVEL_3_6}/day (levels 3+)',
             '',
@@ -282,7 +290,7 @@ def tariffs_text(lang: str = 'ru') -> str:
         'возможности, что в подписке на 30 дней.',
         '',
         'Бесплатный функционал:',
-        f'• общение — {FREE_MESSAGES_PER_DAY} сообщений в день',
+        f'• общение — {chat_free_ru}',
         f'• фото — {FREE_PHOTOS_LEVEL_1_2} в день (уровни отношений 1–2), '
         f'{FREE_PHOTOS_LEVEL_3_6} в день (уровни 3+)',
         '',

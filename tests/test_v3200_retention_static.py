@@ -24,8 +24,9 @@ def test_video_pricing_and_free_slots():
 
 def test_retention_config_flags():
     # V3.52.1: raised 20 → 50; V3.55.1: owner tightened 50 → 30 so the
-    # Premium «безлимит» line actually bites (pin tracks the default).
-    assert 'FREE_MESSAGES_PER_DAY", "30"' in CONFIG
+    # Premium «безлимит» line actually bites; V3.57.6: owner lifted it again to
+    # 3000/day — the gate was killing D1 retention for $0.007/day of LLM spend.
+    assert 'FREE_MESSAGES_PER_DAY", "3000"' in CONFIG
     assert 'DEMO_PREMIUM_HOURS", "3"' in CONFIG
     assert 'PREMIUM_DISCOUNT_PERCENT", "30"' in CONFIG
     assert 'PREMIUM_DISCOUNT_HOURS", "24"' in CONFIG

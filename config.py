@@ -283,7 +283,11 @@ LLM_REPORT_USAGE = os.getenv("LLM_REPORT_USAGE", "true").strip().lower() in {"1"
 # V3.56.2: the owner removed the photo brake — SpicyAPI renders every scene
 # now, so the image brake ships OFF (SPEND_IMAGE_DAILY_BUDGET_USD>0 on Railway
 # turns it back on). The ledger keeps counting either way.
-SPEND_LLM_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_LLM_DAILY_BUDGET_USD", "1.0")))
+# V3.57.6: the owner removed the LLM brake too. It never touched the visible
+# reply anyway (AUX_PURPOSES only), and at $0.007/day against a $1.00 ceiling it
+# had never tripped — it was a number in /stats, nothing more. Both brakes now
+# default to off; any value > 0 on Railway puts either one back in force.
+SPEND_LLM_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_LLM_DAILY_BUDGET_USD", "0")))
 SPEND_IMAGE_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_IMAGE_DAILY_BUDGET_USD", "0")))
 
 # V3.19.9: Pollinations.ai was removed (repeated http_500 + wrong-subject
@@ -390,7 +394,12 @@ ADAPTATION_MAX_EXPRESSIONS = max(3, min(20, int(os.getenv("ADAPTATION_MAX_EXPRES
 # V3.55.1: owner tightened the free tier 50 → 30 messages/day for non-premium
 # (Premium's «безлимит сообщений» must actually bite). The new-user 24h
 # unlimited window below stays the activation lever.
-FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "30"))
+# V3.57.6: the owner removed the chat brake (30 → 3000/day). D1 retention was
+# 3% and the whole LLM bill $0.007/day, so the gate was costing activations far
+# more than it was selling Premium. 3000 is a fair-use ceiling, not a paywall —
+# a real person cannot reach it. NOTE: the gate is `count < FREE_MESSAGES_PER_DAY`,
+# so 0 here means «nobody may write», not «unlimited» — never set it to zero.
+FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "3000"))
 # V3.47.2: a brand-new user gets unlimited TEXT messages for this many hours
 # after registration (activation lever, mirrors the benchmark's «первые 24 часа
 # текст бесплатно»). Photo/video gates are untouched — text only.

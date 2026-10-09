@@ -3654,6 +3654,12 @@ async function loadShop() {
     // V3.44.22: the constructor row carries no star price — public personas
     // are free, private ones cost peaches (constructor_peaches rides along).
     const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars ? i.stars + ' ⭐' + fiat(i) : esc(L.constructor_price_note(s.constructor_peaches))}</span></div>`).join('');
+    // V3.57.6: the free chat ceiling became a fair-use number (3000/day), so the
+    // shop line says «unlimited» instead of printing an absurd counter — the cap
+    // itself stays in the code purely as an abuse guard.
+    const chatNote = s.free_tier.messages_per_day >= 1000
+      ? esc(L.unlim_title)
+      : `${s.free_tier.messages_per_day} ${esc(L.msg_day)}`;
     document.getElementById('shopbody').innerHTML = `
       <div class="packs">${packs}${customTile}</div>
       <div id="giftBlock"></div>
@@ -3664,7 +3670,7 @@ async function loadShop() {
       </div>
       ${items}
       <div class="note">${esc(L.pay_hint)}</div>
-      <div class="note">💬 ${s.free_tier.messages_per_day} ${esc(L.msg_day)} · 📸 ${s.free_tier.photos_level_1_2}–${s.free_tier.photos_level_3_6} ${esc(L.photos_day)}</div>`;
+      <div class="note">💬 ${chatNote} · 📸 ${s.free_tier.photos_level_1_2}–${s.free_tier.photos_level_3_6} ${esc(L.photos_day)}</div>`;
     document.querySelectorAll('#shopbody [data-pay]').forEach(b =>
       b.addEventListener('click', () => openPay(b.dataset.pay)));
     // V3.44.23: wire up the custom-peach tile.

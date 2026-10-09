@@ -140,6 +140,9 @@ def test_no_unescaped_backend_strings_in_templates():
             'badge', 'viewsBadge',
             'c.selected ? `<span class="badge" style="left:8px;top:auto;bottom:8px;color:#e8447f">❤️</span>` : \'\'',
             'heroBtn', 'heroWeekBtn', 'moRub', 'wkRub', 'creditRow', 'items', 'feats', 'price',
+            # V3.57.6: the shop free-tier chat label — every branch of it is
+            # esc()-wrapped where the fragment is built (L.unlim_title / msg_day).
+            'chatNote',
             # V3.43.0: the pack grid + pay-modal row fragments — every inner
             # backend field (id/emoji/title/rub) is esc()'d at build time.
             'packs', "rows.join('')",
