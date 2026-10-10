@@ -2058,6 +2058,54 @@ def character_photo(character_id: str, index: int = 0) -> tuple[bytes, str] | No
         return None
 
 
+# ── V3.57.9: web-sized storefront images ──────────────────────────────────
+# The storefront served the canonical references and admin card uploads as-is:
+# 2–5 MB PNGs per tile, so the grid and the character page took seconds to
+# paint (worse right after a redeploy, when every ?v= stamp changes and all
+# clients re-download). The HTTP routes now send a WebP capped at
+# WEB_IMAGE_MAX_SIDE; the originals stay untouched for generation/video.
+WEB_IMAGE_MAX_SIDE = 1280
+WEB_IMAGE_MIN_BYTES = 300_000  # smaller files are already cheap — pass through
+_WEB_IMAGE_CACHE_SIZE = 96
+_web_image_cache: dict[tuple, tuple[bytes, str]] = {}
+
+
+def web_image(data: bytes, content_type: str, cache_key: str) -> tuple[bytes, str]:
+    """(bytes, content_type) of a browser-sized version of a storefront image.
+
+    JPEG/PNG/WebP over WEB_IMAGE_MIN_BYTES are downscaled to WEB_IMAGE_MAX_SIDE
+    on the long side and re-encoded as WebP. Anything else (GIF, MP4, small
+    files) or any decoding error returns the input unchanged, so a bad file can
+    never break the route. Results are memoised per (key, size, head/tail hash).
+    """
+    if content_type not in ('image/jpeg', 'image/png', 'image/webp') or len(data) < WEB_IMAGE_MIN_BYTES:
+        return data, content_type
+    key = (cache_key, len(data), hashlib.sha1(data[:8192] + data[-8192:]).hexdigest())
+    hit = _web_image_cache.get(key)
+    if hit is not None:
+        return hit
+    try:
+        from io import BytesIO
+        from PIL import Image, ImageOps
+        with Image.open(BytesIO(data)) as src:
+            img = ImageOps.exif_transpose(src)
+            img.thumbnail((WEB_IMAGE_MAX_SIDE, WEB_IMAGE_MAX_SIDE), Image.LANCZOS)
+            if img.mode not in ('RGB', 'RGBA'):
+                img = img.convert('RGBA' if 'A' in img.getbands() else 'RGB')
+            out = BytesIO()
+            img.save(out, 'WEBP', quality=82, method=4)
+        result = (out.getvalue(), 'image/webp')
+        if len(result[0]) >= len(data):
+            result = (data, content_type)
+    except Exception:
+        logger.warning('web_image: could not optimise %s', cache_key, exc_info=True)
+        return data, content_type
+    if len(_web_image_cache) >= _WEB_IMAGE_CACHE_SIZE:
+        _web_image_cache.pop(next(iter(_web_image_cache)))
+    _web_image_cache[key] = result
+    return result
+
+
 # ── V3.39.0: in-app chat media (photos / circles / voice) ──────────────────
 
 APP_MEDIA_DIR = ROOT / 'data' / 'app_media'

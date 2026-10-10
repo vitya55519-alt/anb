@@ -10148,6 +10148,9 @@ async def _webapp_photo(request: web.Request) -> web.Response:
     if not photo:
         return web.Response(status=404)
     data, content_type = photo
+    # V3.57.9: browser-sized WebP instead of the multi-MB canonical PNG.
+    data, content_type = await asyncio.to_thread(
+        webapp_service.web_image, data, content_type, f'photo:{character_id}:{idx}')
     return web.Response(body=data, content_type=content_type, headers={'Cache-Control': 'public, max-age=604800'})
 
 
@@ -10195,7 +10198,11 @@ async def _webapp_card(request: web.Request) -> web.Response:
     content_type = {'.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
                     '.gif': 'image/gif', '.mp4': 'video/mp4'}.get(
         override.suffix.lower(), 'application/octet-stream')
-    return web.Response(body=await asyncio.to_thread(override.read_bytes), content_type=content_type,
+    body = await asyncio.to_thread(override.read_bytes)
+    # V3.57.9: still images go out as a browser-sized WebP (GIF/MP4 untouched).
+    body, content_type = await asyncio.to_thread(
+        webapp_service.web_image, body, content_type, f"card:{request.match_info['character_id']}")
+    return web.Response(body=body, content_type=content_type,
                         headers={'Cache-Control': 'public, max-age=604800'})
 
 
