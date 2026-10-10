@@ -1506,7 +1506,7 @@ def character_card_override(character_id: str) -> Path | None:
         for ext in CARD_OVERRIDE_EXTS:
             item = folder / f'card_override{ext}'
             if item.exists():
-                return item
+                return _ensure_web_video(item)
     # disk-cache miss (post-redeploy): restore from PostgreSQL and re-materialize.
     try:
         with SessionLocal() as s:
@@ -1516,7 +1516,7 @@ def character_card_override(character_id: str) -> Path | None:
             folder.mkdir(parents=True, exist_ok=True)
             target = folder / f'card_override{row.ext}'
             target.write_bytes(row.image_bytes)
-            return target
+            return _ensure_web_video(target)
     except Exception:
         logger.exception('card override db restore failed character=%s', character_id)
         return None
@@ -1680,7 +1680,28 @@ def character_card_live(character_id: str) -> Path | None:
     if not rel:
         return None
     live = ROOT.joinpath('data', rel[0], rel[1]) / 'card_live.mp4'
-    return live if live.exists() else None
+    return _ensure_web_video(live) if live.exists() else None
+
+
+_FASTSTART_CHECKED: dict[str, tuple[int, int]] = {}
+
+
+def _ensure_web_video(item: Path) -> Path:
+    """V3.57.9: make a tile mp4 moov-first once (memoised per mtime/size)."""
+    try:
+        if item.suffix.lower() != '.mp4':
+            return item
+        st = item.stat()
+        key = str(item)
+        if _FASTSTART_CHECKED.get(key) == (st.st_mtime_ns, st.st_size):
+            return item
+        from services.mp4_faststart import ensure_faststart
+        ensure_faststart(item)
+        st = item.stat()
+        _FASTSTART_CHECKED[key] = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        pass
+    return item
 
 
 def asset_version(character_id: str) -> str:
@@ -1706,6 +1727,7 @@ def asset_version(character_id: str) -> str:
     for folder in folders:
         if folder.exists():
             for item in sorted(folder.iterdir()):
+                _ensure_web_video(item)
                 fp = _file_fingerprint(item)
                 if fp:
                     digest.update(fp.encode('utf-8'))

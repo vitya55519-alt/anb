@@ -53,3 +53,25 @@ def test_videos_stream_with_range_support():
     card = src.split('async def _webapp_card(')[1].split('\nasync def ')[0]
     assert 'web.FileResponse(live' in live
     assert 'web.FileResponse(override' in card
+
+
+def test_tile_videos_are_made_moov_first():
+    src = _src('services/webapp_service.py')
+    assert 'return _ensure_web_video(item)' in src
+    assert 'return _ensure_web_video(target)' in src
+    assert '_ensure_web_video(live)' in src
+    from services.mp4_faststart import faststart_bytes, needs_faststart
+    import struct
+    ftyp = struct.pack('>I4s', 16, b'ftyp') + b'isom\x00\x00\x02\x00'
+    mdat = struct.pack('>I4s', 12, b'mdat') + b'DATA'
+    stco = struct.pack('>I4sI I I', 20, b'stco', 0, 1, 16 + 8)
+    stbl = struct.pack('>I4s', 8 + len(stco), b'stbl') + stco
+    moov = struct.pack('>I4s', 8 + len(stbl), b'moov') + stbl
+    data = ftyp + mdat + moov
+    assert needs_faststart(data)
+    out = faststart_bytes(data)
+    assert out is not None and not needs_faststart(out)
+    off = struct.unpack('>I', out[16 + len(moov) - 4:16 + len(moov)])[0]
+    assert out[off:off + 4] == b'DATA'
+    assert faststart_bytes(out) is None
+    assert faststart_bytes(b'garbage') is None

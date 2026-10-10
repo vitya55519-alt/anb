@@ -27,3 +27,8 @@ so two more fixes:
 - `/webapp/card/{id}` (mp4/gif) and `/webapp/live/{id}` are served with
   `web.FileResponse` — Range requests (206) + sendfile, so the tile starts
   playing before the whole clip is downloaded.
+- New `services/mp4_faststart.py` (pure Python qt-faststart, no ffmpeg): 6 of
+  the tile videos (anna, darina, eva, kristina, maria, mila) had the moov
+  index at the END, so the phone had to fetch the tail before the first
+  frame. Tile mp4s are rewritten moov-first once on disk (atomic, memoised,
+  bit-identical decode); anything unexpected leaves the file untouched.
