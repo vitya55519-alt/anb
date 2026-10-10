@@ -15,3 +15,15 @@ re-downloads all of them.
   version; the conversion and file read run in a worker thread so the event
   loop (and the bot) never blocks. `character_photo()` itself still returns
   full quality — video circles keep using the original.
+
+## Follow-up after measuring production
+The heavy storefront tiles are actually MP4 «living tiles» (2.3–3.2 MB each),
+so two more fixes:
+- `asset_version()` is now a content fingerprint (name + size + crc32 of the
+  first/last 64 KB, cached) instead of the newest mtime. Railway redeploys and
+  the DB→disk restore of card overrides gave every file a fresh mtime, so the
+  `?v=` stamp changed on every release and all clients re-downloaded every
+  tile video. Now the URL changes only when the media actually changes.
+- `/webapp/card/{id}` (mp4/gif) and `/webapp/live/{id}` are served with
+  `web.FileResponse` — Range requests (206) + sendfile, so the tile starts
+  playing before the whole clip is downloaded.

@@ -10185,8 +10185,10 @@ async def _webapp_live(request: web.Request) -> web.Response:
     live = await asyncio.to_thread(webapp_service.character_card_live, request.match_info['character_id'])
     if not live:
         return web.Response(status=404)
-    return web.Response(body=await asyncio.to_thread(live.read_bytes), content_type='video/mp4',
-                        headers={'Cache-Control': 'public, max-age=604800'})
+    # V3.57.9: streamed from disk with Range support (206) so the tile starts
+    # playing before the whole clip arrives instead of after a 2-3 MB download.
+    return web.FileResponse(live, headers={'Content-Type': 'video/mp4',
+                        'Cache-Control': 'public, max-age=604800'})
 
 
 async def _webapp_card(request: web.Request) -> web.Response:
@@ -10198,6 +10200,10 @@ async def _webapp_card(request: web.Request) -> web.Response:
     content_type = {'.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
                     '.gif': 'image/gif', '.mp4': 'video/mp4'}.get(
         override.suffix.lower(), 'application/octet-stream')
+    if content_type in ('video/mp4', 'image/gif'):
+        # V3.57.9: videos/GIFs stream from disk with Range support (206).
+        return web.FileResponse(override, headers={'Content-Type': content_type,
+                            'Cache-Control': 'public, max-age=604800'})
     body = await asyncio.to_thread(override.read_bytes)
     # V3.57.9: still images go out as a browser-sized WebP (GIF/MP4 untouched).
     body, content_type = await asyncio.to_thread(

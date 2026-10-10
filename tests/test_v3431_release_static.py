@@ -121,7 +121,8 @@ def test_living_tiles_job_and_route():
     assert 'def write_card_live(character_id: str, video_bytes: bytes) -> Path | None:' in WEBAPP_SVC
     assert 'def builtin_character_ids() -> tuple[str, ...]:' in WEBAPP_SVC
     assert "add_get('/webapp/live/{character_id}', _webapp_live)" in MAIN
-    assert "content_type='video/mp4'" in MAIN
+    # V3.57.9: streamed via web.FileResponse with an explicit mp4 type
+    assert "content_type='video/mp4'" in MAIN or "'Content-Type': 'video/mp4'" in MAIN
     # the grid plays the loop when rendered, else the Ken-Burns webp
     assert "'live': (f'/webapp/card/{card.character_id}?v={ver}'" in WEBAPP_SVC
     assert 'const cardMedia = c => c.live' in INDEX

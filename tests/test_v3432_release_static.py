@@ -35,7 +35,8 @@ def test_version_bumped():
 
 def test_asset_version_helper_stamps_every_storefront_url():
     assert 'def asset_version(character_id: str) -> str:' in WEBAPP_SVC
-    assert 'newest = max(newest, int(item.stat().st_mtime))' in WEBAPP_SVC
+    # V3.57.9: content fingerprint instead of mtime (stable across redeploys).
+    assert '_file_fingerprint(item)' in WEBAPP_SVC
     # grid payload: photo, tile, live clip and the gallery strip all carry ?v=
     assert 'ver = asset_version(card.character_id)' in WEBAPP_SVC
     assert "'photo': f\"/webapp/photo/{card.character_id}?v={ver}\"," in WEBAPP_SVC
@@ -49,7 +50,7 @@ def test_asset_version_helper_stamps_every_storefront_url():
 def test_asset_routes_are_immutable_now_that_urls_carry_the_stamp():
     # five public storefront routes (photo, gif tile, live clip, card media,
     # and V3.47.4's page-carousel shot — its URL carries the row id)
-    assert MAIN.count("headers={'Cache-Control': 'public, max-age=604800'})") == 5
+    assert MAIN.count("'Cache-Control': 'public, max-age=604800'") >= 5
     assert 'public, max-age=3600' not in MAIN.split('async def _webapp_photo')[1].split('async def _webapp_api_char_view')[0]
 
 

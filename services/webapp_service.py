@@ -28,6 +28,7 @@ import logging
 import re
 import secrets
 import time
+import zlib
 from pathlib import Path
 from urllib.parse import parse_qsl
 
@@ -1691,21 +1692,52 @@ def asset_version(character_id: str) -> str:
     folder>`` — rebuilding a tile or a live clip changes the URL and forces
     the client to fetch the fresh file.
     """
-    newest = 0
+    # V3.57.9: the stamp is a CONTENT fingerprint, not the newest mtime. Every
+    # Railway redeploy re-checks-out the repo and re-materializes the card
+    # overrides from PostgreSQL with a fresh mtime, so the old stamp changed
+    # on every release and every client re-downloaded ~8 MB of tile videos.
     rel = _FACE_REFERENCES.get(character_id)
     folders = []
     if rel:
         folders.append(ROOT.joinpath('data', rel[0], rel[1]))
     # V3.43.3: an admin-uploaded override re-stamps the URLs too.
     folders.append(card_media_folder(character_id))
+    digest = hashlib.sha1()
     for folder in folders:
         if folder.exists():
-            for item in folder.iterdir():
-                try:
-                    newest = max(newest, int(item.stat().st_mtime))
-                except OSError:
-                    continue
-    return str(newest)
+            for item in sorted(folder.iterdir()):
+                fp = _file_fingerprint(item)
+                if fp:
+                    digest.update(fp.encode('utf-8'))
+    return digest.hexdigest()[:10]
+
+
+_FINGERPRINT_CACHE: dict[str, tuple[int, int, str]] = {}
+
+
+def _file_fingerprint(item: Path) -> str:
+    """name + size + crc32 of the first and last 64 KB, cached per (mtime, size)."""
+    try:
+        st = item.stat()
+        if not item.is_file():
+            return ''
+    except OSError:
+        return ''
+    key = str(item)
+    hit = _FINGERPRINT_CACHE.get(key)
+    if hit and hit[0] == st.st_mtime_ns and hit[1] == st.st_size:
+        return hit[2]
+    try:
+        with item.open('rb') as fh:
+            crc = zlib.crc32(fh.read(65536))
+            if st.st_size > 65536:
+                fh.seek(max(65536, st.st_size - 65536))
+                crc = zlib.crc32(fh.read(65536), crc)
+    except OSError:
+        return ''
+    fp = f'{item.name}:{st.st_size}:{crc:08x};'
+    _FINGERPRINT_CACHE[key] = (st.st_mtime_ns, st.st_size, fp)
+    return fp
 
 
 def canonical_face_bytes(character_id: str, max_side: int = 768) -> bytes | None:

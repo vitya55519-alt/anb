@@ -38,3 +38,18 @@ def test_web_image_shrinks_large_png_and_passes_small_through():
     assert len(out) < len(big)
     small = b'x' * 1000
     assert webapp_service.web_image(small, 'image/png', 'test:small') == (small, 'image/png')
+
+
+def test_asset_stamp_is_content_fingerprint_not_mtime():
+    src = _src('services/webapp_service.py')
+    body = src.split('def asset_version(')[1].split('\ndef ')[0]
+    assert 'st_mtime)' not in body
+    assert '_file_fingerprint(item)' in body
+
+
+def test_videos_stream_with_range_support():
+    src = _src('main.py')
+    live = src.split('async def _webapp_live(')[1].split('\nasync def ')[0]
+    card = src.split('async def _webapp_card(')[1].split('\nasync def ')[0]
+    assert 'web.FileResponse(live' in live
+    assert 'web.FileResponse(override' in card
