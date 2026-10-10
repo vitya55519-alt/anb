@@ -909,8 +909,15 @@ OPENAI_GENERAL_AUDIENCE_BLOCK = (
     'Preserve the same person, slim proportions and fit figure from the references. Do not add weight or change her body type. '
     'The image should read as an everyday social-media or personal travel/lifestyle photo, not boudoir photography.'
 )
+HANDS_RULE = (
+    'HANDS: she has exactly two arms and two hands, both naturally attached to her own shoulders — '
+    'never a third hand, a third arm or a disembodied hand. In a mirror or phone selfie one hand holds the phone, '
+    'so only the other hand is free: if the expression puts a hand at her lips or face, the posture must not also '
+    'place a hand on her hip, waist or in her hair.'
+)
 NEGATIVE_BLOCK = (
     'Avoid identity drift, generic doll-like face, plastic skin, asymmetrical eyes, warped hands, extra fingers, '
+    'a third hand or arm, more than two hands, '
     'duplicate limbs, distorted anatomy, text, watermark, random accessories, overprocessed beauty filters, '
     'a long fully protruding or extra tongue, fake plastic-looking tongue, deformed mouth interior, teeth clipping through lips, '
     'and underwear worn over the outfit: bra over the top, panties over jeans or any lingerie as outerwear.'
@@ -1845,6 +1852,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         + f'{body_reinforcement}\n'
         f'MOOD: {request.mood}.\n'
         f'{expression_identity}\n'
+        f'{HANDS_RULE}\n'
         f'{personal}\n'
         'LIGHTING: use lighting that naturally belongs to the location and time of day; realistic shadows, cinematic but believable contrast.\n'
         f'{safety}\n'

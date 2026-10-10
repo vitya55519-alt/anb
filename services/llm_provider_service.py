@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 
 from openai import AsyncOpenAI
@@ -59,18 +60,35 @@ def _record_usage(purpose: str, provider: str, model: str, response) -> None:
         f'${reported:.5f} (billed)' if reported is not None else 'estimated',
     )
 
-# ── Provider clients (chat: OpenRouter primary, Gemini fallback) ─────────
+# V3.57.8: explicit timeouts. The OpenAI SDK default is a 600 s read timeout
+# with 2 automatic retries, so a hung primary provider kept the user waiting
+# for minutes before the fallback chain even started. The primary now fails
+# fast with no SDK retries — the next provider in the chain is the retry.
+def _env_float(name: str, default: float) -> float:
+    try:
+        return max(5.0, min(120.0, float(os.getenv(name, default))))
+    except (TypeError, ValueError):
+        return default
+
+
+LLM_TIMEOUT_SECONDS = _env_float('LLM_TIMEOUT_SECONDS', 25.0)
+LLM_FALLBACK_TIMEOUT_SECONDS = _env_float('LLM_FALLBACK_TIMEOUT_SECONDS', 40.0)
+
+# ── Provider clients (chat: MiniMax primary, Gemini → OpenRouter fallback) ─
 _openrouter = (
-    AsyncOpenAI(api_key=OPENROUTER_API_KEY, base_url=OPENROUTER_BASE_URL)
+    AsyncOpenAI(api_key=OPENROUTER_API_KEY, base_url=OPENROUTER_BASE_URL,
+                timeout=LLM_FALLBACK_TIMEOUT_SECONDS, max_retries=1)
     if OPENROUTER_API_KEY else None
 )
 _gemini = (
-    AsyncOpenAI(api_key=GEMINI_API_KEY, base_url=GEMINI_OPENAI_BASE_URL)
+    AsyncOpenAI(api_key=GEMINI_API_KEY, base_url=GEMINI_OPENAI_BASE_URL,
+                timeout=LLM_TIMEOUT_SECONDS, max_retries=0)
     if GEMINI_API_KEY_VALID else None
 )
 # V3.45.0: MiniMax — primary chat provider (дешевле OpenRouter)
 _minimax = (
-    AsyncOpenAI(api_key=MINIMAX_API_KEY, base_url=MINIMAX_BASE_URL)
+    AsyncOpenAI(api_key=MINIMAX_API_KEY, base_url=MINIMAX_BASE_URL,
+                timeout=LLM_TIMEOUT_SECONDS, max_retries=0)
     if MINIMAX_API_KEY else None
 )
 

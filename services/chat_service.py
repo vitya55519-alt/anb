@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import datetime as dt
+import logging
 import re
 from zoneinfo import ZoneInfo
 from config import CHARACTER_ID
@@ -17,6 +18,28 @@ from services.state_service import state_context, softly_evolve_state
 from services.user_service import ensure_user, get_user
 from services.access_service import is_premium
 from services.adaptation_service import observe_message, maybe_analyze_profile, build_adaptation_context
+
+
+_logger = logging.getLogger(__name__)
+# Strong references keep fire-and-forget tasks alive until they finish
+# (asyncio only holds weak references to running tasks).
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro, label: str) -> None:
+    """Run an auxiliary coroutine after the reply without making the user wait."""
+    async def _guarded():
+        try:
+            await coro
+        except Exception:
+            _logger.warning('background %s failed', label, exc_info=True)
+    try:
+        task = asyncio.get_running_loop().create_task(_guarded())
+    except RuntimeError:
+        coro.close()
+        return
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
 def _time_context(telegram_id: int) -> str:
@@ -157,14 +180,17 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     memories = get_memories(db_user_id, character_id, 40 if premium else 14)
     history = get_recent_messages(db_user_id, character_id, 30 if premium else 16)
     stage_to_level = {'stranger':1,'acquaintance':2,'close':3,'intimate':4,'deeply_connected':5,'committed':6}
-    adaptation = build_adaptation_context(db_user_id, stage_to_level.get(test_stage or '', 0) or 1, character_id)
+    # V3.57.8: build the adaptation context once (it used to be built twice per
+    # message when not in test mode — the first result was always thrown away).
+    adaptation_level = stage_to_level.get(test_stage or '', 0) or 1
     if not test_stage:
         # Relationship context itself is authoritative; adaptation strength still grows conservatively with history.
         try:
             from services.photo_service import get_relationship_level
-            adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id, character_id), character_id)
+            adaptation_level = get_relationship_level(user_id, character_id)
         except Exception:
             pass
+    adaptation = build_adaptation_context(db_user_id, adaptation_level, character_id)
     previous_user_text = next((m.content for m in reversed(history) if m.role == 'user'), '')
     behavior = behavior_context(user_text, previous_user_text)
     competency = competency_context(user_text, character_id)
@@ -238,10 +264,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     answer = await _rewrite_if_needed(messages, user_text, answer, character)
     save_message(db_user_id, character_id, "user", user_text)
     save_message(db_user_id, character_id, "assistant", answer)
-    await asyncio.gather(
-        extract_memory(db_user_id, character_id, user_text),
-        maybe_analyze_profile(db_user_id, character_id),
-    )
+    # V3.57.8: memory extraction and style analysis are extra LLM round trips the
+    # user never reads. They used to be awaited here, so every reply waited for
+    # them; now they run in the background after the answer is returned.
+    _spawn_background(extract_memory(db_user_id, character_id, user_text), 'extract_memory')
+    _spawn_background(maybe_analyze_profile(db_user_id, character_id), 'maybe_analyze_profile')
     softly_evolve_state(user_id, user_text)
     # V3.52.0: a conversational reply is "read" the instant it is produced (the
     # user sees it live in both the bot chat and the Mini App), so the «Чаты»
