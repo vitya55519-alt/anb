@@ -120,7 +120,7 @@ def test_husband_is_present_and_photos_follow_user_clock():
     assert line == c.relationship_line('mar_married', 'veronika_01')
     assert 'одинокой' in line
     from services import photo_service as ps
-    assert 'time_of_day = request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL)' in (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
+    assert 'request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL)' in (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
     from services.db import init_db
     init_db()
     from services.user_service import ensure_user, update_user_settings

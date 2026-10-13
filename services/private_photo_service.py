@@ -15,6 +15,7 @@ V3.45.0 — Фото «наедине» и «Косплей» — монетиз
 """
 
 import logging
+import os
 import hashlib
 import json
 import random
@@ -127,6 +128,15 @@ PRIVATE_PHOTO_CATEGORIES = {
             {"id": "dress", "name_ru": "Вечернее платье", "name_en": "Evening dress"},
             {"id": "shorts", "name_ru": "Короткие шорты + топ", "name_en": "Short shorts + top"},
             {"id": "wet", "name_ru": "Мокрая футболка", "name_en": "Wet t-shirt"},
+            # V3.60.1: owner's «подняла топ / спустила топ — видно бюстгальтер».
+            {"id": "top_up", "name_ru": "👚 Подняла топ", "name_en": "Lifted top",
+             "prompt": "she pulls her tight thin top up with one hand to just above her bra, her bra fully visible underneath, flat stomach, playful look into the camera; jeans or a fitted skirt below"},
+            {"id": "top_down", "name_ru": "👗 Спустила топ", "name_en": "Top pulled down",
+             "prompt": "the strap of her top has slipped off one shoulder and she tugs the neckline down so one cup of her bra and its strap show, teasing half-smile"},
+            {"id": "open_shirt", "name_ru": "👔 Расстёгнутая рубашка", "name_en": "Unbuttoned shirt",
+             "prompt": "a fitted shirt unbuttoned halfway, the bra clearly visible between the open sides, one hand on the collar"},
+            {"id": "tank_strap", "name_ru": "🎽 Майка и лямка", "name_en": "Tank top and strap",
+             "prompt": "a tight thin tank top, the outline of her bra showing through the fabric and a thin bra strap slipping out at the shoulder"},
         ]
     },
     "fully_nude": {
@@ -175,6 +185,12 @@ COSPLAY_CHARACTERS = [
     {"id": "kitsune", "name": "🦊 Кицунэ (лисий образ)", "hair": "natural hair", "outfit": "short red and white kimono robe worn loosely off one shoulder, red obi sash", "accessories": "two fluffy fox ears on head, nine golden fox tails behind body, small bell on red string around neck"},
 ]
 
+_REAL_PLACES = (
+    "a cozy bedroom with warm lamps and soft sheets", "a sunlit modern apartment living room",
+    "a stylish hotel room with a city view", "a sunset balcony with city lights",
+    "a candlelit bathroom with marble and steam", "a walk-in closet with a full-length mirror",
+)
+
 # Обстановки (10 вариантов)
 LOCATIONS = [
     {"id": "bedroom", "name_ru": "🛏️ Спальня", "name_en": "🛏️ Bedroom"},
@@ -185,7 +201,7 @@ LOCATIONS = [
     {"id": "hotel", "name_ru": "🏨 Отель", "name_en": "🏨 Hotel"},
     {"id": "beach", "name_ru": "🏖️ Пляж", "name_en": "🏖️ Beach"},
     {"id": "nature", "name_ru": "🌲 Природа", "name_en": "🌲 Nature"},
-    {"id": "studio", "name_ru": "🎭 Студия", "name_en": "🎭 Studio (black background)"},
+    {"id": "studio", "name_ru": "🎭 Студия", "name_en": "a styled photo studio set: warm textured backdrop in blush, beige or terracotta, a velvet armchair or draped fabric, plants and soft directional light — never a plain black void"},
     {"id": "random", "name_ru": "🎲 Случайная", "name_en": "🎲 Random"},
 ]
 
@@ -203,6 +219,16 @@ MOODS = [
 
 # V3.45.26: цвета белья/одежды — выбор игрока в мастере «Наедине».
 # `word` — английское описание цвета для промпта.
+BRA_CUT_POOL = (
+    "a lace balconette bra", "a smooth push-up bra", "a satin plunge bra", "a sheer mesh bra",
+    "a cotton bralette", "a triangle lace bralette", "a sporty bra", "a strappy cage bra",
+    "a bra with small bows", "a velvet bra", "a floral-embroidered bra",
+)
+BRA_COLOR_POOL = (
+    "black", "white", "red", "wine red", "nude beige", "dusty pink", "emerald green",
+    "navy blue", "lavender", "leopard print", "cream", "baby blue",
+)
+
 LINGERIE_COLORS = [
     {"id": "black",   "name_ru": "🖤 Чёрное",    "name_en": "Black",   "word": "black"},
     {"id": "white",   "name_ru": "🤍 Белое",     "name_en": "White",   "word": "white"},
@@ -404,10 +430,10 @@ PRIVATE_POSE_POOL = [
     'reclining against pillows, arms stretched above head',
     'sitting on the floor leaning against the wall, knees up',
     'standing in front of a mirror, phone POV selfie angle',
-    'on all fours looking back over her shoulder at the camera',
+    'kneeling on the bed facing the camera, leaning slightly forward',
     'sitting in a chair, legs draped over one armrest',
     'lying on her back, shot from above at a slight angle',
-    'standing arching her back, hands in hair, eyes closed',
+    'standing arching her back, hands in hair, eyes on the camera',
     'perched on a windowsill, ankles crossed',
     'kneeling on the bed, turning to face the camera',
     # V3.59.3: self-touch poses (owner request) — hands on her own body.
@@ -419,13 +445,15 @@ PRIVATE_POSE_POOL = [
     'sitting with legs apart on the bed, hands running up her inner thighs — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
 ]
 
+# V3.60.1: full-body and whole-room shots left her face a few dozen pixels
+# wide at 1k — the model then invents a stranger's face. Every framing keeps
+# the face large enough to carry her identity.
 PRIVATE_CAMERA_POOL = [
-    'eye-level full-body shot, neutral focal length',
-    'slightly high angle, full body in frame',
-    'standing eye-level shot showing her whole figure',
-    'three-quarter framing from the knees up, eye level',
-    'wide shot showing the whole room and her full figure in it',
-    'straight-on mirror selfie framing the full body',
+    'three-quarter framing from the knees up, eye level, her face large and sharp',
+    'waist-up framing at eye level, her face sharp and well lit',
+    'slightly high angle from the thighs up, face turned to the camera',
+    'mirror selfie framing from the thighs up, her face clearly visible in the mirror',
+    'close medium shot from the hips up, soft light on her face',
 ]
 
 
@@ -460,6 +488,10 @@ def build_private_photo_prompt(
     location = next((loc for loc in LOCATIONS if loc["id"] == request.location_id), None)
     if location and request.location_id != "random":
         parts.append(f"Location: {location['name_en']}")
+    else:
+        # V3.60.1: no location (the «Картинки» studio) or «random» used to leave
+        # the model alone with a black backdrop — give her a real place.
+        parts.append(f"Location: {random.choice(_REAL_PLACES)}, a lived-in real setting with depth and detail, never a plain black or empty backdrop")
     
     # Настроение
     mood = next((m for m in MOODS if m["id"] == request.mood_id), None)
@@ -481,6 +513,13 @@ def build_private_photo_prompt(
         type_data = next((t for t in category_data.get("types", []) if t["id"] == request.type_id), None)
         if type_data:
             parts.append(f"Style: {type_data['name_en']}")
+            if type_data.get("prompt"):
+                parts.append(f"SCENE: {type_data['prompt']}.")
+        # V3.60.1: not always the same black lace — every lingerie/bra shot
+        # draws its own cut (and colour, unless the player picked one).
+        if request.category in ("lingerie", "suggestive") and request.type_id not in ("corset", "bodysuit", "fishnet", "coat", "shirt"):
+            parts.append(f"BRA: {random.choice(BRA_CUT_POOL)}"
+                         + ("" if request.color else f", in {random.choice(BRA_COLOR_POOL)}") + ".")
         # V3.45.23: explicit nudity directive — without it the model leaves her
         # clothed: the type names are only locations («On bed», «In shower»).
         if request.category == "fully_nude":
@@ -497,12 +536,19 @@ def build_private_photo_prompt(
                 parts.append(f"COLOR: her lingerie/outfit is {color_data['word']} — the whole set is this color.")
     
     # V3.45.23: random pose + camera so consecutive photos never repeat.
-    import random
     parts.append(f"POSE: {random.choice(PRIVATE_POSE_POOL)}.")
     parts.append(f"CAMERA: {random.choice(PRIVATE_CAMERA_POOL)}.")
     
     # Общие правила
-    parts.append("High quality photo, professional photography, detailed, realistic")
+    parts.append("High quality realistic smartphone-style photo, natural skin, detailed")
+    if use_reference:
+        # V3.60.1: last line wins the most attention — her face goes here, after
+        # the outfit/pose/location text that used to drown it out.
+        parts.append(
+            "FACE LOCK: her face is clearly visible, sharp, well lit and turned toward the camera — "
+            "exactly the same face as reference image 1 (same eyes, nose, lips, jaw, brows and skin tone); "
+            "never closed eyes, never hidden by hair or hands, never a different woman."
+        )
     # V3.45.24: only nude categories carry the uncensored-NSFW trailer. On a
     # clothed/suggestive shot that phrase trips fal.ai's safety checker when the
     # SpicyAPI i2i leg fails and we fall back with allow_adult=False — the whole
@@ -510,7 +556,7 @@ def build_private_photo_prompt(
     if request.category in ("fully_nude", "nude_art"):
         parts.append("NSFW content allowed, uncensored generation")
     elif request.category == "suggestive":
-        parts.append("Fully clothed, tasteful, non-explicit")
+        parts.append("Clothed and non-explicit: her bra may show as described, no nudity")
     
     return "\n".join(parts)
 
@@ -807,6 +853,12 @@ def cache_get(prompt: str, character_id: str) -> Optional[bytes]:
 PRIVATE_POOL_MIN = 10
 
 
+# V3.60.1: the stockpile still held renders from the 2k days (faces drifted)
+# and served them at random, ignoring colour/location — only renders made
+# after the 1k fix are reused. Railway PRIVATE_POOL_SINCE moves the cutoff.
+PRIVATE_POOL_SINCE = os.getenv('PRIVATE_POOL_SINCE', '2026-10-14T00:00:00')
+
+
 def pool_get(character_id: str, category: str, type_id: str,
              min_count: int = PRIVATE_POOL_MIN) -> Optional[bytes]:
     """Return a random already-generated photo for this character + scene when the
@@ -824,6 +876,10 @@ def pool_get(character_id: str, category: str, type_id: str,
             PrivateGallery.category == category,
             PrivateGallery.image_bytes.isnot(None),
         )
+        try:
+            stmt = stmt.where(PrivateGallery.created_at >= datetime.fromisoformat(PRIVATE_POOL_SINCE))
+        except ValueError:
+            pass
         if type_id:
             stmt = stmt.where(PrivateGallery.type_id == type_id)
         rows = session.execute(stmt).scalars().all()

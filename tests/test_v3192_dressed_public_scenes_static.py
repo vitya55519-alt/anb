@@ -40,7 +40,8 @@ def test_runtime_public_scene_level6_has_no_lingerie_naming():
         assert 'daring, revealing cut' not in prompt
         assert 'HOME LINGERIE LOOK:' not in prompt
         # The underlay rule actively hides the lingerie.
-        assert 'completely hidden underneath' in prompt or 'completely invisible' in prompt
+        # V3.60.1: owner allows a bra outline and one strap at level 6 — still never over the outfit.
+        assert 'never on top of or outside the outfit' in prompt
 
 
 def test_private_scenes_still_get_lingerie_naming():

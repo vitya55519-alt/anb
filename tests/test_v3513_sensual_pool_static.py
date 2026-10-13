@@ -74,11 +74,11 @@ def test_media_hot_wires_pool_reuse():
     # pool_get imported alongside the cache helpers
     assert 'pool_get' in hot[hot.index('from services.private_photo_service import'):hot.index('from services.character_dna_service')]
     # the reuse check runs AFTER the exact cache miss and BEFORE provider generation
-    assert 'pooled = pool_get(character_id, cat_id, req.type_id)' in hot
-    assert hot.index('cached = cache_get(prompt, character_id)') < hot.index('pooled = pool_get(')
-    assert hot.index('pooled = pool_get(') < hot.index('image_bytes = await generate_private_photo_t2i(prompt)')
+    assert 'pool_get(character_id, cat_id, req.type_id)' in hot
+    assert hot.index('cached = cache_get(prompt, character_id)') < hot.index('pool_get(character_id, cat_id')
+    assert hot.index('pool_get(character_id, cat_id') < hot.index('image_bytes = await generate_private_photo_t2i(prompt)')
     # a pooled shot is saved into the user's gallery and still charged like any send
-    pool_block = hot[hot.index('pooled = pool_get('):hot.index('# Generate: adult')]
+    pool_block = hot[hot.index('pool_get(character_id, cat_id'):hot.index('# Generate: adult')]
     assert 'gallery_save(telegram_id, character_id, cat_id, req.type_id, pooled)' in pool_block
     assert 'spend_peaches(telegram_id, peach_cost)' in pool_block
     assert 'return pooled' in pool_block
