@@ -75,11 +75,19 @@ def test_glued_bios_are_detected_and_replaced():
 
 def test_marital_status_for_existing_girls():
     assert "app.router.add_post('/webapp/api/chat/marital', _webapp_api_chat_marital)" in MAIN
-    assert "row.marital_status = None if status == 'default' else status" in MAIN
+    assert "row.marital_status = new_value" in MAIN
+    # V3.59.6: every change costs peaches (admin free), same pick is free
+    assert "if not spend_peaches(telegram_id, MARITAL_CHANGE_PEACHES):" in MAIN
+    assert "return None  # same pick again: free, nothing changes" in MAIN
+    assert "if (r.status === 402) { c.marital = prev; renderMarital(c); toast(L.marital_no_peaches); showTab('shop'); return; }" in SPA
+    assert '.mchips { display: flex; flex-wrap: nowrap;' in SPA
+    from config import MARITAL_CHANGE_PEACHES
+    assert MARITAL_CHANGE_PEACHES == 5
     assert 'function renderMarital(c)' in SPA and "'/webapp/api/chat/marital?init_data='" in SPA
     chat = (ROOT / 'services' / 'chat_service.py').read_text(encoding='utf-8')
     assert "'СЕМЕЙНОЕ ПОЛОЖЕНИЕ (выбор пользователя, важнее описания выше): ' + marital_line" in chat
     websvc = (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')
-    assert "'marital': maritals.get(card.character_id)," in websvc
+    assert "'marital': maritals.get(card.character_id) or _default_marital(card.character_id, custom)," in websvc
+    assert 'messages.append({"role": "system", "content": marital_reminder})' in chat
     from models.relationship_models import UserCharacterRelationship
     assert hasattr(UserCharacterRelationship, 'marital_status')

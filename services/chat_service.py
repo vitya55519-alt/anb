@@ -223,6 +223,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # the Mini App chat) steers her manner in every dialog with him — bot and app
     # share this pipeline. Fail-silent: no row / no choice = no extra line.
     style_line = ''
+    marital_reminder = ''
     try:
         from sqlalchemy import select
         from services.db import SessionLocal
@@ -257,8 +258,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             if marital_line:
                 style_line = (style_line + '\n' if style_line else '') + (
                     'СЕМЕЙНОЕ ПОЛОЖЕНИЕ (выбор пользователя, важнее описания выше): ' + marital_line)
+                marital_reminder = ('Напоминание о роли: ' + marital_line + ' Если раньше в переписке ты '
+                                    'говорила иначе — теперь это так; не называй себя свободной, если это не так.')
     except Exception:
         style_line = ''
+        marital_reminder = ''
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + (spicy_line + '\n' if spicy_line else '') + (style_line + '\n' if style_line else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation,
         time_context=_time_context(user_id),
@@ -266,6 +270,10 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     )
     messages = [{"role": "system", "content": system}]
     messages += [{"role": m.role, "content": m.content} for m in history]
+    # V3.59.6: a status buried mid-prompt lost to 30 lines of history («свободна,
+    # как птица» right after «Замужем» was picked) — repeat it next to the message.
+    if marital_reminder:
+        messages.append({"role": "system", "content": marital_reminder})
     messages.append({"role": "user", "content": user_text})
     behavior_kind = choose_behavior(user_text, previous_user_text).intent
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)

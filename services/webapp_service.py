@@ -35,6 +35,7 @@ from urllib.parse import parse_qsl
 from sqlalchemy import func, select
 
 from config import (
+    MARITAL_CHANGE_PEACHES,
     CHARACTER_ID,
     CHAT_PHOTO_OFFER_STARS,
     CONSTRUCTOR_COST_PEACHES,
@@ -410,6 +411,19 @@ def _batch_rel_levels(telegram_id: int | None, character_ids: list[str]) -> dict
         return {}
 
 
+def _default_marital(character_id: str, custom: bool) -> str:
+    if custom:
+        try:
+            from services.custom_character_service import custom_character_params, RELATIONSHIP_STORY
+            params, _ = custom_character_params(character_id)
+            ms = str(params.get('marital', ''))
+            if ms in RELATIONSHIP_STORY:
+                return ms
+        except Exception:
+            pass
+    return 'mar_single'
+
+
 def _batch_marital(telegram_id: int | None, character_ids: list[str]) -> dict[str, str]:
     """V3.59.5: the user's picked relationship status per character, one query."""
     if not telegram_id or not character_ids:
@@ -589,8 +603,10 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             # V3.50.0: relationship path (-100 tenderness .. +100 passion);
             # None until a relationship row exists for this character.
             'path': path_axes.get(card.character_id),
-            # V3.59.5: her relationship status for this user (None = default).
-            'marital': maritals.get(card.character_id),
+            # V3.59.5: her relationship status for this user. V3.59.6: falls back
+            # to the constructor's pick for a custom girl, else «свободна».
+            'marital': maritals.get(card.character_id) or _default_marital(card.character_id, custom),
+            'marital_price': MARITAL_CHANGE_PEACHES,
             # V3.45.28: sanitized tags for custom personas ([] for built-ins).
             'tags': parse_tags(tags_by_id.get(card.character_id)),
         })
