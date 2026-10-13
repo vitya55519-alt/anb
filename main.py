@@ -5833,6 +5833,7 @@ async def private_photo_generate(cq: types.CallbackQuery):
     char_desc = character_dna_context(get_user_character(cq.from_user.id))
     # Проверяем кэш
     prompt = build_private_photo_prompt(request, char_desc)
+    prompt = _with_marital_ring(prompt, cq.from_user.id, get_user_character(cq.from_user.id))
     image_bytes = cache_get(prompt, get_user_character(cq.from_user.id))
     rendered = False
     if not image_bytes:
@@ -5957,6 +5958,7 @@ async def private_cosplay_generate(cq: types.CallbackQuery):
     )
     char_desc = character_dna_context(get_user_character(cq.from_user.id))
     prompt = build_private_photo_prompt(request, char_desc)
+    prompt = _with_marital_ring(prompt, cq.from_user.id, get_user_character(cq.from_user.id))
     image_bytes = cache_get(prompt, get_user_character(cq.from_user.id))
     rendered = False
     if not image_bytes:
@@ -11016,6 +11018,17 @@ async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'reply': reaction, 'user_photo_url': url})
 
 
+def _with_marital_ring(prompt: str, telegram_id: int, character_id: str) -> str:
+    """V3.59.7: intimate shots carry only the always-on detail (the ring) — no
+    hoodie or husband's shirt in a boudoir frame."""
+    try:
+        from services.photo_service import marital_photo_detail
+        detail = marital_photo_detail(telegram_id, character_id, allow_sometimes=False)
+    except Exception:
+        detail = ''
+    return prompt + (f' STORY DETAIL: {detail}; small and natural, never changes her face or body.' if detail else '')
+
+
 async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
     # V3.59.5: the user picks her relationship status (замужем / есть парень /
     # в разводе / …) on her page — any girl, built-in or custom. Stored per
@@ -11067,6 +11080,22 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
                 row = UserCharacterRelationship(user_id=uid, character_id=character_id, path_axis=0.0)
                 session.add(row)
             row.marital_status = new_value
+            # V3.59.7: the switch becomes part of her story — a memory she can
+            # bring up once («я ушла от мужа…») instead of silently flipping.
+            _labels = {'mar_single': 'свободна', 'mar_boyfriend': 'есть парень', 'mar_married': 'замужем',
+                       'mar_divorced': 'в разводе', 'mar_open': 'в свободных отношениях'}
+            new_eff = new_value or webapp_service._default_marital(character_id, is_custom_character(character_id))
+            from models.app_models import Memory as _Memory
+            mem = session.scalar(select(_Memory).where(
+                _Memory.user_id == uid, _Memory.character_id == character_id, _Memory.memory_key == 'marital:change'))
+            text_mem = (f'Недавно твоё семейное положение изменилось: раньше ты была «{_labels.get(current, current)}», '
+                        f'теперь — «{_labels.get(new_eff, new_eff)}». Можешь один раз естественно рассказать, '
+                        'как так вышло, и дальше жить уже в новом положении.')
+            if mem is None:
+                session.add(_Memory(user_id=uid, character_id=character_id, memory_key='marital:change',
+                                    content=text_mem, memory_type='story', confidence=1.0, importance=0.8))
+            else:
+                mem.content = text_mem
             session.commit()
         track_event(uid, 'webapp_marital', metadata={'character_id': character_id, 'status': status})
         return None
@@ -11499,6 +11528,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     # instead, anchoring identity with the text visual-lock only.
     is_adult = (not cosplay) and cat_id in ('fully_nude', 'nude_art')
     prompt = build_private_photo_prompt(req, dna_ctx, use_reference=not is_adult)
+    prompt = _with_marital_ring(prompt, telegram_id, character_id)
     # Check cache
     cached = cache_get(prompt, character_id)
     if cached:

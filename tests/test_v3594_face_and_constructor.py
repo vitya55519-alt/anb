@@ -91,3 +91,23 @@ def test_marital_status_for_existing_girls():
     assert 'messages.append({"role": "system", "content": marital_reminder})' in chat
     from models.relationship_models import UserCharacterRelationship
     assert hasattr(UserCharacterRelationship, 'marital_status')
+
+
+def test_marital_status_shows_in_photos_and_story():
+    from services.db import init_db, SessionLocal
+    init_db()
+    from services.user_service import ensure_user
+    from models.relationship_models import UserCharacterRelationship
+    from services import photo_service as ps
+    uid = ensure_user(990077)
+    with SessionLocal() as s:
+        s.add(UserCharacterRelationship(user_id=uid, character_id='anna_01', path_axis=0.0, marital_status='mar_married'))
+        s.commit()
+    assert ps.marital_status_for(990077, 'anna_01') == 'mar_married'
+    assert 'wedding ring' in ps.marital_photo_detail(990077, 'anna_01', allow_sometimes=False)
+    req = ps._resolve_request(990077, ps.PhotoRequest(scene='selfie'), character_id='anna_01')
+    prompt = ps._build_prompt(req, 0, seedream=True, character_id='anna_01')
+    assert 'STORY DETAIL: a thin gold wedding ring' in prompt
+    assert ps.marital_photo_detail(990078, 'anna_01') == ''
+    assert MAIN.count('_with_marital_ring(prompt,') == 3
+    assert "memory_key='marital:change'" in MAIN
