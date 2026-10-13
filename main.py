@@ -7602,6 +7602,9 @@ async def daily_quest_claim(cq: types.CallbackQuery):
         result = couple_service.claim_quest(cq.from_user.id, quest_key)
     else:
         result = {'attention': 5} if couple_service.claim_daily_quest(cq.from_user.id) else None
+    if result and result.get('not_done'):
+        await cq.answer('сначала сделай это в чате с ней 😉 потом жми ещё раз', show_alert=True)
+        return
     if result:
         track_event(uid, 'daily_quest_claimed')
         await cq.answer('+5 внимания ❤️')
@@ -11912,6 +11915,9 @@ async def _webapp_api_feature_action_impl(request: web.Request) -> web.Response:
         result = couple_service.claim_quest(telegram_id, quest_key)
         if not result:
             return web.json_response({'ok': False, 'error': 'already'}, status=409)
+        if result.get('not_done'):
+            # V3.59.1: the task is checked against today's dialog, not trusted.
+            return web.json_response({'ok': False, 'error': 'not_done'}, status=409)
         # V3.55.7: claim_quest has committed the +5 by this point. The event
         # track, the dialog echo and the best-effort bonus photo must never turn
         # a successful claim into a raw 500 — a transient DB blip here used to

@@ -6,11 +6,12 @@ import hashlib
 import json
 import logging
 import random
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from models.app_models import CoupleAlbum, User
+from models.app_models import CoupleAlbum, Message, ProductEvent, User
 from models.relationship_models import UserCharacterRelationship
 from services.db import SessionLocal
 
@@ -22,7 +23,8 @@ PET_NAMES = (
     'моя радость', 'дорогой', 'любимый',
 )
 
-# Honor-system daily quests: one per user per day, deterministic pick.
+# Daily quests, deterministic pick. V3.59.1: no longer honor-system — a claim
+# only counts if today's dialog shows the task was actually done.
 DAILY_QUESTS: tuple[tuple[str, str], ...] = (
     ('compliment', 'сделай ей комплимент — искренний и тёплый'),
     ('dream', 'спроси, что ей снилось сегодня'),
@@ -82,6 +84,40 @@ def daily_quests_state(telegram_id: int) -> list[dict]:
     return [{'key': k, 'text': t, 'claimed': k in done} for k, t in daily_quests(telegram_id)]
 
 
+# V3.59.1: what «done» means for each task, read from today's own messages.
+_COMPLIMENT = re.compile(r'красив|прекрасн|мил(ая|ашк|о)|нежн|умниц|обожа|чудесн|восхит|потрясающ|сексуальн|лучш(ая|е)|нравишься|beautiful|pretty|cute|gorgeous|amazing|sexy', re.I)
+_SWEET = re.compile(r'солнышк|солнце|зайк|зай\b|котик|кис(а|к)|малыш|любим|родн(ая|ой)|дорог(ая|уша)|милая|пупс|ласточк|sweetheart|honey|babe|baby|darling', re.I)
+_DREAM = re.compile(r'сни(лось|тся|л)|сон\b|сны|dream', re.I)
+_RED = re.compile(r'красн|\bred\b', re.I)
+_DAY_MIN_CHARS = 60
+
+
+def quest_done_today(telegram_id: int, quest_key: str) -> bool:
+    start = datetime.now(timezone.utc).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
+    with SessionLocal() as session:
+        user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+        if not user:
+            return False
+        if quest_key == 'voice':
+            return bool(session.scalar(select(ProductEvent.id).where(
+                ProductEvent.user_id == user.id, ProductEvent.created_at >= start,
+                ProductEvent.event_name.in_(('chat_user_message', 'webapp_chat_media')),
+                ProductEvent.metadata_json.like('%voice%')).limit(1)))
+        texts = session.scalars(select(Message.content).where(
+            Message.user_id == user.id, Message.role == 'user', Message.created_at >= start)).all()
+    if quest_key == 'compliment':
+        return any(_COMPLIMENT.search(t or '') for t in texts)
+    if quest_key == 'sweet':
+        return any(_SWEET.search(t or '') for t in texts)
+    if quest_key == 'dream':
+        return any(_DREAM.search(t or '') for t in texts)
+    if quest_key == 'red':
+        return any(_RED.search(t or '') for t in texts)
+    if quest_key == 'day':
+        return any(len((t or '').strip()) >= _DAY_MIN_CHARS for t in texts)
+    return True  # an unknown/legacy key keeps the old behaviour
+
+
 def _bonus_media_roll(user) -> bool:
     """~20% chance a spontaneous free photo drops, at most once per day. Marks
     ``bonus_media_date`` on success so the caller can deliver the media."""
@@ -102,6 +138,10 @@ def claim_quest(telegram_id: int, quest_key: str) -> dict | None:
     todays = {k for k, _ in daily_quests(telegram_id)}
     if quest_key not in todays:
         return None
+    if quest_key in claimed_keys_today(telegram_id):
+        return None
+    if not quest_done_today(telegram_id, quest_key):
+        return {'not_done': True}
     with SessionLocal() as session:
         user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
         if not user:
@@ -131,7 +171,8 @@ def claim_quest(telegram_id: int, quest_key: str) -> dict | None:
 def claim_daily_quest(telegram_id: int) -> bool:
     """Legacy single-quest entry point: claims today's primary quest. Returns
     True on a fresh claim (kept for the bot's old callback and V3.21 pins)."""
-    return claim_quest(telegram_id, daily_quest(telegram_id)[0]) is not None
+    result = claim_quest(telegram_id, daily_quest(telegram_id)[0])
+    return bool(result) and not result.get('not_done')
 
 
 def get_pet_name(telegram_id: int) -> str | None:
