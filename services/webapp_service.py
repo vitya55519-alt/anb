@@ -410,6 +410,28 @@ def _batch_rel_levels(telegram_id: int | None, character_ids: list[str]) -> dict
         return {}
 
 
+def _batch_marital(telegram_id: int | None, character_ids: list[str]) -> dict[str, str]:
+    """V3.59.5: the user's picked relationship status per character, one query."""
+    if not telegram_id or not character_ids:
+        return {}
+    try:
+        from models.relationship_models import UserCharacterRelationship
+        with SessionLocal() as session:
+            user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+            if not user:
+                return {}
+            rows = session.execute(
+                select(UserCharacterRelationship.character_id, UserCharacterRelationship.marital_status).where(
+                    UserCharacterRelationship.user_id == user.id,
+                    UserCharacterRelationship.character_id.in_(character_ids),
+                )
+            ).all()
+            return {cid: ms for cid, ms in rows if ms}
+    except Exception:
+        logger.exception('batch marital failed user=%s', telegram_id)
+        return {}
+
+
 def _batch_path_axis(telegram_id: int | None, character_ids: list[str]) -> dict[str, float]:
     """V3.50.0: the per-character relationship *path* (-100 romance .. +100
     bold) for the character-card indicator, in ONE query. Characters without
@@ -510,6 +532,7 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     tags_by_id = _batch_tags([c.character_id for c in cards if is_custom_character(c.character_id)])
     # V3.50.0: batched read of the romance<->bold path for the card indicator.
     path_axes = _batch_path_axis(telegram_id, [c.character_id for c in cards])
+    maritals = _batch_marital(telegram_id, [c.character_id for c in cards])
     out = []
     for card in cards:
         custom = is_custom_character(card.character_id)
@@ -566,6 +589,8 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             # V3.50.0: relationship path (-100 tenderness .. +100 passion);
             # None until a relationship row exists for this character.
             'path': path_axes.get(card.character_id),
+            # V3.59.5: her relationship status for this user (None = default).
+            'marital': maritals.get(card.character_id),
             # V3.45.28: sanitized tags for custom personas ([] for built-ins).
             'tags': parse_tags(tags_by_id.get(card.character_id)),
         })

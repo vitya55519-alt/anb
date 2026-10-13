@@ -157,6 +157,7 @@ def init_db():
         'connection_score': 'FLOAT DEFAULT 0',
         'last_distinct_day': 'TIMESTAMP',
         'active_days': 'INTEGER DEFAULT 0',
+        'marital_status': 'VARCHAR(16)',
     })
     # V3.13+ card fields were added to the model after the table already existed
     # in production; create_all never alters existing tables, so add them here.
