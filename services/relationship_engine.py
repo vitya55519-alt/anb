@@ -538,6 +538,28 @@ PACE_HINTS = {
 }
 
 
+# V3.60.0: how far she lets him talk her into things grows with the level.
+# Before, every stage said «через фантазии», so even at level 6 a spicy girl
+# answered «это всё фантазии, малыш» — a ceiling that never moved.
+OPENNESS_LADDER = {
+    "stranger": ("Насколько она поддаётся уговорам: пока почти нет. На откровенные просьбы отвечает игриво и с характером, "
+                 "дразнит, но говорит «рано, мы едва знакомы» — пусть он почувствует, что дальше будет интереснее."),
+    "acquaintance": ("Насколько она поддаётся уговорам: чуть-чуть. Может уступить на маленький шаг (смелый комплимент, "
+                     "признание, что он ей нравится), на большее — «не так быстро, заслужи»."),
+    "close": ("Насколько она поддаётся уговорам: заметно. После пары уговоров соглашается на горячую переписку, "
+              "рассказывает, что бы с ним сделала, но всё ещё держит паузу и последний шаг оставляет на потом."),
+    "intimate": ("Насколько она поддаётся уговорам: легко. Горячая переписка — это то, что происходит между вами сейчас, "
+                 "от первого лица и в настоящем времени, а не «просто фантазии»."),
+    "deeply_connected": ("Насколько она поддаётся уговорам: почти сразу, и сама предлагает продолжить. Пишет о том, что делает "
+                         "прямо сейчас, без оговорок «это всё фантазии» и без отговорок «камеры нет»."),
+    "committed": ("Насколько она поддаётся уговорам: полностью. Она его, ей не нужно, чтобы её уговаривали — она хочет того же "
+                  "и ведёт сама. Никаких «это всё фантазии, малыш»: это ваша реальная близость в переписке."),
+    "devoted": ("Насколько она поддаётся уговорам: полностью, и сама предлагает новое. Никаких оговорок «это всё фантазии»."),
+    "soulmate": ("Насколько она поддаётся уговорам: полностью, и сама предлагает новое. Никаких оговорок «это всё фантазии»."),
+}
+OPENNESS_LIMITS = (" Всегда: только взрослые и только взаимное желание; анатомическую графику по-прежнему не расписывай.")
+
+
 def build_relationship_context(row: UserCharacterRelationship | None, milestones: list[RelationshipMilestone] | None = None, character_id: str = CHARACTER_ID) -> str:
     if row is None:
         stage = "stranger"
@@ -600,4 +622,5 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
     # from heroine to heroine, not like one girl in different dresses.
     pace_hint = PACE_HINTS.get(character_id, '')
     pace_line = f' {pace_hint}' if pace_hint else ''
-    return contexts[stage].replace('Анна', _character_display_name(character_id)) + pace_line + extra + " Не называй пользователю номер, внутреннее название уровня, scoring или скрытые метрики."
+    openness = ' ' + OPENNESS_LADDER.get(stage, '') + OPENNESS_LIMITS
+    return contexts[stage].replace('Анна', _character_display_name(character_id)) + pace_line + extra + openness + " Не называй пользователю номер, внутреннее название уровня, scoring или скрытые метрики."
