@@ -64,7 +64,7 @@ def test_pack_prices_and_grants():
     assert 'PEACH_PACK_CREDITS = {"peach_pack_10": 10, "peach_pack_30": 30, "peach_pack_100": 100}' in CONFIG
     # payments: priced in PRODUCTS, granted in one go
     assert '"peach_pack_10":PEACH_PACK_10_STARS' in PAYMENTS
-    assert 'user.photo_credits=(user.photo_credits or 0)+PEACH_PACK_CREDITS[product]' in PAYMENTS
+    assert 'user.photo_credits=_credits_plus(PEACH_PACK_CREDITS[product])' in PAYMENTS
 
 
 def test_pack_stars_chain():

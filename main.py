@@ -9458,8 +9458,28 @@ async def _healthz(request: web.Request) -> web.Response:
     return web.Response(text='ok')
 
 
+def _owner_diagnostics_allowed(request: web.Request) -> bool:
+    """V3.58.0: /diagnostics and /platega/check are owner-only. Either the
+    ``?key=`` query matches DIAGNOSTICS_KEY, or the request carries a valid
+    Mini App ``init_data`` of an admin. Without both the routes answer 404 —
+    /platega/check creates a real Platega transaction on every hit, so it
+    must never be reachable by strangers."""
+    from config import DIAGNOSTICS_KEY
+    key = (request.query.get('key') or '').strip()
+    if DIAGNOSTICS_KEY and key and secrets.compare_digest(key, DIAGNOSTICS_KEY):
+        return True
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if pairs:
+        telegram_id = webapp_service.init_data_user(pairs).get('id')
+        if telegram_id and webapp_service._is_admin(telegram_id):
+            return True
+    return False
+
+
 async def _diagnostics(request: web.Request) -> web.Response:
     """V3.44.4: diagnostics endpoint for the owner — shows photo provider status."""
+    if not _owner_diagnostics_allowed(request):
+        return web.Response(status=404)
     from config import (
         FAL_KEY, GEMINI_API_KEY_VALID, OPENAI_API_KEY,
         GEMINI_IMAGE_ENABLED, PHOTO_ROUTER_MODE,
@@ -9487,6 +9507,8 @@ async def _platega_check(request: web.Request) -> web.Response:
     plain-text report: env flags, a real API test transaction (returns the
     payment-page link) and the GET /transaction/{id} status echo for it —
     the same three calls the production payment flow makes."""
+    if not _owner_diagnostics_allowed(request):
+        return web.Response(status=404)
     lines = [
         f'VERSION={VERSION}',
         f'PLATEGA_ENABLED={PLATEGA_ENABLED} merchant={PLATEGA_MERCHANT_ID or "-"}',

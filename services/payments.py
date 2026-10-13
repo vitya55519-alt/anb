@@ -1,12 +1,18 @@
 from datetime import datetime, timedelta, timezone
 import logging
-from sqlalchemy import select
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from services.db import SessionLocal
 from models.app_models import Subscription, StarTransaction, User
 from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_STARS, PREMIUM_QUARTERLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS, PEACH_PACK_10_STARS, PEACH_PACK_30_STARS, PEACH_PACK_100_STARS, PEACH_PACK_CREDITS
 from services.access_service import is_premium
 
 logger = logging.getLogger(__name__)
+
+def _credits_plus(amount):
+    """V3.58.0: «balance + amount» evaluated inside the UPDATE, so a top-up
+    racing a spend can never overwrite it with a stale balance."""
+    return func.coalesce(User.photo_credits, 0) + int(amount)
 
 PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"premium_week":PREMIUM_WEEKLY_STARS,"premium_quarter":PREMIUM_QUARTERLY_STARS,"video":VIDEO_COST_STARS,"peach_pack_10":PEACH_PACK_10_STARS,"peach_pack_30":PEACH_PACK_30_STARS,"peach_pack_100":PEACH_PACK_100_STARS}
 
@@ -38,25 +44,32 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
             current=s.scalar(select(Subscription).where(Subscription.user_id==user.id,Subscription.status=="active",Subscription.expires_at>now).order_by(Subscription.expires_at.desc()))
             start=current.expires_at if current and current.expires_at and current.expires_at>now else now
             s.add(Subscription(user_id=user.id,plan="premium",status="active",stars_amount=stars,started_at=now,expires_at=start+timedelta(days=days),telegram_charge_id=charge_id))
-            user.photo_credits=(user.photo_credits or 0)+credits
+            user.photo_credits=_credits_plus(credits)
             try:
                 from services.gamification_service import unlock_achievement
                 unlock_achievement(telegram_id, 'premium_member')
             except Exception:
                 pass
         elif product in {"photo","custom_photo"}:
-            user.photo_credits=(user.photo_credits or 0)+1
+            user.photo_credits=_credits_plus(1)
         elif product in PEACH_PACK_CREDITS:
             # V3.43.1: the peach pack ladder grants the whole pack at once.
-            user.photo_credits=(user.photo_credits or 0)+PEACH_PACK_CREDITS[product]
+            user.photo_credits=_credits_plus(PEACH_PACK_CREDITS[product])
         elif product.startswith('peach_custom_'):
             # V3.44.23: the custom-peach tile — the count is encoded in the key.
             try:
                 _n = max(1, int(product.split('_')[-1]))
             except (ValueError, IndexError):
                 _n = 1
-            user.photo_credits=(user.photo_credits or 0)+_n
-        s.commit()
+            user.photo_credits=_credits_plus(_n)
+        try:
+            s.commit()
+        except IntegrityError:
+            # V3.58.0: a concurrent copy of the same payment callback won the
+            # race on the unique telegram_charge_id — already credited once.
+            s.rollback()
+            logger.info('duplicate payment ignored charge=%s', charge_id)
+            return
         payer_user_id = user.id
     # V3.37.0: after the purchase commits, credit the payer's referrer in the
     # partner ledger (money commission). Outside the payment transaction on
@@ -70,22 +83,27 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
         logger.exception('partner commission accrual failed user=%s charge=%s', telegram_id, charge_id)
 
 def consume_photo_credit(telegram_id:int)->bool:
-    with SessionLocal() as s:
-        user=s.scalar(select(User).where(User.telegram_id==str(telegram_id)))
-        if not user or (user.photo_credits or 0)<=0: return False
-        user.photo_credits-=1; s.commit(); return True
+    return spend_peaches(telegram_id, 1)
 
 
 # V3.44.2: spend multiple peaches at once (e.g. for constructor)
 def spend_peaches(telegram_id: int, amount: int) -> bool:
-    """Deduct `amount` peaches from user balance. Returns True if successful."""
+    """Deduct `amount` peaches from user balance. Returns True if successful.
+
+    V3.58.0: one conditional UPDATE instead of read-then-write, so two taps
+    landing at the same moment can never both pass the balance check and
+    drive the balance negative (double spend)."""
+    amount = int(amount)
+    if amount <= 0:
+        return amount == 0
     with SessionLocal() as s:
-        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
-        if not user or (user.photo_credits or 0) < amount:
-            return False
-        user.photo_credits -= amount
+        result = s.execute(
+            update(User)
+            .where(User.telegram_id == str(telegram_id), User.photo_credits >= amount)
+            .values(photo_credits=User.photo_credits - amount)
+        )
         s.commit()
-        return True
+        return result.rowcount == 1
 
 def get_photo_credits(telegram_id:int)->int:
     with SessionLocal() as s:
@@ -106,9 +124,13 @@ def grant_photo_credits(telegram_id:int, amount:int, reason:str="bonus")->int:
         user=s.scalar(select(User).where(User.telegram_id==str(telegram_id)))
         if not user:
             return 0
-        user.photo_credits=(user.photo_credits or 0)+max(0,int(amount))
+        user.photo_credits=_credits_plus(max(0,int(amount)))
         s.add(StarTransaction(user_id=user.id,transaction_type="grant",product=reason,stars=0,telegram_charge_id=marker))
-        s.commit()
+        try:
+            s.commit()
+        except IntegrityError:
+            s.rollback()
+            return -1
         return int(user.photo_credits or 0)
 
 
@@ -156,7 +178,7 @@ def grant_premium(telegram_id:int, days:int=30)->bool:
         if s.scalar(select(Subscription).where(Subscription.user_id==user.id,Subscription.status=="active",Subscription.expires_at>now)):
             return True
         s.add(Subscription(user_id=user.id,plan="premium",status="active",stars_amount=0,started_at=now,expires_at=now+timedelta(days=days),telegram_charge_id=f"admin_grant:{int(now.timestamp())}"))
-        user.photo_credits=(user.photo_credits or 0)+PREMIUM_MONTHLY_PHOTO_CREDITS
+        user.photo_credits=_credits_plus(PREMIUM_MONTHLY_PHOTO_CREDITS)
         s.commit(); return True
 
 
