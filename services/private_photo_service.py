@@ -220,7 +220,7 @@ MOODS = [
 # V3.45.26: цвета белья/одежды — выбор игрока в мастере «Наедине».
 # `word` — английское описание цвета для промпта.
 BRA_CUT_POOL = (
-    "a lace balconette bra", "a smooth push-up bra", "a satin plunge bra", "a sheer mesh bra",
+    "a lace balconette bra", "a smooth t-shirt bra", "a satin plunge bra", "a sheer mesh bra",
     "a cotton bralette", "a triangle lace bralette", "a sporty bra", "a strappy cage bra",
     "a bra with small bows", "a velvet bra", "a floral-embroidered bra",
 )
@@ -437,7 +437,7 @@ PRIVATE_POSE_POOL = [
     'perched on a windowsill, ankles crossed',
     'kneeling on the bed, turning to face the camera',
     # V3.59.3: self-touch poses (owner request) — hands on her own body.
-    'squeezing her own breasts with both hands, lips parted, eyes on the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'gently cupping her breasts with both hands without pressing them, lips parted, eyes on the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
     'body turned three-quarters away, face turned back to the camera over her shoulder, one hand gripping her own bottom — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
     'reclining propped on one elbow facing the camera, one hand on her breast, the other sliding down her stomach — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
     'kneeling with her arms pushing her breasts together, leaning toward the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
@@ -538,6 +538,12 @@ def build_private_photo_prompt(
     # V3.45.23: random pose + camera so consecutive photos never repeat.
     parts.append(f"POSE: {random.choice(PRIVATE_POSE_POOL)}.")
     parts.append(f"CAMERA: {random.choice(PRIVATE_CAMERA_POOL)}.")
+    
+    # V3.60.7: the bust size goes right before the face lock (the face keeps the very last line) — it used to jump between photos.
+    from services.photo_service import bust_lock_line
+    bust_lock = bust_lock_line(request.character_id)
+    if bust_lock:
+        parts.append(bust_lock)
     
     # Общие правила
     parts.append("High quality realistic smartphone-style photo, natural skin, detailed")

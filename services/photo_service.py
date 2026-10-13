@@ -687,7 +687,7 @@ UNDERWEAR_COLOR_POOL = [
 UNDERWEAR_STYLE_POOL = [
     'everyday cotton bra and matching panties',
     'smooth microfiber bra and panties',
-    'classic padded bra and briefs',
+    'classic smooth bra and briefs',
     'lace-trim bra and matching panties',
     'seamless t-shirt bra and thong',
     'soft bralette and hipster panties',
@@ -695,7 +695,7 @@ UNDERWEAR_STYLE_POOL = [
     'sporty bra and boyshorts',
     'delicate lace bra and Brazilian panties',
     'plunge bra and cheeky panties',
-    'push-up bra and matching briefs',
+    'balconette bra and matching briefs',
     'wireless comfort bra and full-coverage panties',
     'lace push-up balconette bra and matching panties',
     'garter belt with sheer-top stockings and a lace bra',
@@ -816,6 +816,37 @@ def bust_visual_line(body_spec: str) -> str:
         if cup in (body_spec or ''):
             return f'In plain visual terms her bust is {visual}; exactly this size in every single photo, whatever the pose, outfit or angle. '
     return ''
+
+
+# V3.60.7: «грудь то больше, то меньше» — the bust rule sat mid-prompt and lost
+# to push-up wardrobe words, self-touch poses and the body reference. The last
+# lines of a prompt get the most attention, so both pipelines now end with this.
+def bust_lock_line(character_id: str) -> str:
+    if character_id == 'anna_01':
+        body_spec = 'a full bust (silicone, Russian size 5, E cup)'
+    else:
+        try:
+            character = resolve_character(character_id)
+        except Exception:
+            character = {}
+        try:
+            from services.character_card_service import get_card
+            card = get_card(character_id)
+        except Exception:
+            card = None
+        if card and getattr(card, 'gender', 'female') == 'male':
+            return ''
+        visual_identity = (character or {}).get('visual_identity', {}) or {}
+        body_spec = visual_identity.get('body_spec') or BODY_SPECS.get(character_id, '') or DEFAULT_FEMALE_BODY_SPEC
+    cup = next((c for c in BUST_VISUALS if c in body_spec), '')
+    if not cup:
+        return ''
+    return (
+        f'BUST LOCK: her bust is exactly {cup} — {BUST_VISUALS[cup]}. '
+        'The same size and shape as in every other photo of her: not bigger, not smaller. '
+        'Clothing, bra cut, pose, hands or camera angle never change it — no push-up or padding effect, '
+        'no squeezed or enlarged look; if a reference image shows another size, ignore it.'
+    )
 
 
 ORDINARY_IDENTITY_LOCK = ANNA_FACE_IDENTITY + ' ' + ORDINARY_BODY_IDENTITY + ' ' + ORDINARY_REFERENCE_PROTOCOL
@@ -2041,6 +2072,8 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         or (not force_safe and request.scene in (SEEDREAM_ADULT_SCENES | ADULT_SCENES))
     )
     public_dress_rule = '' if private_look else PUBLIC_DRESS_RULE + '\n'
+    bust_lock = bust_lock_line(character_id)
+    bust_lock_tail = f'\n{bust_lock}' if bust_lock else ''
     if not private_look and level_key >= 3:
         public_dress_rule += LEVEL_HEMLINE_RULE + '\n'
     return (
@@ -2078,6 +2111,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'{safety}\n'
         f'{QUALITY_BLOCK}\n'
         f'{NEGATIVE_BLOCK}'
+        + bust_lock_tail
     )
 
 
