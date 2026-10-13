@@ -193,6 +193,18 @@ EXPRESSIONS: dict[str, str] = {
         'hint of a smile, head slightly tilted. The hand is a natural slender female '
         'hand with five correct fingers.'
     ),
+    # V3.59.3: the owner wanted the intimate frames hotter still — pleasure and
+    # arousal faces for the PRIVATE scenes only (never in the public rotation).
+    'pleasure': (
+        'an aroused pleasured expression: eyes half-closed or rolled softly upward, '
+        'lips parted in a quiet moan, flushed cheeks, head tilted back slightly. '
+        'Intense and sensual but believable — no distorted face, no wide gaping mouth.'
+    ),
+    'breathless': (
+        'a breathless flushed look straight into the camera: slightly parted glossy '
+        'lips, heavy-lidded hungry eyes, a rosy blush on cheeks and chest, a strand of '
+        'hair across her face. Hot and inviting, photogenic and natural.'
+    ),
     'surprised': (
         'a charmed surprised expression: softly raised brows, bright widened eyes '
         'and a small open-mouth "oh" with relaxed lips. Delight rather than shock — '
@@ -214,6 +226,10 @@ SENSUAL_KEYS: tuple[str, ...] = (
     # V3.55.5: playful mimicry joins the default rotation (all anatomy-anchored).
     'tongue_out_playful', 'wink', 'shush',
 )
+
+# V3.59.3: private/boudoir scenes walk the sensual pool PLUS the arousal faces.
+PRIVATE_SENSUAL_KEYS: tuple[str, ...] = SENSUAL_KEYS + ('pleasure', 'breathless', 'pleasure', 'breathless')
+
 
 # V3.31.7: pleasant-expression keys used for the per-frame rotation when the
 # chat mood did not pin an explicit expression. Upset/concerned stay mood-only:
@@ -244,6 +260,14 @@ def shuffled_sensual_variety_keys() -> tuple[str, ...]:
     keys = list(SENSUAL_KEYS)
     random.shuffle(keys)
     return tuple(keys)
+
+
+def shuffled_private_sensual_keys() -> tuple[str, ...]:
+    """V3.59.3: the rotation for private scenes — duplicates weight the new
+    arousal faces up, dict.fromkeys keeps each key once after the shuffle."""
+    keys = list(PRIVATE_SENSUAL_KEYS)
+    random.shuffle(keys)
+    return tuple(dict.fromkeys(keys))
 
 
 def _tokens(text: str) -> list[str]:

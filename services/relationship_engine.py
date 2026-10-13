@@ -371,6 +371,22 @@ def get_path_axis(user_id: int, character_id: str) -> float:
         return 0.0
 
 
+def set_path_axis(user_id: int, character_id: str, value: float) -> float:
+    """V3.59.3: admin test control — put one user<->character path at an exact
+    value (clamped to -100..+100), creating the relationship row if needed.
+    Returns the stored value."""
+    from services.db import SessionLocal
+    value = max(-100.0, min(100.0, float(value)))
+    with SessionLocal() as session:
+        row = get_state(session, user_id, character_id)
+        if row is None:
+            row = UserCharacterRelationship(user_id=user_id, character_id=character_id, path_axis=0.0)
+            session.add(row)
+        row.path_axis = value
+        session.commit()
+    return value
+
+
 def get_milestones(session: Session, row: UserCharacterRelationship | None, limit: int = 4) -> list[RelationshipMilestone]:
     if row is None:
         return []

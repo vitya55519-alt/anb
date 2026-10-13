@@ -410,6 +410,13 @@ PRIVATE_POSE_POOL = [
     'standing arching her back, hands in hair, eyes closed',
     'perched on a windowsill, ankles crossed',
     'kneeling on the bed, turning to face the camera',
+    # V3.59.3: self-touch poses (owner request) — hands on her own body.
+    'squeezing her own breasts with both hands, lips parted, eyes on the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+    'bent forward looking back over her shoulder, one hand gripping her own bottom — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+    'lying on her back, one hand on her breast, the other sliding down her stomach — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+    'kneeling with her arms pushing her breasts together, leaning toward the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+    'on all fours with her back arched, one hand spreading over her own buttock — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+    'sitting with legs apart on the bed, hands running up her inner thighs — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
 ]
 
 PRIVATE_CAMERA_POOL = [
