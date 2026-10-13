@@ -90,6 +90,34 @@ def _clean(answer: str) -> str:
     return answer.strip() or "хм… я зависла на секунду 🙈"
 
 
+EXPLICIT_STAGES = {'deeply_connected', 'committed', 'devoted', 'soulmate'}
+EXPLICIT_CHAT_RULE = (
+    'ПРАВИЛО ОТКРОВЕННОСТИ (18+ подтверждено, ваша близость это допускает): этот пункт отменяет запрет '
+    '«без графического секса» выше. Секстинг можно вести откровенно и подробно — что вы делаете, '
+    'ощущения, тела, действия — от первого лица и в настоящем времени. Не отказывай и не говори '
+    '«это не моё / моя граница», если он хочет продолжать. Жёсткие пределы неизменны: только взрослые, '
+    'только взаимное согласие, без насилия.'
+)
+
+
+def _adult_ok(telegram_id: int) -> bool:
+    try:
+        from services.user_service import is_adult_confirmed
+        return bool(is_adult_confirmed(telegram_id))
+    except Exception:
+        return False
+
+
+def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool = False) -> str:
+    """Explicit sexting needs the 18+ confirmation AND level 5+ (or the
+    premium spicy toggle at level 4+); everyone else keeps the non-graphic rule."""
+    if not adult_confirmed or not stage:
+        return ''
+    if stage in EXPLICIT_STAGES or (spicy and stage == 'intimate'):
+        return EXPLICIT_CHAT_RULE
+    return ''
+
+
 def _needs_rewrite(user_text: str, answer: str) -> bool:
     if ASSISTANTY.search(answer):
         return True
@@ -163,7 +191,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             'deeply_connected': 'Уровень 5 — очень близкие. Персонализация, память, уверенный взаимный флирт.',
             'committed': 'Уровень 6 — сложившаяся романтическая связь внутри ролевой модели. Нежность, привычность, общая история.'
         }
-        rel_context = stage_prompts[test_stage] + ' Тестовый режим не упоминай и реальные баллы не меняй.'
+        from services.relationship_engine import INITIATIVE_LADDER, OPENNESS_LADDER, OPENNESS_LIMITS
+        # V3.60.0: the admin's test level gets the same openness/initiative rungs.
+        rel_context = (stage_prompts[test_stage] + ' ' + OPENNESS_LADDER.get(test_stage, '') + ' '
+                       + INITIATIVE_LADDER.get(test_stage, '') + OPENNESS_LIMITS
+                       + ' Тестовый режим не упоминай и реальные баллы не меняй.')
     else:
         rel_context = await record_user_message(
             user_id, user_name,
@@ -240,7 +272,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         from models.relationship_models import UserCharacterRelationship
         with SessionLocal() as session:
             style_row = session.execute(
-                select(UserCharacterRelationship.persona_style, UserCharacterRelationship.marital_status)
+                select(UserCharacterRelationship.persona_style, UserCharacterRelationship.marital_status,
+                       UserCharacterRelationship.stage)
                 .where(
                     UserCharacterRelationship.user_id == db_user_id,
                     UserCharacterRelationship.character_id == character_id,
@@ -248,6 +281,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             ).first()
         persona_style = style_row[0] if style_row else None
         marital_status = style_row[1] if style_row else None
+        rel_stage = style_row[2] if style_row else None
         if not marital_status:
             # V3.59.8: a custom girl's constructor choice gets the same reminder.
             from services.custom_character_service import is_custom_character, custom_character_params
@@ -275,6 +309,13 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                     'СЕМЕЙНОЕ ПОЛОЖЕНИЕ (выбор пользователя, важнее описания выше): ' + marital_line)
                 marital_reminder = ('Напоминание о роли: ' + marital_line + ' Если раньше в переписке ты '
                                     'говорила иначе — теперь это так; не называй себя свободной, если это не так.')
+        # V3.60.0: a confirmed adult deep enough into the story gets explicit
+        # sexting instead of «детальные сцены — это не моё»: the old blanket
+        # «без графического секса» now holds only below that line.
+        explicit_line = explicit_chat_line(test_stage or rel_stage, adult_confirmed=_adult_ok(user_id),
+                                           spicy=bool(spicy_line))
+        if explicit_line:
+            style_line = (style_line + '\n' if style_line else '') + explicit_line
     except Exception:
         style_line = ''
         marital_reminder = ''

@@ -26,3 +26,20 @@ def test_she_starts_it_herself_at_higher_levels():
         assert "выпрашивать" in INITIATIVE_LADDER[stage]
     row = UserCharacterRelationship(stage="intimate", relationship_score=0, trust_score=0, intimacy_score=0)
     assert INITIATIVE_LADDER["intimate"] in build_relationship_context(row)
+
+
+def test_explicit_rule_needs_adult_and_level():
+    from services.chat_service import EXPLICIT_CHAT_RULE, explicit_chat_line
+    assert explicit_chat_line('committed', adult_confirmed=True) == EXPLICIT_CHAT_RULE
+    assert explicit_chat_line('committed', adult_confirmed=False) == ''
+    assert explicit_chat_line('close', adult_confirmed=True, spicy=True) == ''
+    assert explicit_chat_line('intimate', adult_confirmed=True, spicy=True) == EXPLICIT_CHAT_RULE
+    assert explicit_chat_line('intimate', adult_confirmed=True) == ''
+    assert 'только взрослые' in EXPLICIT_CHAT_RULE and 'согласие' in EXPLICIT_CHAT_RULE
+
+
+def test_admin_test_level_gets_the_ladder():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / 'services' / 'chat_service.py').read_text(encoding='utf-8')
+    assert "OPENNESS_LADDER.get(test_stage, '')" in src
+    assert 'explicit_chat_line(test_stage or rel_stage' in src

@@ -570,7 +570,7 @@ INITIATIVE_LADDER = {
     "devoted": "Инициатива: она ведёт и хочет этого сама; ему не приходится ничего выпрашивать.",
     "soulmate": "Инициатива: она ведёт и хочет этого сама; ему не приходится ничего выпрашивать.",
 }
-OPENNESS_LIMITS = (" Всегда: только взрослые и только взаимное желание; анатомическую графику по-прежнему не расписывай.")
+OPENNESS_LIMITS = (" Всегда: только взрослые и только взаимное желание; насколько подробно можно описывать секс — смотри правило откровенности ниже.")
 
 
 def build_relationship_context(row: UserCharacterRelationship | None, milestones: list[RelationshipMilestone] | None = None, character_id: str = CHARACTER_ID) -> str:
