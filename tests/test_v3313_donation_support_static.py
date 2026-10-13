@@ -56,14 +56,14 @@ def test_donation_service_weekly_gate():
     assert 'user.last_donation_ping_at = now' in DONATION
 
 
-def test_welcome_sends_donation_to_new_users():
+def test_welcome_no_longer_asks_for_donation():
+    # V3.59.1 (owner's call): no money ask in the first minute — the weekly
+    # reminder starts from day 3 instead.
     assert 'from services import donation_service' in MAIN
     consent = MAIN[MAIN.index('@dp.callback_query(F.data == \'consent:accept\')'):]
     consent = consent[:consent.index('@dp.callback_query(F.data == \'consent:terms\')')]
-    assert 'donation_service.donation_appeal(lang)' in consent
-    assert 'donation_service.donation_keyboard(lang)' in consent
-    # guarded so a donation-send failure never breaks onboarding
-    assert 'donation welcome message failed' in consent
+    assert 'donation_service.donation_appeal(lang)' not in consent
+    assert 'if u.created_at and u.created_at > now - dt.timedelta(days=DONATION_FIRST_ASK_AFTER_DAYS):' in DONATION
 
 
 def test_scheduler_registers_weekly_reminder():

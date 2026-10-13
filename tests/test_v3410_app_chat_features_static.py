@@ -82,9 +82,8 @@ def test_consent_accept_shows_the_main_menu_not_a_character_picker():
     # keyboard replaces the old inline «теперь выбери персонажа» picker
     assert 'reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS, cq.from_user.id)' in handler
     assert 'onboarding_character_keyboard()' not in handler
-    # the «💖 Поддержать проект» donation appeal is kept
-    assert 'donation_service.donation_appeal(lang)' in handler
-    assert 'donation_service.donation_keyboard(lang)' in handler
+    # V3.59.1: the donation appeal left the first minute (weekly reminder, day 3+)
+    assert 'donation_service.donation_appeal(lang)' not in handler
 
 
 def test_character_select_drops_the_abilities_wall():
