@@ -536,7 +536,7 @@ SHOT_VARIANTS = {
     'personal': ['tasteful seated lingerie portrait with natural eye contact, non-explicit', 'polished mirror or self-timer lingerie fashion portrait, non-explicit', 'premium private lingerie-fashion portrait with elegant opaque coverage, non-explicit'],
     'lingerie': ['tasteful adult glamour portrait, non-explicit', 'more polished mirror-style lingerie fashion portrait, non-explicit', 'premium tasteful boudoir-fashion portrait with opaque garment coverage'],
     'private_fashion': ['tasteful private fashion portrait with opaque coverage', 'more polished private fashion portrait with confident styling', 'premium personalized private fashion portrait, non-explicit and opaque'],
-    'nude': ['tasteful artistic nude portrait, natural warm light, soft eye contact', 'confident seated nude with soft shadows and relaxed posture', 'premium artistic nude with elegant composition and warm tones'],
+    'nude': ['at-home mirror selfie: standing at her bedroom or bathroom mirror, phone in one hand, she pulls her thin tank top up with the other hand so her bare breasts are visible, playful confident look into the mirror, real home interior', 'confident seated nude with soft shadows and relaxed posture', 'premium artistic nude with elegant composition and warm tones'],
     'tease': ['playful rear-view teasing photo with a glance over the shoulder', 'confident from-behind pose with relaxed posture and soft light', 'premium sensual back-view portrait with warm tones'],
     # V3.44.2: new adult scene angles
     'shower': ['natural shower selfie with steam', 'stylish three-quarter shower portrait with water droplets', 'premium artistic shower photo with warm bathroom light'],
@@ -544,7 +544,7 @@ SHOT_VARIANTS = {
     'bedroom_intimate': ['sexy bedroom selfie in lace lingerie on the bed', 'seductive three-quarter portrait in expensive lingerie with garter belt, candlelight', 'premium erotic bedroom photo in beautiful black or red lace lingerie, stockings, confident pose'],
     'morning_nude': ['natural morning nude with window light', 'stylish three-quarter morning portrait', 'premium artistic morning nude with soft daylight'],
     'changing_room': ['natural changing room selfie', 'stylish three-quarter changing portrait', 'premium candid changing room photo'],
-    'topless': ['natural topless selfie with soft light', 'stylish three-quarter topless portrait', 'premium artistic topless photo with elegant composition'],
+    'topless': ['at-home mirror selfie: standing at her bedroom or bathroom mirror, phone in one hand, she pulls her thin tank top up with the other hand so her bare breasts are visible, playful confident look into the mirror, real home interior', 'stylish three-quarter topless portrait', 'premium artistic topless photo with elegant composition'],
     'explicit': ['natural explicit selfie', 'stylish three-quarter explicit portrait', 'premium explicit photo with intimate composition'],
     # V3.44.1: new trending scene angles
     'beach': ['natural beach selfie with ocean behind', 'stylish three-quarter beach portrait with waves', 'premium full-body beach photo with golden-hour light'],
@@ -579,16 +579,16 @@ LEVEL_VISUAL_RULES = {
     2: 'Relationship visual level 2/6: more feminine and fitted styling, clearer waist definition, still fully clothed. A discreet lingerie outline under fitted fabric is allowed; necklines slightly more feminine.',
     3: 'Relationship visual level 3/6: noticeably more stylish, confident and figure-flattering fashion, deeper feminine necklines and fitted silhouettes while remaining mainstream; dresses and skirts at knee length or just above; tasteful hints of lace or lingerie under clothing, fully clothed.',
     4: 'Relationship visual level 4/6: polished personal fashion, more confident poses and stronger fitted silhouettes; dresses and skirts end above the knee, sheer tights or stockings with heels are welcome; more revealing cuts such as open back or off-shoulder are allowed, still no exposure and non-explicit.',
-    5: 'Relationship visual level 5/6: glamorous, seductive personalized styling: a short fitted dress or mini skirt well above the knee, sheer black or nude stockings, high heels, a figure-hugging silhouette and a confident pose that shows her legs; no visible lingerie, straps or lace details — alluring and non-explicit.',
-    6: 'Relationship visual level 6/6: her most seductive dressed look: a short bodycon or slip-style mini dress or a mini skirt with a fitted top, a deeper neckline, sheer stockings and high heels, legs on show, a confident come-hither pose — she looks like a desirable woman on a date, never matronly; no visible underwear, fully non-explicit.',
+    5: 'Relationship visual level 5/6: glamorous, seductive personalized styling: figure-hugging clothes that show her shape — a bodycon or wrap dress (mini, above-knee or a fitted midi with a slit), or a tight top or tank with a fitted skirt or jeans; sheer stockings and heels when they suit the outfit; no visible lingerie as clothing — alluring and non-explicit.',
+    6: 'Relationship visual level 6/6: her most seductive dressed look: skin-tight, figure-hugging clothes — a bodycon or slip-style dress (often short, sometimes a fitted midi with a high slit), or a tight thin top or tank with a fitted skirt or jeans, a deeper neckline, sheer stockings and heels when they suit; a confident come-hither pose — a desirable woman on a date, never matronly; no underwear worn as clothing, fully non-explicit.',
 }
 OPENAI_LEVEL_VISUAL_RULES = {
     1: 'Relationship visual level 1/6: simple casual styling, natural pose, everyday social-media feel, fully clothed. A very subtle hint of everyday lingerie under fitted clothing (soft bra outline under a thin blouse) is allowed if natural; never exposed.',
     2: 'Relationship visual level 2/6: more coordinated clothing, cleaner styling and a little more confidence, fully clothed; a discreet lingerie outline under fitted fabric is allowed.',
     3: 'Relationship visual level 3/6: noticeably more fashionable outfit, better accessories and stronger composition, fully clothed; deeper feminine necklines and tasteful hints of lace under clothing are allowed.',
     4: 'Relationship visual level 4/6: polished personal fashion, confident lifestyle pose and more intentional styling, fully clothed; hemlines above the knee and sheer tights with heels are allowed; more revealing cuts such as open back or off-shoulder are allowed, no exposure.',
-    5: 'Relationship visual level 5/6: premium seductive styling, richer venue details: a short fitted dress or mini skirt, sheer stockings and heels, fully clothed — no visible lingerie.',
-    6: 'Relationship visual level 6/6: strongest premium styling, best accessories, lighting and composition; a short fitted mini dress, sheer stockings and heels, legs on show, alluring and never matronly, fully clothed.',
+    5: 'Relationship visual level 5/6: premium seductive styling, richer venue details: figure-hugging clothes — a fitted dress or a tight top with a fitted skirt, sheer stockings and heels when they suit, fully clothed — no visible lingerie.',
+    6: 'Relationship visual level 6/6: strongest premium styling, best accessories, lighting and composition; skin-tight figure-hugging clothes, sheer stockings and heels when they suit, alluring and never matronly, fully clothed.',
 }
 
 # V3.44.9: hard public decency lock requested by the owner — zero lingerie or
@@ -600,9 +600,9 @@ OPENAI_LEVEL_VISUAL_RULES = {
 # V3.60.1: at level 6 she still came out in one long maxi dress «как у
 # старухи» — from level 3 the outfit keeps her an attractive woman in her 30s.
 LEVEL_HEMLINE_RULE = (
-    'OUTFIT LENGTH: no long maxi or ankle-length dresses or skirts and no shapeless matronly clothes '
-    '(unless the season clearly calls for a coat); she dresses like an attractive, confident woman '
-    'who wants to be desired. Stockings or sheer tights may be seen only as legwear — never lace tops, '
+    'OUTFIT FIT: no loose ankle-length maxi dresses and no shapeless matronly clothes (unless the season '
+    'clearly calls for a coat) — her clothes are fitted and show her figure; length can vary. She dresses '
+    'like an attractive, confident woman who wants to be desired. Stockings or sheer tights may be seen only as legwear — never lace tops, '
     'garters or underwear.'
 )
 
@@ -610,8 +610,8 @@ PUBLIC_DRESS_RULE = (
     'PUBLIC DRESS CODE: this is a public or outdoor photo, so she is fully and neatly dressed '
     'in attire that is believable for this exact venue, season and time of day — jeans, a dress, '
     'a skirt-and-top, a coat, or a swimsuit at beach/pool settings. NO lingerie as or over the '
-    'outfit: no visible bra, panties, bra straps, lace edges, garter belts, slips or see-through '
-    'fabric anywhere in the frame; her underwear stays completely hidden under the clothing. '
+    'outfit: no bra, panties, garter belts or slips worn as clothing and no see-through fabric; '
+    'her underwear stays under the clothing (at most the outline or a strap her level allows below). '
     'Boudoir/lingerie styling is for private at-home scenes only, never for public places.'
 )
 
@@ -626,9 +626,9 @@ LEVEL_UNDERLAY_RULES = {
     1: 'Her everyday outfit fully covers her; her lingerie stays completely hidden underneath it, never on top of or outside the outfit — only her natural feminine silhouette reads through the fitted fabric, like a real woman wearing beautiful lingerie under a blouse. No exposure.',
     2: 'Her lingerie stays strictly under the outfit, never on top of it; at most the faint natural outline of her bra reads through the fitted fabric — her underwear quietly emphasizes her natural sexuality and self-confidence without ever being drawn as outerwear.',
     3: 'Her lingerie stays strictly under the outfit, never on top of it; only a subtle bra outline and a hint of a lace edge read through the fitted garment. The lace adds femininity and allure, never vulgarity — the outfit always stays on her.',
-    4: 'Her lingerie stays strictly under the outfit, never on top of it; a delicate lace edge may show at the neckline of the more revealing outfit, everything else stays covered by the clothes — elegant sensuality, no exposure.',
-    5: 'Her everyday/public outfit fully covers her; her lingerie stays completely hidden underneath — no straps, lace edges or lingerie details are visible at the neckline or anywhere else, the lingerie is never on top of or outside the outfit. Only in a dedicated lingerie/private scene is the lingerie the outfit itself, as directed by the scene framing.',
-    6: 'Her outfit fully covers her; the lingerie beneath stays completely invisible — no straps, lace edges or underwear details read through or outside the clothing, the lingerie is never on top of the outfit. Only in a dedicated lingerie/private scene is the lingerie the outfit itself, as directed by the scene framing.',
+    4: 'Her lingerie stays strictly under the outfit, never on top of or outside the outfit; under a tight thin top or tank the outline of her bra (often black) reads through the fabric and one thin bra strap may peek neatly at the shoulder; a delicate lace edge may show at the neckline — elegant sensuality, no exposure.',
+    5: 'Her outfit covers her and the lingerie stays underneath, never on top of or outside the outfit; under a tight thin top or tank the outline of her dark bra reads through the fabric and one thin black bra strap peeks neatly at the shoulder — a deliberate, sexy detail, nothing more is visible. Only in a dedicated lingerie/private scene is the lingerie the outfit itself, as directed by the scene framing.',
+    6: 'Her outfit covers her and the lingerie stays underneath, never on top of or outside the outfit; under a tight thin top or tank the clear outline of her black bra shows through the fabric and a thin black bra strap slips neatly onto her shoulder — sexy and natural, nothing more is visible. Only in a dedicated lingerie/private scene is the lingerie the outfit itself, as directed by the scene framing.',
 }
 
 # V3.56.8: the owner's rooftop shot came back with the lace bra worn OVER the
@@ -637,8 +637,9 @@ LEVEL_UNDERLAY_RULES = {
 # clothed scene; lingerie-as-outfit scenes (nude/home set) skip it.
 LINGERIE_LAYERING_LOCK = (
     ' LINGERIE LAYERING LOCK: she wears exactly ONE outer outfit and the lingerie sits BENEATH the '
-    'fabric, completely invisible through it — never draw a bra, lace cups, straps, garters or '
-    'panties on top of, outside or over her clothing.'
+    'fabric — never draw a bra, lace cups, straps, garters or '
+    'panties on top of, outside or over her clothing (a bra outline through a tight top or one thin '
+    'strap peeking at the shoulder is fine where her level allows it).'
 )
 
 # Private scenes escalate with the relationship level: the same scene reads

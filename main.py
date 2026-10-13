@@ -11556,7 +11556,8 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     # only the redundant render is saved. The volatile per-frame expression
     # rotation makes the exact prompt-hash cache_get almost never repeat, so
     # this reads the accumulated stockpile matched on stable columns instead.
-    pooled = pool_get(character_id, cat_id, req.type_id)
+    # V3.60.1: the owner tests fresh renders, never the stockpile.
+    pooled = None if telegram_id in ADMIN_TELEGRAM_IDS else pool_get(character_id, cat_id, req.type_id)
     if pooled:
         if not free_used:
             spend_peaches(telegram_id, peach_cost)
