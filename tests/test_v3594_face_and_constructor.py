@@ -48,3 +48,12 @@ def test_bio_writer_falls_back_quietly(monkeypatch):
     assert asyncio.run(c.write_card_bio({'scenario': 'scn_ex'}, 'Кира')) is None
     assert 'nice_bio = await asyncio.wait_for(write_card_bio(params, display_name), timeout=25)' in MAIN
     assert "callback_data='admin:biofix'" in MAIN
+
+
+def test_constructor_relationship_status_shapes_the_chat():
+    from services import custom_character_service as c
+    step = c.CONSTRUCTOR_STEPS[c.step_index('marital')]
+    assert {v for v, _, _ in step['options']} == set(c.RELATIONSHIP_STORY)
+    assert 'mar_married' in c.RELATIONSHIP_STORY and 'mar_divorced' in c.RELATIONSHIP_STORY
+    ctx = c.build_persona_context({'marital': 'mar_married'}, 'Кира')
+    assert 'Ты замужем' in ctx

@@ -202,6 +202,18 @@ CONSTRUCTOR_STEPS: list[dict] = [
             ('role_secret', 'Тайная возлюбленная', 'secret lover'),
         ],
     },
+    # V3.59.4: her relationship status — part of the game, it bends the chat
+    # (owner's ask). RELATIONSHIP_STORY below is the voice for each.
+    {
+        'key': 'marital', 'title': 'Её семейное положение?',
+        'options': [
+            ('mar_single', 'Свободна', 'single'),
+            ('mar_boyfriend', 'Есть парень', 'has a boyfriend'),
+            ('mar_married', 'Замужем', 'married'),
+            ('mar_divorced', 'В разводе', 'divorced'),
+            ('mar_open', 'Свободные отношения', 'in an open relationship'),
+        ],
+    },
     # V3.59.4: ready-made near-erotic set-ups — one tap instead of writing a
     # story by hand (owner's ask). SCENARIO_STORY below is the chat voice.
     {
@@ -259,7 +271,7 @@ STEP_GROUPS: dict[str, str] = {
     'body': 'appearance', 'breast': 'appearance', 'waist': 'appearance',
     'hips': 'appearance', 'hair': 'appearance', 'eyes': 'appearance',
     'temperament': 'character', 'profession': 'character', 'role': 'character',
-    'scenario': 'character',
+    'scenario': 'character', 'marital': 'character',
     'backstory': 'story', 'personality': 'story', 'tags': 'story',
     'photo_reference': 'reference',
     'community': 'share',
@@ -305,6 +317,8 @@ def _EN_LABELS_FOR_STEP(step: dict) -> dict[str, str]:
         'scn_teacher': 'Tutor after class', 'scn_ex': 'Ex who missed you', 'scn_friend_sister': "Best friend's sister",
         'scn_stranger': 'Stranger from a bar', 'scn_vacation': 'Holiday romance', 'scn_massage': 'Massage therapist',
         'scn_roommate': 'Flatmate',
+        'mar_single': 'Single', 'mar_boyfriend': 'Has a boyfriend', 'mar_married': 'Married',
+        'mar_divorced': 'Divorced', 'mar_open': 'Open relationship',
     }
     return {value: table.get(value, label) for value, label, _ in step['options']}
 
@@ -332,6 +346,7 @@ STEP_TITLES_EN: dict[str, str] = {
     'profession': 'What does she do?',
     'role': 'Who is she to you?',
     'scenario': 'Your scenario?',
+    'marital': 'Her relationship status?',
     'tags': 'Tags to find her (comma-separated)?',
 }
 
@@ -451,6 +466,16 @@ SCENARIO_STORY: dict[str, str] = {
 }
 
 
+# V3.59.4: how her relationship status colours every chat.
+RELATIONSHIP_STORY: dict[str, str] = {
+    'mar_single': 'Ты свободна и ни с кем не встречаешься — тебе нечего скрывать, ты открыто показываешь интерес.',
+    'mar_boyfriend': 'У тебя есть парень, и общение с пользователем — ваш секрет: ты иногда вспоминаешь, что парень может увидеть переписку, пишешь «пока он не видит», чувствуешь вину и азарт одновременно, но всё равно тянешься к пользователю.',
+    'mar_married': 'Ты замужем. Муж часто на работе или в командировках; ты скучаешь по вниманию и тайно переписываешься с пользователем — осторожно, с оглядкой («муж скоро придёт», «удалю потом переписку»), и от этой запретности всё горячее.',
+    'mar_divorced': 'Ты в разводе: прошлый брак оставил осадок, ты осторожно учишься доверять снова, иногда упоминаешь бывшего мужа и сравниваешь — пользователь для тебя шанс почувствовать себя желанной заново.',
+    'mar_open': 'Ты в свободных отношениях: у тебя есть партнёр, но вы договорились о свободе, поэтому ты флиртуешь легко, без вины, и можешь дразнить рассказами о своей свободе.',
+}
+
+
 def build_persona_context(params: dict, display_name: str, backstory: str = '', personality: str = '') -> str:
     """System-prompt override that makes the chat model play the custom persona."""
     name = display_name or str(params.get('name') or 'она')
@@ -471,6 +496,9 @@ def build_persona_context(params: dict, display_name: str, backstory: str = '', 
     style = TEMPERAMENT_STYLE.get(str(params.get('temperament', '')))
     if style:
         lines.append(style)
+    marital = RELATIONSHIP_STORY.get(str(params.get('marital', '')))
+    if marital:
+        lines.append('Твоё семейное положение: ' + marital)
     scenario = SCENARIO_STORY.get(str(params.get('scenario', '')))
     if scenario:
         lines.append(scenario + ' Держи этот сценарий и его напряжение в общении.')
@@ -504,7 +532,7 @@ async def write_card_bio(params: dict, display_name: str) -> str | None:
     try:
         from services.llm_provider_service import generate_text
         facts = [f'Имя: {display_name}']
-        for key in ('age', 'body', 'hair', 'eyes', 'temperament', 'profession', 'role', 'scenario'):
+        for key in ('age', 'body', 'hair', 'eyes', 'temperament', 'profession', 'role', 'marital', 'scenario'):
             label = OPTION_LABELS.get(str(params.get(key, '')))
             if label:
                 facts.append(f'{PARAM_TITLES.get(key, key)}: {label}')
