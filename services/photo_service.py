@@ -577,18 +577,18 @@ PACK_TIER_RULES = (
 LEVEL_VISUAL_RULES = {
     1: 'Relationship visual level 1/6: friendly, approachable, casual and fully clothed. Attractive but not deliberately intimate. Fitted clothing may very subtly hint at everyday lingerie underneath, like a soft bra outline under a thin blouse — believable and tasteful, never exposed.',
     2: 'Relationship visual level 2/6: more feminine and fitted styling, clearer waist definition, still fully clothed. A discreet lingerie outline under fitted fabric is allowed; necklines slightly more feminine.',
-    3: 'Relationship visual level 3/6: noticeably more stylish, confident and figure-flattering fashion, deeper feminine necklines and fitted silhouettes while remaining mainstream; tasteful hints of lace or lingerie under clothing, fully clothed.',
-    4: 'Relationship visual level 4/6: polished personal fashion, more confident poses and stronger fitted silhouettes; more revealing cuts such as open back or off-shoulder are allowed, still no exposure and non-explicit.',
-    5: 'Relationship visual level 5/6: glamorous personalized styling and more private-feeling fashion; the outfit stays fully covered with no visible lingerie, straps or lace details — elegant, classy and non-explicit.',
-    6: 'Relationship visual level 6/6: premium personalized styling, strongest confident fashion presentation and clear exclusivity; boldest tasteful fully-clothed fashion allowed, no visible underwear, remain fully non-explicit.',
+    3: 'Relationship visual level 3/6: noticeably more stylish, confident and figure-flattering fashion, deeper feminine necklines and fitted silhouettes while remaining mainstream; dresses and skirts at knee length or just above; tasteful hints of lace or lingerie under clothing, fully clothed.',
+    4: 'Relationship visual level 4/6: polished personal fashion, more confident poses and stronger fitted silhouettes; dresses and skirts end above the knee, sheer tights or stockings with heels are welcome; more revealing cuts such as open back or off-shoulder are allowed, still no exposure and non-explicit.',
+    5: 'Relationship visual level 5/6: glamorous, seductive personalized styling: a short fitted dress or mini skirt well above the knee, sheer black or nude stockings, high heels, a figure-hugging silhouette and a confident pose that shows her legs; no visible lingerie, straps or lace details — alluring and non-explicit.',
+    6: 'Relationship visual level 6/6: her most seductive dressed look: a short bodycon or slip-style mini dress or a mini skirt with a fitted top, a deeper neckline, sheer stockings and high heels, legs on show, a confident come-hither pose — she looks like a desirable woman on a date, never matronly; no visible underwear, fully non-explicit.',
 }
 OPENAI_LEVEL_VISUAL_RULES = {
     1: 'Relationship visual level 1/6: simple casual styling, natural pose, everyday social-media feel, fully clothed. A very subtle hint of everyday lingerie under fitted clothing (soft bra outline under a thin blouse) is allowed if natural; never exposed.',
     2: 'Relationship visual level 2/6: more coordinated clothing, cleaner styling and a little more confidence, fully clothed; a discreet lingerie outline under fitted fabric is allowed.',
     3: 'Relationship visual level 3/6: noticeably more fashionable outfit, better accessories and stronger composition, fully clothed; deeper feminine necklines and tasteful hints of lace under clothing are allowed.',
-    4: 'Relationship visual level 4/6: polished personal fashion, confident lifestyle pose and more intentional styling, fully clothed; more revealing cuts such as open back or off-shoulder are allowed, no exposure.',
-    5: 'Relationship visual level 5/6: premium personalized styling, richer venue details and more exclusive-feeling composition, fully clothed; elegant premium cuts are allowed while everything stays covered — no visible lingerie.',
-    6: 'Relationship visual level 6/6: strongest premium styling, best accessories, lighting and composition; sophisticated and exclusive, boldest tasteful fashion while fully clothed and general-audience.',
+    4: 'Relationship visual level 4/6: polished personal fashion, confident lifestyle pose and more intentional styling, fully clothed; hemlines above the knee and sheer tights with heels are allowed; more revealing cuts such as open back or off-shoulder are allowed, no exposure.',
+    5: 'Relationship visual level 5/6: premium seductive styling, richer venue details: a short fitted dress or mini skirt, sheer stockings and heels, fully clothed — no visible lingerie.',
+    6: 'Relationship visual level 6/6: strongest premium styling, best accessories, lighting and composition; a short fitted mini dress, sheer stockings and heels, legs on show, alluring and never matronly, fully clothed.',
 }
 
 # V3.44.9: hard public decency lock requested by the owner — zero lingerie or
@@ -597,6 +597,15 @@ OPENAI_LEVEL_VISUAL_RULES = {
 # scene-level rule so the model never drags boudoir styling into the street,
 # park, cafe, transport, gym etc. Lingerie lives only in private at-home and
 # boudoir scenes (and the at-home lingerie look at high relationship levels).
+# V3.60.1: at level 6 she still came out in one long maxi dress «как у
+# старухи» — from level 3 the outfit keeps her an attractive woman in her 30s.
+LEVEL_HEMLINE_RULE = (
+    'OUTFIT LENGTH: no long maxi or ankle-length dresses or skirts and no shapeless matronly clothes '
+    '(unless the season clearly calls for a coat); she dresses like an attractive, confident woman '
+    'who wants to be desired. Stockings or sheer tights may be seen only as legwear — never lace tops, '
+    'garters or underwear.'
+)
+
 PUBLIC_DRESS_RULE = (
     'PUBLIC DRESS CODE: this is a public or outdoor photo, so she is fully and neatly dressed '
     'in attire that is believable for this exact venue, season and time of day — jeans, a dress, '
@@ -1272,7 +1281,8 @@ def parse_photo_request(text: str) -> Optional[PhotoRequest]:
 
     rear_auto = bool(REAR_VIEW_STYLE.search(low))
     customized = bool(clothing or hairstyle or location or (angle and not rear_auto))
-    return PhotoRequest(scene=scene, clothing=clothing, hairstyle=hairstyle, location=location, angle=angle, season=season, customized=customized)
+    return PhotoRequest(scene=scene, clothing=clothing, hairstyle=hairstyle, location=location, angle=angle, season=season, customized=customized,
+                        time_of_day=_time_from_text(low))
 
 
 def _reference_folder(character: dict) -> Path:
@@ -1737,6 +1747,34 @@ MARITAL_PHOTO_DETAIL = {
 }
 
 
+OUTDOOR_LIGHT_SCENES = {'park', 'street', 'embankment', 'rooftop'}
+
+
+def _time_from_text(low: str) -> str:
+    """V3.60.1: «фото в парке днём» — the time he names wins over his clock."""
+    if re.search(r'\bутр|morning', low):
+        return 'soft morning light'
+    if re.search(r'\bдн[её]м\b|\bдень\b|дневн|daytime|\bday\b', low):
+        return 'bright daytime light'
+    if re.search(r'ноч|night', low):
+        return 'late night'
+    if re.search(r'вечер|evening|закат|sunset', low):
+        return 'warm golden-hour evening light'
+    return ''
+
+
+def _outdoor_light(light: str, scene: str) -> str:
+    """Night lamp light «outside the window» made a park shot look like a
+    murky evening — outdoors the dark hours get street lamps instead."""
+    if scene not in OUTDOOR_LIGHT_SCENES:
+        return light
+    if light.startswith('evening'):
+        return 'evening outdoors: deep blue-hour sky, warm street lamps lighting her face'
+    if light.startswith('late night'):
+        return 'night outdoors: dark night sky, city lights and warm street lamps lighting her face, no daylight'
+    return light
+
+
 def _local_time_light(telegram_id: int) -> str:
     """V3.59.8: the light of the user's own clock — a midnight request used to
     come back as a sunny morning shot."""
@@ -1840,7 +1878,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
             hair_color = current_hair_color()
     makeup = request.makeup or random.choice(MAKEUP_POOL)
     accessory = request.accessory or random.choice(ACCESSORY_POOL)
-    time_of_day = request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL)
+    time_of_day = _outdoor_light(request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL), request.scene)
     underwear_color = random.choice(UNDERWEAR_COLOR_POOL)
     underwear_style = random.choice(UNDERWEAR_STYLE_POOL)
     # V3.31.7: variety rotations. A chat-mood expression still wins over the
@@ -1973,6 +2011,8 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         or (not force_safe and request.scene in (SEEDREAM_ADULT_SCENES | ADULT_SCENES))
     )
     public_dress_rule = '' if private_look else PUBLIC_DRESS_RULE + '\n'
+    if not private_look and level_key >= 3:
+        public_dress_rule += LEVEL_HEMLINE_RULE + '\n'
     return (
         f'{identity}\n'
         f'{adult_lock}\n'
