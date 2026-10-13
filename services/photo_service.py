@@ -1444,6 +1444,9 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
             record_provider('photo/seedream_t2i', False, f'{type(exc).__name__}: {str(exc)[:120]}')
             chain_errors.append(f'seedream_t2i/{type(exc).__name__}: {str(exc)[:120]}')
             logger.warning('studio Seedream t2i failed; falling back to Gemini')
+    if gemini_on_cooldown():
+        chain_errors.append('gemini/skipped: http_429 cooldown')
+        raise PhotoGenerationError('custom_avatar', ' → '.join(chain_errors))
     try:
         result = await _gemini_edit(prompt, reference_path)
         record_provider('photo/gemini', True)
@@ -1500,8 +1503,21 @@ async def _seedream_edit(reference_path: Path | None, prompt: str) -> tuple[byte
     return download.content, download.headers.get('content-type', 'image/jpeg')
 
 
+# V3.58.1: Gemini image answers HTTP 429 (quota exhausted) for hours at a
+# time — the owner's «Отказы» screen showed 0 ✅ / 29 ❌. Every studio render
+# then paid a wasted round-trip and a ❌. After a 429 the leg is skipped for
+# GEMINI_429_COOLDOWN_SECONDS.
+GEMINI_429_COOLDOWN_SECONDS = 1800
+_gemini_cooldown_until = 0.0
+
+
+def gemini_on_cooldown() -> bool:
+    return time.monotonic() < _gemini_cooldown_until
+
+
 async def _gemini_edit(prompt: str, reference_path: Path | None = None) -> tuple[bytes, str]:
     """V3.25.0: constructor avatar via Gemini image (text-to-image, optional face ref)."""
+    global _gemini_cooldown_until
     if not GEMINI_API_KEY or not GEMINI_IMAGE_ENABLED:
         raise PhotoGenerationError('gemini_image', 'not_configured')
     parts: list[dict] = [{'text': prompt + '\nPhotorealistic portrait of one person, natural skin, soft studio light.'}]
@@ -1517,6 +1533,8 @@ async def _gemini_edit(prompt: str, reference_path: Path | None = None) -> tuple
         )
     if response.status_code >= 400:
         logger.warning('constructor avatar Gemini HTTP %s body=%s', response.status_code, response.text[:400])
+        if response.status_code == 429:
+            _gemini_cooldown_until = time.monotonic() + GEMINI_429_COOLDOWN_SECONDS
         raise PhotoGenerationError('gemini_image', f'http_{response.status_code}')
     # V3.44.18: the call is billed from here on, even if no image comes back.
     spend_service.record_image_spend('gemini_image', 'constructor_avatar', GEMINI_IMAGE_ESTIMATED_COST_USD)
@@ -2512,7 +2530,7 @@ async def _run_spicy_set(
     raises: None means «this engine produced nothing» and the caller walks to
     fal. The spend is ledgered inside `_spicyapi_render` on the createTask event.
     """
-    from services.private_photo_service import _spicyapi_render
+    from services.private_photo_service import _spicyapi_render, spicyapi_breaker_open, spicyapi_last_error
     refs = [f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0',
             f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=1']
     out: list[GeneratedPhoto] = []
@@ -2540,9 +2558,15 @@ async def _run_spicy_set(
                 'same bust size and shape, same waist width, same hip and rear proportions — so both photos show one identical body. '
                 'Take face and hair identity from images 1–2 only.'
             )
+        if spicyapi_breaker_open(SPICYAPI_IMAGE_MODEL, frame_refs):
+            # V3.58.1: engine known-dead right now — hand over to fal without
+            # waiting and without logging another ❌ for the same outage.
+            if out:
+                break
+            raise PhotoGenerationError('spicyapi', 'breaker_open')
         frame_started = time.monotonic()
         data, frame_url = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, frame_refs, scene=f'scene:{request.scene}', return_url=True)
-        record_provider('spicyapi', bool(data), None if data else 'empty_result')
+        record_provider('spicyapi', bool(data), None if data else spicyapi_last_error())
         if not data:
             track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'spicyapi', 'reason': 'empty_result'})
             if out:

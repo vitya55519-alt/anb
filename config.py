@@ -71,21 +71,28 @@ VOICE_PHOTO_PEACH_COST = max(1, int(os.getenv("VOICE_PHOTO_PEACH_COST", "3")))
 # Серия фото (3-5 штук в одном образе)
 PHOTO_SERIES_PEACH_COST = max(1, int(os.getenv("PHOTO_SERIES_PEACH_COST", "5")))
 # SpicyAPI модель для uncensored генерации
-SPICYAPI_IMAGE_MODEL = os.getenv("SPICYAPI_IMAGE_MODEL", "bytedance/seedream-5.0-lite/edit").strip()
+# V3.58.2: «seedream-5.0-lite» is gone from the SpicyAPI catalog — every job
+# with the old id was refused (spicyapi 0 ✅ / 39 ❌ in «Отказы»). Pro ids are
+# the ones on spicyapi.ai/models/seedream-5-0-pro (uncensored, no filter).
+SPICYAPI_IMAGE_MODEL = os.getenv("SPICYAPI_IMAGE_MODEL", "bytedance/seedream-5.0-pro/edit").strip()
 # V3.46.1: the nude «Наедине» categories must render text-to-image (no clothed
 # reference — i2i keeps a clothed subject clothed, V3.45.23) on the UNCENSORED
 # SpicyAPI engine, because the fal Seedream route is censored and refuses full
 # nudity. The exact t2i model id is provider-specific, so it is env-overridable;
 # if the default is wrong the admin toast now shows the real SpicyAPI error and
 # this can be corrected from Railway without a redeploy.
-SPICYAPI_T2I_MODEL = os.getenv("SPICYAPI_T2I_MODEL", "bytedance/seedream-5.0-lite/text-to-image").strip()
+SPICYAPI_T2I_MODEL = os.getenv("SPICYAPI_T2I_MODEL", "bytedance/seedream-5.0-pro/text-to-image").strip()
 SPICYAPI_IMAGE_TIMEOUT = max(30, min(180, int(os.getenv("SPICYAPI_IMAGE_TIMEOUT", "90"))))
+# V3.58.2: 1k = $0.036/job and faster than 2k; «thinking» adds latency, so it
+# is off unless the owner turns it on from Railway.
+SPICYAPI_RESOLUTION = os.getenv("SPICYAPI_RESOLUTION", "1k").strip().lower()
+SPICYAPI_ENABLE_THINKING = os.getenv("SPICYAPI_ENABLE_THINKING", "0") == "1"
 # V3.56.0: the real per-job SpicyAPI bill (observed $0.0345 on the console).
 # Every intimate render (Наедине/косплей/взрослая студия) is charged whether or
 # not the image comes back, so this is ledgered on the createTask event — the
 # old blind spot that made /stats report «картинки $0.080» while the balance
 # actually drained ~$3-4/day.
-SPICYAPI_ESTIMATED_COST_USD = float(os.getenv("SPICYAPI_ESTIMATED_COST_USD", "0.0345"))
+SPICYAPI_ESTIMATED_COST_USD = float(os.getenv("SPICYAPI_ESTIMATED_COST_USD", "0.036"))
 # V3.56.1: owner's call — SpicyAPI renders EVERY photo scene (Наедине-качество
 # выше, чем у fal, а джоб дешевле: $0.0345 vs $0.04). With this on the scene
 # router picks spicyapi first for all chat/studio scenes; fal stays as the

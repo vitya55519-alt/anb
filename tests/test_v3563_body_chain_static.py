@@ -30,7 +30,8 @@ def test_render_grows_return_url_without_breaking_legacy_contract():
     assert "scene: str = 'private', *, return_url: bool = False)" in RENDER
     # success hands back (bytes, url); every failure path yields (None, None)
     assert 'return (result, result_url if result else None)' in RENDER
-    assert RENDER.count('return (None, None) if return_url else None') == 2
+    # V3.58.1: +1 for the breaker-skip path in the guarded wrapper
+    assert RENDER.count('return (None, None) if return_url else None') == 3
     # the no-flag contract stays bytes-or-None for the «Наедине» pipeline
     assert '\n    return result\n' in RENDER
 

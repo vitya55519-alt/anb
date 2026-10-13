@@ -40,7 +40,7 @@ HOT = MAIN[MAIN.index('async def _webapp_media_hot('):MAIN.index('async def _web
 
 # ── item 3: honest SpicyAPI accounting ───────────────────────────────────────
 def test_spicy_cost_knob_exists():
-    assert 'SPICYAPI_ESTIMATED_COST_USD = float(os.getenv("SPICYAPI_ESTIMATED_COST_USD", "0.0345"))' in CONFIG
+    assert 'SPICYAPI_ESTIMATED_COST_USD = float(os.getenv("SPICYAPI_ESTIMATED_COST_USD", "0.036"))' in CONFIG
 
 
 def test_render_ledgers_every_billed_job():

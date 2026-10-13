@@ -40,6 +40,8 @@ from config import (
     SPICYAPI_BASE_URL,
     SPICYAPI_IMAGE_MODEL,
     SPICYAPI_T2I_MODEL,
+    SPICYAPI_RESOLUTION,
+    SPICYAPI_ENABLE_THINKING,
     SPICYAPI_IMAGE_TIMEOUT,
     SPICYAPI_ESTIMATED_COST_USD,
     CHARACTER_ID,
@@ -533,12 +535,69 @@ async def _spicyapi_call(method: str, path: str, headers: dict = None, **kwargs)
         ) as resp:
             body = await resp.json()
             logger.info(f"SpicyAPI {method} {path}: status={resp.status}, body={body}")
-            if body.get("code") != 200:
+            # createTask answers 202 (accepted); recordInfo answers 200.
+            if body.get("code") not in (200, 201, 202):
                 raise RuntimeError(f'SpicyAPI error: {body.get("code")} {body.get("msg")} — full: {body}')
             return body.get("data", {})
 
 
+# V3.58.1: circuit breaker. The owner's «Отказы» screen showed spicyapi
+# 0 ✅ / 39 ❌ — every chat photo, date photo and studio render first waited up
+# to SPICYAPI_IMAGE_TIMEOUT on a dead engine before falling back to fal. After
+# SPICYAPI_BREAKER_FAILURES misses in a row the engine is skipped for
+# SPICYAPI_BREAKER_COOLDOWN_SECONDS; one success closes the breaker again.
+SPICYAPI_BREAKER_FAILURES = 3
+SPICYAPI_BREAKER_COOLDOWN_SECONDS = 900
+# Keyed per engine leg (model + edit/t2i): a broken reference-edit leg must not
+# take the reference-free «Наедине» t2i leg down with it.
+_spicy_fail_streak: Dict[str, int] = {}
+# V3.58.2: the real reason of the last miss («Отказы» used to say only
+# «empty_result», hiding a refused model id for weeks).
+_spicy_last_error: str = ''
+
+
+def spicyapi_last_error() -> str:
+    return _spicy_last_error or 'empty_result'
+
+
+def _spicy_note_error(reason: str) -> None:
+    global _spicy_last_error
+    _spicy_last_error = str(reason)[:120]
+_spicy_skip_until: Dict[str, float] = {}
+
+
+def _spicy_leg(model: str, image_urls: Optional[List[str]]) -> str:
+    return f"{model}:{'edit' if image_urls else 't2i'}"
+
+
+def spicyapi_breaker_open(model: str, image_urls: Optional[List[str]]) -> bool:
+    return asyncio.get_event_loop().time() < _spicy_skip_until.get(_spicy_leg(model, image_urls), 0.0)
+
+
+def _spicyapi_note_result(leg: str, ok: bool) -> None:
+    if ok:
+        _spicy_fail_streak[leg] = 0
+        return
+    _spicy_fail_streak[leg] = _spicy_fail_streak.get(leg, 0) + 1
+    if _spicy_fail_streak[leg] >= SPICYAPI_BREAKER_FAILURES:
+        _spicy_skip_until[leg] = asyncio.get_event_loop().time() + SPICYAPI_BREAKER_COOLDOWN_SECONDS
+        _spicy_fail_streak[leg] = 0
+        logger.error('SpicyAPI breaker open for %s: %s misses in a row, skipping for %ss',
+                     leg, SPICYAPI_BREAKER_FAILURES, SPICYAPI_BREAKER_COOLDOWN_SECONDS)
+
+
 async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private', *, return_url: bool = False):
+    """Breaker-guarded entry point; see ``_spicyapi_render_once`` for the flow."""
+    if spicyapi_breaker_open(model, image_urls):
+        logger.info('SpicyAPI skipped (breaker open) scene=%s', scene)
+        return (None, None) if return_url else None
+    result = await _spicyapi_render_once(model, prompt, image_urls, scene, return_url=return_url)
+    data = result[0] if return_url else result
+    _spicyapi_note_result(_spicy_leg(model, image_urls), bool(data))
+    return result
+
+
+async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private', *, return_url: bool = False):
     """Shared SpicyAPI task flow: createTask → poll → download.
 
     ``image_urls`` empty/None → text-to-image; otherwise image-to-image edit.
@@ -561,11 +620,16 @@ async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[st
         return (None, None) if return_url else None
     result: Optional[bytes] = None
     result_url: Optional[str] = None
+    _spicy_note_error('')
     try:
         input_block: Dict[str, Any] = {
             "prompt": prompt,
-            "size": "1728*2304",  # 3:4 portrait
+            # V3.58.2: Seedream 5.0 Pro schema — an unknown field (the old
+            # "size") is a 400, so only documented fields are sent.
+            "aspect_ratio": "3:4",  # portrait
+            "resolution": SPICYAPI_RESOLUTION,
             "output_format": "jpeg",
+            "enable_thinking": SPICYAPI_ENABLE_THINKING,
         }
         if image_urls:
             input_block["image_urls"] = image_urls
@@ -579,6 +643,7 @@ async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[st
         task_id = task_data.get("taskId")
         if not task_id:
             logger.error(f"No taskId in SpicyAPI response: {task_data}")
+            _spicy_note_error('no_task_id')
             return (None, None) if return_url else None
         logger.info(f"SpicyAPI task: {task_id}")
         # Money is committed the moment the task is accepted — ledger it before
@@ -606,11 +671,15 @@ async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[st
                 break
             elif state in ("failed", "expired", "canceled"):
                 logger.error(f"SpicyAPI task {state}: {task_info.get('errorMessage')}")
+                _spicy_note_error(f"{state}: {task_info.get('errorCode') or task_info.get('errorMessage')}")
                 break
         if result is None:
             logger.error(f"SpicyAPI no image (timeout or empty): {task_id}")
+            if not _spicy_last_error.startswith(('failed', 'expired', 'canceled')):
+                _spicy_note_error('timeout_or_empty')
     except Exception as e:
         logger.exception(f"SpicyAPI failed: {e}")
+        _spicy_note_error(e)
     # A task that reached createTask is billed regardless of the outcome.
     spend_service.record_image_spend(
         'spicyapi', scene, SPICYAPI_ESTIMATED_COST_USD,
