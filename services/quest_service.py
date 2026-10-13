@@ -397,6 +397,20 @@ ROUTE_INCLINATION = {
 PATH_STEP = 8.0  # axis movement per canonical quest answer
 
 
+def path_points(inclination: str | None) -> int:
+    """V3.59.3: signed axis change a choice gives (+passion / -tenderness),
+    shown next to the button so the player sees what the choice does."""
+    if inclination == 'bold':
+        return int(PATH_STEP)
+    if inclination == 'romance':
+        return -int(PATH_STEP)
+    return 0
+
+
+def route_points(quest_key: str, route_key: str) -> int:
+    return path_points(ROUTE_INCLINATION.get((quest_key, route_key)))
+
+
 def _apply_path(session, uid: int, character_id: str, inclination: str) -> None:
     """V3.50.0: nudge the per-character path axis. Romance -> negative,
     bold -> positive, clamped to [-100, 100]. No-op for neutral or when the
@@ -721,7 +735,8 @@ def _beat_options(quest_key: str, route_key: str) -> dict | None:
     if not branch:
         return None
     return {'prompt': branch['prompt'],
-            'options': {k: {'label': v['label']} for k, v in branch['options'].items()}}
+            'options': {k: {'label': v['label'], 'points': path_points(v.get('inclination'))}
+                        for k, v in branch['options'].items()}}
 
 
 def _fire_path_events(uid: int, character_id: str, old_axis: float, new_axis: float) -> list[dict]:

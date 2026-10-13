@@ -432,6 +432,24 @@ PRIVATE_POSE_POOL = [
     'a languid stretch with arms raised and eyes half-closed',
     'leaning close to the camera with a playful smolder',
     'sitting cross-legged on the bed, leaning slightly forward',
+    # V3.59.3: self-touch poses the owner asked for (hands on her own body).
+    'cupping her own breasts over her lingerie with both hands, chest pushed forward, looking into the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+    'turned away and looking back over her shoulder, one hand squeezing her own bottom — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+    'kneeling on the bed, arms pressing her breasts together as she leans toward the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+    'standing with her hands sliding down her hips, thumbs hooked into the waistband of her panties, teasing — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+    'lying on her back, one hand on her breast and the other resting on her inner thigh — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+    'arching her back on all fours, one hand reaching back to her bottom, glancing at the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+]
+
+# V3.59.3: passion-path poses for the everyday/public scenes — flirtatious and
+# clothed (it is a café, a street, a gym), still clearly hotter than POSE_POOL.
+PASSION_PUBLIC_POSE_POOL = [
+    'looking back over her shoulder with a smirk, one hand resting on her own bottom — natural slender female hands with five correct fingers each',
+    'leaning toward the camera with her arms pressing her chest together, biting her lip — natural slender female hands with five correct fingers each',
+    'hip pushed out, one hand on her waist, the other playing with the neckline of her top — natural slender female hands with five correct fingers each',
+    'sitting with legs crossed high, hand sliding along her own thigh, sultry gaze — natural slender female hands with five correct fingers each',
+    'arching her back slightly, hands in her hair, lips parted — natural slender female hands with five correct fingers each',
+    'one hand pulling the strap of her top off her shoulder, teasing look — natural slender female hands with five correct fingers each',
 ]
 
 MAKEUP_POOL = [
@@ -710,6 +728,7 @@ ANNA_BODY_IDENTITY = (
     'Preserve the same slender, fit feminine silhouette with a slim waist and toned figure exactly as shown in the reference. '
     'Anna has a full feminine bust with silicone implants (Russian size 5, E cup) — this bust size is a permanent part of her identity even if the reference shows a smaller one. '
     'Anna has a naturally slim and fit build — this is a core part of her identity. '
+    'In plain visual terms her bust is very large, round and lifted (big implants) — the most prominent feature of her figure, never small or medium, exactly the same in every photo. '
     'These proportions are part of Anna\u2019s identity, not a wardrobe effect. Clothing may change, but it must fit the same underlying physique. '
     'Do not add weight, make her thicker, or change her body type. Keep the same slim proportions visible in the canonical reference. '
     'Wardrobe, cafe background, pose and accessories from the reference are not permanent traits unless the requested scene calls for them.'
@@ -772,6 +791,23 @@ DEFAULT_FEMALE_BODY_SPEC = (
     'a curvy feminine hourglass build with a wasp waist, round lifted hips '
     'and a natural full bust (silicone, Russian size 4, D cup)'
 )
+# V3.59.3: image models do not know what «Russian size 4 / D cup» looks like,
+# so the bust kept drifting between photos of the same girl. Each declared cup
+# now also gets a plain visual description the engines do follow.
+BUST_VISUALS = {
+    'C cup': 'medium-large round natural-looking breasts — clearly full under a fitted top but not big',
+    'D cup': 'large round lifted breasts — clearly bigger than average and obvious in any outfit, but not huge',
+    'E cup': 'very large round lifted breasts (big implants) — the most prominent feature of her figure in any outfit, never small or medium',
+}
+
+
+def bust_visual_line(body_spec: str) -> str:
+    for cup, visual in BUST_VISUALS.items():
+        if cup in (body_spec or ''):
+            return f'In plain visual terms her bust is {visual}; exactly this size in every single photo, whatever the pose, outfit or angle. '
+    return ''
+
+
 ORDINARY_IDENTITY_LOCK = ANNA_FACE_IDENTITY + ' ' + ORDINARY_BODY_IDENTITY + ' ' + ORDINARY_REFERENCE_PROTOCOL
 BODY_REINFORCEMENT = (
     'BODY CONSISTENCY CHECK: keep Anna\u2019s overall physique and proportions visually consistent with reference image 2. '
@@ -851,6 +887,7 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
         f'BODY IDENTITY: {name} has {body_spec}. This declared figure is a permanent body trait '
         'and OVERRIDES the reference images: even if a reference photo shows a smaller or flatter '
         'bust or a different build, always render the declared figure exactly as stated. '
+        f'{bust_visual_line(body_spec)}'
         'Preserve this exact figure in every photo regardless of outfit, pose or crop; '
         'never flatten, reduce or enlarge the bust, never widen the waist. '
         'Her torso stays soft and feminine — never render visible abdominal muscles, a toned gym '
@@ -893,6 +930,7 @@ SEEDREAM_IDENTITY_LOCK = (
     'Identity preservation has absolute priority. Preserve the exact face, eye shape and spacing, dark defined eyebrows, refined nose, full lips, cheekbones, jawline, '
     'warm light-to-medium skin tone, long dark-brown brunette hair, and the same slim, fit feminine proportions visible in the supplied canonical reference. '
     'Anna has a full bust with silicone implants (Russian size 5, E cup) as a permanent trait even if the reference shows it smaller. '
+    'In plain visual terms her bust is very large, round and lifted (big implants), exactly the same size in every photo. '
     'Do not drift back to any previous Anna face, do not substitute another woman, and do not add weight or change her body type.'
 )
 BODY_REINFORCEMENT_SCENES = {'mirror', 'gym', 'cafe', 'restaurant', 'home', 'outfit', 'selfie'}
@@ -1650,6 +1688,17 @@ def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season:
     return tuple(picks)
 
 
+PASSION_PATH_THRESHOLD = 20.0  # the card's «Раскрепощённая» label starts here
+
+
+def _path_is_passion(telegram_id: int, character_id: str) -> bool:
+    try:
+        from services.relationship_engine import get_path_axis
+        return get_path_axis(ensure_user(telegram_id), character_id) >= PASSION_PATH_THRESHOLD
+    except Exception:
+        return False
+
+
 def _persona_style_is_tender(telegram_id: int, character_id: str) -> bool:
     # V3.55.6: the «tender» manner chosen in the premium character's app chat
     # softens the photo expression pool too. Fail-silent: any doubt -> False.
@@ -1724,21 +1773,27 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     # V3.31.7: variety rotations. A chat-mood expression still wins over the
     # rotation; otherwise every frame of the pack walks its own shuffled
     # expression and pose note instead of repeating one fixed look.
-    from services.photo_expression_service import shuffled_sensual_variety_keys, shuffled_variety_keys
+    from services.photo_expression_service import shuffled_sensual_variety_keys, shuffled_variety_keys, shuffled_private_sensual_keys
     # V3.51.4: the owner wants sensual facial emotion walked on EVERY photo, public
     # scenes included, so the default per-frame rotation is the sensual pool for all
     # scenes. An explicit chat-mood expression_key still overrides the rotation.
     # V3.55.6: the chosen «tender» manner swaps the sensual pool for the soft
     # everyday one (smile/laughing/thoughtful/shy/...); unset or «passionate»
     # keeps the V3.51.4 default.
+    # V3.59.3: a user on the «passion» path (story choices pushed the axis to
+    # the bold side) gets the hot faces — and flirtier poses — in EVERY scene.
+    passion = _path_is_passion(telegram_id, character_id)
     expression_rotation = tuple(request.expression_rotation) or (
         () if request.expression_key else (
             shuffled_variety_keys() if _persona_style_is_tender(telegram_id, character_id)
+            else shuffled_private_sensual_keys() if (request.scene in {'personal', 'lingerie', 'private_fashion', 'tease'} or passion)
             else shuffled_sensual_variety_keys()
         )
     )
     # V3.43.4: private/boudoir scenes draw their pose notes from the sultrier pool.
     poses = list(PRIVATE_POSE_POOL if request.scene in {'personal', 'lingerie', 'private_fashion', 'tease'} else POSE_POOL)
+    if passion and request.scene not in {'personal', 'lingerie', 'private_fashion', 'tease'}:
+        poses = list(PASSION_PUBLIC_POSE_POOL)
     random.shuffle(poses)
     pose_rotation = tuple(request.pose_rotation) or tuple(poses)
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season,

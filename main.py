@@ -154,7 +154,7 @@ from services.custom_character_service import (
 )
 from services.consent_service import has_accepted, accept as accept_consent, delete_user_data, TERMS_VERSION, PRIVACY_VERSION
 from services.collection_service import collection_progress
-from services.quest_service import QUESTS, QUEST_REPLAY_STARS, story_status, get_quest, complete_route, create_replay_offer, consume_replay_offer, premium_replays_left, consume_premium_replay, newly_unlocked_quests, resolve_story_choice, resolve_story_beat, route_branch
+from services.quest_service import QUESTS, QUEST_REPLAY_STARS, story_status, get_quest, complete_route, create_replay_offer, consume_replay_offer, premium_replays_left, consume_premium_replay, newly_unlocked_quests, resolve_story_choice, resolve_story_beat, route_branch, route_points
 from services.payment_method_service import (
     list_payment_methods, get_payment_method, create_payment_method,
     update_payment_method, delete_payment_method, ensure_default_payment_methods,
@@ -736,7 +736,33 @@ def admin_keyboard():
         # V3.55.5: promo codes — create / list / toggle off.
         [InlineKeyboardButton(text='🎟 Промокоды', callback_data='admin:promos')],
         [InlineKeyboardButton(text=f'⭐ Premium себе (тесты): {premium_state}', callback_data='admin:premium_toggle')],
+        # V3.59.3: put your own path with the current girl anywhere to test
+        # passion/tender photos and story badges without replaying stories.
+        [InlineKeyboardButton(text='🔥💗 Мой путь (тесты)', callback_data='admin:path')],
     ])
+
+
+ADMIN_PATH_PRESETS = (('🔥 Страсть 60', 60), ('🔥 Страсть 25', 25), ('⚖️ Сброс 0', 0),
+                      ('💗 Нежность 25', -25), ('💗 Нежность 60', -60))
+
+
+def _admin_path_text(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    from services.relationship_engine import get_path_axis
+    char_id = get_user_character(telegram_id)
+    axis = get_path_axis(ensure_user(telegram_id), char_id)
+    try:
+        from services.character_registry import get_character as _gc
+        name = _gc(char_id).get('name') or char_id
+    except Exception:
+        name = char_id
+    side = 'страсть 🔥' if axis >= 20 else ('нежность 💗' if axis <= -20 else 'равновесие ⚖️')
+    text = (f'🔥💗 Твой путь с {name}: {axis:+.0f} ({side})\n\n'
+            'От +20 и выше включаются откровенные позы и мимика на всех фото этой девушки. '
+            'Меняется только твой путь с выбранной сейчас девушкой.')
+    rows = [[InlineKeyboardButton(text=label, callback_data=f'admin:pathset:{value}')]
+            for label, value in ADMIN_PATH_PRESETS]
+    rows.append([InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def admin_ideas_keyboard():
@@ -2307,6 +2333,37 @@ async def admin_premium_toggle(cq: types.CallbackQuery):
         await cq.answer('Premium включён на 30 дней', show_alert=False)
         text = f'⭐ Тестовый Premium включён на 30 дней. Photo credits: {get_photo_credits(cq.from_user.id)}.'
     await cq.message.answer(text, reply_markup=admin_keyboard())
+
+
+@dp.callback_query(F.data == 'admin:path')
+async def admin_path_menu(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    await cq.answer()
+    text, kb = _admin_path_text(cq.from_user.id)
+    await cq.message.answer(text, reply_markup=kb)
+
+
+@dp.callback_query(F.data.startswith('admin:pathset:'))
+async def admin_path_set(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services.relationship_engine import set_path_axis
+    try:
+        value = int(cq.data.rsplit(':', 1)[1])
+    except ValueError:
+        await cq.answer()
+        return
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    set_path_axis(uid, get_user_character(cq.from_user.id), value)
+    track_event(uid, 'admin_path_set')
+    await cq.answer(f'Путь: {value:+d}', show_alert=False)
+    text, kb = _admin_path_text(cq.from_user.id)
+    try:
+        await cq.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        await cq.message.answer(text, reply_markup=kb)
 
 
 # V3.31.2: button alternative to the /grant command. The owner opens
@@ -12058,7 +12115,11 @@ def _webapp_api_story_impl(request: web.Request) -> web.Response:
     for st in story_status(telegram_id, level, character_id):
         q = get_quest(st['key'])
         routes = [{'key': rk, 'label': rv.get('label', ''), 'done': rk in st['done'],
-                   'beat': bool(route_branch(st['key'], rk))} for rk, rv in q['routes'].items()]
+                   'beat': bool(route_branch(st['key'], rk)),
+                   # V3.59.3: «+8 к страсти / нежности» next to the choice; only
+                   # the first (canonical) answer moves the path, so 0 after it.
+                   'points': route_points(st['key'], rk) if not st['canonical'] else 0}
+                  for rk, rv in q['routes'].items()]
         stories.append({'key': st['key'], 'title': st['title'], 'teaser': st.get('teaser', ''),
                         'intro': q.get('intro', ''), 'unlocked': st['unlocked'], 'min_level': st['min_level'],
                         'unlock_tasks': st['unlock_tasks'], 'tasks_remaining': st['tasks_remaining'],
