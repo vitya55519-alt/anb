@@ -3185,13 +3185,11 @@ function openCharPage(el) {
     relBar.style.display = 'none';
   }
   // V3.50.0: the tenderness<->passion swing bar (qualitative only, no raw axis).
+  // V3.59.4: shown for EVERY girl — before the first chat/story the path is
+  // simply balanced (0), the bar used to be missing on half the roster.
   const pathBar = document.getElementById('charPathBar');
-  if (typeof c.path === 'number') {
-    pathBar.style.display = '';
-    renderPathBar(c.path);
-  } else {
-    pathBar.style.display = 'none';
-  }
+  pathBar.style.display = '';
+  renderPathBar(typeof c.path === 'number' ? c.path : 0);
   // V3.51.0: story player entry — sits right under the path bar so the player
   // sees «this choice moves that scale». Show it for any openable character.
   const storyBtn = document.getElementById('charStories');

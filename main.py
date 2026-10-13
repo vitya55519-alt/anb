@@ -143,7 +143,7 @@ from services.photo_reaction_service import react_to_photo, MAX_BASE64_BYTES
 from services.custom_character_service import (
     CONSTRUCTOR_STEPS, OPTION_LABELS, PARAM_TITLES, build_avatar_prompt,
     custom_character_id, get_all_custom_characters, get_custom_character,
-    get_custom_character_by_id, save_custom_character,
+    get_custom_character_by_id, save_custom_character, write_card_bio, all_custom_character_ids,
     normalize_tags,
     request_community_review, moderate_community_submission, set_moderation_status,
     summary_lines, step_index, is_custom_character,
@@ -739,6 +739,9 @@ def admin_keyboard():
         # V3.59.3: put your own path with the current girl anywhere to test
         # passion/tender photos and story badges without replaying stories.
         [InlineKeyboardButton(text='🔥💗 Мой путь (тесты)', callback_data='admin:path')],
+        # V3.59.4: rewrite the glued «реалистичная, 23–27, …» storefront bios
+        # of the custom personas with the chat model.
+        [InlineKeyboardButton(text='✨ Переписать описания своих персонажей', callback_data='admin:biofix')],
     ])
 
 
@@ -2333,6 +2336,43 @@ async def admin_premium_toggle(cq: types.CallbackQuery):
         await cq.answer('Premium включён на 30 дней', show_alert=False)
         text = f'⭐ Тестовый Premium включён на 30 дней. Photo credits: {get_photo_credits(cq.from_user.id)}.'
     await cq.message.answer(text, reply_markup=admin_keyboard())
+
+
+_BIOFIX_RUNNING: set[int] = set()
+
+
+@dp.callback_query(F.data == 'admin:biofix')
+async def admin_biofix(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    if _BIOFIX_RUNNING:
+        await cq.answer('Уже переписываю, подожди', show_alert=False)
+        return
+    await cq.answer('Начала')
+    await cq.message.answer('✨ Переписываю описания пользовательских персонажей, пришлю итог.')
+    _spawn_background(_admin_biofix_run(cq.message.chat.id))
+
+
+async def _admin_biofix_run(chat_id: int) -> None:
+    _BIOFIX_RUNNING.add(chat_id)
+    done = failed = 0
+    try:
+        for cid in all_custom_character_ids():
+            params, name = custom_character_params(cid)
+            if not params or not get_card(cid):
+                continue
+            try:
+                bio = await asyncio.wait_for(write_card_bio(params, name or 'она'), timeout=30)
+            except Exception:
+                bio = None
+            if bio:
+                update_card(cid, short_bio=bio)
+                done += 1
+            else:
+                failed += 1
+    finally:
+        _BIOFIX_RUNNING.discard(chat_id)
+    await bot.send_message(chat_id, f'✨ Готово: переписано {done}, не получилось {failed}.')
 
 
 @dp.callback_query(F.data == 'admin:path')
@@ -8277,6 +8317,14 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     if personality_text:
         bio_parts.append(personality_text)
     bio = ' '.join(bio_parts)[:900] if bio_parts else f'{display_name} — загадочная незнакомка.'
+    # V3.59.4: the glued option labels read crooked on the storefront — ask the
+    # chat model for a short teaser; the glued line stays as the fallback.
+    try:
+        nice_bio = await asyncio.wait_for(write_card_bio(params, display_name), timeout=25)
+    except Exception:
+        nice_bio = None
+    if nice_bio:
+        bio = nice_bio
     card_age = AGE_BY_GROUP.get(str(params.get('age')), 25)
     # V3.45.28: a community persona is queued for review, so her card stays
     # hidden until an admin approves; is_community still drives the ping below.
