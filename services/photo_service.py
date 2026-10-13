@@ -1776,6 +1776,35 @@ def _outdoor_light(light: str, scene: str) -> str:
     return light
 
 
+# V3.60.5: «я рядом с мужем, он уже сопит» and then a balcony selfie at sunset —
+# a plain selfie now follows where she just said she is.
+DIALOG_PLACES = (
+    (r'(муж|парень|он)[^.!?]{0,40}(спит|сопит|храпит|уснул)|рядом с муж|рядом с парн',
+     'in bed under the blanket in the dark, secretly taking a quiet selfie so she won\'t wake the man asleep beside her — '
+     'his sleeping shoulder blurred in the dark behind her, a guilty-playful look',
+     'late night: only the phone-screen glow on her face, dark room, no daylight'),
+    (r'кроват|постел|одеял|подушк|сплю|засыпа|уснул|сопит|лежу|в спальн',
+     'in bed under a soft blanket in her dim bedroom, head on the pillow, phone held above her face',
+     'late night: dim warm bedside lamp or phone-screen glow, dark room, no daylight'),
+    (r'ванн|в душе|душ\b|пена', 'in her bathroom, warm steam and soft light', ''),
+    (r'кухн|готовлю|варю', 'in her home kitchen', ''),
+    (r'офис|на работе|в работе|за ноутбук', 'at her desk in the office', ''),
+    (r'за рул|в машин', 'in the driver seat of her parked car', ''),
+    (r'балкон', 'on her balcony', ''),
+    (r'диван|сериал', 'curled up on the sofa at home', ''),
+)
+
+
+def place_from_dialog(texts) -> tuple[str, str]:
+    """Location and light from her latest messages (newest first), or ('', '')."""
+    for text in texts:
+        low = (text or '').lower()
+        for pattern, place, light in DIALOG_PLACES:
+            if re.search(pattern, low):
+                return place, light
+    return '', ''
+
+
 def _local_time_light(telegram_id: int) -> str:
     """V3.59.8: the light of the user's own clock — a midnight request used to
     come back as a sunny morning shot."""
