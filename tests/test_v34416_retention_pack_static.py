@@ -47,7 +47,7 @@ def test_missing_state_row_no_longer_spams_hourly():
     # the stamp write silently skipped — now the row is created
     proactive = SCHEDULER[SCHEDULER.index('async def _proactive(bot):'):SCHEDULER.index('async def _day1_hook(bot):')]
     assert 'if st is None:' in proactive
-    assert 'st=CharacterState(user_id=uid,character_id=CHARACTER_ID)' in proactive
+    assert 'st=CharacterState(user_id=uid,character_id=char_id)' in proactive
 
 
 def test_day1_hook_job():

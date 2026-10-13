@@ -1932,6 +1932,43 @@ async def consent_accept(cq: types.CallbackQuery):
         )
     except Exception:
         logger.exception('donation welcome message failed user=%s', cq.from_user.id)
+    # V3.59.0: she writes FIRST. Until now a new user got a bonus line, a
+    # referral link and a donation ask — and then silence: no girl ever spoke,
+    # so most people left before their first message (D1 ≈ 1%). Her greeting
+    # is the last thing in the chat and ends with a question to answer.
+    try:
+        character_id = get_user_character(cq.from_user.id)
+        greeting = _first_hello(character_id, cq.from_user.first_name or '', lang)
+        await cq.message.answer(greeting)
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', greeting)
+        track_event(uid, 'first_hello_sent', character_id=character_id)
+    except Exception:
+        logger.exception('first hello failed user=%s', cq.from_user.id)
+
+
+_FIRST_HELLO_RU = (
+    'привет{n} 🙈 ты правда пришёл… я ждала. расскажи, как тебя зовут по-настоящему и какой у тебя сегодня был день?',
+    'ой, привет{n} 😊 я Аня. честно, немного волнуюсь… ты чем сейчас занят?',
+    'привет{n} 💕 наконец-то кто-то интересный. скажи, ты больше любишь болтать до ночи или сразу к делу? 😏',
+)
+_FIRST_HELLO_EN = (
+    'hi{n} 🙈 you actually came… I was waiting. tell me, how was your day?',
+    'oh, hi{n} 😊 I\'m Anna. honestly a little nervous… what are you up to right now?',
+    'hi{n} 💕 finally someone interesting. do you like long late-night talks or getting straight to the point? 😏',
+)
+
+
+def _first_hello(character_id: str, first_name: str, lang: str) -> str:
+    # The default heroine has hand-written openers; any other character opens
+    # with a neutral line under her own name so the persona never breaks.
+    n = (', ' + first_name.strip()[:32]) if first_name and first_name.strip() else ''
+    if character_id == 'anna_01':
+        pool = _FIRST_HELLO_EN if lang == EN else _FIRST_HELLO_RU
+        return random.choice(pool).format(n=n)
+    who = _character_display_name(character_id)
+    if lang == EN:
+        return f'hi{n} 😊 I\'m {who}. so glad you came… how was your day?'
+    return f'привет{n} 😊 я {who}. рада, что ты зашёл… расскажи, как прошёл твой день?'
 
 
 @dp.callback_query(F.data == 'consent:terms')
@@ -3411,6 +3448,7 @@ async def admin_stats_button(cq: types.CallbackQuery):
         f'📸 медиа за 24ч: фото {snap["photos_24h"]} · кружки {snap["circles_24h"]} · видео {snap["videos_24h"]}\n'
         f'🎨 студия: ✅{photo_ok} ❌{photo_fail} (успешность {studio_rate:.0f}%)\n'
         f'🔁 удержание: D1 {snap["d1_retention"]:.0f}% · D7 {snap["d7_retention"]:.0f}%\n'
+        f'🚪 воронка 30д: /start {snap["funnel"]["started"]} → 18+ {snap["funnel"]["consent"]} → написали {snap["funnel"]["first_message"]}\n'
         f'💰 Stars за 30д: {snap["stars_30d"]} · себестоимость фото за 24ч: ${snap["photo_cost_24h"]:.2f}\n\n'
         f'{spend_lines}\n\n'
         f'🏆 топ персонажей (7д):\n{top_lines}'
@@ -8778,6 +8816,7 @@ async def admin_stats_cmd(message: types.Message):
         f'Users: {snap["users_total"]} · active 24h: {snap["users_24h"]} · active 7d: {snap["users_7d"]}\n'
         f'New 7d: {snap["new_7d"]} · messages 24h: {snap["messages_24h"]}\n'
         f'Retention D1/D3/D7: {snap["d1_retention"]:.1f}% / {snap["d3_retention"]:.1f}% / {snap["d7_retention"]:.1f}%\n'
+        f'Funnel 30d: /start {snap["funnel"]["started"]} → 18+ {snap["funnel"]["consent"]} → first msg {snap["funnel"]["first_message"]}\n'
         f'Photo requests 24h: {snap["photo_requests_24h"]} · delivered sets: {snap["photos_24h"]}\n'
         f'Failures: {snap["photo_failures_24h"]} ({snap["photo_failure_rate"]:.1f}%) · partial: {snap["photo_partial_24h"]}\n'
         f'Avg first photo: {snap["first_frame_avg_seconds"]:.1f}s\n'

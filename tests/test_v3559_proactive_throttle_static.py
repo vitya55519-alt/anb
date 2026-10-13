@@ -73,4 +73,4 @@ def test_v34416_ladder_pins_survive_refactor():
     assert 'nudge_count >= RETENTION_MAX_NUDGES' in PROACTIVE
     assert 'st.nudge_count=1 if (returned or not last_nudge) else nudge_count+1' in PROACTIVE
     assert 'if st is None:' in PROACTIVE
-    assert 'st=CharacterState(user_id=uid,character_id=CHARACTER_ID)' in PROACTIVE
+    assert 'st=CharacterState(user_id=uid,character_id=char_id)' in PROACTIVE

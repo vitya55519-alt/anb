@@ -50,8 +50,20 @@ def budget_allows_photo() -> tuple[bool, str]:
     return True, 'ok'
 
 
+# V3.59.0: «came back» means ANY action the user started — not only a text
+# typed in the bot chat. Most people live in the Mini App now (chat, dates,
+# stories, studio), and the old bot-only rule reported D1 ≈ 1% for users who
+# were in fact coming back every day. Pushes the bot itself sends are excluded.
+ACTIVE_EVENTS = (
+    'chat_user_message', 'webapp_opened', 'webapp_chat_message', 'webapp_chat_media',
+    'webapp_date_delivered', 'quest_route_completed', 'quest_beat_completed',
+    'daily_quest_claimed', 'gallery_opened', 'photo_requested', 'webapp_picture_generated',
+    'webapp_studio_video_generated', 'apartment_action', 'proactive_replied', 'stars_purchase',
+)
+
+
 def _retention_rate(day: int) -> float:
-    """Simple closed-beta cohort retention: user sent a message in the 24h window starting at day N."""
+    """Cohort retention: the user did something themselves in the 24h window starting at day N."""
     now = _now()
     window_start_age = day + 1
     cohort_since = now - timedelta(days=30)
@@ -64,10 +76,29 @@ def _retention_rate(day: int) -> float:
         for u in users:
             start = u.created_at + timedelta(days=day)
             end = start + timedelta(days=1)
-            hit = s.scalar(select(func.count(ProductEvent.id)).where(ProductEvent.user_id == u.id, ProductEvent.event_name == 'chat_user_message', ProductEvent.created_at >= start, ProductEvent.created_at < end)) or 0
+            hit = s.scalar(select(func.count(ProductEvent.id)).where(ProductEvent.user_id == u.id, ProductEvent.event_name.in_(ACTIVE_EVENTS), ProductEvent.created_at >= start, ProductEvent.created_at < end)) or 0
             if hit:
                 retained += 1
     return retained / len(users) * 100.0
+
+
+def onboarding_funnel(days: int = 30) -> dict:
+    """V3.59.0: where new users drop on day 0 — /start → 18+ consent → first own
+    message (bot or app) → came back on day 1. Shares of everyone who pressed /start."""
+    since = _now() - timedelta(days=days)
+    with SessionLocal() as s:
+        ids = [u for u in s.scalars(select(User.id).where(User.created_at >= since)).all()]
+        if not ids:
+            return {'started': 0, 'consent': 0, 'first_message': 0}
+
+        def _reached(names) -> int:
+            return s.scalar(select(func.count(func.distinct(ProductEvent.user_id))).where(
+                ProductEvent.user_id.in_(ids), ProductEvent.event_name.in_(names))) or 0
+        return {
+            'started': len(ids),
+            'consent': int(_reached(('consent_accepted',))),
+            'first_message': int(_reached(('chat_user_message', 'webapp_chat_message'))),
+        }
 
 
 def admin_snapshot() -> dict:
@@ -132,4 +163,5 @@ def admin_snapshot() -> dict:
         'circles_24h': int(circles_24h), 'videos_24h': int(videos_24h),
         'top_characters': [[cid, int(cnt)] for cid, cnt in top_rows],
         'sources': [[(tag or 'organic'), int(cnt)] for tag, cnt in src_rows],
+        'funnel': onboarding_funnel(),
     }

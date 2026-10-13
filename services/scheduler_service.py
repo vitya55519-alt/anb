@@ -90,8 +90,13 @@ async def _proactive(bot):
     for uid in ids:
         try:
             with SessionLocal() as s:
-                u=s.get(User,uid); state=s.scalar(select(CharacterState).where(CharacterState.user_id==uid,CharacterState.character_id==CHARACTER_ID))
+                u=s.get(User,uid)
                 if not u: continue
+                # V3.59.0: the push comes from the girl this user actually talks
+                # to — it used to always be the default heroine, so someone
+                # chatting with Alena got «скучаю» from a stranger.
+                char_id=(getattr(u,'selected_character','') or '').strip() or CHARACTER_ID
+                state=s.scalar(select(CharacterState).where(CharacterState.user_id==uid,CharacterState.character_id==char_id))
                 telegram_id=int(u.telegram_id); name=u.name or 'ты'; hours=max(RETENTION_REMINDER_HOURS,int((now-u.last_active_at).total_seconds()/3600))
                 streak=int(u.streak_count or 0)
                 hook=bool(state and state.pending_hook)
@@ -115,7 +120,7 @@ async def _proactive(bot):
                 if st is None:
                     # V3.44.16: a user without an Anna state row used to be re-nudged
                     # EVERY hour (the write phase silently skipped). Persist the stamp.
-                    st=CharacterState(user_id=uid,character_id=CHARACTER_ID)
+                    st=CharacterState(user_id=uid,character_id=char_id)
                     s.add(st)
                 st.last_nudge_at=now
                 st.nudge_count=1 if (returned or not last_nudge) else nudge_count+1
@@ -133,12 +138,11 @@ async def _proactive(bot):
                 else:
                     kind='miss'
                 # V3.44.2: per-character retention texts
-                char_id = CHARACTER_ID if CHARACTER_ID else 'anna_01'
                 msg=retention_features_service.get_retention_text(kind, char_id)
                 await bot.send_message(telegram_id,msg)
                 track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': kind, 'nudge': nudge_count + 1})
             else:
-                msg=await proactive_reply(telegram_id,name,hours)
+                msg=await proactive_reply(telegram_id,name,hours,character_id=char_id)
                 if not msg:
                     # Provider hiccup: the slot is already spent — do not send
                     # an empty message (that used to raise and re-arm the retry).
