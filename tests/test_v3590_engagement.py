@@ -29,7 +29,7 @@ def test_funnel_reaches_both_stats_screens():
 def test_she_writes_first_after_consent():
     h = MAIN[MAIN.index('async def consent_accept('):MAIN.index("@dp.callback_query(F.data == 'consent:terms')")]
     assert '_first_hello(character_id' in h
-    assert h.index('donation_service.donation_appeal(lang)') < h.index('_first_hello(character_id')
+    assert 'donation_appeal' not in h and 'ref_link' not in h
     assert "save_message, uid, character_id, 'assistant', greeting" in h
 
 

@@ -1882,13 +1882,6 @@ async def consent_accept(cq: types.CallbackQuery):
                 track_event(uid, 'referral_awarded_on_consent', metadata={'referrer_id': str(ref)})
         first_start = apply_first_start_bonuses(cq.from_user.id)
     await cq.answer('готово')
-    # Show the user their own referral link right after consent so they can
-    # invite friends immediately, and announce the wow-bonus.
-    try:
-        me = await cq.bot.get_me()
-        ref_link = referral_link(me.username, cq.from_user.id)
-    except Exception:
-        ref_link = None
     lang = user_lang(cq.from_user.id)
     if lang == EN:
         bonus_line = (
@@ -1902,36 +1895,15 @@ async def consent_accept(cq: types.CallbackQuery):
             'попробуй первое фото бесплатно.\n'
             'Все героини, чаты, картинки и магазин — в приложении 👇'
         ) if first_start['credits'] else 'Добро пожаловать 🙂 все героини, чаты и магазин — в приложении 👇'
-    ref_line = ''
-    if ref_link:
-        if lang == EN:
-            ref_line = (
-                f'\n\n🔗 your invite link for friends:\n{ref_link}\n'
-                f'for every friend who confirms 18+ you get {REFERRAL_REFERRER_CREDITS}, '
-                f'and your friend gets {REFERRAL_INVITEE_CREDITS} photo credits.'
-            )
-        else:
-            ref_line = (
-                f'\n\n🔗 твоя ссылка для приглашения друзей:\n{ref_link}\n'
-                f'за каждого друга, который подтвердит 18+, ты получишь {REFERRAL_REFERRER_CREDITS}, '
-                f'а друг — {REFERRAL_INVITEE_CREDITS} фото-кредитов.'
-            )
+    # V3.59.1: no referral link and no donation ask in the first minute — the
+    # invite link lives on the partner screen, the donation note comes from the
+    # weekly reminder from day 3 on. The first minute belongs to her.
     # V3.41.0: character selection moved into the Mini App — no inline picker
     # here anymore; show the persistent main menu (reply keyboard) instead.
     await cq.message.answer(
-        bonus_line + ref_line,
+        bonus_line,
         reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS, cq.from_user.id),
     )
-    # V3.31.3: every new user sees the optional «support the project» donation
-    # link once, right after the welcome (owner request). Failures here must
-    # never break onboarding, so it is guarded.
-    try:
-        await cq.message.answer(
-            donation_service.donation_appeal(lang),
-            reply_markup=donation_service.donation_keyboard(lang),
-        )
-    except Exception:
-        logger.exception('donation welcome message failed user=%s', cq.from_user.id)
     # V3.59.0: she writes FIRST. Until now a new user got a bonus line, a
     # referral link and a donation ask — and then silence: no girl ever spoke,
     # so most people left before their first message (D1 ≈ 1%). Her greeting

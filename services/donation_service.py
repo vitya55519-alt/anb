@@ -93,6 +93,9 @@ def donation_amounts_keyboard(lang: str = RU) -> InlineKeyboardMarkup:
     ]])
 
 
+DONATION_FIRST_ASK_AFTER_DAYS = 3
+
+
 def due_donation_pings(now: dt.datetime) -> list[tuple[int, int, str]]:
     """Active, opted-in users whose last donation ping is older than the
     weekly interval (or was never sent).
@@ -112,6 +115,10 @@ def due_donation_pings(now: dt.datetime) -> list[tuple[int, int, str]]:
             User.last_active_at >= active_cutoff,
         )).all()
         for u in users:
+            # V3.59.1: never in the first days — a money ask before she has even
+            # become someone to them scares new users off (owner's call).
+            if u.created_at and u.created_at > now - dt.timedelta(days=DONATION_FIRST_ASK_AFTER_DAYS):
+                continue
             last = u.last_donation_ping_at
             if last is None or last <= ping_cutoff:
                 lang = EN if (u.ui_lang or '').strip().lower() == EN else RU
