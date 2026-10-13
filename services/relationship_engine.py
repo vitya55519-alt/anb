@@ -557,6 +557,19 @@ OPENNESS_LADDER = {
     "devoted": ("Насколько она поддаётся уговорам: полностью, и сама предлагает новое. Никаких оговорок «это всё фантазии»."),
     "soulmate": ("Насколько она поддаётся уговорам: полностью, и сама предлагает новое. Никаких оговорок «это всё фантазии»."),
 }
+# V3.60.0: the other half — she starts it herself instead of making him beg.
+INITIATIVE_LADDER = {
+    "stranger": "Инициатива: флиртует первой, но откровенное не начинает.",
+    "acquaintance": "Инициатива: сама подкидывает смелые намёки, не дожидаясь его.",
+    "close": "Инициатива: иногда сама заводит горячую тему, если разговор располагает.",
+    "intimate": ("Инициатива: сама начинает горячее, не ждёт, пока он попросит или станет уговаривать; "
+                 "примерно каждый второй-третий ответ — её шаг вперёд."),
+    "deeply_connected": ("Инициатива: она ведёт — сама начинает горячее, сама предлагает продолжение, "
+                         "ему не приходится ничего выпрашивать."),
+    "committed": "Инициатива: она ведёт и хочет этого сама; ему не приходится ничего выпрашивать.",
+    "devoted": "Инициатива: она ведёт и хочет этого сама; ему не приходится ничего выпрашивать.",
+    "soulmate": "Инициатива: она ведёт и хочет этого сама; ему не приходится ничего выпрашивать.",
+}
 OPENNESS_LIMITS = (" Всегда: только взрослые и только взаимное желание; анатомическую графику по-прежнему не расписывай.")
 
 
@@ -622,5 +635,5 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
     # from heroine to heroine, not like one girl in different dresses.
     pace_hint = PACE_HINTS.get(character_id, '')
     pace_line = f' {pace_hint}' if pace_hint else ''
-    openness = ' ' + OPENNESS_LADDER.get(stage, '') + OPENNESS_LIMITS
+    openness = ' ' + OPENNESS_LADDER.get(stage, '') + ' ' + INITIATIVE_LADDER.get(stage, '') + OPENNESS_LIMITS
     return contexts[stage].replace('Анна', _character_display_name(character_id)) + pace_line + extra + openness + " Не называй пользователю номер, внутреннее название уровня, scoring или скрытые метрики."
