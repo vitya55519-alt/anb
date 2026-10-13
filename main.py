@@ -1914,8 +1914,28 @@ async def consent_accept(cq: types.CallbackQuery):
         await cq.message.answer(greeting)
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', greeting)
         track_event(uid, 'first_hello_sent', character_id=character_id)
+        # V3.59.2: and a free selfie right behind the hello — the «wow» of the
+        # first minute, rendered in the background so the hello is instant.
+        _spawn_background(_send_welcome_selfie(cq.bot, cq.message.chat.id, cq.from_user.id, uid, character_id, lang))
     except Exception:
         logger.exception('first hello failed user=%s', cq.from_user.id)
+
+
+async def _send_welcome_selfie(bot, chat_id: int, telegram_id: int, uid: int, character_id: str, lang: str) -> None:
+    try:
+        data, mime, ext = await _webapp_media_photo(telegram_id, character_id, 'selfie')
+        if not data:
+            logger.warning('welcome selfie empty user=%s', telegram_id)
+            return
+        caption = ('this is me 🙈 just took it for you… do you like it?' if lang == EN
+                   else 'это я 🙈 только что сфоткалась для тебя… нравится?')
+        await bot.send_photo(chat_id, BufferedInputFile(data, filename=f'hello.{ext}'), caption=caption)
+        filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', caption,
+                                media_kind='photo', media_url=f'/webapp/media/{filename}')
+        track_event(uid, 'welcome_selfie_sent', character_id=character_id)
+    except Exception:
+        logger.exception('welcome selfie failed user=%s', telegram_id)
 
 
 _FIRST_HELLO_RU = (
@@ -11013,7 +11033,7 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     if body.get('image'):
         decoded = webapp_service.decode_data_image(str(body.get('image')))
         if not decoded:
-            return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+            return web.json_response({'ok': False, 'error': 'bad_image'}, status=400)
         raw, _mime, ext = decoded
         tf = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}')
         tf.write(raw); tf.close()
@@ -11141,7 +11161,7 @@ async def _webapp_api_studio_video(request: web.Request) -> web.Response:
     if body.get('image'):
         decoded = webapp_service.decode_data_image(str(body.get('image')))
         if not decoded:
-            return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+            return web.json_response({'ok': False, 'error': 'bad_image'}, status=400)
         image_bytes, mime, _ext = decoded
     elif len(prompt) >= webapp_service.PICTURE_PROMPT_MIN_LEN:
         try:
@@ -12394,7 +12414,10 @@ async def _webapp_api_constructor_buy(request: web.Request) -> web.Response:
 
 
 async def _start_web_server() -> None:
-    app = web.Application()
+    # V3.59.2: aiohttp's default body cap is 1 MB, and a studio upload rides as
+    # base64 JSON — any normal phone photo blew past it, request.json() failed,
+    # the body was read as empty and the user saw «Такое описание нельзя».
+    app = web.Application(client_max_size=12 * 1024 * 1024)
     # V3.56.6: gzip every JSON/text API response the app fetches on boot.
     app.middlewares.append(_webapp_gzip)
     app.router.add_get('/', _root)
