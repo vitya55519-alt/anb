@@ -144,6 +144,7 @@ from services.custom_character_service import (
     CONSTRUCTOR_STEPS, OPTION_LABELS, PARAM_TITLES, build_avatar_prompt,
     custom_character_id, get_all_custom_characters, get_custom_character,
     get_custom_character_by_id, save_custom_character, write_card_bio, all_custom_character_ids,
+    template_card_bio, bio_looks_glued,
     normalize_tags,
     request_community_review, moderate_community_submission, set_moderation_status,
     summary_lines, step_index, is_custom_character,
@@ -2366,13 +2367,33 @@ async def _admin_biofix_run(chat_id: int) -> None:
             except Exception:
                 bio = None
             if bio:
-                update_card(cid, short_bio=bio)
                 done += 1
             else:
+                bio = template_card_bio(params, name or 'Она')
                 failed += 1
+            update_card(cid, short_bio=bio)
     finally:
         _BIOFIX_RUNNING.discard(chat_id)
-    await bot.send_message(chat_id, f'✨ Готово: переписано {done}, не получилось {failed}.')
+    await bot.send_message(chat_id, f'✨ Готово: красиво переписано {done}, по шаблону {failed}.')
+
+
+async def _startup_fix_glued_bios() -> None:
+    """V3.59.4: cards still carrying the glued «реалистичная, 34+, мягкое…»
+    bio get rewritten once after a deploy — no admin tap needed."""
+    await asyncio.sleep(30)
+    for cid in all_custom_character_ids():
+        try:
+            params, name = custom_character_params(cid)
+            card = get_card(cid)
+            if not params or not card or not bio_looks_glued(card.short_bio or '', params, name or ''):
+                continue
+            try:
+                bio = await asyncio.wait_for(write_card_bio(params, name or 'Она'), timeout=30)
+            except Exception:
+                bio = None
+            update_card(cid, short_bio=bio or template_card_bio(params, name or 'Она'))
+        except Exception:
+            logger.exception('glued bio rewrite failed character=%s', cid)
 
 
 @dp.callback_query(F.data == 'admin:path')
@@ -8323,8 +8344,7 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
         nice_bio = await asyncio.wait_for(write_card_bio(params, display_name), timeout=25)
     except Exception:
         nice_bio = None
-    if nice_bio:
-        bio = nice_bio
+    bio = nice_bio or template_card_bio(params, display_name)
     card_age = AGE_BY_GROUP.get(str(params.get('age')), 25)
     # V3.45.28: a community persona is queued for review, so her card stays
     # hidden until an admin approves; is_community still drives the ping below.
@@ -12752,6 +12772,7 @@ async def main():
     from services import gift_service
     gift_service.ensure_welcome_promo()
     start_scheduler(bot)
+    _spawn_background(_startup_fix_glued_bios())
     try:
         active_reminders = due_reminders()
         logger.info('startup active_reminders=%s ids=%s', len(active_reminders), [r.id for r in active_reminders])

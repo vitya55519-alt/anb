@@ -57,3 +57,17 @@ def test_constructor_relationship_status_shapes_the_chat():
     assert 'mar_married' in c.RELATIONSHIP_STORY and 'mar_divorced' in c.RELATIONSHIP_STORY
     ctx = c.build_persona_context({'marital': 'mar_married'}, 'Кира')
     assert 'Ты замужем' in ctx
+
+
+def test_glued_bios_are_detected_and_replaced():
+    from services import custom_character_service as c
+    params = {'style': 'style_real', 'age': 'age_confident', 'face': 'face_soft', 'body': 'body_slim',
+              'temperament': 'temper_naughty', 'profession': 'prof_business', 'role': 'role_secret'}
+    glued = c.legacy_glued_bio(params, 'Ию')
+    assert glued.startswith('Ию — реалистичная, 34+, мягкое, женственное, стройная')
+    assert c.bio_looks_glued(glued + ' Любит кофе.', params, 'Ию')
+    nice = c.template_card_bio(params, 'Ию')
+    assert not c.bio_looks_glued(nice, params, 'Ию')
+    assert 'тайная возлюбленная' in nice and 'реалистичная' not in nice
+    assert '_spawn_background(_startup_fix_glued_bios())' in MAIN
+    assert 'bio = nice_bio or template_card_bio(params, display_name)' in MAIN

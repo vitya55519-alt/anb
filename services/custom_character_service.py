@@ -523,6 +523,64 @@ _BIO_SYSTEM = (
 )
 
 
+_BIO_TEMPER = {
+    'temper_gentle': 'Нежная и заботливая — умеет согреть одним сообщением',
+    'temper_bold': 'Дерзкая и страстная — сама задаёт правила игры',
+    'temper_playful': 'Игривая хулиганка — дразнит так, что не оторваться',
+    'temper_mystery': 'Загадочная и умная — каждое её слово с двойным дном',
+    'temper_shy': 'Скромная и застенчивая — краснеет от комплиментов, но тянется ближе',
+    'temper_naughty': 'Откровенная и раскованная — с ней любой разговор становится горячим',
+}
+_BIO_PROF = {
+    'prof_model': 'Днём — модель на съёмках', 'prof_student': 'Днём — студентка с конспектами',
+    'prof_trainer': 'Днём — фитнес-тренер в зале', 'prof_artist': 'Днём — артистка на сцене',
+    'prof_business': 'Днём — бизнес-леди на совещаниях',
+}
+_BIO_ROLE = {
+    'role_girlfriend': 'а вечером — твоя девушка, которая ждёт твоих сообщений.',
+    'role_friends': 'а вечером — подруга, с которой давно всё не по-дружески.',
+    'role_ex': 'а вечером — бывшая, которая так и не смогла тебя забыть.',
+    'role_secret': 'а вечером — твоя тайная возлюбленная, о которой никто не должен знать.',
+}
+_BIO_MARITAL = {
+    'mar_boyfriend': 'У неё есть парень — и тем слаще ваши тайные переписки.',
+    'mar_married': 'Она замужем, и каждое её сообщение тебе — маленькое запретное приключение.',
+    'mar_divorced': 'После развода она снова учится доверять — и, кажется, начала с тебя.',
+    'mar_open': 'Она в свободных отношениях и не скрывает, что ей интересен ты.',
+}
+
+
+def template_card_bio(params: dict, display_name: str) -> str:
+    """V3.59.4: a hand-written storefront line from the choices — what the
+    card shows when the chat model is unavailable (never the glued labels)."""
+    name = display_name or 'Она'
+    p = {k: str(v) for k, v in (params or {}).items()}
+    first = _BIO_TEMPER.get(p.get('temperament', ''), 'Красивая и загадочная')
+    parts = [f'{name}. {first}.']
+    prof, role = _BIO_PROF.get(p.get('profession', '')), _BIO_ROLE.get(p.get('role', ''))
+    if prof and role:
+        parts.append(f'{prof}, {role}')
+    elif role:
+        parts.append(role[0].upper() + role[1:].replace('а вечером — ', ''))
+    marital = _BIO_MARITAL.get(p.get('marital', ''))
+    if marital:
+        parts.append(marital)
+    return ' '.join(parts)
+
+
+def legacy_glued_bio(params: dict, display_name: str) -> str:
+    """The pre-V3.59.4 storefront bio (option labels glued together) — used to
+    spot cards that still carry it."""
+    keys = ('style', 'age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes', 'temperament', 'profession', 'role')
+    bits = [OPTION_LABELS[str(params[k])] for k in keys if k in params and str(params[k]) in OPTION_LABELS]
+    return f'{display_name} — {", ".join(bits).lower()}.' if bits else ''
+
+
+def bio_looks_glued(bio: str, params: dict, display_name: str) -> bool:
+    glued = legacy_glued_bio(params, display_name)
+    return bool(glued) and (bio or '').strip().startswith(glued)
+
+
 async def write_card_bio(params: dict, display_name: str) -> str | None:
     """V3.59.4: a pretty storefront description from the constructor choices.
 
@@ -549,9 +607,11 @@ async def write_card_bio(params: dict, display_name: str) -> str | None:
         )
         text = (result.text or '').strip().strip('«»"').strip()
         if len(text) < 40:
+            logger.warning('constructor bio too short provider=%s len=%d', getattr(result, 'provider', ''), len(text))
             return None
         return text[:400]
     except Exception:
+        logger.exception('constructor bio generation failed')
         return None
 
 
