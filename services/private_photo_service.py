@@ -40,6 +40,8 @@ from config import (
     SPICYAPI_BASE_URL,
     SPICYAPI_IMAGE_MODEL,
     SPICYAPI_T2I_MODEL,
+    SPICYAPI_RESOLUTION,
+    SPICYAPI_ENABLE_THINKING,
     SPICYAPI_IMAGE_TIMEOUT,
     SPICYAPI_ESTIMATED_COST_USD,
     CHARACTER_ID,
@@ -533,7 +535,8 @@ async def _spicyapi_call(method: str, path: str, headers: dict = None, **kwargs)
         ) as resp:
             body = await resp.json()
             logger.info(f"SpicyAPI {method} {path}: status={resp.status}, body={body}")
-            if body.get("code") != 200:
+            # createTask answers 202 (accepted); recordInfo answers 200.
+            if body.get("code") not in (200, 201, 202):
                 raise RuntimeError(f'SpicyAPI error: {body.get("code")} {body.get("msg")} — full: {body}')
             return body.get("data", {})
 
@@ -548,6 +551,18 @@ SPICYAPI_BREAKER_COOLDOWN_SECONDS = 900
 # Keyed per engine leg (model + edit/t2i): a broken reference-edit leg must not
 # take the reference-free «Наедине» t2i leg down with it.
 _spicy_fail_streak: Dict[str, int] = {}
+# V3.58.2: the real reason of the last miss («Отказы» used to say only
+# «empty_result», hiding a refused model id for weeks).
+_spicy_last_error: str = ''
+
+
+def spicyapi_last_error() -> str:
+    return _spicy_last_error or 'empty_result'
+
+
+def _spicy_note_error(reason: str) -> None:
+    global _spicy_last_error
+    _spicy_last_error = str(reason)[:120]
 _spicy_skip_until: Dict[str, float] = {}
 
 
@@ -605,11 +620,16 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
         return (None, None) if return_url else None
     result: Optional[bytes] = None
     result_url: Optional[str] = None
+    _spicy_note_error('')
     try:
         input_block: Dict[str, Any] = {
             "prompt": prompt,
-            "size": "1728*2304",  # 3:4 portrait
+            # V3.58.2: Seedream 5.0 Pro schema — an unknown field (the old
+            # "size") is a 400, so only documented fields are sent.
+            "aspect_ratio": "3:4",  # portrait
+            "resolution": SPICYAPI_RESOLUTION,
             "output_format": "jpeg",
+            "enable_thinking": SPICYAPI_ENABLE_THINKING,
         }
         if image_urls:
             input_block["image_urls"] = image_urls
@@ -623,6 +643,7 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
         task_id = task_data.get("taskId")
         if not task_id:
             logger.error(f"No taskId in SpicyAPI response: {task_data}")
+            _spicy_note_error('no_task_id')
             return (None, None) if return_url else None
         logger.info(f"SpicyAPI task: {task_id}")
         # Money is committed the moment the task is accepted — ledger it before
@@ -650,11 +671,15 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
                 break
             elif state in ("failed", "expired", "canceled"):
                 logger.error(f"SpicyAPI task {state}: {task_info.get('errorMessage')}")
+                _spicy_note_error(f"{state}: {task_info.get('errorCode') or task_info.get('errorMessage')}")
                 break
         if result is None:
             logger.error(f"SpicyAPI no image (timeout or empty): {task_id}")
+            if not _spicy_last_error.startswith(('failed', 'expired', 'canceled')):
+                _spicy_note_error('timeout_or_empty')
     except Exception as e:
         logger.exception(f"SpicyAPI failed: {e}")
+        _spicy_note_error(e)
     # A task that reached createTask is billed regardless of the outcome.
     spend_service.record_image_spend(
         'spicyapi', scene, SPICYAPI_ESTIMATED_COST_USD,

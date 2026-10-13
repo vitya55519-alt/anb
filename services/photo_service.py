@@ -2530,7 +2530,7 @@ async def _run_spicy_set(
     raises: None means «this engine produced nothing» and the caller walks to
     fal. The spend is ledgered inside `_spicyapi_render` on the createTask event.
     """
-    from services.private_photo_service import _spicyapi_render, spicyapi_breaker_open
+    from services.private_photo_service import _spicyapi_render, spicyapi_breaker_open, spicyapi_last_error
     refs = [f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0',
             f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=1']
     out: list[GeneratedPhoto] = []
@@ -2566,7 +2566,7 @@ async def _run_spicy_set(
             raise PhotoGenerationError('spicyapi', 'breaker_open')
         frame_started = time.monotonic()
         data, frame_url = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, frame_refs, scene=f'scene:{request.scene}', return_url=True)
-        record_provider('spicyapi', bool(data), None if data else 'empty_result')
+        record_provider('spicyapi', bool(data), None if data else spicyapi_last_error())
         if not data:
             track_event(ensure_user(telegram_id), 'photo_frame_failed', metadata={'scene': request.scene, 'frame': i + 1, 'provider': 'spicyapi', 'reason': 'empty_result'})
             if out:
