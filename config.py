@@ -339,6 +339,10 @@ REPLICATE_VIDEO_TIMEOUT_SECONDS = max(120, min(900, int(os.getenv("REPLICATE_VID
 PLATEGA_MERCHANT_ID = os.getenv("PLATEGA_MERCHANT_ID", "").strip()
 PLATEGA_API_KEY = os.getenv("PLATEGA_API_KEY", "").strip()
 PLATEGA_ENABLED = bool(PLATEGA_MERCHANT_ID and PLATEGA_API_KEY)
+# V3.58.0: secret for the owner-only /diagnostics and /platega/check pages
+# (open them as /platega/check?key=<this value>). Empty = only admins coming
+# from the Mini App can open them.
+DIAGNOSTICS_KEY = os.getenv("DIAGNOSTICS_KEY", "").strip()
 # docs.platega.io «Начало работы»: базовый URL — https://app.platega.io/
 # (verified live: POST /v2/transaction/process returns the payment link,
 # GET /transaction/{id} the status). Override only if Platega moves.
