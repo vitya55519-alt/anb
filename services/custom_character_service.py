@@ -485,7 +485,19 @@ RELATIONSHIP_STORY: dict[str, str] = {
 }
 
 
-_PARTNER_NAMES = ('Андрей', 'Максим', 'Денис', 'Артём', 'Игорь', 'Сергей', 'Павел', 'Кирилл', 'Роман', 'Олег')
+# V3.60.4: ten names hashed over 18 girls gave five of them the same «Денис».
+# Every built-in girl now has her own man (Вероника keeps Денис — users already
+# know him); custom girls draw from a wider pool.
+_PARTNER_BY_CHARACTER = {
+    'anna_01': 'Андрей', 'alena_01': 'Павел', 'alisa_01': 'Глеб', 'darina_01': 'Кирилл',
+    'erika_01': 'Роман', 'eva_01': 'Сергей', 'kate_01': 'Марк', 'kristina_01': 'Максим',
+    'maria_01': 'Артём', 'mila_01': 'Илья', 'romina_01': 'Тимур', 'sasha_01': 'Никита',
+    'sonya_01': 'Егор', 'veronika_01': 'Денис', 'vika_01': 'Олег', 'violetta_01': 'Игорь',
+    'zlata_01': 'Влад', 'rex_01': 'Антон',
+}
+_PARTNER_NAMES = ('Андрей', 'Максим', 'Денис', 'Артём', 'Игорь', 'Сергей', 'Павел', 'Кирилл', 'Роман', 'Олег',
+                  'Глеб', 'Марк', 'Илья', 'Тимур', 'Никита', 'Егор', 'Влад', 'Антон', 'Даниил', 'Михаил',
+                  'Александр', 'Дмитрий', 'Евгений', 'Константин', 'Вадим', 'Руслан', 'Станислав', 'Георгий')
 
 
 def relationship_line(status: str, character_id: str) -> str:
@@ -494,7 +506,7 @@ def relationship_line(status: str, character_id: str) -> str:
     import zlib
     text = RELATIONSHIP_STORY.get(status or '', '')
     if '{partner}' in text:
-        name = _PARTNER_NAMES[zlib.crc32((character_id or '').encode()) % len(_PARTNER_NAMES)]
+        name = _PARTNER_BY_CHARACTER.get(character_id or '') or _PARTNER_NAMES[zlib.crc32((character_id or '').encode()) % len(_PARTNER_NAMES)]
         text = text.replace('{partner}', name)
     return text
 
