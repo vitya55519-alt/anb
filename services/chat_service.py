@@ -228,13 +228,15 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         from services.db import SessionLocal
         from models.relationship_models import UserCharacterRelationship
         with SessionLocal() as session:
-            persona_style = session.scalar(
-                select(UserCharacterRelationship.persona_style)
+            style_row = session.execute(
+                select(UserCharacterRelationship.persona_style, UserCharacterRelationship.marital_status)
                 .where(
                     UserCharacterRelationship.user_id == db_user_id,
                     UserCharacterRelationship.character_id == character_id,
                 )
-            )
+            ).first()
+        persona_style = style_row[0] if style_row else None
+        marital_status = style_row[1] if style_row else None
         if persona_style == 'tender':
             style_line = (
                 'НЕЖНЫЙ СТИЛЬ (его выбор): будь мягче и ласковее — тёплые слова, '
@@ -247,6 +249,14 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                 'дразни, наглые комплименты, чувственное напряжение в каждой '
                 'реплике; графических анатомических описаний избегай.'
             )
+        # V3.59.5: her relationship status the user picked on her page (wins
+        # over the constructor's choice, which already rides in the persona).
+        if marital_status:
+            from services.custom_character_service import RELATIONSHIP_STORY
+            marital_line = RELATIONSHIP_STORY.get(marital_status)
+            if marital_line:
+                style_line = (style_line + '\n' if style_line else '') + (
+                    'СЕМЕЙНОЕ ПОЛОЖЕНИЕ (выбор пользователя, важнее описания выше): ' + marital_line)
     except Exception:
         style_line = ''
     system = build_system_prompt(

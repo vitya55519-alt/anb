@@ -11016,6 +11016,61 @@ async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'reply': reaction, 'user_photo_url': url})
 
 
+async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
+    # V3.59.5: the user picks her relationship status (замужем / есть парень /
+    # в разводе / …) on her page — any girl, built-in or custom. Stored per
+    # user<->character; 'default' clears it. Bends the chat voice.
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))
+    status = str(body.get('status', '')).strip()
+    from services.custom_character_service import RELATIONSHIP_STORY
+    if not character_id or (status != 'default' and status not in RELATIONSHIP_STORY):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+
+    def _save():
+        if is_custom_character(character_id):
+            if not get_custom_character_by_id(character_id):
+                return 'unknown_character'
+        elif not get_card(character_id):
+            return 'unknown_character'
+        if not has_accepted(telegram_id):
+            return 'consent'
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        from models.relationship_models import UserCharacterRelationship
+        with SessionLocal() as session:
+            row = session.scalar(select(UserCharacterRelationship).where(
+                UserCharacterRelationship.user_id == uid,
+                UserCharacterRelationship.character_id == character_id,
+            ))
+            if row is None:
+                row = UserCharacterRelationship(user_id=uid, character_id=character_id, path_axis=0.0)
+                session.add(row)
+            row.marital_status = None if status == 'default' else status
+            session.commit()
+        track_event(uid, 'webapp_marital', metadata={'character_id': character_id, 'status': status})
+        return None
+
+    try:
+        blocked = await asyncio.to_thread(_save)
+    except Exception:
+        logger.exception('marital save failed user=%s character=%s', telegram_id, character_id)
+        return web.json_response({'ok': False, 'error': 'save'}, status=500)
+    if blocked:
+        return web.json_response({'ok': False, 'error': blocked}, status=400 if blocked == 'unknown_character' else 403)
+    return web.json_response({'ok': True, 'status': None if status == 'default' else status})
+
+
 async def _webapp_api_chat_persona(request: web.Request) -> web.Response:
     # V3.55.6: the user picks her manner for this premium character — tender or
     # passionate. Stored on the relationship row; colors chat tone (bot + app)
@@ -12627,6 +12682,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/chat/voice', _webapp_api_chat_voice)
     app.router.add_post('/webapp/api/chat/photo', _webapp_api_chat_photo)
     app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
+    app.router.add_post('/webapp/api/chat/marital', _webapp_api_chat_marital)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)
     app.router.add_post('/webapp/api/chat/media', _webapp_api_chat_media)

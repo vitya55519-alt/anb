@@ -71,3 +71,15 @@ def test_glued_bios_are_detected_and_replaced():
     assert 'тайная возлюбленная' in nice and 'реалистичная' not in nice
     assert '_spawn_background(_startup_fix_glued_bios())' in MAIN
     assert 'bio = nice_bio or template_card_bio(params, display_name)' in MAIN
+
+
+def test_marital_status_for_existing_girls():
+    assert "app.router.add_post('/webapp/api/chat/marital', _webapp_api_chat_marital)" in MAIN
+    assert "row.marital_status = None if status == 'default' else status" in MAIN
+    assert 'function renderMarital(c)' in SPA and "'/webapp/api/chat/marital?init_data='" in SPA
+    chat = (ROOT / 'services' / 'chat_service.py').read_text(encoding='utf-8')
+    assert "'СЕМЕЙНОЕ ПОЛОЖЕНИЕ (выбор пользователя, важнее описания выше): ' + marital_line" in chat
+    websvc = (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')
+    assert "'marital': maritals.get(card.character_id)," in websvc
+    from models.relationship_models import UserCharacterRelationship
+    assert hasattr(UserCharacterRelationship, 'marital_status')

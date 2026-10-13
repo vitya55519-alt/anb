@@ -33,6 +33,10 @@ class UserCharacterRelationship(Base):
     # 'passionate' / None (not chosen yet). Colors the chat tone and picks the
     # photo expression pool. Auto-migrated by services/db.py.
     persona_style: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # V3.59.5: the user's pick of her relationship status for this game
+    # (mar_single / mar_boyfriend / mar_married / mar_divorced / mar_open, None
+    # = her default). Bends the chat voice. Auto-migrated by services/db.py.
+    marital_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     stage: Mapped[str] = mapped_column(String(32), default="stranger", nullable=False)
 
     first_interaction_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
