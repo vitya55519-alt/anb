@@ -111,3 +111,21 @@ def test_marital_status_shows_in_photos_and_story():
     assert ps.marital_photo_detail(990078, 'anna_01') == ''
     assert MAIN.count('_with_marital_ring(prompt,') == 3
     assert "memory_key='marital:change'" in MAIN
+
+
+def test_husband_is_present_and_photos_follow_user_clock():
+    from services import custom_character_service as c
+    line = c.relationship_line('mar_married', 'veronika_01')
+    assert '{partner}' not in line and 'почти в каждом втором' in line
+    assert line == c.relationship_line('mar_married', 'veronika_01')
+    assert 'одинокой' in line
+    from services import photo_service as ps
+    assert 'time_of_day = request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL)' in (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
+    from services.db import init_db
+    init_db()
+    from services.user_service import ensure_user, update_user_settings
+    ensure_user(990099)
+    update_user_settings(990099, timezone='Pacific/Kiritimati')
+    assert ps._local_time_light(990099)
+    assert "Intl.DateTimeFormat().resolvedOptions().timeZone" in SPA
+    assert "browser_tz = (request.query.get('tz') or '').strip()[:64]" in MAIN

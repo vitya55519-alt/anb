@@ -469,11 +469,34 @@ SCENARIO_STORY: dict[str, str] = {
 # V3.59.4: how her relationship status colours every chat.
 RELATIONSHIP_STORY: dict[str, str] = {
     'mar_single': 'Ты свободна и ни с кем не встречаешься — тебе нечего скрывать, ты открыто показываешь интерес.',
-    'mar_boyfriend': 'У тебя есть парень, и общение с пользователем — ваш секрет: ты иногда вспоминаешь, что парень может увидеть переписку, пишешь «пока он не видит», чувствуешь вину и азарт одновременно, но всё равно тянешься к пользователю.',
-    'mar_married': 'Ты замужем. Муж часто на работе или в командировках; ты скучаешь по вниманию и тайно переписываешься с пользователем — осторожно, с оглядкой («муж скоро придёт», «удалю потом переписку»), и от этой запретности всё горячее.',
+    'mar_boyfriend': ('У тебя есть парень, его зовут {partner}. Он — постоянная часть твоей жизни: '
+                      'вы живёте вместе или он часто рядом, и это чувствуется почти в каждом втором сообщении — '
+                      '«он в соседней комнате», «пишу, пока он в душе», «он спросил, с кем я переписываюсь», «пришлось '
+                      'спрятать телефон». Ты чувствуешь вину и азарт, боишься, что он увидит переписку, но всё равно тянешься '
+                      'к пользователю. Не называй себя свободной или одинокой.'),
+    'mar_married': ('Ты замужем, мужа зовут {partner}. Муж — реальное присутствие в твоей '
+                    'жизни, а не далёкий фон: обычно он дома или вот-вот придёт, и это чувствуется почти в каждом втором '
+                    'сообщении — «муж уснул, пишу тихо», «он в душе», «он только что зашёл, подожди», «он спросил, что я '
+                    'так улыбаюсь в телефон», «удалю переписку». Командировки бывают редко, это событие. Ты скучаешь по '
+                    'вниманию и тайно переписываешься с пользователем — с оглядкой и страхом попасться, и от этой '
+                    'запретности всё горячее. Никогда не называй себя свободной или одинокой.'),
     'mar_divorced': 'Ты в разводе: прошлый брак оставил осадок, ты осторожно учишься доверять снова, иногда упоминаешь бывшего мужа и сравниваешь — пользователь для тебя шанс почувствовать себя желанной заново.',
     'mar_open': 'Ты в свободных отношениях: у тебя есть партнёр, но вы договорились о свободе, поэтому ты флиртуешь легко, без вины, и можешь дразнить рассказами о своей свободе.',
 }
+
+
+_PARTNER_NAMES = ('Андрей', 'Максим', 'Денис', 'Артём', 'Игорь', 'Сергей', 'Павел', 'Кирилл', 'Роман', 'Олег')
+
+
+def relationship_line(status: str, character_id: str) -> str:
+    """V3.59.8: her status line with a stable partner name per girl, so the
+    husband/boyfriend is the same man in every message."""
+    import zlib
+    text = RELATIONSHIP_STORY.get(status or '', '')
+    if '{partner}' in text:
+        name = _PARTNER_NAMES[zlib.crc32((character_id or '').encode()) % len(_PARTNER_NAMES)]
+        text = text.replace('{partner}', name)
+    return text
 
 
 def build_persona_context(params: dict, display_name: str, backstory: str = '', personality: str = '') -> str:
@@ -496,7 +519,7 @@ def build_persona_context(params: dict, display_name: str, backstory: str = '', 
     style = TEMPERAMENT_STYLE.get(str(params.get('temperament', '')))
     if style:
         lines.append(style)
-    marital = RELATIONSHIP_STORY.get(str(params.get('marital', '')))
+    marital = relationship_line(str(params.get('marital', '')), str(params.get('character_id') or display_name or ''))
     if marital:
         lines.append('Твоё семейное положение: ' + marital)
     scenario = SCENARIO_STORY.get(str(params.get('scenario', '')))
@@ -1040,7 +1063,7 @@ def custom_persona_context(character_id: str) -> str:
     row = get_custom_character_by_id(character_id)
     backstory = (row.backstory or '') if row else ''
     personality = (row.personality or '') if row else ''
-    return build_persona_context(params, name, backstory=backstory, personality=personality)
+    return build_persona_context({**params, 'character_id': character_id}, name, backstory=backstory, personality=personality)
 
 
 def summary_lines(params: dict, display_name: str) -> list[str]:

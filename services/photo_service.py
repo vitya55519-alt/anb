@@ -1737,6 +1737,29 @@ MARITAL_PHOTO_DETAIL = {
 }
 
 
+def _local_time_light(telegram_id: int) -> str:
+    """V3.59.8: the light of the user's own clock — a midnight request used to
+    come back as a sunny morning shot."""
+    try:
+        from zoneinfo import ZoneInfo
+        from services.user_service import get_user
+        user = get_user(telegram_id)
+        if not user or not user.timezone:
+            return ''
+        hour = datetime.now(ZoneInfo(user.timezone)).hour
+    except Exception:
+        return ''
+    if 5 <= hour < 11:
+        return 'soft morning light'
+    if 11 <= hour < 17:
+        return 'bright daytime light'
+    if 17 <= hour < 20:
+        return 'warm golden-hour evening light'
+    if 20 <= hour < 23:
+        return 'evening: cozy warm indoor lamp light, already dark outside the window'
+    return 'late night: dim warm bedside or lamp light, deep dark night outside the window, no daylight anywhere'
+
+
 def marital_status_for(telegram_id: int, character_id: str) -> str:
     """V3.59.7: the user's pick for this girl, else a custom girl's constructor
     choice, else '' (single / no detail)."""
@@ -1817,7 +1840,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
             hair_color = current_hair_color()
     makeup = request.makeup or random.choice(MAKEUP_POOL)
     accessory = request.accessory or random.choice(ACCESSORY_POOL)
-    time_of_day = request.time_of_day or random.choice(DAYLIGHT_POOL)
+    time_of_day = request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL)
     underwear_color = random.choice(UNDERWEAR_COLOR_POOL)
     underwear_style = random.choice(UNDERWEAR_STYLE_POOL)
     # V3.31.7: variety rotations. A chat-mood expression still wins over the

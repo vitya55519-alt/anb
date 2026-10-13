@@ -238,6 +238,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             ).first()
         persona_style = style_row[0] if style_row else None
         marital_status = style_row[1] if style_row else None
+        if not marital_status:
+            # V3.59.8: a custom girl's constructor choice gets the same reminder.
+            from services.custom_character_service import is_custom_character, custom_character_params
+            if is_custom_character(character_id):
+                marital_status = str(custom_character_params(character_id)[0].get('marital', '') or '') or None
         if persona_style == 'tender':
             style_line = (
                 'НЕЖНЫЙ СТИЛЬ (его выбор): будь мягче и ласковее — тёплые слова, '
@@ -253,8 +258,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         # V3.59.5: her relationship status the user picked on her page (wins
         # over the constructor's choice, which already rides in the persona).
         if marital_status:
-            from services.custom_character_service import RELATIONSHIP_STORY
-            marital_line = RELATIONSHIP_STORY.get(marital_status)
+            from services.custom_character_service import relationship_line
+            marital_line = relationship_line(marital_status, character_id)
             if marital_line:
                 style_line = (style_line + '\n' if style_line else '') + (
                     'СЕМЕЙНОЕ ПОЛОЖЕНИЕ (выбор пользователя, важнее описания выше): ' + marital_line)

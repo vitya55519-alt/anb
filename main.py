@@ -9811,8 +9811,22 @@ async def _webapp_api_me(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
     # V3.57.2: the boot call — ensure_user may INSERT and api_me reads several
     # tables; off the loop so one user's cold start never stalls the others.
+    browser_tz = (request.query.get('tz') or '').strip()[:64]
+
     def _boot():
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        # V3.59.8: the phone's real time zone (the language guess put everyone
+        # on Moscow) — photos and greetings follow the user's own clock.
+        if browser_tz:
+            try:
+                from zoneinfo import ZoneInfo
+                ZoneInfo(browser_tz)
+                from services.user_service import get_user as _gu, update_user_settings as _uus
+                u = _gu(telegram_id)
+                if u is not None and u.timezone != browser_tz:
+                    _uus(telegram_id, timezone=browser_tz)
+            except Exception:
+                pass
         track_event(uid, 'webapp_opened')
         return webapp_service.api_me(telegram_id)
 
