@@ -46,7 +46,7 @@ from config import (
 )
 # V3.45.0: фото «наедине» и «косплей» — монетизация через персики
 from config import (
-    PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST,
+    PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST, CHAT_PHOTO_PEACH_COST,
     HOT_PASS_DAY_PEACHES, HOT_PASS_WEEK_PEACHES, HOT_PASS_MONTH_PEACHES,
     VOICE_PHOTO_PEACH_COST,
 )
@@ -10834,6 +10834,27 @@ async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str
         return None
 
 
+CHAT_PHOTO_BLOCK_TEXT = {
+    'peaches': ('ой, хочу прислать тебе фото, но персики закончились 🙈 одно фото — {price} 🍑. '
+                'пополни, и я сразу скину 😘'),
+    'stage': ('такое фото пока рано 😏 давай ещё пообщаемся — чем ближе мы, тем больше я тебе покажу. '
+              'а обычное селфи могу прямо сейчас, попроси «пришли селфи»'),
+    'adult': 'для такого фото подтверди, что тебе 18+, — и я покажу 🔥',
+    'failed': 'ой, фото не загрузилось 😔 попробуй ещё раз — персики не списались',
+}
+
+
+def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | None) -> dict:
+    text = CHAT_PHOTO_BLOCK_TEXT[reason].format(price=CHAT_PHOTO_PEACH_COST)
+    try:
+        save_message(uid, character_id, 'assistant', text)
+    except Exception:
+        logger.warning('chat photo block message not saved uid=%s', uid)
+    payload = {'ok': True, 'reply': text, 'photo_block': reason, 'photo_price': CHAT_PHOTO_PEACH_COST}
+    payload.update(extra or {})
+    return payload
+
+
 async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str,
                             text: str, extra: dict | None = None) -> web.Response:
     # V3.35.0: a message typed in the app goes through the exact pipeline the
@@ -10854,14 +10875,26 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         # photo button enforces, deliver a real photo into the shared dialog.
         photo_request = _contextualize_vague_photo(telegram_id, text, parse_photo_request(text))
         if not photo_request:
-            return uid, None
+            return uid, None, None
         scene = photo_request.scene if photo_request.scene in PHOTO_MENU_ORDER else 'selfie'
         stage_ok = scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id))
         adult_ok = not (requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id))
-        pay_ok = telegram_id in ADMIN_TELEGRAM_IDS or get_photo_credits(telegram_id) >= 1
-        return uid, scene if (stage_ok and adult_ok and pay_ok) else None
+        pay_ok = telegram_id in ADMIN_TELEGRAM_IDS or get_photo_credits(telegram_id) >= CHAT_PHOTO_PEACH_COST
+        if not adult_ok:
+            return uid, None, 'adult'
+        if not stage_ok:
+            return uid, None, 'stage'
+        if not pay_ok:
+            return uid, None, 'peaches'
+        return uid, scene, None
 
-    uid, photo_scene = await asyncio.to_thread(_prelude)
+    uid, photo_scene, photo_block = await asyncio.to_thread(_prelude)
+    # V3.60.3: a blocked or failed photo request used to fall through to the
+    # model, which happily wrote «лови 😏» with nothing attached. Now she says
+    # plainly what is in the way and offers the way forward.
+    if photo_block:
+        return web.json_response(await asyncio.to_thread(
+            _chat_photo_blocked, uid, character_id, photo_block, extra))
     if photo_scene:
         try:
             data, mime, ext = await _webapp_media_photo(telegram_id, character_id, photo_scene)
@@ -10878,7 +10911,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                 webapp_service.record_generation(telegram_id, 'photo', character_id, text, filename)
                 save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
                 if telegram_id not in ADMIN_TELEGRAM_IDS:
-                    consume_photo_credit(telegram_id)
+                    spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST)
                 # V3.53.0: after this photo counts, tell the SPA if a gallery set
                 # (50 photos of her) just completed so it can celebrate.
                 from services.collection_service import gallery_set_progress, note_gallery_set
@@ -10889,6 +10922,8 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                         **(extra or {})}
 
             return web.json_response(await asyncio.to_thread(_deliver))
+        return web.json_response(await asyncio.to_thread(
+            _chat_photo_blocked, uid, character_id, 'failed', extra))
     try:
         answer = await anna_reply(
             telegram_id, user_info.get('first_name') or 'ты', text,

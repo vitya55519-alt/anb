@@ -448,6 +448,8 @@
   .mchip { width: 100%; box-sizing: border-box; text-align: left; background: var(--card2); border: 1px solid rgba(255,255,255,.12); color: var(--text); font-size: 14px; padding: 10px 14px; border-radius: 14px; cursor: pointer; white-space: normal; overflow-wrap: anywhere; }
   .mlbl { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .mprice { font-size: 12px; font-weight: 500; opacity: .6; white-space: nowrap; }
+  .chat-offer { margin: 4px 0 10px; display: flex; }
+  .chat-offer .mchip { width: auto; }
   .mchip.on { background: linear-gradient(90deg, #ff2d78, #b03cff); border-color: transparent; font-weight: 600; }
   .charblock { margin: 10px 16px; padding: 12px 14px; background: var(--card); border-radius: 14px; line-height: 1.45; white-space: pre-wrap; }
   .charblock .lbl3 { color: var(--accent); font-size: 12px; letter-spacing: .08em; margin-bottom: 6px; }
@@ -2330,6 +2332,10 @@ function renderChatReply(j) {
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'voice', media_url: j.voice_url, ts: null }));
   } else {
     box.insertAdjacentHTML('beforeend', chatBubble('bot', j.reply, null));
+  }
+  // V3.60.3: no peaches for the photo she promised — one tap to the shop.
+  if (j.photo_block === 'peaches') {
+    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="showTab('shop')">🍑 Пополнить персики · фото ${esc(String(Number(j.photo_price) || 2))} 🍑</button></div>`);
   }
   box.scrollTop = box.scrollHeight;
   // V3.53.0: a photo-on-request can complete a 50-photo gallery set.
