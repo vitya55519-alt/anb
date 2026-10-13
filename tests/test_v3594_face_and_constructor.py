@@ -80,7 +80,7 @@ def test_marital_status_for_existing_girls():
     assert "if not spend_peaches(telegram_id, MARITAL_CHANGE_PEACHES):" in MAIN
     assert "return None  # same pick again: free, nothing changes" in MAIN
     assert "if (r.status === 402) { c.marital = prev; renderMarital(c); toast(L.marital_no_peaches); showTab('shop'); return; }" in SPA
-    assert '.mchips { display: flex; flex-wrap: nowrap;' in SPA
+    assert '.mchips { display: flex; flex-direction: column;' in SPA  # V3.59.9: column, one chip per line
     from config import MARITAL_CHANGE_PEACHES
     assert MARITAL_CHANGE_PEACHES == 5
     assert 'function renderMarital(c)' in SPA and "'/webapp/api/chat/marital?init_data='" in SPA

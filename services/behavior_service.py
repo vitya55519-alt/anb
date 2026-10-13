@@ -34,7 +34,7 @@ def choose_behavior(text: str, previous_user_text: str = "") -> Behavior:
     text = text or ""
     previous_user_text = previous_user_text or ""
     if META.search(text):
-        return Behavior("meta", 2, "none", "честно и коротко; без лекции про ИИ и без слова «виртуалка»")
+        return Behavior("meta", 2, "none", "если всерьёз спрашивает, ИИ ли ты — честно, тепло и коротко в своём голосе (я ИИ-персонаж, но с тобой по-настоящему), без лекций; потом продолжай разговор")
 
     if CODE_TASK.search(text):
         return Behavior(

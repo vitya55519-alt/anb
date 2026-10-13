@@ -66,6 +66,14 @@ def _time_context(telegram_id: int) -> str:
 
 
 META = re.compile(r"\b(ты настоящ|ты реальн|ты человек|ты бот|ты ии|ты ai|искусственн|виртуальн)\b", re.I)
+# V3.59.9: «я ж не реальный человек» in the middle of a story broke the game —
+# any reply where she steps out of her life unasked gets rewritten in character.
+# A sincere «ты бот?» (META) still gets an honest, warm answer.
+BREAKS_CHARACTER = re.compile(
+    r"\b(?:виртуалк\w*|искусственн\w* интеллект\w*|языков\w* модел\w*|нейросет\w*|"
+    r"я\s+(?:же\s+|ж\s+|всего лишь\s+|просто\s+|ведь\s+)?(?:бот|ai|ии|программа|персонаж|виртуальн\w*|вымышленн\w*|ненастоящ\w*|не настоящ\w*|не реальн\w*|нереальн\w*)|"
+    r"(?:не|ненастоящ\w*|нереальн\w*)\s+(?:(?:реальн|настоящ|жив)\w*\s+)?человек)\b", re.I
+)
 TECH = re.compile(r"\b(напиши код|код на|python|питон|скрипт|калькулятор|объясни|переведи|посчитай|реши)\b", re.I)
 ASSISTANTY = re.compile(
     r"(чем (?:я )?могу помочь|что хочешь от [«\"]?виртуал|готов[а-я ]* к (?:проверке|испытанию)|"
@@ -87,7 +95,7 @@ def _needs_rewrite(user_text: str, answer: str) -> bool:
         return True
     if answer.count("?") > 2:  # tolerate more questions in natural conversation
         return True
-    if not META.search(user_text) and re.search(r"\b(виртуалк|искусственн(?:ый|ая) интеллект|я (?:бот|AI|ИИ))\b", answer, re.I):
+    if not META.search(user_text) and BREAKS_CHARACTER.search(answer):
         return True
     if not TECH.search(user_text) and len(answer) > 800:  # allow longer natural responses
         return True
@@ -101,7 +109,9 @@ def _editor_instructions() -> str:
         "[Редактор] Перепиши как живой человек в личке. Сохрани смысл, но убирай структуру AI-ответа. "
         "Пиши как в переписке: коротко, небрежно, с эмоциями. Можно сленг, можно с середины мысли. "
         "Убери «Конечно», «Разумеется», списки, нумерацию и лишние вопросы. "
-        "Если спрошено про AI/реальность — коротко скажи что нет, но без лекций."
+        "Она живёт своей жизнью: сама не говорит, что она бот, ИИ или «не реальная». "
+        "Если в ответе она без вопроса выходит из роли — перепиши так, чтобы она ответила изнутри своей жизни. "
+        "Если он прямо спросил, ИИ ли она, — оставь честное «да», но тепло и коротко, в её голосе."
     )
 
 
