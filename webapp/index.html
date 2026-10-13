@@ -4205,7 +4205,9 @@ async function withdrawPartner() {
 async function loadMe() {
   const chip = document.getElementById('userchip');
   try {
-    const r = await fetch('/webapp/api/me?init_data=' + encodeURIComponent(tg.initData || ''));
+    let _tz = '';
+    try { _tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+    const r = await fetch('/webapp/api/me?init_data=' + encodeURIComponent(tg.initData || '') + (_tz ? '&tz=' + encodeURIComponent(_tz) : ''));
     if (r.status === 401) {
       document.getElementById('profilebody').innerHTML = `${authErrHtml()}`;
       chip.textContent = '—'; return;
