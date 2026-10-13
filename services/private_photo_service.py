@@ -407,6 +407,18 @@ def activate_hot_pass(telegram_id: int, duration_days: int) -> datetime:
 # ─── Промпт-конструктор ────────────────────────────────────────────────────────
 
 
+# V3.60.8: the picked mood now drives the face too (it used to be a bare label).
+_MOOD_EXPRESSIONS = {
+    "playful": ("teasing", "wink", "tongue_out_playful", "laughing"),
+    "morning": ("sleepy_soft", "smile"),
+    "bold": ("confident", "biting_lip", "bedroom_eyes"),
+    "tender": ("smile", "shy", "blow_kiss"),
+    "passionate": ("desire", "bedroom_eyes", "pleasure", "breathless", "biting_lip"),
+    "shy": ("shy", "biting_lip"),
+    "confident": ("confident", "bedroom_eyes", "pouty_seductive"),
+}
+
+
 def _build_visual_identity_lock(character_id: str) -> str:
     """V3.45.26: delegate to the CANONICAL identity builder used by the regular
     photo pipeline, so «Наедине» renders the exact same figure as an ordinary
@@ -538,6 +550,13 @@ def build_private_photo_prompt(
     # V3.45.23: random pose + camera so consecutive photos never repeat.
     parts.append(f"POSE: {random.choice(PRIVATE_POSE_POOL)}.")
     parts.append(f"CAMERA: {random.choice(PRIVATE_CAMERA_POOL)}.")
+    
+    # V3.60.8: «Наедине» never had an EXPRESSION line — only a weak «Mood: …»
+    # (none at all for a random mood), so the girl came out stone-faced.
+    from services.photo_expression_service import expression_description, shuffled_private_sensual_keys
+    mood_faces = _MOOD_EXPRESSIONS.get(request.mood_id)
+    face_key = random.choice(mood_faces) if mood_faces else shuffled_private_sensual_keys()[0]
+    parts.append(expression_description(face_key, "she"))
     
     # Общие правила
     parts.append("High quality realistic smartphone-style photo, natural skin, detailed")

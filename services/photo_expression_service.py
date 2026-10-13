@@ -254,6 +254,18 @@ def shuffled_variety_keys() -> tuple[str, ...]:
     return tuple(keys)
 
 
+# V3.60.8: «у одной постоянно язык торчит» — three of the sensual faces show
+# the tongue, so a pack showed it on every second frame. A rotation now keeps
+# just one of them (picked at random), the rest of the pool stays.
+TONGUE_KEYS: frozenset[str] = frozenset({'desire', 'licking_lips', 'tongue_out_playful'})
+
+
+def _one_tongue(keys: list[str]) -> list[str]:
+    tongues = [k for k in keys if k in TONGUE_KEYS]
+    keep = random.choice(tongues) if tongues else None
+    return [k for k in keys if k not in TONGUE_KEYS or k == keep]
+
+
 def shuffled_sensual_variety_keys() -> tuple[str, ...]:
     """V3.51.3/V3.51.4: the default per-frame rotation for EVERY scene — desirous
     mimicry (tongue, bitten lip, smolder, pout) instead of the everyday tasteful
@@ -261,7 +273,7 @@ def shuffled_sensual_variety_keys() -> tuple[str, ...]:
     private ones."""
     keys = list(SENSUAL_KEYS)
     random.shuffle(keys)
-    return tuple(keys)
+    return tuple(_one_tongue(keys))
 
 
 def shuffled_private_sensual_keys() -> tuple[str, ...]:
@@ -269,7 +281,7 @@ def shuffled_private_sensual_keys() -> tuple[str, ...]:
     arousal faces up, dict.fromkeys keeps each key once after the shuffle."""
     keys = list(PRIVATE_SENSUAL_KEYS)
     random.shuffle(keys)
-    return tuple(dict.fromkeys(keys))
+    return tuple(_one_tongue(list(dict.fromkeys(keys))))
 
 
 def _tokens(text: str) -> list[str]:
