@@ -994,6 +994,8 @@ class PhotoRequest:
     customized: bool = False
     underwear_color: str = ''
     underwear_style: str = ''
+    # V3.59.7: a small in-frame hint of her relationship status (ring, his hoodie).
+    story_detail: str = ''
 
 
 class PhotoGenerationError(RuntimeError):
@@ -1719,6 +1721,54 @@ def _persona_style_is_tender(telegram_id: int, character_id: str) -> bool:
         return False
 
 
+# V3.59.7: the relationship status the user picked shows up as small details in
+# the frame — never the face or the figure. `always` rides every photo, `sometimes`
+# roughly every third one so the hint stays a hint.
+MARITAL_PHOTO_DETAIL = {
+    'mar_married': {
+        'always': 'a thin gold wedding ring on her left ring finger',
+        'sometimes': ("a quiet hint that she is home alone while her husband is away — a man's shirt "
+                      'hanging on a chair or his watch on the nightstand, no man in the frame'),
+    },
+    'mar_boyfriend': {
+        'always': '',
+        'sometimes': "she wears her boyfriend's oversized hoodie or T-shirt, a little too big for her",
+    },
+}
+
+
+def marital_status_for(telegram_id: int, character_id: str) -> str:
+    """V3.59.7: the user's pick for this girl, else a custom girl's constructor
+    choice, else '' (single / no detail)."""
+    try:
+        from models.relationship_models import UserCharacterRelationship
+        with SessionLocal() as session:
+            user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+            if user:
+                ms = session.scalar(select(UserCharacterRelationship.marital_status).where(
+                    UserCharacterRelationship.user_id == user.id,
+                    UserCharacterRelationship.character_id == character_id,
+                ))
+                if ms:
+                    return ms
+        from services.custom_character_service import is_custom_character, custom_character_params
+        if is_custom_character(character_id):
+            return str(custom_character_params(character_id)[0].get('marital', '') or '')
+    except Exception:
+        logger.exception('marital status read failed user=%s character=%s', telegram_id, character_id)
+    return ''
+
+
+def marital_photo_detail(telegram_id: int, character_id: str, *, allow_sometimes: bool = True) -> str:
+    spec = MARITAL_PHOTO_DETAIL.get(marital_status_for(telegram_id, character_id))
+    if not spec:
+        return ''
+    bits = [spec['always']] if spec['always'] else []
+    if allow_sometimes and spec['sometimes'] and random.random() < 0.35:
+        bits.append(spec['sometimes'])
+    return '; '.join(bits)
+
+
 def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: str = CHARACTER_ID) -> PhotoRequest:
     state = ensure_life_state(telegram_id)
     season = request.season or _default_season()
@@ -1800,7 +1850,8 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
                    pack_outfits=pack_outfits, hair_color=hair_color, makeup=makeup,
                    accessory=accessory, time_of_day=time_of_day,
                    underwear_color=underwear_color, underwear_style=underwear_style,
-                   expression_rotation=expression_rotation, pose_rotation=pose_rotation)
+                   expression_rotation=expression_rotation, pose_rotation=pose_rotation,
+                   story_detail=request.story_detail or marital_photo_detail(telegram_id, character_id))
 
 
 def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
@@ -1916,6 +1967,9 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         'never combine it with a second hairdo, extra braid, bun, wig or hairpiece.\n'
         f'MAKEUP: {request.makeup}.\n'
         f'STYLING DETAILS: {request.accessory}.\n'
+        + (f'STORY DETAIL: {request.story_detail}. Keep it small and natural; it never changes her face, body or outfit choice.\n'
+           if request.story_detail else '')
+        + 
         f'TIME OF DAY: {request.time_of_day}. The light must match this time of day.\n'
         f'CAMERA/POSE: {angle}.\n'
         + (f'POSE NOTE: {request.pose_rotation[shot_index % len(request.pose_rotation)]}. '
