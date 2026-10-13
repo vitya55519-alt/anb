@@ -514,6 +514,19 @@
   .stevent { background: rgba(120,180,255,.12); border-radius: 12px; padding: 12px 14px; line-height: 1.5; font-size: 14px; margin-bottom: 10px; }
   .staxis { display: inline-block; font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 12px; }
   .stimg { width: 100%; border-radius: 14px; margin-bottom: 12px; display: block; }
+  /* V3.58.3: the choice must FEEL like it landed — a big path badge that pops,
+     a burst of hearts/flames, and a photo placeholder while the frame renders. */
+  .stfx { display: flex; align-items: center; gap: 10px; border-radius: 16px; padding: 14px 16px; margin-bottom: 12px; font-weight: 800; font-size: 17px; animation: stpop .55s cubic-bezier(.2,1.6,.4,1) both; }
+  .stfx .big { font-size: 34px; line-height: 1; }
+  .stfx.passion { background: linear-gradient(135deg, rgba(255,80,60,.28), rgba(232,68,127,.28)); }
+  .stfx.tender { background: linear-gradient(135deg, rgba(255,150,200,.25), rgba(170,140,255,.25)); }
+  .stfx.calm { background: rgba(255,255,255,.08); }
+  .stpending { background: var(--card); border-radius: 14px; padding: 28px 14px; text-align: center; color: var(--muted); margin-bottom: 12px; animation: stpulse 1.4s ease-in-out infinite; }
+  .fxburst { position: fixed; inset: 0; pointer-events: none; z-index: 9999; overflow: hidden; }
+  .fxburst span { position: absolute; bottom: -40px; font-size: 26px; animation: fxrise 1.9s ease-out forwards; }
+  @keyframes stpop { 0% { transform: scale(.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes stpulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+  @keyframes fxrise { 0% { transform: translateY(0) scale(.7); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(-85vh) scale(1.25); opacity: 0; } }
   .stbeatlab { font-size: 14.5px; line-height: 1.5; margin: 6px 0 10px; color: var(--text); }
   .btn-back { background: var(--card); border: 1px solid rgba(255,255,255,.12); color: var(--text); font-size: 14px; padding: 10px 16px; border-radius: 12px; cursor: pointer; }
   /* V3.39.0: the Come Closer segment switch — our roster vs the community */
@@ -1188,6 +1201,7 @@ const L_EN = {
       story_locked_level: lvl => '🔒 Opens at relationship level ' + lvl, story_locked_tasks: n => '🔒 ' + n + ' more daily tasks to unlock',
       story_done: 'Completed', story_canon: ' · your path', story_play: 'Play', story_choose: 'Choose how it goes',
       story_result: 'What happened', story_reaction: 'Her reaction', story_axis_up: 'Path moved toward passion', story_axis_down: 'Path moved toward tenderness', story_axis_same: 'The path stayed balanced',
+      story_thinking: 'She is thinking how it goes… 💭', story_photo_wait: '📸 the frame for this moment is on its way…',
       story_beat: 'A moment later…', story_photo: '📸 A frame for our story', story_empty: 'No stories yet', story_hint: 'Your choices here move the «Relationship path» on her card.',
       // V3.51.1: admin-only feed of what users generate in the Mini App.
       gen_row: '🛠 User generations', gen_title: 'User generations', gen_empty: 'Nothing generated yet', gen_more: 'Load more',
@@ -1352,6 +1366,7 @@ const L_RU = {
       story_locked_level: lvl => '🔒 Откроется на уровне близости ' + lvl, story_locked_tasks: n => '🔒 Ещё ' + n + ' заданий до открытия',
       story_done: 'Пройдено', story_canon: ' · твой путь', story_play: 'Играть', story_choose: 'Выбери, как будет',
       story_result: 'Что произошло', story_reaction: 'Её реакция', story_axis_up: 'Путь сдвинулся к страсти', story_axis_down: 'Путь сдвинулся к нежности', story_axis_same: 'Путь остался равновесным',
+      story_thinking: 'Она представляет, как всё будет… 💭', story_photo_wait: '📸 кадр к этому моменту уже в пути…',
       story_beat: 'Через миг…', story_photo: '📸 Кадр к нашей истории', story_empty: 'Пока нет историй', story_hint: 'Твой выбор здесь двигает шкалу «Характер связи» на её карточке.',
       // V3.51.1: админ-лента того, что генерируют пользователи в Mini App.
       gen_row: '🛠 Генерации пользователей', gen_title: 'Генерации пользователей', gen_empty: 'Пока ничего не сгенерировано', gen_more: 'Загрузить ещё',
@@ -2639,6 +2654,44 @@ let featBusy = false;
 
 // V3.58.1: the date photo now renders in the background; poll the dialog until
 // a new photo message shows up (or give up after ~4 minutes).
+// V3.58.3: a short burst of emoji + haptic so a tap visibly lands.
+function celebrate(emojis) {
+  try { if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success'); } catch (e) { /* old clients */ }
+  const layer = document.createElement('div');
+  layer.className = 'fxburst';
+  for (let i = 0; i < 14; i++) {
+    const sp = document.createElement('span');
+    sp.textContent = emojis[i % emojis.length];
+    sp.style.left = (4 + Math.random() * 90) + '%';
+    sp.style.animationDelay = (Math.random() * 0.5) + 's';
+    layer.appendChild(sp);
+  }
+  document.body.appendChild(layer);
+  setTimeout(() => layer.remove(), 2600);
+}
+
+// V3.58.3: poll the shared chat until a NEW photo shows up, then hand its URL
+// to onPhoto. Used by dates and stories, whose photo renders after the answer.
+function pollNewChatPhoto(characterId, onPhoto, onGiveUp) {
+  let seen = null;
+  let tries = 0;
+  const tick = async () => {
+    tries++;
+    try {
+      const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId));
+      const j = await r.json();
+      if (j.ok) {
+        const photos = (j.history || []).filter(m => m.media_kind === 'photo');
+        const last = photos.length ? photos[photos.length - 1].media_url : '';
+        if (seen === null) seen = last;
+        else if (last && last !== seen) { if (onPhoto(last) !== false) return; }
+      }
+    } catch (e) { /* keep polling */ }
+    if (tries < 40) setTimeout(tick, 6000); else if (onGiveUp) onGiveUp();
+  };
+  tick();
+}
+
 function waitForDatePhoto(characterId) {
   const box = document.getElementById('chatMsgs');
   box.insertAdjacentHTML('beforeend', '<div class="typing" id="dateTyping">' + esc(L.date_photo_wait) + '</div>');
@@ -2710,6 +2763,7 @@ async function featurePost(payload) {
     if (j.text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.text, ts: null }));
     if (j.photo_url) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
     box.scrollTop = box.scrollHeight;
+    if (payload.kind === 'date' && j.text) celebrate(['💕', '☕', '✨', '💗']);
     if (j.photo_pending) waitForDatePhoto(CHAT.id);
     if (payload.kind === 'quest') {
       // V3.49.0: keep the sheet open and refresh the checklist + progress.
@@ -2839,7 +2893,7 @@ async function storyPost(payload) {
   payload.character_id = STORY.characterId;
   const box = document.getElementById('storyBody');
   const wasBusy = box.querySelector('.loading');
-  box.innerHTML = '<div class="loading">' + esc(L.loading) + '</div>';
+  box.innerHTML = '<div class="stpending">' + esc(L.story_thinking) + '</div>';
   try {
     const r = await fetch('/webapp/api/story/action?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -2871,9 +2925,11 @@ function renderStoryResult(j) {
   if (j.result_text) html += '<div class="stresult">' + esc(j.result_text) + '</div>';
   if (j.reaction) html += '<div class="ses" style="margin:0 0 4px">' + esc(L.story_reaction) + '</div><div class="streaction">' + esc(j.reaction) + '</div>';
   const delta = Number(j.path_delta) || 0;
-  if (delta !== 0) {
-    html += '<div class="staxis">' + esc(delta > 0 ? L.story_axis_up : L.story_axis_down) + ' · ' + (delta > 0 ? '+' : '') + delta + '</div>';
-  }
+  const fxCls = delta > 0 ? 'passion' : (delta < 0 ? 'tender' : 'calm');
+  const fxIcon = delta > 0 ? '🔥' : (delta < 0 ? '💗' : '✨');
+  const fxText = delta > 0 ? L.story_axis_up : (delta < 0 ? L.story_axis_down : L.story_axis_same);
+  html = '<div class="featlist"><div class="stfx ' + fxCls + '"><span class="big">' + fxIcon + '</span><span>' + esc(fxText) +
+    (delta !== 0 ? (' · ' + (delta > 0 ? '+' : '') + delta) : '') + '</span></div>' + html.slice('<div class="featlist">'.length);
   (j.path_events || []).forEach(ev => {
     if (!ev || !ev.text) return;
     html += '<div class="stevent">' + esc(ev.text) + (ev.photo ? ('<br>' + esc(L.story_photo)) : '') + '</div>';
@@ -2881,6 +2937,8 @@ function renderStoryResult(j) {
   if (j.photo_url) {
     const src = j.photo_url + '?init_data=' + encodeURIComponent(tg.initData || '');
     html += '<img class="stimg" src="' + esc(src) + '" alt="" loading="lazy" decoding="async">';
+  } else if (j.photo_pending) {
+    html += '<div class="stpending" id="storyPhotoWait">' + esc(L.story_photo_wait) + '</div>';
   }
   const bo = j.beat_options;
   if (bo && bo.options && Object.keys(bo.options).length) {
@@ -2894,6 +2952,19 @@ function renderStoryResult(j) {
   }
   html += '</div>';
   box.innerHTML = html;
+  celebrate(delta > 0 ? ['🔥', '💋', '❤️‍🔥'] : (delta < 0 ? ['💗', '💕', '🌸'] : ['✨', '💫']));
+  if (j.photo_pending) {
+    const cid = STORY.characterId;
+    pollNewChatPhoto(cid, (url) => {
+      const ph = document.getElementById('storyPhotoWait');
+      if (!ph) return true;  // the player moved on; stop quietly
+      const img = document.createElement('img');
+      img.className = 'stimg'; img.alt = '';
+      img.src = url + '?init_data=' + encodeURIComponent(tg.initData || '');
+      ph.replaceWith(img);
+      return true;
+    }, () => { const ph = document.getElementById('storyPhotoWait'); if (ph) ph.remove(); });
+  }
   const sb = document.getElementById('storyListBack2'); if (sb) sb.onclick = () => openStory(STORY.characterId);
   const sk = document.getElementById('storySkipBeat'); if (sk) sk.onclick = () => openStory(STORY.characterId);
   box.querySelectorAll('.stbtn[data-ok]').forEach(b => {

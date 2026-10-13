@@ -11944,6 +11944,22 @@ def _spawn_background(coro) -> None:
     task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
+async def _deliver_scene_photo(telegram_id: int, character_id: str, uid: int, scene: str,
+                               caption: str, what: str) -> None:
+    """V3.58.3: a story reward photo, rendered after the response went out."""
+    try:
+        data, mime, ext = await _webapp_media_scene(telegram_id, character_id, scene)
+        if data:
+            filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+            photo_url = f'/webapp/media/{filename}'
+            await asyncio.to_thread(save_message, uid, character_id, 'assistant', caption,
+                                    media_kind='photo', media_url=photo_url)
+        else:
+            logger.warning('webapp %s photo empty user=%s scene=%s', what, telegram_id, scene)
+    except Exception:
+        logger.exception('webapp %s photo failed user=%s scene=%s', what, telegram_id, scene)
+
+
 async def _deliver_date_photo(telegram_id: int, character_id: str, uid: int, date_id: str, scene: str) -> None:
     """V3.58.1: the date reward photo, rendered after the response went out."""
     try:
@@ -12060,16 +12076,12 @@ async def _webapp_api_story_action(request: web.Request) -> web.Response:
     # V3.57.2: the stage lookup is a PostgreSQL read
     rstage = await asyncio.to_thread(get_relationship_stage, telegram_id, character_id)
     stage_ok = bool(scene) and await asyncio.to_thread(scene_allowed_for_stage, scene, rstage)
+    # V3.58.3: the result and her reaction go out at once; the reward photo is
+    # rendered in the background and lands in the shared chat (the SPA polls
+    # for it), instead of holding the whole answer hostage to the photo chain.
     if stage_ok:
-        try:
-            data, mime, ext = await _webapp_media_scene(telegram_id, character_id, scene)
-            if data:
-                filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
-                photo_url = f'/webapp/media/{filename}'
-                save_message(uid, character_id, 'assistant', '\U0001f4f8 \u043a\u0430\u0434\u0440 \u043a \u043d\u0430\u0448\u0435\u0439 \u0438\u0441\u0442\u043e\u0440\u0438\u0438',
-                             media_kind='photo', media_url=photo_url)
-        except Exception:
-            logger.warning('webapp story photo failed user=%s scene=%s', telegram_id, scene)
+        _spawn_background(_deliver_scene_photo(telegram_id, character_id, uid, scene,
+                                               '\U0001f4f8 \u043a\u0430\u0434\u0440 \u043a \u043d\u0430\u0448\u0435\u0439 \u0438\u0441\u0442\u043e\u0440\u0438\u0438', 'story'))
     return web.json_response({
         'ok': True, 'kind': 'story',
         'result_text': result.get('result_text'), 'reaction': result.get('reaction'),
@@ -12077,6 +12089,7 @@ async def _webapp_api_story_action(request: web.Request) -> web.Response:
         'path_events': [{'text': ev.get('text', ''), 'photo': bool(ev.get('photo_scene'))}
                         for ev in result.get('path_events', [])],
         'beat_options': result.get('beat_options'), 'photo_url': photo_url,
+        'photo_pending': bool(stage_ok),
     })
 
 
