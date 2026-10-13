@@ -90,6 +90,23 @@ def _clean(answer: str) -> str:
     return answer.strip() or "хм… я зависла на секунду 🙈"
 
 
+# V3.60.6: the chat model's own safety refusal reads like a help desk
+# («такого рода ролевые игры я не поддерживаю… чем я могу помочь») and kills
+# the game. It is never sent as is.
+REFUSAL = re.compile(
+    r"(не поддерживаю|за рамками того|чем я могу помочь|не могу (?:помочь|продолжить|участвовать|описывать|создавать|генерировать)|"
+    r"против (?:моих|наших) правил|нарушает (?:правила|политик)|I can(?:no|')t (?:help|continue|engage)|I'm not able to)", re.I
+)
+
+
+def _refusal_rewrite_instructions(name: str) -> str:
+    return (
+        f"Ниже — сухой отказ, написанный как от ассистента. Перепиши его от лица {name} — живой женщины в личке: "
+        "тепло и в её голосе, 1–2 короткие фразы. Смысл сохрани: дальше этого она не идёт. Но без канцелярита — "
+        "без слов «не поддерживаю», «за рамками», «помочь», «правила»; мягко переведи разговор на другое."
+    )
+
+
 EXPLICIT_STAGES = {'deeply_connected', 'committed', 'devoted', 'soulmate'}
 EXPLICIT_CHAT_RULE = (
     'ПРАВИЛО ОТКРОВЕННОСТИ (18+ подтверждено, ваша близость это допускает): этот пункт отменяет запрет '
@@ -163,6 +180,19 @@ async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str, 
         # message she actually sends — keep the original wording instead.
         return answer
     return _clean(r.text)
+
+
+async def _recover_from_refusal(answer: str, character: dict | None) -> str:
+    """V3.60.6: the model's help-desk refusal is reworded in her own voice — she
+    still declines what the model declined, but as herself, not as a service."""
+    name = (character or {}).get('name', 'Анна')
+    r = await generate_text(
+        [{"role": "system", "content": _refusal_rewrite_instructions(name)}, {"role": "user", "content": answer}],
+        max_tokens=200, temperature=0.9, purpose='rewrite')
+    text = _clean(r.text) if r.text.strip() else ''
+    if not text or REFUSAL.search(text):
+        return 'ммм, вот тут я притормозлю 🙈 давай лучше расскажи, что ты сейчас делаешь 😏'
+    return text
 
 
 async def reply(user_id: int, user_name: str, user_text: str, language_code: str | None = None, character_id: str = CHARACTER_ID) -> str:
@@ -335,6 +365,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
     r = await generate_text(messages, max_tokens=token_budget, temperature=0.9, purpose='dialogue')
     answer = _clean(r.text)
+    if REFUSAL.search(answer):
+        answer = await _recover_from_refusal(answer, character)
     answer = await _rewrite_if_needed(messages, user_text, answer, character)
     save_message(db_user_id, character_id, "user", user_text)
     save_message(db_user_id, character_id, "assistant", answer)
