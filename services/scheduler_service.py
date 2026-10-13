@@ -221,6 +221,10 @@ def _user_local_hour(user) -> int | None:
     except Exception:
         return dt.datetime.now(dt.timezone.utc).hour
 
+# V3.59.2: (user_id, date) pairs whose morning ritual keeps last night's promise.
+_ritual_promised: set = set()
+
+
 async def _rituals(bot):
     """V3.20.0: morning/evening rituals — she writes first in the user's local
     time window. Only recent (RITUAL_MAX_INACTIVE_DAYS) opt-in users get them."""
@@ -270,6 +274,16 @@ async def _rituals(bot):
             # real photo from her (clean, no watermark); else plain text.
             # V3.47.3: the pool also holds GIFs and videos — send by kind.
             shot = retention_features_service.random_proactive_photo(char_id)
+            # V3.59.2: the evening plants a reason to come back — a promise the
+            # morning ritual keeps with a photo. Only promised when her media
+            # pool can actually deliver one.
+            if kind=='evening' and shot:
+                text+='\n\nа завтра утром пришлю тебе кое-что 🙈 не проспи'
+                _ritual_promised.add((uid,(now+dt.timedelta(days=1)).date().isoformat()))
+                shot=None  # the promise IS the hook; the photo waits for the morning
+            elif kind=='morning' and shot and (uid,today_key) in _ritual_promised:
+                text='как обещала 🙈 доброе утро\n\n'+text
+                _ritual_promised.discard((uid,today_key))
             if shot:
                 from aiogram.types import BufferedInputFile
                 data, ctype, kind = shot

@@ -523,6 +523,9 @@
   .streaction { background: rgba(232,68,127,.12); border-left: 3px solid var(--accent); border-radius: 10px; padding: 12px 14px; line-height: 1.5; font-size: 14.5px; margin-bottom: 12px; font-style: italic; }
   .stevent { background: rgba(120,180,255,.12); border-radius: 12px; padding: 12px 14px; line-height: 1.5; font-size: 14px; margin-bottom: 10px; }
   .staxis { display: inline-block; font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 12px; }
+  .chathints { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin: 6px 0 4px; }
+  .chathints button { border: 1px solid rgba(232,68,127,.5); background: rgba(232,68,127,.12); color: var(--text);
+    border-radius: 18px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
   .aptintro { background: rgba(232,68,127,.12); border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.45; margin-bottom: 10px; }
   .stimg { width: 100%; border-radius: 14px; margin-bottom: 12px; display: block; }
   /* V3.58.3: the choice must FEEL like it landed — a big path badge that pops,
@@ -1098,7 +1101,7 @@ const LANG = APP_LANGS.includes(_savedLang) ? _savedLang
   : (_tgLang.startsWith('ru') ? 'ru' : (APP_LANGS.find(x => _tgLang.startsWith(x)) || 'en'));
 
 const L_EN = {
-  chars_title: 'Characters', loading: 'Loading…', photo_save: '⬇️ Save photo', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
+  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
   // V3.55.2: the premium-characters section under the grid
@@ -1175,7 +1178,7 @@ const L_EN = {
   pic_square: 'Square', pic_portrait: 'Portrait',
   pic_advanced: 'Advanced mode', pic_extra_ph: 'Extra details (optional)…',
   pic_cost: 'One picture — 10 🍑', pic_generate: 'Create · 10 🍑',
-  pic_wait: 'Drawing — up to a minute…', pic_blocked: 'This description is not allowed',
+  pic_wait: 'Drawing — up to a minute…', pic_blocked: 'This description is not allowed', pic_bad_image: 'Could not read this photo — try another one (JPG or PNG)', pic_bad_request: 'Something went wrong — try again',
   pic_no_credits: 'Not enough 🍑 — add them in the Shop tab',
   pic_gen_fail: 'Could not draw — try again',
   pic_gallery: 'My pictures', pic_empty: 'No pictures yet — your works will appear here.',
@@ -1263,7 +1266,7 @@ const L_EN = {
 // V3.43.5: the full Russian dictionary stays the base; five more interface
 // languages arrive below as partial overrides on top of the English one.
 const L_RU = {
-  chars_title: 'Персонажи', loading: 'Загрузка…', photo_save: '⬇️ Скачать фото', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
+  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
   // V3.55.2: секция премиум-персонажей под сеткой
@@ -1340,7 +1343,7 @@ const L_RU = {
   pic_square: 'Квадрат', pic_portrait: 'Портрет',
   pic_advanced: 'Продвинутый режим', pic_extra_ph: 'Дополнительные детали (необязательно)…',
   pic_cost: 'Одна картинка — 10 🍑', pic_generate: 'Создать · 10 🍑',
-  pic_wait: 'Рисую — до минуты…', pic_blocked: 'Такое описание нельзя',
+  pic_wait: 'Рисую — до минуты…', pic_blocked: 'Такое описание нельзя', pic_bad_image: 'Не получилось прочитать фото — попробуй другое (JPG или PNG)', pic_bad_request: 'Что-то пошло не так — попробуй ещё раз',
   pic_no_credits: 'Не хватает 🍑 — добавь во вкладке «Магазин»',
   pic_gen_fail: 'Не получилось нарисовать — попробуй ещё раз',
   pic_gallery: 'Мои картинки', pic_empty: 'Картинок пока нет — твои работы появятся здесь.',
@@ -2163,10 +2166,26 @@ async function loadChatHistory(characterId) {
     // V3.55.6: the server says this premium pair has no manner chosen yet —
     // show the one-time tender/passionate picker above the input.
     if (j.persona && j.persona.needed) renderPersonaBanner(characterId);
+    // V3.59.2: a new dialog gets tap-to-send openers — most newcomers froze
+    // on an empty input not knowing what to write to her.
+    const mine = j.history.filter(m => m.role === 'user').length;
+    if (mine < 4) renderChatHints();
     box.scrollTop = box.scrollHeight;
   } catch (e) {
     document.getElementById('chatMsgs').innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
   }
+}
+
+function renderChatHints() {
+  const box = document.getElementById('chatMsgs');
+  const old = document.getElementById('chatHints'); if (old) old.remove();
+  const html = '<div class="chathints" id="chatHints">' + L.chat_hints.map(h =>
+    '<button data-hint="' + esc(h) + '">' + esc(h) + '</button>').join('') + '</div>';
+  box.insertAdjacentHTML('beforeend', html);
+  document.querySelectorAll('#chatHints button').forEach(b => b.addEventListener('click', () => {
+    document.getElementById('chatText').value = b.dataset.hint;
+    sendChat();
+  }));
 }
 
 function renderPersonaBanner(characterId) {
@@ -2209,6 +2228,7 @@ async function sendChat() {
   if (!tg.initData) { toast(L.auth_short); return; }
   chatBusy = true;
   input.value = '';
+  const hints = document.getElementById('chatHints'); if (hints) hints.remove();
   const box = document.getElementById('chatMsgs');
   const empty = box.querySelector('.chat-empty');
   if (empty) empty.remove();
@@ -3644,11 +3664,23 @@ function switchStudioMode(mode) {
 function onStudioUpload(ev) {
   const f = ev.target.files && ev.target.files[0];
   if (!f) return;
-  if (f.size > 8 * 1024 * 1024) { toast(L.upload_hint); ev.target.value = ''; return; }
-  const rd = new FileReader();
-  rd.onload = () => { PIC_UPLOAD = String(rd.result || ''); paintUploadPreview(); };
-  rd.onerror = () => { toast(L.upload_hint); };
-  rd.readAsDataURL(f);
+  if (f.size > 25 * 1024 * 1024) { toast(L.upload_hint); ev.target.value = ''; return; }
+  // V3.59.2: shrink to ≤1600px JPEG in the browser — a phone photo is several
+  // MB, uploads slowly and the engines do not need more. Also converts formats
+  // the server refuses (HEIC on iPhone decodes here when the WebView can).
+  const url = URL.createObjectURL(f);
+  const im = new Image();
+  im.onload = () => {
+    const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+    c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    PIC_UPLOAD = c.toDataURL('image/jpeg', 0.88);
+    paintUploadPreview();
+  };
+  im.onerror = () => { URL.revokeObjectURL(url); toast(L.pic_bad_image); ev.target.value = ''; };
+  im.src = url;
 }
 function paintUploadPreview() {
   const prev = document.getElementById('uplPrev');
@@ -3683,7 +3715,12 @@ async function generatePicture() {
     if (r.status === 401) { toast(L.auth_short); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     if (r.status === 402) { toast(L.pic_no_credits); showTab('shop'); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     if (r.status === 403) { toast(L.consent_needed); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
-    if (r.status === 400) { toast(L.pic_blocked); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
+    if (r.status === 400) {
+      // V3.59.2: say WHAT was wrong — a bad photo used to read as a banned prompt.
+      const je = await r.json().catch(() => ({}));
+      toast(je.error === 'blocked' ? L.pic_blocked : (je.error === 'bad_image' ? L.pic_bad_image : L.pic_bad_request));
+      result.innerHTML = ''; if (btn) btn.disabled = false; return;
+    }
     const j = await r.json();
     if (!j.ok) { toast(j.reason || L.pic_gen_fail); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     result.innerHTML = `<img src="${esc(j.file)}?init_data=${encodeURIComponent(tg.initData || '')}" data-lb="1" style="width:100%;border-radius:14px;margin-top:10px;display:block;background:var(--card2)">`;
@@ -3718,7 +3755,12 @@ async function generateStudioVideo() {
     if (r.status === 401) { toast(L.auth_short); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     if (r.status === 402) { toast(L.pic_no_credits); showTab('shop'); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     if (r.status === 403) { toast(L.consent_needed); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
-    if (r.status === 400) { toast(L.pic_blocked); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
+    if (r.status === 400) {
+      // V3.59.2: say WHAT was wrong — a bad photo used to read as a banned prompt.
+      const je = await r.json().catch(() => ({}));
+      toast(je.error === 'blocked' ? L.pic_blocked : (je.error === 'bad_image' ? L.pic_bad_image : L.pic_bad_request));
+      result.innerHTML = ''; if (btn) btn.disabled = false; return;
+    }
     const j = await r.json();
     if (!j.ok) { toast(L.video_fail); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     result.innerHTML = `<video controls playsinline preload="metadata" src="${esc(j.file)}?init_data=${encodeURIComponent(tg.initData || '')}" style="width:100%;border-radius:14px;margin-top:10px;display:block;background:#000"></video>`;
