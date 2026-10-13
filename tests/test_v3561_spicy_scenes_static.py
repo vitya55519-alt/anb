@@ -51,7 +51,8 @@ def test_spicy_set_reuses_the_seedream_prompt_chain():
     assert "record_provider('spicyapi', bool(data)" in SPICY_SET
     assert 'from services.private_photo_service import _spicyapi_render' in SPICY_SET
     # partial packs survive: raise only when nothing was delivered
-    assert SPICY_SET.count('raise PhotoGenerationError') == 2
+    # V3.58.1: +1 for the breaker-open handover (also guarded by `if out: break`)
+    assert SPICY_SET.count('raise PhotoGenerationError') == 3
     assert 'if out:' in SPICY_SET and 'break' in SPICY_SET
 
 

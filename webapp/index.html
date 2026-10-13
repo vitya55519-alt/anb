@@ -1209,6 +1209,7 @@ const L_EN = {
   // V3.49.0: daily-task checklist progress (2-3 tasks a day, story ladder).
   feat_tasks_left: 'more tasks to unlock', feat_total: 'tasks done in total',
   feat_empty: 'Nothing here yet', feat_paid: 'Date paid 💕 she will write in the chat',
+  date_wait: 'She is getting ready for the date… 💕', date_photo_wait: '📸 the photo from your date is on its way…',
   // V3.43.5: the in-app Settings section (spicy switch + interface language).
   settings_title: 'Settings', spicy_title: '🌶 Spicy mode', spicy_on: 'on', spicy_off: 'off',
   spicy_prem: 'Spicy mode is a Premium perk ⭐', spicy_toast_on: 'Spicy mode is on 🔥',
@@ -1372,6 +1373,7 @@ const L_RU = {
   // V3.49.0: чек-лист заданий дня (2-3 в день, лесенка историй).
   feat_tasks_left: 'ещё заданий до', feat_total: 'заданий выполнено всего',
   feat_empty: 'Здесь пока пусто', feat_paid: 'Свидание оплачено 💕 она напишет в чат',
+  date_wait: 'Собирается на свидание… 💕', date_photo_wait: '📸 фото со свидания уже в пути…',
   // V3.43.5: секция «Настройки» в профиле (пошлый режим + язык интерфейса).
   settings_title: 'Настройки', spicy_title: '🌶 Пошлый режим', spicy_on: 'вкл', spicy_off: 'выкл',
   spicy_prem: 'Пошлый режим — фишка Premium ⭐', spicy_toast_on: 'Пошлый режим включён 🔥',
@@ -2631,10 +2633,51 @@ async function openFeature(kind) {
   renderFeature(j);
 }
 
+// V3.58.1: one feature action at a time — a second tap while the first is
+// still in flight used to fire (and pay for) the same date twice.
+let featBusy = false;
+
+// V3.58.1: the date photo now renders in the background; poll the dialog until
+// a new photo message shows up (or give up after ~4 minutes).
+function waitForDatePhoto(characterId) {
+  const box = document.getElementById('chatMsgs');
+  box.insertAdjacentHTML('beforeend', '<div class="typing" id="dateTyping">' + esc(L.date_photo_wait) + '</div>');
+  box.scrollTop = box.scrollHeight;
+  let seen = null;
+  let tries = 0;
+  const stop = () => { const t = document.getElementById('dateTyping'); if (t) t.remove(); };
+  const tick = async () => {
+    tries++;
+    if (!CHAT || CHAT.id !== characterId) { stop(); return; }
+    try {
+      const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId));
+      const j = await r.json();
+      if (j.ok) {
+        const photos = (j.history || []).filter(m => m.media_kind === 'photo');
+        const last = photos.length ? photos[photos.length - 1].media_url : '';
+        if (seen === null) seen = last;
+        else if (last && last !== seen) { loadChatHistory(characterId); return; }
+      }
+    } catch (e) { /* keep polling */ }
+    if (tries < 30) setTimeout(tick, 8000); else stop();
+  };
+  tick();
+}
+
 async function featurePost(payload) {
   if (!CHAT || !tg.initData) { toast(L.auth_short); return; }
+  if (featBusy) return;
+  featBusy = true;
   payload.character_id = CHAT.id;
   const box = document.getElementById('chatMsgs');
+  // V3.58.1: a date closes the sheet at once and shows that she is on her way,
+  // instead of leaving the menu frozen with no sign the tap registered.
+  if (payload.kind === 'date') {
+    closeFeature();
+    const empty0 = box.querySelector('.chat-empty'); if (empty0) empty0.remove();
+    box.insertAdjacentHTML('beforeend', '<div class="typing" id="featTyping">' + esc(L.date_wait) + '</div>');
+    box.scrollTop = box.scrollHeight;
+  }
   try {
     const r = await fetch('/webapp/api/feature/action?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -2667,6 +2710,7 @@ async function featurePost(payload) {
     if (j.text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.text, ts: null }));
     if (j.photo_url) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
     box.scrollTop = box.scrollHeight;
+    if (j.photo_pending) waitForDatePhoto(CHAT.id);
     if (payload.kind === 'quest') {
       // V3.49.0: keep the sheet open and refresh the checklist + progress.
       openFeature('quest');
@@ -2675,6 +2719,10 @@ async function featurePost(payload) {
     }
     closeFeature();
   } catch (e) { toast(L.reply_err); }
+  finally {
+    featBusy = false;
+    const t = document.getElementById('featTyping'); if (t) t.remove();
+  }
 }
 
 // ── V3.51.0: the story player — playable branching quests that move the path ─

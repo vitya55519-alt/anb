@@ -538,7 +538,51 @@ async def _spicyapi_call(method: str, path: str, headers: dict = None, **kwargs)
             return body.get("data", {})
 
 
+# V3.58.1: circuit breaker. The owner's «Отказы» screen showed spicyapi
+# 0 ✅ / 39 ❌ — every chat photo, date photo and studio render first waited up
+# to SPICYAPI_IMAGE_TIMEOUT on a dead engine before falling back to fal. After
+# SPICYAPI_BREAKER_FAILURES misses in a row the engine is skipped for
+# SPICYAPI_BREAKER_COOLDOWN_SECONDS; one success closes the breaker again.
+SPICYAPI_BREAKER_FAILURES = 3
+SPICYAPI_BREAKER_COOLDOWN_SECONDS = 900
+# Keyed per engine leg (model + edit/t2i): a broken reference-edit leg must not
+# take the reference-free «Наедине» t2i leg down with it.
+_spicy_fail_streak: Dict[str, int] = {}
+_spicy_skip_until: Dict[str, float] = {}
+
+
+def _spicy_leg(model: str, image_urls: Optional[List[str]]) -> str:
+    return f"{model}:{'edit' if image_urls else 't2i'}"
+
+
+def spicyapi_breaker_open(model: str, image_urls: Optional[List[str]]) -> bool:
+    return asyncio.get_event_loop().time() < _spicy_skip_until.get(_spicy_leg(model, image_urls), 0.0)
+
+
+def _spicyapi_note_result(leg: str, ok: bool) -> None:
+    if ok:
+        _spicy_fail_streak[leg] = 0
+        return
+    _spicy_fail_streak[leg] = _spicy_fail_streak.get(leg, 0) + 1
+    if _spicy_fail_streak[leg] >= SPICYAPI_BREAKER_FAILURES:
+        _spicy_skip_until[leg] = asyncio.get_event_loop().time() + SPICYAPI_BREAKER_COOLDOWN_SECONDS
+        _spicy_fail_streak[leg] = 0
+        logger.error('SpicyAPI breaker open for %s: %s misses in a row, skipping for %ss',
+                     leg, SPICYAPI_BREAKER_FAILURES, SPICYAPI_BREAKER_COOLDOWN_SECONDS)
+
+
 async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private', *, return_url: bool = False):
+    """Breaker-guarded entry point; see ``_spicyapi_render_once`` for the flow."""
+    if spicyapi_breaker_open(model, image_urls):
+        logger.info('SpicyAPI skipped (breaker open) scene=%s', scene)
+        return (None, None) if return_url else None
+    result = await _spicyapi_render_once(model, prompt, image_urls, scene, return_url=return_url)
+    data = result[0] if return_url else result
+    _spicyapi_note_result(_spicy_leg(model, image_urls), bool(data))
+    return result
+
+
+async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private', *, return_url: bool = False):
     """Shared SpicyAPI task flow: createTask → poll → download.
 
     ``image_urls`` empty/None → text-to-image; otherwise image-to-image edit.

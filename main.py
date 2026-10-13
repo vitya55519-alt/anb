@@ -11923,17 +11923,39 @@ async def _webapp_api_feature_action_impl(request: web.Request) -> web.Response:
     track_event(uid, 'webapp_date_delivered', metadata={'date': date.id})
     narration = f'{date.emoji} {date.text}'
     save_message(uid, character_id, 'assistant', narration)
-    photo_url = None
+    # V3.58.1: the reward photo can take minutes (engine fallbacks), and the
+    # Mini App used to sit on this request with no feedback — the owner tapped
+    # «Кофейня» and saw nothing at all. Answer with the narration right away and
+    # let the photo land in the shared dialog in the background; the SPA polls
+    # the chat history until it shows up.
+    _spawn_background(_deliver_date_photo(telegram_id, character_id, uid, date.id, date.scene))
+    return web.json_response({'ok': True, 'kind': kind, 'delivered': True,
+                              'text': narration, 'photo_url': None, 'photo_pending': True})
+
+
+_BACKGROUND_TASKS: set = set()
+
+
+def _spawn_background(coro) -> None:
+    """Run a fire-and-forget coroutine, keeping a strong reference so the
+    event loop cannot garbage-collect it mid-flight."""
+    task = asyncio.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
+async def _deliver_date_photo(telegram_id: int, character_id: str, uid: int, date_id: str, scene: str) -> None:
+    """V3.58.1: the date reward photo, rendered after the response went out."""
     try:
-        data, mime, ext = await _webapp_media_scene(telegram_id, character_id, date.scene)
+        data, mime, ext = await _webapp_media_scene(telegram_id, character_id, scene)
         if data:
             filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
             photo_url = f'/webapp/media/{filename}'
             save_message(uid, character_id, 'assistant', '📸 фото с нашей прогулки', media_kind='photo', media_url=photo_url)
+        else:
+            logger.warning('webapp date photo empty user=%s date=%s', telegram_id, date_id)
     except Exception:
-        logger.warning('webapp date photo failed user=%s date=%s', telegram_id, date.id)
-    return web.json_response({'ok': True, 'kind': kind, 'delivered': True,
-                              'text': narration, 'photo_url': photo_url})
+        logger.exception('webapp date photo failed user=%s date=%s', telegram_id, date_id)
 
 
 async def _webapp_api_story(request: web.Request) -> web.Response:
