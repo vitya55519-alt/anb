@@ -202,6 +202,35 @@ CONSTRUCTOR_STEPS: list[dict] = [
             ('role_secret', 'Тайная возлюбленная', 'secret lover'),
         ],
     },
+    # V3.59.4: her relationship status — part of the game, it bends the chat
+    # (owner's ask). RELATIONSHIP_STORY below is the voice for each.
+    {
+        'key': 'marital', 'title': 'Её семейное положение?',
+        'options': [
+            ('mar_single', 'Свободна', 'single'),
+            ('mar_boyfriend', 'Есть парень', 'has a boyfriend'),
+            ('mar_married', 'Замужем', 'married'),
+            ('mar_divorced', 'В разводе', 'divorced'),
+            ('mar_open', 'Свободные отношения', 'in an open relationship'),
+        ],
+    },
+    # V3.59.4: ready-made near-erotic set-ups — one tap instead of writing a
+    # story by hand (owner's ask). SCENARIO_STORY below is the chat voice.
+    {
+        'key': 'scenario', 'title': 'Какой у вас сценарий?',
+        'options': [
+            ('scn_neighbor', 'Соседка за солью', 'neighbor who keeps dropping by'),
+            ('scn_boss', 'Строгая начальница', 'strict boss after hours'),
+            ('scn_trainer', 'Личный тренер', 'personal trainer'),
+            ('scn_teacher', 'Репетитор после занятий', 'private tutor after class'),
+            ('scn_ex', 'Бывшая, которая скучала', 'ex who missed you'),
+            ('scn_friend_sister', 'Сестра лучшего друга', "best friend's sister"),
+            ('scn_stranger', 'Незнакомка из бара', 'stranger from a bar'),
+            ('scn_vacation', 'Курортный роман', 'holiday romance'),
+            ('scn_massage', 'Массажистка', 'massage therapist'),
+            ('scn_roommate', 'Соседка по квартире', 'flatmate'),
+        ],
+    },
     # V3.44.5: photo reference step — upload a photo of who she should look like.
     {
         'key': 'photo_reference', 'title': 'Загрузи фото человека, на которого она должна быть похожа. Необязательно — можно пропустить.',
@@ -242,6 +271,7 @@ STEP_GROUPS: dict[str, str] = {
     'body': 'appearance', 'breast': 'appearance', 'waist': 'appearance',
     'hips': 'appearance', 'hair': 'appearance', 'eyes': 'appearance',
     'temperament': 'character', 'profession': 'character', 'role': 'character',
+    'scenario': 'character', 'marital': 'character',
     'backstory': 'story', 'personality': 'story', 'tags': 'story',
     'photo_reference': 'reference',
     'community': 'share',
@@ -283,6 +313,12 @@ def _EN_LABELS_FOR_STEP(step: dict) -> dict[str, str]:
         'prof_artist': 'Artist', 'prof_business': 'Businesswoman',
         'role_girlfriend': 'Girlfriend', 'role_friends': 'Friend with benefits',
         'role_ex': 'Ex who came back', 'role_secret': 'Secret lover',
+        'scn_neighbor': 'Neighbor borrowing salt', 'scn_boss': 'Strict boss', 'scn_trainer': 'Personal trainer',
+        'scn_teacher': 'Tutor after class', 'scn_ex': 'Ex who missed you', 'scn_friend_sister': "Best friend's sister",
+        'scn_stranger': 'Stranger from a bar', 'scn_vacation': 'Holiday romance', 'scn_massage': 'Massage therapist',
+        'scn_roommate': 'Flatmate',
+        'mar_single': 'Single', 'mar_boyfriend': 'Has a boyfriend', 'mar_married': 'Married',
+        'mar_divorced': 'Divorced', 'mar_open': 'Open relationship',
     }
     return {value: table.get(value, label) for value, label, _ in step['options']}
 
@@ -309,6 +345,8 @@ STEP_TITLES_EN: dict[str, str] = {
     'temperament': 'Her personality?',
     'profession': 'What does she do?',
     'role': 'Who is she to you?',
+    'scenario': 'Your scenario?',
+    'marital': 'Her relationship status?',
     'tags': 'Tags to find her (comma-separated)?',
 }
 
@@ -412,6 +450,32 @@ TEMPERAMENT_STYLE: dict[str, str] = {
 }
 
 
+# V3.59.4: what each ready-made scenario means for the chat — the set-up she
+# plays, the tension she keeps, and how the first messages open.
+SCENARIO_STORY: dict[str, str] = {
+    'scn_neighbor': 'Ваш сценарий: ты его соседка по лестничной клетке. Постоянно заходишь «за солью» или с пирогом, задерживаешься у двери дольше нужного и оба понимаете, что соль тут ни при чём.',
+    'scn_boss': 'Ваш сценарий: ты его начальница. На людях строгая и холодная, но вы часто остаётесь в офисе допоздна, ты снимаешь пиджак, и деловые разговоры превращаются в игру власти и флирта.',
+    'scn_trainer': 'Ваш сценарий: ты его личный тренер. Поправляешь его технику руками, хвалишь и подначиваешь, а после тренировки вы переписываетесь уже совсем не про подходы.',
+    'scn_teacher': 'Ваш сценарий: ты его репетитор. Умная, в очках, сдержанная — но когда занятие заканчивается и вы остаётесь вдвоём, ты показываешь совсем другую сторону.',
+    'scn_ex': 'Ваш сценарий: ты его бывшая, которая вернулась. Скучала, помнишь всё, что ему нравилось, ревнуешь и дразнишь воспоминаниями о том, как вам было хорошо.',
+    'scn_friend_sister': 'Ваш сценарий: ты младшая сестра его лучшего друга (взрослая). Вы давно знакомы, это запретно, и именно поэтому так тянет — ты флиртуешь тайком и просишь никому не рассказывать.',
+    'scn_stranger': 'Ваш сценарий: вы познакомились в баре вчера вечером. Ты загадочная незнакомка, почти ничего о себе не рассказываешь, дразнишь и намекаешь, что вечер мог закончиться иначе.',
+    'scn_vacation': 'Ваш сценарий: курортный роман. Солнце, море, вечерние прогулки, ты свободная и раскрепощённая, будто дома остались все правила.',
+    'scn_massage': 'Ваш сценарий: ты его массажистка. Спокойная, уверенная, говоришь о прикосновениях и расслаблении, и каждая встреча балансирует на грани.',
+    'scn_roommate': 'Ваш сценарий: вы снимаете квартиру вместе. Сталкиваетесь утром у ванной, ты ходишь по дому в его футболке и делаешь вид, что не замечаешь, как он смотрит.',
+}
+
+
+# V3.59.4: how her relationship status colours every chat.
+RELATIONSHIP_STORY: dict[str, str] = {
+    'mar_single': 'Ты свободна и ни с кем не встречаешься — тебе нечего скрывать, ты открыто показываешь интерес.',
+    'mar_boyfriend': 'У тебя есть парень, и общение с пользователем — ваш секрет: ты иногда вспоминаешь, что парень может увидеть переписку, пишешь «пока он не видит», чувствуешь вину и азарт одновременно, но всё равно тянешься к пользователю.',
+    'mar_married': 'Ты замужем. Муж часто на работе или в командировках; ты скучаешь по вниманию и тайно переписываешься с пользователем — осторожно, с оглядкой («муж скоро придёт», «удалю потом переписку»), и от этой запретности всё горячее.',
+    'mar_divorced': 'Ты в разводе: прошлый брак оставил осадок, ты осторожно учишься доверять снова, иногда упоминаешь бывшего мужа и сравниваешь — пользователь для тебя шанс почувствовать себя желанной заново.',
+    'mar_open': 'Ты в свободных отношениях: у тебя есть партнёр, но вы договорились о свободе, поэтому ты флиртуешь легко, без вины, и можешь дразнить рассказами о своей свободе.',
+}
+
+
 def build_persona_context(params: dict, display_name: str, backstory: str = '', personality: str = '') -> str:
     """System-prompt override that makes the chat model play the custom persona."""
     name = display_name or str(params.get('name') or 'она')
@@ -432,6 +496,12 @@ def build_persona_context(params: dict, display_name: str, backstory: str = '', 
     style = TEMPERAMENT_STYLE.get(str(params.get('temperament', '')))
     if style:
         lines.append(style)
+    marital = RELATIONSHIP_STORY.get(str(params.get('marital', '')))
+    if marital:
+        lines.append('Твоё семейное положение: ' + marital)
+    scenario = SCENARIO_STORY.get(str(params.get('scenario', '')))
+    if scenario:
+        lines.append(scenario + ' Держи этот сценарий и его напряжение в общении.')
     # V3.44.4: include backstory and personality if provided.
     if backstory:
         lines.append(f'Твоя история: {backstory}')
@@ -442,6 +512,53 @@ def build_persona_context(params: dict, display_name: str, backstory: str = '', 
         'как на нём. Никогда не упоминай, что ты конструктор или шаблон.'
     )
     return '\n'.join(lines)
+
+
+_BIO_SYSTEM = (
+    'Ты пишешь описание персонажа для витрины приложения AI-подруги. '
+    'Напиши 2–3 коротких предложения по-русски, от третьего лица, интригующе и '
+    'чувственно, как анонс: кто она, чем цепляет, какое напряжение между ней и '
+    'пользователем. Без перечисления параметров (не пиши «грудь большая, талия '
+    'тонкая»), без графики, без кавычек и эмодзи, до 300 символов. Ей 18+.'
+)
+
+
+async def write_card_bio(params: dict, display_name: str) -> str | None:
+    """V3.59.4: a pretty storefront description from the constructor choices.
+
+    The old bio was the option labels glued together («Кира — реалистичная,
+    23–27, овальное, классическое…»). Returns None on any failure so the caller
+    keeps that fallback."""
+    try:
+        from services.llm_provider_service import generate_text
+        facts = [f'Имя: {display_name}']
+        for key in ('age', 'body', 'hair', 'eyes', 'temperament', 'profession', 'role', 'marital', 'scenario'):
+            label = OPTION_LABELS.get(str(params.get(key, '')))
+            if label:
+                facts.append(f'{PARAM_TITLES.get(key, key)}: {label}')
+        scenario = SCENARIO_STORY.get(str(params.get('scenario', '')))
+        if scenario:
+            facts.append(scenario)
+        for key in ('backstory', 'personality'):
+            text = str(params.get(key) or '').strip()
+            if text:
+                facts.append(f'{key}: {text[:400]}')
+        result = await generate_text(
+            [{'role': 'system', 'content': _BIO_SYSTEM}, {'role': 'user', 'content': '\n'.join(facts)}],
+            max_tokens=400, temperature=0.9, purpose='constructor_bio',
+        )
+        text = (result.text or '').strip().strip('«»"').strip()
+        if len(text) < 40:
+            return None
+        return text[:400]
+    except Exception:
+        return None
+
+
+def all_custom_character_ids() -> list[str]:
+    """V3.59.4: every custom persona id (admin bio rewrite)."""
+    with SessionLocal() as session:
+        return [cid for cid in session.scalars(select(CustomCharacter.character_id)).all() if cid]
 
 
 # ── DB operations ──────────────────────────────────────────────────────────

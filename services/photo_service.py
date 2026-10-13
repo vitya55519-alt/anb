@@ -433,23 +433,23 @@ PRIVATE_POSE_POOL = [
     'leaning close to the camera with a playful smolder',
     'sitting cross-legged on the bed, leaning slightly forward',
     # V3.59.3: self-touch poses the owner asked for (hands on her own body).
-    'cupping her own breasts over her lingerie with both hands, chest pushed forward, looking into the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
-    'turned away and looking back over her shoulder, one hand squeezing her own bottom — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
-    'kneeling on the bed, arms pressing her breasts together as she leans toward the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
-    'standing with her hands sliding down her hips, thumbs hooked into the waistband of her panties, teasing — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
-    'lying on her back, one hand on her breast and the other resting on her inner thigh — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
-    'arching her back on all fours, one hand reaching back to her bottom, glancing at the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing)',
+    'cupping her own breasts over her lingerie with both hands, chest pushed forward, looking into the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'body turned three-quarters away, face turned back to the camera over her shoulder, one hand squeezing her own bottom — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'kneeling on the bed, arms pressing her breasts together as she leans toward the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'standing with her hands sliding down her hips, thumbs hooked into the waistband of her panties, teasing — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'reclining propped on one elbow facing the camera, one hand on her breast and the other resting on her inner thigh — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'kneeling upright on the bed facing the camera, one hand on her hip and the other cupping her breast, looking into the lens — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
 ]
 
 # V3.59.3: passion-path poses for the everyday/public scenes — flirtatious and
 # clothed (it is a café, a street, a gym), still clearly hotter than POSE_POOL.
 PASSION_PUBLIC_POSE_POOL = [
-    'looking back over her shoulder with a smirk, one hand resting on her own bottom — natural slender female hands with five correct fingers each',
-    'leaning toward the camera with her arms pressing her chest together, biting her lip — natural slender female hands with five correct fingers each',
-    'hip pushed out, one hand on her waist, the other playing with the neckline of her top — natural slender female hands with five correct fingers each',
-    'sitting with legs crossed high, hand sliding along her own thigh, sultry gaze — natural slender female hands with five correct fingers each',
-    'arching her back slightly, hands in her hair, lips parted — natural slender female hands with five correct fingers each',
-    'one hand pulling the strap of her top off her shoulder, teasing look — natural slender female hands with five correct fingers each',
+    'looking back over her shoulder with a smirk, one hand resting on her own bottom — natural slender female hands with five correct fingers each; her face stays clearly visible, exactly the same face as reference image 1',
+    'leaning toward the camera with her arms pressing her chest together, biting her lip — natural slender female hands with five correct fingers each; her face stays clearly visible, exactly the same face as reference image 1',
+    'hip pushed out, one hand on her waist, the other playing with the neckline of her top — natural slender female hands with five correct fingers each; her face stays clearly visible, exactly the same face as reference image 1',
+    'sitting with legs crossed high, hand sliding along her own thigh, sultry gaze — natural slender female hands with five correct fingers each; her face stays clearly visible, exactly the same face as reference image 1',
+    'arching her back slightly, hands in her hair, lips parted — natural slender female hands with five correct fingers each; her face stays clearly visible, exactly the same face as reference image 1',
+    'one hand pulling the strap of her top off her shoulder, teasing look — natural slender female hands with five correct fingers each; her face stays clearly visible, exactly the same face as reference image 1',
 ]
 
 MAKEUP_POOL = [

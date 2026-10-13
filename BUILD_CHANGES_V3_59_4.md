@@ -1,0 +1,10 @@
+# V3.59.4 — the face stays hers on hot photos
+
+- After V3.59.3 the face drifted and some private shots came out deformed. Causes: the new «pleasure» face asked for rolled-up eyes and a thrown-back head, «breathless» put hair across the face, and several self-touch poses turned her away from the camera or put her on all fours, so the model lost the face and the anatomy.
+- Hot expressions now keep the eyes open on the lens and the face unobstructed; every expression line ends with «only the mimicry changes, the face identity stays exactly her own».
+- Every V3.59.3 pose keeps her face visible and turned to the camera («exactly the same face as reference image 1»); the two all-fours poses are replaced by simpler kneeling/mirror ones, and lying-on-back by reclining on an elbow.
+- **Path bar on every girl:** the «нежность ↔ страсть» bar used to show only after the first chat/story with her (no relationship row yet = hidden). Now it is always shown, balanced at 0 until the first choice.
+- **Constructor «Какой у вас сценарий?»:** 10 ready-made near-erotic set-ups (соседка за солью, строгая начальница, личный тренер, репетитор, бывшая, сестра лучшего друга, незнакомка из бара, курортный роман, массажистка, соседка по квартире). Each one becomes a story line in her chat persona.
+- **Pretty storefront bio:** the card bio used to be the option labels glued together («Кира — реалистичная, 23–27, овальное…»). The chat model (MiniMax first) now writes a 2–3 sentence teaser; the old line stays as the fallback. Admin → «✨ Переписать описания своих персонажей» rewrites the existing custom cards.
+- **Constructor «Её семейное положение?»:** свободна / есть парень / замужем / в разводе / свободные отношения. Each status adds a line to her chat persona (a girl with a boyfriend or a husband writes «пока он не видит», with guilt and thrill; a divorced one learns to trust again).
+- **SpicyAPI renders at 2k by default** (owner's call: faces and hands were crude at 1k). Railway `SPICYAPI_RESOLUTION=1k` switches back without a deploy.

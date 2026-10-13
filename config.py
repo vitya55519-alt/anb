@@ -85,7 +85,9 @@ SPICYAPI_T2I_MODEL = os.getenv("SPICYAPI_T2I_MODEL", "bytedance/seedream-5.0-pro
 SPICYAPI_IMAGE_TIMEOUT = max(30, min(180, int(os.getenv("SPICYAPI_IMAGE_TIMEOUT", "90"))))
 # V3.58.2: 1k = $0.036/job and faster than 2k; «thinking» adds latency, so it
 # is off unless the owner turns it on from Railway.
-SPICYAPI_RESOLUTION = os.getenv("SPICYAPI_RESOLUTION", "1k").strip().lower()
+# V3.59.4: owner chose 2k — at 1k faces and hands came out crude. Railway
+# SPICYAPI_RESOLUTION=1k switches back without a deploy.
+SPICYAPI_RESOLUTION = os.getenv("SPICYAPI_RESOLUTION", "2k").strip().lower()
 SPICYAPI_ENABLE_THINKING = os.getenv("SPICYAPI_ENABLE_THINKING", "0") == "1"
 # V3.56.0: the real per-job SpicyAPI bill (observed $0.0345 on the console).
 # Every intimate render (Наедине/косплей/взрослая студия) is charged whether or

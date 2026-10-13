@@ -196,14 +196,16 @@ EXPRESSIONS: dict[str, str] = {
     # V3.59.3: the owner wanted the intimate frames hotter still — pleasure and
     # arousal faces for the PRIVATE scenes only (never in the public rotation).
     'pleasure': (
-        'an aroused pleasured expression: eyes half-closed or rolled softly upward, '
-        'lips parted in a quiet moan, flushed cheeks, head tilted back slightly. '
-        'Intense and sensual but believable — no distorted face, no wide gaping mouth.'
+        'an aroused pleasured expression facing the camera: heavy-lidded eyes still '
+        'open and looking into the lens, lips softly parted, flushed cheeks. Intense '
+        'but subtle — her face keeps its exact identity and proportions, no rolled-up '
+        'eyes, no head thrown back, no distorted face, no wide gaping mouth.'
     ),
     'breathless': (
         'a breathless flushed look straight into the camera: slightly parted glossy '
-        'lips, heavy-lidded hungry eyes, a rosy blush on cheeks and chest, a strand of '
-        'hair across her face. Hot and inviting, photogenic and natural.'
+        'lips, heavy-lidded hungry eyes, a rosy blush on cheeks and chest, face fully '
+        'visible and unobstructed. Hot and inviting, photogenic and natural — the '
+        'exact same face, only the expression changes.'
     ),
     'surprised': (
         'a charmed surprised expression: softly raised brows, bright widened eyes '
@@ -305,4 +307,7 @@ def expression_description(key: str | None, name: str) -> str:
     pipeline never breaks on an unmapped value.
     """
     desc = EXPRESSIONS.get(key or '', EXPRESSIONS['neutral'])
-    return f'EXPRESSION: {name} has {desc}'
+    # V3.59.4: a hot expression used to read as «a different face» — say outright
+    # that only the mimicry moves, the identity stays the reference's.
+    return (f'EXPRESSION: {name} has {desc} Only the mimicry changes: her face identity '
+            '(eye shape, nose, lips, jawline, face shape) stays exactly her own, the same as in her references.')
