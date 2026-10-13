@@ -443,8 +443,11 @@
   .charlike:active { transform: scale(1.1); }
   .charlike.on { color: #ff4081; }
   .charcta { display: block; width: calc(100% - 32px); margin: 14px 16px; padding: 14px; border: 0; border-radius: 14px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
-  .mchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .mchip { background: var(--card2); border: 1px solid rgba(255,255,255,.12); color: var(--text); font-size: 13px; padding: 7px 11px; border-radius: 16px; cursor: pointer; }
+  .mchips { display: flex; flex-wrap: nowrap; gap: 6px; margin-top: 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .mchips::-webkit-scrollbar { display: none; }
+  .mchip { flex: 0 0 auto; background: var(--card2); border: 1px solid rgba(255,255,255,.12); color: var(--text); font-size: 13px; padding: 7px 12px; border-radius: 16px; cursor: pointer; white-space: nowrap; }
+  .mlbl { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .mprice { font-size: 12px; font-weight: 500; opacity: .6; white-space: nowrap; }
   .mchip.on { background: linear-gradient(90deg, #ff2d78, #b03cff); border-color: transparent; font-weight: 600; }
   .charblock { margin: 10px 16px; padding: 12px 14px; background: var(--card); border-radius: 14px; line-height: 1.45; white-space: pre-wrap; }
   .charblock .lbl3 { color: var(--accent); font-size: 12px; letter-spacing: .08em; margin-bottom: 6px; }
@@ -958,7 +961,7 @@
     </div>
     <!-- V3.51.0: story player entry, right under the path bar (choice -> result) -->
     <!-- V3.59.5: her relationship status for this user — bends how she chats -->
-    <div class="charblock" id="charMarital" style="display:none;white-space:normal"><div id="charMaritalLbl" style="font-weight:600"></div><div class="mchips" id="charMaritalChips"></div></div>
+    <div class="charblock" id="charMarital" style="display:none;white-space:normal"><div class="mlbl"><span id="charMaritalLbl" style="font-weight:600"></span><span class="mprice" id="charMaritalPrice"></span></div><div class="mchips" id="charMaritalChips"></div></div>
     <button class="charcta" id="charStories" style="display:none"></button>
     <button class="charcta" id="charStart"></button>
     <div class="charblock" id="charBio"></div>
@@ -1230,7 +1233,7 @@ const L_EN = {
       story_btn: 'Stories', story_title: 'Stories', story_back: '← To stories',
       story_locked_level: lvl => '🔒 Opens at relationship level ' + lvl, story_locked_tasks: n => '🔒 ' + n + ' more daily tasks to unlock',
       story_done: 'Completed', story_canon: ' · your path', story_play: 'Play', story_choose: 'Choose how it goes',
-      story_result: 'What happened', story_reaction: 'Her reaction', story_axis_up: 'Path moved toward passion', story_pts_passion: 'passion', story_pts_tender: 'tenderness', marital_lbl: '💍 Her relationship status', marital_default: 'As created', marital_single: 'Single', marital_boyfriend: 'Has a boyfriend', marital_married: 'Married', marital_divorced: 'Divorced', marital_open: 'Open relationship', marital_saved: 'Done, she will talk differently now', story_axis_down: 'Path moved toward tenderness', story_axis_same: 'The path stayed balanced',
+      story_result: 'What happened', story_reaction: 'Her reaction', story_axis_up: 'Path moved toward passion', story_pts_passion: 'passion', story_pts_tender: 'tenderness', marital_lbl: '💍 Her relationship status', marital_default: 'As created', marital_single: 'Single', marital_boyfriend: 'Has a boyfriend', marital_married: 'Married', marital_divorced: 'Divorced', marital_open: 'Open relationship', marital_saved: 'Done, she will talk differently now', marital_change: 'change', marital_confirm: 'Change her status for', marital_no_peaches: 'Not enough peaches — top up in the shop', story_axis_down: 'Path moved toward tenderness', story_axis_same: 'The path stayed balanced',
       story_thinking: 'She is thinking how it goes… 💭', story_photo_wait: '📸 the frame for this moment is on its way…',
       story_beat: 'A moment later…', story_photo: '📸 A frame for our story', story_empty: 'No stories yet', story_hint: 'Your choices here move the «Relationship path» on her card.',
       // V3.51.1: admin-only feed of what users generate in the Mini App.
@@ -1395,7 +1398,7 @@ const L_RU = {
       story_btn: 'Истории', story_title: 'Истории', story_back: '← К историям',
       story_locked_level: lvl => '🔒 Откроется на уровне близости ' + lvl, story_locked_tasks: n => '🔒 Ещё ' + n + ' заданий до открытия',
       story_done: 'Пройдено', story_canon: ' · твой путь', story_play: 'Играть', story_choose: 'Выбери, как будет',
-      story_result: 'Что произошло', story_reaction: 'Её реакция', story_axis_up: 'Путь сдвинулся к страсти', story_pts_passion: 'к страсти', story_pts_tender: 'к нежности', marital_lbl: '💍 Её семейное положение', marital_default: 'Как задумано', marital_single: 'Свободна', marital_boyfriend: 'Есть парень', marital_married: 'Замужем', marital_divorced: 'В разводе', marital_open: 'Свободные отношения', marital_saved: 'Готово, теперь она будет общаться по-другому', story_axis_down: 'Путь сдвинулся к нежности', story_axis_same: 'Путь остался равновесным',
+      story_result: 'Что произошло', story_reaction: 'Её реакция', story_axis_up: 'Путь сдвинулся к страсти', story_pts_passion: 'к страсти', story_pts_tender: 'к нежности', marital_lbl: '💍 Её семейное положение', marital_default: 'Как задумано', marital_single: 'Свободна', marital_boyfriend: 'Есть парень', marital_married: 'Замужем', marital_divorced: 'В разводе', marital_open: 'Свободные отношения', marital_saved: 'Готово, теперь она будет общаться по-другому', marital_change: 'смена', marital_confirm: 'Поменять её семейное положение за', marital_no_peaches: 'Не хватает персиков — пополни в магазине', story_axis_down: 'Путь сдвинулся к нежности', story_axis_same: 'Путь остался равновесным',
       story_thinking: 'Она представляет, как всё будет… 💭', story_photo_wait: '📸 кадр к этому моменту уже в пути…',
       story_beat: 'Через миг…', story_photo: '📸 Кадр к нашей истории', story_empty: 'Пока нет историй', story_hint: 'Твой выбор здесь двигает шкалу «Характер связи» на её карточке.',
       // V3.51.1: админ-лента того, что генерируют пользователи в Mini App.
@@ -2210,24 +2213,33 @@ function renderPersonaBanner(characterId) {
 }
 
 // V3.59.5: «💍 Её семейное положение» on the character page.
-const MARITAL_KEYS = ['default', 'mar_single', 'mar_boyfriend', 'mar_married', 'mar_divorced', 'mar_open'];
+const MARITAL_KEYS = ['mar_single', 'mar_boyfriend', 'mar_married', 'mar_divorced', 'mar_open'];
 function renderMarital(c) {
   const box = document.getElementById('charMarital');
   if (!box) return;
   box.style.display = '';
   document.getElementById('charMaritalLbl').textContent = L.marital_lbl;
-  const cur = c.marital || 'default';
+  const cur = c.marital || 'mar_single';
+  const price = Number(c.marital_price) || 0;
+  document.getElementById('charMaritalPrice').textContent = price ? (L.marital_change + ' · ' + price + ' 🍑') : '';
   const chips = document.getElementById('charMaritalChips');
   chips.innerHTML = MARITAL_KEYS.map(k =>
     '<button class="mchip' + (k === cur ? ' on' : '') + '" data-ms="' + esc(k) + '">' +
-    esc(L[k === 'default' ? 'marital_default' : 'marital_' + k.slice(4)]) + '</button>').join('');
-  chips.querySelectorAll('.mchip').forEach(b => b.addEventListener('click', () => chooseMarital(c, b.dataset.ms)));
+    esc(L['marital_' + k.slice(4)]) + '</button>').join('');
+  chips.querySelectorAll('.mchip').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.ms === cur) return;
+    const go = () => chooseMarital(c, b.dataset.ms);
+    if (!price) { go(); return; }
+    const q = L.marital_confirm + ' ' + price + ' 🍑?';
+    if (tg.showConfirm) tg.showConfirm(q, ok => { if (ok) go(); });
+    else if (confirm(q)) go();
+  }));
 }
 
 async function chooseMarital(c, status) {
   if (!tg.initData) { toast(L.auth_short); return; }
   const prev = c.marital;
-  c.marital = status === 'default' ? null : status;
+  c.marital = status;
   renderMarital(c);
   try {
     const r = await fetch('/webapp/api/chat/marital?init_data=' + encodeURIComponent(tg.initData), {
@@ -2235,11 +2247,13 @@ async function chooseMarital(c, status) {
       body: JSON.stringify({ character_id: c.id, status: status }),
     });
     const j = await r.json().catch(() => ({}));
+    if (r.status === 402) { c.marital = prev; renderMarital(c); toast(L.marital_no_peaches); showTab('shop'); return; }
     if (!r.ok || !j.ok) {
       c.marital = prev; renderMarital(c);
       toast(j.error === 'consent' ? L.consent_needed : L.reply_err);
       return;
     }
+    if (typeof j.balance === 'number' && typeof ME !== 'undefined' && ME) { ME.photo_credits = j.balance; }
     toast(L.marital_saved);
   } catch (e) { c.marital = prev; renderMarital(c); toast(L.reply_err); }
 }

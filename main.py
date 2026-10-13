@@ -34,7 +34,7 @@ from config import (
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
     CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST, COSPLAY_TOKEN_COST,
-    CONSTRUCTOR_COST_PEACHES,
+    CONSTRUCTOR_COST_PEACHES, MARITAL_CHANGE_PEACHES,
     CONSTRUCTOR_PRICE_USD, PREMIUM_WEEKLY_PRICE_USD, fiat_suffix,
     PLATEGA_ENABLED, PLATEGA_PREMIUM_PRICE_RUB, PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB, PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
     BOT_CHAT_REDIRECT,
@@ -11048,15 +11048,25 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
             return 'consent'
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
         from models.relationship_models import UserCharacterRelationship
+        new_value = None if status == 'default' else status
         with SessionLocal() as session:
             row = session.scalar(select(UserCharacterRelationship).where(
                 UserCharacterRelationship.user_id == uid,
                 UserCharacterRelationship.character_id == character_id,
             ))
+            current = (row.marital_status if row is not None else None) or \
+                webapp_service._default_marital(character_id, is_custom_character(character_id))
+            if status == current or (status == 'default' and (row is None or row.marital_status is None)):
+                return None  # same pick again: free, nothing changes
+            # V3.59.6: every change costs peaches (admin tests free) — a paid
+            # tweak instead of endless tapping.
+            if MARITAL_CHANGE_PEACHES and telegram_id not in ADMIN_TELEGRAM_IDS:
+                if not spend_peaches(telegram_id, MARITAL_CHANGE_PEACHES):
+                    return 'peaches'
             if row is None:
                 row = UserCharacterRelationship(user_id=uid, character_id=character_id, path_axis=0.0)
                 session.add(row)
-            row.marital_status = None if status == 'default' else status
+            row.marital_status = new_value
             session.commit()
         track_event(uid, 'webapp_marital', metadata={'character_id': character_id, 'status': status})
         return None
@@ -11066,9 +11076,13 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
     except Exception:
         logger.exception('marital save failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'save'}, status=500)
+    if blocked == 'peaches':
+        return web.json_response({'ok': False, 'error': 'peaches', 'price': MARITAL_CHANGE_PEACHES,
+                                  'balance': get_photo_credits(telegram_id)}, status=402)
     if blocked:
         return web.json_response({'ok': False, 'error': blocked}, status=400 if blocked == 'unknown_character' else 403)
-    return web.json_response({'ok': True, 'status': None if status == 'default' else status})
+    return web.json_response({'ok': True, 'status': None if status == 'default' else status,
+                              'balance': get_photo_credits(telegram_id)})
 
 
 async def _webapp_api_chat_persona(request: web.Request) -> web.Response:
