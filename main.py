@@ -1122,6 +1122,23 @@ def _contextualize_vague_photo(telegram_id: int, text: str, request: PhotoReques
     return request
 
 
+def _selfie_from_dialog(uid: int, character_id: str, request: PhotoRequest) -> PhotoRequest:
+    """V3.60.5: a plain selfie takes its place and light from what she just
+    wrote in this chat («лежу рядом с мужем» → in bed, night light)."""
+    if request.scene != 'selfie' or request.location:
+        return request
+    try:
+        from services.memory_service import get_recent_messages
+        from services.photo_service import place_from_dialog
+        recent = [m.content for m in reversed(get_recent_messages(uid, character_id, 6)) if m.role == 'assistant']
+        place, light = place_from_dialog(recent[:3])
+    except Exception:
+        return request
+    if not place:
+        return request
+    return replace(request, location=place, time_of_day=request.time_of_day or light)
+
+
 def _premium_tariff_lines(lang: str) -> list[str]:
     """V3.42.0: the tariff card the owner benchmarked (Come Closer screenshot).
     V3.43.0: three tiers with the competitor's prices (299 / 899 / 1799 ₽) —
@@ -10865,6 +10882,8 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     # V3.57.2: everything around the model call is PostgreSQL work (user
     # upsert, event track, stage/credit reads, message writes) — it runs in one
     # worker thread so a chat turn never blocks the loop the other users share.
+    photo_req = None
+
     def _prelude():
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
         track_event(uid, 'webapp_chat_message', metadata={'character_id': character_id})
@@ -10876,6 +10895,8 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         photo_request = _contextualize_vague_photo(telegram_id, text, parse_photo_request(text))
         if not photo_request:
             return uid, None, None
+        nonlocal photo_req
+        photo_req = _selfie_from_dialog(uid, character_id, photo_request)
         scene = photo_request.scene if photo_request.scene in PHOTO_MENU_ORDER else 'selfie'
         stage_ok = scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id))
         adult_ok = not (requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id))
@@ -10897,7 +10918,10 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             _chat_photo_blocked, uid, character_id, photo_block, extra))
     if photo_scene:
         try:
-            data, mime, ext = await _webapp_media_photo(telegram_id, character_id, photo_scene)
+            if photo_req is not None and photo_req.location and photo_scene == 'selfie':
+                data, mime, ext = await _webapp_pipeline_photo(telegram_id, character_id, photo_req)
+            else:
+                data, mime, ext = await _webapp_media_photo(telegram_id, character_id, photo_scene)
         except Exception:
             logger.exception('webapp chat photo-on-request failed user=%s scene=%s', telegram_id, photo_scene)
             data = None
