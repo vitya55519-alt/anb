@@ -19,6 +19,7 @@ import os
 import hashlib
 import json
 import random
+import re
 import uuid
 import asyncio
 import aiohttp
@@ -636,6 +637,65 @@ _spicy_last_error: str = ''
 _spicy_thinking_override: Dict[str, bool] = {}
 
 
+# V3.62.4: SpicyAPI started rejecting prompts over 5000 characters (HTTP 400
+# «prompt: must be at most 5000 characters»), and every scene prompt runs
+# ~8–10k, so all photos died. _fit_spicy_prompt shrinks a prompt to the cap:
+# first it drops the least important lines, then cuts trailing sentences off
+# the longest lines (identity and the adult lock last), then hard-truncates.
+SPICYAPI_PROMPT_MAX = 4900
+_SPICY_DROP_ORDER = (
+    'Photorealistic smartphone', 'This should feel like', 'LIGHTING:',
+    'SEASON/WEATHER:', 'PROGRESSION PACK', 'BUST CONSISTENCY:', 'OUTFIT FIT:',
+    'STYLING DETAILS:', 'MOOD:', 'UNDER-CLOTHING REALISM:',
+    'RELATIONSHIP VISUAL PROGRESSION:', 'TIME OF DAY:', 'MAKEUP:',
+)
+# Trim tiers: 0 = everything else, 1 = what the shot is, 2 = who she is.
+_SPICY_TIERS = (
+    ('SCENE:', 'WARDROBE:', 'CAMERA/POSE:', 'Create exactly ONE', 'Mainstream general-audience'),
+    ('PHOTO IDENTITY:', 'HARD SUBJECT LOCK:'),
+)
+
+
+def _spicy_tier(line: str) -> int:
+    for n, prefixes in enumerate(_SPICY_TIERS, 1):
+        if line.startswith(prefixes):
+            return n
+    return 0
+_SENTENCE_SPLIT = re.compile(r'(?<=[.!?])\s+')
+
+
+def _dedupe_sentences(line: str) -> str:
+    seen: set = set()
+    out = []
+    for part in _SENTENCE_SPLIT.split(line):
+        key = part.strip().rstrip('.;').lower()
+        if key and key in seen:
+            continue
+        seen.add(key)
+        out.append(part)
+    return ' '.join(out)
+
+
+def _fit_spicy_prompt(prompt: str, limit: int = SPICYAPI_PROMPT_MAX) -> str:
+    if len(prompt) <= limit:
+        return prompt
+    lines = [_dedupe_sentences(l.strip()) for l in prompt.split('\n') if l.strip()]
+    size = lambda: len('\n'.join(lines))
+    for prefix in _SPICY_DROP_ORDER:
+        if size() <= limit:
+            break
+        lines = [l for l in lines if not l.startswith(prefix)]
+    for tier in range(len(_SPICY_TIERS) + 1):
+        while size() > limit:
+            pool = [i for i, l in enumerate(lines)
+                    if _spicy_tier(l) == tier and len(_SENTENCE_SPLIT.split(l)) > 1]
+            if not pool:
+                break
+            i = max(pool, key=lambda k: len(lines[k]))
+            lines[i] = ' '.join(_SENTENCE_SPLIT.split(lines[i])[:-1])
+    return '\n'.join(lines)[:limit]
+
+
 def spicyapi_last_error() -> str:
     return _spicy_last_error or 'empty_result'
 
@@ -710,7 +770,7 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
     _spicy_note_error('')
     try:
         input_block: Dict[str, Any] = {
-            "prompt": prompt,
+            "prompt": _fit_spicy_prompt(prompt),
             # V3.58.2: Seedream 5.0 Pro schema — an unknown field (the old
             # "size") is a 400, so only documented fields are sent.
             "aspect_ratio": "3:4",  # portrait
