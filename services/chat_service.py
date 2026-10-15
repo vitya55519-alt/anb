@@ -312,7 +312,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         from services.chat_guest_service import get_guest, guest_prompt
         guest_id = get_guest(user_id, character_id)
         if guest_id:
-            guest_line = guest_prompt(character.get('name') or '', guest_id)
+            guest_line = guest_prompt(character.get('name') or '', guest_id, user_id)
             if guest_line:
                 persona = (persona + '\n' if persona else '') + guest_line
                 from services.chat_guest_service import character_name

@@ -244,6 +244,7 @@
   .chat-head .sub { color: var(--muted); font-size: 11px; }
   .chat-head .spacer { margin-left: auto; }
   .msg .duo-nm { color: #ff9ccb; }
+  .msg .duo-av { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; vertical-align: -5px; margin-right: 5px; }
   /* V3.61.2: «позвать в чат» — guest bar + girl picker */
   .guestbar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 13px;
     background: rgba(255,90,160,.12); border-bottom: 1px solid rgba(255,120,180,.25); }
@@ -2184,7 +2185,14 @@ function chatBubble(roleOrM, content, ts) {
   let body = esc(m.content);
   // V3.61.0: a duo persona answers as «Имя: …» lines — the speaker's name in bold.
   if (cls === 'bot' && !m.media_url && CHAT && CHAT.duo) {
-    body = body.split('\n').map(line => line.replace(/^([A-Za-zА-Яа-яЁё]{2,20}):\s/, '<b class="duo-nm">$1:</b> ')).join('\n');
+    // V3.61.2: plus a small avatar of who is speaking (the chat's girl or the invited guest).
+    const avatars = {};
+    if (CHAT.guest) avatars[CHAT.guest.name] = CHAT.guest.photo;
+    if (CHAT.name) avatars[CHAT.name] = CHAT.photo || ('/webapp/photo/' + CHAT.id);
+    body = body.split('\n').map(line => line.replace(/^([A-Za-zА-Яа-яЁё]{2,20}):\s/, (all, nm) => {
+      const av = avatars[nm] ? '<img class="duo-av" src="' + esc(avatars[nm]) + '" alt="">' : '';
+      return av + '<b class="duo-nm">' + nm + ':</b> ';
+    })).join('\n');
   }
   if (m.media_url) {
     const src = m.media_url + '?init_data=' + encodeURIComponent(tg.initData || '');
@@ -2351,6 +2359,7 @@ async function setGuest(characterId, guestId) {
     if (!CHAT || CHAT.id !== characterId) return;
     if (!j.ok) { toast(L.reply_err); return; }
     CHAT.duo = j.guest ? j.guest.name : null;
+    CHAT.guest = j.guest || null;
     renderGuest(characterId, j.guest, true);
     if (j.reply) {
       const empty = box.querySelector('.chat-empty');
@@ -2373,7 +2382,7 @@ async function loadChatHistory(characterId) {
     if (r.status === 401) { toast(L.auth_short); return; }
     const j = await r.json();
     if (CHAT && CHAT.id === characterId) CHAT.duo = j.duo || null;
-    if (CHAT && CHAT.id === characterId) renderGuest(characterId, j.guest || null, j.can_invite !== false);
+    if (CHAT && CHAT.id === characterId) { CHAT.guest = j.guest || null; renderGuest(characterId, j.guest || null, j.can_invite !== false); }
     const box = document.getElementById('chatMsgs');
     if (!j.ok) { box.innerHTML = `<div class="chat-empty">${esc(L.reply_err)}</div>`; return; }
     if (!j.history.length) {

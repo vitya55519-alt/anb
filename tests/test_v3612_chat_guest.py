@@ -43,3 +43,23 @@ def test_chat_pipeline_and_spa_wiring():
     html = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
     for marker in ('id="chatInvite"', 'id="guestBar"', 'openGuestPicker', 'setGuest('):
         assert marker in html
+
+
+def test_guest_keeps_her_own_marital_status():
+    line = cgs.guest_status_line(None, 'vika_01', 'Вика')
+    assert 'Вика' in line
+    assert 'замужем' in cgs.GUEST_STATUS['mar_married']
+    assert 'положение' in cgs.guest_prompt('Анна', 'vika_01')
+
+
+def test_joint_photo_request_takes_the_guest():
+    from services.photo_service import PhotoRequest, attach_guest, _guest_photo_block
+    cgs.set_guest(777002, 'anna_01', 'vika_01')
+    req = attach_guest(PhotoRequest(scene='selfie'), 777002, 'anna_01', 'сфоткайтесь вдвоём')
+    assert req.with_guest == 'vika_01'
+    req = attach_guest(PhotoRequest(scene='selfie'), 777002, 'anna_01', 'скинь фото с Викой')
+    assert req.with_guest == 'vika_01'
+    assert attach_guest(PhotoRequest(scene='selfie'), 777002, 'anna_01', 'пришли селфи').with_guest == ''
+    block = _guest_photo_block('anna_01', 'vika_01')
+    assert 'images 3–4' in block and 'TWO ADULT WOMEN' in block
+    cgs.set_guest(777002, 'anna_01', None)

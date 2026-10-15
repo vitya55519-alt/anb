@@ -121,15 +121,61 @@ def guest_description(guest_id: str) -> str:
     return ' '.join(bits)
 
 
-def guest_prompt(host_name: str, guest_id: str) -> str:
+# Her status the way the HOST sees her friend (third person, short).
+GUEST_STATUS = {
+    'mar_single': '{g} свободна и ни с кем не встречается.',
+    'mar_boyfriend': 'У {g} есть парень, его зовут {partner}; она переписывается с пользователем тайком от него.',
+    'mar_married': '{g} замужем, мужа зовут {partner}; она переписывается с пользователем тайком от мужа и боится попасться.',
+    'mar_divorced': '{g} в разводе и снова свободна.',
+    'mar_open': 'У {g} свободные отношения: её партнёр, {partner}, в курсе и не против.',
+}
+
+
+def guest_marital(telegram_id: int | None, guest_id: str) -> str:
+    """The guest keeps the status the user picked in HER own chat (or her
+    constructor default) — «Мэри замужем» stays true when she visits Анна."""
+    status = ''
+    if telegram_id:
+        try:
+            from services.webapp_service import _batch_marital
+            status = _batch_marital(telegram_id, [guest_id]).get(guest_id, '')
+        except Exception:
+            status = ''
+    if not status:
+        try:
+            from services.custom_character_service import is_custom_character
+            from services.webapp_service import _default_marital
+            status = _default_marital(guest_id, is_custom_character(guest_id))
+        except Exception:
+            status = ''
+    return status or 'mar_single'
+
+
+def guest_status_line(telegram_id: int | None, guest_id: str, name: str) -> str:
+    status = guest_marital(telegram_id, guest_id)
+    text = GUEST_STATUS.get(status, '')
+    if '{partner}' in text:
+        try:
+            from services.custom_character_service import relationship_line
+            import re
+            partner = re.search(r'зовут (\w+)', relationship_line(status, guest_id) or '')
+            text = text.replace('{partner}', partner.group(1) if partner else 'он')
+        except Exception:
+            text = text.replace('{partner}', 'он')
+    return text.replace('{g}', name)
+
+
+def guest_prompt(host_name: str, guest_id: str, telegram_id: int | None = None) -> str:
     name = character_name(guest_id)
     if not name:
         return ''
     host = host_name or 'ты'
+    status = guest_status_line(telegram_id, guest_id, name)
     return (
         f'В ЧАТ ЗАШЛА {name} — пользователь сам позвал её в вашу переписку. Кто она: '
         f'{guest_description(guest_id) or "взрослая девушка со своим характером"}\n'
-        f'Теперь вас в чате двое: ты ({host}) и {name}. Ты пишешь реплики за обеих. Каждая реплика '
+        + (f'Её семейное положение (так же, как в её собственном чате): {status} Не путай её положение со своим.\n' if status else '')
+        + f'Теперь вас в чате двое: ты ({host}) и {name}. Ты пишешь реплики за обеих. Каждая реплика '
         f'с новой строки и начинается с имени, например «{host}: …» и «{name}: …». Обычно говорят обе, '
         f'у каждой свой характер, манера и отношение к нему; они могут подкалывать друг друга, '
         f'ревновать или объединяться против него. Не сливай их в одну и не забывай про вторую. '

@@ -66,7 +66,7 @@ from services.photo_service import (
     get_gallery_page, get_gallery_item_bytes, GALLERY_PAGE_SIZE, generate_custom_avatar,
     generate_photo_set, photo_frame_bytes, AUTO_CAPTIONS,
     admin_pool_count, admin_pool_get, admin_pool_latest_id, admin_pool_neighbor, admin_pool_set_shared,
-    ensure_custom_avatar_cached,
+    ensure_custom_avatar_cached, attach_guest,
 )
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
@@ -10963,6 +10963,8 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             return uid, None, None
         nonlocal photo_req
         photo_req = _selfie_from_dialog(uid, character_id, photo_request)
+        # V3.61.2: «сфоткайтесь вдвоём» — the invited girl joins the frame.
+        photo_req = attach_guest(photo_req, telegram_id, character_id, text)
         scene = photo_request.scene if photo_request.scene in PHOTO_MENU_ORDER else 'selfie'
         return (uid, scene, _chat_photo_gate(telegram_id, character_id, scene))
 
@@ -11157,7 +11159,7 @@ async def _webapp_api_chat_guest(request: web.Request) -> web.Response:
         try:
             from services.llm_provider_service import generate_text
             r = await generate_text([
-                {'role': 'system', 'content': cgs.guest_prompt(host_name, guest_id)},
+                {'role': 'system', 'content': cgs.guest_prompt(host_name, guest_id, telegram_id)},
                 {'role': 'user', 'content': (
                     f'Напиши сцену появления: {guest_name} заходит в чат. Первая строка в звёздочках — как она '
                     f'появляется. Потом одна реплика «{host_name}: …» и одна «{guest_name}: …» пользователю, '
