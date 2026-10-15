@@ -1729,7 +1729,11 @@ def _wardrobe_pool(scene: str, level: int, season: str, *, character_id: str = '
         style = _photo_style(character_id)
         char_wardrobe = style.get('wardrobe', {})
         if group in char_wardrobe:
-            return list(char_wardrobe[group])
+            # V3.61.10: her three signature outfits alone repeated the same
+            # navy dress in every level-1 selfie — the generic level pool joins
+            # them so a week of photos shows a real wardrobe.
+            extra = [x for x in WARDROBE_LEVEL_POOLS.get(group, {}).get(level, []) if x not in char_wardrobe[group]]
+            return list(char_wardrobe[group]) + extra
     pool = list(WARDROBE_LEVEL_POOLS[group][level])
 
     # Outdoor summer scenes must never accidentally get winter styling.

@@ -23,7 +23,7 @@ def test_only_her_generated_photos_can_be_edited():
 
 def test_undress_prompt_covers_and_adds_the_husband_when_married(monkeypatch):
     import main
-    assert 'nipples fully hidden' in main.UNDRESS_PROMPT
+    assert 'nipples fully hidden' in main.UNDRESS_VARIANT_TOPLESS[1]
     monkeypatch.setattr(main, 'get_relationship_level', lambda *a: 2)
     import services.webapp_service as ws
     monkeypatch.setattr(ws, '_batch_marital', lambda tid, ids: {ids[0]: 'mar_married'})
