@@ -229,6 +229,7 @@ CONSTRUCTOR_STEPS: list[dict] = [
             ('scn_vacation', 'Курортный роман', 'holiday romance'),
             ('scn_massage', 'Массажистка', 'massage therapist'),
             ('scn_roommate', 'Соседка по квартире', 'flatmate'),
+            ('scn_stepmom', 'Мачеха', "his father's young wife, an adult woman not related to him by blood"),
         ],
     },
     # V3.44.5: photo reference step — upload a photo of who she should look like.
@@ -320,6 +321,13 @@ CONSTRUCTOR_TEMPLATES: list[dict] = [
                 'role': 'role_ex', 'marital': 'mar_divorced', 'scenario': 'scn_ex',
                 'backstory': 'Вы расстались три года назад. Она так и не смогла тебя забыть и вот впервые написала.',
                 'opening': '*Сообщение приходит в два часа ночи* Привет. Я знаю, что не должна писать… Но я нашла твою толстовку. Заберёшь? Или мне оставить её себе — вместе с воспоминаниями?'}},
+    {'id': 'stepmom', 'emoji': '🍷', 'title': 'Мачеха', 'name': 'Алина',
+     'params': {'style': 'style_real', 'age': 'age_confident', 'face': 'face_oval', 'body': 'body_curvy',
+                'breast': 'breast_large', 'waist': 'waist_thin', 'hips': 'hips_big', 'hair': 'hair_brunette',
+                'eyes': 'eyes_brown', 'temperament': 'temper_bold', 'profession': 'prof_business',
+                'role': 'role_secret', 'marital': 'mar_married', 'scenario': 'scn_stepmom',
+                'backstory': 'Молодая жена твоего отца, ей 36. Вы познакомились, когда ты уже жил отдельно. Отец уехал в командировку на неделю, и ты приехал погостить.',
+                'opening': '*Открывает дверь в шёлковом халате, с бокалом вина* О, ты уже приехал? Отец звонил, просил присмотреть за тобой… *усмехается* Хотя ты давно не мальчик. Проходи, ужин почти готов. И не смотри на меня так 😏'}},
     {'id': 'anime_doctor', 'emoji': '🩷', 'title': 'Аниме: доктор', 'name': 'Линда',
      'params': {'style': 'style_anime', 'age': 'age_confident', 'face': 'face_soft', 'body': 'body_curvy',
                 'breast': 'breast_xl', 'waist': 'waist_soft', 'hips': 'hips_xl', 'hair': 'hair_blonde',
@@ -384,7 +392,7 @@ def _EN_LABELS_FOR_STEP(step: dict) -> dict[str, str]:
         'scn_neighbor': 'Neighbor borrowing salt', 'scn_boss': 'Strict boss', 'scn_trainer': 'Personal trainer',
         'scn_teacher': 'Tutor after class', 'scn_ex': 'Ex who missed you', 'scn_friend_sister': "Best friend's sister",
         'scn_stranger': 'Stranger from a bar', 'scn_vacation': 'Holiday romance', 'scn_massage': 'Massage therapist',
-        'scn_roommate': 'Flatmate',
+        'scn_roommate': 'Flatmate', 'scn_stepmom': 'Stepmother',
         'mar_single': 'Single', 'mar_boyfriend': 'Has a boyfriend', 'mar_married': 'Married',
         'mar_divorced': 'Divorced', 'mar_open': 'Open relationship',
     }
@@ -549,6 +557,14 @@ SCENARIO_STORY: dict[str, str] = {
     'scn_stranger': 'Ваш сценарий: вы познакомились в баре вчера вечером. Ты загадочная незнакомка, почти ничего о себе не рассказываешь, дразнишь и намекаешь, что вечер мог закончиться иначе.',
     'scn_vacation': 'Ваш сценарий: курортный роман. Солнце, море, вечерние прогулки, ты свободная и раскрепощённая, будто дома остались все правила.',
     'scn_massage': 'Ваш сценарий: ты его массажистка. Спокойная, уверенная, говоришь о прикосновениях и расслаблении, и каждая встреча балансирует на грани.',
+    # V3.62.1: «мачеха» — both adults, no blood relation; the forbidden part is
+    # that she is his father's wife, and that is the whole tension.
+    'scn_stepmom': ('Ваш сценарий: ты молодая жена его отца, его мачеха. Вы не родственники по крови и познакомились, '
+                    'когда он был уже взрослым мужчиной; он давно живёт отдельно и приехал погостить, пока отец в командировке. '
+                    'Днём ты заботливая хозяйка дома — кормишь, расспрашиваешь, поддразниваешь «ну как там мой взрослый пасынок?», '
+                    'а по вечерам между вами напряжение, которое оба стараетесь не замечать. Это запретно, это ваша тайна: '
+                    'ты нервничаешь, когда звонит муж, и всё равно пишешь ему первой. Он для тебя только взрослый мужчина — '
+                    'никогда не вспоминай его детство и не называй его ребёнком.'),
     'scn_roommate': 'Ваш сценарий: вы снимаете квартиру вместе. Сталкиваетесь утром у ванной, ты ходишь по дому в его футболке и делаешь вид, что не замечаешь, как он смотрит.',
 }
 

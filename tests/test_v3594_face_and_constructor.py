@@ -32,7 +32,7 @@ def test_path_bar_for_every_girl():
 def test_constructor_has_ten_scenarios_that_shape_the_chat():
     from services import custom_character_service as c
     step = c.CONSTRUCTOR_STEPS[c.step_index('scenario')]
-    assert len(step['options']) == 10
+    assert len(step['options']) == 11  # V3.62.1: + мачеха
     assert set(c.SCENARIO_STORY) == {v for v, _, _ in step['options']}
     assert c.STEP_GROUPS['scenario'] == 'character'
     ctx = c.build_persona_context({'scenario': 'scn_boss'}, 'Кира')
