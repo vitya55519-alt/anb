@@ -306,6 +306,20 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         persona = custom_persona_context(character_id)
     except Exception:
         persona = ''
+    # V3.61.2: «позвать в чат» — an invited girl answers alongside her.
+    guest_reminder = ''
+    try:
+        from services.chat_guest_service import get_guest, guest_prompt
+        guest_id = get_guest(user_id, character_id)
+        if guest_id:
+            guest_line = guest_prompt(character.get('name') or '', guest_id)
+            if guest_line:
+                persona = (persona + '\n' if persona else '') + guest_line
+                from services.chat_guest_service import character_name
+                guest_reminder = (f'Напоминание: в чате вы двое — {character.get("name") or "ты"} и '
+                                  f'{character_name(guest_id)}; каждая реплика с новой строки и с имени.')
+    except Exception:
+        pass
     # V3.37.0: premium-gated «пошлый режим» — the user's own toggle lifts the
     # flirt ceiling in every chat (bot and Mini App share this pipeline).
     # premium is already computed above; the flag itself survives a lapsed
@@ -392,6 +406,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # как птица» right after «Замужем» was picked) — repeat it next to the message.
     if marital_reminder:
         messages.append({"role": "system", "content": marital_reminder})
+    if guest_reminder:
+        messages.append({"role": "system", "content": guest_reminder})
     messages.append({"role": "user", "content": user_text})
     behavior_kind = choose_behavior(user_text, previous_user_text).intent
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)

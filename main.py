@@ -10783,7 +10783,19 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
         duo = await asyncio.to_thread(_duo)
     except Exception:
         duo = None
-    return web.json_response({'ok': True, 'history': history, 'persona': persona_info, 'duo': duo})
+    # V3.61.2: «позвать в чат» — the invited girl (her name is bolded like a duo's).
+    guest = None
+    try:
+        from services.chat_guest_service import get_guest, character_name
+        guest_id = await asyncio.to_thread(get_guest, telegram_id, character_id)
+        if guest_id and not duo:
+            guest = {'id': guest_id, 'name': character_name(guest_id) or guest_id,
+                     'photo': f'/webapp/photo/{guest_id}'}
+            duo = guest['name']
+    except Exception:
+        logger.exception('chat guest load failed user=%s', telegram_id)
+    return web.json_response({'ok': True, 'history': history, 'persona': persona_info, 'duo': duo,
+                              'guest': guest, 'can_invite': not (duo and not guest)})
 
 
 def _custom_premium_gate_block(character_id: str, telegram_id: int) -> bool:
@@ -11108,6 +11120,63 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
     if uid and scene:
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', scene)
     return web.json_response({'ok': True, 'reply': scene})
+
+
+async def _webapp_api_chat_guest(request: web.Request) -> web.Response:
+    """V3.61.2: «позвать в чат» — invite another girl into this chat
+    (body {character_id, guest_id}) or send her away (guest_id empty)."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    guest_id = str(body.get('guest_id', '') or '')[:64]
+    from services import chat_guest_service as cgs
+    if not character_id or not get_card(character_id):
+        return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+    if guest_id:
+        if await asyncio.to_thread(cgs.host_has_duo, character_id):
+            return web.json_response({'ok': False, 'error': 'duo'}, status=400)
+        if not await asyncio.to_thread(cgs.can_invite, telegram_id, character_id, guest_id):
+            return web.json_response({'ok': False, 'error': 'unknown_guest'}, status=400)
+    previous = await asyncio.to_thread(cgs.get_guest, telegram_id, character_id)
+    await asyncio.to_thread(cgs.set_guest, telegram_id, character_id, guest_id or None)
+    host_name = cgs.character_name(character_id) or 'Она'
+    note = None
+    if guest_id:
+        guest_name = cgs.character_name(guest_id) or 'Подруга'
+        note = f'*{guest_name} заходит в чат*'
+        try:
+            from services.llm_provider_service import generate_text
+            r = await generate_text([
+                {'role': 'system', 'content': cgs.guest_prompt(host_name, guest_id)},
+                {'role': 'user', 'content': (
+                    f'Напиши сцену появления: {guest_name} заходит в чат. Первая строка в звёздочках — как она '
+                    f'появляется. Потом одна реплика «{host_name}: …» и одна «{guest_name}: …» пользователю, '
+                    f'живо, с характером каждой. Коротко.')},
+            ], max_tokens=220, temperature=0.95, purpose='guest_enter')
+            text = (r.text or '').strip()
+            if text and guest_name in text:
+                note = text
+        except Exception:
+            logger.warning('guest entrance generation failed host=%s guest=%s', character_id, guest_id)
+    elif previous:
+        note = f'*{cgs.character_name(previous) or "Подруга"} уходит, и вы снова вдвоём*'
+    if note:
+        uid = await asyncio.to_thread(ensure_user, telegram_id, user_info.get('first_name') or '',
+                                      language_code=user_info.get('language_code'))
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
+    guest = ({'id': guest_id, 'name': cgs.character_name(guest_id) or guest_id,
+              'photo': f'/webapp/photo/{guest_id}'} if guest_id else None)
+    return web.json_response({'ok': True, 'guest': guest, 'reply': note})
 
 
 async def _webapp_api_chat_send(request: web.Request) -> web.Response:
@@ -12987,6 +13056,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
     app.router.add_post('/webapp/api/chat/marital', _webapp_api_chat_marital)
     app.router.add_post('/webapp/api/chat/start', _webapp_api_chat_start)
+    app.router.add_post('/webapp/api/chat/guest', _webapp_api_chat_guest)
     app.router.add_get('/webapp/api/chat/level', _webapp_api_chat_level)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)
