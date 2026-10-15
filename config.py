@@ -62,6 +62,12 @@ CHAT_PHOTO_PEACH_COST = max(1, int(os.getenv("CHAT_PHOTO_PEACH_COST", "2")))
 CHAT_FREE_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_FREE_PHOTOS_PER_DAY", "2")))
 # V3.61.7: «🔥 Раздеть» under a chat photo — free per day, then peaches.
 UNDRESS_FREE_PER_DAY = max(0, int(os.getenv("UNDRESS_FREE_PER_DAY", "1")))
+# V3.61.12: «Раздеть» for free — a new user gets UNDRESS_TRIAL_FREE tries once
+# in a lifetime; Premium gets a daily allowance that grows with her level.
+UNDRESS_TRIAL_FREE = max(0, int(os.getenv("UNDRESS_TRIAL_FREE", "1")))
+UNDRESS_PREMIUM_FREE_L1_2 = max(0, int(os.getenv("UNDRESS_PREMIUM_FREE_L1_2", "1")))
+UNDRESS_PREMIUM_FREE_L3_6 = max(0, int(os.getenv("UNDRESS_PREMIUM_FREE_L3_6", "2")))
+UNDRESS_PREMIUM_FREE_L7_8 = max(0, int(os.getenv("UNDRESS_PREMIUM_FREE_L7_8", "3")))
 UNDRESS_PEACH_COST = max(1, int(os.getenv("UNDRESS_PEACH_COST", "3")))
 COSPLAY_PHOTO_PEACH_COST = max(1, int(os.getenv("COSPLAY_PHOTO_PEACH_COST", "2")))
 # Hot Pass — безлимитная подписка на фото «наедине» и «косплей»

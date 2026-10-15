@@ -666,8 +666,15 @@ def _spicyapi_note_result(leg: str, ok: bool) -> None:
                      leg, SPICYAPI_BREAKER_FAILURES, SPICYAPI_BREAKER_COOLDOWN_SECONDS)
 
 
-async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private', *, return_url: bool = False):
-    """Breaker-guarded entry point; see ``_spicyapi_render_once`` for the flow."""
+async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private', *,
+                           return_url: bool = False, breaker: bool = True):
+    """Breaker-guarded entry point; see ``_spicyapi_render_once`` for the flow.
+
+    V3.61.12: ``breaker=False`` (a button the user pressed and waits on, like
+    «Раздеть») neither skips on an open breaker nor counts toward it — one
+    girl's refused edit must not block every other girl for 15 minutes."""
+    if not breaker:
+        return await _spicyapi_render_once(model, prompt, image_urls, scene, return_url=return_url)
     if spicyapi_breaker_open(model, image_urls):
         logger.info('SpicyAPI skipped (breaker open) scene=%s', scene)
         return (None, None) if return_url else None
