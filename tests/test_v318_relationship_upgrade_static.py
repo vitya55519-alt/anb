@@ -99,7 +99,7 @@ def test_next_stage_progress_targets():
     assert [p[2] for p in prog] == [15, 10, 0]
     # V3.21.0: the plateau extended to soulmate — only the true final stage
     # has nothing left to chase.
-    assert next_stage_progress(_row(stage='soulmate')) == []
+    assert next_stage_progress(_row(stage='eternal')) == []  # V3.62.0: level 10
 
 
 def test_progress_bar_rendering():

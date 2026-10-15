@@ -37,6 +37,10 @@ class UserCharacterRelationship(Base):
     # (mar_single / mar_boyfriend / mar_married / mar_divorced / mar_open, None
     # = her default). Bends the chat voice. Auto-migrated by services/db.py.
     marital_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # V3.62.0: the path he chose at the level-3 fork — 'romance' / 'passion' /
+    # None (not chosen yet). Picks level names, perks, tone and scenes.
+    # Auto-migrated by services/db.py.
+    branch: Mapped[str | None] = mapped_column(String(16), nullable=True)
     stage: Mapped[str] = mapped_column(String(32), default="stranger", nullable=False)
 
     first_interaction_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

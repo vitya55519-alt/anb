@@ -15,7 +15,7 @@ def test_welcome_message_lists_bot_abilities():
     # V3.39.0: /start is now the compact Come Closer banner caption — it still
     # names the abilities (photos / video / voice / levels) but in prose, not
     # the old ten-line emoji bullet list.
-    for fragment in ('Что умеет этот бот?', 'фото по твоим сценариям', 'AI-видео и голос', 'уровням 1–8'):
+    for fragment in ('Что умеет этот бот?', 'фото по твоим сценариям', 'AI-видео и голос', 'уровням 1–10'):
         assert fragment in start
 
 
@@ -25,7 +25,7 @@ def test_abilities_text_covers_video_and_voice():
     assert 'Оживить фото' in block
     assert 'свой милый голос' in block
     assert 'на твоём языке' in block
-    assert 'уровням 1–8' in block
+    assert 'уровням 1–10' in block
 
 
 def test_three_characters_have_distinct_voice_profiles():

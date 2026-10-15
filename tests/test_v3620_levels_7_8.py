@@ -28,7 +28,7 @@ def test_premium_user_progresses_normally_and_sees_perks_at_seven():
     assert snap['premium_needed'] is False and snap['bars']
     at7 = level_snapshot(None, _row('devoted'), premium=True)
     assert at7['perks'] and at7['next_perks'] and at7['days_together'] == 10
-    top = level_snapshot(None, _row('soulmate'), premium=True)
+    top = level_snapshot(None, _row('eternal'), premium=True)  # V3.62.0: level 10 is the top
     assert top['perks'] and not top['next_perks']
 
 

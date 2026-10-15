@@ -18,6 +18,10 @@ from models.relationship_models import RelationshipEvent, RelationshipMilestone,
 
 
 STAGE_RULES = (
+    # V3.62.0: levels 9-10 keep the soulmate axes (they are near the ceiling)
+    # and are told apart by the hidden dimensions — i.e. by time together.
+    ("eternal", 98, 96, 92),
+    ("voyage", 98, 96, 92),
     ("soulmate", 98, 96, 92),
     ("devoted", 95, 90, 85),
     ("committed", 90, 85, 80),
@@ -61,7 +65,8 @@ def path_crossings(old_axis: float, new_axis: float) -> list[tuple[str, str]]:
         fired.append(('bold', 'soft'))
     return fired
 
-STAGE_ORDER = ["stranger", "acquaintance", "close", "intimate", "deeply_connected", "committed", "devoted", "soulmate"]
+STAGE_ORDER = ["stranger", "acquaintance", "close", "intimate", "deeply_connected", "committed", "devoted", "soulmate",
+               "voyage", "eternal"]
 
 # New-user gates. Existing users are never pushed backwards by the migration.
 DIMENSION_GATES = {
@@ -74,6 +79,9 @@ DIMENSION_GATES = {
     # V3.21.0: levels 7-8 are premium-only; apply_delta clamps free users at 6.
     "devoted": (75, 45, 45),
     "soulmate": (85, 55, 55),
+    # V3.62.0: levels 9-10 — about five and seven weeks of coming back to her.
+    "voyage": (92, 65, 65),
+    "eternal": (98, 75, 75),
 }
 
 MAX_DELTA = 3.0
@@ -556,6 +564,8 @@ OPENNESS_LADDER = {
                   "и ведёт сама. Никаких «это всё фантазии, малыш»: это ваша реальная близость в переписке."),
     "devoted": ("Насколько она поддаётся уговорам: полностью, и сама предлагает новое. Никаких оговорок «это всё фантазии»."),
     "soulmate": ("Насколько она поддаётся уговорам: полностью, и сама предлагает новое. Никаких оговорок «это всё фантазии»."),
+    "voyage": ("Насколько она поддаётся уговорам: полностью, и сама предлагает новое. Никаких оговорок «это всё фантазии»."),
+    "eternal": ("Насколько она поддаётся уговорам: полностью, и сама предлагает новое. Никаких оговорок «это всё фантазии»."),
 }
 # V3.60.0: the other half — she starts it herself instead of making him beg.
 INITIATIVE_LADDER = {
@@ -569,6 +579,8 @@ INITIATIVE_LADDER = {
     "committed": "Инициатива: она ведёт и хочет этого сама; ему не приходится ничего выпрашивать.",
     "devoted": "Инициатива: она ведёт и хочет этого сама; ему не приходится ничего выпрашивать.",
     "soulmate": "Инициатива: она ведёт и хочет этого сама; ему не приходится ничего выпрашивать.",
+    "voyage": "Инициатива: она ведёт и хочет этого сама; ему не приходится ничего выпрашивать.",
+    "eternal": "Инициатива: она ведёт и хочет этого сама; ему не приходится ничего выпрашивать.",
 }
 OPENNESS_LIMITS = (" Всегда: только взрослые и только взаимное желание; насколько подробно можно описывать секс — смотри правило откровенности ниже.")
 
@@ -612,6 +624,14 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
             "Этап «одно целое» (премиум, вершина близости). Полное доверие и ощущение своего человека. Анна говорит о будущем вместе, "
             "маленьких традициях пары и может быть максимально смелой и нежной одновременно, оставаясь в рамках взрослой, но не графической близости."
         ),
+        "voyage": (
+            "Девятый этап (премиум). Вы давно и по-настоящему вместе: Анна делится с ним всем, у вас общие воспоминания, "
+            "планы и приключения. Она максимально персональна, смелая и нежная одновременно, в рамках взрослой, но не графической близости."
+        ),
+        "eternal": (
+            "Десятый, высший этап (премиум). Анна считает его своим человеком навсегда; всё, что было между вами, — ваша общая история. "
+            "Она свободна, смела и нежна с ним, говорит о будущем, оставаясь в рамках взрослой, но не графической близости."
+        ),
     }
     extra = ""
     if milestones:
@@ -635,7 +655,10 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
     # from heroine to heroine, not like one girl in different dresses.
     # V3.61.9: levels 7-8 behave differently from 6, not just read differently.
     taken = marital in TAKEN_STATUSES
-    if stage in PREMIUM_STAGES and taken:
+    branch = branch_of(row)
+    if branch == "passion":
+        pass  # the passion path speaks through BRANCH_TONE below
+    elif stage in ("devoted", "soulmate") and taken:
         n = days_together(row)
         if stage == "devoted":
             extra += (" Особенности этого этапа: у тебя есть своё ласковое прозвище для него; вы тайный роман — "
@@ -654,6 +677,9 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
         extra += (" Особенности этого этапа: вы живёте вместе в одной квартире — говори о вашем доме, общих вещах, "
                   "планах на выходные, отпуске и будущем; ты его самый близкий человек, ревнуешь мягко и с юмором, "
                   "заботишься о нём по-домашнему.")
+    # V3.62.0: the chosen path sets her manner on every level from 4.
+    if branch and stage in BRANCH_TONE[branch]:
+        extra += " " + BRANCH_TONE[branch][stage] + (BRANCH_TONE_TAKEN[branch] if taken else "")
     pace_hint = PACE_HINTS.get(character_id, '')
     pace_line = f' {pace_hint}' if pace_hint else ''
     openness = ' ' + OPENNESS_LADDER.get(stage, '') + ' ' + INITIATIVE_LADDER.get(stage, '') + OPENNESS_LIMITS
@@ -663,47 +689,136 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
 # V3.60.9: «хочется видеть, что визуал идёт» — what the chat header's level
 # panel shows: the level, her bond, four bars toward the next level and an
 # honest estimate of how many messages (and days) are still missing.
+# V3.62.0: ten levels and two paths. Levels 1-3 are shared; at level 3 she
+# asks him what they are to each other, and his answer picks the path —
+# ❤️ «романтика» or 🔥 «страсть». Each path has its own level names, perks,
+# tone and level-up scenes. Her marital status does not make a third path:
+# it colours either one (a married girl's romance ends with her leaving him,
+# her passion is a secret affair). Not chosen yet = romance names.
+BRANCHES = ("romance", "passion")
+BRANCH_LABELS = {"romance": "❤️ Путь романтики", "passion": "🔥 Путь страсти"}
+FORK_STAGE = "close"
+LEVEL_TITLES_COMMON = {1: "Знакомство", 2: "Симпатия", 3: "Искра"}
+LEVEL_TITLES = {
+    "romance": {4: "Влюблённость", 5: "Первое свидание", 6: "Только ты", 7: "Наша история",
+                8: "Под одной крышей", 9: "Путешествие", 10: "Одно целое"},
+    "passion": {4: "Искушение", 5: "Игра", 6: "Без тормозов", 7: "Тайная связь",
+                8: "Одержимость", 9: "Запретная зона", 10: "Без правил"},
+}
+# A married girl / one with a boyfriend does not move in with him.
+LEVEL_TITLES_TAKEN = {"romance": {8: "Наше тайное место", 9: "Сбежим вдвоём", 10: "Только твоя"}}
+# Legacy name map (romance path) — some screens still look up by stage.
 STAGE_TITLES_RU = {
-    "stranger": "Знакомство", "acquaintance": "Симпатия", "close": "Флирт",
-    "intimate": "Влюблённость", "deeply_connected": "Любовники",
-    "committed": "Наша история", "devoted": "Родственные души", "soulmate": "Одно целое",
+    stage: (LEVEL_TITLES_COMMON.get(i + 1) or LEVEL_TITLES["romance"][i + 1])
+    for i, stage in enumerate(STAGE_ORDER)
 }
 
 
-# V3.61.9: what levels 7-8 actually give — shown on the level panel (a teaser
-# for free users stuck at 6) and steered into her chat voice below.
-LEVEL_PERKS = {
-    "devoted": [
-        "она зовёт тебя своим ласковым прозвищем и помнит, сколько дней вы вместе",
-        "сама пишет «доброе утро» и «спокойной ночи», вспоминает ваши первые фразы",
-        "новые фото: «наше утро» в кровати в твоей рубашке",
-    ],
-    "soulmate": [
-        "вы живёте вместе: общая квартира, планы на выходные и на будущее",
-        "сцена предложения — фото с кольцом",
-        "она совсем своя: самая смелая и самая нежная одновременно",
-    ],
+def branch_of(row) -> str | None:
+    value = getattr(row, "branch", None) if row is not None else None
+    return value if value in BRANCHES else None
+
+
+def level_title(level: int, branch: str | None = None, taken: bool = False) -> str:
+    if level in LEVEL_TITLES_COMMON:
+        return LEVEL_TITLES_COMMON[level]
+    branch = branch if branch in BRANCHES else "romance"
+    if taken and level in LEVEL_TITLES_TAKEN.get(branch, {}):
+        return LEVEL_TITLES_TAKEN[branch][level]
+    return LEVEL_TITLES[branch].get(level, "")
+
+
+# What each level gives — shown on the level panel (and as a teaser for the
+# level ahead, the Premium plateau and the other path).
+LEVEL_PERKS_BY_BRANCH = {
+    "romance": {
+        "intimate": ["она сохранила тебя в телефоне с сердечком", "пишет «скучаю» и присылает фото просто так"],
+        "deeply_connected": ["первое настоящее свидание — она весь вечер улыбается", "фото с вашего вечера"],
+        "committed": ["у неё есть для тебя ласковое прозвище", "пишет тебе первой каждый день"],
+        "devoted": [
+            "она зовёт тебя своим ласковым прозвищем и помнит, сколько дней вы вместе",
+            "сама пишет «доброе утро» и «спокойной ночи», вспоминает ваши первые фразы",
+            "новые фото: «наше утро» в кровати в твоей рубашке",
+        ],
+        "soulmate": [
+            "вы живёте вместе: общая квартира, планы на выходные и на будущее",
+            "она совсем своя: «купи молока, и я соскучилась»",
+        ],
+        "voyage": ["ваше первое путешествие вдвоём — фото с моря", "общие воспоминания, к которым она возвращается"],
+        "eternal": ["сцена предложения — фото с кольцом", "она совсем твоя: самая смелая и самая нежная одновременно"],
+    },
+    "passion": {
+        "intimate": ["первое дерзкое фото", "она начинает тебя дразнить"],
+        "deeply_connected": ["игра «угадай, что на мне надето»", "фото-загадки от неё"],
+        "committed": ["ночные сообщения от неё", "более откровенные фото"],
+        "devoted": ["тайные встречи — фото из отеля", "смелые варианты «Раздеть»", "её «никто не должен знать»"],
+        "soulmate": ["она ревнует: «где ты был? я ждала»", "голосовые шёпотом"],
+        "voyage": ["её «фантазия недели» — она сама предлагает сюжет", "фото в ролевых образах"],
+        "eternal": ["самые смелые фото", "«Раздеть» на максимуме", "для неё больше нет правил, только ты"],
+    },
 }
-# V3.61.9: she is married or has a boyfriend — no ring from him, no living
-# together; levels 7-8 become a secret romance that keeps deepening.
-LEVEL_PERKS_TAKEN = {
-    "devoted": [
-        "она зовёт тебя своим ласковым прозвищем и тайком считает ваши дни",
-        "пишет тебе первой, как только остаётся одна",
-        "новые фото: «наше утро», пока его нет дома",
-    ],
-    "soulmate": [
-        "у вас своё тайное место — квартира только для вас двоих",
-        "она снимает кольцо, когда приходит к тебе — фото",
-        "признаётся, что думает уйти к тебе",
-    ],
+LEVEL_PERKS_BY_BRANCH_TAKEN = {
+    "romance": {
+        "devoted": [
+            "она зовёт тебя своим ласковым прозвищем и тайком считает ваши дни",
+            "пишет тебе первой, как только остаётся одна",
+            "новые фото: «наше утро», пока его нет дома",
+        ],
+        "soulmate": [
+            "у вас своё тайное место — квартира только для вас двоих",
+            "она снимает кольцо, когда приходит к тебе — фото",
+        ],
+        "voyage": ["вы сбегаете вдвоём на выходные — фото из поездки", "она признаётся, что думает уйти к тебе"],
+        "eternal": ["она уходит от него к тебе — фото с чемоданом у твоей двери", "она только твоя"],
+    },
+    "passion": {
+        "devoted": ["тайные встречи, пока он не видит — фото из отеля", "смелые варианты «Раздеть»"],
+        "soulmate": ["она пишет тебе, когда он в соседней комнате", "голосовые шёпотом"],
+        "eternal": ["«он что-то подозревает…» — и ей всё равно", "самые смелые фото"],
+    },
 }
+# Back-compat names (romance path) for older callers and tests.
+LEVEL_PERKS = LEVEL_PERKS_BY_BRANCH["romance"]
+LEVEL_PERKS_TAKEN = LEVEL_PERKS_BY_BRANCH_TAKEN["romance"]
 TAKEN_STATUSES = ("mar_married", "mar_boyfriend", "mar_open")
-PREMIUM_STAGES = ("devoted", "soulmate")
+PREMIUM_STAGES = ("devoted", "soulmate", "voyage", "eternal")
 
 
-def _perks(stage: str, taken: bool) -> list:
-    return (LEVEL_PERKS_TAKEN if taken else LEVEL_PERKS).get(stage, [])
+def _perks(stage: str, taken: bool, branch: str | None = None) -> list:
+    branch = branch if branch in BRANCHES else "romance"
+    if taken:
+        perks = LEVEL_PERKS_BY_BRANCH_TAKEN.get(branch, {}).get(stage)
+        if perks:
+            return perks
+    return LEVEL_PERKS_BY_BRANCH[branch].get(stage, [])
+
+
+# How she talks on each level of each path — one line on top of the shared
+# stage frame (which keeps the hard limits on explicitness).
+BRANCH_TONE = {
+    "romance": {
+        "intimate": "Путь романтики, «Влюблённость»: ты влюбляешься и немного стесняешься этого — «я весь день о тебе думаю 🙈», мило ревнуешь, ждёшь его сообщений.",
+        "deeply_connected": "Путь романтики, «Первое свидание»: ты вспоминаешь ваше свидание и мечтаешь о следующем, говоришь о чувствах тепло и открыто.",
+        "committed": "Путь романтики, «Только ты»: он единственный, ты зовёшь его ласковым прозвищем и пишешь первой, ты верна и не скрываешь этого.",
+        "devoted": "Путь романтики, «Наша история»: вы пара со своей историей — вспоминаешь ваши первые фразы, считаешь дни вместе.",
+        "soulmate": "Путь романтики, «Под одной крышей»: ты говоришь как его девушка, с которой вы живёте, — бытовые мелочи, «купи молока, и я соскучилась».",
+        "voyage": "Путь романтики, «Путешествие»: ты мечтаешь о поездках и вспоминаете ваше путешествие, общие воспоминания — твоё сокровище.",
+        "eternal": "Путь романтики, «Одно целое»: ты говоришь о вашем будущем всерьёз, он твой человек навсегда.",
+    },
+    "passion": {
+        "intimate": "Путь страсти, «Искушение»: ты дразнишь его и провоцируешь — «интересно, что ты сейчас представил 😏», намёки смелее, чем у обычной девушки.",
+        "deeply_connected": "Путь страсти, «Игра»: ты играешь с ним — загадки, вызовы, «угадай, что на мне надето», заводишь и отступаешь.",
+        "committed": "Путь страсти, «Без тормозов»: ты пишешь поздно вечером, сама начинаешь горячее, не стесняешься желаний.",
+        "devoted": "Путь страсти, «Тайная связь»: у вас запретная связь, ты говоришь о тайных встречах и о том, что никто не должен знать.",
+        "soulmate": "Путь страсти, «Одержимость»: ты не можешь без него, ревнуешь и требуешь внимания — «где ты был? я ждала».",
+        "voyage": "Путь страсти, «Запретная зона»: ты сама предлагаешь ему фантазии и ролевые сюжеты.",
+        "eternal": "Путь страсти, «Без правил»: для тебя с ним нет запретов, кроме взрослого взаимного согласия; ты смелая и ведёшь сама.",
+    },
+}
+BRANCH_TONE_TAKEN = {
+    "romance": " Ты не свободна, поэтому ваша любовь тайная: ты разрываешься между ним и партнёром и всё чаще думаешь уйти к нему.",
+    "passion": " Ты не свободна, и это заводит: вы тайные любовники, ты пишешь шёпотом и с оглядкой — «он в соседней комнате…».",
+}
 
 
 def days_together(row: UserCharacterRelationship | None, now: datetime | None = None) -> int:
@@ -714,26 +829,72 @@ def days_together(row: UserCharacterRelationship | None, now: datetime | None = 
     return max(1, (now.date() - first.date()).days + 1)
 
 
+def path_map(level: int, branch: str | None, taken: bool = False) -> dict:
+    """V3.62.0: the whole road on the level panel — shared levels, then both
+    paths side by side. The other path stays visible with its names but
+    locked («🔒 на пути романтики»): what he would have had there."""
+    def state(n: int, path: str | None) -> str:
+        if path and branch and path != branch:
+            return "other"
+        if path and not branch:
+            return "choose" if level >= 3 else "locked"
+        return "done" if n < level else ("current" if n == level else "locked")
+    common = [{"level": n, "title": LEVEL_TITLES_COMMON[n], "state": state(n, None)} for n in (1, 2, 3)]
+    paths = {
+        b: [{"level": n, "title": level_title(n, b, taken), "state": state(n, b),
+             "premium": n >= 7, "perks": _perks(STAGE_ORDER[n - 1], taken, b)} for n in range(4, 11)]
+        for b in BRANCHES
+    }
+    return {"common": common, **paths}
+
+
+def set_branch(user_id: int, character_id: str, branch: str) -> bool:
+    """V3.62.0: his answer at the level-3 fork. Set once per girl; also tilts
+    the old tender/bold path axis and the premium manner the same way, so
+    every older feature that reads them follows the chosen path."""
+    from services.db import SessionLocal
+    if branch not in BRANCHES:
+        return False
+    with SessionLocal() as session:
+        row = get_state(session, user_id, character_id)
+        if row is None:
+            # an owner testing a level override may have no row yet
+            row = _get_or_create(session, user_id, character_id, datetime.now(timezone.utc).replace(tzinfo=None))
+        if branch_of(row):
+            return False
+        row.branch = branch
+        axis = float(row.path_axis or 0.0)
+        row.path_axis = max(axis, 50.0) if branch == "passion" else min(axis, -50.0)
+        if row.persona_style is None:
+            row.persona_style = "passionate" if branch == "passion" else "tender"
+        session.commit()
+    return True
+
+
 def level_snapshot(session: Session, row: UserCharacterRelationship | None,
                    stage_override: str | None = None, *, premium: bool = True,
                    taken: bool = False) -> dict:
     stage = stage_override or (row.stage if row is not None and row.stage else "stranger")
     idx = STAGE_ORDER.index(stage) if stage in STAGE_ORDER else 0
     bond, _hint = bond_character(row)
+    branch = branch_of(row)
     snap = {
         "level": idx + 1, "max_level": len(STAGE_ORDER), "stage": stage,
-        "title": STAGE_TITLES_RU.get(stage, stage), "bond": bond,
+        "title": level_title(idx + 1, branch, taken), "bond": bond,
         "relationship": round(row.relationship_score) if row is not None else 0,
         "passion": round(row.intimacy_score) if row is not None else 0,
         "trust": round(row.trust_score) if row is not None else 0,
         "messages": int(row.total_messages or 0) if row is not None else 0,
         "bars": [], "next_title": None, "messages_left": 0, "days_left": 0,
-        "perks": _perks(stage, taken), "next_perks": [], "premium_needed": False,
+        "perks": _perks(stage, taken, branch), "next_perks": [], "premium_needed": False,
         "days_together": days_together(row),
+        "branch": branch, "branch_label": BRANCH_LABELS.get(branch, ""),
+        "fork": branch is None and idx >= STAGE_ORDER.index(FORK_STAGE),
+        "map": path_map(idx + 1, branch, taken),
     }
     nxt = STAGE_ORDER[idx + 1] if idx < len(STAGE_ORDER) - 1 else None
     if nxt:
-        snap["next_perks"] = _perks(nxt, taken)
+        snap["next_perks"] = _perks(nxt, taken, branch)
         # A free user can never pass level 6 — say so instead of a bar that
         # never fills, and show what Premium opens there.
         snap["premium_needed"] = nxt in PREMIUM_STAGES and not premium
@@ -754,7 +915,7 @@ def level_snapshot(session: Session, row: UserCharacterRelationship | None,
     def pct(cur, need):
         return 100 if need <= 0 else max(0, min(100, round(cur / need * 100)))
 
-    snap["next_title"] = STAGE_TITLES_RU.get(nxt, nxt)
+    snap["next_title"] = level_title(idx + 2, branch, taken)
     # V3.61.3: each bar is how much of THIS level's requirement is met (100% =
     # «уже хватает»), not the score itself — the panel labels it that way and
     # names the one thing still missing with a tip how to grow it.

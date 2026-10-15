@@ -176,6 +176,7 @@ SCENE_LEVELS = {
 STAGE_INDEX = {
     'stranger': 0, 'acquaintance': 1, 'close': 2, 'intimate': 3,
     'deeply_connected': 4, 'committed': 5, 'devoted': 6, 'soulmate': 7,
+    'voyage': 8, 'eternal': 9,
 }
 
 AUTO_CAPTIONS = {

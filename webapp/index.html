@@ -278,6 +278,23 @@
   .lvlsheet .trk { height: 8px; border-radius: 6px; background: rgba(255,255,255,.08); overflow: hidden; }
   .lvlsheet .trk i { display: block; height: 100%; background: linear-gradient(90deg,#ff5fa2,#b44cff); }
   .lvlsheet .left { margin-top: 14px; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.05); font-size: 13px; line-height: 1.45; }
+  /* V3.62.0: the path map and the level-3 fork */
+  .lvlsheet .pbr { display: inline-block; margin: 2px 0 10px; padding: 4px 10px; border-radius: 10px; background: rgba(255,95,162,.15); font-size: 13px; }
+  .lvlsheet .pmap { margin-top: 16px; }
+  .lvlsheet .pmh { font-size: 13px; opacity: .85; margin-bottom: 6px; }
+  .lvlsheet .pcols { display: flex; gap: 8px; }
+  .lvlsheet .pcol { flex: 1 1 0; min-width: 0; }
+  .lvlsheet .pcol .ph { font-size: 12px; font-weight: 600; margin: 6px 0 4px; }
+  .lvlsheet .pm { font-size: 12px; padding: 6px 8px; margin: 3px 0; border-radius: 10px; background: rgba(255,255,255,.05); }
+  .lvlsheet .pm.current { background: linear-gradient(90deg,rgba(255,95,162,.35),rgba(180,76,255,.35)); font-weight: 600; }
+  .lvlsheet .pm.done { opacity: .85; }
+  .lvlsheet .pm.locked, .lvlsheet .pm.choose { opacity: .6; }
+  .lvlsheet .pm.other { opacity: .45; filter: blur(.2px); }
+  .lvlsheet .pm .pp { display: block; font-size: 11px; opacity: .8; margin-top: 2px; font-weight: 400; }
+  .lvlsheet .forkq { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(255,95,162,.12); font-size: 13px; }
+  .forkrow { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .forkrow .fk { border: 0; border-radius: 14px; padding: 10px 8px; font-size: 13px; color: #fff; background: linear-gradient(90deg,#ff5fa2,#b44cff); }
+  .forkrow .fk[data-branch="romance"] { background: linear-gradient(90deg,#ff7a9c,#ff5fa2); }
   .lvlsheet .close { margin-top: 14px; width: 100%; padding: 12px; border-radius: 12px; border: 0; background: rgba(255,255,255,.08); color: inherit; font-size: 14px; }
   .chat-head .iconbtn {
     background: var(--card); border: none; color: var(--text); font-size: 18px;
@@ -1169,7 +1186,7 @@ const LANG = APP_LANGS.includes(_savedLang) ? _savedLang
   : (_tgLang.startsWith('ru') ? 'ru' : (APP_LANGS.find(x => _tgLang.startsWith(x)) || 'en'));
 
 const L_EN = {
-  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', pa_failed: 'Did not work, nothing was charged — try again', pa_not_found: 'This photo can no longer be edited', video_limit: 'free animations are used up', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
+  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', fork_romance: '❤️ I really like you', fork_passion: '🔥 I don\'t think of you as a friend 😏', fork_q: 'She is waiting for your answer: which path are you on?', fork_taken: 'The path is already chosen', fork_romance_on: '❤️ The path of romance', fork_passion_on: '🔥 The path of passion', fork_would: 'there:', path_map: 'Your road', path_romance: 'Romance', path_passion: 'Passion', path_romance_other: 'on the romance path', path_passion_other: 'on the passion path', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', pa_failed: 'Did not work, nothing was charged — try again', pa_not_found: 'This photo can no longer be edited', video_limit: 'free animations are used up', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
   // V3.55.2: the premium-characters section under the grid
@@ -1343,7 +1360,7 @@ const L_EN = {
 // V3.43.5: the full Russian dictionary stays the base; five more interface
 // languages arrive below as partial overrides on top of the English one.
 const L_RU = {
-  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', pa_failed: 'Не получилось, персики не списаны — попробуй ещё раз', pa_not_found: 'Это фото уже нельзя изменить', video_limit: 'бесплатные оживления закончились', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
+  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', fork_romance: '❤️ Ты мне правда нравишься', fork_passion: '🔥 Я думаю о тебе совсем не по-дружески 😏', fork_q: 'Она ждёт твоего ответа: какой у вас путь?', fork_taken: 'Путь уже выбран', fork_romance_on: '❤️ Вы на пути романтики', fork_passion_on: '🔥 Вы на пути страсти', fork_would: 'там:', path_map: 'Ваша дорога', path_romance: 'Романтика', path_passion: 'Страсть', path_romance_other: 'на пути романтики', path_passion_other: 'на пути страсти', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', pa_failed: 'Не получилось, персики не списаны — попробуй ещё раз', pa_not_found: 'Это фото уже нельзя изменить', video_limit: 'бесплатные оживления закончились', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
   // V3.55.2: секция премиум-персонажей под сеткой
@@ -2206,6 +2223,10 @@ function chatBubble(roleOrM, content, ts) {
   const t = fmtTime(m.ts) ? `<span class="t">${esc(fmtTime(m.ts))}</span>` : '';
   const cls = m.role === 'user' ? 'user' : 'bot';
   let body = esc(m.content);
+  // V3.62.0: her level-3 question «что я для тебя?» — two answers pick the path.
+  if (cls === 'bot' && m.media_kind === 'fork' && !(CHAT_LEVEL && CHAT && CHAT_LEVEL.cid === CHAT.id && CHAT_LEVEL.branch)) {
+    body += forkButtons();
+  }
   // V3.61.0: a duo persona answers as «Имя: …» lines — the speaker's name in bold.
   if (cls === 'bot' && !m.media_url && CHAT && CHAT.duo) {
     // V3.61.2: plus a small avatar of who is speaking (the chat's girl or the invited guest).
@@ -2290,6 +2311,45 @@ function openStartSheet(characterId) {
   };
 }
 
+// V3.62.0: the level-3 fork — the romance or the passion path with this girl.
+function forkButtons() {
+  return '<div class="forkrow"><button class="fk" data-branch="romance">' + esc(L.fork_romance) + '</button>'
+    + '<button class="fk" data-branch="passion">' + esc(L.fork_passion) + '</button></div>';
+}
+let branchBusy = false;
+async function chooseBranch(branch) {
+  if (!CHAT || branchBusy) return;
+  branchBusy = true;
+  const characterId = CHAT.id;
+  try {
+    const r = await fetch('/webapp/api/chat/branch?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: characterId, branch: branch }),
+    });
+    const j = await r.json().catch(() => ({}));
+    document.querySelectorAll('.forkrow').forEach(x => x.remove());
+    if (!j.ok) { toast(r.status === 409 ? L.fork_taken : L.reply_err); return; }
+    const sheet = document.getElementById('lvlSheet');
+    if (sheet) sheet.style.display = 'none';
+    if (CHAT && CHAT.id === characterId) {
+      const box = document.getElementById('chatMsgs');
+      box.insertAdjacentHTML('beforeend', chatBubble({ role: 'user', content: j.answer, ts: null })
+        + chatBubble({ role: 'bot', content: j.reply, ts: null }));
+      box.scrollTop = box.scrollHeight;
+      toast(branch === 'passion' ? L.fork_passion_on : L.fork_romance_on);
+      loadChatLevel(characterId);
+    }
+  } catch (e) {
+    toast(L.reply_err);
+  } finally {
+    branchBusy = false;
+  }
+}
+document.addEventListener('click', e => {
+  const b = e.target && e.target.closest ? e.target.closest('[data-branch]') : null;
+  if (b) { e.stopPropagation(); chooseBranch(b.getAttribute('data-branch')); }
+});
+
 // V3.60.9: «хочется видеть, что визуал идёт» — level, passion, trust and how
 // much is left to the next level, one tap from the chat header.
 let CHAT_LEVEL = null;
@@ -2301,11 +2361,30 @@ async function loadChatLevel(characterId) {
     if (!j.ok || !CHAT || CHAT.id !== characterId) return;
     const prev = CHAT_LEVEL && CHAT_LEVEL.cid === characterId ? CHAT_LEVEL.level : null;
     CHAT_LEVEL = Object.assign({ cid: characterId }, j);
-    chip.textContent = '💕 ур. ' + j.level + ' · ' + j.title + ' · 🔥' + j.passion + '% ›';
+    if (j.branch) document.querySelectorAll('.forkrow').forEach(x => x.remove());
+    const lvlIcon = j.branch === 'passion' ? '🔥' : (j.branch === 'romance' ? '❤️' : '💕');
+    chip.textContent = lvlIcon + ' ур. ' + j.level + ' · ' + j.title + ' · 🔥' + j.passion + '% ›';
     chip.style.display = '';
     chip.onclick = openLevelSheet;
     if (prev && j.level > prev) toast('🎉 новый уровень: ' + j.level + ' · ' + j.title);
   } catch (e) { /* the chip is optional */ }
+}
+
+// V3.62.0: the whole road — shared levels 1-3, then both paths side by side;
+// the other path stays visible but locked: what he would have had there.
+function pathMapHtml(j) {
+  const mp = j.map; if (!mp) return '';
+  const icon = { done: '✅', current: '⭐', locked: '🔒', other: '🔒', choose: '❔' };
+  const item = (x) => '<div class="pm ' + x.state + '">' + icon[x.state] + ' ' + x.level + ' · ' + esc(x.title) + (x.premium ? ' 💎' : '')
+    + (x.state === 'other' && x.perks && x.perks.length ? '<span class="pp">' + esc(L.fork_would) + ' ' + esc(x.perks[0]) + '</span>' : '')
+    + '</div>';
+  const col = (b) => {
+    const head = (j.branch && j.branch !== b) ? '🔒 ' + (b === 'romance' ? L.path_romance_other : L.path_passion_other)
+      : (b === 'romance' ? '❤️ ' + L.path_romance : '🔥 ' + L.path_passion);
+    return '<div class="pcol"><div class="ph">' + esc(head) + '</div>' + (mp[b] || []).map(item).join('') + '</div>';
+  };
+  return '<div class="pmap"><div class="pmh">' + esc(L.path_map) + '</div>' + (mp.common || []).map(item).join('')
+    + '<div class="pcols">' + col('romance') + col('passion') + '</div></div>';
 }
 
 function openLevelSheet() {
@@ -2315,7 +2394,9 @@ function openLevelSheet() {
   const scoreRow = (label, v) => '<div class="row"><div class="t"><span>' + label + '</span><span>' + v + ' из 100</span></div>'
     + '<div class="trk"><i style="width:' + Math.max(0, Math.min(100, v)) + '%"></i></div></div>';
   let html = '<h3>💕 Уровень ' + j.level + '/' + j.max_level + ' · ' + esc(j.title) + '</h3>'
+    + (j.branch_label ? '<div class="pbr">' + esc(j.branch_label) + '</div>' : '')
     + '<div class="bond">' + esc(j.bond || '') + ' · 💬 ' + j.messages + ' сообщ.</div>'
+    + (j.fork ? '<div class="forkq">' + esc(L.fork_q) + forkButtons() + '</div>' : '')
     + '<div style="font-size:13px;opacity:.85">Сейчас между вами:</div>'
     + scoreRow('❤️ Отношения', j.relationship || 0) + scoreRow('🤝 Доверие', j.trust || 0) + scoreRow('🔥 Страсть', j.passion || 0);
   if (j.next_title && !j.premium_needed) {
@@ -2334,7 +2415,7 @@ function openLevelSheet() {
   } else if (j.level >= j.max_level) {
     html += '<div class="left">Это максимальный уровень 💞</div>';
   }
-  // V3.61.9: what this level gives (7-8) and what the next one opens.
+  // V3.61.9: what this level gives and what the next one opens.
   if ((j.perks || []).length) {
     html += '<div style="font-size:13px;margin-top:14px;opacity:.85">Сейчас у вас' + (j.days_together > 1 ? ' · вместе ' + j.days_together + ' дн.' : '') + ':</div>'
       + j.perks.map(p => '<div style="font-size:13px;margin:4px 0">💞 ' + esc(p) + '</div>').join('');
@@ -2344,6 +2425,7 @@ function openLevelSheet() {
       + j.next_perks.map(p => '<div style="font-size:13px;margin:4px 0">✨ ' + esc(p) + '</div>').join('');
     if (j.premium_needed) html += '<button class="close" id="lvlPremium" style="margin-top:10px">💎 Открыть с Premium</button>';
   }
+  html += pathMapHtml(j);
   html += '<button class="close" id="lvlClose">Закрыть</button>';
   const sheet = document.getElementById('lvlSheet');
   document.getElementById('lvlBox').innerHTML = html;

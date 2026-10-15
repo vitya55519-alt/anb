@@ -27,8 +27,9 @@ def test_version_bumped():
 
 def test_eight_levels_with_emotional_names():
     names = MAIN[MAIN.index('RELATIONSHIP_LEVEL_NAMES = {'):MAIN.index('MAX_RELATIONSHIP_LEVEL')]
-    for fragment in ('Знакомство', 'Симпатия', 'Флирт', 'Влюблённость',
-                     'Любовники', 'Наша история', 'Родственные души', 'Одно целое'):
+    # V3.62.0: ten levels (romance names; the engine knows both paths).
+    for fragment in ('Знакомство', 'Симпатия', 'Искра', 'Влюблённость', 'Первое свидание',
+                     'Только ты', 'Наша история', 'Под одной крышей', 'Путешествие', 'Одно целое'):
         assert fragment in names
     assert 'MAX_RELATIONSHIP_LEVEL = len(RELATIONSHIP_LEVEL_NAMES)' in MAIN
 
@@ -126,7 +127,7 @@ def test_profile_hearts_progress_and_plateau_hint():
     assert "hearts = '❤️' * min(level, MAX_RELATIONSHIP_LEVEL)" in block
     assert "🤍" in block
     assert 'уровень {level}/{MAX_RELATIONSHIP_LEVEL}' in block
-    assert 'Родственные души' in block  # plateau hint text
+    assert 'уровни 7–10 открыты только с Premium' in block  # plateau hint text
     assert 'couple_service.album_entries(uid)' in block
     assert 'couple_service.get_pet_name(' in block
 
@@ -155,8 +156,8 @@ def test_user_columns():
 
 def test_premium_pitch_mentions_plateau():
     pitch = MAIN[MAIN.index('def premium_pitch_text('):MAIN.index('def _sleep_block_markup(')]
-    assert 'уровни 7–8 отношений' in pitch
-    assert '«Родственные души» и «Одно целое»' in pitch
+    assert 'уровни 7–10 отношений' in pitch
+    assert 'с 7-го по 10-й' in pitch
 
 
 def test_premium_rooms_and_dates_for_plateau():
@@ -175,4 +176,4 @@ def test_photo_stage_index_extended():
 
 def test_test_mode_covers_all_stages():
     assert '"devoted"' in TESTMODE and '"soulmate"' in TESTMODE
-    assert '8 · Одно целое' in TESTMODE
+    assert '10 · Одно целое' in TESTMODE
