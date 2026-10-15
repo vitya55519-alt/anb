@@ -2280,19 +2280,27 @@ async function loadChatLevel(characterId) {
 
 function openLevelSheet() {
   const j = CHAT_LEVEL; if (!j) return;
+  // V3.61.3: two separate blocks — her real scores (0–100), then what the next
+  // level still needs. 100% there used to read as «страсть 100%» next to «7%».
+  const scoreRow = (label, v) => '<div class="row"><div class="t"><span>' + label + '</span><span>' + v + ' из 100</span></div>'
+    + '<div class="trk"><i style="width:' + Math.max(0, Math.min(100, v)) + '%"></i></div></div>';
   let html = '<h3>💕 Уровень ' + j.level + '/' + j.max_level + ' · ' + esc(j.title) + '</h3>'
-    + '<div class="bond">' + esc(j.bond || '') + ' · 🔥 страсть ' + j.passion + '% · 🤝 доверие ' + j.trust + '% · 💬 ' + j.messages + ' сообщ.</div>';
+    + '<div class="bond">' + esc(j.bond || '') + ' · 💬 ' + j.messages + ' сообщ.</div>'
+    + '<div style="font-size:13px;opacity:.85">Сейчас между вами:</div>'
+    + scoreRow('❤️ Отношения', j.relationship || 0) + scoreRow('🤝 Доверие', j.trust || 0) + scoreRow('🔥 Страсть', j.passion || 0);
   if (j.next_title) {
-    html += '<div style="font-size:13px;opacity:.85">До уровня ' + (j.level + 1) + ' «' + esc(j.next_title) + '»:</div>';
+    const prog = j.progress || 0;
+    html += '<div style="font-size:13px;opacity:.85;margin-top:14px">До уровня ' + (j.level + 1) + ' «' + esc(j.next_title) + '» — ' + prog + '%</div>'
+      + '<div class="trk" style="margin:6px 0 8px"><i style="width:' + prog + '%"></i></div>';
     (j.bars || []).forEach(b => {
-      html += '<div class="row"><div class="t"><span>' + esc(b.label) + '</span><span>' + b.pct + '%</span></div>'
-        + '<div class="trk"><i style="width:' + b.pct + '%"></i></div></div>';
+      html += '<div style="font-size:13px;margin:4px 0">' + (b.done ? '✅ ' : '⏳ ') + esc(b.label)
+        + (b.done ? ' — хватает' : ' — ' + b.pct + '% от нужного · растёт: ' + esc(b.tip || '')) + '</div>';
     });
     let left = '';
     if (j.messages_left > 0) left += 'Осталось примерно <b>' + j.messages_left + '</b> сообщений';
     if (j.days_left > 0) left += (left ? ' и ' : 'Осталось ') + '<b>' + j.days_left + '</b> ' + (j.days_left === 1 ? 'день' : (j.days_left < 5 ? 'дня' : 'дней')) + ' общения (заходи к ней каждый день)';
     if (!left) left = 'Совсем чуть-чуть — ещё пара тёплых сообщений 😉';
-    html += '<div class="left">' + left + '.<br>Быстрее растёт от комплиментов, заботы, вопросов о ней и историй 📖.</div>';
+    html += '<div class="left">' + left + '.</div>';
   } else {
     html += '<div class="left">Это максимальный уровень 💞</div>';
   }
