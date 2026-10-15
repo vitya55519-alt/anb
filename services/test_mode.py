@@ -13,17 +13,21 @@ STAGES = (
     "committed",
     "devoted",
     "soulmate",
+    "voyage",
+    "eternal",
 )
 
 STAGE_LABELS = {
     "stranger": "1 · Знакомство",
     "acquaintance": "2 · Симпатия",
-    "close": "3 · Флирт",
-    "intimate": "4 · Влюблённость",
-    "deeply_connected": "5 · Любовники",
-    "committed": "6 · Наша история",
-    "devoted": "7 · Родственные души (премиум)",
-    "soulmate": "8 · Одно целое (премиум)",
+    "close": "3 · Искра",
+    "intimate": "4 · Влюблённость / Искушение",
+    "deeply_connected": "5 · Первое свидание / Игра",
+    "committed": "6 · Только ты / Без тормозов",
+    "devoted": "7 · Наша история / Тайная связь (премиум)",
+    "soulmate": "8 · Под одной крышей / Одержимость (премиум)",
+    "voyage": "9 · Путешествие / Запретная зона (премиум)",
+    "eternal": "10 · Одно целое / Без правил (премиум)",
 }
 
 _overrides: dict[int, str] = {}

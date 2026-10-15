@@ -88,7 +88,7 @@ def test_ui_lang_pairs_and_helpers():
     for key, (ru, en) in KB_LABELS.items():
         assert ru and en and ru != en, key
     assert {key for row in MAIN_KB_ROWS for key in row} <= set(KB_LABELS)
-    assert set(LEVEL_NAMES_EN) == set(range(1, 9))
+    assert set(LEVEL_NAMES_EN) == set(range(1, 11))  # V3.62.0
     assert detect_lang('en') == EN and detect_lang('de') == EN
     assert detect_lang('ru') == RU and detect_lang('ru-RU') == RU and detect_lang(None) == RU
     assert kb_pair('photo') == KB_LABELS['photo']

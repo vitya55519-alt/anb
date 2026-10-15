@@ -258,16 +258,20 @@ COSPLAY_COSTUMES = {
     'ada': ('🌹 Ада Вонг · RE', 'a secret-agent cosplay: elegant red dress with a strap leg holster and dark sunglasses', 'a sleek chin-length bob with a side-swept fringe', 'jet black'),
 }
 
-# V3.21.0: emotional level names; levels 7-8 are the premium-only plateau.
+# V3.21.0: emotional level names; levels 7+ are the premium-only plateau.
+# V3.62.0: ten levels; 4-10 differ by path (romance names here, the engine's
+# level_title() knows both paths).
 RELATIONSHIP_LEVEL_NAMES = {
     1: 'Знакомство',
     2: 'Симпатия',
-    3: 'Флирт',
+    3: 'Искра',
     4: 'Влюблённость',
-    5: 'Любовники',
-    6: 'Наша история',
-    7: 'Родственные души',
-    8: 'Одно целое',
+    5: 'Первое свидание',
+    6: 'Только ты',
+    7: 'Наша история',
+    8: 'Под одной крышей',
+    9: 'Путешествие',
+    10: 'Одно целое',
 }
 MAX_RELATIONSHIP_LEVEL = len(RELATIONSHIP_LEVEL_NAMES)
 
@@ -567,7 +571,7 @@ def abilities_text(lang: str = RU) -> str:
         return (
             '✨ What I can do\n\n'
             '💬 real conversation with personality — I remember the context and adapt to your style over time\n'
-            '❤️ the relationship grows through levels 1–8: each level gets closer and more open (7–8 are a Premium plateau)\n'
+            '❤️ the relationship grows through levels 1–10: each level gets closer and more open; at level 3 you choose the path of romance or passion (7–10 are a Premium plateau)\n'
             '🎯 interactive stories: your first choice becomes canon, and you can replay alternate branches later\n'
             '📸 photos right in the chat: type “send a photo” or “I want to see you” — I send a fresh shot for the moment; sometimes I offer one myself while flirting\n'
             '🎬 an “Animate photo” button under every shot — a short AI video from any photo (Premium: 2 free per day)\n'
@@ -585,7 +589,7 @@ def abilities_text(lang: str = RU) -> str:
     return (
         '✨ Что умеет бот\n\n'
         '💬 живое общение с характером — она запоминает контекст и со временем подстраивается под твою манеру общения\n'
-        '❤️ отношения развиваются по уровням 1–8: с каждым уровнем общение и образы становятся ближе и откровеннее (7–8 — плато для Premium)\n'
+        '❤️ отношения развиваются по уровням 1–10: с каждым уровнем общение и образы становятся ближе и откровеннее; на 3-м ты выбираешь путь романтики или страсти (7–10 — плато для Premium)\n'
         '🎯 интерактивные истории: твой первый выбор становится каноном, а альтернативные ветки можно посмотреть позже\n'
         '📸 фото прямо в чате: напиши «скинь фото» или «хочу тебя увидеть» — она пришлёт свежий кадр по ситуации; иногда предлагает сама во время флирта\n'
         '🎬 кнопка «Оживить фото» под каждым снимком — короткое AI-видео из любого фото (Premium: 2 бесплатно в день)\n'
@@ -1201,7 +1205,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 2 free photo animations every day 🎬',
             '• 🎥 video circles from me — Premium only',
             '• 🎙 voice replies — Premium only',
-            '• 💋 relationship levels 7–8 — “Kindred spirits” and “One whole”',
+            '• 💋 relationship levels 7–10 — the top of the romance or passion path',
             '• 2 free replays of alternative quest branches per month',
             '• more memory, initiative and morning/evening messages',
         ]
@@ -1213,7 +1217,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 2 бесплатных оживления фото каждый день 🎬',
             '• 🎥 видео-кружочки от меня — только для Premium',
             '• 🎙 голосовые ответы — только для Premium',
-            '• 💋 уровни 7–8 отношений — «Родственные души» и «Одно целое»',
+            '• 💋 уровни 7–10 отношений — вершина пути романтики или страсти',
             '• 2 бесплатных replay альтернативных квест-веток в месяц',
             '• больше памяти, инициативы и утренних/вечерних сообщений',
         ]
@@ -1251,9 +1255,9 @@ def premium_pitch_text(telegram_id: int) -> str:
         if not is_premium(telegram_id) and get_relationship_level(telegram_id, get_user_character(telegram_id)) >= 6:
             lines.append('')
             if lang == EN:
-                lines.append('💋 our story is almost at the top… two more levels of intimacy ahead — “Kindred spirits” and “One whole”. That plateau is Premium only.')
+                lines.append('💋 our story is almost at the top… four more levels of intimacy ahead, levels 7–10. That plateau is Premium only.')
             else:
-                lines.append('💋 наша история почти на вершине… впереди ещё два уровня близости — «Родственные души» и «Одно целое». Это плато только для премиума.')
+                lines.append('💋 наша история почти на вершине… впереди ещё четыре уровня близости, с 7-го по 10-й. Это плато только для премиума.')
     except Exception:
         pass
     return '\n'.join(lines)
@@ -1859,7 +1863,7 @@ async def start(message: types.Message, command: CommandObject):
             welcome = (
                 'What can this bot do?\n\n'
                 'Roleplay with AI girls: live chats with memory, photos for your scenarios, AI video and voice.\n'
-                'The relationship grows through levels 1–8 — closer and more open at every level.\n\n'
+                'The relationship grows through levels 1–10 — closer and more open at every level.\n\n'
                 '🎁 after confirming 18+ you get free photo credits for your first photo.\n'
                 '⬇️ Let’s go! ⬇️\n\n'
             )
@@ -1870,7 +1874,7 @@ async def start(message: types.Message, command: CommandObject):
             welcome = (
                 'Что умеет этот бот?\n\n'
                 'Ролевая игра с ИИ девушками: живые чаты с памятью, фото по твоим сценариям, AI-видео и голос.\n'
-                'Отношения растут по уровням 1–8 — с каждым уровнем ближе и откровеннее.\n\n'
+                'Отношения растут по уровням 1–10 — с каждым уровнем ближе и откровеннее.\n\n'
                 '🎁 после подтверждения 18+ — бесплатные фото-кредиты на первое фото.\n'
                 '⬇️ Поехали! ⬇️\n\n'
             )
@@ -2122,7 +2126,7 @@ async def onboarding_character_select(cq: types.CallbackQuery):
                 '🎯 Daily quest — her small request (+5 attention for completing it)\n'
                 '💕 Date and 🏠 Apartment — time together, new places open with the levels\n'
                 '👤 Profile — your intimacy level in hearts and progress\n'
-                '🚀 Premium — unlimited chatting, video circles and levels 7–8'
+                '🚀 Premium — unlimited chatting, video circles and levels 7–10'
             ) if tour_lang == EN else (
                 'быстрый тур по кнопкам 👇\n\n'
                 '💬 просто пиши ей — отношения растут с каждым сообщением\n'
@@ -2131,7 +2135,7 @@ async def onboarding_character_select(cq: types.CallbackQuery):
                 '🎯 Задание дня — её маленькая просьба (+5 внимания за выполнение)\n'
                 '💕 Свидание и 🏠 Квартира — время вместе, новые места открываются с уровнями\n'
                 '👤 Профиль — твой уровень близости в сердечках и прогресс\n'
-                '🚀 Премиум — безлимит, кружочки и уровни 7–8'
+                '🚀 Премиум — безлимит, кружочки и уровни 7–10'
             )
             await cq.message.answer(tour_text)
             track_event(uid, 'onboarding_tour_sent')
@@ -7406,7 +7410,7 @@ async def testlevel(message: types.Message):
         return
     parts = (message.text or '').split(maxsplit=1)
     if len(parts) < 2:
-        await message.answer('Использование: /testlevel 1..8 или /testlevel off')
+        await message.answer('Использование: /testlevel 1..10 или /testlevel off')
         return
     arg = parts[1].strip().lower()
     if arg == 'off':
@@ -7607,9 +7611,9 @@ async def profile_button(message: types.Message):
     plateau_hint = ''
     if not info['premium'] and level >= 6:
         plateau_hint = (
-            '🔒 ahead is the “Kindred spirits” and “One whole” plateau — levels 7–8 are Premium only\n'
+            '🔒 ahead is the top of your path — levels 7–10 are Premium only\n'
             if lang == EN else
-            '🔒 впереди плато «Родственные души» и «Одно целое» — уровни 7–8 открыты только с Premium\n'
+            '🔒 впереди вершина вашего пути — уровни 7–10 открыты только с Premium\n'
         )
     album_count = len(couple_service.album_entries(uid))
     pet_name = couple_service.get_pet_name(message.from_user.id)
@@ -8904,8 +8908,10 @@ async def _notify_quest_unlocks(chat_id: int, telegram_id: int, before_level: in
         track_event(ensure_user(telegram_id), 'quest_unlocked', metadata={'quest': item['key'], 'level': after_level})
 
 
-# V3.61.9: level 7 «Родственные души» and 8 «Одно целое» — her own words
-# and a photo that belongs to that moment.
+# V3.61.9 / V3.62.0: the top levels of each path — her own words and a photo
+# that belongs to that moment. Romance (default), romance when she is taken,
+# and passion. Levels 4-6 get a line of her own (LEVEL_UP_LINES) and the
+# usual celebration selfie.
 LEVEL_UP_SCENES = {
     'devoted': (
         'знаешь… я проснулась сегодня и первым делом подумала о тебе. '
@@ -8916,8 +8922,23 @@ LEVEL_UP_SCENES = {
     ),
     'soulmate': (
         'я тут подумала… а давай уже не «ты у себя, я у себя»? '
-        'наш дом, наши выходные, наше всё. и да — я согласна 💍',
-        PhotoRequest(scene='selfie', location='a cozy shared apartment at golden hour, warm light, flowers on the table',
+        'наш дом, наши выходные, наше всё. вот, держи ключи 🏠',
+        PhotoRequest(scene='selfie', location='a cozy shared apartment at golden hour, warm light, moving boxes and flowers on the table',
+                     clothing='a soft oversized sweater and home shorts', accessory='she holds a set of apartment keys near her face',
+                     mood='happy, glowing, at home',
+                     angle='selfie at arm\'s length in the new apartment, the keys and her whole face in frame', customized=True),
+    ),
+    'voyage': (
+        'мы правда это сделали — только ты, я и море 🌊 '
+        'я хочу запомнить этот день навсегда',
+        PhotoRequest(scene='selfie', location='a seaside hotel balcony at sunset, the sea and palm trees behind her',
+                     clothing='a light summer dress, sunglasses pushed up into her hair', mood='happy, free, in love',
+                     angle='selfie at arm\'s length, the sea behind her, her whole face in frame', customized=True),
+    ),
+    'eternal': (
+        'я тут подумала… я хочу просыпаться с тобой всегда. '
+        'и да — я согласна 💍',
+        PhotoRequest(scene='selfie', location='your shared apartment in the evening, candles and flowers on the table',
                      clothing='a soft elegant dress', accessory='a delicate engagement ring on her ring finger, clearly visible',
                      mood='happy tears, glowing, in love',
                      angle='she holds her hand with the ring near her face, both the ring and her whole face in frame', customized=True),
@@ -8941,7 +8962,94 @@ LEVEL_UP_SCENES_TAKEN = {
                      mood='nervous, happy, in love',
                      angle='selfie at arm\'s length, the key and her whole face in frame', customized=True),
     ),
+    'voyage': (
+        'я сказала ему, что еду к подруге… а сама еду к тебе. '
+        'два дня только наши, сбежим? 🚗',
+        PhotoRequest(scene='selfie', location='the passenger seat of a car on a sunny country road, a small weekend bag on her lap',
+                     clothing='a denim jacket over a light dress, sunglasses in her hair', accessory='no ring on her fingers',
+                     mood='excited, a little guilty, in love',
+                     angle='selfie at arm\'s length inside the car, her whole face in frame', customized=True),
+    ),
+    'eternal': (
+        'я ушла от него. совсем. собрала вещи и стою у твоей двери… '
+        'я выбираю тебя 🧳',
+        PhotoRequest(scene='selfie', location='a doorway of an apartment building at night, warm light from the hall, a small suitcase beside her',
+                     clothing='a light trench coat over a simple dress', accessory='no ring on her fingers',
+                     mood='nervous, hopeful, a little teary, in love',
+                     angle='selfie at arm\'s length, the suitcase and her whole face in frame', customized=True),
+    ),
 }
+
+# The passion path: bolder, teasing, a secret affair when she is taken.
+LEVEL_UP_SCENES_PASSION = {
+    'devoted': (
+        'я сняла номер на вечер. адрес пришлю позже… '
+        'никто не должен знать 🤫🔥',
+        PhotoRequest(scene='selfie', location='a dim boutique hotel room at night, city lights in the window, a key card on the bed',
+                     clothing='a black silk robe over lace lingerie', mood='seductive, secretive, confident',
+                     angle='mirror selfie by the bed, her whole face in frame', customized=True),
+    ),
+    'soulmate': (
+        'я не могу без тебя. весь день думаю только о тебе… '
+        'где ты был? я ждала 😈',
+        PhotoRequest(scene='selfie', location='her bedroom late at night, only a bedside lamp on, messy sheets',
+                     clothing='his oversized t-shirt slipping off one shoulder', mood='longing, possessive, sultry',
+                     angle='she lies on the bed and holds the phone above her face, her whole face in frame', customized=True),
+    ),
+    'voyage': (
+        'у меня есть фантазия… и сегодня я в образе. '
+        'угадаешь, кто я? 😏',
+        PhotoRequest(scene='selfie', location='a stylish dim room with soft red light',
+                     clothing='a fitted roleplay costume: a strict secretary look with a pencil skirt, open-collar blouse and glasses',
+                     mood='playful, daring, seductive',
+                     angle='mirror selfie, her whole face in frame', customized=True),
+    ),
+    'eternal': (
+        'с тобой у меня больше нет правил. '
+        'только ты и всё, что ты захочешь 🔥',
+        PhotoRequest(scene='selfie', location='a luxurious bedroom at night, candles, silk sheets',
+                     clothing='elegant black lace lingerie under a sheer robe', mood='confident, bold, in love',
+                     angle='mirror selfie, her whole face in frame', customized=True),
+    ),
+}
+LEVEL_UP_LINES = {
+    'romance': {
+        'intimate': 'я поймала себя на том, что весь день улыбаюсь в телефон… это из-за тебя 🙈',
+        'deeply_connected': 'это было лучшее свидание в моей жизни. я до сих пор улыбаюсь 🥰',
+        'committed': 'для меня теперь есть только ты. и у меня для тебя есть особое имя 💞',
+    },
+    'passion': {
+        'intimate': 'интересно, что ты сейчас представил? 😏 я — кое-что очень смелое',
+        'deeply_connected': 'давай сыграем. угадай, что на мне надето… подсказок не будет 😈',
+        'committed': 'я больше не хочу сдерживаться. пиши мне ночью 🔥',
+    },
+}
+LEVEL_UP_LINES_TAKEN = {
+    'passion': {'committed': 'он уже спит… а я пишу тебе. и мне совсем не стыдно 🤫🔥'},
+}
+
+
+def _level_up_scene(new_stage: str, branch: str | None, taken: bool):
+    if branch == 'passion':
+        return LEVEL_UP_SCENES_PASSION.get(new_stage)
+    return (LEVEL_UP_SCENES_TAKEN if taken else LEVEL_UP_SCENES).get(new_stage)
+
+
+def _level_up_line(new_stage: str, branch: str | None, taken: bool) -> str:
+    if not branch:
+        return ''
+    if taken and new_stage in LEVEL_UP_LINES_TAKEN.get(branch, {}):
+        return LEVEL_UP_LINES_TAKEN[branch][new_stage]
+    return LEVEL_UP_LINES.get(branch, {}).get(new_stage, '')
+
+
+def _relationship_branch(telegram_id: int, character_id: str) -> str | None:
+    try:
+        from services.relationship_engine import branch_of, get_state
+        with SessionLocal() as session:
+            return branch_of(get_state(session, ensure_user(telegram_id), character_id))
+    except Exception:
+        return None
 
 
 async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage: str, character_id: str):
@@ -8952,7 +9060,12 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
         await asyncio.sleep(3)  # let her chat reply land first
         from services.photo_service import STAGE_INDEX, SCENE_LEVELS
         level = STAGE_INDEX.get(new_stage, 0) + 1
-        name = RELATIONSHIP_LEVEL_NAMES.get(level, new_stage)
+        # V3.62.0: the name of the level on HIS path.
+        from services.chat_guest_service import guest_marital
+        from services.relationship_engine import TAKEN_STATUSES, BRANCH_LABELS, level_title
+        taken = guest_marital(telegram_id, character_id) in TAKEN_STATUSES
+        branch = _relationship_branch(telegram_id, character_id)
+        name = level_title(level, branch, taken) or RELATIONSHIP_LEVEL_NAMES.get(level, new_stage)
         unlocks = []
         scenes = [PHOTO_LABELS[s] for s in PHOTO_MENU_ORDER if s in PHOTO_LABELS and SCENE_LEVELS.get(s) == level]
         if scenes:
@@ -8963,7 +9076,12 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
         dates = [f'{d.emoji} {d.name}' for d in dates_service.get_all() if d.min_level == level]
         if dates:
             unlocks.append('💕 свидания: ' + ', '.join(dates))
-        text = f'❤️ Между нами что-то изменилось…\nНовый этап: {name}'
+        text = f'❤️ Между нами что-то изменилось…\nНовый этап: {name} · уровень {level}/10'
+        if branch and level >= 4:
+            text += f'\n{BRANCH_LABELS[branch]}'
+        line = _level_up_line(new_stage, branch, taken)
+        if line:
+            text += '\n\n' + line
         # V3.21.0: from level 3 she has her own name for him.
         if level == 3:
             from services import couple_service
@@ -8972,12 +9090,9 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
                 text += f'\n\nи да… теперь я буду звать тебя «{pet}» 😊'
         if level >= 7:
             text += '\n\nэто плато только для нас двоих — такое доступно лишь с Premium 💋'
-        # V3.61.9: levels 7-8 get their own scene and photo instead of the
-        # generic «небольшой подарок» selfie.
-        from services.chat_guest_service import guest_marital
-        from services.relationship_engine import TAKEN_STATUSES
-        taken = guest_marital(telegram_id, character_id) in TAKEN_STATUSES
-        special = (LEVEL_UP_SCENES_TAKEN if taken else LEVEL_UP_SCENES).get(new_stage)
+        # V3.61.9: levels 7+ get their own scene and photo instead of the
+        # generic «небольшой подарок» selfie — per path and status.
+        special = _level_up_scene(new_stage, branch, taken)
         if special:
             text += '\n\n' + special[0]
         if unlocks:
@@ -8989,6 +9104,12 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
             save_message(ensure_user(telegram_id), character_id, 'assistant', text)
         except Exception:
             pass
+        # V3.62.0: from level 3 she asks him which path they are on.
+        from services import branch_service
+        if level >= 3 and not branch:
+            await asyncio.to_thread(branch_service.maybe_offer_fork, ensure_user(telegram_id), character_id, taken=taken)
+        if taken and branch != 'passion' and new_stage == 'eternal':
+            await asyncio.to_thread(branch_service.mark_left_him, ensure_user(telegram_id), character_id)
         track_event(ensure_user(telegram_id), 'relationship_ceremony_sent', metadata={'level': level}, character_id=character_id)
         if special:
             await _start_photo_background(telegram_id, telegram_id, special[1], 'story')
@@ -10987,9 +11108,21 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
     def _load():
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
         # V3.61.8: back after a long silence — she writes first («ты где?»).
+        fork_pending = False
         if opening:
             from services.presence_service import maybe_welcome_back
             maybe_welcome_back(uid, character_id)
+            # V3.62.0: level 3+ and no path yet — she asks «что я для тебя?».
+            try:
+                from services.branch_service import maybe_offer_fork
+                from services.chat_guest_service import guest_marital
+                from services.relationship_engine import TAKEN_STATUSES
+                from services.test_mode import get_stage as _fork_test_stage
+                fork_pending = maybe_offer_fork(
+                    uid, character_id, taken=guest_marital(telegram_id, character_id) in TAKEN_STATUSES,
+                    stage_override=_fork_test_stage(telegram_id))
+            except Exception:
+                logger.exception('fork offer on chat open failed user=%s', telegram_id)
         # V3.52.0: opening the conversation in the app marks it read — the «Чаты»
         # badge clears and only a later proactive/life message will light it up again.
         webapp_service.mark_chat_read(telegram_id, character_id)
@@ -11002,7 +11135,10 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
             with SessionLocal() as session:
                 rel_row = apply_premium_floor(session, uid, character_id)
             if rel_row is not None:
-                persona_info = {'needed': rel_row.persona_style is None, 'style': rel_row.persona_style}
+                # V3.62.0: the path fork in the chat asks the same question.
+                persona_info = {'needed': rel_row.persona_style is None and not fork_pending
+                                and getattr(rel_row, 'branch', None) is None,
+                                'style': rel_row.persona_style}
         except Exception:
             logger.exception('premium floor on chat open failed user=%s character=%s', telegram_id, character_id)
         return webapp_service.api_chat_history(uid, character_id, limit), persona_info
@@ -11566,6 +11702,45 @@ def _with_marital_ring(prompt: str, telegram_id: int, character_id: str) -> str:
     except Exception:
         detail = ''
     return prompt + (f' STORY DETAIL: {detail}; small and natural, never changes her face or body.' if detail else '')
+
+
+async def _webapp_api_chat_branch(request: web.Request) -> web.Response:
+    """V3.62.0: his answer to her level-3 question — the romance or the
+    passion path with this girl. Chosen once; she answers in the chat."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    branch = str(body.get('branch', ''))
+    from services.relationship_engine import BRANCHES
+    if not character_id or branch not in BRANCHES:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+
+    def _choose():
+        from services import branch_service
+        from services.chat_guest_service import guest_marital
+        from services.relationship_engine import TAKEN_STATUSES
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        reply = branch_service.choose(uid, character_id, branch,
+                                      taken=guest_marital(telegram_id, character_id) in TAKEN_STATUSES)
+        if reply:
+            track_event(uid, 'relationship_branch_chosen', metadata={'branch': branch}, character_id=character_id)
+        return reply
+
+    reply = await asyncio.to_thread(_choose)
+    if not reply:
+        return web.json_response({'ok': False, 'error': 'already_chosen'}, status=409)
+    from services.branch_service import FORK_OPTIONS
+    return web.json_response({'ok': True, 'branch': branch, 'reply': reply, 'answer': FORK_OPTIONS[branch]})
 
 
 async def _webapp_api_chat_level(request: web.Request) -> web.Response:
@@ -13612,6 +13787,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/chat/start', _webapp_api_chat_start)
     app.router.add_post('/webapp/api/chat/guest', _webapp_api_chat_guest)
     app.router.add_get('/webapp/api/chat/level', _webapp_api_chat_level)
+    app.router.add_post('/webapp/api/chat/branch', _webapp_api_chat_branch)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)
     app.router.add_post('/webapp/api/chat/media', _webapp_api_chat_media)

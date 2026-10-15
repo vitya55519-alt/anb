@@ -116,4 +116,4 @@ def test_premium_pitch_mentions_new_perks_and_plateau():
     assert 'видео-кружочки' in pitch
     assert 'безлимит сообщений' in pitch
     # V3.21.0 renamed the plateau line to the two premium levels.
-    assert '«Родственные души» и «Одно целое»' in pitch
+    assert 'с 7-го по 10-й' in pitch  # V3.62.0: ten levels

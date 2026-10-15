@@ -124,7 +124,7 @@ def _breakup_rewrite_instructions(name: str) -> str:
     )
 
 
-EXPLICIT_STAGES = {'deeply_connected', 'committed', 'devoted', 'soulmate'}
+EXPLICIT_STAGES = {'deeply_connected', 'committed', 'devoted', 'soulmate', 'voyage', 'eternal'}
 EXPLICIT_CHAT_RULE = (
     'ПРАВИЛО ОТКРОВЕННОСТИ (18+ подтверждено, ваша близость это допускает): этот пункт отменяет запрет '
     '«без графического секса» выше. Секстинг можно вести откровенно и подробно — что вы делаете, '

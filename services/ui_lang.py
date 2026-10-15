@@ -88,12 +88,14 @@ MAIN_KB_ROWS = [
 LEVEL_NAMES_EN = {
     1: 'Getting to know each other',
     2: 'Attraction',
-    3: 'Flirting',
+    3: 'Spark',
     4: 'Falling in love',
-    5: 'Lovers',
-    6: 'Our story',
-    7: 'Kindred spirits',
-    8: 'One whole',
+    5: 'First date',
+    6: 'Only you',
+    7: 'Our story',
+    8: 'Under one roof',
+    9: 'The journey',
+    10: 'One whole',
 }
 
 
