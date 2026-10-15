@@ -637,3 +637,79 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
     pace_line = f' {pace_hint}' if pace_hint else ''
     openness = ' ' + OPENNESS_LADDER.get(stage, '') + ' ' + INITIATIVE_LADDER.get(stage, '') + OPENNESS_LIMITS
     return contexts[stage].replace('Анна', _character_display_name(character_id)) + pace_line + extra + openness + " Не называй пользователю номер, внутреннее название уровня, scoring или скрытые метрики."
+
+
+# V3.60.9: «хочется видеть, что визуал идёт» — what the chat header's level
+# panel shows: the level, her bond, four bars toward the next level and an
+# honest estimate of how many messages (and days) are still missing.
+STAGE_TITLES_RU = {
+    "stranger": "Знакомство", "acquaintance": "Симпатия", "close": "Флирт",
+    "intimate": "Влюблённость", "deeply_connected": "Любовники",
+    "committed": "Наша история", "devoted": "Родственные души", "soulmate": "Одно целое",
+}
+
+
+def level_snapshot(session: Session, row: UserCharacterRelationship | None,
+                   stage_override: str | None = None) -> dict:
+    stage = stage_override or (row.stage if row is not None and row.stage else "stranger")
+    idx = STAGE_ORDER.index(stage) if stage in STAGE_ORDER else 0
+    bond, _hint = bond_character(row)
+    snap = {
+        "level": idx + 1, "max_level": len(STAGE_ORDER), "stage": stage,
+        "title": STAGE_TITLES_RU.get(stage, stage), "bond": bond,
+        "passion": round(row.intimacy_score) if row is not None else 0,
+        "trust": round(row.trust_score) if row is not None else 0,
+        "messages": int(row.total_messages or 0) if row is not None else 0,
+        "bars": [], "next_title": None, "messages_left": 0, "days_left": 0,
+    }
+    if idx >= len(STAGE_ORDER) - 1 or stage_override:
+        return snap
+    nxt = STAGE_ORDER[idx + 1]
+    target = next((s for s in STAGE_RULES if s[0] == nxt), None)
+    if not target:
+        return snap
+    _, r_min, t_min, i_min = target
+    f_min, c_min, x_min = DIMENSION_GATES[nxt]
+    fam = row.familiarity_score if row is not None else 0.0
+    cont = row.continuity_score if row is not None else 0.0
+    conn = row.connection_score if row is not None else 0.0
+    eff_r = min(100.0, (row.relationship_score if row is not None else 0.0) + fam * 0.10)
+    eff_t = min(100.0, (row.trust_score if row is not None else 0.0) + cont * 0.15)
+    eff_i = min(100.0, (row.intimacy_score if row is not None else 0.0) + conn * 0.45)
+
+    def pct(cur, need):
+        return 100 if need <= 0 else max(0, min(100, round(cur / need * 100)))
+
+    snap["next_title"] = STAGE_TITLES_RU.get(nxt, nxt)
+    snap["bars"] = [
+        {"key": "rel", "label": "❤️ Отношения", "pct": pct(eff_r, r_min)},
+        {"key": "trust", "label": "🤝 Доверие", "pct": pct(eff_t, t_min)},
+        {"key": "passion", "label": "🔥 Страсть", "pct": pct(eff_i, i_min)},
+        {"key": "talk", "label": "💬 Общение", "pct": pct(fam, f_min)},
+    ]
+    # Per-message gains from her recent history (fallback: typical values).
+    g_r, g_t, g_i = 0.9, 0.7, 0.5
+    if row is not None:
+        try:
+            ev = session.scalars(
+                select(RelationshipEvent).where(RelationshipEvent.user_character_id == row.id)
+                .order_by(RelationshipEvent.id.desc()).limit(40)
+            ).all()
+            if len(ev) >= 5:
+                n = len(ev)
+                g_r = max(0.2, sum(max(0.0, e.relationship_delta) for e in ev) / n)
+                g_t = max(0.2, sum(max(0.0, e.trust_delta) for e in ev) / n)
+                g_i = max(0.15, sum(max(0.0, e.intimacy_delta) for e in ev) / n)
+        except Exception:
+            pass
+    need = [
+        max(0.0, r_min - eff_r) / (g_r + 0.28 * 0.10),
+        max(0.0, t_min - eff_t) / g_t,
+        max(0.0, i_min - eff_i) / (g_i + 0.06 * 0.45),
+        max(0.0, f_min - fam) / (0.28 + g_r * 0.12),
+    ]
+    import math
+    snap["messages_left"] = int(math.ceil(max(need))) if max(need) > 0 else 0
+    # continuity grows ~1.7 per day she is visited (same-day chat barely moves it)
+    snap["days_left"] = int(math.ceil(max(0.0, c_min - cont) / 1.7))
+    return snap

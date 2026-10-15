@@ -409,12 +409,13 @@ ADAPTATION_MAX_EXPRESSIONS = max(3, min(20, int(os.getenv("ADAPTATION_MAX_EXPRES
 # V3.55.1: owner tightened the free tier 50 → 30 messages/day for non-premium
 # (Premium's «безлимит сообщений» must actually bite). The new-user 24h
 # unlimited window below stays the activation lever.
+# V3.60.9: the owner cut it to 20/day.
 # V3.57.7: the owner put the chat brake back for non-premium users after trying the
 # open gate — 30/day is the tariff we publish, so it stays 30. The legal text and the
 # shop note switch to «unlimited» automatically if this ever goes ≥ 1000 again.
 # NOTE: the gate is `count < FREE_MESSAGES_PER_DAY`, so 0 here means «nobody may
 # write», not «unlimited» — never set it to zero.
-FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "30"))
+FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "20"))
 # V3.47.2: a brand-new user gets unlimited TEXT messages for this many hours
 # after registration (activation lever, mirrors the benchmark's «первые 24 часа
 # текст бесплатно»). Photo/video gates are untouched — text only.

@@ -243,6 +243,20 @@
   .chat-head .nm { font-weight: 700; font-size: 15px; }
   .chat-head .sub { color: var(--muted); font-size: 11px; }
   .chat-head .spacer { margin-left: auto; }
+  /* V3.60.9: level chip in the chat header + its bottom sheet */
+  .lvlchip { display: inline-block; margin-top: 2px; padding: 2px 8px; border-radius: 10px; font-size: 11px;
+    background: rgba(255,90,160,.18); color: #ffd1e6; border: 1px solid rgba(255,120,180,.35); cursor: pointer; }
+  .lvlsheet { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; }
+  .lvlsheet .box { width: 100%; max-height: 80vh; overflow: auto; background: #1d1424; border-radius: 20px 20px 0 0;
+    padding: 18px 16px 24px; border-top: 1px solid rgba(255,120,180,.3); }
+  .lvlsheet h3 { margin: 0 0 4px; font-size: 18px; }
+  .lvlsheet .bond { font-size: 13px; opacity: .8; margin-bottom: 12px; }
+  .lvlsheet .row { margin: 10px 0; }
+  .lvlsheet .row .t { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+  .lvlsheet .trk { height: 8px; border-radius: 6px; background: rgba(255,255,255,.08); overflow: hidden; }
+  .lvlsheet .trk i { display: block; height: 100%; background: linear-gradient(90deg,#ff5fa2,#b44cff); }
+  .lvlsheet .left { margin-top: 14px; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.05); font-size: 13px; line-height: 1.45; }
+  .lvlsheet .close { margin-top: 14px; width: 100%; padding: 12px; border-radius: 12px; border: 0; background: rgba(255,255,255,.08); color: inherit; font-size: 14px; }
   .chat-head .iconbtn {
     background: var(--card); border: none; color: var(--text); font-size: 18px;
     border-radius: 12px; padding: 8px 12px; cursor: pointer;
@@ -895,6 +909,7 @@
     <div>
       <div class="nm" id="chatName"></div>
       <div class="sub" id="chatSub"></div>
+      <span class="lvlchip" id="chatLvl" style="display:none"></span>
     </div>
     <div class="spacer"></div>
     <button class="iconbtn" id="chatSelect" style="font-size:13px">❤️</button>
@@ -922,6 +937,8 @@
     <input type="file" id="chatFileIn" accept="image/*" style="display:none">
   </div>
 </div>
+<!-- V3.60.9: level panel (tap the chip under her name) -->
+<div class="lvlsheet" id="lvlSheet" style="display:none"><div class="box" id="lvlBox"></div></div>
 <!-- V3.39.0: the Come Closer character page — photo strip, «Начать чат»,
      bio and the СЮЖЕТ block before the dialog opens -->
 <div class="overlay" id="charview">
@@ -2160,9 +2177,55 @@ function openChat(c) {
   document.getElementById('chatMsgs').innerHTML = `<div class="loading">${esc(L.loading)}</div>`;
   document.getElementById('chatview').classList.add('open');
   loadChatHistory(c.id);
+  loadChatLevel(c.id);
   // V3.52.0: opening a chat marks it read on the server; drop the cached «Чаты»
   // list so the badge is cleared the next time the tab is visited.
   _chatsLoaded = false;
+}
+
+// V3.60.9: «хочется видеть, что визуал идёт» — level, passion, trust and how
+// much is left to the next level, one tap from the chat header.
+let CHAT_LEVEL = null;
+async function loadChatLevel(characterId) {
+  const chip = document.getElementById('chatLvl');
+  try {
+    const r = await fetch('/webapp/api/chat/level?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId));
+    const j = await r.json();
+    if (!j.ok || !CHAT || CHAT.id !== characterId) return;
+    const prev = CHAT_LEVEL && CHAT_LEVEL.cid === characterId ? CHAT_LEVEL.level : null;
+    CHAT_LEVEL = Object.assign({ cid: characterId }, j);
+    chip.textContent = '💕 ур. ' + j.level + ' · ' + j.title + ' · 🔥' + j.passion + '% ›';
+    chip.style.display = '';
+    chip.onclick = openLevelSheet;
+    if (prev && j.level > prev) toast('🎉 новый уровень: ' + j.level + ' · ' + j.title);
+  } catch (e) { /* the chip is optional */ }
+}
+
+function openLevelSheet() {
+  const j = CHAT_LEVEL; if (!j) return;
+  let html = '<h3>💕 Уровень ' + j.level + '/' + j.max_level + ' · ' + esc(j.title) + '</h3>'
+    + '<div class="bond">' + esc(j.bond || '') + ' · 🔥 страсть ' + j.passion + '% · 🤝 доверие ' + j.trust + '% · 💬 ' + j.messages + ' сообщ.</div>';
+  if (j.next_title) {
+    html += '<div style="font-size:13px;opacity:.85">До уровня ' + (j.level + 1) + ' «' + esc(j.next_title) + '»:</div>';
+    (j.bars || []).forEach(b => {
+      html += '<div class="row"><div class="t"><span>' + esc(b.label) + '</span><span>' + b.pct + '%</span></div>'
+        + '<div class="trk"><i style="width:' + b.pct + '%"></i></div></div>';
+    });
+    let left = '';
+    if (j.messages_left > 0) left += 'Осталось примерно <b>' + j.messages_left + '</b> сообщений';
+    if (j.days_left > 0) left += (left ? ' и ' : 'Осталось ') + '<b>' + j.days_left + '</b> ' + (j.days_left === 1 ? 'день' : (j.days_left < 5 ? 'дня' : 'дней')) + ' общения (заходи к ней каждый день)';
+    if (!left) left = 'Совсем чуть-чуть — ещё пара тёплых сообщений 😉';
+    html += '<div class="left">' + left + '.<br>Быстрее растёт от комплиментов, заботы, вопросов о ней и историй 📖.</div>';
+  } else {
+    html += '<div class="left">Это максимальный уровень 💞</div>';
+  }
+  html += '<button class="close" id="lvlClose">Закрыть</button>';
+  const sheet = document.getElementById('lvlSheet');
+  document.getElementById('lvlBox').innerHTML = html;
+  sheet.style.display = 'flex';
+  const close = () => { sheet.style.display = 'none'; };
+  document.getElementById('lvlClose').onclick = close;
+  sheet.onclick = (e) => { if (e.target === sheet) close(); };
 }
 
 async function loadChatHistory(characterId) {
@@ -2323,6 +2386,7 @@ async function sendChat() {
 
 // ── V3.57.0: voice messages and user photos in the app chat ──────────────
 function renderChatReply(j) {
+  if (CHAT) loadChatLevel(CHAT.id);
   // V3.51.0: a photo request comes back with a real photo attached;
   // V3.57.0: a text reply may carry her voice note (voice_url).
   const box = document.getElementById('chatMsgs');
@@ -3153,7 +3217,9 @@ function renderGenFeed(rows, reset, spentToday) {
     try { when = g.ts ? new Date(g.ts + 'Z').toLocaleString() : ''; } catch (e) { when = g.ts || ''; }
     const cost = Number(g.cost_usd || 0);
     const money = (g.engine ? (' · ' + esc(String(g.engine))) : '') + (' · ' + (cost > 0 ? ('$' + cost.toFixed(4)) : '$0'));
-    html += '<div style="background:rgba(255,255,255,.05);border-radius:14px;padding:10px 12px;margin:8px 0">'
+    // V3.60.9: failed renders come in as engine 'error' — red so they stand out.
+    const bad = g.engine === 'error';
+    html += '<div style="background:' + (bad ? 'rgba(255,60,60,.14);border:1px solid rgba(255,80,80,.55)' : 'rgba(255,255,255,.05)') + ';border-radius:14px;padding:10px 12px;margin:8px 0">'
       + thumb
       + '<div style="font-size:12px;opacity:.8;margin-bottom:4px">' + esc(String(g.kind || '')) + ' · ' + esc(g.character || '—') + ' · id ' + esc(String(g.user || '')) + (when ? (' · ' + esc(when)) : '') + money + '</div>'
       + '<div style="font-size:13px;white-space:pre-wrap;word-break:break-word">' + esc(g.prompt || '') + '</div>'
