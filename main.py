@@ -7375,15 +7375,16 @@ async def testlevel(message: types.Message):
         return
     parts = (message.text or '').split(maxsplit=1)
     if len(parts) < 2:
-        await message.answer('Использование: /testlevel 1..6 или /testlevel off')
+        await message.answer('Использование: /testlevel 1..8 или /testlevel off')
         return
     arg = parts[1].strip().lower()
     if arg == 'off':
         clear_stage(message.from_user.id)
         await message.answer('тестовый уровень выключен')
         return
-    if not arg.isdigit() or not 1 <= int(arg) <= 6:
-        await message.answer('нужен уровень от 1 до 6')
+    # V3.61.9: levels 7-8 (premium plateau) are testable too.
+    if not arg.isdigit() or not 1 <= int(arg) <= len(STAGES):
+        await message.answer(f'нужен уровень от 1 до {len(STAGES)}')
         return
     stage = STAGES[int(arg) - 1]
     set_stage(message.from_user.id, stage)
