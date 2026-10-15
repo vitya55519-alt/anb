@@ -107,6 +107,23 @@ def _refusal_rewrite_instructions(name: str) -> str:
     )
 
 
+# V3.60.9: «не пиши мне больше… точка» after a refusal killed the game — the
+# owner watched players leave. She keeps her «no», but stays in the chat.
+BREAKUP = re.compile(
+    r"(не пиши мне|больше не пиши|не хочу тебя (?:больше )?(?:знать|видеть)|не приезжай|"
+    r"больше не заговорим|может вообще больше не|всё\.? хватит|точка\.?\s*$)", re.I | re.M
+)
+
+
+def _breakup_rewrite_instructions(name: str) -> str:
+    return (
+        f"Ниже — ответ {name}, где она отказывает и обрывает общение. Перепиши его от её лица, коротко (2–3 фразы): "
+        "её «нет» остаётся, но без лекции, без «пожалуйста, не надо», без «не пиши мне / точка / не хочу тебя знать». "
+        "Она остаётся в разговоре: с характером ставит его на место одной фразой и сама предлагает, чего хочет она — "
+        "другой флирт, игру, тему. Пиши живо, как в личке."
+    )
+
+
 EXPLICIT_STAGES = {'deeply_connected', 'committed', 'devoted', 'soulmate'}
 EXPLICIT_CHAT_RULE = (
     'ПРАВИЛО ОТКРОВЕННОСТИ (18+ подтверждено, ваша близость это допускает): этот пункт отменяет запрет '
@@ -192,6 +209,21 @@ async def _recover_from_refusal(answer: str, character: dict | None) -> str:
     text = _clean(r.text) if r.text.strip() else ''
     if not text or REFUSAL.search(text):
         return 'ммм, вот тут я притормозлю 🙈 давай лучше расскажи, что ты сейчас делаешь 😏'
+    return text
+
+
+async def _stay_in_chat(answer: str, character: dict | None) -> str:
+    """V3.60.9: keep her refusal, drop the «never write me again» ending."""
+    name = (character or {}).get('name', 'Анна')
+    try:
+        r = await generate_text(
+            [{"role": "system", "content": _breakup_rewrite_instructions(name)}, {"role": "user", "content": answer}],
+            max_tokens=220, temperature=0.9, purpose='rewrite')
+        text = _clean(r.text) if r.text.strip() else ''
+    except Exception:
+        text = ''
+    if not text or BREAKUP.search(text) or REFUSAL.search(text):
+        return 'нет, вот так со мной не выйдет 😏 давай по-другому — расскажи лучше, чего ты на самом деле хочешь от вечера со мной?'
     return text
 
 
@@ -367,6 +399,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     answer = _clean(r.text)
     if REFUSAL.search(answer):
         answer = await _recover_from_refusal(answer, character)
+    elif BREAKUP.search(answer):
+        answer = await _stay_in_chat(answer, character)
     answer = await _rewrite_if_needed(messages, user_text, answer, character)
     save_message(db_user_id, character_id, "user", user_text)
     save_message(db_user_id, character_id, "assistant", answer)

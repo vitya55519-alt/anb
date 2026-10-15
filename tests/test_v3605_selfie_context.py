@@ -18,4 +18,4 @@ def test_newest_message_wins_and_unknown_is_empty():
 
 def test_app_chat_selfie_uses_the_dialog_place():
     assert 'photo_req = _selfie_from_dialog(uid, character_id, photo_request)' in MAIN
-    assert "data, mime, ext = await _webapp_pipeline_photo(telegram_id, character_id, photo_req)" in MAIN
+    assert "data, mime, ext = await _webapp_pipeline_photo(telegram_id, character_id, req)" in MAIN

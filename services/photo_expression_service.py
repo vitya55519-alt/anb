@@ -47,7 +47,7 @@ _CATEGORIES: list[tuple[str, tuple[str, ...]]] = [
     (
         'upset',
         (
-            'быстрее', 'немедленно', 'сейчас', 'идиот', 'тупая', 'дура',
+            'немедленно', 'идиот', 'тупая', 'дура',
             'ненави', 'отвратит', 'уродли', 'придур', 'заткни', 'отстань',
             'stupid', 'ugly', 'hate', 'shut', 'dumb', 'bitch', 'whore', 'idiot',
         ),
@@ -243,13 +243,17 @@ VARIETY_KEYS: tuple[str, ...] = (
 )
 
 
+# V3.60.9: the calm «tender» rotation lost its stone faces (neutral/thoughtful).
+LIVELY_VARIETY_KEYS: tuple[str, ...] = tuple(k for k in VARIETY_KEYS if k not in ('neutral', 'thoughtful'))
+
+
 def shuffled_variety_keys() -> tuple[str, ...]:
     """Return the variety expression keys in random order.
 
     A photo pack walks this rotation frame by frame, so consecutive photos no
     longer repeat the same facial expression.
     """
-    keys = list(VARIETY_KEYS)
+    keys = list(LIVELY_VARIETY_KEYS)
     random.shuffle(keys)
     return tuple(keys)
 
@@ -312,12 +316,18 @@ def detect_expression_key(text: str | None) -> str | None:
     return None
 
 
+PHOTO_SAFE_MOOD = {'upset': 'pouty_seductive', 'concerned': 'smile'}
+
+
 def expression_description(key: str | None, name: str) -> str:
     """Build the EXPRESSION prompt sentence for a character named `name`.
 
     Unknown/None keys fall back to the default neutral warm expression so the
     pipeline never breaks on an unmapped value.
     """
+    # V3.60.9: «одна модель вообще грустная» — a photo she chooses to send is
+    # never sulky: a rude/sad chat turns into a playful pout / warm smile.
+    key = PHOTO_SAFE_MOOD.get(key or '', key)
     desc = EXPRESSIONS.get(key or '', EXPRESSIONS['neutral'])
     # V3.59.4: a hot expression used to read as «a different face» — say outright
     # that only the mimicry moves, the identity stays the reference's.

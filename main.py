@@ -10873,6 +10873,45 @@ CHAT_PHOTO_BLOCK_TEXT = {
 }
 
 
+# V3.60.9: she promises a photo in her own words («лови фотку», «держи селфи 📸»)
+PHOTO_PROMISE = re.compile(
+    r'(?:\b(?:лови|держи|скидываю|отправляю|высылаю|кидаю|вот\s+тебе|вот\s+она|смотри)\b[^.!?\n]{0,40}'
+    r'(?:фот|селфи|📸|снимок|кадр))|(?:(?:фот\w*|селфи)[^.!?\n]{0,20}\b(?:лови|держи)\b)|'
+    r'(?:\b(?:лови|держи|смотри|глянь)\b[^\n]{0,40}📸)',
+    re.IGNORECASE)
+# her question/offer about a photo, and a short «yes» to it
+PHOTO_OFFER = re.compile(r'(фот|селфи|📸|снимок|скинуть|скину|прислать|показать)', re.IGNORECASE)
+PHOTO_AGREE = re.compile(
+    r'^\W*(?:да+|давай|ага|конечно|скинь|кидай|кинь|присылай|пришли|покажи|хочу|жду|ок|окей|го|yes|sure)\b',
+    re.IGNORECASE)
+
+
+def _accepts_her_photo_offer(uid: int, character_id: str, text: str) -> bool:
+    low = (text or '').strip().lower()
+    if not low or len(low) > 40 or not PHOTO_AGREE.search(low):
+        return False
+    try:
+        from services.memory_service import get_recent_messages
+        recent = get_recent_messages(uid, character_id, 2)
+    except Exception:
+        return False
+    last = next((m for m in reversed(recent) if m.role == 'assistant'), None)
+    if last is None or getattr(last, 'media_url', None):
+        return False
+    return bool(PHOTO_OFFER.search(last.content or ''))
+
+
+def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | None:
+    """The stage / 18+ / peaches gates of a chat photo; None = go."""
+    if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
+        return 'adult'
+    if not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
+        return 'stage'
+    if telegram_id not in ADMIN_TELEGRAM_IDS and get_photo_credits(telegram_id) < CHAT_PHOTO_PEACH_COST:
+        return 'peaches'
+    return None
+
+
 def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | None) -> dict:
     text = CHAT_PHOTO_BLOCK_TEXT[reason].format(price=CHAT_PHOTO_PEACH_COST)
     try:
@@ -10905,21 +10944,15 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         # here and, when the scene clears the same stage/adult/credit gates the app
         # photo button enforces, deliver a real photo into the shared dialog.
         photo_request = _contextualize_vague_photo(telegram_id, text, parse_photo_request(text))
+        # V3.60.9: «скинь конечно» right after she offered a photo is a request too.
+        if not photo_request and _accepts_her_photo_offer(uid, character_id, text):
+            photo_request = parse_photo_request('пришли селфи')
         if not photo_request:
             return uid, None, None
         nonlocal photo_req
         photo_req = _selfie_from_dialog(uid, character_id, photo_request)
         scene = photo_request.scene if photo_request.scene in PHOTO_MENU_ORDER else 'selfie'
-        stage_ok = scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id))
-        adult_ok = not (requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id))
-        pay_ok = telegram_id in ADMIN_TELEGRAM_IDS or get_photo_credits(telegram_id) >= CHAT_PHOTO_PEACH_COST
-        if not adult_ok:
-            return uid, None, 'adult'
-        if not stage_ok:
-            return uid, None, 'stage'
-        if not pay_ok:
-            return uid, None, 'peaches'
-        return uid, scene, None
+        return (uid, scene, _chat_photo_gate(telegram_id, character_id, scene))
 
     uid, photo_scene, photo_block = await asyncio.to_thread(_prelude)
     # V3.60.3: a blocked or failed photo request used to fall through to the
@@ -10928,36 +10961,51 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     if photo_block:
         return web.json_response(await asyncio.to_thread(
             _chat_photo_blocked, uid, character_id, photo_block, extra))
-    if photo_scene:
+
+    async def _photo_turn(scene: str, req, said: str | None = None):
+        """Render + deliver one chat photo. `said` is her own text when the
+        photo backs a promise she just made («лови 📸»)."""
         try:
-            if photo_req is not None and photo_req.location and photo_scene == 'selfie':
-                data, mime, ext = await _webapp_pipeline_photo(telegram_id, character_id, photo_req)
+            if req is not None and req.location and scene == 'selfie':
+                data, mime, ext = await _webapp_pipeline_photo(telegram_id, character_id, req)
             else:
-                data, mime, ext = await _webapp_media_photo(telegram_id, character_id, photo_scene)
-        except Exception:
-            logger.exception('webapp chat photo-on-request failed user=%s scene=%s', telegram_id, photo_scene)
+                data, mime, ext = await _webapp_media_photo(telegram_id, character_id, scene)
+        except Exception as exc:
+            logger.exception('webapp chat photo-on-request failed user=%s scene=%s', telegram_id, scene)
+            await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo',
+                                    character_id, text, f'{type(exc).__name__}: {exc}')
             data = None
-        if data:
-            cap = '📸 ' + random.choice(AUTO_CAPTIONS.get(photo_scene, ('отправила фото',)))
+        if not data:
+            return None
+        cap = said or ('📸 ' + random.choice(AUTO_CAPTIONS.get(scene, ('отправила фото',))))
 
-            def _deliver():
-                filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
-                url = f'/webapp/media/{filename}'
-                # V3.51.1: audit the chat photo-on-request (user's own words).
-                webapp_service.record_generation(telegram_id, 'photo', character_id, text, filename)
+        def _deliver():
+            filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+            url = f'/webapp/media/{filename}'
+            # V3.51.1: audit the chat photo-on-request (user's own words).
+            webapp_service.record_generation(telegram_id, 'photo', character_id, text, filename)
+            if said:
+                # her text is already in the history — attach the photo as its own bubble
+                save_message(uid, character_id, 'assistant', '📸', media_kind='photo', media_url=url)
+            else:
                 save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
-                if telegram_id not in ADMIN_TELEGRAM_IDS:
-                    spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST)
-                # V3.53.0: after this photo counts, tell the SPA if a gallery set
-                # (50 photos of her) just completed so it can celebrate.
-                from services.collection_service import gallery_set_progress, note_gallery_set
-                return {'ok': True, 'reply': cap, 'photo_url': url,
-                        'credits_left': get_photo_credits(telegram_id),
-                        'set_completed': note_gallery_set(telegram_id, character_id),
-                        'gallery': gallery_set_progress(telegram_id, character_id),
-                        **(extra or {})}
+            if telegram_id not in ADMIN_TELEGRAM_IDS:
+                spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST)
+            # V3.53.0: after this photo counts, tell the SPA if a gallery set
+            # (50 photos of her) just completed so it can celebrate.
+            from services.collection_service import gallery_set_progress, note_gallery_set
+            return {'ok': True, 'reply': cap, 'photo_url': url,
+                    'credits_left': get_photo_credits(telegram_id),
+                    'set_completed': note_gallery_set(telegram_id, character_id),
+                    'gallery': gallery_set_progress(telegram_id, character_id),
+                    **(extra or {})}
 
-            return web.json_response(await asyncio.to_thread(_deliver))
+        return await asyncio.to_thread(_deliver)
+
+    if photo_scene:
+        payload = await _photo_turn(photo_scene, photo_req)
+        if payload:
+            return web.json_response(payload)
         return web.json_response(await asyncio.to_thread(
             _chat_photo_blocked, uid, character_id, 'failed', extra))
     try:
@@ -10968,6 +11016,27 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     except Exception:
         logger.exception('webapp chat reply failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
+    # V3.60.9: she wrote «лови фотку 📸» on her own — the photo must really come.
+    if PHOTO_PROMISE.search(answer or ''):
+        def _promise_gate():
+            req = _selfie_from_dialog(uid, character_id, parse_photo_request('пришли селфи'))
+            return req, _chat_photo_gate(telegram_id, character_id, 'selfie')
+        req, block = await asyncio.to_thread(_promise_gate)
+        if not block:
+            payload = await _photo_turn('selfie', req, said=answer)
+            if payload:
+                return web.json_response(payload)
+            block = 'failed'
+        if block == 'peaches':
+            # keep her words, add the honest «out of peaches» note + top-up button
+            note = CHAT_PHOTO_BLOCK_TEXT['peaches'].format(price=CHAT_PHOTO_PEACH_COST)
+            await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
+            return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, 'photo_block': 'peaches',
+                                      'photo_price': CHAT_PHOTO_PEACH_COST, **(extra or {})})
+        if block == 'failed':
+            note = CHAT_PHOTO_BLOCK_TEXT['failed']
+            await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
+            return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, **(extra or {})})
     payload = {'ok': True, 'reply': answer}
     voice_url = await _webapp_reply_voice_url(telegram_id, character_id, answer)
     if voice_url:
@@ -11177,6 +11246,33 @@ def _with_marital_ring(prompt: str, telegram_id: int, character_id: str) -> str:
     except Exception:
         detail = ''
     return prompt + (f' STORY DETAIL: {detail}; small and natural, never changes her face or body.' if detail else '')
+
+
+async def _webapp_api_chat_level(request: web.Request) -> web.Response:
+    """V3.60.9: the chat header's level panel — level, bond, bars toward the
+    next level and how many messages / days are still missing."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    character_id = str(request.query.get('character_id', ''))[:64]
+    if not telegram_id or not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+
+    def _snap():
+        from services.relationship_engine import get_state, level_snapshot
+        from services.test_mode import get_stage as get_test_stage
+        with SessionLocal() as session:
+            user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+            row = get_state(session, user.id, character_id) if user else None
+            return level_snapshot(session, row, get_test_stage(telegram_id))
+
+    try:
+        snap = await asyncio.to_thread(_snap)
+    except Exception:
+        logger.exception('webapp chat level failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'level'}, status=500)
+    return web.json_response({'ok': True, **snap})
 
 
 async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
@@ -11459,10 +11555,12 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
             )
     except asyncio.TimeoutError:
         logger.warning('webapp picture generation timed out user=%s budget=%ss', telegram_id, PHOTO_TOTAL_BUDGET_SECONDS)
+        await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'picture', None, final_prompt, 'timeout')
         reason = 'timeout' if telegram_id in ADMIN_TELEGRAM_IDS else None
         return web.json_response({'ok': False, 'error': 'gen', 'reason': reason}, status=502)
     except Exception as exc:
         logger.exception('webapp picture generation failed user=%s', telegram_id)
+        await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'picture', None, final_prompt, f'{type(exc).__name__}: {exc}')
         # V3.39.0: the owner sees WHY the render died right in the studio toast.
         reason = f'{type(exc).__name__}: {str(exc)[:100]}' if telegram_id in ADMIN_TELEGRAM_IDS else None
         return web.json_response({'ok': False, 'error': 'gen', 'reason': reason}, status=502)
@@ -11977,10 +12075,14 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         # L.pic_gen_fail toast (no internal keys/endpoints leak to clients).
         logger.warning('webapp chat media gen failed user=%s kind=%s provider=%s reason=%s',
                        telegram_id, kind, exc.provider, exc.reason)
+        await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, kind, character_id, scene or '',
+                                f'{exc.provider}: {exc.reason}')
         reason = exc.reason if telegram_id in ADMIN_TELEGRAM_IDS else None
         return web.json_response({'ok': False, 'error': 'gen', 'reason': reason}, status=502)
-    except Exception:
+    except Exception as exc:
         logger.exception('webapp chat media failed user=%s kind=%s', telegram_id, kind)
+        await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, kind, character_id, scene or '',
+                                f'{type(exc).__name__}: {exc}')
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)
     if not data:
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)
@@ -12390,8 +12492,10 @@ async def _deliver_scene_photo(telegram_id: int, character_id: str, uid: int, sc
                                     media_kind='photo', media_url=photo_url)
         else:
             logger.warning('webapp %s photo empty user=%s scene=%s', what, telegram_id, scene)
-    except Exception:
+            await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo', character_id, scene, f'{what}: empty')
+    except Exception as exc:
         logger.exception('webapp %s photo failed user=%s scene=%s', what, telegram_id, scene)
+        await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo', character_id, scene, f'{what}: {type(exc).__name__}: {exc}')
 
 
 async def _deliver_date_photo(telegram_id: int, character_id: str, uid: int, date_id: str, scene: str) -> None:
@@ -12404,8 +12508,9 @@ async def _deliver_date_photo(telegram_id: int, character_id: str, uid: int, dat
             save_message(uid, character_id, 'assistant', '📸 фото с нашей прогулки', media_kind='photo', media_url=photo_url)
         else:
             logger.warning('webapp date photo empty user=%s date=%s', telegram_id, date_id)
-    except Exception:
+    except Exception as exc:
         logger.exception('webapp date photo failed user=%s date=%s', telegram_id, date_id)
+        await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo', character_id, scene, f'date: {type(exc).__name__}: {exc}')
 
 
 async def _webapp_api_story(request: web.Request) -> web.Response:
@@ -12882,6 +12987,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
     app.router.add_post('/webapp/api/chat/marital', _webapp_api_chat_marital)
     app.router.add_post('/webapp/api/chat/start', _webapp_api_chat_start)
+    app.router.add_get('/webapp/api/chat/level', _webapp_api_chat_level)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)
     app.router.add_post('/webapp/api/chat/media', _webapp_api_chat_media)

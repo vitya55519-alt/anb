@@ -1340,6 +1340,13 @@ def record_generation(telegram_id, kind, character_id, prompt, filename, *,
         logger.exception('record generation failed user=%s', telegram_id)
 
 
+def record_generation_failure(telegram_id, kind, character_id, prompt, reason) -> None:
+    """V3.60.9: a render that failed shows up in the admin feed too, marked
+    engine='error' with the reason, so the owner sees what users got."""
+    record_generation(telegram_id, kind, character_id,
+                      f'❌ {str(reason or "")[:300]}\n{prompt or ""}', None, engine='error')
+
+
 def list_generations(limit: int = 60, offset: int = 0) -> list[dict]:
     """Newest-first feed of user generations for the admin overlay."""
     from models.app_models import UserGeneration
