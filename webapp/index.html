@@ -243,6 +243,13 @@
   .chat-head .nm { font-weight: 700; font-size: 15px; }
   .chat-head .sub { color: var(--muted); font-size: 11px; }
   .chat-head .spacer { margin-left: auto; }
+  .msg .duo-nm { color: #ff9ccb; }
+  .startsheet { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; }
+  .startsheet .box { width: 100%; background: #1d1424; border-radius: 20px 20px 0 0; padding: 18px 16px 26px; border-top: 1px solid rgba(255,120,180,.3); }
+  .startsheet .st-h { text-align: center; font-weight: 700; font-size: 18px; margin-bottom: 14px; }
+  .startsheet .st-opt { display: block; width: 100%; text-align: left; margin: 8px 0; padding: 14px 16px; border-radius: 16px;
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,120,180,.35); color: inherit; font-size: 15px; cursor: pointer; }
+  .startsheet .st-opt span { display: block; font-size: 12px; opacity: .7; margin-top: 4px; }
   /* V3.60.9: level chip in the chat header + its bottom sheet */
   .lvlchip { display: inline-block; margin-top: 2px; padding: 2px 8px; border-radius: 10px; font-size: 11px;
     background: rgba(255,90,160,.18); color: #ffd1e6; border: 1px solid rgba(255,120,180,.35); cursor: pointer; }
@@ -937,6 +944,12 @@
     <input type="file" id="chatFileIn" accept="image/*" style="display:none">
   </div>
 </div>
+<!-- V3.61.1: first-open choice «С сюжетом / Без сюжета» -->
+<div class="startsheet" id="startSheet" style="display:none"><div class="box">
+  <div class="st-h">Как начать чат?</div>
+  <button class="st-opt" id="startStory"><b>📖 С сюжетом</b><span>Начнётся с готовой сцены от неё</span></button>
+  <button class="st-opt" id="startPlain"><b>💬 Без сюжета</b><span>Чистый чат с твоего первого сообщения</span></button>
+</div></div>
 <!-- V3.60.9: level panel (tap the chip under her name) -->
 <div class="lvlsheet" id="lvlSheet" style="display:none"><div class="box" id="lvlBox"></div></div>
 <!-- V3.39.0: the Come Closer character page — photo strip, «Начать чат»,
@@ -1191,7 +1204,8 @@ const L_EN = {
   consent_needed: 'Confirm 18+ first — open the bot and press /start',
   set_main: 'Set as your girl', reply_err: 'Could not reply — try again',
   create_own: 'Create your own', create_sub: 'Looks, figure and personality — she chats the way you pick',
-  wiz_groups: { appearance: 'Appearance', character: 'Character', story: 'Story & tags', reference: 'Look-alike photo', share: 'Publishing' },
+  wiz_templates: '✨ Ready templates — tap to fill everything',
+  wiz_groups: { appearance: 'Appearance', character: 'Character', story: 'Story & tags', duo: '👯 Second girl in the same chat', reference: 'Look-alike photo', share: 'Publishing' },
   wiz_step: 'Step', wiz_name_ph: 'Her name? (up to 24 characters)', wiz_create: 'Create',
     wiz_create_peaches: n => '🎨 Create · 🍑 ' + n, wiz_create_stars: n => '⭐ Create · ' + n + ' Stars',
   wiz_free_public: 'free — she will appear in «Community»', wiz_free: 'free (admin)', wiz_paid_toast: 'Drawing your girl — up to a minute. Her card appears in the grid ✨', creating_banner: 'Creating {name} — usually a minute or two. Her card appears on its own ✨',
@@ -1356,7 +1370,8 @@ const L_RU = {
   consent_needed: 'Сначала подтверди 18+ — открой бота и нажми /start',
   set_main: 'Сделать твоей девушкой', reply_err: 'Не получилось ответить — попробуй ещё раз',
   create_own: 'Создать свою', create_sub: 'Внешность, фигура и характер — она будет общаться так, как ты выберешь',
-    wiz_groups: { appearance: 'Внешность', character: 'Характер', story: 'История и теги', reference: 'Фото-референс', share: 'Публикация' },
+    wiz_templates: '✨ Готовые шаблоны — нажми, и всё заполнится',
+    wiz_groups: { appearance: 'Внешность', character: 'Характер', story: 'История и теги', duo: '👯 Вторая девушка в этом же чате', reference: 'Фото-референс', share: 'Публикация' },
   wiz_step: 'Шаг', wiz_name_ph: 'Как её зовут? (до 24 символов)', wiz_create: 'Создать',
     wiz_create_peaches: n => '🎨 Создать · 🍑 ' + n, wiz_create_stars: n => '⭐ Создать · ' + n + ' Stars',
   wiz_free_public: 'бесплатно — она появится в «Сообществе»', wiz_free: 'бесплатно (админ)', wiz_paid_toast: 'Рисую твою героиню — до минуты. Карточка появится в сетке ✨', creating_banner: 'Создаю {name} — обычно минута-две. Карточка появится сама ✨',
@@ -2149,6 +2164,10 @@ function chatBubble(roleOrM, content, ts) {
   const t = fmtTime(m.ts) ? `<span class="t">${esc(fmtTime(m.ts))}</span>` : '';
   const cls = m.role === 'user' ? 'user' : 'bot';
   let body = esc(m.content);
+  // V3.61.0: a duo persona answers as «Имя: …» lines — the speaker's name in bold.
+  if (cls === 'bot' && !m.media_url && CHAT && CHAT.duo) {
+    body = body.split('\n').map(line => line.replace(/^([A-Za-zА-Яа-яЁё]{2,20}):\s/, '<b class="duo-nm">$1:</b> ')).join('\n');
+  }
   if (m.media_url) {
     const src = m.media_url + '?init_data=' + encodeURIComponent(tg.initData || '');
     if (m.media_kind === 'circle') body = `<video class="circle" src="${esc(src)}" loop autoplay muted playsinline></video>`;
@@ -2181,6 +2200,38 @@ function openChat(c) {
   // V3.52.0: opening a chat marks it read on the server; drop the cached «Чаты»
   // list so the badge is cleared the next time the tab is visited.
   _chatsLoaded = false;
+}
+
+// V3.61.1: «Как начать чат?» — with a ready scene from her, or a clean chat.
+function openStartSheet(characterId) {
+  const sheet = document.getElementById('startSheet');
+  if (!sheet) return;
+  sheet.style.display = 'flex';
+  const close = () => { sheet.style.display = 'none'; };
+  document.getElementById('startPlain').onclick = () => {
+    close();
+    fetch('/webapp/api/chat/start?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: characterId, mode: 'plain' }),
+    }).catch(() => {});
+  };
+  document.getElementById('startStory').onclick = async () => {
+    close();
+    const box = document.getElementById('chatMsgs');
+    box.innerHTML = '<div class="msg bot typing">…</div>';
+    try {
+      const r = await fetch('/webapp/api/chat/start?init_data=' + encodeURIComponent(tg.initData || ''), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ character_id: characterId, mode: 'story' }),
+      });
+      const j = await r.json();
+      if (!CHAT || CHAT.id !== characterId) return;
+      if (j.ok && j.reply) box.innerHTML = chatBubble({ role: 'assistant', content: j.reply, ts: new Date().toISOString() });
+      else box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
+    } catch (e) {
+      box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
+    }
+  };
 }
 
 // V3.60.9: «хочется видеть, что визуал идёт» — level, passion, trust and how
@@ -2235,9 +2286,13 @@ async function loadChatHistory(characterId) {
     const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId));
     if (r.status === 401) { toast(L.auth_short); return; }
     const j = await r.json();
+    if (CHAT && CHAT.id === characterId) CHAT.duo = j.duo || null;
     const box = document.getElementById('chatMsgs');
     if (!j.ok) { box.innerHTML = `<div class="chat-empty">${esc(L.reply_err)}</div>`; return; }
-    if (!j.history.length) { box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`; }
+    if (!j.history.length) {
+      box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
+      openStartSheet(characterId);
+    }
     else { box.innerHTML = j.history.map(m => chatBubble(m)).join(''); }
     // V3.55.6: the server says this premium pair has no manner chosen yet —
     // show the one-time tender/passionate picker above the input.
@@ -3388,7 +3443,7 @@ async function openWizard(premiumMode) {
     const r = await fetch('/webapp/api/constructor/options' + q + 'lang=' + LANG);
     const j = await r.json();
     if (!j.ok || !j.steps || !j.steps.length) { toast(L.invoice_err); return; }
-    WIZ = { steps: j.steps, idx: 0, params: {}, name: '', stars: j.stars || 0, rub: j.rub || 0, usd: j.usd || 0, peaches: j.peaches || 0, free: !!j.free };
+    WIZ = { steps: j.steps, idx: 0, params: {}, name: '', stars: j.stars || 0, rub: j.rub || 0, usd: j.usd || 0, peaches: j.peaches || 0, free: !!j.free, templates: j.templates || [], tpl: null };
     // V3.45.28: one-screen form — pre-select the first option of every
     // structured field so the persona is always complete (face/body/breast
     // consistency is guaranteed even if the user only types a name).
@@ -3405,7 +3460,7 @@ async function openWizard(premiumMode) {
 }
 
 // V3.45.28: group render order — mirrors the backend STEP_GROUP_ORDER.
-const WIZ_GROUP_ORDER = ['appearance', 'character', 'story', 'reference', 'share'];
+const WIZ_GROUP_ORDER = ['appearance', 'character', 'story', 'duo', 'reference', 'share'];
 
 // One field of the one-screen form: structured chips, a textarea, or the
 // optional look-alike photo upload — all keyed by step.key.
@@ -3457,13 +3512,33 @@ function renderWizScreen() {
   const payButtons = freeCreate
     ? `<button class="cta" id="wizCreate" ${WIZ.name ? '' : 'disabled'}>🎨 ${esc(L.wiz_create)}</button>`
     : `<button class="cta" id="wizCreatePeaches" ${WIZ.name ? '' : 'disabled'}>🎨 ${esc(L.wiz_create_peaches(WIZ.peaches || 0))}</button>`;
-  body.innerHTML = sections + `
+  // V3.61.1: one-tap templates on top — a tap fills the whole form.
+  const tpls = (WIZ.templates || []).map(t =>
+    '<button type="button" class="opt' + (WIZ.tpl === t.id ? ' sel' : '') + `" data-tpl="${esc(t.id)}">${esc(t.emoji)} ${esc(t.title)}</button>`).join('');
+  const tplStrip = tpls ? `<div class="grp"><h3>${esc(L.wiz_templates || 'Готовые шаблоны')}</h3><div class="opts sm">` + tpls + '</div></div>' : '';
+  body.innerHTML = tplStrip + sections + `
     <div class="grp">
       <div class="field"><div class="flab">${esc(L.wiz_name_ph)}</div>
         <input class="name" id="wizName" maxlength="24" value="${esc(WIZ.name)}"></div>
       <div class="price-note" id="wizPrice">${priceLine}</div>
       ${payButtons}
     </div>`;
+  body.querySelectorAll('[data-tpl]').forEach(b => {
+    b.onclick = () => {
+      const t = (WIZ.templates || []).find(x => x.id === b.dataset.tpl);
+      if (!t) return;
+      // keep the first-option defaults for anything the template leaves out
+      WIZ.steps.forEach(st => {
+        if (!st.free_text && !st.photo_upload && st.options && st.options.length) WIZ.params[st.key] = st.options[0].value;
+        else if (st.free_text) WIZ.params[st.key] = '';
+      });
+      Object.assign(WIZ.params, t.params);
+      WIZ.name = t.name || WIZ.name;
+      WIZ.tpl = t.id;
+      renderWizScreen();
+      toast('✨ ' + t.title);
+    };
+  });
   // Wire each field: chips single-select, textareas update live, photo reads base64.
   body.querySelectorAll('.field').forEach(field => {
     const key = field.dataset.fkey;

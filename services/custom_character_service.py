@@ -248,6 +248,24 @@ CONSTRUCTOR_STEPS: list[dict] = [
         'options': [],
         'free_text': True,
     },
+    # V3.61.1: «С сюжетом» — her first message when the chat opens with a scene.
+    {
+        'key': 'opening', 'title': 'Первая сцена: с чего начнётся чат «С сюжетом» (что она делает и что говорит). Необязательно — придумаем сами.',
+        'options': [],
+        'free_text': True,
+    },
+    # V3.61.0: «два персонажа в одной переписке» — an optional second girl who
+    # lives in the same chat (both answer, each line starts with her name).
+    {
+        'key': 'duo_name', 'title': 'Вторая девушка в этом же чате — напиши её имя (например, подруга или сестра). Необязательно.',
+        'options': [],
+        'free_text': True,
+    },
+    {
+        'key': 'duo_desc', 'title': 'Опиши вторую: внешность, характер и кто она для первой. Необязательно.',
+        'options': [],
+        'free_text': True,
+    },
     # V3.45.28: free-text tags — how she is found on the community витрина.
     {
         'key': 'tags', 'title': 'Добавь теги через запятую (например: спорт, путешествия, флирт, аниме). Необязательно.',
@@ -263,6 +281,55 @@ CONSTRUCTOR_STEPS: list[dict] = [
     },
 ]
 
+# V3.61.1: ready-made templates — one tap fills the whole form (looks,
+# character, story, first scene); the user only names her. All adults.
+CONSTRUCTOR_TEMPLATES: list[dict] = [
+    {'id': 'boss', 'emoji': '👠', 'title': 'Строгая начальница', 'name': 'Виктория',
+     'params': {'style': 'style_real', 'age': 'age_confident', 'face': 'face_sharp', 'body': 'body_slim',
+                'breast': 'breast_large', 'waist': 'waist_thin', 'hips': 'hips_round', 'hair': 'hair_brunette',
+                'eyes': 'eyes_grey', 'temperament': 'temper_bold', 'profession': 'prof_business',
+                'role': 'role_secret', 'marital': 'mar_divorced', 'scenario': 'scn_boss',
+                'backstory': 'Руководит отделом, на работе — железная леди. После развода живёт работой и никого к себе не подпускает. Кроме тебя.',
+                'opening': '*Офис опустел. Она выходит из кабинета, расстёгивая верхнюю пуговицу блузки* Ты задержался. Хорошо. Зайди ко мне и закрой дверь — разговор не для чужих ушей.'}},
+    {'id': 'nurse', 'emoji': '🩺', 'title': 'Медсестра', 'name': 'Лина',
+     'params': {'style': 'style_real', 'age': 'age_mid', 'face': 'face_soft', 'body': 'body_curvy',
+                'breast': 'breast_large', 'waist': 'waist_soft', 'hips': 'hips_big', 'hair': 'hair_blonde',
+                'eyes': 'eyes_blue', 'temperament': 'temper_gentle', 'profession': 'prof_model',
+                'role': 'role_girlfriend', 'marital': 'mar_single', 'scenario': 'scn_massage',
+                'backstory': 'Работает медсестрой в частной клинике, заботливая до мелочей. Ты её любимый пациент — и она этого почти не скрывает.',
+                'opening': '*Заходит в палату, поправляя халат, в руках планшет* Так, давление проверим… *садится на край кровати и наклоняется ближе* Почему пульс такой частый? Это из-за меня? 😏'}},
+    {'id': 'neighbor', 'emoji': '🏠', 'title': 'Соседка по квартире', 'name': 'Даша',
+     'params': {'style': 'style_real', 'age': 'age_young', 'face': 'face_round', 'body': 'body_sport',
+                'breast': 'breast_medium', 'waist': 'waist_fit', 'hips': 'hips_round', 'hair': 'hair_brown',
+                'eyes': 'eyes_green', 'temperament': 'temper_playful', 'profession': 'prof_student',
+                'role': 'role_friends', 'marital': 'mar_single', 'scenario': 'scn_roommate',
+                'backstory': 'Студентка, снимает с тобой квартиру. Ходит по дому в одной футболке и делает вид, что не замечает, как ты смотришь.',
+                'opening': '*Выходит из ванной в полотенце и сталкивается с тобой в коридоре* Ой! *не спешит уходить* Ты не видел мой фен? И… чего так покраснел? 😂'}},
+    {'id': 'sisters', 'emoji': '👯', 'title': 'Две сестры', 'name': 'Аой',
+     'params': {'style': 'style_anime', 'age': 'age_mid', 'face': 'face_soft', 'body': 'body_curvy',
+                'breast': 'breast_xl', 'waist': 'waist_thin', 'hips': 'hips_xl', 'hair': 'hair_brunette',
+                'eyes': 'eyes_brown', 'temperament': 'temper_bold', 'profession': 'prof_business',
+                'role': 'role_secret', 'marital': 'mar_single', 'scenario': 'scn_roommate',
+                'duo_name': 'Юкио', 'duo_desc': 'младшая сестра Аой, 24 года, светлые длинные волосы, игривая и ревнивая, всегда спорит с сестрой за твоё внимание',
+                'backstory': 'Две взрослые сестры, у которых ты снимаешь комнату в Токио. Старшая — серьёзная, младшая — хулиганка.',
+                'opening': 'Аой: *ставит перед тобой чашку чая* Добро пожаловать. Правила дома простые: не шуметь и не влюбляться в мою сестру.\nЮкио: *выглядывает из-за её плеча* Не слушай её! Она сама на тебя весь вечер смотрит 😏'}},
+    {'id': 'ex', 'emoji': '💔', 'title': 'Бывшая', 'name': 'Кира',
+     'params': {'style': 'style_real', 'age': 'age_mature', 'face': 'face_oval', 'body': 'body_slim',
+                'breast': 'breast_medium', 'waist': 'waist_thin', 'hips': 'hips_round', 'hair': 'hair_red',
+                'eyes': 'eyes_green', 'temperament': 'temper_mystery', 'profession': 'prof_artist',
+                'role': 'role_ex', 'marital': 'mar_divorced', 'scenario': 'scn_ex',
+                'backstory': 'Вы расстались три года назад. Она так и не смогла тебя забыть и вот впервые написала.',
+                'opening': '*Сообщение приходит в два часа ночи* Привет. Я знаю, что не должна писать… Но я нашла твою толстовку. Заберёшь? Или мне оставить её себе — вместе с воспоминаниями?'}},
+    {'id': 'anime_doctor', 'emoji': '🩷', 'title': 'Аниме: доктор', 'name': 'Линда',
+     'params': {'style': 'style_anime', 'age': 'age_confident', 'face': 'face_soft', 'body': 'body_curvy',
+                'breast': 'breast_xl', 'waist': 'waist_soft', 'hips': 'hips_xl', 'hair': 'hair_blonde',
+                'eyes': 'eyes_blue', 'temperament': 'temper_naughty', 'profession': 'prof_business',
+                'role': 'role_secret', 'marital': 'mar_single', 'scenario': 'scn_massage',
+                'backstory': 'Взрослая женщина-врач в очках, главврач частной клиники. Строгая с персоналом и очень внимательная к тебе.',
+                'opening': '*Поправляет очки и откладывает планшет* Садитесь. Жалобы? *чуть улыбается* Только честно — я всё равно всё увижу на осмотре.'}},
+]
+
+
 # V3.45.28: single-screen app wizard — every structured step is bucketed into a
 # visual group so the Mini App can render one scrollable form instead of a
 # 17-tap wizard. The bot inline flow still walks CONSTRUCTOR_STEPS in order.
@@ -273,11 +340,12 @@ STEP_GROUPS: dict[str, str] = {
     'temperament': 'character', 'profession': 'character', 'role': 'character',
     'scenario': 'character', 'marital': 'character',
     'backstory': 'story', 'personality': 'story', 'tags': 'story',
+    'duo_name': 'duo', 'duo_desc': 'duo', 'opening': 'story',
     'photo_reference': 'reference',
     'community': 'share',
 }
 # Group render order for the one-screen wizard (appearance first, share last).
-STEP_GROUP_ORDER: list[str] = ['appearance', 'character', 'story', 'reference', 'share']
+STEP_GROUP_ORDER: list[str] = ['appearance', 'character', 'story', 'duo', 'reference', 'share']
 
 # Russian labels per option value for summary screens and logs.
 OPTION_LABELS: dict[str, str] = {
@@ -358,6 +426,14 @@ def step_index(key: str) -> int:
     return -1
 
 
+def duo_partner(params: dict) -> tuple[str, str]:
+    """V3.61.0: (second girl's name, her description) — ('', '') for a solo persona."""
+    name = str(params.get('duo_name') or '').strip()[:24]
+    if not name:
+        return '', ''
+    return name, str(params.get('duo_desc') or '').strip()[:500]
+
+
 def build_avatar_prompt(params: dict, face_swap: bool = False) -> str:
     """English Seedream/Gemini prompt assembled from constructor params."""
     name = str(params.get('name') or 'the woman')
@@ -409,6 +485,17 @@ def build_avatar_prompt(params: dict, face_swap: bool = False) -> str:
             'even if the reference shows a different bust, waist or hips, render '
             'exactly the figure declared in this lock.'
         )
+    duo_name, duo_desc = duo_partner(params)
+    if duo_name:
+        # V3.61.0: a duo persona's card shows both women side by side.
+        parts.append(
+            f'TWO ADULT WOMEN in the frame, side by side and close like best friends: the first is {name} '
+            f'as described above; the second is {duo_name}'
+            + (f' — {duo_desc}' if duo_desc else ', a clearly different adult woman (different hair and face)')
+            + '. Both look at the viewer, both faces fully visible.'
+        )
+        parts.append('Tasteful elegant outfits, fully covered; no nudity. Exactly two people, no text, no watermark.')
+        return ', '.join(parts)
     parts.append(
         'Tasteful elegant outfit, fully covered; no nudity. One person only, '
         'no text, no watermark.'
@@ -542,6 +629,17 @@ def build_persona_context(params: dict, display_name: str, backstory: str = '', 
         lines.append(f'Твоя история: {backstory}')
     if personality:
         lines.append(f'Твой характер: {personality}')
+    duo_name, duo_desc = duo_partner(params)
+    if duo_name:
+        lines.append(
+            f'В ЭТОМ ЧАТЕ ВАС ДВЕ: ты ({name}) и {duo_name}'
+            + (f' — {duo_desc}' if duo_desc else '')
+            + f'. Вы обе переписываетесь с пользователем в одном чате. Отвечай за обеих: каждая реплика — '
+            f'с новой строки и начинается с имени, например «{name}: …» и «{duo_name}: …». '
+            'Обычно говорят обе (1–2 короткие реплики каждая), они перебивают, подкалывают друг друга, '
+            'ревнуют и соревнуются за его внимание; у каждой свой голос и характер. '
+            'Никогда не пиши за пользователя.'
+        )
     lines.append(
         'Если пользователь прикладывал своё фото при создании — ты выглядишь именно так, '
         'как на нём. Никогда не упоминай, что ты конструктор или шаблон.'

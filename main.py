@@ -141,7 +141,7 @@ from services.character_card_service import (
 from services.character_dna_service import trait_bars
 from services.photo_reaction_service import react_to_photo, MAX_BASE64_BYTES
 from services.custom_character_service import (
-    CONSTRUCTOR_STEPS, OPTION_LABELS, PARAM_TITLES, build_avatar_prompt,
+    CONSTRUCTOR_STEPS, CONSTRUCTOR_TEMPLATES, OPTION_LABELS, PARAM_TITLES, build_avatar_prompt,
     custom_character_id, get_all_custom_characters, get_custom_character,
     get_custom_character_by_id, save_custom_character, write_card_bio, all_custom_character_ids,
     template_card_bio, bio_looks_glued,
@@ -10771,7 +10771,19 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
         return webapp_service.api_chat_history(uid, character_id, limit), persona_info
 
     history, persona_info = await asyncio.to_thread(_load)
-    return web.json_response({'ok': True, 'history': history, 'persona': persona_info})
+
+    def _duo():
+        # V3.61.0: a constructor duo — the SPA bolds each speaker's name.
+        if not is_custom_character(character_id):
+            return None
+        from services.custom_character_service import custom_character_params, duo_partner
+        return duo_partner(custom_character_params(character_id)[0])[0] or None
+
+    try:
+        duo = await asyncio.to_thread(_duo)
+    except Exception:
+        duo = None
+    return web.json_response({'ok': True, 'history': history, 'persona': persona_info, 'duo': duo})
 
 
 def _custom_premium_gate_block(character_id: str, telegram_id: int) -> bool:
@@ -11031,6 +11043,71 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         payload['voice_url'] = voice_url
     payload.update(extra or {})
     return web.json_response(payload)
+
+
+async def _webapp_api_chat_start(request: web.Request) -> web.Response:
+    """V3.61.1: the first-open choice «📖 С сюжетом / 💬 Без сюжета». With a
+    story she opens the chat with a ready scene (her action + first line):
+    the author's «Первая сцена», the built-in OPENING_SCENES, or one written
+    by the model from her persona. Without a story nothing is sent."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    mode = str(body.get('mode', 'plain'))
+    if not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    if is_custom_character(character_id):
+        if not await asyncio.to_thread(get_custom_character_by_id, character_id):
+            return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+    elif not get_card(character_id):
+        return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+    if mode != 'story':
+        return web.json_response({'ok': True, 'reply': None})
+
+    def _prepare():
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        from services.memory_service import get_recent_messages
+        if get_recent_messages(uid, character_id, 1):
+            return uid, None, None
+        scene, persona = None, ''
+        if is_custom_character(character_id):
+            from services.custom_character_service import custom_character_params, custom_persona_context
+            params, _name = custom_character_params(character_id)
+            scene = str(params.get('opening') or '').strip() or None
+            if not scene:
+                persona = custom_persona_context(character_id)
+        else:
+            from services.character_card_service import get_opening_scene
+            scene = get_opening_scene(character_id)
+        return uid, scene, persona
+
+    uid, scene, persona = await asyncio.to_thread(_prepare)
+    if uid and scene is None and persona:
+        try:
+            from services.llm_provider_service import generate_text
+            r = await generate_text([
+                {'role': 'system', 'content': persona},
+                {'role': 'user', 'content': (
+                    'Напиши первое сообщение этого чата как начало сцены: в звёздочках — что ты сейчас делаешь и где '
+                    '(1 предложение), потом твоя первая реплика пользователю (1–2 предложения), живо и с интригой. '
+                    'Без приветствия «привет», без описания внешности.')},
+            ], max_tokens=220, temperature=0.95, purpose='opening')
+            scene = (r.text or '').strip() or None
+        except Exception:
+            logger.warning('opening scene generation failed char=%s', character_id)
+    if uid and scene:
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', scene)
+    return web.json_response({'ok': True, 'reply': scene})
 
 
 async def _webapp_api_chat_send(request: web.Request) -> web.Response:
@@ -12652,6 +12729,9 @@ async def _webapp_api_constructor_options(request: web.Request) -> web.Response:
         # V3.45.28: creation always costs peaches — the free-public perk is gone.
         'public_free': False,
         'free': free,
+        # V3.61.1: one-tap templates that fill the whole form.
+        'templates': [{'id': t['id'], 'emoji': t['emoji'], 'title': t['title'], 'name': t['name'],
+                       'params': t['params']} for t in CONSTRUCTOR_TEMPLATES],
     })
 
 
@@ -12906,6 +12986,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/chat/photo', _webapp_api_chat_photo)
     app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
     app.router.add_post('/webapp/api/chat/marital', _webapp_api_chat_marital)
+    app.router.add_post('/webapp/api/chat/start', _webapp_api_chat_start)
     app.router.add_get('/webapp/api/chat/level', _webapp_api_chat_level)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)
