@@ -682,6 +682,10 @@ def stories_keyboard(telegram_id: int):
             else:
                 label = f"↩️ {item['title']} · {count}/{total}"
             rows.append([InlineKeyboardButton(text=label, callback_data=f"quest:view:{item['key']}")])
+        elif not item.get('path_ok', True):
+            # V3.62.2: the other path's story — visible, locked.
+            where = 'на пути романтики' if item.get('path') == 'romance' else 'на пути страсти'
+            rows.append([InlineKeyboardButton(text=f"🔒 {item['title']} · {where}", callback_data=f"quest:locked:{item['key']}")])
         else:
             rows.append([InlineKeyboardButton(text=f"🔒 {item['title']} · откроется L{item['min_level']}", callback_data=f"quest:locked:{item['key']}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -4952,6 +4956,10 @@ async def quest_locked_cb(cq: types.CallbackQuery):
     q = get_quest(key)
     if not q:
         await cq.answer('история пока недоступна', show_alert=True)
+        return
+    if q.get('path'):
+        where = 'романтики' if q['path'] == 'romance' else 'страсти'
+        await cq.answer(f'🔒 «{q["title"]}» — история пути {where}. Она откроется только на этом пути.', show_alert=True)
         return
     await cq.answer(f'🔒 «{q["title"]}» откроется на L{q["min_level"]}. Продолжай общаться с Анной.', show_alert=True)
 
@@ -13371,6 +13379,7 @@ def _webapp_api_story_impl(request: web.Request) -> web.Response:
                         'intro': q.get('intro', ''), 'unlocked': st['unlocked'], 'min_level': st['min_level'],
                         'unlock_tasks': st['unlock_tasks'], 'tasks_remaining': st['tasks_remaining'],
                         'level_ok': st['level_ok'], 'tasks_ok': st['tasks_ok'],
+                        'path': st.get('path'), 'path_ok': st.get('path_ok', True), 'branch': st.get('branch'),
                         'canonical': st['canonical'], 'routes': routes})
     return web.json_response({'ok': True, 'kind': 'story', 'level': level, 'stories': stories})
 
