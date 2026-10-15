@@ -10864,8 +10864,8 @@ async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str
 
 
 CHAT_PHOTO_BLOCK_TEXT = {
-    'peaches': ('ой, хочу прислать тебе фото, но персики закончились 🙈 одно фото — {price} 🍑. '
-                'пополни, и я сразу скину 😘'),
+    'peaches': ('ой, хочу прислать тебе фото, но бесплатные фото на сегодня закончились 🙈 '
+                'ещё одно — {price} 🍑, или завтра будут новые бесплатные. пополни, и я сразу скину 😘'),
     'stage': ('такое фото пока рано 😏 давай ещё пообщаемся — чем ближе мы, тем больше я тебе покажу. '
               'а обычное селфи могу прямо сейчас, попроси «пришли селфи»'),
     'adult': 'для такого фото подтверди, что тебе 18+, — и я покажу 🔥',
@@ -10875,9 +10875,12 @@ CHAT_PHOTO_BLOCK_TEXT = {
 
 # V3.60.9: she promises a photo in her own words («лови фотку», «держи селфи 📸»)
 PHOTO_PROMISE = re.compile(
-    r'(?:\b(?:лови|держи|скидываю|отправляю|высылаю|кидаю|вот\s+тебе|вот\s+она|смотри)\b[^.!?\n]{0,40}'
+    r'(?:\b(?:лови|держи|скидываю|отправляю|высылаю|кидаю|шлю|посылаю|скинула|отправила|кинула|прислала|'
+    r'сделала|вот\s+тебе|вот\s+она|вот\s+ещё|вот\s+еще|смотри)\b[^.!?\n]{0,40}'
     r'(?:фот|селфи|📸|снимок|кадр))|(?:(?:фот\w*|селфи)[^.!?\n]{0,20}\b(?:лови|держи)\b)|'
-    r'(?:\b(?:лови|держи|смотри|глянь)\b[^\n]{0,40}📸)',
+    r'(?:\b(?:лови|держи|смотри|глянь)\b[^\n]{0,40}📸)|'
+    # V3.61.5: an action line «*шлю тебе ещё фотку*» / «*отправляет селфи*»
+    r'(?:\*[^*\n]{0,40}\b(?:шлю|отправля\w*|скидыва\w*|присыла\w*|делаю|делает|снима\w*)\b[^*\n]{0,30}(?:фот|селфи|снимок)[^*\n]{0,30}\*)',
     re.IGNORECASE)
 # her question/offer about a photo, and a short «yes» to it
 PHOTO_OFFER = re.compile(r'(фот|селфи|📸|снимок|скинуть|скину|прислать|показать)', re.IGNORECASE)
@@ -10908,7 +10911,10 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | N
     if not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
         return 'stage'
     if telegram_id not in ADMIN_TELEGRAM_IDS and get_photo_credits(telegram_id) < CHAT_PHOTO_PEACH_COST:
-        return 'peaches'
+        # V3.61.5: today's free chat photos go first.
+        from services.chat_photo_allowance import free_chat_photos_left
+        if free_chat_photos_left(ensure_user(telegram_id)) <= 0:
+            return 'peaches'
     return None
 
 
@@ -10989,13 +10995,19 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                 save_message(uid, character_id, 'assistant', '📸', media_kind='photo', media_url=url)
             else:
                 save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
+            from services.chat_photo_allowance import free_chat_photos_left, use_free_chat_photo
             if telegram_id not in ADMIN_TELEGRAM_IDS:
-                spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST)
+                # V3.61.5: a free photo of the day first, then peaches.
+                if free_chat_photos_left(uid) > 0:
+                    use_free_chat_photo(uid, character_id)
+                else:
+                    spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST)
             # V3.53.0: after this photo counts, tell the SPA if a gallery set
             # (50 photos of her) just completed so it can celebrate.
             from services.collection_service import gallery_set_progress, note_gallery_set
             return {'ok': True, 'reply': cap, 'photo_url': url,
                     'credits_left': get_photo_credits(telegram_id),
+                    'free_photos_left': free_chat_photos_left(uid),
                     'set_completed': note_gallery_set(telegram_id, character_id),
                     'gallery': gallery_set_progress(telegram_id, character_id),
                     **(extra or {})}
