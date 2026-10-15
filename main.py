@@ -12337,13 +12337,55 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
 UNDRESS_PROMPT = (
     'Edit this exact photo. Keep the SAME adult woman: identical face, hair, makeup, body proportions, '
     'the same place, background, lighting and camera angle as image 1 (her face also matches image 2). '
-    'Change only her clothing on top: she has taken off her top or jacket and her bra, so she is topless, '
-    'and she covers her bare breasts with her hand and forearm (a natural hand-bra), nipples fully hidden '
-    'behind her arm. Everything below the waist stays as in the original photo. Playful, confident, '
-    'slightly shy expression, as if she undressed just for the person she is chatting with. '
+    'Keep her outfit recognisable; change only what the reveal below describes. '
+)
+UNDRESS_TAIL = (
+    ' Playful, confident, slightly shy expression, as if she does it just for the person she is chatting with. '
     'Natural slender female hands with five correct fingers. Photorealistic, same smartphone-photo look.'
 )
-UNDRESS_LINES = ('ну раз ты так просишь… 🙈', 'только тебе 🙈🔥', 'смотри, но никому 🤫', 'вот так лучше? 😏')
+# V3.61.10: «Раздеть» is not one pose — she shows a little of what is under
+# her clothes, picked to fit what she wears. Levels 1-3 stay in lingerie;
+# the topless hand-bra opens from level 4; partial reveal from 6.
+UNDRESS_VARIANTS_LINGERIE = (
+    ('lift', 'REVEAL: if she wears a dress or skirt, she lifts the hem with one hand to show her lace panties '
+             'underneath; if she wears jeans or trousers, she pulls the waistband down a little on her hips '
+             'so the top of her lace panties shows. Everything else stays on.'),
+    ('back', 'REVEAL: she turns a little and looks back over her shoulder; if she wears jeans or trousers she '
+             'pulls them down to her upper thighs, if a dress or skirt she lifts it at the back, so her bottom '
+             'in lace panties is visible. Her chest stays covered by her top.'),
+    ('neck', 'REVEAL: she pulls the neckline or the straps of her dress or top down (or opens her blouse or '
+             'jacket) to show her lace bra and cleavage; the rest of her outfit stays on.'),
+    ('shoulder', 'REVEAL: she lets her dress or top slip off one shoulder, the strap falling down her arm, '
+                 'so the lace cup and strap of her bra show; she holds the fabric at her chest with one hand.'),
+    ('zip', 'REVEAL: she half-turns away and unzips or unbuttons the back of her dress or top, looking back at the '
+            'camera; her bare back and the clasp of her lace bra are visible.'),
+    ('tug', 'REVEAL: she pulls her top or dress up to just below her bust, showing her bare stomach, waist and '
+            'the lower edge of her lace bra, biting her lip.'),
+    ('thigh', 'REVEAL: she sits down and slides her skirt or dress up her thigh to show the lace top of her '
+              'stockings and a glimpse of her panties; if she wears jeans, she unbuttons them and opens the fly '
+              'a little to show the lace of her panties.'),
+)
+UNDRESS_VARIANTS_TOPLESS = (
+    ('shirt', 'REVEAL: she has taken her top and bra off and holds her clothing pressed against her bare chest '
+              'with both hands, covering her breasts, bare shoulders and sides visible.'),
+    ('crossed', 'REVEAL: she is topless from the waist up and covers her breasts with both arms crossed over '
+                'her chest, nipples fully hidden; everything below the waist stays as it was.'),
+)
+UNDRESS_VARIANT_TOPLESS = (
+    'topless', 'REVEAL: she has pulled her top or the upper part of her dress down to the waist and taken off '
+               'her bra, so she is topless, and she covers her bare breasts with her hand and forearm '
+               '(a natural hand-bra), nipples fully hidden behind her arm. Everything below the waist stays as it was.')
+
+
+def _undress_variant(level: int) -> tuple[str, str]:
+    pool = list(UNDRESS_VARIANTS_LINGERIE)
+    if level >= 4:
+        pool += [UNDRESS_VARIANT_TOPLESS, *UNDRESS_VARIANTS_TOPLESS]
+    return random.choice(pool)
+
+
+UNDRESS_LINES = ('ну раз ты так просишь… 🙈', 'только тебе 🙈🔥', 'смотри, но никому 🤫', 'вот так лучше? 😏',
+                 'угадал, что у меня под платьем? 😏', 'это я специально для тебя надела 🖤', 'дальше — заслужи 😉')
 # A married girl / one with a boyfriend: he is in the room, back turned and unaware.
 UNDRESS_SECRET = (
     ' SECRET MOMENT: in the background, slightly out of focus, her {who} (an adult man, fully clothed) stands '
@@ -12359,7 +12401,12 @@ UNDRESS_REVEAL = (
 
 
 def _undress_prompt(telegram_id: int, character_id: str) -> tuple[str, bool]:
-    prompt, secret = UNDRESS_PROMPT, False
+    try:
+        level = get_relationship_level(telegram_id, character_id)
+    except Exception:
+        level = 1
+    variant, reveal = _undress_variant(level)
+    prompt, secret = UNDRESS_PROMPT + reveal + UNDRESS_TAIL, False
     try:
         from services.webapp_service import _batch_marital, _default_marital
         status = _batch_marital(telegram_id, [character_id]).get(character_id) \
@@ -12370,11 +12417,8 @@ def _undress_prompt(telegram_id: int, character_id: str) -> tuple[str, bool]:
             secret = True
     except Exception:
         logger.warning('undress marital lookup failed user=%s', telegram_id)
-    try:
-        if get_relationship_level(telegram_id, character_id) >= 6:
-            prompt += UNDRESS_REVEAL
-    except Exception:
-        pass
+    if variant in ('topless', 'crossed') and level >= 6:
+        prompt += UNDRESS_REVEAL
     return prompt, secret
 
 
@@ -12501,14 +12545,19 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
             ext, mime, kind = 'mp4', 'video/mp4', 'video'
             content = '🎬 ожила для тебя'
         else:
-            from services.private_photo_service import _spicyapi_render
+            from services.private_photo_service import _spicyapi_render, spicyapi_last_error
             from config import SPICYAPI_IMAGE_MODEL
             src = f'{PUBLIC_BASE_URL}/webapp/smedia/{int(telegram_id)}/{filename}/{_media_sig(telegram_id, filename)}'
             refs = [src, f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0']
             prompt, secret = await asyncio.to_thread(_undress_prompt, telegram_id, character_id)
             data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs, scene='undress')
             if not data:
-                raise PhotoGenerationError('spicyapi', 'empty_result')
+                # V3.61.10: one more try with the chat photo alone — the face
+                # crop as a second reference can make the edit fail.
+                logger.warning('undress first try empty user=%s error=%s', telegram_id, spicyapi_last_error())
+                data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs[:1], scene='undress')
+            if not data:
+                raise PhotoGenerationError('spicyapi', spicyapi_last_error() or 'empty_result')
             ext, mime, kind = 'jpg', 'image/jpeg', 'photo'
             content = random.choice(UNDRESS_SECRET_LINES if secret else UNDRESS_LINES)
     except Exception as exc:
@@ -12517,7 +12566,9 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
                                 character_id, media_url, f'{type(exc).__name__}: {exc}')
         if action == 'animate' and pay == 'premium':
             logger.info('animate failed after the free slot was used user=%s', telegram_id)
-        return web.json_response({'ok': False, 'error': 'failed'})
+        # The owner sees the real reason right in the toast; users get a calm line.
+        return web.json_response({'ok': False, 'error': 'failed',
+                                  'reason': f'{type(exc).__name__}: {exc}'[:160] if admin else ''})
 
     def _deliver():
         name = webapp_service.save_chat_media(telegram_id, data, ext, mime)
