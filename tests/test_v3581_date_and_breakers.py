@@ -68,4 +68,4 @@ def test_spicy_breaker_opens_after_misses_and_is_per_leg():
 def test_gemini_429_cooldown_wired():
     assert 'if response.status_code == 429:' in PHOTO
     assert 'if gemini_on_cooldown():' in PHOTO
-    assert "raise PhotoGenerationError('spicyapi', 'breaker_open')" in PHOTO
+    assert "raise PhotoGenerationError('spicyapi', _spicy_reason('breaker_open', spicyapi_last_error()))" in PHOTO
