@@ -470,6 +470,11 @@ PRIVATE_CAMERA_POOL = [
 ]
 
 
+def _plain(label: str) -> str:
+    """Menu labels carry an emoji prefix («🛏️ Bedroom»); the model gets words only."""
+    return re.sub(r'^[^\w]+', '', label or '').strip()
+
+
 def build_private_photo_prompt(
     request: PrivatePhotoRequest,
     character_description: str,
@@ -500,7 +505,7 @@ def build_private_photo_prompt(
     # Обстановка
     location = next((loc for loc in LOCATIONS if loc["id"] == request.location_id), None)
     if location and request.location_id != "random":
-        parts.append(f"Location: {location['name_en']}")
+        parts.append(f"Location: {_plain(location['name_en'])}")
     else:
         # V3.60.1: no location (the «Картинки» studio) or «random» used to leave
         # the model alone with a black backdrop — give her a real place.
@@ -542,6 +547,15 @@ def build_private_photo_prompt(
             )
         elif request.category == "nude_art":
             parts.append('OUTFIT: artistic nude, bare skin, elegant and tasteful composition.')
+        # V3.62.5: nude shots now edit from her face reference (text-to-image
+        # drew a stranger with another figure). The reference shows her dressed,
+        # so say plainly that only the face and hair come from it.
+        if request.category in ("fully_nude", "nude_art") and use_reference:
+            parts.append(
+                'REFERENCE IMAGE 1 gives ONLY her face, hair and skin tone. Whatever she wears in it is not part of '
+                'this photo: this is a new photo of the same woman, nude as described, her body exactly as declared '
+                'in BODY IDENTITY.'
+            )
         # V3.45.26: player-picked colour for lingerie / apparel categories.
         if request.color and request.category in ("lingerie", "suggestive", "roleplay"):
             color_data = next((c for c in LINGERIE_COLORS if c["id"] == request.color), None)
@@ -651,7 +665,8 @@ _SPICY_DROP_ORDER = (
 )
 # Trim tiers: 0 = everything else, 1 = what the shot is, 2 = who she is.
 _SPICY_TIERS = (
-    ('SCENE:', 'WARDROBE:', 'CAMERA/POSE:', 'Create exactly ONE', 'Mainstream general-audience'),
+    ('SCENE:', 'WARDROBE:', 'CAMERA/POSE:', 'Create exactly ONE', 'Mainstream general-audience',
+     'OUTFIT:', 'FACE LOCK:', 'BUST LOCK:', 'REFERENCE IMAGE 1'),
     ('PHOTO IDENTITY:', 'HARD SUBJECT LOCK:'),
 )
 
@@ -882,6 +897,18 @@ async def generate_private_photo_real(
     return await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, [ref_face_url, ref_body_url], scene=str(request.category or 'private'))
 
 
+async def generate_private_photo_nude(request: PrivatePhotoRequest, prompt: str) -> Optional[bytes]:
+    """V3.62.5: nude «Наедине» edits from her canonical FACE reference only.
+
+    Text-to-image had no picture of her at all, so the owner saw «другой
+    человек, другая фигура». The uncensored edit leg undresses happily («Раздеть»
+    proves it); the clothed look reference (i=1) is left out so the outfit has
+    nothing to copy, and the figure comes from BODY IDENTITY + BUST LOCK text.
+    """
+    ref_face_url = f"{PUBLIC_BASE_URL}/webapp/photo/{request.character_id}?i=0"
+    return await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, [ref_face_url], scene=str(request.category or 'nude'))
+
+
 async def generate_private_photo_t2i(prompt: str) -> Optional[bytes]:
     """V3.46.1: uncensored text-to-image for the nude «Наедине» categories.
 
@@ -968,7 +995,9 @@ PRIVATE_POOL_MIN = 10
 # V3.60.1: the stockpile still held renders from the 2k days (faces drifted)
 # and served them at random, ignoring colour/location — only renders made
 # after the 1k fix are reused. Railway PRIVATE_POOL_SINCE moves the cutoff.
-PRIVATE_POOL_SINCE = os.getenv('PRIVATE_POOL_SINCE', '2026-10-14T00:00:00')
+# V3.62.5: nude shots before the face-reference switch are strangers — the
+# stockpile restarts from here even if Railway still holds an older cutoff.
+PRIVATE_POOL_SINCE = max(os.getenv('PRIVATE_POOL_SINCE', '') or '', '2026-10-15T20:00:00')
 
 
 def pool_get(character_id: str, category: str, type_id: str,

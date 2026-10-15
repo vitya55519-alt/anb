@@ -12287,7 +12287,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     """V3.45: generate a private/cosplay photo via SpicyAPI."""
     from services.private_photo_service import (
         PrivatePhotoRequest, build_private_photo_prompt, generate_private_photo_real,
-        generate_private_photo_t2i,
+        generate_private_photo_t2i, generate_private_photo_nude,
         get_private_photo_usage, consume_free_private_photo, cache_get, cache_save,
         pool_get, gallery_save, check_achievements, COSPLAY_CHARACTERS, PRIVATE_PHOTO_CATEGORIES,
     )
@@ -12323,7 +12323,9 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     # model keeps a clothed reference clothed) — render them via text-to-image
     # instead, anchoring identity with the text visual-lock only.
     is_adult = (not cosplay) and cat_id in ('fully_nude', 'nude_art')
-    prompt = build_private_photo_prompt(req, dna_ctx, use_reference=not is_adult)
+    # V3.62.5: nude renders edit from her face reference too, so the prompt
+    # carries the FACE LOCK for every category now.
+    prompt = build_private_photo_prompt(req, dna_ctx, use_reference=True)
     prompt = _with_marital_ring(prompt, telegram_id, character_id)
     # Check cache
     cached = cache_get(prompt, character_id)
@@ -12363,8 +12365,13 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         # retry billed a second $0.0345 job on the same prompt (and i2i drags a
         # nude back toward the clothed reference anyway), so a failed nude cost
         # double for nothing. Order now: SpicyAPI text-to-image → fal t2i last.
-        engine_used = 'spicyapi_t2i'
-        image_bytes = await generate_private_photo_t2i(prompt)
+        # V3.62.5: face-reference edit first — t2i alone drew a stranger. The
+        # reference-free t2i stays only as the fallback when the edit fails.
+        engine_used = 'spicyapi_face_edit'
+        image_bytes = await generate_private_photo_nude(req, prompt)
+        if not image_bytes:
+            engine_used = 'spicyapi_t2i'
+            image_bytes = await generate_private_photo_t2i(build_private_photo_prompt(req, dna_ctx, use_reference=False))
         if not image_bytes:
             from config import SPICYAPI_KEY as _spicy_key
             provider_error = 'spicyapi_empty_result' + ('' if _spicy_key else ' (SPICYAPI_KEY not set)')
