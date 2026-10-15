@@ -44,3 +44,20 @@ def use_free_chat_photo(uid: int, character_id: str) -> None:
         session.add(ProductEvent(user_id=uid, character_id=character_id, event_name=EVENT,
                                  created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
         session.commit()
+
+
+def count_today(uid: int, event: str) -> int:
+    """V3.61.7: how many times today `event` happened (e.g. 'undress_free')."""
+    with SessionLocal() as session:
+        return int(session.scalar(
+            select(func.count(ProductEvent.id)).where(
+                ProductEvent.user_id == uid, ProductEvent.event_name == event,
+                ProductEvent.created_at >= _day_start())
+        ) or 0)
+
+
+def note_today(uid: int, event: str, character_id: str) -> None:
+    with SessionLocal() as session:
+        session.add(ProductEvent(user_id=uid, character_id=character_id, event_name=event,
+                                 created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+        session.commit()

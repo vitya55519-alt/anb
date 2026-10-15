@@ -436,6 +436,12 @@
     border: 0; border-radius: 22px; padding: 11px 22px; background: var(--accent); color: #fff;
     font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.4);
   }
+  /* V3.61.7: actions under her photo */
+  .msg .phact { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .msg .phact .pa { flex: 1 1 0; min-width: 0; border: 1px solid rgba(255,120,180,.35); border-radius: 14px; padding: 8px 6px;
+    background: rgba(255,255,255,.06); color: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+  .msg .phact .pa.hot { background: linear-gradient(90deg,#ff5fa2,#b44cff); border: 0; color: #fff; }
+  .msg .phact .pa:disabled { opacity: .5; }
   .msg .dl { display: inline-block; margin-top: 6px; border: 0; border-radius: 14px; padding: 5px 12px;
     background: rgba(255,255,255,.1); color: inherit; font-size: 12.5px; cursor: pointer; }
   /* V3.43.0: character-page carousel arrows/dots + the like badge */
@@ -1144,7 +1150,7 @@ const LANG = APP_LANGS.includes(_savedLang) ? _savedLang
   : (_tgLang.startsWith('ru') ? 'ru' : (APP_LANGS.find(x => _tgLang.startsWith(x)) || 'en'));
 
 const L_EN = {
-  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
+  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', video_limit: 'free animations are used up', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
   // V3.55.2: the premium-characters section under the grid
@@ -1310,7 +1316,7 @@ const L_EN = {
 // V3.43.5: the full Russian dictionary stays the base; five more interface
 // languages arrive below as partial overrides on top of the English one.
 const L_RU = {
-  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
+  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', video_limit: 'бесплатные оживления закончились', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
   // V3.55.2: секция премиум-персонажей под сеткой
@@ -2173,6 +2179,13 @@ function chatBubble(roleOrM, content, ts) {
     if (m.media_kind === 'circle') body = `<video class="circle" src="${esc(src)}" loop autoplay muted playsinline></video>`;
     else if (m.media_kind === 'video') body = `<video class="m" src="${esc(src)}" controls playsinline></video>`;
     else if (m.media_kind === 'voice') body = `<audio controls src="${esc(src)}"></audio>`;
+    else if (cls === 'bot') {
+      // V3.61.7: three clear actions under her photo — save, animate, undress.
+      body = '<img class="m" src="' + esc(src) + '" data-lb="1" alt="">'
+        + '<div class="phact"><button class="pa" data-dl="' + esc(src) + '">' + esc(L.pa_save) + '</button>'
+        + '<button class="pa" data-pact="animate" data-media="' + esc(m.media_url) + '">' + esc(L.pa_anim) + '</button>'
+        + '<button class="pa hot" data-pact="undress" data-media="' + esc(m.media_url) + '">' + esc(L.pa_undress) + '</button></div>';
+    }
     else body = `<img class="m" src="${esc(src)}" data-lb="1" alt=""><br><button class="dl" data-dl="${esc(src)}">${esc(L.photo_save)}</button>`;
     if (m.content) body += `<div style="margin-top:4px">${esc(m.content)}</div>`;
   }
@@ -2607,6 +2620,52 @@ async function sendChatPhoto(file) {
 
 // ── V3.39.0: in-app chat media — photos, circles, voice like the bot dialog ──
 let mediaBusy = false;
+// V3.61.7: «🎬 Оживить» / «🔥 Раздеть» under one of her photos.
+async function photoAction(action, mediaUrl, btn) {
+  if (!CHAT || mediaBusy) return;
+  if (!tg.initData) { toast(L.auth_short); return; }
+  mediaBusy = true;
+  const characterId = CHAT.id;
+  const box = document.getElementById('chatMsgs');
+  box.insertAdjacentHTML('beforeend', '<div class="typing" id="paTyping">' + esc(action === 'animate' ? L.pa_wait_anim : L.pa_wait_undress) + '</div>');
+  box.scrollTop = box.scrollHeight;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/webapp/api/chat/photo-action?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: characterId, action: action, media_url: mediaUrl }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 401) { toast(L.auth_short); return; }
+    if (r.status === 402) {
+      toast(j.error === 'video_limit' ? L.video_limit : L.pic_no_credits);
+      if (j.error !== 'video_limit') showTab('shop');
+      return;
+    }
+    if (r.status === 403) {
+      toast(j.error === 'adult_confirm' ? L.adult_confirm_needed : (j.error === 'premium_required' ? L.need_premium : L.locked));
+      if (j.error === 'premium_required') showTab('shop');
+      return;
+    }
+    if (!j.ok) { toast(L.reply_err); return; }
+    if (!CHAT || CHAT.id !== characterId) return;
+    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
+    box.scrollTop = box.scrollHeight;
+    if (ME && j.credits_left != null) ME.photo_credits = j.credits_left;
+  } catch (e) {
+    toast(L.reply_err);
+  } finally {
+    const t = document.getElementById('paTyping');
+    if (t) t.remove();
+    if (btn) btn.disabled = false;
+    mediaBusy = false;
+  }
+}
+document.addEventListener('click', e => {
+  const b = e.target && e.target.closest ? e.target.closest('[data-pact]') : null;
+  if (b) { e.stopPropagation(); photoAction(b.getAttribute('data-pact'), b.getAttribute('data-media'), b); }
+});
+
 async function requestMedia(kind, scene) {
   if (!CHAT || mediaBusy) return;
   if (!tg.initData) { toast(L.auth_short); return; }

@@ -11978,6 +11978,211 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
     raise last_error or PhotoGenerationError('video', 'no_video_result')
 
 
+# V3.61.7: the buttons under a photo in the chat — «🎬 Оживить» animates THAT
+# photo, «🔥 Раздеть» re-renders it with her top off, covering her chest with
+# her hand (1 free a day, then peaches; 18+ confirmed users only).
+UNDRESS_PROMPT = (
+    'Edit this exact photo. Keep the SAME adult woman: identical face, hair, makeup, body proportions, '
+    'the same place, background, lighting and camera angle as image 1 (her face also matches image 2). '
+    'Change only her clothing on top: she has taken off her top or jacket and her bra, so she is topless, '
+    'and she covers her bare breasts with her hand and forearm (a natural hand-bra), nipples fully hidden '
+    'behind her arm. Everything below the waist stays as in the original photo. Playful, confident, '
+    'slightly shy expression, as if she undressed just for the person she is chatting with. '
+    'Natural slender female hands with five correct fingers. Photorealistic, same smartphone-photo look.'
+)
+UNDRESS_LINES = ('ну раз ты так просишь… 🙈', 'только тебе 🙈🔥', 'смотри, но никому 🤫', 'вот так лучше? 😏')
+# A married girl / one with a boyfriend: he is in the room, back turned and unaware.
+UNDRESS_SECRET = (
+    ' SECRET MOMENT: in the background, slightly out of focus, her {who} (an adult man, fully clothed) stands '
+    'with his back to the camera, busy and unaware; his face is not visible. She takes this photo secretly, '
+    'glancing at the camera with a naughty finger-to-lips look.'
+)
+UNDRESS_SECRET_LINES = ('тсс… он прямо за спиной 🤫🔥', 'пока он не видит… только тебе 🙈', 'если он обернётся, мне конец 😳🔥')
+# Level 6+ (where her nude photos open): she shows a little more instead of covering fully.
+UNDRESS_REVEAL = (
+    ' At this closeness she is bolder: one arm covers her chest only partly and she lets one breast '
+    'be gently, tastefully visible, artistic and natural.'
+)
+
+
+def _undress_prompt(telegram_id: int, character_id: str) -> tuple[str, bool]:
+    prompt, secret = UNDRESS_PROMPT, False
+    try:
+        from services.webapp_service import _batch_marital, _default_marital
+        status = _batch_marital(telegram_id, [character_id]).get(character_id) \
+            or _default_marital(character_id, is_custom_character(character_id))
+        who = {'mar_married': 'husband', 'mar_boyfriend': 'boyfriend'}.get(status)
+        if who:
+            prompt += UNDRESS_SECRET.format(who=who)
+            secret = True
+    except Exception:
+        logger.warning('undress marital lookup failed user=%s', telegram_id)
+    try:
+        if get_relationship_level(telegram_id, character_id) >= 6:
+            prompt += UNDRESS_REVEAL
+    except Exception:
+        pass
+    return prompt, secret
+
+
+def _media_sig(telegram_id: int, filename: str) -> str:
+    import hashlib
+    import hmac
+    from config import TELEGRAM_TOKEN
+    return hmac.new(TELEGRAM_TOKEN.encode(), f'media:{int(telegram_id)}:{filename}'.encode(),
+                    hashlib.sha256).hexdigest()[:20]
+
+
+async def _webapp_signed_media(request: web.Request) -> web.Response:
+    """V3.61.7: a chat photo behind a signed URL so the image engine can fetch
+    it as the edit reference (it has no init_data)."""
+    import hmac
+    try:
+        telegram_id = int(request.match_info['uid'])
+    except (TypeError, ValueError):
+        return web.Response(status=404)
+    filename = request.match_info['filename']
+    if not hmac.compare_digest(request.match_info.get('sig', ''), _media_sig(telegram_id, filename)):
+        return web.Response(status=404)
+    path = await asyncio.to_thread(webapp_service.chat_media_file_path, telegram_id, filename)
+    if not path:
+        return web.Response(status=404)
+    body = await asyncio.to_thread(path.read_bytes)
+    ctype = 'image/png' if path.suffix == '.png' else 'image/jpeg'
+    return web.Response(body=body, content_type=ctype, headers={'Cache-Control': 'private, max-age=3600'})
+
+
+async def _animate_photo_bytes(telegram_id: int, image_bytes: bytes, mime: str) -> bytes:
+    engines = []
+    if video_available():
+        engines.append(animate_image)
+    if replicate_available():
+        engines.append(animate_image_replicate)
+    if fal_available():
+        engines.append(animate_image_fal)
+    if hf_video_available():
+        engines.append(animate_image_hf)
+    if not engines:
+        raise PhotoGenerationError('video', 'no_video_engine')
+    last_error = None
+    for engine_fn in engines:
+        ename = 'gemini' if engine_fn.__name__ == 'animate_image' else engine_fn.__name__.replace('animate_image_', '')
+        try:
+            video_bytes = await engine_fn(image_bytes, mime_type=mime, prompt=_WEBAPP_VIDEO_PROMPT)
+            record_provider(f'video/{ename}', True)
+            return video_bytes
+        except Exception as exc:
+            last_error = exc
+            record_provider(f'video/{ename}', False, f'{type(exc).__name__}: {str(exc)[:120]}')
+            logger.warning('photo animate engine failed user=%s: %s', telegram_id, str(exc)[:200])
+    raise last_error or PhotoGenerationError('video', 'no_video_result')
+
+
+async def _webapp_api_photo_action(request: web.Request) -> web.Response:
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    action = str(body.get('action', ''))
+    media_url = str(body.get('media_url', ''))
+    filename = media_url.split('?', 1)[0].rsplit('/', 1)[-1]
+    if action not in ('animate', 'undress') or not character_id or not media_url.startswith('/webapp/media/'):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    path = await asyncio.to_thread(webapp_service.chat_media_file_path, telegram_id, filename)
+    if not path or path.suffix.lower() not in ('.jpg', '.jpeg', '.png'):
+        return web.json_response({'ok': False, 'error': 'not_found'}, status=404)
+    admin = telegram_id in ADMIN_TELEGRAM_IDS
+    from services.chat_photo_allowance import count_today, note_today
+
+    def _her_photo(uid: int) -> bool:
+        # Only HER generated photo in this chat — never a picture the user
+        # uploaded (those must never reach the uncensored engine).
+        from sqlalchemy import select as _select
+        from models.app_models import Message
+        with SessionLocal() as session:
+            return session.scalar(_select(Message.id).where(
+                Message.user_id == uid, Message.character_id == character_id,
+                Message.role == 'assistant', Message.media_kind == 'photo',
+                Message.media_url == f'/webapp/media/{filename}',
+            ).limit(1)) is not None
+
+    def _gate():
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        if not _her_photo(uid):
+            return uid, ('not_found', 404), None
+        if action == 'animate':
+            if admin:
+                return uid, None, 'admin'
+            if not is_premium(telegram_id):
+                return uid, ('premium_required', 403), None
+            if not consume_premium_video_free(telegram_id):
+                return uid, ('video_limit', 402), None
+            return uid, None, 'premium'
+        if not is_adult_confirmed(telegram_id):
+            return uid, ('adult_confirm', 403), None
+        if admin:
+            return uid, None, 'admin'
+        from config import UNDRESS_FREE_PER_DAY, UNDRESS_PEACH_COST
+        if count_today(uid, 'undress_free') < UNDRESS_FREE_PER_DAY:
+            return uid, None, 'free'
+        if get_photo_credits(telegram_id) < UNDRESS_PEACH_COST:
+            return uid, ('credits', 402), None
+        return uid, None, 'peaches'
+
+    uid, err, pay = await asyncio.to_thread(_gate)
+    if err:
+        return web.json_response({'ok': False, 'error': err[0]}, status=err[1])
+    try:
+        if action == 'animate':
+            raw = await asyncio.to_thread(path.read_bytes)
+            data = await _animate_photo_bytes(telegram_id, raw, 'image/png' if path.suffix == '.png' else 'image/jpeg')
+            ext, mime, kind = 'mp4', 'video/mp4', 'video'
+            content = '🎬 ожила для тебя'
+        else:
+            from services.private_photo_service import _spicyapi_render
+            from config import SPICYAPI_IMAGE_MODEL
+            src = f'{PUBLIC_BASE_URL}/webapp/smedia/{int(telegram_id)}/{filename}/{_media_sig(telegram_id, filename)}'
+            refs = [src, f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0']
+            prompt, secret = await asyncio.to_thread(_undress_prompt, telegram_id, character_id)
+            data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs, scene='undress')
+            if not data:
+                raise PhotoGenerationError('spicyapi', 'empty_result')
+            ext, mime, kind = 'jpg', 'image/jpeg', 'photo'
+            content = random.choice(UNDRESS_SECRET_LINES if secret else UNDRESS_LINES)
+    except Exception as exc:
+        logger.exception('photo action failed user=%s action=%s', telegram_id, action)
+        await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, action,
+                                character_id, media_url, f'{type(exc).__name__}: {exc}')
+        if action == 'animate' and pay == 'premium':
+            logger.info('animate failed after the free slot was used user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'failed'})
+
+    def _deliver():
+        name = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+        url = f'/webapp/media/{name}'
+        webapp_service.record_generation(telegram_id, kind, character_id, f'{action}: {media_url}', name)
+        save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
+        if action == 'undress':
+            from config import UNDRESS_PEACH_COST
+            if pay == 'free':
+                note_today(uid, 'undress_free', character_id)
+            elif pay == 'peaches':
+                spend_peaches(telegram_id, UNDRESS_PEACH_COST)
+        return {'ok': True, 'kind': kind, 'url': url, 'content': content,
+                'credits_left': get_photo_credits(telegram_id)}
+
+    return web.json_response(await asyncio.to_thread(_deliver))
+
+
 async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str):
     """V3.41.0: an in-character photo for a specific scene — the app-native
     reward shot for a free/admin date. V3.43.7: preserve the date's scene ID
@@ -13010,6 +13215,8 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/story', _webapp_api_story)
     app.router.add_post('/webapp/api/story/action', _webapp_api_story_action)
     app.router.add_get('/webapp/media/{filename}', _webapp_media)
+    app.router.add_get('/webapp/smedia/{uid}/{filename}/{sig}', _webapp_signed_media)
+    app.router.add_post('/webapp/api/chat/photo-action', _webapp_api_photo_action)
     app.router.add_post('/webapp/api/picture', _webapp_api_picture_generate)
     # V3.54.0: «Собери видео» — image-to-video of the user's own photo / a
     # prompt-generated frame, priced at WEBAPP_VIDEO_COST_CREDITS 🍑.
