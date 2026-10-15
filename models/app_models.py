@@ -707,6 +707,16 @@ class ImageSpend(Base):
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
 
 
+class ChatGuest(Base):
+    """V3.61.2: «позвать в чат» — a second girl the user invited into one
+    girl's chat. One guest per (user, host chat). Auto-created."""
+    __tablename__ = "chat_guests"
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    character_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    guest_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AdminTestStage(Base):
     """V3.60.9: the owner's «test level» override. It lived only in memory and
     reset on every Railway redeploy; now it is a row per admin. Auto-created."""

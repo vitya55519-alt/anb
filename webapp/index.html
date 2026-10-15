@@ -244,6 +244,21 @@
   .chat-head .sub { color: var(--muted); font-size: 11px; }
   .chat-head .spacer { margin-left: auto; }
   .msg .duo-nm { color: #ff9ccb; }
+  .msg .duo-av { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; vertical-align: -5px; margin-right: 5px; }
+  /* V3.61.2: «позвать в чат» — guest bar + girl picker */
+  .guestbar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 13px;
+    background: rgba(255,90,160,.12); border-bottom: 1px solid rgba(255,120,180,.25); }
+  .guestbar img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+  .guestbar .x { margin-left: auto; background: none; border: 0; color: inherit; font-size: 13px; opacity: .8; cursor: pointer; }
+  .gsheet { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; }
+  .gsheet .box { width: 100%; max-height: 75vh; overflow: auto; background: #1d1424; border-radius: 20px 20px 0 0;
+    padding: 18px 16px 24px; border-top: 1px solid rgba(255,120,180,.3); }
+  .gsheet h3 { margin: 0 0 4px; font-size: 18px; }
+  .gsheet .hint { font-size: 13px; opacity: .75; margin-bottom: 12px; }
+  .gsheet .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .gsheet .g { background: rgba(255,255,255,.05); border: 1px solid rgba(255,120,180,.25); border-radius: 14px;
+    padding: 6px; color: inherit; font-size: 12px; cursor: pointer; text-align: center; }
+  .gsheet .g img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; display: block; margin-bottom: 4px; }
   .startsheet { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; }
   .startsheet .box { width: 100%; background: #1d1424; border-radius: 20px 20px 0 0; padding: 18px 16px 26px; border-top: 1px solid rgba(255,120,180,.3); }
   .startsheet .st-h { text-align: center; font-weight: 700; font-size: 18px; margin-bottom: 14px; }
@@ -436,6 +451,12 @@
     border: 0; border-radius: 22px; padding: 11px 22px; background: var(--accent); color: #fff;
     font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.4);
   }
+  /* V3.61.7: actions under her photo */
+  .msg .phact { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .msg .phact .pa { flex: 1 1 0; min-width: 0; border: 1px solid rgba(255,120,180,.35); border-radius: 14px; padding: 8px 6px;
+    background: rgba(255,255,255,.06); color: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+  .msg .phact .pa.hot { background: linear-gradient(90deg,#ff5fa2,#b44cff); border: 0; color: #fff; }
+  .msg .phact .pa:disabled { opacity: .5; }
   .msg .dl { display: inline-block; margin-top: 6px; border: 0; border-radius: 14px; padding: 5px 12px;
     background: rgba(255,255,255,.1); color: inherit; font-size: 12.5px; cursor: pointer; }
   /* V3.43.0: character-page carousel arrows/dots + the like badge */
@@ -919,8 +940,10 @@
       <span class="lvlchip" id="chatLvl" style="display:none"></span>
     </div>
     <div class="spacer"></div>
+    <button class="iconbtn" id="chatInvite" style="font-size:15px;display:none" title="Позвать в чат">👭</button>
     <button class="iconbtn" id="chatSelect" style="font-size:13px">❤️</button>
   </div>
+  <div class="guestbar" id="guestBar" style="display:none"></div>
   <div class="chat-msgs" id="chatMsgs"></div>
   <!-- V3.55.6: one-time tender/passionate picker for premium characters -->
   <div id="personaBanner" style="display:none"></div>
@@ -952,6 +975,8 @@
 </div></div>
 <!-- V3.60.9: level panel (tap the chip under her name) -->
 <div class="lvlsheet" id="lvlSheet" style="display:none"><div class="box" id="lvlBox"></div></div>
+<!-- V3.61.2: «позвать в чат» girl picker -->
+<div class="gsheet" id="guestSheet" style="display:none"><div class="box" id="guestBox"></div></div>
 <!-- V3.39.0: the Come Closer character page — photo strip, «Начать чат»,
      bio and the СЮЖЕТ block before the dialog opens -->
 <div class="overlay" id="charview">
@@ -1144,7 +1169,7 @@ const LANG = APP_LANGS.includes(_savedLang) ? _savedLang
   : (_tgLang.startsWith('ru') ? 'ru' : (APP_LANGS.find(x => _tgLang.startsWith(x)) || 'en'));
 
 const L_EN = {
-  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
+  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', video_limit: 'free animations are used up', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
   // V3.55.2: the premium-characters section under the grid
@@ -1318,7 +1343,7 @@ const L_EN = {
 // V3.43.5: the full Russian dictionary stays the base; five more interface
 // languages arrive below as partial overrides on top of the English one.
 const L_RU = {
-  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
+  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', video_limit: 'бесплатные оживления закончились', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
   // V3.55.2: секция премиум-персонажей под сеткой
@@ -2183,13 +2208,27 @@ function chatBubble(roleOrM, content, ts) {
   let body = esc(m.content);
   // V3.61.0: a duo persona answers as «Имя: …» lines — the speaker's name in bold.
   if (cls === 'bot' && !m.media_url && CHAT && CHAT.duo) {
-    body = body.split('\n').map(line => line.replace(/^([A-Za-zА-Яа-яЁё]{2,20}):\s/, '<b class="duo-nm">$1:</b> ')).join('\n');
+    // V3.61.2: plus a small avatar of who is speaking (the chat's girl or the invited guest).
+    const avatars = {};
+    if (CHAT.guest) avatars[CHAT.guest.name] = CHAT.guest.photo;
+    if (CHAT.name) avatars[CHAT.name] = CHAT.photo || ('/webapp/photo/' + CHAT.id);
+    body = body.split('\n').map(line => line.replace(/^([A-Za-zА-Яа-яЁё]{2,20}):\s/, (all, nm) => {
+      const av = avatars[nm] ? '<img class="duo-av" src="' + esc(avatars[nm]) + '" alt="">' : '';
+      return av + '<b class="duo-nm">' + nm + ':</b> ';
+    })).join('\n');
   }
   if (m.media_url) {
     const src = m.media_url + '?init_data=' + encodeURIComponent(tg.initData || '');
     if (m.media_kind === 'circle') body = `<video class="circle" src="${esc(src)}" loop autoplay muted playsinline></video>`;
     else if (m.media_kind === 'video') body = `<video class="m" src="${esc(src)}" controls playsinline></video>`;
     else if (m.media_kind === 'voice') body = `<audio controls src="${esc(src)}"></audio>`;
+    else if (cls === 'bot') {
+      // V3.61.7: three clear actions under her photo — save, animate, undress.
+      body = '<img class="m" src="' + esc(src) + '" data-lb="1" alt="">'
+        + '<div class="phact"><button class="pa" data-dl="' + esc(src) + '">' + esc(L.pa_save) + '</button>'
+        + '<button class="pa" data-pact="animate" data-media="' + esc(m.media_url) + '">' + esc(L.pa_anim) + '</button>'
+        + '<button class="pa hot" data-pact="undress" data-media="' + esc(m.media_url) + '">' + esc(L.pa_undress) + '</button></div>';
+    }
     else body = `<img class="m" src="${esc(src)}" data-lb="1" alt=""><br><button class="dl" data-dl="${esc(src)}">${esc(L.photo_save)}</button>`;
     if (m.content) body += `<div style="margin-top:4px">${esc(m.content)}</div>`;
   }
@@ -2271,19 +2310,27 @@ async function loadChatLevel(characterId) {
 
 function openLevelSheet() {
   const j = CHAT_LEVEL; if (!j) return;
+  // V3.61.3: two separate blocks — her real scores (0–100), then what the next
+  // level still needs. 100% there used to read as «страсть 100%» next to «7%».
+  const scoreRow = (label, v) => '<div class="row"><div class="t"><span>' + label + '</span><span>' + v + ' из 100</span></div>'
+    + '<div class="trk"><i style="width:' + Math.max(0, Math.min(100, v)) + '%"></i></div></div>';
   let html = '<h3>💕 Уровень ' + j.level + '/' + j.max_level + ' · ' + esc(j.title) + '</h3>'
-    + '<div class="bond">' + esc(j.bond || '') + ' · 🔥 страсть ' + j.passion + '% · 🤝 доверие ' + j.trust + '% · 💬 ' + j.messages + ' сообщ.</div>';
+    + '<div class="bond">' + esc(j.bond || '') + ' · 💬 ' + j.messages + ' сообщ.</div>'
+    + '<div style="font-size:13px;opacity:.85">Сейчас между вами:</div>'
+    + scoreRow('❤️ Отношения', j.relationship || 0) + scoreRow('🤝 Доверие', j.trust || 0) + scoreRow('🔥 Страсть', j.passion || 0);
   if (j.next_title) {
-    html += '<div style="font-size:13px;opacity:.85">До уровня ' + (j.level + 1) + ' «' + esc(j.next_title) + '»:</div>';
+    const prog = j.progress || 0;
+    html += '<div style="font-size:13px;opacity:.85;margin-top:14px">До уровня ' + (j.level + 1) + ' «' + esc(j.next_title) + '» — ' + prog + '%</div>'
+      + '<div class="trk" style="margin:6px 0 8px"><i style="width:' + prog + '%"></i></div>';
     (j.bars || []).forEach(b => {
-      html += '<div class="row"><div class="t"><span>' + esc(b.label) + '</span><span>' + b.pct + '%</span></div>'
-        + '<div class="trk"><i style="width:' + b.pct + '%"></i></div></div>';
+      html += '<div style="font-size:13px;margin:4px 0">' + (b.done ? '✅ ' : '⏳ ') + esc(b.label)
+        + (b.done ? ' — хватает' : ' — ' + b.pct + '% от нужного · растёт: ' + esc(b.tip || '')) + '</div>';
     });
     let left = '';
     if (j.messages_left > 0) left += 'Осталось примерно <b>' + j.messages_left + '</b> сообщений';
     if (j.days_left > 0) left += (left ? ' и ' : 'Осталось ') + '<b>' + j.days_left + '</b> ' + (j.days_left === 1 ? 'день' : (j.days_left < 5 ? 'дня' : 'дней')) + ' общения (заходи к ней каждый день)';
     if (!left) left = 'Совсем чуть-чуть — ещё пара тёплых сообщений 😉';
-    html += '<div class="left">' + left + '.<br>Быстрее растёт от комплиментов, заботы, вопросов о ней и историй 📖.</div>';
+    html += '<div class="left">' + left + '.</div>';
   } else {
     html += '<div class="left">Это максимальный уровень 💞</div>';
   }
@@ -2296,6 +2343,75 @@ function openLevelSheet() {
   sheet.onclick = (e) => { if (e.target === sheet) close(); };
 }
 
+// V3.61.2: «позвать в чат» — invite another girl into this chat; both answer,
+// each line starting with her name. The bar above the chat sends her away.
+function renderGuest(characterId, guest, canInvite) {
+  const btn = document.getElementById('chatInvite');
+  const bar = document.getElementById('guestBar');
+  if (btn) {
+    btn.style.display = canInvite ? '' : 'none';
+    btn.onclick = () => openGuestPicker(characterId);
+  }
+  if (!bar) return;
+  if (!guest) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.innerHTML = '<img src="' + esc(guest.photo) + '" alt=""><span>' + esc(guest.name) + ' в чате</span>'
+    + '<button class="x" id="guestOut">✕ отпустить</button>';
+  bar.style.display = 'flex';
+  document.getElementById('guestOut').onclick = () => setGuest(characterId, '');
+}
+
+async function openGuestPicker(characterId) {
+  let list = CHARS;
+  if (!list || !list.length) {
+    try {
+      const r = await fetch('/webapp/api/characters?init_data=' + encodeURIComponent(tg.initData || ''));
+      list = (await r.json()).characters || [];
+    } catch (e) { list = []; }
+  }
+  const girls = list.filter(c => c.id !== characterId && c.status === 'active');
+  let html = '<h3>👭 Позвать в чат</h3><div class="hint">Она зайдёт в эту переписку, и дальше они будут отвечать вдвоём.</div><div class="grid">';
+  girls.forEach(c => {
+    html += '<button class="g" data-guest="' + esc(c.id) + '"><img src="' + esc(c.photo) + '" alt="" loading="lazy">' + esc(c.name) + '</button>';
+  });
+  html += '</div>';
+  const sheet = document.getElementById('guestSheet');
+  document.getElementById('guestBox').innerHTML = html;
+  sheet.style.display = 'flex';
+  sheet.onclick = (e) => { if (e.target === sheet) sheet.style.display = 'none'; };
+  sheet.querySelectorAll('[data-guest]').forEach(b => {
+    b.onclick = () => { sheet.style.display = 'none'; setGuest(characterId, b.dataset.guest); };
+  });
+}
+
+async function setGuest(characterId, guestId) {
+  const box = document.getElementById('chatMsgs');
+  if (guestId) box.insertAdjacentHTML('beforeend', '<div class="msg bot typing" id="guestTyping">…</div>');
+  try {
+    const r = await fetch('/webapp/api/chat/guest?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: characterId, guest_id: guestId }),
+    });
+    const j = await r.json();
+    const typing = document.getElementById('guestTyping');
+    if (typing) typing.remove();
+    if (!CHAT || CHAT.id !== characterId) return;
+    if (!j.ok) { toast(L.reply_err); return; }
+    CHAT.duo = j.guest ? j.guest.name : null;
+    CHAT.guest = j.guest || null;
+    renderGuest(characterId, j.guest, true);
+    if (j.reply) {
+      const empty = box.querySelector('.chat-empty');
+      if (empty) empty.remove();
+      box.insertAdjacentHTML('beforeend', chatBubble({ role: 'assistant', content: j.reply, ts: new Date().toISOString() }));
+      box.scrollTop = box.scrollHeight;
+    }
+  } catch (e) {
+    const typing = document.getElementById('guestTyping');
+    if (typing) typing.remove();
+    toast(L.reply_err);
+  }
+}
+
 async function loadChatHistory(characterId) {
   const banner = document.getElementById('personaBanner');
   if (banner) banner.style.display = 'none';
@@ -2305,6 +2421,7 @@ async function loadChatHistory(characterId) {
     const j = await r.json();
     if (CHAT && CHAT.id === characterId) CHAT.duo = j.duo || null;
     prefetchPhotoMenu(characterId);
+    if (CHAT && CHAT.id === characterId) { CHAT.guest = j.guest || null; renderGuest(characterId, j.guest || null, j.can_invite !== false); }
     const box = document.getElementById('chatMsgs');
     if (!j.ok) { box.innerHTML = `<div class="chat-empty">${esc(L.reply_err)}</div>`; return; }
     if (!j.history.length) {
@@ -2625,6 +2742,52 @@ async function sendChatPhoto(file) {
 
 // ── V3.39.0: in-app chat media — photos, circles, voice like the bot dialog ──
 let mediaBusy = false;
+// V3.61.7: «🎬 Оживить» / «🔥 Раздеть» under one of her photos.
+async function photoAction(action, mediaUrl, btn) {
+  if (!CHAT || mediaBusy) return;
+  if (!tg.initData) { toast(L.auth_short); return; }
+  mediaBusy = true;
+  const characterId = CHAT.id;
+  const box = document.getElementById('chatMsgs');
+  box.insertAdjacentHTML('beforeend', '<div class="typing" id="paTyping">' + esc(action === 'animate' ? L.pa_wait_anim : L.pa_wait_undress) + '</div>');
+  box.scrollTop = box.scrollHeight;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/webapp/api/chat/photo-action?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: characterId, action: action, media_url: mediaUrl }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 401) { toast(L.auth_short); return; }
+    if (r.status === 402) {
+      toast(j.error === 'video_limit' ? L.video_limit : L.pic_no_credits);
+      if (j.error !== 'video_limit') showTab('shop');
+      return;
+    }
+    if (r.status === 403) {
+      toast(j.error === 'adult_confirm' ? L.adult_confirm_needed : (j.error === 'premium_required' ? L.need_premium : L.locked));
+      if (j.error === 'premium_required') showTab('shop');
+      return;
+    }
+    if (!j.ok) { toast(L.reply_err); return; }
+    if (!CHAT || CHAT.id !== characterId) return;
+    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
+    box.scrollTop = box.scrollHeight;
+    if (ME && j.credits_left != null) ME.photo_credits = j.credits_left;
+  } catch (e) {
+    toast(L.reply_err);
+  } finally {
+    const t = document.getElementById('paTyping');
+    if (t) t.remove();
+    if (btn) btn.disabled = false;
+    mediaBusy = false;
+  }
+}
+document.addEventListener('click', e => {
+  const b = e.target && e.target.closest ? e.target.closest('[data-pact]') : null;
+  if (b) { e.stopPropagation(); photoAction(b.getAttribute('data-pact'), b.getAttribute('data-media'), b); }
+});
+
 async function requestMedia(kind, scene) {
   if (!CHAT || mediaBusy) return;
   if (!tg.initData) { toast(L.auth_short); return; }
@@ -5172,7 +5335,21 @@ async function _shareAny(payload) {
   return _fallbackShare();
 }
 // Share the watermarked export of one gallery photo (image + invite link).
-async function sharePhotoImage(shareUrl) {
+// V3.61.4: Telegram's own share picker sends the friend the PHOTO itself
+// (a prepared message with a button into the bot). Old clients without
+// shareMessage get the photo in their own chat to forward — never a bare link.
+async function sharePhotoImage(shareUrl, imageId) {
+  if (imageId && typeof tg.shareMessage === 'function' && (!tg.isVersionAtLeast || tg.isVersionAtLeast('8.0'))) {
+    try {
+      const r = await fetch('/webapp/api/gallery/prepare-share?init_data=' + encodeURIComponent(tg.initData || ''), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_id: imageId }),
+      });
+      const j = await r.json();
+      if (j && j.ok && j.id) { tg.shareMessage(j.id); return; }
+    } catch (e) { /* fall through */ }
+  }
+  if (imageId) { savePhotoToChat(imageId); return; }
   if (!shareUrl) { _fallbackShare(); return; }
   try {
     const r = await fetch(shareUrl + '?init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store' });
@@ -5222,14 +5399,14 @@ function openGallery() {
         + `<div class="galgrid">` + items.map(it =>
             `<div class="galcell">`
             + `<img loading="lazy" data-lb="1" src="${esc(it.url)}?init_data=${encodeURIComponent(tg.initData || '')}" alt="">`
-            + `<button type="button" class="galshare" data-share="${esc(it.share_url || '')}">${esc(L.share_img)}</button>`
+            + `<button type="button" class="galshare" data-share="${esc(it.share_url || '')}" data-id="${esc(it.id)}">${esc(L.share_img)}</button>`
             + `<button type="button" class="galsave" data-id="${esc(it.id)}">${esc(L.save_img)}</button>`
             + `</div>`).join('')
           + `</div>`;
       const gi = document.getElementById('galInvite');
       if (gi) gi.addEventListener('click', inviteFriends);
       body.querySelectorAll('.galshare').forEach(b =>
-        b.addEventListener('click', (ev) => { ev.stopPropagation(); sharePhotoImage(b.dataset.share); }));
+        b.addEventListener('click', (ev) => { ev.stopPropagation(); sharePhotoImage(b.dataset.share, b.dataset.id); }));
       body.querySelectorAll('.galsave').forEach(b =>
         b.addEventListener('click', (ev) => { ev.stopPropagation(); savePhotoToChat(b.dataset.id); }));
     })

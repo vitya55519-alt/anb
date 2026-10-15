@@ -452,6 +452,20 @@ PASSION_PUBLIC_POSE_POOL = [
     'one hand pulling the strap of her top off her shoulder, teasing look — natural slender female hands with five correct fingers each; her face stays clearly visible, exactly the same face as reference image 1',
 ]
 
+# V3.61.4: the tenderness path's mirror of the passion poses — soft, cozy,
+# romantic photos for users who want care and romance, not heat.
+_HANDS_FACE = ('natural slender female hands with five correct fingers each; her face stays clearly visible, '
+               'exactly the same face as reference image 1')
+TENDER_POSE_POOL = [
+    f'curled up under a soft blanket with a mug in both hands, warm gentle smile, cozy golden light — {_HANDS_FACE}',
+    f'wearing an oversized boyfriend shirt, sleeves over her hands, shy happy smile — {_HANDS_FACE}',
+    f'hugging a pillow on a sunlit morning bed, sleepy tender look into the camera — {_HANDS_FACE}',
+    f'chin resting on her hand, dreamy soft gaze, warm window light — {_HANDS_FACE}',
+    f'tucking a strand of hair behind her ear, blushing smile, romantic soft focus — {_HANDS_FACE}',
+    f'holding a bouquet of flowers close to her face, gentle laugh — {_HANDS_FACE}',
+    f'wrapped in a cozy knit cardigan by the window with fairy lights behind her, calm loving smile — {_HANDS_FACE}',
+]
+
 MAKEUP_POOL = [
     'fresh everyday makeup with soft nude lips',
     'natural glow makeup with peachy blush',
@@ -1058,6 +1072,8 @@ class PhotoRequest:
     underwear_style: str = ''
     # V3.59.7: a small in-frame hint of her relationship status (ring, his hoodie).
     story_detail: str = ''
+    # V3.61.2: «сфоткайтесь вдвоём» — the girl invited into this chat shares the frame.
+    with_guest: str = ''
 
 
 class PhotoGenerationError(RuntimeError):
@@ -1214,12 +1230,35 @@ def _season_from_text(low: str) -> str:
     return ''
 
 
+TOGETHER_PHOTO = re.compile(r'(вдво[её]м|вместе|обе\b|обеих|совместн|сфоткайтесь|сфотайтесь|с подругой|together|both of you)', re.I)
+
+
+def attach_guest(request: Optional[PhotoRequest], telegram_id: int, character_id: str, text: str) -> Optional[PhotoRequest]:
+    """V3.61.2: a photo request that asks for both girls («сфоткайтесь вдвоём»,
+    «фото с Викой») renders the invited guest into the same frame."""
+    if not request:
+        return request
+    try:
+        from services.chat_guest_service import get_guest, character_name
+        guest_id = get_guest(telegram_id, character_id)
+    except Exception:
+        return request
+    if not guest_id:
+        return request
+    low = (text or '').lower()
+    name = (character_name(guest_id) or '').lower()
+    stem = name[:-1] if len(name) > 3 else name
+    if TOGETHER_PHOTO.search(low) or (stem and stem in low):
+        return replace(request, with_guest=guest_id)
+    return request
+
+
 def parse_photo_request(text: str) -> Optional[PhotoRequest]:
     t = (text or '').strip()
     low = t.lower()
     request_verbs = (
         'сфоткай', 'сфотай', 'сфотограф', 'фоткни', 'сделай фото', 'пришли фото', 'пришли фотку', 'покажи себя', 'покажись',
-        'сними себя', 'селфи', 'take a photo', 'take a pic', 'send me a photo', 'send a pic', 'show me a photo', 'show yourself', 'show me yourself', 'selfie',
+        'сними себя', 'селфи', 'сфоткайтесь', 'сфотайтесь', 'совместное фото', 'совместную фот', 'фото вдвоём', 'фото вдвоем', 'фото вместе', 'take a photo', 'take a pic', 'send me a photo', 'send a pic', 'show me a photo', 'show yourself', 'show me yourself', 'selfie',
         '拍照', '自拍', '发张照片', '给我看看你',
     )
     direct = (
@@ -1764,6 +1803,17 @@ def _path_is_passion(telegram_id: int, character_id: str) -> bool:
         return False
 
 
+TENDER_PATH_THRESHOLD = -20.0  # mirror of PASSION_PATH_THRESHOLD
+
+
+def _path_is_tender(telegram_id: int, character_id: str) -> bool:
+    try:
+        from services.relationship_engine import get_path_axis
+        return get_path_axis(ensure_user(telegram_id), character_id) <= TENDER_PATH_THRESHOLD
+    except Exception:
+        return False
+
+
 def _persona_style_is_tender(telegram_id: int, character_id: str) -> bool:
     # V3.55.6: the «tender» manner chosen in the premium character's app chat
     # softens the photo expression pool too. Fail-silent: any doubt -> False.
@@ -1976,9 +2026,12 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     # V3.59.3: a user on the «passion» path (story choices pushed the axis to
     # the bold side) gets the hot faces — and flirtier poses — in EVERY scene.
     passion = _path_is_passion(telegram_id, character_id)
+    # V3.61.4: the tenderness path (axis −20 and below) gets soft faces and
+    # cozy romantic poses in every public scene — the mirror of passion.
+    tender = not passion and _path_is_tender(telegram_id, character_id)
     expression_rotation = tuple(request.expression_rotation) or (
         () if request.expression_key else (
-            shuffled_variety_keys() if _persona_style_is_tender(telegram_id, character_id)
+            shuffled_variety_keys() if _persona_style_is_tender(telegram_id, character_id) or tender
             else shuffled_private_sensual_keys() if (request.scene in {'personal', 'lingerie', 'private_fashion', 'tease'} or passion)
             else shuffled_sensual_variety_keys()
         )
@@ -1987,6 +2040,8 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     poses = list(PRIVATE_POSE_POOL if request.scene in {'personal', 'lingerie', 'private_fashion', 'tease'} else POSE_POOL)
     if passion and request.scene not in {'personal', 'lingerie', 'private_fashion', 'tease'}:
         poses = list(PASSION_PUBLIC_POSE_POOL)
+    elif tender and request.scene not in {'personal', 'lingerie', 'private_fashion', 'tease'}:
+        poses = list(TENDER_POSE_POOL)
     random.shuffle(poses)
     pose_rotation = tuple(request.pose_rotation) or tuple(poses)
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season,
@@ -2767,6 +2822,32 @@ async def _run_seedream_set(
     return out
 
 
+def _guest_photo_block(host_id: str, guest_id: str) -> str:
+    """V3.61.2: the second woman of a joint photo, kept apart from the host."""
+    host_name = _character_display_name_safe(host_id)
+    guest_name = _character_display_name_safe(guest_id)
+    try:
+        guest_identity = _character_identity_lock(guest_id, seedream=True)[0]
+    except Exception:
+        guest_identity = ''
+    return (
+        f'JOINT PHOTO OF TWO ADULT WOMEN: {host_name} and her friend {guest_name} are together in this one photo, '
+        f'side by side or close, like a real selfie or mirror photo of two friends. '
+        f'{host_name}\'s face and hair come ONLY from reference images 1–2; {guest_name}\'s face and hair come ONLY from '
+        f'reference images 3–4. They are two clearly different women: never merge their faces, never swap hair or skin tone, '
+        f'never draw a third person. Both are adults. '
+        f'SECOND WOMAN — {guest_name}: {guest_identity}'
+    )
+
+
+def _character_display_name_safe(character_id: str) -> str:
+    try:
+        from services.chat_guest_service import character_name
+        return character_name(character_id) or 'She'
+    except Exception:
+        return 'She'
+
+
 async def _run_spicy_set(
     character: dict,
     telegram_id: int,
@@ -2791,6 +2872,13 @@ async def _run_spicy_set(
     refs = [f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0',
             f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=1']
     out: list[GeneratedPhoto] = []
+    guest_block = ''
+    if request.with_guest:
+        # V3.61.2: both girls in one frame — the guest's own canonical
+        # references ride as images 3–4 and her identity text is declared apart.
+        refs += [f'{PUBLIC_BASE_URL}/webapp/photo/{request.with_guest}?i=0',
+                 f'{PUBLIC_BASE_URL}/webapp/photo/{request.with_guest}?i=1']
+        guest_block = _guest_photo_block(character_id, request.with_guest)
     # V3.56.3: figure chaining. The canonical references are face crops, so the
     # BODY IDENTITY text is the only body anchor — and Seedream re-improvises the
     # figure every frame (the owner watched bust and hips «jump» inside one set).
@@ -2809,6 +2897,8 @@ async def _run_spicy_set(
             'never draw her bigger, slimmer, flatter or smaller-chested than declared. '
             'Make this framing clearly different from the previous shot while staying in the same photo session.'
         )
+        if guest_block:
+            prompt += '\n' + guest_block
         if prev_url:
             prompt += (
                 ' REFERENCE IMAGE 3 is the PREVIOUS photo of this same shoot: reproduce her exact body from image 3 — '
@@ -2831,6 +2921,9 @@ async def _run_spicy_set(
                 break
             raise PhotoGenerationError('spicyapi', 'empty_result')
         prev_url = frame_url
+        if guest_block:
+            # a joint photo keeps images 3–4 for the guest, so no frame chaining.
+            prev_url = None
         photo = GeneratedPhoto(data=data, provider='spicyapi', estimated_cost_usd=SPICYAPI_ESTIMATED_COST_USD)
         out.append(photo)
         frame_elapsed = time.monotonic() - frame_started

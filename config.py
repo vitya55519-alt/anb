@@ -58,6 +58,11 @@ COSPLAY_PHOTO_FREE_DAILY = max(0, int(os.getenv("COSPLAY_PHOTO_FREE_DAILY", "1")
 PRIVATE_PHOTO_PEACH_COST = max(1, int(os.getenv("PRIVATE_PHOTO_PEACH_COST", "2")))
 # V3.60.3: a photo asked for in the app chat (owner: «2 персика это фото»).
 CHAT_PHOTO_PEACH_COST = max(1, int(os.getenv("CHAT_PHOTO_PEACH_COST", "2")))
+# V3.61.5: chat photos free per day (all girls together) before peaches are spent.
+CHAT_FREE_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_FREE_PHOTOS_PER_DAY", "2")))
+# V3.61.7: «🔥 Раздеть» under a chat photo — free per day, then peaches.
+UNDRESS_FREE_PER_DAY = max(0, int(os.getenv("UNDRESS_FREE_PER_DAY", "1")))
+UNDRESS_PEACH_COST = max(1, int(os.getenv("UNDRESS_PEACH_COST", "3")))
 COSPLAY_PHOTO_PEACH_COST = max(1, int(os.getenv("COSPLAY_PHOTO_PEACH_COST", "2")))
 # Hot Pass — безлимитная подписка на фото «наедине» и «косплей»
 HOT_PASS_DAY_PEACHES = max(1, int(os.getenv("HOT_PASS_DAY_PEACHES", "5")))

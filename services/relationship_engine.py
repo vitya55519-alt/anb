@@ -657,6 +657,7 @@ def level_snapshot(session: Session, row: UserCharacterRelationship | None,
     snap = {
         "level": idx + 1, "max_level": len(STAGE_ORDER), "stage": stage,
         "title": STAGE_TITLES_RU.get(stage, stage), "bond": bond,
+        "relationship": round(row.relationship_score) if row is not None else 0,
         "passion": round(row.intimacy_score) if row is not None else 0,
         "trust": round(row.trust_score) if row is not None else 0,
         "messages": int(row.total_messages or 0) if row is not None else 0,
@@ -681,12 +682,25 @@ def level_snapshot(session: Session, row: UserCharacterRelationship | None,
         return 100 if need <= 0 else max(0, min(100, round(cur / need * 100)))
 
     snap["next_title"] = STAGE_TITLES_RU.get(nxt, nxt)
+    # V3.61.3: each bar is how much of THIS level's requirement is met (100% =
+    # «уже хватает»), not the score itself — the panel labels it that way and
+    # names the one thing still missing with a tip how to grow it.
+    tips = {
+        "rel": "тёплые слова, внимание и забота",
+        "trust": "рассказывай о себе, будь честным и заходи к ней каждый день",
+        "passion": "комплименты и флирт",
+        "talk": "просто больше разговаривайте",
+    }
     snap["bars"] = [
         {"key": "rel", "label": "❤️ Отношения", "pct": pct(eff_r, r_min)},
         {"key": "trust", "label": "🤝 Доверие", "pct": pct(eff_t, t_min)},
         {"key": "passion", "label": "🔥 Страсть", "pct": pct(eff_i, i_min)},
         {"key": "talk", "label": "💬 Общение", "pct": pct(fam, f_min)},
     ]
+    for bar in snap["bars"]:
+        bar["done"] = bar["pct"] >= 100
+        bar["tip"] = tips[bar["key"]]
+    snap["progress"] = round(sum(b["pct"] for b in snap["bars"]) / len(snap["bars"]))
     # Per-message gains from her recent history (fallback: typical values).
     g_r, g_t, g_i = 0.9, 0.7, 0.5
     if row is not None:
