@@ -15,6 +15,15 @@ from services.analytics_service import track_event
 _stage_change_notifier = None
 
 
+def _marital(telegram_id, character_id) -> str:
+    """V3.61.9: her status in this chat — levels 7-8 read differently when she is taken."""
+    try:
+        from services.chat_guest_service import guest_marital
+        return guest_marital(int(telegram_id), character_id)
+    except Exception:
+        return ''
+
+
 def set_stage_change_notifier(fn):
     global _stage_change_notifier
     _stage_change_notifier = fn
@@ -44,7 +53,7 @@ async def record_user_message(user_id, user_name, relationship=0, trust=0, intim
             relationship=relationship, trust=trust, intimacy=intimacy,
             event_type=event_type, reason=reason
         ))
-        context = build_relationship_context(row, get_milestones(s, row), character_id)
+        context = build_relationship_context(row, get_milestones(s, row), character_id, _marital(user_id, character_id))
         if reconnect_days:
             context += (
                 f' Пользователь вернулся после {reconnect_days} дней тишины: можно тепло и естественно отметить, '
@@ -71,4 +80,4 @@ async def get_context(user_id, character_id=CHARACTER_ID):
         if not user:
             return None
         row = get_state(s, user.id, character_id)
-        return build_relationship_context(row, get_milestones(s, row), character_id)
+        return build_relationship_context(row, get_milestones(s, row), character_id, _marital(user_id, character_id))

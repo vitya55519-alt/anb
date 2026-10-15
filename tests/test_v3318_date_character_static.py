@@ -71,7 +71,7 @@ def test_relationship_context_names_the_character():
     assert ".replace('Анна', _character_display_name(character_id))" in REL
     assert 'def _character_display_name(character_id: str) -> str:' in REL
     # service passes the selected character through at both call sites
-    assert RELSVC.count('build_relationship_context(row, get_milestones(s, row), character_id)') >= 2
+    assert RELSVC.count('build_relationship_context(row, get_milestones(s, row), character_id, _marital(user_id, character_id))') >= 2
 
 
 def test_chat_base_identity_prefers_custom_persona():

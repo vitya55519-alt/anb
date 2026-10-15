@@ -44,7 +44,26 @@ def test_level_up_scenes_for_seven_and_eight():
     src = (ROOT / 'main.py').read_text(encoding='utf-8')
     assert 'LEVEL_UP_SCENES = {' in src and "'soulmate': (" in src
     assert 'engagement ring' in src
-    assert 'premium=premium)' in src
+    assert 'premium=premium, taken=taken)' in src
     spa = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
     assert "id=\"lvlPremium\"" in spa or "id=\\\"lvlPremium\\\"" in spa or 'lvlPremium' in spa
     assert 'j.next_title && !j.premium_needed' in spa
+
+
+def test_taken_girl_gets_secret_romance_not_a_ring():
+    from services.relationship_engine import level_snapshot, build_relationship_context
+    snap = level_snapshot(None, _row('devoted'), premium=True, taken=True)
+    assert any('тайное место' in p for p in snap['next_perks'])
+    eight = build_relationship_context(_row('soulmate'), character_id='anna_01', marital='mar_married')
+    assert 'тайное место' in eight and 'живёте вместе' not in eight
+    src = (ROOT / 'main.py').read_text(encoding='utf-8')
+    assert 'LEVEL_UP_SCENES_TAKEN = {' in src and 'no ring on her fingers' in src
+    svc = (ROOT / 'services' / 'relationship_service.py').read_text(encoding='utf-8')
+    assert '_marital(user_id, character_id)' in svc
+
+
+def test_switching_to_free_on_7_8_is_a_scene():
+    src = (ROOT / 'main.py').read_text(encoding='utf-8')
+    assert 'async def _left_him_scene(' in src
+    assert "_eff_new in ('mar_single', 'mar_divorced')" in src
+    assert 'a small suitcase beside her' in src and "'left_him': bool(left_him)" in src

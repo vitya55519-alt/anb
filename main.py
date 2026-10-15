@@ -8892,6 +8892,25 @@ LEVEL_UP_SCENES = {
     ),
 }
 
+# She is married or has a boyfriend: a secret romance, never a ring from him.
+LEVEL_UP_SCENES_TAKEN = {
+    'devoted': (
+        'он уехал до вечера… а я проснулась и думаю только о тебе. '
+        'надела твою рубашку, которую ты у меня забыл 🤫 это наше утро',
+        PhotoRequest(scene='selfie', location='her bed in soft morning light, white sheets, the apartment quiet and empty',
+                     clothing="a man's oversized white button-up shirt, sleeves rolled up", mood='tender, secretive, in love',
+                     angle='she lies on the pillow and holds the phone above her face, her whole face in frame', customized=True),
+    ),
+    'soulmate': (
+        'я сняла кольцо. когда я с тобой — я только твоя. '
+        'у нас теперь есть своё место, только для нас двоих 🔑',
+        PhotoRequest(scene='selfie', location='a small cozy rented apartment in the evening, warm lamp light, a single key on the table',
+                     clothing='a soft elegant dress', accessory='she holds a small apartment key near her face, no ring on her fingers',
+                     mood='nervous, happy, in love',
+                     angle='selfie at arm\'s length, the key and her whole face in frame', customized=True),
+    ),
+}
+
 
 async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage: str, character_id: str):
     """Level-up ceremony: announce the new stage, list fresh unlocks and send a
@@ -8923,7 +8942,10 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
             text += '\n\nэто плато только для нас двоих — такое доступно лишь с Premium 💋'
         # V3.61.9: levels 7-8 get their own scene and photo instead of the
         # generic «небольшой подарок» selfie.
-        special = LEVEL_UP_SCENES.get(new_stage)
+        from services.chat_guest_service import guest_marital
+        from services.relationship_engine import TAKEN_STATUSES
+        taken = guest_marital(telegram_id, character_id) in TAKEN_STATUSES
+        special = (LEVEL_UP_SCENES_TAKEN if taken else LEVEL_UP_SCENES).get(new_stage)
         if special:
             text += '\n\n' + special[0]
         if unlocks:
@@ -11532,7 +11554,10 @@ async def _webapp_api_chat_level(request: web.Request) -> web.Response:
             user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
             row = get_state(session, user.id, character_id) if user else None
             premium = telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id)
-            return level_snapshot(session, row, get_test_stage(telegram_id), premium=premium)
+            from services.chat_guest_service import guest_marital
+            from services.relationship_engine import TAKEN_STATUSES
+            taken = guest_marital(telegram_id, character_id) in TAKEN_STATUSES
+            return level_snapshot(session, row, get_test_stage(telegram_id), premium=premium, taken=taken)
 
     try:
         snap = await asyncio.to_thread(_snap)
@@ -11564,6 +11589,8 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
     if not character_id or (status != 'default' and status not in RELATIONSHIP_STORY):
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
 
+    left_him: dict = {}
+
     def _save():
         if is_custom_character(character_id):
             if not get_custom_character_by_id(character_id):
@@ -11593,6 +11620,14 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
                 row = UserCharacterRelationship(user_id=uid, character_id=character_id, path_axis=0.0)
                 session.add(row)
             row.marital_status = new_value
+            # V3.61.9: on levels 7-8 «замужем → свободна» is a scene, not a
+            # silent flip: she left him for the user and arrives with a suitcase.
+            from services.relationship_engine import TAKEN_STATUSES, PREMIUM_STAGES
+            from services.test_mode import get_stage as _test_stage
+            _eff_new = new_value or webapp_service._default_marital(character_id, is_custom_character(character_id))
+            if current in TAKEN_STATUSES and _eff_new in ('mar_single', 'mar_divorced') \
+                    and (_test_stage(telegram_id) or row.stage) in PREMIUM_STAGES:
+                left_him['uid'] = uid
             # V3.59.7: the switch becomes part of her story — a memory she can
             # bring up once («я ушла от мужа…») instead of silently flipping.
             _labels = {'mar_single': 'свободна', 'mar_boyfriend': 'есть парень', 'mar_married': 'замужем',
@@ -11623,8 +11658,32 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
                                   'balance': get_photo_credits(telegram_id)}, status=402)
     if blocked:
         return web.json_response({'ok': False, 'error': blocked}, status=400 if blocked == 'unknown_character' else 403)
+    if left_him:
+        asyncio.create_task(_left_him_scene(telegram_id, character_id, left_him['uid']))
     return web.json_response({'ok': True, 'status': None if status == 'default' else status,
-                              'balance': get_photo_credits(telegram_id)})
+                              'balance': get_photo_credits(telegram_id), 'left_him': bool(left_him)})
+
+
+LEFT_HIM_TEXT = 'я ушла от него. совсем. собрала вещи и стою у твоей двери… можно к тебе? 🧳'
+LEFT_HIM_PHOTO = PhotoRequest(
+    scene='selfie', location='a doorway of an apartment building at night, warm light from the hall, a small suitcase beside her',
+    clothing='a light trench coat over a simple dress', accessory='no ring on her fingers',
+    mood='nervous, hopeful, a little teary, in love',
+    angle='selfie at arm\'s length, the suitcase and her whole face in frame', customized=True)
+
+
+async def _left_him_scene(telegram_id: int, character_id: str, uid: int) -> None:
+    """V3.61.9: she left her husband / boyfriend on levels 7-8 — her words
+    land in the chat at once, the suitcase photo follows when it renders."""
+    try:
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', LEFT_HIM_TEXT)
+        data, mime, ext = await _webapp_pipeline_photo(telegram_id, character_id, LEFT_HIM_PHOTO)
+        filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', '🧳',
+                                media_kind='photo', media_url=f'/webapp/media/{filename}')
+        track_event(uid, 'left_him_scene', metadata={'character_id': character_id})
+    except Exception:
+        logger.exception('left-him scene failed user=%s character=%s', telegram_id, character_id)
 
 
 async def _webapp_api_chat_persona(request: web.Request) -> web.Response:

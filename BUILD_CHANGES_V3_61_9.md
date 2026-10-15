@@ -3,3 +3,5 @@
 - Level panel: at levels 7–8 it lists what this level gives and how many days you are together; below it «На уровне N будет: …». A free user at level 6 sees «🔒 Уровень 7 открывается с Premium» with the perks and a «💎 Открыть с Premium» button instead of a bar that never fills.
 - Chat voice: level 7 — her pet name for him, «мы вместе N дней», first phrases recalled, good morning / good night herself. Level 8 — you live together: shared home, weekends, vacation, future plans.
 - Level-up scene: reaching 7 sends «наше утро» (her in his shirt in bed); reaching 8 sends the «я согласна 💍» scene with a ring photo. The ceremony text is also saved into her app chat.
+- Married / has a boyfriend: levels 7–8 are a secret romance instead — «пока его нет дома», a secret apartment, she takes her ring off (key photo), no proposal and no living together.
+- On levels 7–8, switching her status from married / boyfriend to free / divorced plays a scene: «я ушла от него… можно к тебе? 🧳» plus a photo with a suitcase at the door.

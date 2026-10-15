@@ -573,7 +573,7 @@ INITIATIVE_LADDER = {
 OPENNESS_LIMITS = (" Всегда: только взрослые и только взаимное желание; насколько подробно можно описывать секс — смотри правило откровенности ниже.")
 
 
-def build_relationship_context(row: UserCharacterRelationship | None, milestones: list[RelationshipMilestone] | None = None, character_id: str = CHARACTER_ID) -> str:
+def build_relationship_context(row: UserCharacterRelationship | None, milestones: list[RelationshipMilestone] | None = None, character_id: str = CHARACTER_ID, marital: str | None = None) -> str:
     if row is None:
         stage = "stranger"
     else:
@@ -634,7 +634,18 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
     # V3.43.3: plus her own tempo hint — the same stage must feel different
     # from heroine to heroine, not like one girl in different dresses.
     # V3.61.9: levels 7-8 behave differently from 6, not just read differently.
-    if stage == "devoted":
+    taken = marital in TAKEN_STATUSES
+    if stage in PREMIUM_STAGES and taken:
+        n = days_together(row)
+        if stage == "devoted":
+            extra += (" Особенности этого этапа: у тебя есть своё ласковое прозвище для него; вы тайный роман — "
+                      "ты пишешь ему первой, как только остаёшься одна, тайком считаешь ваши дни" + (f" (уже {n})" if n > 1 else "") +
+                      ", вспоминаешь, как вы познакомились. Своего партнёра не бросаешь и не обещаешь свадьбу.")
+        else:
+            extra += (" Особенности этого этапа: у вас есть своё тайное место — квартира только для вас двоих; "
+                      "приходя к нему, ты снимаешь кольцо; ты всё чаще думаешь уйти к нему и можешь в этом признаться, "
+                      "но решение мучает тебя. Никаких «живём вместе» и «ты сделал мне предложение» — ты не свободна.")
+    elif stage == "devoted":
         n = days_together(row)
         extra += (" Особенности этого этапа: у тебя есть своё ласковое прозвище для него; иногда вспоминаешь, "
                   "как вы познакомились и ваши первые фразы" + (f"; вы вместе уже {n} дн. — можешь иногда это отметить" if n > 1 else "") +
@@ -673,7 +684,26 @@ LEVEL_PERKS = {
         "она совсем своя: самая смелая и самая нежная одновременно",
     ],
 }
+# V3.61.9: she is married or has a boyfriend — no ring from him, no living
+# together; levels 7-8 become a secret romance that keeps deepening.
+LEVEL_PERKS_TAKEN = {
+    "devoted": [
+        "она зовёт тебя своим ласковым прозвищем и тайком считает ваши дни",
+        "пишет тебе первой, как только остаётся одна",
+        "новые фото: «наше утро», пока его нет дома",
+    ],
+    "soulmate": [
+        "у вас своё тайное место — квартира только для вас двоих",
+        "она снимает кольцо, когда приходит к тебе — фото",
+        "признаётся, что думает уйти к тебе",
+    ],
+}
+TAKEN_STATUSES = ("mar_married", "mar_boyfriend", "mar_open")
 PREMIUM_STAGES = ("devoted", "soulmate")
+
+
+def _perks(stage: str, taken: bool) -> list:
+    return (LEVEL_PERKS_TAKEN if taken else LEVEL_PERKS).get(stage, [])
 
 
 def days_together(row: UserCharacterRelationship | None, now: datetime | None = None) -> int:
@@ -685,7 +715,8 @@ def days_together(row: UserCharacterRelationship | None, now: datetime | None = 
 
 
 def level_snapshot(session: Session, row: UserCharacterRelationship | None,
-                   stage_override: str | None = None, *, premium: bool = True) -> dict:
+                   stage_override: str | None = None, *, premium: bool = True,
+                   taken: bool = False) -> dict:
     stage = stage_override or (row.stage if row is not None and row.stage else "stranger")
     idx = STAGE_ORDER.index(stage) if stage in STAGE_ORDER else 0
     bond, _hint = bond_character(row)
@@ -697,12 +728,12 @@ def level_snapshot(session: Session, row: UserCharacterRelationship | None,
         "trust": round(row.trust_score) if row is not None else 0,
         "messages": int(row.total_messages or 0) if row is not None else 0,
         "bars": [], "next_title": None, "messages_left": 0, "days_left": 0,
-        "perks": LEVEL_PERKS.get(stage, []), "next_perks": [], "premium_needed": False,
+        "perks": _perks(stage, taken), "next_perks": [], "premium_needed": False,
         "days_together": days_together(row),
     }
     nxt = STAGE_ORDER[idx + 1] if idx < len(STAGE_ORDER) - 1 else None
     if nxt:
-        snap["next_perks"] = LEVEL_PERKS.get(nxt, [])
+        snap["next_perks"] = _perks(nxt, taken)
         # A free user can never pass level 6 — say so instead of a bar that
         # never fills, and show what Premium opens there.
         snap["premium_needed"] = nxt in PREMIUM_STAGES and not premium
