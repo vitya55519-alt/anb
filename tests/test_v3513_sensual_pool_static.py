@@ -76,7 +76,7 @@ def test_media_hot_wires_pool_reuse():
     # the reuse check runs AFTER the exact cache miss and BEFORE provider generation
     assert 'pool_get(character_id, cat_id, req.type_id)' in hot
     assert hot.index('cached = cache_get(prompt, character_id)') < hot.index('pool_get(character_id, cat_id')
-    assert hot.index('pool_get(character_id, cat_id') < hot.index('image_bytes = await generate_private_photo_t2i(prompt)')
+    assert hot.index('pool_get(character_id, cat_id') < hot.index('image_bytes = await generate_private_photo_nude(req, prompt)')
     # a pooled shot is saved into the user's gallery and still charged like any send
     pool_block = hot[hot.index('pool_get(character_id, cat_id'):hot.index('# Generate: adult')]
     assert 'gallery_save(telegram_id, character_id, cat_id, req.type_id, pooled)' in pool_block
