@@ -5138,7 +5138,21 @@ async function _shareAny(payload) {
   return _fallbackShare();
 }
 // Share the watermarked export of one gallery photo (image + invite link).
-async function sharePhotoImage(shareUrl) {
+// V3.61.4: Telegram's own share picker sends the friend the PHOTO itself
+// (a prepared message with a button into the bot). Old clients without
+// shareMessage get the photo in their own chat to forward — never a bare link.
+async function sharePhotoImage(shareUrl, imageId) {
+  if (imageId && typeof tg.shareMessage === 'function' && (!tg.isVersionAtLeast || tg.isVersionAtLeast('8.0'))) {
+    try {
+      const r = await fetch('/webapp/api/gallery/prepare-share?init_data=' + encodeURIComponent(tg.initData || ''), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_id: imageId }),
+      });
+      const j = await r.json();
+      if (j && j.ok && j.id) { tg.shareMessage(j.id); return; }
+    } catch (e) { /* fall through */ }
+  }
+  if (imageId) { savePhotoToChat(imageId); return; }
   if (!shareUrl) { _fallbackShare(); return; }
   try {
     const r = await fetch(shareUrl + '?init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store' });
@@ -5188,14 +5202,14 @@ function openGallery() {
         + `<div class="galgrid">` + items.map(it =>
             `<div class="galcell">`
             + `<img loading="lazy" data-lb="1" src="${esc(it.url)}?init_data=${encodeURIComponent(tg.initData || '')}" alt="">`
-            + `<button type="button" class="galshare" data-share="${esc(it.share_url || '')}">${esc(L.share_img)}</button>`
+            + `<button type="button" class="galshare" data-share="${esc(it.share_url || '')}" data-id="${esc(it.id)}">${esc(L.share_img)}</button>`
             + `<button type="button" class="galsave" data-id="${esc(it.id)}">${esc(L.save_img)}</button>`
             + `</div>`).join('')
           + `</div>`;
       const gi = document.getElementById('galInvite');
       if (gi) gi.addEventListener('click', inviteFriends);
       body.querySelectorAll('.galshare').forEach(b =>
-        b.addEventListener('click', (ev) => { ev.stopPropagation(); sharePhotoImage(b.dataset.share); }));
+        b.addEventListener('click', (ev) => { ev.stopPropagation(); sharePhotoImage(b.dataset.share, b.dataset.id); }));
       body.querySelectorAll('.galsave').forEach(b =>
         b.addEventListener('click', (ev) => { ev.stopPropagation(); savePhotoToChat(b.dataset.id); }));
     })

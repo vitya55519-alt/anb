@@ -72,7 +72,7 @@ def test_watermark_and_share_route():
 
 # ── Mini App surface (share button, referral CTA, invite link) ─────────────
 def test_webapp_share_and_cta():
-    assert "function sharePhotoImage(shareUrl) {" in INDEX
+    assert "function sharePhotoImage(shareUrl, imageId) {" in INDEX
     assert "async function inviteFriends() {" in INDEX
     assert "me['invite'] = share_link(_me_bot.username or 'bot', telegram_id)" in MAIN
     assert "data['invite'] = share_link(me.username or 'bot', telegram_id)" in MAIN

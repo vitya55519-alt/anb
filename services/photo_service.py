@@ -452,6 +452,20 @@ PASSION_PUBLIC_POSE_POOL = [
     'one hand pulling the strap of her top off her shoulder, teasing look — natural slender female hands with five correct fingers each; her face stays clearly visible, exactly the same face as reference image 1',
 ]
 
+# V3.61.4: the tenderness path's mirror of the passion poses — soft, cozy,
+# romantic photos for users who want care and romance, not heat.
+_HANDS_FACE = ('natural slender female hands with five correct fingers each; her face stays clearly visible, '
+               'exactly the same face as reference image 1')
+TENDER_POSE_POOL = [
+    f'curled up under a soft blanket with a mug in both hands, warm gentle smile, cozy golden light — {_HANDS_FACE}',
+    f'wearing an oversized boyfriend shirt, sleeves over her hands, shy happy smile — {_HANDS_FACE}',
+    f'hugging a pillow on a sunlit morning bed, sleepy tender look into the camera — {_HANDS_FACE}',
+    f'chin resting on her hand, dreamy soft gaze, warm window light — {_HANDS_FACE}',
+    f'tucking a strand of hair behind her ear, blushing smile, romantic soft focus — {_HANDS_FACE}',
+    f'holding a bouquet of flowers close to her face, gentle laugh — {_HANDS_FACE}',
+    f'wrapped in a cozy knit cardigan by the window with fairy lights behind her, calm loving smile — {_HANDS_FACE}',
+]
+
 MAKEUP_POOL = [
     'fresh everyday makeup with soft nude lips',
     'natural glow makeup with peachy blush',
@@ -1764,6 +1778,17 @@ def _path_is_passion(telegram_id: int, character_id: str) -> bool:
         return False
 
 
+TENDER_PATH_THRESHOLD = -20.0  # mirror of PASSION_PATH_THRESHOLD
+
+
+def _path_is_tender(telegram_id: int, character_id: str) -> bool:
+    try:
+        from services.relationship_engine import get_path_axis
+        return get_path_axis(ensure_user(telegram_id), character_id) <= TENDER_PATH_THRESHOLD
+    except Exception:
+        return False
+
+
 def _persona_style_is_tender(telegram_id: int, character_id: str) -> bool:
     # V3.55.6: the «tender» manner chosen in the premium character's app chat
     # softens the photo expression pool too. Fail-silent: any doubt -> False.
@@ -1976,9 +2001,12 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     # V3.59.3: a user on the «passion» path (story choices pushed the axis to
     # the bold side) gets the hot faces — and flirtier poses — in EVERY scene.
     passion = _path_is_passion(telegram_id, character_id)
+    # V3.61.4: the tenderness path (axis −20 and below) gets soft faces and
+    # cozy romantic poses in every public scene — the mirror of passion.
+    tender = not passion and _path_is_tender(telegram_id, character_id)
     expression_rotation = tuple(request.expression_rotation) or (
         () if request.expression_key else (
-            shuffled_variety_keys() if _persona_style_is_tender(telegram_id, character_id)
+            shuffled_variety_keys() if _persona_style_is_tender(telegram_id, character_id) or tender
             else shuffled_private_sensual_keys() if (request.scene in {'personal', 'lingerie', 'private_fashion', 'tease'} or passion)
             else shuffled_sensual_variety_keys()
         )
@@ -1987,6 +2015,8 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     poses = list(PRIVATE_POSE_POOL if request.scene in {'personal', 'lingerie', 'private_fashion', 'tease'} else POSE_POOL)
     if passion and request.scene not in {'personal', 'lingerie', 'private_fashion', 'tease'}:
         poses = list(PASSION_PUBLIC_POSE_POOL)
+    elif tender and request.scene not in {'personal', 'lingerie', 'private_fashion', 'tease'}:
+        poses = list(TENDER_POSE_POOL)
     random.shuffle(poses)
     pose_rotation = tuple(request.pose_rotation) or tuple(poses)
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season,
