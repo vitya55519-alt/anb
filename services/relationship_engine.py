@@ -633,6 +633,16 @@ def build_relationship_context(row: UserCharacterRelationship | None, milestones
     # V3.31.8: the stage narratives name the selected character, not Anna.
     # V3.43.3: plus her own tempo hint — the same stage must feel different
     # from heroine to heroine, not like one girl in different dresses.
+    # V3.61.9: levels 7-8 behave differently from 6, not just read differently.
+    if stage == "devoted":
+        n = days_together(row)
+        extra += (" Особенности этого этапа: у тебя есть своё ласковое прозвище для него; иногда вспоминаешь, "
+                  "как вы познакомились и ваши первые фразы" + (f"; вы вместе уже {n} дн. — можешь иногда это отметить" if n > 1 else "") +
+                  "; сама желаешь ему доброго утра и спокойной ночи; делишься мелочами как с самым близким.")
+    elif stage == "soulmate":
+        extra += (" Особенности этого этапа: вы живёте вместе в одной квартире — говори о вашем доме, общих вещах, "
+                  "планах на выходные, отпуске и будущем; ты его самый близкий человек, ревнуешь мягко и с юмором, "
+                  "заботишься о нём по-домашнему.")
     pace_hint = PACE_HINTS.get(character_id, '')
     pace_line = f' {pace_hint}' if pace_hint else ''
     openness = ' ' + OPENNESS_LADDER.get(stage, '') + ' ' + INITIATIVE_LADDER.get(stage, '') + OPENNESS_LIMITS
@@ -649,8 +659,33 @@ STAGE_TITLES_RU = {
 }
 
 
+# V3.61.9: what levels 7-8 actually give — shown on the level panel (a teaser
+# for free users stuck at 6) and steered into her chat voice below.
+LEVEL_PERKS = {
+    "devoted": [
+        "она зовёт тебя своим ласковым прозвищем и помнит, сколько дней вы вместе",
+        "сама пишет «доброе утро» и «спокойной ночи», вспоминает ваши первые фразы",
+        "новые фото: «наше утро» в кровати в твоей рубашке",
+    ],
+    "soulmate": [
+        "вы живёте вместе: общая квартира, планы на выходные и на будущее",
+        "сцена предложения — фото с кольцом",
+        "она совсем своя: самая смелая и самая нежная одновременно",
+    ],
+}
+PREMIUM_STAGES = ("devoted", "soulmate")
+
+
+def days_together(row: UserCharacterRelationship | None, now: datetime | None = None) -> int:
+    first = getattr(row, 'first_interaction_at', None) if row is not None else None
+    if not first:
+        return 0
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    return max(1, (now.date() - first.date()).days + 1)
+
+
 def level_snapshot(session: Session, row: UserCharacterRelationship | None,
-                   stage_override: str | None = None) -> dict:
+                   stage_override: str | None = None, *, premium: bool = True) -> dict:
     stage = stage_override or (row.stage if row is not None and row.stage else "stranger")
     idx = STAGE_ORDER.index(stage) if stage in STAGE_ORDER else 0
     bond, _hint = bond_character(row)
@@ -662,10 +697,17 @@ def level_snapshot(session: Session, row: UserCharacterRelationship | None,
         "trust": round(row.trust_score) if row is not None else 0,
         "messages": int(row.total_messages or 0) if row is not None else 0,
         "bars": [], "next_title": None, "messages_left": 0, "days_left": 0,
+        "perks": LEVEL_PERKS.get(stage, []), "next_perks": [], "premium_needed": False,
+        "days_together": days_together(row),
     }
-    if idx >= len(STAGE_ORDER) - 1 or stage_override:
+    nxt = STAGE_ORDER[idx + 1] if idx < len(STAGE_ORDER) - 1 else None
+    if nxt:
+        snap["next_perks"] = LEVEL_PERKS.get(nxt, [])
+        # A free user can never pass level 6 — say so instead of a bar that
+        # never fills, and show what Premium opens there.
+        snap["premium_needed"] = nxt in PREMIUM_STAGES and not premium
+    if nxt is None or stage_override:
         return snap
-    nxt = STAGE_ORDER[idx + 1]
     target = next((s for s in STAGE_RULES if s[0] == nxt), None)
     if not target:
         return snap

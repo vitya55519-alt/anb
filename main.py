@@ -8872,6 +8872,27 @@ async def _notify_quest_unlocks(chat_id: int, telegram_id: int, before_level: in
         track_event(ensure_user(telegram_id), 'quest_unlocked', metadata={'quest': item['key'], 'level': after_level})
 
 
+# V3.61.9: level 7 «Родственные души» and 8 «Одно целое» — her own words
+# and a photo that belongs to that moment.
+LEVEL_UP_SCENES = {
+    'devoted': (
+        'знаешь… я проснулась сегодня и первым делом подумала о тебе. '
+        'надела твою рубашку — пусть будет наше утро 🤍',
+        PhotoRequest(scene='selfie', location='her bed in soft morning light, white sheets, two coffee cups on the nightstand',
+                     clothing="his oversized white button-up shirt, sleeves rolled up", mood='tender, sleepy, in love',
+                     angle='she lies on the pillow and holds the phone above her face, her whole face in frame', customized=True),
+    ),
+    'soulmate': (
+        'я тут подумала… а давай уже не «ты у себя, я у себя»? '
+        'наш дом, наши выходные, наше всё. и да — я согласна 💍',
+        PhotoRequest(scene='selfie', location='a cozy shared apartment at golden hour, warm light, flowers on the table',
+                     clothing='a soft elegant dress', accessory='a delicate engagement ring on her ring finger, clearly visible',
+                     mood='happy tears, glowing, in love',
+                     angle='she holds her hand with the ring near her face, both the ring and her whole face in frame', customized=True),
+    ),
+}
+
+
 async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage: str, character_id: str):
     """Level-up ceremony: announce the new stage, list fresh unlocks and send a
     small celebration set. Registered as the relationship notifier, so it fires
@@ -8900,12 +8921,25 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
                 text += f'\n\nи да… теперь я буду звать тебя «{pet}» 😊'
         if level >= 7:
             text += '\n\nэто плато только для нас двоих — такое доступно лишь с Premium 💋'
+        # V3.61.9: levels 7-8 get their own scene and photo instead of the
+        # generic «небольшой подарок» selfie.
+        special = LEVEL_UP_SCENES.get(new_stage)
+        if special:
+            text += '\n\n' + special[0]
         if unlocks:
             text += '\n\nТеперь доступно:\n' + '\n'.join('• ' + u for u in unlocks)
-        text += '\n\nи небольшой подарок от меня 🤍'
+        if not special:
+            text += '\n\nи небольшой подарок от меня 🤍'
         await bot.send_message(telegram_id, text)
+        try:
+            save_message(ensure_user(telegram_id), character_id, 'assistant', text)
+        except Exception:
+            pass
         track_event(ensure_user(telegram_id), 'relationship_ceremony_sent', metadata={'level': level}, character_id=character_id)
-        await _start_photo_background(telegram_id, telegram_id, PhotoRequest(scene='selfie', mood='romantic'), 'story')
+        if special:
+            await _start_photo_background(telegram_id, telegram_id, special[1], 'story')
+        else:
+            await _start_photo_background(telegram_id, telegram_id, PhotoRequest(scene='selfie', mood='romantic'), 'story')
     except Exception as exc:
         logger.warning('level-up ceremony failed user=%s error=%s', telegram_id, type(exc).__name__)
 
@@ -11497,7 +11531,8 @@ async def _webapp_api_chat_level(request: web.Request) -> web.Response:
         with SessionLocal() as session:
             user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
             row = get_state(session, user.id, character_id) if user else None
-            return level_snapshot(session, row, get_test_stage(telegram_id))
+            premium = telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id)
+            return level_snapshot(session, row, get_test_stage(telegram_id), premium=premium)
 
     try:
         snap = await asyncio.to_thread(_snap)
