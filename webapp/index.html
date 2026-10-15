@@ -1322,13 +1322,21 @@ const L_EN = {
   // V3.43.7: the scene picker behind the app-chat photo button.
   photo_menu_title: '📸 Which photo?',
   sc_locked: n => 'opens at level ' + n,
-  scg_everyday: 'Everyday', scg_fashion: 'Fashion', scg_evening: 'Evening out', scg_private: 'Private',
+  scg_everyday: 'Her day', scg_fashion: 'Her looks', scg_evening: 'Evening out', scg_private: 'Private 18+',
   sc_selfie: '📸 Selfie', sc_home: '🏠 At home', sc_park: '🌿 Park', sc_cafe: '☕ Cafe',
   sc_street: '🌆 Street', sc_mirror: '🪞 Mirror selfie', sc_outfit: '👗 Today’s outfit', sc_shop: '🛍 Shopping',
   sc_car: '🚗 In the car', sc_gym: '🏋️ Gym', sc_restaurant: '🍽 Restaurant', sc_cinema: '🎬 Cinema',
   sc_embankment: '🌊 Embankment', sc_fashion: '💎 Fashion', sc_evening: '✨ Evening look',
   sc_bar: '🍸 Bar', sc_karaoke: '🎤 Karaoke', sc_rooftop: '🌃 Rooftop', sc_club: '💃 Club',
-  sc_personal: '💌 Personal photo', sc_lingerie: '🖤 Private fashion', sc_private_fashion: '🔐 Premium private',
+  sc_personal: '💌 Just for you', sc_lingerie: '🖤 In lace lingerie', sc_private_fashion: '🔐 Boudoir',
+  sch_selfie: 'she takes a photo of herself right now', sch_home: 'cozy at home', sch_park: 'a walk among the trees',
+  sch_cafe: 'coffee and dessert at a table', sch_street: 'street style in the city', sch_shop: 'trying on something new',
+  sch_car: 'a selfie behind the wheel', sch_gym: 'a gym mirror selfie', sch_cinema: 'popcorn before the movie',
+  sch_embankment: 'by the water at sunset', sch_mirror: 'full length in the mirror', sch_outfit: 'what she wears today',
+  sch_fashion: 'a studio model shoot', sch_restaurant: 'candlelit dinner', sch_evening: 'dressed up for the evening',
+  sch_bar: 'a cocktail at the bar', sch_karaoke: 'singing under neon', sch_rooftop: 'city lights behind her',
+  sch_club: 'on the dance floor', sch_personal: 'lace and candles, only for you', sch_lingerie: 'bold lingerie boudoir',
+  sch_private_fashion: 'a sheer kimono, warm light',
   adult_confirm_needed: 'Confirm 18+ in the bot chat first',
 };
 
@@ -1488,13 +1496,22 @@ const L_RU = {
   // V3.43.7: выбор сцены за кнопкой «📸 Фото» в чате приложения.
   photo_menu_title: '📸 Какое фото?',
   sc_locked: n => 'откроется на уровне ' + n,
-  scg_everyday: 'Повседневные', scg_fashion: 'Мода', scg_evening: 'Вечер', scg_private: 'Приват',
-  sc_selfie: '📸 Селфи', sc_home: '🏠 Дома', sc_park: '🌿 Парк', sc_cafe: '☕ Кафе',
-  sc_street: '🌆 Улица', sc_mirror: '🪞 Зеркало', sc_outfit: '👗 Образ', sc_shop: '🛍 Магазин',
-  sc_car: '🚗 В машине', sc_gym: '🏋️ Зал', sc_restaurant: '🍽 Ресторан', sc_cinema: '🎬 Кино',
-  sc_embankment: '🌊 Набережная', sc_fashion: '💎 Fashion', sc_evening: '✨ Вечер',
-  sc_bar: '🍸 Бар', sc_karaoke: '🎤 Караоке', sc_rooftop: '🌃 Крыша', sc_club: '💃 Клуб',
-  sc_personal: '💌 Личное фото', sc_lingerie: '🖤 Приватный fashion', sc_private_fashion: '🔐 Premium private',
+  scg_everyday: 'Её день', scg_fashion: 'Её образы', scg_evening: 'Вечер и выход', scg_private: 'Приват 18+',
+  sc_selfie: '📸 Селфи', sc_home: '🏠 Дома', sc_park: '🌿 Прогулка в парке', sc_cafe: '☕ В кафе',
+  sc_street: '🌆 На улице', sc_mirror: '🪞 В зеркале', sc_outfit: '👗 Мой наряд сегодня', sc_shop: '🛍 На шопинге',
+  sc_car: '🚗 В машине', sc_gym: '🏋️ В спортзале', sc_restaurant: '🍽 Ужин в ресторане', sc_cinema: '🎬 В кино',
+  sc_embankment: '🌊 Закат у реки', sc_fashion: '💎 Фотосессия', sc_evening: '✨ Вечернее платье',
+  sc_bar: '🍸 В баре', sc_karaoke: '🎤 Караоке', sc_rooftop: '🌃 На крыше ночью', sc_club: '💃 В клубе',
+  sc_personal: '💌 Только для тебя', sc_lingerie: '🖤 В кружевном белье', sc_private_fashion: '🔐 Будуар',
+  // V3.61.6: one line under each scene so it is clear what she will send.
+  sch_selfie: 'она фоткает себя прямо сейчас', sch_home: 'уютно дома, в домашнем', sch_park: 'гуляет среди деревьев',
+  sch_cafe: 'за столиком с кофе и десертом', sch_street: 'идёт по городу, стрит-стайл', sch_shop: 'примеряет новое в бутике',
+  sch_car: 'селфи за рулём', sch_gym: 'селфи в зеркале зала, в спортивном', sch_cinema: 'с попкорном перед фильмом',
+  sch_embankment: 'у воды на закате', sch_mirror: 'в полный рост перед зеркалом', sch_outfit: 'показывает, в чём идёт сегодня',
+  sch_fashion: 'как у модели, в студии', sch_restaurant: 'при свечах, нарядная', sch_evening: 'собралась на вечер',
+  sch_bar: 'с коктейлем у барной стойки', sch_karaoke: 'поёт под неон', sch_rooftop: 'огни города за спиной',
+  sch_club: 'на танцполе, вечеринка', sch_personal: 'кружево и свечи, только тебе', sch_lingerie: 'дерзкий будуар в белье',
+  sch_private_fashion: 'полупрозрачное кимоно, тёплый свет',
   adult_confirm_needed: 'Сначала подтверди 18+ в чате бота',
 };
 
@@ -2403,6 +2420,7 @@ async function loadChatHistory(characterId) {
     if (r.status === 401) { toast(L.auth_short); return; }
     const j = await r.json();
     if (CHAT && CHAT.id === characterId) CHAT.duo = j.duo || null;
+    prefetchPhotoMenu(characterId);
     if (CHAT && CHAT.id === characterId) { CHAT.guest = j.guest || null; renderGuest(characterId, j.guest || null, j.can_invite !== false); }
     const box = document.getElementById('chatMsgs');
     if (!j.ok) { box.innerHTML = `<div class="chat-empty">${esc(L.reply_err)}</div>`; return; }
@@ -2887,7 +2905,7 @@ function renderPhotoScenes(j) {
     g.scenes.forEach(id => {
       const it = byId[id];
       if (!it) return;
-      const sub = it.locked ? String(L.sc_locked(it.min_level)) : '';
+      const sub = it.locked ? String(L.sc_locked(it.min_level)) : (typeof L['sch_' + id] === 'string' ? L['sch_' + id] : '');
       html += '<div class="featitem' + (it.locked ? ' locked' : '') + '" data-scene="' + esc(id) +
         '" data-locked="' + (it.locked ? '1' : '0') + '" data-hint="' + esc(sub) + '">' +
         '<div class="fet"><div class="fen">' + esc(typeof L['sc_' + id] === 'string' ? L['sc_' + id] : id) + '</div>' +
@@ -3032,6 +3050,11 @@ async function openFeature(kind) {
   document.getElementById('featBody').innerHTML = '<div class="loading">' + esc(L.loading) + '</div>';
   document.getElementById('featTitle').textContent = '';
   document.getElementById('featview').classList.add('open');
+  if (kind === 'photo' && PHOTO_MENU_CACHE[CHAT.id]) {
+    // show the cached list at once; the fetch below refreshes the level locks
+    document.getElementById('featTitle').textContent = L.photo_menu_title;
+    renderFeature(PHOTO_MENU_CACHE[CHAT.id]);
+  }
   const url = '/webapp/api/feature?init_data=' + encodeURIComponent(tg.initData) +
     '&kind=' + encodeURIComponent(kind) + '&character_id=' + encodeURIComponent(CHAT.id);
   const fail = () => { document.getElementById('featBody').innerHTML = '<div class="chat-empty">' + esc(L.reply_err) + '</div>'; };
@@ -3047,10 +3070,21 @@ async function openFeature(kind) {
     } catch (e) { /* transient — retry below */ }
     if (attempt === 0) await new Promise(res => setTimeout(res, 450));
   }
+  if (!j && kind === 'photo' && CHAT && PHOTO_MENU_CACHE[CHAT.id]) return;  // keep the cached list
   if (!j) { fail(); return; }
   if (kind === 'hot') _hotData = j;
+  if (kind === 'photo' && CHAT) PHOTO_MENU_CACHE[CHAT.id] = j;
   document.getElementById('featTitle').textContent = (kind === 'photo') ? L.photo_menu_title : (j.title || '');
   renderFeature(j);
+}
+
+// V3.61.6: «вкладка фото грузится медленно» — the scene list is fetched in the
+// background as soon as a chat opens, so the «📸 Фото» sheet shows instantly.
+const PHOTO_MENU_CACHE = {};
+function prefetchPhotoMenu(characterId) {
+  if (!tg.initData || PHOTO_MENU_CACHE[characterId]) return;
+  fetch('/webapp/api/feature?init_data=' + encodeURIComponent(tg.initData) + '&kind=photo&character_id=' + encodeURIComponent(characterId))
+    .then(r => r.json()).then(j => { if (j && j.ok) PHOTO_MENU_CACHE[characterId] = j; }).catch(() => {});
 }
 
 // V3.58.1: one feature action at a time — a second tap while the first is

@@ -5,7 +5,7 @@ main = (ROOT / "main.py").read_text(encoding="utf-8")
 photo = (ROOT / "services" / "photo_service.py").read_text(encoding="utf-8")
 config = (ROOT / "config.py").read_text(encoding="utf-8")
 
-assert "'gym': '🏋️ Зал'" in main
+assert "'gym': '🏋️ В спортзале'" in main
 assert "'gym': 2" in photo
 assert "'gym':'gym'" in photo
 assert "omni-moderation-latest" in config
