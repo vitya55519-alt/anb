@@ -10077,6 +10077,73 @@ async def _webapp_gallery_share(request: web.Request) -> web.Response:
                         headers={'Cache-Control': 'private, no-store'})
 
 
+def _share_sig(telegram_id: int, image_id: int) -> str:
+    """V3.61.4: a stable signature for the public share-image URL — Telegram
+    itself fetches the photo when the friend's chat receives it."""
+    import hashlib
+    import hmac
+    from config import TELEGRAM_TOKEN
+    msg = f'share:{int(telegram_id)}:{int(image_id)}'.encode()
+    return hmac.new(TELEGRAM_TOKEN.encode(), msg, hashlib.sha256).hexdigest()[:20]
+
+
+async def _webapp_shared_image(request: web.Request) -> web.Response:
+    """V3.61.4: the watermarked export behind a signed public URL (no init_data:
+    Telegram's servers download it for the shared message)."""
+    try:
+        telegram_id = int(request.match_info['uid'])
+        image_id = int(request.match_info['image_id'])
+    except (TypeError, ValueError):
+        return web.Response(status=404)
+    import hmac
+    if not hmac.compare_digest(request.match_info.get('sig', ''), _share_sig(telegram_id, image_id)):
+        return web.Response(status=404)
+    data = await asyncio.to_thread(webapp_service.share_image_bytes, telegram_id, image_id)
+    if not data:
+        return web.Response(status=404)
+    return web.Response(body=data, content_type='image/jpeg', headers={'Cache-Control': 'public, max-age=86400'})
+
+
+async def _webapp_api_gallery_prepare_share(request: web.Request) -> web.Response:
+    """V3.61.4: «Поделиться» used to send the friend a bare invite link. Now the
+    bot prepares a real photo message (photo + «хочешь так же?» + a button into
+    the bot) and the app hands it to Telegram's own share picker
+    (WebApp.shareMessage), so the friend sees the picture itself."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    try:
+        body = await request.json()
+        image_id = int(body.get('image_id'))
+    except Exception:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    data = await asyncio.to_thread(webapp_service.share_image_bytes, int(telegram_id), image_id)
+    if not data or not PUBLIC_BASE_URL:
+        return web.json_response({'ok': False, 'error': 'not_found'}, status=404)
+    try:
+        import uuid
+        me = await bot.get_me()
+        link = share_link(me.username or 'bot', int(telegram_id))
+        url = f'{PUBLIC_BASE_URL}/webapp/shared/{int(telegram_id)}/{image_id}/{_share_sig(int(telegram_id), image_id)}.jpg'
+        result = types.InlineQueryResultPhoto(
+            id=uuid.uuid4().hex[:32], photo_url=url, thumbnail_url=url,
+            caption='\u2764\ufe0f хочешь так же? начни здесь 👇',
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+                types.InlineKeyboardButton(text='💬 Написать ей', url=link)]]),
+        )
+        prepared = await bot.save_prepared_inline_message(
+            user_id=int(telegram_id), result=result,
+            allow_user_chats=True, allow_group_chats=True, allow_channel_chats=True, allow_bot_chats=False,
+        )
+    except Exception:
+        logger.exception('prepare share failed user=%s image=%s', telegram_id, image_id)
+        return web.json_response({'ok': False, 'error': 'prepare_failed'}, status=502)
+    return web.json_response({'ok': True, 'id': prepared.id})
+
+
 async def _webapp_gallery_image(request: web.Request) -> web.Response:
     """V3.45.27: serve one private-gallery photo to its owner only."""
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
@@ -13012,6 +13079,8 @@ async def _start_web_server() -> None:
     # V3.47.1: achievement art (Mini App board) + reliable photo share-to-chat.
     app.router.add_get('/webapp/badge/{key}', _webapp_badge)
     app.router.add_post('/webapp/api/gallery/save', _webapp_gallery_save)
+    app.router.add_post('/webapp/api/gallery/prepare-share', _webapp_api_gallery_prepare_share)
+    app.router.add_get('/webapp/shared/{uid}/{image_id}/{sig}.jpg', _webapp_shared_image)
     # V3.44.0: popularity leaderboard
     app.router.add_get('/webapp/api/leaderboard', _webapp_api_leaderboard)
     # V3.44.0: public comments under character cards.
