@@ -12400,12 +12400,29 @@ UNDRESS_REVEAL = (
 )
 
 
-def _undress_prompt(telegram_id: int, character_id: str) -> tuple[str, bool]:
+def _undress_premium_free(telegram_id: int, character_id: str) -> int:
+    """V3.61.12: Premium's free «Раздеть» a day grows with her level:
+    1 on levels 1-2, 2 on levels 3-6, 3 on levels 7-8."""
+    from config import UNDRESS_PREMIUM_FREE_L1_2, UNDRESS_PREMIUM_FREE_L3_6, UNDRESS_PREMIUM_FREE_L7_8
     try:
         level = get_relationship_level(telegram_id, character_id)
     except Exception:
         level = 1
-    variant, reveal = _undress_variant(level)
+    if level >= 7:
+        return UNDRESS_PREMIUM_FREE_L7_8
+    return UNDRESS_PREMIUM_FREE_L3_6 if level >= 3 else UNDRESS_PREMIUM_FREE_L1_2
+
+
+# The gentlest reveal — the last try when the engine refused the first pick.
+UNDRESS_SAFE_VARIANT = UNDRESS_VARIANTS_LINGERIE[3]
+
+
+def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) -> tuple[str, bool]:
+    try:
+        level = get_relationship_level(telegram_id, character_id)
+    except Exception:
+        level = 1
+    variant, reveal = UNDRESS_SAFE_VARIANT if safe else _undress_variant(level)
     prompt, secret = UNDRESS_PROMPT + reveal + UNDRESS_TAIL, False
     try:
         from services.webapp_service import _batch_marital, _default_marital
@@ -12498,7 +12515,7 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
     if not path or path.suffix.lower() not in ('.jpg', '.jpeg', '.png'):
         return web.json_response({'ok': False, 'error': 'not_found'}, status=404)
     admin = telegram_id in ADMIN_TELEGRAM_IDS
-    from services.chat_photo_allowance import count_today, note_today
+    from services.chat_photo_allowance import count_ever, count_today, note_today
 
     def _her_photo(uid: int) -> bool:
         # Only HER generated photo in this chat — never a picture the user
@@ -12528,9 +12545,12 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
             return uid, ('adult_confirm', 403), None
         if admin:
             return uid, None, 'admin'
-        from config import UNDRESS_FREE_PER_DAY, UNDRESS_PEACH_COST
-        if count_today(uid, 'undress_free') < UNDRESS_FREE_PER_DAY:
-            return uid, None, 'free'
+        from config import UNDRESS_PEACH_COST, UNDRESS_TRIAL_FREE
+        if is_premium(telegram_id):
+            if count_today(uid, 'undress_free') < _undress_premium_free(telegram_id, character_id):
+                return uid, None, 'free'
+        elif count_ever(uid, 'undress_trial') < UNDRESS_TRIAL_FREE:
+            return uid, None, 'trial'
         if get_photo_credits(telegram_id) < UNDRESS_PEACH_COST:
             return uid, ('credits', 402), None
         return uid, None, 'peaches'
@@ -12550,12 +12570,20 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
             src = f'{PUBLIC_BASE_URL}/webapp/smedia/{int(telegram_id)}/{filename}/{_media_sig(telegram_id, filename)}'
             refs = [src, f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0']
             prompt, secret = await asyncio.to_thread(_undress_prompt, telegram_id, character_id)
-            data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs, scene='undress')
+            data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs, scene='undress', breaker=False)
             if not data:
                 # V3.61.10: one more try with the chat photo alone — the face
                 # crop as a second reference can make the edit fail.
-                logger.warning('undress first try empty user=%s error=%s', telegram_id, spicyapi_last_error())
-                data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs[:1], scene='undress')
+                logger.warning('undress first try empty user=%s character=%s error=%s',
+                               telegram_id, character_id, spicyapi_last_error())
+                data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs[:1], scene='undress', breaker=False)
+            if not data:
+                # V3.61.12: some girls never undressed — the engine kept
+                # refusing the bolder pick. Last try: the gentlest reveal.
+                logger.warning('undress second try empty user=%s character=%s error=%s',
+                               telegram_id, character_id, spicyapi_last_error())
+                prompt, secret = await asyncio.to_thread(_undress_prompt, telegram_id, character_id, safe=True)
+                data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs[:1], scene='undress', breaker=False)
             if not data:
                 raise PhotoGenerationError('spicyapi', spicyapi_last_error() or 'empty_result')
             ext, mime, kind = 'jpg', 'image/jpeg', 'photo'
@@ -12577,8 +12605,8 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
         if action == 'undress':
             from config import UNDRESS_PEACH_COST
-            if pay == 'free':
-                note_today(uid, 'undress_free', character_id)
+            if pay in ('free', 'trial'):
+                note_today(uid, f'undress_{pay}', character_id)
             elif pay == 'peaches':
                 spend_peaches(telegram_id, UNDRESS_PEACH_COST)
         return {'ok': True, 'kind': kind, 'url': url, 'content': content,

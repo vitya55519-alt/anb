@@ -56,6 +56,15 @@ def count_today(uid: int, event: str) -> int:
         ) or 0)
 
 
+def count_ever(uid: int, event: str) -> int:
+    """V3.61.12: how many times `event` ever happened (the one-time trial)."""
+    with SessionLocal() as session:
+        return int(session.scalar(
+            select(func.count(ProductEvent.id)).where(
+                ProductEvent.user_id == uid, ProductEvent.event_name == event)
+        ) or 0)
+
+
 def note_today(uid: int, event: str, character_id: str) -> None:
     with SessionLocal() as session:
         session.add(ProductEvent(user_id=uid, character_id=character_id, event_name=event,
