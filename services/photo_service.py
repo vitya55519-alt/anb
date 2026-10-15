@@ -2915,7 +2915,7 @@ async def _run_spicy_set(
             # waiting and without logging another ❌ for the same outage.
             if out:
                 break
-            raise PhotoGenerationError('spicyapi', 'breaker_open')
+            raise PhotoGenerationError('spicyapi', _spicy_reason('breaker_open', spicyapi_last_error()))
         frame_started = time.monotonic()
         data, frame_url = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, frame_refs, scene=f'scene:{request.scene}', return_url=True)
         record_provider('spicyapi', bool(data), None if data else spicyapi_last_error())
@@ -2924,7 +2924,7 @@ async def _run_spicy_set(
             if out:
                 logger.warning('SpicyAPI partial set user=%s scene=%s delivered=%s/%s', telegram_id, request.scene, len(out), frames)
                 break
-            raise PhotoGenerationError('spicyapi', 'empty_result')
+            raise PhotoGenerationError('spicyapi', _spicy_reason('empty_result', spicyapi_last_error()))
         prev_url = frame_url
         if guest_block:
             # a joint photo keeps images 3–4 for the guest, so no frame chaining.
@@ -2940,6 +2940,11 @@ async def _run_spicy_set(
     if not out:
         raise PhotoGenerationError('spicyapi', 'no_image')
     return out
+
+
+def _spicy_reason(code: str, last: str | None) -> str:
+    last = (last or '').strip()
+    return f'{code}:{last[:160]}' if last else code
 
 
 def choose_photo_provider(telegram_id: int, request: PhotoRequest) -> str:
@@ -3003,7 +3008,13 @@ async def _run_routed_photo_set(
             except PhotoGenerationError as exc:
                 logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=spicyapi to=seedream45 reason=%s', telegram_id, resolved.scene, exc.reason)
                 track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'spicyapi', 'to': 'seedream45', 'reason': exc.reason})
-                return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
+                try:
+                    return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
+                except PhotoGenerationError as fal_exc:
+                    # V3.62.3: keep SpicyAPI's own cause — the admin toast used
+                    # to show only fal's «transport_ReadError» and hid why the
+                    # main engine refused in the first place.
+                    raise PhotoGenerationError('spicyapi', f'spicyapi/{exc.reason} → seedream45/{fal_exc.reason}') from fal_exc
         if provider == 'seedream45':
             try:
                 return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
