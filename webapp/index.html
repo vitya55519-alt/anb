@@ -1318,7 +1318,7 @@ const L_EN = {
   wiz_save: 'Save', wiz_skip: 'Skip', wiz_skip_hint: 'Write or skip...', wiz_upload_photo: 'Upload photo',
   seg_official: '🍑 Peach Garden', seg_community: '👥 Community', seg_premium: '⭐ Premium',
   char_search_ph: 'Search the community by name or #tag…',
-  media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
+  media_busy: 'Wait a moment, she is still busy with the previous photo…', media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
   media_wait_voice: 'Recording her voice…', media_wait_video: 'Rendering a video — 1–3 min…',
   stt_wait: 'Reading your voice message…', mic_denied: 'No microphone access — allow it in the browser settings', mic_short: 'Too short — say something 🙂', mic_nospeech: 'Could not make out the words — try again', mic_err: 'Voice message failed — try again', attach_err: 'Could not send the photo', attach_big: 'Photo too heavy — send a lighter one',
   circle_limit: 'No free circles left today — Premium refreshes them daily',
@@ -1493,7 +1493,7 @@ const L_RU = {
   wiz_save: 'Сохранить', wiz_skip: 'Пропустить', wiz_skip_hint: 'Напиши или пропусти...', wiz_upload_photo: 'Загрузить фото',
   seg_official: '🍑 Персиковый сад', seg_community: '👥 Сообщество', seg_premium: '⭐ Премиум',
   char_search_ph: 'Поиск по сообществу: имя или #тег…',
-  media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
+  media_busy: 'Подожди, она ещё занята прошлым фото…', media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
   media_wait_voice: 'Записываю голос…', media_wait_video: 'Рисую видео — 1–3 минуты…',
   stt_wait: 'Узнаю твой голос…', mic_denied: 'Нет доступа к микрофону — разреши его в настройках', mic_short: 'Слишком коротко — скажи что-нибудь 🙂', mic_nospeech: 'Не смогла разобрать слова — попробуй ещё раз', mic_err: 'Голосовое не отправилось — попробуй ещё раз', attach_err: 'Не удалось отправить фото', attach_big: 'Фото слишком тяжёлое — пришли полегче',
   circle_limit: 'Бесплатные кружочки на сегодня кончились — Premium обновляет их каждый день',
@@ -2840,7 +2840,8 @@ async function sendChatPhoto(file) {
 let mediaBusy = false;
 // V3.61.7: «🎬 Оживить» / «🔥 Раздеть» under one of her photos.
 async function photoAction(action, mediaUrl, btn) {
-  if (!CHAT || mediaBusy) return;
+  if (!CHAT) return;
+  if (mediaBusy) { toast(L.media_busy); return; }
   if (!tg.initData) { toast(L.auth_short); return; }
   mediaBusy = true;
   const characterId = CHAT.id;
@@ -2889,7 +2890,10 @@ document.addEventListener('click', e => {
 });
 
 async function requestMedia(kind, scene) {
-  if (!CHAT || mediaBusy) return;
+  if (!CHAT) return;
+  // V3.62.3: a tap while «Раздеть» / the previous photo is still rendering used
+  // to do nothing at all — say why instead.
+  if (mediaBusy) { toast(L.media_busy); return; }
   if (!tg.initData) { toast(L.auth_short); return; }
   mediaBusy = true;
   document.querySelectorAll('.chat-media button').forEach(b => b.disabled = true);
