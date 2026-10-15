@@ -248,6 +248,18 @@ CONSTRUCTOR_STEPS: list[dict] = [
         'options': [],
         'free_text': True,
     },
+    # V3.61.0: «два персонажа в одной переписке» — an optional second girl who
+    # lives in the same chat (both answer, each line starts with her name).
+    {
+        'key': 'duo_name', 'title': 'Вторая девушка в этом же чате — напиши её имя (например, подруга или сестра). Необязательно.',
+        'options': [],
+        'free_text': True,
+    },
+    {
+        'key': 'duo_desc', 'title': 'Опиши вторую: внешность, характер и кто она для первой. Необязательно.',
+        'options': [],
+        'free_text': True,
+    },
     # V3.45.28: free-text tags — how she is found on the community витрина.
     {
         'key': 'tags', 'title': 'Добавь теги через запятую (например: спорт, путешествия, флирт, аниме). Необязательно.',
@@ -273,11 +285,12 @@ STEP_GROUPS: dict[str, str] = {
     'temperament': 'character', 'profession': 'character', 'role': 'character',
     'scenario': 'character', 'marital': 'character',
     'backstory': 'story', 'personality': 'story', 'tags': 'story',
+    'duo_name': 'duo', 'duo_desc': 'duo',
     'photo_reference': 'reference',
     'community': 'share',
 }
 # Group render order for the one-screen wizard (appearance first, share last).
-STEP_GROUP_ORDER: list[str] = ['appearance', 'character', 'story', 'reference', 'share']
+STEP_GROUP_ORDER: list[str] = ['appearance', 'character', 'story', 'duo', 'reference', 'share']
 
 # Russian labels per option value for summary screens and logs.
 OPTION_LABELS: dict[str, str] = {
@@ -358,6 +371,14 @@ def step_index(key: str) -> int:
     return -1
 
 
+def duo_partner(params: dict) -> tuple[str, str]:
+    """V3.61.0: (second girl's name, her description) — ('', '') for a solo persona."""
+    name = str(params.get('duo_name') or '').strip()[:24]
+    if not name:
+        return '', ''
+    return name, str(params.get('duo_desc') or '').strip()[:500]
+
+
 def build_avatar_prompt(params: dict, face_swap: bool = False) -> str:
     """English Seedream/Gemini prompt assembled from constructor params."""
     name = str(params.get('name') or 'the woman')
@@ -409,6 +430,17 @@ def build_avatar_prompt(params: dict, face_swap: bool = False) -> str:
             'even if the reference shows a different bust, waist or hips, render '
             'exactly the figure declared in this lock.'
         )
+    duo_name, duo_desc = duo_partner(params)
+    if duo_name:
+        # V3.61.0: a duo persona's card shows both women side by side.
+        parts.append(
+            f'TWO ADULT WOMEN in the frame, side by side and close like best friends: the first is {name} '
+            f'as described above; the second is {duo_name}'
+            + (f' — {duo_desc}' if duo_desc else ', a clearly different adult woman (different hair and face)')
+            + '. Both look at the viewer, both faces fully visible.'
+        )
+        parts.append('Tasteful elegant outfits, fully covered; no nudity. Exactly two people, no text, no watermark.')
+        return ', '.join(parts)
     parts.append(
         'Tasteful elegant outfit, fully covered; no nudity. One person only, '
         'no text, no watermark.'
@@ -542,6 +574,17 @@ def build_persona_context(params: dict, display_name: str, backstory: str = '', 
         lines.append(f'Твоя история: {backstory}')
     if personality:
         lines.append(f'Твой характер: {personality}')
+    duo_name, duo_desc = duo_partner(params)
+    if duo_name:
+        lines.append(
+            f'В ЭТОМ ЧАТЕ ВАС ДВЕ: ты ({name}) и {duo_name}'
+            + (f' — {duo_desc}' if duo_desc else '')
+            + f'. Вы обе переписываетесь с пользователем в одном чате. Отвечай за обеих: каждая реплика — '
+            f'с новой строки и начинается с имени, например «{name}: …» и «{duo_name}: …». '
+            'Обычно говорят обе (1–2 короткие реплики каждая), они перебивают, подкалывают друг друга, '
+            'ревнуют и соревнуются за его внимание; у каждой свой голос и характер. '
+            'Никогда не пиши за пользователя.'
+        )
     lines.append(
         'Если пользователь прикладывал своё фото при создании — ты выглядишь именно так, '
         'как на нём. Никогда не упоминай, что ты конструктор или шаблон.'

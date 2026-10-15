@@ -258,7 +258,7 @@ def test_wizard_frontend_flow():
     # V3.45.28: the wizard is one scrollable screen now — grouped structured
     # fields replace the old step-by-step renderWizStep() flow.
     assert 'function renderWizScreen()' in INDEX
-    assert "const WIZ_GROUP_ORDER = ['appearance', 'character', 'story', 'reference', 'share'];" in INDEX
+    assert "const WIZ_GROUP_ORDER = ['appearance', 'character', 'story', 'duo', 'reference', 'share'];" in INDEX
     assert 'function _wizFieldHtml(step)' in INDEX
     assert 'renderWizStep' not in INDEX
     # V3.44.9: submitWizard takes the pay method — 'peaches' (primary) or 'stars'.

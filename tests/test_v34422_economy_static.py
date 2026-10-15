@@ -83,7 +83,7 @@ def test_chat_photo_guard_matches_its_one_credit_charge():
 
 def test_constructor_peaches_config():
     # V3.45.28: the free-public perk is retired, the flat price went 10 → 20 🍑.
-    assert 'CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "20")))' in CONFIG
+    assert 'CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "3")))' in CONFIG
 
 
 def test_chat_constructor_always_costs_peaches():

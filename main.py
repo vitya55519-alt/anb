@@ -10771,7 +10771,19 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
         return webapp_service.api_chat_history(uid, character_id, limit), persona_info
 
     history, persona_info = await asyncio.to_thread(_load)
-    return web.json_response({'ok': True, 'history': history, 'persona': persona_info})
+
+    def _duo():
+        # V3.61.0: a constructor duo — the SPA bolds each speaker's name.
+        if not is_custom_character(character_id):
+            return None
+        from services.custom_character_service import custom_character_params, duo_partner
+        return duo_partner(custom_character_params(character_id)[0])[0] or None
+
+    try:
+        duo = await asyncio.to_thread(_duo)
+    except Exception:
+        duo = None
+    return web.json_response({'ok': True, 'history': history, 'persona': persona_info, 'duo': duo})
 
 
 def _custom_premium_gate_block(character_id: str, telegram_id: int) -> bool:

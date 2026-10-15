@@ -864,6 +864,26 @@ EXPRESSION_IDENTITY = (
 OPENAI_IDENTITY_LOCK = ORDINARY_IDENTITY_LOCK
 
 
+def _duo_identity_line(character_id: str, name: str) -> str:
+    """V3.61.0: a constructor duo («две девушки в одном чате») is photographed
+    together — both women of her card, side by side."""
+    try:
+        from services.custom_character_service import is_custom_character, custom_character_params, duo_partner
+        if not is_custom_character(character_id):
+            return ''
+        params, _display = custom_character_params(character_id)
+        duo_name, duo_desc = duo_partner(params or {})
+    except Exception:
+        return ''
+    if not duo_name:
+        return ''
+    return (f' DUO: this persona is TWO adult women — {name} and {duo_name}'
+            + (f' ({duo_desc})' if duo_desc else '')
+            + '. Show BOTH of them together in the frame, exactly the two women of reference image 1 '
+            '(the left/right faces stay the same people), both faces clearly visible; the scene, outfit and pose '
+            'apply to both, each keeps her own face and hair.')
+
+
 def _character_identity_lock(character_id: str, seedream: bool = False, expression_key: str | None = None) -> tuple[str, str, str, str]:
     """Return (identity, personal_note, safety, expression) for a character.
 
@@ -952,6 +972,7 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
         f'Do not substitute another person, do not change age or ethnicity. '
         f'Use the requested scene, outfit, pose, camera and lighting for everything else.'
     )
+    identity += _duo_identity_line(character_id, name)
     personal = (
         f'This should feel like a normal personal photo {name} has just taken to send to someone {pronoun} is chatting with. '
         f'Every frame must plausibly be made by {pronoun} using a front camera, a mirror, or a smartphone self-timer; no invisible photographer. '

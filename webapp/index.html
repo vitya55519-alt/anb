@@ -243,6 +243,7 @@
   .chat-head .nm { font-weight: 700; font-size: 15px; }
   .chat-head .sub { color: var(--muted); font-size: 11px; }
   .chat-head .spacer { margin-left: auto; }
+  .msg .duo-nm { color: #ff9ccb; }
   .chat-head .iconbtn {
     background: var(--card); border: none; color: var(--text); font-size: 18px;
     border-radius: 12px; padding: 8px 12px; cursor: pointer;
@@ -1174,7 +1175,7 @@ const L_EN = {
   consent_needed: 'Confirm 18+ first — open the bot and press /start',
   set_main: 'Set as your girl', reply_err: 'Could not reply — try again',
   create_own: 'Create your own', create_sub: 'Looks, figure and personality — she chats the way you pick',
-  wiz_groups: { appearance: 'Appearance', character: 'Character', story: 'Story & tags', reference: 'Look-alike photo', share: 'Publishing' },
+  wiz_groups: { appearance: 'Appearance', character: 'Character', story: 'Story & tags', duo: '👯 Second girl in the same chat', reference: 'Look-alike photo', share: 'Publishing' },
   wiz_step: 'Step', wiz_name_ph: 'Her name? (up to 24 characters)', wiz_create: 'Create',
     wiz_create_peaches: n => '🎨 Create · 🍑 ' + n, wiz_create_stars: n => '⭐ Create · ' + n + ' Stars',
   wiz_free_public: 'free — she will appear in «Community»', wiz_free: 'free (admin)', wiz_paid_toast: 'Drawing your girl — up to a minute. Her card appears in the grid ✨', creating_banner: 'Creating {name} — usually a minute or two. Her card appears on its own ✨',
@@ -1339,7 +1340,7 @@ const L_RU = {
   consent_needed: 'Сначала подтверди 18+ — открой бота и нажми /start',
   set_main: 'Сделать твоей девушкой', reply_err: 'Не получилось ответить — попробуй ещё раз',
   create_own: 'Создать свою', create_sub: 'Внешность, фигура и характер — она будет общаться так, как ты выберешь',
-    wiz_groups: { appearance: 'Внешность', character: 'Характер', story: 'История и теги', reference: 'Фото-референс', share: 'Публикация' },
+    wiz_groups: { appearance: 'Внешность', character: 'Характер', story: 'История и теги', duo: '👯 Вторая девушка в этом же чате', reference: 'Фото-референс', share: 'Публикация' },
   wiz_step: 'Шаг', wiz_name_ph: 'Как её зовут? (до 24 символов)', wiz_create: 'Создать',
     wiz_create_peaches: n => '🎨 Создать · 🍑 ' + n, wiz_create_stars: n => '⭐ Создать · ' + n + ' Stars',
   wiz_free_public: 'бесплатно — она появится в «Сообществе»', wiz_free: 'бесплатно (админ)', wiz_paid_toast: 'Рисую твою героиню — до минуты. Карточка появится в сетке ✨', creating_banner: 'Создаю {name} — обычно минута-две. Карточка появится сама ✨',
@@ -2132,6 +2133,10 @@ function chatBubble(roleOrM, content, ts) {
   const t = fmtTime(m.ts) ? `<span class="t">${esc(fmtTime(m.ts))}</span>` : '';
   const cls = m.role === 'user' ? 'user' : 'bot';
   let body = esc(m.content);
+  // V3.61.0: a duo persona answers as «Имя: …» lines — the speaker's name in bold.
+  if (cls === 'bot' && !m.media_url && CHAT && CHAT.duo) {
+    body = body.split('\n').map(line => line.replace(/^([A-Za-zА-Яа-яЁё]{2,20}):\s/, '<b class="duo-nm">$1:</b> ')).join('\n');
+  }
   if (m.media_url) {
     const src = m.media_url + '?init_data=' + encodeURIComponent(tg.initData || '');
     if (m.media_kind === 'circle') body = `<video class="circle" src="${esc(src)}" loop autoplay muted playsinline></video>`;
@@ -2172,6 +2177,7 @@ async function loadChatHistory(characterId) {
     const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId));
     if (r.status === 401) { toast(L.auth_short); return; }
     const j = await r.json();
+    if (CHAT && CHAT.id === characterId) CHAT.duo = j.duo || null;
     const box = document.getElementById('chatMsgs');
     if (!j.ok) { box.innerHTML = `<div class="chat-empty">${esc(L.reply_err)}</div>`; return; }
     if (!j.history.length) { box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`; }
@@ -3339,7 +3345,7 @@ async function openWizard(premiumMode) {
 }
 
 // V3.45.28: group render order — mirrors the backend STEP_GROUP_ORDER.
-const WIZ_GROUP_ORDER = ['appearance', 'character', 'story', 'reference', 'share'];
+const WIZ_GROUP_ORDER = ['appearance', 'character', 'story', 'duo', 'reference', 'share'];
 
 // One field of the one-screen form: structured chips, a textarea, or the
 // optional look-alike photo upload — all keyed by step.key.

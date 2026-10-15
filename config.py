@@ -520,7 +520,8 @@ CONSTRUCTOR_COST_STARS = max(1, int(os.getenv("CONSTRUCTOR_COST_STARS", "50")))
 # The «public is free» perk is retired — every avatar is drawn on our GPU bill,
 # so a flat peach price funds it and throttles spam. Publishing to the
 # «Сообщество» витрина is a separate step (moderation comes next release).
-CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "20")))
+CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "3")))
+# V3.61.0: the owner dropped creation to 3 🍑 to grow the community catalogue.
 # V3.59.6: changing a girl's relationship status on her page (owner: «за персики»).
 MARITAL_CHANGE_PEACHES = max(0, int(os.getenv("MARITAL_CHANGE_PEACHES", "5")))
 # V3.27.0: ruble side of the shop (FreeKassa): character constructor price,
