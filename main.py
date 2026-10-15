@@ -191,26 +191,26 @@ dp = Dispatcher()
 PHOTO_LABELS = {
     'selfie': '📸 Селфи',
     'home': '🏠 Дома',
-    'park': '🌿 Парк',
-    'cafe': '☕ Кафе',
-    'street': '🌆 Улица',
-    'mirror': '🪞 Зеркало',
-    'outfit': '👗 Образ',
-    'shop': '🛍 Магазин',
+    'park': '🌿 Прогулка в парке',
+    'cafe': '☕ В кафе',
+    'street': '🌆 На улице',
+    'mirror': '🪞 В зеркале',
+    'outfit': '👗 Мой наряд сегодня',
+    'shop': '🛍 На шопинге',
     'car': '🚗 В машине',
-    'gym': '🏋️ Зал',
-    'restaurant': '🍽 Ресторан',
-    'cinema': '🎬 Кино',
-    'embankment': '🌊 Набережная',
-    'fashion': '💎 Fashion',
-    'evening': '✨ Вечер',
-    'bar': '🍸 Бар',
+    'gym': '🏋️ В спортзале',
+    'restaurant': '🍽 Ужин в ресторане',
+    'cinema': '🎬 В кино',
+    'embankment': '🌊 Закат у реки',
+    'fashion': '💎 Фотосессия',
+    'evening': '✨ Вечернее платье',
+    'bar': '🍸 В баре',
     'karaoke': '🎤 Караоке',
-    'rooftop': '🌃 Крыша',
-    'club': '💃 Клуб',
-    'personal': '💌 Личное фото',
-    'lingerie': '🖤 Приватный fashion',
-    'private_fashion': '🔐 Premium private',
+    'rooftop': '🌃 На крыше ночью',
+    'club': '💃 В клубе',
+    'personal': '💌 Только для тебя',
+    'lingerie': '🖤 В кружевном белье',
+    'private_fashion': '🔐 Будуар',
     'nude': '🔥 Обнажённая',
     'tease': '🍑 Дразнит',
 }
@@ -11725,7 +11725,14 @@ async def _webapp_media_photo(telegram_id: int, character_id: str, scene: str = 
     """V3.39.0: a personal in-character photo. V3.43.7: now through the real
     photo pipeline with the scene the app's picker chose — the figure follows
     the declared BODY IDENTITY instead of an improvised face-swap body."""
-    return await _webapp_pipeline_photo(telegram_id, character_id, PhotoRequest(scene=scene))
+    # V3.61.6: a single app photo used to always take variant 0 of the scene;
+    # now each tap draws one of its concrete shots (selfie, self-timer, full body).
+    import random as _random
+    from services.photo_service import SHOT_VARIANTS
+    private = scene in ('personal', 'lingerie', 'private_fashion', 'nude', 'tease')
+    variants = None if private else SHOT_VARIANTS.get(scene)
+    angle = _random.choice(variants) if variants else ''
+    return await _webapp_pipeline_photo(telegram_id, character_id, PhotoRequest(scene=scene, angle=angle))
 
 
 # V3.56.0: _webapp_media_hot knows the real engine (cache/pool/fal/spicyapi) and
