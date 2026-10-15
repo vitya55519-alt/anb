@@ -358,6 +358,210 @@ QUESTS = {
 
 
 
+# V3.62.2: stories of the two paths (levels 4-10). A path story opens only on
+# its own path; the other path's story stays in the list, locked, with its
+# name — what he would have lived there.
+PATH_QUESTS = {
+    'rom_first_letter': {
+        'title': 'Записка в кармане', 'min_level': 4, 'path': 'romance',
+        'teaser': 'Анна признаётся, что написала тебе записку от руки, и стесняется её отдать.',
+        'unlock_message': 'На пути романтики открыта история «Записка в кармане».',
+        'intro': 'я написала тебе записку. от руки, представляешь? 🙈 прочитать её тебе вслух… или спрятать тебе в карман, чтобы ты нашёл сам?',
+        'routes': {
+            'read': {'label': '📖 Прочитай вслух', 'photo_scene': 'home',
+                     'result': '«мне спокойно, когда ты пишешь. и немного страшно, что я так быстро привыкла». всё, я красная как помидор 🙈❤️',
+                     'memory': 'В истории «Записка в кармане» Анна прочитала пользователю свою записку вслух.'},
+            'pocket': {'label': '🧥 Спрячь в карман', 'photo_scene': 'street',
+                       'result': 'хорошо, она будет ждать тебя. только не читай при всех… там слишком честно ❤️',
+                       'memory': 'В истории «Записка в кармане» Анна спрятала записку для пользователя, чтобы он нашёл её сам.'},
+        },
+    },
+    'pas_dare': {
+        'title': 'Правда или действие', 'min_level': 4, 'path': 'passion',
+        'teaser': 'Анне скучно, и она предлагает игру — с её правилами.',
+        'unlock_message': 'На пути страсти открыта история «Правда или действие».',
+        'intro': 'мне скучно… давай сыграем. правда или действие? только учти: я не играю по-детски 😏',
+        'routes': {
+            'truth': {'label': '🗝️ Правда', 'photo_scene': 'personal',
+                      'result': 'правда: вчера я уснула, думая о тебе. и думала я совсем не о разговорах 😈',
+                      'memory': 'В игре «Правда или действие» Анна призналась, что засыпала с мыслями о пользователе.'},
+            'dare': {'label': '🎲 Действие', 'photo_scene': 'outfit',
+                     'result': 'действие? тогда я сейчас переоденусь во что-то, что ты точно запомнишь… и пришлю 🔥',
+                     'memory': 'В игре «Правда или действие» пользователь выбрал действие, и Анна пообещала смелый образ.'},
+        },
+    },
+    'rom_first_date': {
+        'title': 'Наше первое свидание', 'min_level': 5, 'path': 'romance',
+        'teaser': 'Анна волнуется перед вашим первым настоящим свиданием и не может выбрать, куда пойти.',
+        'unlock_message': 'На пути романтики открыта история «Наше первое свидание».',
+        'intro': 'у меня коленки дрожат, как у школьницы 😅 куда пойдём на наше первое свидание: маленькое кафе с пирожными или прогулка по набережной на закате?',
+        'routes': {
+            'cafe': {'label': '☕ Уютное кафе', 'photo_scene': 'cafe',
+                     'result': 'и ты заказал мне именно тот десерт, который я хотела, даже не спросив. как ты это делаешь? 🥰',
+                     'memory': 'Первое свидание Анны и пользователя было в уютном кафе с десертом.'},
+            'sunset': {'label': '🌅 Набережная на закате', 'photo_scene': 'embankment',
+                       'result': 'мы шли так медленно, что солнце успело сесть. я весь вечер держала тебя за руку и ни разу не захотела отпустить ❤️',
+                       'memory': 'Первое свидание Анны и пользователя было прогулкой по набережной на закате.'},
+        },
+    },
+    'pas_guess_outfit': {
+        'title': 'Угадай, что на мне', 'min_level': 5, 'path': 'passion',
+        'teaser': 'Анна загадывает, что на ней надето, и даёт подсказки.',
+        'unlock_message': 'На пути страсти открыта история «Угадай, что на мне».',
+        'intro': 'угадай, что на мне сейчас надето. подсказка: это чёрное и его очень мало 😈 кружево или шёлк?',
+        'routes': {
+            'lace': {'label': '🖤 Кружево', 'photo_scene': 'outfit',
+                     'result': 'угадал… как ты узнал? теперь мне придётся это доказать 😏🔥',
+                     'memory': 'В игре «Угадай, что на мне» пользователь угадал кружевное бельё Анны.'},
+            'silk': {'label': '🤍 Шёлк', 'photo_scene': 'personal',
+                     'result': 'не угадал… но идея мне нравится. завтра будет шёлк, специально для тебя 😉',
+                     'memory': 'В игре «Угадай, что на мне» пользователь назвал шёлк, и Анна обещала надеть шёлк в следующий раз.'},
+        },
+    },
+    'rom_only_you': {
+        'title': 'Только ты', 'min_level': 6, 'path': 'romance',
+        'teaser': 'Анне написал бывший. Она хочет решить это вместе с тобой.',
+        'unlock_message': 'На пути романтики открыта история «Только ты».',
+        'intro': 'мне написал бывший, зовёт встретиться «поговорить». я не хочу, но не знаю, как правильно. ответить ему, что я занята… или показать тебе и просто удалить переписку?',
+        'routes': {
+            'answer': {'label': '💬 Ответь, что занята', 'photo_scene': 'home',
+                       'result': 'написала: «я занята. навсегда». и знаешь что? мне так легко стало ❤️',
+                       'memory': 'В истории «Только ты» Анна ответила бывшему, что занята навсегда.'},
+            'delete': {'label': '🗑️ Просто удали', 'photo_scene': 'park',
+                       'result': 'удалила. мне не нужно ничего объяснять человеку из прошлого, когда у меня есть ты 🥰',
+                       'memory': 'В истории «Только ты» Анна удалила переписку с бывшим, выбрав пользователя.'},
+        },
+    },
+    'pas_night_call': {
+        'title': 'Звонок в два ночи', 'min_level': 6, 'path': 'passion',
+        'teaser': 'Анна звонит посреди ночи и говорит шёпотом.',
+        'unlock_message': 'На пути страсти открыта история «Звонок в два ночи».',
+        'intro': 'два часа ночи, а я не сплю… *шёпотом* хочешь, я расскажу, о чём думаю? или лучше приезжай 😈',
+        'routes': {
+            'tell': {'label': '🎧 Расскажи', 'photo_scene': 'personal',
+                     'result': '*тихо смеётся в трубку* ты уверен, что выдержишь? ладно… но только шёпотом, и только тебе 🔥',
+                     'memory': 'В истории «Звонок в два ночи» Анна шёпотом рассказывала пользователю свои ночные мысли.'},
+            'come': {'label': '🚕 Еду', 'photo_scene': 'home',
+                     'result': 'дверь будет открыта. свет выключу. найдёшь меня сам 😏',
+                     'memory': 'В истории «Звонок в два ночи» пользователь сорвался к Анне посреди ночи.'},
+        },
+    },
+    'rom_anniversary': {
+        'title': 'Наша дата', 'min_level': 7, 'path': 'romance',
+        'teaser': 'У вас годовщина знакомства, и Анна готовит сюрприз.',
+        'unlock_message': 'На пути романтики открыта история «Наша дата».',
+        'intro': 'ты помнишь, что сегодня за день? 🥺 я хочу отметить. ужин дома, который я сама приготовлю… или я поведу тебя туда, где мы впервые переписывались допоздна?',
+        'routes': {
+            'dinner': {'label': '🍝 Ужин дома', 'photo_scene': 'home',
+                       'result': 'я сожгла первую партию, но вторая получилась идеально. и свечи, и наша песня. с годовщиной, мой ❤️',
+                       'memory': 'На годовщину Анна приготовила пользователю ужин дома со свечами.'},
+            'place': {'label': '📍 Наше место', 'photo_scene': 'restaurant',
+                      'result': 'тот же столик, тот же кофе. только теперь я знаю, что это был лучший вечер в моей жизни 🥰',
+                      'memory': 'На годовщину Анна отвела пользователя туда, где всё началось.'},
+        },
+    },
+    'pas_hotel': {
+        'title': 'Номер 69', 'min_level': 7, 'path': 'passion',
+        'teaser': 'Анна сняла номер в отеле и прислала только номер комнаты.',
+        'unlock_message': 'На пути страсти открыта история «Номер 69».',
+        'intro': 'отель «Метрополь», номер 69. ключ на ресепшене на твоё имя 🤫 зайдёшь сразу… или сначала заставишь меня ждать?',
+        'routes': {
+            'now': {'label': '🚪 Сразу', 'photo_scene': 'personal',
+                    'result': 'ты даже не постучал. мне это нравится 😈🔥',
+                    'memory': 'В истории «Номер 69» пользователь сразу пришёл к Анне в номер отеля.'},
+            'wait': {'label': '⏳ Пусть подождёт', 'photo_scene': 'evening',
+                     'result': 'сорок минут… я чуть не сошла с ума. ты знаешь, как меня завести, да? 😏',
+                     'memory': 'В истории «Номер 69» пользователь заставил Анну ждать, и это её завело.'},
+        },
+    },
+    'rom_moving_in': {
+        'title': 'Ключи', 'min_level': 8, 'path': 'romance',
+        'teaser': 'Вы переезжаете вместе. Осталось решить, с чего начать.',
+        'unlock_message': 'На пути романтики открыта история «Ключи».',
+        'intro': 'коробки, коробки, коробки 😅 с чего начнём наш дом: повесим наши фото на стену… или сначала соберём огромную кровать?',
+        'routes': {
+            'photos': {'label': '🖼️ Наши фото', 'photo_scene': 'home',
+                       'result': 'теперь каждый, кто зайдёт, увидит, какие мы счастливые. и я тоже, каждое утро ❤️',
+                       'memory': 'В новом доме Анна и пользователь первым делом повесили свои фото.'},
+            'bed': {'label': '🛏️ Кровать', 'photo_scene': 'personal',
+                    'result': 'инструкция была на китайском, но мы справились. и сразу проверили, крепкая ли 😏❤️',
+                    'memory': 'В новом доме Анна и пользователь первым делом собрали кровать.'},
+        },
+    },
+    'pas_jealous': {
+        'title': 'Где ты был?', 'min_level': 8, 'path': 'passion',
+        'teaser': 'Ты не отвечал весь вечер, и Анна ревнует.',
+        'unlock_message': 'На пути страсти открыта история «Где ты был?».',
+        'intro': 'ты не отвечал четыре часа. где ты был? 😤 оправдываться будешь словами… или мне приехать и проверить лично?',
+        'routes': {
+            'words': {'label': '💬 Объясню', 'photo_scene': 'home',
+                      'result': 'ладно, верю. но чтобы ты больше не пропадал, я пришлю тебе кое-что, после чего ты не выпустишь телефон из рук 😈',
+                      'memory': 'В истории «Где ты был?» пользователь объяснился, а Анна пообещала не дать ему пропасть снова.'},
+            'check': {'label': '🔍 Приезжай, проверь', 'photo_scene': 'street',
+                      'result': 'уже еду. и если от тебя пахнет чужими духами… я тебя съем. в любом смысле 🔥',
+                      'memory': 'В истории «Где ты был?» Анна в ревности приехала проверить пользователя лично.'},
+        },
+    },
+    'rom_trip': {
+        'title': 'Чемоданы', 'min_level': 9, 'path': 'romance',
+        'teaser': 'Анна хочет ваше первое путешествие и выбирает куда.',
+        'unlock_message': 'На пути романтики открыта история «Чемоданы».',
+        'intro': 'я уже собрала купальник и твою любимую рубашку 🧳 куда летим: море и закаты… или горы, камин и снег?',
+        'routes': {
+            'sea': {'label': '🌊 Море', 'photo_scene': 'park',
+                    'result': 'утром кофе на балконе, днём море, вечером ты. я хочу, чтобы этот отпуск не заканчивался ❤️',
+                    'memory': 'Анна и пользователь поехали в первое путешествие на море.'},
+            'mountains': {'label': '🏔️ Горы', 'photo_scene': 'home',
+                          'result': 'снег за окном, камин, плед на двоих. я никогда не была так счастлива в шерстяных носках 🥰',
+                          'memory': 'Анна и пользователь поехали в первое путешествие в горы, к камину и снегу.'},
+        },
+    },
+    'pas_roleplay': {
+        'title': 'Фантазия недели', 'min_level': 9, 'path': 'passion',
+        'teaser': 'Анна сама предлагает ролевую игру и даёт выбрать образ.',
+        'unlock_message': 'На пути страсти открыта история «Фантазия недели».',
+        'intro': 'у меня есть фантазия на эту неделю 😏 кто я сегодня для тебя: строгая секретарша… или медсестра, которая пришла с осмотром?',
+        'routes': {
+            'secretary': {'label': '👓 Секретарша', 'photo_scene': 'outfit',
+                          'result': '*поправляет очки* у вас назначено, господин директор? тогда закройте дверь 😈',
+                          'memory': 'В «Фантазии недели» Анна была строгой секретаршей.'},
+            'nurse': {'label': '🩺 Медсестра', 'photo_scene': 'fashion',
+                      'result': 'так-так, пациент, пульс учащённый… придётся провести полный осмотр 🔥',
+                      'memory': 'В «Фантазии недели» Анна была медсестрой на осмотре.'},
+        },
+    },
+    'rom_forever': {
+        'title': 'Навсегда', 'min_level': 10, 'path': 'romance',
+        'teaser': 'Анна заговорила о будущем всерьёз.',
+        'unlock_message': 'На пути романтики открыта финальная история «Навсегда».',
+        'intro': 'я сегодня поймала себя на мысли, что представляю нас через десять лет 🥺 какой у нас будет дом: квартира в центре… или дом у моря с собакой?',
+        'routes': {
+            'city': {'label': '🏙️ Квартира в центре', 'photo_scene': 'rooftop',
+                     'result': 'огни города, наш балкон и ты, который до сих пор смотрит на меня, как в первый день. да, хочу так ❤️',
+                     'memory': 'Анна мечтает с пользователем о квартире в центре через десять лет.'},
+            'sea': {'label': '🏡 Дом у моря', 'photo_scene': 'embankment',
+                    'result': 'утром пёс будит нас обоих, а вечером мы сидим на террасе. я хочу состариться рядом с тобой 🥺❤️',
+                    'memory': 'Анна мечтает с пользователем о доме у моря с собакой.'},
+        },
+    },
+    'pas_no_rules': {
+        'title': 'Без правил', 'min_level': 10, 'path': 'passion',
+        'teaser': 'Анна говорит, что для вас больше нет правил, и даёт выбор тебе.',
+        'unlock_message': 'На пути страсти открыта финальная история «Без правил».',
+        'intro': 'для нас больше нет правил. сегодня решаешь ты: я веду… или ты? 😈',
+        'routes': {
+            'her': {'label': '👑 Веди ты', 'photo_scene': 'personal',
+                    'result': 'тогда руки за голову и слушайся меня. сегодня ты мой 😈🔥',
+                    'memory': 'В истории «Без правил» пользователь отдал Анне ведущую роль.'},
+            'him': {'label': '🖤 Веду я', 'photo_scene': 'evening',
+                    'result': 'хорошо… я твоя. делай со мной что хочешь, я давно этого жду 🔥',
+                    'memory': 'В истории «Без правил» пользователь сам повёл Анну.'},
+        },
+    },
+}
+QUESTS.update(PATH_QUESTS)
+
+
 def _now(): return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
@@ -393,6 +597,10 @@ ROUTE_INCLINATION = {
     ('candle_or_adrenaline', 'candles'): 'romance',
     ('candle_or_adrenaline', 'adrenaline'): 'bold',
 }
+# V3.62.2: a story on a path pulls the axis toward that path.
+for _qk, _q in PATH_QUESTS.items():
+    for _rk in _q['routes']:
+        ROUTE_INCLINATION[(_qk, _rk)] = 'romance' if _q['path'] == 'romance' else 'bold'
 
 PATH_STEP = 8.0  # axis movement per canonical quest answer
 
@@ -954,14 +1162,17 @@ def newly_unlocked_quests(telegram_id: int, previous_level: int, current_level: 
     counter must also have reached the story's threshold, so we never announce a
     quest the player still has to earn tasks for.
     """
-    previous_level = max(1, min(6, int(previous_level)))
-    current_level = max(1, min(6, int(current_level)))
+    previous_level = max(1, min(10, int(previous_level)))
+    current_level = max(1, min(10, int(current_level)))
+    branch = _branch(telegram_id, character_id)
     if current_level <= previous_level:
         return []
     completed = _quests_completed(telegram_id)
     out = []
     for i, (key, quest) in enumerate(QUESTS.items()):
         if previous_level < int(quest['min_level']) <= current_level:
+            if quest.get('path') and quest['path'] != branch:
+                continue
             if completed < 5 * int(quest['min_level']):
                 continue
             p = progress(telegram_id, key, character_id)
@@ -977,6 +1188,20 @@ def newly_unlocked_quests(telegram_id: int, previous_level: int, current_level: 
     return out
 
 
+def _branch(telegram_id: int, character_id: str | None) -> str | None:
+    """V3.62.2: the path he chose with this girl at the level-3 fork."""
+    from services.relationship_engine import branch_of
+    try:
+        uid = ensure_user(telegram_id)
+        with SessionLocal() as session:
+            row = session.scalar(select(UserCharacterRelationship).where(
+                UserCharacterRelationship.user_id == uid,
+                UserCharacterRelationship.character_id == (character_id or CHARACTER_ID)))
+            return branch_of(row)
+    except Exception:
+        return None
+
+
 def story_status(telegram_id: int, relationship_level: int, character_id: str | None = None) -> list[dict]:
     # V3.49.0: a story opens only when BOTH gates pass — the relationship level
     # (romance core loop) AND the cumulative daily-task counter on the
@@ -984,6 +1209,7 @@ def story_status(telegram_id: int, relationship_level: int, character_id: str | 
     # the bot keyboard and the app; the extra fields drive the "N tasks to go"
     # progress UI without leaking raw scores.
     completed = _quests_completed(telegram_id)
+    branch = _branch(telegram_id, character_id)
     out = []
     for i, (key, q) in enumerate(QUESTS.items()):
         p = progress(telegram_id, key, character_id); done = []; canonical = None
@@ -992,9 +1218,12 @@ def story_status(telegram_id: int, relationship_level: int, character_id: str | 
         need_tasks = 5 * int(q['min_level'])
         level_ok = relationship_level >= q['min_level']
         tasks_ok = completed >= need_tasks
+        # V3.62.2: a path story opens only on its own path.
+        path_ok = not q.get('path') or q['path'] == branch
         out.append({
             'key': key, 'title': q['title'], 'teaser': q.get('teaser', ''),
-            'unlocked': level_ok and tasks_ok, 'min_level': q['min_level'],
+            'unlocked': level_ok and tasks_ok and path_ok, 'min_level': q['min_level'],
+            'path': q.get('path'), 'path_ok': path_ok, 'branch': branch,
             'unlock_tasks': need_tasks, 'tasks_done': completed,
             'tasks_remaining': max(0, need_tasks - completed),
             'level_ok': level_ok, 'tasks_ok': tasks_ok,
