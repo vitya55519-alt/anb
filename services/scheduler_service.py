@@ -78,6 +78,25 @@ async def _reminders(bot):
             logger.info('reminder dropped (user blocked bot) id=%s', r.id)
         except Exception: logger.exception('reminder failed id=%s', r.id if r else None)
 
+def _to_app_chat(uid, tg_id, char_id, text, shot=None) -> None:
+    """V3.61.8: what she writes first also lands in the shared dialog, so the
+    Mini App shows it in her chat with the «new» badge — the user opens the app
+    and sees «ты где?» from her instead of the last thing he said himself.
+    Saved after a successful send only: a blocked user gets no ghost history."""
+    try:
+        from services.memory_service import save_message
+        media_kind = media_url = None
+        if shot:
+            from services import webapp_service
+            data, ctype, pkind = shot
+            moving = pkind in ('gif', 'video')
+            filename = webapp_service.save_chat_media(int(tg_id), data, 'mp4' if moving else 'jpg', ctype)
+            media_kind, media_url = ('video' if moving else 'photo'), f'/webapp/media/{filename}'
+        save_message(uid, char_id, 'assistant', text, media_kind=media_kind, media_url=media_url)
+    except Exception:
+        logger.exception('proactive app-chat persist failed user=%s', uid)
+
+
 async def _proactive(bot):
     now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None); cutoff=now-dt.timedelta(hours=RETENTION_REMINDER_HOURS)
     # V3.55.9: ghost window — users silent longer than PROACTIVE_MAX_INACTIVE_DAYS
@@ -140,6 +159,7 @@ async def _proactive(bot):
                 # V3.44.2: per-character retention texts
                 msg=retention_features_service.get_retention_text(kind, char_id)
                 await bot.send_message(telegram_id,msg)
+                _to_app_chat(uid,telegram_id,char_id,msg)
                 track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': kind, 'nudge': nudge_count + 1})
             else:
                 msg=await proactive_reply(telegram_id,name,hours,character_id=char_id)
@@ -295,6 +315,7 @@ async def _rituals(bot):
                     await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=text)
             else:
                 await bot.send_message(int(tg_id),text)
+            _to_app_chat(uid,tg_id,char_id,text,shot)
             _ritual_sent.add(guard)
             track_event(uid, f'ritual_{kind}_sent', metadata={'streak': streak, 'tz': tz})
         except TelegramForbiddenError:
@@ -335,6 +356,7 @@ async def _random_gifts(bot):
         try:
             msg=retention_features_service.get_character_gift(char_id)
             await bot.send_message(int(tg_id), msg)
+            _to_app_chat(uid,tg_id,char_id,msg)
             track_event(uid, 'random_gift_sent', metadata={'character_id': char_id})
         except Exception: logger.exception('random gift failed user=%s',uid)
 

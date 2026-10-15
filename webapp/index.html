@@ -2416,7 +2416,7 @@ async function loadChatHistory(characterId) {
   const banner = document.getElementById('personaBanner');
   if (banner) banner.style.display = 'none';
   try {
-    const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId));
+    const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId) + '&open=1');
     if (r.status === 401) { toast(L.auth_short); return; }
     const j = await r.json();
     if (CHAT && CHAT.id === characterId) CHAT.duo = j.duo || null;

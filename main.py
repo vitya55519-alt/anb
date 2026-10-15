@@ -3098,7 +3098,11 @@ def admin_prophoto_keyboard():
     from services import retention_features_service as rfs
     photos = rfs.list_proactive_photos()
     names = _prophoto_char_names()
-    rows = [[InlineKeyboardButton(text='➕ Добавить фото / GIF / видео', callback_data='admin:prophoto:add')]]
+    rows = [[InlineKeyboardButton(text='➕ Добавить фото / GIF / видео', callback_data='admin:prophoto:add')],
+            # V3.61.8: one tap renders fresh «я скучала» shots of every heroine.
+            [InlineKeyboardButton(text='✨ Сгенерировать 20 фото «я скучала»', callback_data='admin:prophoto:gen')]]
+    if photos:
+        rows.append([InlineKeyboardButton(text='🧹 Удалить старые фото пула', callback_data='admin:prophoto:clear')])
     del_row = []
     for p in photos:
         _cid = p.get('character_id') or ''
@@ -3195,6 +3199,78 @@ async def admin_prophoto_pick(cq: types.CallbackQuery):
     await cq.message.answer(
         f'📥 Пришли фото (до 8 MB), GIF или видео (до 20 MB) — оно попадёт в пул для «{char_id}».\n\n'
         '/cancel — отменить')
+
+
+GIFT_POOL_RUNNING: set[int] = set()
+
+
+@dp.callback_query(F.data == 'admin:prophoto:gen')
+async def admin_prophoto_generate(cq: types.CallbackQuery):
+    """V3.61.8: render ~20 «я скучала» photos across all heroines into the pool."""
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import gift_pool_service
+    if cq.from_user.id in GIFT_POOL_RUNNING:
+        await cq.answer('уже генерирую, подожди', show_alert=True)
+        return
+    plan = gift_pool_service.plan_gift_pool()
+    if not plan:
+        await cq.answer('нет видимых героинь', show_alert=True)
+        return
+    await cq.answer()
+    admin_id = cq.from_user.id
+    status = await cq.message.answer(
+        f'✨ Генерирую {len(plan)} фото «я скучала» — лицо целиком в кадре, у каждой героини свои. '
+        'Это займёт несколько минут, напишу, когда закончу.')
+    GIFT_POOL_RUNNING.add(admin_id)
+
+    async def _progress(n: int, total: int, cid: str) -> None:
+        if n % 4 == 0 and n < total:
+            await status.edit_text(f'✨ Готово {n} из {total}…')
+
+    async def _run() -> None:
+        try:
+            added, failed = await gift_pool_service.fill_gift_pool(admin_id, total=len(plan), progress=_progress)
+            kb, n = admin_prophoto_keyboard()
+            await bot.send_message(
+                admin_id,
+                f'✅ Добавлено в пул: {added}' + (f', не получилось: {failed}' if failed else '') +
+                f'. Всего в пуле: {n}.\nЭти фото приходят с «Я скучала… вот, держи 💋», утренним приветом и её моментами дня.',
+                reply_markup=kb)
+        except Exception:
+            logger.exception('gift pool generation failed')
+            await bot.send_message(admin_id, '⚠️ Генерация оборвалась, посмотри ошибки в админке.')
+        finally:
+            GIFT_POOL_RUNNING.discard(admin_id)
+
+    asyncio.create_task(_run())
+
+
+@dp.callback_query(F.data == 'admin:prophoto:clear')
+async def admin_prophoto_clear_ask(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import retention_features_service as rfs
+    n = len(rfs.list_proactive_photos())
+    await cq.answer()
+    await cq.message.answer(
+        f'Удалить все {n} кадров пула? Это нельзя отменить. Лучше сначала сгенерируй новые, '
+        'а потом удали старые — иначе подарки придут без фото.',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='🧹 Да, удалить все', callback_data='admin:prophoto:clear:yes')],
+            [InlineKeyboardButton(text='❌ Оставить', callback_data='admin:prophoto')],
+        ]))
+
+
+@dp.callback_query(F.data == 'admin:prophoto:clear:yes')
+async def admin_prophoto_clear(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import retention_features_service as rfs
+    removed = sum(1 for p in rfs.list_proactive_photos() if rfs.delete_proactive_photo(p['id']))
+    kb, n = admin_prophoto_keyboard()
+    await cq.answer(f'удалено {removed}')
+    await cq.message.answer(f'🧹 Удалено: {removed}. В пуле теперь: {n}.', reply_markup=kb)
 
 
 @dp.callback_query(F.data.startswith('admin:prophoto:del:'))
@@ -10816,10 +10892,16 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
         limit = int(request.query.get('limit', '30'))
     except ValueError:
         limit = 30
+    # V3.61.8: only a real chat open (not photo polling) may add her «ты где?».
+    opening = request.query.get('open') == '1'
     # V3.57.2: the whole blocking open-the-dialog block (ensure_user write,
     # mark-read, premium floor, history read) runs in a worker thread.
     def _load():
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        # V3.61.8: back after a long silence — she writes first («ты где?»).
+        if opening:
+            from services.presence_service import maybe_welcome_back
+            maybe_welcome_back(uid, character_id)
         # V3.52.0: opening the conversation in the app marks it read — the «Чаты»
         # badge clears and only a later proactive/life message will light it up again.
         webapp_service.mark_chat_read(telegram_id, character_id)

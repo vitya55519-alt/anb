@@ -1061,6 +1061,12 @@ async def send_daily_gift(telegram_id: int, bot) -> bool:
         photo=BufferedInputFile(data, filename='daily_gift.jpg'),
         caption='🎁 Я скучала... вот, держи 💋',
     )
+    # V3.61.8: the gift also shows up in her chat inside the Mini App.
+    try:
+        from services.scheduler_service import _to_app_chat
+        _to_app_chat(uid, telegram_id, gift_char, '🎁 Я скучала... вот, держи 💋', shot)
+    except Exception:
+        logger.exception('daily gift app-chat persist failed user=%s', telegram_id)
     with SessionLocal() as session:
         user = session.scalar(select(User).where(User.id == uid))
         if user:
