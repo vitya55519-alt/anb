@@ -403,6 +403,7 @@ BADGE_MEDIA_WAIT: dict[int, str] = {}
 # (the pool is per-character now — a stranger's face must never ping
 # another girl's user). And admin id -> photo id currently being re-tagged.
 PROPHOTO_WAIT: dict[int, str] = {}
+PROPHOTO_BATCH: dict[int, dict] = {}
 PROPHOTO_TAG_WAIT: dict[int, int] = {}
 
 # V3.47.4: admin ids waiting to send carousel photos for one character page —
@@ -3196,9 +3197,12 @@ async def admin_prophoto_pick(cq: types.CallbackQuery):
             reply_markup=kb)
         return
     PROPHOTO_WAIT[cq.from_user.id] = char_id
+    PROPHOTO_BATCH.pop(cq.from_user.id, None)
     await cq.message.answer(
-        f'📥 Пришли фото (до 8 MB), GIF или видео (до 20 MB) — оно попадёт в пул для «{char_id}».\n\n'
-        '/cancel — отменить')
+        f'📥 Пришли фото (до 8 MB), GIF или видео (до 20 MB) — они попадут в пул для «{char_id}».\n'
+        'Можно сразу пачкой — выдели несколько фото и отправь альбомом. Когда закончишь, нажми «✅ Готово».',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='✅ Готово', callback_data='admin:prophoto:done')]]))
 
 
 GIFT_POOL_RUNNING: set[int] = set()
@@ -3311,11 +3315,38 @@ async def admin_prophoto_upload(message: types.Message):
     await bot.download(file.file_id, destination=buf)
     ok = rfs.add_proactive_photo(buf.getvalue(), ctype, kind,
                                  character_id=PROPHOTO_WAIT.get(message.from_user.id))
-    PROPHOTO_WAIT.pop(message.from_user.id, None)
+    # V3.61.9: the wait stays open — an album of 20 lands in one go. One
+    # summary after the pack settles instead of a reply per photo.
+    admin_id = message.from_user.id
+    batch = PROPHOTO_BATCH.setdefault(admin_id, {'ok': 0, 'fail': 0, 'task': None})
+    batch['ok' if ok else 'fail'] += 1
+    if batch.get('task') and not batch['task'].done():
+        batch['task'].cancel()
+
+    async def _summary():
+        await asyncio.sleep(2.5)
+        b = PROPHOTO_BATCH.get(admin_id) or {}
+        await bot.send_message(
+            admin_id,
+            f"✅ Добавлено: {b.get('ok', 0)}" + (f", не сохранилось: {b['fail']}" if b.get('fail') else '') +
+            '. Присылай ещё или нажми «✅ Готово».',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='✅ Готово', callback_data='admin:prophoto:done')]]))
+
+    batch['task'] = asyncio.create_task(_summary())
+
+
+@dp.callback_query(F.data == 'admin:prophoto:done')
+async def admin_prophoto_done(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    PROPHOTO_WAIT.pop(cq.from_user.id, None)
+    b = PROPHOTO_BATCH.pop(cq.from_user.id, None) or {}
+    if b.get('task') and not b['task'].done():
+        b['task'].cancel()
     kb, n = admin_prophoto_keyboard()
-    await message.answer(
-        f'✅ Добавлено ({kind}). В пуле: {n}.' if ok else '⚠️ Не удалось сохранить.',
-        reply_markup=kb)
+    await cq.answer()
+    await cq.message.answer(f"✅ Загрузка закончена: +{b.get('ok', 0)}. В пуле: {n}.", reply_markup=kb)
 
 
 # ── V3.47.4: character-page carousel — admin-set visuals, storefront only ──
