@@ -632,6 +632,8 @@ _spicy_fail_streak: Dict[str, int] = {}
 # V3.58.2: the real reason of the last miss («Отказы» used to say only
 # «empty_result», hiding a refused model id for weeks).
 _spicy_last_error: str = ''
+# V3.61.11: per-model enable_thinking value the provider currently accepts.
+_spicy_thinking_override: Dict[str, bool] = {}
 
 
 def spicyapi_last_error() -> str:
@@ -711,13 +713,31 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
         }
         if image_urls:
             input_block["image_urls"] = image_urls
-        idempotency_key = str(uuid.uuid4())
+        if _spicy_thinking_override.get(model) is not None:
+            input_block["enable_thinking"] = _spicy_thinking_override[model]
         logger.info(f"SpicyAPI: creating task, model={model}, refs={len(image_urls) if image_urls else 0}")
-        task_data = await _spicyapi_call(
-            "POST", "/jobs/createTask",
-            headers={"Idempotency-Key": idempotency_key},
-            json={"model": model, "input": input_block},
-        )
+        try:
+            task_data = await _spicyapi_call(
+                "POST", "/jobs/createTask",
+                headers={"Idempotency-Key": str(uuid.uuid4())},
+                json={"model": model, "input": input_block},
+            )
+        except RuntimeError as exc:
+            # V3.61.11: the provider started refusing enable_thinking=false
+            # («40004 cannot serve this parameter combination»). Flip the flag
+            # once, remember the working value per model and go on.
+            if 'enable_thinking' not in str(exc):
+                raise
+            flipped = not bool(input_block.get("enable_thinking"))
+            logger.warning('SpicyAPI refused enable_thinking=%s for %s, retrying with %s',
+                           input_block.get("enable_thinking"), model, flipped)
+            input_block["enable_thinking"] = flipped
+            task_data = await _spicyapi_call(
+                "POST", "/jobs/createTask",
+                headers={"Idempotency-Key": str(uuid.uuid4())},
+                json={"model": model, "input": input_block},
+            )
+            _spicy_thinking_override[model] = flipped
         task_id = task_data.get("taskId")
         if not task_id:
             logger.error(f"No taskId in SpicyAPI response: {task_data}")
