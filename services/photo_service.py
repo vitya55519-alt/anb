@@ -1204,7 +1204,7 @@ def parse_photo_request(text: str) -> Optional[PhotoRequest]:
     direct = (
         any(x in low for x in request_verbs)
         or bool(re.match(r'^\s*(?:фото|фотку|photo|pic)\b', low))
-        or bool(re.search(r'\b(?:сделай|пришли|дай|хочу|покажи)\b.{0,45}\b(?:фото|фотку|фотографию|селфи)\b', low))
+        or bool(re.search(r'\b(?:сделай|пришли|дай|хочу|покажи|скинь|кинь|скинешь|скинуть|отправь|вышли|кидай|жду)\b.{0,45}\b(?:фото|фотку|фоточку|фотографию|фотки|фоточки|селфи|селфач)\b', low))
         or bool(re.search(r'\b(?:make|send|take|want|show)\b.{0,45}\b(?:photo|pic|selfie|picture)\b', low))
     )
     if not direct:

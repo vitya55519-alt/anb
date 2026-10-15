@@ -24,7 +24,8 @@ def test_compliment_yields_smile():
 
 def test_rudeness_yields_upset():
     assert detect_expression_key("ты тупая") == "upset"
-    assert detect_expression_key("дай фото быстрее") == "upset"
+    # V3.60.9: «быстрее/сейчас» are ordinary impatience, not an insult
+    assert detect_expression_key("пришли фото сейчас") is None
     assert detect_expression_key("stupid bot") == "upset"
 
 
@@ -68,9 +69,11 @@ def test_unknown_key_falls_back_to_neutral():
 
 
 def test_known_key_produces_character_named_expression():
-    desc = expression_description("upset", "Мария")
+    desc = expression_description("shy", "Мария")
     assert desc.startswith("EXPRESSION: Мария has")
-    assert "disappointed" in desc
+    assert "shy" in desc
+    # V3.60.9: a photo she sends is never sulky — upset becomes a playful pout
+    assert "pout" in expression_description("upset", "Мария")
 
 
 def test_photo_request_carries_expression_key():
