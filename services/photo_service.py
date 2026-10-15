@@ -1058,6 +1058,8 @@ class PhotoRequest:
     underwear_style: str = ''
     # V3.59.7: a small in-frame hint of her relationship status (ring, his hoodie).
     story_detail: str = ''
+    # V3.61.2: «сфоткайтесь вдвоём» — the girl invited into this chat shares the frame.
+    with_guest: str = ''
 
 
 class PhotoGenerationError(RuntimeError):
@@ -1214,12 +1216,35 @@ def _season_from_text(low: str) -> str:
     return ''
 
 
+TOGETHER_PHOTO = re.compile(r'(вдво[её]м|вместе|обе\b|обеих|совместн|сфоткайтесь|сфотайтесь|с подругой|together|both of you)', re.I)
+
+
+def attach_guest(request: Optional[PhotoRequest], telegram_id: int, character_id: str, text: str) -> Optional[PhotoRequest]:
+    """V3.61.2: a photo request that asks for both girls («сфоткайтесь вдвоём»,
+    «фото с Викой») renders the invited guest into the same frame."""
+    if not request:
+        return request
+    try:
+        from services.chat_guest_service import get_guest, character_name
+        guest_id = get_guest(telegram_id, character_id)
+    except Exception:
+        return request
+    if not guest_id:
+        return request
+    low = (text or '').lower()
+    name = (character_name(guest_id) or '').lower()
+    stem = name[:-1] if len(name) > 3 else name
+    if TOGETHER_PHOTO.search(low) or (stem and stem in low):
+        return replace(request, with_guest=guest_id)
+    return request
+
+
 def parse_photo_request(text: str) -> Optional[PhotoRequest]:
     t = (text or '').strip()
     low = t.lower()
     request_verbs = (
         'сфоткай', 'сфотай', 'сфотограф', 'фоткни', 'сделай фото', 'пришли фото', 'пришли фотку', 'покажи себя', 'покажись',
-        'сними себя', 'селфи', 'take a photo', 'take a pic', 'send me a photo', 'send a pic', 'show me a photo', 'show yourself', 'show me yourself', 'selfie',
+        'сними себя', 'селфи', 'сфоткайтесь', 'сфотайтесь', 'совместное фото', 'совместную фот', 'фото вдвоём', 'фото вдвоем', 'фото вместе', 'take a photo', 'take a pic', 'send me a photo', 'send a pic', 'show me a photo', 'show yourself', 'show me yourself', 'selfie',
         '拍照', '自拍', '发张照片', '给我看看你',
     )
     direct = (
@@ -2767,6 +2792,32 @@ async def _run_seedream_set(
     return out
 
 
+def _guest_photo_block(host_id: str, guest_id: str) -> str:
+    """V3.61.2: the second woman of a joint photo, kept apart from the host."""
+    host_name = _character_display_name_safe(host_id)
+    guest_name = _character_display_name_safe(guest_id)
+    try:
+        guest_identity = _character_identity_lock(guest_id, seedream=True)[0]
+    except Exception:
+        guest_identity = ''
+    return (
+        f'JOINT PHOTO OF TWO ADULT WOMEN: {host_name} and her friend {guest_name} are together in this one photo, '
+        f'side by side or close, like a real selfie or mirror photo of two friends. '
+        f'{host_name}\'s face and hair come ONLY from reference images 1–2; {guest_name}\'s face and hair come ONLY from '
+        f'reference images 3–4. They are two clearly different women: never merge their faces, never swap hair or skin tone, '
+        f'never draw a third person. Both are adults. '
+        f'SECOND WOMAN — {guest_name}: {guest_identity}'
+    )
+
+
+def _character_display_name_safe(character_id: str) -> str:
+    try:
+        from services.chat_guest_service import character_name
+        return character_name(character_id) or 'She'
+    except Exception:
+        return 'She'
+
+
 async def _run_spicy_set(
     character: dict,
     telegram_id: int,
@@ -2791,6 +2842,13 @@ async def _run_spicy_set(
     refs = [f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0',
             f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=1']
     out: list[GeneratedPhoto] = []
+    guest_block = ''
+    if request.with_guest:
+        # V3.61.2: both girls in one frame — the guest's own canonical
+        # references ride as images 3–4 and her identity text is declared apart.
+        refs += [f'{PUBLIC_BASE_URL}/webapp/photo/{request.with_guest}?i=0',
+                 f'{PUBLIC_BASE_URL}/webapp/photo/{request.with_guest}?i=1']
+        guest_block = _guest_photo_block(character_id, request.with_guest)
     # V3.56.3: figure chaining. The canonical references are face crops, so the
     # BODY IDENTITY text is the only body anchor — and Seedream re-improvises the
     # figure every frame (the owner watched bust and hips «jump» inside one set).
@@ -2809,6 +2867,8 @@ async def _run_spicy_set(
             'never draw her bigger, slimmer, flatter or smaller-chested than declared. '
             'Make this framing clearly different from the previous shot while staying in the same photo session.'
         )
+        if guest_block:
+            prompt += '\n' + guest_block
         if prev_url:
             prompt += (
                 ' REFERENCE IMAGE 3 is the PREVIOUS photo of this same shoot: reproduce her exact body from image 3 — '
@@ -2831,6 +2891,9 @@ async def _run_spicy_set(
                 break
             raise PhotoGenerationError('spicyapi', 'empty_result')
         prev_url = frame_url
+        if guest_block:
+            # a joint photo keeps images 3–4 for the guest, so no frame chaining.
+            prev_url = None
         photo = GeneratedPhoto(data=data, provider='spicyapi', estimated_cost_usd=SPICYAPI_ESTIMATED_COST_USD)
         out.append(photo)
         frame_elapsed = time.monotonic() - frame_started

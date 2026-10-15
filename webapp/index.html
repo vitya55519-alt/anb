@@ -244,6 +244,21 @@
   .chat-head .sub { color: var(--muted); font-size: 11px; }
   .chat-head .spacer { margin-left: auto; }
   .msg .duo-nm { color: #ff9ccb; }
+  .msg .duo-av { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; vertical-align: -5px; margin-right: 5px; }
+  /* V3.61.2: «позвать в чат» — guest bar + girl picker */
+  .guestbar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 13px;
+    background: rgba(255,90,160,.12); border-bottom: 1px solid rgba(255,120,180,.25); }
+  .guestbar img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+  .guestbar .x { margin-left: auto; background: none; border: 0; color: inherit; font-size: 13px; opacity: .8; cursor: pointer; }
+  .gsheet { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; }
+  .gsheet .box { width: 100%; max-height: 75vh; overflow: auto; background: #1d1424; border-radius: 20px 20px 0 0;
+    padding: 18px 16px 24px; border-top: 1px solid rgba(255,120,180,.3); }
+  .gsheet h3 { margin: 0 0 4px; font-size: 18px; }
+  .gsheet .hint { font-size: 13px; opacity: .75; margin-bottom: 12px; }
+  .gsheet .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .gsheet .g { background: rgba(255,255,255,.05); border: 1px solid rgba(255,120,180,.25); border-radius: 14px;
+    padding: 6px; color: inherit; font-size: 12px; cursor: pointer; text-align: center; }
+  .gsheet .g img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; display: block; margin-bottom: 4px; }
   .startsheet { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; }
   .startsheet .box { width: 100%; background: #1d1424; border-radius: 20px 20px 0 0; padding: 18px 16px 26px; border-top: 1px solid rgba(255,120,180,.3); }
   .startsheet .st-h { text-align: center; font-weight: 700; font-size: 18px; margin-bottom: 14px; }
@@ -919,8 +934,10 @@
       <span class="lvlchip" id="chatLvl" style="display:none"></span>
     </div>
     <div class="spacer"></div>
+    <button class="iconbtn" id="chatInvite" style="font-size:15px;display:none" title="Позвать в чат">👭</button>
     <button class="iconbtn" id="chatSelect" style="font-size:13px">❤️</button>
   </div>
+  <div class="guestbar" id="guestBar" style="display:none"></div>
   <div class="chat-msgs" id="chatMsgs"></div>
   <!-- V3.55.6: one-time tender/passionate picker for premium characters -->
   <div id="personaBanner" style="display:none"></div>
@@ -952,6 +969,8 @@
 </div></div>
 <!-- V3.60.9: level panel (tap the chip under her name) -->
 <div class="lvlsheet" id="lvlSheet" style="display:none"><div class="box" id="lvlBox"></div></div>
+<!-- V3.61.2: «позвать в чат» girl picker -->
+<div class="gsheet" id="guestSheet" style="display:none"><div class="box" id="guestBox"></div></div>
 <!-- V3.39.0: the Come Closer character page — photo strip, «Начать чат»,
      bio and the СЮЖЕТ block before the dialog opens -->
 <div class="overlay" id="charview">
@@ -2166,7 +2185,14 @@ function chatBubble(roleOrM, content, ts) {
   let body = esc(m.content);
   // V3.61.0: a duo persona answers as «Имя: …» lines — the speaker's name in bold.
   if (cls === 'bot' && !m.media_url && CHAT && CHAT.duo) {
-    body = body.split('\n').map(line => line.replace(/^([A-Za-zА-Яа-яЁё]{2,20}):\s/, '<b class="duo-nm">$1:</b> ')).join('\n');
+    // V3.61.2: plus a small avatar of who is speaking (the chat's girl or the invited guest).
+    const avatars = {};
+    if (CHAT.guest) avatars[CHAT.guest.name] = CHAT.guest.photo;
+    if (CHAT.name) avatars[CHAT.name] = CHAT.photo || ('/webapp/photo/' + CHAT.id);
+    body = body.split('\n').map(line => line.replace(/^([A-Za-zА-Яа-яЁё]{2,20}):\s/, (all, nm) => {
+      const av = avatars[nm] ? '<img class="duo-av" src="' + esc(avatars[nm]) + '" alt="">' : '';
+      return av + '<b class="duo-nm">' + nm + ':</b> ';
+    })).join('\n');
   }
   if (m.media_url) {
     const src = m.media_url + '?init_data=' + encodeURIComponent(tg.initData || '');
@@ -2279,6 +2305,75 @@ function openLevelSheet() {
   sheet.onclick = (e) => { if (e.target === sheet) close(); };
 }
 
+// V3.61.2: «позвать в чат» — invite another girl into this chat; both answer,
+// each line starting with her name. The bar above the chat sends her away.
+function renderGuest(characterId, guest, canInvite) {
+  const btn = document.getElementById('chatInvite');
+  const bar = document.getElementById('guestBar');
+  if (btn) {
+    btn.style.display = canInvite ? '' : 'none';
+    btn.onclick = () => openGuestPicker(characterId);
+  }
+  if (!bar) return;
+  if (!guest) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.innerHTML = '<img src="' + esc(guest.photo) + '" alt=""><span>' + esc(guest.name) + ' в чате</span>'
+    + '<button class="x" id="guestOut">✕ отпустить</button>';
+  bar.style.display = 'flex';
+  document.getElementById('guestOut').onclick = () => setGuest(characterId, '');
+}
+
+async function openGuestPicker(characterId) {
+  let list = CHARS;
+  if (!list || !list.length) {
+    try {
+      const r = await fetch('/webapp/api/characters?init_data=' + encodeURIComponent(tg.initData || ''));
+      list = (await r.json()).characters || [];
+    } catch (e) { list = []; }
+  }
+  const girls = list.filter(c => c.id !== characterId && c.status === 'active');
+  let html = '<h3>👭 Позвать в чат</h3><div class="hint">Она зайдёт в эту переписку, и дальше они будут отвечать вдвоём.</div><div class="grid">';
+  girls.forEach(c => {
+    html += '<button class="g" data-guest="' + esc(c.id) + '"><img src="' + esc(c.photo) + '" alt="" loading="lazy">' + esc(c.name) + '</button>';
+  });
+  html += '</div>';
+  const sheet = document.getElementById('guestSheet');
+  document.getElementById('guestBox').innerHTML = html;
+  sheet.style.display = 'flex';
+  sheet.onclick = (e) => { if (e.target === sheet) sheet.style.display = 'none'; };
+  sheet.querySelectorAll('[data-guest]').forEach(b => {
+    b.onclick = () => { sheet.style.display = 'none'; setGuest(characterId, b.dataset.guest); };
+  });
+}
+
+async function setGuest(characterId, guestId) {
+  const box = document.getElementById('chatMsgs');
+  if (guestId) box.insertAdjacentHTML('beforeend', '<div class="msg bot typing" id="guestTyping">…</div>');
+  try {
+    const r = await fetch('/webapp/api/chat/guest?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: characterId, guest_id: guestId }),
+    });
+    const j = await r.json();
+    const typing = document.getElementById('guestTyping');
+    if (typing) typing.remove();
+    if (!CHAT || CHAT.id !== characterId) return;
+    if (!j.ok) { toast(L.reply_err); return; }
+    CHAT.duo = j.guest ? j.guest.name : null;
+    CHAT.guest = j.guest || null;
+    renderGuest(characterId, j.guest, true);
+    if (j.reply) {
+      const empty = box.querySelector('.chat-empty');
+      if (empty) empty.remove();
+      box.insertAdjacentHTML('beforeend', chatBubble({ role: 'assistant', content: j.reply, ts: new Date().toISOString() }));
+      box.scrollTop = box.scrollHeight;
+    }
+  } catch (e) {
+    const typing = document.getElementById('guestTyping');
+    if (typing) typing.remove();
+    toast(L.reply_err);
+  }
+}
+
 async function loadChatHistory(characterId) {
   const banner = document.getElementById('personaBanner');
   if (banner) banner.style.display = 'none';
@@ -2287,6 +2382,7 @@ async function loadChatHistory(characterId) {
     if (r.status === 401) { toast(L.auth_short); return; }
     const j = await r.json();
     if (CHAT && CHAT.id === characterId) CHAT.duo = j.duo || null;
+    if (CHAT && CHAT.id === characterId) { CHAT.guest = j.guest || null; renderGuest(characterId, j.guest || null, j.can_invite !== false); }
     const box = document.getElementById('chatMsgs');
     if (!j.ok) { box.innerHTML = `<div class="chat-empty">${esc(L.reply_err)}</div>`; return; }
     if (!j.history.length) {
