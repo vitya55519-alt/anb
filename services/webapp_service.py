@@ -38,6 +38,7 @@ from config import (
     MARITAL_CHANGE_PEACHES,
     CHARACTER_ID,
     CHAT_PHOTO_OFFER_STARS,
+    CHAT_PHOTO_PEACH_COST,
     CONSTRUCTOR_COST_PEACHES,
     CONSTRUCTOR_COST_RUB,
     CONSTRUCTOR_PRICE_USD,
@@ -65,6 +66,7 @@ from config import (
     PREMIUM_WEEKLY_PRICE_USD,
     PREMIUM_WEEKLY_STARS,
     QUEST_REPLAY_STARS,
+    UNDRESS_PEACH_COST,
     TELEGRAM_TOKEN,
     VIDEO_COST_STARS,
     VIDEO_PEACH_COST,
@@ -626,15 +628,15 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
       that replaced the standalone +1 photo credit square.
     """
     en = lang == EN
-    return [
+    return _with_price_usd([
         {
             'id': 'premium',
             'emoji': '⭐',
             'title': 'Premium · 30 дней' if not en else 'Premium · 30 days',
             'description': (
-                '30 дней Premium: 12 фото-кредитов, 2 видео-оживления в день, все персонажи и кружочки'
+                f'она больше не засыпает: общение без лимита, {PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 в подарок, голос, кружочки и все девушки'
                 if not en else
-                '30 days of Premium: 12 photo credits, 2 photo animations daily, all characters and video circles'
+                f'she never falls asleep: unlimited chat, {PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 as a gift, voice, video circles and every girl'
             ),
             'stars': PREMIUM_MONTHLY_STARS,
             'payload': 'premium_month',
@@ -646,9 +648,9 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'emoji': '⭐',
             'title': 'Premium · 7 дней' if not en else 'Premium · 7 days',
             'description': (
-                f'7 дней Premium: {PREMIUM_WEEKLY_PHOTO_CREDITS} фото-кредита, 2 видео-оживления в день, все персонажи и кружочки'
+                f'попробовать неделю: общение без лимита, {PREMIUM_WEEKLY_PHOTO_CREDITS} 🍑 в подарок, голос и кружочки'
                 if not en else
-                f'7 days of Premium: {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits, 2 photo animations daily, all characters and video circles'
+                f'try it for a week: unlimited chat, {PREMIUM_WEEKLY_PHOTO_CREDITS} 🍑 as a gift, voice and video circles'
             ),
             'stars': PREMIUM_WEEKLY_STARS,
             'payload': 'premium_week',
@@ -660,9 +662,9 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'emoji': '🍑',
             'title': '10 персиков' if not en else '10 peaches',
             'description': (
-                'как раз на одну картинку в студии или приватного персонажа'
+                f'{10 // UNDRESS_PEACH_COST} раза «Раздеть» или {10 // CHAT_PHOTO_PEACH_COST} фото от неё в чате'
                 if not en else
-                'exactly one studio picture or one private character'
+                f'{10 // UNDRESS_PEACH_COST}× «Undress» or {10 // CHAT_PHOTO_PEACH_COST} photos from her in chat'
             ),
             'stars': PEACH_PACK_10_STARS,
             'payload': 'peach_pack_10',
@@ -674,9 +676,9 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'emoji': '🍑',
             'title': '30 персиков' if not en else '30 peaches',
             'description': (
-                '3 картинки в студии — персик дешевле, чем в малом паке'
+                f'{30 // UNDRESS_PEACH_COST} раз «Раздеть» или {30 // CHAT_PHOTO_PEACH_COST} фото — выгоднее малого'
                 if not en else
-                '3 studio pictures — each peach costs less than in the small pack'
+                f'{30 // UNDRESS_PEACH_COST}× «Undress» or {30 // CHAT_PHOTO_PEACH_COST} photos — better value'
             ),
             'stars': PEACH_PACK_30_STARS,
             'payload': 'peach_pack_30',
@@ -689,9 +691,9 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'emoji': '🍑',
             'title': '100 персиков' if not en else '100 peaches',
             'description': (
-                '10 картинок в студии — самый выгодный пак'
+                f'хватит надолго: {100 // UNDRESS_PEACH_COST} раза «Раздеть» или {100 // CHAT_PHOTO_PEACH_COST} фото — самый выгодный'
                 if not en else
-                '10 studio pictures — the best value pack'
+                f'lasts a long time: {100 // UNDRESS_PEACH_COST}× «Undress» or {100 // CHAT_PHOTO_PEACH_COST} photos — best value'
             ),
             'stars': PEACH_PACK_100_STARS,
             'payload': 'peach_pack_100',
@@ -716,14 +718,28 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'usd': None,
             'custom': True,
         },
-    ]
+    ])
+
+
+def _with_price_usd(products: list[dict]) -> list[dict]:
+    """V3.62.12: the app shows money, not Stars — every product carries a
+    ruble and a dollar price (explicit, else the Stars ladder, else ~$0.02 per Star)."""
+    for x in products:
+        # card/SBP price when Platega sells it, else the Stars ladder in rubles.
+        x['price_rub'] = x.get('rub') or fiat_values(x['stars'])[0] or x['stars'] * 2
+        if not x.get('usd'):
+            ladder = fiat_values(x['stars'])[1]
+            x['price_usd'] = ladder if ladder else round(x['stars'] * 0.02, 2)
+        else:
+            x['price_usd'] = x['usd']
+    return products
 
 
 def api_shop(lang: str = 'ru') -> dict:
     """Structured prices for the shop tab (same constants the bot charges)."""
     en = lang == EN
     features = [
-        ('📸', '12 фото-кредитов каждый месяц', '12 photo credits every month'),
+        ('📸', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 каждый месяц в подарок', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 every month as a gift'),
         ('🎬', '2 бесплатных видео-оживления в день', '2 free photo animations per day'),
         ('🎯', 'перезапуски историй и все персонажи', 'story replays and all characters'),
         ('💌', 'безлимитное общение — она не засыпает, и больше памяти', 'unlimited chat — she never falls asleep, more memory'),

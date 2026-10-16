@@ -159,7 +159,7 @@ def test_pay_method_modal_frontend():
     assert 'if (x.rub && s.platega)' in INDEX
     assert 'if (s.wallet_pay)' in INDEX
     # Stars reuses the invoice flow; the others open the external payment link
-    assert 'buy(id, btn, extra)' in INDEX
+    assert 'buy(id, btn, extra, onPaid)' in INDEX
     assert "/webapp/api/pay_link?init_data=" in INDEX
     assert 'tg.openTelegramLink(j.url)' in INDEX
     # localized row labels in both languages
