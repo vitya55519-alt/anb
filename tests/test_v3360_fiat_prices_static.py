@@ -111,12 +111,12 @@ def test_webapp_service_items_carry_fiat():
 
 def test_frontend_renders_fiat_next_to_stars():
     # the shared formatter esc()-wraps backend fields before they hit innerHTML
-    assert 'const fiat = o =>' in INDEX
-    assert '(o.rub ? ` · ${esc(o.rub)} ₽` : \'\') + (o.usd ? ` · $${esc(o.usd)}` : \'\')' in INDEX
-    assert 'fiat(i)' in INDEX
-    # V3.43.0: the shop pack squares print the rub price inline from the same
-    # payload (the old hero/credit rows that used fiat(p)/fiat(credit) are gone)
-    assert "esc(x.rub) + ' ₽'" in INDEX
+    # V3.62.12: owner asked for money instead of Stars — one money() label
+    # (₽ for RU, $ for EN, Stars last) on tiles, Premium and the price list.
+    assert 'function money(x)' in INDEX
+    assert "if (LANG !== 'en' && rub) return rub + ' ₽';" in INDEX
+    assert 'esc(money(i))' in INDEX and 'esc(money(p))' in INDEX
+    assert "esc(money(x))" in INDEX
     # V3.45.28: the wizard price is no longer community-aware — every creation
     # costs peaches (only admins get the free button); the old three-tier
     # rub/usd line and the free-public branch are both retired.

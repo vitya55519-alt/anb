@@ -135,7 +135,7 @@ def test_buy_function_accepts_extra():
 
 
 def test_pay_via_accepts_extra():
-    assert 'async function payVia(id, method, btn, extra)' in INDEX
+    assert 'async function payVia(id, method, btn, extra, onPaid)' in INDEX
     assert 'Object.assign({ product: id, method }, extra || {})' in INDEX
 
 

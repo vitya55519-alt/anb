@@ -442,6 +442,7 @@
   #paymodal .mrow:disabled { opacity: .55; }
   #paymodal .mrow .ico { font-size: 18px; }
   #paymodal .mrow .nm { flex: 1; font-weight: 600; }
+  #paymodal .mrow .qbd { display: block; font-weight: 400; font-size: 12px; color: var(--muted); margin-top: 2px; }
   #paymodal .mrow .pr {
     background: rgba(232, 68, 127, .16); color: var(--accent);
     border-radius: 9px; padding: 5px 9px; font-size: 12px; font-weight: 700;
@@ -1191,7 +1192,7 @@ const L_EN = {
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
   // V3.55.2: the premium-characters section under the grid
   prem_chars_title: 'Premium characters', prem_chars_hint: 'Unlocked with a Premium subscription', prem_chars_owned: 'Open with your subscription',
-  shop_title: 'Shop', missions_title: 'Missions', month: '/ 30 days', week: '7 days', pay_hint: 'Tap a plan — pick how to pay: Stars here, card/SBP or crypto on the payment page.',
+  shop_title: 'Shop', missions_title: 'Missions', month: '/ 30 days', week: '7 days', pay_hint: 'Tap a pack — pay by card or with Telegram Stars.',
   share_img: '📤 Share', invite_cta: '🍑 Invite a friend', invite_got: 'Link copied — share it and you both get 🍑', share_fail: 'Could not share', gal_share_hint: 'Share this photo — a friend who starts gets 🍑, and you too', save_img: '📥 Save', save_ok: 'Photo sent to your chat — forward it to a friend',
     unlim_title: 'Unlimited messages', unlim_sub: 'First 24 hours after sign-up — text is free', unlim_left: 'left',
   free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
@@ -1371,7 +1372,7 @@ const L_RU = {
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
   // V3.55.2: секция премиум-персонажей под сеткой
   prem_chars_title: 'Премиум-персонажи', prem_chars_hint: 'Открываются подпиской Premium', prem_chars_owned: 'Открыты твоей подпиской',
-  shop_title: 'Магазин', missions_title: 'Миссии', month: '/ 30 дней', week: '7 дней', pay_hint: 'Нажми на тариф — выбери способ: Stars здесь, карта/СБП или крипта на платёжной странице.',
+  shop_title: 'Магазин', missions_title: 'Миссии', month: '/ 30 дней', week: '7 дней', pay_hint: 'Нажми на пакет — оплата картой, СБП или звёздами Telegram.',
   share_img: '📤 Поделиться', invite_cta: '🍑 Позвать друга', invite_got: 'Ссылка скопирована — делись, и вам обоим капнет 🍑', share_fail: 'Не удалось поделиться', gal_share_hint: 'Поделись фото — друг получит 🍑 за старт, и тебе тоже', save_img: '📥 Сохранить', save_ok: 'Фото отправлено в чат — перешли его другу',
     unlim_title: 'Безлимитные сообщения', unlim_sub: 'Первые 24 часа после регистрации — текст бесплатно', unlim_left: 'осталось',
   free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
@@ -4369,9 +4370,9 @@ async function loadShop() {
     const j = await r.json();
     if (!j.ok) { _shopLoaded = false; return; }
     const s = j.shop, p = s.premium;
-    // V3.36.0: every Stars price shows its rub + dollar equivalent.
-    const fiat = o => (o.rub ? ` · ${esc(o.rub)} ₽` : '') + (o.usd ? ` · $${esc(o.usd)}` : '');
-    const price = `⭐ ${p.stars} <small>${esc(L.month)}</small>` + fiat(p);
+    // V3.62.12: owner — Stars read as foreign; the shop shows money (₽ for
+    // RU, $ for EN). Stars stay as one of the pay methods in the modal.
+    const price = `${esc(money(p))} <small>${esc(L.month)}</small>`;
     const feats = p.features.map(f => `<li><span>${esc(f.emoji)}</span><span>${esc(LANG === 'en' ? f.en : f.ru)}</span></li>`).join('');
     // V3.43.0: Come Closer-style pack squares — tap one and the pay-method
     // modal opens (Stars / card-SBP / crypto rows), like the benchmark shop.
@@ -4385,9 +4386,9 @@ async function loadShop() {
     const packs = regularPurchases.map(x => `
       <div class="pack" data-pay="${esc(x.id)}">
         ${packBadge(x)}
-        <div class="amt">${x.stars} ⭐</div>
+        <div class="amt">${esc(money(x))}</div>
         <div class="sub">${esc(x.emoji)} ${esc(x.title)}</div>
-        <div class="rub">${x.rub ? esc(x.rub) + ' ₽' : (x.usd ? '$' + esc(x.usd) : '')}</div>
+        <div class="rub">${esc(x.description || '')}</div>
         <button class="get">${esc(L.pay_get)}</button>
       </div>`).join('');
     // V3.44.23: the sixth tile — input + dynamic price button.
@@ -4399,7 +4400,7 @@ async function loadShop() {
       </div>` : '';
     // V3.44.22: the constructor row carries no star price — public personas
     // are free, private ones cost peaches (constructor_peaches rides along).
-    const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars ? i.stars + ' ⭐' + fiat(i) : esc(L.constructor_price_note(s.constructor_peaches))}</span></div>`).join('');
+    const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars ? esc(money(i)) : esc(L.constructor_price_note(s.constructor_peaches))}</span></div>`).join('');
     // V3.57.6: the shop note must not hardcode the chat ceiling (V3.57.7 restored
     // the published 30/day). It prints the number normally and falls back to
     // «unlimited» only if the ceiling is ever raised past a fair-use 1000.
@@ -4537,19 +4538,30 @@ async function redeemPromoCode() {
 
 // ── V3.43.0: pay-method modal — tap a square, pick Stars / SBP / crypto ───
 let SHOP = null;
-function openPay(id) {
+// V3.62.12: one price label everywhere — rubles for RU (the card/SBP price,
+// else the Stars equivalent), dollars for EN, Stars only as a last resort.
+function money(x) {
+  const rub = x.price_rub || x.rub, usd = x.price_usd || x.usd;
+  if (LANG !== 'en' && rub) return rub + ' ₽';
+  if (usd) return '$' + usd;
+  if (rub) return rub + ' ₽';
+  return x.stars + ' ⭐';
+}
+function openPay(id, onPaid) {
   const s = SHOP;
   if (!s) return;
   const x = (s.purchases || []).find(p => p.id === id);
   if (!x) return;
   document.getElementById('payEmo').textContent = x.emoji;
   document.getElementById('payTitle').textContent = x.title;
-  const rows = [`<button class="mrow" data-m="stars"><span class="ico">⭐</span><span class="nm">${esc(L.pay_stars)}</span><span class="pr">${x.stars} ⭐</span></button>`];
-  if (x.rub && s.platega) rows.push(`<button class="mrow" data-m="sbp"><span class="ico">🏦</span><span class="nm">${esc(L.pay_sbp)}</span><span class="pr">${esc(x.rub)} ₽</span></button>`);
+  // V3.62.12: card/SBP leads (rubles), Telegram Stars follows.
+  const rows = [];
+  if (x.rub && s.platega) rows.push(`<button class="mrow" data-m="sbp"><span class="ico">💳</span><span class="nm">${esc(L.pay_sbp)}</span><span class="pr">${esc(x.rub)} ₽</span></button>`);
+  rows.push(`<button class="mrow" data-m="stars"><span class="ico">⭐</span><span class="nm">${esc(L.pay_stars)}</span><span class="pr">${x.stars} ⭐</span></button>`);
   if (s.wallet_pay) rows.push(`<button class="mrow" data-m="crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto)}</span><span class="pr">$${esc(x.usd || (x.stars * 0.02).toFixed(2))}</span></button>`);
   document.getElementById('payRows').innerHTML = rows.join('');
   document.querySelectorAll('#payRows [data-m]').forEach(b =>
-    b.addEventListener('click', () => payVia(x.id, b.dataset.m, b, {})));
+    b.addEventListener('click', () => payVia(x.id, b.dataset.m, b, {}, onPaid)));
   document.getElementById('paymodal').classList.add('open');
 }
 // V3.62.10: sell at the moment of desire. A missing peach or the daily chat
@@ -4568,9 +4580,9 @@ async function quickBuy(kind, retry, opts) {
   document.getElementById('payTitle').textContent = kind === 'limit' ? L.qb_limit : L.qb_peaches;
   const rows = [];
   if (kind === 'limit' && opts.demo) {
-    rows.push(`<button class="mrow" data-q="__demo"><span class="ico">🎁</span><span class="nm">${esc(L.qb_demo)}</span><span class="pr">0 ⭐</span></button>`);
+    rows.push(`<button class="mrow" data-q="__demo"><span class="ico">🎁</span><span class="nm">${esc(L.qb_demo)}</span><span class="pr">0 ₽</span></button>`);
   }
-  items.forEach(x => rows.push(`<button class="mrow" data-q="${esc(x.id)}"><span class="ico">${esc(x.emoji || '⭐')}</span><span class="nm">${esc(x.title)}${x.badge ? ' · ' + esc(x.badge) : ''}</span><span class="pr">${x.stars} ⭐</span></button>`));
+  items.forEach(x => rows.push(`<button class="mrow" data-q="${esc(x.id)}"><span class="ico">${esc(x.emoji || '⭐')}</span><span class="nm">${esc(x.title)}${x.badge ? ' · ' + esc(x.badge) : ''}${x.description ? '<small class="qbd">' + esc(x.description) + '</small>' : ''}</span><span class="pr">${esc(money(x))}</span></button>`));
   rows.push(`<button class="mrow" data-q="__shop"><span class="ico">🛍</span><span class="nm">${esc(L.qb_more)}</span><span class="pr"></span></button>`);
   document.getElementById('payRows').innerHTML = rows.join('');
   document.querySelectorAll('#payRows [data-q]').forEach(b => b.addEventListener('click', async () => {
@@ -4586,7 +4598,8 @@ async function quickBuy(kind, retry, opts) {
       } catch (e) { toast(L.reply_err); }
       return;
     }
-    buy(id, b, {}, retry);
+    // pick card/SBP or Stars next; a Stars payment still finishes his action
+    setTimeout(() => openPay(id, retry), 150);
   }));
   document.getElementById('paymodal').classList.add('open');
 }
@@ -4608,10 +4621,10 @@ function openPayCustom(n) {
     b.addEventListener('click', () => payVia('peach_custom', b.dataset.m, b, { amount: n })));
   document.getElementById('paymodal').classList.add('open');
 }
-async function payVia(id, method, btn, extra) {
+async function payVia(id, method, btn, extra, onPaid) {
   if (method === 'stars') {
     document.getElementById('paymodal').classList.remove('open');
-    buy(id, btn, extra);
+    buy(id, btn, extra, onPaid);
     return;
   }
   btn.disabled = true;
