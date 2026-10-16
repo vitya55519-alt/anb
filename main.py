@@ -23,7 +23,7 @@ from sqlalchemy import select
 from aiogram.utils.chat_action import ChatActionSender
 
 from config import (
-    TELEGRAM_TOKEN, PREMIUM_MONTHLY_STARS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS,
+    TELEGRAM_TOKEN, PREMIUM_MONTHLY_STARS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_PHOTO_CREDITS,
     PREMIUM_QUARTERLY_STARS,
     PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS,
     ADMIN_TELEGRAM_IDS, CHARACTER_ID, PHOTO_PROGRESS_MESSAGE_DELAY_SECONDS,
@@ -5609,6 +5609,7 @@ async def buy_premium_quarter(cq: types.CallbackQuery):
     if not has_accepted(cq.from_user.id):
         await cq.answer('сначала /start', show_alert=True)
         return
+    await cq.answer()
     await send_stars_invoice(cq.message.chat.id, 'Anna Premium', 'Premium-доступ на 90 дней', 'premium_quarter', PREMIUM_QUARTERLY_STARS)
 
 
@@ -5744,12 +5745,15 @@ async def platega_pay(cq: types.CallbackQuery):
         title = f'🍑 {_cn} персиков — {amount} ₽'
     else:
         title = f'🪙 Токены — {amount} ₽'
+    # V3.62.8: a tap-to-pay button instead of a bare URL in the text.
+    track_event(ensure_user(cq.from_user.id), 'platega_link_created', metadata={'product': product, 'amount': str(amount)})
     await bot.send_message(
         cq.message.chat.id,
-        f'{title} · оплата картой / СБП / криптой\n\n{link}\n\n'
+        f'{title} · оплата картой / СБП / криптой\n\n'
         'Способ оплаты выберешь на странице платежа. '
         'После оплаты всё включится автоматически в течение минуты. '
         'Если что-то пойдёт не так — напиши /support.',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='💳 Оплатить', url=link)]]),
     )
 
 
@@ -6439,6 +6443,10 @@ async def pre_checkout(query: types.PreCheckoutQuery):
     elif payload=='premium_week':
         # V3.34.1: the weekly Premium option — chat and Mini App share it.
         ok=amount==PREMIUM_WEEKLY_STARS
+    elif payload=='premium_quarter':
+        # V3.62.8: the 3-month plan was never validated or granted — Stars
+        # were taken and Premium never switched on.
+        ok=amount==PREMIUM_QUARTERLY_STARS
     elif payload=='photo_pack':
         # V3.34.0: standalone +1 photo credit purchased from the Mini App shop.
         ok=amount==PHOTO_COST_STARS
@@ -6569,6 +6577,15 @@ async def successful_payment(message: types.Message):
             await message.answer(f'done ✨ Premium is active for 7 days and I added {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits. Every photo of mine now has an «Animate» button — 2 free videos a day 🎬 plus my video circles 🎥')
         else:
             await message.answer(f'готово ✨ Premium активирован на 7 дней, и я добавила {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — 2 раза в день сделаю видео бесплатно 🎬 а ещё тебе открыты мои кружочки 🎥')
+        return
+
+    if payload == 'premium_quarter':
+        record_payment(message.from_user.id, 'premium_quarter', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_quarter'})
+        if user_lang(message.from_user.id) == EN:
+            await message.answer(f'done ✨ Premium is active for 90 days and I added {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 2 free photo animations a day 🎬 plus my video circles 🎥')
+        else:
+            await message.answer(f'готово ✨ Premium активирован на 90 дней, и я добавила {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 2 оживления фото в день бесплатно 🎬 и мои кружочки 🎥')
         return
 
     if payload == 'premium_month_discount':
@@ -9922,6 +9939,8 @@ async def _platega_callback(request: web.Request) -> web.Response:
                     f'platega:{order["id"]}', provider='platega',
                     provider_payload=f'amount={order["amount"]}',
                 )
+                track_event(ensure_user(order['telegram_id']), 'platega_paid',
+                            metadata={'product': order['product'], 'amount': str(order['amount'])})
             except Exception:
                 logger.exception('Platega grant failed order=%s', order['id'])
             try:
