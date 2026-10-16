@@ -1859,6 +1859,15 @@ async def start(message: types.Message, command: CommandObject):
         if share_referrer and share_referrer != message.from_user.id:
             remember_referral(message.from_user.id, share_referrer)
             has_referral = True
+    elif has_referral:
+        # V3.62.6: a friend's invite is a source too — the stats screen
+        # groups new users by it.
+        set_source(message.from_user.id, 'ref')
+    elif command.args:
+        # V3.62.6: any other deep link (an ad network, a catalogue, a channel
+        # post with its own ?start=) used to be dropped — keep it as-is.
+        if set_source(message.from_user.id, 'link:' + command.args.strip()[:40]):
+            track_event(uid, 'source_opened', metadata={'src': 'link:' + command.args.strip()[:40]})
     track_event(uid, 'onboarding_completed')
 
     if not has_accepted(message.from_user.id):
@@ -3693,8 +3702,30 @@ async def admin_stats_button(cq: types.CallbackQuery):
         f'🚪 воронка 30д: /start {snap["funnel"]["started"]} → 18+ {snap["funnel"]["consent"]} → написали {snap["funnel"]["first_message"]}\n'
         f'💰 Stars за 30д: {snap["stars_30d"]} · себестоимость фото за 24ч: ${snap["photo_cost_24h"]:.2f}\n\n'
         f'{spend_lines}\n\n'
-        f'🏆 топ персонажей (7д):\n{top_lines}'
+        f'🏆 топ персонажей (7д):\n{top_lines}\n\n'
+        f'{_sources_block(snap)}'
     )
+
+
+def _source_label(tag: str) -> str:
+    if tag in ('', 'organic'):
+        return 'без метки (поиск, прямой заход, переслали бота)'
+    if tag == 'ref':
+        return 'по приглашению друга'
+    if tag.startswith('share:'):
+        return 'по фото, которым поделились'
+    if tag.startswith('link:'):
+        return f'ссылка ?start={tag[5:]}'
+    return f'метка src_{tag}'
+
+
+def _sources_block(snap: dict) -> str:
+    """V3.62.6: where new users came from — the 30d breakdown was computed
+    since V3.47.0 but never shown on the screen."""
+    def lines(rows):
+        return '\n'.join(f'· {_source_label(tag)} — {cnt}' for tag, cnt in rows) or '· нет новых'
+    return (f'📥 откуда пришли новые (24ч):\n{lines(snap.get("sources_24h") or [])}\n'
+            f'📥 за 7д:\n{lines(snap.get("sources_7d") or [])}')
 
 
 @dp.callback_query(F.data == 'admin:providers')
@@ -12531,7 +12562,12 @@ UNDRESS_PROMPT = (
 )
 UNDRESS_TAIL = (
     ' Playful, confident, slightly shy expression, as if she does it just for the person she is chatting with. '
-    'Natural slender female hands with five correct fingers. Photorealistic, same smartphone-photo look.'
+    'Natural slender female hands with five correct fingers. Photorealistic, same smartphone-photo look. '
+    # V3.62.6: an undressed selfie grew a third arm — the phone hand stayed and
+    # the reveal added two more.
+    'She has exactly two arms and two hands. If one hand holds the phone in image 1, it keeps holding it and the '
+    'reveal uses only her other hand; if the reveal needs both hands, the phone is gone from the photo. '
+    'Never a third hand or arm.'
 )
 # V3.61.10: «Раздеть» is not one pose — she shows a little of what is under
 # her clothes, picked to fit what she wears. Levels 1-3 stay in lingerie;
