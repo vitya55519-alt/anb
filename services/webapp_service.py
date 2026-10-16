@@ -726,7 +726,7 @@ def api_shop(lang: str = 'ru') -> dict:
         ('📸', '12 фото-кредитов каждый месяц', '12 photo credits every month'),
         ('🎬', '2 бесплатных видео-оживления в день', '2 free photo animations per day'),
         ('🎯', 'перезапуски историй и все персонажи', 'story replays and all characters'),
-        ('💌', 'расширенные лимиты общения и память', 'wider chat limits and memory'),
+        ('💌', 'безлимитное общение — она не засыпает, и больше памяти', 'unlimited chat — she never falls asleep, more memory'),
         ('🎙', 'голосовые ответы и кружочки', 'voice replies and video circles'),
     ]
     items = [

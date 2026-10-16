@@ -11052,6 +11052,29 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'link': link, 'product': product_id, 'stars': product['stars']})
 
 
+async def _webapp_api_demo(request: web.Request) -> web.Response:
+    """V3.62.10: the free 3h demo Premium from the app's limit sheet."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id or not has_accepted(telegram_id):
+        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    from services.retention_service import grant_demo_premium
+
+    def _grant():
+        if is_premium(telegram_id):
+            return True
+        ok = grant_demo_premium(telegram_id)
+        if ok:
+            track_event(ensure_user(telegram_id), 'demo_premium_granted',
+                        metadata={'hours': DEMO_PREMIUM_HOURS, 'source': 'webapp'})
+        return ok
+
+    ok = await asyncio.to_thread(_grant)
+    return web.json_response({'ok': bool(ok), 'hours': DEMO_PREMIUM_HOURS} if ok else {'ok': False, 'error': 'used'})
+
+
 async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     # V3.43.0: the Come Closer pay menu — tapping a shop square opens a modal
     # with Stars / card-SBP / crypto rows. Stars reuses /webapp/api/invoice;
@@ -11329,7 +11352,14 @@ def _webapp_chat_gate(character_id: str, telegram_id: int):
     if not has_accepted(telegram_id):
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
     if telegram_id not in ADMIN_TELEGRAM_IDS and not can_send_message(telegram_id):
-        return web.json_response({'ok': False, 'error': 'limit'}, status=429)
+        # V3.62.10: the app limit used to be a bare toast — tell the sheet
+        # whether the free demo is still there, like the bot's sleep block.
+        from services.retention_service import has_used_demo, offer_discount
+        demo = not has_used_demo(telegram_id)
+        if not demo:
+            offer_discount(telegram_id)
+        track_event(ensure_user(telegram_id), 'chat_sleep_block', metadata={'source': 'webapp'})
+        return web.json_response({'ok': False, 'error': 'limit', 'demo': demo}, status=429)
     return None
 
 
@@ -13930,6 +13960,7 @@ async def _start_web_server() -> None:
     app.router.add_route('*', '/webapp/api/char_like', _webapp_api_char_like)
     # V3.34.0: storefront actions — Stars purchases and character selection.
     app.router.add_post('/webapp/api/invoice', _webapp_api_invoice)
+    app.router.add_post('/webapp/api/demo', _webapp_api_demo)
     # V3.43.0: the pay-method modal — card/SBP and crypto payment links.
     app.router.add_post('/webapp/api/pay_link', _webapp_api_pay_link)
     app.router.add_post('/webapp/api/select', _webapp_api_select)

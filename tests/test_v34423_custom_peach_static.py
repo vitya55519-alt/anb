@@ -130,7 +130,7 @@ def test_open_pay_custom_function():
 
 
 def test_buy_function_accepts_extra():
-    assert 'async function buy(productId, btn, extra)' in INDEX
+    assert 'async function buy(productId, btn, extra, onPaid)' in INDEX
     assert 'Object.assign({ product: productId }, extra || {})' in INDEX
 
 

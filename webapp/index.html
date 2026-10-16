@@ -1243,6 +1243,11 @@ const L_EN = {
   input_ph: 'Type a message…', send: 'Send',
   empty_chat: 'Send the first message — she replies right here',
   limit_reached: 'Daily free-message limit reached. Premium lifts it ⭐',
+  qb_limit: 'She is falling asleep till tomorrow 😴 wake her up',
+  qb_peaches: 'Not enough peaches 🍑',
+  qb_more: 'Whole shop',
+  qb_demo: 'Demo Premium for 3 hours — free',
+  qb_demo_on: 'Demo Premium is on ✨',
   consent_needed: 'Confirm 18+ first — open the bot and press /start',
   set_main: 'Set as your girl', reply_err: 'Could not reply — try again',
   create_own: 'Create your own', create_sub: 'Looks, figure and personality — she chats the way you pick',
@@ -1418,6 +1423,11 @@ const L_RU = {
   input_ph: 'Напиши сообщение…', send: 'Отправить',
   empty_chat: 'Напиши первое сообщение — она ответит прямо здесь',
   limit_reached: 'Дневной лимит бесплатных сообщений. Premium снимает лимит ⭐',
+  qb_limit: 'Она засыпает до завтра 😴 разбуди её',
+  qb_peaches: 'Не хватает персиков 🍑',
+  qb_more: 'Весь магазин',
+  qb_demo: 'Демо-Premium на 3 часа — бесплатно',
+  qb_demo_on: 'Демо-Premium включён ✨',
   consent_needed: 'Сначала подтверди 18+ — открой бота и нажми /start',
   set_main: 'Сделать твоей девушкой', reply_err: 'Не получилось ответить — попробуй ещё раз',
   create_own: 'Создать свою', create_sub: 'Внешность, фигура и характер — она будет общаться так, как ты выберешь',
@@ -1917,7 +1927,7 @@ function showTab(name) {
   // must lazy-load too, or they land on the dead «...» body.
   lazyLoadTab(name);
 }
-async function buy(productId, btn, extra) {
+async function buy(productId, btn, extra, onPaid) {
   if (btn) btn.disabled = true;
   const done = () => { if (btn) btn.disabled = false; };
   try {
@@ -1933,8 +1943,10 @@ async function buy(productId, btn, extra) {
     tg.openInvoice(j.link, (status) => {
       done();
       if (status === 'paid') {
-        toast(productId === 'premium' ? L.paid_prem : L.paid_credit);
+        toast(productId === 'premium' || productId === 'premium_week' ? L.paid_prem : L.paid_credit);
         loadMe(); loadShop(); loadCharacters();
+        // V3.62.10: bought at the moment of desire — finish what he wanted.
+        if (typeof onPaid === 'function') setTimeout(onPaid, 800);
       } else if (status === 'failed') {
         toast(L.pay_failed);
       } else {
@@ -2650,7 +2662,11 @@ async function sendChat() {
       body: JSON.stringify({ character_id: CHAT.id, text: text }),
     });
     if (r.status === 401) { toast(L.auth_short); return; }
-    if (r.status === 429) { toast(L.limit_reached); showTab('shop'); return; }
+    if (r.status === 429) {
+      const jl = await r.json().catch(() => ({}));
+      quickBuy('limit', () => { const i = document.getElementById('chatText'); if (i && !i.value) { i.value = text; sendChat(); } }, { demo: !!jl.demo });
+      return;
+    }
     if (r.status === 403) {
       const j = await r.json().catch(() => ({}));
       toast(j.error === 'consent' ? L.consent_needed : (j.error === 'premium_required' ? L.need_premium : L.locked));
@@ -2857,8 +2873,8 @@ async function photoAction(action, mediaUrl, btn) {
     const j = await r.json().catch(() => ({}));
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 402) {
-      toast(j.error === 'video_limit' ? L.video_limit : L.pic_no_credits);
-      if (j.error !== 'video_limit') showTab('shop');
+      if (j.error === 'video_limit') { toast(L.video_limit); return; }
+      quickBuy('peaches', () => photoAction(action, mediaUrl, btn));
       return;
     }
     if (r.status === 403) {
@@ -2912,8 +2928,8 @@ async function requestMedia(kind, scene) {
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 402) {
       const j = await r.json().catch(() => ({}));
-      toast(j.error === 'circle_limit' ? L.circle_limit : L.pic_no_credits);
-      if (j.error !== 'circle_limit') showTab('shop');
+      if (j.error === 'circle_limit') { toast(L.circle_limit); return; }
+      quickBuy('peaches', () => requestMedia(kind, scene));
       return;
     }
     if (r.status === 403) {
@@ -3282,6 +3298,7 @@ async function featurePost(payload) {
     if (r.status === 402) {
       const je = await r.json().catch(() => ({}));
       toast('Нужно ' + (je.cost || '?') + ' 🍑 — не хватает персиков');
+      quickBuy('peaches');
       return;
     }
     if (r.status === 403) {
@@ -4233,7 +4250,7 @@ async function generatePicture() {
       }),
     });
     if (r.status === 401) { toast(L.auth_short); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
-    if (r.status === 402) { toast(L.pic_no_credits); showTab('shop'); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
+    if (r.status === 402) { quickBuy('peaches'); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     if (r.status === 403) { toast(L.consent_needed); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     if (r.status === 400) {
       // V3.59.2: say WHAT was wrong — a bad photo used to read as a banned prompt.
@@ -4273,7 +4290,7 @@ async function generateStudioVideo() {
       body: JSON.stringify({ prompt, ...(PIC_PRESET ? { preset: PIC_PRESET } : {}), ...(PIC_UPLOAD ? { image: PIC_UPLOAD } : {}) }),
     });
     if (r.status === 401) { toast(L.auth_short); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
-    if (r.status === 402) { toast(L.pic_no_credits); showTab('shop'); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
+    if (r.status === 402) { quickBuy('peaches'); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     if (r.status === 403) { toast(L.consent_needed); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     if (r.status === 400) {
       // V3.59.2: say WHAT was wrong — a bad photo used to read as a banned prompt.
@@ -4533,6 +4550,44 @@ function openPay(id) {
   document.getElementById('payRows').innerHTML = rows.join('');
   document.querySelectorAll('#payRows [data-m]').forEach(b =>
     b.addEventListener('click', () => payVia(x.id, b.dataset.m, b, {})));
+  document.getElementById('paymodal').classList.add('open');
+}
+// V3.62.10: sell at the moment of desire. A missing peach or the daily chat
+// limit used to toast and drop the user on the shop tab (0 purchases in 30
+// days) — now a one-tap sheet with the right packs opens right there, and a
+// Stars payment finishes the action he wanted (the photo, the message).
+async function quickBuy(kind, retry, opts) {
+  opts = opts || {};
+  if (!SHOP) { try { await loadShop(); } catch (e) {} }
+  const s = SHOP;
+  if (!s) { showTab('shop'); return; }
+  const want = kind === 'limit' ? ['premium_week', 'premium'] : ['peach_pack_10', 'peach_pack_30', 'premium'];
+  const items = want.map(id => (s.purchases || []).find(p => p.id === id)).filter(Boolean);
+  if (!items.length) { showTab('shop'); return; }
+  document.getElementById('payEmo').textContent = kind === 'limit' ? '😴' : '🍑';
+  document.getElementById('payTitle').textContent = kind === 'limit' ? L.qb_limit : L.qb_peaches;
+  const rows = [];
+  if (kind === 'limit' && opts.demo) {
+    rows.push(`<button class="mrow" data-q="__demo"><span class="ico">🎁</span><span class="nm">${esc(L.qb_demo)}</span><span class="pr">0 ⭐</span></button>`);
+  }
+  items.forEach(x => rows.push(`<button class="mrow" data-q="${esc(x.id)}"><span class="ico">${esc(x.emoji || '⭐')}</span><span class="nm">${esc(x.title)}${x.badge ? ' · ' + esc(x.badge) : ''}</span><span class="pr">${x.stars} ⭐</span></button>`));
+  rows.push(`<button class="mrow" data-q="__shop"><span class="ico">🛍</span><span class="nm">${esc(L.qb_more)}</span><span class="pr"></span></button>`);
+  document.getElementById('payRows').innerHTML = rows.join('');
+  document.querySelectorAll('#payRows [data-q]').forEach(b => b.addEventListener('click', async () => {
+    const id = b.dataset.q;
+    document.getElementById('paymodal').classList.remove('open');
+    if (id === '__shop') { showTab('shop'); return; }
+    if (id === '__demo') {
+      try {
+        const r = await fetch('/webapp/api/demo?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
+        const j = await r.json().catch(() => ({}));
+        if (j.ok) { toast(L.qb_demo_on); loadMe(); if (typeof retry === 'function') setTimeout(retry, 500); }
+        else quickBuy(kind, retry, {});
+      } catch (e) { toast(L.reply_err); }
+      return;
+    }
+    buy(id, b, {}, retry);
+  }));
   document.getElementById('paymodal').classList.add('open');
 }
 // V3.44.23: the custom-peach tile — opens the same pay-method modal with a
