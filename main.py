@@ -1976,7 +1976,9 @@ async def consent_accept(cq: types.CallbackQuery):
     try:
         character_id = get_user_character(cq.from_user.id)
         greeting = _first_hello(character_id, cq.from_user.first_name or '', lang)
-        await cq.message.answer(greeting)
+        # V3.62.7: half of new users accepted 18+ and never wrote a word —
+        # they had to invent a first line. Three one-tap answers under her hello.
+        await cq.message.answer(greeting, reply_markup=_first_hello_keyboard(lang))
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', greeting)
         track_event(uid, 'first_hello_sent', character_id=character_id)
         # V3.59.2: and a free selfie right behind the hello — the «wow» of the
@@ -2013,6 +2015,36 @@ _FIRST_HELLO_EN = (
     'oh, hi{n} 😊 I\'m Anna. honestly a little nervous… what are you up to right now?',
     'hi{n} 💕 finally someone interesting. do you like long late-night talks or getting straight to the point? 😏',
 )
+
+
+FIRST_REPLIES_RU = ('привет 🙂', 'расскажи о себе', 'мне скучно 😏')
+FIRST_REPLIES_EN = ('hi 🙂', 'tell me about yourself', 'I\'m bored 😏')
+
+
+def _first_hello_keyboard(lang: str) -> types.InlineKeyboardMarkup:
+    replies = FIRST_REPLIES_EN if lang == EN else FIRST_REPLIES_RU
+    return types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text=t, callback_data=f'first_reply:{i}')] for i, t in enumerate(replies)
+    ])
+
+
+@dp.callback_query(F.data.startswith('first_reply:'))
+async def first_reply_cb(cq: types.CallbackQuery):
+    """The tapped answer goes through the normal chat pipeline as his message."""
+    replies = FIRST_REPLIES_EN if user_lang(cq.from_user.id) == EN else FIRST_REPLIES_RU
+    try:
+        text = replies[int(cq.data.split(':', 1)[1])]
+    except (ValueError, IndexError):
+        await cq.answer(); return
+    await cq.answer()
+    try:
+        await cq.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    track_event(ensure_user(cq.from_user.id), 'first_reply_tapped', metadata={'text': text})
+    msg = cq.message.model_copy(update={'text': text, 'from_user': cq.from_user, 'reply_to_message': None,
+                                        'reply_markup': None, 'photo': None, 'caption': None})
+    await text_message(msg.as_(cq.bot))
 
 
 def _first_hello(character_id: str, first_name: str, lang: str) -> str:
