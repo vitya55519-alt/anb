@@ -79,6 +79,9 @@ KB_LABELS = {
 MAIN_KB_ROWS = [
     ['app'],
     ['credits'],
+    # V3.62.11: zero purchases in 30 days — Premium was not reachable from
+    # the bot menu at all, so it gets its own row again under the peaches.
+    ['premium'],
     ['paint'],
     ['partner'],
     ['support', 'legal'],
