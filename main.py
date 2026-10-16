@@ -3732,6 +3732,7 @@ async def admin_stats_button(cq: types.CallbackQuery):
         f'🎨 студия: ✅{photo_ok} ❌{photo_fail} (успешность {studio_rate:.0f}%)\n'
         f'🔁 удержание: D1 {snap["d1_retention"]:.0f}% · D7 {snap["d7_retention"]:.0f}%\n'
         f'🚪 воронка 30д: /start {snap["funnel"]["started"]} → 18+ {snap["funnel"]["consent"]} → написали {snap["funnel"]["first_message"]}\n'
+        f'💳 оплата 30д: видели предложение {snap["pay_funnel"]["offer"]} → открыли счёт {snap["pay_funnel"]["invoice"]} → оплатили {snap["pay_funnel"]["paid"]}\n'
         f'💰 Stars за 30д: {snap["stars_30d"]} · себестоимость фото за 24ч: ${snap["photo_cost_24h"]:.2f}\n\n'
         f'{spend_lines}\n\n'
         f'🏆 топ персонажей (7д):\n{top_lines}\n\n'
@@ -5684,6 +5685,7 @@ async def retention_premium_cb(cq: types.CallbackQuery):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
     from services.retention_service import discount_info
     await cq.answer()
+    track_event(ensure_user(cq.from_user.id), 'paywall_view', metadata={'product': 'premium', 'source': 'retention'})
     await cq.message.answer(premium_pitch_text(cq.from_user.id), reply_markup=premium_keyboard(discount_info(cq.from_user.id), telegram_id=cq.from_user.id))
 
 
@@ -9199,12 +9201,36 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
         if taken and branch != 'passion' and new_stage == 'eternal':
             await asyncio.to_thread(branch_service.mark_left_him, ensure_user(telegram_id), character_id)
         track_event(ensure_user(telegram_id), 'relationship_ceremony_sent', metadata={'level': level}, character_id=character_id)
+        await _maybe_level_up_premium_offer(telegram_id, level)
         if special:
             await _start_photo_background(telegram_id, telegram_id, special[1], 'story')
         else:
             await _start_photo_background(telegram_id, telegram_id, PhotoRequest(scene='selfie', mood='romantic'), 'story')
     except Exception as exc:
         logger.warning('level-up ceremony failed user=%s error=%s', telegram_id, type(exc).__name__)
+
+
+async def _maybe_level_up_premium_offer(telegram_id: int, level: int) -> None:
+    """V3.62.9: nobody saw Premium on day one (the first 24h are unlimited and
+    the first limit hit gives a free demo) — 0 purchases in 30 days. The first
+    level-up is a warm moment: she opens the one-time −30% window herself,
+    once per user (offer_discount is True only when it just opened)."""
+    try:
+        from services.retention_service import offer_discount, discount_info
+        if level < 2 or telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
+            return
+        if not await asyncio.to_thread(offer_discount, telegram_id):
+            return
+        d = discount_info(telegram_id)
+        text = ('кстати… мне так хорошо с тобой, что хочу сделать подарок 🙈 '
+                f'сегодня Premium для тебя −{d.get("percent", 30)}%: без лимита сообщений, мои кружочки, '
+                'голосовые и уровни 7–10, где я только твоя 💋 предложение действует {d.get("hours_left", 24):.0f} ч')
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=f'⭐ Premium −{d.get("percent", 30)}% — {d.get("price")}⭐', callback_data='retention:premium')]])
+        await bot.send_message(telegram_id, text, reply_markup=kb)
+        track_event(ensure_user(telegram_id), 'premium_offer_levelup', metadata={'level': level})
+    except Exception:
+        logger.exception('level-up premium offer failed user=%s', telegram_id)
 
 
 set_stage_change_notifier(_on_relationship_stage_up)
