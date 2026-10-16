@@ -31,3 +31,9 @@ def test_no_offer_on_level_one(monkeypatch):
     main.ensure_user(5550223)
     asyncio.run(main._maybe_level_up_premium_offer(5550223, 1))
     assert not sent
+
+
+def test_pay_funnel_in_snapshot():
+    from services.analytics_service import admin_snapshot
+    pf = admin_snapshot()['pay_funnel']
+    assert set(pf) == {'offer', 'invoice', 'paid'}

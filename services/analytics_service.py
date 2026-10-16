@@ -175,4 +175,20 @@ def admin_snapshot() -> dict:
         'sources_24h': [[(tag or 'organic'), int(cnt)] for tag, cnt in src_rows_window['sources_24h']],
         'sources_7d': [[(tag or 'organic'), int(cnt)] for tag, cnt in src_rows_window['sources_7d']],
         'funnel': onboarding_funnel(),
+        'pay_funnel': pay_funnel(),
     }
+
+
+def pay_funnel(days: int = 30) -> dict:
+    """V3.62.9: where money is lost — users who saw an offer, opened an
+    invoice or a card link, and actually paid (Stars or card)."""
+    since = _now() - timedelta(days=days)
+    with SessionLocal() as s:
+        def users(names) -> int:
+            return int(s.scalar(select(func.count(func.distinct(ProductEvent.user_id))).where(
+                ProductEvent.created_at >= since, ProductEvent.event_name.in_(names))) or 0)
+        return {
+            'offer': users(('paywall_view', 'chat_sleep_block', 'premium_offer_levelup', 'circle_paywall_view')),
+            'invoice': users(('webapp_invoice_created', 'webapp_pay_link', 'platega_link_created')),
+            'paid': users(('stars_purchase', 'platega_paid')),
+        }

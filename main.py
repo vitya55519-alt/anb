@@ -3700,6 +3700,7 @@ async def admin_stats_button(cq: types.CallbackQuery):
         f'🎨 студия: ✅{photo_ok} ❌{photo_fail} (успешность {studio_rate:.0f}%)\n'
         f'🔁 удержание: D1 {snap["d1_retention"]:.0f}% · D7 {snap["d7_retention"]:.0f}%\n'
         f'🚪 воронка 30д: /start {snap["funnel"]["started"]} → 18+ {snap["funnel"]["consent"]} → написали {snap["funnel"]["first_message"]}\n'
+        f'💳 оплата 30д: видели предложение {snap["pay_funnel"]["offer"]} → открыли счёт {snap["pay_funnel"]["invoice"]} → оплатили {snap["pay_funnel"]["paid"]}\n'
         f'💰 Stars за 30д: {snap["stars_30d"]} · себестоимость фото за 24ч: ${snap["photo_cost_24h"]:.2f}\n\n'
         f'{spend_lines}\n\n'
         f'🏆 топ персонажей (7д):\n{top_lines}\n\n'
