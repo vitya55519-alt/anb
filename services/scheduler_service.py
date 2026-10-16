@@ -19,6 +19,7 @@ from services.chat_service import proactive_reply
 from services.analytics_service import track_event
 from services import retention_service
 from services import donation_service
+from services import partner_service
 from services import retention_features_service
 from services import dialog_store
 from aiogram.exceptions import TelegramForbiddenError
@@ -343,6 +344,37 @@ async def _donation_reminder(bot):
             track_event(uid, 'donation_reminder_sent', metadata={'lang': lang})
         except Exception: logger.exception('donation reminder failed user=%s', uid)
 
+async def _partner_nudge(bot):
+    """V3.62.13: remind active users that the partner link pays real money
+    (owner's ask). Daytime only (Moscow 11:00–21:59); gating lives in
+    partner_service.due_partner_nudges (max 3, every 10 days)."""
+    now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    if not 8 <= now.hour < 19:
+        return
+    rows=await asyncio.to_thread(partner_service.due_partner_nudges, now)
+    if not rows:
+        return
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    from services.referral_service import referral_link
+    try:
+        me=await bot.get_me()
+    except Exception:
+        logger.exception('partner nudge: get_me failed'); return
+    for uid,tg_id,lang in rows[:200]:
+        try:
+            link=referral_link(me.username or 'bot', tg_id)
+            kb=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='📤 Share the link' if lang=='en' else '📤 Поделиться ссылкой', url=partner_service.partner_share_url(lang, link))],
+                [InlineKeyboardButton(text='💰 My partner screen' if lang=='en' else '💰 Моя партнёрка', callback_data='partner:open')],
+            ])
+            await bot.send_message(int(tg_id), partner_service.partner_nudge_text(lang, link), reply_markup=kb, disable_web_page_preview=True)
+            track_event(uid, 'partner_nudge_sent', metadata={'lang': lang})
+        except TelegramForbiddenError:
+            track_event(uid, 'partner_nudge_sent', metadata={'lang': lang, 'blocked': True})
+            _mark_blocked(uid)
+        except Exception: logger.exception('partner nudge failed user=%s', uid)
+        await asyncio.sleep(0.05)
+
 async def _random_gifts(bot):
     """V3.44.2: random photo gifts from character - sends 1-2 times per day."""
     now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
@@ -562,6 +594,8 @@ def start_scheduler(bot):
         scheduler.add_job(_rituals,'interval',minutes=30,args=[bot],id='rituals',replace_existing=True)
     if DONATION_REMINDER_ENABLED and DONATION_LINK:
         scheduler.add_job(_donation_reminder,'interval',hours=12,args=[bot],id='donation_reminder',replace_existing=True)
+    # V3.62.13: partner-program reminder (real-money referral payouts).
+    scheduler.add_job(_partner_nudge,'interval',hours=2,args=[bot],id='partner_nudge',replace_existing=True)
     # V3.44.2: new retention jobs
     scheduler.add_job(_random_gifts,'interval',hours=6,args=[bot],id='random_gifts',replace_existing=True)
     scheduler.add_job(_daily_compatibility,'interval',hours=12,args=[bot],id='daily_compatibility',replace_existing=True)
