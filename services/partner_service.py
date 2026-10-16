@@ -16,6 +16,7 @@ The whole flow is idempotent:
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import logging
 
@@ -325,3 +326,76 @@ def settle_payout(payout_id: int, new_status: str) -> dict | None:
             "amount_rub": row.amount_rub,
             "status": row.status,
         }
+
+
+# V3.62.13: owner asked to advertise the partner program to users — almost
+# nobody opens the menu button, so active users get a short reminder that
+# sharing their link pays real money. Persistence rides on product_events
+# ('partner_nudge_sent'), so a redeploy never double-sends.
+PARTNER_NUDGE_FIRST_AFTER_DAYS = 2
+PARTNER_NUDGE_INTERVAL_DAYS = 10
+PARTNER_NUDGE_MAX = 3
+PARTNER_NUDGE_ACTIVE_DAYS = 3
+
+
+def due_partner_nudges(now: dt.datetime) -> list[tuple[int, int, str]]:
+    """``(user_id, telegram_id, lang)`` of active adults who should hear about
+    the partner program now: account older than 2 days, active in the last 3,
+    no nudge in the last 10 days and fewer than 3 nudges ever."""
+    if not PARTNER_ENABLED:
+        return []
+    active_cutoff = now - dt.timedelta(days=PARTNER_NUDGE_ACTIVE_DAYS)
+    age_cutoff = now - dt.timedelta(days=PARTNER_NUDGE_FIRST_AFTER_DAYS)
+    interval_cutoff = now - dt.timedelta(days=PARTNER_NUDGE_INTERVAL_DAYS)
+    due: list[tuple[int, int, str]] = []
+    with SessionLocal() as session:
+        users = session.scalars(select(User).where(
+            User.proactive_enabled == True,  # noqa: E712
+            User.adult_confirmed == True,  # noqa: E712
+            User.last_active_at >= active_cutoff,
+            User.created_at <= age_cutoff,
+        )).all()
+        if not users:
+            return []
+        sent = session.execute(
+            select(ProductEvent.user_id, func.count(ProductEvent.id), func.max(ProductEvent.created_at))
+            .where(ProductEvent.event_name == 'partner_nudge_sent',
+                   ProductEvent.user_id.in_([u.id for u in users]))
+            .group_by(ProductEvent.user_id)
+        ).all()
+        history = {uid: (n, last) for uid, n, last in sent}
+        for u in users:
+            n, last = history.get(u.id, (0, None))
+            if n >= PARTNER_NUDGE_MAX or (last is not None and last > interval_cutoff):
+                continue
+            try:
+                telegram_id = int(u.telegram_id)
+            except (TypeError, ValueError):
+                continue
+            lang = 'en' if (u.ui_lang or '').strip().lower() == 'en' else 'ru'
+            due.append((u.id, telegram_id, lang))
+    return due
+
+
+def partner_nudge_text(lang: str, link: str) -> str:
+    pct = int(REFERRAL_COMMISSION_PCT) if float(REFERRAL_COMMISSION_PCT).is_integer() else REFERRAL_COMMISSION_PCT
+    if lang == 'en':
+        return (
+            f'💰 By the way — you can earn real money here.\n\n'
+            f'Share your link: from every purchase your friends make you get {pct}%, forever, not once. '
+            f'Payout to a card or SBP from {PARTNER_MIN_PAYOUT_RUB} ₽.\n\n'
+            f'🔗 {link}'
+        )
+    return (
+        f'💰 Кстати, здесь можно зарабатывать реальные деньги.\n\n'
+        f'Поделись своей ссылкой: с каждой покупки друга тебе {pct}% — навсегда, а не один раз. '
+        f'Вывод на карту или СБП от {PARTNER_MIN_PAYOUT_RUB} ₽.\n\n'
+        f'🔗 {link}'
+    )
+
+
+def partner_share_url(lang: str, link: str) -> str:
+    from urllib.parse import quote
+    text = ('My AI girlfriend in Telegram — try it 😏' if lang == 'en'
+            else 'Моя AI-девушка в Telegram — попробуй 😏')
+    return f'https://t.me/share/url?url={quote(link, safe="")}&text={quote(text, safe="")}'
