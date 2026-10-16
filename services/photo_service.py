@@ -453,6 +453,36 @@ PASSION_PUBLIC_POSE_POOL = [
     'one hand pulling the strap of her top off her shoulder, teasing look — natural slender female hands with five correct fingers each; her face stays clearly visible, exactly the same face as reference image 1',
 ]
 
+# V3.62.6: a handheld selfie has ONE free hand — the other holds the phone.
+# Two-hand poses («arms crossed», «both hands in her hair», the private pool's
+# «both hands free») next to «front-camera selfie at arm's length» made the
+# engine draw a third arm (owner screenshots, 2026-10-16).
+SELFIE_POSE_POOL = [
+    'her free hand brushing her hair back from her face',
+    'her free hand resting lightly on her collarbone',
+    'her free hand tucking a strand of hair behind her ear',
+    'her free arm relaxed at her side, a natural weight shift onto one leg',
+    'her free hand resting on her hip',
+    'fingertips of her free hand lightly touching her chin',
+    'her free hand holding a cup near her chest',
+    'her free hand playing with the neckline of her top',
+]
+_TWO_HAND_MARKERS = ('both hands', 'both arms', 'arms ', 'hands ', 'the other', 'crossed', 'pressing',
+                     'cupping', 'holding a phone', 'tripod')
+
+
+def _is_handheld_selfie(angle: str) -> bool:
+    low = (angle or '').lower()
+    return 'selfie' in low and 'tripod' not in low
+
+
+def _one_hand_pose(pose: str, shot_index: int) -> str:
+    low = (pose or '').lower()
+    if any(m in low for m in _TWO_HAND_MARKERS):
+        return SELFIE_POSE_POOL[shot_index % len(SELFIE_POSE_POOL)]
+    return pose
+
+
 # V3.61.4: the tenderness path's mirror of the passion poses — soft, cozy,
 # romantic photos for users who want care and romance, not heat.
 _HANDS_FACE = ('natural slender female hands with five correct fingers each; her face stays clearly visible, '
@@ -2179,7 +2209,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         + 
         f'TIME OF DAY: {request.time_of_day}. The light must match this time of day.\n'
         f'CAMERA/POSE: {angle}.\n'
-        + (f'POSE NOTE: {request.pose_rotation[shot_index % len(request.pose_rotation)]}. '
+        + (f'POSE NOTE: {_pose_note(request, angle, shot_index)}. '
            'Use exactly this posture for this frame and keep it clearly different from the other frames of the set.\n'
            if request.pose_rotation else '')
         + (f'HAIR COLOR: {request.hair_color}. This is the character\'s current hair color; it overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n' if request.hair_color else '')
@@ -2194,6 +2224,13 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'{NEGATIVE_BLOCK}'
         + bust_lock_tail
     )
+
+
+def _pose_note(request: 'PhotoRequest', angle: str, shot_index: int) -> str:
+    pose = request.pose_rotation[shot_index % len(request.pose_rotation)]
+    if _is_handheld_selfie(angle):
+        return _one_hand_pose(pose, shot_index) + ' (her other hand holds the phone)'
+    return pose
 
 
 def _extract_openai_many(result) -> list[GeneratedPhoto]:
@@ -2906,7 +2943,7 @@ async def _run_spicy_set(
             prompt += '\n' + guest_block
         if prev_url:
             prompt += (
-                ' REFERENCE IMAGE 3 is the PREVIOUS photo of this same shoot: reproduce her exact body from image 3 — '
+                '\nREFERENCE IMAGE 3 is the PREVIOUS photo of this same shoot: reproduce her exact body from image 3 — '
                 'same bust size and shape, same waist width, same hip and rear proportions — so both photos show one identical body. '
                 'Take face and hair identity from images 1–2 only.'
             )

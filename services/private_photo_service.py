@@ -657,8 +657,17 @@ _spicy_thinking_override: Dict[str, bool] = {}
 # first it drops the least important lines, then cuts trailing sentences off
 # the longest lines (identity and the adult lock last), then hard-truncates.
 SPICYAPI_PROMPT_MAX = 4900
+# V3.62.6: sentences that only repeat what another line already says go
+# first, before any line is dropped or cut.
+_SPICY_REDUNDANT = (
+    'She is the same person across all photos', 'Preserve a consistent feminine physique',
+    'Use the requested scene, outfit, pose, camera and lighting', 'Preserve this exact figure in every photo',
+    'In plain visual terms her bust', 'Use exactly this posture for this frame', 'The outfit must be believable',
+    'Do not reuse a heavy sweater', 'Keep it small and natural', 'Identity preservation is the highest priority',
+    'The same size and shape as in every other photo of her', 'If any other instruction conflicts with this lock',
+)
 _SPICY_DROP_ORDER = (
-    'Photorealistic smartphone', 'This should feel like', 'LIGHTING:',
+    'This should feel like', 'LIGHTING:',
     'SEASON/WEATHER:', 'PROGRESSION PACK', 'BUST CONSISTENCY:', 'OUTFIT FIT:',
     'STYLING DETAILS:', 'MOOD:', 'UNDER-CLOTHING REALISM:',
     'RELATIONSHIP VISUAL PROGRESSION:', 'TIME OF DAY:', 'MAKEUP:',
@@ -666,7 +675,8 @@ _SPICY_DROP_ORDER = (
 # Trim tiers: 0 = everything else, 1 = what the shot is, 2 = who she is.
 _SPICY_TIERS = (
     ('SCENE:', 'WARDROBE:', 'CAMERA/POSE:', 'Create exactly ONE', 'Mainstream general-audience',
-     'OUTFIT:', 'FACE LOCK:', 'BUST LOCK:', 'REFERENCE IMAGE 1'),
+     'OUTFIT:', 'FACE LOCK:', 'BUST LOCK:', 'REFERENCE IMAGE 1', 'HANDS:', 'POSE NOTE:',
+     'Photorealistic smartphone', 'Avoid identity drift', 'REFERENCE IMAGE 3'),
     ('PHOTO IDENTITY:', 'HARD SUBJECT LOCK:'),
 )
 
@@ -696,6 +706,8 @@ def _fit_spicy_prompt(prompt: str, limit: int = SPICYAPI_PROMPT_MAX) -> str:
         return prompt
     lines = [_dedupe_sentences(l.strip()) for l in prompt.split('\n') if l.strip()]
     size = lambda: len('\n'.join(lines))
+    lines = [' '.join(p for p in _SENTENCE_SPLIT.split(l) if not p.startswith(_SPICY_REDUNDANT)) or l
+             for l in lines]
     for prefix in _SPICY_DROP_ORDER:
         if size() <= limit:
             break

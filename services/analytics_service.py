@@ -149,6 +149,15 @@ def admin_snapshot() -> dict:
             .order_by(func.count(User.id).desc())
             .limit(20)
         ).all()
+        src_rows_window = {}
+        for key, since in (('sources_24h', d1), ('sources_7d', d7)):
+            src_rows_window[key] = s.execute(
+                select(User.source_tag, func.count(User.id).label('cnt'))
+                .where(User.created_at >= since)
+                .group_by(User.source_tag)
+                .order_by(func.count(User.id).desc())
+                .limit(12)
+            ).all()
     failure_rate = (failures_24h / photo_requests_24h * 100.0) if photo_requests_24h else 0.0
     proactive_reply_rate = (proactive_replied_7d / proactive_sent_7d * 100.0) if proactive_sent_7d else 0.0
     return {
@@ -163,5 +172,7 @@ def admin_snapshot() -> dict:
         'circles_24h': int(circles_24h), 'videos_24h': int(videos_24h),
         'top_characters': [[cid, int(cnt)] for cid, cnt in top_rows],
         'sources': [[(tag or 'organic'), int(cnt)] for tag, cnt in src_rows],
+        'sources_24h': [[(tag or 'organic'), int(cnt)] for tag, cnt in src_rows_window['sources_24h']],
+        'sources_7d': [[(tag or 'organic'), int(cnt)] for tag, cnt in src_rows_window['sources_7d']],
         'funnel': onboarding_funnel(),
     }
