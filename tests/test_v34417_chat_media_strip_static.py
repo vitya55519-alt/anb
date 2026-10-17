@@ -69,7 +69,7 @@ def test_history_renderers_stay():
     # dialog history even though the buttons are gone
     assert "m.media_kind === 'video'" in INDEX
     assert 'video class="circle"' in INDEX
-    assert '<audio controls src=' in INDEX
+    assert "body = voicePlayer(src);" in INDEX  # V3.63.8: Telegram-style player
 
 
 def test_i18n_keys_kept_for_the_revert():

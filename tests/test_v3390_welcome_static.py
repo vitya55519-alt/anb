@@ -191,7 +191,7 @@ def test_chat_media_persistence_and_rendering():
     # V3.42.2: the crooked voice action button was removed from the chat strip
     assert 'id="mediaVoice"' not in INDEX
     assert 'video class="circle"' in INDEX
-    assert '<audio controls src=' in INDEX
+    assert "body = voicePlayer(src);" in INDEX  # V3.63.8: Telegram-style player
     assert 'circle_limit' in INDEX
 
 

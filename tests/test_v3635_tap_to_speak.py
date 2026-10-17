@@ -19,4 +19,4 @@ def test_spa_offers_voice_on_her_text_and_upsells():
     assert "` data-say=\"${esc(m.content)}\"`" in SPA
     assert "fetch('/webapp/api/chat/speak?init_data='" in SPA
     assert "quickBuy('voice')" in SPA
-    assert "say_btn: '🔊 Озвучить'" in SPA and "say_btn: '🔊 Voice it'" in SPA
+    assert "say_btn: '▶ Голосом'" in SPA and "say_btn: '▶ Voice'" in SPA
