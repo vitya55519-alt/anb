@@ -133,7 +133,11 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
         hook = _pending_hook(telegram_id)
         system = _system_prompt(name, when, tastes, temperament, mem, hook)
         from services.llm_provider_service import generate_text
-        r = await generate_text([{'role': 'system', 'content': system}],
+        # V3.63.1: a system-only request is rejected by MiniMax («chat content
+        # is empty») and Gemini («contents is not specified») — every life
+        # moment failed. The user turn carries the ask.
+        r = await generate_text([{'role': 'system', 'content': system},
+                                 {'role': 'user', 'content': 'Напиши ему это сообщение сейчас.'}],
                                 max_tokens=90, temperature=0.95, purpose='life_event')
         text = (getattr(r, 'text', '') or '').strip().strip('"').strip()
         if len(text) < 8:

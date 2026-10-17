@@ -47,7 +47,7 @@ def test_pool_service_is_kind_aware():
 def test_ritual_sends_media_by_kind():
     ritual = SCHED[SCHED.index('async def _rituals(bot):'):SCHED.index('async def _donation_reminder(bot):')]
     assert 'shot = retention_features_service.random_proactive_photo(char_id)' in ritual
-    assert "data, ctype, kind = shot" in ritual
+    assert "data, ctype, media_kind = shot" in ritual
     assert 'await bot.send_animation(int(tg_id), BufferedInputFile(data, filename=\'ritual.mp4\'), caption=text)' in ritual
     assert 'await bot.send_video(int(tg_id), BufferedInputFile(data, filename=\'ritual.mp4\'), caption=text)' in ritual
     assert 'await bot.send_photo(int(tg_id), BufferedInputFile(data, filename=\'ritual.jpg\'), caption=text)' in ritual
