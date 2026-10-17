@@ -7722,6 +7722,11 @@ async def testlevel(message: types.Message):
     await message.answer(f'тест: {STAGE_LABELS[stage]}')
 
 
+def _bubble_pause(part: str) -> float:
+    """Seconds of «печатает…» before a follow-up bubble: ~1s plus typing speed, capped."""
+    return min(3.5, 0.9 + len(part) / 45)
+
+
 async def send_answer(message: types.Message, text: str):
     user = get_user(message.from_user.id)
     # V3.55.1: voice replies are a Premium perk (owner decision — the shop
@@ -7741,9 +7746,16 @@ async def send_answer(message: types.Message, text: str):
     if '```' not in text and '\n\n' in text and len(text) < 700:
         parts = [p.strip() for p in text.split('\n\n') if p.strip()]
         if 1 < len(parts) <= 3:
-            for part in parts:
+            # V3.63.13: the next bubble comes after a «печатает…» pause sized
+            # to its length, like a person typing it — not 0.35s later.
+            for i, part in enumerate(parts):
+                if i:
+                    try:
+                        await bot.send_chat_action(message.chat.id, 'typing')
+                    except Exception:
+                        pass
+                    await asyncio.sleep(_bubble_pause(part))
                 await message.answer(part)
-                await asyncio.sleep(0.35)
             return
     await message.answer(text)
     # V3.55.1: once per day, a voice user without Premium hears how to unlock it.

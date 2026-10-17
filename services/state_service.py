@@ -74,7 +74,7 @@ def ensure_life_state(telegram_id: int, *, force: bool = False):
     return get_state(telegram_id)
 
 
-def state_context(telegram_id: int) -> str:
+def state_context(telegram_id: int, character_id: str = '') -> str:
     s = ensure_life_state(telegram_id)
     # User's local time — so Anna knows if it's night, morning, etc.
     local = _local_now(telegram_id)
@@ -82,10 +82,15 @@ def state_context(telegram_id: int) -> str:
     part_ru = {'morning': 'утро', 'afternoon': 'день', 'evening': 'вечер', 'night': 'ночь'}[part]
     time_str = local.strftime('%H:%M')
     parts = [f"у пользователя сейчас {time_str} ({part_ru})"]
-    parts.append(f"настроение Анны: {s.mood}")
+    # V3.63.13: this state is shared by every girl of the user, so it is
+    # «твоё», not «Анны»; a girl with her own day (daily_life) keeps her own
+    # activity instead of whatever the last photo of another girl set.
+    from services.daily_life import ROUTINES
+    own_day = (character_id or '') in ROUTINES
+    parts.append(f"твоё настроение: {s.mood}")
     parts.append(f"энергия: {'низкая' if s.energy < .4 else 'обычная' if s.energy < .75 else 'высокая'}")
-    if s.activity: parts.append(f"сейчас по условной истории Анны: {s.activity}")
-    if s.location: parts.append(f"текущая локация истории: {s.location}")
+    if s.activity and not own_day: parts.append(f"сейчас по условной истории: {s.activity}")
+    if s.location and not own_day: parts.append(f"текущая локация истории: {s.location}")
     if s.outfit: parts.append(f"последний показанный образ: {s.outfit}")
     if s.hairstyle: parts.append(f"последняя причёска: {s.hairstyle}")
     if s.pending_hook: parts.append(f"незакрытая тема пользователя, к которой можно естественно вернуться: {s.pending_hook}")

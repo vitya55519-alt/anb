@@ -81,3 +81,30 @@ def diversify_emoji(answer: str, recent_bot_texts, rng=None) -> str:
         return new
 
     return _EMOJI_TOKEN.sub(swap, answer)
+
+
+# V3.63.13: a girl in Telegram doesn't open every bubble with a capital letter
+# and close it with a full stop — that tidy punctuation read as a bot. Only
+# everyday opening words are lowercased, so names keep their capital.
+_CASUAL_OPENERS = frozenset(
+    'а ах ахах ага блин в вот да даже доброе ещё же знаешь и или как какой какая какие кстати ладно '
+    'мм ммм может мой моя мне меня мы на наверное не нет ну о ого ой ох по погоди подожди понятно привет '
+    'приветик прости просто раз сегодня серьёзно слушай смотри так там теперь тогда только ты тебе тебя '
+    'у угу уже фу хаха хах хм хочешь честно что чего чё это эй я'.split()
+)
+_OPENER = re.compile(r'^([А-ЯЁ])([а-яё]*)')
+
+
+def casual_punctuation(answer: str) -> str:
+    if not answer or '```' in answer:
+        return answer
+    bubbles = []
+    for bubble in answer.split('\n\n'):
+        b = bubble.strip()
+        m = _OPENER.match(b)
+        if m and (m.group(1) + m.group(2)).lower() in _CASUAL_OPENERS:
+            b = m.group(1).lower() + b[1:]
+        if b.endswith('.') and not b.endswith('..'):
+            b = b[:-1]
+        bubbles.append(b)
+    return '\n\n'.join(bubbles)
