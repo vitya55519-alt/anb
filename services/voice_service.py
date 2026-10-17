@@ -73,7 +73,7 @@ GEMINI_TTS_VOICES = {
     'anna_01': 'Leda',
     'alena_01': 'Kore',
     'maria_01': 'Aoede',
-    'alisa_01': 'Vindemiatrix',
+    'alisa_01': 'Autonoe',  # V3.63.10: Vindemiatrix sounded rough and old («как у сорокалетней»)
     'darina_01': 'Achernar',
     'erika_01': 'Gacrux',
     'eva_01': 'Autonoe',
@@ -90,16 +90,18 @@ GEMINI_TTS_VOICES = {
     'zlata_01': 'Zephyr',
 }
 GEMINI_FEMALE_VOICES = (
-    'Leda', 'Kore', 'Aoede', 'Vindemiatrix', 'Achernar', 'Gacrux', 'Autonoe',
+    'Leda', 'Kore', 'Aoede', 'Achernar', 'Gacrux', 'Autonoe',
     'Erinome', 'Despina', 'Callirrhoe', 'Pulcherrima', 'Zephyr', 'Laomedeia', 'Sulafat',
 )
+# Constructor girls are young: skip the mature voice.
+_CUSTOM_VOICE_POOL = tuple(v for v in GEMINI_FEMALE_VOICES if v != 'Gacrux')
 # How she talks — added to the style direction so girls sharing a voice still
 # sound like different women.
 GEMINI_TTS_MANNER = {
     'anna_01': 'playful and sociable, ',
     'alena_01': 'bright, confident and teasing, ',
     'maria_01': 'very gentle, caring and a little breathy, ',
-    'alisa_01': 'quiet, thoughtful and a bit shy, ',
+    'alisa_01': 'young and light-voiced, quiet, thoughtful and a bit shy, ',
     'darina_01': 'soft, homely and caring, ',
     'erika_01': 'elegant, mature and self-assured, ',
     'eva_01': 'cheerful, simple and energetic, ',
@@ -379,8 +381,8 @@ def gemini_voice_for(character_id: str | None) -> str:
     """Her own Gemini voice; custom girls get a stable pick from the pool."""
     voice_name = GEMINI_TTS_VOICES.get(character_id or '')
     if voice_name is None and is_custom_character(character_id):
-        voice_name = CUSTOM_CHARACTER_GEMINI_TTS_VOICE or GEMINI_FEMALE_VOICES[
-            zlib.crc32(character_id.encode('utf-8')) % len(GEMINI_FEMALE_VOICES)]
+        voice_name = CUSTOM_CHARACTER_GEMINI_TTS_VOICE or _CUSTOM_VOICE_POOL[
+            zlib.crc32(character_id.encode('utf-8')) % len(_CUSTOM_VOICE_POOL)]
     return voice_name or _DEFAULT_GEMINI_TTS_VOICE
 
 

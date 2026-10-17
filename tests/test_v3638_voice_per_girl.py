@@ -28,3 +28,11 @@ def test_custom_girls_get_a_stable_real_voice():
     picks = {vs.gemini_voice_for(f'custom_1_{i:08x}') for i in range(40)}
     assert len(picks) > 5
     assert 'Erin' not in vs.GEMINI_FEMALE_VOICES
+
+
+def test_alisa_sounds_young_and_customs_skip_the_mature_voice():
+    # V3.63.10: «у Алисы голос грубый, как у сорокалетней»
+    assert vs.GEMINI_TTS_VOICES['alisa_01'] == 'Autonoe'
+    assert 'Vindemiatrix' not in vs.GEMINI_FEMALE_VOICES
+    assert 'Gacrux' not in vs._CUSTOM_VOICE_POOL
+    assert all(vs.gemini_voice_for(f'custom_9_{i:08x}') != 'Gacrux' for i in range(60))
