@@ -16,7 +16,7 @@ from pathlib import Path
 from services.custom_character_service import is_custom_character
 from config import (
     TTS_API_KEY, TTS_MODEL, TTS_VOICE, AI_BASE_URL, OPENAI_VOICE_AVAILABLE,
-    GEMINI_API_KEY, GEMINI_TTS_ENABLED, GEMINI_TTS_MODEL, GEMINI_VIDEO_BASE_URL,
+    GEMINI_API_KEY, GEMINI_TTS_ENABLED, GEMINI_TTS_MODEL, GEMINI_VIDEO_BASE_URL, GEMINI_CHAT_MODEL,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,7 +165,10 @@ async def _transcribe_faster_whisper(voice_bytes: io.BytesIO) -> str:
         Path(tmp_path).unlink(missing_ok=True)
 
 
-_STT_MODEL_CHAIN = ('gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest')
+# V3.63.3: gemini-2.5-flash / 2.0-flash now answer 404 (retired) — users'
+# voice notes fell through to a missing OpenAI key (502). The live chat model
+# goes first.
+_STT_MODEL_CHAIN = tuple(dict.fromkeys((GEMINI_CHAT_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash')))
 _stt_good_model: str | None = None
 
 
@@ -237,7 +240,9 @@ async def synthesize_bytes(text: str, voice: str | None = None, character_id: st
 
     # Try edge-tts (free, no API key needed)
     try:
-        return await _tts_edge_tts(text, v, character_id)
+        audio = await _tts_edge_tts(text, v, character_id)
+        logger.info('tts ok provider=edge (robotic fallback)')
+        return audio
     except ImportError:
         pass
     except Exception as exc:
@@ -305,6 +310,16 @@ async def _tts_openai(text: str, voice: str) -> bytes:
     return r.content
 
 
+# V3.63.3: Gemini TTS reads plain text in a flat announcer tone («как с
+# калькулятором»). A spoken-style direction in front of the line makes it
+# sound like a real girl's voice message; the direction itself is not read.
+_TTS_STYLE = (
+    'Say this as a real young woman recording a voice message to the man she loves: '
+    'warm, tender and affectionate, soft and close to the microphone, with a smile, '
+    'natural pauses and breathing, never like an announcer or a robot: '
+)
+
+
 async def _tts_gemini(text: str, character_id: str | None = None) -> bytes:
     """V3.20.1: Gemini Flash TTS over REST — natural cute female voices.
 
@@ -336,6 +351,7 @@ async def _tts_gemini(text: str, character_id: str | None = None) -> bytes:
                 last_error = exc
                 break
             _tts_good_model = model
+            logger.info('tts ok provider=gemini model=%s voice=%s', model, voice_name)
             return audio
     raise last_error
 
@@ -344,7 +360,7 @@ async def _tts_gemini_model(text: str, voice_name: str, model: str) -> bytes:
     import httpx
 
     payload = {
-        'contents': [{'parts': [{'text': text}]}],
+        'contents': [{'parts': [{'text': _TTS_STYLE + text}]}],
         'generationConfig': {
             'responseModalities': ['AUDIO'],
             'speechConfig': {

@@ -33,6 +33,6 @@ def test_gemini_tts_primary_provider():
     assert '_tts_gemini' in VOICE
     # Gemini TTS is attempted before the robotic edge-tts.
     assert VOICE.index('return await _tts_gemini(text, character_id)') < \
-        VOICE.index('return await _tts_edge_tts(text, v, character_id)')
+        VOICE.index('audio = await _tts_edge_tts(text, v, character_id)')
     assert '_pcm16_to_wav' in VOICE
     assert 'GEMINI_TTS_VOICES' in VOICE
