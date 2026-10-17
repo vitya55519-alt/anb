@@ -11967,6 +11967,48 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
     return await _webapp_chat_turn(telegram_id, user_info, character_id, text)
 
 
+async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
+    """V3.63.5: tap her message in the app chat → «🔊 Озвучить» → she says it
+    in her own voice. A Premium perk (admins bypass); non-Premium gets 403
+    premium_required so the SPA opens the Premium quick-buy sheet."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    text = str(body.get('text', ''))
+    clean = ''.join(ch for ch in text if ch.isalnum() or ch in ' .,!?:;-—…()«»\'\n')[:600]
+    if not character_id or not clean.strip():
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+
+    def _gate():
+        if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
+            user = get_user(telegram_id)
+            return (user.voice_style if user else None) or 'nova'
+        return None
+
+    voice_style = await asyncio.to_thread(_gate)
+    if not voice_style:
+        track_event(ensure_user(telegram_id), 'speak_premium_wall')
+        return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    try:
+        audio = await synthesize_bytes(clean, voice_style, character_id=character_id)
+        filename = await asyncio.to_thread(
+            webapp_service.save_chat_media, telegram_id, audio, 'ogg', 'audio/ogg')
+    except Exception:
+        logger.warning('webapp speak failed user=%s', telegram_id, exc_info=True)
+        return web.json_response({'ok': False, 'error': 'tts_failed'}, status=502)
+    track_event(ensure_user(telegram_id), 'speak_message', metadata={'character_id': character_id})
+    return web.json_response({'ok': True, 'url': f'/webapp/media/{filename}'}, headers={'Cache-Control': 'no-store'})
+
+
 async def _webapp_api_chat_voice(request: web.Request) -> web.Response:
     """V3.57.0: a voice message from the Mini App — the mic recording arrives as
     base64, Whisper transcribes it, and the turn continues through the exact
@@ -14200,6 +14242,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
     app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)
     app.router.add_post('/webapp/api/chat/voice', _webapp_api_chat_voice)
+    app.router.add_post('/webapp/api/chat/speak', _webapp_api_chat_speak)
     app.router.add_post('/webapp/api/chat/photo', _webapp_api_chat_photo)
     app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
     app.router.add_post('/webapp/api/chat/marital', _webapp_api_chat_marital)
