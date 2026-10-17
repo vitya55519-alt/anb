@@ -75,7 +75,7 @@ GEMINI_TTS_VOICES = {
     'maria_01': 'Aoede',
     'alisa_01': 'Autonoe',  # V3.63.10: Vindemiatrix sounded rough and old («как у сорокалетней»)
     'darina_01': 'Achernar',
-    'erika_01': 'Gacrux',
+    'erika_01': 'Aoede',  # V3.63.11: Gacrux sounded «стрёмно»
     'eva_01': 'Autonoe',
     'kate_01': 'Erinome',
     'kristina_01': 'Despina',
@@ -90,11 +90,10 @@ GEMINI_TTS_VOICES = {
     'zlata_01': 'Zephyr',
 }
 GEMINI_FEMALE_VOICES = (
-    'Leda', 'Kore', 'Aoede', 'Achernar', 'Gacrux', 'Autonoe',
+    'Leda', 'Kore', 'Aoede', 'Achernar', 'Autonoe',
     'Erinome', 'Despina', 'Callirrhoe', 'Pulcherrima', 'Zephyr', 'Laomedeia', 'Sulafat',
 )
-# Constructor girls are young: skip the mature voice.
-_CUSTOM_VOICE_POOL = tuple(v for v in GEMINI_FEMALE_VOICES if v != 'Gacrux')
+_CUSTOM_VOICE_POOL = GEMINI_FEMALE_VOICES
 # How she talks — added to the style direction so girls sharing a voice still
 # sound like different women.
 GEMINI_TTS_MANNER = {
@@ -103,7 +102,7 @@ GEMINI_TTS_MANNER = {
     'maria_01': 'very gentle, caring and a little breathy, ',
     'alisa_01': 'young and light-voiced, quiet, thoughtful and a bit shy, ',
     'darina_01': 'soft, homely and caring, ',
-    'erika_01': 'elegant, mature and self-assured, ',
+    'erika_01': 'elegant, warm and self-assured, with a soft smile, ',
     'eva_01': 'cheerful, simple and energetic, ',
     'kate_01': 'direct, sporty and sensual, ',
     'kristina_01': 'lazy, low and sultry, like late at night, ',

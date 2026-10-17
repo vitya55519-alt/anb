@@ -40,6 +40,8 @@ OPENROUTER_MODEL = (
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "").strip()
 MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io/v1").strip().rstrip("/")
 MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M3").strip()
+# V3.63.12: optional separate model for the chat itself (e.g. to try a role-play model); empty = MINIMAX_MODEL.
+MINIMAX_DIALOGUE_MODEL = os.getenv("MINIMAX_DIALOGUE_MODEL", "").strip() or MINIMAX_MODEL
 
 # ── SpicyAPI (V3.45: uncensored Seedream для фото «наедине» и «косплей») ──
 SPICYAPI_KEY = os.getenv("SPICYAPI_KEY", "").strip()
