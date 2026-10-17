@@ -188,20 +188,19 @@ COSPLAY_CHARACTERS = [
 
 _REAL_PLACES = (
     "a cozy bedroom with warm lamps and soft sheets", "a sunlit modern apartment living room",
-    "a stylish hotel room with a city view", "a sunset balcony with city lights",
+    "a stylish hotel room with a city view", "a dim bedroom lit by warm candles",
     "a candlelit bathroom with marble and steam", "a walk-in closet with a full-length mirror",
 )
 
-# Обстановки (10 вариантов)
+# V3.64.3: the owner — «пляж, балкон… вообще не вписываются» for lingerie; the
+# list keeps only intimate indoor places. Old buttons with a dropped id fall
+# back to a random real place in build_private_photo_prompt.
 LOCATIONS = [
     {"id": "bedroom", "name_ru": "🛏️ Спальня", "name_en": "🛏️ Bedroom"},
     {"id": "bathroom", "name_ru": "🚿 Ванная", "name_en": "🚿 Bathroom"},
-    {"id": "balcony", "name_ru": "🌅 Балкон (закат)", "name_en": "🌅 Balcony (sunset)"},
     {"id": "closet", "name_ru": "🪞 Гардеробная", "name_en": "🪞 Walk-in closet"},
     {"id": "candles", "name_ru": "🕯️ При свечах", "name_en": "🕯️ Candles (dark room)"},
     {"id": "hotel", "name_ru": "🏨 Отель", "name_en": "🏨 Hotel"},
-    {"id": "beach", "name_ru": "🏖️ Пляж", "name_en": "🏖️ Beach"},
-    {"id": "nature", "name_ru": "🌲 Природа", "name_en": "🌲 Nature"},
     {"id": "studio", "name_ru": "📸 Фотостудия", "name_en": "a styled photo studio set: warm textured backdrop in blush, beige or terracotta, a velvet armchair or draped fabric, plants and soft directional light — never a plain black void"},
     {"id": "random", "name_ru": "🎲 Наугад", "name_en": "🎲 Random"},
 ]
@@ -410,11 +409,11 @@ def activate_hot_pass(telegram_id: int, duration_days: int) -> datetime:
 
 # V3.60.8: the picked mood now drives the face too (it used to be a bare label).
 _MOOD_EXPRESSIONS = {
-    "playful": ("teasing", "wink", "tongue_out_playful", "laughing"),
+    "playful": ("teasing", "wink", "laughing"),
     "morning": ("sleepy_soft", "smile"),
     "bold": ("confident", "biting_lip", "bedroom_eyes"),
     "tender": ("smile", "shy", "blow_kiss"),
-    "passionate": ("desire", "bedroom_eyes", "pleasure", "breathless", "biting_lip"),
+    "passionate": ("bedroom_eyes", "pleasure", "breathless", "biting_lip"),
     "shy": ("shy", "biting_lip"),
     "confident": ("confident", "bedroom_eyes", "pouty_seductive"),
 }
@@ -434,12 +433,31 @@ def _build_visual_identity_lock(character_id: str) -> str:
         return ''
     return identity
 
+# V3.64.3: in these categories the type itself names the place («В душе»,
+# «Номер в отеле», «На кровати»), so the location step is skipped and a picked
+# location never fights the type (a shower on the beach, a bed in the closet).
+PLACE_TYPED_CATEGORIES = frozenset({'fully_nude', 'nude_art', 'roleplay'})
+
+# Places where a bed is actually in the frame — bed poses are drawn only there.
+_BED_PLACES = frozenset({'bedroom', 'hotel', 'candles', 'bed', 'silk_sheets', 'lazy_sunday', 'massage'})
+
+
+def _pose_pool_for(place: str) -> list:
+    """V3.64.3: «около окна, пляж — мелочные моменты не вписываются»: a random
+    pose used to drop her on a bed or a windowsill whatever place was picked.
+    Bed poses stay only where there is a bed; with no named place (random) the
+    whole pool is fine because the random place is a bedroom-like room."""
+    if not place or place == 'random' or place in _BED_PLACES:
+        return PRIVATE_POSE_POOL
+    return [p for p in PRIVATE_POSE_POOL if 'bed' not in p and 'pillows' not in p]
+
+
 # V3.45.23: pose & camera variety — without it every generation lands on the
 # same default standing/sitting pose (players noticed «одна и та же поза»).
 PRIVATE_POSE_POOL = [
     'lying on her side, propped on one elbow, looking at the camera',
     'sitting on the edge of the bed, legs crossed, slight head tilt',
-    'standing by the window, over-the-shoulder glance back at camera',
+    'standing with her back half-turned, over-the-shoulder glance back at camera',
     'reclining against pillows, arms stretched above head',
     'sitting on the floor leaning against the wall, knees up',
     'standing in front of a mirror, phone POV selfie angle',
@@ -447,7 +465,7 @@ PRIVATE_POSE_POOL = [
     'sitting in a chair, legs draped over one armrest',
     'lying on her back, shot from above at a slight angle',
     'standing arching her back, hands in hair, eyes on the camera',
-    'perched on a windowsill, ankles crossed',
+    'leaning against the wall, one knee bent, hands behind her back',
     'kneeling on the bed, turning to face the camera',
     # V3.59.3: self-touch poses (owner request) — hands on her own body.
     'gently cupping her breasts with both hands without pressing them, lips parted, eyes on the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
@@ -504,7 +522,15 @@ def build_private_photo_prompt(
     
     # Обстановка
     location = next((loc for loc in LOCATIONS if loc["id"] == request.location_id), None)
-    if location and request.location_id != "random":
+    place_typed = request.category in PLACE_TYPED_CATEGORIES
+    if place_typed:
+        # V3.64.3: the type is the place — no second, conflicting location.
+        location = None
+        place_type = next((t for t in PRIVATE_PHOTO_CATEGORIES.get(request.category, {}).get("types", [])
+                           if t["id"] == request.type_id), None)
+        if place_type:
+            parts.append(f"Location: {_plain(place_type['name_en'])}, the whole scene takes place there")
+    elif location and request.location_id != "random":
         parts.append(f"Location: {_plain(location['name_en'])}")
     else:
         # V3.60.1: no location (the «Картинки» studio) or «random» used to leave
@@ -563,7 +589,9 @@ def build_private_photo_prompt(
                 parts.append(f"COLOR: her lingerie/outfit is {color_data['word']} — the whole set is this color.")
     
     # V3.45.23: random pose + camera so consecutive photos never repeat.
-    parts.append(f"POSE: {random.choice(PRIVATE_POSE_POOL)}.")
+    pose_place = request.type_id if place_typed else (request.location_id if location else '')
+    parts.append(f"POSE: {random.choice(_pose_pool_for(pose_place))}, natural for this place — "
+                 "every object in the frame belongs to the same place.")
     parts.append(f"CAMERA: {random.choice(PRIVATE_CAMERA_POOL)}.")
     
     # V3.60.8: «Наедине» never had an EXPRESSION line — only a weak «Mood: …»

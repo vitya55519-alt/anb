@@ -3327,6 +3327,13 @@ function hotSelectType(typeId) {
   const cat = (_hotData?.items || []).find(i => i.id === _hotSel.cat) || {};
   // V3.45.26: apparel categories offer a colour step before the location.
   if (cat.has_color) return hotSelectColor();
+  return hotAfterColor();
+}
+
+// V3.64.3: categories whose type already names the place skip «Обстановка».
+function hotAfterColor() {
+  const cat = (_hotData?.items || []).find(i => i.id === _hotSel.cat) || {};
+  if (cat.has_location === false) return hotSelectMood('auto');
   return hotSelectLocation('');
 }
 
@@ -3337,7 +3344,7 @@ function hotSelectColor() {
   box.innerHTML = '<div class="featlist">' + colors.map(c =>
     '<div class="featitem" data-id="' + esc(c.id) + '" data-locked="0"><div class="fet"><div class="fen">' + esc(c.name) + '</div></div></div>'
   ).join('') + '</div><div style="padding:12px;text-align:center"><button class="btn-back" id="hotBack">← Назад</button></div>';
-  box.querySelectorAll('.featitem').forEach(el => el.onclick = () => { _hotSel.color = el.dataset.id; hotSelectLocation(''); });
+  box.querySelectorAll('.featitem').forEach(el => el.onclick = () => { _hotSel.color = el.dataset.id; hotAfterColor(); });
   document.getElementById('hotBack').onclick = () => hotSelectCategory(_hotSel.cat);
 }
 
@@ -3365,7 +3372,12 @@ function hotSelectMood(moodId) {
     '<div class="featitem" data-id="' + esc(m.id) + '" data-locked="0"><div class="fet"><div class="fen">' + esc(m.name) + '</div></div></div>'
   ).join('') + '</div><div style="padding:12px;text-align:center"><button class="btn-back" id="hotBack">← Назад</button></div>';
   box.querySelectorAll('.featitem').forEach(el => el.onclick = () => hotGenerate(el.dataset.id));
-  document.getElementById('hotBack').onclick = () => hotSelectLocation(_hotSel.loc);
+  document.getElementById('hotBack').onclick = () => {
+    const cat = (_hotData?.items || []).find(i => i.id === _hotSel.cat) || {};
+    if (cat.has_location !== false) return hotSelectLocation(_hotSel.loc);
+    if (cat.has_color) return hotSelectColor();
+    return hotSelectCategory(_hotSel.cat);
+  };
 }
 
 function hotGenerate(moodId) {
@@ -3496,7 +3508,7 @@ async function featurePost(payload) {
   const box = document.getElementById('chatMsgs');
   // V3.58.1: a date closes the sheet at once and shows that she is on her way,
   // instead of leaving the menu frozen with no sign the tap registered.
-  // V3.64.1: an apartment tap is a live scene now (a model reply) — same
+  // V3.64.3: an apartment tap is a live scene now (a model reply) — same
   // instant close + «she is coming» line as a date.
   if (payload.kind === 'date' || payload.kind === 'apartment') {
     closeFeature();
@@ -3541,7 +3553,7 @@ async function featurePost(payload) {
     }
     const empty = box.querySelector('.chat-empty'); if (empty) empty.remove();
     const tw = document.getElementById('featTyping'); if (tw) tw.remove();
-    // V3.64.1: his action («*сажусь к тебе на диван*») shows as his own bubble.
+    // V3.64.3: his action («*сажусь к тебе на диван*») shows as his own bubble.
     if (j.user_text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'user', content: j.user_text, ts: null }));
     if (j.text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.text, ts: null }));
     if (j.photo_url) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: '', media_kind: 'photo', media_url: j.photo_url, ts: null }));

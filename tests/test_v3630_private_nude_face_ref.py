@@ -19,7 +19,8 @@ def _req(cat):
 def test_nude_prompt_has_face_lock_and_reference_note():
     p = pps.build_private_photo_prompt(_req('fully_nude'), '', use_reference=True)
     assert 'FACE LOCK:' in p and 'REFERENCE IMAGE 1 gives ONLY her face' in p
-    assert 'Location: Bedroom' in p
+    # V3.64.3: the nude type is the place, the picked location no longer competes
+    assert 'Location: On bed' in p and 'Location: Bedroom' not in p
 
 
 def test_pool_cutoff_not_older_than_switch():
