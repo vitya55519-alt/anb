@@ -859,6 +859,22 @@ def delete_proactive_photo(photo_id: int) -> bool:
         return False
 
 
+# V3.62.14: generated «я скучала» photos made before the one-hand selfie fix
+# (PR #44, 2026-10-16 18:56 UTC) carry third arms and the quality lines my
+# prompt cap dropped — they stay in the pool (owner can still see/delete them)
+# but are never sent. Uploaded GIFs and videos are untouched.
+import datetime as _dt
+import os as _os
+PROACTIVE_POOL_SKIP_FROM = _dt.datetime.fromisoformat(_os.getenv('PROACTIVE_POOL_SKIP_FROM', '2026-10-15T15:00:00'))
+PROACTIVE_POOL_SKIP_TO = _dt.datetime.fromisoformat(_os.getenv('PROACTIVE_POOL_SKIP_TO', '2026-10-16T19:00:00'))
+
+
+def proactive_photo_retired(kind: str | None, created_at) -> bool:
+    if (kind or 'photo') != 'photo' or created_at is None:
+        return False
+    return PROACTIVE_POOL_SKIP_FROM <= created_at < PROACTIVE_POOL_SKIP_TO
+
+
 def random_proactive_photo(character_id: str | None = None) -> tuple[bytes, str, str] | None:
     """A (bytes, content_type, kind) pick from the pool, or None when empty.
 
@@ -874,6 +890,7 @@ def random_proactive_photo(character_id: str | None = None) -> tuple[bytes, str,
                     ProactivePhoto.character_id == character_id)).all()
             else:
                 rows = s.scalars(select(ProactivePhoto)).all()
+            rows = [r for r in rows if not proactive_photo_retired(getattr(r, 'kind', None), r.created_at)]
             if not rows:
                 return None
             row = random.choice(rows)

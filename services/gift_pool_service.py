@@ -22,6 +22,7 @@ GIFT_POOL_DEFAULT_TOTAL = 20
 # One head-to-waist framing rule for every shot: the cropped gift showed
 # no face at all, and a gift without her face is not a gift from her.
 GIFT_FRAMING = (
+    'exactly two arms and two hands, anatomically correct, natural fingers; '
     'framed from slightly above the top of her head down to her waist or hips, her ENTIRE face, '
     'hair and eyes fully inside the frame and in sharp focus, looking straight into the lens; '
     'never crop her head or face, never a body-only shot'
@@ -32,29 +33,32 @@ GIFT_FRAMING = (
 GIFT_SHOTS: tuple[tuple[str, str, str, str, str], ...] = (
     ('selfie', 'her cozy living room in the evening, warm floor lamp, soft blanket on the sofa',
      'an oversized soft knit sweater slipping off one shoulder',
-     'phone held at arm\'s length, she hugs a cushion', 'tender, missing him, a shy warm smile'),
+     'selfie, phone held at arm\'s length in one hand, her free hand resting on a cushion in her lap', 'tender, missing him, a shy warm smile'),
     ('selfie', 'her bed in the morning, white sheets, soft daylight from the window',
      'a loose cotton t-shirt, messy hair after sleep',
-     'she lies on the pillow and holds the phone above her face', 'sleepy, sweet, missed you smile'),
+     'selfie, she lies on the pillow holding the phone above her face with one hand, the other hand tucked under her cheek', 'sleepy, sweet, missed you smile'),
     ('selfie', 'a hallway mirror at home, warm light, a coat on the hook',
      'a fitted little black dress, ready for the evening',
-     'mirror selfie, she blows a kiss to the camera', 'playful, flirty, a little sad he is not here'),
+     'mirror selfie, one hand holds the phone, she blows a kiss with the other hand', 'playful, flirty, a little sad he is not here'),
     ('selfie', 'a window seat on a rainy evening, raindrops on the glass, a mug of tea',
      'a cozy cardigan over a camisole',
-     'she leans against the window, phone at eye level', 'wistful, dreamy, thinking about him'),
+     'selfie, she leans against the window, one hand holds the phone at eye level, the other holds the mug', 'wistful, dreamy, thinking about him'),
     ('selfie', 'her kitchen in the morning, coffee cup in hand, sunlight on the counter',
      'a silk robe tied at the waist',
-     'quick selfie with the coffee cup near her lips', 'playful smile, «good morning, I missed you»'),
+     'quick selfie, one hand holds the phone, the other holds the coffee cup near her lips', 'playful smile, «good morning, I missed you»'),
     ('selfie', 'a candlelit table at home with a glass of wine, soft bokeh lights',
      'an elegant black blazer dress with a deep neckline',
-     'she sits at the table and holds the phone at arm\'s length', 'romantic, inviting, warm eyes'),
+     'selfie, she sits at the table, one hand holds the phone at arm\'s length, the other rests on the wine glass', 'romantic, inviting, warm eyes'),
     ('selfie', 'a bathroom mirror after a shower, soft steam, warm light',
      'a white towel wrapped around her body, damp hair',
-     'mirror selfie, the phone partly covers one side, her face fully visible', 'shy, intimate, sweet'),
+     'mirror selfie, one hand holds the phone low at chest height, the other holds the towel, her face fully visible', 'shy, intimate, sweet'),
     ('selfie', 'a sunny city street, cafe terrace behind her',
      'a light summer dress and sunglasses pushed up into her hair',
-     'selfie at arm\'s length on her walk', 'bright, happy, «wish you were here»'),
+     'selfie at arm\'s length on her walk, one hand holds the phone, the other plays with her hair', 'bright, happy, «wish you were here»'),
 )
+
+
+GIFT_POSE = 'relaxed and natural, exactly the hand placement described in CAMERA/POSE, no extra gestures'
 
 
 def _heroines() -> list[str]:
@@ -89,6 +93,9 @@ def gift_request(shot: tuple):
     return PhotoRequest(
         scene=scene, location=location, clothing=clothing,
         angle=f'{angle}; {GIFT_FRAMING}', mood=mood, customized=True,
+        # V3.62.14: the random pose pool used to add its own gesture on top of
+        # the shot's hand placement — one gesture too many is a third arm.
+        pose_rotation=(GIFT_POSE,),
     )
 
 
