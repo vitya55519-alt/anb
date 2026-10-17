@@ -264,10 +264,11 @@ def shuffled_variety_keys() -> tuple[str, ...]:
 TONGUE_KEYS: frozenset[str] = frozenset({'desire', 'licking_lips', 'tongue_out_playful'})
 
 
+# V3.64.3: «что за ящерица» — even one tongue face per rotation rendered as a
+# lizard tongue. Random rotations show no tongue at all; the faces stay in
+# EXPRESSIONS for when the player asks for them explicitly.
 def _one_tongue(keys: list[str]) -> list[str]:
-    tongues = [k for k in keys if k in TONGUE_KEYS]
-    keep = random.choice(tongues) if tongues else None
-    return [k for k in keys if k not in TONGUE_KEYS or k == keep]
+    return [k for k in keys if k not in TONGUE_KEYS]
 
 
 def shuffled_sensual_variety_keys() -> tuple[str, ...]:

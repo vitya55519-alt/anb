@@ -6150,9 +6150,13 @@ async def private_photo_category(cq: types.CallbackQuery):
 async def private_photo_type(cq: types.CallbackQuery):
     parts = cq.data.split(':')
     cat_id, type_id = parts[2], parts[3]
-    from services.private_photo_service import LOCATIONS
+    from services.private_photo_service import LOCATIONS, PLACE_TYPED_CATEGORIES
     await cq.answer()
     lang = user_lang(cq.from_user.id)
+    if cat_id in PLACE_TYPED_CATEGORIES:
+        # V3.64.3: the type already names the place — straight to the mood.
+        await _private_photo_moods(cq, cat_id, type_id, 'auto', back=f'private_photo:cat:{cat_id}')
+        return
     rows = []
     for i in range(0, len(LOCATIONS), 2):
         row = []
@@ -6168,8 +6172,12 @@ async def private_photo_type(cq: types.CallbackQuery):
 async def private_photo_location(cq: types.CallbackQuery):
     parts = cq.data.split(':')
     cat_id, type_id, loc_id = parts[2], parts[3], parts[4]
-    from services.private_photo_service import MOODS
     await cq.answer()
+    await _private_photo_moods(cq, cat_id, type_id, loc_id, back=f'private_photo:type:{cat_id}:{type_id}')
+
+
+async def _private_photo_moods(cq: types.CallbackQuery, cat_id: str, type_id: str, loc_id: str, *, back: str):
+    from services.private_photo_service import MOODS
     lang = user_lang(cq.from_user.id)
     rows = []
     for i in range(0, len(MOODS), 2):
@@ -6178,7 +6186,7 @@ async def private_photo_location(cq: types.CallbackQuery):
             name = mood['name_ru'] if lang == RU else mood.get('name_en', mood['name_ru'])
             row.append(InlineKeyboardButton(text=name, callback_data=f'private_photo:go:{cat_id}:{type_id}:{loc_id}:{mood["id"]}'))
         rows.append(row)
-    rows.append([InlineKeyboardButton(text='⬅️ Назад', callback_data=f'private_photo:type:{cat_id}:{type_id}')])
+    rows.append([InlineKeyboardButton(text='⬅️ Назад', callback_data=back)])
     await cq.message.answer('💫 Выбери настроение:', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
@@ -13507,7 +13515,7 @@ def _webapp_api_feature_impl(request: web.Request) -> web.Response:
         import re
         from services.private_photo_service import (
             PRIVATE_PHOTO_CATEGORIES, get_private_photo_usage, get_category_cost, LOCATIONS, MOODS,
-            LINGERIE_COLORS,
+            LINGERIE_COLORS, PLACE_TYPED_CATEGORIES,
         )
         usage = get_private_photo_usage(telegram_id)
         items = []
@@ -13526,6 +13534,8 @@ def _webapp_api_feature_impl(request: web.Request) -> web.Response:
                 'types': [{"id": t["id"], "name": t.get(name_key, t["name_ru"])} for t in cat_data.get('types', [])],
                 # V3.45.26: colour step is shown only for apparel categories
                 'has_color': cat_id in ('lingerie', 'suggestive', 'roleplay'),
+                # V3.64.3: the type names the place — no location step
+                'has_location': cat_id not in PLACE_TYPED_CATEGORIES,
             })
         locations = [{'id': loc['id'], 'name': loc.get(f'name_{"en" if lang == EN else "ru"}', loc['name_ru'])} for loc in LOCATIONS]
         moods = [{'id': m['id'], 'name': m.get(f'name_{"en" if lang == EN else "ru"}', m['name_ru'])} for m in MOODS]
@@ -13744,7 +13754,7 @@ async def _webapp_api_feature_action_impl(request: web.Request) -> web.Response:
 
 async def _feature_scene_turn(telegram_id: int, user_info: dict, character_id: str,
                               action: str, scene: str) -> str:
-    """V3.64.1: «Квартира / Свидание не цепляют» — play the tap as a live scene
+    """V3.64.3: «Квартира / Свидание не цепляют» — play the tap as a live scene
     through the normal dialog pipeline (persona, memory, level): his action is
     saved as his message, she answers in character with a hook. Returns '' on
     any failure so the caller falls back to the old canned line."""
