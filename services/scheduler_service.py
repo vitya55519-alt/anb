@@ -22,7 +22,7 @@ from services import donation_service
 from services import partner_service
 from services import retention_features_service
 from services import dialog_store
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 logger=logging.getLogger(__name__); scheduler=AsyncIOScheduler()
 
@@ -40,6 +40,19 @@ def _mark_blocked(uid: int) -> None:
                 s.commit()
     except Exception:
         logger.exception('mark blocked failed user=%s', uid)
+
+
+def _mark_blocked_tg(telegram_id: int) -> None:
+    """V3.63.1: same as _mark_blocked, keyed by Telegram id. The daily gift
+    loop passed a Telegram id to _mark_blocked (users.id is INTEGER, so ids
+    above 2^31 crashed Postgres with «integer out of range»)."""
+    try:
+        with SessionLocal() as s:
+            uid = s.scalar(select(User.id).where(User.telegram_id == int(telegram_id)))
+        if uid:
+            _mark_blocked(uid)
+    except Exception:
+        logger.exception('mark blocked failed tg=%s', telegram_id)
 
 # V3.52.0: «Жизнь без тебя» dedup lives in dialog_sessions (DictStore), NOT an
 # in-memory set. Railway redeploys are frequent here and wiped _ritual_sent, so a
@@ -307,10 +320,10 @@ async def _rituals(bot):
                 _ritual_promised.discard((uid,today_key))
             if shot:
                 from aiogram.types import BufferedInputFile
-                data, ctype, kind = shot
-                if kind == 'gif':
+                data, ctype, media_kind = shot
+                if media_kind == 'gif':
                     await bot.send_animation(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=text)
-                elif kind == 'video':
+                elif media_kind == 'video':
                     await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=text)
                 else:
                     await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=text)
@@ -324,6 +337,14 @@ async def _rituals(bot):
             # proactive rail off (the 30-min scan used to retry all day).
             _ritual_sent.add((uid,'blocked',today_key))
             _mark_blocked(uid)
+        except TelegramBadRequest as e:
+            # V3.63.1: «chat not found» = the user never opened the bot or the
+            # account is gone; it failed every 30-min scan all day. Same as blocked.
+            if 'chat not found' in str(e).lower():
+                _ritual_sent.add((uid,'blocked',today_key))
+                _mark_blocked(uid)
+            else:
+                logger.exception('ritual failed user=%s',uid)
         except Exception: logger.exception('ritual failed user=%s',uid)
 
 async def _donation_reminder(bot):
@@ -464,7 +485,12 @@ async def _daily_gift(bot):
                     sent += 1
                 await asyncio.sleep(1)  # Не перегружать API
             except TelegramForbiddenError:
-                _mark_blocked(int(tid))
+                _mark_blocked_tg(tid)
+            except TelegramBadRequest as e:
+                if 'chat not found' in str(e).lower():
+                    _mark_blocked_tg(tid)
+                else:
+                    logger.exception('daily gift failed user=%s', tid)
             except Exception:
                 logger.exception('daily gift failed user=%s', tid)
         logger.info('daily gifts sent count=%s/%s', sent, len(targets))

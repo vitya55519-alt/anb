@@ -76,7 +76,7 @@ def test_daily_gift_targets_active_users_only():
     assert 'User.last_active_at >= fresh_cutoff' in DAILY
     assert 'min(15, len(user_ids))' in DAILY
     assert 'except TelegramForbiddenError:' in DAILY
-    assert '_mark_blocked(int(tid))' in DAILY
+    assert '_mark_blocked_tg(tid)' in DAILY
 
 
 # ── item 4: no double-bill on the adult studio path ──────────────────────────

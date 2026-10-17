@@ -51,7 +51,7 @@ def test_empty_llm_reply_does_not_send():
 
 
 def test_forbidden_disables_proactive_rail():
-    assert 'from aiogram.exceptions import TelegramForbiddenError' in SCHEDULER
+    assert 'from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError' in SCHEDULER
     # the helper itself: never auto-re-enabled, opt-out stays respected
     helper = SCHEDULER[SCHEDULER.index('def _mark_blocked(uid: int) -> None:'):SCHEDULER.index("_life_events_store")]
     assert 'u.proactive_enabled = False' in helper
