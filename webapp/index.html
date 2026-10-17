@@ -571,6 +571,27 @@
   .chat-media button .lb { font-size: 10px; color: var(--text); white-space: nowrap; }
   .chat-media button:disabled { opacity: .5; }
   .chat-media button.hot { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+  /* V3.64.0: one full-width «✨ Возможности» button above the input replaces the
+     pill strip; the pills live in #capSheet as rows with a short explanation. */
+  .chat-input .featmenu { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 9px 14px;
+    border-radius: 14px; border: 1px solid rgba(255,140,190,.35); color: #fff; font-size: 15px;
+    background: linear-gradient(90deg, rgba(232,68,127,.28), rgba(180,76,255,.28)); box-shadow: 0 0 14px rgba(232,68,127,.18); }
+  .featmenu .fm-t { font-weight: 700; letter-spacing: .2px; }
+  .featmenu .fm-s { font-size: 11px; opacity: .75; font-weight: 400; }
+  .capsheet { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; }
+  .capsheet .box { width: 100%; max-height: 86vh; overflow: auto; background: #1d1424; border-radius: 20px 20px 0 0;
+    padding: 16px 14px calc(18px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,120,180,.3); }
+  .capsheet .cap-h { text-align: center; font-weight: 700; font-size: 18px; }
+  .capsheet .cap-sub { text-align: center; font-size: 12px; opacity: .7; margin: 4px 0 12px; }
+  .capsheet .chat-media { flex-direction: column; flex-wrap: nowrap; gap: 8px; overflow: visible; }
+  .capsheet .chat-media button { flex-direction: row; align-items: center; gap: 12px; width: 100%; text-align: left;
+    padding: 11px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); color: var(--text); }
+  .capsheet .chat-media button .ic { font-size: 24px; width: 30px; text-align: center; flex: none; }
+  .capsheet .chat-media button .tx { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .capsheet .chat-media button .lb { font-size: 15px; font-weight: 600; white-space: normal; }
+  .capsheet .chat-media button .ds { font-size: 12px; line-height: 1.35; opacity: .72; }
+  .capsheet .chat-media button.hot .lb, .capsheet .chat-media button.hot .ds { color: #fff; opacity: 1; }
+  .capsheet .cap-close { margin-top: 12px; width: 100%; padding: 12px; border-radius: 12px; border: 0; background: rgba(255,255,255,.08); color: inherit; font-size: 14px; }
   /* V3.41.0: 7 feature buttons — the strip scrolls on its own row above the input. */
   .chat-input { flex-wrap: wrap; }
   .msg video.m { display: block; max-width: 220px; width: 100%; border-radius: 12px; margin-top: 4px; background: #000; }
@@ -986,16 +1007,10 @@
   <!-- V3.55.6: one-time tender/passionate picker for premium characters -->
   <div id="personaBanner" style="display:none"></div>
   <div class="chat-input">
-    <div class="chat-media">
-      <button id="mediaPhoto"><span class="ic">📸</span><span class="lb" id="lbMediaPhoto"></span></button>
-      <button id="featQuest"><span class="ic">🎯</span><span class="lb" id="lbFeatQuest"></span></button>
-      <button id="featStory"><span class="ic">📖</span><span class="lb" id="lbFeatStory"></span></button>
-      <button id="featDate"><span class="ic">💕</span><span class="lb" id="lbFeatDate"></span></button>
-      <button id="featApt"><span class="ic">🏠</span><span class="lb" id="lbFeatApt"></span></button>
-      <button id="featVideo"><span class="ic">🎬</span><span class="lb" id="lbFeatVideo"></span></button>
-      <button id="featCosplay"><span class="ic">🎭</span><span class="lb" id="lbFeatCosplay"></span></button>
-      <button id="featHot" class="hot"><span class="ic">💋</span><span class="lb" id="lbFeatHot"></span></button>
-    </div>
+    <!-- V3.64.0: «вкладки Свидание/Квартира непонятны» — the strip of 8 pills is
+         gone from above the input; one full-width «✨ Возможности» button opens a
+         sheet where every feature has a one-line explanation. -->
+    <button id="featMenuBtn" class="featmenu" type="button"><span class="fm-t" id="lbFeatMenu"></span><span class="fm-s" id="lbFeatMenuSub"></span></button>
     <div class="chat-field">
       <input id="chatText" maxlength="4000" placeholder="">
       <button id="chatAttach" class="inbtn" type="button">📎</button>
@@ -1005,6 +1020,22 @@
     <input type="file" id="chatFileIn" accept="image/*" style="display:none">
   </div>
 </div>
+<!-- V3.64.0: «✨ Возможности» — every chat feature with what it does -->
+<div class="capsheet" id="capSheet" style="display:none"><div class="box">
+  <div class="cap-h" id="capTitle"></div>
+  <div class="cap-sub" id="capSub"></div>
+  <div class="chat-media">
+    <button id="mediaPhoto"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbMediaPhoto"></span><span class="ds" id="dsMediaPhoto"></span></span></button>
+    <button id="featQuest"><span class="ic">🎯</span><span class="tx"><span class="lb" id="lbFeatQuest"></span><span class="ds" id="dsFeatQuest"></span></span></button>
+    <button id="featStory"><span class="ic">📖</span><span class="tx"><span class="lb" id="lbFeatStory"></span><span class="ds" id="dsFeatStory"></span></span></button>
+    <button id="featDate"><span class="ic">💕</span><span class="tx"><span class="lb" id="lbFeatDate"></span><span class="ds" id="dsFeatDate"></span></span></button>
+    <button id="featApt"><span class="ic">🏠</span><span class="tx"><span class="lb" id="lbFeatApt"></span><span class="ds" id="dsFeatApt"></span></span></button>
+    <button id="featVideo"><span class="ic">🎬</span><span class="tx"><span class="lb" id="lbFeatVideo"></span><span class="ds" id="dsFeatVideo"></span></span></button>
+    <button id="featCosplay"><span class="ic">🎭</span><span class="tx"><span class="lb" id="lbFeatCosplay"></span><span class="ds" id="dsFeatCosplay"></span></span></button>
+    <button id="featHot" class="hot"><span class="ic">💋</span><span class="tx"><span class="lb" id="lbFeatHot"></span><span class="ds" id="dsFeatHot"></span></span></button>
+  </div>
+  <button class="cap-close" id="capClose" type="button"></button>
+</div></div>
 <!-- V3.61.1: first-open choice «С сюжетом / Без сюжета» -->
 <div class="startsheet" id="startSheet" style="display:none"><div class="box">
   <div class="st-h">Как начать чат?</div>
@@ -1357,12 +1388,23 @@ const L_EN = {
   feat_quest: 'Quest', feat_date: 'Date', feat_apt: 'Apartment',
   // V3.45.0: new chat buttons
   feat_video: 'Video', feat_cosplay: 'Cosplay', feat_hot: 'Private',
+  // V3.64.0: the «✨ Features» button and a line explaining each chat feature.
+  cap_btn: '✨ Features', cap_btn_sub: 'photos · dates · stories · private',
+  cap_title: '✨ What shall we do?', cap_sub: 'Everything you can do with her besides texting', cap_close: 'Close',
+  cap_photo: 'Pick a scene and she sends you her photo from there',
+  cap_quest: '2–3 small tasks a day. Do them in the chat to grow closer and unlock stories',
+  cap_story: 'Story episodes: you choose what to do, and your romance follows your choices',
+  cap_date: 'Take her to a cafe, the movies or a walk. She tells you how the evening went and sends a photo',
+  cap_apt: 'Your shared home. Pick a room and something to do together, she answers in the chat',
+  cap_video: 'Bring her photo to life as a short video',
+  cap_cosplay: 'She dresses up as a famous character and sends you a photo',
+  cap_hot: 'Explicit photos just for you: pick the outfit, place and mood',
   // V3.41.0: the app-chat feature sheet (apartment / date / daily quest).
   apt_intro: '🏠 This is your shared apartment. Pick a room and what to do together — she answers in the chat and your closeness grows ❤️', feat_done_btn: '✅ I did it · check', feat_claimed: 'Already done today ❤️', quest_not_done: 'Do it in the chat with her first 😉 then tap again',
   // V3.49.0: daily-task checklist progress (2-3 tasks a day, story ladder).
   feat_tasks_left: 'more tasks to unlock', feat_total: 'tasks done in total',
   feat_empty: 'Nothing here yet', feat_paid: 'Date paid 💕 she will write in the chat',
-  date_wait: 'She is getting ready for the date… 💕', date_photo_wait: '📸 the photo from your date is on its way…',
+  apt_wait: 'She is coming to you… 🏠', date_wait: 'She is getting ready for the date… 💕', date_photo_wait: '📸 the photo from your date is on its way…',
   // V3.43.5: the in-app Settings section (spicy switch + interface language).
   settings_title: 'Settings', spicy_title: '🌶 Spicy mode', spicy_on: 'on', spicy_off: 'off',
   spicy_prem: 'Spicy mode is a Premium perk ⭐', spicy_toast_on: 'Spicy mode is on 🔥',
@@ -1541,12 +1583,23 @@ const L_RU = {
   feat_quest: 'Задание', feat_date: 'Свидание', feat_apt: 'Квартира',
   // V3.45.0: новые кнопки в чате
   feat_video: 'Видео', feat_cosplay: 'Косплей', feat_hot: 'Наедине',
+  // V3.64.0: кнопка «✨ Возможности» и пояснения к каждой функции чата.
+  cap_btn: '✨ Возможности', cap_btn_sub: 'фото · свидания · истории · наедине',
+  cap_title: '✨ Чем займёмся?', cap_sub: 'Всё, что можно делать с ней кроме переписки', cap_close: 'Закрыть',
+  cap_photo: 'Выбери сцену, и она пришлёт своё фото оттуда',
+  cap_quest: '2–3 маленьких задания на день. Выполняешь в чате — растёт близость и открываются истории',
+  cap_story: 'Сюжетные истории: ты выбираешь, как поступить, и от этого зависит ваш роман',
+  cap_date: 'Пригласи её в кафе, кино или на прогулку. Она расскажет, как прошёл вечер, и пришлёт фото',
+  cap_apt: 'Ваш общий дом. Выбери комнату и занятие, например ужин или кино на диване, и она ответит в чате',
+  cap_video: 'Оживи её фото: из снимка получится короткое видео',
+  cap_cosplay: 'Она переоденется в известного персонажа и пришлёт фото в образе',
+  cap_hot: 'Откровенные фото только для тебя: выбираешь образ, место и настроение',
   // V3.41.0: панель фич в чате приложения (квартира / свидание / задание дня).
   apt_intro: '🏠 Это ваша общая квартира. Выбери комнату и что вы делаете вместе — она ответит в чате, а близость вырастет ❤️', feat_done_btn: '✅ Я сделал · проверить', feat_claimed: 'Сегодня уже выполнено ❤️', quest_not_done: 'Сначала сделай это в чате с ней 😉 потом нажми ещё раз',
   // V3.49.0: чек-лист заданий дня (2-3 в день, лесенка историй).
   feat_tasks_left: 'ещё заданий до', feat_total: 'заданий выполнено всего',
   feat_empty: 'Здесь пока пусто', feat_paid: 'Свидание оплачено 💕 она напишет в чат',
-  date_wait: 'Собирается на свидание… 💕', date_photo_wait: '📸 фото со свидания уже в пути…',
+  apt_wait: 'Она уже идёт к тебе… 🏠', date_wait: 'Собирается на свидание… 💕', date_photo_wait: '📸 фото со свидания уже в пути…',
   // V3.43.5: секция «Настройки» в профиле (пошлый режим + язык интерфейса).
   settings_title: 'Настройки', spicy_title: '🌶 Пошлый режим', spicy_on: 'вкл', spicy_off: 'выкл',
   spicy_prem: 'Пошлый режим — фишка Premium ⭐', spicy_toast_on: 'Пошлый режим включён 🔥',
@@ -1877,6 +1930,15 @@ document.getElementById('lbFeatApt').textContent = L.feat_apt;
 if(document.getElementById('lbFeatVideo')) document.getElementById('lbFeatVideo').textContent = L.feat_video;
 if(document.getElementById('lbFeatCosplay')) document.getElementById('lbFeatCosplay').textContent = L.feat_cosplay;
 if(document.getElementById('lbFeatHot')) document.getElementById('lbFeatHot').textContent = L.feat_hot;
+// V3.64.0: «✨ Возможности» button + the explanation under each feature row.
+document.getElementById('lbFeatMenu').textContent = L.cap_btn;
+document.getElementById('lbFeatMenuSub').textContent = L.cap_btn_sub;
+document.getElementById('capTitle').textContent = L.cap_title;
+document.getElementById('capSub').textContent = L.cap_sub;
+document.getElementById('capClose').textContent = L.cap_close;
+[['dsMediaPhoto', 'cap_photo'], ['dsFeatQuest', 'cap_quest'], ['dsFeatStory', 'cap_story'], ['dsFeatDate', 'cap_date'],
+ ['dsFeatApt', 'cap_apt'], ['dsFeatVideo', 'cap_video'], ['dsFeatCosplay', 'cap_cosplay'], ['dsFeatHot', 'cap_hot']]
+  .forEach(([id, key]) => { const el = document.getElementById(id); if (el) el.textContent = L[key]; });
 document.getElementById('chanBannerText').textContent = L.chan_banner;
 document.getElementById('chanTitle').textContent = L.chan_title;
 document.getElementById('chanWarn').textContent = L.chan_warn;
@@ -3434,10 +3496,12 @@ async function featurePost(payload) {
   const box = document.getElementById('chatMsgs');
   // V3.58.1: a date closes the sheet at once and shows that she is on her way,
   // instead of leaving the menu frozen with no sign the tap registered.
-  if (payload.kind === 'date') {
+  // V3.64.1: an apartment tap is a live scene now (a model reply) — same
+  // instant close + «she is coming» line as a date.
+  if (payload.kind === 'date' || payload.kind === 'apartment') {
     closeFeature();
     const empty0 = box.querySelector('.chat-empty'); if (empty0) empty0.remove();
-    box.insertAdjacentHTML('beforeend', '<div class="typing" id="featTyping">' + esc(L.date_wait) + '</div>');
+    box.insertAdjacentHTML('beforeend', '<div class="typing" id="featTyping">' + esc(payload.kind === 'date' ? L.date_wait : L.apt_wait) + '</div>');
     box.scrollTop = box.scrollHeight;
   }
   try {
@@ -3476,6 +3540,9 @@ async function featurePost(payload) {
       return;
     }
     const empty = box.querySelector('.chat-empty'); if (empty) empty.remove();
+    const tw = document.getElementById('featTyping'); if (tw) tw.remove();
+    // V3.64.1: his action («*сажусь к тебе на диван*») shows as his own bubble.
+    if (j.user_text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'user', content: j.user_text, ts: null }));
     if (j.text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.text, ts: null }));
     if (j.photo_url) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
     box.scrollTop = box.scrollHeight;
@@ -5294,6 +5361,15 @@ document.getElementById('featApt').addEventListener('click', () => openFeature('
 if(document.getElementById('featVideo')) document.getElementById('featVideo').addEventListener('click', () => openFeature('video'));
 if(document.getElementById('featCosplay')) document.getElementById('featCosplay').addEventListener('click', () => openFeature('cosplay'));
 if(document.getElementById('featHot')) document.getElementById('featHot').addEventListener('click', () => openFeature('hot'));
+// V3.64.0: the «✨ Возможности» sheet — tapping a row closes it, then the row's
+// own listener above opens that feature as before.
+function openCapSheet() { document.getElementById('capSheet').style.display = 'flex'; }
+function closeCapSheet() { document.getElementById('capSheet').style.display = 'none'; }
+document.getElementById('featMenuBtn').addEventListener('click', openCapSheet);
+document.getElementById('capClose').addEventListener('click', closeCapSheet);
+document.getElementById('capSheet').addEventListener('click', (e) => {
+  if (e.target.id === 'capSheet' || e.target.closest('.chat-media button')) closeCapSheet();
+});
 document.getElementById('featBack').addEventListener('click', closeFeature);
 document.getElementById('charBack').addEventListener('click', () => {
   document.getElementById('charview').classList.remove('open');

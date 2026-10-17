@@ -13662,7 +13662,12 @@ async def _webapp_api_feature_action_impl(request: web.Request) -> web.Response:
                                   event_type='apartment', reason=f'apartment:{room_id}:{action_id}',
                                   character_id=character_id)
         track_event(uid, 'apartment_action', metadata={'room': room_id, 'action': action_id, 'source': 'webapp'})
-        save_message(uid, character_id, 'assistant', text)
+        action = apartment_service.USER_ACTIONS.get(action_id, '')
+        answer = await _feature_scene_turn(telegram_id, user_info, character_id, action,
+                                           apartment_service.scene_direction(room, action_id))
+        if answer:
+            return web.json_response({'ok': True, 'kind': kind, 'text': answer, 'user_text': action})
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', text)
         return web.json_response({'ok': True, 'kind': kind, 'text': text})
 
     if kind == 'quest':
@@ -13719,7 +13724,13 @@ async def _webapp_api_feature_action_impl(request: web.Request) -> web.Response:
         unlock_achievement(telegram_id, 'date_collector')
     track_event(uid, 'webapp_date_delivered', metadata={'date': date.id})
     narration = f'{date.emoji} {date.text}'
-    save_message(uid, character_id, 'assistant', narration)
+    action = dates_service.user_action(date)
+    answer = await _feature_scene_turn(telegram_id, user_info, character_id, action,
+                                       dates_service.scene_direction(date))
+    if answer:
+        narration = answer
+    else:
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', narration)
     # V3.58.1: the reward photo can take minutes (engine fallbacks), and the
     # Mini App used to sit on this request with no feedback — the owner tapped
     # «Кофейня» and saw nothing at all. Answer with the narration right away and
@@ -13727,7 +13738,26 @@ async def _webapp_api_feature_action_impl(request: web.Request) -> web.Response:
     # the chat history until it shows up.
     _spawn_background(_deliver_date_photo(telegram_id, character_id, uid, date.id, date.scene))
     return web.json_response({'ok': True, 'kind': kind, 'delivered': True,
-                              'text': narration, 'photo_url': None, 'photo_pending': True})
+                              'text': narration, 'user_text': action if answer else '',
+                              'photo_url': None, 'photo_pending': True})
+
+
+async def _feature_scene_turn(telegram_id: int, user_info: dict, character_id: str,
+                              action: str, scene: str) -> str:
+    """V3.64.1: «Квартира / Свидание не цепляют» — play the tap as a live scene
+    through the normal dialog pipeline (persona, memory, level): his action is
+    saved as his message, she answers in character with a hook. Returns '' on
+    any failure so the caller falls back to the old canned line."""
+    if not action:
+        return ''
+    try:
+        return await anna_reply(
+            telegram_id, user_info.get('first_name') or 'ты', action,
+            language_code=user_info.get('language_code'), character_id=character_id, scene=scene,
+        ) or ''
+    except Exception:
+        logger.exception('feature scene turn failed user=%s character=%s', telegram_id, character_id)
+        return ''
 
 
 _BACKGROUND_TASKS: set = set()
