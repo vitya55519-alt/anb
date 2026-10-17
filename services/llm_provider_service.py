@@ -74,6 +74,9 @@ def _env_float(name: str, default: float) -> float:
 LLM_TIMEOUT_SECONDS = _env_float('LLM_TIMEOUT_SECONDS', 25.0)
 LLM_FALLBACK_TIMEOUT_SECONDS = _env_float('LLM_FALLBACK_TIMEOUT_SECONDS', 40.0)
 
+# V3.63.4: reasoning tokens MiniMax may spend before the visible answer.
+MINIMAX_REASONING_HEADROOM = max(0, int(os.getenv('MINIMAX_REASONING_HEADROOM', '512')))
+
 # ── Provider clients (chat: MiniMax primary, Gemini → OpenRouter fallback) ─
 _openrouter = (
     AsyncOpenAI(api_key=OPENROUTER_API_KEY, base_url=OPENROUTER_BASE_URL,
@@ -138,6 +141,7 @@ async def generate_text(
         logger.warning('LLM aux skipped by daily budget purpose=%s', purpose)
         return LLMResult('', 'budget', 'skipped')
 
+    minimax_empty = False
     # ── 1. MiniMax (V3.45: primary chat provider) ─────────────────────
     if _minimax:
         try:
@@ -145,12 +149,20 @@ async def generate_text(
                 model=MINIMAX_MODEL,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=max_tokens,
+                # V3.63.4: MiniMax-M3 spends ~90 reasoning tokens inside the
+                # same budget — short calls (life moments, proactive, rewrite,
+                # adaptation) came back EMPTY. Give the thinking its own room.
+                max_tokens=max_tokens + MINIMAX_REASONING_HEADROOM,
             )
             text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'minimax', MINIMAX_MODEL, r)
             logger.info('LLM ok provider=minimax model=%s purpose=%s len=%d', MINIMAX_MODEL, purpose, len(text))
-            return LLMResult(text, 'minimax', MINIMAX_MODEL)
+            if text:
+                return LLMResult(text, 'minimax', MINIMAX_MODEL)
+            # empty answer: let the free Gemini fallback try instead
+            errors.append(f'MiniMax({MINIMAX_MODEL}): empty text')
+            minimax_empty = True
+            logger.warning('MiniMax EMPTY purpose=%s, trying fallback', purpose)
         except Exception as exc:
             detail = f'MiniMax({MINIMAX_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
             errors.append(detail)
@@ -200,6 +212,9 @@ async def generate_text(
             logger.warning('OpenRouter FAILED purpose=%s %s', purpose, detail)
 
     # ── All failed ─────────────────────────────────────────────────────
+    if minimax_empty:
+        # callers already handle an empty answer; keep that, not a crash
+        return LLMResult('', 'minimax', MINIMAX_MODEL)
     summary = '; '.join(errors) if errors else 'no providers configured'
     logger.error('ALL LLM PROVIDers FAILED purpose=%s errors=[%s]', purpose, summary)
     raise RuntimeError(f'LLM unavailable: {summary}')
