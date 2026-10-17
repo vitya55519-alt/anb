@@ -9,7 +9,7 @@ from openai import AsyncOpenAI
 from config import (
     OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL,
     GEMINI_API_KEY, GEMINI_API_KEY_VALID, GEMINI_CHAT_MODEL, GEMINI_OPENAI_BASE_URL,
-    MINIMAX_API_KEY, MINIMAX_BASE_URL, MINIMAX_MODEL,
+    MINIMAX_API_KEY, MINIMAX_BASE_URL, MINIMAX_MODEL, MINIMAX_DIALOGUE_MODEL,
     LLM_REPORT_USAGE,
 )
 from services import spend_service
@@ -144,27 +144,34 @@ async def generate_text(
     minimax_empty = False
     # ── 1. MiniMax (V3.45: primary chat provider) ─────────────────────
     if _minimax:
+        mm_model = MINIMAX_DIALOGUE_MODEL if purpose == 'dialogue' else MINIMAX_MODEL
+        mm_kwargs = {}
+        if purpose == 'dialogue':
+            # V3.63.12: MiniMax's own guidance for chat is temperature 1.0 with
+            # top_p 0.95; below that M3 drifts into the same safe phrasing.
+            mm_kwargs['top_p'] = 0.95
         try:
             r = await _minimax.chat.completions.create(
-                model=MINIMAX_MODEL,
+                model=mm_model,
                 messages=messages,
                 temperature=temperature,
                 # V3.63.4: MiniMax-M3 spends ~90 reasoning tokens inside the
                 # same budget — short calls (life moments, proactive, rewrite,
                 # adaptation) came back EMPTY. Give the thinking its own room.
                 max_tokens=max_tokens + MINIMAX_REASONING_HEADROOM,
+                **mm_kwargs,
             )
             text = _strip_thinking((r.choices[0].message.content or '').strip())
-            _record_usage(purpose, 'minimax', MINIMAX_MODEL, r)
-            logger.info('LLM ok provider=minimax model=%s purpose=%s len=%d', MINIMAX_MODEL, purpose, len(text))
+            _record_usage(purpose, 'minimax', mm_model, r)
+            logger.info('LLM ok provider=minimax model=%s purpose=%s len=%d', mm_model, purpose, len(text))
             if text:
-                return LLMResult(text, 'minimax', MINIMAX_MODEL)
+                return LLMResult(text, 'minimax', mm_model)
             # empty answer: let the free Gemini fallback try instead
-            errors.append(f'MiniMax({MINIMAX_MODEL}): empty text')
+            errors.append(f'MiniMax({mm_model}): empty text')
             minimax_empty = True
             logger.warning('MiniMax EMPTY purpose=%s, trying fallback', purpose)
         except Exception as exc:
-            detail = f'MiniMax({MINIMAX_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
+            detail = f'MiniMax({mm_model}): {type(exc).__name__}: {_safe(str(exc))}'
             errors.append(detail)
             logger.warning('MiniMax FAILED purpose=%s %s', purpose, detail)
 

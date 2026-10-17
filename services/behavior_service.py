@@ -55,8 +55,8 @@ def choose_behavior(text: str, previous_user_text: str = "") -> Behavior:
     return Behavior(intent, random.choice((1, 2, 2, 3)), "normal" if intent == "question" else "low", "как личное сообщение, без ассистентского тона")
 
 
-def behavior_context(text: str, previous_user_text: str = "") -> str:
-    b = choose_behavior(text, previous_user_text)
+def behavior_context(text: str, previous_user_text: str = "", behavior: Behavior | None = None) -> str:
+    b = behavior or choose_behavior(text, previous_user_text)
     extra = ""
     if b.intent == "task_clarify":
         extra = (

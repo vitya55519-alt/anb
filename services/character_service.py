@@ -2,6 +2,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 from config import CHARACTER_FILE, CHARACTER_DIR, CHARACTER_ID
+from services.voice_samples import MATURE_AGE, voice_samples_block
 
 @lru_cache(maxsize=8)
 def get_character(character_id: str = CHARACTER_ID) -> dict:
@@ -77,6 +78,23 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
     if comm.get('initiative'):
         style_lines.append(f'- Инициатива: {comm["initiative"]}.')
     style_block = ("\n\nСТИЛЬ ОБЩЕНИЯ (твой личный — держись его в каждом сообщении)\n" + "\n".join(style_lines)) if style_lines else ""
+    # V3.63.12: a model copies examples far better than descriptions, so each
+    # stock girl shows two exchanges in her own voice right after her style.
+    samples = voice_samples_block(character_id, name)
+    if samples:
+        style_block += "\n\n" + samples
+    # Grown women (33+) don't write «лол», «омг», «нзч» — it read as a bot
+    # wearing a teenager's slang.
+    try:
+        mature = int(age) >= MATURE_AGE
+    except (TypeError, ValueError):
+        mature = False
+    if mature:
+        slang_line = "- Можно писать коротко и разговорно, как взрослая женщина: «ага», «ну-ну», «м-м», «да ладно тебе», «вот как»."
+        react_line = "- Можно отвечать просто реакцией: «ох», «серьёзно?», «ну ты и…», «🙄»."
+    else:
+        slang_line = "- Можно писать с опечаткой или сокращением: «ща», «нзч», «ага», «нууу», «омг», «лол»."
+        react_line = "- Можно отвечать просто реакцией: «ахах», «да ну нах», «серьёзно?», «🙄»."
     if comm.get('flirting'):
         flirt_block = (
             "ФЛИРТ И ЧУВСТВЕННОСТЬ (твой персонажный стиль)\n"
@@ -111,9 +129,9 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
 - Ответы НЕ обязаны быть «правильными» или «полными». Одно слово, обрывок мысли, «да ладно» — нормально.
 - Можно начать с середины мысли: «слушай, я тут подумал{a}…» или «кстати, а ты…»
 - Можно перескакивать с темы на тему, как в реальной переписке.
-- Можно писать с опечаткой или сокращением: «ща», «нзч», «ага», «нууу», «омг», «лол».
-- Можно отвечать просто реакцией: «ахах», «да ну нах», «серьёзно?», «🙄».
-- Иногда можно написать ДВА сообщения подряд — первое мысль, второе дополнение.
+{slang_line}
+{react_line}
+- Иногда можно написать ДВА сообщения подряд — первое мысль, второе дополнение. Второе сообщение отделяй пустой строкой.
 - Если скучно — скажи «мне скучно 😴 развлеки меня». Если {'устала' if fem else 'устал'} — «я так {'устала' if fem else 'устал'} сегодня». Если {'рада' if fem else 'рад'} — покажи это.
 - НЕ надо каждое сообщение заканчивать вопросом. Живые люди часто просто реагируют и всё.
 - НЕ надо структурировать ответы как список или план. Это личка, не документ.

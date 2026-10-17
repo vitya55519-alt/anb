@@ -13,6 +13,7 @@ from services.relationship_signals import infer_delta
 from services.test_mode import get_stage as get_test_stage
 from services.behavior_service import behavior_context, choose_behavior
 from services.dialogue_guard_service import build_repetition_guard, diversify_emoji
+from services.hook_service import next_hook
 from services.character_dna_service import competency_context, character_dna_context
 from services.state_service import state_context, softly_evolve_state
 from services.user_service import ensure_user, get_user
@@ -298,7 +299,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             pass
     adaptation = build_adaptation_context(db_user_id, adaptation_level, character_id)
     previous_user_text = next((m.content for m in reversed(history) if m.role == 'user'), '')
-    behavior = behavior_context(user_text, previous_user_text)
+    chosen = choose_behavior(user_text, previous_user_text)
+    behavior = behavior_context(user_text, previous_user_text, chosen)
     competency = competency_context(user_text, character_id)
     dna = character_dna_context(character_id)
     diversity = build_repetition_guard(history, user_text)
@@ -414,12 +416,17 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # direction sits right before his action so she acts it out with a hook.
     if scene:
         messages.append({"role": "system", "content": scene})
+    behavior_kind = chosen.intent
+    # V3.63.12: one concrete hook for this reply, right before his message.
+    if not scene and not guest_reminder:
+        hook = next_hook(user_id, character_id, behavior_kind, has_memories=bool(memories))
+        if hook:
+            messages.append({"role": "system", "content": hook})
     messages.append({"role": "user", "content": user_text})
-    behavior_kind = choose_behavior(user_text, previous_user_text).intent
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
     if scene:
         token_budget = 420
-    r = await generate_text(messages, max_tokens=token_budget, temperature=0.9, purpose='dialogue')
+    r = await generate_text(messages, max_tokens=token_budget, temperature=1.0, purpose='dialogue')
     answer = _clean(r.text)
     if REFUSAL.search(answer):
         answer = await _recover_from_refusal(answer, character)
