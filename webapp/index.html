@@ -327,7 +327,7 @@
   .msg.user .vp .vp-wave i.on { background: #fff; }
   .vp .vp-dur { flex: none; min-width: 32px; font-size: 11px; opacity: .7; text-align: right; }
   .vp audio { display: none; }
-  .msg .say.sm { display: block; width: fit-content; margin-top: 6px; padding: 3px 10px; font-size: 12px; opacity: .85; }
+  .vp[data-lazy] { margin-top: 8px; }
   .chat-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 40px 20px; line-height: 1.5; }
   .chat-input {
     display: flex; gap: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
@@ -2314,8 +2314,8 @@ function chatBubble(roleOrM, content, ts) {
   }
   // V3.63.5: her plain text can be voiced on tap (Premium perk).
   const say = (cls === 'bot' && !m.media_url && m.content) ? ` data-say="${esc(m.content)}"` : '';
-  // V3.63.8: the «▶ голосом» button is always visible — tapping a bare bubble was undiscoverable.
-  if (say) body += '<button class="say sm">' + esc(L.say_btn) + '</button>';
+  // V3.63.9: a Telegram-style voice note under her text — ▶ voices it (Premium), no extra button.
+  if (say) body += voicePlayer('', m.content);
   // V3.63.7: her photo beside every bubble of hers (duo chats keep per-line avatars).
   const av = (cls === 'bot') ? herAvatar() : '';
   return `<div class="msg ${cls}` + (av ? ' hav' : '') + `"` + say + `>` + av + `${body}${t}</div>`;
@@ -2958,45 +2958,49 @@ async function photoAction(action, mediaUrl, btn) {
     mediaBusy = false;
   }
 }
-// V3.63.5: tap her message → «🔊 Озвучить»; Premium hears her voice, others get the Premium sheet.
-document.addEventListener('click', e => {
-  if (!e.target || !e.target.closest) return;
-  const btn = e.target.closest('.msg .say');
-  if (btn) { e.stopPropagation(); speakMsg(btn.closest('.msg'), btn); return; }
-  const msg = e.target.closest('#chatMsgs .msg[data-say]');
-  if (!msg || e.target.closest('button, a, audio, video, img, .vp')) return;
-  const own = msg.querySelector('.say');
-  if (own && !own.disabled) speakMsg(msg, own);
-});
-async function speakMsg(msg, btn) {
-  if (!CHAT || !msg) return;
-  btn.disabled = true; btn.textContent = L.say_wait;
+// V3.63.9: ▶ on the voice note under her text — Premium hears her say it,
+// everyone else gets the Premium sheet. The audio is made on the first tap.
+async function speakLazy(vp) {
+  const msg = vp.closest('.msg');
+  const btn = vp.querySelector('.vp-btn');
+  if (!CHAT || !msg || vp.dataset.busy) return;
+  vp.dataset.busy = '1'; btn.textContent = '…';
   try {
     const r = await fetch('/webapp/api/chat/speak?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ character_id: CHAT.id, text: msg.getAttribute('data-say') || '' }),
     });
     const j = await r.json().catch(() => ({}));
-    if (r.status === 403 && j.error === 'premium_required') { btn.remove(); quickBuy('voice'); return; }
-    if (!j.ok || !j.url) { btn.disabled = false; btn.textContent = L.say_btn; toast(L.reply_err); return; }
-    const src = j.url + '?init_data=' + encodeURIComponent(tg.initData || '');
-    btn.outerHTML = voicePlayer(src);
-    const au = msg.querySelector('.vp audio');
-    if (au) vpPlay(au);
-  } catch (err) { btn.disabled = false; btn.textContent = L.say_btn; toast(L.reply_err); }
+    if (r.status === 403 && j.error === 'premium_required') { quickBuy('voice'); return; }
+    if (!j.ok || !j.url) { toast(L.reply_err); return; }
+    const au = document.createElement('audio');
+    au.preload = 'auto';
+    au.src = j.url + '?init_data=' + encodeURIComponent(tg.initData || '');
+    vp.appendChild(au);
+    delete vp.dataset.lazy;
+    vpPlay(au);
+  } catch (err) { toast(L.reply_err); }
+  finally { delete vp.dataset.busy; if (vp.dataset.lazy) btn.textContent = '▶'; }
 }
 
 // V3.63.8: Telegram-like voice player. The waveform is drawn from the file's
 // address (stable per message), the bars fill as she speaks, a tap seeks.
 const VP_BARS = 34;
-function voicePlayer(src) {
+function voicePlayer(src, text) {
+  // V3.63.9: without src it is her text's voice note, made on the first ▶.
+  const seed = src || text || '';
   let h = 0;
-  for (let i = 0; i < src.length; i++) h = (h * 31 + src.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   let bars = '';
   for (let i = 0; i < VP_BARS; i++) {
     h = (h * 1103515245 + 12345) >>> 0;
     const env = Math.sin(Math.PI * (i + 0.5) / VP_BARS);
     bars += '<i style="height:' + Math.round(18 + 82 * env * (0.35 + (h % 1000) / 1540)) + '%"></i>';
+  }
+  if (!src) {
+    const words = String(text || '').split(/\s+/).filter(Boolean).length;
+    return '<div class="vp" data-lazy="1"><button class="vp-btn" type="button">▶</button><div class="vp-wave">' + bars
+      + '</div><span class="vp-dur">' + vpFmt(Math.max(2, words / 2.6)) + '</span></div>';
   }
   return '<div class="vp"><button class="vp-btn" type="button">▶</button><div class="vp-wave">' + bars
     + '</div><span class="vp-dur">0:00</span><audio preload="metadata" src="' + esc(src) + '"></audio></div>';
@@ -3034,7 +3038,9 @@ document.addEventListener('click', e => {
   const vp = e.target.closest('.vp');
   if (!vp) return;
   e.stopPropagation();
+  if (vp.dataset.lazy) { speakLazy(vp); return; }
   const au = vp.querySelector('audio');
+  if (!au) return;
   if (e.target.closest('.vp-btn')) { if (au.paused) vpPlay(au); else au.pause(); return; }
   const wave = e.target.closest('.vp-wave');
   if (wave && isFinite(au.duration) && au.duration > 0) {
