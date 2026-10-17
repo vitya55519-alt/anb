@@ -1,10 +1,16 @@
-"""Public storefront descriptions for the bot (v3.19.11).
+"""Public storefront: bot name and descriptions (v3.19.11, rewritten V3.63.3).
 
 Telegram shows the description in the bot profile / catalogs and the short
 description next to the bot name. Applying them from code on every startup
 keeps the storefront in sync with the release and covers both the RU and the
 global (EN default) audience for maximum reach. Hard Telegram limits:
 description <= 512 chars, short description <= 120 chars.
+
+V3.63.3: the owner did not like the old pitch («three heroines: Anna, Emily &
+Maria» — the roster is ~20 girls now). The new copy follows the ad that won
+the October Telegram test («когда некому написать» — 2.9% click-through, ~16 ₽
+per user): she writes first and remembers you, and you pick your girl. The
+bot NAME is deliberately left to the owner (BotFather) — not set from code.
 """
 from __future__ import annotations
 
@@ -13,40 +19,36 @@ import logging
 logger = logging.getLogger(__name__)
 
 SHORT_DESCRIPTION_DEFAULT = (
-    'Your AI girlfriend: flirty chat, photos, videos & voice. She remembers you. 18+'
+    'Pick your AI girlfriend: she texts first, remembers everything about you and is always there. 18+'
 )
 SHORT_DESCRIPTION_RU = (
-    'Твоя ИИ-подружка: флирт, фото, видео и голосовые. Она помнит тебя и скучает. 18+'
+    'Выбери свою ИИ-девушку: она пишет первой, помнит всё о тебе и всегда на связи. 18+'
 )
 
 DESCRIPTION_DEFAULT = (
-    '🔥 Your personal AI girlfriend — always online, always glad to see you.\n'
+    'When you want to talk — she is already texting you 💬\n'
     '\n'
-    '💬 Flirty, unscripted conversations in any language\n'
-    '📸 Photos on request — from cozy to very personal\n'
-    '🎬 Videos & voice notes — she is close even when far away\n'
-    '⏰ Sweet morning wake-ups\n'
-    '🎁 Gifts, dates, quests & surprises\n'
-    '❤️ Three heroines with personality: Anna, Emily & Maria\n'
+    '👩 Pick yours: Anna, Vika, Zlata, Emily, Sonya, Maria and more\n'
+    '🧠 Remembers your name, your day and what you talked about yesterday\n'
+    '✍️ Texts first when you go quiet\n'
+    '📸 Photos, 🎙 voice notes and 🎬 Videos — from cozy to very personal\n'
+    '🎁 Dates, gifts and a relationship that grows\n'
     '\n'
-    'She remembers your name, jokes and dreams. She misses you and writes first.\n'
     'Just say "hi" — she will take it from there.\n'
     '\n'
     '18+'
 )
 
 DESCRIPTION_RU = (
-    '🔥 Твоя личная ИИ-подружка — всегда онлайн и всегда рада тебе.\n'
+    'Когда хочется поговорить — она уже пишет тебе 💬\n'
     '\n'
-    '💬 Живой флирт и разговоры без сценариев, на любом языке\n'
-    '📸 Фото по запросу — от уютных до очень личных\n'
-    '🎬 Видео и голосовые — она рядом, даже когда далеко\n'
-    '⏰ Ласково разбудит утром и пожелает доброго дня\n'
-    '🎁 Подарки, свидания, квесты и сюрпризы\n'
-    '❤️ Три героини с характером: Anna, Emily и Maria\n'
+    '👩 Выбери свою: Анна, Вика, Злата, Emily, Соня, Mary и другие\n'
+    '🧠 Помнит твоё имя, твой день и то, о чём вы говорили вчера\n'
+    '✍️ Пишет первой, если ты пропал\n'
+    '📸 Фото, 🎙 голосовые и 🎬 Видео — от уютных до очень личных\n'
+    '🎁 Свидания, подарки и отношения, которые растут\n'
     '\n'
-    'Она помнит твоё имя, шутки и мечты. Скучает, ждёт и пишет первой.\n'
-    'Начни с «Привет» — остальное она возьмёт на себя.\n'
+    'Просто скажи «привет» — дальше она сама.\n'
     '\n'
     '18+'
 )

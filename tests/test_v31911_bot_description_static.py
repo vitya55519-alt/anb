@@ -22,8 +22,9 @@ def test_descriptions_within_telegram_limits_and_marked_18plus():
 
 def test_descriptions_pitch_core_features_and_heroines():
     from services import bot_description as bd
-    for text in (bd.DESCRIPTION_DEFAULT, bd.DESCRIPTION_RU):
-        assert 'Anna' in text and 'Emily' in text and 'Maria' in text
+    # V3.63.3: «pick yours» — several heroines named, not the old trio
+    assert 'Anna' in bd.DESCRIPTION_DEFAULT and 'Emily' in bd.DESCRIPTION_DEFAULT
+    assert 'Анна' in bd.DESCRIPTION_RU and 'Emily' in bd.DESCRIPTION_RU
     assert 'Фото' in bd.DESCRIPTION_RU and 'Видео' in bd.DESCRIPTION_RU
     assert 'Photos' in bd.DESCRIPTION_DEFAULT and 'Videos' in bd.DESCRIPTION_DEFAULT
 
