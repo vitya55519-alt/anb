@@ -19,3 +19,10 @@ def test_stt_tries_the_live_chat_model_first():
 def test_tts_provider_is_logged():
     assert "logger.info('tts ok provider=gemini model=%s voice=%s', model, voice_name)" in VOICE
     assert "logger.info('tts ok provider=edge (robotic fallback)')" in VOICE
+
+
+def test_tts_is_brisk_not_drawn_out():
+    # V3.63.9: «они очень медленно… тянутся»
+    assert 'never drag' in VOICE and 'natural pauses and breathing' not in VOICE
+    assert "TTS_TEMPO = min(1.5, max(0.8, float(os.getenv('TTS_TEMPO', '1.12'))))" in VOICE
+    assert "extra = ['-filter:a', f'atempo={TTS_TEMPO:.2f}']" in VOICE
