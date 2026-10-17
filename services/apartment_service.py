@@ -63,6 +63,36 @@ ROOMS: tuple[Room, ...] = (
 )
 
 
+# V3.64.1: «Квартира не цепляет» — a tap no longer returns the canned line
+# above (it stays as the fallback). His action goes into the chat as his own
+# message and she plays the scene live, ending with a hook to answer.
+USER_ACTIONS: dict[str, str] = {
+    'talk': '*сажусь к тебе на диван* 🛋',
+    'movie': '*включаю фильм и зову тебя под плед* 🎬',
+    'coffee': '*захожу на кухню, пока ты варишь кофе* ☕',
+    'dinner': '*предлагаю приготовить ужин вместе* 🍝',
+    'relax': '*ложусь рядом с тобой* 😌',
+    'intimate': '*закрываю дверь и подхожу к тебе ближе* 💋',
+    'shower': '*слышу, что ты включила душ…* 🚿',
+    'bath': '*захожу в ванную, а там пена и свечи* 🛁',
+}
+
+SCENE_RULES = (
+    'Отыграй это как живую сцену, а не отчёт: сначала в звёздочках — что ты делаешь и что вокруг '
+    '(1–2 конкретные детали: запах, звук, во что ты одета, касание), потом твоя реплика ему. '
+    'Прояви инициативу: предложи что-то своё, подразни или удиви маленьким событием. '
+    'Закончи крючком — вопросом, лёгкой провокацией или выбором из двух вариантов, чтобы ему '
+    'захотелось ответить и продолжить сцену. 3–5 предложений. Откровенность — строго по этапу отношений.'
+)
+
+
+def scene_direction(room: Room, action_id: str) -> str:
+    """The system line that turns an apartment tap into a live scene."""
+    title = next((t for t, a in room.actions if a == action_id), action_id)
+    return (f'СЦЕНА (он выбрал в приложении «Квартира»): вы вместе у вас дома, {room.name.lower()} — '
+            f'{room.description} Он выбрал: {title}. ' + SCENE_RULES)
+
+
 def get_available_rooms(level: int) -> list[Room]:
     return [room for room in ROOMS if room.min_level <= max(1, min(8, level))]
 

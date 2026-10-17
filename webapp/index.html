@@ -1404,7 +1404,7 @@ const L_EN = {
   // V3.49.0: daily-task checklist progress (2-3 tasks a day, story ladder).
   feat_tasks_left: 'more tasks to unlock', feat_total: 'tasks done in total',
   feat_empty: 'Nothing here yet', feat_paid: 'Date paid 💕 she will write in the chat',
-  date_wait: 'She is getting ready for the date… 💕', date_photo_wait: '📸 the photo from your date is on its way…',
+  apt_wait: 'She is coming to you… 🏠', date_wait: 'She is getting ready for the date… 💕', date_photo_wait: '📸 the photo from your date is on its way…',
   // V3.43.5: the in-app Settings section (spicy switch + interface language).
   settings_title: 'Settings', spicy_title: '🌶 Spicy mode', spicy_on: 'on', spicy_off: 'off',
   spicy_prem: 'Spicy mode is a Premium perk ⭐', spicy_toast_on: 'Spicy mode is on 🔥',
@@ -1599,7 +1599,7 @@ const L_RU = {
   // V3.49.0: чек-лист заданий дня (2-3 в день, лесенка историй).
   feat_tasks_left: 'ещё заданий до', feat_total: 'заданий выполнено всего',
   feat_empty: 'Здесь пока пусто', feat_paid: 'Свидание оплачено 💕 она напишет в чат',
-  date_wait: 'Собирается на свидание… 💕', date_photo_wait: '📸 фото со свидания уже в пути…',
+  apt_wait: 'Она уже идёт к тебе… 🏠', date_wait: 'Собирается на свидание… 💕', date_photo_wait: '📸 фото со свидания уже в пути…',
   // V3.43.5: секция «Настройки» в профиле (пошлый режим + язык интерфейса).
   settings_title: 'Настройки', spicy_title: '🌶 Пошлый режим', spicy_on: 'вкл', spicy_off: 'выкл',
   spicy_prem: 'Пошлый режим — фишка Premium ⭐', spicy_toast_on: 'Пошлый режим включён 🔥',
@@ -3489,10 +3489,12 @@ async function featurePost(payload) {
   const box = document.getElementById('chatMsgs');
   // V3.58.1: a date closes the sheet at once and shows that she is on her way,
   // instead of leaving the menu frozen with no sign the tap registered.
-  if (payload.kind === 'date') {
+  // V3.64.1: an apartment tap is a live scene now (a model reply) — same
+  // instant close + «she is coming» line as a date.
+  if (payload.kind === 'date' || payload.kind === 'apartment') {
     closeFeature();
     const empty0 = box.querySelector('.chat-empty'); if (empty0) empty0.remove();
-    box.insertAdjacentHTML('beforeend', '<div class="typing" id="featTyping">' + esc(L.date_wait) + '</div>');
+    box.insertAdjacentHTML('beforeend', '<div class="typing" id="featTyping">' + esc(payload.kind === 'date' ? L.date_wait : L.apt_wait) + '</div>');
     box.scrollTop = box.scrollHeight;
   }
   try {
@@ -3531,6 +3533,9 @@ async function featurePost(payload) {
       return;
     }
     const empty = box.querySelector('.chat-empty'); if (empty) empty.remove();
+    const tw = document.getElementById('featTyping'); if (tw) tw.remove();
+    // V3.64.1: his action («*сажусь к тебе на диван*») shows as his own bubble.
+    if (j.user_text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'user', content: j.user_text, ts: null }));
     if (j.text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.text, ts: null }));
     if (j.photo_url) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
     box.scrollTop = box.scrollHeight;

@@ -227,7 +227,8 @@ async def _stay_in_chat(answer: str, character: dict | None) -> str:
     return text
 
 
-async def reply(user_id: int, user_name: str, user_text: str, language_code: str | None = None, character_id: str = CHARACTER_ID) -> str:
+async def reply(user_id: int, user_name: str, user_text: str, language_code: str | None = None, character_id: str = CHARACTER_ID,
+                scene: str = '') -> str:
     # V3.44.2: secret commands check
     from services import retention_features_service
     secret_response = retention_features_service.process_secret_command(user_text)
@@ -408,9 +409,15 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         messages.append({"role": "system", "content": marital_reminder})
     if guest_reminder:
         messages.append({"role": "system", "content": guest_reminder})
+    # V3.64.1: a «Квартира» / «Свидание» tap is played as a live scene — the
+    # direction sits right before his action so she acts it out with a hook.
+    if scene:
+        messages.append({"role": "system", "content": scene})
     messages.append({"role": "user", "content": user_text})
     behavior_kind = choose_behavior(user_text, previous_user_text).intent
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
+    if scene:
+        token_budget = 420
     r = await generate_text(messages, max_tokens=token_budget, temperature=0.9, purpose='dialogue')
     answer = _clean(r.text)
     if REFUSAL.search(answer):

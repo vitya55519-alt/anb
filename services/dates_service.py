@@ -57,3 +57,18 @@ def get(date_id: str) -> Date | None:
         if date.id == date_id:
             return date
     return None
+
+
+def scene_direction(date: Date) -> str:
+    """V3.64.1: the date starts as a live scene in the chat instead of the canned
+    narration (kept as the fallback). The date then continues in the dialog."""
+    return (f'СЦЕНА (он пригласил тебя на свидание в приложении): {date.name}. Обстановка: {date.text} '
+            'Начни это свидание прямо сейчас: в звёздочках — как ты пришла, во что одета и что вокруг '
+            '(1–2 конкретные детали), потом твоя реплика ему. Добавь маленькое неожиданное событие '
+            '(музыка, официант, погода, игра, твой сюрприз), чтобы было интересно. Закончи крючком — '
+            'вопросом, вызовом или выбором из двух вариантов, что делать дальше; свидание продолжается '
+            'в переписке. 3–5 предложений. Откровенность — строго по этапу отношений.')
+
+
+def user_action(date: Date) -> str:
+    return f'*приглашаю тебя на свидание: {date.name.lower()}* {date.emoji}'
