@@ -308,6 +308,10 @@
   .msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border-bottom-right-radius: 4px; }
   .msg.bot { align-self: flex-start; background: var(--card); border-bottom-left-radius: 4px; }
   .msg .t { display: block; font-size: 10px; opacity: .6; margin-top: 4px; }
+  /* V3.63.7: her small photo next to each of her messages, like in WhatsApp */
+  .msg.bot.hav { position: relative; margin-left: 36px; max-width: calc(82% - 36px); }
+  .msg .bav { position: absolute; left: -36px; bottom: 0; width: 30px; height: 30px; border-radius: 50%;
+    object-fit: cover; background: var(--card2); }
   /* V3.63.5: tap her message → «🔊 Озвучить» (Premium) */
   .msg[data-say] { cursor: pointer; }
   .msg .say { display: block; margin-top: 6px; padding: 5px 10px; border: 0; border-radius: 12px;
@@ -2299,7 +2303,16 @@ function chatBubble(roleOrM, content, ts) {
   }
   // V3.63.5: her plain text can be voiced on tap (Premium perk).
   const say = (cls === 'bot' && !m.media_url && m.content) ? ` data-say="${esc(m.content)}"` : '';
-  return `<div class="msg ${cls}"` + say + `>${body}${t}</div>`;
+  // V3.63.7: her photo beside every bubble of hers (duo chats keep per-line avatars).
+  const av = (cls === 'bot') ? herAvatar() : '';
+  return `<div class="msg ${cls}` + (av ? ' hav' : '') + `"` + say + `>` + av + `${body}${t}</div>`;
+}
+
+function herAvatar() {
+  if (!CHAT || CHAT.duo) return '';
+  const src = CHAT.photo || (CHAT.id ? '/webapp/photo/' + CHAT.id : '');
+  if (!src) return '';
+  return '<img class="bav" src="' + esc(src) + '" alt="" onerror="this.style.visibility=\'hidden\'">';
 }
 
 function openChat(c) {
