@@ -11,6 +11,7 @@ import base64
 import io
 import logging
 import tempfile
+import zlib
 from pathlib import Path
 
 from services.custom_character_service import is_custom_character
@@ -58,14 +59,60 @@ CUSTOM_CHARACTER_VOICE_PROFILE = {
     'ru': ('ru-RU-DariyaNeural', {'rate': '+6%', 'pitch': '+0Hz'}),
     'en': ('en-US-JennyNeural', {'rate': '+6%', 'pitch': '+0Hz'}),
 }
-CUSTOM_CHARACTER_GEMINI_TTS_VOICE = 'Erin'
+# V3.63.8: 'Erin' is not a Gemini prebuilt voice (Erinome is) — every custom
+# girl's TTS 400'd and fell back to the robotic edge voice. Custom girls now
+# draw a stable voice from the female pool by their id.
+CUSTOM_CHARACTER_GEMINI_TTS_VOICE = ''
 _DEFAULT_VOICE_PROFILE = CHARACTER_VOICE_PROFILES['anna_01']
 
 # ── Gemini 2.5 TTS prebuilt voices (V3.20.1): one cute female voice per girl ─
+# V3.63.8: only three girls were mapped, so the other 14 all spoke as Anna
+# (Leda). Every girl now has her own voice and her own manner of speaking.
 GEMINI_TTS_VOICES = {
     'anna_01': 'Leda',
     'alena_01': 'Kore',
     'maria_01': 'Aoede',
+    'alisa_01': 'Vindemiatrix',
+    'darina_01': 'Achernar',
+    'erika_01': 'Gacrux',
+    'eva_01': 'Autonoe',
+    'kate_01': 'Erinome',
+    'kristina_01': 'Despina',
+    'mila_01': 'Callirrhoe',
+    'rex_01': 'Pulcherrima',
+    'romina_01': 'Callirrhoe',
+    'sasha_01': 'Zephyr',
+    'sonya_01': 'Laomedeia',
+    'veronika_01': 'Sulafat',
+    'vika_01': 'Kore',
+    'violetta_01': 'Despina',
+    'zlata_01': 'Zephyr',
+}
+GEMINI_FEMALE_VOICES = (
+    'Leda', 'Kore', 'Aoede', 'Vindemiatrix', 'Achernar', 'Gacrux', 'Autonoe',
+    'Erinome', 'Despina', 'Callirrhoe', 'Pulcherrima', 'Zephyr', 'Laomedeia', 'Sulafat',
+)
+# How she talks — added to the style direction so girls sharing a voice still
+# sound like different women.
+GEMINI_TTS_MANNER = {
+    'anna_01': 'playful and sociable, ',
+    'alena_01': 'bright, confident and teasing, ',
+    'maria_01': 'very gentle, caring and a little breathy, ',
+    'alisa_01': 'quiet, thoughtful and a bit shy, ',
+    'darina_01': 'soft, homely and caring, ',
+    'erika_01': 'elegant, mature and self-assured, ',
+    'eva_01': 'cheerful, simple and energetic, ',
+    'kate_01': 'direct, sporty and sensual, ',
+    'kristina_01': 'lazy, low and sultry, like late at night, ',
+    'mila_01': 'cosy and warm with a little mischief, ',
+    'rex_01': 'commanding, slow and mysterious, ',
+    'romina_01': 'sensual, relaxed and playful, ',
+    'sasha_01': 'bright, modern and flirty, ',
+    'sonya_01': 'lively, giggly and spontaneous, ',
+    'veronika_01': 'mature, deep and caring, ',
+    'vika_01': 'charismatic, firm and demanding, ',
+    'violetta_01': 'glamorous, smooth and a little ironic, ',
+    'zlata_01': 'cheeky, energetic and impressionable, ',
 }
 _DEFAULT_GEMINI_TTS_VOICE = GEMINI_TTS_VOICES['anna_01']
 
@@ -320,6 +367,15 @@ _TTS_STYLE = (
 )
 
 
+def gemini_voice_for(character_id: str | None) -> str:
+    """Her own Gemini voice; custom girls get a stable pick from the pool."""
+    voice_name = GEMINI_TTS_VOICES.get(character_id or '')
+    if voice_name is None and is_custom_character(character_id):
+        voice_name = CUSTOM_CHARACTER_GEMINI_TTS_VOICE or GEMINI_FEMALE_VOICES[
+            zlib.crc32(character_id.encode('utf-8')) % len(GEMINI_FEMALE_VOICES)]
+    return voice_name or _DEFAULT_GEMINI_TTS_VOICE
+
+
 async def _tts_gemini(text: str, character_id: str | None = None) -> bytes:
     """V3.20.1: Gemini Flash TTS over REST — natural cute female voices.
 
@@ -328,10 +384,8 @@ async def _tts_gemini(text: str, character_id: str | None = None) -> bytes:
     container (Telegram still plays it as a voice file).
     """
     global _tts_good_model
-    voice_name = GEMINI_TTS_VOICES.get(character_id or '')
-    if voice_name is None and is_custom_character(character_id):
-        voice_name = CUSTOM_CHARACTER_GEMINI_TTS_VOICE
-    voice_name = voice_name or _DEFAULT_GEMINI_TTS_VOICE
+    voice_name = gemini_voice_for(character_id)
+    manner = GEMINI_TTS_MANNER.get(character_id or '', '')
     models = ([_tts_good_model] if _tts_good_model in _TTS_MODEL_CHAIN else []) + [
         m for m in _TTS_MODEL_CHAIN if m != _tts_good_model
     ]
@@ -339,7 +393,7 @@ async def _tts_gemini(text: str, character_id: str | None = None) -> bytes:
     for model in models:
         for attempt in range(2):
             try:
-                audio = await _tts_gemini_model(text, voice_name, model)
+                audio = await _tts_gemini_model(text, voice_name, model, manner)
             except RuntimeError as exc:
                 last_error = exc
                 status = str(exc).removeprefix('gemini_tts_http_')
@@ -356,11 +410,11 @@ async def _tts_gemini(text: str, character_id: str | None = None) -> bytes:
     raise last_error
 
 
-async def _tts_gemini_model(text: str, voice_name: str, model: str) -> bytes:
+async def _tts_gemini_model(text: str, voice_name: str, model: str, manner: str = '') -> bytes:
     import httpx
 
     payload = {
-        'contents': [{'parts': [{'text': _TTS_STYLE + text}]}],
+        'contents': [{'parts': [{'text': _TTS_STYLE + manner + text}]}],
         'generationConfig': {
             'responseModalities': ['AUDIO'],
             'speechConfig': {

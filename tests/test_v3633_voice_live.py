@@ -5,7 +5,7 @@ VOICE = (Path(__file__).resolve().parents[1] / 'services' / 'voice_service.py').
 
 
 def test_tts_gets_a_spoken_style_direction():
-    assert "'contents': [{'parts': [{'text': _TTS_STYLE + text}]}]" in VOICE
+    assert "'contents': [{'parts': [{'text': _TTS_STYLE + manner + text}]}]" in VOICE
     assert 'voice message to the man she loves' in VOICE
 
 
