@@ -10,6 +10,7 @@ import asyncio
 import base64
 import io
 import logging
+import os
 import tempfile
 import zlib
 from pathlib import Path
@@ -361,10 +362,17 @@ async def _tts_openai(text: str, voice: str) -> bytes:
 # калькулятором»). A spoken-style direction in front of the line makes it
 # sound like a real girl's voice message; the direction itself is not read.
 _TTS_STYLE = (
-    'Say this as a real young woman recording a voice message to the man she loves: '
-    'warm, tender and affectionate, soft and close to the microphone, with a smile, '
-    'natural pauses and breathing, never like an announcer or a robot: '
+    'Say this as a real young woman recording a quick voice message to the man she loves: '
+    'warm and affectionate, close to the microphone, with a smile, at a lively natural '
+    'conversational pace, a little quick, like chatting with someone close; never drag '
+    'words out, no long pauses, never like an announcer or a robot: '
 )
+# V3.63.9: Gemini voices still came out slow and drawn-out («тянутся»), so the
+# opus encode also speeds them up a touch (pitch is kept by atempo).
+try:
+    TTS_TEMPO = min(1.5, max(0.8, float(os.getenv('TTS_TEMPO', '1.12'))))
+except ValueError:
+    TTS_TEMPO = 1.12
 
 
 def gemini_voice_for(character_id: str | None) -> str:
@@ -463,7 +471,8 @@ async def _convert_wav_to_opus(wav_bytes: bytes) -> bytes:
         from pydub import AudioSegment
         audio = AudioSegment.from_wav(io.BytesIO(wav_bytes))
         out = io.BytesIO()
-        audio.export(out, format='opus', codec='libopus', bitrate='64k')
+        extra = ['-filter:a', f'atempo={TTS_TEMPO:.2f}'] if abs(TTS_TEMPO - 1.0) > 0.01 else None
+        audio.export(out, format='opus', codec='libopus', bitrate='64k', parameters=extra)
         return out.getvalue()
 
     loop = asyncio.get_event_loop()

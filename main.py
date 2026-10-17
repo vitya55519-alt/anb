@@ -13254,12 +13254,15 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     kind = str(body.get('kind', ''))
     scene = str(body.get('scene') or 'selfie')[:80]
     if kind not in ('photo', 'circle', 'voice', 'video', 'hot', 'cosplay') or not character_id:
+        logger.warning('webapp chat media bad_request user=%s kind=%r character=%r', telegram_id, kind, character_id)
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     # V3.57.2: the whole access chain is PostgreSQL reads/writes (card, consent,
     # stage, credits, premium slots) — one worker thread, never the loop.
     def _gate():
         if is_custom_character(character_id):
             if not get_custom_character_by_id(character_id):
+                # V3.64.0: logged — the SPA only showed a generic toast.
+                logger.warning('webapp chat media unknown_character user=%s character=%s', telegram_id, character_id)
                 return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
             # V3.55.3: same premium gate as the built-ins (was skipped here too).
             if _custom_premium_gate_block(character_id, telegram_id):
@@ -13277,6 +13280,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             # the menu scenes and clear the same relationship/adult gates the
             # bot's photo keyboard enforces.
             if scene not in PHOTO_MENU_ORDER:
+                logger.warning('webapp chat media bad scene user=%s character=%s scene=%r', telegram_id, character_id, scene)
                 return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
             if not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
                 return web.json_response({'ok': False, 'error': 'locked'}, status=403)

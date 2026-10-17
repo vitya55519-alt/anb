@@ -27,12 +27,15 @@ def test_avatar_css_sits_left_of_bubble():
 
 def test_voice_notes_use_the_telegram_style_player():
     assert "else if (m.media_kind === 'voice') body = voicePlayer(src);" in SPA
-    assert 'function voicePlayer(src)' in SPA and 'class="vp-wave"' in SPA
-    assert "btn.outerHTML = voicePlayer(src);" in SPA
+    assert 'function voicePlayer(src, text)' in SPA and 'class="vp-wave"' in SPA
+    assert "async function speakLazy(vp)" in SPA and "if (vp.dataset.lazy) { speakLazy(vp); return; }" in SPA
     # media events don't bubble: the player listens in the capture phase
     assert "'timeupdate', 'play', 'pause', 'ended'].forEach(ev =>" in SPA
     assert '<audio controls src=' not in SPA
 
 
-def test_voice_button_is_visible_on_her_text():
-    assert """if (say) body += '<button class="say sm">' + esc(L.say_btn) + '</button>';""" in SPA
+def test_her_text_carries_a_voice_note_player():
+    # V3.63.9: the owner preferred the Telegram-style note over a «▶ Голосом» pill
+    assert "if (say) body += voicePlayer('', m.content);" in SPA
+    assert '<div class="vp" data-lazy="1">' in SPA
+    assert '<button class="say sm">' not in SPA
