@@ -3,6 +3,7 @@ import base64
 import datetime as dt
 import io
 import json
+import os
 import logging
 import random
 import re
@@ -14322,6 +14323,60 @@ async def _run_support_bot() -> None:
         logger.exception('support bot polling crashed')
 
 
+
+# V3.62.15: the bot's public face (owner's marketing ask): name, the profile
+# blurb and the text an empty chat shows before «Запустить». Kept in code so
+# BotFather never drifts; each field is written only when it differs, because
+# Telegram rate-limits setMyName hard. BOT_PROFILE_ENABLED=0 leaves it alone.
+BOT_PROFILE = {
+    'ru': {
+        'name': os.getenv('BOT_DISPLAY_NAME', 'Анна · AI-девушка'),
+        'short': 'Она пишет первой, шлёт селфи и скучает, когда тебя нет. Твоя AI-девушка в Telegram 💌 18+',
+        'description': (
+            '💌 Твоя AI-девушка в Telegram.\n\n'
+            'Она пишет первой, присылает селфи, помнит, о чём вы говорили, и скучает, когда тебя нет.\n\n'
+            '❤️ 10 уровней отношений: романтика или страсть\n'
+            '📸 селфи и приватные фото «Наедине»\n'
+            '🎯 истории и свидания\n'
+            '👩 выбери девушку или создай свою\n\n'
+            'Только 18+. Жми «Запустить» — она уже ждёт 😏'
+        ),
+    },
+    'en': {
+        'name': os.getenv('BOT_DISPLAY_NAME_EN', 'Anna · AI girlfriend'),
+        'short': 'She texts first, sends selfies and misses you. Your AI girlfriend in Telegram 💌 18+',
+        'description': (
+            '💌 Your AI girlfriend in Telegram.\n\n'
+            'She texts first, sends selfies, remembers what you talked about and misses you when you are away.\n\n'
+            '❤️ 10 relationship levels: romance or passion\n'
+            '📸 selfies and private photos\n'
+            '🎯 stories and dates\n'
+            '👩 pick a girl or create your own\n\n'
+            '18+ only. Tap «Start» — she is waiting 😏'
+        ),
+    },
+}
+
+
+async def _apply_bot_profile() -> None:
+    if os.getenv('BOT_PROFILE_ENABLED', '1') != '1':
+        return
+    for lang, prof in BOT_PROFILE.items():
+        code = '' if lang == 'ru' else lang
+        try:
+            cur = await bot.get_my_name(language_code=code)
+            if (cur.name or '') != prof['name']:
+                await bot.set_my_name(name=prof['name'][:64], language_code=code)
+            cur = await bot.get_my_short_description(language_code=code)
+            if (cur.short_description or '') != prof['short']:
+                await bot.set_my_short_description(short_description=prof['short'][:120], language_code=code)
+            cur = await bot.get_my_description(language_code=code)
+            if (cur.description or '') != prof['description']:
+                await bot.set_my_description(description=prof['description'][:512], language_code=code)
+            logger.info('bot profile ok lang=%s', lang)
+        except Exception:
+            logger.exception('bot profile update failed lang=%s', lang)
+
 async def main():
     public_commands = [
         types.BotCommand(command='start', description='Начать общение'),
@@ -14351,6 +14406,7 @@ async def main():
         types.BotCommand(command='reset', description='Очистить память и историю'),
     ]
     await bot.set_my_commands(public_commands)
+    _spawn_background(_apply_bot_profile())
     # V3.33.0: Mini App — the blue «Открыть приложение» button in the bot's
     # profile plus the «AnnaBot» menu button. Requires PUBLIC_BASE_URL (the
     # same Railway domain the payment routes use); skipped silently otherwise.
