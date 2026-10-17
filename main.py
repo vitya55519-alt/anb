@@ -5770,6 +5770,44 @@ async def retention_premium_cb(cq: types.CallbackQuery):
     await cq.message.answer(premium_pitch_text(cq.from_user.id), reply_markup=premium_keyboard(discount_info(cq.from_user.id), telegram_id=cq.from_user.id))
 
 
+@dp.message(F.photo, F.caption.regexp(r'^/storyphoto\b'))
+async def storyphoto_upload(message: types.Message):
+    """V3.63.2: owner sends a photo captioned «/storyphoto Вика» — it becomes
+    one of Vika's push photos (story hooks + the locked first-offer cover).
+    Only Telegram's file_id is kept; nothing lands in the public repo."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import push_photos
+    name = (message.caption or '').split(maxsplit=1)[1:] or ['']
+    cards = list_cards()
+    character_id = push_photos.resolve_character(name[0], cards)
+    if not character_id:
+        known = ', '.join(c.display_name for c in cards[:20])
+        await message.answer(f'не понял, для кого фото. пример: /storyphoto Вика\nгероини: {known}')
+        return
+    total = push_photos.add(character_id, message.photo[-1].file_id)
+    await message.answer(f'✅ фото для {_character_display_name(character_id)} сохранено — теперь у неё {total} шт.')
+
+
+@dp.message(Command('storyphotos'))
+async def storyphotos_list(message: types.Message):
+    """V3.63.2: how many push photos each girl has; «/storyphotos clear Вика» wipes hers."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import push_photos
+    parts = (message.text or '').split(maxsplit=2)
+    if len(parts) == 3 and parts[1].lower() in ('clear', 'очистить'):
+        character_id = push_photos.resolve_character(parts[2], list_cards())
+        if not character_id:
+            await message.answer('не нашёл такую героиню'); return
+        await message.answer(f'🗑 удалено фото: {push_photos.clear(character_id)}')
+        return
+    counts = push_photos.counts()
+    lines = [f'• {_character_display_name(cid)} — {n}' for cid, n in sorted(counts.items())] or ['пока пусто']
+    await message.answer('📸 фото для пушей по героиням:\n' + '\n'.join(lines) +
+                         '\n\nдобавить: отправь фото с подписью /storyphoto Имя\nочистить: /storyphotos clear Имя')
+
+
 @dp.callback_query(F.data.startswith('story:'))
 async def story_choice_cb(cq: types.CallbackQuery):
     """V3.63.2: a tap on a story-hook choice (services/story_hooks.py). She

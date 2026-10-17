@@ -109,7 +109,8 @@ def _font(size: int):
     return None
 
 
-def locked_card(reference: Path, label: str = 'только для тебя') -> bytes:
+def locked_card(reference, label: str = 'только для тебя') -> bytes:
+    # reference: a Path or a file-like object (a downloaded Telegram photo)
     """Her reference photo, heavily blurred, with a lock badge — a cover for
     the offer, not a preview of any specific paid photo."""
     img = Image.open(reference).convert('RGB')

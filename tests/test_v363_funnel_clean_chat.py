@@ -167,3 +167,59 @@ def test_story_choices_have_both_languages_and_short_labels():
             # callback data: «story:<key>:<a|b>» stays far under Telegram's 64 bytes
             assert len(f'story:{story.key}:a'.encode()) <= 64
         assert sh.choice(story, 'a') is story.a and sh.choice(story, 'x') is None
+
+
+# ── owner push photos (kept as Telegram file_ids, never in the public repo) ─
+def _load_push_photos():
+    store = types.ModuleType('services.dialog_store')
+
+    class _Store(dict):
+        def __init__(self, *a, **k):
+            super().__init__()
+    store.DialogStore = _Store
+    pkg = types.ModuleType('services')
+    pkg.dialog_store = store
+    saved = {k: sys.modules.get(k) for k in ('services', 'services.dialog_store')}
+    sys.modules['services'] = pkg
+    sys.modules['services.dialog_store'] = store
+    try:
+        spec = importlib.util.spec_from_file_location('push_photos_t', ROOT / 'services' / 'push_photos.py')
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules['push_photos_t'] = mod
+        spec.loader.exec_module(mod)
+        return mod
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+
+
+def test_push_photos_resolve_names_and_store_per_girl():
+    pp = _load_push_photos()
+
+    class Card:
+        def __init__(self, cid, name):
+            self.character_id, self.display_name = cid, name
+    cards = [Card('anna_01', 'Анна'), Card('vika_01', 'Вика')]
+    assert pp.resolve_character('Вика', cards) == 'vika_01'
+    assert pp.resolve_character('vika', cards) == 'vika_01'
+    assert pp.resolve_character('анн', cards) == 'anna_01'
+    assert pp.resolve_character('кто-то', cards) is None
+    assert pp.add('vika_01', 'F1') == 1 and pp.add('vika_01', 'F2') == 2
+    assert pp.add('vika_01', 'F1') == 2  # no duplicates
+    assert pp.pick('vika_01') in ('F1', 'F2') and pp.pick('anna_01') is None
+    assert pp.counts() == {'vika_01': 2}
+    assert pp.clear('vika_01') == 2 and pp.counts() == {}
+
+
+def test_push_photos_wired_admin_only():
+    i = MAIN.index("@dp.message(F.photo, F.caption.regexp(r'^/storyphoto\\b'))")
+    body = MAIN[i:i + 1200]
+    assert 'if message.from_user.id not in ADMIN_TELEGRAM_IDS:' in body
+    assert 'push_photos.add(character_id, message.photo[-1].file_id)' in body
+    # the catch-all photo handler is registered later, so the caption wins
+    assert i < MAIN.index('@dp.message(F.photo)\n')
+    assert 'push_photos.pick(char_id or CHARACTER_ID) if story.photo_ok else None' in SCHED
+    assert 'source=await bot.download(fid)' in SCHED

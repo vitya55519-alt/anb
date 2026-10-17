@@ -324,6 +324,15 @@ async def _send_story(bot, uid: int, telegram_id: int, char_id: str) -> bool:
     ])
     body=story_hooks.text(story,lang)
     photo=None
+    # V3.63.2: the owner's own photos of THIS girl (uploaded via /storyphoto,
+    # kept as Telegram file_ids) come first for stories where they fit.
+    from services import push_photos
+    file_id=push_photos.pick(char_id or CHARACTER_ID) if story.photo_ok else None
+    if file_id:
+        await bot.send_photo(telegram_id,file_id,caption=body,reply_markup=markup)
+        _to_app_chat(uid,telegram_id,char_id or CHARACTER_ID,body)
+        track_event(uid,'story_hook_sent',metadata={'story':story.key,'photo':'owner'})
+        return True
     # Only the default heroine's reference is a known everyday (café) shot;
     # other girls get the text-only story rather than a random reference.
     if (char_id or CHARACTER_ID)==CHARACTER_ID:
@@ -372,7 +381,17 @@ async def _first_offer(bot):
             fos.mark_offered(telegram_id)
             lang=user_lang(telegram_id)
             label='just for you' if lang==EN else 'только для тебя'
-            card=await asyncio.to_thread(fos.locked_card,_offer_reference(char_id),label)
+            # V3.63.2: her own photo (owner upload) blurred into the cover when
+            # there is one; otherwise the repo's pre-blurred cover / reference.
+            from services import push_photos
+            source=_offer_reference(char_id)
+            fid=push_photos.pick(char_id or CHARACTER_ID)
+            if fid:
+                try:
+                    source=await bot.download(fid)
+                except Exception:
+                    logger.warning('first offer photo download failed user=%s',uid)
+            card=await asyncio.to_thread(fos.locked_card,source,label)
             buttons=[[InlineKeyboardButton(text='🔓 open' if lang==EN else '🔓 открыть',callback_data='first_offer:open')]]
             if PUBLIC_BASE_URL:
                 buttons.append([InlineKeyboardButton(text='💬 reply to her' if lang==EN else '💬 ответить ей',

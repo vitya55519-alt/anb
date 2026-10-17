@@ -37,6 +37,9 @@ class Story:
     text_en: str
     a: Choice
     b: Choice
+    # The owner's push photos (lingerie selfies) fit a «what I look like»
+    # story; a café/rain story keeps her everyday reference instead.
+    photo_ok: bool = True
 
 
 STORIES: tuple[Story, ...] = (
@@ -61,6 +64,7 @@ STORIES: tuple[Story, ...] = (
         Choice('🧥 давай заберу тебя', '🧥 let me pick you up',
                'ого… вот это поступок 🥹 жаль, что нельзя правда приехать. но согреть меня словами ты можешь — что бы мы делали, если бы ты был тут?',
                'wow… that is a real move 🥹 shame you cannot really come. but you can warm me up with words — what would we do if you were here?'),
+        photo_ok=False,
     ),
     Story(
         'confession',
