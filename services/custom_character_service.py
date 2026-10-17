@@ -1175,6 +1175,8 @@ def custom_character_params(character_id: str) -> tuple[dict, str]:
         params = json.loads(row.params_json or '{}')
     except (TypeError, ValueError):
         params = {}
+    if not isinstance(params, dict):
+        params = {}
     return params, row.display_name or ''
 
 
@@ -1183,10 +1185,11 @@ def custom_persona_context(character_id: str) -> str:
     if not is_custom_character(character_id):
         return ''
     params, name = custom_character_params(character_id)
-    if not params:
-        return ''
     # V3.44.4: include backstory and personality from the DB row.
     row = get_custom_character_by_id(character_id)
+    # V3.64.0: empty params no longer drop the persona — only a missing row does.
+    if row is None:
+        return ''
     backstory = (row.backstory or '') if row else ''
     personality = (row.personality or '') if row else ''
     return build_persona_context({**params, 'character_id': character_id}, name, backstory=backstory, personality=personality)
@@ -1304,7 +1307,15 @@ def custom_base_character(character_id: str) -> dict | None:
         return None
     params, display_name = custom_character_params(character_id)
     if not params:
-        return None
+        # V3.64.0: a persona whose row has no constructor params (empty
+        # params_json) still exists — returning None sent the photo pipeline
+        # to data/characters/<id>.json (FileNotFoundError, every selfie of a
+        # community girl failed) and the chat to Anna's profile. Build her
+        # from the row itself; a missing row stays None.
+        row = get_custom_character_by_id(character_id)
+        if row is None:
+            return None
+        display_name = row.display_name or display_name
     descriptors = custom_appearance_descriptors(params)
     temper = OPTION_DESCRIPTORS.get(str(params.get('temperament', '')))
     profession = OPTION_DESCRIPTORS.get(str(params.get('profession', '')))

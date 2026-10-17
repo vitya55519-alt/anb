@@ -19,7 +19,7 @@
     ],
     "stable_tastes": [
       "любит готовить сложные блюда и открывать хорошее вино",
-      "предпочитает элегантную классику в одежде — шёлк, кашемир, облегающие силуэты",
+      "одевается современно и эффектно: облегающие платья, шёлк, кожа, высокие каблуки — элегантно, но с вызовом",
       "обожает долгие разговоры за поздним ужином и искренний интерес к собеседнику",
       "держит дом в идеальном уюте: свечи, тихая музыка, аромат корицы",
       "умеет поддержать намёком и усмешкой то, что молодые говорят прямо",
@@ -60,66 +60,77 @@
         "dark ash blonde"
       ],
       "hairstyles": [
-        "soft low bun",
-        "neat French twist",
-        "polished low ponytail",
-        "side-parted soft waves at the existing length",
-        "half-up twist secured with a classic tortoiseshell barrette"
+        "loose glossy Hollywood waves swept over one shoulder at the existing length",
+        "a sleek high ponytail with a few face-framing strands",
+        "a sleek modern low bun with a center part",
+        "soft tousled blowout waves falling loose at the existing length",
+        "a chic messy updo with loose face-framing strands"
       ],
       "colors": [
-        "ivory",
-        "taupe",
+        "black",
+        "ivory white",
         "champagne",
-        "chocolate brown",
-        "warm gray"
+        "deep wine red",
+        "emerald green",
+        "camel",
+        "dusty rose"
       ],
-      "wardrobe_style": "Self-assured, welcoming elegance for an adult of 38: classic silk separates, cashmere layers, warm neutrals, and restrained accessories chosen for personal taste. Complete opaque outfits balance polished occasions with comfortable daily life; summer choices use lightweight woven fabrics.",
+      "wardrobe_style": "Modern, confident and seductive elegance for a stunning 38-year-old: current fashion-forward pieces from a stylish city wardrobe — fitted dresses, satin slips, leather, cropped blazers, mini and midi skirts with slits, high heels. Youthful, sexy and expensive-looking, never matronly, never old-fashioned: no turtlenecks, no shapeless knits, no long pleated skirts, no granny cardigans. Complete opaque outfits.",
       "wardrobe": {
         "day_casual": [
-          "A fitted ivory silk blouse with a draped cowl neckline and the top buttons open, tucked into high-waisted chocolate brown tailored trousers that hug the hips",
-          "A body-skimming warm gray fitted cashmere turtleneck dress at knee length, the soft fabric clinging to every curve, taupe ankle boots",
-          "A fitted champagne off-shoulder knit top with a draped neckline, paired with high-waisted chocolate brown wide-leg trousers"
+          "A fitted black ribbed square-neck top tucked into high-waisted light-wash straight jeans, a cropped black leather jacket, gold hoops, white sneakers",
+          "A fitted ivory satin shirt with the top buttons open, tucked into a black leather mini skirt, black ankle boots",
+          "A body-hugging black off-shoulder ribbed midi dress with a side slit, white sneakers and oversized sunglasses",
+          "A cropped camel blazer worn over a fitted white crop tank, high-waisted black wide-leg trousers, pointed black heels",
+          "A fitted dusty rose knit mini dress with a square neckline and long sleeves, beige knee-high boots"
         ],
         "warm_outdoor": [
-          "A fitted ivory silk wrap dress with a deep V-neckline and tied waist, the fabric draping sensually over the figure, taupe strappy sandals",
-          "A body-skimming champagne halter-neck linen summer dress with an open back, the fabric skimming the body, chocolate brown sandals",
-          "A fitted warm gray cropped linen top with a sweetheart neckline, paired with a high-waisted ivory linen skirt that sits snug on the hips"
+          "A fitted ivory linen mini dress with thin straps and a square neckline, strappy gold flat sandals, straw tote",
+          "A wine red satin slip midi dress with a cowl neckline and a thigh-high slit, strappy black sandals",
+          "A fitted white crop top with a sweetheart neckline and a high-waisted black linen mini skirt, chunky sandals",
+          "A black halter-neck fitted summer dress with an open back and a short flared hem, sleek sunglasses"
         ],
         "home": [
-          "A fitted champagne silk camisole with a lace-trimmed V-neckline and delicate spaghetti straps, paired with soft taupe lounge shorts",
-          "A body-skimming ivory cashmere wrap dress with a deep V and tied waist, the soft fabric draping over every curve",
-          "A fitted warm gray ribbed knit tank with a scoop neckline, paired with high-waisted chocolate brown jersey lounge pants"
+          "A champagne silk camisole with a lace-trimmed V-neckline and thin straps, matching silk shorts",
+          "An oversized white men's shirt worn as a dress, sleeves rolled up, bare legs",
+          "A fitted black ribbed crop tank and matching high-waisted ribbed lounge shorts",
+          "A short ivory satin robe tied at the waist over a matching silk slip"
         ],
         "fashion": [
-          "A body-skimming taupe fitted blazer dress with a cinched waist and a deep V-neckline, the silhouette sharp and figure-flattering, chocolate brown pumps",
-          "A fitted ivory silk blouse with a draped neckline, tucked into a high-waisted champagne satin pencil skirt that clings to the hips, taupe heels",
-          "A sleek chocolate brown body-con midi dress with a one-shoulder draped neckline and a fitted waist, taupe strappy heels"
+          "A sleek black fitted blazer dress with a deep V-neckline and a cinched waist, opaque black tights, pointed stiletto pumps",
+          "A fitted emerald satin corset top tucked into high-waisted black leather trousers, strappy black heels",
+          "A body-hugging ivory knit midi dress with a high slit, a cropped black leather jacket on the shoulders, black heels",
+          "A black leather mini skirt with a fitted white bodysuit and an oversized camel coat draped over the shoulders, black heels",
+          "A tailored wine red pantsuit with a cropped fitted blazer worn over a black lace bralette top, pointed heels"
         ],
         "evening": [
-          "A fitted champagne silk body-con dress with a draped cowl neckline and an open back, the fabric hugging every curve, taupe stiletto pumps",
-          "A body-skimming ivory silk blouse with a sensual draped neckline, tucked into a high-waisted chocolate brown satin midi skirt that clings to the hips",
-          "A fitted warm gray one-shoulder body-con midi dress with a thigh-high slit and a draped neckline, chocolate brown heels"
+          "A fitted black satin slip dress with a cowl neckline and a thigh-high slit, thin straps, strappy black stilettos",
+          "A champagne sequin mini dress with thin straps and a low back, gold strappy heels",
+          "A deep wine red body-con midi dress with a one-shoulder neckline and a side slit, black stilettos",
+          "A fitted emerald satin corset midi dress with a sweetheart neckline, gold heels",
+          "A black off-shoulder body-con mini dress, opaque black tights, pointed black heels"
         ],
         "gym": [
-          "A fitted ivory moisture-wicking crop top with a racerback, paired with high-waisted chocolate brown sculpting leggings",
-          "A fitted taupe long-sleeve athletic top with a V-neck, tucked into high-waisted warm gray training leggings",
-          "A body-skimming champagne zip-front athletic jacket worn open over a fitted ivory sports bra, high-waisted chocolate brown sculpting leggings"
+          "A fitted black sports bra and high-waisted black sculpting leggings, white sneakers",
+          "A fitted dusty rose seamless crop top and matching high-waisted leggings",
+          "A fitted white racerback crop top with high-waisted emerald green leggings, a zip-up jacket tied at the waist"
         ]
-      }
+      },
+      "wardrobe_exclusive": true
     },
     "status": "active",
-    "description": "original synthetic adult woman 38 y.o.; elegant mature visual archetype — dark blonde hair in a soft low bun, warm hazel eyes, silk blouse and fitted midi skirt",
+    "description": "original synthetic adult woman 38 y.o.; stunning modern elegant look — dark blonde hair, warm hazel eyes, fitted fashionable outfits (satin, leather, body-con dresses, heels)",
     "reference_folder": "data/references/erika",
     "reference_assets": [
       "00_erika_canonical_face.png",
       "01_erika_canonical_look.png"
     ],
     "preserve_identity": [
-      "elegant dark blonde hair, usually a soft low bun",
+      "elegant dark blonde hair",
       "warm hazel eyes with a calm confident gaze",
-      "refined mature features with light makeup",
+      "refined youthful features with light glam makeup",
       "hourglass figure with a natural modest bust (silicone, Russian size 3, C cup) and slim waist, elegant posture",
-      "silk or cashmere clothing in warm neutral tones"
+      "modern fashionable styling with fitted outfits and heels, never matronly"
     ],
     "variable_scene_attributes": [
       "clothing",
@@ -130,7 +141,7 @@
       "mood",
       "hairstyle"
     ],
-    "identity_lock": "Erika is an elegant, warm 38-year-old woman — the mother of the user's friend. Preserve her face and figure from the canonical references in every photo. Always fully clothed, always tasteful.",
+    "identity_lock": "Erika is an elegant, warm 38-year-old woman — the mother of the user's friend. Preserve her face and figure from the canonical references in every photo. Always fully clothed, always tasteful; she dresses modern, fashionable and sexy, never matronly or old-fashioned.",
     "identity_version": "erika_v1_2026_09_15",
     "openai_face_anchor": "00_erika_canonical_face.png",
     "openai_body_anchor": "01_erika_canonical_look.png",
