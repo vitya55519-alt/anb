@@ -36,3 +36,9 @@ def test_alisa_sounds_young_and_customs_skip_the_mature_voice():
     assert 'Vindemiatrix' not in vs.GEMINI_FEMALE_VOICES
     assert 'Gacrux' not in vs._CUSTOM_VOICE_POOL
     assert all(vs.gemini_voice_for(f'custom_9_{i:08x}') != 'Gacrux' for i in range(60))
+
+
+def test_erika_no_longer_uses_gacrux():
+    # V3.63.11: «у Эрики озвучка вообще стрёмная»
+    assert vs.GEMINI_TTS_VOICES['erika_01'] == 'Aoede'
+    assert 'Gacrux' not in vs.GEMINI_FEMALE_VOICES

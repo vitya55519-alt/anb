@@ -12,7 +12,7 @@ from services.relationship_service import record_user_message
 from services.relationship_signals import infer_delta
 from services.test_mode import get_stage as get_test_stage
 from services.behavior_service import behavior_context, choose_behavior
-from services.dialogue_guard_service import build_repetition_guard
+from services.dialogue_guard_service import build_repetition_guard, diversify_emoji
 from services.character_dna_service import competency_context, character_dna_context
 from services.state_service import state_context, softly_evolve_state
 from services.user_service import ensure_user, get_user
@@ -426,6 +426,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     elif BREAKUP.search(answer):
         answer = await _stay_in_chat(answer, character)
     answer = await _rewrite_if_needed(messages, user_text, answer, character)
+    answer = diversify_emoji(answer, [m.content for m in history if m.role == 'assistant'][-4:])
     save_message(db_user_id, character_id, "user", user_text)
     save_message(db_user_id, character_id, "assistant", answer)
     # V3.57.8: memory extraction and style analysis are extra LLM round trips the
