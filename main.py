@@ -1998,6 +1998,7 @@ async def consent_accept(cq: types.CallbackQuery):
         ref = pending_referral(cq.from_user.id)
         if ref:
             res = apply_referral(cq.from_user.id, ref)
+            logger.info('referral on consent invitee=%s referrer=%s status=%s', cq.from_user.id, ref, res.get('status'))
             if res.get('awarded'):
                 track_event(uid, 'referral_awarded_on_consent', metadata={'referrer_id': str(ref)})
         first_start = apply_first_start_bonuses(cq.from_user.id)
