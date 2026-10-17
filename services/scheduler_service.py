@@ -170,6 +170,11 @@ async def _proactive(bot):
                     kind='jealousy'
                 else:
                     kind='miss'
+                # V3.63.2: the plain «скучаю» became a story hook while the
+                # user still has unused stories; cliffhanger/jealousy stay.
+                if kind=='miss' and await _send_story(bot,uid,telegram_id,char_id):
+                    track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': 'story', 'nudge': nudge_count + 1})
+                    continue
                 # V3.44.2: per-character retention texts
                 msg=retention_features_service.get_retention_text(kind, char_id)
                 await bot.send_message(telegram_id,msg)
@@ -218,6 +223,19 @@ async def _day1_hook(bot):
         try:
             if not has_accepted(telegram_id):
                 continue
+            # V3.63.2: a story hook first (Come Closer benchmark); the gift
+            # text below stays as the fallback once every story was used.
+            with SessionLocal() as s:
+                _u=s.get(User,uid)
+                _char=((getattr(_u,'selected_character','') or '').strip() if _u else '') or CHARACTER_ID
+            if await _send_story(bot,uid,telegram_id,_char):
+                with SessionLocal() as s:
+                    u=s.get(User,uid)
+                    if u:
+                        u.day1_hook_at=now
+                        s.commit()
+                track_event(uid, 'day1_hook_sent', metadata={'hours_inactive': int((now-last_active).total_seconds()/3600) if last_active else 0, 'story': True})
+                continue
             markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
                 # V3.55.5: the wheel is retired — day-1 now opens the streak gift
                 text='🎁 Забрать дневной подарок',
@@ -245,6 +263,147 @@ async def _day1_hook(bot):
                     u.day1_hook_at=now
                     s.commit()
         except Exception: logger.exception('day1 hook failed user=%s',uid)
+
+_MEDIA_DIR = __import__('pathlib').Path(__file__).resolve().parents[1] / 'data' / 'media'
+
+
+def _media_pick(folder: str, prefer: str = '', exact: bool = False):
+    """A photo from data/media/<folder>/ (owner-supplied, default heroine
+    only): <prefer>.jpg when present, otherwise a random one (or None with
+    ``exact``, so a story never gets a picture from another story)."""
+    d = _MEDIA_DIR / folder
+    try:
+        files = sorted(p for p in d.iterdir() if p.suffix.lower() in ('.jpg', '.jpeg', '.png', '.webp'))
+    except Exception:
+        return None
+    if not files:
+        return None
+    for f in files:
+        if prefer and f.stem == prefer:
+            return f
+    return None if exact else random.choice(files)
+
+
+def _offer_reference(char_id: str):
+    """Photo of the girl for the locked offer card: the owner's own picks in
+    data/media/offer/ for the default heroine, else her reference photo
+    (default heroine as the fallback, e.g. for constructor personas)."""
+    from pathlib import Path
+    if (char_id or CHARACTER_ID) == CHARACTER_ID:
+        picked = _media_pick('offer')
+        if picked:
+            return picked
+    return _reference_photo(char_id)
+
+
+def _reference_photo(char_id: str):
+    """Her canonical everyday reference (Anna: the café shot)."""
+    from pathlib import Path
+    try:
+        from services.character_registry import get_character
+        from services.photo_service import _seedream_reference_path
+        return _seedream_reference_path(get_character(char_id or CHARACTER_ID))
+    except Exception:
+        return Path(__file__).resolve().parents[1] / 'data' / 'references' / 'anna' / '01_anna_canonical_look_v3.png'
+
+
+async def _send_story(bot, uid: int, telegram_id: int, char_id: str) -> bool:
+    """V3.63.2: a story hook (services/story_hooks.py) — her photo, a tiny
+    story and two choice buttons. False when this user has used them all."""
+    from services import story_hooks
+    from services.ui_lang import user_lang, EN
+    from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+    story=story_hooks.pick_unused(telegram_id)
+    if story is None:
+        return False
+    story_hooks.mark_used(telegram_id, story.key)
+    lang='en' if user_lang(telegram_id)==EN else 'ru'
+    markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=story_hooks.label(story.a,lang),callback_data=f'story:{story.key}:a')],
+        [InlineKeyboardButton(text=story_hooks.label(story.b,lang),callback_data=f'story:{story.key}:b')],
+    ])
+    body=story_hooks.text(story,lang)
+    photo=None
+    # V3.63.2: the owner's own photos of THIS girl (uploaded via /storyphoto,
+    # kept as Telegram file_ids) come first for stories where they fit.
+    from services import push_photos
+    file_id=push_photos.pick(char_id or CHARACTER_ID) if story.photo_ok else None
+    if file_id:
+        await bot.send_photo(telegram_id,file_id,caption=body,reply_markup=markup)
+        _to_app_chat(uid,telegram_id,char_id or CHARACTER_ID,body)
+        track_event(uid,'story_hook_sent',metadata={'story':story.key,'photo':'owner'})
+        return True
+    # Only the default heroine's reference is a known everyday (café) shot;
+    # other girls get the text-only story rather than a random reference.
+    if (char_id or CHARACTER_ID)==CHARACTER_ID:
+        try:
+            def _jpg():
+                import io
+                from PIL import Image
+                src=_media_pick('stories',story.key,exact=True) or _reference_photo(char_id)
+                img=Image.open(src).convert('RGB'); img.thumbnail((900,1200))
+                buf=io.BytesIO(); img.save(buf,'JPEG',quality=86); return buf.getvalue()
+            photo=await asyncio.to_thread(_jpg)
+        except Exception:
+            logger.exception('story photo failed user=%s',uid)
+    if photo:
+        await bot.send_photo(telegram_id,BufferedInputFile(photo,filename='story.jpg'),caption=body,reply_markup=markup)
+    else:
+        await bot.send_message(telegram_id,body,reply_markup=markup)
+    _to_app_chat(uid,telegram_id,char_id or CHARACTER_ID,body)
+    track_event(uid,'story_hook_sent',metadata={'story':story.key})
+    return True
+
+
+async def _first_offer(bot):
+    """V3.63.2: the first-evening offer (services/first_offer_service.py) —
+    one locked-photo card per fresh, interested user, so the paid offer is
+    actually seen instead of waiting for a daily limit nobody reaches."""
+    from services import first_offer_service as fos
+    if not fos.FIRST_OFFER_ENABLED:
+        return
+    from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    from services.access_service import is_premium
+    from services.consent_service import has_accepted
+    from services.ui_lang import user_lang, EN
+    from config import ADMIN_TELEGRAM_IDS
+    try:
+        rows=await asyncio.to_thread(fos.candidates)
+    except Exception:
+        logger.exception('first offer scan failed'); return
+    for uid,telegram_id,char_id in rows:
+        try:
+            if telegram_id in ADMIN_TELEGRAM_IDS or fos.already_offered(telegram_id):
+                continue
+            if not has_accepted(telegram_id) or is_premium(telegram_id):
+                continue
+            # consume the slot first — a failed send must not re-fire every scan
+            fos.mark_offered(telegram_id)
+            lang=user_lang(telegram_id)
+            label='just for you' if lang==EN else 'только для тебя'
+            # V3.63.2: her own photo (owner upload) blurred into the cover when
+            # there is one; otherwise the repo's pre-blurred cover / reference.
+            from services import push_photos
+            source=_offer_reference(char_id)
+            fid=push_photos.pick(char_id or CHARACTER_ID)
+            if fid:
+                try:
+                    source=await bot.download(fid)
+                except Exception:
+                    logger.warning('first offer photo download failed user=%s',uid)
+            card=await asyncio.to_thread(fos.locked_card,source,label)
+            buttons=[[InlineKeyboardButton(text='🔓 open' if lang==EN else '🔓 открыть',callback_data='first_offer:open')]]
+            if PUBLIC_BASE_URL:
+                buttons.append([InlineKeyboardButton(text='💬 reply to her' if lang==EN else '💬 ответить ей',
+                                                     web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
+            await bot.send_photo(telegram_id,BufferedInputFile(card,filename='for_you.jpg'),
+                                 caption=fos.caption('en' if lang==EN else 'ru'),
+                                 reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+            track_event(uid,'first_offer_sent',character_id=char_id or CHARACTER_ID)
+        except TelegramForbiddenError:
+            _mark_blocked(uid)
+        except Exception: logger.exception('first offer failed user=%s',uid)
+
 
 def _user_local_hour(user) -> int | None:
     """Best-effort local hour for rituals; None when the timezone is unusable."""
@@ -616,6 +775,7 @@ def start_scheduler(bot):
     scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
     # V3.44.16: the day-1 hook scans often but sends at most once per user.
     scheduler.add_job(_day1_hook,'interval',minutes=15,args=[bot],id='day1_hook',replace_existing=True)
+    scheduler.add_job(_first_offer,'interval',minutes=10,args=[bot],id='first_offer',replace_existing=True)
     if RITUALS_ENABLED:
         scheduler.add_job(_rituals,'interval',minutes=30,args=[bot],id='rituals',replace_existing=True)
     if DONATION_REMINDER_ENABLED and DONATION_LINK:
