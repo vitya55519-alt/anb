@@ -12,8 +12,9 @@ from services.relationship_service import record_user_message
 from services.relationship_signals import infer_delta
 from services.test_mode import get_stage as get_test_stage
 from services.behavior_service import behavior_context, choose_behavior
-from services.dialogue_guard_service import build_repetition_guard, diversify_emoji
+from services.dialogue_guard_service import build_repetition_guard, casual_punctuation, diversify_emoji
 from services.hook_service import next_hook
+from services.daily_life import her_moment
 from services.character_dna_service import competency_context, character_dna_context
 from services.state_service import state_context, softly_evolve_state
 from services.user_service import ensure_user, get_user
@@ -43,12 +44,14 @@ def _spawn_background(coro, label: str) -> None:
     task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
-def _time_context(telegram_id: int) -> str:
+def _time_context(telegram_id: int, character_id: str = '') -> str:
     user = get_user(telegram_id)
     if not user or not user.timezone:
         return ""
     try:
         now_local = dt.datetime.now(ZoneInfo(user.timezone))
+        # V3.63.13: her own day at his hour, so she isn't «только из душа» at noon and midnight alike.
+        moment = her_moment(character_id, now_local)
         hour = now_local.hour
         if 5 <= hour < 12:
             tod = "утро"
@@ -61,7 +64,7 @@ def _time_context(telegram_id: int) -> str:
         return (
             f"Сейчас у пользователя {now_local.strftime('%H:%M')} ({user.timezone}), "
             f"время суток: {tod}. Используй это для уместных приветствий и реплик."
-        )
+        ) + ('\n' + moment if moment else '')
     except Exception:
         return ""
 
@@ -400,8 +403,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         style_line = ''
         marital_reminder = ''
     system = build_system_prompt(
-        character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + (spicy_line + '\n' if spicy_line else '') + (style_line + '\n' if style_line else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id), adaptation,
-        time_context=_time_context(user_id),
+        character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + (spicy_line + '\n' if spicy_line else '') + (style_line + '\n' if style_line else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id, character_id), adaptation,
+        time_context=_time_context(user_id, character_id),
         character_id=character_id,
     )
     messages = [{"role": "system", "content": system}]
@@ -434,6 +437,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         answer = await _stay_in_chat(answer, character)
     answer = await _rewrite_if_needed(messages, user_text, answer, character)
     answer = diversify_emoji(answer, [m.content for m in history if m.role == 'assistant'][-4:])
+    if not behavior_kind.startswith('task'):
+        answer = casual_punctuation(answer)
     save_message(db_user_id, character_id, "user", user_text)
     save_message(db_user_id, character_id, "assistant", answer)
     # V3.57.8: memory extraction and style analysis are extra LLM round trips the
@@ -474,8 +479,8 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories],
         "Напиши одну короткую спонтанную реплику первой. Не объясняй, зачем пишешь, и не обязательно задавай вопрос.",
-        state_context(user_id), adaptation,
-        time_context=_time_context(user_id),
+        state_context(user_id, character_id), adaptation,
+        time_context=_time_context(user_id, character_id),
         character_id=character_id,
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
