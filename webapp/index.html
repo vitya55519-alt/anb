@@ -1194,7 +1194,7 @@ const L_EN = {
   prem_chars_title: 'Premium characters', prem_chars_hint: 'Unlocked with a Premium subscription', prem_chars_owned: 'Open with your subscription',
   shop_title: 'Shop', missions_title: 'Missions', month: '/ 30 days', week: '7 days', pay_hint: 'Tap a pack — pay by card or with Telegram Stars.',
   share_img: '📤 Share', invite_cta: '🍑 Invite a friend', invite_got: 'Link copied — share it and you both get 🍑', share_fail: 'Could not share', gal_share_hint: 'Share this photo — a friend who starts gets 🍑, and you too', save_img: '📥 Save', save_ok: 'Photo sent to your chat — forward it to a friend',
-    unlim_title: 'Unlimited messages', unlim_sub: 'First 24 hours after sign-up — text is free', unlim_left: 'left',
+    unlim_title: 'Unlimited messages', unlim_sub: 'First hours after sign-up — text is free', unlim_left: 'left',
   free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
   profile_title: 'Profile', premium_on: 'Premium active', premium_off: 'Free account',
   streak: 'day streak', level: 'relationship level', selected_girl: 'selected girl',
@@ -1374,7 +1374,7 @@ const L_RU = {
   prem_chars_title: 'Премиум-персонажи', prem_chars_hint: 'Открываются подпиской Premium', prem_chars_owned: 'Открыты твоей подпиской',
   shop_title: 'Магазин', missions_title: 'Миссии', month: '/ 30 дней', week: '7 дней', pay_hint: 'Нажми на пакет — оплата картой, СБП или звёздами Telegram.',
   share_img: '📤 Поделиться', invite_cta: '🍑 Позвать друга', invite_got: 'Ссылка скопирована — делись, и вам обоим капнет 🍑', share_fail: 'Не удалось поделиться', gal_share_hint: 'Поделись фото — друг получит 🍑 за старт, и тебе тоже', save_img: '📥 Сохранить', save_ok: 'Фото отправлено в чат — перешли его другу',
-    unlim_title: 'Безлимитные сообщения', unlim_sub: 'Первые 24 часа после регистрации — текст бесплатно', unlim_left: 'осталось',
+    unlim_title: 'Безлимитные сообщения', unlim_sub: 'Первые часы после регистрации — текст бесплатно', unlim_left: 'осталось',
   free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
   profile_title: 'Профиль', premium_on: 'Premium активен', premium_off: 'Бесплатный аккаунт',
   streak: 'дней подряд', level: 'уровень отношений', selected_girl: 'выбранная девушка',
@@ -2115,11 +2115,27 @@ async function loadCharacters() {
     }
     CHAR_PAGE = 0; // V3.48.2: a fresh character load starts on page 1
     renderCharacters(j.characters);
+    maybeDeepOpenChat(j.characters);
   } catch (e) {
     showGridRetry();
   } finally {
     hideBootSplash();
   }
+}
+
+// V3.63.2: the bot's «💬 ответить ей» buttons open /webapp?open=chat — the
+// app goes straight into the selected girl's dialog (once per launch), so
+// answering her first message is one tap instead of hunting for her card.
+let _deepChatDone = false;
+function maybeDeepOpenChat(chars) {
+  if (_deepChatDone) return;
+  _deepChatDone = true;
+  try {
+    if (new URLSearchParams(location.search).get('open') !== 'chat') return;
+    const c = (chars || []).find(x => x.selected) || (chars || []).find(x => x.status === 'active');
+    if (!c || (c.status !== 'active' && !(c.status === 'premium' && ME && ME.premium))) return;
+    openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: !!c.custom, selected: !!c.selected });
+  } catch (e) {}
 }
 
 // V3.59.1: a failed first load says so and offers a retry, instead of a dash.

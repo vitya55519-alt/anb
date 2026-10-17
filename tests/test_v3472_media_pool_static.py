@@ -72,7 +72,8 @@ def test_admin_pool_upload_accepts_all_media():
 
 # ── 24h unlimited text for new users (text only — media stays gated) ───────
 def test_new_user_unlimited_text_window():
-    assert 'NEW_USER_UNLIMITED_HOURS = max(0, int(os.getenv("NEW_USER_UNLIMITED_HOURS", "24")))' in CONFIG
+    # V3.62.0: the window shrank 24h → 3h (first evening free, then the limit bites)
+    assert 'NEW_USER_UNLIMITED_HOURS = max(0, int(os.getenv("NEW_USER_UNLIMITED_HOURS", "3")))' in CONFIG
     gate = ACCESS[ACCESS.index('def can_send_message'):ACCESS.index('def unlimited_text_remaining')]
     assert 'if NEW_USER_UNLIMITED_HOURS and user.created_at:' in gate
     assert 'def unlimited_text_remaining(telegram_id:int)->int:' in ACCESS

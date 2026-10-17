@@ -187,6 +187,28 @@ logging.getLogger('aiogram.event').setLevel(logging.WARNING)
 logger = logging.getLogger('annabot')
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
+# V3.63.2: clean chat (Come Closer style) — menu screens replace each other
+# instead of piling up; see services/chat_hygiene.py.
+from services import chat_hygiene
+chat_hygiene.install(bot)
+
+
+def service_screen(handler):
+    """V3.63.2: a menu-button / /start handler is a *screen*: the user's tap
+    and the previous screen are deleted, and everything this handler sends
+    becomes the new screen (swept on the next tap). aiogram unwraps the
+    wrapper (functools.wraps) to read the handler's real signature, so
+    injected kwargs like ``command`` still arrive."""
+    import functools
+
+    @functools.wraps(handler)
+    async def wrapper(message, *args, **kwargs):
+        token = await chat_hygiene.open_screen(bot, message.chat.id, message.message_id)
+        try:
+            return await handler(message, *args, **kwargs)
+        finally:
+            chat_hygiene.close_screen(token)
+    return wrapper
 
 PHOTO_LABELS = {
     'selfie': '📸 Селфи',
@@ -1831,7 +1853,37 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
     await send_stars_invoice(chat_id, f"Фото · {_character_display_name(get_user_character(telegram_id))}", f'Новый сет до 3 фото: {PHOTO_LABELS.get(request.scene, request.scene)}', f'photo:{offer_id}', PHOTO_COST_STARS)
 
 
+_pinned_menu: dict[int, int] = {}
+
+
+async def _pin_main_menu(chat_id: int, message_id: int) -> None:
+    """V3.63.2: exactly one main menu lives in the chat — the previous pinned
+    menu (if this process still remembers it) is deleted, the new one pinned."""
+    chat_hygiene.forget_screen(chat_id, message_id)
+    old = _pinned_menu.get(chat_id)
+    if old and old != message_id:
+        try:
+            await bot.delete_message(chat_id, old)
+        except Exception:
+            pass
+    _pinned_menu[chat_id] = message_id
+    await chat_hygiene.pin_menu(bot, chat_id, message_id)
+
+
+async def _send_pinned_menu(chat_id: int, lang: str) -> None:
+    """V3.63.2: the compact main menu (no banner) for chats that do not have
+    one yet — sent right after the 18+ consent."""
+    text = ('📌 main menu — the app, peaches, partner program and support 👇' if lang == EN
+            else '📌 главное меню — приложение, персики, партнёрка и поддержка 👇')
+    try:
+        msg = await bot.send_message(chat_id, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang)))
+        await _pin_main_menu(chat_id, msg.message_id)
+    except Exception:
+        logger.exception('pinned menu failed chat=%s', chat_id)
+
+
 @dp.message(CommandStart())
+@service_screen
 async def start(message: types.Message, command: CommandObject):
     name = message.from_user.first_name or message.from_user.username or 'ты'
     uid = ensure_user(message.from_user.id, name, language_code=message.from_user.language_code,
@@ -1924,9 +1976,12 @@ async def start(message: types.Message, command: CommandObject):
     markup = InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang))
     banner = _welcome_banner_file()
     if banner is not None:
-        await message.answer_photo(banner, caption=welcome_back, reply_markup=markup)
+        menu_msg = await message.answer_photo(banner, caption=welcome_back, reply_markup=markup)
     else:
-        await message.answer(welcome_back, reply_markup=markup)
+        menu_msg = await message.answer(welcome_back, reply_markup=markup)
+    # V3.63.2: the welcome card IS the main menu — pinned like Come Closer's,
+    # and kept out of the screen sweep so the next button tap does not delete it.
+    await _pin_main_menu(message.chat.id, menu_msg.message_id)
     # V3.43.0: the referral dump is gone from the welcome screen entirely —
     # the invite link lives on the partner screen (/referral) now.
 
@@ -1948,6 +2003,13 @@ async def consent_accept(cq: types.CallbackQuery):
         first_start = apply_first_start_bonuses(cq.from_user.id)
     await cq.answer('готово')
     lang = user_lang(cq.from_user.id)
+    # V3.63.2: the consent banner has done its job — remove it so the chat
+    # starts clean: pinned menu, then her hello and selfie.
+    try:
+        await cq.message.delete()
+    except Exception:
+        pass
+    await _send_pinned_menu(cq.message.chat.id, lang)
     if lang == EN:
         bonus_line = (
             f'🎁 welcome! I gave you {first_start["credits"]} photo credits — '
@@ -1978,7 +2040,15 @@ async def consent_accept(cq: types.CallbackQuery):
         greeting = _first_hello(character_id, cq.from_user.first_name or '', lang)
         # V3.62.7: half of new users accepted 18+ and never wrote a word —
         # they had to invent a first line. Three one-tap answers under her hello.
-        await cq.message.answer(greeting, reply_markup=_first_hello_keyboard(lang))
+        # V3.63.2: plus «💬 ответить ей» — with the chat living in the Mini App
+        # a typed answer in the bot got a «go to the app» hint back; this
+        # button opens her dialog directly (/webapp?open=chat).
+        hello_kb = _first_hello_keyboard(lang)
+        if BOT_CHAT_REDIRECT and PUBLIC_BASE_URL:
+            hello_kb.inline_keyboard.append([InlineKeyboardButton(
+                text='💬 reply to her in the app' if lang == EN else '💬 ответить ей в приложении',
+                web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
+        await cq.message.answer(greeting, reply_markup=hello_kb)
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', greeting)
         track_event(uid, 'first_hello_sent', character_id=character_id)
         # V3.59.2: and a free selfie right behind the hello — the «wow» of the
@@ -2021,6 +2091,10 @@ FIRST_REPLIES_RU = ('привет 🙂', 'расскажи о себе', 'мне
 FIRST_REPLIES_EN = ('hi 🙂', 'tell me about yourself', 'I\'m bored 😏')
 
 
+# V3.63.2: users whose current message must reach her even with BOT_CHAT_REDIRECT.
+_redirect_bypass: set[int] = set()
+
+
 def _first_hello_keyboard(lang: str) -> types.InlineKeyboardMarkup:
     replies = FIRST_REPLIES_EN if lang == EN else FIRST_REPLIES_RU
     return types.InlineKeyboardMarkup(inline_keyboard=[
@@ -2044,7 +2118,13 @@ async def first_reply_cb(cq: types.CallbackQuery):
     track_event(ensure_user(cq.from_user.id), 'first_reply_tapped', metadata={'text': text})
     msg = cq.message.model_copy(update={'text': text, 'from_user': cq.from_user, 'reply_to_message': None,
                                         'reply_markup': None, 'photo': None, 'caption': None})
-    await text_message(msg.as_(cq.bot))
+    # V3.63.2: the tapped first answer is ALWAYS answered by her right here —
+    # with BOT_CHAT_REDIRECT on it used to bounce into the «go to the app» hint.
+    _redirect_bypass.add(cq.from_user.id)
+    try:
+        await text_message(msg.as_(cq.bot))
+    finally:
+        _redirect_bypass.discard(cq.from_user.id)
 
 
 def _first_hello(character_id: str, first_name: str, lang: str) -> str:
@@ -2221,6 +2301,7 @@ async def features_button(message: types.Message):
 
 
 @dp.message(F.text.in_(kb_pair('characters')))
+@service_screen
 async def characters_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     await message.answer('выбери персонажа 👇', reply_markup=characters_keyboard(telegram_id=message.from_user.id))
@@ -5689,6 +5770,61 @@ async def retention_premium_cb(cq: types.CallbackQuery):
     await cq.message.answer(premium_pitch_text(cq.from_user.id), reply_markup=premium_keyboard(discount_info(cq.from_user.id), telegram_id=cq.from_user.id))
 
 
+@dp.callback_query(F.data.startswith('story:'))
+async def story_choice_cb(cq: types.CallbackQuery):
+    """V3.63.2: a tap on a story-hook choice (services/story_hooks.py). She
+    answers in character, both lines land in the shared dialog so the Mini
+    App chat continues from here, and the buttons go away (one choice only)."""
+    from services import story_hooks
+    parts = (cq.data or '').split(':')
+    story = story_hooks.get(parts[1]) if len(parts) == 3 else None
+    picked = story_hooks.choice(story, parts[2]) if story else None
+    if not picked:
+        await cq.answer(); return
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    await cq.answer()
+    try:
+        await cq.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    lang = 'en' if user_lang(cq.from_user.id) == EN else 'ru'
+    character_id = get_user_character(cq.from_user.id)
+    said = story_hooks.label(picked, lang)
+    answer = story_hooks.reply(picked, lang)
+    rows = []
+    if picked.offer and not is_premium(cq.from_user.id):
+        rows.append([InlineKeyboardButton(text='🔓 see the photo' if lang == 'en' else '🔓 посмотреть фото', callback_data='first_offer:open')])
+    if PUBLIC_BASE_URL:
+        rows.append([InlineKeyboardButton(text='💬 reply to her' if lang == 'en' else '💬 ответить ей',
+                                          web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
+    await cq.message.answer(answer, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
+    try:
+        await asyncio.to_thread(save_message, uid, character_id, 'user', said)
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', answer)
+    except Exception:
+        logger.exception('story persist failed user=%s', cq.from_user.id)
+    touch_user(cq.from_user.id)
+    track_event(uid, 'story_hook_choice', metadata={'story': story.key, 'side': parts[2]})
+
+
+@dp.callback_query(F.data == 'first_offer:open')
+async def first_offer_open_cb(cq: types.CallbackQuery):
+    """V3.63.2: «🔓 открыть» on the first-evening locked card — the Premium
+    screen with the one-time 24h discount switched on (urgency the sleep
+    block used to give only after the free demo was spent)."""
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    await cq.answer()
+    if is_premium(cq.from_user.id):
+        await cq.message.answer('у тебя уже Premium ✨ попроси у меня фото прямо в чате 😏')
+        return
+    from services.retention_service import discount_info, offer_discount
+    offer_discount(cq.from_user.id)
+    track_event(uid, 'paywall_view', metadata={'product': 'premium_month', 'source': 'first_offer'})
+    await cq.message.answer(premium_pitch_text(cq.from_user.id), reply_markup=premium_keyboard(discount_info(cq.from_user.id), telegram_id=cq.from_user.id))
+
+
 def _platega_amount_for(product: str) -> int:
     """V3.44.21: price lookup behind the platega: callback buttons."""
     if product == 'premium_month':
@@ -7570,6 +7706,7 @@ async def photo_button(message: types.Message):
 
 
 @dp.message(F.text.in_(kb_pair('invite')))
+@service_screen
 async def referral_button(message: types.Message):
     """Persistent menu button so the referral link is always one tap away,
     not buried in a one-time consent message that scrolls out of view."""
@@ -7577,6 +7714,7 @@ async def referral_button(message: types.Message):
 
 
 @dp.message(F.text.in_(kb_pair('partner') + ('💰 Партнёрка',)))
+@service_screen
 async def partner_button(message: types.Message):
     """V3.37.0: the «💰 Партнёрская программа» reply-keyboard row — stats +
     payouts. The pre-V3.42.0 «💰 Партнёрка» label still resolves so cached
@@ -7613,6 +7751,7 @@ async def _send_app_entry(message: types.Message, intro_ru: str, intro_en: str):
 
 
 @dp.message(F.text.in_(kb_pair('app')))
+@service_screen
 async def app_button(message: types.Message):
     """V3.38.0: «📱 Открыть приложение» — the top funnel row."""
     await _send_app_entry(
@@ -7623,6 +7762,7 @@ async def app_button(message: types.Message):
 
 
 @dp.message(F.text.in_(kb_pair('credits')))
+@service_screen
 async def credits_button(message: types.Message):
     """V3.38.0: «🍑 Персики» — buying photo credits now lives in the
     app's «Магазин» tab; the button carries the user straight into the app."""
@@ -7634,6 +7774,7 @@ async def credits_button(message: types.Message):
 
 
 @dp.message(F.text.in_(kb_pair('paint')))
+@service_screen
 async def paint_button(message: types.Message):
     """V3.38.0: «🖼 Создать картинку» — the picture studio lives in the app's
     «Картинки» tab."""
@@ -7654,6 +7795,7 @@ async def looks_button_legacy(message: types.Message):
 
 
 @dp.message(F.text.in_(kb_pair('premium')))
+@service_screen
 async def premium_button(message: types.Message):
     await premium(message)
 
@@ -7669,6 +7811,7 @@ async def collection_button(message: types.Message):
 
 
 @dp.message(F.text.in_(kb_pair('profile')))
+@service_screen
 async def profile_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     char_id = get_user_character(message.from_user.id)
@@ -7794,11 +7937,13 @@ async def alarm_button(message: types.Message):
 
 
 @dp.message(F.text.in_(kb_pair('settings')))
+@service_screen
 async def settings_button(message: types.Message):
     await settings(message)
 
 
 @dp.message(F.text.in_(kb_pair('support')))
+@service_screen
 async def support_button(message: types.Message):
     # V3.43.0: support moved to the dedicated @Anna67901support_bot — this
     # button no longer arms an in-bot ticket, it just opens the support chat
@@ -7856,6 +8001,7 @@ async def _deliver_admin_reply(message: types.Message, user_id: int) -> None:
 
 
 @dp.message(F.text.in_(kb_pair('legal')))
+@service_screen
 async def legal_button(message: types.Message):
     # V3.32.0: «Документы» — permanently visible legal menu (privacy policy,
     # user agreement, tariffs, support) required by the payment partner's bank.
@@ -9854,12 +10000,24 @@ async def text_message(message: types.Message):
         # card-edit flows all `return` earlier, so only pure small talk reaches
         # here. If PUBLIC_BASE_URL is missing we fall through to classic chat so
         # the bot never dead-ends.
-        if BOT_CHAT_REDIRECT and PUBLIC_BASE_URL:
+        if BOT_CHAT_REDIRECT and PUBLIC_BASE_URL and message.from_user.id not in _redirect_bypass:
             _lang = user_lang(message.from_user.id)
-            _hint = ('💬 наше общение теперь в приложении — нажми «📱 Открыть приложение» 👇'
+            # V3.63.2: the hint is a screen — it replaces the previous hint
+            # instead of stacking one per message, and it carries the button
+            # that opens her chat right away (the old version re-sent the
+            # reply keyboard and made the user hunt for «Открыть приложение»).
+            _who = _character_display_name(get_user_character(message.from_user.id))
+            _hint = (f'💬 {_who} ждёт тебя в приложении — там она отвечает и всё помнит 👇'
                      if _lang != EN else
-                     '💬 our chat now lives in the app — tap “📱 Open the app” 👇')
-            await message.answer(_hint, reply_markup=main_keyboard(message.from_user.id in ADMIN_TELEGRAM_IDS, message.from_user.id))
+                     f'💬 {_who} is waiting for you in the app — that is where she answers and remembers everything 👇')
+            _btn = ('💬 ответить ей' if _lang != EN else '💬 reply to her')
+            _token = await chat_hygiene.open_screen(bot, message.chat.id)
+            try:
+                await message.answer(_hint, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                    text=_btn, web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))]]))
+            finally:
+                chat_hygiene.close_screen(_token)
+            track_event(uid, 'bot_chat_redirected')
             touch_user(message.from_user.id)
             return
         before_level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
