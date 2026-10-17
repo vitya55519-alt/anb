@@ -61,9 +61,9 @@ def test_topup_delivery_rows_tag_character_id():
 
 def test_custom_voice_distinct_from_anna():
     assert 'CUSTOM_CHARACTER_VOICE_PROFILE = {' in VOICE
-    assert "CUSTOM_CHARACTER_GEMINI_TTS_VOICE = 'Erin'" in VOICE
+    assert "CUSTOM_CHARACTER_GEMINI_TTS_VOICE = ''" in VOICE
     assert 'CUSTOM_CHARACTER_VOICE_PROFILE' in VOICE[VOICE.index('def pick_edge_voice'):]
-    assert 'CUSTOM_CHARACTER_GEMINI_TTS_VOICE' in VOICE[VOICE.index('async def _tts_gemini'):VOICE.index('async def _tts_gemini') + 4000]
+    assert 'CUSTOM_CHARACTER_GEMINI_TTS_VOICE' in VOICE[VOICE.index('def gemini_voice_for'):VOICE.index('async def _tts_gemini') + 4000]
 
 
 def test_relationship_context_names_the_character():
