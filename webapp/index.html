@@ -308,11 +308,26 @@
   .msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border-bottom-right-radius: 4px; }
   .msg.bot { align-self: flex-start; background: var(--card); border-bottom-left-radius: 4px; }
   .msg .t { display: block; font-size: 10px; opacity: .6; margin-top: 4px; }
+  /* V3.63.7: her small photo next to each of her messages, like in WhatsApp */
+  .msg.bot.hav { position: relative; margin-left: 36px; max-width: calc(82% - 36px); }
+  .msg .bav { position: absolute; left: -36px; bottom: 0; width: 30px; height: 30px; border-radius: 50%;
+    object-fit: cover; background: var(--card2); }
   /* V3.63.5: tap her message → «🔊 Озвучить» (Premium) */
   .msg[data-say] { cursor: pointer; }
   .msg .say { display: block; margin-top: 6px; padding: 5px 10px; border: 0; border-radius: 12px;
     background: rgba(232, 68, 127, .18); color: inherit; font-size: 12px; }
   .msg .say-au { display: block; margin-top: 6px; max-width: 100%; height: 34px; }
+  /* V3.63.8: voice notes look like Telegram's — round play button, waveform, duration */
+  .vp { display: flex; align-items: center; gap: 10px; width: 230px; max-width: 100%; margin-top: 4px; white-space: normal; }
+  .vp .vp-btn { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-size: 15px; line-height: 40px; }
+  .vp .vp-wave { flex: 1; display: flex; align-items: center; gap: 2px; height: 30px; cursor: pointer; }
+  .vp .vp-wave i { flex: 1; min-width: 2px; border-radius: 2px; background: rgba(255,255,255,.28); }
+  .vp .vp-wave i.on { background: var(--accent); }
+  .msg.user .vp .vp-wave i.on { background: #fff; }
+  .vp .vp-dur { flex: none; min-width: 32px; font-size: 11px; opacity: .7; text-align: right; }
+  .vp audio { display: none; }
+  .msg .say.sm { display: block; width: fit-content; margin-top: 6px; padding: 3px 10px; font-size: 12px; opacity: .85; }
   .chat-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 40px 20px; line-height: 1.5; }
   .chat-input {
     display: flex; gap: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
@@ -1252,9 +1267,9 @@ const L_EN = {
   qb_limit: 'She is falling asleep till tomorrow 😴 wake her up',
   qb_peaches: 'Not enough peaches 🍑',
   qb_voice: 'Her voice is a Premium perk 🎙 hear how she says it',
-  say_btn: '🔊 Voice it',
+  say_btn: '▶ Voice',
   say_btn_prem: '🔊 Voice it · Premium',
-  say_wait: '🎙 recording…',
+  say_wait: '● recording a voice note…',
   qb_more: 'Whole shop',
   qb_demo: 'Demo Premium for 3 hours — free',
   qb_demo_on: 'Demo Premium is on ✨',
@@ -1436,9 +1451,9 @@ const L_RU = {
   qb_limit: 'Она засыпает до завтра 😴 разбуди её',
   qb_peaches: 'Не хватает персиков 🍑',
   qb_voice: 'Её голос — с Premium 🎙 услышь, как она это говорит',
-  say_btn: '🔊 Озвучить',
+  say_btn: '▶ Голосом',
   say_btn_prem: '🔊 Озвучить · Premium',
-  say_wait: '🎙 записывает голосовое…',
+  say_wait: '● записывает голосовое…',
   qb_more: 'Весь магазин',
   qb_demo: 'Демо-Premium на 3 часа — бесплатно',
   qb_demo_on: 'Демо-Premium включён ✨',
@@ -2286,7 +2301,7 @@ function chatBubble(roleOrM, content, ts) {
     const src = m.media_url + '?init_data=' + encodeURIComponent(tg.initData || '');
     if (m.media_kind === 'circle') body = `<video class="circle" src="${esc(src)}" loop autoplay muted playsinline></video>`;
     else if (m.media_kind === 'video') body = `<video class="m" src="${esc(src)}" controls playsinline></video>`;
-    else if (m.media_kind === 'voice') body = `<audio controls src="${esc(src)}"></audio>`;
+    else if (m.media_kind === 'voice') body = voicePlayer(src);
     else if (cls === 'bot') {
       // V3.61.7: three clear actions under her photo — save, animate, undress.
       body = '<img class="m" src="' + esc(src) + '" data-lb="1" alt="">'
@@ -2299,7 +2314,18 @@ function chatBubble(roleOrM, content, ts) {
   }
   // V3.63.5: her plain text can be voiced on tap (Premium perk).
   const say = (cls === 'bot' && !m.media_url && m.content) ? ` data-say="${esc(m.content)}"` : '';
-  return `<div class="msg ${cls}"` + say + `>${body}${t}</div>`;
+  // V3.63.8: the «▶ голосом» button is always visible — tapping a bare bubble was undiscoverable.
+  if (say) body += '<button class="say sm">' + esc(L.say_btn) + '</button>';
+  // V3.63.7: her photo beside every bubble of hers (duo chats keep per-line avatars).
+  const av = (cls === 'bot') ? herAvatar() : '';
+  return `<div class="msg ${cls}` + (av ? ' hav' : '') + `"` + say + `>` + av + `${body}${t}</div>`;
+}
+
+function herAvatar() {
+  if (!CHAT || CHAT.duo) return '';
+  const src = CHAT.photo || (CHAT.id ? '/webapp/photo/' + CHAT.id : '');
+  if (!src) return '';
+  return '<img class="bav" src="' + esc(src) + '" alt="" onerror="this.style.visibility=\'hidden\'">';
 }
 
 function openChat(c) {
@@ -2938,10 +2964,9 @@ document.addEventListener('click', e => {
   const btn = e.target.closest('.msg .say');
   if (btn) { e.stopPropagation(); speakMsg(btn.closest('.msg'), btn); return; }
   const msg = e.target.closest('#chatMsgs .msg[data-say]');
-  if (!msg || e.target.closest('button, a, audio, video, img')) return;
-  if (msg.querySelector('.say, .say-au')) return;
-  const prem = ME && ME.premium;
-  msg.insertAdjacentHTML('beforeend', `<button class="say">${esc(prem ? L.say_btn : L.say_btn_prem)}</button>`);
+  if (!msg || e.target.closest('button, a, audio, video, img, .vp')) return;
+  const own = msg.querySelector('.say');
+  if (own && !own.disabled) speakMsg(msg, own);
 });
 async function speakMsg(msg, btn) {
   if (!CHAT || !msg) return;
@@ -2955,9 +2980,69 @@ async function speakMsg(msg, btn) {
     if (r.status === 403 && j.error === 'premium_required') { btn.remove(); quickBuy('voice'); return; }
     if (!j.ok || !j.url) { btn.disabled = false; btn.textContent = L.say_btn; toast(L.reply_err); return; }
     const src = j.url + '?init_data=' + encodeURIComponent(tg.initData || '');
-    btn.outerHTML = `<audio class="say-au" controls autoplay src="${esc(src)}"></audio>`;
+    btn.outerHTML = voicePlayer(src);
+    const au = msg.querySelector('.vp audio');
+    if (au) vpPlay(au);
   } catch (err) { btn.disabled = false; btn.textContent = L.say_btn; toast(L.reply_err); }
 }
+
+// V3.63.8: Telegram-like voice player. The waveform is drawn from the file's
+// address (stable per message), the bars fill as she speaks, a tap seeks.
+const VP_BARS = 34;
+function voicePlayer(src) {
+  let h = 0;
+  for (let i = 0; i < src.length; i++) h = (h * 31 + src.charCodeAt(i)) >>> 0;
+  let bars = '';
+  for (let i = 0; i < VP_BARS; i++) {
+    h = (h * 1103515245 + 12345) >>> 0;
+    const env = Math.sin(Math.PI * (i + 0.5) / VP_BARS);
+    bars += '<i style="height:' + Math.round(18 + 82 * env * (0.35 + (h % 1000) / 1540)) + '%"></i>';
+  }
+  return '<div class="vp"><button class="vp-btn" type="button">▶</button><div class="vp-wave">' + bars
+    + '</div><span class="vp-dur">0:00</span><audio preload="metadata" src="' + esc(src) + '"></audio></div>';
+}
+function vpFmt(sec) {
+  if (!isFinite(sec) || sec < 0) return '0:00';
+  const s = Math.round(sec);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+function vpPlay(au) {
+  document.querySelectorAll('.vp audio').forEach(a => { if (a !== au && !a.paused) a.pause(); });
+  const p = au.play();
+  if (p && p.catch) p.catch(() => {});
+}
+function vpPaint(au) {
+  const vp = au.closest('.vp');
+  if (!vp) return;
+  const d = au.duration, t = au.currentTime;
+  const frac = (isFinite(d) && d > 0) ? t / d : 0;
+  const on = Math.round(frac * VP_BARS);
+  vp.querySelectorAll('.vp-wave i').forEach((b, i) => b.classList.toggle('on', i < on));
+  vp.querySelector('.vp-btn').textContent = au.paused ? '▶' : '❚❚';
+  vp.querySelector('.vp-dur').textContent = vpFmt(au.paused && !t ? d : (isFinite(d) ? d - t : t));
+}
+// Media events don't bubble, so listen in the capture phase.
+['loadedmetadata', 'durationchange', 'timeupdate', 'play', 'pause', 'ended'].forEach(ev =>
+  document.addEventListener(ev, e => {
+    const au = e.target;
+    if (!au || au.tagName !== 'AUDIO' || !au.closest('.vp')) return;
+    if (ev === 'ended') au.currentTime = 0;
+    vpPaint(au);
+  }, true));
+document.addEventListener('click', e => {
+  if (!e.target || !e.target.closest) return;
+  const vp = e.target.closest('.vp');
+  if (!vp) return;
+  e.stopPropagation();
+  const au = vp.querySelector('audio');
+  if (e.target.closest('.vp-btn')) { if (au.paused) vpPlay(au); else au.pause(); return; }
+  const wave = e.target.closest('.vp-wave');
+  if (wave && isFinite(au.duration) && au.duration > 0) {
+    const r = wave.getBoundingClientRect();
+    au.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * au.duration;
+    if (au.paused) vpPlay(au);
+  }
+});
 document.addEventListener('click', e => {
   const b = e.target && e.target.closest ? e.target.closest('[data-pact]') : null;
   if (b) { e.stopPropagation(); photoAction(b.getAttribute('data-pact'), b.getAttribute('data-media'), b); }
