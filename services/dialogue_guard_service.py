@@ -49,13 +49,16 @@ def build_repetition_guard(history, user_text: str, window: int = 8) -> str:
 # or twice in one answer, is swapped for a fresh one of the same mood.
 _EMOJI_GROUPS = (
     ('😏', '😉', '😈', '😜', '💋', '🔥', '😋'),
-    ('🙈', '☺️', '😊', '🥺', '😳', '🤭'),
+    ('🙈', '🙊', '🙉', '☺️', '😊', '🥺', '😳', '🤭'),
     ('🥰', '😘', '😍', '💕', '❤️', '🤍'),
     ('😌', '✨', '🌙'),
     ('😂', '😅', '🤣', '😆'),
     ('🙄', '😑', '😤', '😒'),
 )
 _EMOJI_GROUP_OF = {e: g for g in _EMOJI_GROUPS for e in g}
+# V3.63.14: the monkeys were her tic (🙈 then 🙊 on the very next reply); one is
+# fine now and then, any monkey after a monkey becomes another shy face.
+_MONKEYS = frozenset('🙈🙊🙉')
 _EMOJI_TOKEN = re.compile('|'.join(re.escape(e) for e in sorted(_EMOJI_GROUP_OF, key=len, reverse=True)))
 
 
@@ -68,12 +71,18 @@ def diversify_emoji(answer: str, recent_bot_texts, rng=None) -> str:
     recent = {m.group(0) for t in recent_bot_texts or () for m in _EMOJI_TOKEN.finditer(t or '')}
     used: set[str] = set()
 
+    monkey_seen = bool(recent & _MONKEYS)
+
     def swap(m):
+        nonlocal monkey_seen
         e = m.group(0)
-        if e not in recent and e not in used:
+        repeat_monkey = e in _MONKEYS and monkey_seen
+        if e in _MONKEYS:
+            monkey_seen = True
+        if e not in recent and e not in used and not repeat_monkey:
             used.add(e)
             return e
-        options = [x for x in _EMOJI_GROUP_OF[e] if x not in recent and x not in used]
+        options = [x for x in _EMOJI_GROUP_OF[e] if x not in recent and x not in used and x not in _MONKEYS]
         if not options:
             return e
         new = rng.choice(options)
@@ -106,5 +115,8 @@ def casual_punctuation(answer: str) -> str:
             b = m.group(1).lower() + b[1:]
         if b.endswith('.') and not b.endswith('..'):
             b = b[:-1]
+        # V3.63.14: nobody types an em dash on a phone keyboard; it was in every
+        # reply and read as a machine. A comma reads the same in chat.
+        b = re.sub(r'\s*,?\s+[—–]\s+', ', ', b)
         bubbles.append(b)
     return '\n\n'.join(bubbles)
