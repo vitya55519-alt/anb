@@ -3086,7 +3086,8 @@ async function requestMedia(kind, scene) {
     // V3.46.1: on a generation failure the backend only fills `reason` for
     // ADMIN_TELEGRAM_IDS, so an admin sees the real provider cause (missing
     // key / transport error) while a normal user still gets the generic text.
-    if (!j.ok) { toast(j.reason || L.reply_err); return; }
+    // V3.64.0: a failed photo said «Не получилось ответить» — it is a photo.
+    if (!j.ok) { toast(j.reason || L.pic_gen_fail || L.reply_err); return; }
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
     // V3.47.0: referral CTA right after a delivered media (not voice) — the
     // peak-emotion moment to share the invite link and earn a friend a 🍑.
