@@ -37,25 +37,58 @@ def _user_lock(telegram_id: int) -> asyncio.Lock:
 referral_user_lock = _user_lock
 
 
-# In-memory bridge between /start (which sees the deep-link payload) and
-# consent_accept (which should actually grant the bonus). Cleared once the
-# invitee accepts 18+/terms or after a short TTL. This is intentionally
-# in-memory only: if the worker restarts mid-onboarding the user can simply
-# tap /start again to re-open the deep link, so no persistent record is needed.
+# Bridge between /start (which sees the deep-link payload) and consent_accept
+# (which grants the bonus). V3.63.6: persisted in dialog_sessions — it used to
+# be in-memory only, so every Railway redeploy between a friend opening the
+# link and pressing «18+» silently dropped the referral (the owner's own
+# invite to his wife was lost this way). Kept for 24h (stale-session sweep).
 _pending_referrals: dict[int, tuple[int, float]] = {}
-_PENDING_TTL_SECONDS = 30 * 60
+_PENDING_TTL_SECONDS = 24 * 60 * 60
+_pending_store = None
+
+
+def _store():
+    global _pending_store
+    if _pending_store is None:
+        from services import dialog_store
+        _pending_store = dialog_store.DialogStore('pending_referral')
+    return _pending_store
 
 
 def remember_referral(invitee_telegram_id: int, referrer_telegram_id: int) -> None:
-    """Stash the referrer id from the deep-link payload until consent is accepted."""
+    """Stash the referrer id from the deep-link payload until consent is accepted.
+
+    Only people who have not accepted the 18+ terms yet (i.e. new to the bot)
+    are stashed — an existing user tapping a friend's link earns nobody a bonus."""
     if invitee_telegram_id == referrer_telegram_id:
         return
-    _pending_referrals[invitee_telegram_id] = (referrer_telegram_id, _now().timestamp())
+    try:
+        from services.consent_service import has_accepted
+        if has_accepted(invitee_telegram_id):
+            logger.info('referral ignored (already a user) invitee=%s referrer=%s',
+                        invitee_telegram_id, referrer_telegram_id)
+            return
+    except Exception:
+        logger.exception('referral consent check failed invitee=%s', invitee_telegram_id)
+    entry = (referrer_telegram_id, _now().timestamp())
+    _pending_referrals[invitee_telegram_id] = entry
+    try:
+        _store()[invitee_telegram_id] = {'ref': int(referrer_telegram_id), 'ts': entry[1]}
+    except Exception:
+        logger.exception('referral stash persist failed invitee=%s', invitee_telegram_id)
+    logger.info('referral stashed invitee=%s referrer=%s', invitee_telegram_id, referrer_telegram_id)
 
 
 def pending_referral(invitee_telegram_id: int) -> int | None:
     """Return a still-valid pending referrer id, or None if expired/absent."""
     entry = _pending_referrals.pop(invitee_telegram_id, None)
+    try:
+        stored = _store().pop(invitee_telegram_id, None)
+    except Exception:
+        stored = None
+    # the store hands back a dict-like wrapper, not a plain dict
+    if not entry and stored is not None and hasattr(stored, 'get') and stored.get('ref'):
+        entry = (int(stored.get('ref')), float(stored.get('ts') or 0))
     if not entry:
         return None
     referrer_id, created_at_ts = entry
@@ -67,7 +100,10 @@ def pending_referral(invitee_telegram_id: int) -> int | None:
 # very first contact with the bot. ensure_user() creates the row on first
 # contact and referral/bonus processing runs synchronously right after, so a
 # short window is enough and avoids re-granting bonuses to returning users.
-_NEW_USER_WINDOW = timedelta(minutes=5)
+# V3.63.6: was 5 minutes — a friend who read the welcome screen for longer
+# than that before pressing «18+» was rejected as «not new». The stash above
+# only accepts people who never accepted the terms, so a day is safe.
+_NEW_USER_WINDOW = timedelta(hours=24)
 
 
 def _now():
