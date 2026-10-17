@@ -1,6 +1,6 @@
 import datetime as dt, re, logging
 from zoneinfo import ZoneInfo
-from sqlalchemy import select
+from sqlalchemy import func, select
 from services.db import SessionLocal
 from models.app_models import Reminder, User
 from services.user_service import ensure_user, get_user, update_user_settings
@@ -83,3 +83,16 @@ def mark_after_send(reminder_id:int, final:bool=False, delay_minutes:int=3):
         if final or r.attempts>=r.max_attempts: r.active=False
         else: r.due_at_utc=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)+dt.timedelta(minutes=delay_minutes)
         s.commit()
+
+def is_wake_request(text:str)->bool:
+    """V3.63.2: a parseable «разбуди в 8:00» (not a plain reminder)."""
+    return bool(parse_time_request(text)) and any(x in (text or '').lower() for x in ('разбуди','буди','wake'))
+
+def wake_trial_available(telegram_id:int)->bool:
+    """V3.63.2: one free alarm ever for non-Premium users, so they hear her
+    wake them before deciding on Premium. Counted from existing rows — no schema."""
+    user=get_user(telegram_id)
+    if not user: return True
+    with SessionLocal() as s:
+        used=s.scalar(select(func.count()).select_from(Reminder).where(Reminder.user_id==user.id,Reminder.reminder_type=='wake'))
+    return not used

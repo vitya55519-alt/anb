@@ -121,7 +121,7 @@ def _video_unavailable_text(telegram_id: int) -> str:
         )
     return 'Видео пока недоступно.'
 from services.llm_provider_service import provider_status
-from services.reminder_service import set_timezone, create_from_text, cancel_active_wake, due_reminders
+from services.reminder_service import set_timezone, create_from_text, cancel_active_wake, due_reminders, is_wake_request, wake_trial_available
 from services.scheduler_service import start_scheduler
 from services.memory_service import reset_conversation as reset_memory, save_message
 from services.provider_stats_service import provider_snapshot, record_provider
@@ -583,7 +583,7 @@ def abilities_text(lang: str = RU) -> str:
             '🎙 voice replies: every girl has her own sweet voice, I answer in your language\n'
             '🖼 a collection of unlocked photos by relationship level\n'
             '💌 sometimes I write first and return to an unfinished topic\n'
-            '⏰ alarm and reminders — a Premium feature: I wake you up on time and remember your timezone\n\n'
+            '⏰ alarm: write «wake me at 8:00» — she wakes you with her voice. First one free, then alarms and reminders come with Premium\n\n'
             '🎯 The first story is already available — start it right away or just write to me.'
         )
     return (
@@ -601,7 +601,7 @@ def abilities_text(lang: str = RU) -> str:
         '🎙 голосовые ответы: у каждой девушки свой милый голос, отвечает на твоём языке\n'
         '🖼 коллекция открытых фотографий по уровням отношений\n'
         '💌 она иногда может написать первой и вернуться к незаконченной теме\n'
-        '⏰ будильник и напоминания — Premium-функция: разбудит вовремя и запомнит твой часовой пояс\n\n'
+        '⏰ будильник: напиши «разбуди в 8:00» — она разбудит тебя голосом. Первый раз бесплатно, дальше будильник и напоминания — с Premium\n\n'
         '🎯 Первая история уже доступна — можешь начать её сразу или просто написать мне.'
     )
 
@@ -7423,18 +7423,40 @@ async def timezone_cmd(message: types.Message):
         await message.answer('не узнаю такой часовой пояс. пример: Europe/Moscow')
 
 
+async def _maybe_set_alarm(message: types.Message, text: str, confirm: str) -> bool:
+    """V3.63.2: Premium sets alarms/reminders freely; everyone else gets ONE
+    free alarm (she wakes him by voice) and then a Premium nudge instead of
+    her silently promising to wake him and never doing it."""
+    tid = message.from_user.id
+    premium = is_premium(tid)
+    wake = is_wake_request(text)
+    trial = (not premium) and wake and wake_trial_available(tid)
+    if not premium and not trial:
+        if wake:
+            await message.answer('⏰ Будильник — Premium-функция: она будит тебя голосом. '
+                                 'Пробный будильник уже был. /premium — подключить')
+        return False
+    rid = create_from_text(tid, text)
+    if not rid:
+        return False
+    user = get_user(tid)
+    tz = (user.timezone or 'UTC') if user else 'UTC'
+    msg = confirm.format(tz=tz)
+    if trial:
+        msg += '\n\n🎁 Это твой бесплатный пробный будильник — разбужу голосом. Дальше будильник — с Premium.'
+    await message.answer(msg)
+    if trial:
+        track_event(ensure_user(tid), 'wake_trial_set')
+    return True
+
+
 @dp.message(Command('wake'))
 async def wake_cmd(message: types.Message):
-    if not is_premium(message.from_user.id):
-        await message.answer('⏰ Будильник — Premium-функция. /premium — подключить')
-        return
-    rid = create_from_text(message.from_user.id, message.text or '')
-    if rid:
-        user = get_user(message.from_user.id)
-        tz = user.timezone or 'UTC' if user else 'UTC'
-        await message.answer(f'запомнила 😌 разбужу вовремя по {tz}. если не ответишь — буду настойчивее')
-    else:
+    text = message.text or ''
+    if not is_wake_request(text):
         await message.answer('напиши время, например /wake 08:00')
+        return
+    await _maybe_set_alarm(message, text, 'запомнила 😌 разбужу вовремя по {tz}. если не ответишь — буду настойчивее')
 
 
 @dp.message(Command('myreminders'))
@@ -7747,6 +7769,14 @@ async def alarm_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     premium = is_premium(message.from_user.id)
     lang = user_lang(message.from_user.id)
+    if not premium and wake_trial_available(message.from_user.id):
+        # V3.63.2: the first alarm is free — let him hear her wake him.
+        await message.answer(
+            '⏰ The first alarm is free 🎁\n\nWrite me the time, e.g. «wake me at 7:30» — I\'ll wake you with my voice.'
+            if lang == EN else
+            '⏰ Первый будильник — бесплатно 🎁\n\nНапиши мне время, например «разбуди в 7:30» — разбужу тебя голосом.'
+        )
+        return
     if not premium:
         if lang == EN:
             await message.answer(
@@ -8063,6 +8093,19 @@ async def _react_to_user_photo(message: types.Message):
 
 
 # ── V3.52.0: «Жизнь без тебя» one-tap reply continuation ──────────────────
+@dp.callback_query(F.data == 'wake:up')
+async def on_wake_up_tap(cq: types.CallbackQuery):
+    """V3.63.2: «☀️ я проснулся» under her wake-up voice stops the alarm."""
+    cancel_active_wake(cq.from_user.id)
+    await cq.answer('☀️')
+    try:
+        await cq.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await cq.message.answer('ура, проснулся 😌 доброе утро! хорошего тебе дня ☀️')
+    track_event(ensure_user(cq.from_user.id), 'wake_stopped_button')
+
+
 @dp.callback_query(F.data.startswith('life_reply:'))
 async def on_life_reply_tap(cq: types.CallbackQuery):
     """A life-event push ends with two low-friction buttons. Tapping one feeds a
@@ -9314,10 +9357,7 @@ async def voice_message(message: types.Message):
                 _photo_offer_expression.pop(message.from_user.id, None)
             logger.info('photo_offer_detected user=%s source=voice', message.from_user.id)
         await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id, get_user_character(message.from_user.id)))
-        if is_premium(message.from_user.id) and create_from_text(message.from_user.id, text):
-            user = get_user(message.from_user.id)
-            tz = user.timezone or 'UTC' if user else 'UTC'
-            await message.answer(f'и время тоже запомнила 😌 пояс: {tz}')
+        await _maybe_set_alarm(message, text, 'и время тоже запомнила 😌 пояс: {tz}')
         touch_user(message.from_user.id)
     except Exception:
         logger.exception('voice handler')
@@ -9888,12 +9928,7 @@ async def text_message(message: types.Message):
                 _photo_offer_expression.pop(message.from_user.id, None)
             logger.info('photo_offer_detected user=%s', message.from_user.id)
         await _notify_quest_unlocks(message.chat.id, message.from_user.id, before_level, get_relationship_level(message.from_user.id, get_user_character(message.from_user.id)))
-        if is_premium(message.from_user.id):
-            rid = create_from_text(message.from_user.id, text)
-            if rid:
-                user = get_user(message.from_user.id)
-                tz = user.timezone or 'UTC' if user else 'UTC'
-                await message.answer(f'и время тоже запомнила 😌 пояс: {tz}')
+        await _maybe_set_alarm(message, text, 'и время тоже запомнила 😌 пояс: {tz}')
         touch_user(message.from_user.id)
     except Exception as exc:
         logger.exception('chat handler user=%s error=%s', message.from_user.id, type(exc).__name__)

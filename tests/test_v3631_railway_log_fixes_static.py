@@ -17,7 +17,7 @@ def test_daily_gift_marks_blocked_by_telegram_id():
     daily = SCHED[SCHED.index('async def _daily_gift(bot):'):]
     assert '_mark_blocked_tg(tid)' in daily
     assert '_mark_blocked(int(tid))' not in daily
-    assert 'User.telegram_id == int(telegram_id)' in SCHED
+    assert 'User.telegram_id == str(telegram_id)' in SCHED  # column is String(64)
 
 
 def test_chat_not_found_stops_retries():

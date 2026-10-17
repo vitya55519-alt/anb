@@ -48,7 +48,7 @@ def _mark_blocked_tg(telegram_id: int) -> None:
     above 2^31 crashed Postgres with «integer out of range»)."""
     try:
         with SessionLocal() as s:
-            uid = s.scalar(select(User.id).where(User.telegram_id == int(telegram_id)))
+            uid = s.scalar(select(User.id).where(User.telegram_id == str(telegram_id)))
         if uid:
             _mark_blocked(uid)
     except Exception:
@@ -69,7 +69,6 @@ async def _reminders(bot):
     rows=await asyncio.to_thread(due_reminders)
     if rows:
         logger.info('scheduler checking reminders count=%s ids=%s', len(rows), [r.id for r in rows])
-    wake_msgs=['доброе утро ☀️ подъём','эй, ты там проснулся? 😂','соня, вставай уже','я всё ещё здесь 🙄','ну всё, последний шанс 😌','ладно, сдаюсь 😂']
     for r in rows:
         try:
             with SessionLocal() as s: user=s.get(User,r.user_id)
@@ -80,8 +79,20 @@ async def _reminders(bot):
             logger.info('sending reminder id=%s type=%s user=%s attempts=%s/%s due=%s tz=%s',
                         r.id, r.reminder_type, telegram_id, r.attempts, r.max_attempts, r.due_at_utc, r.timezone)
             if r.reminder_type=='wake':
-                idx=min(r.attempts,len(wake_msgs)-1); await bot.send_message(telegram_id,wake_msgs[idx]); delays=[2,3,5,7,10,10]
-                await asyncio.to_thread(mark_after_send,r.id,idx==len(wake_msgs)-1,delays[idx])
+                # V3.63.2: she wakes him herself — a line in her character,
+                # as a voice note, with a stop button.
+                from services import wake_service
+                from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+                idx=min(r.attempts,wake_service.WAKE_ATTEMPTS-1)
+                char_id=user.selected_character or CHARACTER_ID
+                line=await wake_service.wake_line(telegram_id,char_id,idx,name=user.name or '',lang=user.ui_lang or 'ru')
+                kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='☀️ я проснулся',callback_data='wake:up')]])
+                audio=await wake_service.wake_voice(line,char_id,user.voice_style)
+                if audio:
+                    await bot.send_voice(telegram_id,BufferedInputFile(audio,filename=f'{char_id}.ogg'),caption=line,reply_markup=kb)
+                else:
+                    await bot.send_message(telegram_id,line,reply_markup=kb)
+                await asyncio.to_thread(mark_after_send,r.id,idx==wake_service.WAKE_ATTEMPTS-1,wake_service.WAKE_DELAYS[idx])
             else:
                 await bot.send_message(telegram_id,f"напоминаю: {r.text}"); await asyncio.to_thread(mark_after_send,r.id,True)
         except TelegramForbiddenError:
