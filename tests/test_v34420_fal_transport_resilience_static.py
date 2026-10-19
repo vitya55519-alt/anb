@@ -41,10 +41,11 @@ def test_readerror_is_retried_not_fatal():
     assert 'except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:' not in PHOTO
 
 
-def test_transport_exhaustion_walks_to_the_next_candidate():
-    # after the last attempt the loop breaks to the next candidate route
-    # instead of raising straight through generate_photo_set
-    assert "last_error = PhotoGenerationError('seedream45', f'transport_{type(exc).__name__}')" in PHOTO
+def test_transport_exhaustion_marks_fal_down():
+    # V3.64.4: all routes share fal.run, so an exhausted transport stops the
+    # walk and skips fal for a cooldown instead of burning ~28s per photo
+    assert "raise PhotoGenerationError('seedream45', f'transport_{type(exc).__name__}')" in PHOTO
+    assert '_fal_down_until = time.monotonic() + FAL_DOWN_COOLDOWN_SECONDS' in PHOTO
     assert 'Seedream transport failed label=%s model=%s attempt=%s/%s elapsed=%.1fs type=%s' in PHOTO
     # the retry/backoff path itself is unchanged
     assert 'await asyncio.sleep(FAL_RETRY_BACKOFF_SECONDS * attempt)' in PHOTO

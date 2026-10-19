@@ -1760,7 +1760,9 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
         track_event(uid, 'photo_failed', metadata={'scene': request.scene, 'reason': exc.reason, 'provider': exc.provider})
         if await _maybe_refund_paid_photo(chat_id, telegram_id, charge, amount, product):
             return
-        debug_hint = f' ({exc.provider}/{exc.reason})' if exc.reason else ''
+        # V3.64.4: the raw engine chain is for the owner only; a user saw
+        # «(spicyapi/spicyapi/empty_result:timeout_or_empty → …)» in the chat.
+        debug_hint = f' ({exc.provider}/{exc.reason})' if exc.reason and telegram_id in ADMIN_TELEGRAM_IDS else ''
         await bot.send_message(chat_id, f'фото сейчас не получилось 😕{debug_hint}\nлимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
     except asyncio.TimeoutError:
         logger.warning('photo generation timed out user=%s scene=%s budget=%ss', telegram_id, request.scene, PHOTO_TOTAL_BUDGET_SECONDS)

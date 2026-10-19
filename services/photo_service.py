@@ -2496,6 +2496,14 @@ async def _run_gemini_set(
     return out
 
 
+# V3.64.4: since 15.10 every fal.run call dies with ReadError ~1s after it is
+# sent, on every route. Walking 3 routes x 3 attempts cost each failed photo
+# ~28s on top of the main engine, and every next photo paid it again. One
+# exhausted route now marks fal down for the cooldown, and calls skip it.
+FAL_DOWN_COOLDOWN_SECONDS = 600
+_fal_down_until = 0.0
+
+
 async def _seedream_request(
     prompt: str,
     image_urls: list[str],
@@ -2511,8 +2519,12 @@ async def _seedream_request(
     only transport timeouts and transient HTTP errors.  Policy/validation 4xx
     responses are returned immediately so we never try to bypass provider safety.
     """
+    global _fal_down_until
     if not FAL_KEY:
         raise PhotoGenerationError('seedream45', 'FAL_KEY is not configured')
+    if time.monotonic() < _fal_down_until:
+        logger.info('Seedream skipped (fal down) label=%s', request_label or '-')
+        raise PhotoGenerationError('seedream45', 'fal_down')
     
     # V3.44.3: fal retires/renames routes (v4.5 → v5 lite/pro). When the
     # configured model answers 404, walk a bounded fallback list of known
@@ -2577,8 +2589,11 @@ async def _seedream_request(
                         request_label or '-', candidate, attempt, max_attempts, elapsed, type(exc).__name__,
                     )
                     if attempt >= max_attempts:
-                        last_error = PhotoGenerationError('seedream45', f'transport_{type(exc).__name__}')
-                        break
+                        # every route lives on fal.run: a dead transport here is
+                        # dead for the rest of the list too.
+                        _fal_down_until = time.monotonic() + FAL_DOWN_COOLDOWN_SECONDS
+                        logger.error('fal marked down for %ss after %s', FAL_DOWN_COOLDOWN_SECONDS, type(exc).__name__)
+                        raise PhotoGenerationError('seedream45', f'transport_{type(exc).__name__}')
                     await asyncio.sleep(FAL_RETRY_BACKOFF_SECONDS * attempt)
                     continue
     
