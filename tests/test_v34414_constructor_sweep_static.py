@@ -34,7 +34,7 @@ def test_avatar_attempts_bounded():
 def test_retry_task_also_bounded():
     retry = MAIN[MAIN.index('async def _retry_constructor_avatar('):MAIN.index('async def _constructor_draft_sweep(')]
     assert 'await asyncio.wait_for(' in retry
-    assert 'timeout=240,' in retry
+    assert 'timeout=260,' in retry  # V3.64.5: SpicyAPI waits up to 240s
 
 
 def test_sweep_task_resumes_drafts_periodically():

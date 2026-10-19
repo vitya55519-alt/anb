@@ -795,12 +795,15 @@ def api_shop(lang: str = 'ru') -> dict:
     }
 
 
-def api_constructor_steps(lang: str = 'ru') -> list[dict]:
+def api_constructor_steps(lang: str = 'ru', *, admin: bool = False) -> list[dict]:
     """V3.35.0: the app wizard's steps — the same CONSTRUCTOR_STEPS the bot's
-    inline constructor walks, labeled per language."""
+    inline constructor walks, labeled per language. V3.64.6: the look-alike
+    photo upload step is shown to admins only."""
     en = lang == EN
     out = []
     for step in CONSTRUCTOR_STEPS:
+        if step.get('photo_upload') and not admin:
+            continue
         title = STEP_TITLES_EN.get(step['key'], step['title']) if en else step['title']
         options = [
             {'value': value, 'label': (OPTION_LABELS_EN.get(value, label) if en else label)}

@@ -4417,6 +4417,8 @@ function renderStudio() {
     <div class="sect-title">${esc(L.pic_gallery)}</div>
     <div id="picGallery"></div>`;
   document.querySelectorAll('#picModeSeg .modeBtn').forEach(b => b.addEventListener('click', () => switchStudioMode(b.dataset.mode)));
+  // V3.64.6: generating from an uploaded photo is admin-only.
+  if (!(ME && ME.admin)) document.querySelector('.uplRow').style.display = 'none';
   document.getElementById('uplBtn').addEventListener('click', () => document.getElementById('picUpload').click());
   document.getElementById('picUpload').addEventListener('change', onStudioUpload);
   document.getElementById('uplRemove').addEventListener('click', () => { PIC_UPLOAD = null; paintUploadPreview(); });
