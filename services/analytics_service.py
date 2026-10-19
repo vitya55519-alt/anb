@@ -176,7 +176,40 @@ def admin_snapshot() -> dict:
         'sources_7d': [[(tag or 'organic'), int(cnt)] for tag, cnt in src_rows_window['sources_7d']],
         'funnel': onboarding_funnel(),
         'pay_funnel': pay_funnel(),
+        'source_quality': source_quality(),
     }
+
+
+def source_quality(days: int = 30, limit: int = 8) -> list[list]:
+    """V3.64.7: an ad channel is judged by who it brings, not by /start
+    taps — per source tag: started, wrote her (bot or app), came back on day 1
+    (any own action 24–48h after signup), and paid."""
+    since = _now() - timedelta(days=days)
+    with SessionLocal() as s:
+        users = s.execute(select(User.id, User.source_tag, User.created_at).where(User.created_at >= since)).all()
+        if not users:
+            return []
+        ids = [u.id for u in users]
+
+        def who(names) -> set:
+            return set(s.scalars(select(func.distinct(ProductEvent.user_id)).where(
+                ProductEvent.user_id.in_(ids), ProductEvent.event_name.in_(names))).all())
+        wrote = who(('chat_user_message', 'webapp_chat_message'))
+        paid = who(('stars_purchase', 'platega_paid'))
+        active = s.execute(select(ProductEvent.user_id, ProductEvent.created_at).where(
+            ProductEvent.user_id.in_(ids), ProductEvent.event_name.in_(ACTIVE_EVENTS))).all()
+    created = {u.id: u.created_at for u in users}
+    back = {uid for uid, at in active
+            if timedelta(days=1) <= at - created[uid] < timedelta(days=2)}
+    rows: dict[str, list[int]] = {}
+    for u in users:
+        r = rows.setdefault(u.source_tag or 'organic', [0, 0, 0, 0])
+        r[0] += 1
+        r[1] += u.id in wrote
+        r[2] += u.id in back
+        r[3] += u.id in paid
+    ranked = sorted(rows.items(), key=lambda kv: -kv[1][0])[:limit]
+    return [[tag, *counts] for tag, counts in ranked]
 
 
 def pay_funnel(days: int = 30) -> dict:
