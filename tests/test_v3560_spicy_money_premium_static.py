@@ -83,7 +83,8 @@ def test_daily_gift_targets_active_users_only():
 def test_adult_path_single_spicy_attempt():
     assert "engine_used = 'spicyapi_t2i'" in HOT
     assert "engine_used = 'spicyapi_i2i'" not in HOT
-    assert "engine_used = 'fal_ai_t2i'" in HOT
+    # V3.64.5: fal is gone from the hot path
+    assert "engine_used = 'fal_ai_t2i'" not in HOT
 
 
 def test_hot_engine_hint_reaches_the_feed():

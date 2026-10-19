@@ -101,7 +101,9 @@ SPICYAPI_T2I_MODEL = os.getenv("SPICYAPI_T2I_MODEL", "bytedance/seedream-5.0-pro
 # edits took 34–75s, and the failed one was still «running» at 91s while the
 # provider allows 30 min. The job is billed once accepted, so waiting longer is
 # cheaper than abandoning it for a fallback.
-SPICYAPI_IMAGE_TIMEOUT = max(30, min(240, int(os.getenv("SPICYAPI_IMAGE_TIMEOUT", "150"))))
+# V3.64.5: 19.10 two of four jobs were still «running» at 90s/150s; with fal
+# gone there is no other engine to hand over to, so wait up to 4 minutes.
+SPICYAPI_IMAGE_TIMEOUT = max(30, min(600, int(os.getenv("SPICYAPI_IMAGE_TIMEOUT", "240"))))
 # V3.58.2: 1k = $0.036/job and faster than 2k; «thinking» adds latency, so it
 # is off unless the owner turns it on from Railway.
 # V3.59.4: owner tried 2k; V3.59.9: back to 1k — at 2k faces and figures

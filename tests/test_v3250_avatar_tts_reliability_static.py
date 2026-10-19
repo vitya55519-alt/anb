@@ -32,12 +32,10 @@ def test_constructor_avatar_engines_exist():
     assert 'async def _gemini_edit(prompt: str, reference_path: Path | None = None) -> tuple[bytes, str]:' in PHOTO
     # V3.40.0: the chain assigns then reports to the provider counters, so the
     # direct-return pins became result-assignment pins.
-    assert 'result = await _seedream_edit(reference_path, prompt)' in PHOTO
     assert 'result = await _gemini_edit(prompt, reference_path)' in PHOTO
-    assert "record_provider('photo/seedream_edit', True)" in PHOTO
     assert "record_provider('photo/gemini', False," in PHOTO
-    # face-swap only makes sense with a reference; no-ref goes straight to Gemini
-    assert 'if FAL_KEY and reference_path:' in PHOTO
+    # V3.64.5: fal is off — the avatar/studio engine is Gemini only
+    assert 'if FAL_KEY and reference_path:' not in PHOTO
 
 
 def test_reference_images_downscaled_before_embedding():

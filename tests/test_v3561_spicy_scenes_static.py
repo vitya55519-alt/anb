@@ -56,10 +56,11 @@ def test_spicy_set_reuses_the_seedream_prompt_chain():
     assert 'if out:' in SPICY_SET and 'break' in SPICY_SET
 
 
-def test_routed_walks_spicy_then_fal():
+def test_routed_spicy_has_no_fal_fallback():
+    # V3.64.5: owner removed fal — a SpicyAPI miss is final
     assert "if provider == 'spicyapi':" in ROUTED
     assert '_run_spicy_set(character, telegram_id, resolved' in ROUTED
-    assert "from=spicyapi to=seedream45" in ROUTED
+    assert "from=spicyapi to=seedream45" not in ROUTED
     assert ROUTED.index("if provider == 'spicyapi':") < ROUTED.index("if provider == 'seedream45':")
 
 

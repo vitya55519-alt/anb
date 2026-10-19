@@ -11,12 +11,13 @@ def test_spicy_reason_carries_last_error():
     assert ps._spicy_reason('empty_result', '') == 'empty_result'
 
 
-def test_fallback_failure_keeps_both_reasons(monkeypatch):
+def test_spicy_failure_is_final_without_fal(monkeypatch):
+    # V3.64.5: fal is removed; SpicyAPI's own cause reaches the toast as-is
     async def spicy(*a, **k):
         raise PhotoGenerationError('spicyapi', 'breaker_open:http_402')
 
     async def fal(*a, **k):
-        raise PhotoGenerationError('seedream45', 'transport_ReadError')
+        raise AssertionError('fal must not be called')
 
     monkeypatch.setattr(ps, '_run_spicy_set', spicy)
     monkeypatch.setattr(ps, '_run_seedream_set', fal)
@@ -26,6 +27,6 @@ def test_fallback_failure_keeps_both_reasons(monkeypatch):
     try:
         asyncio.run(ps._run_routed_photo_set({}, 1, req, 'spicyapi', frames=1))
     except PhotoGenerationError as exc:
-        assert exc.reason == 'spicyapi/breaker_open:http_402 → seedream45/transport_ReadError'
+        assert exc.reason == 'breaker_open:http_402'
     else:
         raise AssertionError('expected failure')
