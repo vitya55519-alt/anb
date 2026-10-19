@@ -379,34 +379,41 @@
     width: 32px; height: 32px; border-radius: 50%; background: var(--accent);
     color: #fff; display: flex; align-items: center; justify-content: center; font-size: 17px;
   }
+  /* V3.64.7: «пошлый режим» banner right under the channel banner — few
+     users found the switch in Settings. */
+  .spicybanner { background: linear-gradient(90deg, rgba(255,92,56,.30), rgba(232,68,127,.18)); }
+  .spicybanner .gift { background: radial-gradient(circle at 35% 30%, #ffb38a, #ff5c38); }
+  .spicybanner .t small { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--muted); }
+  .spicybanner .ar.on { width: auto; padding: 0 10px; border-radius: 16px; font-size: 12px; font-weight: 700; background: #ff5c38; }
   /* V3.43.0: the centered gift modal for the channel bonus */
-  #chanmodal {
+  #chanmodal, #spicymodal {
     position: fixed; inset: 0; z-index: 45; display: none;
     align-items: center; justify-content: center; background: rgba(10,5,14,.62);
   }
-  #chanmodal.open { display: flex; }
-  #chanmodal .box {
+  #chanmodal.open, #spicymodal.open { display: flex; }
+  #chanmodal .box, #spicymodal .box {
     width: min(320px, 86vw); background: var(--card); border-radius: 18px;
     padding: 20px 16px 16px; text-align: center; position: relative;
   }
-  #chanmodal .gift {
+  #chanmodal .gift, #spicymodal .gift {
     width: 62px; height: 62px; border-radius: 50%; margin: 0 auto 10px;
     background: radial-gradient(circle at 35% 30%, #ff9ec7, var(--accent));
     display: flex; align-items: center; justify-content: center; font-size: 29px;
   }
-  #chanmodal h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
-  #chanmodal .txt { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
-  #chanmodal .warn {
+  #chanmodal h3, #spicymodal h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
+  #chanmodal .txt, #spicymodal .txt { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+  #chanmodal .warn, #spicymodal .warn {
     background: rgba(255,193,7,.13); color: #ffc107; border-radius: 10px;
     font-size: 12px; padding: 8px 10px; margin-bottom: 12px;
   }
-  #chanmodal .go, #chanmodal .chk {
+  #chanmodal .go, #chanmodal .chk, #spicymodal .go, #spicymodal .chk {
     width: 100%; border: 0; border-radius: 12px; padding: 12px;
     font-size: 14px; font-weight: 600; cursor: pointer;
   }
-  #chanmodal .go { background: linear-gradient(90deg, var(--accent), #ff7ab0); color: #fff; margin-bottom: 8px; }
-  #chanmodal .chk { background: var(--card2); color: var(--text); }
-  #chanmodal .x {
+  #chanmodal .go, #spicymodal .go { background: linear-gradient(90deg, var(--accent), #ff7ab0); color: #fff; margin-bottom: 8px; }
+  #chanmodal .chk, #spicymodal .chk { background: var(--card2); color: var(--text); }
+  #spicymodal .gift { background: radial-gradient(circle at 35% 30%, #ffb38a, #ff5c38); }
+  #chanmodal .x, #spicymodal .x {
     position: absolute; top: 8px; right: 10px; border: 0; background: transparent;
     color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px;
   }
@@ -909,6 +916,12 @@
       <span class="t" id="chanBannerText"></span>
       <span class="ar">→</span>
     </button>
+    <!-- V3.64.7: «пошлый режим» on the main screen, under the channel banner -->
+    <button class="chanbanner spicybanner" id="spicyBanner">
+      <span class="gift">🌶</span>
+      <span class="t"><span id="spicyBannerText"></span><small id="spicyBannerSub"></small></span>
+      <span class="ar" id="spicyBannerState">→</span>
+    </button>
     <div class="grid" id="chargrid"><div class="loading" id="l_loading"><div class="skeleton-grid"><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div></div></div></div>
     <!-- V3.48.2: 6 cards per page — prev/next under the grid, both segments. -->
     <div class="charpager" id="charPager"></div>
@@ -970,6 +983,18 @@
     <div class="warn" id="chanWarn"></div>
     <button class="go" id="chanGo"></button>
     <button class="chk" id="chanCheck"></button>
+  </div>
+</div>
+<!-- V3.64.7: «пошлый режим» explainer + switch -->
+<div id="spicymodal">
+  <div class="box">
+    <button class="x" id="spicyClose">✕</button>
+    <div class="gift">🌶</div>
+    <h3 id="spicyMTitle"></h3>
+    <div class="txt" id="spicyMText"></div>
+    <div class="warn" id="spicyMWarn"></div>
+    <button class="go" id="spicyGo"></button>
+    <button class="chk" id="spicyLater"></button>
   </div>
 </div>
 <!-- V3.43.0: pay-method modal (Come Closer: tap a square → Stars/SBP/crypto) -->
@@ -1409,7 +1434,11 @@ const L_EN = {
   // V3.43.5: the in-app Settings section (spicy switch + interface language).
   settings_title: 'Settings', spicy_title: '🌶 Spicy mode', spicy_on: 'on', spicy_off: 'off',
   spicy_prem: 'Spicy mode is a Premium perk ⭐', spicy_toast_on: 'Spicy mode is on 🔥',
-  spicy_toast_off: 'Spicy mode is off 🌙', lang_title: '🌐 Interface language',
+  spicy_toast_off: 'Spicy mode is off 🌙',
+  spicy_banner: '🔥 Spicy mode', spicy_banner_sub: 'She gets bolder and more candid, the conversation changes',
+  spicy_m_text: 'She flirts openly, teases and talks about desire without holding back. The closer you two get, the more candid she becomes. You can switch it off any time.',
+  spicy_m_warn: '18+ only · a Premium perk ⭐', spicy_m_on: 'Turn on 🔥', spicy_m_off: 'Turn off',
+  spicy_m_buy: 'Unlock with Premium ⭐', spicy_m_later: 'Later', lang_title: '🌐 Interface language',
   // V3.43.7: the scene picker behind the app-chat photo button.
   photo_menu_title: '📸 Which photo?',
   sc_locked: n => 'opens at level ' + n,
@@ -1605,7 +1634,11 @@ const L_RU = {
   // V3.43.5: секция «Настройки» в профиле (пошлый режим + язык интерфейса).
   settings_title: 'Настройки', spicy_title: '🌶 Пошлый режим', spicy_on: 'вкл', spicy_off: 'выкл',
   spicy_prem: 'Пошлый режим — фишка Premium ⭐', spicy_toast_on: 'Пошлый режим включён 🔥',
-  spicy_toast_off: 'Пошлый режим выключен 🌙', lang_title: '🌐 Язык интерфейса',
+  spicy_toast_off: 'Пошлый режим выключен 🌙',
+  spicy_banner: '🔥 Пошлый режим', spicy_banner_sub: 'Она станет смелее и откровеннее, общение пойдёт по-другому',
+  spicy_m_text: 'Она флиртует открыто, дразнит и говорит о желаниях без стеснения. Чем ближе вы становитесь, тем откровеннее она. Выключить можно в любой момент.',
+  spicy_m_warn: 'Только 18+ · фишка Premium ⭐', spicy_m_on: 'Включить 🔥', spicy_m_off: 'Выключить',
+  spicy_m_buy: 'Открыть с Premium ⭐', spicy_m_later: 'Позже', lang_title: '🌐 Язык интерфейса',
   // V3.43.7: выбор сцены за кнопкой «📸 Фото» в чате приложения.
   photo_menu_title: '📸 Какое фото?',
   sc_locked: n => 'откроется на уровне ' + n,
@@ -1942,6 +1975,12 @@ document.getElementById('capClose').textContent = L.cap_close;
  ['dsFeatApt', 'cap_apt'], ['dsFeatVideo', 'cap_video'], ['dsFeatCosplay', 'cap_cosplay'], ['dsFeatHot', 'cap_hot']]
   .forEach(([id, key]) => { const el = document.getElementById(id); if (el) el.textContent = L[key]; });
 document.getElementById('chanBannerText').textContent = L.chan_banner;
+document.getElementById('spicyBannerText').textContent = L.spicy_banner;
+document.getElementById('spicyBannerSub').textContent = L.spicy_banner_sub;
+document.getElementById('spicyMTitle').textContent = L.spicy_banner;
+document.getElementById('spicyMText').textContent = L.spicy_m_text;
+document.getElementById('spicyMWarn').textContent = L.spicy_m_warn;
+document.getElementById('spicyLater').textContent = L.spicy_m_later;
 document.getElementById('chanTitle').textContent = L.chan_title;
 document.getElementById('chanWarn').textContent = L.chan_warn;
 document.getElementById('chanGo').textContent = L.chan_go;
@@ -4989,6 +5028,46 @@ async function withdrawPartner() {
 }
 
 // ── profile ───────────────────────────────────────────────────────────────
+// V3.64.7: one switch for the Settings row and the main-screen banner.
+async function toggleSpicy() {
+  if (!ME) return;
+  if (!ME.spicy_mode && !ME.premium) { toast(L.spicy_prem); showTab('shop'); return; }
+  try {
+    const r = await fetch('/webapp/api/spicy?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
+    if (r.status === 403) {
+      const j403 = await r.json().catch(() => ({}));
+      if (j403.error === 'adult_confirm') { toast(L.adult_confirm_needed); return; }
+      toast(L.spicy_prem); showTab('shop'); return;
+    }
+    const j = await r.json();
+    if (!j.ok) return;
+    ME.spicy_mode = !!j.spicy_mode;
+    const sv = document.getElementById('spicyVal');
+    if (sv) sv.textContent = ME.spicy_mode ? '🔥 ' + L.spicy_on : L.spicy_off;
+    renderSpicyBanner();
+    toast(ME.spicy_mode ? L.spicy_toast_on : L.spicy_toast_off);
+  } catch (e) { toast(String(e.message || '')); }
+}
+function renderSpicyBanner() {
+  const st = document.getElementById('spicyBannerState');
+  if (!st) return;
+  const on = !!(ME && ME.spicy_mode);
+  st.textContent = on ? L.spicy_on : '→';
+  st.className = 'ar' + (on ? ' on' : '');
+}
+function openSpicyModal() {
+  const on = !!(ME && ME.spicy_mode);
+  const go = document.getElementById('spicyGo');
+  go.textContent = on ? L.spicy_m_off : (ME && ME.premium ? L.spicy_m_on : L.spicy_m_buy);
+  document.getElementById('spicymodal').classList.add('open');
+}
+document.getElementById('spicyBanner').addEventListener('click', openSpicyModal);
+document.getElementById('spicyClose').addEventListener('click', () => document.getElementById('spicymodal').classList.remove('open'));
+document.getElementById('spicyLater').addEventListener('click', () => document.getElementById('spicymodal').classList.remove('open'));
+document.getElementById('spicyGo').addEventListener('click', async () => {
+  document.getElementById('spicymodal').classList.remove('open');
+  await toggleSpicy();
+});
 async function loadMe() {
   const chip = document.getElementById('userchip');
   try {
@@ -5005,6 +5084,7 @@ async function loadMe() {
     chip.textContent = m_chipText(ME);
     chip.className = 'chip' + (ME.premium ? ' premium' : '');
     renderUnlimitedBanner();
+    renderSpicyBanner();
     renderProfileBody();
     // V3.55.5: the shop gift series mirrors ME — repaint it if the tab is open.
     renderGiftBlock();
@@ -5120,20 +5200,7 @@ const mcr = document.getElementById('menuCreator');
   // V3.43.5: «пошлый режим» прямо в настройках приложения — раньше
   // переключатель был спрятан в чате бота, и владелец сам его «еле нашел».
   const rs = document.getElementById('rowSpicy');
-  if (rs) rs.addEventListener('click', async () => {
-    if (!ME) return;
-    if (!ME.spicy_mode && !ME.premium) { toast(L.spicy_prem); showTab('shop'); return; }
-    try {
-      const r = await fetch('/webapp/api/spicy?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
-      if (r.status === 403) { toast(L.spicy_prem); showTab('shop'); return; }
-      const j = await r.json();
-      if (!j.ok) return;
-      ME.spicy_mode = !!j.spicy_mode;
-      const sv = document.getElementById('spicyVal');
-      if (sv) sv.textContent = ME.spicy_mode ? '🔥 ' + L.spicy_on : L.spicy_off;
-      toast(ME.spicy_mode ? L.spicy_toast_on : L.spicy_toast_off);
-    } catch (e) { toast(String(e.message || '')); }
-  });
+  if (rs) rs.addEventListener('click', toggleSpicy);
   // V3.43.5: интерфейс на семи языках — выбор в настройках бьёт язык аккаунта.
   document.querySelectorAll('#langChips .langChip').forEach(ch => ch.addEventListener('click', () => {
     localStorage.setItem('app_lang', ch.dataset.lang);
