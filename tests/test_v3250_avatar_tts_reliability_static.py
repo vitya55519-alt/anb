@@ -36,6 +36,8 @@ def test_constructor_avatar_engines_exist():
     assert "record_provider('photo/gemini', False," in PHOTO
     # V3.64.5: fal is off — the avatar/studio engine is Gemini only
     assert 'if FAL_KEY and reference_path:' not in PHOTO
+    # no reference = fictional girl -> SpicyAPI t2i; a real uploaded photo stays on Gemini
+    assert "record_provider('photo/spicyapi_t2i', bool(data))" in PHOTO
 
 
 def test_reference_images_downscaled_before_embedding():

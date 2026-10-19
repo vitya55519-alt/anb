@@ -1596,9 +1596,21 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
     # V3.44.3: accumulate the whole chain — the studio toast must show WHY
     # every engine failed, not just the last one.
     chain_errors: list[str] = []
-    # V3.64.5: fal is off for good (owner's call, dead since 15.10). The
-    # studio/constructor keep the censored Gemini engine — a user's real face
-    # never goes to the uncensored SpicyAPI engine.
+    # V3.64.5: owner's call «вообще все генерации через Spicy» — fal is off
+    # for good (dead since 15.10). Without a reference the avatar/studio frame
+    # is a fictional girl and renders on SpicyAPI text-to-image. A reference
+    # here is a user's real uploaded photo: that one never goes to the
+    # uncensored engine and stays on the censored Gemini edit.
+    if reference_path is None:
+        from services.private_photo_service import generate_private_photo_t2i
+        data = await generate_private_photo_t2i(
+            prompt + '\nHARD SUBJECT LOCK: a fictional adult woman (21+). Never depict minors.'
+        )
+        record_provider('photo/spicyapi_t2i', bool(data))
+        if data:
+            return data, 'image/jpeg'
+        from services.private_photo_service import spicyapi_last_error
+        raise PhotoGenerationError('custom_avatar', f'spicyapi_t2i/{spicyapi_last_error() or "empty_result"}')
     if gemini_on_cooldown():
         chain_errors.append('gemini/skipped: http_429 cooldown')
         raise PhotoGenerationError('custom_avatar', ' → '.join(chain_errors))

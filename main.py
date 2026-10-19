@@ -8485,7 +8485,7 @@ async def _retry_constructor_avatar(telegram_id: int, character_id: str) -> None
                 return
             params, name = custom_character_params(character_id)
             avatar_bytes, _mime = await asyncio.wait_for(
-                generate_custom_avatar(build_avatar_prompt(params)), timeout=240,
+                generate_custom_avatar(build_avatar_prompt(params)), timeout=260,
             )
             sent = await bot.send_photo(telegram_id, BufferedInputFile(avatar_bytes, filename='avatar.jpg'))
             from services.photo_service import _custom_reference_dir
