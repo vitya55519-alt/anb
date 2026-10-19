@@ -120,3 +120,46 @@ def casual_punctuation(answer: str) -> str:
         b = re.sub(r'\s*,?\s+[—–]\s+', ', ', b)
         bubbles.append(b)
     return '\n\n'.join(bubbles)
+
+
+# V3.63.15: the messages she writes first (proactive, life moments) are built
+# without the dialogue guard, and she kept sending the same promise again
+# («завтра утром пришлю тебе кое-что 🙈 не проси»). A sentence whose words
+# mostly repeat one of her recent sentences is dropped.
+_SENTENCE_SPLIT = re.compile(r'(?<=[.!?…])\s+|\n+')
+_WORD = re.compile(r'[а-яёa-z0-9]+(?:-[а-яёa-z0-9]+)?')
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in _WORD.findall((text or '').lower().replace('ё', 'е')) if len(w) > 1}
+
+
+def drop_repeated_lines(answer: str, recent_bot_texts, min_words: int = 4,
+                        threshold: float = 0.75) -> str:
+    """Remove sentences that mostly repeat her recent ones; '' when all repeat."""
+    if not answer:
+        return answer
+    seen = [w for t in recent_bot_texts or () for s in _SENTENCE_SPLIT.split(t or '')
+            if len(w := _words(s)) >= min_words]
+    if not seen:
+        return answer
+    bubbles = []
+    for bubble in answer.strip().split('\n\n'):
+        kept = []
+        for s in _SENTENCE_SPLIT.split(bubble):
+            w = _words(s)
+            if len(w) >= min_words and any(len(w & old) / len(w) >= threshold for old in seen):
+                continue
+            kept.append(s.strip())
+        b = ' '.join(k for k in kept if k)
+        if b:
+            bubbles.append(b)
+    return '\n\n'.join(bubbles)
+
+
+def polish_first_message(text: str, recent_bot_texts) -> str:
+    """Same chat polish as replies for a message she sends on her own."""
+    text = drop_repeated_lines(text, recent_bot_texts)
+    if not text:
+        return ''
+    return casual_punctuation(diversify_emoji(text, recent_bot_texts))

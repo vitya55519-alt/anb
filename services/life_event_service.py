@@ -100,8 +100,19 @@ def _pending_hook(telegram_id: int) -> str:
         return ''
 
 
+def _recent_her_lines(telegram_id: int, character_id: str, limit: int = 6) -> list[str]:
+    """Her last messages in this chat, so a new moment never repeats them."""
+    try:
+        from services.user_service import ensure_user
+        from services.memory_service import get_recent_messages
+        rows = get_recent_messages(ensure_user(telegram_id), character_id, 12)
+        return [m.content for m in rows if m.role == 'assistant' and m.content][-limit:]
+    except Exception:
+        return []
+
+
 def _system_prompt(name: str, when: str, tastes: list[str], temperament: str,
-                   mem: str, hook: str) -> str:
+                   mem: str, hook: str, recent: list[str] | None = None) -> str:
     bits = [
         f'Ты — {name}.' if name else 'Ты — она.',
         temperament,
@@ -117,6 +128,9 @@ def _system_prompt(name: str, when: str, tastes: list[str], temperament: str,
         bits.append(f'Можешь естественно вспомнить деталь от пользователя и связать её со своим моментом: «{mem}».')
     if hook:
         bits.append(f'Незакрытая тема пользователя, к которой можно вернуться: «{hook}».')
+    if recent:
+        bits.append('Твои последние сообщения ему, их не повторяй и не обещай то же снова: '
+                    + ' | '.join(f'«{t[:120]}»' for t in recent[-4:]) + '.')
     bits.append(
         'Закончи открытой петлёй — мини-вопросом или интригой («угадай, что было '
         'дальше»), чтобы в ответ было легко написать одной фразой. Без хэштегов, '
@@ -131,7 +145,8 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
         name, tastes, temperament = _character_ingredients(character_id)
         mem = _memory_callback(telegram_id, character_id)
         hook = _pending_hook(telegram_id)
-        system = _system_prompt(name, when, tastes, temperament, mem, hook)
+        recent = _recent_her_lines(telegram_id, character_id)
+        system = _system_prompt(name, when, tastes, temperament, mem, hook, recent)
         from services.llm_provider_service import generate_text
         # V3.63.1: a system-only request is rejected by MiniMax («chat content
         # is empty») and Gemini («contents is not specified») — every life
@@ -140,6 +155,10 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
                                  {'role': 'user', 'content': 'Напиши ему это сообщение сейчас.'}],
                                 max_tokens=90, temperature=0.95, purpose='life_event')
         text = (getattr(r, 'text', '') or '').strip().strip('"').strip()
+        # V3.63.15: same chat polish as replies (no em dash, no emoji tic) and
+        # nothing she already said; a pure repeat skips the slot.
+        from services.dialogue_guard_service import polish_first_message
+        text = polish_first_message(text, recent)
         if len(text) < 8:
             return {}
         photo = None
