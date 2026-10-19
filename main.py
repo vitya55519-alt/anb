@@ -8646,6 +8646,10 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     await bot.send_message(chat_id, '✨ Отлично! Рисую твою героиню — это займёт до минуты...')
     face_path = None
     photo_reference_path = None
+    if telegram_id not in ADMIN_TELEGRAM_IDS:
+        # V3.64.6: generating from a real person's uploaded photo is admin-only.
+        cons = {k: v for k, v in cons.items() if k not in ('photo_reference_base64', 'face_bytes', 'face_file_id')}
+        params = {k: v for k, v in params.items() if k != 'photo_reference'}
     # V3.44.5: handle base64 photo reference from Mini App.
     photo_reference_base64 = cons.get('photo_reference_base64')
     if photo_reference_base64:
@@ -8946,6 +8950,10 @@ async def constructor_step_cb(cq: types.CallbackQuery):
         await cq.message.answer(_constructor_prompt(key), reply_markup=_constructor_step_keyboard(key))
         return
     if action == 'face_upload':
+        if telegram_id not in ADMIN_TELEGRAM_IDS:
+            await cq.answer()
+            await _constructor_confirm(cq.message.chat.id, telegram_id)
+            return
         cons['await'] = 'face'
         await cq.answer()
         await cq.message.answer('Пришли фото лица одним сообщением 📷\n/cancel — отменить')
@@ -8972,6 +8980,10 @@ async def constructor_step_cb(cq: types.CallbackQuery):
     params[key] = value
     cons['params'] = params
     cons['step'] = index + 1
+    # V3.64.6: the look-alike photo step is admin-only.
+    while (telegram_id not in ADMIN_TELEGRAM_IDS and cons['step'] < len(CONSTRUCTOR_STEPS)
+           and CONSTRUCTOR_STEPS[cons['step']].get('photo_upload')):
+        cons['step'] += 1
     await cq.answer()
     # V3.44.4: handle free_text steps (backstory, personality) and community step.
     # V3.44.5: handle photo_upload steps (reference photo).
@@ -9981,7 +9993,12 @@ async def text_message(message: types.Message):
             return
         constructor_name_session['params']['name'] = name_value
         constructor_name_session['await'] = None
-        await _constructor_face_step(message.chat.id, message.from_user.id)
+        # V3.64.6: owner's call — a look-alike from a real uploaded photo is
+        # admin-only; everyone else goes straight to the confirm card.
+        if message.from_user.id in ADMIN_TELEGRAM_IDS:
+            await _constructor_face_step(message.chat.id, message.from_user.id)
+        else:
+            await _constructor_confirm(message.chat.id, message.from_user.id)
         return
     # V3.44.5: photo reference step — user uploads a photo of who she should look like.
     if constructor_name_session and constructor_name_session.get('await', '').startswith('photo_'):
@@ -12475,6 +12492,9 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     # restyle it). The file is written to a throwaway temp path and deleted
     # right after the render — it is never persisted.
     ref_path = None
+    if body.get('image') and telegram_id not in ADMIN_TELEGRAM_IDS:
+        # V3.64.6: generating from an uploaded real photo is admin-only.
+        return web.json_response({'ok': False, 'error': 'upload_admin_only'}, status=403)
     if body.get('image'):
         decoded = webapp_service.decode_data_image(str(body.get('image')))
         if not decoded:
@@ -12605,6 +12625,9 @@ async def _webapp_api_studio_video(request: web.Request) -> web.Response:
     #    uncensored nude engine).
     image_bytes = None
     mime = 'image/jpeg'
+    if body.get('image') and telegram_id not in ADMIN_TELEGRAM_IDS:
+        # V3.64.6: animating an uploaded real photo is admin-only.
+        return web.json_response({'ok': False, 'error': 'upload_admin_only'}, status=403)
     if body.get('image'):
         decoded = webapp_service.decode_data_image(str(body.get('image')))
         if not decoded:
@@ -14013,7 +14036,7 @@ async def _webapp_api_constructor_options(request: web.Request) -> web.Response:
             telegram_id = webapp_service.init_data_user(pairs).get('id')
             free = bool(telegram_id) and telegram_id in ADMIN_TELEGRAM_IDS
     # V3.57.2: wizard steps are read from the DB — off the event loop
-    steps = await asyncio.to_thread(webapp_service.api_constructor_steps, request.query.get('lang', 'ru'))
+    steps = await asyncio.to_thread(webapp_service.api_constructor_steps, request.query.get('lang', 'ru'), admin=free)
     return web.json_response({
         'ok': True,
         'steps': steps,
