@@ -11,7 +11,7 @@ def test_spicy_banner_sits_right_under_the_channel_banner():
     grid = INDEX.index('id="chargrid"')
     assert chan < spicy < grid
     assert "spicy_banner: '🔥 Пошлый режим'" in INDEX
-    assert 'общение пойдёт по-другому' in INDEX
+    assert 'Без стеснения и запретных тем' in INDEX
 
 
 def test_banner_and_settings_share_one_switch():
