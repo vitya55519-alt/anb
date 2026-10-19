@@ -3842,8 +3842,12 @@ def _sources_block(snap: dict) -> str:
     since V3.47.0 but never shown on the screen."""
     def lines(rows):
         return '\n'.join(f'· {_source_label(tag)} — {cnt}' for tag, cnt in rows) or '· нет новых'
+    quality = '\n'.join(
+        f'· {_source_label(tag)}: {n} → написали {w} → вернулись D1 {b} → оплатили {p}'
+        for tag, n, w, b, p in (snap.get('source_quality') or [])) or '· нет новых'
     return (f'📥 откуда пришли новые (24ч):\n{lines(snap.get("sources_24h") or [])}\n'
-            f'📥 за 7д:\n{lines(snap.get("sources_7d") or [])}')
+            f'📥 за 7д:\n{lines(snap.get("sources_7d") or [])}\n'
+            f'🎯 качество источников (30д):\n{quality}')
 
 
 @dp.callback_query(F.data == 'admin:providers')
