@@ -95,7 +95,9 @@ def test_profile_screen_carries_the_settings_section():
     assert "${esc(L.spicy_title)}" in INDEX
     # the row posts to the new endpoint and reacts to its verdicts
     assert "fetch('/webapp/api/spicy?init_data='" in INDEX
-    assert 'if (r.status === 403) { toast(L.spicy_prem); showTab(\'shop\'); return; }' in INDEX
+    # V3.64.7: the 403 branch also tells «confirm 18+» apart from «need Premium».
+    assert "if (r.status === 403) {" in INDEX
+    assert "toast(L.spicy_prem); showTab('shop'); return;" in INDEX
     assert 'ME.spicy_mode = !!j.spicy_mode;' in INDEX
     assert "toast(ME.spicy_mode ? L.spicy_toast_on : L.spicy_toast_off);" in INDEX
     # the client Premium gate matches the server rule

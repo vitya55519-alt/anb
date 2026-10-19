@@ -11487,12 +11487,18 @@ async def _webapp_api_spicy(request: web.Request) -> web.Response:
         current = bool(getattr(user, 'spicy_mode', False)) if user else False
         if not current and not is_premium(telegram_id):
             return None
+        # V3.64.7: the main-screen banner makes this switch visible to
+        # everyone — enabling also needs the 18+ confirmation.
+        if not current and not is_adult_confirmed(telegram_id):
+            return 'adult_confirm'
         update_user_settings(telegram_id, spicy_mode=not current)
         return not current
 
     flipped = await asyncio.to_thread(_toggle)
     if flipped is None:
         return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    if flipped == 'adult_confirm':
+        return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
     return web.json_response({'ok': True, 'spicy_mode': flipped}, headers={'Cache-Control': 'no-store'})
 
 
