@@ -13,6 +13,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 def test_spicy_waits_past_slow_jobs():
     # successful jobs took up to 75s; 90s cut off a live one
     assert config.SPICYAPI_IMAGE_TIMEOUT >= 150
+    # V3.64.5: 19.10 a job was still running at 150s; default is now 240
+    assert 'os.getenv("SPICYAPI_IMAGE_TIMEOUT", "240")' in (ROOT / 'config.py').read_text(encoding='utf-8')
 
 
 def test_raw_engine_chain_is_admin_only():

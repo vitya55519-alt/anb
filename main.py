@@ -8485,7 +8485,7 @@ async def _retry_constructor_avatar(telegram_id: int, character_id: str) -> None
                 return
             params, name = custom_character_params(character_id)
             avatar_bytes, _mime = await asyncio.wait_for(
-                generate_custom_avatar(build_avatar_prompt(params)), timeout=240,
+                generate_custom_avatar(build_avatar_prompt(params)), timeout=260,
             )
             sent = await bot.send_photo(telegram_id, BufferedInputFile(avatar_bytes, filename='avatar.jpg'))
             from services.photo_service import _custom_reference_dir
@@ -12810,31 +12810,12 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         if not image_bytes:
             from config import SPICYAPI_KEY as _spicy_key
             provider_error = 'spicyapi_empty_result' + ('' if _spicy_key else ' (SPICYAPI_KEY not set)')
-        if not image_bytes:
-            engine_used = 'fal_ai_t2i'
-            try:
-                from services.photo_service import _seedream_t2i
-                image_bytes, _ = await _seedream_t2i(prompt, allow_adult=True)
-            except Exception as exc:
-                fb = f'fal_t2i {type(exc).__name__}: {str(exc)[:120]}'
-                provider_error = f'{provider_error}; {fb}' if provider_error else fb
-                logger.warning('hot adult fal t2i fallback failed: %s', exc)
     else:
         image_bytes = await generate_private_photo_real(req, dna_ctx, prompt)
         if not image_bytes:
             from config import SPICYAPI_KEY as _spicy_key
             provider_error = 'spicyapi_empty_result' + ('' if _spicy_key else ' (SPICYAPI_KEY not set)')
-    if not image_bytes and not is_adult:
-        # Fallback for non-adult: SpicyAPI i2i failed, try fal.ai Seedream t2i
-        # (safety checker on — these are clothed/lingerie shots).
-        engine_used = 'fal_ai'
-        try:
-            from services.photo_service import _seedream_t2i
-            image_bytes, _ = await _seedream_t2i(prompt, allow_adult=False)
-        except Exception as exc:
-            fb = f'fal_fallback {type(exc).__name__}: {str(exc)[:120]}'
-            provider_error = f'{provider_error}; {fb}' if provider_error else fb
-            logger.warning('hot fal.ai fallback failed: %s', exc)
+    # V3.64.5: no fal fallbacks here any more — every «Наедине» photo is SpicyAPI only.
     logger.info('hot generated user=%s engine=%s ok=%s reason=%s', telegram_id, engine_used, bool(image_bytes), provider_error)
     if not image_bytes:
         raise PhotoGenerationError('hot', provider_error or 'all_providers_failed')

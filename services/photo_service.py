@@ -1596,27 +1596,21 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
     # V3.44.3: accumulate the whole chain — the studio toast must show WHY
     # every engine failed, not just the last one.
     chain_errors: list[str] = []
-    if FAL_KEY and reference_path:
-        try:
-            result = await _seedream_edit(reference_path, prompt)
-            record_provider('photo/seedream_edit', True)
-            return result
-        except Exception as exc:
-            record_provider('photo/seedream_edit', False, f'{type(exc).__name__}: {str(exc)[:120]}')
-            chain_errors.append(f'seedream_edit/{type(exc).__name__}: {str(exc)[:120]}')
-            logger.warning('constructor avatar Seedream failed; falling back to Gemini')
-    elif FAL_KEY:
-        # V3.39.0: freeform renders (the «Картинки» studio) get a real t2i
-        # engine before Gemini, so a single provider outage or refusal no
-        # longer kills the studio with «Не получилось нарисовать».
-        try:
-            result = await _seedream_t2i(prompt)
-            record_provider('photo/seedream_t2i', True)
-            return result
-        except Exception as exc:
-            record_provider('photo/seedream_t2i', False, f'{type(exc).__name__}: {str(exc)[:120]}')
-            chain_errors.append(f'seedream_t2i/{type(exc).__name__}: {str(exc)[:120]}')
-            logger.warning('studio Seedream t2i failed; falling back to Gemini')
+    # V3.64.5: owner's call «вообще все генерации через Spicy» — fal is off
+    # for good (dead since 15.10). Without a reference the avatar/studio frame
+    # is a fictional girl and renders on SpicyAPI text-to-image. A reference
+    # here is a user's real uploaded photo: that one never goes to the
+    # uncensored engine and stays on the censored Gemini edit.
+    if reference_path is None:
+        from services.private_photo_service import generate_private_photo_t2i
+        data = await generate_private_photo_t2i(
+            prompt + '\nHARD SUBJECT LOCK: a fictional adult woman (21+). Never depict minors.'
+        )
+        record_provider('photo/spicyapi_t2i', bool(data))
+        if data:
+            return data, 'image/jpeg'
+        from services.private_photo_service import spicyapi_last_error
+        raise PhotoGenerationError('custom_avatar', f'spicyapi_t2i/{spicyapi_last_error() or "empty_result"}')
     if gemini_on_cooldown():
         chain_errors.append('gemini/skipped: http_429 cooldown')
         raise PhotoGenerationError('custom_avatar', ' → '.join(chain_errors))
@@ -3057,21 +3051,11 @@ async def _run_routed_photo_set(
         raise PhotoGenerationError('budget', 'daily_image_budget_exhausted')
     try:
         if provider == 'spicyapi':
-            # V3.56.1: primary scene engine per owner; on any total failure walk
-            # to the proven fal leg so the user still gets a photo (the daily
-            # budget brake above already guarded both).
-            try:
-                return await _run_spicy_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
-            except PhotoGenerationError as exc:
-                logger.warning('PHOTO ROUTE FALLBACK user=%s scene=%s from=spicyapi to=seedream45 reason=%s', telegram_id, resolved.scene, exc.reason)
-                track_event(ensure_user(telegram_id), 'photo_provider_fallback', metadata={'scene': resolved.scene, 'from': 'spicyapi', 'to': 'seedream45', 'reason': exc.reason})
-                try:
-                    return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
-                except PhotoGenerationError as fal_exc:
-                    # V3.62.3: keep SpicyAPI's own cause — the admin toast used
-                    # to show only fal's «transport_ReadError» and hid why the
-                    # main engine refused in the first place.
-                    raise PhotoGenerationError('spicyapi', f'spicyapi/{exc.reason} → seedream45/{fal_exc.reason}') from fal_exc
+            # V3.64.5: owner's call «фал вообще убери, всё идёт в Спайси». fal has
+            # been dead since 15.10 (ReadError on every route), so the fallback
+            # only added ~28s of waiting before the same failure. A SpicyAPI
+            # miss now surfaces straight away and the caller refunds.
+            return await _run_spicy_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)
         if provider == 'seedream45':
             try:
                 return await _run_seedream_set(character, telegram_id, resolved, on_frame=on_frame, character_id=character_id, frames=frames)

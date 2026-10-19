@@ -51,7 +51,7 @@ def test_provider_counters_service_and_hooks():
     assert 'def record_provider(provider: str, ok: bool, error: str | None = None)' in PROV
     assert 'def provider_snapshot()' in PROV
     # every engine leg of the photo chain bumps its counter
-    for name in ('photo/seedream_edit', 'photo/seedream_t2i', 'photo/gemini'):
+    for name in ('photo/gemini',):
         assert f"record_provider('{name}', True)" in PHOTO
         assert f"record_provider('{name}', False," in PHOTO
     # the video / circle chains (bot dialog + Mini App) bump per engine
