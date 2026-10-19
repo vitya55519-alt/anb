@@ -97,7 +97,11 @@ SPICYAPI_IMAGE_MODEL = os.getenv("SPICYAPI_IMAGE_MODEL", "bytedance/seedream-5.0
 # if the default is wrong the admin toast now shows the real SpicyAPI error and
 # this can be corrected from Railway without a redeploy.
 SPICYAPI_T2I_MODEL = os.getenv("SPICYAPI_T2I_MODEL", "bytedance/seedream-5.0-pro/text-to-image").strip()
-SPICYAPI_IMAGE_TIMEOUT = max(30, min(180, int(os.getenv("SPICYAPI_IMAGE_TIMEOUT", "90"))))
+# V3.64.4: 90s cut off live jobs. Logs 17–19.10: successful Seedream 5.0 Pro
+# edits took 34–75s, and the failed one was still «running» at 91s while the
+# provider allows 30 min. The job is billed once accepted, so waiting longer is
+# cheaper than abandoning it for a fallback.
+SPICYAPI_IMAGE_TIMEOUT = max(30, min(240, int(os.getenv("SPICYAPI_IMAGE_TIMEOUT", "150"))))
 # V3.58.2: 1k = $0.036/job and faster than 2k; «thinking» adds latency, so it
 # is off unless the owner turns it on from Railway.
 # V3.59.4: owner tried 2k; V3.59.9: back to 1k — at 2k faces and figures

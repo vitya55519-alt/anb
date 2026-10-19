@@ -873,6 +873,7 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
         # AFTER the job was done — the owner's log lost ~13s to it. recordInfo
         # is free, so poll tight: detection latency ≤ 3s.
         wait = 1.0
+        state = 'queued'
         while asyncio.get_event_loop().time() < deadline:
             await asyncio.sleep(wait)
             wait = min(wait * 1.25, 3.0)
@@ -894,7 +895,7 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
                 _spicy_note_error(f"{state}: {task_info.get('errorCode') or task_info.get('errorMessage')}")
                 break
         if result is None:
-            logger.error(f"SpicyAPI no image (timeout or empty): {task_id}")
+            logger.error(f"SpicyAPI no image (timeout or empty): {task_id} last_state={state} waited={SPICYAPI_IMAGE_TIMEOUT}s")
             if not _spicy_last_error.startswith(('failed', 'expired', 'canceled')):
                 _spicy_note_error('timeout_or_empty')
     except Exception as e:
