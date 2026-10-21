@@ -116,7 +116,7 @@ def test_frontend_renders_fiat_next_to_stars():
     # (₽ for RU, $ for EN, Stars last) on tiles, Premium and the price list.
     assert 'function money(x)' in INDEX
     assert "if (LANG !== 'en' && rub) return rub + ' ₽';" in INDEX
-    assert 'esc(money(i))' in INDEX and 'esc(money(p))' in INDEX
+    assert 'esc(money(i))' in INDEX and 'esc(money(x))' in INDEX
     assert "esc(money(x))" in INDEX
     # V3.45.28: the wizard price is no longer community-aware — every creation
     # costs peaches (only admins get the free button); the old three-tier

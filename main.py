@@ -10719,6 +10719,24 @@ async def _webapp_api_missions(request: web.Request) -> web.Response:
                              headers={'Cache-Control': 'no-store'})
 
 
+async def _webapp_api_missions_claim(request: web.Request) -> web.Response:
+    """V3.66.0: «Забрать +N 🍑» on a finished mission in the app."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'no_user'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    key = str((body or {}).get('key', ''))[:64]
+    from services.gamification_service import claim_mission
+    result = await asyncio.to_thread(claim_mission, telegram_id, key)
+    return web.json_response(result, headers={'Cache-Control': 'no-store'})
+
+
 async def _webapp_api_gallery(request: web.Request) -> web.Response:
     """V3.45.27: the caller's «Наедине" photo gallery for the Mini App."""
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
@@ -12027,7 +12045,23 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
     gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)
     if gate:
         return gate
-    return await _webapp_chat_turn(telegram_id, user_info, character_id, text)
+    return await _webapp_chat_turn(telegram_id, user_info, character_id, text,
+                                   extra=await _app_chat_missions(telegram_id))
+
+
+async def _app_chat_missions(telegram_id: int, voice: bool = False) -> dict:
+    """V3.66.0: run the streak / first-message / voice mission hooks for an
+    app chat turn; a fresh unlock rides back so the SPA can say «забери 🍑»."""
+    try:
+        from services.gamification_service import note_app_chat_message, MISSION_PEACHES, ACHIEVEMENTS
+        fresh = await asyncio.to_thread(note_app_chat_message, telegram_id, voice)
+    except Exception:
+        logger.exception('app chat mission hooks failed user=%s', telegram_id)
+        return {}
+    if not fresh:
+        return {}
+    return {'missions_done': [{'key': k, 'name': ACHIEVEMENTS[k][0], 'peaches': MISSION_PEACHES.get(k, 0)}
+                              for k in fresh]}
 
 
 async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
@@ -12111,7 +12145,7 @@ async def _webapp_api_chat_voice(request: web.Request) -> web.Response:
     if not heard:
         return web.json_response({'ok': False, 'error': 'no_speech'}, status=400)
     return await _webapp_chat_turn(telegram_id, user_info, character_id, heard,
-                                   extra={'user_text': heard})
+                                   extra={'user_text': heard, **(await _app_chat_missions(telegram_id, voice=True))})
 
 
 async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
@@ -14278,6 +14312,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/collection', _webapp_api_collection)
     # V3.46.0: missions funnel tab (roadmap + in-app CTAs).
     app.router.add_get('/webapp/api/missions', _webapp_api_missions)
+    app.router.add_post('/webapp/api/missions/claim', _webapp_api_missions_claim)
     app.router.add_get('/webapp/api/gallery', _webapp_api_gallery)
     app.router.add_get('/webapp/gallery/image/{image_id}', _webapp_gallery_image)
     # V3.47.0: watermarked export copy for the viral «Поделиться» sheet.
