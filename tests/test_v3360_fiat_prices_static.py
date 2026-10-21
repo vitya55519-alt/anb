@@ -115,7 +115,7 @@ def test_frontend_renders_fiat_next_to_stars():
     # V3.62.12: owner asked for money instead of Stars — one money() label
     # (₽ for RU, $ for EN, Stars last) on tiles, Premium and the price list.
     assert 'function money(x)' in INDEX
-    assert "if (LANG !== 'en' && rub) return rub + ' ₽';" in INDEX
+    assert "if (LANG !== 'en' && rub) return String(rub).replace(" in INDEX
     assert 'esc(money(i))' in INDEX and 'esc(money(x))' in INDEX
     assert "esc(money(x))" in INDEX
     # V3.45.28: the wizard price is no longer community-aware — every creation

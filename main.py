@@ -11421,6 +11421,7 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
         product['rub'] = _ca * PEACH_CUSTOM_RUB_PER_UNIT if PLATEGA_ENABLED else None
     # order product keys record_payment knows how to grant
     order_product = {'premium': 'premium_month', 'premium_week': 'premium_week',
+                     'premium_quarter': 'premium_quarter',
                      'photo_credit': 'photo'}.get(product_id)
     if not order_product and product_id in PEACH_PACK_STARS:
         # V3.43.1: peach packs — the order key is the payload itself, so the
