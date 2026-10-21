@@ -52,14 +52,28 @@ SPICYAPI_KEY = os.getenv("SPICYAPI_KEY", "").strip()
 # and remains overridable via SPICYAPI_BASE_URL without a code change.
 SPICYAPI_BASE_URL = os.getenv("SPICYAPI_BASE_URL", "https://api.spicyapi.ai/api/v1").strip().rstrip("/")
 
+# V3.65.0: peaches ×100 (owner: «чтобы прям вау было» — a competitor prices a
+# photo at 300 and sells 3000-packs; big numbers feel generous and blur the
+# ruble price). Every peach amount in this file is in the NEW unit. Env
+# overrides keep the OLD unit (the values Railway already holds) and are
+# scaled here, so CHAT_PHOTO_PEACH_COST=2 in the env still means 200 🍑.
+# Stored balances were multiplied once by services/db.py (_rescale_peaches).
+PEACH_SCALE = 100
+
+
+def _peach_env(name: str, default: int, floor: int = 1) -> int:
+    """An old-unit peach amount from the env (or its default) × PEACH_SCALE."""
+    return max(floor, int(os.getenv(name, str(default)))) * PEACH_SCALE
+
+
 # ── V3.45: Фото «наедине» и «Косплей» — монетизация через персики ──────────
 # Бесплатные лимиты (1 наедине + 1 косплей = 2 всего в день)
 PRIVATE_PHOTO_FREE_DAILY = max(0, int(os.getenv("PRIVATE_PHOTO_FREE_DAILY", "1")))
 COSPLAY_PHOTO_FREE_DAILY = max(0, int(os.getenv("COSPLAY_PHOTO_FREE_DAILY", "1")))
 # Цена после бесплатного лимита (в персиках)
-PRIVATE_PHOTO_PEACH_COST = max(1, int(os.getenv("PRIVATE_PHOTO_PEACH_COST", "2")))
+PRIVATE_PHOTO_PEACH_COST = _peach_env("PRIVATE_PHOTO_PEACH_COST", 2)
 # V3.60.3: a photo asked for in the app chat (owner: «2 персика это фото»).
-CHAT_PHOTO_PEACH_COST = max(1, int(os.getenv("CHAT_PHOTO_PEACH_COST", "2")))
+CHAT_PHOTO_PEACH_COST = _peach_env("CHAT_PHOTO_PEACH_COST", 2)
 # V3.61.5: chat photos free per day (all girls together) before peaches are spent.
 CHAT_FREE_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_FREE_PHOTOS_PER_DAY", "2")))
 # V3.61.7: «🔥 Раздеть» under a chat photo — free per day, then peaches.
@@ -70,21 +84,21 @@ UNDRESS_TRIAL_FREE = max(0, int(os.getenv("UNDRESS_TRIAL_FREE", "1")))
 UNDRESS_PREMIUM_FREE_L1_2 = max(0, int(os.getenv("UNDRESS_PREMIUM_FREE_L1_2", "1")))
 UNDRESS_PREMIUM_FREE_L3_6 = max(0, int(os.getenv("UNDRESS_PREMIUM_FREE_L3_6", "2")))
 UNDRESS_PREMIUM_FREE_L7_8 = max(0, int(os.getenv("UNDRESS_PREMIUM_FREE_L7_8", "3")))
-UNDRESS_PEACH_COST = max(1, int(os.getenv("UNDRESS_PEACH_COST", "3")))
-COSPLAY_PHOTO_PEACH_COST = max(1, int(os.getenv("COSPLAY_PHOTO_PEACH_COST", "2")))
+UNDRESS_PEACH_COST = _peach_env("UNDRESS_PEACH_COST", 3)
+COSPLAY_PHOTO_PEACH_COST = _peach_env("COSPLAY_PHOTO_PEACH_COST", 2)
 # Hot Pass — безлимитная подписка на фото «наедине» и «косплей»
-HOT_PASS_DAY_PEACHES = max(1, int(os.getenv("HOT_PASS_DAY_PEACHES", "5")))
-HOT_PASS_WEEK_PEACHES = max(1, int(os.getenv("HOT_PASS_WEEK_PEACHES", "25")))
-HOT_PASS_MONTH_PEACHES = max(1, int(os.getenv("HOT_PASS_MONTH_PEACHES", "80")))
+HOT_PASS_DAY_PEACHES = _peach_env("HOT_PASS_DAY_PEACHES", 5)
+HOT_PASS_WEEK_PEACHES = _peach_env("HOT_PASS_WEEK_PEACHES", 25)
+HOT_PASS_MONTH_PEACHES = _peach_env("HOT_PASS_MONTH_PEACHES", 80)
 # Видео за персики — ЕДИНАЯ цена видео-продукта на персиковом рельсе:
 # студия Mini App (webapp_service.WEBAPP_VIDEO_COST_CREDITS читает её).
 # V3.55.5: 5 -> 20 🍑 — клип сжигает картинковый рендер + видео-движок.
 # Звёздный/токеновый рельсы бота (VIDEO_COST_STARS/VIDEO_TOKEN_COST) — свои.
-VIDEO_PEACH_COST = max(1, int(os.getenv("VIDEO_PEACH_COST", "20")))
+VIDEO_PEACH_COST = _peach_env("VIDEO_PEACH_COST", 20)
 # Голос + фото комбо
-VOICE_PHOTO_PEACH_COST = max(1, int(os.getenv("VOICE_PHOTO_PEACH_COST", "3")))
+VOICE_PHOTO_PEACH_COST = _peach_env("VOICE_PHOTO_PEACH_COST", 3)
 # Серия фото (3-5 штук в одном образе)
-PHOTO_SERIES_PEACH_COST = max(1, int(os.getenv("PHOTO_SERIES_PEACH_COST", "5")))
+PHOTO_SERIES_PEACH_COST = _peach_env("PHOTO_SERIES_PEACH_COST", 5)
 # SpicyAPI модель для uncensored генерации
 # V3.58.2: «seedream-5.0-lite» is gone from the SpicyAPI catalog — every job
 # with the old id was refused (spicyapi 0 ✅ / 39 ❌ in «Отказы»). Pro ids are
@@ -445,14 +459,14 @@ NEW_USER_UNLIMITED_HOURS = max(0, int(os.getenv("NEW_USER_UNLIMITED_HOURS", "3")
 FREE_PHOTOS_LEVEL_1_2 = int(os.getenv("FREE_PHOTOS_LEVEL_1_2", "1"))
 FREE_PHOTOS_LEVEL_3_6 = int(os.getenv("FREE_PHOTOS_LEVEL_3_6", "2"))
 PREMIUM_MONTHLY_STARS = int(os.getenv("PREMIUM_MONTHLY_STARS", "500"))
-PREMIUM_MONTHLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_MONTHLY_PHOTO_CREDITS", "12"))
+PREMIUM_MONTHLY_PHOTO_CREDITS = _peach_env("PREMIUM_MONTHLY_PHOTO_CREDITS", 12, 0)
 # V3.34.1: the short Premium plan — a week for the undecided. Priced per day
 # slightly above the monthly plan so the month stays the better deal.
 PREMIUM_WEEKLY_STARS = int(os.getenv("PREMIUM_WEEKLY_STARS", "150"))
-PREMIUM_WEEKLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_WEEKLY_PHOTO_CREDITS", "3"))
+PREMIUM_WEEKLY_PHOTO_CREDITS = _peach_env("PREMIUM_WEEKLY_PHOTO_CREDITS", 3, 0)
 # V3.43.0: the 3-month plan (three monthly credit shares, priced below 3×month).
 PREMIUM_QUARTERLY_STARS = int(os.getenv("PREMIUM_QUARTERLY_STARS", "1200"))
-PREMIUM_QUARTERLY_PHOTO_CREDITS = int(os.getenv("PREMIUM_QUARTERLY_PHOTO_CREDITS", "36"))
+PREMIUM_QUARTERLY_PHOTO_CREDITS = _peach_env("PREMIUM_QUARTERLY_PHOTO_CREDITS", 36, 0)
 PHOTO_COST_STARS = int(os.getenv("PHOTO_COST_STARS", "25"))
 # V3.43.1 → V3.44.22: the peach pack ladder. The star prices used to inherit
 # PHOTO_COST_STARS * N (250/675/1875 ★ — the 100-pack cost more Stars than
@@ -472,9 +486,21 @@ PEACH_PACK_10_RUB = max(1, int(os.getenv("PEACH_PACK_10_RUB", "99")))
 PEACH_PACK_30_RUB = max(1, int(os.getenv("PEACH_PACK_30_RUB", "249")))
 PEACH_PACK_100_RUB = max(1, int(os.getenv("PEACH_PACK_100_RUB", "699")))
 PEACH_PACK_RUB = {"peach_pack_10": PEACH_PACK_10_RUB, "peach_pack_30": PEACH_PACK_30_RUB, "peach_pack_100": PEACH_PACK_100_RUB}
-PEACH_PACK_CREDITS = {"peach_pack_10": 10, "peach_pack_30": 30, "peach_pack_100": 100}
+# V3.65.0: ×100 — 1000 / 3000 / 10000 🍑. The product keys keep their old
+# names (payment payloads and Platega orders already in flight use them).
+PEACH_PACK_CREDITS = {"peach_pack_10": 10 * PEACH_SCALE, "peach_pack_30": 30 * PEACH_SCALE, "peach_pack_100": 100 * PEACH_SCALE}
+# V3.65.0: the bulk discount told as a gift — the part of a pack above what its
+# Stars would buy at the small-pack rate (125⭐ → 2500 + 500, 350⭐ → 7000 + 3000).
+PEACH_PACK_BONUS = {
+    key: max(0, credits - (PEACH_PACK_STARS[key] * PEACH_PACK_CREDITS["peach_pack_10"]) // max(1, PEACH_PACK_10_STARS))
+    for key, credits in PEACH_PACK_CREDITS.items()
+}
 # V3.44.23: the custom-peach tile — the user types how many peaches they want,
 # and pays at the small-pack per-unit rate (no bulk discount).
+# V3.65.0: one unit is PEACH_CUSTOM_UNIT (100) peaches. The order key
+# ``peach_custom_<units>`` counts units, so orders created before the rescale
+# (1 unit = 1 old peach) still grant the same value.
+PEACH_CUSTOM_UNIT = PEACH_SCALE
 PEACH_CUSTOM_STARS_PER_UNIT = max(1, PEACH_PACK_10_STARS // 10)
 PEACH_CUSTOM_RUB_PER_UNIT = max(1, PEACH_PACK_10_RUB // 10)
 CHAT_PHOTO_OFFER_STARS = int(os.getenv("CHAT_PHOTO_OFFER_STARS", "5"))
@@ -543,10 +569,10 @@ CONSTRUCTOR_COST_STARS = max(1, int(os.getenv("CONSTRUCTOR_COST_STARS", "50")))
 # The «public is free» perk is retired — every avatar is drawn on our GPU bill,
 # so a flat peach price funds it and throttles spam. Publishing to the
 # «Сообщество» витрина is a separate step (moderation comes next release).
-CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "3")))
+CONSTRUCTOR_COST_PEACHES = _peach_env("CONSTRUCTOR_COST_PEACHES", 3)
 # V3.61.0: the owner dropped creation to 3 🍑 to grow the community catalogue.
 # V3.59.6: changing a girl's relationship status on her page (owner: «за персики»).
-MARITAL_CHANGE_PEACHES = max(0, int(os.getenv("MARITAL_CHANGE_PEACHES", "5")))
+MARITAL_CHANGE_PEACHES = _peach_env("MARITAL_CHANGE_PEACHES", 5, 0)
 # V3.27.0: ruble side of the shop (FreeKassa): character constructor price,
 # token price/pack (1 token = TOKEN_PRICE_RUB) and the animation token cost.
 CONSTRUCTOR_COST_RUB = max(1, int(os.getenv("CONSTRUCTOR_COST_RUB", "200")))
@@ -618,9 +644,9 @@ PHOTO_REACTION_COOLDOWN_SECONDS = max(0, int(os.getenv("PHOTO_REACTION_COOLDOWN_
 
 # Referral & first-start "wow" bonuses. Both sides receive photo credits.
 # 0 disables a bonus.
-REFERRAL_REFERRER_CREDITS = int(os.getenv("REFERRAL_REFERRER_CREDITS", "3"))
-REFERRAL_INVITEE_CREDITS = int(os.getenv("REFERRAL_INVITEE_CREDITS", "3"))
-FIRST_START_BONUS_CREDITS = int(os.getenv("FIRST_START_BONUS_CREDITS", "2"))
+REFERRAL_REFERRER_CREDITS = _peach_env("REFERRAL_REFERRER_CREDITS", 3, 0)
+REFERRAL_INVITEE_CREDITS = _peach_env("REFERRAL_INVITEE_CREDITS", 3, 0)
+FIRST_START_BONUS_CREDITS = _peach_env("FIRST_START_BONUS_CREDITS", 2, 0)
 # A short Premium taste granted to brand-new users so they can sample premium
 # photo routes on day one. 0 disables. Days, not stars.
 FIRST_START_PREMIUM_TRIAL_DAYS = int(os.getenv("FIRST_START_PREMIUM_TRIAL_DAYS", "0"))
@@ -633,17 +659,17 @@ FIRST_START_PREMIUM_TRIAL_DAYS = int(os.getenv("FIRST_START_PREMIUM_TRIAL_DAYS",
 # PROMO_MAX_CREDITS caps the nominal
 # of an admin-created promo code (no Premium-day grants on this rail).
 DAILY_GIFT_ENABLED = os.getenv("DAILY_GIFT_ENABLED", "1") == "1"
-DAILY_GIFT_DAY_AMOUNT = int(os.getenv("DAILY_GIFT_DAY_AMOUNT", "1"))
+DAILY_GIFT_DAY_AMOUNT = _peach_env("DAILY_GIFT_DAY_AMOUNT", 1, 0)
 DAILY_GIFT_JACKPOT_DAY = int(os.getenv("DAILY_GIFT_JACKPOT_DAY", "7"))
-DAILY_GIFT_JACKPOT_AMOUNT = int(os.getenv("DAILY_GIFT_JACKPOT_AMOUNT", "3"))
-DAILY_GIFT_BALANCE_CAP = int(os.getenv("DAILY_GIFT_BALANCE_CAP", "15"))
-PROMO_MAX_CREDITS = int(os.getenv("PROMO_MAX_CREDITS", "20"))
+DAILY_GIFT_JACKPOT_AMOUNT = _peach_env("DAILY_GIFT_JACKPOT_AMOUNT", 3, 0)
+DAILY_GIFT_BALANCE_CAP = _peach_env("DAILY_GIFT_BALANCE_CAP", 15, 0)
+PROMO_MAX_CREDITS = _peach_env("PROMO_MAX_CREDITS", 20, 0)
 # V3.55.5: полка welcome — сеется на старте, чтобы новых юзеров хватало на
 # самое дешёвое платное действие: копилка стрика 15 🍑 + 5 🍑 за код = 20 🍑
 # студийного видео. Отключается PROMO_WELCOME_ENABLED=0.
 PROMO_WELCOME_ENABLED = os.getenv("PROMO_WELCOME_ENABLED", "1") == "1"
 PROMO_WELCOME_CODE = (os.getenv("PROMO_WELCOME_CODE", "ANNA5").strip().upper() or "ANNA5")
-PROMO_WELCOME_CREDITS = max(1, min(PROMO_MAX_CREDITS, int(os.getenv("PROMO_WELCOME_CREDITS", "5"))))
+PROMO_WELCOME_CREDITS = max(PEACH_SCALE, min(PROMO_MAX_CREDITS, _peach_env("PROMO_WELCOME_CREDITS", 5)))
 PROMO_WELCOME_CAP = max(0, int(os.getenv("PROMO_WELCOME_CAP", "1000")))
 
 # V3.37.0: the affiliate (partner) program — money commission with every
@@ -668,7 +694,8 @@ def _parse_referral_tiers(raw: str) -> list[tuple[int, int, int]]:
         if len(parts) != 3:
             continue
         try:
-            tiers.append((int(parts[0]), int(parts[1]), int(parts[2])))
+            # V3.65.0: the credits field stays in old peaches in the env.
+            tiers.append((int(parts[0]), int(parts[1]) * PEACH_SCALE, int(parts[2])))
         except (TypeError, ValueError):
             continue
     return sorted(tiers, key=lambda t: t[0])
@@ -700,7 +727,7 @@ SUPPORT_WELCOME_TEXT = os.getenv(
 # now exactly two subscriptions deep, so the free taste stays generous without
 # giving away a full render per sign-up).
 CHANNEL_SUBSCRIBE_USERNAME = os.getenv("CHANNEL_SUBSCRIBE_USERNAME", "Anna634212").strip().lstrip('@')
-CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "20"))
+CHANNEL_SUBSCRIBE_BONUS_CREDITS = _peach_env("CHANNEL_SUBSCRIBE_BONUS_CREDITS", 20, 0)
 # V3.43.0: how long a Telegram WebApp initData stays acceptable. The 24h
 # default broke users who reopen the Mini App from the client's recents —
 # the hash is still verified, only the replay window is wider now.
@@ -729,10 +756,10 @@ LIBRARY_MODERATION_MODEL = os.getenv("LIBRARY_MODERATION_MODEL", "omni-moderatio
 # Streak reward credits granted once when a streak reaches a milestone.
 # Keys are the streak day count; values are bonus photo credits.
 STREAK_REWARDS = {
-    3: int(os.getenv('STREAK_REWARD_3', '1')),
-    7: int(os.getenv('STREAK_REWARD_7', '2')),
-    14: int(os.getenv('STREAK_REWARD_14', '3')),
-    30: int(os.getenv('STREAK_REWARD_30', '5')),
+    3: _peach_env('STREAK_REWARD_3', 1, 0),
+    7: _peach_env('STREAK_REWARD_7', 2, 0),
+    14: _peach_env('STREAK_REWARD_14', 3, 0),
+    30: _peach_env('STREAK_REWARD_30', 5, 0),
 }
 
 # Voice: use OpenAI TTS/Whisper only if key is present; otherwise edge-tts + Gemini STT.

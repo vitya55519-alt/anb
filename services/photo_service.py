@@ -24,7 +24,7 @@ from config import (
     CHARACTER_ID,
     IMAGE_API_KEY, IMAGE_BASE_URL, IMAGE_MODEL, IMAGE_SIZE, IMAGE_QUALITY, OPENAI_IMAGE_ESTIMATED_COST_USD,
     OPENAI_IMAGE_AVAILABLE,
-    FREE_PHOTOS_LEVEL_1_2, FREE_PHOTOS_LEVEL_3_6, PHOTO_COST_STARS,
+    FREE_PHOTOS_LEVEL_1_2, FREE_PHOTOS_LEVEL_3_6, PHOTO_COST_STARS, PEACH_SCALE,
     FAL_KEY, FAL_MODEL, FAL_MODEL_T2I, FAL_IMAGE_SIZE, FAL_TIMEOUT_SECONDS,
     FAL_CONNECT_TIMEOUT_SECONDS, FAL_WRITE_TIMEOUT_SECONDS, FAL_POOL_TIMEOUT_SECONDS,
     FAL_RETRIES, FAL_RETRY_BACKOFF_SECONDS, FAL_ESTIMATED_COST_USD,
@@ -3528,7 +3528,8 @@ async def deliver_photo(
         raise PermissionError('age_gate')
     if delivery_type == 'free' and not has_free_photo(telegram_id, character_id):
         raise PermissionError('quota')
-    if delivery_type == 'credit' and get_photo_credits(telegram_id) <= 0:
+    # V3.65.0: one credit = PEACH_SCALE peaches.
+    if delivery_type == 'credit' and get_photo_credits(telegram_id) < PEACH_SCALE:
         raise PermissionError('no_credit')
 
     caption = caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',)))

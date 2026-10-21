@@ -82,7 +82,7 @@ def test_marital_status_for_existing_girls():
     assert "if (r.status === 402) { c.marital = prev; renderMarital(c); toast(L.marital_no_peaches); showTab('shop'); return; }" in SPA
     assert '.mchips { display: flex; flex-direction: column;' in SPA  # V3.59.9: column, one chip per line
     from config import MARITAL_CHANGE_PEACHES
-    assert MARITAL_CHANGE_PEACHES == 5
+    assert MARITAL_CHANGE_PEACHES == 500  # V3.65.0: ×100
     assert 'function renderMarital(c)' in SPA and "'/webapp/api/chat/marital?init_data='" in SPA
     chat = (ROOT / 'services' / 'chat_service.py').read_text(encoding='utf-8')
     assert "'СЕМЕЙНОЕ ПОЛОЖЕНИЕ (выбор пользователя, важнее описания выше): ' + marital_line" in chat

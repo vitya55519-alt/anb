@@ -4,7 +4,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from services.db import SessionLocal
 from models.app_models import Subscription, StarTransaction, User
-from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_STARS, PREMIUM_QUARTERLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS, PEACH_PACK_10_STARS, PEACH_PACK_30_STARS, PEACH_PACK_100_STARS, PEACH_PACK_CREDITS
+from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_STARS, PREMIUM_QUARTERLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS, PEACH_PACK_10_STARS, PEACH_PACK_30_STARS, PEACH_PACK_100_STARS, PEACH_PACK_CREDITS, PEACH_SCALE, PEACH_CUSTOM_UNIT
 from services.access_service import is_premium
 
 logger = logging.getLogger(__name__)
@@ -51,17 +51,19 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
             except Exception:
                 pass
         elif product in {"photo","custom_photo"}:
-            user.photo_credits=_credits_plus(1)
+            # V3.65.0: one photo credit is PEACH_SCALE peaches now.
+            user.photo_credits=_credits_plus(PEACH_SCALE)
         elif product in PEACH_PACK_CREDITS:
             # V3.43.1: the peach pack ladder grants the whole pack at once.
             user.photo_credits=_credits_plus(PEACH_PACK_CREDITS[product])
         elif product.startswith('peach_custom_'):
             # V3.44.23: the custom-peach tile — the count is encoded in the key.
+            # V3.65.0: the key counts units of PEACH_CUSTOM_UNIT peaches.
             try:
                 _n = max(1, int(product.split('_')[-1]))
             except (ValueError, IndexError):
                 _n = 1
-            user.photo_credits=_credits_plus(_n)
+            user.photo_credits=_credits_plus(_n * PEACH_CUSTOM_UNIT)
         try:
             s.commit()
         except IntegrityError:
@@ -83,7 +85,8 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
         logger.exception('partner commission accrual failed user=%s charge=%s', telegram_id, charge_id)
 
 def consume_photo_credit(telegram_id:int)->bool:
-    return spend_peaches(telegram_id, 1)
+    # V3.65.0: one photo credit = PEACH_SCALE peaches.
+    return spend_peaches(telegram_id, PEACH_SCALE)
 
 
 # V3.44.2: spend multiple peaches at once (e.g. for constructor)

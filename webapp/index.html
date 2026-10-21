@@ -1277,7 +1277,7 @@ const L_EN = {
   streak: 'day streak', level: 'relationship level', selected_girl: 'selected girl',
   // V3.55.5: daily streak gift + promo code block in the shop (the wheel is gone)
   gift_title: 'Daily gift', gift_day: n => `Day ${n} of 7`, gift_claim: n => `Claim +${n} 🍑`,
-  gift_taken: 'Already claimed — refreshes at 03:00', gift_capped: 'Piggy bank full (15 🍑) — spend some, then claim', gift_jackpot: '3 🍑',
+  gift_taken: 'Already claimed — refreshes at 03:00', gift_capped: 'Piggy bank full (1500 🍑) — spend some, then claim', gift_jackpot: '300🍑',
       // V3.55.6: premium-character tender/passionate picker
       persona_q: 'What should I be with you — tender or passionate? Choose once, I will remember 🍑', persona_tender: 'Tender', persona_passionate: 'Passionate', persona_saved_tender: 'Now I am your tender one 🌸', persona_saved_passionate: 'Now I am your passionate one 🔥',
   promo_title: 'Promo code', promo_ph: 'Enter code', promo_btn: 'Activate', promo_ok: n => `Code activated: +${n} 🍑`,
@@ -1317,7 +1317,7 @@ const L_EN = {
     constructor_price_note: p => 'creation — ' + p + ' 🍑',
   pay_get: 'Get', pay_link_err: 'Could not create the payment — try again',
   pay_opened: 'Payment page opened — finish the payment there',
-  shop_custom_ph: 'How many peaches?', shop_custom_btn: n => n > 0 ? n + ' 🍑 · ' + (n * 10) + ' ⭐' : '🍑',
+  shop_custom_ph: 'How many peaches?', shop_custom_btn: (n, price) => n > 0 ? n + ' 🍑 · ' + price : '🍑',
   input_ph: 'Type a message…', send: 'Send',
   empty_chat: 'Send the first message — she replies right here',
   limit_reached: 'Daily free-message limit reached. Premium lifts it ⭐',
@@ -1350,7 +1350,7 @@ const L_EN = {
   style_anime: 'Anime', style_realistic: 'Realistic', style_fantasy: 'Fantasy',
   pic_square: 'Square', pic_portrait: 'Portrait',
   pic_advanced: 'Advanced mode', pic_extra_ph: 'Extra details (optional)…',
-  pic_cost: 'One picture — 10 🍑', pic_generate: 'Create · 10 🍑',
+  pic_cost: 'One picture — 1000 🍑', pic_generate: 'Create · 1000 🍑',
   pic_wait: 'Drawing — up to a minute…', pic_blocked: 'This description is not allowed', pic_bad_image: 'Could not read this photo — try another one (JPG or PNG)', pic_bad_request: 'Something went wrong — try again',
   pic_no_credits: 'Not enough 🍑 — add them in the Shop tab',
   pic_gen_fail: 'Could not draw — try again',
@@ -1359,7 +1359,7 @@ const L_EN = {
   mode_pic: 'Picture', mode_video: 'Video',
   upload_photo: 'Own photo', upload_hint: 'JPG / PNG / WebP · up to 8 MB', upload_remove: 'Remove',
   video_prompt_ph: 'What happens in the video… (or just attach a photo)',
-  video_cost: 'One video — 20 🍑', video_generate: 'Create video · 20 🍑',
+  video_cost: 'One video — 2000 🍑', video_generate: 'Create video · 2000 🍑',
   video_wait: 'Rendering the video — 1–3 minutes…', video_fail: 'Could not make the video — try again',
   need_prompt_or_photo: 'Describe the scene or attach your own photo',
   // V3.55.0: «My videos» gallery + 🎬 motion presets.
@@ -1367,7 +1367,7 @@ const L_EN = {
   preset_auto: 'Auto', preset_kiss: 'Kiss', preset_wink: 'Wink', preset_turn: 'Turn',
   preset_whisper: 'Whisper', preset_touch: 'Touch', preset_caress: 'Caress',
   my_chars: 'MY CHARACTERS', create_char: '＋ Create', no_chars: 'No character yet — create your own girl.',
-  author_earnings: '💰 Author earnings', author_earnings_value: n => n.toFixed(1) + ' 🍑',
+  author_earnings: '💰 Author earnings', author_earnings_value: n => Math.round(n) + ' 🍑',
   // V3.44.11: the creator's cabinet in the profile.
   creator_row: '🎨 Creator cabinet', creator_title: "Creator's cabinet",
   creator_empty: 'No characters yet. Creating a character costs peaches 🍑',
@@ -1477,7 +1477,7 @@ const L_RU = {
   streak: 'дней подряд', level: 'уровень отношений', selected_girl: 'выбранная девушка',
   // V3.55.5: серия дневных подарков + промокод в магазине (колесо убрано)
   gift_title: 'Дневной подарок', gift_day: n => `День ${n} из 7`, gift_claim: n => `Забрать +${n} 🍑`,
-  gift_taken: 'Уже взято — обновится в 03:00', gift_capped: 'Копилка полная (15 🍑) — потрать и забирай', gift_jackpot: '3 🍑',
+  gift_taken: 'Уже взято — обновится в 03:00', gift_capped: 'Копилка полная (1500 🍑) — потрать и забирай', gift_jackpot: '300🍑',
       // V3.55.6: выбор манеры premium-персонажа — нежная/страстная
       persona_q: 'Кем я буду с тобой — нежной или страстной? Выбери один раз, я запомню 🍑', persona_tender: 'Нежная', persona_passionate: 'Страстная', persona_saved_tender: 'Теперь я твоя нежная 🌸', persona_saved_passionate: 'Теперь я твоя страстная 🔥',
   promo_title: 'Промокод', promo_ph: 'Введи код', promo_btn: 'Активировать', promo_ok: n => `Код активирован: +${n} 🍑`,
@@ -1517,7 +1517,7 @@ const L_RU = {
     constructor_price_note: p => 'создание — ' + p + ' 🍑',
   pay_get: 'Получить', pay_link_err: 'Не удалось создать счёт — попробуй ещё раз',
   pay_opened: 'Платёжная страница открыта — заверши оплату там',
-  shop_custom_ph: 'Сколько персиков?', shop_custom_btn: n => n > 0 ? n + ' 🍑 · ' + (n * 10) + ' ⭐' : '🍑',
+  shop_custom_ph: 'Сколько персиков?', shop_custom_btn: (n, price) => n > 0 ? n + ' 🍑 · ' + price : '🍑',
   input_ph: 'Напиши сообщение…', send: 'Отправить',
   empty_chat: 'Напиши первое сообщение — она ответит прямо здесь',
   limit_reached: 'Дневной лимит бесплатных сообщений. Premium снимает лимит ⭐',
@@ -1550,7 +1550,7 @@ const L_RU = {
   style_anime: 'Аниме', style_realistic: 'Реализм', style_fantasy: 'Фэнтези',
   pic_square: 'Квадрат', pic_portrait: 'Портрет',
   pic_advanced: 'Продвинутый режим', pic_extra_ph: 'Дополнительные детали (необязательно)…',
-  pic_cost: 'Одна картинка — 10 🍑', pic_generate: 'Создать · 10 🍑',
+  pic_cost: 'Одна картинка — 1000 🍑', pic_generate: 'Создать · 1000 🍑',
   pic_wait: 'Рисую — до минуты…', pic_blocked: 'Такое описание нельзя', pic_bad_image: 'Не получилось прочитать фото — попробуй другое (JPG или PNG)', pic_bad_request: 'Что-то пошло не так — попробуй ещё раз',
   pic_no_credits: 'Не хватает 🍑 — добавь во вкладке «Магазин»',
   pic_gen_fail: 'Не получилось нарисовать — попробуй ещё раз',
@@ -1559,7 +1559,7 @@ const L_RU = {
   mode_pic: 'Картинка', mode_video: 'Видео',
   upload_photo: 'Своё фото', upload_hint: 'JPG / PNG / WebP · до 8 МБ', upload_remove: 'Убрать',
   video_prompt_ph: 'Что происходит в видео… (или просто приложи фото)',
-  video_cost: 'Одно видео — 20 🍑', video_generate: 'Создать видео · 20 🍑',
+  video_cost: 'Одно видео — 2000 🍑', video_generate: 'Создать видео · 2000 🍑',
   video_wait: 'Рендерю видео — 1–3 минуты…', video_fail: 'Не получилось создать видео — попробуй ещё раз',
   need_prompt_or_photo: 'Опиши сцену или приложи своё фото',
   // V3.55.0: галерея «Мои видео» + пресеты движения режима 🎬.
@@ -1567,7 +1567,7 @@ const L_RU = {
   preset_auto: 'Авто', preset_kiss: 'Поцелуй', preset_wink: 'Подмигивание', preset_turn: 'Оборот',
   preset_whisper: 'Шёпот', preset_touch: 'Касание', preset_caress: 'Ласка',
   my_chars: 'МОИ ПЕРСОНАЖИ', create_char: '＋ Создать', no_chars: 'Персонажа пока нет — создай свою девушку.',
-  author_earnings: '💰 Авторский доход', author_earnings_value: n => n.toFixed(1) + ' 🍑',
+  author_earnings: '💰 Авторский доход', author_earnings_value: n => Math.round(n) + ' 🍑',
   // V3.44.11: кабинет создателя в профиле.
   creator_row: '🎨 Кабинет создателя', creator_title: 'Кабинет создателя',
   creator_empty: 'Персонажей пока нет. Создание персонажа — за персики 🍑',
@@ -1681,13 +1681,13 @@ const L_OV = {
     pic_prompt_ph: 'Describe la imagen: quién, dónde, ambiente…', pic_style: 'Estilo',
     style_anime: 'Anime', style_realistic: 'Realismo', style_fantasy: 'Fantasía',
     pic_format: 'Formato', pic_square: 'Cuadrado', pic_portrait: 'Vertical',
-    pic_advanced: 'Modo avanzado', pic_cost: 'Una imagen — 10 🍑', pic_generate: 'Crear · 10 🍑',
+    pic_advanced: 'Modo avanzado', pic_cost: 'Una imagen — 1000 🍑', pic_generate: 'Crear · 1000 🍑',
     pic_wait: 'Dibujando — hasta un minuto…', pic_gallery: 'Mis imágenes',
     pic_empty: 'Aún no hay imágenes: tus obras aparecerán aquí.',
     mode_pic: 'Imagen', mode_video: 'Vídeo',
     upload_photo: 'Foto propia', upload_hint: 'JPG / PNG / WebP · máx. 8 MB', upload_remove: 'Quitar',
     video_prompt_ph: 'Qué pasa en el vídeo… (o solo adjunta una foto)',
-    video_cost: 'Un vídeo — 20 🍑', video_generate: 'Crear vídeo · 20 🍑',
+    video_cost: 'Un vídeo — 2000 🍑', video_generate: 'Crear vídeo · 2000 🍑',
     video_wait: 'Renderizando el vídeo — 1–3 minutos…', video_fail: 'No se pudo crear el vídeo — inténtalo de nuevo',
     need_prompt_or_photo: 'Describe la escena o adjunta tu foto',
     videos_title: 'Mis vídeos', videos_empty: 'Aún no hay vídeos: tus clips aparecerán aquí.',
@@ -1712,7 +1712,7 @@ const L_OV = {
     sc_personal: '💌 Foto personal', sc_lingerie: '🖤 Moda privada', sc_private_fashion: '🔐 Premium privado',
     adult_confirm_needed: 'Confirma primero 18+ en el chat del bot',
     gift_title: 'Regalo diario', gift_day: n => `Día ${n} de 7`, gift_claim: n => `Recibir +${n} 🍑`,
-    gift_taken: 'Ya reclamado — vuelve a las 03:00', gift_capped: 'Hucha llena (15 🍑) — gasta y reclama', gift_jackpot: '3 🍑',
+    gift_taken: 'Ya reclamado — vuelve a las 03:00', gift_capped: 'Hucha llena (1500 🍑) — gasta y reclama', gift_jackpot: '300🍑',
         // V3.55.6: selector tierna/apasionada para personajes premium
         persona_q: '¿Cómo quieres que sea contigo — tierna o apasionada? Elige una vez, lo recordaré 🍑', persona_tender: 'Tierna', persona_passionate: 'Apasionada', persona_saved_tender: 'Ahora soy tu tierna 🌸', persona_saved_passionate: 'Ahora soy tu apasionada 🔥',
     promo_title: 'Código promocional', promo_ph: 'Introduce el código', promo_btn: 'Activar', promo_ok: n => `Código activado: +${n} 🍑`,
@@ -1735,13 +1735,13 @@ const L_OV = {
     pic_prompt_ph: 'Descrivi l\'immagine: chi, dove, atmosfera…', pic_style: 'Stile',
     style_anime: 'Anime', style_realistic: 'Realismo', style_fantasy: 'Fantasy',
     pic_format: 'Formato', pic_square: 'Quadrato', pic_portrait: 'Verticale',
-    pic_advanced: 'Modalità avanzata', pic_cost: 'Un\'immagine — 10 🍑', pic_generate: 'Crea · 10 🍑',
+    pic_advanced: 'Modalità avanzata', pic_cost: 'Un\'immagine — 1000 🍑', pic_generate: 'Crea · 1000 🍑',
     pic_wait: 'Disegno — fino a un minuto…', pic_gallery: 'Le mie immagini',
     pic_empty: 'Ancora nessuna immagine: le tue opere appariranno qui.',
     mode_pic: 'Immagine', mode_video: 'Video',
     upload_photo: 'Foto tua', upload_hint: 'JPG / PNG / WebP · max 8 MB', upload_remove: 'Rimuovi',
     video_prompt_ph: 'Cosa succede nel video… (o allega solo una foto)',
-    video_cost: 'Un video — 20 🍑', video_generate: 'Crea video · 20 🍑',
+    video_cost: 'Un video — 2000 🍑', video_generate: 'Crea video · 2000 🍑',
     video_wait: 'Rendering del video — 1–3 minuti…', video_fail: 'Impossibile creare il video — riprova',
     need_prompt_or_photo: 'Descrivi la scena o allega una tua foto',
     videos_title: 'Miei video', videos_empty: 'Ancora nessun video: i tuoi clip appariranno qui.',
@@ -1766,7 +1766,7 @@ const L_OV = {
     sc_personal: '💌 Foto personale', sc_lingerie: '🖤 Moda privata', sc_private_fashion: '🔐 Premium privato',
     adult_confirm_needed: 'Conferma prima 18+ nella chat del bot',
     gift_title: 'Regalo giornaliero', gift_day: n => `Giorno ${n} di 7`, gift_claim: n => `Ritira +${n} 🍑`,
-    gift_taken: 'Già ritirato — torna alle 03:00', gift_capped: 'Salvadanaio pieno (15 🍑) — spendi e ritira', gift_jackpot: '3 🍑',
+    gift_taken: 'Già ritirato — torna alle 03:00', gift_capped: 'Salvadanaio pieno (1500 🍑) — spendi e ritira', gift_jackpot: '300🍑',
         // V3.55.6: selettore dolce/passionale per i personaggi premium
         persona_q: 'Come vuoi che sia con te — dolce o passionale? Scegli una volta, ricorderò 🍑', persona_tender: 'Dolce', persona_passionate: 'Passionale', persona_saved_tender: 'Ora sono la tua dolce 🌸', persona_saved_passionate: 'Ora sono la tua passione 🔥',
     promo_title: 'Codice promozionale', promo_ph: 'Inserisci il codice', promo_btn: 'Attiva', promo_ok: n => `Codice attivato: +${n} 🍑`,
@@ -1789,13 +1789,13 @@ const L_OV = {
     pic_prompt_ph: 'Décris l\'image : qui, où, ambiance…', pic_style: 'Style',
     style_anime: 'Anime', style_realistic: 'Réalisme', style_fantasy: 'Fantasy',
     pic_format: 'Format', pic_square: 'Carré', pic_portrait: 'Portrait',
-    pic_advanced: 'Mode avancé', pic_cost: 'Une image — 10 🍑', pic_generate: 'Créer · 10 🍑',
+    pic_advanced: 'Mode avancé', pic_cost: 'Une image — 1000 🍑', pic_generate: 'Créer · 1000 🍑',
     pic_wait: 'Je dessine — jusqu\'à une minute…', pic_gallery: 'Mes images',
     pic_empty: 'Pas encore d\'image : tes œuvres apparaîtront ici.',
     mode_pic: 'Image', mode_video: 'Vidéo',
     upload_photo: 'Ta photo', upload_hint: 'JPG / PNG / WebP · max 8 Mo', upload_remove: 'Retirer',
     video_prompt_ph: 'Ce qui se passe dans la vidéo… (ou joins juste une photo)',
-    video_cost: 'Une vidéo — 20 🍑', video_generate: 'Créer la vidéo · 20 🍑',
+    video_cost: 'Une vidéo — 2000 🍑', video_generate: 'Créer la vidéo · 2000 🍑',
     video_wait: 'Rendu de la vidéo — 1–3 minutes…', video_fail: 'Impossible de créer la vidéo — réessaie',
     need_prompt_or_photo: 'Décris la scène ou joins ta photo',
     videos_title: 'Mes vidéos', videos_empty: 'Pas encore de vidéo : tes clips apparaîtront ici.',
@@ -1820,7 +1820,7 @@ const L_OV = {
     sc_personal: '💌 Photo perso', sc_lingerie: '🖤 Mode privée', sc_private_fashion: '🔐 Premium privé',
     adult_confirm_needed: 'Confirme d\'abord 18+ dans le chat du bot',
     gift_title: 'Cadeau du jour', gift_day: n => `Jour ${n} sur 7`, gift_claim: n => `Récupérer +${n} 🍑`,
-    gift_taken: 'Déjà récupéré — reviens à 03:00', gift_capped: 'Tirelire pleine (15 🍑) — dépense et reviens', gift_jackpot: '3 🍑',
+    gift_taken: 'Déjà récupéré — reviens à 03:00', gift_capped: 'Tirelire pleine (1500 🍑) — dépense et reviens', gift_jackpot: '300🍑',
         // V3.55.6 : sélecteur tendre/passionnée des personnages premium
         persona_q: 'Comment veux-tu que je sois — tendre ou passionnée ? Choisis une fois, je m’en souviendrai 🍑', persona_tender: 'Tendre', persona_passionate: 'Passionnée', persona_saved_tender: 'Je suis ta tendre 🌸', persona_saved_passionate: 'Je suis ta passion 🔥',
     promo_title: 'Code promo', promo_ph: 'Saisis le code', promo_btn: 'Activer', promo_ok: n => `Code activé : +${n} 🍑`,
@@ -1843,13 +1843,13 @@ const L_OV = {
     pic_prompt_ph: '描述这张图片——人物、场景、氛围…', pic_style: '风格',
     style_anime: '动漫', style_realistic: '写实', style_fantasy: '奇幻',
     pic_format: '格式', pic_square: '方形', pic_portrait: '竖版',
-    pic_advanced: '高级模式', pic_cost: '一张图片 — 10 🍑', pic_generate: '创建 · 10 🍑',
+    pic_advanced: '高级模式', pic_cost: '一张图片 — 1000 🍑', pic_generate: '创建 · 1000 🍑',
     pic_wait: '绘制中——最多一分钟…', pic_gallery: '我的图片',
     pic_empty: '还没有图片——你的作品会出现在这里。',
     mode_pic: '图片', mode_video: '视频',
     upload_photo: '自己的照片', upload_hint: 'JPG / PNG / WebP · 最大 8 MB', upload_remove: '移除',
     video_prompt_ph: '视频里发生什么…（也可以只附一张照片）',
-    video_cost: '一段视频 — 20 🍑', video_generate: '创建视频 · 20 🍑',
+    video_cost: '一段视频 — 2000 🍑', video_generate: '创建视频 · 2000 🍑',
     video_wait: '视频渲染中——需要 1–3 分钟…', video_fail: '视频创建失败——请重试',
     need_prompt_or_photo: '描述场景或附上自己的照片',
     videos_title: '我的视频', videos_empty: '还没有视频——你的短片会出现在这里。',
@@ -1874,7 +1874,7 @@ const L_OV = {
     sc_personal: '💌 私人照片', sc_lingerie: '🖤 私密时尚', sc_private_fashion: '🔐 高级私密',
     adult_confirm_needed: '请先在机器人聊天中确认 18+',
     gift_title: '每日礼物', gift_day: n => `第 ${n} / 7 天`, gift_claim: n => `领取 +${n} 🍑`,
-    gift_taken: '今日已领 — 03:00 刷新', gift_capped: '存钱罐已满 (15 🍑) — 花掉后再领', gift_jackpot: '3 🍑',
+    gift_taken: '今日已领 — 03:00 刷新', gift_capped: '存钱罐已满 (1500 🍑) — 花掉后再领', gift_jackpot: '300🍑',
         // V3.55.6: 高级角色的温柔/热情方式选择
         persona_q: '你想我怎么陪你——温柔还是热情？选一次，我会记住 🍑', persona_tender: '温柔', persona_passionate: '热情', persona_saved_tender: '现在我是你的温柔版 🌸', persona_saved_passionate: '现在我是你的热情版 🔥',
     promo_title: '优惠码', promo_ph: '输入优惠码', promo_btn: '激活', promo_ok: n => `优惠码已激活：+${n} 🍑`,
@@ -1897,13 +1897,13 @@ const L_OV = {
     pic_prompt_ph: '画像を説明してください——誰が、どこで、どんな雰囲気…', pic_style: 'スタイル',
     style_anime: 'アニメ', style_realistic: 'リアル', style_fantasy: 'ファンタジー',
     pic_format: 'フォーマット', pic_square: '正方形', pic_portrait: '縦長',
-    pic_advanced: '詳細設定', pic_cost: '1枚 — 10 🍑', pic_generate: '作成 · 10 🍑',
+    pic_advanced: '詳細設定', pic_cost: '1枚 — 1000 🍑', pic_generate: '作成 · 1000 🍑',
     pic_wait: '描画中——最大1分…', pic_gallery: 'マイ画像',
     pic_empty: 'まだ画像がありません——あなたの作品がここに表示されます。',
     mode_pic: '画像', mode_video: '動画',
     upload_photo: 'マイフォト', upload_hint: 'JPG / PNG / WebP · 最大8MB', upload_remove: '削除',
     video_prompt_ph: '動画で何が起きるか…（写真だけの添付でもOK）',
-    video_cost: '1本 — 20 🍑', video_generate: '動画を作る · 20 🍑',
+    video_cost: '1本 — 2000 🍑', video_generate: '動画を作る · 2000 🍑',
     video_wait: '動画レンダリング中——1〜3分かかります…', video_fail: '動画を作成できませんでした——もう一度お試しください',
     need_prompt_or_photo: 'シーンを説明するか写真を添付してください',
     videos_title: 'マイ動画', videos_empty: 'まだ動画がありません——クリップがここに表示されます。',
@@ -1928,7 +1928,7 @@ const L_OV = {
     sc_personal: '💌 プライベート写真', sc_lingerie: '🖤 プライベートファッション', sc_private_fashion: '🔐 プレミアムプライベート',
     adult_confirm_needed: 'まずボットのチャットで18+を確認してください',
     gift_title: '今日のギフト', gift_day: n => `${n} / 7 日目`, gift_claim: n => `+${n} 🍑 を受け取る`,
-    gift_taken: '受け取り済み — 03:00 に更新', gift_capped: '貯金が満杯 (15 🍑) — 使ってから受け取ろう', gift_jackpot: '3 🍑',
+    gift_taken: '受け取り済み — 03:00 に更新', gift_capped: '貯金が満杯 (1500 🍑) — 使ってから受け取ろう', gift_jackpot: '300🍑',
         // V3.55.6: プレミアムキャラクターの甘え/情熱セレクター
         persona_q: 'あなたとの私を選んで——甘えん坊と情熱的、どっちにする？一度だけ、覚えておくね 🍑', persona_tender: '甘えん坊', persona_passionate: '情熱的', persona_saved_tender: 'これからは甘えん坊の私 🌸', persona_saved_passionate: 'これからは情熱的な私 🔥',
     promo_title: 'プロモコード', promo_ph: 'コードを入力', promo_btn: '有効化', promo_ok: n => `コード有効化：+${n} 🍑`,
@@ -2894,7 +2894,7 @@ function renderChatReply(j) {
   }
   // V3.60.3: no peaches for the photo she promised — one tap to the shop.
   if (j.photo_block === 'peaches') {
-    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="showTab('shop')">🍑 Пополнить персики · фото ${esc(String(Number(j.photo_price) || 2))} 🍑</button></div>`);
+    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="showTab('shop')">🍑 Пополнить персики · фото ${esc(String(Number(j.photo_price) || 200))} 🍑</button></div>`);
   }
   box.scrollTop = box.scrollHeight;
   // V3.53.0: a photo-on-request can complete a 50-photo gallery set.
@@ -4577,7 +4577,7 @@ async function generatePicture() {
 }
 
 // V3.54.0: «🎬 Видео» — animate the uploaded photo (or, with no photo, a frame
-// rendered from the prompt server-side). Charged 20 🍑 only after a success.
+// rendered from the prompt server-side). Charged 2000 🍑 only after a success.
 async function generateStudioVideo() {
   const btn = document.getElementById('vidGen');
   if (btn && btn.disabled) return;
@@ -4697,9 +4697,9 @@ async function loadShop() {
     // V3.44.23: the sixth tile — input + dynamic price button.
     const customTile = customItem ? `
       <div class="pack custom">
-        <input type="number" id="customN" min="1" max="9999" placeholder="${esc(L.shop_custom_ph)}" inputmode="numeric">
+        <input type="number" id="customN" min="${esc(String(customItem.unit || 1))}" step="${esc(String(customItem.unit || 1))}" max="999900" placeholder="${esc(L.shop_custom_ph)}" inputmode="numeric">
         <div class="sub">${esc(customItem.emoji)} ${esc(customItem.title)}</div>
-        <button class="get" id="customGet">${esc(L.shop_custom_btn(0))}</button>
+        <button class="get" id="customGet">${esc(L.shop_custom_btn(0, ''))}</button>
       </div>` : '';
     // V3.44.22: the constructor row carries no star price — public personas
     // are free, private ones cost peaches (constructor_peaches rides along).
@@ -4727,15 +4727,19 @@ async function loadShop() {
     const customInput = document.getElementById('customN');
     const customBtn = document.getElementById('customGet');
     if (customInput && customBtn) {
+      // V3.65.0: peaches are sold in units of customItem.unit (100) —
+      // the typed amount is rounded up to whole units.
+      const unit = Math.max(1, customItem.unit || 1);
+      const customUnits = () => Math.ceil(Math.max(0, parseInt(customInput.value) || 0) / unit);
       const updateBtn = () => {
-        const n = Math.max(0, parseInt(customInput.value) || 0);
-        customBtn.textContent = L.shop_custom_btn(n);
+        const u = customUnits();
+        customBtn.textContent = L.shop_custom_btn(u * unit, u ? money({ price_rub: u * (customItem.price_rub || 0), price_usd: +(u * (customItem.price_usd || 0)).toFixed(2), stars: u * customItem.stars }) : '');
       };
       customInput.addEventListener('input', updateBtn);
       customBtn.addEventListener('click', () => {
-        const n = Math.max(1, parseInt(customInput.value) || 0);
-        if (n < 1) { toast(L.shop_custom_ph); return; }
-        openPayCustom(n);
+        const u = customUnits();
+        if (u < 1) { toast(L.shop_custom_ph); return; }
+        openPayCustom(u, unit, customItem);
       });
     }
     renderGiftBlock();
@@ -4908,11 +4912,14 @@ async function quickBuy(kind, retry, opts) {
 }
 // V3.44.23: the custom-peach tile — opens the same pay-method modal with a
 // synthetic product whose stars/rub prices are n × per-unit constants.
-function openPayCustom(n) {
+// V3.65.0: ``units`` of ``unit`` peaches; prices come from the server tile
+// (they used to be a hardcoded ×10 that did not match the real charge).
+function openPayCustom(units, unit, item) {
   const s = SHOP;
   if (!s) return;
-  const stars = n * 10;
-  const rub = s.platega ? n * 10 : null;
+  const n = units * unit;
+  const stars = units * item.stars;
+  const rub = s.platega && item.rub ? units * item.rub : null;
   const title = n + ' 🍑';
   document.getElementById('payEmo').textContent = '🍑';
   document.getElementById('payTitle').textContent = title;
@@ -4921,7 +4928,7 @@ function openPayCustom(n) {
   if (s.wallet_pay) rows.push(`<button class="mrow" data-m="crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto)}</span><span class="pr">$${(stars * 0.02).toFixed(2)}</span></button>`);
   document.getElementById('payRows').innerHTML = rows.join('');
   document.querySelectorAll('#payRows [data-m]').forEach(b =>
-    b.addEventListener('click', () => payVia('peach_custom', b.dataset.m, b, { amount: n })));
+    b.addEventListener('click', () => payVia('peach_custom', b.dataset.m, b, { peaches: n })));
   document.getElementById('paymodal').classList.add('open');
 }
 async function payVia(id, method, btn, extra, onPaid) {

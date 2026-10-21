@@ -46,10 +46,11 @@ def teardown_module(module):
 
 
 def test_spend_never_goes_negative():
-    tid = _user(1, 5)
-    assert payments.spend_peaches(tid, 3) is True
-    assert payments.spend_peaches(tid, 3) is False
-    assert payments.get_photo_credits(tid) == 2
+    # V3.65.0: one photo credit (consume_photo_credit) is 100 peaches.
+    tid = _user(1, 500)
+    assert payments.spend_peaches(tid, 300) is True
+    assert payments.spend_peaches(tid, 300) is False
+    assert payments.get_photo_credits(tid) == 200
     assert payments.consume_photo_credit(tid) is True
     assert payments.consume_photo_credit(tid) is True
     assert payments.consume_photo_credit(tid) is False
@@ -79,7 +80,8 @@ def test_duplicate_payment_is_credited_once():
     tid = _user(4, 0)
     payments.record_payment(tid, 'peach_custom_7', 70, 'charge-dup-995804')
     payments.record_payment(tid, 'peach_custom_7', 70, 'charge-dup-995804')
-    assert payments.get_photo_credits(tid) == 7
+    # V3.65.0: the custom key counts units of 100 peaches.
+    assert payments.get_photo_credits(tid) == 700
 
 
 def test_grant_reason_is_idempotent():

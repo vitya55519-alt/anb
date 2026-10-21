@@ -61,7 +61,8 @@ def test_pack_prices_and_grants():
     assert 'PEACH_PACK_10_RUB = max(1, int(os.getenv("PEACH_PACK_10_RUB", "99")))' in CONFIG
     assert 'PEACH_PACK_30_RUB = max(1, int(os.getenv("PEACH_PACK_30_RUB", "249")))' in CONFIG
     assert 'PEACH_PACK_100_RUB = max(1, int(os.getenv("PEACH_PACK_100_RUB", "699")))' in CONFIG
-    assert 'PEACH_PACK_CREDITS = {"peach_pack_10": 10, "peach_pack_30": 30, "peach_pack_100": 100}' in CONFIG
+    # V3.65.0: ×100 — 1000 / 3000 / 10000 🍑
+    assert 'PEACH_PACK_CREDITS = {"peach_pack_10": 10 * PEACH_SCALE, "peach_pack_30": 30 * PEACH_SCALE, "peach_pack_100": 100 * PEACH_SCALE}' in CONFIG
     # payments: priced in PRODUCTS, granted in one go
     assert '"peach_pack_10":PEACH_PACK_10_STARS' in PAYMENTS
     assert 'user.photo_credits=_credits_plus(PEACH_PACK_CREDITS[product])' in PAYMENTS
@@ -90,11 +91,9 @@ def test_pack_fiat_and_notify_chains():
 
 
 def test_pack_squares_and_badges():
-    assert "'id': 'peach_pack_100'" in WEBAPP_SVC
-    assert "'payload': 'peach_pack_30'" in WEBAPP_SVC
-    assert "'badge': '−16%'" in WEBAPP_SVC
-    assert "'badge': '−29%'" in WEBAPP_SVC
-    assert '100 персиков' in WEBAPP_SVC and '100 peaches' in WEBAPP_SVC
+    # V3.65.0: the bulk discount is told as a gift badge («+500 🎁»).
+    assert "_peach_pack_item('peach_pack_30', PEACH_PACK_30_STARS, PEACH_PACK_30_RUB, en)" in WEBAPP_SVC
+    assert "item['badge'] = f'+{peach_num(bonus)} 🎁'" in WEBAPP_SVC
     # frontend: the discount corner badge + the pay modal reuse the grid
     assert 'const packBadge = x => x.badge' in INDEX
     assert '.pack .bdg {' in INDEX

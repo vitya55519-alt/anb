@@ -55,6 +55,10 @@ from config import (
     PEACH_PACK_100_RUB,
     PEACH_CUSTOM_STARS_PER_UNIT,
     PEACH_CUSTOM_RUB_PER_UNIT,
+    PEACH_CUSTOM_UNIT,
+    PEACH_PACK_BONUS,
+    PEACH_PACK_CREDITS,
+    PEACH_SCALE,
     PHOTO_COST_STARS,
     PLATEGA_ENABLED,
     PLATEGA_PREMIUM_PRICE_RUB,
@@ -134,7 +138,8 @@ APP_PICTURES_DIR = ROOT / 'data' / 'app_pictures'
 # One freeform picture costs 10 photo credits (🍑) — the same balance the bot
 # charges for photos, so shop purchases feed both chat photos and the studio
 # (V3.44.22: was 150, which priced a picture like five months of Premium).
-WEBAPP_PICTURE_COST_CREDITS = 10
+# V3.65.0: ×PEACH_SCALE with the rest of the peach economy (1000 🍑).
+WEBAPP_PICTURE_COST_CREDITS = 10 * PEACH_SCALE
 
 # V3.54.0: the studio video (image-to-video of the user's own photo, or a
 # prompt-generated frame) is charged only after a successful render.
@@ -657,50 +662,10 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'rub': PLATEGA_PREMIUM_WEEKLY_PRICE_RUB if PLATEGA_ENABLED else None,
             'usd': PREMIUM_WEEKLY_PRICE_USD,
         },
-        {
-            'id': 'peach_pack_10',
-            'emoji': '🍑',
-            'title': '10 персиков' if not en else '10 peaches',
-            'description': (
-                f'{10 // UNDRESS_PEACH_COST} раза «Раздеть» или {10 // CHAT_PHOTO_PEACH_COST} фото от неё в чате'
-                if not en else
-                f'{10 // UNDRESS_PEACH_COST}× «Undress» or {10 // CHAT_PHOTO_PEACH_COST} photos from her in chat'
-            ),
-            'stars': PEACH_PACK_10_STARS,
-            'payload': 'peach_pack_10',
-            'rub': PEACH_PACK_10_RUB if PLATEGA_ENABLED else None,
-            'usd': None,
-        },
-        {
-            'id': 'peach_pack_30',
-            'emoji': '🍑',
-            'title': '30 персиков' if not en else '30 peaches',
-            'description': (
-                f'{30 // UNDRESS_PEACH_COST} раз «Раздеть» или {30 // CHAT_PHOTO_PEACH_COST} фото — выгоднее малого'
-                if not en else
-                f'{30 // UNDRESS_PEACH_COST}× «Undress» or {30 // CHAT_PHOTO_PEACH_COST} photos — better value'
-            ),
-            'stars': PEACH_PACK_30_STARS,
-            'payload': 'peach_pack_30',
-            'rub': PEACH_PACK_30_RUB if PLATEGA_ENABLED else None,
-            'usd': None,
-            'badge': '−16%',
-        },
-        {
-            'id': 'peach_pack_100',
-            'emoji': '🍑',
-            'title': '100 персиков' if not en else '100 peaches',
-            'description': (
-                f'хватит надолго: {100 // UNDRESS_PEACH_COST} раза «Раздеть» или {100 // CHAT_PHOTO_PEACH_COST} фото — самый выгодный'
-                if not en else
-                f'lasts a long time: {100 // UNDRESS_PEACH_COST}× «Undress» or {100 // CHAT_PHOTO_PEACH_COST} photos — best value'
-            ),
-            'stars': PEACH_PACK_100_STARS,
-            'payload': 'peach_pack_100',
-            'rub': PEACH_PACK_100_RUB if PLATEGA_ENABLED else None,
-            'usd': None,
-            'badge': '−29%',
-        },
+        # V3.65.0: ×100 packs; the bulk discount reads as «+N в подарок».
+        _peach_pack_item('peach_pack_10', PEACH_PACK_10_STARS, PEACH_PACK_10_RUB, en),
+        _peach_pack_item('peach_pack_30', PEACH_PACK_30_STARS, PEACH_PACK_30_RUB, en),
+        _peach_pack_item('peach_pack_100', PEACH_PACK_100_STARS, PEACH_PACK_100_RUB, en),
         # V3.44.23: the custom-peach tile — the user types how many peaches
         # they want; the Stars and rub prices are computed per unit.
         {
@@ -708,17 +673,54 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'emoji': '🍑',
             'title': 'Своё количество' if not en else 'Custom amount',
             'description': (
-                'укажи сколько персиков нужно — цена за штуку как в малом паке'
+                f'укажи сколько персиков нужно (кратно {PEACH_CUSTOM_UNIT}) — цена как в малом паке'
                 if not en else
-                'type how many peaches you need — per-peach price same as the small pack'
+                f'type how many peaches you need (in steps of {PEACH_CUSTOM_UNIT}) — same rate as the small pack'
             ),
+            # V3.65.0: prices are per unit of PEACH_CUSTOM_UNIT peaches.
             'stars': PEACH_CUSTOM_STARS_PER_UNIT,
             'payload': 'peach_custom',
             'rub': PEACH_CUSTOM_RUB_PER_UNIT if PLATEGA_ENABLED else None,
             'usd': None,
             'custom': True,
+            'unit': PEACH_CUSTOM_UNIT,
         },
     ])
+
+
+def peach_num(n: int) -> str:
+    """V3.65.0: 10000 → «10 000» (no-break space) for the big peach figures."""
+    return f'{int(n):,}'.replace(',', '\u00a0')
+
+
+def _peach_pack_item(key: str, stars: int, rub: int, en: bool) -> dict:
+    """V3.65.0: one shop tile of the peach pack ladder."""
+    credits = PEACH_PACK_CREDITS[key]
+    bonus = PEACH_PACK_BONUS.get(key, 0)
+    photos = credits // max(1, CHAT_PHOTO_PEACH_COST)
+    undress = credits // max(1, UNDRESS_PEACH_COST)
+    if bonus:
+        desc = (f'{peach_num(credits - bonus)} + {peach_num(bonus)} в подарок · {photos} фото от неё в чате'
+                if not en else
+                f'{peach_num(credits - bonus)} + {peach_num(bonus)} as a gift · {photos} photos from her in chat')
+    else:
+        desc = (f'{photos} фото от неё в чате или {undress} раз «Раздеть»'
+                if not en else
+                f'{photos} photos from her in chat or {undress}× «Undress»')
+    item = {
+        'id': key,
+        'emoji': '🍑',
+        'title': f'{peach_num(credits)} персиков' if not en else f'{peach_num(credits)} peaches',
+        'description': desc,
+        'stars': stars,
+        'payload': key,
+        'rub': rub if PLATEGA_ENABLED else None,
+        'usd': None,
+        'credits': credits,
+    }
+    if bonus:
+        item['badge'] = f'+{peach_num(bonus)} 🎁'
+    return item
 
 
 def _with_price_usd(products: list[dict]) -> list[dict]:

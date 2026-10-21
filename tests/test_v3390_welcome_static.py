@@ -159,7 +159,8 @@ def test_chat_media_endpoint_and_gates():
     # photo costs 1 🍑 (guard: fewer than 1 credit left), circles are Premium
     # + daily free slot, consent gates all — the studio's
     # WEBAPP_PICTURE_COST_CREDITS price lives in its own generate endpoint
-    assert 'get_photo_credits(telegram_id) < 1' in block
+    # V3.65.0: one credit = PEACH_SCALE peaches
+    assert 'get_photo_credits(telegram_id) < PEACH_SCALE' in block
     assert "kind == 'circle'" in block and 'consume_premium_video_free(telegram_id)' in block
     assert 'has_accepted(telegram_id)' in block
     # the bot's own engine chains are reused
