@@ -801,6 +801,40 @@ async def _life_events(bot):
         except Exception:
             logger.exception('life event failed user=%s', uid)
 
+async def _channel_bonus_holds(bot):
+    """V3.68.0: pay the channel bonus to users whose hold ran out and who are
+    still subscribed; a user who left loses the hold. Pings the payout."""
+    from config import CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS
+    from services import channel_bonus_service as cbs
+    from services.payments import grant_photo_credits
+    try:
+        ids = await asyncio.to_thread(cbs.due_hold_ids)
+    except Exception:
+        logger.exception('channel bonus holds scan failed')
+        return
+    for tid in ids:
+        try:
+            member = await bot.get_chat_member(chat_id=f'@{CHANNEL_SUBSCRIBE_USERNAME}', user_id=tid)
+        except Exception:
+            logger.warning('channel bonus hold check failed user=%s', tid)
+            continue
+        if member.status not in ('member', 'administrator', 'creator'):
+            await asyncio.to_thread(cbs.clear_hold, tid)
+            continue
+        balance = await asyncio.to_thread(grant_photo_credits, tid, CHANNEL_SUBSCRIBE_BONUS_CREDITS, 'channel_subscribe')
+        await asyncio.to_thread(cbs.clear_hold, tid)
+        if balance < 0:
+            continue
+        try:
+            await bot.send_message(tid, f'🍑 Ты с нами уже {cbs.CHANNEL_BONUS_HOLD_DAYS} дня — спасибо, что остался в канале! '
+                                        f'+{CHANNEL_SUBSCRIBE_BONUS_CREDITS} персиков уже на балансе 😘')
+        except TelegramForbiddenError:
+            _mark_blocked_tg(tid)
+        except Exception:
+            logger.warning('channel bonus ping failed user=%s', tid)
+        await asyncio.sleep(0.5)
+
+
 def start_scheduler(bot):
     scheduler.add_job(_reminders,'interval',seconds=30,args=[bot],id='reminders',replace_existing=True)
     scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
@@ -817,6 +851,8 @@ def start_scheduler(bot):
     scheduler.add_job(_random_gifts,'interval',hours=6,args=[bot],id='random_gifts',replace_existing=True)
     scheduler.add_job(_daily_compatibility,'interval',hours=12,args=[bot],id='daily_compatibility',replace_existing=True)
     scheduler.add_job(_mood_update,'interval',hours=1,args=[bot],id='mood_update',replace_existing=True)
+    # V3.68.0: channel bonus after the hold.
+    scheduler.add_job(_channel_bonus_holds,'interval',hours=1,args=[bot],id='channel_bonus_holds',replace_existing=True)
     # V3.45.0: ежедневный подарок — раз в день в 12:00
     scheduler.add_job(_daily_gift,'cron',hour=12,minute=0,args=[bot],id='daily_gift',replace_existing=True)
     # V3.52.0: «Жизнь без тебя» — scans often, but the persisted slot log caps each

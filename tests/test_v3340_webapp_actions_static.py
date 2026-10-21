@@ -251,7 +251,9 @@ def test_no_unescaped_backend_strings_in_templates():
             'URL.createObjectURL(file)',
             # V3.66.0: shop/missions redesign — static class ternaries and
             # local fragments whose every backend field is esc()'d inside.
-            "ME.gift_claimed_today ? '' : ' ready'", "best ? ' best' : ''", "x.id === 'peach_pack_30' ? ' data-hot=\"1\"' : ''",
+            "ME.gift_claimed_today ? '' : ' ready'", "best ? ' best' : ''",
+            "d.claimable ? ' ready' : ''", "d.claimed ? ' done' : ''", "d.done ? '' : ' tappable'",
+            'd.done ? \'\' : \' data-cta="chats"\'', "daily.map(dRow).join('')", 'right', 'span', "x.id === 'peach_pack_30' ? ' data-hot=\"1\"' : ''",
             "planBtn(byId('premium'), L.plan_month, true)", "planBtn(byId('premium_week'), L.plan_week, false)",
             'premCard',
             # V3.67.0: Premium plan rows + perk tiles — local fragments, every

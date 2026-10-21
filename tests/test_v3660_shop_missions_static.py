@@ -25,9 +25,9 @@ def test_get_missions_reports_peaches():
 
 
 def test_app_chat_runs_mission_hooks():
-    assert 'def note_app_chat_message(telegram_id: int, voice: bool = False) -> list[str]:' in GAM
-    assert 'extra=await _app_chat_missions(telegram_id))' in MAIN
-    assert "_app_chat_missions(telegram_id, voice=True)" in MAIN
+    assert 'def note_app_chat_message(telegram_id: int, voice: bool = False,' in GAM
+    assert 'extra=await _app_chat_missions(telegram_id, text=text))' in MAIN
+    assert "_app_chat_missions(telegram_id, voice=True, text=heard)" in MAIN
     assert "app.router.add_post('/webapp/api/missions/claim', _webapp_api_missions_claim)" in MAIN
 
 

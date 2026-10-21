@@ -33,7 +33,7 @@ SPA = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 # ---------------------------------------------------------------- config
 def test_gift_config_constants():
-    assert 'DAILY_GIFT_ENABLED = os.getenv("DAILY_GIFT_ENABLED", "1") == "1"' in CONFIG
+    assert 'DAILY_GIFT_ENABLED = os.getenv("DAILY_GIFT_ENABLED", "0") == "1"' in CONFIG
     # V3.65.0: env in old peaches, ×PEACH_SCALE
     assert 'DAILY_GIFT_DAY_AMOUNT = _peach_env("DAILY_GIFT_DAY_AMOUNT", 1, 0)' in CONFIG
     assert 'DAILY_GIFT_JACKPOT_DAY = int(os.getenv("DAILY_GIFT_JACKPOT_DAY", "7"))' in CONFIG
@@ -200,7 +200,8 @@ def test_api_me_carries_gift_state():
 
 # ---------------------------------------------------------------- SPA
 def test_spa_gift_block_and_promo():
-    assert '<div id="giftBlock"></div>' in SPA
+    # V3.68.0: the gift block left the missions tab (daily missions replace it)
+    assert '<div id="giftBlock"></div>' not in SPA
     assert 'function renderGiftBlock()' in SPA
     assert 'async function claimDailyGift()' in SPA
     assert 'async function redeemPromoCode()' in SPA

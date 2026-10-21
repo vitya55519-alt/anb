@@ -35,7 +35,7 @@ def test_voice_endpoint_transcribes_then_reuses_the_text_pipeline():
     assert "if not data or len(data) > 5 * 1024 * 1024:" in body
     assert "'no_speech'" in body
     # the heard text goes back so the SPA can show his bubble
-    assert "extra={'user_text': heard, **(await _app_chat_missions(telegram_id, voice=True))}" in body
+    assert "extra={'user_text': heard, **(await _app_chat_missions(telegram_id, voice=True, text=heard))}" in body
 
 
 def test_reply_voice_note_keeps_the_premium_gate():

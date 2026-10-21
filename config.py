@@ -658,7 +658,7 @@ FIRST_START_PREMIUM_TRIAL_DAYS = int(os.getenv("FIRST_START_PREMIUM_TRIAL_DAYS",
 # 03:00 MSK == 00:00 UTC (no DST), so key = now_utc.date().
 # PROMO_MAX_CREDITS caps the nominal
 # of an admin-created promo code (no Premium-day grants on this rail).
-DAILY_GIFT_ENABLED = os.getenv("DAILY_GIFT_ENABLED", "1") == "1"
+DAILY_GIFT_ENABLED = os.getenv("DAILY_GIFT_ENABLED", "0") == "1"
 DAILY_GIFT_DAY_AMOUNT = _peach_env("DAILY_GIFT_DAY_AMOUNT", 1, 0)
 DAILY_GIFT_JACKPOT_DAY = int(os.getenv("DAILY_GIFT_JACKPOT_DAY", "7"))
 DAILY_GIFT_JACKPOT_AMOUNT = _peach_env("DAILY_GIFT_JACKPOT_AMOUNT", 3, 0)
@@ -728,6 +728,8 @@ SUPPORT_WELCOME_TEXT = os.getenv(
 # giving away a full render per sign-up).
 CHANNEL_SUBSCRIBE_USERNAME = os.getenv("CHANNEL_SUBSCRIBE_USERNAME", "Anna634212").strip().lstrip('@')
 CHANNEL_SUBSCRIBE_BONUS_CREDITS = _peach_env("CHANNEL_SUBSCRIBE_BONUS_CREDITS", 20, 0)
+# V3.68.0: the bonus lands only after the user stayed subscribed this many days.
+CHANNEL_BONUS_HOLD_DAYS = max(0, int(os.getenv("CHANNEL_BONUS_HOLD_DAYS", "3")))
 # V3.43.0: how long a Telegram WebApp initData stays acceptable. The 24h
 # default broke users who reopen the Mini App from the client's recents —
 # the hash is still verified, only the replay window is wider now.

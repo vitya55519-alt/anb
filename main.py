@@ -40,7 +40,7 @@ from config import (
     PLATEGA_ENABLED, PLATEGA_PREMIUM_PRICE_RUB, PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB, PREMIUM_PRICE_USD, PUBLIC_BASE_URL, WEB_PORT,
     BOT_CHAT_REDIRECT,
     SUPPORT_BOT_USERNAME, SUPPORT_BOT_TOKEN, SUPPORT_WELCOME_TEXT,
-    CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS,
+    CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS, CHANNEL_BONUS_HOLD_DAYS,
     PEACH_PACK_STARS, PEACH_PACK_CREDITS, PEACH_PACK_RUB,
     PEACH_CUSTOM_STARS_PER_UNIT, PEACH_CUSTOM_RUB_PER_UNIT, PEACH_CUSTOM_UNIT, PEACH_SCALE,
     DAILY_GIFT_BALANCE_CAP, VIDEO_PEACH_COST,
@@ -11244,7 +11244,15 @@ async def _webapp_api_channel_bonus(request: web.Request) -> web.Response:
         # V3.57.2: every credits/grant read below is a PostgreSQL round trip.
         granted = bool(telegram_id) and await asyncio.to_thread(
             has_credit_grant, telegram_id, 'channel_subscribe')
-        return web.json_response({**base, 'granted': granted})
+        # V3.68.0: a running hold shows «ещё N дн.» in the modal.
+        pending = None
+        if telegram_id and not granted:
+            from services import channel_bonus_service as cbs
+            started = await asyncio.to_thread(cbs.hold_started, telegram_id)
+            if started:
+                pending = cbs.days_left(started)
+        return web.json_response({**base, 'granted': granted, 'hold_days': CHANNEL_BONUS_HOLD_DAYS,
+                                  'days_left': pending})
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
     await asyncio.to_thread(
@@ -11256,7 +11264,20 @@ async def _webapp_api_channel_bonus(request: web.Request) -> web.Response:
     except Exception:
         logger.exception('channel membership check failed user=%s channel=@%s', telegram_id, CHANNEL_SUBSCRIBE_USERNAME)
         return web.json_response({'ok': False, 'error': 'check'}, status=502)
+    from services import channel_bonus_service as cbs
     if subscribed:
+        if await asyncio.to_thread(has_credit_grant, telegram_id, 'channel_subscribe'):
+            return web.json_response({**base, 'subscribed': True, 'granted': False, 'already': True,
+                                      'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
+        # V3.68.0: subscribing starts a CHANNEL_BONUS_HOLD_DAYS hold; the bonus
+        # is paid only when he is still subscribed after it.
+        started = await asyncio.to_thread(cbs.start_hold, telegram_id)
+        left = cbs.days_left(started) if started else CHANNEL_BONUS_HOLD_DAYS
+        if left > 0:
+            await asyncio.to_thread(_track_channel_bonus, telegram_id, 'channel_bonus_hold', 0)
+            return web.json_response({**base, 'subscribed': True, 'granted': False, 'pending': True,
+                                      'days_left': left,
+                                      'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
         balance = await asyncio.to_thread(
             grant_photo_credits, telegram_id, CHANNEL_SUBSCRIBE_BONUS_CREDITS, 'channel_subscribe')
         if balance == -1:
@@ -11265,6 +11286,8 @@ async def _webapp_api_channel_bonus(request: web.Request) -> web.Response:
                                         'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
         await asyncio.to_thread(_track_channel_bonus, telegram_id, 'channel_bonus_granted', balance)
         return web.json_response({**base, 'subscribed': True, 'granted': True, 'credits': balance})
+    # V3.68.0: unsubscribing during the hold resets it.
+    await asyncio.to_thread(cbs.clear_hold, telegram_id)
     if await asyncio.to_thread(has_credit_grant, telegram_id, 'channel_subscribe'):
         balance = await asyncio.to_thread(
             revoke_photo_credits, telegram_id, CHANNEL_SUBSCRIBE_BONUS_CREDITS, 'channel_subscribe')
@@ -12047,22 +12070,26 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
     if gate:
         return gate
     return await _webapp_chat_turn(telegram_id, user_info, character_id, text,
-                                   extra=await _app_chat_missions(telegram_id))
+                                   extra=await _app_chat_missions(telegram_id, text=text))
 
 
-async def _app_chat_missions(telegram_id: int, voice: bool = False) -> dict:
+async def _app_chat_missions(telegram_id: int, voice: bool = False, text: str | None = None) -> dict:
     """V3.66.0: run the streak / first-message / voice mission hooks for an
     app chat turn; a fresh unlock rides back so the SPA can say «забери 🍑»."""
     try:
-        from services.gamification_service import note_app_chat_message, MISSION_PEACHES, ACHIEVEMENTS
-        fresh = await asyncio.to_thread(note_app_chat_message, telegram_id, voice)
+        from services.gamification_service import note_app_chat_message, MISSION_PEACHES, ACHIEVEMENTS, DAILY_MISSIONS
+        fresh = await asyncio.to_thread(note_app_chat_message, telegram_id, voice, text)
     except Exception:
         logger.exception('app chat mission hooks failed user=%s', telegram_id)
         return {}
     if not fresh:
         return {}
-    return {'missions_done': [{'key': k, 'name': ACHIEVEMENTS[k][0], 'peaches': MISSION_PEACHES.get(k, 0)}
-                              for k in fresh]}
+    # V3.68.0: only missions that pay (today's daily ones) ping the chat.
+    done = [{'key': k, 'name': DAILY_MISSIONS[k][0], 'peaches': DAILY_MISSIONS[k][4]}
+            for k in fresh if k in DAILY_MISSIONS]
+    done += [{'key': k, 'name': ACHIEVEMENTS[k][0], 'peaches': MISSION_PEACHES[k]}
+             for k in fresh if MISSION_PEACHES.get(k)]
+    return {'missions_done': done} if done else {}
 
 
 async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
@@ -12146,7 +12173,7 @@ async def _webapp_api_chat_voice(request: web.Request) -> web.Response:
     if not heard:
         return web.json_response({'ok': False, 'error': 'no_speech'}, status=400)
     return await _webapp_chat_turn(telegram_id, user_info, character_id, heard,
-                                   extra={'user_text': heard, **(await _app_chat_missions(telegram_id, voice=True))})
+                                   extra={'user_text': heard, **(await _app_chat_missions(telegram_id, voice=True, text=heard))})
 
 
 async def _webapp_api_chat_photo(request: web.Request) -> web.Response:

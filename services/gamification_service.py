@@ -81,19 +81,124 @@ def reward_preview(reward: list | None) -> str:
 # units (a chat photo is 200 🍑): the first steps pay for a photo, the long
 # streaks/anniversaries pay for a pack. Paid by claim_mission through the
 # idempotent grant_photo_credits marker, never on unlock.
-MISSION_PEACHES: dict[str, int] = {
-    'first_message': 200, 'voice_user': 100, 'three_day_streak': 300,
-    'seven_day_streak': 700, 'hundred_messages': 300,
-    'first_gift': 100, 'first_date': 200, 'ten_dates': 500, 'date_collector': 1000,
-    'photo_collector': 300, 'premium_member': 500,
-    'anniv_7': 300, 'anniv_30': 1000, 'anniv_90': 2000,
-    'first_creation': 200, 'community_publish': 200, 'views_100': 500,
-    'first_video': 200, 'first_spicy_photo': 200,
-    'gallery_set_first': 300, 'gallery_set_five': 1000,
-}
+MISSION_PEACHES: dict[str, int] = {}
+# V3.68.0: owner — «не по 700, а просто по 100, ежедневные». The one-off
+# missions are plain achievements again; peaches come from DAILY_MISSIONS
+# below. (The V3.66.0 amounts were 100–2000 🍑 per mission.)
 # V3.66.0: missions with a live counter show a progress bar in the app.
 HUNDRED_MESSAGES = 100
 TEN_DATES = 10
+
+
+# V3.68.0: daily missions — 100 🍑 each, a fresh pair every day at 03:00 MSK
+# (UTC midnight, the gift day boundary). Only «real» messages count (see
+# _meaningful): at least two words and six letters, no repeats that day, so
+# «а», «ок» or one pasted line sent ten times earn nothing.
+# key → (name, description, messages needed, minimum span in minutes, peaches)
+DAILY_MISSIONS: dict[str, tuple[str, str, int, int, int]] = {
+    'daily_chat': ('Поболтай с ней', '10 сообщений за день', 10, 0, 100),
+    'daily_long': ('Долгий разговор', '25 сообщений, разговор от 20 минут', 25, 20, 100),
+}
+# a conversation day for the streak needs this many real messages
+STREAK_DAY_MESSAGES = 3
+# a message sent seconds after the previous counted one is a burst, not talk:
+# she needs time to answer, so the burst counts once
+MIN_GAP_SECONDS = 8
+
+
+def _norm_text(text: str) -> str:
+    import re
+    return re.sub(r'[^0-9a-zа-яё]+', ' ', (text or '').lower()).strip()
+
+
+def _meaningful(text: str) -> bool:
+    t = _norm_text(text)
+    letters = sum(ch.isalpha() for ch in t)
+    return letters >= 6 and len(t.split()) >= 2
+
+
+def _day_start(now: datetime | None = None) -> datetime:
+    now = now or _today()
+    return datetime(now.year, now.month, now.day)
+
+
+def daily_stats(user_id: int, extra_text: str | None = None) -> dict:
+    """Real messages today (all girls): count, first and last time. ``extra_text``
+    is the message being sent right now (not saved yet)."""
+    from models.app_models import Message
+    start = _day_start()
+    with SessionLocal() as session:
+        rows = session.execute(
+            select(Message.content, Message.created_at).where(
+                Message.user_id == user_id, Message.role == 'user',
+                Message.created_at >= start,
+            ).order_by(Message.created_at)
+        ).all()
+    seen: set[str] = set()
+    count, first, last = 0, None, None
+    items = list(rows) + ([(extra_text, _today())] if extra_text is not None else [])
+    for content, at in items:
+        if not _meaningful(content or ''):
+            continue
+        key = _norm_text(content)
+        if key in seen:
+            continue
+        if last is not None and at is not None and (at - last).total_seconds() < MIN_GAP_SECONDS:
+            continue
+        seen.add(key)
+        count += 1
+        first = first or at
+        last = at
+    span = int((last - first).total_seconds() // 60) if first and last else 0
+    return {'count': count, 'span_minutes': span}
+
+
+def _daily_reason(key: str) -> str:
+    return f'daily_{key}_{_day_start().strftime("%Y%m%d")}'
+
+
+def _daily_done(stats: dict, key: str) -> bool:
+    _n, _d, need, span, _p = DAILY_MISSIONS[key]
+    return stats['count'] >= need and stats['span_minutes'] >= span
+
+
+def daily_missions(telegram_id: int) -> list[dict]:
+    from services.payments import has_credit_grant
+    user = get_user(telegram_id)
+    if not user:
+        return []
+    stats = daily_stats(user.id)
+    out = []
+    for key, (name, desc, need, span, peaches) in DAILY_MISSIONS.items():
+        done = _daily_done(stats, key)
+        claimed = has_credit_grant(telegram_id, _daily_reason(key))
+        out.append({'key': key, 'name': name, 'description': desc, 'peaches': peaches,
+                    'progress': (min(stats['count'], need), need),
+                    'span': (min(stats['span_minutes'], span), span) if span else None,
+                    'done': done, 'claimed': claimed, 'claimable': done and not claimed})
+    return out
+
+
+def claim_daily(telegram_id: int, key: str) -> dict:
+    """Pay one finished daily mission, once per day (the server recounts)."""
+    if key not in DAILY_MISSIONS:
+        return {'ok': False, 'error': 'unknown'}
+    user = get_user(telegram_id)
+    if not user:
+        return {'ok': False, 'error': 'unknown'}
+    if not _daily_done(daily_stats(user.id), key):
+        return {'ok': False, 'error': 'locked'}
+    from services.payments import grant_photo_credits
+    amount = DAILY_MISSIONS[key][4]
+    balance = grant_photo_credits(telegram_id, amount, reason=_daily_reason(key))
+    if balance < 0:
+        return {'ok': False, 'error': 'claimed'}
+    try:
+        from services.analytics_service import track_event
+        track_event(user.id, 'daily_mission_claimed', metadata={'key': key, 'peaches': amount})
+    except Exception:
+        pass
+    return {'ok': True, 'key': key, 'amount': amount, 'balance': balance}
 
 
 def _mission_marker_reason(key: str) -> str:
@@ -117,6 +222,8 @@ def claimed_mission_keys(telegram_id: int) -> set[str]:
 def claim_mission(telegram_id: int, key: str) -> dict:
     """V3.66.0: pay a finished mission's peaches. Only an unlocked mission
     pays, and only once (grant_photo_credits is idempotent per reason)."""
+    if key in DAILY_MISSIONS:
+        return claim_daily(telegram_id, key)
     amount = MISSION_PEACHES.get(key, 0)
     if key not in ACHIEVEMENTS or amount <= 0:
         return {'ok': False, 'error': 'unknown'}
@@ -145,16 +252,21 @@ def _user_message_count(user_id: int) -> int:
         ) or 0)
 
 
-def note_app_chat_message(telegram_id: int, voice: bool = False) -> list[str]:
+def note_app_chat_message(telegram_id: int, voice: bool = False, text: str | None = None) -> list[str]:
     """V3.66.0: the Mini App chat never ran the bot's streak/first-message
     hooks, so app users' series and «Первые шаги» stood still. Called once per
-    app chat turn, before the message is saved (hence the +1); returns the
-    mission keys that unlocked just now."""
+    app chat turn, before the message is saved (``text`` is that message);
+    returns the mission keys that finished just now — achievements and
+    V3.68.0 daily missions. The streak day only counts once there were
+    STREAK_DAY_MESSAGES real messages today (one «привет» a day is no streak)."""
     user = get_user(telegram_id)
     if not user:
         return []
     before = {a.achievement_key for a in list_achievements(telegram_id)}
-    touch_activity(telegram_id)
+    prev = daily_stats(user.id)
+    stats = daily_stats(user.id, extra_text=text or '')
+    if stats['count'] >= STREAK_DAY_MESSAGES:
+        touch_activity(telegram_id)
     if 'first_message' not in before or 'hundred_messages' not in before:
         count = _user_message_count(user.id) + 1
         if count >= 1:
@@ -164,7 +276,9 @@ def note_app_chat_message(telegram_id: int, voice: bool = False) -> list[str]:
     if voice:
         unlock_achievement(telegram_id, 'voice_user')
     after = {a.achievement_key for a in list_achievements(telegram_id)}
-    return [k for k in ACHIEVEMENTS if k in after and k not in before]
+    fresh = [k for k in ACHIEVEMENTS if k in after and k not in before]
+    fresh += [k for k in DAILY_MISSIONS if _daily_done(stats, k) and not _daily_done(prev, k)]
+    return fresh
 
 
 # V3.46.0: the missions funnel. Every lifecycle achievement is placed in one of
@@ -282,6 +396,7 @@ def get_missions(telegram_id: int) -> dict:
             'cta_label': cta[0] if cta else '', 'cta_cb': cta[1] if cta else '',
         })
     items.sort(key=lambda it: (order.get(it['group'], 9), it['key']))
+    daily = daily_missions(telegram_id) if user else []
     total = len(items)
     unlocked = sum(1 for it in items if it['unlocked'])
     return {
@@ -292,6 +407,9 @@ def get_missions(telegram_id: int) -> dict:
         'peaches_total': sum(it['peaches'] for it in items),
         'peaches_earned': sum(it['peaches'] for it in items if it['claimed']),
         'peaches_ready': sum(it['peaches'] for it in items if it['claimable']),
+        # V3.68.0: today's missions on top of the board.
+        'daily': daily,
+        'daily_ready': sum(d['peaches'] for d in daily if d['claimable']),
     }
 
 
