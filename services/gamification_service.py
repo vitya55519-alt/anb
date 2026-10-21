@@ -19,11 +19,12 @@ logger = logging.getLogger(__name__)
 # consumed on the next date the user starts.
 FREE_DATE_STREAK = 7
 
-# V3.46.0: achievement rewards are NON-monetized perks only — a free date
-# voucher (the same rail the streak uses), a permanently-unlocked sealed
-# private-photo category (private_photo_service.ACHIEVEMENT_SCENE_UNLOCKS),
-# or a purely cosmetic badge. NO peaches, NO Stars (owner decision) so the
-# 20🍑 creation and the paid-photo loop are never diluted.
+# V3.46.0: achievement perks — a free date voucher (the same rail the streak
+# uses), a permanently-unlocked sealed private-photo category
+# (private_photo_service.ACHIEVEMENT_SCENE_UNLOCKS), or a cosmetic badge.
+# V3.66.0: the owner reversed «no peaches» — every mission also pays
+# MISSION_PEACHES, but only through claim_mission (a tap in the app), never
+# from the unlock dispatch below.
 REWARD_VOUCHER = 'voucher'
 REWARD_SCENE = 'scene'
 
@@ -72,6 +73,98 @@ def reward_preview(reward: list | None) -> str:
     if REWARD_SCENE in kinds:
         return '🔓 sealed-фото'
     return '🎖'
+
+
+# V3.66.0: owner (2026-10-21): «миссии — для чего они? ничего не вызывают».
+# Every mission now pays peaches on top of its perk, claimed by hand in the
+# «Миссии» tab (a reason to come back and tap). Amounts are in today's peach
+# units (a chat photo is 200 🍑): the first steps pay for a photo, the long
+# streaks/anniversaries pay for a pack. Paid by claim_mission through the
+# idempotent grant_photo_credits marker, never on unlock.
+MISSION_PEACHES: dict[str, int] = {
+    'first_message': 200, 'voice_user': 100, 'three_day_streak': 300,
+    'seven_day_streak': 700, 'hundred_messages': 300,
+    'first_gift': 100, 'first_date': 200, 'ten_dates': 500, 'date_collector': 1000,
+    'photo_collector': 300, 'premium_member': 500,
+    'anniv_7': 300, 'anniv_30': 1000, 'anniv_90': 2000,
+    'first_creation': 200, 'community_publish': 200, 'views_100': 500,
+    'first_video': 200, 'first_spicy_photo': 200,
+    'gallery_set_first': 300, 'gallery_set_five': 1000,
+}
+# V3.66.0: missions with a live counter show a progress bar in the app.
+HUNDRED_MESSAGES = 100
+TEN_DATES = 10
+
+
+def _mission_marker_reason(key: str) -> str:
+    return f'mission_{key}'
+
+
+def claimed_mission_keys(telegram_id: int) -> set[str]:
+    """V3.66.0: missions whose peaches were already claimed (one query over
+    the grant markers grant_photo_credits writes)."""
+    prefix = 'credit_grant:mission_'
+    suffix = f':{telegram_id}'
+    with SessionLocal() as session:
+        rows = session.scalars(
+            select(StarTransaction.telegram_charge_id).where(
+                StarTransaction.telegram_charge_id.like(prefix + '%' + suffix)
+            )
+        ).all()
+    return {r[len(prefix):-len(suffix)] for r in rows if r and r.endswith(suffix)}
+
+
+def claim_mission(telegram_id: int, key: str) -> dict:
+    """V3.66.0: pay a finished mission's peaches. Only an unlocked mission
+    pays, and only once (grant_photo_credits is idempotent per reason)."""
+    amount = MISSION_PEACHES.get(key, 0)
+    if key not in ACHIEVEMENTS or amount <= 0:
+        return {'ok': False, 'error': 'unknown'}
+    if key not in {a.achievement_key for a in list_achievements(telegram_id)}:
+        return {'ok': False, 'error': 'locked'}
+    from services.payments import grant_photo_credits
+    balance = grant_photo_credits(telegram_id, amount, reason=_mission_marker_reason(key))
+    if balance < 0:
+        return {'ok': False, 'error': 'claimed'}
+    try:
+        from services.analytics_service import track_event
+        user = get_user(telegram_id)
+        if user:
+            track_event(user.id, 'mission_claimed', metadata={'key': key, 'peaches': amount})
+    except Exception:
+        pass
+    return {'ok': True, 'key': key, 'amount': amount, 'balance': balance}
+
+
+def _user_message_count(user_id: int) -> int:
+    from sqlalchemy import func
+    from models.app_models import Message
+    with SessionLocal() as session:
+        return int(session.scalar(
+            select(func.count(Message.id)).where(Message.user_id == user_id, Message.role == 'user')
+        ) or 0)
+
+
+def note_app_chat_message(telegram_id: int, voice: bool = False) -> list[str]:
+    """V3.66.0: the Mini App chat never ran the bot's streak/first-message
+    hooks, so app users' series and «Первые шаги» stood still. Called once per
+    app chat turn, before the message is saved (hence the +1); returns the
+    mission keys that unlocked just now."""
+    user = get_user(telegram_id)
+    if not user:
+        return []
+    before = {a.achievement_key for a in list_achievements(telegram_id)}
+    touch_activity(telegram_id)
+    if 'first_message' not in before or 'hundred_messages' not in before:
+        count = _user_message_count(user.id) + 1
+        if count >= 1:
+            unlock_achievement(telegram_id, 'first_message')
+        if count >= HUNDRED_MESSAGES:
+            unlock_achievement(telegram_id, 'hundred_messages')
+    if voice:
+        unlock_achievement(telegram_id, 'voice_user')
+    after = {a.achievement_key for a in list_achievements(telegram_id)}
+    return [k for k in ACHIEVEMENTS if k in after and k not in before]
 
 
 # V3.46.0: the missions funnel. Every lifecycle achievement is placed in one of
@@ -130,7 +223,10 @@ def achievement_unlock_text(key: str) -> str:
     name, desc, reward = ACHIEVEMENTS[key]
     chip = reward_preview(reward)
     tail = f' · награда: {chip}' if chip and chip != '🎖' else ''
-    return f'🏆 Достижение открыто: {name}{tail}\n{desc}'
+    # V3.66.0: the peaches wait in the app «Миссии» tab.
+    peaches = MISSION_PEACHES.get(key, 0)
+    claim = f'\n🍑 +{peaches} персиков ждут тебя — забери во вкладке «Миссии»' if peaches else ''
+    return f'🏆 Достижение открыто: {name}{tail}\n{desc}{claim}'
 
 
 def try_unlock(telegram_id: int, key: str) -> str:
@@ -143,25 +239,45 @@ def try_unlock(telegram_id: int, key: str) -> str:
 def get_missions(telegram_id: int) -> dict:
     """V3.46.0: the roadmap board — every lifecycle achievement with unlock
     state, reward chip, a progress pair where we have a real counter, and a CTA.
-    Ordered by group (start → romance → creator)."""
+    Ordered by group (start → romance → creator). V3.66.0: each mission also
+    carries its peaches and whether they are claimed / waiting to be claimed."""
     board = {it['key']: it for it in get_unified_progress(telegram_id)['items']}
     user = get_user(telegram_id)
     streak = (user.streak_count or 0) if user else 0
+    claimed = claimed_mission_keys(telegram_id) if user else set()
+    messages = None
+    dates = None
     order = {'start': 0, 'romance': 1, 'creator': 2}
     items: list[dict] = []
     for key, (name, desc, reward) in ACHIEVEMENTS.items():
         group = MISSION_GROUP.get(key, 'start')
         cta = MISSION_CTA.get(key)
+        unlocked = board.get(key, {}).get('unlocked', False)
         progress = None
         if key == 'three_day_streak':
             progress = (min(streak, 3), 3)
         elif key == 'seven_day_streak':
             progress = (min(streak, 7), 7)
+        elif key == 'hundred_messages' and user and not unlocked:
+            if messages is None:
+                messages = _user_message_count(user.id)
+            progress = (min(messages, HUNDRED_MESSAGES), HUNDRED_MESSAGES)
+        elif key == 'ten_dates' and user and not unlocked:
+            if dates is None:
+                try:
+                    dates = len(completed_date_ids(telegram_id))
+                except Exception:
+                    dates = 0
+            progress = (min(dates, TEN_DATES), TEN_DATES)
+        peaches = MISSION_PEACHES.get(key, 0)
         items.append({
             'key': key, 'name': name, 'description': desc,
-            'unlocked': board.get(key, {}).get('unlocked', False),
+            'unlocked': unlocked,
             'reward': reward_preview(reward), 'group': group,
             'progress': progress,
+            'peaches': peaches,
+            'claimed': key in claimed,
+            'claimable': bool(unlocked and peaches and key not in claimed),
             'has_badge': board.get(key, {}).get('has_badge', False),
             'cta_label': cta[0] if cta else '', 'cta_cb': cta[1] if cta else '',
         })
@@ -172,6 +288,10 @@ def get_missions(telegram_id: int) -> dict:
         'total': total, 'unlocked': unlocked,
         'pct': round(unlocked / total * 100) if total else 0,
         'items': items,
+        'streak': streak,
+        'peaches_total': sum(it['peaches'] for it in items),
+        'peaches_earned': sum(it['peaches'] for it in items if it['claimed']),
+        'peaches_ready': sum(it['peaches'] for it in items if it['claimable']),
     }
 
 

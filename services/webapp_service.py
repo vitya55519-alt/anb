@@ -643,6 +643,10 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
                 if not en else
                 f'she never falls asleep: unlimited chat, {PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 as a gift, voice, video circles and every girl'
             ),
+            # V3.66.0: one short line for the shop card (the long description
+            # stays for the quick-buy sheet).
+            'tagline': (f'+{peach_num(PREMIUM_MONTHLY_PHOTO_CREDITS)} 🍑 в подарок' if not en
+                        else f'+{peach_num(PREMIUM_MONTHLY_PHOTO_CREDITS)} 🍑 as a gift'),
             'stars': PREMIUM_MONTHLY_STARS,
             'payload': 'premium_month',
             'rub': PLATEGA_PREMIUM_PRICE_RUB if PLATEGA_ENABLED else None,
@@ -657,6 +661,8 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
                 if not en else
                 f'try it for a week: unlimited chat, {PREMIUM_WEEKLY_PHOTO_CREDITS} 🍑 as a gift, voice and video circles'
             ),
+            'tagline': (f'+{peach_num(PREMIUM_WEEKLY_PHOTO_CREDITS)} 🍑 в подарок' if not en
+                        else f'+{peach_num(PREMIUM_WEEKLY_PHOTO_CREDITS)} 🍑 as a gift'),
             'stars': PREMIUM_WEEKLY_STARS,
             'payload': 'premium_week',
             'rub': PLATEGA_PREMIUM_WEEKLY_PRICE_RUB if PLATEGA_ENABLED else None,
@@ -717,6 +723,9 @@ def _peach_pack_item(key: str, stars: int, rub: int, en: bool) -> dict:
         'rub': rub if PLATEGA_ENABLED else None,
         'usd': None,
         'credits': credits,
+        # V3.66.0: the shop tile shows only this — «≈ 15 фото».
+        'tagline': f'≈ {photos} фото' if not en else f'≈ {photos} photos',
+        'bonus': bonus,
     }
     if bonus:
         item['badge'] = f'+{peach_num(bonus)} 🎁'
@@ -785,6 +794,8 @@ def api_shop(lang: str = 'ru') -> dict:
         ],
         'constructor_rub': CONSTRUCTOR_COST_RUB if PLATEGA_ENABLED else None,
         'constructor_usd': CONSTRUCTOR_PRICE_USD,
+        # V3.66.0: one chat photo in peaches — the shop's «фото = 200 🍑» hint.
+        'photo_peaches': CHAT_PHOTO_PEACH_COST,
         # V3.44.22: private-persona price in peaches (public ones are free).
         'constructor_peaches': CONSTRUCTOR_COST_PEACHES,
         # V3.43.0: the pay-method modal only offers rows the backend can sell —

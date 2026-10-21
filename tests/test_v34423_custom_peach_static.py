@@ -110,8 +110,8 @@ def test_webapp_pay_link_handles_custom_peach():
 def test_custom_tile_l10n_strings():
     assert "shop_custom_ph:" in INDEX
     assert "shop_custom_btn:" in INDEX
-    assert 'How many peaches?' in INDEX
-    assert 'Сколько персиков?' in INDEX
+    assert 'Your amount, e.g. 500' in INDEX
+    assert 'Своё количество, напр. 500' in INDEX
 
 
 def test_custom_tile_css():

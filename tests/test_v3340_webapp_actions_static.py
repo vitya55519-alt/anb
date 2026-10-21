@@ -249,6 +249,11 @@ def test_no_unescaped_backend_strings_in_templates():
             # V3.57.0: the local blob: preview URL of a photo picked on the
             # device — never backend data.
             'URL.createObjectURL(file)',
+            # V3.66.0: shop/missions redesign — static class ternaries and
+            # local fragments whose every backend field is esc()'d inside.
+            "ME.gift_claimed_today ? '' : ' ready'", "best ? ' best' : ''", "x.id === 'peach_pack_30' ? ' data-hot=\"1\"' : ''",
+            "planBtn(byId('premium'), L.plan_month, true)", "planBtn(byId('premium_week'), L.plan_week, false)",
+            'premCard',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         violations.append(expr)

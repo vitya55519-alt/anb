@@ -417,38 +417,80 @@
     position: absolute; top: 8px; right: 10px; border: 0; background: transparent;
     color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px;
   }
-  /* V3.43.0: Come Closer pack squares + the pay-method modal */
-  .packs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+  /* V3.43.0: Come Closer pack squares + the pay-method modal.
+     V3.66.0: rebuilt — the tiles carry only amount / gift / ≈photos / price,
+     every row has a fixed slot so the three line up, the price is the button. */
+  .premcard {
+    background: linear-gradient(150deg, #3a1f12 0%, var(--card) 55%, var(--card2) 100%);
+    border: 1px solid rgba(255, 207, 92, .35); border-radius: 18px; padding: 14px; margin: 6px 0 16px;
+  }
+  .premcard .pc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .premcard .pc-t { font-size: 18px; font-weight: 800; color: var(--premium); }
+  .premcard .pc-s { font-size: 12px; color: var(--muted); text-align: right; }
+  .premcard .pc-feats { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin: 10px 0 12px; }
+  .premcard .pc-feats li { font-size: 12.5px; color: var(--text); line-height: 1.3; }
+  .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .plan {
+    position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); color: var(--text);
+    border-radius: 14px; padding: 14px 6px 10px; cursor: pointer; font: inherit;
+  }
+  .plan.best { border-color: var(--premium); background: rgba(255, 207, 92, .12); }
+  .plan .pl-b {
+    position: absolute; top: -9px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+    background: var(--premium); color: #2a1a05; font-size: 10px; font-weight: 800;
+    padding: 2px 8px; border-radius: 8px; text-transform: uppercase; letter-spacing: .03em;
+  }
+  .plan .pl-t { font-size: 13px; color: var(--muted); }
+  .plan .pl-p { font-size: 20px; font-weight: 800; }
+  .plan .pl-s { font-size: 11.5px; color: var(--premium); }
+  .plan:active, .pack:active { transform: scale(.97); }
+  .sec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 4px 2px 0; }
+  .sec-h span { font-size: 16px; font-weight: 800; }
+  .sec-h small { font-size: 12px; color: var(--muted); }
+  .packs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 8px; }
   .pack {
-    position: relative;
+    position: relative; display: flex; flex-direction: column; align-items: center; min-width: 0;
     background: var(--card); border: 1px solid rgba(232, 68, 127, .16);
-    border-radius: 14px; padding: 12px 8px 10px; text-align: center; cursor: pointer;
+    border-radius: 14px; padding: 14px 6px 8px; text-align: center; cursor: pointer;
   }
-  /* V3.43.1: the discount badge on the 30/100 peach packs */
-  .pack .bdg {
-    position: absolute; top: 6px; right: 6px; padding: 2px 7px; border-radius: 8px;
+  .pack[data-hot] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .pack .ribbon {
+    position: absolute; top: -9px; left: 50%; transform: translateX(-50%); white-space: nowrap;
     background: linear-gradient(90deg, var(--accent), #ff7ab0); color: #fff;
-    font-size: 10px; font-weight: 700;
+    font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 8px; text-transform: uppercase;
   }
-  .pack .amt { font-size: 16px; font-weight: 700; color: var(--text); }
-  .pack .sub { color: var(--text); font-size: 11px; margin-top: 3px; }
-  .pack .rub { color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
+  .pack .amt { font-size: 21px; font-weight: 800; color: var(--text); line-height: 1.1; white-space: nowrap; }
+  .pack .unit { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  /* V3.43.1: the bulk bonus — one accent line, an empty slot keeps the rows level */
+  .pack .bdg { height: 18px; margin-top: 6px; font-size: 12px; font-weight: 700; color: #ff7ab0; white-space: nowrap; }
+  .pack .sub { font-size: 11.5px; color: var(--muted); margin: 2px 0 10px; white-space: nowrap; }
   .pack .get {
-    width: 100%; border: 0; border-radius: 10px; padding: 7px 0;
-    background: rgba(232, 68, 127, .16); color: var(--accent);
-    font-size: 12px; font-weight: 600; cursor: pointer;
+    margin-top: auto; width: 100%; border: 0; border-radius: 10px; padding: 8px 0;
+    background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #fff;
+    font-size: 14px; font-weight: 800; cursor: pointer; white-space: nowrap;
   }
-  /* V3.44.23: the custom-peach tile — input + dynamic price button */
-  .pack.custom .amt { display: none; }
+  /* V3.44.23 → V3.66.0: the custom amount is one row — input + price button */
+  .pack.custom { flex-direction: row; align-items: stretch; gap: 8px; padding: 8px; cursor: default; margin-bottom: 12px; }
   .pack.custom input[type=number] {
-    width: 100%; border: 1px solid rgba(232,68,127,.2); border-radius: 8px;
-    background: var(--card2); color: var(--text); text-align: center;
-    font-size: 15px; font-weight: 700; padding: 6px 4px; margin-bottom: 6px;
-    -moz-appearance: textfield;
+    flex: 1; min-width: 0; border: 1px solid rgba(232,68,127,.2); border-radius: 10px;
+    background: var(--card2); color: var(--text); text-align: left;
+    font-size: 15px; font-weight: 600; padding: 9px 10px; -moz-appearance: textfield;
   }
   .pack.custom input[type=number]::-webkit-inner-spin-button,
   .pack.custom input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-  .pack.custom .get { margin-top: 2px; }
+  .pack.custom .get { width: auto; flex-shrink: 0; margin: 0; padding: 10px 16px; }
+  .freerow {
+    display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px;
+    border: 1px dashed rgba(255, 122, 176, .45); background: rgba(232, 68, 127, .07); color: var(--text);
+    border-radius: 14px; padding: 12px 14px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 12px;
+  }
+  .freerow .fr-go { font-size: 20px; color: var(--accent); }
+  .promocard { background: var(--card); border-radius: 14px; padding: 12px; margin-bottom: 12px; }
+  .promorow { display: flex; gap: 8px; }
+  .promorow .promoinp { flex: 1; min-width: 0; }
+  .promorow .cta.small { flex-shrink: 0; }
+  details.pricelist .pl-body { padding: 0 10px 10px; }
   #paymodal {
     position: fixed; inset: 0; z-index: 46; display: none;
     align-items: center; justify-content: center; background: rgba(10,5,14,.62);
@@ -833,24 +875,46 @@
   .achrow .nm { font-size: 14px; font-weight: 600; }
   .achrow .achicon { font-size: 22px; width: 30px; text-align: center; flex-shrink: 0; }
   .achrow.lock { opacity: .5; filter: grayscale(.6); }
+  /* V3.66.0: missions — gift card, earned bar, claim buttons, peach chips */
+  .giftcard { border: 1px solid rgba(255,255,255,.12); border-radius: 16px; padding: 14px; margin: 4px 0 12px; background: var(--card); }
+  .giftcard.ready { border-color: var(--accent); background: linear-gradient(150deg, rgba(232,68,127,.18), var(--card) 60%); }
+  .missum { background: var(--card); border-radius: 14px; padding: 12px 14px; margin-bottom: 6px; }
+  .missum .ms-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .missum .ms-t { font-size: 13.5px; font-weight: 700; }
+  .missum .ms-streak { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .mis-group.hot { opacity: 1; color: #ff7ab0; font-weight: 800; }
+  .misrow.ready { border: 1px solid var(--accent); background: linear-gradient(150deg, rgba(232,68,127,.16), var(--card) 70%); }
+  .misclaim { flex-shrink: 0; border: 0; border-radius: 10px; padding: 9px 12px; font-size: 13px; font-weight: 800;
+    cursor: pointer; color: #fff; background: linear-gradient(90deg, var(--accent), var(--accent2)); white-space: nowrap;
+    animation: mispulse 1.6s ease-in-out infinite; }
+  .misclaim:disabled { opacity: .5; animation: none; }
+  @keyframes mispulse { 0%,100% { box-shadow: 0 0 0 0 rgba(232,68,127,.5); } 50% { box-shadow: 0 0 0 6px rgba(232,68,127,0); } }
+  .misright { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .mispeach { font-size: 13px; font-weight: 800; color: #ffb38a; white-space: nowrap;
+    background: rgba(255, 140, 90, .12); border-radius: 9px; padding: 4px 8px; }
+  .misgo { font-size: 20px; color: var(--muted); }
+  .misdonebox { margin-top: 10px; }
+  .misdonebox summary { font-size: 13px; color: var(--muted); padding: 8px 2px; cursor: pointer; }
+  nav#bottomnav button.hasdot { position: relative; }
+  nav#bottomnav button.hasdot::after { content: ''; position: absolute; top: 6px; right: calc(50% - 16px);
+    width: 9px; height: 9px; border-radius: 50%; background: #ff3b6b; box-shadow: 0 0 0 2px var(--bg, #140c1c); }
   /* V3.46.0: missions funnel rows + reward chips */
   .mis-group { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
     opacity: .6; margin: 14px 2px 6px; }
   .misrow { display: flex; align-items: center; gap: 12px;
     background: var(--card); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
-  .misrow.lock { opacity: .62; }
+  .misrow.lock { opacity: 1; }
   .misrow.tappable { cursor: pointer; }
   .misrow .misicon { font-size: 20px; width: 28px; text-align: center; flex-shrink: 0; }
   .misrow .mis-body { flex: 1; min-width: 0; }
   .misrow .nm { font-size: 14px; font-weight: 600; }
   .misrow .sub2 { font-size: 12px; opacity: .7; }
-  .misrow .misprog { font-size: 12px; opacity: .7; margin-top: 2px; }
-  .misrow .misprog .bar { display: inline-block; vertical-align: middle;
-    width: 70px; margin-left: 6px; }
+  .misrow .misprog { display: flex; align-items: center; gap: 8px; font-size: 11.5px; opacity: .8; margin-top: 5px; }
+  .misrow .misprog .bar { flex: 1; margin-top: 0; height: 6px; }
   .miscta { flex-shrink: 0; border: 0; border-radius: 10px; padding: 8px 12px;
     font-size: 13px; font-weight: 600; cursor: pointer;
     background: var(--accent); color: #fff; white-space: nowrap; }
-  .misrow.done { opacity: .85; }
+  .misrow.done { opacity: .6; padding: 8px 14px; }
   .misrow .misdone { font-size: 18px; flex-shrink: 0; }
   .galgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .galgrid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; background: var(--card2); }
@@ -1269,6 +1333,14 @@ const L_EN = {
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
   // V3.55.2: the premium-characters section under the grid
   prem_chars_title: 'Premium characters', prem_chars_hint: 'Unlocked with a Premium subscription', prem_chars_owned: 'Open with your subscription',
+  // V3.66.0: shop cards + missions with peaches
+  plan_month: 'Month', plan_week: 'Week', plan_best: 'best value', prem_tag: 'she never falls asleep',
+  prem_feats: ['💬 Unlimited chat', '🎙 Voice & circles', '👩 Every girl', '🎬 2 videos a day'],
+  peaches_title: 'Peaches', peaches_word: 'peaches', pack_hot: 'hit', peach_photo_hint: n => '1 photo of her = ' + n + ' 🍑',
+  free_peaches_row: 'Free peaches every day — in Missions', price_list: 'What costs what',
+  mis_claim: n => 'Claim +' + n + ' 🍑', mis_earned: (a, b) => 'Claimed ' + a + ' of ' + b + ' 🍑', mis_streak: n => n + ' d. streak',
+  mis_ready: n => 'Ready — claim ' + n + ' 🍑', mis_done_list: n => 'Done (' + n + ')',
+  mis_done_toast: (name, n) => '🏆 «' + name + '» done — claim +' + n + ' 🍑 in Missions',
   shop_title: 'Shop', missions_title: 'Missions', month: '/ 30 days', week: '7 days', pay_hint: 'Tap a pack — pay by card or with Telegram Stars.',
   share_img: '📤 Share', invite_cta: '🍑 Invite a friend', invite_got: 'Link copied — share it and you both get 🍑', share_fail: 'Could not share', gal_share_hint: 'Share this photo — a friend who starts gets 🍑, and you too', save_img: '📥 Save', save_ok: 'Photo sent to your chat — forward it to a friend',
     unlim_title: 'Unlimited messages', unlim_sub: 'First hours after sign-up — text is free', unlim_left: 'left',
@@ -1317,7 +1389,7 @@ const L_EN = {
     constructor_price_note: p => 'creation — ' + p + ' 🍑',
   pay_get: 'Get', pay_link_err: 'Could not create the payment — try again',
   pay_opened: 'Payment page opened — finish the payment there',
-  shop_custom_ph: 'How many peaches?', shop_custom_btn: (n, price) => n > 0 ? n + ' 🍑 · ' + price : '🍑',
+  shop_custom_ph: 'Your amount, e.g. 500', shop_custom_btn: (n, price) => n > 0 ? n + ' 🍑 · ' + price : 'Buy',
   input_ph: 'Type a message…', send: 'Send',
   empty_chat: 'Send the first message — she replies right here',
   limit_reached: 'Daily free-message limit reached. Premium lifts it ⭐',
@@ -1469,6 +1541,14 @@ const L_RU = {
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
   // V3.55.2: секция премиум-персонажей под сеткой
   prem_chars_title: 'Премиум-персонажи', prem_chars_hint: 'Открываются подпиской Premium', prem_chars_owned: 'Открыты твоей подпиской',
+  // V3.66.0: карточки магазина + миссии с персиками
+  plan_month: 'Месяц', plan_week: 'Неделя', plan_best: 'выгоднее', prem_tag: 'она больше не засыпает',
+  prem_feats: ['💬 Общение без лимита', '🎙 Голос и кружочки', '👩 Все девушки', '🎬 2 видео в день'],
+  peaches_title: 'Персики', peaches_word: 'персиков', pack_hot: 'хит', peach_photo_hint: n => '1 фото от неё = ' + n + ' 🍑',
+  free_peaches_row: 'Бесплатные персики каждый день — в «Миссиях»', price_list: 'Что сколько стоит',
+  mis_claim: n => 'Забрать +' + n + ' 🍑', mis_earned: (a, b) => 'Забрано ' + a + ' из ' + b + ' 🍑', mis_streak: n => 'серия ' + n + ' дн.',
+  mis_ready: n => 'Готово — забирай ' + n + ' 🍑', mis_done_list: n => 'Выполнено (' + n + ')',
+  mis_done_toast: (name, n) => '🏆 «' + name + '» выполнено — забери +' + n + ' 🍑 в «Миссиях»',
   shop_title: 'Магазин', missions_title: 'Миссии', month: '/ 30 дней', week: '7 дней', pay_hint: 'Нажми на пакет — оплата картой, СБП или звёздами Telegram.',
   share_img: '📤 Поделиться', invite_cta: '🍑 Позвать друга', invite_got: 'Ссылка скопирована — делись, и вам обоим капнет 🍑', share_fail: 'Не удалось поделиться', gal_share_hint: 'Поделись фото — друг получит 🍑 за старт, и тебе тоже', save_img: '📥 Сохранить', save_ok: 'Фото отправлено в чат — перешли его другу',
     unlim_title: 'Безлимитные сообщения', unlim_sub: 'Первые часы после регистрации — текст бесплатно', unlim_left: 'осталось',
@@ -1517,7 +1597,7 @@ const L_RU = {
     constructor_price_note: p => 'создание — ' + p + ' 🍑',
   pay_get: 'Получить', pay_link_err: 'Не удалось создать счёт — попробуй ещё раз',
   pay_opened: 'Платёжная страница открыта — заверши оплату там',
-  shop_custom_ph: 'Сколько персиков?', shop_custom_btn: (n, price) => n > 0 ? n + ' 🍑 · ' + price : '🍑',
+  shop_custom_ph: 'Своё количество, напр. 500', shop_custom_btn: (n, price) => n > 0 ? n + ' 🍑 · ' + price : 'Купить',
   input_ph: 'Напиши сообщение…', send: 'Отправить',
   empty_chat: 'Напиши первое сообщение — она ответит прямо здесь',
   limit_reached: 'Дневной лимит бесплатных сообщений. Premium снимает лимит ⭐',
@@ -2866,6 +2946,7 @@ async function sendChat() {
     const j = await r.json();
     if (!j.ok) { toast(L.reply_err); return; }
     renderChatReply(j);
+    noteMissionsDone(j);
   } catch (e) {
     toast(L.reply_err);
   } finally {
@@ -2996,6 +3077,7 @@ async function sendChatVoice(blob) {
       if (err === 'limit') showTab('shop');
       return;
     }
+    noteMissionsDone(j);
     // his bubble — what the speech recognition actually heard
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'user', content: '🎤 ' + (j.user_text || ''), ts: null }));
     renderChatReply(j);
@@ -4672,33 +4754,50 @@ async function loadShop() {
     const r = await fetch('/webapp/api/shop?lang=' + LANG, { cache: 'no-store', signal });
     const j = await r.json();
     if (!j.ok) { _shopLoaded = false; return; }
-    const s = j.shop, p = s.premium;
-    // V3.62.12: owner — Stars read as foreign; the shop shows money (₽ for
-    // RU, $ for EN). Stars stay as one of the pay methods in the modal.
-    const price = `${esc(money(p))} <small>${esc(L.month)}</small>`;
-    const feats = p.features.map(f => `<li><span>${esc(f.emoji)}</span><span>${esc(LANG === 'en' ? f.en : f.ru)}</span></li>`).join('');
-    // V3.43.0: Come Closer-style pack squares — tap one and the pay-method
-    // modal opens (Stars / card-SBP / crypto rows), like the benchmark shop.
+    const s = j.shop;
+    // V3.66.0: owner — «карточки криво сделаны, описание капец». The shop is
+    // three blocks now: one Premium card (month / week as two plan buttons),
+    // three equal peach tiles that carry only the amount, the gift, ≈ photos
+    // and the price, and a one-line custom amount. Long descriptions stay for
+    // the quick-buy sheet only.
     const purchases = s.purchases || [];
     SHOP = s;
+    const byId = id => purchases.find(x => x.id === id);
     // V3.44.23: the custom-peach tile renders separately from the fixed packs.
     const customItem = purchases.find(x => x.custom);
-    const regularPurchases = purchases.filter(x => !x.custom);
-    // V3.43.1: the −10%/−25% corner badge on the bigger peach packs.
-    const packBadge = x => x.badge ? '<div class="bdg">' + esc(x.badge) + '</div>' : '';
+    const regularPurchases = purchases.filter(x => !x.custom).filter(x => x.credits);
+    const fmtN = n => String(n || 0).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+    const planBtn = (x, label, best) => x ? `
+        <button class="plan${best ? ' best' : ''}" data-pay="${esc(x.id)}">
+          ${best ? `<span class="pl-b">${esc(L.plan_best)}</span>` : ''}
+          <span class="pl-t">${esc(label)}</span>
+          <span class="pl-p">${esc(money(x))}</span>
+          <span class="pl-s">${esc(x.tagline || '')}</span>
+        </button>` : '';
+    const feats = L.prem_feats.map(f => `<li>${esc(f)}</li>`).join('');
+    const premCard = `
+      <div class="premcard">
+        <div class="pc-head"><span class="pc-t">⭐ Premium</span><span class="pc-s">${esc(L.prem_tag)}</span></div>
+        <ul class="pc-feats">${feats}</ul>
+        <div class="plans">${planBtn(byId('premium'), L.plan_month, true)}${planBtn(byId('premium_week'), L.plan_week, false)}</div>
+      </div>`;
+    // V3.43.1 → V3.66.0: the bonus reads as one accent line («+500 🎁»); the
+    // middle pack wears the «хит» ribbon. Every tile has the same rows, so
+    // the three line up whatever the copy.
+    const packBadge = x => x.badge ? '<div class="bdg">' + esc(x.badge) + '</div>' : '<div class="bdg empty"></div>';
     const packs = regularPurchases.map(x => `
-      <div class="pack" data-pay="${esc(x.id)}">
+      <div class="pack" data-pay="${esc(x.id)}"${x.id === 'peach_pack_30' ? ' data-hot="1"' : ''}>
+        ${x.id === 'peach_pack_30' ? `<div class="ribbon">${esc(L.pack_hot)}</div>` : ''}
+        <div class="amt">${esc(fmtN(x.credits))}</div>
+        <div class="unit">🍑 ${esc(L.peaches_word)}</div>
         ${packBadge(x)}
-        <div class="amt">${esc(money(x))}</div>
-        <div class="sub">${esc(x.emoji)} ${esc(x.title)}</div>
-        <div class="rub">${esc(x.description || '')}</div>
-        <button class="get">${esc(L.pay_get)}</button>
+        <div class="sub">${esc(x.tagline || '')}</div>
+        <button class="get">${esc(money(x))}</button>
       </div>`).join('');
-    // V3.44.23: the sixth tile — input + dynamic price button.
+    // V3.44.23 → V3.66.0: the custom amount is one full-width row under the tiles.
     const customTile = customItem ? `
       <div class="pack custom">
         <input type="number" id="customN" min="${esc(String(customItem.unit || 1))}" step="${esc(String(customItem.unit || 1))}" max="999900" placeholder="${esc(L.shop_custom_ph)}" inputmode="numeric">
-        <div class="sub">${esc(customItem.emoji)} ${esc(customItem.title)}</div>
         <button class="get" id="customGet">${esc(L.shop_custom_btn(0, ''))}</button>
       </div>` : '';
     // V3.44.22: the constructor row carries no star price — public personas
@@ -4710,19 +4809,21 @@ async function loadShop() {
     const chatNote = s.free_tier.messages_per_day >= 1000
       ? esc(L.unlim_title)
       : `${s.free_tier.messages_per_day} ${esc(L.msg_day)}`;
+    const photoPrice = s.photo_peaches || 0;
     document.getElementById('shopbody').innerHTML = `
-      <div class="packs">${packs}${customTile}</div>
-      <div id="giftBlock"></div>
-      <div class="hero">
-        <div class="title">⭐ Premium</div>
-        <div class="price">${price}</div>
-        <ul>${feats}</ul>
-      </div>
-      ${items}
-      <div class="note">${esc(L.pay_hint)}</div>
-      <div class="note">💬 ${chatNote} · 📸 ${s.free_tier.photos_level_1_2}–${s.free_tier.photos_level_3_6} ${esc(L.photos_day)}</div>`;
+      ${premCard}
+      <div class="sec-h"><span>🍑 ${esc(L.peaches_title)}</span><small>${esc(photoPrice ? L.peach_photo_hint(fmtN(photoPrice)) : '')}</small></div>
+      <div class="packs">${packs}</div>
+      ${customTile}
+      <button class="freerow" id="freePeachRow"><span>🎁 ${esc(L.free_peaches_row)}</span><span class="fr-go">›</span></button>
+      <div id="promoBlock"></div>
+      <details class="doc pricelist"><summary>📋 ${esc(L.price_list)}</summary><div class="pl-body">${items}
+        <div class="note">💬 ${chatNote} · 📸 ${s.free_tier.photos_level_1_2}–${s.free_tier.photos_level_3_6} ${esc(L.photos_day)}</div></div></details>
+      <div class="note">${esc(L.pay_hint)}</div>`;
     document.querySelectorAll('#shopbody [data-pay]').forEach(b =>
       b.addEventListener('click', () => openPay(b.dataset.pay)));
+    const fr = document.getElementById('freePeachRow');
+    if (fr) fr.addEventListener('click', () => showTab('missions'));
     // V3.44.23: wire up the custom-peach tile.
     const customInput = document.getElementById('customN');
     const customBtn = document.getElementById('customGet');
@@ -4738,11 +4839,11 @@ async function loadShop() {
       customInput.addEventListener('input', updateBtn);
       customBtn.addEventListener('click', () => {
         const u = customUnits();
-        if (u < 1) { toast(L.shop_custom_ph); return; }
+        if (u < 1) { toast(L.shop_custom_ph); customInput.focus(); return; }
         openPayCustom(u, unit, customItem);
       });
     }
-    renderGiftBlock();
+    renderPromoBlock();
   } catch (e) {
     _shopLoaded = false; // V3.44.15: retry on the next tab visit
     document.getElementById('shopbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
@@ -4761,6 +4862,8 @@ function _giftChip() {
   if (chip && ME) { chip.textContent = m_chipText(ME); chip.className = 'chip' + (ME.premium ? ' premium' : ''); }
 }
 function renderGiftBlock() {
+  // V3.66.0: the daily gift lives at the top of «Миссии» now (the free
+  // peaches next to the free tasks); the promo code stays in the shop.
   const box = document.getElementById('giftBlock');
   if (!box) return;
   if (!ME || !ME.gift_enabled) { box.innerHTML = ''; return; }
@@ -4779,19 +4882,28 @@ function renderGiftBlock() {
   else if (ME.gift_capped) btn = '<button class="cta giftbtn dim" disabled>' + esc(L.gift_capped) + '</button>';
   else btn = '<button class="cta giftbtn" id="giftClaimBtn">🎁 ' + esc(L.gift_claim(ME.gift_amount || 1)) + '</button>';
   box.innerHTML = `
-    <div style="border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:14px;margin:12px 0">
+    <div class="giftcard${ME.gift_claimed_today ? '' : ' ready'}">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <div style="font-weight:700;font-size:15px">🎁 ${esc(L.gift_title)}</div>
         <div style="font-size:12px;color:var(--muted);white-space:nowrap">${esc(L.gift_day(nextDay))}</div>
       </div>
       <div class="giftdots">${dots}</div>
       ${btn}
-      <div style="font-weight:700;font-size:14px;margin:16px 0 8px">🎟 ${esc(L.promo_title)}</div>
-      <input class="promoinp" id="promoInput" type="text" autocomplete="off" autocapitalize="characters" placeholder="${esc(L.promo_ph)}" maxlength="24">
-      <button class="cta" id="promoBtn" style="margin-top:8px">${esc(L.promo_btn)}</button>
     </div>`;
   const gc = document.getElementById('giftClaimBtn');
   if (gc) gc.addEventListener('click', claimDailyGift);
+}
+function renderPromoBlock() {
+  const box = document.getElementById('promoBlock');
+  if (!box) return;
+  box.innerHTML = `
+    <div class="promocard">
+      <div style="font-weight:700;font-size:14px;margin-bottom:8px">🎟 ${esc(L.promo_title)}</div>
+      <div class="promorow">
+        <input class="promoinp" id="promoInput" type="text" autocomplete="off" autocapitalize="characters" placeholder="${esc(L.promo_ph)}" maxlength="24">
+        <button class="cta small" id="promoBtn">${esc(L.promo_btn)}</button>
+      </div>
+    </div>`;
   const pb = document.getElementById('promoBtn');
   if (pb) pb.addEventListener('click', redeemPromoCode);
   const pi = document.getElementById('promoInput');
@@ -5716,8 +5828,18 @@ setTimeout(()=>{if(!_channelLoaded){_channelLoaded=true;loadChannel();}},2000);
 
 // V3.46.0: Миссии — the funnel roadmap. Each still-locked actionable mission
 // carries a CTA routed to an existing SPA action (never a new screen).
+// V3.66.0: owner — «миссии, для чего они? ничего не вызывают». Now: the daily
+// gift on top, «забрано X из Y 🍑», a «Забирай!» block with one button per
+// finished mission, and every open mission shows its peaches up front.
 const _MISSION_GROUP_TITLES = { start: '🌱 Первые шаги', romance: '❤️ Романтика', creator: '🎨 Творчество' };
 const _MISSION_CTA_LABEL = { construct: '🎨 Создать', shop: '🔥 Открыть', creator: '📈 Кабинет', chats: '💬 Начать', pictures: '🖼 Смотреть' };
+const _MISSION_ICON = {
+  first_message: '💬', voice_user: '🎙', three_day_streak: '🔥', seven_day_streak: '🔥', hundred_messages: '💯',
+  first_gift: '🎁', first_date: '❤️', ten_dates: '💞', date_collector: '💘', photo_collector: '📸',
+  premium_member: '⭐', anniv_7: '🗓', anniv_30: '🗓', anniv_90: '💍',
+  first_creation: '🎨', community_publish: '🌍', views_100: '📈', first_video: '🎬', first_spicy_photo: '🌶',
+  gallery_set_first: '🖼', gallery_set_five: '🏛',
+};
 // V3.46.2: every locked mission routes to the screen where it can actually be
 // done — previously only 6 missions had a CTA button and the row itself had no
 // click handler, so tapping any other «задание» did nothing. This KEY→action map
@@ -5738,9 +5860,67 @@ function _missionAction(action) {
   else if (action === 'chats') { showTab('chats'); }
   else if (action === 'pictures') { showTab('pictures'); }
 }
+// V3.66.0: a red dot on the «Миссии» tab while peaches wait there.
+function setMissionsDot(on) {
+  const b = document.querySelector('nav#bottomnav button[data-tab="missions"]');
+  if (b) b.classList.toggle('hasdot', !!on);
+}
+// V3.66.0: a chat turn that finished a mission says so right away.
+function noteMissionsDone(j) {
+  const done = (j && j.missions_done) || [];
+  if (!done.length) return;
+  const m = done[0];
+  toast(L.mis_done_toast(m.name, m.peaches));
+  setMissionsDot(true);
+  _missionsLoaded = false;
+}
+let _misClaimBusy = false;
+async function claimMission(key, btn) {
+  if (_misClaimBusy) return;
+  _misClaimBusy = true;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/webapp/api/missions/claim?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: key }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (j.ok) {
+      toast('🍑 +' + j.amount);
+      if (ME && typeof j.balance === 'number') { ME.photo_credits = j.balance; _giftChip(); }
+    } else if (j.error !== 'claimed') { toast(L.invoice_err); }
+  } catch (e) { toast(L.invoice_err); }
+  _misClaimBusy = false;
+  loadMissions();
+}
+function _misRow(it) {
+  const icon = esc(_MISSION_ICON[it.key] || '🏆');
+  const prog = it.progress && !it.unlocked
+    ? `<div class="misprog"><span class="bar"><i style="width:${Math.round(it.progress[0] / it.progress[1] * 100)}%"></i></span><span>${it.progress[0]}/${it.progress[1]}</span></div>`
+    : '';
+  const reward = it.peaches ? `<span class="mispeach">+${esc(fmtPeach(it.peaches))} 🍑</span>` : '';
+  if (it.claimable) {
+    return `<div class="misrow ready">
+      <div class="misicon">${icon}</div>
+      <div class="mis-body"><div class="nm">${esc(it.name)}</div><div class="sub2">${esc(it.description)}</div></div>
+      <button class="misclaim" data-claim="${esc(it.key)}">${esc(L.mis_claim(fmtPeach(it.peaches)))}</button>
+    </div>`;
+  }
+  if (it.unlocked) {
+    return `<div class="misrow done"><div class="misicon">${icon}</div>
+      <div class="mis-body"><div class="nm">${esc(it.name)}</div></div><div class="misdone">✅</div></div>`;
+  }
+  const action = _MISSION_ACTION[it.key] || it.cta || '';
+  const cta = action ? `<span class="misgo">›</span>` : '';
+  return `<div class="misrow lock${action ? ' tappable' : ''}"${action ? ` data-cta="${esc(action)}"` : ''}>
+    <div class="misicon">${icon}</div>
+    <div class="mis-body"><div class="nm">${esc(it.name)}</div><div class="sub2">${esc(it.description)}</div>${prog}</div>
+    <div class="misright">${reward}${cta}</div>
+  </div>`;
+}
+function fmtPeach(n) { return String(n || 0).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 async function loadMissions() {
   const body = document.getElementById('missionsbody');
-  body.innerHTML = '<div class="loading">…</div>';
+  if (!body.querySelector('.misrow')) body.innerHTML = '<div class="loading">…</div>';
   try {
     const r = await fetch('/webapp/api/missions?init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store' });
     const j = await r.json();
@@ -5758,53 +5938,57 @@ async function loadMissions() {
         const seen = new Set(JSON.parse(raw));
         const fresh = cur.filter(k => !seen.has(k));
         if (fresh.length) {
-          const nm = (items.find(it => it.key === fresh[0]) || {}).name;
-          toast('🏆 ' + (nm || L.missions_title));
           fresh.forEach(k => seen.add(k));
           localStorage.setItem(KEY, JSON.stringify(Array.from(seen)));
         }
       }
     } catch (e) {}
-    const head = `<div class="note">${j.unlocked} / ${j.total} · ${j.pct}%</div>`
-      + `<div class="bar" style="margin:6px 0 14px"><i style="width:${j.pct}%"></i></div>`;
-    let html = head, lastGroup = null;
-    items.forEach(it => {
-      if (it.group !== lastGroup) {
-        lastGroup = it.group;
-        html += `<div class="mis-group">${esc(_MISSION_GROUP_TITLES[it.group] || it.group)}</div>`;
-      }
-      const reward = (it.reward && it.reward !== '🎖') ? `<span class="chip">${esc(it.reward)}</span>` : '';
-      const prog = it.progress
-        ? `<div class="misprog">${it.progress[0]}/${it.progress[1]}<span class="bar"><i style="width:${Math.round(it.progress[0] / it.progress[1] * 100)}%"></i></span></div>`
-        : '';
-      if (it.unlocked) {
-        html += `<div class="misrow done">
-          <div class="misicon">🏆</div>
-          <div class="mis-body"><div class="nm">${esc(it.name)} ${reward}</div><div class="sub2">${esc(it.description)}</div>${prog}</div>
-          <div class="misdone">✅</div>
-        </div>`;
-      } else {
-        // V3.46.2: route by mission key (fallback to any backend cta); the whole
-        // row becomes the tap target so «clicking a mission» always does something.
-        const action = _MISSION_ACTION[it.key] || it.cta || '';
-        const cta = action
-          ? `<button class="miscta" data-cta="${esc(action)}">${esc(_MISSION_CTA_LABEL[action] || '▶')}</button>`
-          : '';
-        html += `<div class="misrow lock${action ? ' tappable' : ''}"${action ? ` data-cta="${esc(action)}"` : ''}>
-          <div class="misicon">🔒</div>
-          <div class="mis-body"><div class="nm">${esc(it.name)} ${reward}</div><div class="sub2">${esc(it.description)}</div>${prog}</div>
-          ${cta}
-        </div>`;
-      }
-    });
+    const ready = items.filter(it => it.claimable);
+    const open = items.filter(it => !it.unlocked);
+    const done = items.filter(it => it.unlocked && !it.claimable);
+    setMissionsDot(ready.length > 0 || (ME && ME.gift_enabled && !ME.gift_claimed_today && !ME.gift_capped));
+    const earnedPct = j.peaches_total ? Math.round(j.peaches_earned / j.peaches_total * 100) : 0;
+    const head = `<div id="giftBlock"></div>
+      <div class="missum">
+        <div class="ms-row"><span class="ms-t">${esc(L.mis_earned(fmtPeach(j.peaches_earned), fmtPeach(j.peaches_total)))}</span>
+          <span class="ms-streak">🔥 ${esc(L.mis_streak(j.streak || 0))}</span></div>
+        <div class="bar"><i style="width:${esc(String(earnedPct))}%"></i></div>
+      </div>`;
+    let html = head;
+    if (ready.length) {
+      html += `<div class="mis-group hot">${esc(L.mis_ready(fmtPeach(j.peaches_ready)))}</div>`;
+      ready.forEach(it => { html += _misRow(it); });
+    }
+    let lastGroup = null;
+    const gOrder = { start: 0, romance: 1, creator: 2 };
+    open.slice().sort((a, b) => ((gOrder[a.group] || 0) - (gOrder[b.group] || 0)) || (a.peaches - b.peaches))
+      .forEach(it => {
+        if (it.group !== lastGroup) {
+          lastGroup = it.group;
+          html += `<div class="mis-group">${esc(_MISSION_GROUP_TITLES[it.group] || it.group)}</div>`;
+        }
+        html += _misRow(it);
+      });
+    if (done.length) {
+      html += `<details class="misdonebox"><summary>${esc(L.mis_done_list(done.length))}</summary>` + done.map(_misRow).join('') + '</details>';
+    }
     body.innerHTML = html;
+    renderGiftBlock();
     body.querySelectorAll('.misrow[data-cta]').forEach(r =>
       r.addEventListener('click', () => _missionAction(r.dataset.cta)));
+    body.querySelectorAll('[data-claim]').forEach(b =>
+      b.addEventListener('click', ev => { ev.stopPropagation(); claimMission(b.dataset.claim, b); }));
   } catch (e) {
     _missionsLoaded = false;
     body.innerHTML = `<div class="err">${esc(L.invoice_err)}</div>`;
   }
 }
+// V3.66.0: one quiet fetch after boot so the tab dot shows waiting peaches.
+setTimeout(() => {
+  fetch('/webapp/api/missions?init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store' })
+    .then(r => r.json()).then(j => { if (j && j.ok) setMissionsDot((j.peaches_ready || 0) > 0 || (ME && ME.gift_enabled && !ME.gift_claimed_today && !ME.gift_capped)); })
+    .catch(() => {});
+}, 3000);
 
 // V3.45.27: Галерея + Ачивки — реальные экраны приложения (были заглушки).
 function openAchievements() {
