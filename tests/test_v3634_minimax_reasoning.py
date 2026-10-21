@@ -29,7 +29,7 @@ def _setup(monkeypatch, mm_text, gem_text=None, gem_exc=None):
 
 def test_headroom_added(monkeypatch):
     L, seen = _setup(monkeypatch, 'привет')
-    r = asyncio.run(L.generate_text([{'role': 'user', 'content': 'x'}], max_tokens=90, purpose='life_event'))
+    r = asyncio.run(L.generate_text([{'role': 'user', 'content': 'x'}], max_tokens=90, purpose='rewrite'))
     assert r.text == 'привет' and seen['mm_max'] == 90 + L.MINIMAX_REASONING_HEADROOM
 
 

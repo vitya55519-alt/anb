@@ -12,7 +12,7 @@ from services.relationship_service import record_user_message
 from services.relationship_signals import infer_delta
 from services.test_mode import get_stage as get_test_stage
 from services.behavior_service import behavior_context, choose_behavior
-from services.dialogue_guard_service import build_repetition_guard, casual_punctuation, diversify_emoji, polish_first_message
+from services.dialogue_guard_service import build_repetition_guard, casual_punctuation, diversify_emoji, finish_or_drop, polish_first_message
 from services.hook_service import next_hook
 from services.daily_life import her_moment
 from services.character_dna_service import competency_context, character_dna_context
@@ -486,15 +486,23 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": f"Пользователь не писал около {hours_inactive} часов. Напиши естественно первой, не упоминая отслеживание активности."})
     r = await generate_text(messages, max_tokens=100, temperature=0.95, purpose='proactive')
-    raw = _clean(r.text)
+    raw = _clean(r.text) if (r.text or '').strip() else ''
+    lang = 'en' if (language_code or '').lower().startswith('en') else 'ru'
     recent = [m.content for m in history if m.role == 'assistant'][-6:]
-    answer = polish_first_message(raw, recent)
+    answer = polish_first_message(finish_or_drop(raw, getattr(r, 'complete', True), lang), recent)
     if not answer:
-        # V3.63.15: she only repeated herself; ask once more for something new.
-        messages.append({"role": "assistant", "content": raw})
-        messages.append({"role": "user", "content": "Это ты уже писала. Напиши о другом, новое."})
+        # V3.63.15: she only repeated herself (V3.64.8: or the text came back
+        # cut off); ask once more for something new.
+        if raw:
+            messages.append({"role": "assistant", "content": raw})
+        messages.append({"role": "user", "content": "Напиши о другом, новое, одной короткой законченной фразой."})
         r = await generate_text(messages, max_tokens=100, temperature=1.0, purpose='proactive')
-        answer = polish_first_message(_clean(r.text), recent) or casual_punctuation(_clean(r.text))
+        answer = polish_first_message(finish_or_drop((r.text or '').strip() and _clean(r.text),
+                                                     getattr(r, 'complete', True), lang), recent)
+    if not answer:
+        # never a half sentence: her own fixed «скучаю» line instead
+        from services.retention_features_service import get_retention_text
+        answer = get_retention_text('miss', character_id)
     save_message(db_user_id, character_id, "assistant", answer)
     return answer
 

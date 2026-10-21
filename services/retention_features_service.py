@@ -14,6 +14,7 @@ Implements:
 - Weekly dates
 - Mood-based responses
 """
+import logging
 import random
 import hashlib
 from datetime import datetime, timedelta, timezone
@@ -24,6 +25,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from services.db import SessionLocal
 from models.waifu_models import Base
+
+logger = logging.getLogger(__name__)
 
 
 # ── Per-character morning messages ─────────────────────────────────────────
@@ -875,27 +878,53 @@ def proactive_photo_retired(kind: str | None, created_at) -> bool:
     return PROACTIVE_POOL_SKIP_FROM <= created_at < PROACTIVE_POOL_SKIP_TO
 
 
-def random_proactive_photo(character_id: str | None = None) -> tuple[bytes, str, str] | None:
+def _pick_unseen(ids: list[int], s, user_id: int | None, character_id: str | None) -> int:
+    """V3.64.8: one user gets every pool shot once before any repeats; after
+    that the shot he saw longest ago. Plain random sent Витя the same photo
+    with every daily gift and morning ritual."""
+    if not user_id:
+        return random.choice(ids)
+    from models.app_models import ProductEvent
+    q = select(ProductEvent.value, ProductEvent.created_at).where(
+        ProductEvent.user_id == user_id, ProductEvent.event_name == 'pool_photo_sent')
+    if character_id:
+        q = q.where(ProductEvent.character_id == character_id)
+    last_seen: dict[int, datetime] = {}
+    for value, at in s.execute(q.order_by(ProductEvent.created_at.desc()).limit(500)).all():
+        last_seen.setdefault(int(value or 0), at)
+    unseen = [i for i in ids if i not in last_seen]
+    if unseen:
+        return random.choice(unseen)
+    return min(ids, key=lambda i: last_seen[i])
+
+
+def random_proactive_photo(character_id: str | None = None,
+                           user_id: int | None = None) -> tuple[bytes, str, str] | None:
     """A (bytes, content_type, kind) pick from the pool, or None when empty.
 
     V3.56.7: with a character the pick is STRICT — only her own shots. An
     untagged or foreign photo must never land in her chat: the owner's log
     showed Nadya delivering a stranger's picture. Empty per-character pool
-    simply means «no photo», the caller falls back to plain text."""
-    from models.app_models import ProactivePhoto
+    simply means «no photo», the caller falls back to plain text.
+    With user_id (the DB id) the pick rotates per user and is recorded."""
+    from models.app_models import ProactivePhoto, ProductEvent
     try:
         with SessionLocal() as s:
+            q = select(ProactivePhoto.id, ProactivePhoto.kind, ProactivePhoto.created_at)
             if character_id:
-                rows = s.scalars(select(ProactivePhoto).where(
-                    ProactivePhoto.character_id == character_id)).all()
-            else:
-                rows = s.scalars(select(ProactivePhoto)).all()
-            rows = [r for r in rows if not proactive_photo_retired(getattr(r, 'kind', None), r.created_at)]
-            if not rows:
+                q = q.where(ProactivePhoto.character_id == character_id)
+            ids = [r.id for r in s.execute(q).all() if not proactive_photo_retired(r.kind, r.created_at)]
+            if not ids:
                 return None
-            row = random.choice(rows)
-            return row.image_bytes, (row.content_type or 'image/jpeg'), (getattr(row, 'kind', None) or 'photo')
+            row = s.get(ProactivePhoto, _pick_unseen(ids, s, user_id, character_id))
+            out = (row.image_bytes, (row.content_type or 'image/jpeg'), (getattr(row, 'kind', None) or 'photo'))
+            if user_id:
+                s.add(ProductEvent(user_id=user_id, character_id=character_id or row.character_id or '',
+                                   event_name='pool_photo_sent', value=float(row.id), metadata_json='{}'))
+                s.commit()
+            return out
     except Exception:
+        logger.exception('proactive photo pick failed char=%s', character_id)
         return None
 
 
@@ -946,8 +975,20 @@ def process_secret_command(text: str) -> Optional[str]:
     return None
 
 
+def tidy_fixed_text(text: str) -> str:
+    """V3.64.8: emoji were once stripped from these lines and left double
+    spaces behind («утро  у меня перерыв»); em dashes read as a machine."""
+    import re
+    from services.dialogue_guard_service import casual_punctuation
+    return casual_punctuation(re.sub(r'[ \t]{2,}', ' ', text or '').strip())
+
+
 def get_retention_text(kind: str, character_id: str = 'anna_01') -> str:
     """Get retention text by kind and character."""
+    return tidy_fixed_text(_raw_retention_text(kind, character_id))
+
+
+def _raw_retention_text(kind: str, character_id: str = 'anna_01') -> str:
     getters = {
         'miss': get_character_miss,
         'jealousy': get_character_jealousy,

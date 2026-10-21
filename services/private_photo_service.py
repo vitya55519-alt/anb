@@ -1208,7 +1208,7 @@ async def send_daily_gift(telegram_id: int, bot) -> bool:
         # per-character now, picked by the user's selected character.
         gift_char = user.selected_character or CHARACTER_ID
     from services import retention_features_service
-    shot = retention_features_service.random_proactive_photo(gift_char)
+    shot = retention_features_service.random_proactive_photo(gift_char, user_id=uid)
     if not shot:
         return False  # no free pool image — skip, never pay for a push
     data, _ctype, _kind = shot
