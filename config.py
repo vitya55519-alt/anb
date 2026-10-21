@@ -130,6 +130,15 @@ SPICYAPI_ENABLE_THINKING = os.getenv("SPICYAPI_ENABLE_THINKING", "0") == "1"
 # old blind spot that made /stats report «картинки $0.080» while the balance
 # actually drained ~$3-4/day.
 SPICYAPI_ESTIMATED_COST_USD = float(os.getenv("SPICYAPI_ESTIMATED_COST_USD", "0.036"))
+# V3.69.0: every video/circle renders on SpicyAPI (MiniMax H3 image-to-video,
+# voice included). The «spicy» model is for her own frames; a frame the user
+# uploaded (admin-only) goes to the regular model with a clothed prompt.
+SPICYAPI_VIDEO_MODEL = os.getenv("SPICYAPI_VIDEO_MODEL", "minimax/h3-spicy/image-to-video").strip()
+SPICYAPI_VIDEO_SAFE_MODEL = os.getenv("SPICYAPI_VIDEO_SAFE_MODEL", "minimax/h3/image-to-video").strip()
+SPICYAPI_VIDEO_RESOLUTION = os.getenv("SPICYAPI_VIDEO_RESOLUTION", "480p").strip()
+SPICYAPI_VIDEO_SECONDS = max(3, min(15, int(os.getenv("SPICYAPI_VIDEO_SECONDS", "5"))))
+SPICYAPI_VIDEO_TIMEOUT = max(60, min(1800, int(os.getenv("SPICYAPI_VIDEO_TIMEOUT", "420"))))
+SPICYAPI_VIDEO_COST_PER_SECOND_USD = float(os.getenv("SPICYAPI_VIDEO_COST_PER_SECOND_USD", "0.038"))
 # V3.56.1: owner's call — SpicyAPI renders EVERY photo scene (Наедине-качество
 # выше, чем у fal, а джоб дешевле: $0.0345 vs $0.04). With this on the scene
 # router picks spicyapi first for all chat/studio scenes; fal stays as the

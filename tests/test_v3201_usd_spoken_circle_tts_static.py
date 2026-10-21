@@ -24,7 +24,7 @@ def test_usd_price_config():
 
 def test_circles_are_spoken():
     assert 'CIRCLE_PHRASES' in MAIN
-    assert 'soft, cute, natural female' in MAIN
+    assert 'soft, cute, natural young female voice' in MAIN
     assert 'CIRCLE_PROMPT.format(phrase=' in MAIN
 
 

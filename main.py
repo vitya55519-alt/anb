@@ -83,13 +83,9 @@ from services.referral_service import (
     parse_source_payload, set_source, share_link,
     maybe_grant_referral_tiers, referral_tier_progress,
 )
-from services.gemini_video_service import animate_image, video_available
-from services.cloud_video_service import (
-    animate_image_replicate, animate_image_fal,
-    replicate_available, fal_available, CloudVideoError, SENSUAL_ANIMATION_PROMPT,
-    VIDEO_PRESETS,
-)
-from services.hf_video_service import animate_image_hf, HfVideoError, hf_video_available
+from services.cloud_video_service import CloudVideoError, SENSUAL_ANIMATION_PROMPT, VIDEO_PRESETS
+# V3.69.0: SpicyAPI is the only video engine (Veo/Replicate/fal/HF removed).
+from services.spicy_video_service import video_engines, spicy_video_available, parked_frame, square_frame
 from services import platega_service
 from services import jobs_service
 from services import dialog_store
@@ -100,27 +96,16 @@ from services.relationship_signals import infer_delta
 
 
 def _any_video_engine() -> bool:
-    """At least one image-to-video provider is configured."""
-    return bool(
-        video_available()
-        or replicate_available()
-        or fal_available()
-        or hf_video_available()
-    )
+    """The video engine (SpicyAPI) is configured."""
+    return spicy_video_available()
 
 
 def _video_unavailable_text(telegram_id: int) -> str:
-    """V3.19.1: admins see exactly which video engines are off, so a broken
-    Railway env is diagnosable in one tap instead of a silent failure."""
+    """V3.19.1: admins see why video is off, so a broken Railway env is
+    diagnosable in one tap instead of a silent failure."""
     if telegram_id in ADMIN_TELEGRAM_IDS:
-        return (
-            'Видео недоступно: нет ни одного активного движка.\n'
-            f'Gemini/Veo: {"✅" if video_available() else "❌ нет/битый GEMINI_API_KEY (должен быть чистый ASCII)"}\n'
-            f'Replicate: {"✅" if replicate_available() else "❌ нет REPLICATE_API_TOKEN"}\n'
-            f'fal.ai: {"✅" if fal_available() else "❌ нет FAL_KEY"}\n'
-            f'HF spaces: {"✅" if hf_video_available() else "❌ выключен"}\n\n'
-            'Проверь переменные окружения на Railway.'
-        )
+        return ('Видео недоступно: нужен SPICYAPI_KEY и PUBLIC_BASE_URL '
+                '(SpicyAPI забирает кадр по ссылке). Проверь переменные окружения на Railway.')
     return 'Видео пока недоступно.'
 from services.llm_provider_service import provider_status
 from services.reminder_service import set_timezone, create_from_text, cancel_active_wake, due_reminders, is_wake_request, wake_trial_available
@@ -5183,11 +5168,8 @@ async def quest_beat_cb(cq: types.CallbackQuery):
 async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None, motion_preset: str | None = None) -> None:
     """Animate a delivered photo with automatic engine fallback.
 
-    V3.19.5 order: Gemini/Veo first again (owner decision), then Replicate,
-    fal.ai, then the free HF route (which walks its own list of public spaces
-    internally). The V3.19.3 key gate keeps a broken Gemini key out of the
-    chain. The user only hears about a failure when every available engine
-    failed; a paid run is then refunded.
+    V3.69.0: SpicyAPI is the only engine (owner: photos and video on one
+    provider). A paid run is refunded when it fails.
     """
     # V3.46.0: mission — ordering any animated video/circle unlocks «Живое
     # видео» (voucher). All order paths funnel through here.
@@ -5209,16 +5191,7 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
             raise CloudVideoError('telegram_download_empty')
 
         engines = []
-        # V3.19.5: Gemini/Veo is the primary engine again; Replicate (hailuo),
-        # fal.ai and the free HF spaces are the fallback chain.
-        if video_available():
-            engines.append(('gemini', animate_image))
-        if replicate_available():
-            engines.append(('replicate', animate_image_replicate))
-        if fal_available():
-            engines.append(('fal', animate_image_fal))
-        if hf_video_available():
-            engines.append(('hf', animate_image_hf))
+        engines.extend(video_engines())  # V3.69.0: SpicyAPI only
         if not engines:
             raise CloudVideoError('no_video_engine')
         engine_names = [name for name, _ in engines]
@@ -5466,20 +5439,51 @@ async def animate_last_photo_cb(cq: types.CallbackQuery):
 # "records" a short selfie video from the user's latest photo and sends it as
 # a round video note, like a real girlfriend would.
 CIRCLE_PROMPT = (
-    'Animate this exact photo into a short casual selfie video note: she smiles, '
-    'tilts her head slightly, waves or blows a kiss as if recording a Telegram '
-    'circle message. She says one short phrase in a soft, cute, natural female '
-    'voice, in Russian: "{phrase}". Natural handheld camera feel, direct eye '
-    'contact. Keep her face, hair and outfit identical. No wardrobe change, no '
-    'extra people. Photorealistic.'
+    'Vertical handheld front-camera selfie video, close-up of her face and shoulders, '
+    'like a Telegram video circle she records for her boyfriend. She looks straight into '
+    'the lens, smiles and talks to him, the phone held at arm\'s length with a slight natural '
+    'hand shake. She says in Russian, in a soft, cute, natural young female voice, clearly '
+    'and with lip sync: "{phrase}". Light natural head movement, a small laugh or a wink at '
+    'the end. Keep her face, hair, makeup and outfit identical to the photo. Same place and '
+    'light. No wardrobe change, no extra people, no text on screen. Photorealistic.'
 )
-# V3.20.1: circles are spoken — Veo renders her voice natively (the same cute
-# voice heard in Gemini-generated videos); silent fallback engines just ignore it.
+# V3.20.1 fallback lines; V3.69.0: the circle normally says a line from the
+# dialogue (her last reply) — see _circle_phrase.
 CIRCLE_PHRASES = (
     'привет, это я 😘 скучал по мне?',
     'держи мой кружочек 💋 думай обо мне',
     'смотри, как я тебе улыбаюсь…',
 )
+
+
+def _circle_phrase(telegram_id: int, character_id: str | None = None) -> str:
+    """V3.69.0: what she says in the circle — the first sentence or two of her
+    last reply in this dialogue (≤ ~5 s of speech), else a stock line."""
+    import re as _re
+    try:
+        user = get_user(telegram_id)
+        cid = character_id or get_user_character(telegram_id)
+        history = webapp_service.api_chat_history(user.id if user else 0, cid, 10)
+        text = next((m['content'] for m in reversed(history)
+                     if m['role'] == 'assistant' and not m.get('media_url') and (m.get('content') or '').strip()), '')
+    except Exception:
+        logger.warning('circle phrase lookup failed user=%s', telegram_id, exc_info=True)
+        text = ''
+    text = _re.sub(r'[*_`#\[\]<>"]', '', text or '')
+    text = ''.join(ch for ch in text if ch.isalnum() or ch in ' .,!?:;-…()«»\'\n')
+    text = _re.sub(r'\s+', ' ', text).strip()
+    if not text:
+        return random.choice(CIRCLE_PHRASES)
+    out = ''
+    for sent in _re.split(r'(?<=[.!?…])\s+', text):
+        if out and len(out) + len(sent) > 90:
+            break
+        out = f'{out} {sent}'.strip()
+        if len(out) >= 40:
+            break
+    if len(out) > 90:
+        out = out[:90].rsplit(' ', 1)[0] + '…'
+    return out or random.choice(CIRCLE_PHRASES)
 
 
 @dp.callback_query(F.data == 'video:circle')
@@ -5543,17 +5547,11 @@ async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: in
         if not image_bytes:
             raise CloudVideoError('telegram_download_empty')
         engines = []
-        if video_available():
-            engines.append(('gemini', animate_image))
-        if replicate_available():
-            engines.append(('replicate', animate_image_replicate))
-        if fal_available():
-            engines.append(('fal', animate_image_fal))
-        if hf_video_available():
-            engines.append(('hf', animate_image_hf))
+        engines.extend(video_engines())  # V3.69.0: SpicyAPI only
         if not engines:
             raise CloudVideoError('no_video_engine')
         engine_names = [name for name, _ in engines]
+        phrase = await asyncio.to_thread(_circle_phrase, telegram_id)
         await bot.send_message(chat_id, '🎥 записываю тебе кружочек… обычно это занимает 1–3 минуты')
         video_bytes = None
         used_engine = None
@@ -5562,7 +5560,8 @@ async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: in
             try:
                 if idx > 0:
                     await bot.send_message(chat_id, 'секунду, пробую ещё один способ записать кружочек 🎥')
-                video_bytes = await engine_fn(image_bytes, mime_type='image/jpeg', prompt=CIRCLE_PROMPT.format(phrase=random.choice(CIRCLE_PHRASES)))
+                video_bytes = await engine_fn(square_frame(image_bytes), mime_type='image/jpeg', prompt=CIRCLE_PROMPT.format(phrase=phrase),
+                                              scene='circle')
                 used_engine = engine_name
                 record_provider(f'circle/{engine_name}', True)
                 break
@@ -5625,14 +5624,7 @@ LIVE_TILE_PROMPT_ALT = (
 async def _run_live_tiles(admin_id: int) -> None:
     """V3.43.1: render one i2v living tile per built-in heroine."""
     engines = []
-    if video_available():
-        engines.append(('gemini', animate_image))
-    if replicate_available():
-        engines.append(('replicate', animate_image_replicate))
-    if fal_available():
-        engines.append(('fal', animate_image_fal))
-    if hf_video_available():
-        engines.append(('hf', animate_image_hf))
+    engines.extend(video_engines())  # V3.69.0: SpicyAPI only
     if not engines:
         await bot.send_message(admin_id, '🎬 Живые плитки: нет доступного видео-движка.')
         return
@@ -5689,10 +5681,7 @@ async def gemini_status_cmd(message: types.Message):
         f'OpenRouter: {"✅" if st["openrouter_key_present"] else "❌"} model: {st["openrouter_model"]}\n'
         f'OpenRouter URL: {st["openrouter_base_url"]}\n'
         f'Gemini (fallback): {"✅" if st["gemini_key_present"] else "❌"} model: {st["gemini_model"]}\n'
-        f'Gemini Video: {"✅" if video_available() else "❌"} (primary, V3.19.5)\n'
-        f'Replicate Video: {"✅" if replicate_available() else "❌"}\n'
-        f'fal.ai Video: {"✅" if fal_available() else "❌"}\n'
-        f'HF Video (paid engine): {"✅" if hf_video_available() else "❌"}'
+        f'Video (SpicyAPI): {"✅" if spicy_video_available() else "❌"}'
     )
 
 
@@ -6865,8 +6854,7 @@ async def successful_payment(message: types.Message):
             value=payment.total_amount,
             metadata={'product': 'video', 'source_delivery_id': delivery_id},
         )
-        # One unified job: Gemini/Veo first, cloud + HF fallbacks otherwise,
-        # with automatic engine fallback; auto-refunds Stars if all fail.
+        # One unified job on SpicyAPI; auto-refunds Stars if it fails.
         task = _spawn_job('video', message.from_user.id, _run_video_background(message.chat.id, message.from_user.id, delivery_id, charge, motion_preset=motion_preset), payload={'charge': charge, 'preset': motion_preset or 'auto'})
         _video_jobs[message.from_user.id] = task
         return
@@ -12731,16 +12719,9 @@ async def _webapp_api_studio_video(request: web.Request) -> web.Response:
     if not image_bytes:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
 
-    # 2) the shared video engine chain (Gemini/Veo -> Replicate -> fal -> HF).
-    engines = []
-    if video_available():
-        engines.append(('gemini', animate_image))
-    if replicate_available():
-        engines.append(('replicate', animate_image_replicate))
-    if fal_available():
-        engines.append(('fal', animate_image_fal))
-    if hf_video_available():
-        engines.append(('hf', animate_image_hf))
+    # 2) V3.69.0: SpicyAPI, always on the safe (clothed) model here — the frame
+    #    is the user's own upload or prompt, never her canonical look.
+    engines = video_engines()
     if not engines:
         return web.json_response({'ok': False, 'error': 'no_engine'}, status=503)
     # V3.55.0: a studio motion preset — the same server-side VIDEO_PRESETS the
@@ -12755,7 +12736,8 @@ async def _webapp_api_studio_video(request: web.Request) -> web.Response:
     last_error = None
     for engine_name, engine_fn in engines:
         try:
-            video_bytes = await engine_fn(image_bytes, mime_type=mime, prompt=motion)
+            video_bytes = await engine_fn(image_bytes, mime_type=mime, prompt=motion, safe=True,
+                                          scene='studio_video')
             used_engine = engine_name
             record_provider(f'studio_video/{engine_name}', True)
             break
@@ -12946,32 +12928,24 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
 
 
 async def _webapp_media_circle(telegram_id: int, character_id: str):
-    """V3.39.0: a video circle from the canonical face — same engine chain the
-    bot's «🎥 кружочек» uses (Gemini → Replicate → fal → HF)."""
+    """V3.39.0: a video circle from the canonical face. V3.69.0: SpicyAPI, a
+    square selfie frame, and she says a line from the dialogue."""
     photo = webapp_service.character_photo(character_id)
     if not photo:
         raise PhotoGenerationError('circle', 'no_source_photo')
     image_bytes = photo[0]
     engines = []
-    if video_available():
-        engines.append(animate_image)
-    if replicate_available():
-        engines.append(animate_image_replicate)
-    if fal_available():
-        engines.append(animate_image_fal)
-    if hf_video_available():
-        engines.append(animate_image_hf)
+    engines.extend(fn for _, fn in video_engines())  # V3.69.0: SpicyAPI only
     if not engines:
         raise PhotoGenerationError('circle', 'no_video_engine')
+    phrase = await asyncio.to_thread(_circle_phrase, telegram_id, character_id)
     last_error = None
     for engine_fn in engines:
-        # V3.40.0: name the engine for the provider counters — animate_image
-        # is the Gemini/Veo leg, the rest keep their service suffix.
-        ename = 'gemini' if engine_fn.__name__ == 'animate_image' else engine_fn.__name__.replace('animate_image_', '')
+        ename = engine_fn.__name__.replace('animate_image_', '')
         try:
             video_bytes = await engine_fn(
-                image_bytes, mime_type='image/png',
-                prompt=CIRCLE_PROMPT.format(phrase=random.choice(CIRCLE_PHRASES)))
+                square_frame(image_bytes), mime_type='image/jpeg',
+                prompt=CIRCLE_PROMPT.format(phrase=phrase), scene='circle')
             record_provider(f'circle/{ename}', True)
             return video_bytes, 'video/mp4', 'mp4'
         except Exception as exc:
@@ -13001,7 +12975,7 @@ async def _webapp_media_voice(telegram_id: int, character_id: str):
 
 # V3.41.0: the app-chat «🎬 Видео» button animates the canonical face into a
 # short cinematic clip (a normal rectangle, not a round circle). Same engine
-# chain the bot's «Оживить фото» uses: Gemini/Veo → Replicate → fal → HF.
+# engine the bot's «Оживить фото» uses (SpicyAPI since V3.69.0).
 _WEBAPP_VIDEO_PROMPT = (
     'Animate this exact photo into a short 5-second cinematic clip: she turns '
     'toward the camera, smiles softly, brushes her hair or shifts her pose with '
@@ -13020,19 +12994,12 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
         raise PhotoGenerationError('video', 'no_source_photo')
     image_bytes = photo[0]
     engines = []
-    if video_available():
-        engines.append(animate_image)
-    if replicate_available():
-        engines.append(animate_image_replicate)
-    if fal_available():
-        engines.append(animate_image_fal)
-    if hf_video_available():
-        engines.append(animate_image_hf)
+    engines.extend(fn for _, fn in video_engines())  # V3.69.0: SpicyAPI only
     if not engines:
         raise PhotoGenerationError('video', 'no_video_engine')
     last_error = None
     for engine_fn in engines:
-        ename = 'gemini' if engine_fn.__name__ == 'animate_image' else engine_fn.__name__.replace('animate_image_', '')
+        ename = engine_fn.__name__.replace('animate_image_', '')
         try:
             video_bytes = await engine_fn(image_bytes, mime_type='image/png', prompt=_WEBAPP_VIDEO_PROMPT)
             record_provider(f'video/{ename}', True)
@@ -13184,21 +13151,24 @@ async def _webapp_signed_media(request: web.Request) -> web.Response:
     return web.Response(body=body, content_type=ctype, headers={'Cache-Control': 'private, max-age=3600'})
 
 
+async def _webapp_video_frame(request: web.Request) -> web.Response:
+    """V3.69.0: the start frame SpicyAPI fetches for a video job — parked in
+    memory behind an unguessable token for ~30 minutes."""
+    item = parked_frame(request.match_info.get('token', ''))
+    if not item:
+        return web.Response(status=404)
+    body, ctype = item
+    return web.Response(body=body, content_type=ctype, headers={'Cache-Control': 'no-store'})
+
+
 async def _animate_photo_bytes(telegram_id: int, image_bytes: bytes, mime: str) -> bytes:
     engines = []
-    if video_available():
-        engines.append(animate_image)
-    if replicate_available():
-        engines.append(animate_image_replicate)
-    if fal_available():
-        engines.append(animate_image_fal)
-    if hf_video_available():
-        engines.append(animate_image_hf)
+    engines.extend(fn for _, fn in video_engines())  # V3.69.0: SpicyAPI only
     if not engines:
         raise PhotoGenerationError('video', 'no_video_engine')
     last_error = None
     for engine_fn in engines:
-        ename = 'gemini' if engine_fn.__name__ == 'animate_image' else engine_fn.__name__.replace('animate_image_', '')
+        ename = engine_fn.__name__.replace('animate_image_', '')
         try:
             video_bytes = await engine_fn(image_bytes, mime_type=mime, prompt=_WEBAPP_VIDEO_PROMPT)
             record_provider(f'video/{ename}', True)
@@ -14412,6 +14382,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/story/action', _webapp_api_story_action)
     app.router.add_get('/webapp/media/{filename}', _webapp_media)
     app.router.add_get('/webapp/smedia/{uid}/{filename}/{sig}', _webapp_signed_media)
+    app.router.add_get('/webapp/vsrc/{token}', _webapp_video_frame)
     app.router.add_post('/webapp/api/chat/photo-action', _webapp_api_photo_action)
     app.router.add_post('/webapp/api/picture', _webapp_api_picture_generate)
     # V3.54.0: «Собери видео» — image-to-video of the user's own photo / a
@@ -14613,7 +14584,7 @@ async def main():
     logger.info(
         'LLM status: openrouter=%s model=%s gemini=%s gemini_model=%s video=%s',
         st['openrouter_key_present'], st['openrouter_model'], st['gemini_key_present'],
-        st['gemini_model'], video_available(),
+        st['gemini_model'], spicy_video_available(),
     )
     # V3.28.0: jobs interrupted by the previous deploy — mark them recovered
     # and let the affected users know they can retry.

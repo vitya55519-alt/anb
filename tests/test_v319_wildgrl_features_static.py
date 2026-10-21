@@ -208,6 +208,6 @@ def test_admin_free_constructor():
 def test_video_unavailable_diagnostics_for_admins():
     assert 'def _video_unavailable_text(' in MAIN
     assert 'Проверь переменные окружения на Railway' in MAIN
-    assert 'REPLICATE_API_TOKEN' in MAIN and 'FAL_KEY' in MAIN
+    assert 'SPICYAPI_KEY' in MAIN  # V3.69.0: SpicyAPI is the only video engine
     # All animation entry points use the diagnostic alert.
     assert MAIN.count('_video_unavailable_text(cq.from_user.id)') >= 3

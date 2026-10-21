@@ -28,14 +28,12 @@ def test_video_failure_reports_full_engine_chain_to_admin():
     assert "f'цепочка: {chain[:600]}'" in MAIN
 
 
-def test_geministatus_lists_all_video_engines():
+def test_geministatus_lists_the_video_engine():
     start = MAIN.index("Command('geministatus')")
     block = MAIN[start:MAIN.index('@dp.', start)]
-    assert "'Replicate Video:" in block or '"Replicate Video:' in block or 'Replicate Video:' in block
-    assert 'fal.ai Video:' in block
-    assert 'replicate_available()' in block
-    assert 'fal_available()' in block
-
+    # V3.69.0: one engine left
+    assert 'Video (SpicyAPI):' in block
+    assert 'spicy_video_available()' in block
 
 def test_gift_of_the_day_catalog_logic():
     assert 'DAILY_DISCOUNT = 0.30' in GIFTS

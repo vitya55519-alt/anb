@@ -61,14 +61,9 @@ def test_studio_video_route_exists_and_wired():
 
 
 def test_studio_video_uses_shared_engine_chain_and_neutral_motion():
-    # the same availability order as the bot's video flow
-    for pin in (
-        "('gemini', animate_image)",
-        "('replicate', animate_image_replicate)",
-        "('fal', animate_image_fal)",
-        "('hf', animate_image_hf)",
-    ):
-        assert pin in VIDEO_FN
+    # V3.69.0: SpicyAPI, always on the safe (clothed) model in the studio
+    assert 'engines = video_engines()' in VIDEO_FN
+    assert 'safe=True' in VIDEO_FN
     # an uploaded photo is animated with a neutral hint — never the bot's
     # sensual preset, whatever the prompt says (V3.55.0: the free-text branch
     # survives as the fallback behind a chosen motion preset)

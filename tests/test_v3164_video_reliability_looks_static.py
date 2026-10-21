@@ -17,9 +17,8 @@ def test_unified_video_job_with_engine_fallback():
     assert sig in MAIN
     block = MAIN[MAIN.index(sig):]
     block = block.split('\n\n\n@dp.', 1)[0]
-    assert 'video_available()' in block
-    assert 'hf_video_available()' in block
-    assert 'animate_image_hf' in block
+    # V3.69.0: SpicyAPI is the only video engine (owner, 2026-10-21).
+    assert 'engines.extend(video_engines())' in block
     assert 'if charge_id:' in block
     # The two old single-engine jobs are gone.
     assert 'async def _run_gemini_video_background(' not in MAIN
