@@ -63,6 +63,9 @@ from config import (
     PLATEGA_ENABLED,
     PLATEGA_PREMIUM_PRICE_RUB,
     PLATEGA_PREMIUM_WEEKLY_PRICE_RUB,
+    PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB,
+    PREMIUM_QUARTERLY_STARS,
+    PREMIUM_QUARTERLY_PHOTO_CREDITS,
     PREMIUM_MONTHLY_PHOTO_CREDITS,
     PREMIUM_MONTHLY_STARS,
     PREMIUM_PRICE_USD,
@@ -647,6 +650,8 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             # stays for the quick-buy sheet).
             'tagline': (f'+{peach_num(PREMIUM_MONTHLY_PHOTO_CREDITS)} 🍑 в подарок' if not en
                         else f'+{peach_num(PREMIUM_MONTHLY_PHOTO_CREDITS)} 🍑 as a gift'),
+            'gift': PREMIUM_MONTHLY_PHOTO_CREDITS,
+            'days': 30,
             'stars': PREMIUM_MONTHLY_STARS,
             'payload': 'premium_month',
             'rub': PLATEGA_PREMIUM_PRICE_RUB if PLATEGA_ENABLED else None,
@@ -663,10 +668,32 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             ),
             'tagline': (f'+{peach_num(PREMIUM_WEEKLY_PHOTO_CREDITS)} 🍑 в подарок' if not en
                         else f'+{peach_num(PREMIUM_WEEKLY_PHOTO_CREDITS)} 🍑 as a gift'),
+            'gift': PREMIUM_WEEKLY_PHOTO_CREDITS,
             'stars': PREMIUM_WEEKLY_STARS,
             'payload': 'premium_week',
             'rub': PLATEGA_PREMIUM_WEEKLY_PRICE_RUB if PLATEGA_ENABLED else None,
             'usd': PREMIUM_WEEKLY_PRICE_USD,
+            'days': 7,
+        },
+        # V3.67.0: the 3-month plan the bot already sells (buy:premium_quarter)
+        # is a radio row in the app's Premium card too.
+        {
+            'id': 'premium_quarter',
+            'emoji': '⭐',
+            'title': 'Premium · 3 месяца' if not en else 'Premium · 3 months',
+            'description': (
+                f'три месяца без лимита, {peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 в подарок, голос, кружочки и все девушки'
+                if not en else
+                f'three months unlimited, {peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 as a gift, voice, circles and every girl'
+            ),
+            'tagline': (f'+{peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 в подарок' if not en
+                        else f'+{peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 as a gift'),
+            'gift': PREMIUM_QUARTERLY_PHOTO_CREDITS,
+            'stars': PREMIUM_QUARTERLY_STARS,
+            'payload': 'premium_quarter',
+            'rub': PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB if PLATEGA_ENABLED else None,
+            'usd': None,
+            'days': 90,
         },
         # V3.65.0: ×100 packs; the bulk discount reads as «+N в подарок».
         _peach_pack_item('peach_pack_10', PEACH_PACK_10_STARS, PEACH_PACK_10_RUB, en),

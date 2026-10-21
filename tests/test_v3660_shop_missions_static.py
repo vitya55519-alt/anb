@@ -48,3 +48,11 @@ def test_shop_cards_short():
     # the tile no longer prints the long description
     tiles = INDEX[INDEX.index('const packs = regularPurchases.map'):INDEX.index('const customTile')]
     assert 'x.description' not in tiles
+
+
+def test_premium_plans_like_competitors():
+    # V3.67.0: radio plan rows incl. the 3-month plan, one buy button
+    assert "'id': 'premium_quarter'" in WEB
+    assert "'premium_quarter': 'premium_quarter'," in MAIN
+    assert "['premium_week', 'premium', 'premium_quarter'].map(byId)" in INDEX
+    assert 'id="premBuyBtn"' in INDEX and 'openPay(premPick)' in INDEX

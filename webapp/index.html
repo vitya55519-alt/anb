@@ -421,30 +421,46 @@
      V3.66.0: rebuilt — the tiles carry only amount / gift / ≈photos / price,
      every row has a fixed slot so the three line up, the price is the button. */
   .premcard {
-    background: linear-gradient(150deg, #3a1f12 0%, var(--card) 55%, var(--card2) 100%);
-    border: 1px solid rgba(255, 207, 92, .35); border-radius: 18px; padding: 14px; margin: 6px 0 16px;
+    position: relative; overflow: hidden;
+    background: radial-gradient(120% 60% at 50% 0%, rgba(232,68,127,.22), transparent 60%), var(--card);
+    border: 1px solid rgba(232, 68, 127, .35); border-radius: 20px; padding: 16px 14px 12px; margin: 6px 0 16px;
   }
-  .premcard .pc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-  .premcard .pc-t { font-size: 18px; font-weight: 800; color: var(--premium); }
-  .premcard .pc-s { font-size: 12px; color: var(--muted); text-align: right; }
-  .premcard .pc-feats { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin: 10px 0 12px; }
-  .premcard .pc-feats li { font-size: 12.5px; color: var(--text); line-height: 1.3; }
-  .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .plan {
-    position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
-    border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); color: var(--text);
-    border-radius: 14px; padding: 14px 6px 10px; cursor: pointer; font: inherit;
-  }
-  .plan.best { border-color: var(--premium); background: rgba(255, 207, 92, .12); }
-  .plan .pl-b {
-    position: absolute; top: -9px; left: 50%; transform: translateX(-50%); white-space: nowrap;
-    background: var(--premium); color: #2a1a05; font-size: 10px; font-weight: 800;
-    padding: 2px 8px; border-radius: 8px; text-transform: uppercase; letter-spacing: .03em;
-  }
-  .plan .pl-t { font-size: 13px; color: var(--muted); }
-  .plan .pl-p { font-size: 20px; font-weight: 800; }
-  .plan .pl-s { font-size: 11.5px; color: var(--premium); }
-  .plan:active, .pack:active { transform: scale(.97); }
+  .premcard .pc-head { display: flex; align-items: center; gap: 10px; }
+  .premcard .pc-crown { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; background: linear-gradient(135deg, var(--accent), #ff7ab0); }
+  .premcard .pc-t { font-size: 22px; font-weight: 800; color: #ff7ab0; }
+  .premcard .pc-on { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--ok, #6fe3a1); }
+  .ptiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 10px; }
+  .ptile { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 12px 10px; }
+  .ptile .pt-i { font-size: 20px; }
+  .ptile .pt-t { font-size: 13px; font-weight: 700; margin-top: 6px; }
+  .ptile .pt-s { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+  .pc-list { list-style: none; margin: 4px 0 14px; }
+  .pc-list li { position: relative; padding: 4px 0 4px 16px; font-size: 13px; color: var(--text); }
+  .pc-list li:empty { display: none; }
+  .pc-list li::before { content: ''; position: absolute; left: 2px; top: 11px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .pc-list li#premGiftLine { font-weight: 700; color: #ffb38a; }
+  .prows { display: flex; flex-direction: column; gap: 10px; }
+  .prow { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.1); color: var(--text);
+    border-radius: 14px; padding: 14px 12px; font: inherit; cursor: pointer; }
+  .prow.on { border-color: var(--accent); background: rgba(232,68,127,.1); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .prow .pr-radio { width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); flex-shrink: 0; }
+  .prow.on .pr-radio { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 5px, transparent 6px); }
+  .prow .pr-l { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .prow .pr-l b { font-size: 15px; }
+  .prow .pr-l small { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .prow .pr-r { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
+  .prow .pr-r s { font-size: 11.5px; color: var(--muted); }
+  .prow .pr-r b { font-size: 17px; font-weight: 800; white-space: nowrap; }
+  .prow .pr-off { position: absolute; top: -9px; right: 12px; background: linear-gradient(90deg, var(--accent), #ff7ab0);
+    color: #fff; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 8px; }
+  .pc-buy { display: block; width: 100%; margin-top: 14px; border: 0; border-radius: 14px; padding: 15px; cursor: pointer;
+    background: linear-gradient(90deg, #c2185b, #ff6fa5); color: #fff; font-size: 15px; font-weight: 800;
+    letter-spacing: .06em; text-transform: uppercase; box-shadow: 0 6px 20px rgba(232,68,127,.35); }
+  .pc-buy:active, .prow:active { transform: scale(.98); }
+  .pc-note { text-align: center; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+  .pack:active { transform: scale(.97); }
   .sec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 4px 2px 0; }
   .sec-h span { font-size: 16px; font-weight: 800; }
   .sec-h small { font-size: 12px; color: var(--muted); }
@@ -1334,8 +1350,11 @@ const L_EN = {
   // V3.55.2: the premium-characters section under the grid
   prem_chars_title: 'Premium characters', prem_chars_hint: 'Unlocked with a Premium subscription', prem_chars_owned: 'Open with your subscription',
   // V3.66.0: shop cards + missions with peaches
-  plan_month: 'Month', plan_week: 'Week', plan_best: 'best value', prem_tag: 'she never falls asleep',
-  prem_feats: ['💬 Unlimited chat', '🎙 Voice & circles', '👩 Every girl', '🎬 2 videos a day'],
+  plan_w1: '1 week', plan_m1: '1 month', plan_m3: '3 months', plan_per_week: n => n + ' ₽ a week',
+  prem_get: 'Get', prem_extend: 'Extend', prem_once: 'One-time payment, no auto-renewal',
+  prem_gift_line: n => n + ' 🍑 as a gift right away',
+  prem_tiles: [['💌', 'She never falls asleep', 'Unlimited chat, day and night'], ['🎙', 'Her voice', 'Voice replies and video circles']],
+  prem_list: ['All girls, premium ones too', '2 photo animations a day', 'Story replays', 'More memory: she remembers more about you'],
   peaches_title: 'Peaches', peaches_word: 'peaches', pack_hot: 'hit', peach_photo_hint: n => '1 photo of her = ' + n + ' 🍑',
   free_peaches_row: 'Free peaches every day — in Missions', price_list: 'What costs what',
   mis_claim: n => 'Claim +' + n + ' 🍑', mis_earned: (a, b) => 'Claimed ' + a + ' of ' + b + ' 🍑', mis_streak: n => n + ' d. streak',
@@ -1542,8 +1561,11 @@ const L_RU = {
   // V3.55.2: секция премиум-персонажей под сеткой
   prem_chars_title: 'Премиум-персонажи', prem_chars_hint: 'Открываются подпиской Premium', prem_chars_owned: 'Открыты твоей подпиской',
   // V3.66.0: карточки магазина + миссии с персиками
-  plan_month: 'Месяц', plan_week: 'Неделя', plan_best: 'выгоднее', prem_tag: 'она больше не засыпает',
-  prem_feats: ['💬 Общение без лимита', '🎙 Голос и кружочки', '👩 Все девушки', '🎬 2 видео в день'],
+  plan_w1: '1 неделя', plan_m1: '1 месяц', plan_m3: '3 месяца', plan_per_week: n => n + ' ₽ в неделю',
+  prem_get: 'Получить', prem_extend: 'Продлить', prem_once: 'Разовый платёж, без автопродления',
+  prem_gift_line: n => n + ' 🍑 в подарок сразу',
+  prem_tiles: [['💌', 'Она не засыпает', 'Общение без лимита днём и ночью'], ['🎙', 'Её голос', 'Отвечает голосовыми и кружочками']],
+  prem_list: ['Все девушки, включая премиум', '2 оживления фото в день', 'Перезапуск историй', 'Больше памяти: помнит о тебе больше'],
   peaches_title: 'Персики', peaches_word: 'персиков', pack_hot: 'хит', peach_photo_hint: n => '1 фото от неё = ' + n + ' 🍑',
   free_peaches_row: 'Бесплатные персики каждый день — в «Миссиях»', price_list: 'Что сколько стоит',
   mis_claim: n => 'Забрать +' + n + ' 🍑', mis_earned: (a, b) => 'Забрано ' + a + ' из ' + b + ' 🍑', mis_streak: n => 'серия ' + n + ' дн.',
@@ -2155,7 +2177,7 @@ async function buy(productId, btn, extra, onPaid) {
     tg.openInvoice(j.link, (status) => {
       done();
       if (status === 'paid') {
-        toast(productId === 'premium' || productId === 'premium_week' ? L.paid_prem : L.paid_credit);
+        toast(productId === 'premium' || productId === 'premium_week' || productId === 'premium_quarter' ? L.paid_prem : L.paid_credit);
         loadMe(); loadShop(); loadCharacters();
         // V3.62.10: bought at the moment of desire — finish what he wanted.
         if (typeof onPaid === 'function') setTimeout(onPaid, 800);
@@ -4767,19 +4789,37 @@ async function loadShop() {
     const customItem = purchases.find(x => x.custom);
     const regularPurchases = purchases.filter(x => !x.custom).filter(x => x.credits);
     const fmtN = n => String(n || 0).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
-    const planBtn = (x, label, best) => x ? `
-        <button class="plan${best ? ' best' : ''}" data-pay="${esc(x.id)}">
-          ${best ? `<span class="pl-b">${esc(L.plan_best)}</span>` : ''}
-          <span class="pl-t">${esc(label)}</span>
-          <span class="pl-p">${esc(money(x))}</span>
-          <span class="pl-s">${esc(x.tagline || '')}</span>
-        </button>` : '';
-    const feats = L.prem_feats.map(f => `<li>${esc(f)}</li>`).join('');
+    // V3.67.0: owner — «как у конкурентов»: two perk tiles, a short list,
+    // the plans as radio rows (week / month / 3 months) with the honest
+    // «as if paid weekly» crossed-out price and ₽-per-week, ONE big button.
+    const plans = ['premium_week', 'premium', 'premium_quarter'].map(byId).filter(Boolean);
+    const weekPlan = byId('premium_week');
+    const rubOf = x => x.price_rub || 0;
+    const planRow = x => {
+      const days = x.days || 30;
+      const weeks = days / 7;
+      const full = weekPlan && x !== weekPlan ? Math.round(rubOf(weekPlan) * weeks / 10) * 10 : 0;
+      const off = full && rubOf(x) < full ? Math.round((1 - rubOf(x) / full) * 100) : 0;
+      const label = x.id === 'premium_week' ? L.plan_w1 : (x.id === 'premium' ? L.plan_m1 : L.plan_m3);
+      const perWeek = x !== weekPlan && LANG !== 'en' ? Math.round(rubOf(x) / weeks) : 0;
+      return `
+        <button class="prow" data-plan="${esc(x.id)}">
+          ${off ? `<span class="pr-off">−${esc(String(off))}%</span>` : ''}
+          <span class="pr-radio"></span>
+          <span class="pr-l"><b>${esc(label)}</b>${perWeek ? `<small>${esc(L.plan_per_week(fmtN(perWeek)))}</small>` : ''}</span>
+          <span class="pr-r">${off && LANG !== 'en' ? `<s>${esc(fmtN(full))} ₽</s>` : ''}<b>${esc(money(x))}</b></span>
+        </button>`;
+    };
+    const tiles = L.prem_tiles.map(t => `<div class="ptile"><div class="pt-i">${esc(t[0])}</div><div class="pt-t">${esc(t[1])}</div><div class="pt-s">${esc(t[2])}</div></div>`).join('');
+    const feats = L.prem_list.map(f => `<li>${esc(f)}</li>`).join('');
     const premCard = `
       <div class="premcard">
-        <div class="pc-head"><span class="pc-t">⭐ Premium</span><span class="pc-s">${esc(L.prem_tag)}</span></div>
-        <ul class="pc-feats">${feats}</ul>
-        <div class="plans">${planBtn(byId('premium'), L.plan_month, true)}${planBtn(byId('premium_week'), L.plan_week, false)}</div>
+        <div class="pc-head"><span class="pc-crown">👑</span><span class="pc-t">Premium</span>${ME && ME.premium ? `<span class="pc-on">${esc(L.premium_on)}</span>` : ''}</div>
+        <div class="ptiles">${tiles}</div>
+        <ul class="pc-list"><li id="premGiftLine"></li>${feats}</ul>
+        <div class="prows">${plans.map(planRow).join('')}</div>
+        <button class="pc-buy" id="premBuyBtn">${esc(ME && ME.premium ? L.prem_extend : L.prem_get)}</button>
+        <div class="pc-note">${esc(L.prem_once)}</div>
       </div>`;
     // V3.43.1 → V3.66.0: the bonus reads as one accent line («+500 🎁»); the
     // middle pack wears the «хит» ribbon. Every tile has the same rows, so
@@ -4822,6 +4862,18 @@ async function loadShop() {
       <div class="note">${esc(L.pay_hint)}</div>`;
     document.querySelectorAll('#shopbody [data-pay]').forEach(b =>
       b.addEventListener('click', () => openPay(b.dataset.pay)));
+    // V3.67.0: the plan radio — month preselected; the gift line follows it.
+    let premPick = byId('premium') ? 'premium' : (plans[0] && plans[0].id);
+    const pickPlan = id => {
+      premPick = id;
+      document.querySelectorAll('#shopbody .prow').forEach(r => r.classList.toggle('on', r.dataset.plan === id));
+      const x = byId(id), gl = document.getElementById('premGiftLine');
+      if (gl) gl.textContent = x && x.gift ? L.prem_gift_line(fmtN(x.gift)) : '';
+    };
+    document.querySelectorAll('#shopbody .prow').forEach(r => r.addEventListener('click', () => pickPlan(r.dataset.plan)));
+    if (premPick) pickPlan(premPick);
+    const pbb = document.getElementById('premBuyBtn');
+    if (pbb) pbb.addEventListener('click', () => { if (premPick) openPay(premPick); });
     const fr = document.getElementById('freePeachRow');
     if (fr) fr.addEventListener('click', () => showTab('missions'));
     // V3.44.23: wire up the custom-peach tile.
@@ -4961,7 +5013,8 @@ let SHOP = null;
 // else the Stars equivalent), dollars for EN, Stars only as a last resort.
 function money(x) {
   const rub = x.price_rub || x.rub, usd = x.price_usd || x.usd;
-  if (LANG !== 'en' && rub) return rub + ' ₽';
+  // V3.67.0: 1799 → «1 799 ₽» (thin-grouped like the peach figures).
+  if (LANG !== 'en' && rub) return String(rub).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + ' ₽';
   if (usd) return '$' + usd;
   if (rub) return rub + ' ₽';
   return x.stars + ' ⭐';
