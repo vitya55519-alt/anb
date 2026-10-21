@@ -33,22 +33,13 @@ def test_config_exposes_replicate_and_fal():
     assert 'fal-ai/wan2.2/image-to-video' in CONFIG
 
 
-def test_video_job_orchestrates_cloud_engines_before_hf():
-    # Cloud providers must be tried in order: gemini -> replicate -> fal -> hf.
+def test_video_job_runs_on_spicyapi_only():
+    # V3.69.0: the old gemini -> replicate -> fal -> hf chain is gone.
     job = MAIN[MAIN.index('async def _run_video_background('):]
     job = job.split('\n\n\n@dp.', 1)[0]
-    order = (
-        job.index("engines.append(('gemini'"),
-        job.index("engines.append(('replicate'"),
-        job.index("engines.append(('fal'"),
-        job.index("engines.append(('hf'"),
-    )
-    assert order == tuple(sorted(order)), 'engine order must be gemini, replicate, fal, hf'
-    assert 'replicate_available' in MAIN
-    assert 'fal_available' in MAIN
-    assert 'animate_image_replicate' in MAIN
-    assert 'animate_image_fal' in MAIN
-
+    assert 'engines.extend(video_engines())' in job
+    for gone in ('animate_image_replicate', 'animate_image_fal', 'animate_image_hf', 'replicate_available()'):
+        assert gone not in MAIN
 
 def test_any_video_engine_helper_used_everywhere():
     assert 'def _any_video_engine()' in MAIN

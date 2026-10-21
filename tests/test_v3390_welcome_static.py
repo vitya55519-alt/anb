@@ -165,7 +165,7 @@ def test_chat_media_endpoint_and_gates():
     assert 'has_accepted(telegram_id)' in block
     # the bot's own engine chains are reused
     assert 'async def _webapp_media_circle(' in MAIN
-    assert 'CIRCLE_PROMPT.format(phrase=random.choice(CIRCLE_PHRASES))' in MAIN
+    assert 'CIRCLE_PROMPT.format(phrase=phrase)' in MAIN  # V3.69.0: a line from the dialogue
     assert 'async def _webapp_media_voice(' in MAIN
     assert 'synthesize_bytes(clean,' in MAIN
     assert 'async def _webapp_media_photo(' in MAIN

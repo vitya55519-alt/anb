@@ -48,10 +48,8 @@ def test_video_refund_only_for_paid_runs():
     assert sig in MAIN
     block = MAIN[MAIN.index(sig):MAIN.index('@dp.callback_query(F.data.startswith(\'video:animate:\'))')]
     assert 'if charge_id:' in block
-    # Engine fallback: Gemini/Veo first (V3.19.5), HF spaces as backup.
-    assert 'video_available()' in block
-    assert 'hf_video_available()' in block
-    assert 'animate_image_hf' in block
+    # V3.69.0: SpicyAPI is the only video engine (owner, 2026-10-21).
+    assert 'engines.extend(video_engines())' in block
 
 
 def test_premium_daily_free_limit_helpers():

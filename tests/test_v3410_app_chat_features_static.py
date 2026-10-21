@@ -128,11 +128,8 @@ def test_video_and_scene_helpers_exist_and_chain_the_engines():
     assert 'async def _webapp_media_video(telegram_id: int, character_id: str):' in MAIN
     assert 'async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str):' in MAIN
     video = MAIN[MAIN.index('async def _webapp_media_video('):MAIN.index('async def _webapp_media_scene(')]
-    # the same engine chain the bot's «Оживить фото» uses
-    assert 'engines.append(animate_image)' in video
-    assert 'engines.append(animate_image_replicate)' in video
-    assert 'engines.append(animate_image_fal)' in video
-    assert 'engines.append(animate_image_hf)' in video
+    # the same engine the bot's «Оживить фото» uses (SpicyAPI since V3.69.0)
+    assert 'engines.extend(fn for _, fn in video_engines())' in video
     assert "record_provider(f'video/{ename}', True)" in video
     assert "return video_bytes, 'video/mp4', 'mp4'" in video
 

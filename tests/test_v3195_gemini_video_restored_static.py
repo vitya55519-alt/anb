@@ -27,27 +27,14 @@ def test_gemini_video_enabled_only_with_valid_key():
     assert '"veo-3.1-lite-generate-preview"' in CONFIG
 
 
-def test_engine_chain_starts_with_gemini():
+def test_engine_chain_is_spicyapi_now():
+    # V3.69.0: owner moved all video to SpicyAPI; Veo is out of the chain.
     job = MAIN[MAIN.index('async def _run_video_background('):]
     job = job.split('\n\n\n@dp.', 1)[0]
-    assert "engines.append(('gemini', animate_image))" in job
-    order = (
-        job.index("engines.append(('gemini'"),
-        job.index("engines.append(('replicate'"),
-        job.index("engines.append(('fal'"),
-        job.index("engines.append(('hf'"),
-    )
-    assert order == tuple(sorted(order)), 'engine order must be gemini, replicate, fal, hf'
-    # The availability helper counts Gemini again.
+    assert 'engines.extend(video_engines())' in job
+    assert "('gemini', animate_image)" not in MAIN
     helper = MAIN[MAIN.index('def _any_video_engine()'):MAIN.index('def _video_unavailable_text(')]
-    assert 'video_available()' in helper
-
-
-def test_admin_diagnostics_cover_gemini_again():
-    assert 'нет/битый GEMINI_API_KEY (должен быть чистый ASCII)' in MAIN
-    status = MAIN[MAIN.index('async def gemini_status_cmd('):]
-    assert 'Gemini Video' in status
-    assert 'video_available()' in status
+    assert 'spicy_video_available()' in helper
 
 
 def test_gemini_photo_gets_transient_retry():

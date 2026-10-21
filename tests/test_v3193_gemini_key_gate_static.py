@@ -59,4 +59,5 @@ def test_gemini_route_falls_through_openai_to_seedream():
 
 def test_video_alert_mentions_broken_key():
     main_src = (ROOT / 'main.py').read_text(encoding='utf-8')
-    assert 'нет/битый GEMINI_API_KEY (должен быть чистый ASCII)' in main_src
+    # V3.69.0: video no longer depends on Gemini; the alert names SpicyAPI.
+    assert 'нужен SPICYAPI_KEY и PUBLIC_BASE_URL' in main_src
