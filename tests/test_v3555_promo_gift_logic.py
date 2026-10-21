@@ -23,6 +23,10 @@ Base.metadata.create_all(engine)
 
 from models.app_models import ProductEvent, PromoCode, StarTransaction, User, UserConsent  # noqa: E402
 from services import gift_service as g  # noqa: E402
+
+# V3.68.0: the gift is off by default (daily missions replaced it); the rail
+# itself must keep working if the env switches it back on.
+g.DAILY_GIFT_ENABLED = True
 from services.consent_service import accept  # noqa: E402
 from services.payments import get_photo_credits  # noqa: E402
 
