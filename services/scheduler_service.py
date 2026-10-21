@@ -427,6 +427,13 @@ def _user_local_hour(user) -> int | None:
 
 # V3.59.2: (user_id, date) pairs whose morning ritual keeps last night's promise.
 _ritual_promised: set = set()
+# V3.64.8: the morning that keeps the promise says so once, in her words.
+_PROMISE_KEPT = (
+    'как обещала 😌 доброе утро',
+    'доброе утро ☀️ обещала же, держи',
+    'проснулся? это тебе, как и обещала 💋',
+    'утро ☀️ вчера обещала, сегодня показываю',
+)
 
 
 async def _rituals(bot):
@@ -459,6 +466,10 @@ async def _rituals(bot):
             # used to dress every girl's morning ping in Anna's media.
             char_id = sel_char or CHARACTER_ID or 'anna_01'
             text=retention_features_service.get_retention_text(kind, char_id)
+            # V3.64.8: her words and the service promo no longer share one
+            # caption («...составишь компанию?\n🎁 забирай дневной подарок»):
+            # the caption is only her line, the gift is a button under it.
+            gift_label=None
             if kind=='morning':
                 # V3.55.5: the morning ritual now carries a CONCRETE reason to
                 # open the app — today's unclaimed streak gift (the wheel died
@@ -467,38 +478,47 @@ async def _rituals(bot):
                     from services import gift_service
                     gs=gift_service.gift_status(int(tg_id))
                     if gs.get('enabled') and gs.get('available'):
-                        text+=f"\n🎁 забирай дневной подарок +{gs.get('amount',1)} 🍑 в магазине приложения — на 7-й день дают 3"
-                    elif gs.get('enabled') and not gs.get('claimed_today') and gs.get('capped'):
-                        text+='\n🍑 копилка персиков полная — потрать, и подарок снова будет ждать'
+                        gift_label=f"🎁 Забрать подарок +{gs.get('amount',1)} 🍑"
                 except Exception:
                     logger.exception('ritual gift check failed user=%s',uid)
-            if streak and streak >= 3:
-                text+=f'\n\nкстати, мы общаемся {streak} дней подряд 🔥 не прерывай серию 😉'
             # V3.47.2: if the owner loaded a media pool, the ritual arrives as a
             # real photo from her (clean, no watermark); else plain text.
             # V3.47.3: the pool also holds GIFs and videos — send by kind.
-            shot = retention_features_service.random_proactive_photo(char_id)
+            # the evening only checks the pool (its photo waits for the morning),
+            # so only a shot that is really sent counts in his rotation
+            shot = retention_features_service.random_proactive_photo(char_id, user_id=uid if kind=='morning' else None)
             # V3.59.2: the evening plants a reason to come back — a promise the
             # morning ritual keeps with a photo. Only promised when her media
             # pool can actually deliver one.
             if kind=='evening' and shot:
-                text+='\n\nа завтра утром пришлю тебе кое-что 🙈 не проспи'
+                text+='\n\nа завтра утром пришлю тебе кое-что, не проспи 😏'
                 _ritual_promised.add((uid,(now+dt.timedelta(days=1)).date().isoformat()))
                 shot=None  # the promise IS the hook; the photo waits for the morning
             elif kind=='morning' and shot and (uid,today_key) in _ritual_promised:
-                text='как обещала 🙈 доброе утро\n\n'+text
+                # one greeting, not «доброе утро» glued onto another «утро»
+                text=random.choice(_PROMISE_KEPT)
                 _ritual_promised.discard((uid,today_key))
+            if streak and streak >= 3 and not shot:
+                text+=f'\n\nкстати, мы общаемся {streak} дней подряд 🔥 не прерывай серию 😉'
+            markup=None
+            if gift_label:
+                if PUBLIC_BASE_URL:
+                    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+                    markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                        text=gift_label, web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'))]])
+                else:
+                    text+='\n\n'+gift_label.replace('Забрать подарок','дневной подарок ждёт в приложении,')
             if shot:
                 from aiogram.types import BufferedInputFile
                 data, ctype, media_kind = shot
                 if media_kind == 'gif':
-                    await bot.send_animation(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=text)
+                    await bot.send_animation(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=text, reply_markup=markup)
                 elif media_kind == 'video':
-                    await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=text)
+                    await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=text, reply_markup=markup)
                 else:
-                    await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=text)
+                    await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=text, reply_markup=markup)
             else:
-                await bot.send_message(int(tg_id),text)
+                await bot.send_message(int(tg_id),text,reply_markup=markup)
             _to_app_chat(uid,tg_id,char_id,text,shot)
             _ritual_sent.add(guard)
             track_event(uid, f'ritual_{kind}_sent', metadata={'streak': streak, 'tz': tz})

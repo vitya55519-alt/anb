@@ -76,6 +76,12 @@ LLM_FALLBACK_TIMEOUT_SECONDS = _env_float('LLM_FALLBACK_TIMEOUT_SECONDS', 40.0)
 
 # V3.63.4: reasoning tokens MiniMax may spend before the visible answer.
 MINIMAX_REASONING_HEADROOM = max(0, int(os.getenv('MINIMAX_REASONING_HEADROOM', '512')))
+# V3.64.8: for the one-liners she sends first M3 often thinks ~600 tokens and
+# came back EMPTY every other time; those calls get more room.
+_MINIMAX_HEADROOM_BY_PURPOSE = {'life_event': 1200, 'proactive': 1200}
+# V3.64.8: Gemini 3.x counts its hidden thinking inside max_tokens too, so a
+# 90-token life moment came back as 2–4 words («Надела сегодня тот»).
+GEMINI_REASONING_HEADROOM = max(0, int(os.getenv('GEMINI_REASONING_HEADROOM', '512')))
 
 # ── Provider clients (chat: MiniMax primary, Gemini → OpenRouter fallback) ─
 _openrouter = (
@@ -111,6 +117,15 @@ class LLMResult:
     text: str
     provider: str
     model: str
+    # False when the provider stopped on the token cap: the text is cut off.
+    complete: bool = True
+
+
+def _complete(r) -> bool:
+    try:
+        return (r.choices[0].finish_reason or 'stop') != 'length'
+    except Exception:
+        return True
 
 
 import re
@@ -158,14 +173,14 @@ async def generate_text(
                 # V3.63.4: MiniMax-M3 spends ~90 reasoning tokens inside the
                 # same budget — short calls (life moments, proactive, rewrite,
                 # adaptation) came back EMPTY. Give the thinking its own room.
-                max_tokens=max_tokens + MINIMAX_REASONING_HEADROOM,
+                max_tokens=max_tokens + max(MINIMAX_REASONING_HEADROOM, _MINIMAX_HEADROOM_BY_PURPOSE.get(purpose, 0)),
                 **mm_kwargs,
             )
             text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'minimax', mm_model, r)
             logger.info('LLM ok provider=minimax model=%s purpose=%s len=%d', mm_model, purpose, len(text))
             if text:
-                return LLMResult(text, 'minimax', mm_model)
+                return LLMResult(text, 'minimax', mm_model, _complete(r))
             # empty answer: let the free Gemini fallback try instead
             errors.append(f'MiniMax({mm_model}): empty text')
             minimax_empty = True
@@ -181,12 +196,12 @@ async def generate_text(
             r = await _gemini.chat.completions.create(
                 model=GEMINI_CHAT_MODEL,
                 messages=messages,
-                max_tokens=max_tokens,
+                max_tokens=max_tokens + GEMINI_REASONING_HEADROOM,
             )
             text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'gemini', GEMINI_CHAT_MODEL, r)
             logger.info('LLM ok provider=gemini model=%s purpose=%s len=%d', GEMINI_CHAT_MODEL, purpose, len(text))
-            return LLMResult(text, 'gemini', GEMINI_CHAT_MODEL)
+            return LLMResult(text, 'gemini', GEMINI_CHAT_MODEL, _complete(r))
         except Exception as exc:
             detail = f'Gemini({GEMINI_CHAT_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
             errors.append(detail)

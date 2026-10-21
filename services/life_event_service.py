@@ -157,7 +157,8 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
         text = (getattr(r, 'text', '') or '').strip().strip('"').strip()
         # V3.63.15: same chat polish as replies (no em dash, no emoji tic) and
         # nothing she already said; a pure repeat skips the slot.
-        from services.dialogue_guard_service import polish_first_message
+        from services.dialogue_guard_service import finish_or_drop, polish_first_message
+        text = finish_or_drop(text, getattr(r, 'complete', True))
         text = polish_first_message(text, recent)
         if len(text) < 8:
             return {}
@@ -167,7 +168,8 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
                 from services.retention_features_service import random_proactive_photo
                 # V3.56.7: only this character's own pool shots — never a
                 # stranger's face dressed up as her.
-                photo = random_proactive_photo(character_id)
+                from services.user_service import ensure_user
+                photo = random_proactive_photo(character_id, user_id=ensure_user(telegram_id))
             except Exception:
                 photo = None
         options = [(lbl, f'life_reply:{character_id}:{key}') for lbl, key in _REPLY_OPTIONS]

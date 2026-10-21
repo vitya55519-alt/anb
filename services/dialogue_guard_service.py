@@ -163,3 +163,22 @@ def polish_first_message(text: str, recent_bot_texts) -> str:
     if not text:
         return ''
     return casual_punctuation(diversify_emoji(text, recent_bot_texts))
+
+
+# V3.64.8: a message cut on the token cap («Надела сегодня тот») or one that
+# came back as a stray English word («perspective,») must never be sent.
+_SENTENCE_END = re.compile(r'[.!?…)]|[\U0001F300-\U0001FAFF☀-➿]')
+
+
+def finish_or_drop(text: str, complete: bool = True, lang: str = 'ru') -> str:
+    """Cut an unfinished message back to its last whole sentence; '' if none."""
+    text = (text or '').strip()
+    if not re.search(r'[a-z]{3}' if lang == 'en' else r'[а-яё]{3}', text, re.I):
+        return ''
+    if complete:
+        return text
+    ends = [m.end() for m in _SENTENCE_END.finditer(text)]
+    if not ends:
+        return ''
+    cut = text[:ends[-1]].strip()
+    return cut if len(cut) >= 12 else ''

@@ -37,7 +37,7 @@ def welcome_back_line(last_role: str, character_id: str) -> str:
     if last_role == 'assistant':
         return random.choice(BACK_AFTER_HER)
     from services import retention_features_service
-    return retention_features_service.get_character_miss(character_id)
+    return retention_features_service.tidy_fixed_text(retention_features_service.get_character_miss(character_id))
 
 
 def maybe_welcome_back(user_id: int, character_id: str, now: datetime | None = None) -> str | None:

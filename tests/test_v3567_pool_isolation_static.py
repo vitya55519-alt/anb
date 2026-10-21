@@ -25,7 +25,7 @@ def test_pool_row_has_character():
 # ── service: strict per-character pick + re-tag CRUD ────────────────────────
 def test_random_pick_is_character_strict():
     pick = RFS[RFS.index('def random_proactive_photo('):RFS.index('def get_character_miss(')]
-    assert 'def random_proactive_photo(character_id: str | None = None)' in pick
+    assert 'def random_proactive_photo(character_id: str | None = None,' in pick
     assert 'ProactivePhoto.character_id == character_id' in pick
     # no-argument legacy call must not silently return everyone's media
     assert 'if character_id:' in pick
@@ -42,15 +42,15 @@ def test_ritual_uses_user_selected_character():
     ritual = SCHED[SCHED.index('async def _rituals(bot):'):SCHED.index('async def _donation_reminder(bot):')]
     assert 'u.selected_character or ' in ritual          # snapshot carries it
     assert "char_id = sel_char or CHARACTER_ID or 'anna_01'" in ritual
-    assert 'random_proactive_photo(char_id)' in ritual
+    assert 'random_proactive_photo(char_id, user_id=' in ritual
 
 
 def test_gift_and_life_event_are_per_character():
     gift = PPS[PPS.index('async def send_daily_gift('):]
     assert 'gift_char = user.selected_character or CHARACTER_ID' in gift
-    assert 'random_proactive_photo(gift_char)' in gift
+    assert 'random_proactive_photo(gift_char, user_id=uid)' in gift
     assert "'gift', gift_char, 'daily_gift'" in gift
-    assert 'photo = random_proactive_photo(character_id)' in LIFE
+    assert 'photo = random_proactive_photo(character_id, user_id=' in LIFE
 
 
 # ── admin UX: upload asks whose face it is; shots can be re-tagged ──────────
