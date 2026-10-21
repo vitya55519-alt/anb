@@ -63,21 +63,21 @@ def test_streak_rewards_and_contest():
 
         gam = touch_activity(TID)
         assert gam["streak_count"] == 3, gam
-        assert gam.get("streak_reward_credits") == 1, gam
-        assert get_photo_credits(TID) == 1, get_photo_credits(TID)
+        assert gam.get("streak_reward_credits") == 100, gam  # V3.65.0: ×100
+        assert get_photo_credits(TID) == 100, get_photo_credits(TID)
 
         # Same-day repeat must NOT re-grant (new_streak_day is False -> skipped).
         again = touch_activity(TID)
         assert not again.get("streak_reward_credits"), again
-        assert get_photo_credits(TID) == 1, get_photo_credits(TID)
+        assert get_photo_credits(TID) == 100, get_photo_credits(TID)
         print("PASS streak milestone idempotency, credits:", get_photo_credits(TID))
 
         # Day 7 milestone: streak 6 ending yesterday -> 7 -> grant day-7 reward (2 credits).
         _set_streak(TID, 6, yesterday)
         gam7 = touch_activity(TID)
         assert gam7["streak_count"] == 7, gam7
-        assert gam7.get("streak_reward_credits") == 2, gam7
-        assert get_photo_credits(TID) == 3, get_photo_credits(TID)
+        assert gam7.get("streak_reward_credits") == 200, gam7
+        assert get_photo_credits(TID) == 300, get_photo_credits(TID)
         print("PASS day-7 milestone reward, credits:", get_photo_credits(TID))
 
         # --- Referral leaderboard ---

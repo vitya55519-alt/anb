@@ -8,7 +8,7 @@ SPA = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 def test_chat_photo_costs_two_peaches():
     import config
-    assert config.CHAT_PHOTO_PEACH_COST == 2
+    assert config.CHAT_PHOTO_PEACH_COST == 200  # V3.65.0: ×100
     assert 'get_photo_credits(telegram_id) < CHAT_PHOTO_PEACH_COST' in MAIN
     assert 'spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST)' in MAIN
 

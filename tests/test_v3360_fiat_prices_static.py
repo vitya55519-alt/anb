@@ -100,8 +100,9 @@ def test_webapp_service_items_carry_fiat():
     assert "'usd': PREMIUM_PRICE_USD," in WEBAPP_SVC
     assert "'usd': PREMIUM_WEEKLY_PRICE_USD," in WEBAPP_SVC
     # V3.44.22: packs carry their REAL Platega rub prices (was a ladder pair).
-    assert "'rub': PEACH_PACK_10_RUB if PLATEGA_ENABLED else None," in WEBAPP_SVC
-    assert "'rub': PEACH_PACK_100_RUB if PLATEGA_ENABLED else None," in WEBAPP_SVC
+    # V3.65.0: one builder for the three packs, each with its own rub price.
+    assert "'rub': rub if PLATEGA_ENABLED else None," in WEBAPP_SVC
+    assert "_peach_pack_item('peach_pack_10', PEACH_PACK_10_STARS, PEACH_PACK_10_RUB, en)" in WEBAPP_SVC
     assert "'rub': rub if rub is not None else fiat_values(s)[0]," in WEBAPP_SVC
     # V3.44.22: the constructor item has no star price — public personas are
     # free, private ones cost peaches (constructor_peaches rides along).

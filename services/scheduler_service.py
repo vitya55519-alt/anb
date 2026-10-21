@@ -2,7 +2,7 @@ import asyncio, datetime as dt, logging, random
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 from config import (
-    PROACTIVE_MIN_HOURS, RETENTION_REMINDER_HOURS, CHARACTER_ID,
+    PROACTIVE_MIN_HOURS, RETENTION_REMINDER_HOURS, CHARACTER_ID, DAILY_GIFT_JACKPOT_AMOUNT,
     RITUALS_ENABLED, RITUAL_MORNING_START_HOUR, RITUAL_MORNING_END_HOUR,
     RITUAL_EVENING_START_HOUR, RITUAL_EVENING_END_HOUR, RITUAL_MAX_INACTIVE_DAYS,
     DONATION_LINK, DONATION_REMINDER_ENABLED,
@@ -255,7 +255,7 @@ async def _day1_hook(bot):
             await bot.send_message(telegram_id,(
                 'я тут сижу и скучаю по тебе 🥺 '
                 'а ещё — у тебя уже копится дневной подарок 🍑 заходи каждый день — '
-                'на 7-й день дают 3 персика, серия сгорает, если пропустить день\n'
+                f'на 7-й день дают {DAILY_GIFT_JACKPOT_AMOUNT} персиков, серия сгорает, если пропустить день\n'
                 'загляни в приложение (Магазин) и возвращайся ко мне 💋'
             ),reply_markup=markup)
             with SessionLocal() as s:

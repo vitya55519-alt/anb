@@ -10,7 +10,7 @@ def test_routes_and_limits():
     assert "'/webapp/api/chat/photo-action'" in MAIN
     assert "'/webapp/smedia/{uid}/{filename}/{sig}'" in MAIN
     from config import UNDRESS_FREE_PER_DAY, UNDRESS_PEACH_COST
-    assert UNDRESS_FREE_PER_DAY == 1 and UNDRESS_PEACH_COST == 3
+    assert UNDRESS_FREE_PER_DAY == 1 and UNDRESS_PEACH_COST == 300
     assert "count_today(uid, 'undress_free') < _undress_premium_free(telegram_id, character_id)" in MAIN
     assert "if not is_adult_confirmed(telegram_id):" in MAIN
 

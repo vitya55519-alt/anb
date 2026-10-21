@@ -33,7 +33,7 @@ from services.user_service import ensure_user
 from config import (
     PRIVATE_PHOTO_FREE_DAILY,
     COSPLAY_PHOTO_FREE_DAILY,
-    PRIVATE_PHOTO_PEACH_COST,
+    PRIVATE_PHOTO_PEACH_COST, PEACH_SCALE,
     COSPLAY_PHOTO_PEACH_COST,
     HOT_PASS_DAY_PEACHES,
     HOT_PASS_WEEK_PEACHES,
@@ -143,7 +143,7 @@ PRIVATE_PHOTO_CATEGORIES = {
     "fully_nude": {
         "name_ru": "🔥 Полностью обнажённая",
         "name_en": "Fully nude",
-        "peach_cost": 4,
+        "peach_cost": 4 * PEACH_SCALE,  # V3.65.0: ×100 peaches
         "types": [
             {"id": "bed", "name_ru": "🛏️ На кровати", "name_en": "On bed"},
             {"id": "shower", "name_ru": "🚿 В душе", "name_en": "In shower"},

@@ -98,22 +98,22 @@ def _cleanup():
 
 # ------------------------------------------------------------------ streak
 def test_streak_series_jackpot_and_restart(monkeypatch):
-    """Days 1..6 pay 1 🍑, day 7 pays 3 🍑, day 8 restarts the cycle at slot 1."""
+    """Days 1..6 pay 100 🍑, day 7 pays 300 🍑, day 8 restarts the cycle at slot 1 (V3.65.0 ×100)."""
     set_day = _sim_clock(monkeypatch)
     try:
         tid = _onboard(_tid(1))
         for i in range(1, 7):
             set_day(_BASE + timedelta(days=i - 1))
             res = g.claim_daily_gift(tid)
-            assert res['ok'] and res['amount'] == 1 and res['streak'] == i, res
+            assert res['ok'] and res['amount'] == 100 and res['streak'] == i, res
         set_day(_BASE + timedelta(days=6))
         jack = g.claim_daily_gift(tid)
-        assert jack['ok'] and jack['amount'] == 3 and jack['streak'] == 7, jack
-        assert get_photo_credits(tid) == 9, get_photo_credits(tid)  # 6*1 + 3
+        assert jack['ok'] and jack['amount'] == 300 and jack['streak'] == 7, jack
+        assert get_photo_credits(tid) == 900, get_photo_credits(tid)  # 6*100 + 300
         # day 8: raw streak keeps growing (8) but the UI slot folds back to 1
         set_day(_BASE + timedelta(days=7))
         again = g.claim_daily_gift(tid)
-        assert again['ok'] and again['amount'] == 1 and again['streak'] == 1, again
+        assert again['ok'] and again['amount'] == 100 and again['streak'] == 1, again
     finally:
         _cleanup()
 
@@ -158,15 +158,15 @@ def test_cap_blocks_without_consuming_the_day(monkeypatch):
         set_day(_BASE)
         assert g.claim_daily_gift(tid)['ok']
         set_day(_BASE + timedelta(days=1))
-        _set_balance(tid, 15)
+        _set_balance(tid, 1500)
         capped = g.claim_daily_gift(tid)
         assert not capped['ok'] and capped['capped'] and capped['error'] == 'capped', capped
         # the day was NOT eaten: gift_last_day is still day 1, streak still 1
         assert _gift_state(tid) == (_BASE, 1)
         # spend below the cap and the same day becomes claimable again
-        _set_balance(tid, 5)
+        _set_balance(tid, 500)
         res = g.claim_daily_gift(tid)
-        assert res['ok'] and res['streak'] == 2 and res['balance'] == 6, res
+        assert res['ok'] and res['streak'] == 2 and res['balance'] == 600, res
     finally:
         _cleanup()
 
@@ -179,7 +179,7 @@ def test_gift_requires_consent_and_status_reads(monkeypatch):
         assert not denied['ok'] and denied['error'] == 'consent', denied
         accept(tid)
         st = g.gift_status(tid)
-        assert st['available'] and not st['claimed_today'] and st['amount'] == 1, st
+        assert st['available'] and not st['claimed_today'] and st['amount'] == 100, st
         assert g.claim_daily_gift(tid)['ok']
         after = g.gift_status(tid)
         assert after['claimed_today'] and not after['available'] and after['streak'] == 1, after
@@ -249,13 +249,13 @@ def test_welcome_promo_seed_is_idempotent_and_redeemable(monkeypatch):
         with SessionLocal() as s:
             rows = s.scalars(select(PromoCode).where(PromoCode.code == 'ANNA5')).all()
         assert len(rows) == 1, rows
-        assert rows[0].credits == 5 and rows[0].source_tag == 'welcome'
-        # the shelf economics hold: cap 15 🍑 + ANNA5 5 🍑 = the 20 🍑 video
+        assert rows[0].credits == 500 and rows[0].source_tag == 'welcome'
+        # the shelf economics hold: cap 1500 🍑 + ANNA5 500 🍑 = the 2000 🍑 video
         from config import VIDEO_PEACH_COST
-        assert 15 + rows[0].credits == VIDEO_PEACH_COST == 20
+        assert 1500 + rows[0].credits == VIDEO_PEACH_COST == 2000
         tid = _onboard(_tid(11))
         res = g.redeem_promo(tid, 'anna5')
-        assert res['ok'] and res['credits'] == 5, res
+        assert res['ok'] and res['credits'] == 500, res
         assert g.redeem_promo(tid, 'ANNA5')['error'] == 'duplicate'
         # disabled shelf seeds nothing
         with SessionLocal() as s:

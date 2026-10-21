@@ -34,17 +34,18 @@ SPA = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 # ---------------------------------------------------------------- config
 def test_gift_config_constants():
     assert 'DAILY_GIFT_ENABLED = os.getenv("DAILY_GIFT_ENABLED", "1") == "1"' in CONFIG
-    assert 'DAILY_GIFT_DAY_AMOUNT = int(os.getenv("DAILY_GIFT_DAY_AMOUNT", "1"))' in CONFIG
+    # V3.65.0: env in old peaches, ×PEACH_SCALE
+    assert 'DAILY_GIFT_DAY_AMOUNT = _peach_env("DAILY_GIFT_DAY_AMOUNT", 1, 0)' in CONFIG
     assert 'DAILY_GIFT_JACKPOT_DAY = int(os.getenv("DAILY_GIFT_JACKPOT_DAY", "7"))' in CONFIG
-    assert 'DAILY_GIFT_JACKPOT_AMOUNT = int(os.getenv("DAILY_GIFT_JACKPOT_AMOUNT", "3"))' in CONFIG
-    assert 'DAILY_GIFT_BALANCE_CAP = int(os.getenv("DAILY_GIFT_BALANCE_CAP", "15"))' in CONFIG
-    assert 'PROMO_MAX_CREDITS = int(os.getenv("PROMO_MAX_CREDITS", "20"))' in CONFIG
+    assert 'DAILY_GIFT_JACKPOT_AMOUNT = _peach_env("DAILY_GIFT_JACKPOT_AMOUNT", 3, 0)' in CONFIG
+    assert 'DAILY_GIFT_BALANCE_CAP = _peach_env("DAILY_GIFT_BALANCE_CAP", 15, 0)' in CONFIG
+    assert 'PROMO_MAX_CREDITS = _peach_env("PROMO_MAX_CREDITS", 20, 0)' in CONFIG
 
 
 def test_unified_video_peach_price():
     # one knob on the peach rail: config VIDEO_PEACH_COST (20 🍑) feeds the
     # Mini App studio video — no shadow per-surface prices anymore
-    assert 'VIDEO_PEACH_COST = max(1, int(os.getenv("VIDEO_PEACH_COST", "20")))' in CONFIG
+    assert 'VIDEO_PEACH_COST = _peach_env("VIDEO_PEACH_COST", 20)' in CONFIG
     assert 'WEBAPP_VIDEO_COST_CREDITS = VIDEO_PEACH_COST' in WS
     # the legal price list discloses the studio video price too
     LEGAL = (ROOT / 'services' / 'legal_service.py').read_text(encoding='utf-8')
@@ -57,7 +58,7 @@ def test_welcome_promo_shelf():
     # 15 🍑 streak cap + 5 🍑 welcome code = the 20 🍑 studio video
     assert 'PROMO_WELCOME_ENABLED = os.getenv("PROMO_WELCOME_ENABLED", "1") == "1"' in CONFIG
     assert 'os.getenv("PROMO_WELCOME_CODE", "ANNA5")' in CONFIG
-    assert 'min(PROMO_MAX_CREDITS, int(os.getenv("PROMO_WELCOME_CREDITS", "5")))' in CONFIG
+    assert 'min(PROMO_MAX_CREDITS, _peach_env("PROMO_WELCOME_CREDITS", 5)))' in CONFIG
     assert 'PROMO_WELCOME_CAP = max(0, int(os.getenv("PROMO_WELCOME_CAP", "1000")))' in CONFIG
     seed = GIFT[GIFT.index('def ensure_welcome_promo('):]
     assert 'if not PROMO_WELCOME_ENABLED:' in seed
@@ -216,7 +217,7 @@ def test_spa_i18n_all_seven_locales():
     # EN + RU both promise the 03:00 refresh and the 15 🍑 cap
     assert 'Already claimed — refreshes at 03:00' in SPA
     assert 'Уже взято — обновится в 03:00' in SPA
-    assert 'Копилка полная (15 🍑)' in SPA
+    assert 'Копилка полная (1500 🍑)' in SPA
 
 
 def test_spa_openwizard_click_fix():

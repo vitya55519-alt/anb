@@ -30,7 +30,7 @@ def test_service_video_price_and_upload_guardrails():
     # V3.55.5: the video price is the single unified peach-rail knob from
     # config (VIDEO_PEACH_COST, default 20 🍑), charged only on success
     assert 'WEBAPP_VIDEO_COST_CREDITS = VIDEO_PEACH_COST' in WEBAPP_SVC
-    assert 'VIDEO_PEACH_COST = max(1, int(os.getenv("VIDEO_PEACH_COST", "20")))' in CONFIG
+    assert 'VIDEO_PEACH_COST = _peach_env("VIDEO_PEACH_COST", 20)' in CONFIG
     # the decoder is fail-safe and bounded: 8 MB cap + mime allowlist
     assert 'def decode_data_image(' in WEBAPP_SVC
     assert 'STUDIO_UPLOAD_MAX_BYTES = 8 * 1024 * 1024' in WEBAPP_SVC

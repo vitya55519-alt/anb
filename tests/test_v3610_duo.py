@@ -9,7 +9,7 @@ def test_duo_steps_and_price():
     assert 'duo_name' in keys and 'duo_desc' in keys
     assert ccs.STEP_GROUPS['duo_name'] == 'duo' and 'duo' in ccs.STEP_GROUP_ORDER
     import config
-    assert config.CONSTRUCTOR_COST_PEACHES == 3
+    assert config.CONSTRUCTOR_COST_PEACHES == 300  # V3.65.0: ×100
 
 
 def test_duo_persona_and_avatar():

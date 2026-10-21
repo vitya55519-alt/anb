@@ -21,12 +21,12 @@ def test_invoice_products_declared():
     assert 'def api_invoice_products(' in WEBAPP_SVC
     assert "'payload': 'premium_month'" in WEBAPP_SVC
     # V3.43.1: the single-credit square became the peach pack ladder.
-    assert "'payload': 'peach_pack_100'" in WEBAPP_SVC
+    # V3.65.0: the pack tiles are built by _peach_pack_item (×100 peaches).
+    assert "_peach_pack_item('peach_pack_100', PEACH_PACK_100_STARS, PEACH_PACK_100_RUB, en)" in WEBAPP_SVC
     assert "'id': 'premium'" in WEBAPP_SVC
-    assert "'id': 'peach_pack_10'" in WEBAPP_SVC
+    assert "'payload': key," in WEBAPP_SVC
     # both RU and EN titles exist
-    assert '10 персиков' in WEBAPP_SVC
-    assert '10 peaches' in WEBAPP_SVC
+    assert "f'{peach_num(credits)} персиков' if not en else f'{peach_num(credits)} peaches'" in WEBAPP_SVC
     # the shop payload exposes the purchasable items
     assert "'purchases': api_invoice_products(lang)" in WEBAPP_SVC
 

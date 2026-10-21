@@ -48,10 +48,11 @@ def test_platega_charges_the_real_pack_price():
 
 def test_shop_packs_carry_real_rub():
     for pack in ('10', '30', '100'):
-        assert f"'rub': PEACH_PACK_{pack}_RUB if PLATEGA_ENABLED else None," in WEBAPP_SVC
-    # honest per-peach discount badges (9.9 → 8.3 → 7.0 ₽)
-    assert "'badge': '−16%'," in WEBAPP_SVC
-    assert "'badge': '−29%'," in WEBAPP_SVC
+        assert f"_peach_pack_item('peach_pack_{pack}', PEACH_PACK_{pack}_STARS, PEACH_PACK_{pack}_RUB, en)" in WEBAPP_SVC
+    assert "'rub': rub if PLATEGA_ENABLED else None," in WEBAPP_SVC
+    # V3.65.0: the per-peach discount is told as a gift badge (+500 / +3000 🍑)
+    assert "item['badge'] = f'+{peach_num(bonus)} 🎁'" in WEBAPP_SVC
+    assert 'bonus = PEACH_PACK_BONUS.get(key, 0)' in WEBAPP_SVC
     # the fiat ladder is no longer pre-computed for the packs
     assert 'p10_rub, p10_usd = fiat_values(PEACH_PACK_10_STARS)' not in WEBAPP_SVC
 
@@ -60,9 +61,10 @@ def test_shop_packs_carry_real_rub():
 
 
 def test_studio_picture_costs_ten_peaches():
-    assert 'WEBAPP_PICTURE_COST_CREDITS = 10' in WEBAPP_SVC
-    assert "'Одна картинка — 10 🍑'" in INDEX
-    assert "'Create · 10 🍑'" in INDEX
+    # V3.65.0: ×100 → 1000 🍑
+    assert 'WEBAPP_PICTURE_COST_CREDITS = 10 * PEACH_SCALE' in WEBAPP_SVC
+    assert "'Одна картинка — 1000 🍑'" in INDEX
+    assert "'Create · 1000 🍑'" in INDEX
     # every locale dropped the dead 150
     assert '150 🍑' not in INDEX
 
@@ -72,7 +74,7 @@ def test_chat_photo_guard_matches_its_one_credit_charge():
     # demand the studio's whole price and block users who could pay the charge
     start = MAIN.index("if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS")
     media = MAIN[start:start + 700]
-    assert 'get_photo_credits(telegram_id) < 1:' in media
+    assert 'get_photo_credits(telegram_id) < PEACH_SCALE:' in media
     assert 'WEBAPP_PICTURE_COST_CREDITS' not in media
     # the STUDIO guard keeps charging the full studio price
     assert 'get_photo_credits(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS' in MAIN
@@ -83,7 +85,7 @@ def test_chat_photo_guard_matches_its_one_credit_charge():
 
 def test_constructor_peaches_config():
     # V3.45.28: the free-public perk is retired, the flat price went 10 → 20 🍑.
-    assert 'CONSTRUCTOR_COST_PEACHES = max(1, int(os.getenv("CONSTRUCTOR_COST_PEACHES", "3")))' in CONFIG
+    assert 'CONSTRUCTOR_COST_PEACHES = _peach_env("CONSTRUCTOR_COST_PEACHES", 3)' in CONFIG
 
 
 def test_chat_constructor_always_costs_peaches():

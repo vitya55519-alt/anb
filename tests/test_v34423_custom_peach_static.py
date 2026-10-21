@@ -25,7 +25,7 @@ def test_custom_peach_constants_derived_from_pack10():
 
 
 def test_channel_bonus_default_is_twenty():
-    assert 'CHANNEL_SUBSCRIBE_BONUS_CREDITS = int(os.getenv("CHANNEL_SUBSCRIBE_BONUS_CREDITS", "20"))' in CONFIG
+    assert 'CHANNEL_SUBSCRIBE_BONUS_CREDITS = _peach_env("CHANNEL_SUBSCRIBE_BONUS_CREDITS", 20, 0)' in CONFIG
 
 
 # ── 2. webapp_service: the custom product in the invoice list ───────────────
@@ -90,7 +90,9 @@ def test_webapp_invoice_handles_custom_peach():
     inv = inv[:inv.index('async def _webapp_api_pay_link(')]
     assert "product_id == 'peach_custom'" in inv
     assert "PEACH_CUSTOM_STARS_PER_UNIT" in inv
-    assert "(body or {}).get('amount'" in inv
+    # V3.65.0: ``peaches`` (new) or the cached page's ``amount`` (units)
+    assert "_ca = _custom_peach_units(body)" in inv
+    assert "body.get('peaches')" in MAIN and "body.get('amount', 1)" in MAIN
 
 
 # ── 9. main.py: webapp pay_link endpoint handles custom amount ──────────────
@@ -125,7 +127,7 @@ def test_custom_tile_rendered_in_shop():
 
 
 def test_open_pay_custom_function():
-    assert 'function openPayCustom(n)' in INDEX
+    assert 'function openPayCustom(units, unit, item)' in INDEX
     assert "payVia('peach_custom'" in INDEX
 
 

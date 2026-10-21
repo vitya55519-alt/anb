@@ -8,7 +8,7 @@ from models.relationship_models import UserCharacterRelationship, RelationshipEv
 from models.app_models import User, Message, Memory, CommunicationProfile, CharacterState, CharacterCard, PaymentMethod, Reminder, Subscription, StarTransaction, ProductEvent, UserConsent, BackgroundJob, UserGeneration, DialogSession, Referral, PartnerTransaction, PromoCode, ConstructorDraft, AchievementBadge, ProactivePhoto, PageGalleryShot, CardOverride, AdminTestStage, ChatGuest  # noqa
 from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer, PhotoLibraryPack, PhotoLibraryItem, UserSeenPhotoPack, UserSeenPhotoItem, AdminPhotoIdea  # noqa
 from models.quest_models import UserQuestProgress, QuestReplayOffer  # noqa
-from config import DATABASE_URL
+from config import DATABASE_URL, PEACH_SCALE
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 # V3.57.2: the Mini App offloads blocking reads to a 16-thread executor, so the
@@ -123,6 +123,43 @@ def _widen_quest_claims_column() -> None:
         logger.info('quest_claims widen migration skipped (sqlite or already TEXT)')
 
 
+def _rescale_peaches() -> None:
+    """V3.65.0: peaches ×PEACH_SCALE, once per database. Every stored peach
+    amount (balances, promo-code nominals, author earnings) is multiplied in
+    the same transaction that inserts the ``app_migrations`` marker, so a
+    restart, a second instance or a failed half-run can never apply it twice.
+    Nobody loses value: prices and grants were scaled by the same factor."""
+    name = f'peach_scale_x{PEACH_SCALE}'
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                'CREATE TABLE IF NOT EXISTS app_migrations ('
+                'name VARCHAR(64) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)'))
+    except Exception:
+        logger.exception('app_migrations table create failed')
+        return
+    if PEACH_SCALE == 1:
+        return
+    try:
+        with engine.begin() as conn:
+            if conn.execute(text('SELECT 1 FROM app_migrations WHERE name = :n'), {'n': name}).first():
+                return
+            # the marker first: a concurrent boot hits the primary key and its
+            # whole transaction (including its UPDATEs) rolls back.
+            conn.execute(text('INSERT INTO app_migrations (name) VALUES (:n)'), {'n': name})
+            users = conn.execute(text(
+                'UPDATE users SET photo_credits = photo_credits * :k WHERE photo_credits <> 0'), {'k': PEACH_SCALE}).rowcount
+            promos = conn.execute(text(
+                'UPDATE promo_codes SET credits = credits * :k WHERE credits <> 0'), {'k': PEACH_SCALE}).rowcount
+            earnings = conn.execute(text(
+                'UPDATE author_revenue SET author_earnings_stars = author_earnings_stars * :k '
+                'WHERE author_earnings_stars <> 0'), {'k': PEACH_SCALE}).rowcount
+        logger.warning('peach rescale x%s applied: users=%s promo_codes=%s author_revenue=%s',
+                       PEACH_SCALE, users, promos, earnings)
+    except Exception:
+        logger.exception('peach rescale x%s skipped (will retry on next boot)', PEACH_SCALE)
+
+
 def init_db():
     Base.metadata.create_all(engine)
     # V3.44.21: the FreeKassa orders table retired with the kassa itself —
@@ -176,5 +213,7 @@ def init_db():
     # automatically. This prevents future "UndefinedColumn" crashes when new fields
     # are added to models but forgotten in explicit migrations.
     _auto_migrate_all_tables()
+    # V3.65.0: after every table exists, multiply stored peaches once.
+    _rescale_peaches()
 
 init_db()

@@ -983,7 +983,9 @@ def record_author_revenue(
         return 0.0
     # PEACHES_PER_STAR: how many peaches the author earns per 1 Star spent
     # Default: 2 peaches per Star (so 10⭐ photo → 20🍑 to author at 100%)
-    PEACHES_PER_STAR = 2.0
+    # V3.65.0: ×PEACH_SCALE with the rest of the peach economy.
+    from config import PEACH_SCALE
+    PEACHES_PER_STAR = 2.0 * PEACH_SCALE
     earnings_peaches = round(amount_stars * PEACHES_PER_STAR * (row.author_revenue_percent / 100.0), 2)
     from models.app_models import AuthorRevenue
     with SessionLocal() as session:
@@ -1001,7 +1003,7 @@ def record_author_revenue(
     try:
         author_tid = int(row.author_telegram_id)
         from services.payments import grant_photo_credits
-        grant_photo_credits(author_tid, earnings_peaches)
+        grant_photo_credits(author_tid, int(round(earnings_peaches)))
     except Exception:
         pass  # fail-silent: revenue is still recorded
     return earnings_peaches
@@ -1016,8 +1018,10 @@ def get_author_total_earnings(telegram_id: int) -> float:
 
 
 # V3.45: peach → ruble conversion rate
-PEACH_TO_RUB_RATE = 2.5  # 1 peach = 2.5 ₽
-MIN_CONVERSION_PEACHES = 20  # minimum 20 peaches to convert (= 50₽)
+# V3.65.0: per peach ÷100 after the ×100 rescale (100 🍑 = 2.5 ₽, min 2000 🍑 = 50 ₽).
+from config import PEACH_SCALE as _PEACH_SCALE
+PEACH_TO_RUB_RATE = 2.5 / _PEACH_SCALE
+MIN_CONVERSION_PEACHES = 20 * _PEACH_SCALE
 
 
 def convert_peaches_to_rubles(telegram_id: int, peach_amount: float) -> dict:

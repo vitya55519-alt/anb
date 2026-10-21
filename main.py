@@ -42,7 +42,8 @@ from config import (
     SUPPORT_BOT_USERNAME, SUPPORT_BOT_TOKEN, SUPPORT_WELCOME_TEXT,
     CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS,
     PEACH_PACK_STARS, PEACH_PACK_CREDITS, PEACH_PACK_RUB,
-    PEACH_CUSTOM_STARS_PER_UNIT, PEACH_CUSTOM_RUB_PER_UNIT,
+    PEACH_CUSTOM_STARS_PER_UNIT, PEACH_CUSTOM_RUB_PER_UNIT, PEACH_CUSTOM_UNIT, PEACH_SCALE,
+    DAILY_GIFT_BALANCE_CAP, VIDEO_PEACH_COST,
     PLATEGA_MERCHANT_ID, PLATEGA_API_KEY, PLATEGA_API_BASE,
 )
 # V3.45.0: фото «наедине» и «косплей» — монетизация через персики
@@ -2646,7 +2647,7 @@ async def admin_grant_do_peaches_ask(cq: types.CallbackQuery):
         return
     _admin_grant_sessions[cq.from_user.id] = {'step': 'peaches', 'target': target}
     await cq.answer()
-    await cq.message.answer('Сколько персиков выдать? Пришли число, например 10.\n\n/cancel — отменить')
+    await cq.message.answer(f'Сколько персиков выдать? Пришли число, например 1000 (фото в чате — {CHAT_PHOTO_PEACH_COST}).\n\n/cancel — отменить')
 
 
 # ---------------------------------------------------------------------------
@@ -4280,10 +4281,10 @@ async def profile_cmd(message: types.Message):
                 label = '🎁 Уже взят — жди 03:00'
         elif gs.get('capped'):
             if lang == EN:
-                text += '\n🎁 Gift: piggy bank full (15 🍑) — spend some, then claim'
+                text += f'\n🎁 Gift: piggy bank full ({DAILY_GIFT_BALANCE_CAP} 🍑) — spend some, then claim'
                 label = '🎁 Piggy bank full'
             else:
-                text += '\n🎁 Подарок: копилка полная (15 🍑) — потрать и забирай'
+                text += f'\n🎁 Подарок: копилка полная ({DAILY_GIFT_BALANCE_CAP} 🍑) — потрать и забирай'
                 label = '🎁 Копилка полная'
         else:
             # slot of the NEXT claim within the 1..7 cycle (7 wraps to 1)
@@ -5958,7 +5959,10 @@ async def platega_pay(cq: types.CallbackQuery):
             _cn = max(1, int(product.split('_')[-1]))
         except (ValueError, IndexError):
             _cn = 1
-        title = f'🍑 {_cn} персиков — {amount} ₽'
+        title = f'🍑 {_cn * PEACH_CUSTOM_UNIT} персиков — {amount} ₽'
+    elif product in PEACH_PACK_CREDITS:
+        # V3.65.0: a pack invoice was falling through to «🪙 Токены».
+        title = f'🍑 {PEACH_PACK_CREDITS[product]} персиков — {amount} ₽'
     else:
         title = f'🪙 Токены — {amount} ₽'
     # V3.62.8: a tap-to-pay button instead of a bare URL in the text.
@@ -6756,9 +6760,9 @@ async def successful_payment(message: types.Message):
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': payload, 'source': 'webapp'})
         pack_n = PEACH_PACK_CREDITS[payload]
         if user_lang(message.from_user.id) == EN:
-            await message.answer(f'done 🍑 +{pack_n} photo credits added — ask me for a photo in chat and they will be used.')
+            await message.answer(f'done 🍑 +{pack_n} peaches added — ask me for a photo in chat and they will be used.')
         else:
-            await message.answer(f'готово 🍑 +{pack_n} фото-кредитов на счету — проси фото в чате, и они спишутся.')
+            await message.answer(f'готово 🍑 +{pack_n} персиков на счету — проси фото в чате, и они спишутся.')
         return
     if payload.startswith('peach_custom_'):
         # V3.44.23: custom peach amount — the count is encoded in the payload.
@@ -6769,9 +6773,9 @@ async def successful_payment(message: types.Message):
         except (ValueError, IndexError):
             _cn = 1
         if user_lang(message.from_user.id) == EN:
-            await message.answer(f'done 🍑 +{_cn} photo credits added — ask me for a photo in chat and they will be used.')
+            await message.answer(f'done 🍑 +{_cn * PEACH_CUSTOM_UNIT} peaches added — ask me for a photo in chat and they will be used.')
         else:
-            await message.answer(f'готово 🍑 +{_cn} фото-кредитов на счету — проси фото в чате, и они спишутся.')
+            await message.answer(f'готово 🍑 +{_cn * PEACH_CUSTOM_UNIT} персиков на счету — проси фото в чате, и они спишутся.')
         return
     if payload == 'photo_pack':
         # V3.34.0: standalone +1 photo credit from the Mini App shop — same
@@ -9741,7 +9745,7 @@ async def text_message(message: types.Message):
         # V3.44.2: peaches (photo credits) grant step
         if step == 'peaches':
             if not value.isdigit() or int(value) < 1:
-                await message.answer('Пришли количество персиков числом, например 10.\n\n/cancel — отменить')
+                await message.answer(f'Пришли количество персиков числом, например 1000 (одно фото в чате — {CHAT_PHOTO_PEACH_COST}).\n\n/cancel — отменить')
                 return
             count = int(value)
             target = int(grant_sess['target'])
@@ -10264,7 +10268,7 @@ async def _platega_callback(request: web.Request) -> web.Response:
                     _cn = max(1, int(product.split('_')[-1]))
                 except (ValueError, IndexError):
                     _cn = 1
-                confirm = f'🍑 {_cn} персиков оплачены! Уже начислены 📸'
+                confirm = f'🍑 {_cn * PEACH_CUSTOM_UNIT} персиков оплачены! Уже начислены 📸'
             else:
                 confirm = '💖 Оплата прошла! Premium активирован на 30 дней. Наслаждайся! 🎉'
             try:
@@ -11301,14 +11305,12 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
     # V3.44.23: custom peach amount — the frontend sends the desired count in
     # ``amount``; the stars price and payload are computed dynamically.
     if product_id == 'peach_custom':
-        try:
-            _ca = max(1, int((body or {}).get('amount', 1)))
-        except (ValueError, TypeError):
-            _ca = 1
+        _ca = _custom_peach_units(body)
         product = dict(product)
         product['stars'] = _ca * PEACH_CUSTOM_STARS_PER_UNIT
         product['payload'] = f'peach_custom_{_ca}'
-        product['title'] = f'🍑 {_ca} персиков' if user_lang(telegram_id) != EN else f'🍑 {_ca} peaches'
+        product['title'] = (f'🍑 {_ca * PEACH_CUSTOM_UNIT} персиков' if user_lang(telegram_id) != EN
+                            else f'🍑 {_ca * PEACH_CUSTOM_UNIT} peaches')
     uid = await asyncio.to_thread(
         ensure_user, telegram_id, user_info.get('first_name') or '',
         language_code=user_info.get('language_code'))
@@ -11326,6 +11328,19 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
         logger.exception('webapp invoice link failed user=%s product=%s', telegram_id, product_id)
         return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
     return web.json_response({'ok': True, 'link': link, 'product': product_id, 'stars': product['stars']})
+
+
+def _custom_peach_units(body) -> int:
+    """V3.65.0: how many PEACH_CUSTOM_UNIT units the custom-peach tile buys.
+    The app sends ``peaches`` (rounded up to whole units); an app page cached
+    from before the rescale still sends ``amount`` in units (old peaches)."""
+    body = body or {}
+    try:
+        if body.get('peaches') is not None:
+            return max(1, -(-int(body.get('peaches')) // PEACH_CUSTOM_UNIT))
+        return max(1, int(body.get('amount', 1)))
+    except (ValueError, TypeError):
+        return 1
 
 
 async def _webapp_api_demo(request: web.Request) -> web.Response:
@@ -11382,10 +11397,7 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     # V3.44.23: custom peach amount — compute the dynamic product fields from
     # the ``amount`` the frontend sends.
     if product_id == 'peach_custom':
-        try:
-            _ca = max(1, int((body or {}).get('amount', 1)))
-        except (ValueError, TypeError):
-            _ca = 1
+        _ca = _custom_peach_units(body)
         product = dict(product)
         product['stars'] = _ca * PEACH_CUSTOM_STARS_PER_UNIT
         product['rub'] = _ca * PEACH_CUSTOM_RUB_PER_UNIT if PLATEGA_ENABLED else None
@@ -13272,7 +13284,7 @@ async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str):
 async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     # V3.39.0: everything the bot dialog sends — photos, video circles, voice —
     # is requestable inside the Mini App chat too. Same gates as the bot:
-    # a photo costs 1 🍑 (charged after success), circles are a Premium
+    # a photo costs one credit (PEACH_SCALE 🍑, charged after success), circles are a Premium
     # free-slot format, voice follows the character's TTS voice.
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
     if not pairs:
@@ -13323,7 +13335,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
                 return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
         if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS \
-                and get_photo_credits(telegram_id) < 1:
+                and get_photo_credits(telegram_id) < PEACH_SCALE:
             # V3.44.22: a chat photo costs ONE credit (consume_photo_credit below) —
             # the old guard demanded the studio's whole price and blocked users who
             # had plenty for the actual charge.
@@ -13517,11 +13529,11 @@ def _webapp_api_feature_impl(request: web.Request) -> web.Response:
         items = []
         for d in dates_service.get_available(level):
             items.append({'id': d.id, 'emoji': d.emoji, 'title': d.name, 'subtitle': d.text,
-                          'locked': False, 'cost': d.cost, 'done': d.id in done})
+                          'locked': False, 'cost': d.cost * PEACH_SCALE, 'done': d.id in done})
         for d in dates_service.get_locked(level):
             items.append({'id': d.id, 'emoji': '🔒', 'title': d.name,
                           'subtitle': (f'opens at level {d.min_level}' if lang == EN else f'откроется на уровне {d.min_level}'),
-                          'locked': True, 'cost': d.cost, 'done': False})
+                          'locked': True, 'cost': d.cost * PEACH_SCALE, 'done': False})
         title = '💕 Where shall we go?' if lang == EN else '💕 Куда пойдём?'
         return web.json_response({'ok': True, 'kind': kind, 'title': title,
                                   'free_date': bool(has_free_date(telegram_id)), 'items': items})
@@ -13589,7 +13601,7 @@ def _webapp_api_feature_impl(request: web.Request) -> web.Response:
     # V3.45.0: Видео
     if kind == 'video':
         items = [{'id': 'video', 'emoji': '🎬', 'title': 'Сделать видео из фото' if lang == RU else 'Make video from photo',
-                  'subtitle': f'{5} 🍑' if lang == RU else '5 🍑', 'locked': False}]
+                  'subtitle': f'{VIDEO_PEACH_COST} 🍑', 'locked': False}]
         title = '🎬 Video' if lang == EN else '🎬 Видео'
         return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items})
     # V3.50.1: this fall-through branch is the daily-quest menu. couple_service
@@ -13746,10 +13758,12 @@ async def _webapp_api_feature_action_impl(request: web.Request) -> web.Response:
         completed_date_ids, consume_free_date, has_free_date, unlock_achievement,
     )
     # V3.45: dates cost peaches (not Stars). Free-streak / admin bypass.
+    # V3.65.0: the date's Stars figure × PEACH_SCALE peaches.
     if telegram_id not in ADMIN_TELEGRAM_IDS and not has_free_date(telegram_id):
-        if get_photo_credits(telegram_id) < date.cost:
-            return web.json_response({'ok': False, 'error': 'insufficient_peaches', 'cost': date.cost}, status=402)
-        spend_peaches(telegram_id, date.cost)
+        _date_peaches = date.cost * PEACH_SCALE
+        if get_photo_credits(telegram_id) < _date_peaches:
+            return web.json_response({'ok': False, 'error': 'insufficient_peaches', 'cost': _date_peaches}, status=402)
+        spend_peaches(telegram_id, _date_peaches)
     elif has_free_date(telegram_id):
         consume_free_date(telegram_id)
     await record_user_message(telegram_id, user_name, relationship=date.affection, intimacy=date.affection / 2,
