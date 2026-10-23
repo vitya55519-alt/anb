@@ -924,6 +924,37 @@ async def _channel_bonus_holds(bot):
         await asyncio.sleep(0.5)
 
 
+async def _db_backup(bot):
+    """V3.82.0: Railway Hobby has no Postgres backups — dump the DB daily and
+    send it to the admins as a Telegram document."""
+    from config import ADMIN_TELEGRAM_IDS
+    from services import backup_service
+    from aiogram.types import BufferedInputFile
+    if not ADMIN_TELEGRAM_IDS:
+        return
+    try:
+        data, counts = await asyncio.to_thread(backup_service.dump_database)
+    except Exception:
+        logger.exception('db backup dump failed')
+        for admin_id in ADMIN_TELEGRAM_IDS:
+            try:
+                await bot.send_message(admin_id, '⚠️ ежедневный бэкап базы не получился, смотри логи Railway (db backup).')
+            except Exception:
+                pass
+        return
+    caption = backup_service.summary_line(counts, len(data))
+    logger.info('db backup ready bytes=%s tables=%s', len(data), len(counts))
+    for admin_id in ADMIN_TELEGRAM_IDS:
+        try:
+            if len(data) > backup_service.TELEGRAM_DOC_LIMIT:
+                await bot.send_message(admin_id, caption + '\n⚠️ файл больше лимита Telegram (50 МБ), не отправлен.')
+                continue
+            await bot.send_document(admin_id, BufferedInputFile(data, filename=backup_service.backup_filename()),
+                                    caption=caption[:1000], disable_notification=True)
+        except Exception:
+            logger.exception('db backup send failed admin=%s', admin_id)
+
+
 def start_scheduler(bot):
     scheduler.add_job(_reminders,'interval',seconds=30,args=[bot],id='reminders',replace_existing=True)
     scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
@@ -944,6 +975,8 @@ def start_scheduler(bot):
     scheduler.add_job(_mood_update,'interval',hours=1,args=[bot],id='mood_update',replace_existing=True)
     # V3.68.0: channel bonus after the hold.
     scheduler.add_job(_channel_bonus_holds,'interval',hours=1,args=[bot],id='channel_bonus_holds',replace_existing=True)
+    # V3.82.0: daily DB backup to the admins (00:30 UTC = 03:30 MSK, quiet hours).
+    scheduler.add_job(_db_backup,'cron',hour=0,minute=30,args=[bot],id='db_backup',replace_existing=True)
     # V3.45.0: ежедневный подарок — раз в день в 12:00
     scheduler.add_job(_daily_gift,'cron',hour=12,minute=0,args=[bot],id='daily_gift',replace_existing=True)
     # V3.52.0: «Жизнь без тебя» — scans often, but the persisted slot log caps each
