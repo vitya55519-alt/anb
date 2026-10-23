@@ -452,6 +452,10 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         try:
             from services.scenario_cards import direction_for
             scene = direction_for(user_id, character_id, str(character.get('name') or ''))
+            if not scene:
+                # V3.78.0: a Premium storyline he picked on her page
+                from services.storylines import direction_for as plot_direction_for
+                scene = plot_direction_for(user_id, character_id, str(character.get('name') or ''))
         except Exception:
             scene = ''
         if scene:

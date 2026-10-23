@@ -656,6 +656,16 @@
   .capsheet .chat-media button .lb { font-size: 15px; font-weight: 600; white-space: normal; }
   .capsheet .chat-media button .ds { font-size: 12px; line-height: 1.35; opacity: .72; }
   .capsheet .chat-media button.hot .lb, .capsheet .chat-media button.hot .ds { color: #fff; opacity: 1; }
+  /* V3.78.0: «🎬 Сюжеты» cards — locked ones show the Premium badge */
+  .plotlist { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .plotitem { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; background: var(--card); border: 1px solid rgba(255,140,190,.18); color: var(--text); border-radius: 14px; padding: 11px 13px; cursor: pointer; font: inherit; }
+  .plotitem.on { border-color: var(--accent); box-shadow: 0 0 12px rgba(232,68,127,.25); }
+  .plotitem .pe { font-size: 24px; flex: none; width: 30px; text-align: center; }
+  .plotitem .pt { flex: 1; min-width: 0; }
+  .plotitem .pn { font-weight: 700; font-size: 15px; }
+  .plotitem .ps { color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.35; }
+  .plotitem .pl { flex: none; font-size: 12px; font-weight: 700; color: #fff; padding: 4px 8px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+  .plotblock .plothint { font-size: 12px; opacity: .75; margin-top: 4px; }
   .capsheet .cap-close { margin-top: 12px; width: 100%; padding: 12px; border-radius: 12px; border: 0; background: rgba(255,255,255,.08); color: inherit; font-size: 14px; }
   /* V3.41.0: 7 feature buttons — the strip scrolls on its own row above the input. */
   .chat-input { flex-wrap: wrap; }
@@ -1142,6 +1152,7 @@
   <div class="cap-sub" id="capSub"></div>
   <div class="chat-media">
     <button id="mediaPhoto"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbMediaPhoto"></span><span class="ds" id="dsMediaPhoto"></span></span></button>
+    <button id="featPlots" class="hot"><span class="ic">🎬</span><span class="tx"><span class="lb" id="lbFeatPlots"></span><span class="ds" id="dsFeatPlots"></span></span></button>
     <button id="featQuest"><span class="ic">🎯</span><span class="tx"><span class="lb" id="lbFeatQuest"></span><span class="ds" id="dsFeatQuest"></span></span></button>
     <button id="featStory"><span class="ic">📖</span><span class="tx"><span class="lb" id="lbFeatStory"></span><span class="ds" id="dsFeatStory"></span></span></button>
     <button id="featDate"><span class="ic">💕</span><span class="tx"><span class="lb" id="lbFeatDate"></span><span class="ds" id="dsFeatDate"></span></span></button>
@@ -1152,6 +1163,13 @@
     <button id="featHotCircle" class="hot"><span class="ic">🤫</span><span class="tx"><span class="lb" id="lbFeatHotCircle"></span><span class="ds" id="dsFeatHotCircle"></span></span></button>
   </div>
   <button class="cap-close" id="capClose" type="button"></button>
+</div></div>
+<!-- V3.78.0: her storylines from inside the chat -->
+<div class="capsheet" id="plotSheet" style="display:none"><div class="box">
+  <div class="cap-h" id="plotSheetTitle"></div>
+  <div class="cap-sub" id="plotSheetSub"></div>
+  <div class="plotlist" id="plotSheetList"></div>
+  <button class="cap-close" id="plotSheetClose" type="button"></button>
 </div></div>
 <!-- V3.61.1: first-open choice «С сюжетом / Без сюжета» -->
 <div class="startsheet" id="startSheet" style="display:none"><div class="box">
@@ -1207,6 +1225,8 @@
     <div class="charblock" id="charMarital" style="display:none;white-space:normal"><div class="mlbl"><span id="charMaritalLbl" style="font-weight:600"></span><span class="mprice" id="charMaritalPrice"></span></div><div class="mchips" id="charMaritalChips"></div></div>
     <button class="charcta" id="charStories" style="display:none"></button>
     <button class="charcta" id="charStart"></button>
+    <!-- V3.78.0: «🎬 Сюжеты» — Premium role-play storylines -->
+    <div class="charblock plotblock" id="charPlots" style="display:none;white-space:normal"><div class="lbl3" id="charPlotsLbl"></div><div class="plotlist" id="charPlotList"></div></div>
     <div class="charblock" id="charBio"></div>
     <!-- V3.44.8: author link — opens the author's public page (author funnel) -->
     <button class="charcta" id="charAuthor" style="display:none;background:var(--card);color:var(--accent)"></button>
@@ -1416,6 +1436,7 @@ const L_EN = {
   chan_check_fail: 'Could not check the subscription — try again later',
   buy: 'Buy', auth_short: 'Open this app from Telegram',
   selected_toast: 'selected', locked: 'This girl is locked for now', need_premium: 'Available with Premium ⭐',
+  plots_h: '🎬 Storylines', plots_sub: 'Role-play scenes: she writes first and stays in role all day', plots_locked: '🎬 Storylines unlock with Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'on', plots_hint: 'All storylines come with Premium', plots_cap: 'Storylines', plots_cap_ds: 'Role-play scenes with her, from light flirting to the hottest',
   paid_prem: 'Premium activated ✨', paid_credit: 'Photo credit added 📸',
   pay_failed: 'Payment failed', pay_cancelled: 'Payment cancelled',
   invoice_err: 'Could not open payment — try again',
@@ -1633,6 +1654,7 @@ const L_RU = {
   chan_check_fail: 'Не удалось проверить подписку — попробуй позже',
   buy: 'Купить', auth_short: 'Открой приложение из Telegram',
   selected_toast: 'выбрана', locked: 'Эта девушка пока закрыта', need_premium: 'Доступна с Premium ⭐',
+  plots_h: '🎬 Сюжеты', plots_sub: 'Ролевые сцены: она пишет первой и держит роль весь день', plots_locked: '🎬 Сюжеты открываются с Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'идёт', plots_hint: 'Все сюжеты доступны с Premium', plots_cap: 'Сюжеты', plots_cap_ds: 'Ролевые сцены с ней: от лёгкого флирта до самого горячего',
   paid_prem: 'Premium активирован ✨', paid_credit: 'Фото-кредит начислен 📸',
   pay_failed: 'Оплата не прошла', pay_cancelled: 'Оплата отменена',
   invoice_err: 'Не удалось открыть оплату — попробуй ещё раз',
@@ -2083,6 +2105,8 @@ document.getElementById('charSearch').placeholder = L.char_search_ph;
 // V3.44.17: the «Видео»/«Кружок» label assignments are gone together with the
 // buttons themselves — only the pills still on screen get labels.
 document.getElementById('lbMediaPhoto').textContent = L.media_photo;
+document.getElementById('lbFeatPlots').textContent = L.plots_cap;
+document.getElementById('dsFeatPlots').textContent = L.plots_cap_ds;
 document.getElementById('lbFeatQuest').textContent = L.feat_quest;
 if (document.getElementById('lbFeatStory')) document.getElementById('lbFeatStory').textContent = L.story_btn;
 document.getElementById('lbFeatDate').textContent = L.feat_date;
@@ -2430,6 +2454,72 @@ async function startScenario(key) {
       sendChat();
     }
   } catch (e) {}
+}
+
+// V3.78.0: «🎬 Сюжеты» — Premium storylines on her page and in «Возможности».
+async function loadPlots(cid) {
+  try {
+    const r = await fetch('/webapp/api/storylines?character_id=' + encodeURIComponent(cid) + '&init_data=' + encodeURIComponent(tg.initData || ''));
+    const j = await r.json();
+    return j.ok ? j : null;
+  } catch (e) { return null; }
+}
+function plotItemsHtml(j) {
+  return (j.plots || []).map(p => {
+    const badge = !j.unlocked ? esc(L.plots_badge) : (j.active === p.key ? esc(L.plots_on) : esc(L.plots_play));
+    return '<button class="plotitem' + (j.active === p.key ? ' on' : '') + '" data-plot="' + esc(p.key) + '">'
+      + '<span class="pe">' + esc(p.emoji) + '</span><span class="pt"><div class="pn">' + esc(p.title) + '</div>'
+      + '<div class="ps">' + esc(p.teaser) + '</div></span><span class="pl">' + badge + '</span></button>';
+  }).join('');
+}
+async function renderPlots(listEl, cid, onDone) {
+  const j = await loadPlots(cid);
+  if (!j || !(j.plots || []).length) return false;
+  listEl.innerHTML = plotItemsHtml(j);
+  listEl.querySelectorAll('.plotitem').forEach(b => b.addEventListener('click', () => {
+    if (onDone) onDone();
+    if (!j.unlocked) { plotsToPremium(); return; }
+    startPlot(cid, b.dataset.plot);
+  }));
+  return j;
+}
+function plotsToPremium() {
+  toast(L.plots_locked);
+  document.getElementById('charview').classList.remove('open');
+  document.getElementById('chatview').classList.remove('open');
+  showTab('shop');
+}
+async function startPlot(cid, key) {
+  try {
+    const r = await fetch('/webapp/api/storyline/start?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: cid, key: key }),
+    });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    const j = await r.json();
+    if (!j.ok) {
+      if (j.error === 'premium_required') plotsToPremium();
+      else if (j.error === 'adult') toast(L.adult_confirm_needed);
+      else toast(L.locked);
+      return;
+    }
+    const c = CHARS.find(x => x.id === cid) || (CHAT && CHAT.id === cid ? CHAT : null);
+    if (!c) return;
+    document.getElementById('charview').classList.remove('open');
+    await openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: !!c.custom, selected: !!c.selected });
+  } catch (e) {}
+}
+async function openPlotSheet() {
+  if (!CHAT || !CHAT.id) return;
+  const sheet = document.getElementById('plotSheet');
+  document.getElementById('plotSheetTitle').textContent = L.plots_h;
+  document.getElementById('plotSheetSub').textContent = L.plots_sub;
+  document.getElementById('plotSheetClose').textContent = L.cap_close || '✕';
+  const list = document.getElementById('plotSheetList');
+  list.innerHTML = '<div class="loading">' + esc(L.loading) + '</div>';
+  sheet.style.display = 'flex';
+  const ok = await renderPlots(list, CHAT.id, () => { sheet.style.display = 'none'; });
+  if (!ok) list.innerHTML = '<div class="chat-empty">' + esc(L.load_failed) + '</div>';
 }
 
 // V3.59.1: a failed first load says so and offers a retry, instead of a dash.
@@ -4160,6 +4250,19 @@ function openCharPage(el) {
   loadCollection(c.id);
   document.getElementById('charStart').textContent = '💬 ' + L.start_chat;
   document.getElementById('charBio').textContent = c.bio || '';
+  // V3.78.0: her storylines right under «Начать чат»
+  const plotsBox = document.getElementById('charPlots');
+  plotsBox.style.display = 'none';
+  if (!c.custom) {
+    document.getElementById('charPlotsLbl').textContent = L.plots_h;
+    renderPlots(document.getElementById('charPlotList'), c.id).then(j => {
+      if (!j || !CHARPAGE || CHARPAGE.id !== c.id) return;
+      plotsBox.style.display = '';
+      const old = plotsBox.querySelector('.plothint');
+      if (old) old.remove();
+      if (!j.unlocked) plotsBox.insertAdjacentHTML('beforeend', '<div class="plothint">' + esc(L.plots_hint) + '</div>');
+    });
+  }
   const plot = document.getElementById('charPlot');
   if (c.hook) {
     plot.style.display = '';
@@ -5733,6 +5836,10 @@ if(document.getElementById('featCosplay')) document.getElementById('featCosplay'
 if(document.getElementById('featHot')) document.getElementById('featHot').addEventListener('click', () => openFeature('hot'));
 // V3.73.0: «🤫 Тайное видео» — the paid hot circle, one tap from the sheet.
 if(document.getElementById('featHotCircle')) document.getElementById('featHotCircle').addEventListener('click', () => requestMedia('hotcircle'));
+// V3.78.0: «🎬 Сюжеты» row and its sheet.
+if (document.getElementById('featPlots')) document.getElementById('featPlots').addEventListener('click', openPlotSheet);
+document.getElementById('plotSheetClose').addEventListener('click', () => { document.getElementById('plotSheet').style.display = 'none'; });
+document.getElementById('plotSheet').addEventListener('click', (e) => { if (e.target.id === 'plotSheet') e.target.style.display = 'none'; });
 // V3.64.0: the «✨ Возможности» sheet — tapping a row closes it, then the row's
 // own listener above opens that feature as before.
 function openCapSheet() { document.getElementById('capSheet').style.display = 'flex'; }
