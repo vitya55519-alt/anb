@@ -13509,8 +13509,18 @@ UNDRESS_LINES = ('ну раз ты так просишь… 🙈', 'только
 UNDRESS_SECRET = (
     ' SECRET MOMENT: in the background, slightly out of focus, her {who} (an adult man, fully clothed) stands '
     'with his back to the camera, busy and unaware; his face is not visible. She takes this photo secretly, '
-    'glancing at the camera with a naughty finger-to-lips look.'
+    'glancing at the camera with a naughty finger-to-lips look, the index finger of the ONE hand the reveal '
+    'leaves free (never a third hand: if the phone is in the other hand, the reveal hand is the phone hand).'
 )
+# V3.81.1: «3 руки» — the reveals that busy both hands at her chest grew a
+# third one for the finger-to-lips; with them the secret is only in her eyes.
+UNDRESS_SECRET_NO_FINGER = (
+    ' SECRET MOMENT: in the background, slightly out of focus, her {who} (an adult man, fully clothed) stands '
+    'with his back to the camera, busy and unaware; his face is not visible. She takes this photo secretly; '
+    'the secret shows only in her naughty sideways glance and bitten lip. Both her hands stay exactly where '
+    'the reveal puts them, no hand near her face, exactly two arms and two hands in the photo.'
+)
+UNDRESS_BOTH_HANDS = frozenset({'shirt', 'crossed'})
 UNDRESS_SECRET_LINES = ('тсс… он прямо за спиной 🤫🔥', 'пока он не видит… только тебе 🙈', 'если он обернётся, мне конец 😳🔥')
 # Level 6+ (where her nude photos open): she shows a little more instead of covering fully.
 UNDRESS_REVEAL = (
@@ -13549,7 +13559,8 @@ def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) 
             or _default_marital(character_id, is_custom_character(character_id))
         who = {'mar_married': 'husband', 'mar_boyfriend': 'boyfriend'}.get(status)
         if who:
-            prompt += UNDRESS_SECRET.format(who=who)
+            line = UNDRESS_SECRET_NO_FINGER if variant in UNDRESS_BOTH_HANDS else UNDRESS_SECRET
+            prompt += line.format(who=who)
             secret = True
     except Exception:
         logger.warning('undress marital lookup failed user=%s', telegram_id)
