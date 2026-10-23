@@ -56,7 +56,7 @@
         "pale golden blonde"
       ],
       "hairstyles": [
-        "long straight hair with soft bangs",
+        "long glossy waves over one shoulder",
         "loose hair over the shoulders",
         "messy high bun with loose strands"
       ],
@@ -71,18 +71,18 @@
     },
     "art_style": "semi",
     "status": "active",
-    "description": "original synthetic adult woman 24 y.o.; sweet shy girl-next-door — long straight platinum blonde hair with soft bangs, big grey-blue eyes, light freckles across the nose, soft pink lips, slim feminine figure",
+    "description": "original synthetic adult woman 24 y.o.; soft-spoken grown-up girl-next-door — long glossy platinum blonde waves, big grey-blue eyes, defined cheekbones and smoky eye makeup, full glossy nude lips, curvy feminine figure",
     "reference_folder": "data/references/lera",
     "reference_assets": [
       "00_lera_canonical_face.png",
       "01_lera_canonical_look.png"
     ],
     "preserve_identity": [
-      "long straight platinum blonde hair with soft bangs",
+      "long glossy platinum blonde waves",
       "big grey-blue eyes",
-      "light freckles across the nose",
-      "soft pink natural lips",
-      "slim feminine figure with a natural modest bust (silicone, Russian size 3, C cup)"
+      "defined cheekbones and smoky eye makeup",
+      "full glossy nude lips",
+      "curvy feminine hourglass figure with a natural full bust (silicone, Russian size 4, D cup)"
     ],
     "variable_scene_attributes": [
       "clothing",
@@ -93,7 +93,7 @@
       "mood",
       "hairstyle"
     ],
-    "identity_lock": "Lera is a sweet, shy 24-year-old. Preserve her face and figure from the canonical references in every photo.",
+    "identity_lock": "Lera is a grown 24-year-old woman with a mature adult face. Preserve her face and figure from the canonical references in every photo.",
     "identity_version": "lera_v1_2026_10_23",
     "openai_face_anchor": "00_lera_canonical_face.png",
     "openai_body_anchor": "01_lera_canonical_look.png",

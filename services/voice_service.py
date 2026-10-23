@@ -126,7 +126,7 @@ GEMINI_TTS_MANNER = {
     'vika_01': 'charismatic, firm and demanding, ',
     'violetta_01': 'glamorous, smooth and a little ironic, ',
     'zlata_01': 'cheeky, energetic and impressionable, ',
-    'lera_01': 'young, soft and shy, a little breathless, ',
+    'lera_01': 'soft, warm and a little shy, a little breathless, ',
     'diana_01': 'sharp, mocking and confident, ',
     'nika_01': 'calm, low and confident, a little teasing, ',
     'ksyusha_01': 'bright, flirty and purring, ',

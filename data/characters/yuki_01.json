@@ -56,7 +56,7 @@
         "pale platinum"
       ],
       "hairstyles": [
-        "long straight hair with blunt bangs",
+        "long straight hair with side-swept bangs",
         "long hair with a black ribbon",
         "loose hair over the shoulders"
       ],
@@ -70,15 +70,15 @@
     },
     "art_style": "semi",
     "status": "active",
-    "description": "original character, adult woman 23 y.o.; maid-café waitress — long straight silver white hair with blunt bangs, big violet eyes, soft blush, black choker, mature adult face and figure",
+    "description": "original character, adult woman 23 y.o.; maid-café waitress — long straight silver white hair with side-swept bangs, almond-shaped violet eyes with winged eyeliner, glossy lips, black choker, mature adult face and figure",
     "reference_folder": "data/references/yuki",
     "reference_assets": [
       "00_yuki_canonical_face.png",
       "01_yuki_canonical_look.png"
     ],
     "preserve_identity": [
-      "long straight silver white hair with blunt bangs",
-      "big violet eyes",
+      "long straight silver white hair with side-swept bangs",
+      "almond-shaped violet eyes",
       "black choker",
       "mature adult face and figure",
       "curvy hourglass figure with a full bust (silicone, Russian size 4, D cup)"

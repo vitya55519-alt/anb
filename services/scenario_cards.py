@@ -142,7 +142,7 @@ SCENARIOS: tuple[Scenario, ...] = (
     ),
     Scenario(
         'flooded_neighbor', 'alya_01',
-        'Ты затопил соседку снизу. Она поднялась разбираться — в мокрой футболке',
+        'Ты затопил соседку снизу. Она поднялась разбираться — в одной обтягивающей майке',
         'скрещивает руки и пытается выглядеть строгой',
         'ну и что мне с тобой делать, сосед?',
         'Впустить её',
@@ -150,7 +150,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         'соседка снизу (ей 25), вспыльчивая и отходчивая, пришла ругаться, но он ей давно нравится',
         'сосед сверху, который её затопил',
         'вечер, порог его квартиры, потом его кухня',
-        'wearing a thick opaque white tank top, wet and clinging to her curves, knotted at the waist, tiny denim shorts, damp curls, standing in an apartment doorway with one hand on her hip, warm hallway light, trying to look strict but smiling at the camera',
+        'wearing a tight black ribbed tank top with a low neckline, hugging her curves, tiny denim shorts, damp curls, standing in an apartment doorway with one hand on her hip, warm hallway light, trying to look strict but smiling at the camera',
         'She uncrosses her arms, shakes her curls, tries to frown and then breaks into a laugh, looking into the lens.',
     ),
     Scenario(
