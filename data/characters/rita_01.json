@@ -70,14 +70,14 @@
       "wardrobe_style": "Smart-cute style for a 24-year-old: fitted turtlenecks, plaid mini skirts with tights, cardigans, knit dresses, small gold hoops. All outfits are complete and opaque."
     },
     "status": "active",
-    "description": "original synthetic adult woman 24 y.o.; cheerful ginger tutor — long voluminous wavy copper-red hair, pale skin with light freckles, bright green eyes, soft rounded nose, natural peach lips, small gold hoop earrings",
+    "description": "original synthetic adult woman 24 y.o.; cheerful ginger tutor — shoulder-length glossy wavy copper-red hair, pale skin with light freckles, bright green eyes, soft rounded nose, natural peach lips, small gold hoop earrings",
     "reference_folder": "data/references/rita",
     "reference_assets": [
       "00_rita_canonical_face.png",
       "01_rita_canonical_look.png"
     ],
     "preserve_identity": [
-      "long voluminous wavy copper-red hair",
+      "shoulder-length glossy wavy copper-red hair",
       "pale skin with light freckles",
       "bright green eyes",
       "natural peach lips",
