@@ -90,3 +90,17 @@ def test_endpoint_gates_and_charges_after_success():
     assert 'data-cmedia="hotcircle"' in INDEX
     # V3.73.0: one tap from the «✨ Возможности» sheet
     assert "getElementById('featHotCircle').addEventListener('click', () => requestMedia('hotcircle'))" in INDEX
+
+
+def test_bedroom_frame_prefers_the_pool(monkeypatch):
+    # V3.73.0: the clip starts from her lingerie-in-bedroom shot, pool first
+    from services import private_photo_service as pps
+    monkeypatch.setattr(pps, 'pool_get', lambda cid, cat, t, n=1: b'pooled' if cat == 'lingerie' else None)
+
+    async def never(*a, **k):
+        raise AssertionError('must not render when the pool has a shot')
+
+    monkeypatch.setattr(pps, 'generate_private_photo_real', never)
+    assert asyncio.run(hc.bedroom_frame('anna_01')) == b'pooled'
+    block = MAIN[MAIN.index('async def _webapp_media_hot_circle('):]
+    assert 'hot_circle_service.bedroom_frame(character_id)' in block[:1500]

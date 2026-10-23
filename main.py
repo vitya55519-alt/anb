@@ -12995,12 +12995,17 @@ async def _webapp_media_hot_circle(telegram_id: int, character_id: str):
     """V3.72.0: «🔥 горячий кружок»; V3.73.0: «🤫 тайное видео» — her canonical
     portrait animated by Seedance 2.5 Spicy, silent. Paid only on success."""
     from services import hot_circle_service
-    photo = webapp_service.character_photo(character_id)
-    if not photo:
-        raise PhotoGenerationError('hotcircle', 'no_source_photo')
+    # V3.73.0: start from her lingerie-in-bedroom shot (the storefront portrait
+    # is a café in a sweater); the portrait is only the fallback.
+    frame = await hot_circle_service.bedroom_frame(character_id)
+    if not frame:
+        photo = webapp_service.character_photo(character_id)
+        if not photo:
+            raise PhotoGenerationError('hotcircle', 'no_source_photo')
+        frame = photo[0]
     lang = 'en' if user_lang(telegram_id) == EN else 'ru'
     try:
-        video = await hot_circle_service.render(square_frame(photo[0]), lang)
+        video = await hot_circle_service.render(square_frame(frame), lang)
     except Exception as exc:
         record_provider('circle/hot', False, f'{type(exc).__name__}: {str(exc)[:120]}')
         logger.warning('webapp hot circle failed user=%s: %s', telegram_id, str(exc)[:200])

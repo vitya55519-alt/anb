@@ -37,9 +37,9 @@ logger = logging.getLogger(__name__)
 # Seedance has no negative_prompt, so the guard rails live in the prompt; its
 # own filter refuses some words (e.g. kissing), so the wording stays plain.
 HOT_CIRCLE_PROMPT = (
-    'Handheld front-camera selfie video she records privately for her boyfriend, soft warm bedroom light. '
+    'Handheld front-camera selfie video she records privately for her boyfriend on her bed, soft warm bedroom light. '
     'She looks straight into the lens with a seductive, teasing smile and bites her lower lip, '
-    'slowly slides her top down, caresses and squeezes her bare breasts, then slowly runs her hand '
+    'slowly slides her lingerie down, caresses and squeezes her bare breasts, then slowly runs her hand '
     'down her belly and slips it between her thighs, breathing deeper, eyes half closed with pleasure, '
     'erotic, intimate and confident, slow sensual movement. '
     'Adult woman, exactly the same face, hair and body as in the photo, one person only, '
@@ -80,6 +80,36 @@ def offer_for(telegram_id: int, character_id: str, user_text: str, answer: str, 
         return None
     _offered[telegram_id] = _today()
     return {'hot': True}
+
+
+async def bedroom_frame(character_id: str) -> bytes | None:
+    """V3.73.0: the start frame. Seedance only animates what the first frame
+    shows, and the storefront portraits are a café in a sweater, framed to the
+    chest — no room for «рука между ног». So the clip starts from one of her
+    own «Наедине» lingerie-in-bedroom shots: a stockpiled one when the shared
+    pool has it (free), else one fresh render (~$0.035) that also feeds the
+    pool. None → the caller falls back to the portrait."""
+    import asyncio
+    from services.private_photo_service import (
+        PrivatePhotoRequest, build_private_photo_prompt, generate_private_photo_real,
+        pool_get, cache_save,
+    )
+    from services.character_dna_service import character_dna_context
+    try:
+        shot = await asyncio.to_thread(pool_get, character_id, 'lingerie', '', 1)
+        if shot:
+            return shot
+        req = PrivatePhotoRequest(category='lingerie', type_id='lace', location_id='bedroom',
+                                  mood_id='sensual', character_id=character_id)
+        dna = character_dna_context(character_id)
+        prompt = build_private_photo_prompt(req, dna, use_reference=True)
+        shot = await generate_private_photo_real(req, dna, prompt)
+        if shot:
+            await asyncio.to_thread(cache_save, prompt, character_id, 'lingerie', 'lace', shot)
+        return shot
+    except Exception:
+        logger.warning('hot circle bedroom frame failed character=%s', character_id, exc_info=True)
+        return None
 
 
 async def render(frame_jpeg: bytes, lang: str = 'ru') -> bytes:
