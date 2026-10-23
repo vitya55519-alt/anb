@@ -23,6 +23,11 @@ m = re.search(r'SPICYAPI_KEY\s*=\s*["\']?([^\s"\']+)', raw)
 KEY = m.group(1) if m else raw.strip()
 BASE = 'https://api.spicyapi.ai/api/v1'
 ONLY = set(sys.argv[2:])
+# her declared figure goes into the look so the body reads on the card
+BODY = dict(re.findall(r"'(\w+_01)': '([^']*)'", (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')))
+# owner: «их надо сексуализировать… чтобы прям цепляли» — sexy, still dressed
+SEXY = (' Sensual glamour pin-up mood: confident seductive body language, sultry eye contact with the viewer, '
+        'tight body-hugging outfit that shows off her curves, warm flattering evening light.')
 
 QUALITY = (' Photorealistic smartphone photo, natural skin texture, sharp focus on the eyes, '
            'anatomically correct: exactly two arms and two hands, five fingers on each hand. '
@@ -93,7 +98,8 @@ for g in GIRLS:
             uri = upload(face_path.read_bytes(), 'image/png')
             who = 'The same woman as in the reference image'
             prompt = (f'{who}: keep her exact face, eyes, nose, lips, hair color '
-                      f'and length, skin tone. {g["look"]}. Full look, knees up, {g["look_prompt"]}.' + quality)
+                      f'and length, skin tone. {g["look"]}. Her figure: {BODY.get(g["id"], "a curvy hourglass build")}. '
+                      f'Full look, knees up, {g["look_prompt"]}.' + SEXY + quality)
             look_path.write_bytes(render('bytedance/seedream-5.0-pro/edit', prompt, [uri]))
             print('ok', look_path)
     except Exception as e:  # keep going with the other girls

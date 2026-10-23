@@ -85,7 +85,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         'лучшая подруга его сестры (ей 24), давно и тайно влюблена в него, осталась у них ночевать',
         'старший брат её подруги',
         'поздний вечер, коридор у двери его комнаты, сестра уже спит',
-        'wearing a short silk robe over a lace camisole, standing in a dim apartment hallway at night, leaning on a door frame, warm light from the room behind her, looking up at the camera shyly',
+        'wearing a short silk robe slipping off one shoulder over a lace camisole with a low neckline, leaning on a door frame in a dim apartment hallway at night, warm light from the room behind her, biting her lip and looking up at the camera',
         'She slowly tucks her hair behind her ear, bites her lip and looks up into the lens with a shy, inviting smile, leaning closer in the doorway.',
     ),
     Scenario(
@@ -98,7 +98,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         'его дерзкая коллега из соседнего отдела (ей 27), острая на язык, давно положила на него глаз',
         'её коллега',
         'поздний вечер, пустой офис, горит только его настольная лампа',
-        'in a fitted white blouse with a grey waistcoat and a black leather pencil skirt, sitting on the edge of an office desk at night, desk lamp light, city lights behind her, looking at the camera with a challenging smirk',
+        'in a fitted white blouse unbuttoned low to show deep cleavage and the edge of a black lace bra, a tight black leather pencil skirt with a slit and sheer black stockings, sitting on the edge of an office desk at night with legs crossed, desk lamp light, city lights behind her, holding a pen to her lips with a challenging smirk',
         'She twirls a pen in her fingers, tilts her head and gives the lens a slow challenging smirk, then leans a little closer.',
     ),
     Scenario(
@@ -111,7 +111,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         'врач ночной смены (ей 29), спокойная, уверенная, любит командовать пациентами',
         'её ночной пациент с неглубоким порезом',
         'три часа ночи, кабинет дежурного врача, за окном луна, в коридорах тихо',
-        'in an open white doctor coat over a fitted black turtleneck, stethoscope around her neck, standing in a dim clinic office at night with moonlight in the window, low camera angle, looking down at the camera with a calm confident look',
+        'in an open white doctor coat over a tight short black bodycon dress with a deep neckline, stethoscope around her neck, sheer black stockings, leaning back against a desk in a dim clinic office at night with moonlight in the window, low camera angle, looking down at the camera with a sultry half-smile',
         'She slowly tucks a loose strand behind her ear and looks down into the lens with a calm, confident half-smile.',
     ),
     Scenario(
@@ -124,7 +124,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         'девушка с вечеринки (ей 22), кокетливая и лёгкая, весь вечер танцевала с ним',
         'парень с машиной, с которым она танцевала',
         'два часа ночи, парковка у клуба, потом его машина',
-        'wearing a black lace-trim camisole top, a pleated black mini skirt and a black choker, leaning toward the camera in a sunlit room with a wooden floor, playful flirty smile',
+        'wearing a black satin camisole with lace trim and a low neckline, a pleated black mini skirt, black thigh-high stockings and a black choker, sitting on the passenger seat of a car at night with city lights outside, legs crossed, leaning toward the camera with a flirty smile',
         'She leans toward the lens, smiles, then blows a slow air kiss with her palm and winks.',
     ),
     Scenario(
@@ -137,7 +137,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         'стюардесса с его отменённого рейса (ей 31), уверенная, обаятельная, не любит скучать',
         'пассажир её рейса, сосед по номеру',
         'ночь, отель у аэропорта, коридор и его номер',
-        'wearing a fitted navy flight attendant dress with a red silk scarf, standing in a hotel corridor at night with warm sconce light, holding a small bottle of wine, smiling at the camera',
+        'wearing a fitted navy flight attendant dress unbuttoned at the collar showing cleavage, red silk scarf loosened, sheer stockings and heels, leaning against a hotel room door at night with warm sconce light, holding a bottle of wine, sultry inviting smile at the camera',
         'She lifts the wine bottle a little, tilts her head and gives the lens a warm, inviting smile.',
     ),
     Scenario(
@@ -150,7 +150,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         'соседка снизу (ей 25), вспыльчивая и отходчивая, пришла ругаться, но он ей давно нравится',
         'сосед сверху, который её затопил',
         'вечер, порог его квартиры, потом его кухня',
-        'wearing an oversized white tee with damp spots and denim shorts, standing in an apartment doorway with arms crossed, warm hallway light, trying to look strict but smiling at the camera',
+        'wearing a thick opaque white tank top, wet and clinging to her curves, knotted at the waist, tiny denim shorts, damp curls, standing in an apartment doorway with one hand on her hip, warm hallway light, trying to look strict but smiling at the camera',
         'She uncrosses her arms, shakes her curls, tries to frown and then breaks into a laugh, looking into the lens.',
     ),
     Scenario(
@@ -163,7 +163,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         'официантка мейд-кафе (ей 23), милая с гостями и дерзкая наедине, давно выделяет его среди посетителей',
         'её постоянный гость',
         'поздний вечер, закрытое мейд-кафе, стулья на столах, тёплый свет над стойкой',
-        'wearing a black and white maid dress with a lace apron and a black choker, leaning over a café counter after closing time, warm lights, blowing an air kiss to the viewer',
+        'wearing a short black and white maid dress with a low lace neckline and a flared mini skirt, white thigh-high stockings with lace tops and a black choker, leaning over a café counter toward the viewer after closing time, warm lights, blowing an air kiss',
         'She leans toward the viewer, smiles, blows a slow air kiss and winks, her silver hair swaying softly.',
     ),
     Scenario(
@@ -176,7 +176,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         'соседка-косплеерша (ей 26), смелая, яркая, любит внимание и его честные взгляды',
         'сосед, которого она позвала фотографом',
         'вечер, её квартира, превращённая в домашнюю фотостудию',
-        'wearing an elegant fitted red and black kimono-style cosplay dress with a gold obi, posing under softbox lights in a small home photo studio, looking at the viewer with a confident smile',
+        'wearing a fitted red and black kimono-style cosplay dress with an off-shoulder neckline, a high leg slit and a gold obi, posing under softbox lights in a small home photo studio, looking back over her shoulder at the viewer with a seductive smile',
         'She turns slowly in front of the viewer, her black hair and red ribbon swaying, then looks back over her shoulder with a confident smile.',
     ),
     Scenario(
@@ -189,7 +189,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         'барменша ночного бара (ей 25), спокойная, загадочная, давно присматривается к нему',
         'её постоянный ночной гость',
         'ночь, пустой бар, дождь и неон за окном, тихий джаз',
-        'wearing a white shirt with rolled sleeves, a fitted black vest and a loose bow tie, leaning on a night bar counter with neon signs and bottles behind her, looking at the viewer with a calm knowing smile',
+        'wearing a white shirt unbuttoned low with deep cleavage, a fitted black vest and a loose bow tie, leaning on her elbows over a night bar counter toward the viewer, neon signs and bottles behind her, sultry knowing smile',
         'Neon light flickers, she slides a glass toward the viewer, tucks her pink hair behind her ear and smiles calmly.',
     ),
 )
