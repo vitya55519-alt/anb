@@ -266,6 +266,12 @@ _FACE_REFERENCES = {
     'miko_01': ('references', 'miko', '00_miko_canonical_face.png'),
     'rin_01': ('references', 'rin', '00_rin_canonical_face.png'),
     'hana_01': ('references', 'hana', '00_hana_canonical_face.png'),
+    'vlada_01': ('references', 'vlada', '00_vlada_canonical_face.png'),
+    'milana_01': ('references', 'milana', '00_milana_canonical_face.png'),
+    'polina_01': ('references', 'polina', '00_polina_canonical_face.png'),
+    'dasha_01': ('references', 'dasha', '00_dasha_canonical_face.png'),
+    'kamila_01': ('references', 'kamila', '00_kamila_canonical_face.png'),
+    'rita_01': ('references', 'rita', '00_rita_canonical_face.png'),
 }
 
 

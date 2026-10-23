@@ -100,6 +100,12 @@ GEMINI_TTS_VOICES = {
     'miko_01': 'Erinome',
     'rin_01': 'Despina',
     'hana_01': 'Sulafat',
+    'vlada_01': 'Erinome',
+    'milana_01': 'Pulcherrima',
+    'polina_01': 'Laomedeia',
+    'dasha_01': 'Sulafat',
+    'kamila_01': 'Callirrhoe',
+    'rita_01': 'Zephyr',
 }
 GEMINI_FEMALE_VOICES = (
     'Leda', 'Kore', 'Aoede', 'Achernar', 'Autonoe',
@@ -137,13 +143,19 @@ GEMINI_TTS_MANNER = {
     'miko_01': 'bright, confident and playful, ',
     'rin_01': 'calm, low and a little sultry, ',
     'hana_01': 'calm, warm and a little husky, like a doctor who enjoys teasing, ',
+    'vlada_01': 'bright, cheeky and teasing, with a smirk in the voice, ',
+    'milana_01': 'cool, smooth and elegant, a little haughty, ',
+    'polina_01': 'sleepy, soft and tender, with a lazy smile, ',
+    'dasha_01': 'quiet, low and ironic, unhurried, ',
+    'kamila_01': 'hot, fast and bold, with a warm southern energy, ',
+    'rita_01': 'bright, giggly and playful, ',
 }
 _DEFAULT_GEMINI_TTS_VOICE = GEMINI_TTS_VOICES['anna_01']
 
 # V3.74.0: Grok has two multilingual female voices; the owner liked both.
 # eve — lighter and playful; ara — calmer and lower, for the mature girls.
 GROK_ARA_CHARACTERS = frozenset({
-    'maria_01', 'darina_01', 'erika_01', 'kristina_01', 'rex_01', 'veronika_01', 'violetta_01', 'nika_01', 'margo_01', 'rin_01',
+    'maria_01', 'darina_01', 'erika_01', 'kristina_01', 'rex_01', 'veronika_01', 'violetta_01', 'nika_01', 'margo_01', 'rin_01', 'milana_01',
 })
 
 
