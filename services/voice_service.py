@@ -99,6 +99,7 @@ GEMINI_TTS_VOICES = {
     'yuki_01': 'Laomedeia',
     'miko_01': 'Erinome',
     'rin_01': 'Despina',
+    'hana_01': 'Sulafat',
 }
 GEMINI_FEMALE_VOICES = (
     'Leda', 'Kore', 'Aoede', 'Achernar', 'Autonoe',
@@ -135,6 +136,7 @@ GEMINI_TTS_MANNER = {
     'yuki_01': 'sweet, playful and teasing, ',
     'miko_01': 'bright, confident and playful, ',
     'rin_01': 'calm, low and a little sultry, ',
+    'hana_01': 'calm, warm and a little husky, like a doctor who enjoys teasing, ',
 }
 _DEFAULT_GEMINI_TTS_VOICE = GEMINI_TTS_VOICES['anna_01']
 

@@ -100,6 +100,8 @@ for g in GIRLS:
             prompt = (f'{who}: keep her exact face, eyes, nose, lips, hair color '
                       f'and length, skin tone. {g["look"]}. Her figure: {BODY.get(g["id"], "a curvy hourglass build")}. '
                       f'Full look, knees up, {g["look_prompt"]}.' + SEXY + quality)
+            if g['id'] == 'hana_01':  # owner's reference: opaque lingerie under the open coat
+                prompt = prompt.replace('fully dressed, no nudity', 'opaque lingerie fully covering her, no nudity, nothing see-through')
             look_path.write_bytes(render('bytedance/seedream-5.0-pro/edit', prompt, [uri]))
             print('ok', look_path)
     except Exception as e:  # keep going with the other girls

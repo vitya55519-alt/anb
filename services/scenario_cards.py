@@ -192,6 +192,20 @@ SCENARIOS: tuple[Scenario, ...] = (
         'wearing a white shirt unbuttoned low with deep cleavage, a fitted black vest and a loose bow tie, leaning on her elbows over a night bar counter toward the viewer, neon signs and bottles behind her, sultry knowing smile',
         'Neon light flickers, she slides a glass toward the viewer, tucks her pink hair behind her ear and smiles calmly.',
     ),
+    # V3.77.0: anime doctor (owner's reference)
+    Scenario(
+        'checkup', 'hana_01',
+        'Плановый медосмотр. Клиника опустела, а доктор почему-то закрывает дверь на ключ',
+        'поправляет очки и медленно натягивает голубые перчатки',
+        'раздевайся. и не стесняйся, я видела всякое… но такого — ещё нет',
+        'Пройти осмотр',
+        '*снимаю рубашку* так, доктор?',
+        'доктор частной клиники (ей 30), строгая на приёме и очень пошлая наедине, давно положила на него глаз',
+        'её пациент на вечернем осмотре',
+        'вечер, пустая клиника, закрытый кабинет, кушетка и яркая лампа',
+        'wearing an open white lab coat over a tight low-cut white blouse that shows deep cleavage and a short tight white pencil skirt, light-blue nitrile gloves, light-blue surgical mask pulled down under her chin, black rectangular glasses, standing by a clinic couch in a bright examination room, pulling on a glove and looking at the viewer with a sultry half-lidded look',
+        'She snaps the glove onto her wrist, adjusts her glasses with one finger and gives the viewer a slow sultry look.',
+    ),
 )
 
 _BY_KEY = {s.key: s for s in SCENARIOS}
