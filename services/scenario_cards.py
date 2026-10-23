@@ -8,8 +8,10 @@ drops the user straight into that scene.
 
 Ours:
 
-* ``SCENARIOS`` — a role-play scene per built-in heroine, matched to her own
-  archetype (Вика is the boss, Кейт the trainer, Мила the neighbour);
+* ``SCENARIOS`` — like Come Closer, every card brings a NEW girl (owner's
+  pick, V3.76.0): Лера, Диана, Ника, Ксюша, Марго, Аля are full built-in
+  heroines (persona, references, voice, pools) whose storefront tile only
+  appears for a user once her card reached him (``unlocked``);
 * the cover is rendered ONCE per scenario by the admin's «/scenes»: a
   Seedream photo by default (~$0.035; owner: «можем это и фоткой»), or a
   Seedance 2.5 Spicy 4 s silent loop from it (~$0.90) for the best scenes;
@@ -74,153 +76,89 @@ class Scenario:
 
 SCENARIOS: tuple[Scenario, ...] = (
     Scenario(
-        'sister_friend', 'anna_01',
-        'Лучшая подруга твоей сестры осталась у вас ночевать и столкнулась с тобой в дверях',
+        'sister_friend', 'lera_01',
+        'Лучшая подруга твоей сестры, тайно влюблённая в тебя, столкнулась с тобой в дверях',
         'поправляет халатик и не отводит взгляд',
         'ой… не знала, что ты тут. можно мне войти?',
         'Пригласить войти',
         '*открываю дверь шире* заходи',
-        'лучшая подруга его младшей сестры (обеим за двадцать), давно и тайно влюблена в него, осталась у них ночевать',
+        'лучшая подруга его сестры (ей 24), давно и тайно влюблена в него, осталась у них ночевать',
         'старший брат её подруги',
         'поздний вечер, коридор у двери его комнаты, сестра уже спит',
-        'wearing a short silk robe over a lace camisole, standing in a dim apartment hallway at night, '
-        'leaning on a door frame, warm light from the room behind her, looking up at the camera shyly',
-        'She slowly tucks her hair behind her ear, bites her lip and looks up into the lens with a shy, '
-        'inviting smile, leaning closer in the doorway.',
+        'wearing a short silk robe over a lace camisole, standing in a dim apartment hallway at night, leaning on a door frame, warm light from the room behind her, looking up at the camera shyly',
+        'She slowly tucks her hair behind her ear, bites her lip and looks up into the lens with a shy, inviting smile, leaning closer in the doorway.',
     ),
     Scenario(
-        'boss_late', 'vika_01',
-        'Начальница задержала тебя после работы. Офис пустой, в переговорке горит одна лампа',
-        'снимает пиджак и садится на край стола',
-        'закрой дверь. этот разговор не для всех',
-        'Закрыть дверь',
-        '*закрываю за собой дверь* вы хотели меня видеть?',
-        'его начальница, 35 лет, строгая на людях, давно положила на него глаз',
-        'её подчинённый',
-        'поздний вечер, пустой офис, переговорная с панорамным окном на ночной город',
-        'in a fitted white blouse with the top buttons open and a black pencil skirt, sitting on the edge of a '
-        'meeting-room table in an empty office at night, city lights in the panoramic window behind her',
-        'She slowly runs her fingers along the table edge, tilts her head and gives the camera a long, '
-        'demanding look, then a slight confident smile.',
+        'office_brat', 'diana_01',
+        'Дерзкая коллега застала тебя в пустом офисе после девяти',
+        'садится на край твоего стола и крутит в пальцах твою ручку',
+        'весь день на меня пялишься. и что будем с этим делать?',
+        'Ответить ей',
+        '*откидываюсь в кресле и смотрю на неё* а ты как думаешь?',
+        'его дерзкая коллега из соседнего отдела (ей 27), острая на язык, давно положила на него глаз',
+        'её коллега',
+        'поздний вечер, пустой офис, горит только его настольная лампа',
+        'in a fitted white blouse with a grey waistcoat and a black leather pencil skirt, sitting on the edge of an office desk at night, desk lamp light, city lights behind her, looking at the camera with a challenging smirk',
+        'She twirls a pen in her fingers, tilts her head and gives the lens a slow challenging smirk, then leans a little closer.',
     ),
     Scenario(
-        'friends_mom', 'erika_01',
-        'Мама твоего друга попросила помочь повесить полку, пока его нет дома',
-        'подаёт тебе отвёртку и задерживает руку в твоей',
-        'ты такой сильный… останешься на чай? он вернётся поздно',
-        'Остаться на чай',
-        '*откладываю отвёртку* останусь',
-        'мама его друга, 38 лет, одна дома, ей давно не хватает внимания',
-        'друг её сына, взрослый парень',
-        'днём, её светлая квартира, друг вернётся только к ночи',
-        'in a soft fitted knit dress, leaning on the kitchen counter of a bright apartment, '
-        'holding a cup of tea, looking at the camera over the cup with a warm knowing smile',
-        'She sets the cup down, runs a finger along the rim and looks into the lens with a slow, '
-        'warm, inviting smile.',
+        'night_shift', 'nika_01',
+        'Ночное дежурство в клинике. Ты зашёл с порезом, а дежурный врач — она',
+        'натягивает перчатки и кивает на кушетку',
+        'садись. будет немного больно… но я буду нежной',
+        'Сесть на кушетку',
+        '*сажусь на кушетку и протягиваю руку*',
+        'врач ночной смены (ей 29), спокойная, уверенная, любит командовать пациентами',
+        'её ночной пациент с неглубоким порезом',
+        'три часа ночи, кабинет дежурного врача, за окном луна, в коридорах тихо',
+        'in an open white doctor coat over a fitted black turtleneck, stethoscope around her neck, standing in a dim clinic office at night with moonlight in the window, low camera angle, looking down at the camera with a calm confident look',
+        'She slowly tucks a loose strand behind her ear and looks down into the lens with a calm, confident half-smile.',
     ),
     Scenario(
-        'gym_after_hours', 'kate_01',
-        'Персональная тренировка в зале после закрытия. Кроме вас двоих — никого',
-        'поправляет тебе стойку, прижавшись сзади',
-        'ещё подход. и не смей отводить глаза',
-        'Начать тренировку',
-        '*встаю к штанге* я готов, тренер',
-        'его фитнес-тренер, 28 лет, уверенная, дерзкая, любит командовать',
-        'её клиент',
-        'поздний вечер, пустой фитнес-зал после закрытия, приглушённый свет',
-        'in a tight sports bra and leggings, standing in an empty gym at night with dimmed lights, '
-        'hands on her hips, slightly glistening skin, looking at the camera with a challenging smile',
-        'She steps closer to the lens, raises an eyebrow and smirks, then beckons with one finger.',
+        'party_ride', 'ksyusha_01',
+        'Вечеринка закончилась. Девушка, с которой ты танцевал, догоняет тебя у машины',
+        'томно заглядывает тебе в глаза',
+        'подвезёшь меня домой? мне одной страшно…',
+        'Подвезти до дома',
+        '*открываю ей дверь машины* садись',
+        'девушка с вечеринки (ей 22), кокетливая и лёгкая, весь вечер танцевала с ним',
+        'парень с машиной, с которым она танцевала',
+        'два часа ночи, парковка у клуба, потом его машина',
+        'wearing a black lace-trim camisole top, a pleated black mini skirt and a black choker, leaning toward the camera in a sunlit room with a wooden floor, playful flirty smile',
+        'She leans toward the lens, smiles, then blows a slow air kiss with her palm and winks.',
     ),
     Scenario(
-        'neighbor_pie', 'mila_01',
-        'Соседка стучит в дверь с горячим пирогом. Кажется, пирог — только предлог',
-        'протягивает пирог и заглядывает тебе за плечо',
-        'я испекла слишком много… впустишь?',
-        'Впустить',
-        '*отступаю от двери* проходи',
-        'его соседка по лестничной клетке, 30 лет, заботливая, пирог был только предлогом',
-        'её сосед',
-        'вечер, порог его квартиры, она пришла в домашнем',
-        'in a short floral summer dress with a cute apron, standing in an apartment doorway holding a pie, '
-        'warm hallway light, smiling at the camera',
-        'She lifts the pie a little, tilts her head and smiles warmly at the lens, then glances '
-        'past the camera into the apartment.',
+        'flight_delay', 'margo_01',
+        'Рейс отменили. Стюардесса с твоего рейса ночует в соседнем номере',
+        'стучит в твою дверь с бутылкой вина из дьюти-фри',
+        'одной в чужом городе скучно. откроешь?',
+        'Открыть дверь',
+        '*открываю дверь* заходи, у меня есть бокалы',
+        'стюардесса с его отменённого рейса (ей 31), уверенная, обаятельная, не любит скучать',
+        'пассажир её рейса, сосед по номеру',
+        'ночь, отель у аэропорта, коридор и его номер',
+        'wearing a fitted navy flight attendant dress with a red silk scarf, standing in a hotel corridor at night with warm sconce light, holding a small bottle of wine, smiling at the camera',
+        'She lifts the wine bottle a little, tilts her head and gives the lens a warm, inviting smile.',
     ),
     Scenario(
-        'roof_dare', 'zlata_01',
-        'Ночная крыша. Спор на желание — и проигравший выполняет любое',
-        'красит губы красной помадой и протягивает тебе руку',
-        'слабо? проиграешь — исполняешь любое моё желание',
-        'Принять спор',
-        '*жму её руку* спорим. но проиграешь ты',
-        'дерзкая девушка 23 лет, обожает спорить и брать на слабо',
-        'парень, которого она взяла на слабо',
-        'ночь, крыша многоэтажки, огни города внизу',
-        'in a black crop top and a leather jacket, sitting on a rooftop ledge at night with city lights below, '
-        'red lipstick, wind in her hair, looking at the camera with a daring smile',
-        'Her hair moves in the wind, she grins at the lens, raises her chin and gives a playful wink.',
-    ),
-    Scenario(
-        'night_train', 'kristina_01',
-        'Ночной поезд. Одно купе на двоих, и ей тоже не спится',
-        'садится напротив, поджав под себя ноги',
-        'не спится? мне тоже… поболтаем, пока все спят?',
-        'Подсесть ближе',
-        '*пересаживаюсь к ней* поболтаем',
-        'попутчица 25 лет, сова, едет одна, ей скучно и немного одиноко',
-        'её сосед по купе',
-        'ночь, купе поезда, за окном мелькают огни',
-        'in an oversized soft sweater and shorts, sitting cross-legged on a train compartment bunk at night, '
-        'warm reading lamp, dark window with passing lights, smiling at the camera',
-        'Passing lights flicker across her face, she pulls the sweater sleeve over her hand and smiles '
-        'softly into the lens.',
-    ),
-    Scenario(
-        'roadside', 'alena_01',
-        'Ночью на трассе у неё пробило колесо. Ты единственный, кто остановился',
-        'прислоняется к машине и улыбается в свете фар',
-        'спаситель… я твоя должница. как будешь забирать долг?',
-        'Помочь с колесом',
-        '*выхожу из машины* давай посмотрю, что там',
-        'яркая дерзкая девушка 25 лет, застряла ночью на трассе',
-        'водитель, который остановился помочь',
-        'ночь, обочина трассы, свет фар',
-        'in a short denim jacket over a crop top and a mini skirt, leaning against a sports car on a roadside '
-        'at night, lit by headlights, looking at the camera with a grateful flirty smile',
-        'She pushes off the car, walks one step toward the lens and tilts her head with a teasing smile.',
-    ),
-    Scenario(
-        'childhood_storm', 'sonya_01',
-        'Во всём доме выбило свет. Соседка детства стучит к тебе со свечкой',
-        'кутается в плед и прячет улыбку',
-        'можно я у тебя пересижу? одной страшно…',
-        'Пустить к себе',
-        '*беру у неё свечку* заходи, вместе не страшно',
-        'его соседка с детства, ей 22, выросла и давно не «просто подруга»',
-        'её сосед и друг детства',
-        'ночь, гроза, в доме нет света, только свечи',
-        'wrapped in a soft blanket over pajama shorts and a tank top, holding a candle in a dark apartment doorway, '
-        'candlelight on her face, looking at the camera with a shy smile',
-        'The candle flame flickers, she pulls the blanket tighter and gives the lens a shy, hopeful smile.',
-    ),
-    Scenario(
-        'spa_massage', 'veronika_01',
-        'Сеанс массажа в спа отеля. Массажистка закрывает дверь на ключ',
-        'греет масло в ладонях',
-        'расслабься. я скажу, когда можно открыть глаза',
-        'Лечь на стол',
-        '*ложусь на стол и закрываю глаза*',
-        'массажистка в спа отеля, 36 лет, уверенная и чувственная',
-        'гость отеля',
-        'вечер, спа-кабинет, свечи, тёплый полумрак',
-        'in a fitted white spa uniform dress, standing beside a massage table in a candle-lit spa room, '
-        'warming oil between her palms, looking at the camera with a calm sensual smile',
-        'She rubs the oil slowly between her palms, looks up at the lens and smiles calmly.',
+        'flooded_neighbor', 'alya_01',
+        'Ты затопил соседку снизу. Она поднялась разбираться — в мокрой футболке',
+        'скрещивает руки и пытается выглядеть строгой',
+        'ну и что мне с тобой делать, сосед?',
+        'Впустить её',
+        '*отступаю от двери* заходи, буду извиняться',
+        'соседка снизу (ей 25), вспыльчивая и отходчивая, пришла ругаться, но он ей давно нравится',
+        'сосед сверху, который её затопил',
+        'вечер, порог его квартиры, потом его кухня',
+        'wearing an oversized white tee with damp spots and denim shorts, standing in an apartment doorway with arms crossed, warm hallway light, trying to look strict but smiling at the camera',
+        'She uncrosses her arms, shakes her curls, tries to frown and then breaks into a laugh, looking into the lens.',
     ),
 )
 
 _BY_KEY = {s.key: s for s in SCENARIOS}
+# V3.76.0: the girls who arrive through a card stay out of the storefront
+# until that card reached him (owner chose «новые девушки, как у него»).
+SCENARIO_GIRLS = frozenset(s.character_id for s in SCENARIOS)
 
 
 def get(key: str) -> Scenario | None:
@@ -324,6 +262,17 @@ def caption(s: Scenario, bonus: int) -> str:
 def opening_line(s: Scenario) -> str:
     """What lands in her dialog when the card is sent (the app shows it)."""
     return f'*{s.action}*\n{s.quote}'
+
+
+def unlocked(telegram_id: int, character_id: str) -> bool:
+    """A card girl shows in his storefront once her card came (or he
+    walked into her scene); every other girl is always there."""
+    if character_id not in SCENARIO_GIRLS:
+        return True
+    data = _user(telegram_id)
+    if character_id in data['active']:
+        return True
+    return any(s.character_id == character_id and s.key in data['sent'] for s in SCENARIOS)
 
 
 def eligible(available_characters: set[str], *, with_cover: bool = True) -> list[Scenario]:

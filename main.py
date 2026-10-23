@@ -524,7 +524,11 @@ def _character_pick_buttons(kind: str):
     # callers chunk them two per row so /start no longer shows a ten-row wall
     # of buttons (owner: «замени, чтобы оно было как-то компактно, удобно»).
     buttons = []
+    # V3.76.0: card girls arrive through their scenario card, not the menu.
+    from services.scenario_cards import SCENARIO_GIRLS
     for card in list_cards(visible_only=True):
+        if card.character_id in SCENARIO_GIRLS:
+            continue
         if card.status == 'active':
             text = f'✅ {card.display_name}'
         elif card.status == 'premium':

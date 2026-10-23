@@ -35,7 +35,7 @@ def _ages():
 
 def test_catalogue_uses_built_in_adult_heroines_only():
     ages = _ages()
-    assert len(sc.SCENARIOS) >= 8
+    assert len(sc.SCENARIOS) >= 6
     assert len({s.key for s in sc.SCENARIOS}) == len(sc.SCENARIOS)
     for s in sc.SCENARIOS:
         assert s.character_id in ages, s.key
@@ -63,41 +63,41 @@ def test_covers_stay_dressed():
 def test_only_covered_scenes_go_out_and_never_twice():
     allowed = {s.character_id for s in sc.SCENARIOS}
     assert sc.pick_next(1, allowed) is None  # no covers yet → nothing is sent
-    sc.set_cover('boss_late', 'FILE1')
-    sc.set_cover('gym_after_hours', 'FILE2')
-    first = sc.pick_next(1, allowed, current='kate_01')
-    assert first.key == 'gym_after_hours'  # his own girl's scene goes first
+    sc.set_cover('office_brat', 'FILE1')
+    sc.set_cover('night_shift', 'FILE2')
+    first = sc.pick_next(1, allowed, current='nika_01')
+    assert first.key == 'night_shift'  # his own girl's scene goes first
     sc.mark_sent(1, first.key)
     assert sc.last_sent_at(1) is not None
-    second = sc.pick_next(1, allowed, current='kate_01')
-    assert second.key == 'boss_late'
+    second = sc.pick_next(1, allowed, current='nika_01')
+    assert second.key == 'office_brat'
     sc.mark_sent(1, second.key)
     assert sc.pick_next(1, allowed) is None
 
 
 def test_hidden_heroine_is_skipped():
-    sc.set_cover('boss_late', 'FILE1')
+    sc.set_cover('office_brat', 'FILE1')
     assert sc.pick_next(2, {'anna_01'}) is None
 
 
 def test_start_turns_the_scene_on_for_her_only_and_pays_bonus_once_sent():
-    assert sc.start(3, 'boss_late') == {'sent': False, 'bonus_due': False}
-    assert sc.active(3, 'vika_01').key == 'boss_late'
+    assert sc.start(3, 'office_brat') == {'sent': False, 'bonus_due': False}
+    assert sc.active(3, 'diana_01').key == 'office_brat'
     assert sc.active(3, 'anna_01') is None
-    line = sc.direction_for(3, 'vika_01', 'Вика')
+    line = sc.direction_for(3, 'diana_01', 'Диана')
     assert 'РОЛЕВАЯ СЦЕНА' in line and 'взрослые' in line
     assert sc.direction_for(3, 'anna_01') == ''
-    sc.mark_sent(4, 'boss_late')
-    assert sc.start(4, 'boss_late')['bonus_due'] is True
-    assert sc.stop(4, 'vika_01') is True
-    assert sc.active(4, 'vika_01') is None
+    sc.mark_sent(4, 'office_brat')
+    assert sc.start(4, 'office_brat')['bonus_due'] is True
+    assert sc.stop(4, 'diana_01') is True
+    assert sc.active(4, 'diana_01') is None
 
 
 def test_scene_expires(monkeypatch):
-    sc.start(5, 'boss_late')
+    sc.start(5, 'office_brat')
     later = sc._now() + timedelta(hours=sc.ACTIVE_HOURS + 1)
     monkeypatch.setattr(sc, '_now', lambda: later)
-    assert sc.active(5, 'vika_01') is None
+    assert sc.active(5, 'diana_01') is None
 
 
 def test_wiring():
@@ -110,3 +110,55 @@ def test_wiring():
     # admin covers: render once, keep Telegram's file_id
     assert "Command('scenes')" in MAIN and 'scnadm:genall' in MAIN
     assert "reason=f'scenario_{scenario.key}'" in MAIN
+
+
+# ── V3.76.0: every card brings a new girl ───────────────────────────────────
+
+POOLS = ['MORNING_MESSAGES', 'EVENING_MESSAGES', 'MISS_TEXTS', 'JEALOUSY_TEXTS',
+         'CLIFFHANGER_TEXTS', 'GIFT_MESSAGES', 'STORY_TEMPLATES', 'MINI_QUESTS', 'WEEKLY_DATES']
+
+
+def _block(rel, start):
+    return (ROOT / rel).read_text(encoding='utf-8').split(start, 1)[1].split('\n}', 1)[0]
+
+
+def test_card_girls_are_new_and_fully_registered():
+    old = {'anna_01', 'alena_01', 'maria_01', 'erika_01', 'sonya_01', 'vika_01', 'alisa_01', 'mila_01',
+           'kate_01', 'sasha_01', 'rex_01', 'violetta_01', 'darina_01', 'eva_01', 'romina_01',
+           'kristina_01', 'zlata_01', 'veronika_01'}
+    assert not (sc.SCENARIO_GIRLS & old)
+    for cid in sc.SCENARIO_GIRLS:
+        data = json.loads((ROOT / 'data' / 'characters' / f'{cid}.json').read_text(encoding='utf-8'))
+        assert data['is_adult'] is True and data['age'] >= 21
+        assert data['boundaries']['no_nudity_generation'] is True
+        assert f'"{cid}":' in _block('services/character_card_service.py', 'DEFAULT_CARDS = {')
+        assert f'"{cid}":' in _block('services/character_card_service.py', 'SCENARIO_HOOKS = {')
+        assert f'"{cid}":' in _block('services/character_card_service.py', 'OPENING_SCENES = {')
+        assert f"'{cid}':" in _block('services/webapp_service.py', '_FACE_REFERENCES = {')
+        assert f"'{cid}':" in _block('services/relationship_engine.py', 'CHARACTER_PACE = {')
+        assert f"'{cid}':" in _block('services/relationship_engine.py', 'PACE_HINTS = {')
+        assert f"'{cid}':" in _block('services/photo_service.py', 'BODY_SPECS = {')
+        assert f"'{cid}':" in _block('services/voice_service.py', 'GEMINI_TTS_VOICES = {')
+        assert f"'{cid}':" in _block('services/voice_samples.py', 'VOICE_SAMPLES')
+        assert f"'{cid}':" in _block('services/daily_life.py', 'ROUTINES')
+        for pool in POOLS:
+            assert f"'{cid}': [" in _block('services/retention_features_service.py', f'{pool} = {{'), (cid, pool)
+
+
+def test_card_girl_references_exist():
+    for cid in sc.SCENARIO_GIRLS:
+        f = cid.replace('_01', '')
+        assert (ROOT / 'data' / 'references' / f / f'00_{f}_canonical_face.png').exists(), cid
+        assert (ROOT / 'data' / 'references' / f / f'01_{f}_canonical_look.png').exists(), cid
+
+
+def test_card_girls_unlock_with_their_card():
+    assert sc.unlocked(7, 'anna_01') is True
+    assert sc.unlocked(7, 'nika_01') is False
+    sc.mark_sent(7, 'night_shift')
+    assert sc.unlocked(7, 'nika_01') is True
+    sc.start(8, 'party_ride')
+    assert sc.unlocked(8, 'ksyusha_01') is True
+    webapp = (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')
+    assert 'scenario_cards.unlocked(telegram_id' in webapp
+    assert 'if card.character_id in SCENARIO_GIRLS' in MAIN

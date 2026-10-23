@@ -841,6 +841,12 @@ BODY_SPECS = {
     'romina_01': 'a voluptuous soft hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
     'violetta_01': 'a curvy fit hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
     'zlata_01': 'a feminine fit hourglass build with a narrow waist, round lifted hips and a natural modest bust (silicone, Russian size 3, C cup)',
+    'lera_01': 'a feminine fit hourglass build with a narrow waist, round lifted hips and a natural modest bust (silicone, Russian size 3, C cup)',
+    'diana_01': 'a curvy athletic hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    'nika_01': 'a curvy soft hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    'ksyusha_01': 'a petite curvy hourglass build with a narrow waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    'margo_01': 'a curvy soft hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    'alya_01': 'a curvy fit hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
 }
 DEFAULT_FEMALE_BODY_SPEC = (
     'a curvy feminine hourglass build with a wasp waist, round lifted hips '
