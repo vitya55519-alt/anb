@@ -66,11 +66,11 @@
         "neon pink",
         "deep blue"
       ],
-      "wardrobe_style": "Anime bartender style for a 25-year-old: white shirt with a black vest and bow tie at work, off-duty leather jackets and slip dresses. All outfits are complete and opaque."
+      "wardrobe_style": "Bartender style for a 25-year-old: white shirt with a black vest and bow tie at work, off-duty leather jackets and slip dresses. All outfits are complete and opaque."
     },
-    "art_style": "anime",
+    "art_style": "semi",
     "status": "active",
-    "description": "original anime character, adult woman 25 y.o.; calm night-bar bartender — long wavy pastel pink hair over one shoulder, half-lidded teal eyes, beauty mark under the eye, mature adult face and figure",
+    "description": "original character, adult woman 25 y.o.; calm night-bar bartender — long wavy pastel pink hair over one shoulder, half-lidded teal eyes, beauty mark under the eye, mature adult face and figure",
     "reference_folder": "data/references/rin",
     "reference_assets": [
       "00_rin_canonical_face.png",
@@ -78,7 +78,7 @@
     ],
     "preserve_identity": [
       "long wavy pastel pink hair",
-      "half-lidded teal anime eyes",
+      "half-lidded teal eyes",
       "beauty mark under the left eye",
       "mature adult face and figure",
       "curvy hourglass figure with a full bust (silicone, Russian size 4, D cup)"
@@ -92,7 +92,7 @@
       "mood",
       "hairstyle"
     ],
-    "identity_lock": "Rin is an adult 25-year-old anime character. Preserve her anime face, hair and figure from the canonical references in every picture.",
+    "identity_lock": "Rin is an adult 25-year-old character. Preserve her face, hair and figure from the canonical references in every picture.",
     "identity_version": "rin_v1_2026_10_23",
     "openai_face_anchor": "00_rin_canonical_face.png",
     "openai_body_anchor": "01_rin_canonical_look.png",

@@ -66,11 +66,11 @@
         "lavender",
         "soft pink"
       ],
-      "wardrobe_style": "Anime maid-café style for a 23-year-old: black and white maid dress with lace apron, chokers, off-duty oversized hoodies and pleated skirts. All outfits are complete and opaque."
+      "wardrobe_style": "Maid-café style for a 23-year-old: black and white maid dress with lace apron, chokers, off-duty oversized hoodies and pleated skirts. All outfits are complete and opaque."
     },
-    "art_style": "anime",
+    "art_style": "semi",
     "status": "active",
-    "description": "original anime character, adult woman 23 y.o.; maid-café waitress — long straight silver white hair with blunt bangs, big violet eyes, soft blush, black choker, mature adult face and figure",
+    "description": "original character, adult woman 23 y.o.; maid-café waitress — long straight silver white hair with blunt bangs, big violet eyes, soft blush, black choker, mature adult face and figure",
     "reference_folder": "data/references/yuki",
     "reference_assets": [
       "00_yuki_canonical_face.png",
@@ -78,7 +78,7 @@
     ],
     "preserve_identity": [
       "long straight silver white hair with blunt bangs",
-      "big violet anime eyes",
+      "big violet eyes",
       "black choker",
       "mature adult face and figure",
       "curvy hourglass figure with a full bust (silicone, Russian size 4, D cup)"
@@ -92,7 +92,7 @@
       "mood",
       "hairstyle"
     ],
-    "identity_lock": "Yuki is an adult 23-year-old anime character. Preserve her anime face, hair and figure from the canonical references in every picture.",
+    "identity_lock": "Yuki is an adult 23-year-old character. Preserve her face, hair and figure from the canonical references in every picture.",
     "identity_version": "yuki_v1_2026_10_23",
     "openai_face_anchor": "00_yuki_canonical_face.png",
     "openai_body_anchor": "01_yuki_canonical_look.png",

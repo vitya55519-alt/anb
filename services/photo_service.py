@@ -864,6 +864,16 @@ ANIME_STYLE_HEAD = (
     'character as in the reference images, clearly an adult woman with a mature face and adult '
     'proportions. Never a photograph, never photorealistic, never 3D.'
 )
+# V3.76.0: the card girls («новые девушки») look like the competitor's —
+# a polished semi-realistic «drawn photo», not a camera shot and not anime.
+SEMI_STYLE_HEAD = (
+    'ART STYLE (overrides every realism or photo word below): a polished semi-realistic digital '
+    'painting, high-end game CG / 3D-render look, soft cinematic lighting, smooth glowing skin, '
+    'realistic adult proportions, detailed painted background. The same character as in the '
+    'reference images, clearly an adult woman. Not a camera photo, not flat anime.'
+)
+_STYLE_HEADS = {'anime': ANIME_STYLE_HEAD, 'semi': SEMI_STYLE_HEAD}
+_STYLE_WORD = {'anime': 'anime illustration', 'semi': 'semi-realistic digital painting'}
 _REALISM_WORDS = re.compile(
     r'(photo-?realistic|hyper-?realistic|realistic smartphone-style photo|smartphone-style photo|'
     r'realistic smartphone photo|smartphone photo|natural skin texture|natural skin|real photo|'
@@ -872,7 +882,7 @@ _ART_STYLE_CACHE: dict[str, str] = {}
 
 
 def art_style(character_id: str | None) -> str:
-    """'anime' or 'photo' (custom girls and unknown ids are 'photo')."""
+    """'anime', 'semi' or 'photo' (custom girls and unknown ids are 'photo')."""
     cid = character_id or ''
     if cid not in _ART_STYLE_CACHE:
         style = 'photo'
@@ -886,9 +896,10 @@ def art_style(character_id: str | None) -> str:
 
 
 def apply_art_style(prompt: str, character_id: str | None) -> str:
-    if art_style(character_id) != 'anime' or not prompt:
+    style = art_style(character_id)
+    if style not in _STYLE_HEADS or not prompt:
         return prompt
-    return ANIME_STYLE_HEAD + '\n' + _REALISM_WORDS.sub('anime illustration', prompt)
+    return _STYLE_HEADS[style] + '\n' + _REALISM_WORDS.sub(_STYLE_WORD[style], prompt)
 
 
 # V3.59.3: image models do not know what «Russian size 4 / D cup» looks like,
