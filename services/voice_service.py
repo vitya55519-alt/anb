@@ -1,7 +1,8 @@
 """Voice service: TTS (text-to-speech) and STT (speech-to-text).
 
 Provider priority:
-  TTS: Gemini 2.5 TTS (natural human-like voices, V3.20.1)
+  TTS: Grok TTS via SpicyAPI (V3.74.0, the owner's pick)
+       → Gemini 2.5 TTS (natural human-like voices, V3.20.1)
        → edge-tts (free, no API key) → OpenAI TTS (if key present)
   STT: faster-whisper (local, free, singleton model since V3.57.1)
        → Gemini flash audio (V3.57.1) → OpenAI Whisper (if key present)
@@ -19,6 +20,7 @@ from services.custom_character_service import is_custom_character
 from config import (
     TTS_API_KEY, TTS_MODEL, TTS_VOICE, AI_BASE_URL, OPENAI_VOICE_AVAILABLE,
     GEMINI_API_KEY, GEMINI_TTS_ENABLED, GEMINI_TTS_MODEL, GEMINI_VIDEO_BASE_URL, GEMINI_CHAT_MODEL,
+    SPICYAPI_KEY, SPICY_TTS_ENABLED, SPICYAPI_TTS_MODEL, SPICYAPI_TTS_COST_PER_1K_USD,
 )
 
 logger = logging.getLogger(__name__)
@@ -117,6 +119,16 @@ GEMINI_TTS_MANNER = {
     'zlata_01': 'cheeky, energetic and impressionable, ',
 }
 _DEFAULT_GEMINI_TTS_VOICE = GEMINI_TTS_VOICES['anna_01']
+
+# V3.74.0: Grok has two multilingual female voices; the owner liked both.
+# eve — lighter and playful; ara — calmer and lower, for the mature girls.
+GROK_ARA_CHARACTERS = frozenset({
+    'maria_01', 'darina_01', 'erika_01', 'kristina_01', 'rex_01', 'veronika_01', 'violetta_01',
+})
+
+
+def grok_voice_for(character_id: str | None) -> str:
+    return 'ara' if (character_id or '') in GROK_ARA_CHARACTERS else 'eve'
 
 # V3.25.0: Google rotates TTS model names (2.5 preview was superseded by the
 # 3.1 preview).  Walk the chain on 404/400 so the human-like voice survives
@@ -279,6 +291,13 @@ async def synthesize_bytes(text: str, voice: str | None = None, character_id: st
     """
     v = voice if voice in _EDGE_VOICE_MAP else TTS_VOICE
 
+    # V3.74.0: Grok TTS (SpicyAPI) first — the owner liked eve/ara best.
+    if SPICY_TTS_ENABLED and SPICYAPI_KEY:
+        try:
+            return await _tts_grok(text, character_id)
+        except Exception as exc:
+            logger.warning('grok-tts failed: %s; falling back to gemini', exc)
+
     # V3.20.1: Gemini TTS first — a natural, human-like cute voice (the same
     # audio family heard in Veo videos); edge-tts sounded robotic to the owner.
     if GEMINI_TTS_ENABLED:
@@ -302,6 +321,27 @@ async def synthesize_bytes(text: str, voice: str | None = None, character_id: st
         return await _tts_openai(text, v)
 
     raise RuntimeError('No TTS provider available. Install edge-tts: pip install edge-tts')
+
+
+async def _tts_grok(text: str, character_id: str | None = None) -> bytes:
+    """V3.74.0: Grok TTS through SpicyAPI → opus for the voice bubble (mp3 if
+    ffmpeg is missing; Telegram and the app both play it)."""
+    from services import spend_service, spicy_jobs
+    voice = grok_voice_for(character_id)
+    block = {'text': text[:3000], 'voice_id': voice, 'language': detect_voice_language(text)}
+    ok = False
+    try:
+        mp3, _, _ = await spicy_jobs.run(SPICYAPI_TTS_MODEL, block, timeout=60, first_wait=1.5)
+        ok = True
+    finally:
+        spend_service.record_image_spend('spicyapi_tts', 'voice',
+                                         SPICYAPI_TTS_COST_PER_1K_USD * len(block['text']) / 1000,
+                                         billed=ok, success=ok)
+    logger.info('tts ok provider=grok voice=%s chars=%s', voice, len(block['text']))
+    try:
+        return await _convert_mp3_to_opus(mp3)
+    except Exception:
+        return mp3
 
 
 async def _tts_edge_tts(text: str, voice: str, character_id: str | None = None) -> bytes:
