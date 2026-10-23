@@ -76,6 +76,13 @@ PRIVATE_PHOTO_PEACH_COST = _peach_env("PRIVATE_PHOTO_PEACH_COST", 2)
 CHAT_PHOTO_PEACH_COST = _peach_env("CHAT_PHOTO_PEACH_COST", 2)
 # V3.61.5: chat photos free per day (all girls together) before peaches are spent.
 CHAT_FREE_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_FREE_PHOTOS_PER_DAY", "2")))
+# V3.81.0: a daily ceiling on what the FREE chat photos may cost (all users
+# together). Until it is spent every free photo is rendered for the moment, as
+# before; after it, a free photo comes from her ready-made pool (ProactivePhoto,
+# $0) until 03:00 MSK. Paid (peaches) and Premium photos are never affected.
+# 0 turns the ceiling off.
+FREE_PHOTO_DAILY_BUDGET_USD = max(0.0, float(os.getenv("FREE_PHOTO_DAILY_BUDGET_USD", "5")))
+FREE_PHOTO_COST_USD = max(0.0, float(os.getenv("FREE_PHOTO_COST_USD", "0.035")))
 # V3.61.7: «🔥 Раздеть» under a chat photo — free per day, then peaches.
 UNDRESS_FREE_PER_DAY = max(0, int(os.getenv("UNDRESS_FREE_PER_DAY", "1")))
 # V3.61.12: «Раздеть» for free — a new user gets UNDRESS_TRIAL_FREE tries once
