@@ -1,11 +1,13 @@
 """V3.72.0: «🔥 горячий кружок» — a paid, uncensored video note.
+V3.73.0: «🤫 тайное видео» — Seedance 2.5 Spicy, silent, more explicit.
 
 Owner (2026-10-23): «горячий кружок на спайсе сделай… чтобы цепляло», but
 never a circle for everyone («в минус просто работать»). So:
 
-* it is only rendered after the user pays HOT_CIRCLE_PEACH_COST (1500 🍑);
-* her voice comes from SpicyAPI TTS (Grok, the voices the owner liked) and
-  Wan 2.6 Spicy lip-syncs the portrait to it;
+* it is only rendered after the user taps and has HOT_CIRCLE_PEACH_COST;
+  peaches are charged only for a delivered clip;
+* Seedance 2.5 Spicy renders a silent 5 s square clip (Wan 2.6 lost her
+  face; the owner found the lip-synced voice crooked, so no voice);
 * the hook costs nothing: in a flirty moment she *offers* it in the chat
   (``offer_for``), at most once a day, and the render only starts on a tap.
 
@@ -16,46 +18,32 @@ character, whose face may come from a real person's photo.
 from __future__ import annotations
 
 import logging
-import random
 import re
 from datetime import datetime, timezone
 
 from config import (
     HOT_CIRCLE_ENABLED,
     SPICYAPI_HOT_CIRCLE_MODEL,
+    SPICYAPI_HOT_CIRCLE_RESOLUTION,
+    SPICYAPI_HOT_CIRCLE_SECONDS,
     SPICYAPI_HOT_CIRCLE_COST_USD,
-    SPICYAPI_TTS_MODEL,
-    SPICYAPI_TTS_VOICE,
-    SPICYAPI_TTS_COST_PER_1K_USD,
 )
 from services import dialog_store
 
 logger = logging.getLogger(__name__)
 
+# V3.73.0: owner — «пооткровеннее, не только лицо: трогает себя за грудь»,
+# «между ног руку опускает… прям эротика».
+# Seedance has no negative_prompt, so the guard rails live in the prompt; its
+# own filter refuses some words (e.g. kissing), so the wording stays plain.
 HOT_CIRCLE_PROMPT = (
-    'Handheld front-camera selfie video she records privately for her boyfriend. '
-    'She looks straight into the lens with a seductive, teasing smile and says the line, '
-    'lips synced to the audio. She slowly slips the strap off her shoulder and lets her top fall, '
-    'sensual slow body movement, playful and confident, soft bedroom light. '
-    'Adult woman, the exact same face, hair and body as in the photo. Photorealistic, sharp, natural skin.'
-)
-HOT_CIRCLE_NEGATIVE = (
-    'second person, man, text, watermark, subtitles, distorted face, different face, '
-    'extra limbs, deformed hands, child, teen, underage, minor'
-)
-
-# What she whispers (Grok TTS tags). 3+ seconds of speech so Wan accepts the
-# audio (3–30 s), short enough to land inside the 5-second clip.
-HOT_LINES_RU = (
-    '<whisper>Это только для тебя…</whisper> [laugh] Не показывай никому, ладно?',
-    'Я весь вечер думала о тебе… <whisper>Смотри внимательно.</whisper>',
-    'Ну что, ты этого ждал? [laugh] <whisper>Иди ко мне поближе.</whisper>',
-    '<whisper>Закрыла дверь, теперь я вся твоя…</whisper> Нравится?',
-)
-HOT_LINES_EN = (
-    '<whisper>This one is just for you…</whisper> [laugh] Don\'t show anyone, okay?',
-    'I was thinking about you all evening… <whisper>Watch closely.</whisper>',
-    'So, were you waiting for this? [laugh] <whisper>Come closer.</whisper>',
+    'Handheld front-camera selfie video she records privately for her boyfriend on her bed, soft warm bedroom light. '
+    'She looks straight into the lens with a seductive, teasing smile and bites her lower lip, '
+    'slowly slides her lingerie down, caresses and squeezes her bare breasts, then slowly runs her hand '
+    'down her belly and slips it between her thighs, breathing deeper, eyes half closed with pleasure, '
+    'erotic, intimate and confident, slow sensual movement. '
+    'Adult woman, exactly the same face, hair and body as in the photo, one person only, '
+    'photorealistic, natural skin, sharp focus, no text.'
 )
 
 # A flirty moment: either side of the turn talks about closeness or desire.
@@ -72,10 +60,6 @@ _offered = dialog_store.DialogStore('hot_circle_offer')  # telegram_id -> 'YYYY-
 
 def _today() -> str:
     return datetime.now(timezone.utc).strftime('%Y-%m-%d')
-
-
-def hot_line(lang: str = 'ru') -> str:
-    return random.choice(HOT_LINES_EN if lang == 'en' else HOT_LINES_RU)
 
 
 def offer_for(telegram_id: int, character_id: str, user_text: str, answer: str, *,
@@ -98,48 +82,52 @@ def offer_for(telegram_id: int, character_id: str, user_text: str, answer: str, 
     return {'hot': True}
 
 
-async def synth_voice(text: str, lang: str = 'ru') -> tuple[bytes, str]:
-    """Her line through SpicyAPI TTS → (mp3 bytes, mime)."""
-    from services import spend_service, spicy_jobs
-    block = {'text': text, 'voice_id': SPICYAPI_TTS_VOICE, 'language': 'en' if lang == 'en' else 'ru'}
-    ok = False
+async def bedroom_frame(character_id: str) -> bytes | None:
+    """V3.73.0: the start frame. Seedance only animates what the first frame
+    shows, and the storefront portraits are a café in a sweater, framed to the
+    chest — no room for «рука между ног». So the clip starts from one of her
+    own «Наедине» lingerie-in-bedroom shots: a stockpiled one when the shared
+    pool has it (free), else one fresh render (~$0.035) that also feeds the
+    pool. None → the caller falls back to the portrait."""
+    import asyncio
+    from services.private_photo_service import (
+        PrivatePhotoRequest, build_private_photo_prompt, generate_private_photo_real,
+        pool_get, cache_save,
+    )
+    from services.character_dna_service import character_dna_context
     try:
-        data, mime, _ = await spicy_jobs.run(SPICYAPI_TTS_MODEL, block, timeout=90, first_wait=2.0)
-        ok = True
-        return data, mime or 'audio/mpeg'
-    finally:
-        spend_service.record_image_spend('spicyapi_tts', 'hot_circle',
-                                         SPICYAPI_TTS_COST_PER_1K_USD * len(text) / 1000, billed=ok, success=ok)
+        shot = await asyncio.to_thread(pool_get, character_id, 'lingerie', '', 1)
+        if shot:
+            return shot
+        req = PrivatePhotoRequest(category='lingerie', type_id='lace', location_id='bedroom',
+                                  mood_id='sensual', character_id=character_id)
+        dna = character_dna_context(character_id)
+        prompt = build_private_photo_prompt(req, dna, use_reference=True)
+        shot = await generate_private_photo_real(req, dna, prompt)
+        if shot:
+            await asyncio.to_thread(cache_save, prompt, character_id, 'lingerie', 'lace', shot)
+        return shot
+    except Exception:
+        logger.warning('hot circle bedroom frame failed character=%s', character_id, exc_info=True)
+        return None
 
 
 async def render(frame_jpeg: bytes, lang: str = 'ru') -> bytes:
-    """Voice + Wan 2.6 Spicy lip-sync → mp4 bytes. Raises on failure (the
-    caller refunds)."""
+    """Seedance 2.5 Spicy → silent square mp4 (640×640 at 480p). Raises on
+    failure (the caller never charges). Failed jobs are not billed."""
     from services import spend_service, spicy_jobs
-    from services.spicy_video_service import park_frame
-    line = hot_line(lang)
-    audio_uri = None
-    try:
-        audio, mime = await synth_voice(line, lang)
-        audio_uri = await spicy_jobs.upload(audio, mime)
-    except Exception:
-        # a silent clip still delivers the moment; the prompt carries the mood
-        logger.warning('hot circle voice failed, rendering without audio', exc_info=True)
-    image_url = park_frame(frame_jpeg, 'image/jpeg')
+    frame_uri = await spicy_jobs.upload(frame_jpeg, 'image/jpeg')
     block = {
-        'image_url': image_url,
+        'image_url': frame_uri,
         'prompt': HOT_CIRCLE_PROMPT,
-        'negative_prompt': HOT_CIRCLE_NEGATIVE,
-        'resolution': '720p',
-        'duration_seconds': 5,
-        'shot_type': 'single',
+        'resolution': SPICYAPI_HOT_CIRCLE_RESOLUTION,
+        'duration_seconds': SPICYAPI_HOT_CIRCLE_SECONDS,
+        'generate_audio': False,
     }
-    if audio_uri:
-        block['audio_url'] = audio_uri
     ok = False
     billed = True
     try:
-        video, _, _ = await spicy_jobs.run(SPICYAPI_HOT_CIRCLE_MODEL, block, timeout=420)
+        video, _, _ = await spicy_jobs.run(SPICYAPI_HOT_CIRCLE_MODEL, block, timeout=600)
         ok = True
         return video
     except spicy_jobs.SpicyJobError as exc:

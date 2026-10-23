@@ -52,38 +52,34 @@ def test_explicit_ask_always_offers():
     assert _offer(7, 'а ещё кружок?', 'ладно') == {'hot': True}
 
 
-def test_render_sends_voice_and_wan_input(monkeypatch):
+def test_render_sends_seedance_input(monkeypatch):
+    # V3.73.0: Seedance 2.5 Spicy, silent, frame uploaded as spicy://
     from services import spicy_jobs, spend_service
-    from services import spicy_video_service
     calls = []
 
     async def fake_run(model, block, *, timeout, first_wait=3.0):
         calls.append((model, dict(block)))
-        if 'tts' in model:
-            return b'ID3audio', 'audio/mpeg', 0.001
-        return b'mp4bytes', 'video/mp4', 0.475
+        return b'mp4bytes', 'video/mp4', 1.08
 
     async def fake_upload(data, ctype):
-        assert ctype == 'audio/mpeg'
-        return 'spicy://f/fil_audio'
+        assert ctype == 'image/jpeg'
+        return 'spicy://f/fil_frame'
 
     monkeypatch.setattr(spicy_jobs, 'run', fake_run)
     monkeypatch.setattr(spicy_jobs, 'upload', fake_upload)
     monkeypatch.setattr(spend_service, 'record_image_spend', lambda *a, **k: None)
-    monkeypatch.setattr(spicy_video_service, 'park_frame', lambda b, m='image/jpeg': 'https://x/webapp/vsrc/t')
-    out = asyncio.run(hc.render(b'jpeg', 'ru'))
-    assert out == b'mp4bytes'
-    tts, wan = calls
-    assert tts[0] == 'xai/grok-tts/text-to-speech' and tts[1]['voice_id'] == 'eve' and tts[1]['language'] == 'ru'
-    assert wan[0] == 'alibaba/wan-2.6-spicy/image-to-video'
-    assert wan[1]['audio_url'] == 'spicy://f/fil_audio'
-    assert wan[1]['duration_seconds'] == 5 and wan[1]['resolution'] == '720p'
-    assert 'underage' in wan[1]['negative_prompt']
+    assert asyncio.run(hc.render(b'jpeg', 'ru')) == b'mp4bytes'
+    (model, block), = calls
+    assert model == 'bytedance/seedance-2.5-spicy/image-to-video'
+    assert block['image_url'] == 'spicy://f/fil_frame'
+    assert block['generate_audio'] is False and 'audio_url' not in block
+    assert block['resolution'] == '480p' and block['duration_seconds'] == 5
+    assert 'breasts' in block['prompt'] and 'Adult woman' in block['prompt']
 
 
 def test_endpoint_gates_and_charges_after_success():
     from config import HOT_CIRCLE_PEACH_COST
-    assert HOT_CIRCLE_PEACH_COST == 1500
+    assert HOT_CIRCLE_PEACH_COST == 4000
     block = MAIN[MAIN.index('async def _webapp_api_chat_media('):MAIN.index('async def _webapp_media(')]
     assert "if kind == 'hotcircle':" in block
     assert 'is_custom_character(character_id)' in block
@@ -92,3 +88,19 @@ def test_endpoint_gates_and_charges_after_success():
     assert 'spend_peaches(telegram_id, HOT_CIRCLE_PEACH_COST)' in block[block.index('def _finish():'):]
     assert "payload['circle_offer'] = offer" in MAIN
     assert 'data-cmedia="hotcircle"' in INDEX
+    # V3.73.0: one tap from the «✨ Возможности» sheet
+    assert "getElementById('featHotCircle').addEventListener('click', () => requestMedia('hotcircle'))" in INDEX
+
+
+def test_bedroom_frame_prefers_the_pool(monkeypatch):
+    # V3.73.0: the clip starts from her lingerie-in-bedroom shot, pool first
+    from services import private_photo_service as pps
+    monkeypatch.setattr(pps, 'pool_get', lambda cid, cat, t, n=1: b'pooled' if cat == 'lingerie' else None)
+
+    async def never(*a, **k):
+        raise AssertionError('must not render when the pool has a shot')
+
+    monkeypatch.setattr(pps, 'generate_private_photo_real', never)
+    assert asyncio.run(hc.bedroom_frame('anna_01')) == b'pooled'
+    block = MAIN[MAIN.index('async def _webapp_media_hot_circle('):]
+    assert 'hot_circle_service.bedroom_frame(character_id)' in block[:1500]
