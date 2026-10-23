@@ -27,6 +27,11 @@ ONLY = set(sys.argv[2:])
 QUALITY = (' Photorealistic smartphone photo, natural skin texture, sharp focus on the eyes, '
            'anatomically correct: exactly two arms and two hands, five fingers on each hand. '
            'Adult woman, one person only, fully dressed, no nudity, no text, no watermark, no logo.')
+# Girls with art_style «anime» are drawn, never photographed.
+ANIME_QUALITY = (' High-quality 2D anime illustration, cel-shaded, clean lineart, vibrant colors, '
+                 'clearly adult woman with a mature face and adult proportions, '
+                 'anatomically correct: exactly two arms and two hands, five fingers on each hand. '
+                 'One person only, fully dressed, no nudity, no text, no watermark, no logo.')
 
 
 def call(method, path, body=None):
@@ -73,14 +78,17 @@ for g in GIRLS:
     folder.mkdir(parents=True, exist_ok=True)
     face_path = folder / f'00_{f}_canonical_face.png'
     look_path = folder / f'01_{f}_canonical_look.png'
+    anime = g.get('art_style') == 'anime'
+    quality = ANIME_QUALITY if anime else QUALITY
     try:
         if not face_path.exists():
-            face_path.write_bytes(render('bytedance/seedream-5.0-pro/text-to-image', g['face'] + '.' + QUALITY))
+            face_path.write_bytes(render('bytedance/seedream-5.0-pro/text-to-image', g['face'] + '.' + quality))
             print('ok', face_path)
         if not look_path.exists():
             uri = upload(face_path.read_bytes(), 'image/png')
-            prompt = ('The same woman as in the reference image: keep her exact face, eyes, nose, lips, hair color '
-                      f'and length, skin tone. {g["look"]}. Full look, knees up, {g["look_prompt"]}.' + QUALITY)
+            who = 'The same anime character as in the reference image' if anime else 'The same woman as in the reference image'
+            prompt = (f'{who}: keep her exact face, eyes, nose, lips, hair color '
+                      f'and length, skin tone. {g["look"]}. Full look, knees up, {g["look_prompt"]}.' + quality)
             look_path.write_bytes(render('bytedance/seedream-5.0-pro/edit', prompt, [uri]))
             print('ok', look_path)
     except Exception as e:  # keep going with the other girls

@@ -262,6 +262,9 @@ _FACE_REFERENCES = {
     'ksyusha_01': ('references', 'ksyusha', '00_ksyusha_canonical_face.png'),
     'margo_01': ('references', 'margo', '00_margo_canonical_face.png'),
     'alya_01': ('references', 'alya', '00_alya_canonical_face.png'),
+    'yuki_01': ('references', 'yuki', '00_yuki_canonical_face.png'),
+    'miko_01': ('references', 'miko', '00_miko_canonical_face.png'),
+    'rin_01': ('references', 'rin', '00_rin_canonical_face.png'),
 }
 
 
