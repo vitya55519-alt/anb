@@ -103,10 +103,10 @@ def test_webapp_service_items_carry_fiat():
     # V3.65.0: one builder for the three packs, each with its own rub price.
     assert "'rub': rub if PLATEGA_ENABLED else None," in WEBAPP_SVC
     assert "_peach_pack_item('peach_pack_10', PEACH_PACK_10_STARS, PEACH_PACK_10_RUB, en)" in WEBAPP_SVC
-    assert "'rub': rub if rub is not None else fiat_values(s)[0]," in WEBAPP_SVC
-    # V3.44.22: the constructor item has no star price — public personas are
-    # free, private ones cost peaches (constructor_peaches rides along).
-    assert "('👩', 'Создание персонажа' if not en else 'Character creation', 0, None, None)," in WEBAPP_SVC
+    # V3.70.0: the price list is in peaches (owner) — no rub/usd per item;
+    # the constructor row keeps 0 and its peach note.
+    assert "{'emoji': e, 'name': n, 'peaches': p, 'stars': 0}" in WEBAPP_SVC
+    assert "('👩', 'Создание персонажа' if not en else 'Character creation', 0)," in WEBAPP_SVC
     assert "'constructor_peaches': CONSTRUCTOR_COST_PEACHES," in WEBAPP_SVC
 
 
@@ -116,7 +116,8 @@ def test_frontend_renders_fiat_next_to_stars():
     # (₽ for RU, $ for EN, Stars last) on tiles, Premium and the price list.
     assert 'function money(x)' in INDEX
     assert "if (LANG !== 'en' && rub) return String(rub).replace(" in INDEX
-    assert 'esc(money(i))' in INDEX and 'esc(money(x))' in INDEX
+    assert 'esc(money(x))' in INDEX
+    assert "esc(fmtN(i.peaches || s.constructor_peaches))} 🍑" in INDEX
     assert "esc(money(x))" in INDEX
     # V3.45.28: the wizard price is no longer community-aware — every creation
     # costs peaches (only admins get the free button); the old three-tier

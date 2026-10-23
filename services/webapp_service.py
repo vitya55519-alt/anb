@@ -783,16 +783,19 @@ def api_shop(lang: str = 'ru') -> dict:
         ('💌', 'безлимитное общение — она не засыпает, и больше памяти', 'unlimited chat — she never falls asleep, more memory'),
         ('🎙', 'голосовые ответы и кружочки', 'voice replies and video circles'),
     ]
+    # V3.70.0: owner — «сделай всё в персиках»: the price list shows what the
+    # app really charges in peaches (×100 economy), not the bot's Stars ladder.
+    from config import (PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST,
+                        UNDRESS_PEACH_COST)
     items = [
-        ('📸', 'Сет фото' if not en else 'Photo set', PHOTO_COST_STARS, None, None),
-        ('✨', 'Фото по сценарию из чата' if not en else 'Chat-scenario photo', CHAT_PHOTO_OFFER_STARS, None, None),
-        ('🎨', 'Кастомное фото' if not en else 'Custom photo', CUSTOM_PHOTO_COST_STARS, None, None),
-        ('🎬', 'Оживление фото' if not en else 'Photo animation', VIDEO_COST_STARS, None, None),
-        ('🖼', 'Скачивание из галереи' if not en else 'Gallery download', GALLERY_DOWNLOAD_STARS, None, None),
-        ('🎯', 'Другая ветка истории' if not en else 'Story branch replay', QUEST_REPLAY_STARS, None, None),
-        # V3.44.22: the constructor is free when published to «Сообщество» and
-        # costs peaches when private — stars/rub columns no longer apply.
-        ('👩', 'Создание персонажа' if not en else 'Character creation', 0, None, None),
+        ('📸', 'Фото в чате' if not en else 'Chat photo', CHAT_PHOTO_PEACH_COST),
+        ('🔒', 'Фото «Наедине»' if not en else 'Private photo', PRIVATE_PHOTO_PEACH_COST),
+        ('🎭', 'Косплей' if not en else 'Cosplay photo', COSPLAY_PHOTO_PEACH_COST),
+        ('🔥', 'Раздеть фото' if not en else 'Undress a photo', UNDRESS_PEACH_COST),
+        ('🎨', 'Картинка в студии' if not en else 'Studio picture', WEBAPP_PICTURE_COST_CREDITS),
+        ('🎬', 'Видео в студии' if not en else 'Studio video', WEBAPP_VIDEO_COST_CREDITS),
+        # V3.44.22: public personas are free, private ones cost peaches.
+        ('👩', 'Создание персонажа' if not en else 'Character creation', 0),
     ]
     return {
         'premium': {
@@ -814,10 +817,8 @@ def api_shop(lang: str = 'ru') -> dict:
         # price (the same ladder the bot shows next to its buttons); explicit
         # per-item fiat (the constructor) wins over the ladder.
         'items': [
-            {'emoji': e, 'name': n, 'stars': s,
-             'rub': rub if rub is not None else fiat_values(s)[0],
-             'usd': usd if usd is not None else fiat_values(s)[1]}
-            for e, n, s, rub, usd in items
+            {'emoji': e, 'name': n, 'peaches': p, 'stars': 0}
+            for e, n, p in items
         ],
         'constructor_rub': CONSTRUCTOR_COST_RUB if PLATEGA_ENABLED else None,
         'constructor_usd': CONSTRUCTOR_PRICE_USD,
