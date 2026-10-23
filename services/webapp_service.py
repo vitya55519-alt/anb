@@ -793,6 +793,7 @@ def api_shop(lang: str = 'ru') -> dict:
         ('🎭', 'Косплей' if not en else 'Cosplay photo', COSPLAY_PHOTO_PEACH_COST),
         ('🔥', 'Раздеть фото' if not en else 'Undress a photo', UNDRESS_PEACH_COST),
         ('🎥', 'Кружочек' if not en else 'Video circle', CIRCLE_PEACH_COST),
+        ('🤫', 'Тайное видео' if not en else 'Secret video', HOT_CIRCLE_PEACH_COST),
         ('🔥', 'Горячий кружок' if not en else 'Hot video circle', HOT_CIRCLE_PEACH_COST),
         ('🎨', 'Картинка в студии' if not en else 'Studio picture', WEBAPP_PICTURE_COST_CREDITS),
         ('🎬', 'Видео в студии' if not en else 'Studio video', WEBAPP_VIDEO_COST_CREDITS),

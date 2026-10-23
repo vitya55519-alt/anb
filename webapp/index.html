@@ -1149,6 +1149,7 @@
     <button id="featVideo"><span class="ic">🎬</span><span class="tx"><span class="lb" id="lbFeatVideo"></span><span class="ds" id="dsFeatVideo"></span></span></button>
     <button id="featCosplay"><span class="ic">🎭</span><span class="tx"><span class="lb" id="lbFeatCosplay"></span><span class="ds" id="dsFeatCosplay"></span></span></button>
     <button id="featHot" class="hot"><span class="ic">💋</span><span class="tx"><span class="lb" id="lbFeatHot"></span><span class="ds" id="dsFeatHot"></span></span></button>
+    <button id="featHotCircle" class="hot"><span class="ic">🤫</span><span class="tx"><span class="lb" id="lbFeatHotCircle"></span><span class="ds" id="dsFeatHotCircle"></span></span></button>
   </div>
   <button class="cap-close" id="capClose" type="button"></button>
 </div></div>
@@ -1514,7 +1515,9 @@ const L_EN = {
   media_wait_voice: 'Recording her voice…', media_wait_video: 'Rendering a video — 1–3 min…',
   stt_wait: 'Reading your voice message…', mic_denied: 'No microphone access — allow it in the browser settings', mic_short: 'Too short — say something 🙂', mic_nospeech: 'Could not make out the words — try again', mic_err: 'Voice message failed — try again', attach_err: 'Could not send the photo', attach_big: 'Photo too heavy — send a lighter one',
   circle_limit: 'Not enough 🍑 for a circle',
-  co_circle: '🎥 Video circle from her', co_hot: '🔥 Hot circle — just for you',
+  co_circle: '🎥 Video circle from her', co_hot: '🤫 Secret video — just for you',
+  feat_hot_circle: 'Secret video', cap_hot_circle: 'A private video circle only for you: she undresses and touches herself. 4 000 🍑, charged only if it works',
+  media_wait_hot: 'She is recording a secret video — 3–5 min…',
   // V3.42.2: readable labels for the chat action pills (the voice button is gone).
   media_photo: 'Photo', media_video: 'Video', media_circle: 'Circle',
   feat_quest: 'Quest', feat_date: 'Date', feat_apt: 'Apartment',
@@ -1729,7 +1732,9 @@ const L_RU = {
   media_wait_voice: 'Записываю голос…', media_wait_video: 'Рисую видео — 1–3 минуты…',
   stt_wait: 'Узнаю твой голос…', mic_denied: 'Нет доступа к микрофону — разреши его в настройках', mic_short: 'Слишком коротко — скажи что-нибудь 🙂', mic_nospeech: 'Не смогла разобрать слова — попробуй ещё раз', mic_err: 'Голосовое не отправилось — попробуй ещё раз', attach_err: 'Не удалось отправить фото', attach_big: 'Фото слишком тяжёлое — пришли полегче',
   circle_limit: 'На кружочек не хватает 🍑',
-  co_circle: '🎥 Кружочек от неё', co_hot: '🔥 Горячий кружок — только тебе',
+  co_circle: '🎥 Кружочек от неё', co_hot: '🤫 Тайное видео — только тебе',
+  feat_hot_circle: 'Тайное видео', cap_hot_circle: 'Её секретный кружочек только для тебя: раздевается и ласкает себя. 4 000 🍑, спишем только если получится',
+  media_wait_hot: 'Она записывает тайное видео — 3–5 минут…',
   // V3.42.2: читаемые подписи к кнопкам чата (голосовая кнопка убрана).
   media_photo: 'Фото', media_video: 'Видео', media_circle: 'Кружок',
   feat_quest: 'Задание', feat_date: 'Свидание', feat_apt: 'Квартира',
@@ -2086,6 +2091,7 @@ document.getElementById('lbFeatApt').textContent = L.feat_apt;
 if(document.getElementById('lbFeatVideo')) document.getElementById('lbFeatVideo').textContent = L.feat_video;
 if(document.getElementById('lbFeatCosplay')) document.getElementById('lbFeatCosplay').textContent = L.feat_cosplay;
 if(document.getElementById('lbFeatHot')) document.getElementById('lbFeatHot').textContent = L.feat_hot;
+if(document.getElementById('lbFeatHotCircle')) document.getElementById('lbFeatHotCircle').textContent = L.feat_hot_circle || L.co_hot;
 // V3.64.0: «✨ Возможности» button + the explanation under each feature row.
 document.getElementById('lbFeatMenu').textContent = L.cap_btn;
 document.getElementById('lbFeatMenuSub').textContent = L.cap_btn_sub;
@@ -2093,7 +2099,7 @@ document.getElementById('capTitle').textContent = L.cap_title;
 document.getElementById('capSub').textContent = L.cap_sub;
 document.getElementById('capClose').textContent = L.cap_close;
 [['dsMediaPhoto', 'cap_photo'], ['dsFeatQuest', 'cap_quest'], ['dsFeatStory', 'cap_story'], ['dsFeatDate', 'cap_date'],
- ['dsFeatApt', 'cap_apt'], ['dsFeatVideo', 'cap_video'], ['dsFeatCosplay', 'cap_cosplay'], ['dsFeatHot', 'cap_hot']]
+ ['dsFeatApt', 'cap_apt'], ['dsFeatVideo', 'cap_video'], ['dsFeatCosplay', 'cap_cosplay'], ['dsFeatHot', 'cap_hot'], ['dsFeatHotCircle', 'cap_hot_circle']]
   .forEach(([id, key]) => { const el = document.getElementById(id); if (el) el.textContent = L[key]; });
 document.getElementById('chanBannerText').textContent = L.chan_banner;
 document.getElementById('spicyBannerText').textContent = L.spicy_banner;
@@ -3343,7 +3349,7 @@ async function requestMedia(kind, scene) {
   const box = document.getElementById('chatMsgs');
   const empty = box.querySelector('.chat-empty');
   if (empty) empty.remove();
-  const wait = (kind === 'circle' || kind === 'hotcircle') ? L.media_wait_circle : (kind === 'video' ? L.media_wait_video : (kind === 'voice' ? L.media_wait_voice : L.media_wait_photo));
+  const wait = kind === 'hotcircle' ? (L.media_wait_hot || L.media_wait_circle) : kind === 'circle' ? L.media_wait_circle : (kind === 'video' ? L.media_wait_video : (kind === 'voice' ? L.media_wait_voice : L.media_wait_photo));
   box.insertAdjacentHTML('beforeend', `<div class="typing" id="mediaTyping">${esc(wait)}</div>`);
   box.scrollTop = box.scrollHeight;
   try {
@@ -5687,6 +5693,8 @@ document.getElementById('featApt').addEventListener('click', () => openFeature('
 if(document.getElementById('featVideo')) document.getElementById('featVideo').addEventListener('click', () => openFeature('video'));
 if(document.getElementById('featCosplay')) document.getElementById('featCosplay').addEventListener('click', () => openFeature('cosplay'));
 if(document.getElementById('featHot')) document.getElementById('featHot').addEventListener('click', () => openFeature('hot'));
+// V3.73.0: «🤫 Тайное видео» — the paid hot circle, one tap from the sheet.
+if(document.getElementById('featHotCircle')) document.getElementById('featHotCircle').addEventListener('click', () => requestMedia('hotcircle'));
 // V3.64.0: the «✨ Возможности» sheet — tapping a row closes it, then the row's
 // own listener above opens that feature as before.
 function openCapSheet() { document.getElementById('capSheet').style.display = 'flex'; }

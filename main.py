@@ -12992,8 +12992,8 @@ async def _webapp_media_circle(telegram_id: int, character_id: str):
 
 
 async def _webapp_media_hot_circle(telegram_id: int, character_id: str):
-    """V3.72.0: «🔥 горячий кружок» — her canonical portrait, her whispered
-    line (SpicyAPI TTS) and Wan 2.6 Spicy lip-sync. Paid only on success."""
+    """V3.72.0: «🔥 горячий кружок»; V3.73.0: «🤫 тайное видео» — her canonical
+    portrait animated by Seedance 2.5 Spicy, silent. Paid only on success."""
     from services import hot_circle_service
     photo = webapp_service.character_photo(character_id)
     if not photo:
@@ -13522,7 +13522,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             content = '\U0001f48b \u043d\u0430\u0435\u0434\u0438\u043d\u0435...' if kind == 'hot' else '\U0001f3ad \u043a\u043e\u0441\u043f\u043b\u0435\u0439 \u0434\u043b\u044f \u0442\u0435\u0431\u044f'
         else:
             _media_caps = {'circle': '\U0001f3a5 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u043a\u0440\u0443\u0436\u043e\u0447\u0435\u043a',
-                           'hotcircle': '🔥 записала тебе кое-что…',
+                           'hotcircle': '🤫 записала тебе кое-что… только не показывай никому',
                            'voice': '\U0001f399 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0433\u043e\u043b\u043e\u0441\u043e\u0432\u043e\u0435',
                            'video': '\U0001f3ac \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0432\u0438\u0434\u0435\u043e'}
             content = _media_caps.get(kind, '')
