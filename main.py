@@ -524,7 +524,11 @@ def _character_pick_buttons(kind: str):
     # callers chunk them two per row so /start no longer shows a ten-row wall
     # of buttons (owner: «замени, чтобы оно было как-то компактно, удобно»).
     buttons = []
+    # V3.76.0: card girls arrive through their scenario card, not the menu.
+    from services.scenario_cards import SCENARIO_GIRLS
     for card in list_cards(visible_only=True):
+        if card.character_id in SCENARIO_GIRLS:
+            continue
         if card.status == 'active':
             text = f'✅ {card.display_name}'
         elif card.status == 'premium':
@@ -1824,6 +1828,10 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
         await bot.send_message(chat_id, 'такой образ я пока оставлю при себе 😏')
         return
 
+    if _card_girl_photo_locked(get_user_character(telegram_id), telegram_id):
+        await bot.send_message(chat_id, CHAT_PHOTO_BLOCK_TEXT['premium'],
+                               reply_markup=premium_keyboard(telegram_id=telegram_id))
+        return
     if requires_adult_confirmation(request) and not is_adult_confirmed(telegram_id):
         _pending_adult_photo[telegram_id] = request
         await bot.send_message(chat_id, 'для более смелых fashion-образов нужно один раз подтвердить, что тебе 18+.', reply_markup=adult_keyboard())
@@ -5819,6 +5827,152 @@ async def storyphotos_list(message: types.Message):
     lines = [f'• {_character_display_name(cid)} — {n}' for cid, n in sorted(counts.items())] or ['пока пусто']
     await message.answer('📸 фото для пушей по героиням:\n' + '\n'.join(lines) +
                          '\n\nдобавить: отправь фото с подписью /storyphoto Имя\nочистить: /storyphotos clear Имя')
+
+
+# ── V3.75.0: scenario cards (services/scenario_cards.py) ─────────────────────
+
+_scenario_renders: set[str] = set()
+
+
+def _scenes_admin_view():
+    import html
+    from services import scenario_cards as sc
+    from config import SCENARIO_COVER_COST_USD
+    have = sc.covers()
+    lines = ['🎬 <b>Сценарии-карточки</b>', '']
+    rows = []
+    missing = []
+    for s in sc.SCENARIOS:
+        name = _character_display_name(s.character_id)
+        kind = (have.get(s.key) or {}).get('kind')
+        mark = {'photo': '📸', None: '⏳'}.get(kind, '🎞')
+        lines.append(f'{mark} {html.escape(name)} — {html.escape(s.button)} <code>{s.key}</code>')
+        row = [InlineKeyboardButton(text=f'{"👀" if kind else "📸"} {name}: {s.button}',
+                                    callback_data=f'scnadm:{"show" if kind else "gen"}:{s.key}')]
+        if kind:
+            row.append(InlineKeyboardButton(text='📸🔁', callback_data=f'scnadm:gen:{s.key}'))
+        row.append(InlineKeyboardButton(text='🎞', callback_data=f'scnadm:vid:{s.key}'))
+        rows.append(row)
+        if not kind:
+            missing.append(s.key)
+    if missing:
+        rows.insert(0, [InlineKeyboardButton(text=f'📸 Фото-обложки для всех недостающих ({len(missing)} × ~$0.035)',
+                                             callback_data='scnadm:genall')])
+    lines += ['',
+              '📸 фото-обложка ~$0.035, 🎞 живая (видео 4 с) ~$'
+              f'{SCENARIO_COVER_COST_USD + 0.035:.2f}. Делается один раз и потом уходит всем бесплатно. '
+              'Карточки получают только сцены с обложкой: раз в сутки, вечером, тем, кто заходил за 2 недели.',
+              'Своя обложка: пришли фото, видео или GIF с подписью <code>/scenecover ключ</code>.',
+              'Убрать обложку: <code>/scenes clear ключ</code>']
+    return '\n'.join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@dp.message(Command('scenes'))
+async def scenes_admin(message: types.Message):
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import scenario_cards as sc
+    parts = (message.text or '').split()
+    if len(parts) == 3 and parts[1].lower() in ('clear', 'очистить'):
+        await message.answer('🗑 обложка убрана' if sc.clear_cover(parts[2]) else 'нет такой обложки')
+        return
+    text, markup = _scenes_admin_view()
+    await message.answer(text, parse_mode='HTML', reply_markup=markup)
+
+
+@dp.message(F.caption.regexp(r'^/scenecover\b'))
+async def scenecover_upload(message: types.Message):
+    """Owner's own cover: a video / GIF / photo captioned «/scenecover key»."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import scenario_cards as sc
+    parts = (message.caption or '').split()
+    s = sc.get(parts[1]) if len(parts) > 1 else None
+    if not s:
+        await message.answer('не понял, для какой сцены. пример: /scenecover boss_late\n'
+                             'ключи: ' + ', '.join(x.key for x in sc.SCENARIOS))
+        return
+    if message.animation:
+        sc.set_cover(s.key, message.animation.file_id, 'animation')
+    elif message.video:
+        sc.set_cover(s.key, message.video.file_id, 'video')
+    elif message.photo:
+        sc.set_cover(s.key, message.photo[-1].file_id, 'photo')
+    else:
+        await message.answer('нужно видео, GIF или фото'); return
+    await message.answer(f'✅ обложка для «{s.button}» сохранена. /scenes — посмотреть')
+
+
+async def _render_scenario_cover(chat_id: int, key: str, video: bool = False) -> None:
+    from services import scenario_cards as sc
+    s = sc.get(key)
+    if not s or key in _scenario_renders:
+        return
+    _scenario_renders.add(key)
+    try:
+        caption = sc.caption(s, 0) + f'\n\n✅ обложка <code>{key}</code> готова'
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text='📸🔁 другое фото', callback_data=f'scnadm:gen:{key}'),
+            InlineKeyboardButton(text='🎞 оживить', callback_data=f'scnadm:vid:{key}'),
+        ]])
+        if video:
+            clip, _still = await sc.render_cover(s)
+            msg = await bot.send_animation(chat_id, BufferedInputFile(clip, filename=f'{key}.mp4'),
+                                           caption=caption, parse_mode='HTML', reply_markup=markup)
+            if msg.animation:
+                sc.set_cover(key, msg.animation.file_id, 'animation')
+            elif msg.video:
+                sc.set_cover(key, msg.video.file_id, 'video')
+            elif msg.document:
+                sc.set_cover(key, msg.document.file_id, 'animation')
+        else:
+            still = await sc.render_still(s)
+            msg = await bot.send_photo(chat_id, BufferedInputFile(still, filename=f'{key}.jpg'),
+                                       caption=caption, parse_mode='HTML', reply_markup=markup)
+            sc.set_cover(key, msg.photo[-1].file_id, 'photo')
+        logger.info('scenario cover ready key=%s video=%s', key, video)
+    except Exception as exc:
+        logger.warning('scenario cover failed key=%s: %s', key, exc)
+        await bot.send_message(chat_id, f'❌ обложка {key} не получилась: {str(exc)[:300]}\nможно нажать ещё раз')
+    finally:
+        _scenario_renders.discard(key)
+
+
+async def _render_scenario_covers(chat_id: int, keys: list[str]) -> None:
+    for key in keys:
+        await _render_scenario_cover(chat_id, key)
+
+
+@dp.callback_query(F.data.startswith('scnadm:'))
+async def scenes_admin_cb(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer(); return
+    from services import scenario_cards as sc
+    parts = (cq.data or '').split(':')
+    action = parts[1] if len(parts) > 1 else ''
+    if action == 'genall':
+        have = sc.covers()
+        keys = [s.key for s in sc.SCENARIOS if s.key not in have and s.key not in _scenario_renders]
+        await cq.answer('запустил')
+        await cq.message.answer(f'📸 делаю фото-обложки: {len(keys)} шт., примерно по минуте. пришлю по одной.')
+        asyncio.create_task(_render_scenario_covers(cq.message.chat.id, keys))
+        return
+    s = sc.get(parts[2]) if len(parts) > 2 else None
+    if not s:
+        await cq.answer(); return
+    if action in ('gen', 'vid'):
+        if s.key in _scenario_renders:
+            await cq.answer('уже делаю', show_alert=True); return
+        video = action == 'vid'
+        await cq.answer('запустил')
+        await cq.message.answer(f'🎞 оживляю обложку «{s.button}» (~4–5 минут)' if video
+                                else f'📸 делаю фото-обложку «{s.button}» (~1 минута)')
+        asyncio.create_task(_render_scenario_cover(cq.message.chat.id, s.key, video))
+    elif action == 'show':
+        await cq.answer()
+        from services.scheduler_service import send_scenario_card
+        if not await send_scenario_card(bot, None, cq.from_user.id, s):
+            await cq.message.answer('нет обложки или PUBLIC_BASE_URL')
 
 
 @dp.callback_query(F.data.startswith('story:'))
@@ -11526,6 +11680,62 @@ async def _webapp_api_select(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, **result}, headers={'Cache-Control': 'no-store'})
 
 
+async def _webapp_api_scenario_start(request: web.Request) -> web.Response:
+    """V3.75.0: the scenario card's button opens /webapp?open=chat&scene=<key>;
+    the app calls this first. She becomes his girl (same rules as «select»),
+    the scene direction switches on for a day, the tap bonus lands when the
+    card came within a day, and the app then sends his entrance line through
+    the normal chat so she answers in the scene."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    from services import scenario_cards as sc
+    from config import SCENARIO_TAP_PEACHES
+    scenario = sc.get(str((body or {}).get('key', '')))
+    if not scenario:
+        return web.json_response({'ok': False, 'error': 'unknown'}, status=400)
+
+    def _apply():
+        card = get_card(scenario.character_id)
+        if not card or not card.is_visible or card.status not in ('active', 'premium'):
+            return 'locked'
+        is_admin = telegram_id in ADMIN_TELEGRAM_IDS
+        if card.status == 'premium' and not is_admin and not is_premium(telegram_id):
+            return 'premium_required'
+        if not is_adult_confirmed(telegram_id):
+            return 'adult'
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        set_user_character(telegram_id, scenario.character_id)
+        started = sc.start(telegram_id, scenario.key)
+        if not started['sent']:
+            # a card that never went out (admin preview): her opening line
+            # still starts the dialog, as the sent card does
+            save_message(uid, scenario.character_id, 'assistant', sc.opening_line(scenario))
+        bonus = 0
+        if started['bonus_due'] and SCENARIO_TAP_PEACHES > 0:
+            if grant_photo_credits(telegram_id, SCENARIO_TAP_PEACHES, reason=f'scenario_{scenario.key}') >= 0:
+                bonus = SCENARIO_TAP_PEACHES
+        track_event(uid, 'scenario_card_open', character_id=scenario.character_id,
+                    metadata={'key': scenario.key, 'bonus': bonus})
+        return {'character_id': scenario.character_id, 'enter': scenario.enter, 'bonus': bonus,
+                'me': webapp_service.api_me(telegram_id),
+                'characters': webapp_service.api_characters(telegram_id)}
+
+    result = await asyncio.to_thread(_apply)
+    if isinstance(result, str):
+        return web.json_response({'ok': False, 'error': result},
+                                 status=403 if result in ('premium_required', 'adult') else 400)
+    return web.json_response({'ok': True, **result}, headers={'Cache-Control': 'no-store'})
+
+
 async def _webapp_api_spicy(request: web.Request) -> web.Response:
     """V3.43.5: the «пошлый режим» switch inside the Mini App Settings.
 
@@ -11739,7 +11949,17 @@ CHAT_PHOTO_BLOCK_TEXT = {
               'а обычное селфи могу прямо сейчас, попроси «пришли селфи»'),
     'adult': 'для такого фото подтверди, что тебе 18+, — и я покажу 🔥',
     'failed': 'ой, фото не загрузилось 😔 попробуй ещё раз — персики не списались',
+    # V3.76.0: card girls' pictures are a Premium thing (as at Come Closer).
+    'premium': 'хочу показать тебе фото… но мои фото только для тех, у кого Premium 😏 оформишь — пришлю сразу',
 }
+
+
+def _card_girl_photo_locked(character_id: str, telegram_id: int) -> bool:
+    """V3.76.0: owner — «у нашего конкурента все на прем идёт». Chatting
+    with a scenario-card girl is free; her photos and videos need Premium."""
+    from services.scenario_cards import SCENARIO_GIRLS
+    return (character_id in SCENARIO_GIRLS and telegram_id not in ADMIN_TELEGRAM_IDS
+            and not is_premium(telegram_id))
 
 
 # V3.60.9: she promises a photo in her own words («лови фотку», «держи селфи 📸»)
@@ -11775,6 +11995,8 @@ def _accepts_her_photo_offer(uid: int, character_id: str, text: str) -> bool:
 
 def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | None:
     """The stage / 18+ / peaches gates of a chat photo; None = go."""
+    if _card_girl_photo_locked(character_id, telegram_id):
+        return 'premium'
     if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
         return 'adult'
     if not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
@@ -11910,11 +12132,11 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             if payload:
                 return web.json_response(payload)
             block = 'failed'
-        if block == 'peaches':
-            # keep her words, add the honest «out of peaches» note + top-up button
-            note = CHAT_PHOTO_BLOCK_TEXT['peaches'].format(price=CHAT_PHOTO_PEACH_COST)
+        if block in ('peaches', 'premium'):
+            # keep her words, add the honest «out of peaches» / «Premium» note + button
+            note = CHAT_PHOTO_BLOCK_TEXT[block].format(price=CHAT_PHOTO_PEACH_COST)
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
-            return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, 'photo_block': 'peaches',
+            return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, 'photo_block': block,
                                       'photo_price': CHAT_PHOTO_PEACH_COST, **(extra or {})})
         if block == 'failed':
             note = CHAT_PHOTO_BLOCK_TEXT['failed']
@@ -13412,6 +13634,8 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
                 return web.json_response({'ok': False, 'error': 'locked'}, status=403)
             if card.status == 'premium' and not is_premium(telegram_id):
                 return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+            if kind != 'voice' and _card_girl_photo_locked(character_id, telegram_id):
+                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
         if not has_accepted(telegram_id):
             return web.json_response({'ok': False, 'error': 'consent'}, status=403)
         if kind == 'photo':
@@ -14439,6 +14663,7 @@ async def _start_web_server() -> None:
     # V3.43.0: the pay-method modal — card/SBP and crypto payment links.
     app.router.add_post('/webapp/api/pay_link', _webapp_api_pay_link)
     app.router.add_post('/webapp/api/select', _webapp_api_select)
+    app.router.add_post('/webapp/api/scenario/start', _webapp_api_scenario_start)
     app.router.add_post('/webapp/api/spicy', _webapp_api_spicy)
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)

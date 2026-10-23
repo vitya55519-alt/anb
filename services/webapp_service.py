@@ -256,6 +256,15 @@ _FACE_REFERENCES = {
     'kristina_01': ('references', 'kristina', '00_kristina_canonical_face.png'),
     'zlata_01': ('references', 'zlata', '00_zlata_canonical_face.png'),
     'veronika_01': ('references', 'veronika', '00_veronika_canonical_face.png'),
+    'lera_01': ('references', 'lera', '00_lera_canonical_face.png'),
+    'diana_01': ('references', 'diana', '00_diana_canonical_face.png'),
+    'nika_01': ('references', 'nika', '00_nika_canonical_face.png'),
+    'ksyusha_01': ('references', 'ksyusha', '00_ksyusha_canonical_face.png'),
+    'margo_01': ('references', 'margo', '00_margo_canonical_face.png'),
+    'alya_01': ('references', 'alya', '00_alya_canonical_face.png'),
+    'yuki_01': ('references', 'yuki', '00_yuki_canonical_face.png'),
+    'miko_01': ('references', 'miko', '00_miko_canonical_face.png'),
+    'rin_01': ('references', 'rin', '00_rin_canonical_face.png'),
 }
 
 
@@ -541,6 +550,16 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     # V3.44.8: the caller's own character ids (mine badge + private cards).
     mine_ids = _mine_character_ids(telegram_id)
     cards = list_cards(visible_only=True)
+    # V3.76.0: a scenario-card girl joins his storefront once her card came
+    # (admins see everyone; his current girl never disappears).
+    try:
+        from services import scenario_cards
+        if not _is_admin(telegram_id):
+            cards = [c for c in cards if c.character_id == selected or (
+                telegram_id and scenario_cards.unlocked(telegram_id, c.character_id))
+                or c.character_id not in scenario_cards.SCENARIO_GIRLS]
+    except Exception:
+        pass
     # V3.44.8: the author always sees their own not-community-published cards
     # too — previously a «community_no» persona vanished from her owner's app.
     if mine_ids:

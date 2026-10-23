@@ -841,11 +841,67 @@ BODY_SPECS = {
     'romina_01': 'a voluptuous soft hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
     'violetta_01': 'a curvy fit hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
     'zlata_01': 'a feminine fit hourglass build with a narrow waist, round lifted hips and a natural modest bust (silicone, Russian size 3, C cup)',
+    'lera_01': 'a curvy feminine hourglass build with a narrow waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    'diana_01': 'a curvy athletic hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    'nika_01': 'a curvy soft hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    'ksyusha_01': 'a petite curvy hourglass build with a narrow waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    'margo_01': 'a curvy soft hourglass build with a wasp waist, round lifted hips and a natural full bust (silicone, Russian size 4, D cup)',
+    'alya_01': 'a curvy fit hourglass build with a wasp waist, wide round hips, a big round perky butt and a natural full bust (silicone, Russian size 4, D cup)',
+    'yuki_01': 'a curvy fit hourglass build with a wasp waist, wide round hips, a big round perky butt and a natural full bust (silicone, Russian size 4, D cup)',
+    'miko_01': 'a voluptuous fit hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
+    'rin_01': 'a curvy fit hourglass build with a wasp waist, wide round hips, a big round perky butt and a natural full bust (silicone, Russian size 4, D cup)',
 }
 DEFAULT_FEMALE_BODY_SPEC = (
     'a curvy feminine hourglass build with a wasp waist, round lifted hips '
     'and a natural full bust (silicone, Russian size 4, D cup)'
 )
+# V3.76.0: anime heroines (owner: «и нужны аниме модели») are drawn, never
+# photographed. Their persona JSON says visual_identity.art_style = 'anime';
+# every prompt built for them gets this head and loses its realism words.
+ANIME_STYLE_HEAD = (
+    'ART STYLE (overrides every realism or photo word below): a high-quality 2D anime illustration, '
+    'cel-shaded, clean lineart, vibrant colors, detailed painted anime background. The same anime '
+    'character as in the reference images, clearly an adult woman with a mature face and adult '
+    'proportions. Never a photograph, never photorealistic, never 3D.'
+)
+# V3.76.0: the card girls («новые девушки») look like the competitor's —
+# a polished semi-realistic «drawn photo», not a camera shot and not anime.
+SEMI_STYLE_HEAD = (
+    'ART STYLE (overrides every realism or photo word below): a polished semi-realistic digital '
+    'painting, high-end game CG / 3D-render look, soft cinematic lighting, smooth glowing skin, '
+    'realistic adult proportions, detailed painted background. The same character as in the '
+    'reference images, clearly an adult woman. Not a camera photo, not flat anime.'
+)
+_STYLE_HEADS = {'anime': ANIME_STYLE_HEAD, 'semi': SEMI_STYLE_HEAD}
+_STYLE_WORD = {'anime': 'anime illustration', 'semi': 'semi-realistic digital painting'}
+_REALISM_WORDS = re.compile(
+    r'(photo-?realistic|hyper-?realistic|realistic smartphone-style photo|smartphone-style photo|'
+    r'realistic smartphone photo|smartphone photo|natural skin texture|natural skin|real photo|'
+    r'photorealism|photograph)', re.IGNORECASE)
+_ART_STYLE_CACHE: dict[str, str] = {}
+
+
+def art_style(character_id: str | None) -> str:
+    """'anime', 'semi' or 'photo' (custom girls and unknown ids are 'photo')."""
+    cid = character_id or ''
+    if cid not in _ART_STYLE_CACHE:
+        style = 'photo'
+        try:
+            from services.character_registry import get_character
+            style = str((get_character(cid).get('visual_identity') or {}).get('art_style') or 'photo')
+        except Exception:
+            pass
+        _ART_STYLE_CACHE[cid] = style
+    return _ART_STYLE_CACHE[cid]
+
+
+def apply_art_style(prompt: str, character_id: str | None) -> str:
+    style = art_style(character_id)
+    if style not in _STYLE_HEADS or not prompt:
+        return prompt
+    return _STYLE_HEADS[style] + '\n' + _REALISM_WORDS.sub(_STYLE_WORD[style], prompt)
+
+
 # V3.59.3: image models do not know what «Russian size 4 / D cup» looks like,
 # so the bust kept drifting between photos of the same girl. Each declared cup
 # now also gets a plain visual description the engines do follow.
@@ -2186,7 +2242,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     bust_lock_tail = f'\n{bust_lock}' if bust_lock else ''
     if not private_look and level_key >= 3:
         public_dress_rule += LEVEL_HEMLINE_RULE + '\n'
-    return (
+    return apply_art_style(
         f'{identity}\n'
         f'{adult_lock}\n'
         f'SCENE: {scene}. {request.location}.\n'
@@ -2221,7 +2277,8 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'{safety}\n'
         f'{QUALITY_BLOCK}\n'
         f'{NEGATIVE_BLOCK}'
-        + bust_lock_tail
+        + bust_lock_tail,
+        character_id,
     )
 
 

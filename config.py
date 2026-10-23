@@ -116,6 +116,20 @@ SPICYAPI_TTS_COST_PER_1K_USD = float(os.getenv("SPICYAPI_TTS_COST_PER_1K_USD", "
 # V3.74.0: owner — «голос в обычных ответах на Грок». Grok TTS is the first
 # voice for every reply (~$0.004 each); free Gemini TTS stays the fallback.
 SPICY_TTS_ENABLED = os.getenv("SPICY_TTS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+# V3.75.0: scenario cards (services/scenario_cards.py) — the Come Closer push:
+# a cover, a role-play setup and one button into the scene. Covers are rendered
+# once per scene — a Seedream photo (≈ $0.035) by default, optionally animated
+# (Seedance 2.5 Spicy, 4 s, 480p, silent ≈ $0.86) — and reused via file_id.
+SCENARIO_CARDS_ENABLED = os.getenv("SCENARIO_CARDS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+SCENARIO_TAP_PEACHES = _peach_env("SCENARIO_TAP_PEACHES", 1)
+SCENARIO_INTERVAL_HOURS = max(6, int(os.getenv("SCENARIO_INTERVAL_HOURS", "22")))
+SCENARIO_MIN_SILENT_HOURS = max(1, int(os.getenv("SCENARIO_MIN_SILENT_HOURS", "3")))
+SCENARIO_ACTIVE_DAYS = max(1, int(os.getenv("SCENARIO_ACTIVE_DAYS", "14")))
+SCENARIO_LOCAL_START_HOUR = int(os.getenv("SCENARIO_LOCAL_START_HOUR", "19"))
+SCENARIO_LOCAL_END_HOUR = int(os.getenv("SCENARIO_LOCAL_END_HOUR", "23"))
+SCENARIO_COVER_MODEL = os.getenv("SCENARIO_COVER_MODEL", "bytedance/seedance-2.5-spicy/image-to-video").strip()
+SCENARIO_COVER_SECONDS = max(4, min(10, int(os.getenv("SCENARIO_COVER_SECONDS", "4"))))
+SCENARIO_COVER_COST_USD = SPICYAPI_HOT_CIRCLE_COST_PER_SECOND_USD * SCENARIO_COVER_SECONDS
 # Голос + фото комбо
 VOICE_PHOTO_PEACH_COST = _peach_env("VOICE_PHOTO_PEACH_COST", 3)
 # Серия фото (3-5 штук в одном образе)
