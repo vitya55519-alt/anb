@@ -10,9 +10,10 @@ Ours:
 
 * ``SCENARIOS`` — a role-play scene per built-in heroine, matched to her own
   archetype (Вика is the boss, Кейт the trainer, Мила the neighbour);
-* the cover is rendered ONCE per scenario (Seedream still → Seedance 2.5
-  Spicy 4 s silent loop, ~$0.90) by the admin's «/scenes» button and kept as
-  Telegram's ``file_id``: sending it to every user costs nothing;
+* the cover is rendered ONCE per scenario by the admin's «/scenes»: a
+  Seedream photo by default (~$0.035; owner: «можем это и фоткой»), or a
+  Seedance 2.5 Spicy 4 s silent loop from it (~$0.90) for the best scenes;
+  kept as Telegram's ``file_id``, so sending it to everyone costs nothing;
 * one card a day at most, in the user's evening, never the same scene twice;
 * the button opens the Mini App chat with ``?scene=<key>``: the app starts
   the scene (switches to her, the scene direction rides along with every

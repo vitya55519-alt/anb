@@ -117,9 +117,9 @@ SPICYAPI_TTS_COST_PER_1K_USD = float(os.getenv("SPICYAPI_TTS_COST_PER_1K_USD", "
 # voice for every reply (~$0.004 each); free Gemini TTS stays the fallback.
 SPICY_TTS_ENABLED = os.getenv("SPICY_TTS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
 # V3.75.0: scenario cards (services/scenario_cards.py) — the Come Closer push:
-# a looping cover, a role-play setup and one button into the scene. Covers are
-# rendered once per scene (Seedance 2.5 Spicy, 4 s, 480p, silent ≈ $0.86 + the
-# Seedream still ≈ $0.035) and reused for everyone via Telegram's file_id.
+# a cover, a role-play setup and one button into the scene. Covers are rendered
+# once per scene — a Seedream photo (≈ $0.035) by default, optionally animated
+# (Seedance 2.5 Spicy, 4 s, 480p, silent ≈ $0.86) — and reused via file_id.
 SCENARIO_CARDS_ENABLED = os.getenv("SCENARIO_CARDS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
 SCENARIO_TAP_PEACHES = _peach_env("SCENARIO_TAP_PEACHES", 1)
 SCENARIO_INTERVAL_HOURS = max(6, int(os.getenv("SCENARIO_INTERVAL_HOURS", "22")))

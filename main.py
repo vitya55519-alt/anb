@@ -5836,22 +5836,25 @@ def _scenes_admin_view():
     missing = []
     for s in sc.SCENARIOS:
         name = _character_display_name(s.character_id)
-        ok = s.key in have
-        lines.append(f'{"✅" if ok else "⏳"} {html.escape(name)} — {html.escape(s.button)} <code>{s.key}</code>')
-        if ok:
-            rows.append([InlineKeyboardButton(text=f'👀 {name}: {s.button}', callback_data=f'scnadm:show:{s.key}'),
-                         InlineKeyboardButton(text='🔁', callback_data=f'scnadm:gen:{s.key}')])
-        else:
+        kind = (have.get(s.key) or {}).get('kind')
+        mark = {'photo': '📸', None: '⏳'}.get(kind, '🎞')
+        lines.append(f'{mark} {html.escape(name)} — {html.escape(s.button)} <code>{s.key}</code>')
+        row = [InlineKeyboardButton(text=f'{"👀" if kind else "📸"} {name}: {s.button}',
+                                    callback_data=f'scnadm:{"show" if kind else "gen"}:{s.key}')]
+        if kind:
+            row.append(InlineKeyboardButton(text='📸🔁', callback_data=f'scnadm:gen:{s.key}'))
+        row.append(InlineKeyboardButton(text='🎞', callback_data=f'scnadm:vid:{s.key}'))
+        rows.append(row)
+        if not kind:
             missing.append(s.key)
-            rows.append([InlineKeyboardButton(text=f'🎬 {name}: {s.button}', callback_data=f'scnadm:gen:{s.key}')])
-    per = SCENARIO_COVER_COST_USD + 0.035
     if missing:
-        rows.insert(0, [InlineKeyboardButton(text=f'🎬 Сделать все недостающие ({len(missing)} × ~${per:.2f})',
+        rows.insert(0, [InlineKeyboardButton(text=f'📸 Фото-обложки для всех недостающих ({len(missing)} × ~$0.035)',
                                              callback_data='scnadm:genall')])
     lines += ['',
-              f'Обложка делается один раз (~${per:.2f}) и потом уходит всем бесплатно. '
-              'Карточки получают только сцены с ✅: раз в сутки, вечером, тем, кто заходил за 2 недели.',
-              'Своя обложка: пришли видео или GIF с подписью <code>/scenecover ключ</code>.',
+              '📸 фото-обложка ~$0.035, 🎞 живая (видео 4 с) ~$'
+              f'{SCENARIO_COVER_COST_USD + 0.035:.2f}. Делается один раз и потом уходит всем бесплатно. '
+              'Карточки получают только сцены с обложкой: раз в сутки, вечером, тем, кто заходил за 2 недели.',
+              'Своя обложка: пришли фото, видео или GIF с подписью <code>/scenecover ключ</code>.',
               'Убрать обложку: <code>/scenes clear ключ</code>']
     return '\n'.join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -5892,27 +5895,34 @@ async def scenecover_upload(message: types.Message):
     await message.answer(f'✅ обложка для «{s.button}» сохранена. /scenes — посмотреть')
 
 
-async def _render_scenario_cover(chat_id: int, key: str) -> None:
+async def _render_scenario_cover(chat_id: int, key: str, video: bool = False) -> None:
     from services import scenario_cards as sc
     s = sc.get(key)
     if not s or key in _scenario_renders:
         return
     _scenario_renders.add(key)
     try:
-        video, _still = await sc.render_cover(s)
-        msg = await bot.send_animation(
-            chat_id, BufferedInputFile(video, filename=f'{key}.mp4'),
-            caption=sc.caption(s, 0) + f'\n\n✅ обложка <code>{key}</code> готова', parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-                text='🔁 переделать', callback_data=f'scnadm:gen:{key}')]]),
-        )
-        if msg.animation:
-            sc.set_cover(key, msg.animation.file_id, 'animation')
-        elif msg.video:
-            sc.set_cover(key, msg.video.file_id, 'video')
-        elif msg.document:
-            sc.set_cover(key, msg.document.file_id, 'animation')
-        logger.info('scenario cover ready key=%s', key)
+        caption = sc.caption(s, 0) + f'\n\n✅ обложка <code>{key}</code> готова'
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text='📸🔁 другое фото', callback_data=f'scnadm:gen:{key}'),
+            InlineKeyboardButton(text='🎞 оживить', callback_data=f'scnadm:vid:{key}'),
+        ]])
+        if video:
+            clip, _still = await sc.render_cover(s)
+            msg = await bot.send_animation(chat_id, BufferedInputFile(clip, filename=f'{key}.mp4'),
+                                           caption=caption, parse_mode='HTML', reply_markup=markup)
+            if msg.animation:
+                sc.set_cover(key, msg.animation.file_id, 'animation')
+            elif msg.video:
+                sc.set_cover(key, msg.video.file_id, 'video')
+            elif msg.document:
+                sc.set_cover(key, msg.document.file_id, 'animation')
+        else:
+            still = await sc.render_still(s)
+            msg = await bot.send_photo(chat_id, BufferedInputFile(still, filename=f'{key}.jpg'),
+                                       caption=caption, parse_mode='HTML', reply_markup=markup)
+            sc.set_cover(key, msg.photo[-1].file_id, 'photo')
+        logger.info('scenario cover ready key=%s video=%s', key, video)
     except Exception as exc:
         logger.warning('scenario cover failed key=%s: %s', key, exc)
         await bot.send_message(chat_id, f'❌ обложка {key} не получилась: {str(exc)[:300]}\nможно нажать ещё раз')
@@ -5936,18 +5946,20 @@ async def scenes_admin_cb(cq: types.CallbackQuery):
         have = sc.covers()
         keys = [s.key for s in sc.SCENARIOS if s.key not in have and s.key not in _scenario_renders]
         await cq.answer('запустил')
-        await cq.message.answer(f'🎬 делаю обложки: {len(keys)} шт., по ~4–5 минут каждая. пришлю по одной.')
+        await cq.message.answer(f'📸 делаю фото-обложки: {len(keys)} шт., примерно по минуте. пришлю по одной.')
         asyncio.create_task(_render_scenario_covers(cq.message.chat.id, keys))
         return
     s = sc.get(parts[2]) if len(parts) > 2 else None
     if not s:
         await cq.answer(); return
-    if action == 'gen':
+    if action in ('gen', 'vid'):
         if s.key in _scenario_renders:
             await cq.answer('уже делаю', show_alert=True); return
+        video = action == 'vid'
         await cq.answer('запустил')
-        await cq.message.answer(f'🎬 делаю обложку «{s.button}» (~4–5 минут)')
-        asyncio.create_task(_render_scenario_cover(cq.message.chat.id, s.key))
+        await cq.message.answer(f'🎞 оживляю обложку «{s.button}» (~4–5 минут)' if video
+                                else f'📸 делаю фото-обложку «{s.button}» (~1 минута)')
+        asyncio.create_task(_render_scenario_cover(cq.message.chat.id, s.key, video))
     elif action == 'show':
         await cq.answer()
         from services.scheduler_service import send_scenario_card
