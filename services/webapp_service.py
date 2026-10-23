@@ -642,9 +642,9 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'emoji': '⭐',
             'title': 'Premium · 30 дней' if not en else 'Premium · 30 days',
             'description': (
-                f'она больше не засыпает: общение без лимита, {PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 в подарок, голос, кружочки и все девушки'
+                f'она больше не засыпает: общение без лимита, {PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 в подарок, голос и все девушки'
                 if not en else
-                f'she never falls asleep: unlimited chat, {PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 as a gift, voice, video circles and every girl'
+                f'she never falls asleep: unlimited chat, {PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 as a gift, voice and every girl'
             ),
             # V3.66.0: one short line for the shop card (the long description
             # stays for the quick-buy sheet).
@@ -662,9 +662,9 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'emoji': '⭐',
             'title': 'Premium · 7 дней' if not en else 'Premium · 7 days',
             'description': (
-                f'попробовать неделю: общение без лимита, {PREMIUM_WEEKLY_PHOTO_CREDITS} 🍑 в подарок, голос и кружочки'
+                f'попробовать неделю: общение без лимита, {PREMIUM_WEEKLY_PHOTO_CREDITS} 🍑 в подарок и её голос'
                 if not en else
-                f'try it for a week: unlimited chat, {PREMIUM_WEEKLY_PHOTO_CREDITS} 🍑 as a gift, voice and video circles'
+                f'try it for a week: unlimited chat, {PREMIUM_WEEKLY_PHOTO_CREDITS} 🍑 as a gift and her voice'
             ),
             'tagline': (f'+{peach_num(PREMIUM_WEEKLY_PHOTO_CREDITS)} 🍑 в подарок' if not en
                         else f'+{peach_num(PREMIUM_WEEKLY_PHOTO_CREDITS)} 🍑 as a gift'),
@@ -682,9 +682,9 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'emoji': '⭐',
             'title': 'Premium · 3 месяца' if not en else 'Premium · 3 months',
             'description': (
-                f'три месяца без лимита, {peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 в подарок, голос, кружочки и все девушки'
+                f'три месяца без лимита, {peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 в подарок, голос и все девушки'
                 if not en else
-                f'three months unlimited, {peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 as a gift, voice, circles and every girl'
+                f'three months unlimited, {peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 as a gift, voice and every girl'
             ),
             'tagline': (f'+{peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 в подарок' if not en
                         else f'+{peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 as a gift'),
@@ -781,17 +781,18 @@ def api_shop(lang: str = 'ru') -> dict:
         ('🎬', '2 бесплатных видео-оживления в день', '2 free photo animations per day'),
         ('🎯', 'перезапуски историй и все персонажи', 'story replays and all characters'),
         ('💌', 'безлимитное общение — она не засыпает, и больше памяти', 'unlimited chat — she never falls asleep, more memory'),
-        ('🎙', 'голосовые ответы и кружочки', 'voice replies and video circles'),
+        ('🎙', 'голосовые ответы', 'voice replies'),
     ]
     # V3.70.0: owner — «сделай всё в персиках»: the price list shows what the
     # app really charges in peaches (×100 economy), not the bot's Stars ladder.
     from config import (PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST,
-                        UNDRESS_PEACH_COST)
+                        UNDRESS_PEACH_COST, CIRCLE_PEACH_COST)
     items = [
         ('📸', 'Фото в чате' if not en else 'Chat photo', CHAT_PHOTO_PEACH_COST),
         ('🔒', 'Фото «Наедине»' if not en else 'Private photo', PRIVATE_PHOTO_PEACH_COST),
         ('🎭', 'Косплей' if not en else 'Cosplay photo', COSPLAY_PHOTO_PEACH_COST),
         ('🔥', 'Раздеть фото' if not en else 'Undress a photo', UNDRESS_PEACH_COST),
+        ('🎥', 'Кружочек' if not en else 'Video circle', CIRCLE_PEACH_COST),
         ('🎨', 'Картинка в студии' if not en else 'Studio picture', WEBAPP_PICTURE_COST_CREDITS),
         ('🎬', 'Видео в студии' if not en else 'Studio video', WEBAPP_VIDEO_COST_CREDITS),
         # V3.44.22: public personas are free, private ones cost peaches.

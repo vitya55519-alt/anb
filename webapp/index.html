@@ -1364,7 +1364,7 @@ const L_EN = {
   plan_w1: '1 week', plan_m1: '1 month', plan_m3: '3 months', plan_per_week: n => n + ' ₽ a week',
   prem_get: 'Get', prem_extend: 'Extend', prem_once: 'One-time payment, no auto-renewal',
   prem_gift_line: n => n + ' 🍑 as a gift right away',
-  prem_tiles: [['💌', 'She never falls asleep', 'Unlimited chat, day and night'], ['🎙', 'Her voice', 'Voice replies and video circles']],
+  prem_tiles: [['💌', 'She never falls asleep', 'Unlimited chat, day and night'], ['🎙', 'Her voice', 'Voice replies']],
   prem_list: ['All girls, premium ones too', '2 photo animations a day', 'Story replays', 'More memory: she remembers more about you'],
   peaches_title: 'Peaches', peaches_word: 'peaches', pack_hot: 'hit', peach_photo_hint: n => '1 photo of her = ' + n + ' 🍑',
   free_peaches_row: 'Free peaches every day — in Missions', price_list: 'What costs what',
@@ -1513,7 +1513,7 @@ const L_EN = {
   media_busy: 'Wait a moment, she is still busy with the previous photo…', media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
   media_wait_voice: 'Recording her voice…', media_wait_video: 'Rendering a video — 1–3 min…',
   stt_wait: 'Reading your voice message…', mic_denied: 'No microphone access — allow it in the browser settings', mic_short: 'Too short — say something 🙂', mic_nospeech: 'Could not make out the words — try again', mic_err: 'Voice message failed — try again', attach_err: 'Could not send the photo', attach_big: 'Photo too heavy — send a lighter one',
-  circle_limit: 'No free circles left today — Premium refreshes them daily',
+  circle_limit: 'Not enough 🍑 for a circle',
   // V3.42.2: readable labels for the chat action pills (the voice button is gone).
   media_photo: 'Photo', media_video: 'Video', media_circle: 'Circle',
   feat_quest: 'Quest', feat_date: 'Date', feat_apt: 'Apartment',
@@ -1578,7 +1578,7 @@ const L_RU = {
   plan_w1: '1 неделя', plan_m1: '1 месяц', plan_m3: '3 месяца', plan_per_week: n => n + ' ₽ в неделю',
   prem_get: 'Получить', prem_extend: 'Продлить', prem_once: 'Разовый платёж, без автопродления',
   prem_gift_line: n => n + ' 🍑 в подарок сразу',
-  prem_tiles: [['💌', 'Она не засыпает', 'Общение без лимита днём и ночью'], ['🎙', 'Её голос', 'Отвечает голосовыми и кружочками']],
+  prem_tiles: [['💌', 'Она не засыпает', 'Общение без лимита днём и ночью'], ['🎙', 'Её голос', 'Отвечает голосовыми']],
   prem_list: ['Все девушки, включая премиум', '2 оживления фото в день', 'Перезапуск историй', 'Больше памяти: помнит о тебе больше'],
   peaches_title: 'Персики', peaches_word: 'персиков', pack_hot: 'хит', peach_photo_hint: n => '1 фото от неё = ' + n + ' 🍑',
   free_peaches_row: 'Бесплатные персики каждый день — в «Миссиях»', price_list: 'Что сколько стоит',
@@ -1727,7 +1727,7 @@ const L_RU = {
   media_busy: 'Подожди, она ещё занята прошлым фото…', media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
   media_wait_voice: 'Записываю голос…', media_wait_video: 'Рисую видео — 1–3 минуты…',
   stt_wait: 'Узнаю твой голос…', mic_denied: 'Нет доступа к микрофону — разреши его в настройках', mic_short: 'Слишком коротко — скажи что-нибудь 🙂', mic_nospeech: 'Не смогла разобрать слова — попробуй ещё раз', mic_err: 'Голосовое не отправилось — попробуй ещё раз', attach_err: 'Не удалось отправить фото', attach_big: 'Фото слишком тяжёлое — пришли полегче',
-  circle_limit: 'Бесплатные кружочки на сегодня кончились — Premium обновляет их каждый день',
+  circle_limit: 'На кружочек не хватает 🍑',
   // V3.42.2: читаемые подписи к кнопкам чата (голосовая кнопка убрана).
   media_photo: 'Фото', media_video: 'Видео', media_circle: 'Кружок',
   feat_quest: 'Задание', feat_date: 'Свидание', feat_apt: 'Квартира',
@@ -2381,7 +2381,10 @@ function maybeDeepOpenChat(chars) {
   if (_deepChatDone) return;
   _deepChatDone = true;
   try {
-    if (new URLSearchParams(location.search).get('open') !== 'chat') return;
+    const sp = new URLSearchParams(location.search);
+    // V3.71.0: «🍑 пополнить» from the bot's circle paywall lands on the shop.
+    if (sp.get('open') === 'shop') { showTab('shop'); return; }
+    if (sp.get('open') !== 'chat') return;
     const c = (chars || []).find(x => x.selected) || (chars || []).find(x => x.status === 'active');
     if (!c || (c.status !== 'active' && !(c.status === 'premium' && ME && ME.premium))) return;
     openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: !!c.custom, selected: !!c.selected });

@@ -95,6 +95,9 @@ HOT_PASS_MONTH_PEACHES = _peach_env("HOT_PASS_MONTH_PEACHES", 80)
 # V3.55.5: 5 -> 20 🍑 — клип сжигает картинковый рендер + видео-движок.
 # Звёздный/токеновый рельсы бота (VIDEO_COST_STARS/VIDEO_TOKEN_COST) — свои.
 VIDEO_PEACH_COST = _peach_env("VIDEO_PEACH_COST", 20)
+# V3.71.0: owner — «кошки (кружки) сделать платными»: a circle burns ~$0.2–0.3
+# of SpicyAPI per render, so every circle is paid in peaches for everyone.
+CIRCLE_PEACH_COST = _peach_env("CIRCLE_PEACH_COST", 7)
 # Голос + фото комбо
 VOICE_PHOTO_PEACH_COST = _peach_env("VOICE_PHOTO_PEACH_COST", 3)
 # Серия фото (3-5 штук в одном образе)
