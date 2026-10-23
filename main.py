@@ -48,7 +48,7 @@ from config import (
 )
 # V3.45.0: фото «наедине» и «косплей» — монетизация через персики
 from config import (
-    PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST, CHAT_PHOTO_PEACH_COST,
+    PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST, CHAT_PHOTO_PEACH_COST, CIRCLE_PEACH_COST,
     HOT_PASS_DAY_PEACHES, HOT_PASS_WEEK_PEACHES, HOT_PASS_MONTH_PEACHES,
     VOICE_PHOTO_PEACH_COST,
 )
@@ -151,6 +151,7 @@ from services.payment_method_service import (
 from services import donation_service
 from services import legal_service
 from services import webapp_service
+from services.webapp_service import peach_num
 
 # V3.30.2: payment diagnostics (/platega/check since V3.44.21) print the
 # deployed build straight from the VERSION file so the owner can confirm
@@ -584,7 +585,7 @@ def abilities_text(lang: str = RU) -> str:
             '🎯 interactive stories: your first choice becomes canon, and you can replay alternate branches later\n'
             '📸 photos right in the chat: type “send a photo” or “I want to see you” — I send a fresh shot for the moment; sometimes I offer one myself while flirting\n'
             '🎬 an “Animate photo” button under every shot — a short AI video from any photo (Premium: 2 free per day)\n'
-            '🎥 video circles — “from me” circles with my voice (Premium only)\n'
+            '🎥 video circles — “from me” circles with my voice (paid in 🍑)\n'
             '🎯 daily quest — a small request from me every day, completing it earns attention points\n'
             '🏠 apartment: visit the rooms, spend time with me — new rooms open as the relationship grows\n'
             '💕 dates: invite me somewhere, and afterwards I send you a photo from our outing\n'
@@ -602,7 +603,7 @@ def abilities_text(lang: str = RU) -> str:
         '🎯 интерактивные истории: твой первый выбор становится каноном, а альтернативные ветки можно посмотреть позже\n'
         '📸 фото прямо в чате: напиши «скинь фото» или «хочу тебя увидеть» — она пришлёт свежий кадр по ситуации; иногда предлагает сама во время флирта\n'
         '🎬 кнопка «Оживить фото» под каждым снимком — короткое AI-видео из любого фото (Premium: 2 бесплатно в день)\n'
-        '🎥 кружочки — видео-кружочки «от неё» с её голосом (только Premium)\n'
+        '🎥 кружочки — видео-кружочки «от неё» с её голосом (за 🍑)\n'
         '🎯 задание дня — маленькая просьба от неё каждый день, выполнение даёт очки внимания\n'
         '🏠 квартира: заходи в комнаты, проводи с ней время — новые комнаты открываются с уровнями отношений\n'
         '💕 свидания: пригласи её куда-нибудь, а после она пришлёт фото с прогулки\n'
@@ -1216,7 +1217,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• unlimited messages — I never “fall asleep” mid-conversation 😴',
             '• 12 extra photo credits',
             '• 2 free photo animations every day 🎬',
-            '• 🎥 video circles from me — Premium only',
+            '• 🎥 video circles from me — paid in 🍑',
             '• 🎙 voice replies — Premium only',
             '• 💋 relationship levels 7–10 — the top of the romance or passion path',
             '• 2 free replays of alternative quest branches per month',
@@ -1228,7 +1229,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• безлимит сообщений — я больше не «засыпаю» посреди разговора 😴',
             '• 12 дополнительных photo credits',
             '• 2 бесплатных оживления фото каждый день 🎬',
-            '• 🎥 видео-кружочки от меня — только для Premium',
+            '• 🎥 видео-кружочки от меня — за 🍑',
             '• 🎙 голосовые ответы — только для Premium',
             '• 💋 уровни 7–10 отношений — вершина пути романтики или страсти',
             '• 2 бесплатных replay альтернативных квест-веток в месяц',
@@ -1435,9 +1436,17 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
                                f'🪙 {TOKEN_PACK_SIZE} токенов — {TOKEN_PACK_SIZE * TOKEN_PRICE_RUB} ₽'),
             ])
     rows.append([video_button])
-    rows.append([InlineKeyboardButton(text='🎥 Кружочек от неё — только Premium', callback_data='video:circle')])
+    rows.append([InlineKeyboardButton(text=f'🎥 Кружочек от неё — {peach_num(CIRCLE_PEACH_COST)} 🍑', callback_data='video:circle')])
     rows.append([InlineKeyboardButton(text='🔒 📞 Звонок с персонажем · скоро', callback_data='future:anna_call')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def peaches_keyboard(telegram_id: int | None = None):
+    """V3.71.0: «not enough peaches» — one tap to the app's shop tab."""
+    if not PUBLIC_BASE_URL:
+        return premium_keyboard(telegram_id=telegram_id)
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text='🍑 Пополнить персики', web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=shop'))]])
 
 
 def adult_keyboard():
@@ -2241,7 +2250,7 @@ async def onboarding_character_select(cq: types.CallbackQuery):
                 '🎯 Daily quest — her small request (+5 attention for completing it)\n'
                 '💕 Date and 🏠 Apartment — time together, new places open with the levels\n'
                 '👤 Profile — your intimacy level in hearts and progress\n'
-                '🚀 Premium — unlimited chatting, video circles and levels 7–10'
+                '🚀 Premium — unlimited chatting, photo animations and levels 7–10'
             ) if tour_lang == EN else (
                 'быстрый тур по кнопкам 👇\n\n'
                 '💬 просто пиши ей — отношения растут с каждым сообщением\n'
@@ -2250,7 +2259,7 @@ async def onboarding_character_select(cq: types.CallbackQuery):
                 '🎯 Задание дня — её маленькая просьба (+5 внимания за выполнение)\n'
                 '💕 Свидание и 🏠 Квартира — время вместе, новые места открываются с уровнями\n'
                 '👤 Профиль — твой уровень близости в сердечках и прогресс\n'
-                '🚀 Премиум — безлимит, кружочки и уровни 7–10'
+                '🚀 Премиум — безлимит, оживления фото и уровни 7–10'
             )
             await cq.message.answer(tour_text)
             track_event(uid, 'onboarding_tour_sent')
@@ -5493,37 +5502,35 @@ async def circle_cb(cq: types.CallbackQuery):
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     if not _any_video_engine():
         await cq.answer(_video_unavailable_text(cq.from_user.id), show_alert=True); return
-    # Premium-exclusive: free users see the paywall, never the product.
-    if cq.from_user.id not in ADMIN_TELEGRAM_IDS and not is_premium(cq.from_user.id):
-        track_event(uid, 'circle_paywall_view')
-        from services.retention_service import discount_info
-        await cq.answer('кружочки — эксклюзив для Premium 😏', show_alert=True)
-        await cq.message.answer(
-            '🎥 кружочки — мой закрытый формат: короткие видео, как будто записываю их тебе лично 😌\n'
-            'доступны только с Premium.',
-            reply_markup=premium_keyboard(discount_info(cq.from_user.id), telegram_id=cq.from_user.id),
-        )
-        return
     if cq.from_user.id in _video_jobs and not _video_jobs[cq.from_user.id].done():
         await cq.answer('Одно видео уже создаётся 🎬', show_alert=True); return
     delivery = get_latest_photo_delivery(cq.from_user.id)
     if not delivery or not delivery.get('telegram_file_id'):
         await cq.answer('Сначала попроси у меня фото — кружочек сниму с последнего кадра.', show_alert=True); return
+    # V3.71.0: every circle costs CIRCLE_PEACH_COST peaches, Premium included —
+    # it is the priciest render we make. Charged up front, refunded on failure.
+    charge = None
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        if not spend_peaches(cq.from_user.id, CIRCLE_PEACH_COST):
+            track_event(uid, 'circle_paywall_view', metadata={'reason': 'peaches'})
+            await cq.answer(f'Кружочек стоит {peach_num(CIRCLE_PEACH_COST)} 🍑 — персиков не хватает', show_alert=True)
+            await cq.message.answer(
+                f'🎥 кружочек — короткое видео, как будто я записываю его тебе лично 😌\n'
+                f'стоит {peach_num(CIRCLE_PEACH_COST)} 🍑, а у тебя {peach_num(get_photo_credits(cq.from_user.id))} 🍑.',
+                reply_markup=peaches_keyboard(cq.from_user.id),
+            )
+            return
+        charge = CIRCLE_PEACH_CHARGE
     await cq.answer()
-    # Circles share the premium free animation slots; after they are spent an
-    # extra circle is paid like an animation.
-    if cq.from_user.id in ADMIN_TELEGRAM_IDS or consume_premium_video_free(cq.from_user.id):
-        track_event(uid, 'video_free_used', metadata={'kind': 'circle', 'delivery_id': delivery['id']})
-        _video_jobs[cq.from_user.id] = _spawn_job(
-            'circle', cq.from_user.id,
-            _run_circle_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None),
-        )
-        return
-    await send_stars_invoice(
-        cq.message.chat.id, 'Кружочек от Анны',
-        'Короткий видео-кружочек из последнего фото (бесплатные на сегодня закончились).',
-        'circle', VIDEO_COST_STARS,
+    track_event(uid, 'circle_ordered', metadata={'delivery_id': delivery['id'], 'peaches': 0 if charge is None else CIRCLE_PEACH_COST})
+    _video_jobs[cq.from_user.id] = _spawn_job(
+        'circle', cq.from_user.id,
+        _run_circle_background(cq.message.chat.id, cq.from_user.id, delivery['id'], charge),
     )
+
+
+# V3.71.0: charge_id marker of a circle paid in peaches (not a Stars charge).
+CIRCLE_PEACH_CHARGE = 'peaches'
 
 
 async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None):
@@ -5587,14 +5594,21 @@ async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: in
     except Exception as exc:
         logger.exception('circle failed user=%s delivery=%s charge=%s error=%s', telegram_id, delivery_id, charge_id, type(exc).__name__)
         refunded = False
-        if charge_id:
+        if charge_id == CIRCLE_PEACH_CHARGE:
+            try:
+                await asyncio.to_thread(add_peaches, telegram_id, CIRCLE_PEACH_COST)
+                refunded = True
+            except Exception:
+                logger.exception('Automatic circle peach refund failed user=%s', telegram_id)
+        elif charge_id:
             try:
                 await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge_id)
                 record_refund(telegram_id, charge_id, VIDEO_COST_STARS, product='video')
                 refunded = True
             except Exception:
                 logger.exception('Automatic circle Stars refund failed user=%s charge=%s', telegram_id, charge_id)
-        await bot.send_message(chat_id, 'кружочек сейчас не получился 😕 ' + ('Stars автоматически вернул.' if refunded else 'попробуй чуть позже.'))
+        back = f'{peach_num(CIRCLE_PEACH_COST)} 🍑 вернула на баланс.' if charge_id == CIRCLE_PEACH_CHARGE else 'Stars автоматически вернул.'
+        await bot.send_message(chat_id, 'кружочек сейчас не получился 😕 ' + (back if refunded else 'попробуй чуть позже.'))
         track_event(
             ensure_user(telegram_id), 'video_failed',
             metadata={'source_delivery_id': delivery_id, 'error_type': type(exc).__name__, 'kind': 'circle', 'charge_id': charge_id or 'free', 'refunded': refunded},
@@ -5749,7 +5763,7 @@ async def retention_demo_cb(cq: types.CallbackQuery):
         await cq.answer()
         await cq.message.answer(
             f'🎁 Демо-Premium активен на {DEMO_PREMIUM_HOURS} часа!\n'
-            'безлимит сообщений, оживления фото и кружочки — всё твоё 😏\n'
+            'безлимит сообщений и оживления фото — всё твоё 😏\n'
             'когда время выйдет, я буду скучать по нашему безлимиту… 💋'
         )
     else:
@@ -6602,8 +6616,7 @@ async def private_voice_combo(cq: types.CallbackQuery):
         await status_msg.delete()
     else:
         await status_msg.edit_text('😔 Не получилось. Персики возвращены.')
-        from services.payments import grant_peaches
-        grant_peaches(cq.from_user.id, VOICE_PHOTO_PEACH_COST)
+        add_peaches(cq.from_user.id, VOICE_PHOTO_PEACH_COST)
 
 
 @dp.callback_query(F.data.startswith('walletpay:'))
@@ -13372,11 +13385,11 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             # the old guard demanded the studio's whole price and blocked users who
             # had plenty for the actual charge.
             return web.json_response({'ok': False, 'error': 'credits'}, status=402)
-        if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS:
-            if not is_premium(telegram_id):
-                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-            if not consume_premium_video_free(telegram_id):
-                return web.json_response({'ok': False, 'error': 'circle_limit'}, status=402)
+        if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS \
+                and get_photo_credits(telegram_id) < CIRCLE_PEACH_COST:
+            # V3.71.0: circles are paid in peaches for everyone (charged in
+            # _finish only once the circle exists).
+            return web.json_response({'ok': False, 'error': 'credits'}, status=402)
         if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS:
             # V3.41.0: app video shares the Premium free-animation slots, exactly
             # like the bot's «🎬 Оживить фото»; a separate gate keeps the circle
@@ -13458,6 +13471,8 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
         if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
             logger.warning('webapp chat photo credit race user=%s', telegram_id)
+        if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, CIRCLE_PEACH_COST):
+            logger.warning('webapp chat circle peach race user=%s', telegram_id)
         # V3.44.6: record author revenue when someone spends on a custom character.
         if kind == 'photo' and is_custom_character(character_id):
             try:

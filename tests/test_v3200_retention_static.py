@@ -87,12 +87,13 @@ def test_discount_payment_flow():
     assert "if payload == 'circle':" in MAIN
 
 
-def test_circles_premium_exclusive():
+def test_circles_paid_in_peaches():
+    # V3.71.0: circles left Premium — everyone pays CIRCLE_PEACH_COST peaches.
     circle_block = MAIN[MAIN.index("@dp.callback_query(F.data == 'video:circle')"):
                         MAIN.index('async def _run_circle_background(')]
-    assert 'not is_premium(cq.from_user.id)' in circle_block
+    assert 'spend_peaches(cq.from_user.id, CIRCLE_PEACH_COST)' in circle_block
     assert 'circle_paywall_view' in circle_block
-    assert 'consume_premium_video_free(' in circle_block
+    assert 'consume_premium_video_free(' not in circle_block
     assert 'CIRCLE_PROMPT' in MAIN
     assert 'send_video_note(' in MAIN
     # A rejected video note still delivers as a normal video.
