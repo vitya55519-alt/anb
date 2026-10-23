@@ -850,7 +850,7 @@ BODY_SPECS = {
     'yuki_01': 'a curvy fit hourglass build with a wasp waist, wide round hips, a big round perky butt and a natural full bust (silicone, Russian size 4, D cup)',
     'miko_01': 'a voluptuous fit hourglass build with a wasp waist, round lifted wide hips and a full bust (silicone, Russian size 5, E cup)',
     'rin_01': 'a curvy fit hourglass build with a wasp waist, wide round hips, a big round perky butt and a natural full bust (silicone, Russian size 4, D cup)',
-    'hana_01': 'a very voluptuous soft hourglass build with a narrow waist, a soft belly, very wide round hips, thick soft thighs and a huge full bust (silicone, Russian size 5, E cup)',
+    'hana_01': 'a very voluptuous soft hourglass build with a narrow waist, a soft belly, very wide round hips, thick soft thighs and an enormous heavy bust (silicone, Russian size 7, F cup)',
 }
 DEFAULT_FEMALE_BODY_SPEC = (
     'a curvy feminine hourglass build with a wasp waist, round lifted hips '
@@ -910,6 +910,7 @@ BUST_VISUALS = {
     'C cup': 'medium-large round natural-looking breasts — clearly full under a fitted top but not big',
     'D cup': 'large round lifted breasts — clearly bigger than average and obvious in any outfit, but not huge',
     'E cup': 'very large round lifted breasts (big implants) — the most prominent feature of her figure in any outfit, never small or medium',
+    'F cup': 'huge heavy round breasts (very big implants) — enormous, the first thing anyone sees, far bigger than her head, never medium or merely large',
 }
 
 
