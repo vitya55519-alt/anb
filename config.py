@@ -108,6 +108,9 @@ SPICYAPI_HOT_CIRCLE_COST_USD = float(os.getenv("SPICYAPI_HOT_CIRCLE_COST_USD", "
 SPICYAPI_TTS_MODEL = os.getenv("SPICYAPI_TTS_MODEL", "xai/grok-tts/text-to-speech").strip()
 SPICYAPI_TTS_VOICE = os.getenv("SPICYAPI_TTS_VOICE", "eve").strip()
 SPICYAPI_TTS_COST_PER_1K_USD = float(os.getenv("SPICYAPI_TTS_COST_PER_1K_USD", "0.018"))
+# V3.74.0: owner — «голос в обычных ответах на Грок». Grok TTS is the first
+# voice for every reply (~$0.004 each); free Gemini TTS stays the fallback.
+SPICY_TTS_ENABLED = os.getenv("SPICY_TTS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
 # Голос + фото комбо
 VOICE_PHOTO_PEACH_COST = _peach_env("VOICE_PHOTO_PEACH_COST", 3)
 # Серия фото (3-5 штук в одном образе)
