@@ -3795,11 +3795,9 @@ async def admin_stats_button(cq: types.CallbackQuery):
     # V3.40.0: the owner asked for a real user-statistics screen — signups,
     # paying users, message volume, media mix, studio health and the character
     # leaderboard. Studio success rate comes from the per-provider counters.
-    photo_ok = photo_fail = 0
-    for row in provider_snapshot():
-        if row['provider'].startswith('photo/'):
-            photo_ok += row['ok']
-            photo_fail += row['fail']
+    # V3.82.1: the last 7 days, not all time (the dead fal leg kept it at 49%).
+    from services.provider_stats_service import recent_totals
+    photo_ok, photo_fail = recent_totals('photo/', days=7)
     studio_total = photo_ok + photo_fail
     studio_rate = (photo_ok / studio_total * 100.0) if studio_total else 0.0
     top_lines = '\n'.join(
@@ -3818,7 +3816,7 @@ async def admin_stats_button(cq: types.CallbackQuery):
         f'⭐ Premium активен: {snap["premium_active"]}\n'
         f'💬 сообщения пользователей: за 24ч {snap["messages_24h"]} · за 7д {snap["messages_7d"]}\n'
         f'📸 медиа за 24ч: фото {snap["photos_24h"]} · кружки {snap["circles_24h"]} · видео {snap["videos_24h"]}\n'
-        f'🎨 студия: ✅{photo_ok} ❌{photo_fail} (успешность {studio_rate:.0f}%)\n'
+        f'🎨 студия за 7д: ✅{photo_ok} ❌{photo_fail} (успешность {studio_rate:.0f}%)\n'
         f'🔁 удержание: D1 {snap["d1_retention"]:.0f}% · D7 {snap["d7_retention"]:.0f}%\n'
         f'🚪 воронка 30д: /start {snap["funnel"]["started"]} → 18+ {snap["funnel"]["consent"]} → написали {snap["funnel"]["first_message"]}\n'
         f'💳 оплата 30д: видели предложение {snap["pay_funnel"]["offer"]} → открыли счёт {snap["pay_funnel"]["invoice"]} → оплатили {snap["pay_funnel"]["paid"]}\n'
