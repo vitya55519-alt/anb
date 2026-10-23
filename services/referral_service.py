@@ -13,6 +13,7 @@ from models.app_models import User, ProductEvent
 from config import (
     REFERRAL_REFERRER_CREDITS,
     REFERRAL_INVITEE_CREDITS,
+    REFERRAL_QUALIFY_MESSAGES,
     FIRST_START_BONUS_CREDITS,
     FIRST_START_PREMIUM_TRIAL_DAYS,
 )
@@ -241,10 +242,13 @@ def apply_first_start_bonuses(telegram_id: int) -> dict:
 
 
 def apply_referral(invitee_telegram_id: int, referrer_telegram_id: int) -> dict:
-    """Record a referral and grant bonuses to both sides, once per invitee.
+    """Record a referral once per invitee. V3.80.0: no peaches yet — both sides
+    get theirs from qualify_referral once the friend has written
+    REFERRAL_QUALIFY_MESSAGES real messages. The partner link (money share)
+    is still made right away.
 
-    Guards: no self-referral, no double-crediting an invitee, only genuinely
-    new invitees trigger a payout.
+    Guards: no self-referral, no double-recording an invitee, only genuinely
+    new invitees count.
     """
     if invitee_telegram_id == referrer_telegram_id:
         return {"status": "self_referral", "awarded": False}
@@ -264,31 +268,25 @@ def apply_referral(invitee_telegram_id: int, referrer_telegram_id: int) -> dict:
     referrer_uid = referrer_user.id
     import json as _json
     with SessionLocal() as s:
-        invitee = s.scalar(select(User).where(User.id == invitee_uid))
-        referrer = s.scalar(select(User).where(User.id == referrer_uid))
-        if not invitee or not referrer:
-            return {"status": "user_missing", "awarded": False}
-        if REFERRAL_INVITEE_CREDITS > 0:
-            invitee.photo_credits = (invitee.photo_credits or 0) + REFERRAL_INVITEE_CREDITS
-        if REFERRAL_REFERRER_CREDITS > 0:
-            referrer.photo_credits = (referrer.photo_credits or 0) + REFERRAL_REFERRER_CREDITS
-        # Record the idempotency marker in the SAME transaction as the credit
-        # grants, so a crash after the commit to credits but before the analytics
-        # event can never result in a double-grant on a retried /start.
         s.add(ProductEvent(
             user_id=invitee_uid,
             event_name="referral_invited",
-            value=float(REFERRAL_INVITEE_CREDITS),
-            metadata_json=_json.dumps({"referrer_telegram_id": str(referrer_telegram_id)}, ensure_ascii=False),
+            value=0.0,
+            metadata_json=_json.dumps({"referrer_telegram_id": str(referrer_telegram_id), "pending": True},
+                                      ensure_ascii=False),
+        ))
+        s.add(ProductEvent(
+            user_id=referrer_uid,
+            event_name="referral_pending",
+            value=0.0,
+            metadata_json=_json.dumps({"invitee_telegram_id": str(invitee_telegram_id)}, ensure_ascii=False),
         ))
         s.commit()
-
-    track_event(referrer_uid, "referral_converted", value=float(REFERRAL_REFERRER_CREDITS),
-                metadata={"invitee_telegram_id": str(invitee_telegram_id)})
+    _settled.discard(int(invitee_telegram_id))
 
     # V3.37.0: persist the permanent invitee→referrer link for the partner
     # program (money commission on every future purchase). Fail-silent — a
-    # ledger hiccup must never break the bonus grant itself.
+    # ledger hiccup must never break the referral itself.
     try:
         from services import partner_service
         partner_service.register_referral_link(referrer_uid, invitee_uid)
@@ -296,22 +294,124 @@ def apply_referral(invitee_telegram_id: int, referrer_telegram_id: int) -> dict:
         logger.exception("partner link registration failed referrer=%s invitee=%s",
                          referrer_telegram_id, invitee_telegram_id)
 
-    # V3.47.0: the invite count just moved — grant any newly-crossed bonus tier
-    # for the referrer (idempotent, must never break the bonus grant itself).
-    try:
-        maybe_grant_referral_tiers(referrer_telegram_id)
-    except Exception:
-        logger.exception("referral tier grant failed referrer=%s", referrer_telegram_id)
+    logger.info("referral pending referrer=%s invitee=%s need=%s msgs",
+                referrer_telegram_id, invitee_telegram_id, REFERRAL_QUALIFY_MESSAGES)
+    return {"status": "pending", "awarded": False}
 
-    logger.info(
-        "referral awarded referrer=%s invitee=%s referrer_credits=%s invitee_credits=%s",
-        referrer_telegram_id, invitee_telegram_id, REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
-    )
+
+# Invitees with nothing left to pay out (no referral, already paid, or an old
+# pre-V3.80 referral paid at signup). Process-local: after a restart the first
+# message of each user re-checks once.
+_settled: set[int] = set()
+
+
+def _invite_record(invitee_uid: int) -> dict | None:
+    import json as _json
+    with SessionLocal() as s:
+        ev = s.scalar(select(ProductEvent).where(
+            ProductEvent.user_id == invitee_uid,
+            ProductEvent.event_name == "referral_invited",
+        ).order_by(ProductEvent.id).limit(1))
+        if not ev:
+            return None
+        try:
+            meta = _json.loads(ev.metadata_json or "{}")
+        except Exception:
+            meta = {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def qualify_referral(invitee_telegram_id: int, extra_text: str | None = None) -> dict | None:
+    """V3.80.0: pay both sides once the invited friend has written enough real
+    messages. Called on every chat turn (bot and app); cheap for everyone else
+    thanks to the _settled cache. Returns the payout for the notifications, or
+    None. Idempotent: the referral_qualified marker is written in the SAME
+    transaction as both credit grants."""
+    tid = int(invitee_telegram_id)
+    if tid in _settled:
+        return None
+    invitee = get_user(tid)
+    if not invitee:
+        return None
+    meta = _invite_record(invitee.id)
+    if not meta or not meta.get("pending") or _event_count(invitee.id, "referral_qualified") > 0:
+        _settled.add(tid)
+        return None
+    try:
+        referrer_tid = int(meta.get("referrer_telegram_id") or 0)
+    except (TypeError, ValueError):
+        referrer_tid = 0
+    referrer = get_user(referrer_tid) if referrer_tid else None
+    if not referrer:
+        _settled.add(tid)
+        return None
+    from services.gamification_service import real_message_count
+    count = real_message_count(invitee.id, extra_text=extra_text)
+    if count < REFERRAL_QUALIFY_MESSAGES:
+        return None
+    import json as _json
+    with SessionLocal() as s:
+        if s.scalar(select(func.count()).select_from(ProductEvent).where(
+                ProductEvent.user_id == invitee.id,
+                ProductEvent.event_name == "referral_qualified")):
+            _settled.add(tid)
+            return None
+        inv = s.scalar(select(User).where(User.id == invitee.id))
+        ref = s.scalar(select(User).where(User.id == referrer.id))
+        if not inv or not ref:
+            return None
+        if REFERRAL_INVITEE_CREDITS > 0:
+            inv.photo_credits = (inv.photo_credits or 0) + REFERRAL_INVITEE_CREDITS
+        if REFERRAL_REFERRER_CREDITS > 0:
+            ref.photo_credits = (ref.photo_credits or 0) + REFERRAL_REFERRER_CREDITS
+        s.add(ProductEvent(
+            user_id=invitee.id,
+            event_name="referral_qualified",
+            value=float(REFERRAL_INVITEE_CREDITS),
+            metadata_json=_json.dumps({"referrer_telegram_id": str(referrer_tid), "messages": count},
+                                      ensure_ascii=False),
+        ))
+        s.commit()
+    _settled.add(tid)
+
+    # the leaderboard, tiers and /stats count converted (= qualified) friends
+    track_event(referrer.id, "referral_converted", value=float(REFERRAL_REFERRER_CREDITS),
+                metadata={"invitee_telegram_id": str(tid), "qualified": True})
+    tiers: list[dict] = []
+    referrer_telegram_id = referrer_tid
+    try:
+        tiers = maybe_grant_referral_tiers(referrer_telegram_id)
+    except Exception:
+        logger.exception("referral tier grant failed referrer=%s", referrer_tid)
+    logger.info("referral qualified referrer=%s invitee=%s msgs=%s credits=%s/%s",
+                referrer_tid, tid, count, REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS)
     return {
-        "status": "awarded",
-        "awarded": True,
+        "referrer_telegram_id": referrer_tid,
+        "invitee_telegram_id": tid,
         "referrer_credits": REFERRAL_REFERRER_CREDITS,
         "invitee_credits": REFERRAL_INVITEE_CREDITS,
+        "tiers": tiers,
+    }
+
+
+def invite_progress(telegram_id: int) -> dict:
+    """V3.80.0: the «Пригласи друга» card — what a friend brings, how many
+    friends were paid for, how many are still writing their first messages."""
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as s:
+        pending_total = int(s.scalar(select(func.count()).select_from(ProductEvent).where(
+            ProductEvent.user_id == uid, ProductEvent.event_name == "referral_pending")) or 0)
+        qualified = int(s.scalar(select(func.count()).select_from(ProductEvent).where(
+            ProductEvent.user_id == uid, ProductEvent.event_name == "referral_converted",
+            ProductEvent.metadata_json.like('%"qualified": true%'))) or 0)
+    tiers = referral_tier_progress(telegram_id)
+    return {
+        "peaches": REFERRAL_REFERRER_CREDITS,
+        "friend_peaches": REFERRAL_INVITEE_CREDITS,
+        "messages": REFERRAL_QUALIFY_MESSAGES,
+        "invited": tiers["count"],
+        "waiting": max(0, pending_total - qualified),
+        "next": tiers["next"],
     }
 
 

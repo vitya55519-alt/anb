@@ -32,7 +32,7 @@ from config import (
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
     GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, GALLERY_DOWNLOAD_STARS, WALLET_PAY_ENABLED,
     PREMIUM_DISCOUNT_PERCENT, DEMO_PREMIUM_HOURS,
-    REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS,
+    REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS, REFERRAL_QUALIFY_MESSAGES,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
     CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST, COSPLAY_TOKEN_COST,
     CONSTRUCTOR_COST_PEACHES, MARITAL_CHANGE_PEACHES,
@@ -1951,7 +1951,7 @@ async def start(message: types.Message, command: CommandObject):
                 '⬇️ Поехали! ⬇️\n\n'
             )
             if has_referral:
-                welcome += 'пришёл по приглашению друга — бонусы вам обоим начислятся сразу после подтверждения.\n'
+                welcome += f'пришёл по приглашению друга — напиши ей {REFERRAL_QUALIFY_MESSAGES} сообщений, и вам обоим капнет по {REFERRAL_INVITEE_CREDITS} 🍑.\n'
             welcome += 'Подтверди, что тебе 18+, и прими условия использования и политику конфиденциальности.'
         banner = _welcome_banner_file()
         if banner is not None:
@@ -4422,7 +4422,7 @@ async def referral_cmd(message: types.Message):
             f'💵 total earned: {stats["earned_rub"]:g} ₽\n'
             f'💳 available to withdraw: {stats["balance_rub"]:g} ₽\n\n'
             f'🔗 your link:\n{link}\n\n'
-            f'A friend who opens it and starts the bot gets {REFERRAL_INVITEE_CREDITS} photo credits, you get {REFERRAL_REFERRER_CREDITS}. '
+            f'Once a friend who came through it writes her {REFERRAL_QUALIFY_MESSAGES} messages, they get {REFERRAL_INVITEE_CREDITS} 🍑 and you get {REFERRAL_REFERRER_CREDITS} 🍑. '
             f'And afterwards your {pct}% lands with every purchase they make.\n'
             f'Minimum payout — {PARTNER_MIN_PAYOUT_RUB} ₽.'
         )
@@ -4435,7 +4435,7 @@ async def referral_cmd(message: types.Message):
             f'💵 заработано всего: {stats["earned_rub"]:g} ₽\n'
             f'💳 доступно к выводу: {stats["balance_rub"]:g} ₽\n\n'
             f'🔗 твоя ссылка:\n{link}\n\n'
-            f'друг, который перейдёт по ней и впервые запустит бота, получит {REFERRAL_INVITEE_CREDITS} фото-кредита, а ты — {REFERRAL_REFERRER_CREDITS}. '
+            f'когда друг, пришедший по ней, напишет ей {REFERRAL_QUALIFY_MESSAGES} сообщений, он получит {REFERRAL_INVITEE_CREDITS} 🍑, а ты — {REFERRAL_REFERRER_CREDITS} 🍑. '
             f'а дальше твои {pct}% капают с каждой его покупки.\n'
             f'минимум для вывода — {PARTNER_MIN_PAYOUT_RUB} ₽.'
         )
@@ -10235,6 +10235,8 @@ async def text_message(message: types.Message):
         from services.gamification_service import touch_activity, check_first_message
         gam = touch_activity(message.from_user.id)
         check_first_message(message.from_user.id)
+        # V3.80.0: the friend's 10th real message pays both sides of a referral.
+        asyncio.create_task(_referral_qualify_check(message.from_user.id, message.text or ''))
         if gam and gam.get('streak_reward_credits'):
             await message.answer(
                 f'🔥 {gam["streak_count"]} дней подряд! подарил {gam["streak_reward_credits"]} фото-кредитов за постоянство. '
@@ -12411,9 +12413,37 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
                                    extra=await _app_chat_missions(telegram_id, text=text))
 
 
+async def _referral_qualify_check(telegram_id: int, text: str | None = None) -> None:
+    """V3.80.0: pay a pending referral once the invited friend has written
+    REFERRAL_QUALIFY_MESSAGES real messages, and tell both of them."""
+    try:
+        from services.referral_service import qualify_referral
+        async with referral_user_lock(telegram_id):
+            res = await asyncio.to_thread(qualify_referral, telegram_id, text)
+    except Exception:
+        logger.exception('referral qualify failed user=%s', telegram_id)
+        return
+    if not res:
+        return
+    try:
+        await bot.send_message(
+            res['referrer_telegram_id'],
+            f'🎉 твой друг разговорился с ней — держи +{res["referrer_credits"]} 🍑 за приглашение! '
+            'другу тоже начислено. зови ещё 😉')
+    except Exception:
+        logger.info('referral notify referrer failed id=%s', res.get('referrer_telegram_id'))
+    try:
+        await bot.send_message(
+            telegram_id,
+            f'🎁 бонус за приглашение: +{res["invitee_credits"]} 🍑 тебе и столько же другу, который тебя позвал.')
+    except Exception:
+        logger.info('referral notify invitee failed id=%s', telegram_id)
+
+
 async def _app_chat_missions(telegram_id: int, voice: bool = False, text: str | None = None) -> dict:
     """V3.66.0: run the streak / first-message / voice mission hooks for an
     app chat turn; a fresh unlock rides back so the SPA can say «забери 🍑»."""
+    asyncio.create_task(_referral_qualify_check(telegram_id, text))
     try:
         from services.gamification_service import note_app_chat_message, MISSION_PEACHES, ACHIEVEMENTS, DAILY_MISSIONS
         fresh = await asyncio.to_thread(note_app_chat_message, telegram_id, voice, text)

@@ -259,6 +259,8 @@ def test_no_unescaped_backend_strings_in_templates():
             # V3.67.0: Premium plan rows + perk tiles — local fragments, every
             # field esc()'d where built.
             "plans.map(planRow).join('')", 'tiles',
+            # V3.80.0: the «Пригласи друга» card — every backend field esc()'d inside.
+            'inviteCard',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         violations.append(expr)

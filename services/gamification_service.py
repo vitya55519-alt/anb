@@ -153,6 +153,34 @@ def daily_stats(user_id: int, extra_text: str | None = None) -> dict:
     return {'count': count, 'span_minutes': span}
 
 
+def real_message_count(user_id: int, extra_text: str | None = None, cap: int = 400) -> int:
+    """V3.80.0: real messages ever (same rule as the daily missions, over all
+    days), for the referral bonus. Reads at most ``cap`` of the earliest
+    messages — the caller only needs a small threshold."""
+    from models.app_models import Message
+    with SessionLocal() as session:
+        rows = session.execute(
+            select(Message.content, Message.created_at).where(
+                Message.user_id == user_id, Message.role == 'user',
+            ).order_by(Message.created_at).limit(cap)
+        ).all()
+    seen: set[str] = set()
+    count, last = 0, None
+    items = list(rows) + ([(extra_text, _today())] if extra_text is not None else [])
+    for content, at in items:
+        if not _meaningful(content or ''):
+            continue
+        key = _norm_text(content)
+        if key in seen:
+            continue
+        if last is not None and at is not None and (at - last).total_seconds() < MIN_GAP_SECONDS:
+            continue
+        seen.add(key)
+        count += 1
+        last = at
+    return count
+
+
 def _daily_reason(key: str) -> str:
     return f'daily_{key}_{_day_start().strftime("%Y%m%d")}'
 
@@ -397,6 +425,13 @@ def get_missions(telegram_id: int) -> dict:
         })
     items.sort(key=lambda it: (order.get(it['group'], 9), it['key']))
     daily = daily_missions(telegram_id) if user else []
+    invite = None
+    if user:
+        try:
+            from services.referral_service import invite_progress
+            invite = invite_progress(telegram_id)
+        except Exception:
+            logger.exception('invite progress failed user=%s', telegram_id)
     total = len(items)
     unlocked = sum(1 for it in items if it['unlocked'])
     return {
@@ -410,6 +445,8 @@ def get_missions(telegram_id: int) -> dict:
         # V3.68.0: today's missions on top of the board.
         'daily': daily,
         'daily_ready': sum(d['peaches'] for d in daily if d['claimable']),
+        # V3.80.0: the «Пригласи друга» card under today's missions.
+        'invite': invite,
     }
 
 

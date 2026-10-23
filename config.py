@@ -688,8 +688,13 @@ PHOTO_REACTION_COOLDOWN_SECONDS = max(0, int(os.getenv("PHOTO_REACTION_COOLDOWN_
 
 # Referral & first-start "wow" bonuses. Both sides receive photo credits.
 # 0 disables a bonus.
-REFERRAL_REFERRER_CREDITS = _peach_env("REFERRAL_REFERRER_CREDITS", 3, 0)
-REFERRAL_INVITEE_CREDITS = _peach_env("REFERRAL_INVITEE_CREDITS", 3, 0)
+# V3.80.0: owner — 1 000 🍑 to both sides (env stays in old peaches: 10 × 100),
+# paid only once the friend has written REFERRAL_QUALIFY_MESSAGES real messages
+# (the daily-missions rule: two words, six letters, no repeats), so a fake
+# account opened for the bonus earns nothing.
+REFERRAL_REFERRER_CREDITS = _peach_env("REFERRAL_REFERRER_CREDITS", 10, 0)
+REFERRAL_INVITEE_CREDITS = _peach_env("REFERRAL_INVITEE_CREDITS", 10, 0)
+REFERRAL_QUALIFY_MESSAGES = max(1, int(os.getenv("REFERRAL_QUALIFY_MESSAGES", "10")))
 FIRST_START_BONUS_CREDITS = _peach_env("FIRST_START_BONUS_CREDITS", 2, 0)
 # A short Premium taste granted to brand-new users so they can sample premium
 # photo routes on day one. 0 disables. Days, not stars.
