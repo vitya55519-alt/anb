@@ -665,6 +665,12 @@
   .plotitem .pn { font-weight: 700; font-size: 15px; }
   .plotitem .ps { color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.35; }
   .plotitem .pl { flex: none; font-size: 12px; font-weight: 700; color: #fff; padding: 4px 8px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+  .plotbar { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 12.5px; background: linear-gradient(90deg, rgba(232,68,127,.22), rgba(180,76,255,.22)); border-bottom: 1px solid rgba(255,140,190,.25); }
+  .plotbar .pbt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .plotbar button { flex: none; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.25); color: #fff; border-radius: 10px; padding: 5px 10px; font-size: 12px; }
+  .plotdone { margin: 10px auto; max-width: 290px; text-align: center; background: var(--card); border: 1px solid var(--accent); border-radius: 16px; padding: 12px; }
+  .plotdone .pdh { font-weight: 800; font-size: 15px; }
+  .plotdone button { margin-top: 10px; width: 100%; border: 0; border-radius: 12px; padding: 10px; color: #fff; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--accent2)); }
   .plotblock .plothint { font-size: 12px; opacity: .75; margin-top: 4px; }
   .capsheet .cap-close { margin-top: 12px; width: 100%; padding: 12px; border-radius: 12px; border: 0; background: rgba(255,255,255,.08); color: inherit; font-size: 14px; }
   /* V3.41.0: 7 feature buttons — the strip scrolls on its own row above the input. */
@@ -1128,6 +1134,8 @@
     <button class="iconbtn" id="chatInvite" style="font-size:15px;display:none" title="Позвать в чат">👭</button>
     <button class="iconbtn" id="chatSelect" style="font-size:13px">❤️</button>
   </div>
+  <!-- V3.78.0: the running storyline: act, level and «Без ролей» -->
+  <div class="plotbar" id="plotBar" style="display:none"><span class="pbt" id="plotBarText"></span><button id="plotBarExit" type="button"></button></div>
   <div class="guestbar" id="guestBar" style="display:none"></div>
   <div class="chat-msgs" id="chatMsgs"></div>
   <!-- V3.55.6: one-time tender/passionate picker for premium characters -->
@@ -1170,6 +1178,17 @@
   <div class="cap-sub" id="plotSheetSub"></div>
   <div class="plotlist" id="plotSheetList"></div>
   <button class="cap-close" id="plotSheetClose" type="button"></button>
+</div></div>
+<!-- V3.78.0: he picks how hot the storyline goes -->
+<div class="capsheet" id="heatSheet" style="display:none"><div class="box">
+  <div class="cap-h" id="heatTitle"></div>
+  <div class="cap-sub" id="heatSub"></div>
+  <div class="plotlist">
+    <button class="plotitem" data-heat="soft"><span class="pe">🌸</span><span class="pt"><div class="pn" id="heatSoft"></div><div class="ps" id="heatSoftDs"></div></span></button>
+    <button class="plotitem" data-heat="hot"><span class="pe">🔥</span><span class="pt"><div class="pn" id="heatHot"></div><div class="ps" id="heatHotDs"></div></span></button>
+    <button class="plotitem" data-heat="wild"><span class="pe">😈</span><span class="pt"><div class="pn" id="heatWild"></div><div class="ps" id="heatWildDs"></div></span></button>
+  </div>
+  <button class="cap-close" id="heatClose" type="button"></button>
 </div></div>
 <!-- V3.61.1: first-open choice «С сюжетом / Без сюжета» -->
 <div class="startsheet" id="startSheet" style="display:none"><div class="box">
@@ -1436,7 +1455,7 @@ const L_EN = {
   chan_check_fail: 'Could not check the subscription — try again later',
   buy: 'Buy', auth_short: 'Open this app from Telegram',
   selected_toast: 'selected', locked: 'This girl is locked for now', need_premium: 'Available with Premium ⭐',
-  plots_h: '🎬 Storylines', plots_sub: 'Role-play scenes: she writes first and stays in role all day', plots_locked: '🎬 Storylines unlock with Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'on', plots_hint: 'All storylines come with Premium', plots_cap: 'Storylines', plots_cap_ds: 'Role-play scenes with her, from light flirting to the hottest',
+  plots_h: '🎬 Storylines', plots_sub: 'Role-play scenes: she writes first and stays in role all day', plots_locked: '🎬 Storylines unlock with Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'on', plots_hint: 'All storylines come with Premium', plots_cap: 'Storylines', plots_cap_ds: 'Role-play scenes with her, from light flirting to the hottest', heat_sub: 'How explicit should it be?', heat_soft: 'Tender', heat_soft_ds: 'Romance, flirting and kisses', heat_hot: 'Hot', heat_hot_ds: 'Passionate and bold', heat_wild: 'No limits', heat_wild_ds: 'As explicit as it gets', plot_exit: '✖ No roles', plot_act: 'act', plot_done: '🎬 Storyline complete!', plot_next: '▶ Next', plot_all_done: 'You have played all her storylines 🔥', plot_left: 'You left the role',
   paid_prem: 'Premium activated ✨', paid_credit: 'Photo credit added 📸',
   pay_failed: 'Payment failed', pay_cancelled: 'Payment cancelled',
   invoice_err: 'Could not open payment — try again',
@@ -1654,7 +1673,7 @@ const L_RU = {
   chan_check_fail: 'Не удалось проверить подписку — попробуй позже',
   buy: 'Купить', auth_short: 'Открой приложение из Telegram',
   selected_toast: 'выбрана', locked: 'Эта девушка пока закрыта', need_premium: 'Доступна с Premium ⭐',
-  plots_h: '🎬 Сюжеты', plots_sub: 'Ролевые сцены: она пишет первой и держит роль весь день', plots_locked: '🎬 Сюжеты открываются с Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'идёт', plots_hint: 'Все сюжеты доступны с Premium', plots_cap: 'Сюжеты', plots_cap_ds: 'Ролевые сцены с ней: от лёгкого флирта до самого горячего',
+  plots_h: '🎬 Сюжеты', plots_sub: 'Ролевые сцены: она пишет первой и держит роль весь день', plots_locked: '🎬 Сюжеты открываются с Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'идёт', plots_hint: 'Все сюжеты доступны с Premium', plots_cap: 'Сюжеты', plots_cap_ds: 'Ролевые сцены с ней: от лёгкого флирта до самого горячего', heat_sub: 'Насколько откровенно будет?', heat_soft: 'Нежно', heat_soft_ds: 'Романтика, флирт и поцелуи', heat_hot: 'Горячо', heat_hot_ds: 'Страстно и смело, откровенные намёки', heat_wild: 'Без тормозов', heat_wild_ds: 'Максимально откровенно и пошло', plot_exit: '✖ Без ролей', plot_act: 'акт', plot_done: '🎬 Сюжет пройден!', plot_next: '▶ Дальше', plot_all_done: 'Ты прошёл все её сюжеты 🔥', plot_left: 'Вы вышли из роли',
   paid_prem: 'Premium активирован ✨', paid_credit: 'Фото-кредит начислен 📸',
   pay_failed: 'Оплата не прошла', pay_cancelled: 'Оплата отменена',
   invoice_err: 'Не удалось открыть оплату — попробуй ещё раз',
@@ -2457,17 +2476,19 @@ async function startScenario(key) {
 }
 
 // V3.78.0: «🎬 Сюжеты» — Premium storylines on her page and in «Возможности».
-async function loadPlots(cid) {
+async function loadPlots(cid, consume) {
   try {
-    const r = await fetch('/webapp/api/storylines?character_id=' + encodeURIComponent(cid) + '&init_data=' + encodeURIComponent(tg.initData || ''));
+    const r = await fetch('/webapp/api/storylines?character_id=' + encodeURIComponent(cid) + (consume ? '&consume=1' : '') + '&init_data=' + encodeURIComponent(tg.initData || ''));
     const j = await r.json();
     return j.ok ? j : null;
   } catch (e) { return null; }
 }
 function plotItemsHtml(j) {
   return (j.plots || []).map(p => {
-    const badge = !j.unlocked ? esc(L.plots_badge) : (j.active === p.key ? esc(L.plots_on) : esc(L.plots_play));
-    return '<button class="plotitem' + (j.active === p.key ? ' on' : '') + '" data-plot="' + esc(p.key) + '">'
+    const on = j.active && j.active.key === p.key;
+    const done = (j.done || []).includes(p.key);
+    const badge = !j.unlocked ? esc(L.plots_badge) : (on ? esc(L.plots_on) : (done ? '✅' : esc(L.plots_play)));
+    return '<button class="plotitem' + (on ? ' on' : '') + '" data-plot="' + esc(p.key) + '">'
       + '<span class="pe">' + esc(p.emoji) + '</span><span class="pt"><div class="pn">' + esc(p.title) + '</div>'
       + '<div class="ps">' + esc(p.teaser) + '</div></span><span class="pl">' + badge + '</span></button>';
   }).join('');
@@ -2479,7 +2500,8 @@ async function renderPlots(listEl, cid, onDone) {
   listEl.querySelectorAll('.plotitem').forEach(b => b.addEventListener('click', () => {
     if (onDone) onDone();
     if (!j.unlocked) { plotsToPremium(); return; }
-    startPlot(cid, b.dataset.plot);
+    const p = (j.plots || []).find(x => x.key === b.dataset.plot);
+    openHeatSheet(cid, b.dataset.plot, p ? p.emoji + ' ' + p.title : '');
   }));
   return j;
 }
@@ -2489,11 +2511,46 @@ function plotsToPremium() {
   document.getElementById('chatview').classList.remove('open');
   showTab('shop');
 }
-async function startPlot(cid, key) {
+function openHeatSheet(cid, key, title) {
+  const sh = document.getElementById('heatSheet');
+  document.getElementById('heatTitle').textContent = title || L.plots_h;
+  document.getElementById('heatSub').textContent = L.heat_sub;
+  document.getElementById('heatSoft').textContent = L.heat_soft;
+  document.getElementById('heatSoftDs').textContent = L.heat_soft_ds;
+  document.getElementById('heatHot').textContent = L.heat_hot;
+  document.getElementById('heatHotDs').textContent = L.heat_hot_ds;
+  document.getElementById('heatWild').textContent = L.heat_wild;
+  document.getElementById('heatWildDs').textContent = L.heat_wild_ds;
+  document.getElementById('heatClose').textContent = L.cap_close || '✕';
+  sh.querySelectorAll('[data-heat]').forEach(b => { b.onclick = () => { sh.style.display = 'none'; startPlot(cid, key, b.dataset.heat); }; });
+  sh.style.display = 'flex';
+}
+const HEAT_ICON = { soft: '🌸', hot: '🔥', wild: '😈' };
+async function refreshPlotBar(cid, consume) {
+  const bar = document.getElementById('plotBar');
+  const j = await loadPlots(cid, consume);
+  if (!CHAT || CHAT.id !== cid) return;
+  if (!j || !j.active) { bar.style.display = 'none'; }
+  else {
+    document.getElementById('plotBarText').textContent = '🎬 ' + j.active.title + ' · ' + L.plot_act + ' ' + j.active.act + '/3 · ' + (HEAT_ICON[j.active.heat] || '🔥');
+    document.getElementById('plotBarExit').textContent = L.plot_exit;
+    bar.style.display = '';
+  }
+  if (j && j.just_done && consume) {
+    const nx = j.just_done.next;
+    const box = document.getElementById('chatMsgs');
+    box.insertAdjacentHTML('beforeend', '<div class="plotdone"><div class="pdh">' + esc(L.plot_done) + '</div><div>' + esc(j.just_done.title) + '</div>'
+      + (nx ? '<button data-next-plot="' + esc(nx.key) + '">' + esc(L.plot_next + ': ' + nx.emoji + ' ' + nx.title) + '</button>' : '<div style="margin-top:8px">' + esc(L.plot_all_done) + '</div>') + '</div>');
+    box.scrollTop = box.scrollHeight;
+    const b = box.querySelector('[data-next-plot="' + (nx ? nx.key : '') + '"]:last-of-type');
+    if (b && nx) b.onclick = () => openHeatSheet(cid, nx.key, nx.emoji + ' ' + nx.title);
+  }
+}
+async function startPlot(cid, key, heat) {
   try {
     const r = await fetch('/webapp/api/storyline/start?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: cid, key: key }),
+      body: JSON.stringify({ character_id: cid, key: key, heat: heat || 'hot' }),
     });
     if (r.status === 401) { toast(L.auth_short); return; }
     const j = await r.json();
@@ -2507,6 +2564,7 @@ async function startPlot(cid, key) {
     if (!c) return;
     document.getElementById('charview').classList.remove('open');
     await openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: !!c.custom, selected: !!c.selected });
+    refreshPlotBar(c.id, false);
   } catch (e) {}
 }
 async function openPlotSheet() {
@@ -2728,6 +2786,8 @@ function openChat(c) {
   document.getElementById('chatview').classList.add('open');
   const history = loadChatHistory(c.id);
   loadChatLevel(c.id);
+  document.getElementById('plotBar').style.display = 'none';
+  if (!c.custom) refreshPlotBar(c.id, false);
   // V3.52.0: opening a chat marks it read on the server; drop the cached «Чаты»
   // list so the badge is cleared the next time the tab is visited.
   _chatsLoaded = false;
@@ -3135,6 +3195,7 @@ async function sendChat() {
 // ── V3.57.0: voice messages and user photos in the app chat ──────────────
 function renderChatReply(j) {
   if (CHAT) loadChatLevel(CHAT.id);
+  if (CHAT && !CHAT.custom && !CHAT.duo) refreshPlotBar(CHAT.id, true);
   // V3.51.0: a photo request comes back with a real photo attached;
   // V3.57.0: a text reply may carry her voice note (voice_url).
   const box = document.getElementById('chatMsgs');
@@ -5836,6 +5897,18 @@ if(document.getElementById('featCosplay')) document.getElementById('featCosplay'
 if(document.getElementById('featHot')) document.getElementById('featHot').addEventListener('click', () => openFeature('hot'));
 // V3.73.0: «🤫 Тайное видео» — the paid hot circle, one tap from the sheet.
 if(document.getElementById('featHotCircle')) document.getElementById('featHotCircle').addEventListener('click', () => requestMedia('hotcircle'));
+// V3.78.0: «Без ролей» and the level sheet.
+document.getElementById('plotBarExit').addEventListener('click', async () => {
+  if (!CHAT) return;
+  try {
+    await fetch('/webapp/api/storyline/stop?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ character_id: CHAT.id }) });
+  } catch (e) {}
+  document.getElementById('plotBar').style.display = 'none';
+  toast(L.plot_left);
+});
+document.getElementById('heatClose').addEventListener('click', () => { document.getElementById('heatSheet').style.display = 'none'; });
+document.getElementById('heatSheet').addEventListener('click', (e) => { if (e.target.id === 'heatSheet') e.target.style.display = 'none'; });
 // V3.78.0: «🎬 Сюжеты» row and its sheet.
 if (document.getElementById('featPlots')) document.getElementById('featPlots').addEventListener('click', openPlotSheet);
 document.getElementById('plotSheetClose').addEventListener('click', () => { document.getElementById('plotSheet').style.display = 'none'; });
