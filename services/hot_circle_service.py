@@ -32,14 +32,16 @@ from services import dialog_store
 
 logger = logging.getLogger(__name__)
 
-# V3.73.0: owner — «пооткровеннее, не только лицо: трогает себя за грудь».
+# V3.73.0: owner — «пооткровеннее, не только лицо: трогает себя за грудь»,
+# «между ног руку опускает… прям эротика».
 # Seedance has no negative_prompt, so the guard rails live in the prompt; its
 # own filter refuses some words (e.g. kissing), so the wording stays plain.
 HOT_CIRCLE_PROMPT = (
     'Handheld front-camera selfie video she records privately for her boyfriend, soft warm bedroom light. '
     'She looks straight into the lens with a seductive, teasing smile and bites her lower lip, '
-    'slowly slides her top down, caresses and squeezes her bare breasts, runs her hand down her body, '
-    'playful and confident, slow sensual movement. '
+    'slowly slides her top down, caresses and squeezes her bare breasts, then slowly runs her hand '
+    'down her belly and slips it between her thighs, breathing deeper, eyes half closed with pleasure, '
+    'erotic, intimate and confident, slow sensual movement. '
     'Adult woman, exactly the same face, hair and body as in the photo, one person only, '
     'photorealistic, natural skin, sharp focus, no text.'
 )
