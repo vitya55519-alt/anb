@@ -98,6 +98,16 @@ VIDEO_PEACH_COST = _peach_env("VIDEO_PEACH_COST", 20)
 # V3.71.0: owner — «кошки (кружки) сделать платными»: a circle burns ~$0.2–0.3
 # of SpicyAPI per render, so every circle is paid in peaches for everyone.
 CIRCLE_PEACH_COST = _peach_env("CIRCLE_PEACH_COST", 7)
+# V3.72.0: «🔥 горячий кружок» — Wan 2.6 Spicy lip-synced to her TTS voice,
+# ~$0.48 a render, paid in peaches and offered (never sent) in flirty moments.
+HOT_CIRCLE_PEACH_COST = _peach_env("HOT_CIRCLE_PEACH_COST", 15)
+HOT_CIRCLE_ENABLED = os.getenv("HOT_CIRCLE_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+SPICYAPI_HOT_CIRCLE_MODEL = os.getenv("SPICYAPI_HOT_CIRCLE_MODEL", "alibaba/wan-2.6-spicy/image-to-video").strip()
+SPICYAPI_HOT_CIRCLE_COST_USD = float(os.getenv("SPICYAPI_HOT_CIRCLE_COST_USD", "0.475"))
+# Her voice for the hot circle: Grok TTS («eve» / «ara» — the owner liked both).
+SPICYAPI_TTS_MODEL = os.getenv("SPICYAPI_TTS_MODEL", "xai/grok-tts/text-to-speech").strip()
+SPICYAPI_TTS_VOICE = os.getenv("SPICYAPI_TTS_VOICE", "eve").strip()
+SPICYAPI_TTS_COST_PER_1K_USD = float(os.getenv("SPICYAPI_TTS_COST_PER_1K_USD", "0.018"))
 # Голос + фото комбо
 VOICE_PHOTO_PEACH_COST = _peach_env("VOICE_PHOTO_PEACH_COST", 3)
 # Серия фото (3-5 штук в одном образе)

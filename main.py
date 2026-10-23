@@ -49,6 +49,7 @@ from config import (
 # V3.45.0: фото «наедине» и «косплей» — монетизация через персики
 from config import (
     PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST, CHAT_PHOTO_PEACH_COST, CIRCLE_PEACH_COST,
+    HOT_CIRCLE_PEACH_COST, HOT_CIRCLE_ENABLED,
     HOT_PASS_DAY_PEACHES, HOT_PASS_WEEK_PEACHES, HOT_PASS_MONTH_PEACHES,
     VOICE_PHOTO_PEACH_COST,
 )
@@ -11920,11 +11921,33 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
             return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, **(extra or {})})
     payload = {'ok': True, 'reply': answer}
+    # V3.72.0: the circle hook — in a flirty moment (or when asked) she offers
+    # a circle under her reply. Free to show; the render starts on a paid tap.
+    try:
+        offer = await asyncio.to_thread(_circle_offer, telegram_id, character_id, text, answer)
+        if offer:
+            payload['circle_offer'] = offer
+    except Exception:
+        logger.warning('circle offer failed user=%s', telegram_id, exc_info=True)
     voice_url = await _webapp_reply_voice_url(telegram_id, character_id, answer)
     if voice_url:
         payload['voice_url'] = voice_url
     payload.update(extra or {})
     return web.json_response(payload)
+
+
+def _circle_offer(telegram_id: int, character_id: str, text: str, answer: str) -> dict | None:
+    """V3.72.0: which circle buttons go under her reply (see hot_circle_service)."""
+    from services import hot_circle_service
+    is_custom = is_custom_character(character_id)
+    offer = hot_circle_service.offer_for(
+        telegram_id, character_id, text, answer,
+        is_custom=is_custom, adult_confirmed=is_adult_confirmed(telegram_id),
+        level=0 if is_custom else get_relationship_level(telegram_id, character_id),
+    )
+    if not offer:
+        return None
+    return {'hot': bool(offer.get('hot')), 'circle_price': CIRCLE_PEACH_COST, 'hot_price': HOT_CIRCLE_PEACH_COST}
 
 
 async def _webapp_api_chat_start(request: web.Request) -> web.Response:
@@ -12968,6 +12991,24 @@ async def _webapp_media_circle(telegram_id: int, character_id: str):
     raise last_error or PhotoGenerationError('circle', 'no_video_result')
 
 
+async def _webapp_media_hot_circle(telegram_id: int, character_id: str):
+    """V3.72.0: «🔥 горячий кружок» — her canonical portrait, her whispered
+    line (SpicyAPI TTS) and Wan 2.6 Spicy lip-sync. Paid only on success."""
+    from services import hot_circle_service
+    photo = webapp_service.character_photo(character_id)
+    if not photo:
+        raise PhotoGenerationError('hotcircle', 'no_source_photo')
+    lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+    try:
+        video = await hot_circle_service.render(square_frame(photo[0]), lang)
+    except Exception as exc:
+        record_provider('circle/hot', False, f'{type(exc).__name__}: {str(exc)[:120]}')
+        logger.warning('webapp hot circle failed user=%s: %s', telegram_id, str(exc)[:200])
+        raise PhotoGenerationError('hotcircle', str(exc)[:120]) from exc
+    record_provider('circle/hot', True)
+    return video, 'video/mp4', 'mp4'
+
+
 async def _webapp_media_voice(telegram_id: int, character_id: str):
     """V3.39.0: her voice — synthesizes her last reply (or the scenario hook)."""
     # V3.57.2: the user read and the last-ten-messages read leave the loop.
@@ -13346,7 +13387,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', ''))
     kind = str(body.get('kind', ''))
     scene = str(body.get('scene') or 'selfie')[:80]
-    if kind not in ('photo', 'circle', 'voice', 'video', 'hot', 'cosplay') or not character_id:
+    if kind not in ('photo', 'circle', 'hotcircle', 'voice', 'video', 'hot', 'cosplay') or not character_id:
         logger.warning('webapp chat media bad_request user=%s kind=%r character=%r', telegram_id, kind, character_id)
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     # V3.57.2: the whole access chain is PostgreSQL reads/writes (card, consent,
@@ -13390,6 +13431,15 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             # V3.71.0: circles are paid in peaches for everyone (charged in
             # _finish only once the circle exists).
             return web.json_response({'ok': False, 'error': 'credits'}, status=402)
+        if kind == 'hotcircle':
+            # V3.72.0: our own built-in heroines only (a custom face may come
+            # from a real person's photo), adults who confirmed 18+, paid.
+            if not HOT_CIRCLE_ENABLED or is_custom_character(character_id):
+                return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+            if not is_adult_confirmed(telegram_id):
+                return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
+            if telegram_id not in ADMIN_TELEGRAM_IDS and get_photo_credits(telegram_id) < HOT_CIRCLE_PEACH_COST:
+                return web.json_response({'ok': False, 'error': 'credits'}, status=402)
         if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS:
             # V3.41.0: app video shares the Premium free-animation slots, exactly
             # like the bot's «🎬 Оживить фото»; a separate gate keeps the circle
@@ -13415,6 +13465,8 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             data, mime, ext = await _webapp_media_photo(telegram_id, character_id, scene)
         elif kind == 'circle':
             data, mime, ext = await _webapp_media_circle(telegram_id, character_id)
+        elif kind == 'hotcircle':
+            data, mime, ext = await _webapp_media_hot_circle(telegram_id, character_id)
         elif kind == 'video':
             data, mime, ext = await _webapp_media_video(telegram_id, character_id)
         elif kind == 'hot':
@@ -13442,6 +13494,8 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'gen'}, status=502)
     # V3.57.2: storing the media, auditing it, charging the credit and the
     # gallery-set reads all leave the loop.
+    shown_kind = 'circle' if kind == 'hotcircle' else kind
+
     def _finish():
         filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
         url = f'/webapp/media/{filename}'
@@ -13453,6 +13507,9 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             # record with no engine so the feed shows them unlabelled rather than
             # guessing.
             hint = _HOT_MEDIA_HINT.pop(telegram_id, None) if kind in ('hot', 'cosplay') else None
+            if kind == 'hotcircle':
+                from config import SPICYAPI_HOT_CIRCLE_COST_USD
+                hint = ('spicyapi_hot_circle', SPICYAPI_HOT_CIRCLE_COST_USD)
             if hint:
                 webapp_service.record_generation(telegram_id, kind, character_id, scene, filename,
                                                  engine=hint[0], cost_usd=hint[1])
@@ -13465,14 +13522,18 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             content = '\U0001f48b \u043d\u0430\u0435\u0434\u0438\u043d\u0435...' if kind == 'hot' else '\U0001f3ad \u043a\u043e\u0441\u043f\u043b\u0435\u0439 \u0434\u043b\u044f \u0442\u0435\u0431\u044f'
         else:
             _media_caps = {'circle': '\U0001f3a5 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u043a\u0440\u0443\u0436\u043e\u0447\u0435\u043a',
+                           'hotcircle': '🔥 записала тебе кое-что…',
                            'voice': '\U0001f399 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0433\u043e\u043b\u043e\u0441\u043e\u0432\u043e\u0435',
                            'video': '\U0001f3ac \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0432\u0438\u0434\u0435\u043e'}
             content = _media_caps.get(kind, '')
-        save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
+        # V3.72.0: a hot circle is stored and drawn as a regular round circle.
+        save_message(uid, character_id, 'assistant', content, media_kind=shown_kind, media_url=url)
         if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
             logger.warning('webapp chat photo credit race user=%s', telegram_id)
         if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, CIRCLE_PEACH_COST):
             logger.warning('webapp chat circle peach race user=%s', telegram_id)
+        if kind == 'hotcircle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, HOT_CIRCLE_PEACH_COST):
+            logger.warning('webapp chat hot circle peach race user=%s', telegram_id)
         # V3.44.6: record author revenue when someone spends on a custom character.
         if kind == 'photo' and is_custom_character(character_id):
             try:
@@ -13489,7 +13550,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             from services.collection_service import gallery_set_progress, note_gallery_set
             _set_completed = note_gallery_set(telegram_id, character_id)
             _gallery = gallery_set_progress(telegram_id, character_id)
-        return {'ok': True, 'kind': kind, 'url': url, 'content': content,
+        return {'ok': True, 'kind': shown_kind, 'url': url, 'content': content,
                 'credits_left': get_photo_credits(telegram_id),
                 'set_completed': _set_completed,
                 'gallery': _gallery}
