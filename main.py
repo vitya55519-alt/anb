@@ -12087,6 +12087,29 @@ def _accepts_her_photo_offer(uid: int, character_id: str, text: str) -> bool:
     return bool(PHOTO_OFFER.search(last.content or ''))
 
 
+def _free_photo_from_pool(telegram_id: int, uid: int, character_id: str):
+    """V3.81.0: (bytes, mime, ext) of a pool photo when this chat photo would
+    be a FREE one and today's free-photo budget is spent; None means render
+    as usual (admin, Premium, paying with peaches, budget left, empty pool)."""
+    if telegram_id in ADMIN_TELEGRAM_IDS:
+        return None
+    try:
+        from services.chat_photo_allowance import free_chat_photos_left, free_photo_budget_spent
+        if is_premium(telegram_id) or free_chat_photos_left(uid) <= 0 or not free_photo_budget_spent():
+            return None
+        from services.retention_features_service import random_proactive_photo
+        picked = random_proactive_photo(character_id, user_id=uid)
+    except Exception:
+        logger.exception('free photo pool pick failed user=%s', telegram_id)
+        return None
+    if not picked or picked[2] != 'photo':
+        return None
+    data, mime, _kind = picked
+    ext = 'png' if 'png' in (mime or '') else 'jpg'
+    logger.info('free photo from pool (budget spent) user=%s char=%s', telegram_id, character_id)
+    return data, ('image/png' if ext == 'png' else 'image/jpeg'), ext
+
+
 def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | None:
     """The stage / 18+ / peaches gates of a chat photo; None = go."""
     if _card_girl_photo_locked(character_id, telegram_id):
@@ -12158,8 +12181,13 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     async def _photo_turn(scene: str, req, said: str | None = None):
         """Render + deliver one chat photo. `said` is her own text when the
         photo backs a promise she just made («лови 📸»)."""
+        # V3.81.0: past today's free-photo budget, a FREE photo comes from her
+        # ready-made pool instead of a new render. Paid and Premium are untouched.
+        pooled = await asyncio.to_thread(_free_photo_from_pool, telegram_id, uid, character_id)
         try:
-            if req is not None and req.location and scene == 'selfie':
+            if pooled:
+                data, mime, ext = pooled
+            elif req is not None and req.location and scene == 'selfie':
                 data, mime, ext = await _webapp_pipeline_photo(telegram_id, character_id, req)
             else:
                 data, mime, ext = await _webapp_media_photo(telegram_id, character_id, scene)
@@ -12187,6 +12215,9 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                 # V3.61.5: a free photo of the day first, then peaches.
                 if free_chat_photos_left(uid) > 0:
                     use_free_chat_photo(uid, character_id)
+                    if pooled:
+                        from services.chat_photo_allowance import POOL_EVENT, note_today
+                        note_today(uid, POOL_EVENT, character_id)
                 else:
                     spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST)
             # V3.53.0: after this photo counts, tell the SPA if a gallery set

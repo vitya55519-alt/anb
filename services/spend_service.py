@@ -188,6 +188,15 @@ def format_spend_lines(snap: dict) -> list[str]:
         f'· токены: вход {snap.get("prompt_tokens", 0)} · выход {snap.get("completion_tokens", 0)} '
         f'· reasoning {snap.get("reasoning_tokens", 0)}'
     )
+    try:
+        from config import FREE_PHOTO_DAILY_BUDGET_USD
+        if FREE_PHOTO_DAILY_BUDGET_USD > 0:
+            from services.chat_photo_allowance import free_photo_spend_today
+            spent = free_photo_spend_today()
+            state = 'дальше фото из пула' if spent >= FREE_PHOTO_DAILY_BUDGET_USD else 'генерируются'
+            lines.append(f'· бесплатные фото: ${spent:.2f} из ${FREE_PHOTO_DAILY_BUDGET_USD:.2f}/сутки ({state})')
+    except Exception:
+        pass
     if snap.get('llm_budget') or snap.get('image_budget'):
         # V3.56.2: budget<=0 means the brake itself is off, not tripped —
         # say so, otherwise the owner reads "$0.00 (активен)" and is confused.
