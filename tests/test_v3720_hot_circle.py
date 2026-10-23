@@ -24,6 +24,12 @@ def _fresh_store(monkeypatch):
     monkeypatch.setattr(hc, '_offered', _Store())
 
 
+@pytest.fixture(autouse=True)
+def _enabled(monkeypatch):
+    # V3.72.1: off by default in production; the rules are tested switched on
+    monkeypatch.setattr(hc, 'HOT_CIRCLE_ENABLED', True)
+
+
 def _offer(uid, user, answer, **kw):
     args = dict(is_custom=False, adult_confirmed=True, level=4)
     args.update(kw)
@@ -92,3 +98,8 @@ def test_endpoint_gates_and_charges_after_success():
     assert 'spend_peaches(telegram_id, HOT_CIRCLE_PEACH_COST)' in block[block.index('def _finish():'):]
     assert "payload['circle_offer'] = offer" in MAIN
     assert 'data-cmedia="hotcircle"' in INDEX
+
+
+def test_off_by_default():
+    from config import HOT_CIRCLE_ENABLED
+    assert HOT_CIRCLE_ENABLED is False

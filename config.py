@@ -101,7 +101,9 @@ CIRCLE_PEACH_COST = _peach_env("CIRCLE_PEACH_COST", 7)
 # V3.72.0: «🔥 горячий кружок» — Wan 2.6 Spicy lip-synced to her TTS voice,
 # ~$0.48 a render, paid in peaches and offered (never sent) in flirty moments.
 HOT_CIRCLE_PEACH_COST = _peach_env("HOT_CIRCLE_PEACH_COST", 15)
-HOT_CIRCLE_ENABLED = os.getenv("HOT_CIRCLE_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+# V3.72.1: off by default — the owner saw the first live Wan clip and called it
+# scary; no one pays for it until the quality is fixed.
+HOT_CIRCLE_ENABLED = os.getenv("HOT_CIRCLE_ENABLED", "0").strip().lower() not in ("0", "false", "no", "off")
 SPICYAPI_HOT_CIRCLE_MODEL = os.getenv("SPICYAPI_HOT_CIRCLE_MODEL", "alibaba/wan-2.6-spicy/image-to-video").strip()
 SPICYAPI_HOT_CIRCLE_COST_USD = float(os.getenv("SPICYAPI_HOT_CIRCLE_COST_USD", "0.475"))
 # Her voice for the hot circle: Grok TTS («eve» / «ara» — the owner liked both).
