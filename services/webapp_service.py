@@ -786,13 +786,14 @@ def api_shop(lang: str = 'ru') -> dict:
     # V3.70.0: owner — «сделай всё в персиках»: the price list shows what the
     # app really charges in peaches (×100 economy), not the bot's Stars ladder.
     from config import (PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST,
-                        UNDRESS_PEACH_COST, CIRCLE_PEACH_COST)
+                        UNDRESS_PEACH_COST, CIRCLE_PEACH_COST, HOT_CIRCLE_PEACH_COST)
     items = [
         ('📸', 'Фото в чате' if not en else 'Chat photo', CHAT_PHOTO_PEACH_COST),
         ('🔒', 'Фото «Наедине»' if not en else 'Private photo', PRIVATE_PHOTO_PEACH_COST),
         ('🎭', 'Косплей' if not en else 'Cosplay photo', COSPLAY_PHOTO_PEACH_COST),
         ('🔥', 'Раздеть фото' if not en else 'Undress a photo', UNDRESS_PEACH_COST),
         ('🎥', 'Кружочек' if not en else 'Video circle', CIRCLE_PEACH_COST),
+        ('🔥', 'Горячий кружок' if not en else 'Hot video circle', HOT_CIRCLE_PEACH_COST),
         ('🎨', 'Картинка в студии' if not en else 'Studio picture', WEBAPP_PICTURE_COST_CREDITS),
         ('🎬', 'Видео в студии' if not en else 'Studio video', WEBAPP_VIDEO_COST_CREDITS),
         # V3.44.22: public personas are free, private ones cost peaches.
