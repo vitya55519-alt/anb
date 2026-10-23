@@ -419,6 +419,16 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # direction sits right before his action so she acts it out with a hook.
     if scene:
         messages.append({"role": "system", "content": scene})
+    # V3.75.0: a scenario card he walked into (services/scenario_cards.py)
+    # keeps her in that role-play scene for a day.
+    elif not guest_reminder:
+        try:
+            from services.scenario_cards import direction_for
+            scene = direction_for(user_id, character_id, str(character.get('name') or ''))
+        except Exception:
+            scene = ''
+        if scene:
+            messages.append({"role": "system", "content": scene})
     behavior_kind = chosen.intent
     # V3.63.12: one concrete hook for this reply, right before his message.
     if not scene and not guest_reminder:

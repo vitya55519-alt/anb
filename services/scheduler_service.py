@@ -278,6 +278,95 @@ async def _day1_hook(bot):
 _MEDIA_DIR = __import__('pathlib').Path(__file__).resolve().parents[1] / 'data' / 'media'
 
 
+async def send_scenario_card(bot, uid: int | None, telegram_id: int, scenario, *, bonus: int | None = None):
+    """V3.75.0: one scenario card (services/scenario_cards.py) — her looping
+    cover, the setup, her quote and ONE button that opens the Mini App chat
+    straight into the scene. Her opening line also lands in her dialog, so
+    the app shows it and the model knows how the scene started."""
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    from config import SCENARIO_TAP_PEACHES
+    from services import scenario_cards as sc
+    cov=sc.cover(scenario.key)
+    if not cov or not PUBLIC_BASE_URL:
+        return None
+    markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text=scenario.button,
+        web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat&scene={scenario.key}'),
+    )]])
+    cap=sc.caption(scenario, SCENARIO_TAP_PEACHES if bonus is None else bonus)
+    kind=cov.get('kind') or 'animation'
+    method={'photo':'send_photo','video':'send_video'}.get(kind,'send_animation')
+    msg=await getattr(bot,method)(telegram_id,cov['file_id'],caption=cap,parse_mode='HTML',reply_markup=markup)
+    if uid:
+        _to_app_chat(uid,telegram_id,scenario.character_id,sc.opening_line(scenario))
+    return msg
+
+
+def _scenario_local_hour(tz_name) -> int:
+    """The audience is Russian and most rows still carry the default «UTC»,
+    so an unset zone counts as Moscow for the evening window."""
+    from zoneinfo import ZoneInfo
+    name=(tz_name or '').strip()
+    if name in ('','UTC','Etc/UTC'):
+        name='Europe/Moscow'
+    try:
+        return dt.datetime.now(ZoneInfo(name)).hour
+    except Exception:
+        return dt.datetime.now(ZoneInfo('Europe/Moscow')).hour
+
+
+async def _scenario_cards(bot):
+    """V3.75.0: at most one scenario card a day per user, in his evening,
+    while he is around (active in the last SCENARIO_ACTIVE_DAYS) but not
+    chatting right now; never the same scene twice. Only scenes whose cover
+    is already rendered go out, so nothing is sent before the admin makes
+    covers in «/scenes»."""
+    from config import (SCENARIO_CARDS_ENABLED, SCENARIO_INTERVAL_HOURS, SCENARIO_MIN_SILENT_HOURS,
+                        SCENARIO_ACTIVE_DAYS, SCENARIO_LOCAL_START_HOUR, SCENARIO_LOCAL_END_HOUR)
+    from services import scenario_cards as sc
+    if not SCENARIO_CARDS_ENABLED or not PUBLIC_BASE_URL or not sc.covers():
+        return
+    from services.character_card_service import list_cards
+    from services.consent_service import has_accepted
+    now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    try:
+        available={c.character_id for c in list_cards(visible_only=True) if c.status=='active'}
+    except Exception:
+        logger.exception('scenario cards: cards load failed'); return
+    with SessionLocal() as s:
+        rows=s.execute(select(User.id,User.telegram_id,User.timezone,User.selected_character).where(
+            User.proactive_enabled==True,
+            User.adult_confirmed==True,
+            User.last_active_at>=now-dt.timedelta(days=SCENARIO_ACTIVE_DAYS),
+            User.last_active_at<=now-dt.timedelta(hours=SCENARIO_MIN_SILENT_HOURS),
+        )).all()
+    sent=0
+    for uid,tg,tz,selected in rows:
+        try:
+            if not (SCENARIO_LOCAL_START_HOUR <= _scenario_local_hour(tz) < SCENARIO_LOCAL_END_HOUR):
+                continue
+            telegram_id=int(tg)
+            last=sc.last_sent_at(telegram_id)
+            if last and now-last < dt.timedelta(hours=SCENARIO_INTERVAL_HOURS):
+                continue
+            if not has_accepted(telegram_id):
+                continue
+            scenario=sc.pick_next(telegram_id,available,current=(selected or '').strip() or CHARACTER_ID)
+            if not scenario:
+                continue
+            # consume the slot first — a failed send must not re-fire every scan
+            sc.mark_sent(telegram_id,scenario.key)
+            if await send_scenario_card(bot,uid,telegram_id,scenario):
+                sent+=1
+                track_event(uid,'scenario_card_sent',character_id=scenario.character_id,metadata={'key':scenario.key})
+                await asyncio.sleep(0.05)
+        except TelegramForbiddenError:
+            _mark_blocked(uid)
+        except Exception: logger.exception('scenario card failed user=%s',uid)
+    if sent:
+        logger.info('scenario cards sent=%s',sent)
+
+
 def _media_pick(folder: str, prefer: str = '', exact: bool = False):
     """A photo from data/media/<folder>/ (owner-supplied, default heroine
     only): <prefer>.jpg when present, otherwise a random one (or None with
@@ -841,6 +930,8 @@ def start_scheduler(bot):
     # V3.44.16: the day-1 hook scans often but sends at most once per user.
     scheduler.add_job(_day1_hook,'interval',minutes=15,args=[bot],id='day1_hook',replace_existing=True)
     scheduler.add_job(_first_offer,'interval',minutes=10,args=[bot],id='first_offer',replace_existing=True)
+    # V3.75.0: scenario cards — scans often, one card a day per user at most.
+    scheduler.add_job(_scenario_cards,'interval',minutes=20,args=[bot],id='scenario_cards',replace_existing=True)
     if RITUALS_ENABLED:
         scheduler.add_job(_rituals,'interval',minutes=30,args=[bot],id='rituals',replace_existing=True)
     if DONATION_REMINDER_ENABLED and DONATION_LINK:

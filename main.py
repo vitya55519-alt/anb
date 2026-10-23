@@ -5821,6 +5821,140 @@ async def storyphotos_list(message: types.Message):
                          '\n\nдобавить: отправь фото с подписью /storyphoto Имя\nочистить: /storyphotos clear Имя')
 
 
+# ── V3.75.0: scenario cards (services/scenario_cards.py) ─────────────────────
+
+_scenario_renders: set[str] = set()
+
+
+def _scenes_admin_view():
+    import html
+    from services import scenario_cards as sc
+    from config import SCENARIO_COVER_COST_USD
+    have = sc.covers()
+    lines = ['🎬 <b>Сценарии-карточки</b>', '']
+    rows = []
+    missing = []
+    for s in sc.SCENARIOS:
+        name = _character_display_name(s.character_id)
+        ok = s.key in have
+        lines.append(f'{"✅" if ok else "⏳"} {html.escape(name)} — {html.escape(s.button)} <code>{s.key}</code>')
+        if ok:
+            rows.append([InlineKeyboardButton(text=f'👀 {name}: {s.button}', callback_data=f'scnadm:show:{s.key}'),
+                         InlineKeyboardButton(text='🔁', callback_data=f'scnadm:gen:{s.key}')])
+        else:
+            missing.append(s.key)
+            rows.append([InlineKeyboardButton(text=f'🎬 {name}: {s.button}', callback_data=f'scnadm:gen:{s.key}')])
+    per = SCENARIO_COVER_COST_USD + 0.035
+    if missing:
+        rows.insert(0, [InlineKeyboardButton(text=f'🎬 Сделать все недостающие ({len(missing)} × ~${per:.2f})',
+                                             callback_data='scnadm:genall')])
+    lines += ['',
+              f'Обложка делается один раз (~${per:.2f}) и потом уходит всем бесплатно. '
+              'Карточки получают только сцены с ✅: раз в сутки, вечером, тем, кто заходил за 2 недели.',
+              'Своя обложка: пришли видео или GIF с подписью <code>/scenecover ключ</code>.',
+              'Убрать обложку: <code>/scenes clear ключ</code>']
+    return '\n'.join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@dp.message(Command('scenes'))
+async def scenes_admin(message: types.Message):
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import scenario_cards as sc
+    parts = (message.text or '').split()
+    if len(parts) == 3 and parts[1].lower() in ('clear', 'очистить'):
+        await message.answer('🗑 обложка убрана' if sc.clear_cover(parts[2]) else 'нет такой обложки')
+        return
+    text, markup = _scenes_admin_view()
+    await message.answer(text, parse_mode='HTML', reply_markup=markup)
+
+
+@dp.message(F.caption.regexp(r'^/scenecover\b'))
+async def scenecover_upload(message: types.Message):
+    """Owner's own cover: a video / GIF / photo captioned «/scenecover key»."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import scenario_cards as sc
+    parts = (message.caption or '').split()
+    s = sc.get(parts[1]) if len(parts) > 1 else None
+    if not s:
+        await message.answer('не понял, для какой сцены. пример: /scenecover boss_late\n'
+                             'ключи: ' + ', '.join(x.key for x in sc.SCENARIOS))
+        return
+    if message.animation:
+        sc.set_cover(s.key, message.animation.file_id, 'animation')
+    elif message.video:
+        sc.set_cover(s.key, message.video.file_id, 'video')
+    elif message.photo:
+        sc.set_cover(s.key, message.photo[-1].file_id, 'photo')
+    else:
+        await message.answer('нужно видео, GIF или фото'); return
+    await message.answer(f'✅ обложка для «{s.button}» сохранена. /scenes — посмотреть')
+
+
+async def _render_scenario_cover(chat_id: int, key: str) -> None:
+    from services import scenario_cards as sc
+    s = sc.get(key)
+    if not s or key in _scenario_renders:
+        return
+    _scenario_renders.add(key)
+    try:
+        video, _still = await sc.render_cover(s)
+        msg = await bot.send_animation(
+            chat_id, BufferedInputFile(video, filename=f'{key}.mp4'),
+            caption=sc.caption(s, 0) + f'\n\n✅ обложка <code>{key}</code> готова', parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                text='🔁 переделать', callback_data=f'scnadm:gen:{key}')]]),
+        )
+        if msg.animation:
+            sc.set_cover(key, msg.animation.file_id, 'animation')
+        elif msg.video:
+            sc.set_cover(key, msg.video.file_id, 'video')
+        elif msg.document:
+            sc.set_cover(key, msg.document.file_id, 'animation')
+        logger.info('scenario cover ready key=%s', key)
+    except Exception as exc:
+        logger.warning('scenario cover failed key=%s: %s', key, exc)
+        await bot.send_message(chat_id, f'❌ обложка {key} не получилась: {str(exc)[:300]}\nможно нажать ещё раз')
+    finally:
+        _scenario_renders.discard(key)
+
+
+async def _render_scenario_covers(chat_id: int, keys: list[str]) -> None:
+    for key in keys:
+        await _render_scenario_cover(chat_id, key)
+
+
+@dp.callback_query(F.data.startswith('scnadm:'))
+async def scenes_admin_cb(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer(); return
+    from services import scenario_cards as sc
+    parts = (cq.data or '').split(':')
+    action = parts[1] if len(parts) > 1 else ''
+    if action == 'genall':
+        have = sc.covers()
+        keys = [s.key for s in sc.SCENARIOS if s.key not in have and s.key not in _scenario_renders]
+        await cq.answer('запустил')
+        await cq.message.answer(f'🎬 делаю обложки: {len(keys)} шт., по ~4–5 минут каждая. пришлю по одной.')
+        asyncio.create_task(_render_scenario_covers(cq.message.chat.id, keys))
+        return
+    s = sc.get(parts[2]) if len(parts) > 2 else None
+    if not s:
+        await cq.answer(); return
+    if action == 'gen':
+        if s.key in _scenario_renders:
+            await cq.answer('уже делаю', show_alert=True); return
+        await cq.answer('запустил')
+        await cq.message.answer(f'🎬 делаю обложку «{s.button}» (~4–5 минут)')
+        asyncio.create_task(_render_scenario_cover(cq.message.chat.id, s.key))
+    elif action == 'show':
+        await cq.answer()
+        from services.scheduler_service import send_scenario_card
+        if not await send_scenario_card(bot, None, cq.from_user.id, s):
+            await cq.message.answer('нет обложки или PUBLIC_BASE_URL')
+
+
 @dp.callback_query(F.data.startswith('story:'))
 async def story_choice_cb(cq: types.CallbackQuery):
     """V3.63.2: a tap on a story-hook choice (services/story_hooks.py). She
@@ -11526,6 +11660,62 @@ async def _webapp_api_select(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, **result}, headers={'Cache-Control': 'no-store'})
 
 
+async def _webapp_api_scenario_start(request: web.Request) -> web.Response:
+    """V3.75.0: the scenario card's button opens /webapp?open=chat&scene=<key>;
+    the app calls this first. She becomes his girl (same rules as «select»),
+    the scene direction switches on for a day, the tap bonus lands when the
+    card came within a day, and the app then sends his entrance line through
+    the normal chat so she answers in the scene."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    from services import scenario_cards as sc
+    from config import SCENARIO_TAP_PEACHES
+    scenario = sc.get(str((body or {}).get('key', '')))
+    if not scenario:
+        return web.json_response({'ok': False, 'error': 'unknown'}, status=400)
+
+    def _apply():
+        card = get_card(scenario.character_id)
+        if not card or not card.is_visible or card.status not in ('active', 'premium'):
+            return 'locked'
+        is_admin = telegram_id in ADMIN_TELEGRAM_IDS
+        if card.status == 'premium' and not is_admin and not is_premium(telegram_id):
+            return 'premium_required'
+        if not is_adult_confirmed(telegram_id):
+            return 'adult'
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        set_user_character(telegram_id, scenario.character_id)
+        started = sc.start(telegram_id, scenario.key)
+        if not started['sent']:
+            # a card that never went out (admin preview): her opening line
+            # still starts the dialog, as the sent card does
+            save_message(uid, scenario.character_id, 'assistant', sc.opening_line(scenario))
+        bonus = 0
+        if started['bonus_due'] and SCENARIO_TAP_PEACHES > 0:
+            if grant_photo_credits(telegram_id, SCENARIO_TAP_PEACHES, reason=f'scenario_{scenario.key}') >= 0:
+                bonus = SCENARIO_TAP_PEACHES
+        track_event(uid, 'scenario_card_open', character_id=scenario.character_id,
+                    metadata={'key': scenario.key, 'bonus': bonus})
+        return {'character_id': scenario.character_id, 'enter': scenario.enter, 'bonus': bonus,
+                'me': webapp_service.api_me(telegram_id),
+                'characters': webapp_service.api_characters(telegram_id)}
+
+    result = await asyncio.to_thread(_apply)
+    if isinstance(result, str):
+        return web.json_response({'ok': False, 'error': result},
+                                 status=403 if result in ('premium_required', 'adult') else 400)
+    return web.json_response({'ok': True, **result}, headers={'Cache-Control': 'no-store'})
+
+
 async def _webapp_api_spicy(request: web.Request) -> web.Response:
     """V3.43.5: the «пошлый режим» switch inside the Mini App Settings.
 
@@ -14439,6 +14629,7 @@ async def _start_web_server() -> None:
     # V3.43.0: the pay-method modal — card/SBP and crypto payment links.
     app.router.add_post('/webapp/api/pay_link', _webapp_api_pay_link)
     app.router.add_post('/webapp/api/select', _webapp_api_select)
+    app.router.add_post('/webapp/api/scenario/start', _webapp_api_scenario_start)
     app.router.add_post('/webapp/api/spicy', _webapp_api_spicy)
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)

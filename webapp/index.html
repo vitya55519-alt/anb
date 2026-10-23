@@ -2393,9 +2393,42 @@ function maybeDeepOpenChat(chars) {
     // V3.71.0: «🍑 пополнить» from the bot's circle paywall lands on the shop.
     if (sp.get('open') === 'shop') { showTab('shop'); return; }
     if (sp.get('open') !== 'chat') return;
+    // V3.75.0: a scenario card's button — straight into that scene with her.
+    if (sp.get('scene')) { startScenario(sp.get('scene')); return; }
     const c = (chars || []).find(x => x.selected) || (chars || []).find(x => x.status === 'active');
     if (!c || (c.status !== 'active' && !(c.status === 'premium' && ME && ME.premium))) return;
     openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: !!c.custom, selected: !!c.selected });
+  } catch (e) {}
+}
+
+// V3.75.0: the server switches to her and turns the scene on; then his
+// entrance line («*открываю дверь шире* заходи») goes through the normal
+// chat, so her first reply is already in the scene.
+async function startScenario(key) {
+  try {
+    const r = await fetch('/webapp/api/scenario/start?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: key }),
+    });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    const j = await r.json();
+    if (!j.ok) {
+      if (j.error === 'premium_required') { toast(L.need_premium); showTab('shop'); }
+      else if (j.error === 'adult') toast(L.adult_confirm_needed);
+      else toast(L.locked);
+      return;
+    }
+    if (j.characters) renderCharacters(j.characters);
+    loadMe();
+    const c = (j.characters || []).find(x => x.id === j.character_id);
+    if (!c) return;
+    await openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: !!c.custom, selected: true });
+    if (j.bonus) toast('🎁 +' + j.bonus + '🍑');
+    if (j.enter && CHAT && CHAT.id === c.id) {
+      document.getElementById('chatText').value = j.enter;
+      sendChat();
+    }
   } catch (e) {}
 }
 
@@ -2603,11 +2636,12 @@ function openChat(c) {
   document.getElementById('chatText').placeholder = L.input_ph;
   document.getElementById('chatMsgs').innerHTML = `<div class="loading">${esc(L.loading)}</div>`;
   document.getElementById('chatview').classList.add('open');
-  loadChatHistory(c.id);
+  const history = loadChatHistory(c.id);
   loadChatLevel(c.id);
   // V3.52.0: opening a chat marks it read on the server; drop the cached «Чаты»
   // list so the badge is cleared the next time the tab is visited.
   _chatsLoaded = false;
+  return history;
 }
 
 // V3.61.1: «Как начать чат?» — with a ready scene from her, or a clean chat.
