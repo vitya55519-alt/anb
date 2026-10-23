@@ -1409,12 +1409,16 @@ const L_EN = {
   peaches_title: 'Peaches', peaches_word: 'peaches', pack_hot: 'hit', peach_photo_hint: n => '1 photo of her = ' + n + ' 🍑',
   free_peaches_row: 'Free peaches every day — in Missions', price_list: 'What costs what',
   mis_today: 'Today', mis_reset: 'refresh at 03:00', mis_achievements: 'Achievements',
+  mis_invite: 'Invite a friend', mis_invite_btn: 'Invite',
+  mis_invite_hint: (p, n) => '+' + p + ' 🍑 to you and your friend once they write her ' + n + ' messages',
+  mis_invite_stat: (a, w) => 'friends: ' + a + (w ? ' · still chatting: ' + w : ''),
+  mis_invite_next: (n, p, d) => 'at ' + n + ' friends: +' + p + ' 🍑' + (d ? ' and ' + d + ' d. Premium' : ''),
   mis_today_hint: 'Chat with her for real — short and repeated messages do not count', mis_span: (a, b) => a + '/' + b + ' min',
   mis_claim: n => 'Claim +' + n + ' 🍑', mis_earned: (a, b) => 'Claimed ' + a + ' of ' + b + ' 🍑', mis_streak: n => n + ' d. streak',
   mis_ready: n => 'Ready — claim ' + n + ' 🍑', mis_done_list: n => 'Done (' + n + ')',
   mis_done_toast: (name, n) => '🏆 «' + name + '» done — claim +' + n + ' 🍑 in Missions',
   shop_title: 'Shop', missions_title: 'Missions', month: '/ 30 days', week: '7 days', pay_hint: 'Tap a pack — pay by card or with Telegram Stars.',
-  share_img: '📤 Share', invite_cta: '🍑 Invite a friend', invite_got: 'Link copied — share it and you both get 🍑', share_fail: 'Could not share', gal_share_hint: 'Share this photo — a friend who starts gets 🍑, and you too', save_img: '📥 Save', save_ok: 'Photo sent to your chat — forward it to a friend',
+  share_img: '📤 Share', invite_cta: '🍑 Invite a friend', invite_got: 'Link copied — share it and you both get 🍑', share_fail: 'Could not share', gal_share_hint: 'Share this photo — once a friend gets chatting with her, you both get 🍑', save_img: '📥 Save', save_ok: 'Photo sent to your chat — forward it to a friend',
     unlim_title: 'Unlimited messages', unlim_sub: 'First hours after sign-up — text is free', unlim_left: 'left',
   free_tier: 'Free tier', msg_day: 'messages per day', photos_day: 'photos per day',
   profile_title: 'Profile', premium_on: 'Premium active', premium_off: 'Free account',
@@ -1627,12 +1631,16 @@ const L_RU = {
   peaches_title: 'Персики', peaches_word: 'персиков', pack_hot: 'хит', peach_photo_hint: n => '1 фото от неё = ' + n + ' 🍑',
   free_peaches_row: 'Бесплатные персики каждый день — в «Миссиях»', price_list: 'Что сколько стоит',
   mis_today: 'Задания на сегодня', mis_reset: 'обновятся в 03:00', mis_achievements: 'Достижения',
+  mis_invite: 'Пригласи друга', mis_invite_btn: 'Позвать',
+  mis_invite_hint: (p, n) => '+' + p + ' 🍑 тебе и другу, когда он напишет ей ' + n + ' сообщений',
+  mis_invite_stat: (a, w) => 'приглашено: ' + a + (w ? ' · ещё общаются: ' + w : ''),
+  mis_invite_next: (n, p, d) => 'за ' + n + ' друзей: +' + p + ' 🍑' + (d ? ' и ' + d + ' дн. Premium' : ''),
   mis_today_hint: 'Общайся по-настоящему: короткие и повторяющиеся сообщения не засчитываются', mis_span: (a, b) => a + '/' + b + ' мин',
   mis_claim: n => 'Забрать +' + n + ' 🍑', mis_earned: (a, b) => 'Забрано ' + a + ' из ' + b + ' 🍑', mis_streak: n => 'серия ' + n + ' дн.',
   mis_ready: n => 'Готово — забирай ' + n + ' 🍑', mis_done_list: n => 'Выполнено (' + n + ')',
   mis_done_toast: (name, n) => '🏆 «' + name + '» выполнено — забери +' + n + ' 🍑 в «Миссиях»',
   shop_title: 'Магазин', missions_title: 'Миссии', month: '/ 30 дней', week: '7 дней', pay_hint: 'Нажми на пакет — оплата картой, СБП или звёздами Telegram.',
-  share_img: '📤 Поделиться', invite_cta: '🍑 Позвать друга', invite_got: 'Ссылка скопирована — делись, и вам обоим капнет 🍑', share_fail: 'Не удалось поделиться', gal_share_hint: 'Поделись фото — друг получит 🍑 за старт, и тебе тоже', save_img: '📥 Сохранить', save_ok: 'Фото отправлено в чат — перешли его другу',
+  share_img: '📤 Поделиться', invite_cta: '🍑 Позвать друга', invite_got: 'Ссылка скопирована — делись, и вам обоим капнет 🍑', share_fail: 'Не удалось поделиться', gal_share_hint: 'Поделись фото — когда друг разговорится с ней, вам обоим капнет 🍑', save_img: '📥 Сохранить', save_ok: 'Фото отправлено в чат — перешли его другу',
     unlim_title: 'Безлимитные сообщения', unlim_sub: 'Первые часы после регистрации — текст бесплатно', unlim_left: 'осталось',
   free_tier: 'Бесплатный функционал', msg_day: 'сообщений в день', photos_day: 'фото в день',
   profile_title: 'Профиль', premium_on: 'Premium активен', premium_off: 'Бесплатный аккаунт',
@@ -6284,12 +6292,24 @@ async function loadMissions() {
         <div class="misright">${right}</div>
       </div>`;
     };
+    // V3.80.0: «Пригласи друга» — 1 000 🍑 to both once the friend writes 10 real messages.
+    const inv = j.invite;
+    const inviteCard = (inv && _inviteLink()) ? `<div class="dailycard">
+        <div class="misrow" style="border:0;padding:0;margin:0">
+          <div class="misicon">👥</div>
+          <div class="mis-body"><div class="nm">${esc(L.mis_invite)}</div>
+            <div class="sub2">${esc(L.mis_invite_hint(fmtPeach(inv.peaches), inv.messages))}</div>
+            <div class="sub2">${esc(L.mis_invite_stat(inv.invited || 0, inv.waiting || 0))}${inv.next ? ' · ' + esc(L.mis_invite_next(inv.next.invites, fmtPeach(inv.next.credits), inv.next.premium_days)) : ''}</div></div>
+          <div class="misright"><button class="misclaim" id="misInviteBtn">${esc(L.mis_invite_btn)}</button></div>
+        </div>
+      </div>` : '';
     const head = `<div class="dailycard">
         <div class="dc-head"><span class="dc-t">🎯 ${esc(L.mis_today)}</span><span class="dc-s">${esc(L.mis_reset)}</span></div>
         <div class="dc-hint">${esc(L.mis_today_hint)}</div>
         ${daily.map(dRow).join('')}
         <div class="dc-streak">🔥 ${esc(L.mis_streak(j.streak || 0))}</div>
       </div>
+      ${inviteCard}
       <div class="mis-group">🏆 ${esc(L.mis_achievements)}</div>`;
     let html = head;
     if (ready.length) {
@@ -6311,6 +6331,8 @@ async function loadMissions() {
     body.innerHTML = html;
     body.querySelectorAll('.misrow[data-cta]').forEach(r =>
       r.addEventListener('click', () => _missionAction(r.dataset.cta)));
+    const invBtn = document.getElementById('misInviteBtn');
+    if (invBtn) invBtn.addEventListener('click', ev => { ev.stopPropagation(); if (!_fallbackShare()) toast(L.share_fail); });
     body.querySelectorAll('[data-claim]').forEach(b =>
       b.addEventListener('click', ev => { ev.stopPropagation(); claimMission(b.dataset.claim, b); }));
   } catch (e) {
