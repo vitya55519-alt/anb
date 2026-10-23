@@ -1,6 +1,6 @@
 {
   "id": "ksyusha_01",
-  "name": "Ксюша",
+  "name": "Лика",
   "age": 22,
   "is_adult": true,
   "identity_type": "fictional_ai_character",
@@ -94,7 +94,7 @@
       "mood",
       "hairstyle"
     ],
-    "identity_lock": "Ksyusha is a flirty 22-year-old party girl. Preserve her face and figure from the canonical references in every photo.",
+    "identity_lock": "Lika is a flirty 22-year-old party girl. Preserve her face and figure from the canonical references in every photo.",
     "identity_version": "ksyusha_v1_2026_10_23",
     "openai_face_anchor": "00_ksyusha_canonical_face.png",
     "openai_body_anchor": "01_ksyusha_canonical_look.png",

@@ -9,7 +9,7 @@ drops the user straight into that scene.
 Ours:
 
 * ``SCENARIOS`` — like Come Closer, every card brings a NEW girl (owner's
-  pick, V3.76.0): Лера, Диана, Ника, Ксюша, Марго, Аля are full built-in
+  pick, V3.76.0): Лера, Диана, Ника, Лика, Стелла, Аля are full built-in
   heroines (persona, references, voice, pools) whose storefront tile only
   appears for a user once her card reached him (``unlocked``);
 * the cover is rendered ONCE per scenario by the admin's «/scenes»: a
