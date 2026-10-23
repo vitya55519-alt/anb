@@ -9768,6 +9768,27 @@ async def refund_stars_cmd(message: types.Message):
         await message.answer(f'Не удалось сделать возврат: {type(exc).__name__}')
 
 
+@dp.message(Command('backup'))
+async def admin_backup_cmd(message: types.Message):
+    """V3.82.0: an on-demand DB backup for the owner (the daily one runs at 03:30 MSK)."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import backup_service
+    await message.answer('🗄 собираю бэкап базы…')
+    try:
+        data, counts = await asyncio.to_thread(backup_service.dump_database)
+    except Exception:
+        logger.exception('db backup dump failed (manual)')
+        await message.answer('⚠️ бэкап не получился, смотри логи Railway (db backup).')
+        return
+    caption = backup_service.summary_line(counts, len(data))
+    if len(data) > backup_service.TELEGRAM_DOC_LIMIT:
+        await message.answer(caption + '\n⚠️ файл больше лимита Telegram (50 МБ).')
+        return
+    await message.answer_document(BufferedInputFile(data, filename=backup_service.backup_filename()),
+                                  caption=caption[:1000])
+
+
 @dp.message(Command('stats', 'adminstats'))
 async def admin_stats_cmd(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
