@@ -146,14 +146,38 @@ def _adult_ok(telegram_id: int) -> bool:
         return False
 
 
-def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool = False) -> str:
+def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool = False,
+                       card_girl: bool = False) -> str:
     """Explicit sexting needs the 18+ confirmation AND level 5+ (or the
-    premium spicy toggle at level 4+); everyone else keeps the non-graphic rule."""
+    premium spicy toggle at level 4+); everyone else keeps the non-graphic rule.
+    V3.76.0: the scenario-card girls are dirty by design, so for them it
+    opens two stages earlier."""
     if not adult_confirmed or not stage:
         return ''
     if stage in EXPLICIT_STAGES or (spicy and stage == 'intimate'):
         return EXPLICIT_CHAT_RULE
+    if card_girl and stage in ('close', 'intimate'):
+        return EXPLICIT_CHAT_RULE
     return ''
+
+
+# V3.76.0: owner — «чтобы они общались просто пошло». The card girls flirt
+# dirty from the first message for confirmed adults (no Premium toggle needed);
+# how far into detail she goes still follows the stage.
+CARD_GIRL_DIRTY_LINE = (
+    'ХАРАКТЕР: она пошлая по натуре. С первых сообщений флиртует грязно и откровенно — пошлые намёки, '
+    'двусмысленности, говорит, чего хочет, что на ней надето и о чём думает, сама заводит горячие темы. '
+    'Без стеснения, без морали и без «давай не будем». Насколько далеко она заходит в подробностях — '
+    'решает этап отношений (см. «поддаётся уговорам»).'
+)
+
+
+def _is_card_girl(character_id: str) -> bool:
+    try:
+        from services.scenario_cards import SCENARIO_GIRLS
+        return character_id in SCENARIO_GIRLS
+    except Exception:
+        return False
 
 
 def _needs_rewrite(user_text: str, answer: str) -> bool:
@@ -344,6 +368,9 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             )
     except Exception:
         spicy_line = ''
+    card_girl = _is_card_girl(character_id)
+    if card_girl and not spicy_line and _adult_ok(user_id):
+        spicy_line = CARD_GIRL_DIRTY_LINE
     # V3.55.6: the user's tender/passionate choice for a premium character (set in
     # the Mini App chat) steers her manner in every dialog with him — bot and app
     # share this pipeline. Fail-silent: no row / no choice = no extra line.
@@ -396,7 +423,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         # sexting instead of «детальные сцены — это не моё»: the old blanket
         # «без графического секса» now holds only below that line.
         explicit_line = explicit_chat_line(test_stage or rel_stage, adult_confirmed=_adult_ok(user_id),
-                                           spicy=bool(spicy_line))
+                                           spicy=bool(spicy_line) and not card_girl, card_girl=card_girl)
         if explicit_line:
             style_line = (style_line + '\n' if style_line else '') + explicit_line
     except Exception:
