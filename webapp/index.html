@@ -4857,9 +4857,9 @@ async function loadShop() {
         <input type="number" id="customN" min="${esc(String(customItem.unit || 1))}" step="${esc(String(customItem.unit || 1))}" max="999900" placeholder="${esc(L.shop_custom_ph)}" inputmode="numeric">
         <button class="get" id="customGet">${esc(L.shop_custom_btn(0, ''))}</button>
       </div>` : '';
-    // V3.44.22: the constructor row carries no star price — public personas
-    // are free, private ones cost peaches (constructor_peaches rides along).
-    const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${i.stars ? esc(money(i)) : esc(L.constructor_price_note(s.constructor_peaches))}</span></div>`).join('');
+    // V3.70.0: every row is priced in peaches; the constructor row keeps its
+    // note (public personas free, private ones cost constructor_peaches).
+    const items = s.items.map(i => `<div class="row-item"><span class="n">${esc(i.emoji)} ${esc(i.name)}</span><span class="c">${esc(fmtN(i.peaches || s.constructor_peaches))} 🍑</span></div>`).join('');
     // V3.57.6: the shop note must not hardcode the chat ceiling (V3.57.7 restored
     // the published 30/day). It prints the number normally and falls back to
     // «unlimited» only if the ceiling is ever raised past a fair-use 1000.
