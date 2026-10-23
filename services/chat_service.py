@@ -147,13 +147,15 @@ def _adult_ok(telegram_id: int) -> bool:
 
 
 def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool = False,
-                       card_girl: bool = False) -> str:
+                       card_girl: bool = False, wild: bool = False) -> str:
     """Explicit sexting needs the 18+ confirmation AND level 5+ (or the
     premium spicy toggle at level 4+); everyone else keeps the non-graphic rule.
     V3.76.0: the scenario-card girls are dirty by design, so for them it
     opens two stages earlier."""
     if not adult_confirmed or not stage:
         return ''
+    if wild:  # V3.78.0: he picked «😈 Без тормозов» for a Premium storyline
+        return EXPLICIT_CHAT_RULE
     if stage in EXPLICIT_STAGES or (spicy and stage == 'intimate'):
         return EXPLICIT_CHAT_RULE
     if card_girl and stage in ('close', 'intimate'):
@@ -371,6 +373,14 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     card_girl = _is_card_girl(character_id)
     if card_girl and not spicy_line and _adult_ok(user_id):
         spicy_line = CARD_GIRL_DIRTY_LINE
+    # V3.78.0: the level he picked for a running storyline wins in its scene
+    try:
+        from services.storylines import heat as _plot_heat
+        plot_heat = _plot_heat(user_id, character_id)
+    except Exception:
+        plot_heat = None
+    if plot_heat == 'soft':
+        spicy_line = ''
     # V3.55.6: the user's tender/passionate choice for a premium character (set in
     # the Mini App chat) steers her manner in every dialog with him — bot and app
     # share this pipeline. Fail-silent: no row / no choice = no extra line.
@@ -423,7 +433,10 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         # sexting instead of «детальные сцены — это не моё»: the old blanket
         # «без графического секса» now holds only below that line.
         explicit_line = explicit_chat_line(test_stage or rel_stage, adult_confirmed=_adult_ok(user_id),
-                                           spicy=bool(spicy_line) and not card_girl, card_girl=card_girl)
+                                           spicy=bool(spicy_line) and not card_girl, card_girl=card_girl,
+                                           wild=plot_heat == 'wild')
+        if plot_heat == 'soft':
+            explicit_line = ''
         if explicit_line:
             style_line = (style_line + '\n' if style_line else '') + explicit_line
     except Exception:
@@ -452,6 +465,10 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         try:
             from services.scenario_cards import direction_for
             scene = direction_for(user_id, character_id, str(character.get('name') or ''))
+            if not scene:
+                # V3.78.0: a Premium storyline he picked on her page
+                from services.storylines import direction_for as plot_direction_for
+                scene = plot_direction_for(user_id, character_id, str(character.get('name') or ''), tick=True)
         except Exception:
             scene = ''
         if scene:

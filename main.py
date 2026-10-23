@@ -11715,6 +11715,11 @@ async def _webapp_api_scenario_start(request: web.Request) -> web.Response:
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
         set_user_character(telegram_id, scenario.character_id)
         started = sc.start(telegram_id, scenario.key)
+        try:  # V3.78.0: the card's scene replaces a running storyline
+            from services import storylines
+            storylines.stop(telegram_id, scenario.character_id)
+        except Exception:
+            pass
         if not started['sent']:
             # a card that never went out (admin preview): her opening line
             # still starts the dialog, as the sent card does
@@ -11734,6 +11739,93 @@ async def _webapp_api_scenario_start(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': result},
                                  status=403 if result in ('premium_required', 'adult') else 400)
     return web.json_response({'ok': True, **result}, headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_api_storylines(request: web.Request) -> web.Response:
+    """V3.78.0: her «🎬 Сюжеты» list (titles and teasers) plus whether he
+    can play them — every storyline needs Premium."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    from services import storylines
+    character_id = str(request.query.get('character_id', ''))
+
+    consume = request.query.get('consume') == '1'
+
+    def _read():
+        unlocked = telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id)
+        state = storylines.status(telegram_id, character_id, consume=consume)
+        return {'plots': storylines.public_list(character_id), 'unlocked': bool(unlocked), **state}
+
+    return web.json_response({'ok': True, **(await asyncio.to_thread(_read))},
+                             headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_api_storyline_start(request: web.Request) -> web.Response:
+    """V3.78.0: he picked a storyline. Premium (or admin) and the 18+
+    confirmation are required; her opening line lands in the dialog and the
+    scene direction stays on her replies for a day. The app then opens the
+    chat, where her line is already waiting."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    from services import storylines
+    from services import scenario_cards as sc
+    plot = storylines.get(str((body or {}).get('character_id', '')), str((body or {}).get('key', '')))
+    if not plot:
+        return web.json_response({'ok': False, 'error': 'unknown'}, status=400)
+    heat = str((body or {}).get('heat', 'hot'))
+    if heat not in storylines.HEATS:
+        heat = 'hot'
+
+    def _apply():
+        card = get_card(plot.character_id)
+        if not card or not card.is_visible or card.status not in ('active', 'premium'):
+            return 'locked'
+        if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+            return 'premium_required'
+        if not is_adult_confirmed(telegram_id):
+            return 'adult'
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        sc.stop(telegram_id, plot.character_id)
+        storylines.start(telegram_id, plot, heat)
+        save_message(uid, plot.character_id, 'assistant', plot.opening)
+        track_event(uid, 'storyline_start', character_id=plot.character_id, metadata={'key': plot.key, 'heat': heat})
+        return {'character_id': plot.character_id, 'key': plot.key}
+
+    result = await asyncio.to_thread(_apply)
+    if isinstance(result, str):
+        return web.json_response({'ok': False, 'error': result},
+                                 status=403 if result in ('premium_required', 'adult') else 400)
+    return web.json_response({'ok': True, **result}, headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_api_storyline_stop(request: web.Request) -> web.Response:
+    """V3.78.0: «Без ролей» — he leaves the storyline; she is herself again."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    from services import storylines
+    stopped = await asyncio.to_thread(storylines.stop, telegram_id, str((body or {}).get('character_id', '')))
+    return web.json_response({'ok': True, 'stopped': bool(stopped)}, headers={'Cache-Control': 'no-store'})
 
 
 async def _webapp_api_spicy(request: web.Request) -> web.Response:
@@ -14664,6 +14756,9 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/pay_link', _webapp_api_pay_link)
     app.router.add_post('/webapp/api/select', _webapp_api_select)
     app.router.add_post('/webapp/api/scenario/start', _webapp_api_scenario_start)
+    app.router.add_get('/webapp/api/storylines', _webapp_api_storylines)
+    app.router.add_post('/webapp/api/storyline/start', _webapp_api_storyline_start)
+    app.router.add_post('/webapp/api/storyline/stop', _webapp_api_storyline_stop)
     app.router.add_post('/webapp/api/spicy', _webapp_api_spicy)
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
