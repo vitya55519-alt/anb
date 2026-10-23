@@ -162,3 +162,16 @@ def test_card_girls_unlock_with_their_card():
     webapp = (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')
     assert 'scenario_cards.unlocked(telegram_id' in webapp
     assert 'if card.character_id in SCENARIO_GIRLS' in MAIN
+
+
+def test_anime_girls_are_drawn_and_card_girl_photos_need_premium():
+    from services import photo_service
+    anime = [cid for cid in sc.SCENARIO_GIRLS if photo_service.art_style(cid) == 'anime']
+    assert len(anime) >= 3
+    out = photo_service.apply_art_style('Photorealistic smartphone photo, natural skin texture', anime[0])
+    assert out.startswith('ART STYLE') and 'Photorealistic' not in out
+    assert photo_service.apply_art_style('Photorealistic', 'anna_01') == 'Photorealistic'
+    assert 'ART STYLE' in sc.still_prompt(sc.get('maid_cafe'))
+    assert 'ART STYLE' not in sc.still_prompt(sc.get('night_shift'))
+    assert "return 'premium'" in MAIN and '_card_girl_photo_locked(character_id, telegram_id)' in MAIN
+    assert "j.photo_block === 'premium'" in INDEX

@@ -626,7 +626,8 @@ def build_private_photo_prompt(
     elif request.category == "suggestive":
         parts.append("Clothed and non-explicit: her bra may show as described, no nudity")
     
-    return "\n".join(parts)
+    from services.photo_service import apply_art_style
+    return apply_art_style("\n".join(parts), request.character_id)
 
 
 # ─── SpicyAPI интеграция ───────────────────────────────────────────────────────

@@ -265,20 +265,23 @@ def still_prompt(s: Scenario) -> str:
     """The cover's first frame (Seedream edit with her face + look refs)."""
     from services.private_photo_service import _build_visual_identity_lock
     identity = _build_visual_identity_lock(s.character_id)
-    return (
+    prompt = (
         f'{identity}\n'
         f'Photorealistic vertical smartphone photo of the same adult woman from the reference images, {s.still}. '
         'Square-friendly composition: her face and upper body centred in the frame, face fully visible, '
         'sharp focus on the eyes, cinematic natural light, natural skin texture. '
         'She is fully dressed in the described outfit, no nudity, one person only, no text, no watermark.'
     )
+    from services.photo_service import apply_art_style
+    return apply_art_style(prompt, s.character_id)
 
 
 def motion_prompt(s: Scenario) -> str:
-    return (
+    from services.photo_service import apply_art_style
+    return apply_art_style(
         f'{s.motion} Subtle natural movement, gentle breathing, hair moves slightly, camera almost still. '
         'Adult woman, exactly the same face, hair, outfit and body as in the photo, she stays dressed, '
-        'one person only, photorealistic, sharp focus, no text.'
+        'one person only, photorealistic, sharp focus, no text.', s.character_id
     )
 
 

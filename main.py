@@ -1828,6 +1828,10 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
         await bot.send_message(chat_id, 'такой образ я пока оставлю при себе 😏')
         return
 
+    if _card_girl_photo_locked(get_user_character(telegram_id), telegram_id):
+        await bot.send_message(chat_id, CHAT_PHOTO_BLOCK_TEXT['premium'],
+                               reply_markup=premium_keyboard(telegram_id=telegram_id))
+        return
     if requires_adult_confirmation(request) and not is_adult_confirmed(telegram_id):
         _pending_adult_photo[telegram_id] = request
         await bot.send_message(chat_id, 'для более смелых fashion-образов нужно один раз подтвердить, что тебе 18+.', reply_markup=adult_keyboard())
@@ -11945,7 +11949,17 @@ CHAT_PHOTO_BLOCK_TEXT = {
               'а обычное селфи могу прямо сейчас, попроси «пришли селфи»'),
     'adult': 'для такого фото подтверди, что тебе 18+, — и я покажу 🔥',
     'failed': 'ой, фото не загрузилось 😔 попробуй ещё раз — персики не списались',
+    # V3.76.0: card girls' pictures are a Premium thing (as at Come Closer).
+    'premium': 'хочу показать тебе фото… но мои фото только для тех, у кого Premium 😏 оформишь — пришлю сразу',
 }
+
+
+def _card_girl_photo_locked(character_id: str, telegram_id: int) -> bool:
+    """V3.76.0: owner — «у нашего конкурента все на прем идёт». Chatting
+    with a scenario-card girl is free; her photos and videos need Premium."""
+    from services.scenario_cards import SCENARIO_GIRLS
+    return (character_id in SCENARIO_GIRLS and telegram_id not in ADMIN_TELEGRAM_IDS
+            and not is_premium(telegram_id))
 
 
 # V3.60.9: she promises a photo in her own words («лови фотку», «держи селфи 📸»)
@@ -11981,6 +11995,8 @@ def _accepts_her_photo_offer(uid: int, character_id: str, text: str) -> bool:
 
 def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | None:
     """The stage / 18+ / peaches gates of a chat photo; None = go."""
+    if _card_girl_photo_locked(character_id, telegram_id):
+        return 'premium'
     if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
         return 'adult'
     if not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
@@ -12116,11 +12132,11 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             if payload:
                 return web.json_response(payload)
             block = 'failed'
-        if block == 'peaches':
-            # keep her words, add the honest «out of peaches» note + top-up button
-            note = CHAT_PHOTO_BLOCK_TEXT['peaches'].format(price=CHAT_PHOTO_PEACH_COST)
+        if block in ('peaches', 'premium'):
+            # keep her words, add the honest «out of peaches» / «Premium» note + button
+            note = CHAT_PHOTO_BLOCK_TEXT[block].format(price=CHAT_PHOTO_PEACH_COST)
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
-            return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, 'photo_block': 'peaches',
+            return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, 'photo_block': block,
                                       'photo_price': CHAT_PHOTO_PEACH_COST, **(extra or {})})
         if block == 'failed':
             note = CHAT_PHOTO_BLOCK_TEXT['failed']
@@ -13617,6 +13633,8 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             if not card or card.status not in ('active', 'premium'):
                 return web.json_response({'ok': False, 'error': 'locked'}, status=403)
             if card.status == 'premium' and not is_premium(telegram_id):
+                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+            if kind != 'voice' and _card_girl_photo_locked(character_id, telegram_id):
                 return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
         if not has_accepted(telegram_id):
             return web.json_response({'ok': False, 'error': 'consent'}, status=403)

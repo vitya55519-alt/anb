@@ -855,6 +855,42 @@ DEFAULT_FEMALE_BODY_SPEC = (
     'a curvy feminine hourglass build with a wasp waist, round lifted hips '
     'and a natural full bust (silicone, Russian size 4, D cup)'
 )
+# V3.76.0: anime heroines (owner: «и нужны аниме модели») are drawn, never
+# photographed. Their persona JSON says visual_identity.art_style = 'anime';
+# every prompt built for them gets this head and loses its realism words.
+ANIME_STYLE_HEAD = (
+    'ART STYLE (overrides every realism or photo word below): a high-quality 2D anime illustration, '
+    'cel-shaded, clean lineart, vibrant colors, detailed painted anime background. The same anime '
+    'character as in the reference images, clearly an adult woman with a mature face and adult '
+    'proportions. Never a photograph, never photorealistic, never 3D.'
+)
+_REALISM_WORDS = re.compile(
+    r'(photo-?realistic|hyper-?realistic|realistic smartphone-style photo|smartphone-style photo|'
+    r'realistic smartphone photo|smartphone photo|natural skin texture|natural skin|real photo|'
+    r'photorealism|photograph)', re.IGNORECASE)
+_ART_STYLE_CACHE: dict[str, str] = {}
+
+
+def art_style(character_id: str | None) -> str:
+    """'anime' or 'photo' (custom girls and unknown ids are 'photo')."""
+    cid = character_id or ''
+    if cid not in _ART_STYLE_CACHE:
+        style = 'photo'
+        try:
+            from services.character_registry import get_character
+            style = str((get_character(cid).get('visual_identity') or {}).get('art_style') or 'photo')
+        except Exception:
+            pass
+        _ART_STYLE_CACHE[cid] = style
+    return _ART_STYLE_CACHE[cid]
+
+
+def apply_art_style(prompt: str, character_id: str | None) -> str:
+    if art_style(character_id) != 'anime' or not prompt:
+        return prompt
+    return ANIME_STYLE_HEAD + '\n' + _REALISM_WORDS.sub('anime illustration', prompt)
+
+
 # V3.59.3: image models do not know what «Russian size 4 / D cup» looks like,
 # so the bust kept drifting between photos of the same girl. Each declared cup
 # now also gets a plain visual description the engines do follow.
@@ -2195,7 +2231,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     bust_lock_tail = f'\n{bust_lock}' if bust_lock else ''
     if not private_look and level_key >= 3:
         public_dress_rule += LEVEL_HEMLINE_RULE + '\n'
-    return (
+    return apply_art_style(
         f'{identity}\n'
         f'{adult_lock}\n'
         f'SCENE: {scene}. {request.location}.\n'
@@ -2230,7 +2266,8 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'{safety}\n'
         f'{QUALITY_BLOCK}\n'
         f'{NEGATIVE_BLOCK}'
-        + bust_lock_tail
+        + bust_lock_tail,
+        character_id,
     )
 
 

@@ -3058,6 +3058,10 @@ function renderChatReply(j) {
     if (parts.length > 1) playFollowups(parts.slice(1));
   }
   // V3.60.3: no peaches for the photo she promised — one tap to the shop.
+  // V3.76.0: a card girl's photos are Premium-only — one tap to the shop.
+  if (j.photo_block === 'premium') {
+    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="showTab('shop')">⭐ ${esc(L.need_premium)}</button></div>`);
+  }
   if (j.photo_block === 'peaches') {
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="showTab('shop')">🍑 Пополнить персики · фото ${esc(String(Number(j.photo_price) || 200))} 🍑</button></div>`);
   }
