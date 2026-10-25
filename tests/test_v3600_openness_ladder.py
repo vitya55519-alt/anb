@@ -41,5 +41,8 @@ def test_explicit_rule_needs_adult_and_level():
 def test_admin_test_level_gets_the_ladder():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / 'services' / 'chat_service.py').read_text(encoding='utf-8')
-    assert "OPENNESS_LADDER.get(test_stage, '')" in src
+    # V3.82.2: the test level goes through the real stage frame, which adds the ladder.
+    assert 'test_stage_context, user_id, character_id, test_stage' in src
+    eng = (Path(__file__).resolve().parents[1] / 'services' / 'relationship_engine.py').read_text(encoding='utf-8')
+    assert "OPENNESS_LADDER.get(stage, '')" in eng
     assert 'explicit_chat_line(test_stage or rel_stage' in src

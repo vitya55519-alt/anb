@@ -2899,7 +2899,9 @@ function pathMapHtml(j) {
   const mp = j.map; if (!mp) return '';
   const icon = { done: '✅', current: '⭐', locked: '🔒', other: '🔒', choose: '❔' };
   const item = (x) => '<div class="pm ' + x.state + '">' + icon[x.state] + ' ' + x.level + ' · ' + esc(x.title) + (x.premium ? ' 💎' : '')
-    + (x.state === 'other' && x.perks && x.perks.length ? '<span class="pp">' + esc(L.fork_would) + ' ' + esc(x.perks[0]) + '</span>' : '')
+    // V3.82.2: his own path shows what each level gives too (it used to be
+    // blank — only the other path had «там: …»).
+    + (x.perks && x.perks.length ? '<span class="pp">' + (x.state === 'other' || x.state === 'choose' ? esc(L.fork_would) + ' ' : '') + esc(x.perks[0]) + '</span>' : '')
     + '</div>';
   const col = (b) => {
     const head = (j.branch && j.branch !== b) ? '🔒 ' + (b === 'romance' ? L.path_romance_other : L.path_passion_other)
