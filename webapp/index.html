@@ -290,6 +290,8 @@
   .lvlsheet .pm.done { opacity: .85; }
   .lvlsheet .pm.locked, .lvlsheet .pm.choose { opacity: .6; }
   .lvlsheet .pm.other { opacity: .45; filter: blur(.2px); }
+  .lvlsheet .pm.pick { cursor: pointer; }
+  .lvlsheet .pkh { font-size: 12px; opacity: .85; margin: 4px 0 8px; }
   .lvlsheet .pm .pp { display: block; font-size: 11px; opacity: .8; margin-top: 2px; font-weight: 400; }
   .lvlsheet .forkq { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(255,95,162,.12); font-size: 13px; }
   .forkrow { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
@@ -1394,7 +1396,7 @@ const LANG = APP_LANGS.includes(_savedLang) ? _savedLang
   : (_tgLang.startsWith('ru') ? 'ru' : (APP_LANGS.find(x => _tgLang.startsWith(x)) || 'en'));
 
 const L_EN = {
-  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', fork_romance: '❤️ I really like you', fork_passion: '🔥 I don\'t think of you as a friend 😏', fork_q: 'She is waiting for your answer: which path are you on?', fork_taken: 'The path is already chosen', fork_romance_on: '❤️ The path of romance', fork_passion_on: '🔥 The path of passion', fork_would: 'there:', path_map: 'Your road', path_romance: 'Romance', path_passion: 'Passion', path_romance_other: 'on the romance path', path_passion_other: 'on the passion path', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', pa_failed: 'Did not work, nothing was charged — try again', pa_not_found: 'This photo can no longer be edited', video_limit: 'free animations are used up', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
+  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', fork_romance: '❤️ I really like you', fork_passion: '🔥 I don\'t think of you as a friend 😏', fork_q: 'She is waiting for your answer: which path are you on?', fork_taken: 'The path is already chosen', fork_romance_on: '❤️ The path of romance', fork_passion_on: '🔥 The path of passion', fork_would: 'there:', path_map: 'Your road', path_romance: 'Romance', path_passion: 'Passion', path_romance_other: 'on the romance path', path_passion_other: 'on the passion path', lvl_pick_hint: 'Premium: tap any level and she talks that way right away', lvl_pick_reset: 'Back to the real level', lvl_pick_premium: 'With Premium you can pick any level 1–10', lvl_pick_done: 'level picked:', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', pa_failed: 'Did not work, nothing was charged — try again', pa_not_found: 'This photo can no longer be edited', video_limit: 'free animations are used up', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   typing_now: 'typing…',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
@@ -1616,7 +1618,7 @@ const L_EN = {
 // V3.43.5: the full Russian dictionary stays the base; five more interface
 // languages arrive below as partial overrides on top of the English one.
 const L_RU = {
-  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', fork_romance: '❤️ Ты мне правда нравишься', fork_passion: '🔥 Я думаю о тебе совсем не по-дружески 😏', fork_q: 'Она ждёт твоего ответа: какой у вас путь?', fork_taken: 'Путь уже выбран', fork_romance_on: '❤️ Вы на пути романтики', fork_passion_on: '🔥 Вы на пути страсти', fork_would: 'там:', path_map: 'Ваша дорога', path_romance: 'Романтика', path_passion: 'Страсть', path_romance_other: 'на пути романтики', path_passion_other: 'на пути страсти', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', pa_failed: 'Не получилось, персики не списаны — попробуй ещё раз', pa_not_found: 'Это фото уже нельзя изменить', video_limit: 'бесплатные оживления закончились', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
+  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', fork_romance: '❤️ Ты мне правда нравишься', fork_passion: '🔥 Я думаю о тебе совсем не по-дружески 😏', fork_q: 'Она ждёт твоего ответа: какой у вас путь?', fork_taken: 'Путь уже выбран', fork_romance_on: '❤️ Вы на пути романтики', fork_passion_on: '🔥 Вы на пути страсти', fork_would: 'там:', path_map: 'Ваша дорога', path_romance: 'Романтика', path_passion: 'Страсть', path_romance_other: 'на пути романтики', path_passion_other: 'на пути страсти', lvl_pick_hint: 'Premium: нажми на любой уровень, и она сразу будет общаться так', lvl_pick_reset: 'Вернуть настоящий уровень', lvl_pick_premium: 'С Premium можно выбрать любой уровень 1–10', lvl_pick_done: 'уровень выбран:', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', pa_failed: 'Не получилось, персики не списаны — попробуй ещё раз', pa_not_found: 'Это фото уже нельзя изменить', video_limit: 'бесплатные оживления закончились', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   typing_now: 'печатает…',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
@@ -2898,7 +2900,7 @@ async function loadChatLevel(characterId) {
 function pathMapHtml(j) {
   const mp = j.map; if (!mp) return '';
   const icon = { done: '✅', current: '⭐', locked: '🔒', other: '🔒', choose: '❔' };
-  const item = (x) => '<div class="pm ' + x.state + '">' + icon[x.state] + ' ' + x.level + ' · ' + esc(x.title) + (x.premium ? ' 💎' : '')
+  const item = (x, b) => '<div class="pm ' + x.state + (j.can_pick ? ' pick' : '') + '" data-lv="' + x.level + '" data-br="' + (b || '') + '">' + icon[x.state] + ' ' + x.level + ' · ' + esc(x.title) + (x.premium ? ' 💎' : '')
     // V3.82.2: his own path shows what each level gives too (it used to be
     // blank — only the other path had «там: …»).
     + (x.perks && x.perks.length ? '<span class="pp">' + (x.state === 'other' || x.state === 'choose' ? esc(L.fork_would) + ' ' : '') + esc(x.perks[0]) + '</span>' : '')
@@ -2906,9 +2908,14 @@ function pathMapHtml(j) {
   const col = (b) => {
     const head = (j.branch && j.branch !== b) ? '🔒 ' + (b === 'romance' ? L.path_romance_other : L.path_passion_other)
       : (b === 'romance' ? '❤️ ' + L.path_romance : '🔥 ' + L.path_passion);
-    return '<div class="pcol"><div class="ph">' + esc(head) + '</div>' + (mp[b] || []).map(item).join('') + '</div>';
+    return '<div class="pcol"><div class="ph">' + esc(head) + '</div>' + (mp[b] || []).map(x => item(x, b)).join('') + '</div>';
   };
-  return '<div class="pmap"><div class="pmh">' + esc(L.path_map) + '</div>' + (mp.common || []).map(item).join('')
+  // V3.83.0: Premium picks any level 1-10 right on the map.
+  const pickHint = j.can_pick
+    ? '<div class="pkh">💎 ' + esc(L.lvl_pick_hint) + '</div>'
+      + (j.picked ? '<button class="close" id="lvlPickReset" style="margin:6px 0">↩ ' + esc(L.lvl_pick_reset) + '</button>' : '')
+    : '<button class="close" id="lvlPickPremium" style="margin:6px 0">💎 ' + esc(L.lvl_pick_premium) + '</button>';
+  return '<div class="pmap"><div class="pmh">' + esc(L.path_map) + '</div>' + pickHint + (mp.common || []).map(x => item(x, '')).join('')
     + '<div class="pcols">' + col('romance') + col('passion') + '</div></div>';
 }
 
@@ -2960,6 +2967,31 @@ function openLevelSheet() {
   sheet.onclick = (e) => { if (e.target === sheet) close(); };
   const prem = document.getElementById('lvlPremium');
   if (prem) prem.onclick = () => { close(); showTab('shop'); };
+  const pickPrem = document.getElementById('lvlPickPremium');
+  if (pickPrem) pickPrem.onclick = () => { close(); showTab('shop'); };
+  const pickReset = document.getElementById('lvlPickReset');
+  if (pickReset) pickReset.onclick = () => pickLevel(0, '');
+  if (j.can_pick) document.querySelectorAll('#lvlBox .pm.pick').forEach(el => {
+    el.onclick = () => pickLevel(+el.dataset.lv, el.dataset.br || '');
+  });
+}
+
+// V3.83.0: Premium — «выбери любой уровень общения» for this girl.
+async function pickLevel(level, branch) {
+  if (!CHAT) return;
+  const cid = CHAT.id;
+  try {
+    const r = await fetch('/webapp/api/chat/level/pick?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: cid, level: level, branch: branch }),
+    });
+    const j = await r.json();
+    if (!j.ok) { toast(j.error === 'premium' ? L.lvl_pick_premium : L.load_failed); return; }
+    CHAT_LEVEL = null;
+    await loadChatLevel(cid);
+    toast(level ? '✨ ' + L.lvl_pick_done + ' ' + level : '↩ ' + L.lvl_pick_reset);
+    openLevelSheet();
+  } catch (e) { toast(L.load_failed); }
 }
 
 // V3.61.2: «позвать в чат» — invite another girl into this chat; both answer,

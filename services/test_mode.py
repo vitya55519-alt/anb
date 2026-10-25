@@ -78,14 +78,90 @@ def clear_stage(user_id: int) -> None:
     _loaded.add(int(user_id))
     _db_write(user_id, None)
 
-def get_stage(user_id: int) -> str | None:
+def get_stage(user_id: int, character_id: str | None = None) -> str | None:
+    """The owner's /testlevel first; then (V3.83.0) the level a Premium user
+    picked for this girl. Callers without a girl see only /testlevel."""
     uid = int(user_id)
     if uid not in _loaded:
         _loaded.add(uid)
         stage = _db_read(uid)
         if stage:
             _overrides[uid] = stage
-    return _overrides.get(uid)
+    if uid in _overrides:
+        return _overrides[uid]
+    if character_id:
+        return picked_stage(uid, character_id)
+    return None
+
+
+# V3.83.0: «с Premium можно выбрать любой уровень общения» — per girl, 1-10.
+# Stored as {character_id: stage}; it only applies while Premium is active,
+# and never touches the real scores, so real progress resumes without it.
+_PICKS_KEY = 'level_pick'
+_picks: dict[int, dict] = {}
+
+
+def _picks_store():
+    from services.dialog_store import DialogStore
+    return DialogStore(_PICKS_KEY)
+
+
+def _load_picks(uid: int) -> dict:
+    if uid not in _picks:
+        try:
+            _picks[uid] = dict(_picks_store().get(uid) or {})
+        except Exception:
+            _picks[uid] = {}
+    return _picks[uid]
+
+
+def _premium(uid: int) -> bool:
+    try:
+        from config import ADMIN_TELEGRAM_IDS
+        if uid in ADMIN_TELEGRAM_IDS:
+            return True
+        from services.access_service import is_premium
+        return bool(is_premium(uid))
+    except Exception:
+        return False
+
+
+def picked_stages(user_id: int) -> dict:
+    """{character_id: stage} the user picked, empty without Premium."""
+    uid = int(user_id)
+    picks = _load_picks(uid)
+    if not picks or not _premium(uid):
+        return {}
+    return {cid: st for cid, st in picks.items() if st in STAGES}
+
+
+def picked_stage(user_id: int, character_id: str) -> str | None:
+    uid = int(user_id)
+    stage = _load_picks(uid).get(character_id)
+    if stage not in STAGES or not _premium(uid):
+        return None
+    return stage
+
+
+def pick_stage(user_id: int, character_id: str, stage: str | None) -> None:
+    """Set (or with None clear) his chosen level for this girl."""
+    uid = int(user_id)
+    picks = dict(_load_picks(uid))
+    if stage is None:
+        picks.pop(character_id, None)
+    elif stage in STAGES:
+        picks[character_id] = stage
+    else:
+        raise ValueError(stage)
+    _picks[uid] = picks
+    try:
+        store = _picks_store()
+        if picks:
+            store[uid] = picks
+        else:
+            store.pop(uid, None)
+    except Exception:
+        pass
 
 def get_status(user_id: int) -> str:
     return get_stage(user_id) or "off"

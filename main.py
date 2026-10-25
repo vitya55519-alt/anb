@@ -1225,6 +1225,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 🎥 video circles from me — paid in 🍑',
             '• 🎙 voice replies — Premium only',
             '• 💋 relationship levels 7–10 — the top of the romance or passion path',
+            '• 🎚 any relationship level 1–10 — pick it yourself on the level panel in chat',
             '• 2 free replays of alternative quest branches per month',
             '• more memory, initiative and morning/evening messages',
         ]
@@ -1237,6 +1238,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             '• 🎥 видео-кружочки от меня — за 🍑',
             '• 🎙 голосовые ответы — только для Premium',
             '• 💋 уровни 7–10 отношений — вершина пути романтики или страсти',
+            '• 🎚 любой уровень общения 1–10 — выбираешь сам, в панели уровня в чате',
             '• 2 бесплатных replay альтернативных квест-веток в месяц',
             '• больше памяти, инициативы и утренних/вечерних сообщений',
         ]
@@ -11925,7 +11927,7 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
                 from services.test_mode import get_stage as _fork_test_stage
                 fork_pending = maybe_offer_fork(
                     uid, character_id, taken=guest_marital(telegram_id, character_id) in TAKEN_STATUSES,
-                    stage_override=_fork_test_stage(telegram_id))
+                    stage_override=_fork_test_stage(telegram_id, character_id))
             except Exception:
                 logger.exception('fork offer on chat open failed user=%s', telegram_id)
         # V3.52.0: opening the conversation in the app marks it read — the «Чаты»
@@ -12731,7 +12733,12 @@ async def _webapp_api_chat_level(request: web.Request) -> web.Response:
             from services.chat_guest_service import guest_marital
             from services.relationship_engine import TAKEN_STATUSES
             taken = guest_marital(telegram_id, character_id) in TAKEN_STATUSES
-            return level_snapshot(session, row, get_test_stage(telegram_id), premium=premium, taken=taken)
+            snap = level_snapshot(session, row, get_test_stage(telegram_id, character_id), premium=premium, taken=taken)
+            # V3.83.0: Premium picks any level 1-10 on the level panel.
+            from services.test_mode import picked_stage
+            snap['can_pick'] = bool(premium)
+            snap['picked'] = bool(picked_stage(telegram_id, character_id))
+            return snap
 
     try:
         snap = await asyncio.to_thread(_snap)
@@ -12739,6 +12746,50 @@ async def _webapp_api_chat_level(request: web.Request) -> web.Response:
         logger.exception('webapp chat level failed user=%s', telegram_id)
         return web.json_response({'ok': False, 'error': 'level'}, status=500)
     return web.json_response({'ok': True, **snap})
+
+
+async def _webapp_api_chat_level_pick(request: web.Request) -> web.Response:
+    """V3.83.0: a Premium user picks any level 1-10 for this girl (level 0 =
+    back to the real progress). Levels 4-10 also pick the path."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    branch = str(body.get('branch') or '')
+    try:
+        level = int(body.get('level', -1))
+    except (TypeError, ValueError):
+        level = -1
+    from services.test_mode import STAGES as _PICK_STAGES, pick_stage
+    if not telegram_id or not character_id or not 0 <= level <= len(_PICK_STAGES):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+        return web.json_response({'ok': False, 'error': 'premium'}, status=403)
+
+    def _save():
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        if level == 0:
+            pick_stage(telegram_id, character_id, None)
+        else:
+            if level >= 4 and branch in ('romance', 'passion'):
+                from services.relationship_engine import force_branch
+                force_branch(uid, character_id, branch)
+            pick_stage(telegram_id, character_id, _PICK_STAGES[level - 1])
+        track_event(uid, 'level_pick', value=float(level), metadata={'branch': branch}, character_id=character_id)
+
+    try:
+        await asyncio.to_thread(_save)
+    except Exception:
+        logger.exception('level pick failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'level'}, status=500)
+    return web.json_response({'ok': True})
 
 
 async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
@@ -12800,7 +12851,7 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
             from services.test_mode import get_stage as _test_stage
             _eff_new = new_value or webapp_service._default_marital(character_id, is_custom_character(character_id))
             if current in TAKEN_STATUSES and _eff_new in ('mar_single', 'mar_divorced') \
-                    and (_test_stage(telegram_id) or row.stage) in PREMIUM_STAGES:
+                    and (_test_stage(telegram_id, character_id) or row.stage) in PREMIUM_STAGES:
                 left_him['uid'] = uid
             # V3.59.7: the switch becomes part of her story — a memory she can
             # bring up once («я ушла от мужа…») instead of silently flipping.
@@ -14867,6 +14918,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/chat/start', _webapp_api_chat_start)
     app.router.add_post('/webapp/api/chat/guest', _webapp_api_chat_guest)
     app.router.add_get('/webapp/api/chat/level', _webapp_api_chat_level)
+    app.router.add_post('/webapp/api/chat/level/pick', _webapp_api_chat_level_pick)
     app.router.add_post('/webapp/api/chat/branch', _webapp_api_chat_branch)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)

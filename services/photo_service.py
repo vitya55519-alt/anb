@@ -1198,7 +1198,7 @@ def _user_rel(session, telegram_id: int, character_id: str = CHARACTER_ID):
 
 
 def get_relationship_stage(telegram_id: int, character_id: str = CHARACTER_ID) -> str:
-    override = get_test_stage(telegram_id)
+    override = get_test_stage(telegram_id, character_id)
     if override:
         return override
     ensure_user(telegram_id)

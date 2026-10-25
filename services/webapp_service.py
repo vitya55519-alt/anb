@@ -429,9 +429,11 @@ def _batch_rel_levels(telegram_id: int | None, character_ids: list[str]) -> dict
                 )
             ).all()
             # No relationship row = 'stranger' = level 1 (mirrors get_relationship_level).
+            from services.test_mode import picked_stages
+            picks = picked_stages(telegram_id)  # V3.83.0: his Premium level picks win
             return {cid: STAGE_INDEX.get('stranger', 0) + 1 for cid in character_ids} | {
                 r.character_id: STAGE_INDEX.get(r.stage, 0) + 1 for r in rows
-            }
+            } | {cid: STAGE_INDEX.get(st, 0) + 1 for cid, st in picks.items() if cid in character_ids}
     except Exception:
         logger.exception('batch rel levels failed user=%s', telegram_id)
         return {}
@@ -803,6 +805,8 @@ def api_shop(lang: str = 'ru') -> dict:
     """Structured prices for the shop tab (same constants the bot charges)."""
     en = lang == EN
     features = [
+        # V3.83.0: owner — «с Premium можно выбрать любой уровень общения».
+        ('🎚', 'любой уровень общения 1–10 с каждой девушкой — выбери сам', 'any relationship level 1–10 with every girl — your pick'),
         ('📸', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 каждый месяц в подарок', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 every month as a gift'),
         ('🎬', '2 бесплатных видео-оживления в день', '2 free photo animations per day'),
         ('🎯', 'перезапуски историй и все персонажи', 'story replays and all characters'),

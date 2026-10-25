@@ -277,13 +277,13 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     db_user_id = ensure_user(user_id, user_name, language_code=language_code)
     observe_message(db_user_id, user_text, character_id)
     delta = infer_delta(user_text)
-    test_stage = get_test_stage(user_id)
+    test_stage = get_test_stage(user_id, character_id)  # V3.83.0: or his Premium pick
     if test_stage:
         # V3.82.2: the real frame of every level 1-10 plus his chosen path; the
         # old local table stopped at level 6 and /testlevel 7 crashed here.
         from services.relationship_service import test_stage_context
         rel_context = await asyncio.to_thread(test_stage_context, user_id, character_id, test_stage)
-        rel_context = (rel_context or '') + ' Тестовый режим не упоминай и реальные баллы не меняй.'
+        rel_context = (rel_context or '') + ' Не упоминай, что уровень выбран вручную.'
     else:
         rel_context = await record_user_message(
             user_id, user_name,
