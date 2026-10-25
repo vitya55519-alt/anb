@@ -25,7 +25,7 @@ def test_referral_pays_after_ten_real_messages():
     from services.user_service import ensure_user, get_user
     from config import REFERRAL_INVITEE_CREDITS, REFERRAL_REFERRER_CREDITS, REFERRAL_QUALIFY_MESSAGES
     assert REFERRAL_INVITEE_CREDITS == 1000 and REFERRAL_REFERRER_CREDITS == 1000
-    assert REFERRAL_QUALIFY_MESSAGES == 10
+    assert REFERRAL_QUALIFY_MESSAGES == 5
     ref_tid, inv_tid = 980001, 980002
     ensure_user(ref_tid)
     ensure_user(inv_tid)
@@ -38,9 +38,9 @@ def test_referral_pays_after_ten_real_messages():
     _say(uid, ['ок', 'привет', 'как дела у тебя'] * 3, start)
     assert R.qualify_referral(inv_tid) is None
     _say(uid, [f'мне нравится вариант номер {w}' for w in
-               ['один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь']],
+               ['один', 'два', 'три']],
          start + timedelta(minutes=10))
-    assert R.qualify_referral(inv_tid) is None          # 9 real so far
+    assert R.qualify_referral(inv_tid) is None          # 4 real so far
     res = R.qualify_referral(inv_tid, extra_text='а расскажи что делала вечером')
     assert res and res['referrer_telegram_id'] == ref_tid
     assert _credits(ref_tid) == r0 + 1000 and _credits(inv_tid) == i0 + 1000

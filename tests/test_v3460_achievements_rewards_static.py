@@ -159,7 +159,7 @@ def test_app_i18n_and_unlock_banner():
     # at least L_EN + L_RU; all seven are provided)
     assert INDEX.count('missions_title:') >= 7
     # NAV_LABELS arrays carry the missions entry (6 slots, index 4)
-    assert "en: ['Characters','Chats','Pictures','Shop','Missions','Profile']," in INDEX
+    assert "en: ['Characters','Chats','Pictures','Shop','Missions','Partners','Profile']," in INDEX
     assert "document.getElementById('l_missions_title').textContent = L.missions_title;" in INDEX
     # V3.46.0 inc 4: unlock banner in the app
     assert "'anbMissionsSeen'" in INDEX

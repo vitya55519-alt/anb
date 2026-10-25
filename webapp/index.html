@@ -218,11 +218,13 @@
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
   }
   nav#bottomnav button {
-    flex: 1; background: none; border: none; color: var(--muted);
-    font-size: 11px; padding: 8px 4px; border-radius: 12px; cursor: pointer;
+    flex: 1; min-width: 0; background: none; border: none; color: var(--muted);
+    font-size: 10px; padding: 8px 1px; border-radius: 12px; cursor: pointer;
     display: flex; flex-direction: column; align-items: center; gap: 3px;
   }
-  nav#bottomnav button .ico { font-size: 21px; }
+  /* V3.85.0: seven tabs — labels never wrap, they shrink to fit a phone */
+  nav#bottomnav button .lbl { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  nav#bottomnav button .ico { font-size: 20px; }
   nav#bottomnav button.on { color: var(--accent); background: rgba(232, 68, 127, .12); }
   /* V3.35.0: full-screen overlays — in-app chat and the character wizard */
   .overlay {
@@ -810,6 +812,58 @@
     font-size: 12.5px; color: var(--muted); word-break: break-all; line-height: 1.5;
     border: 1px dashed rgba(232, 68, 127, .35);
   }
+  /* V3.85.0: the partner tab — hero art, stat tiles, share actions, how-it-works
+     cards with the girls' portraits and the friends bonus ladder. */
+  .phero { position: relative; margin: -4px -2px 14px; border-radius: 22px; overflow: hidden;
+    background: var(--card); box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  .phero img { display: block; width: 100%; aspect-ratio: 9/5; object-fit: cover; }
+  .phero .ov { position: relative; margin-top: -28px; padding: 18px 16px 14px;
+    background: linear-gradient(180deg, rgba(43,26,61,0) 0%, var(--card) 28px); }
+  .phero .t { font-size: 21px; font-weight: 900; line-height: 1.2; }
+  .phero .s { color: #ffc2d6; font-size: 13px; margin-top: 4px; line-height: 1.4; }
+  .pstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .pstat { background: linear-gradient(160deg, var(--card2), var(--card)); border-radius: 16px;
+    padding: 12px 8px; text-align: center; border: 1px solid rgba(255,255,255,.06); }
+  .pstat .v { font-size: 22px; font-weight: 900; }
+  .pstat .k { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .pstat.gold .v { color: var(--premium); }
+  .pactions { display: flex; gap: 8px; margin-top: 12px; }
+  .pactions .cta { margin-top: 0; }
+  .pactions .cta.ghost { flex: 0 0 auto; width: auto; padding: 12px 16px; margin: 0; }
+  .psect { font-size: 16px; font-weight: 800; margin: 22px 2px 10px; }
+  .psteps { display: grid; gap: 8px; }
+  .pstep { display: flex; align-items: center; gap: 12px; background: var(--card);
+    border-radius: 16px; padding: 10px 12px; border: 1px solid rgba(255,255,255,.05); }
+  .pstep img { width: 56px; height: 56px; border-radius: 50%; flex: 0 0 auto; }
+  .pstep .n { width: 22px; height: 22px; border-radius: 50%; background: var(--accent);
+    font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center;
+    position: relative; margin: 34px 0 0 -30px; flex: 0 0 auto; border: 2px solid var(--card); }
+  .pstep .t { font-weight: 700; font-size: 14px; }
+  .pstep .s { color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.35; }
+  .pladder { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ptier { border-radius: 16px; padding: 12px; background: var(--card);
+    border: 1px solid rgba(255,255,255,.06); position: relative; overflow: hidden; }
+  .ptier .ic { font-size: 26px; }
+  .ptier .f { font-weight: 800; font-size: 15px; margin-top: 4px; }
+  .ptier .r { color: #ffc2d6; font-size: 12.5px; margin-top: 2px; line-height: 1.35; }
+  .ptier .st { position: absolute; top: 10px; right: 10px; font-size: 14px; }
+  .ptier.done { background: linear-gradient(160deg, #2f4a3a, #21322a); border-color: rgba(76,217,123,.35); }
+  .ptier.next { background: linear-gradient(160deg, #4a1f3c, #2b1a3d); border-color: rgba(232,68,127,.6);
+    box-shadow: 0 0 0 1px rgba(232,68,127,.25), 0 8px 22px rgba(232,68,127,.18); }
+  .ptier.lock { opacity: .7; }
+  .pprog { margin-top: 12px; background: var(--card); border-radius: 14px; padding: 12px; }
+  .pprog .bar { height: 8px; border-radius: 6px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 8px; }
+  .pprog .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--premium)); }
+  .pprog .l { font-size: 13px; }
+  .pprog .w { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .pmoney { background: linear-gradient(160deg, #3a2a12, #2b1a3d); border: 1px solid rgba(255,207,92,.3);
+    border-radius: 18px; padding: 14px; }
+  .pmoney .b { font-size: 28px; font-weight: 900; color: var(--premium); }
+  .pmoney .k { color: var(--muted); font-size: 12px; }
+  .ptop { background: var(--card); border-radius: 16px; padding: 4px 12px; }
+  .ptop .row { display: flex; justify-content: space-between; padding: 9px 0; font-size: 14px;
+    border-bottom: 1px solid rgba(255,255,255,.05); }
+  .ptop .row:last-child { border-bottom: none; }
   .faq-title { text-align: center; color: var(--muted); font-size: 12px; text-transform: uppercase;
     letter-spacing: .6px; margin: 18px 0 10px; }
   /* V3.38.0: Come Closer tabs — chat list rows, the picture studio, profile
@@ -1065,6 +1119,11 @@
     <h2 id="l_missions_title">Миссии</h2>
     <div id="missionsbody"><div class="loading">…</div></div>
   </section>
+  <!-- V3.85.0: owner — the partner program is its own bottom tab now
+       (it used to hide behind a profile row as an overlay). -->
+  <section class="tab" id="tab-partner">
+    <div id="partnerbody"><div class="loading">…</div></div>
+  </section>
   <section class="tab" id="tab-profile">
     <h2 id="l_profile_title">Профиль</h2>
     <div id="profilebody"><div class="loading">…</div></div>
@@ -1079,6 +1138,7 @@
   <button data-tab="pictures"><span class="ico">🖼</span><span class="lbl">Картинки</span></button>
   <button data-tab="shop"><span class="ico">🛒</span><span class="lbl">Магазин</span></button>
   <button data-tab="missions"><span class="ico">🏅</span><span class="lbl">Миссии</span></button>
+  <button data-tab="partner"><span class="ico">💸</span><span class="lbl">Партнёрка</span></button>
   <button data-tab="profile"><span class="ico">👤</span><span class="lbl">Профиль</span></button>
 </nav>
 <div id="toast"></div>
@@ -1334,7 +1394,7 @@
       <div class="nm" id="l_partner_ov">Партнёрка</div>
     </div>
   </div>
-  <div class="page" id="partnerbody"><div class="loading">…</div></div>
+  <div class="page" id="partnerviewbody"></div>
 </div>
 <div class="overlay" id="docsview">
   <div class="chat-head">
@@ -1414,7 +1474,7 @@ const L_EN = {
   mis_invite: 'Invite a friend', mis_invite_btn: 'Invite',
   mis_invite_hint: (p, n) => '+' + p + ' 🍑 to you and your friend once they write her ' + n + ' messages',
   mis_invite_stat: (a, w) => 'friends: ' + a + (w ? ' · still chatting: ' + w : ''),
-  mis_invite_next: (n, p, d) => 'at ' + n + ' friends: +' + p + ' 🍑' + (d ? ' and ' + d + ' d. Premium' : ''),
+  mis_invite_next: (n, p, d) => 'at ' + n + ' friends: ' + [(p && p !== '0') ? '+' + p + ' 🍑' : '', d ? d + (d === 1 ? ' day' : ' days') + ' of Premium' : ''].filter(Boolean).join(' and '),
   mis_today_hint: 'Chat with her for real — short and repeated messages do not count', mis_span: (a, b) => a + '/' + b + ' min',
   mis_claim: n => 'Claim +' + n + ' 🍑', mis_earned: (a, b) => 'Claimed ' + a + ' of ' + b + ' 🍑', mis_streak: n => n + ' d. streak',
   mis_ready: n => 'Ready — claim ' + n + ' 🍑', mis_done_list: n => 'Done (' + n + ')',
@@ -1440,6 +1500,24 @@ const L_EN = {
   copy_link: 'COPY LINK', withdraw: 'Withdraw', withdraw_pending: 'Payout request pending',
   min_note: min => `Minimum payout — ${min} ₽`, faq_t: 'Questions & answers',
   copied: 'Link copied ✅', copy_fail: 'Could not copy — long-press the link above',
+  // V3.85.0: the partner tab
+  p_hero_t: 'Invite friends — earn money and Premium',
+  p_hero_s: pct => `${pct}% of every purchase your friends make, forever — plus bonuses for every friend`,
+  p_invited: 'friends', p_earned: 'earned', p_balance: 'balance',
+  p_share: '📨 Send to a friend', p_copy: 'Copy',
+  p_share_text: 'AI girlfriends who text you first 💌 Join me here:',
+  p_how: 'How it works',
+  p_s1_t: 'Send your link', p_s1_s: 'To a friend, a group chat or your story',
+  p_s2_t: 'Your friend chats with a girl', p_s2_s: (n, b) => `After ${n} messages you both get ${b} 🍑`,
+  p_s3_t: 'You earn', p_s3_s: pct => `${pct}% of each of their purchases — forever`,
+  p_ladder: 'Bonuses for friends',
+  p_friends: n => n + (n === 1 ? ' friend' : ' friends'),
+  p_prem: d => d + (d === 1 ? ' day' : ' days') + ' of Premium',
+  p_next: (left, n) => left + ' more ' + (left === 1 ? 'friend' : 'friends') + ' to the next bonus (' + n + ')',
+  p_all_done: 'All bonuses collected — you are a legend 👑',
+  p_waiting: w => w + ' still writing their first messages',
+  p_counts: n => `A friend counts once they write ${n} messages`,
+  p_money: 'Your money', p_top: 'Top partners · 30 days',
   wd_ok: 'Payout request sent ✅ the owner confirms manually, usually within a day',
   wd_below: min => `Not there yet — minimum is ${min} ₽`,
   wd_pending: 'You already have a pending payout request',
@@ -1636,7 +1714,7 @@ const L_RU = {
   mis_invite: 'Пригласи друга', mis_invite_btn: 'Позвать',
   mis_invite_hint: (p, n) => '+' + p + ' 🍑 тебе и другу, когда он напишет ей ' + n + ' сообщений',
   mis_invite_stat: (a, w) => 'приглашено: ' + a + (w ? ' · ещё общаются: ' + w : ''),
-  mis_invite_next: (n, p, d) => 'за ' + n + ' друзей: +' + p + ' 🍑' + (d ? ' и ' + d + ' дн. Premium' : ''),
+  mis_invite_next: (n, p, d) => 'за ' + n + ' друзей: ' + [(p && p !== '0') ? '+' + p + ' 🍑' : '', d ? d + ' дн. Premium' : ''].filter(Boolean).join(' и '),
   mis_today_hint: 'Общайся по-настоящему: короткие и повторяющиеся сообщения не засчитываются', mis_span: (a, b) => a + '/' + b + ' мин',
   mis_claim: n => 'Забрать +' + n + ' 🍑', mis_earned: (a, b) => 'Забрано ' + a + ' из ' + b + ' 🍑', mis_streak: n => 'серия ' + n + ' дн.',
   mis_ready: n => 'Готово — забирай ' + n + ' 🍑', mis_done_list: n => 'Выполнено (' + n + ')',
@@ -1662,6 +1740,24 @@ const L_RU = {
   copy_link: 'СКОПИРОВАТЬ ССЫЛКУ', withdraw: 'Вывести деньги', withdraw_pending: 'Заявка на вывод',
   min_note: min => `Минимум для вывода — ${min} ₽`, faq_t: 'Вопросы и ответы',
   copied: 'Ссылка скопирована ✅', copy_fail: 'Не скопировалось — зажми ссылку выше',
+  // V3.85.0: вкладка «Партнёрка»
+  p_hero_t: 'Зови друзей — получай деньги и Premium',
+  p_hero_s: pct => `${pct}% с каждой их покупки навсегда — и бонусы за каждого друга`,
+  p_invited: 'друзей', p_earned: 'заработано', p_balance: 'на балансе',
+  p_share: '📨 Отправить другу', p_copy: 'Копировать',
+  p_share_text: 'Тут ИИ-девушки, которые пишут первыми 💌 Заходи:',
+  p_how: 'Как это работает',
+  p_s1_t: 'Отправь ссылку', p_s1_s: 'Другу, в чат или в сторис',
+  p_s2_t: 'Друг пишет девушке', p_s2_s: (n, b) => `После ${n} сообщений вы оба получаете по ${b} 🍑`,
+  p_s3_t: 'Ты зарабатываешь', p_s3_s: pct => `${pct}% с каждой его покупки — навсегда`,
+  p_ladder: 'Бонусы за друзей',
+  p_friends: n => { const a = n % 10, b = n % 100; return n + (a === 1 && b !== 11 ? ' друг' : (a >= 2 && a <= 4 && (b < 12 || b > 14) ? ' друга' : ' друзей')); },
+  p_prem: d => d + ' дн. Premium',
+  p_next: (left, n) => 'Ещё ' + left + ' до следующего бонуса (' + n + ')',
+  p_all_done: 'Все бонусы собраны — ты легенда 👑',
+  p_waiting: w => w + ' ещё пишут свои первые сообщения',
+  p_counts: n => `Друг засчитывается, когда напишет ${n} сообщений`,
+  p_money: 'Твои деньги', p_top: 'Топ партнёров за 30 дней',
   wd_ok: 'Заявка на вывод создана ✅ владелец подтвердит вручную, обычно в течение суток',
   wd_below: min => `Ещё не набралось — минимум ${min} ₽`,
   wd_pending: 'У тебя уже есть заявка на рассмотрении',
@@ -2167,13 +2263,13 @@ document.getElementById('chanGo').textContent = L.chan_go;
 document.getElementById('chanCheck').textContent = L.chan_check;
 // V3.43.5: bottom-nav labels for every supported interface language.
 const NAV_LABELS = {
-  ru: ['Персонажи','Чаты','Картинки','Магазин','Миссии','Профиль'],
-  en: ['Characters','Chats','Pictures','Shop','Missions','Profile'],
-  es: ['Chicas','Chats','Imágenes','Tienda','Misiones','Perfil'],
-  it: ['Ragazze','Chat','Immagini','Negozio','Missioni','Profilo'],
-  fr: ['Filles','Tchats','Images','Boutique','Missions','Profil'],
-  zh: ['女孩','聊天','图片','商店','任务','我的'],
-  ja: ['女の子','チャット','画像','ショップ','ミッション','プロフィール'],
+  ru: ['Девушки','Чаты','Картинки','Магазин','Миссии','Партнёрка','Профиль'],
+  en: ['Characters','Chats','Pictures','Shop','Missions','Partners','Profile'],
+  es: ['Chicas','Chats','Imágenes','Tienda','Misiones','Socios','Perfil'],
+  it: ['Ragazze','Chat','Immagini','Negozio','Missioni','Partner','Profilo'],
+  fr: ['Filles','Tchats','Images','Boutique','Missions','Partenaires','Profil'],
+  zh: ['女孩','聊天','图片','商店','任务','合伙人','我的'],
+  ja: ['女の子','チャット','画像','ショップ','ミッション','パートナー','プロフィール'],
 };
 document.querySelectorAll('#bottomnav .lbl').forEach((el, i) => {
   el.textContent = (NAV_LABELS[LANG] || NAV_LABELS.en)[i];
@@ -2445,6 +2541,7 @@ function maybeDeepOpenChat(chars) {
     const sp = new URLSearchParams(location.search);
     // V3.71.0: «🍑 пополнить» from the bot's circle paywall lands on the shop.
     if (sp.get('open') === 'shop') { showTab('shop'); return; }
+    if (sp.get('open') === 'partner') { showTab('partner'); return; }  // V3.85.0
     if (sp.get('open') !== 'chat') return;
     // V3.75.0: a scenario card's button — straight into that scene with her.
     if (sp.get('scene')) { startScenario(sp.get('scene')); return; }
@@ -5434,6 +5531,9 @@ async function loadPartner() {
 }
 
 function renderPartner() {
+  // V3.85.0: owner — «партнёрку отдельной кнопкой снизу, карточки с картинками,
+  // сделать красивее». Hero art, three stat tiles, one-tap share, how-it-works
+  // cards with the girls' portraits, the friends bonus ladder, money, top, FAQ.
   const p = PARTNER;
   if (!p) return;
   const canWithdraw = p.balance_rub >= p.min_payout_rub && !p.pending_payout;
@@ -5442,27 +5542,78 @@ function renderPartner() {
     : `<button class="cta" id="pWithdraw" ${canWithdraw ? '' : 'disabled'}>${esc(L.withdraw)} · ${esc(p.balance_rub)} ₽</button>`;
   const faq = (p.faq || []).map(f =>
     `<details class="doc"><summary>❓ ${esc(f.q)}</summary><div class="txt">${esc(f.a)}</div></details>`).join('');
+  const count = Number(p.referral_count || 0);
+  const tiers = p.tiers || [];
+  const nextTier = tiers.find(t => !t.reached) || null;
+  const tierHtml = tiers.map(t => {
+    const cls = (t.granted || t.reached) ? 'done' : (nextTier && t.invites === nextTier.invites ? 'next' : 'lock');
+    const st = cls === 'done' ? '✅' : (cls === 'next' ? '🔥' : '🔒');
+    const rewards = [];
+    if (t.credits) rewards.push('+' + fmtPeach(t.credits) + ' 🍑');
+    if (t.premium_days) rewards.push(L.p_prem(Number(t.premium_days)));
+    const ic = t.premium_days ? '⭐' : '🍑';
+    return `<div class="ptier ${esc(cls)}"><span class="st">${esc(st)}</span><div class="ic">${esc(ic)}</div>
+      <div class="f">${esc(L.p_friends(Number(t.invites)))}</div><div class="r">${esc(rewards.join(' + '))}</div></div>`;
+  }).join('');
+  let progHtml = '';
+  if (tiers.length) {
+    const prevNeed = nextTier ? Math.max(0, ...tiers.filter(t => t.invites < nextTier.invites).map(t => t.invites), 0) : 0;
+    const pctBar = nextTier ? Math.max(4, Math.min(100, Math.round((count - prevNeed) / Math.max(1, nextTier.invites - prevNeed) * 100))) : 100;
+    const line = nextTier ? L.p_next(nextTier.invites - count, L.p_friends(Number(nextTier.invites))) : L.p_all_done;
+    const waitTxt = p.waiting ? ' · ' + L.p_waiting(Number(p.waiting)) : '';
+    progHtml = `<div class="pprog"><div class="l">${esc(line)}</div><div class="bar"><i style="width:${esc(pctBar)}%"></i></div>
+      <div class="w">${esc(L.p_counts(Number(p.qualify_messages || 5)) + waitTxt)}</div></div>`;
+  }
+  const top = (p.top_earners || []).slice(0, 5);
+  const medals = ['🥇', '🥈', '🥉', '4.', '5.'];
+  const topRows = top.map((r, i) =>
+    `<div class="row"><span>${esc(medals[i] + ' ' + r.name)}</span><span style="color:var(--premium);font-weight:700">${esc(r.earned_rub)} ₽</span></div>`).join('');
+  const topHtml = top.length ? `<div class="psect">🏆 ${esc(L.p_top)}</div><div class="ptop">${topRows}</div>` : '';
+  const ladderHtml = tiers.length ? `<div class="psect">${esc(L.p_ladder)}</div><div class="pladder">${tierHtml}</div>${progHtml}` : '';
+  const art = n => '/webapp/art/' + n;
   document.getElementById('partnerbody').innerHTML = `
-    <div class="note" style="margin-top:0;text-align:left;font-size:13px">${esc(L.partner_sub(p.pct))}</div>
-    <div class="pgrid" style="margin-top:12px">
-      <div class="pbox"><div class="k">${esc(L.invited_lbl)}</div><div class="v">${esc(p.invited)}</div></div>
-      <div class="pbox"><div class="k">${esc(L.earned_lbl)}</div><div class="v">${esc(p.earned_rub)} ₽</div></div>
+    <div class="phero"><img src="${esc(art('partner_hero.jpg'))}" alt="">
+      <div class="ov"><div class="t">${esc(L.p_hero_t)}</div><div class="s">${esc(L.p_hero_s(p.pct))}</div></div></div>
+    <div class="pstats">
+      <div class="pstat"><div class="v">${esc(p.invited)}</div><div class="k">${esc(L.p_invited)}</div></div>
+      <div class="pstat"><div class="v">${esc(p.earned_rub)} ₽</div><div class="k">${esc(L.p_earned)}</div></div>
+      <div class="pstat gold"><div class="v">${esc(p.balance_rub)} ₽</div><div class="k">${esc(L.p_balance)}</div></div>
     </div>
-    <button class="cta" id="pCopy">${esc(L.copy_link)}</button>
-    ${withdrawBtn}
-    <div class="note">${esc(L.min_note(p.min_payout_rub))}</div>
+    <div class="pactions">
+      <button class="cta" id="pShare">${esc(L.p_share)}</button>
+      <button class="cta ghost" id="pCopy">${esc(L.p_copy)}</button>
+    </div>
     <div class="plink" id="pLink">${esc(p.link || '—')}</div>
+    <div class="psect">${esc(L.p_how)}</div>
+    <div class="psteps">
+      <div class="pstep"><img src="${esc(art('step_share.png'))}" alt=""><span class="n">1</span><div><div class="t">${esc(L.p_s1_t)}</div><div class="s">${esc(L.p_s1_s)}</div></div></div>
+      <div class="pstep"><img src="${esc(art('step_chat.png'))}" alt=""><span class="n">2</span><div><div class="t">${esc(L.p_s2_t)}</div><div class="s">${esc(L.p_s2_s(Number(p.qualify_messages || 5), fmtPeach(p.friend_bonus || 0)))}</div></div></div>
+      <div class="pstep"><img src="${esc(art('step_earn.png'))}" alt=""><span class="n">3</span><div><div class="t">${esc(L.p_s3_t)}</div><div class="s">${esc(L.p_s3_s(p.pct))}</div></div></div>
+    </div>
+    ${ladderHtml}
+    <div class="psect">${esc(L.p_money)}</div>
+    <div class="pmoney"><div class="k">${esc(L.p_balance)}</div><div class="b">${esc(p.balance_rub)} ₽</div>
+      ${withdrawBtn}<div class="note" style="margin-bottom:0">${esc(L.min_note(p.min_payout_rub))}</div></div>
+    ${topHtml}
     <div class="faq-title">${esc(L.faq_t)}</div>
     ${faq}`;
+  const linkNow = () => (document.getElementById('pLink').textContent || '').trim();
   const copyBtn = document.getElementById('pCopy');
   if (copyBtn) copyBtn.addEventListener('click', () => {
-    const link = (document.getElementById('pLink').textContent || '').trim();
+    const link = linkNow();
     if (!link || link === '—') { toast(L.copy_fail); return; }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(link).then(() => toast(L.copied), () => toast(L.copy_fail));
     } else {
       try { tg.showAlert(link); } catch (e) { toast(L.copy_fail); }
     }
+  });
+  const shareBtn = document.getElementById('pShare');
+  if (shareBtn) shareBtn.addEventListener('click', () => {
+    const link = linkNow();
+    if (!link || link === '—') { toast(L.copy_fail); return; }
+    const url = 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(L.p_share_text);
+    if (typeof tg.openTelegramLink === 'function') tg.openTelegramLink(url); else window.open(url, '_blank');
   });
   const wdBtn = document.getElementById('pWithdraw');
   if (wdBtn) wdBtn.addEventListener('click', withdrawPartner);
@@ -5598,7 +5749,6 @@ function renderProfileBody() {
   if (!ME) return;
   const m = ME;
   const initial = (m.name || user0.first_name || 'A').trim().charAt(0).toUpperCase();
-  const lvlPct = Math.min(100, Math.round(m.selected_character.level / 8 * 100));
   // V3.45.28: the «МОИ ПЕРСОНАЖИ» block left the Profile — a user's characters
   // now live only in the creator cabinet, so this markup is no longer built here.
   // V3.43.5: чипы языков — локальный фрагмент, значения esc()-обёрнуты.
@@ -5613,21 +5763,15 @@ function renderProfileBody() {
         <div class="sub">${m.premium ? '⭐ ' + esc(L.premium_on) : esc(L.premium_off)} · id ${esc(m.id)}</div>
       </div>
     </div>
-    <div class="stat"><span class="k">👩 ${esc(L.selected_girl)}</span><span class="v">${esc(m.selected_character.name)}</span></div>
-    <div class="stat" style="flex-direction:column;align-items:stretch">
-      <div style="display:flex;justify-content:space-between">
-        <span class="k">❤️ ${esc(L.level)}</span><span class="v">${esc(m.selected_character.level)} / 8</span>
-      </div>
-      <div class="bar"><i style="width:${lvlPct}%"></i></div>
-    </div>
+    <!-- V3.85.0: owner — «выбранная девушка / уровень 9 из 8 / авторский доход
+         — зачем это в профиле?». Levels live per girl in her chat; author
+         earnings live in the creator cabinet. -->
     <div class="stat"><span class="k">🔥 ${esc(L.streak)}</span><span class="v">${esc(m.streak)}</span></div>
     <div class="stat"><span class="k">🍑 ${esc(L.paid_credit)}</span><span class="v">${esc(m.photo_credits)}</span></div>
-    ${m.author_earnings > 0 ? `<div class="stat"><span class="k">${esc(L.author_earnings)}</span><span class="v" style="color:#ffd700">${esc(L.author_earnings_value(m.author_earnings))}</span></div>` : ''}
     <button class="cta" id="profileCreate">${esc(L.create_char)}</button>
     <div class="menurow" id="menuCreator"><span>${esc(L.creator_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuAch"><span>${esc(L.achievements_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuGal"><span>${esc(L.gallery_row)}</span><span class="arr">›</span></div>
-    <div class="menurow" id="menuPartner"><span>${esc(L.partner_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuDocs"><span>${esc(L.docs_row)}</span><span class="arr">›</span></div>
     ${m.admin ? `<div class="menurow" id="menuGen"><span>${esc(L.gen_row)}</span><span class="arr">›</span></div>` : ''}
     <div class="sect-title">${esc(L.settings_title)}</div>
@@ -5695,8 +5839,9 @@ async function loadDocs() {
 
 // ── V3.38.0 wiring: chat + wizard + partner/docs overlays ────────────────
 function openPartnerOverlay() {
-  document.getElementById('partnerview').classList.add('open');
-  loadPartner();
+  // V3.85.0: the partner program is a bottom tab now; old entry points land there.
+  document.getElementById('partnerview').classList.remove('open');
+  showTab('partner');
 }
 function openDocsOverlay() {
   document.getElementById('docsview').classList.add('open');
@@ -6183,6 +6328,7 @@ function lazyLoadTab(id){
   if(id==='pics'&&!_picsLoaded){_picsLoaded=true;loadPictures();if(PIC_MODE==='video')loadStudioVideos();}
   if(id==='profile'&&!_leaderLoaded){_leaderLoaded=true;loadLeaderboard();}
   if(id==='missions'&&!_missionsLoaded){_missionsLoaded=true;loadMissions();}
+  if(id==='partner'){loadPartner();}  // V3.85.0: fresh stats on every visit
 }
 // Channel check after a short delay (non-blocking)
 setTimeout(()=>{if(!_channelLoaded){_channelLoaded=true;loadChannel();}},2000);

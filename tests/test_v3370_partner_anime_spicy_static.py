@@ -131,7 +131,9 @@ def test_partner_miniapp_tab():
     # V3.38.0: the partner tab became a full-screen overlay opened from the
     # profile «Партнёрка» row; the render/load/withdraw functions are intact.
     assert 'id="partnerview"' in INDEX
-    assert 'id="menuPartner"' in INDEX
+    # V3.85.0: the partner program is a bottom-nav tab now
+    assert '<button data-tab="partner">' in INDEX
+    assert 'id="tab-partner"' in INDEX
     assert 'async function loadPartner()' in INDEX
     assert 'function renderPartner()' in INDEX
     assert 'async function withdrawPartner()' in INDEX

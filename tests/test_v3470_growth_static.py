@@ -41,12 +41,12 @@ def test_source_attribution_backend_wired():
 # ── referral bonus tiers ───────────────────────────────────────────────────
 def test_referral_bonus_tiers_ladder_and_grant():
     assert 'REFERRAL_BONUS_TIERS = _parse_referral_tiers(REFERRAL_BONUS_TIERS_RAW)' in CONFIG
-    assert '"3:10:0,10:30:7,25:100:30"' in CONFIG
+    assert '"3:10:0,5:0:1,10:30:7,25:100:30"' in CONFIG
     assert 'def maybe_grant_referral_tiers(telegram_id: int) -> list[dict]:' in REF
     assert 'def referral_tier_progress(telegram_id: int) -> dict:' in REF
     # idempotent: a per-tier marker event guards the grant
     assert 'def _tier_marker_event(idx: int) -> str:' in REF
-    assert 'if _tier_already_granted(uid, idx):' in REF
+    assert 'if _tier_already_granted(uid, idx, need):' in REF
     # a conversion re-checks the ladder for the referrer
     assert 'maybe_grant_referral_tiers(referrer_telegram_id)' in REF
 
