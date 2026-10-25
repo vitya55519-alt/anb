@@ -4643,9 +4643,9 @@ async def contest_cmd(message: types.Message):
         newly = []
     if newly:
         for g in newly:
-            reward = f'+{g["credits"]} 🍑'
-            if g['premium_days']:
-                reward += f' и {g["premium_days"]} дн. Premium'
+            parts = ([f'+{g["credits"]} 🍑'] if g['credits'] else []) + (
+                [f'{g["premium_days"]} дн. Premium'] if g['premium_days'] else [])
+            reward = ' и '.join(parts)
             lines.append(f'🎁-tier пройден: {g["invites"]} приглашений → {reward}')
         lines.append('')
     try:
@@ -4656,7 +4656,8 @@ async def contest_cmd(message: types.Message):
         lines.append('📊 бонус-тиры (за количество друзей):')
         for t in prog['tiers']:
             mark = '✅' if t['granted'] else ('▶' if t['reached'] else '🔒')
-            bonus = f'+{t["credits"]} 🍑' + (f' +{t["premium_days"]}д Premium' if t['premium_days'] else '')
+            bonus = ' '.join(([f'+{t["credits"]} 🍑'] if t['credits'] else []) + (
+                [f'+{t["premium_days"]}д Premium'] if t['premium_days'] else []))
             lines.append(f"  {mark} {t['invites']} пригл. → {bonus}")
         if prog['next']:
             need = prog['next']['invites'] - prog['count']

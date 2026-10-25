@@ -701,7 +701,8 @@ PHOTO_REACTION_COOLDOWN_SECONDS = max(0, int(os.getenv("PHOTO_REACTION_COOLDOWN_
 # account opened for the bonus earns nothing.
 REFERRAL_REFERRER_CREDITS = _peach_env("REFERRAL_REFERRER_CREDITS", 10, 0)
 REFERRAL_INVITEE_CREDITS = _peach_env("REFERRAL_INVITEE_CREDITS", 10, 0)
-REFERRAL_QUALIFY_MESSAGES = max(1, int(os.getenv("REFERRAL_QUALIFY_MESSAGES", "10")))
+# V3.84.0: owner — a friend counts after 5 real messages (was 10).
+REFERRAL_QUALIFY_MESSAGES = max(1, int(os.getenv("REFERRAL_QUALIFY_MESSAGES", "5")))
 FIRST_START_BONUS_CREDITS = _peach_env("FIRST_START_BONUS_CREDITS", 2, 0)
 # A short Premium taste granted to brand-new users so they can sample premium
 # photo routes on day one. 0 disables. Days, not stars.
@@ -739,8 +740,9 @@ PARTNER_MIN_PAYOUT_RUB = int(os.getenv("PARTNER_MIN_PAYOUT_RUB", "500"))
 # → +10 🍑; 10 → +30 🍑 and 7 days Premium; 25 → +100 🍑 and 30 days Premium.
 # Each tier is granted at most once per user (guarded by a marker event). Empty
 # string disables the whole ladder.
+# V3.84.0: owner — 5 friends who each wrote 5 real messages → 1 day Premium.
 REFERRAL_BONUS_TIERS_RAW = os.getenv(
-    "REFERRAL_BONUS_TIERS", "3:10:0,10:30:7,25:100:30").strip()
+    "REFERRAL_BONUS_TIERS", "3:10:0,5:0:1,10:30:7,25:100:30").strip()
 
 
 def _parse_referral_tiers(raw: str) -> list[tuple[int, int, int]]:

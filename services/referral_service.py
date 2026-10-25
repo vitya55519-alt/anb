@@ -486,8 +486,19 @@ def _tier_marker_event(idx: int) -> str:
     return f"referral_tier_{idx}"
 
 
-def _tier_already_granted(uid: int, idx: int) -> bool:
-    return _event_count(uid, _tier_marker_event(idx)) > 0
+def _tier_already_granted(uid: int, idx: int, invites: int | None = None) -> bool:
+    """V3.84.0: a tier is matched by its invite count (stored in the marker's
+    metadata), not only by its index — inserting a new tier into the ladder
+    (5 friends → 1 day Premium) shifts the indices, and an index-only check
+    would re-grant the old 10-friend tier or skip the new one."""
+    if invites is None:
+        return _event_count(uid, _tier_marker_event(idx)) > 0
+    with SessionLocal() as s:
+        return bool(s.scalar(select(func.count()).select_from(ProductEvent).where(
+            ProductEvent.user_id == uid,
+            ProductEvent.event_name.like("referral_tier_%"),
+            ProductEvent.metadata_json.like(f'%"invites": {int(invites)},%'),
+        )))
 
 
 def maybe_grant_referral_tiers(telegram_id: int) -> list[dict]:
@@ -508,7 +519,7 @@ def maybe_grant_referral_tiers(telegram_id: int) -> list[dict]:
     for idx, (need, credits, premium_days) in enumerate(REFERRAL_BONUS_TIERS):
         if count < need:
             break  # tiers are sorted ascending; nothing further is reachable
-        if _tier_already_granted(uid, idx):
+        if _tier_already_granted(uid, idx, need):
             continue
         with SessionLocal() as s:
             user = s.scalar(select(User).where(User.id == uid))
@@ -547,7 +558,7 @@ def referral_tier_progress(telegram_id: int) -> dict:
     for idx, (need, credits, premium_days) in enumerate(REFERRAL_BONUS_TIERS):
         tiers.append({
             "invites": need, "credits": credits, "premium_days": premium_days,
-            "reached": count >= need, "granted": _tier_already_granted(uid, idx),
+            "reached": count >= need, "granted": _tier_already_granted(uid, idx, need),
         })
     nxt = next((t for t in tiers if not t["reached"]), None)
     return {"count": count, "tiers": tiers, "next": nxt}
