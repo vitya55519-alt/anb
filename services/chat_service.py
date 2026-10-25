@@ -271,25 +271,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     delta = infer_delta(user_text)
     test_stage = get_test_stage(user_id)
     if test_stage:
-        from services.relationship_engine import build_relationship_context
-        class _StageOnly:
-            relationship_score = 0
-            trust_score = 0
-            intimacy_score = 0
-        # Use the same stage guidance without modifying real scores.
-        stage_prompts = {
-            'stranger': 'Уровень 1 — знакомство. Легко, чувственно и с заметной химией; допустим лёгкий флирт и двусмысленность, но без фамильярности.',
-            'acquaintance': 'Уровень 2 — уже знакомые. Больше узнавания, чувственного флирта, двусмысленностей и её инициативы.',
-            'close': 'Уровень 3 — близкое общение. Теплее, больше callbacks и инициативы.',
-            'intimate': 'Уровень 4 — доверие, активный чувственный флирт и эротическое напряжение без графических описаний; не в каждом сообщении.',
-            'deeply_connected': 'Уровень 5 — очень близкие. Персонализация, память, уверенный взаимный флирт.',
-            'committed': 'Уровень 6 — сложившаяся романтическая связь внутри ролевой модели. Нежность, привычность, общая история.'
-        }
-        from services.relationship_engine import INITIATIVE_LADDER, OPENNESS_LADDER, OPENNESS_LIMITS
-        # V3.60.0: the admin's test level gets the same openness/initiative rungs.
-        rel_context = (stage_prompts[test_stage] + ' ' + OPENNESS_LADDER.get(test_stage, '') + ' '
-                       + INITIATIVE_LADDER.get(test_stage, '') + OPENNESS_LIMITS
-                       + ' Тестовый режим не упоминай и реальные баллы не меняй.')
+        # V3.82.2: the real frame of every level 1-10 plus his chosen path; the
+        # old local table stopped at level 6 and /testlevel 7 crashed here.
+        from services.relationship_service import test_stage_context
+        rel_context = await asyncio.to_thread(test_stage_context, user_id, character_id, test_stage)
+        rel_context = (rel_context or '') + ' Тестовый режим не упоминай и реальные баллы не меняй.'
     else:
         rel_context = await record_user_message(
             user_id, user_name,
@@ -315,7 +301,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     premium = is_premium(user_id)
     memories = get_memories(db_user_id, character_id, 40 if premium else 14)
     history = get_recent_messages(db_user_id, character_id, 30 if premium else 16)
-    stage_to_level = {'stranger':1,'acquaintance':2,'close':3,'intimate':4,'deeply_connected':5,'committed':6}
+    stage_to_level = {'stranger':1,'acquaintance':2,'close':3,'intimate':4,'deeply_connected':5,'committed':6,
+                      'devoted':7,'soulmate':8,'voyage':9,'eternal':10}
     # V3.57.8: build the adaptation context once (it used to be built twice per
     # message when not in test mode — the first result was always thrown away).
     adaptation_level = stage_to_level.get(test_stage or '', 0) or 1

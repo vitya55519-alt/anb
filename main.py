@@ -7880,6 +7880,9 @@ async def testlevel(message: types.Message):
         await message.answer('тестовый уровень выключен')
         return
     # V3.61.9: levels 7-8 (premium plateau) are testable too.
+    # V3.82.2: «7/10», «7 из 10», «ур 7» — take the first number.
+    m = re.search(r'\d+', arg)
+    arg = m.group(0) if m else arg
     if not arg.isdigit() or not 1 <= int(arg) <= len(STAGES):
         await message.answer(f'нужен уровень от 1 до {len(STAGES)}')
         return

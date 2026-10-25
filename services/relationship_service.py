@@ -81,3 +81,21 @@ async def get_context(user_id, character_id=CHARACTER_ID):
             return None
         row = get_state(s, user.id, character_id)
         return build_relationship_context(row, get_milestones(s, row), character_id, _marital(user_id, character_id))
+
+
+def test_stage_context(user_id, character_id, stage: str) -> str | None:
+    """V3.82.2: the owner's /testlevel speaks with the real frame of the chosen
+    level (1-10) and his real path — the old in-chat table stopped at level 6,
+    so /testlevel 7-10 crashed the reply. Real scores stay untouched: the row
+    is copied, never written."""
+    from types import SimpleNamespace
+    with SessionLocal() as s:
+        user = s.scalar(select(User).where(User.telegram_id == str(user_id)))
+        row = get_state(s, user.id, character_id) if user else None
+        if row is not None:
+            proxy = SimpleNamespace(**{c.name: getattr(row, c.name) for c in row.__table__.columns})
+        else:
+            proxy = SimpleNamespace(relationship_score=0.0, trust_score=0.0, intimacy_score=0.0,
+                                    path_axis=0.0, branch=None, first_interaction_at=None)
+        proxy.stage = stage
+        return build_relationship_context(proxy, None, character_id, _marital(user_id, character_id))
