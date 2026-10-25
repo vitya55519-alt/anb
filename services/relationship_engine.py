@@ -903,6 +903,26 @@ def set_branch(user_id: int, character_id: str, branch: str) -> bool:
     return True
 
 
+def force_branch(user_id: int, character_id: str, branch: str) -> bool:
+    """V3.83.0: a Premium level pick on the other path switches the path —
+    unlike the one-time fork answer in set_branch."""
+    from services.db import SessionLocal
+    if branch not in BRANCHES:
+        return False
+    with SessionLocal() as session:
+        row = get_state(session, user_id, character_id)
+        if row is None:
+            row = _get_or_create(session, user_id, character_id, datetime.now(timezone.utc).replace(tzinfo=None))
+        if row.branch == branch:
+            return True
+        row.branch = branch
+        axis = float(row.path_axis or 0.0)
+        row.path_axis = max(axis, 50.0) if branch == "passion" else min(axis, -50.0)
+        row.persona_style = "passionate" if branch == "passion" else "tender"
+        session.commit()
+    return True
+
+
 def level_snapshot(session: Session, row: UserCharacterRelationship | None,
                    stage_override: str | None = None, *, premium: bool = True,
                    taken: bool = False) -> dict:
