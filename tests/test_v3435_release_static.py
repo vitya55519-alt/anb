@@ -119,8 +119,8 @@ def test_seven_interface_languages_are_wired():
     assert 'const NAV_LABELS = {' in INDEX
     # V3.46.0: a sixth «Миссии» tab joined the roadmap (index 4), so the nav
     # arrays are six slots long in every language.
-    assert "ru: ['Персонажи','Чаты','Картинки','Магазин','Миссии','Профиль']," in INDEX
-    assert "ja: ['女の子','チャット','画像','ショップ','ミッション','プロフィール']," in INDEX
+    assert "ru: ['Девушки','Чаты','Картинки','Магазин','Миссии','Партнёрка','Профиль']," in INDEX
+    assert "ja: ['女の子','チャット','画像','ショップ','ミッション','パートナー','プロフィール']," in INDEX
     assert '(NAV_LABELS[LANG] || NAV_LABELS.en)[i];' in INDEX
 
 

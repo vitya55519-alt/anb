@@ -1497,6 +1497,12 @@ def api_partner(user_id: int, telegram_id: int) -> dict:
         top_earners = partner_service.affiliate_leaderboard(limit=5, period_days=30)
     except Exception:
         top_earners = []
+    from config import REFERRAL_QUALIFY_MESSAGES, REFERRAL_INVITEE_CREDITS, REFERRAL_REFERRER_CREDITS
+    try:
+        from services.referral_service import invite_progress
+        waiting = int(invite_progress(telegram_id).get('waiting') or 0)
+    except Exception:
+        waiting = 0
     pct = int(REFERRAL_COMMISSION_PCT) if float(REFERRAL_COMMISSION_PCT).is_integer() else REFERRAL_COMMISSION_PCT
     faq = [
         {
@@ -1550,6 +1556,11 @@ def api_partner(user_id: int, telegram_id: int) -> dict:
         'tiers': tier['tiers'],
         'tier_next': tier['next'],
         'top_earners': top_earners,
+        # V3.85.0: the partner tab — a friend counts after N real messages
+        'qualify_messages': REFERRAL_QUALIFY_MESSAGES,
+        'waiting': waiting,
+        'friend_peaches': REFERRAL_INVITEE_CREDITS,
+        'friend_bonus': REFERRAL_REFERRER_CREDITS,
     }
 
 

@@ -165,6 +165,8 @@ def test_no_unescaped_backend_strings_in_templates():
             "canWithdraw ? '' : 'disabled'",
             # V3.37.0: locally-built HTML fragments (every inner field esc()'d).
             'withdrawBtn', 'faq',
+            # V3.85.0: partner tab fragments — every inner field esc()'d at build.
+            'tierHtml', 'progHtml', 'topHtml', 'topRows', 'ladderHtml',
             # V3.38.0: scenario-hook line under the character name — built
             # from esc(c.hook) inside the fragment itself.
             'hookLine',

@@ -11060,6 +11060,24 @@ async def _webapp_badge(request: web.Request) -> web.Response:
                         headers={'Cache-Control': 'public, max-age=3600'})
 
 
+_WEBAPP_ART_DIR = Path(__file__).resolve().parent / 'webapp' / 'art'
+_WEBAPP_ART_RE = re.compile(r'^[a-z0-9_]{1,40}\.(jpg|png|webp)$')
+
+
+async def _webapp_art(request: web.Request) -> web.Response:
+    """V3.85.0: static marketing art of the Mini App (the partner tab hero and
+    step pictures). Whitelisted file names only — no path traversal."""
+    name = request.match_info.get('name') or ''
+    if not _WEBAPP_ART_RE.match(name):
+        return web.Response(status=404)
+    path = _WEBAPP_ART_DIR / name
+    if not path.is_file():
+        return web.Response(status=404)
+    ctype = {'jpg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp'}[name.rsplit('.', 1)[1]]
+    return web.Response(body=await asyncio.to_thread(path.read_bytes), content_type=ctype,
+                        headers={'Cache-Control': 'public, max-age=86400'})
+
+
 async def _webapp_gallery_save(request: web.Request) -> web.Response:
     """V3.47.1: deliver the watermarked photo into the user's own chat as a real
     image. Telegram Desktop has no web file-share, so this is the reliable
@@ -14862,6 +14880,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/gallery/share/{image_id}', _webapp_gallery_share)
     # V3.47.1: achievement art (Mini App board) + reliable photo share-to-chat.
     app.router.add_get('/webapp/badge/{key}', _webapp_badge)
+    app.router.add_get('/webapp/art/{name}', _webapp_art)  # V3.85.0: partner tab art
     app.router.add_post('/webapp/api/gallery/save', _webapp_gallery_save)
     app.router.add_post('/webapp/api/gallery/prepare-share', _webapp_api_gallery_prepare_share)
     app.router.add_get('/webapp/shared/{uid}/{image_id}/{sig}.jpg', _webapp_shared_image)
