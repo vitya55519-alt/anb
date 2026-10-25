@@ -46,3 +46,10 @@ def test_admin_test_level_gets_the_ladder():
     eng = (Path(__file__).resolve().parents[1] / 'services' / 'relationship_engine.py').read_text(encoding='utf-8')
     assert "OPENNESS_LADDER.get(stage, '')" in eng
     assert 'explicit_chat_line(test_stage or rel_stage' in src
+
+
+def test_explicit_rule_plays_along_with_consensual_fantasies():
+    # V3.82.3: «муж смотрит» and other consensual kinks are played, not dodged.
+    from services.chat_service import EXPLICIT_CHAT_RULE
+    assert 'ФАНТАЗИИ И ФЕТИШИ' in EXPLICIT_CHAT_RULE and 'смотрит' in EXPLICIT_CHAT_RULE
+    assert 'по согласию' in EXPLICIT_CHAT_RULE
