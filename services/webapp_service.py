@@ -198,6 +198,26 @@ def picture_prompt_allowed(prompt: str) -> bool:
     return not _PICTURE_BLOCKED_RE.search(prompt or '')
 
 
+# V3.86.0: owner — explicit studio pictures are a Premium feature. A prompt
+# that asks for nudity / sex / underwear is «spicy»: non-Premium users get the
+# Premium sheet instead of a render (and their other prompts keep the SFW tail).
+_PICTURE_SPICY_RE = re.compile(
+    r'(?i)(голая|голой|голую|голые|голых|обнаж|раздет|раздев|разден|без\s+одежд|'
+    r'без\s+бель|без\s+лифчик|без\s+трус|топлес|\bню\b|сиськ|сисек|грудь\s+наруж|сосок|соски|'
+    r'пизд|писю|киск[аеиу]\b|член|пенис|секс|трах|ебл|ебёт|ебет|минет|отсос|кончил|кончает|сперм|оргазм|'
+    r'мастурб|дроч|эрот|порн|пошл|похот|бдсм|в\s+белье|нижн\w*\s+бель|бельё|белье|'
+    r'трусик|трусы|стринг|лифчик|бюстгальтер|чулк|\bnude|\bnaked|nudity|topless|\bnsfw|'
+    r'\bsex|\bporn|erotic|lingerie|underwear|panties|\bbra\b|thong|nipple|boobs|\btits|'
+    r'pussy|vagina|\bcock\b|\bdick\b|penis|blowjob|\bcum\b|orgasm|masturb|hentai|\bbdsm|'
+    r'undress|\bstrip(?!e))'
+)
+
+
+def picture_prompt_spicy(prompt: str) -> bool:
+    """V3.86.0: does a studio prompt ask for adult content (Premium-only)?"""
+    return bool(_PICTURE_SPICY_RE.search(prompt or ''))
+
+
 def picture_final_prompt(prompt: str, style: str = 'anime', fmt: str = 'square', adult: bool = False) -> str:
     """User text + the chosen style/format + the standing constraint. V3.51.2:
     an adult render swaps the mandatory SFW tail for a quality-only tail."""
@@ -765,9 +785,9 @@ def _peach_pack_item(key: str, stars: int, rub: int, en: bool) -> dict:
                 if not en else
                 f'{peach_num(credits - bonus)} + {peach_num(bonus)} as a gift · {photos} photos from her in chat')
     else:
-        desc = (f'{photos} фото от неё в чате или {undress} раз «Раздеть»'
+        desc = (f'{photos} фото от неё в чате или {undress} раз «Раздеть» (с Premium)'
                 if not en else
-                f'{photos} photos from her in chat or {undress}× «Undress»')
+                f'{photos} photos from her in chat or {undress}× «Undress» (with Premium)')
     item = {
         'id': key,
         'emoji': '🍑',

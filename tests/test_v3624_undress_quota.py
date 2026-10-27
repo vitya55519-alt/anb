@@ -8,9 +8,9 @@ PPS = (ROOT / 'services' / 'private_photo_service.py').read_text(encoding='utf-8
 
 
 def test_trial_and_premium_gate():
-    from config import UNDRESS_TRIAL_FREE
-    assert UNDRESS_TRIAL_FREE == 1
-    assert "elif count_ever(uid, 'undress_trial') < UNDRESS_TRIAL_FREE:" in MAIN
+    # V3.86.0: Premium-only — the free trial for non-Premium users is gone
+    assert "elif count_ever(uid, 'undress_trial') < UNDRESS_TRIAL_FREE:" not in MAIN
+    assert "        if not is_premium(telegram_id):\n            return uid, ('premium_required', 403), None" in MAIN
     assert "note_today(uid, f'undress_{pay}', character_id)" in MAIN
 
 
