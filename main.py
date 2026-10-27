@@ -13772,12 +13772,13 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
             return uid, ('adult_confirm', 403), None
         if admin:
             return uid, None, 'admin'
-        from config import UNDRESS_PEACH_COST, UNDRESS_TRIAL_FREE
-        if is_premium(telegram_id):
-            if count_today(uid, 'undress_free') < _undress_premium_free(telegram_id, character_id):
-                return uid, None, 'free'
-        elif count_ever(uid, 'undress_trial') < UNDRESS_TRIAL_FREE:
-            return uid, None, 'trial'
+        from config import UNDRESS_PEACH_COST
+        # V3.86.0: owner — «раздеть» only with Premium. No free trial and no
+        # peach route for non-Premium users: the button sells Premium.
+        if not is_premium(telegram_id):
+            return uid, ('premium_required', 403), None
+        if count_today(uid, 'undress_free') < _undress_premium_free(telegram_id, character_id):
+            return uid, None, 'free'
         if get_photo_credits(telegram_id) < UNDRESS_PEACH_COST:
             return uid, ('credits', 402), None
         return uid, None, 'peaches'

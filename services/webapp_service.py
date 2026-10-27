@@ -765,9 +765,9 @@ def _peach_pack_item(key: str, stars: int, rub: int, en: bool) -> dict:
                 if not en else
                 f'{peach_num(credits - bonus)} + {peach_num(bonus)} as a gift · {photos} photos from her in chat')
     else:
-        desc = (f'{photos} фото от неё в чате или {undress} раз «Раздеть»'
+        desc = (f'{photos} фото от неё в чате или {undress} раз «Раздеть» (с Premium)'
                 if not en else
-                f'{photos} photos from her in chat or {undress}× «Undress»')
+                f'{photos} photos from her in chat or {undress}× «Undress» (with Premium)')
     item = {
         'id': key,
         'emoji': '🍑',
