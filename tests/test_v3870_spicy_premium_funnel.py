@@ -34,7 +34,7 @@ def test_every_spicy_route_is_gated():
 
 
 def test_app_opens_the_premium_sheet():
-    assert "(kind === 'limit' || kind === 'voice' || kind === 'spicy') ? ['premium_week', 'premium']" in INDEX
+    assert "(kind === 'limit' || kind === 'voice' || kind === 'spicy') ? trialFirst.concat(['premium_week', 'premium'])" in INDEX
     assert "if (j.photo_block === 'spicy') {" in INDEX
     assert "if (j.error === 'premium_required') { quickBuy('spicy', () => requestMedia(kind, scene)); return; }" in INDEX
     assert "quickBuy('spicy', () => photoAction(action, mediaUrl, btn));" in INDEX

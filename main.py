@@ -74,6 +74,8 @@ from services.photo_service import (
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
 )
+from config import PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIAL_PRICE_RUB  # V3.88.0
+from services.payments import trial_eligible  # V3.88.0
 from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
 from services.bot_description import apply_bot_descriptions
 from services.referral_service import (
@@ -1397,7 +1399,14 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
         buy_label = f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars{month_fiat} / 30 дней'
     week_fiat = fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=PLATEGA_ENABLED)
     quarter_fiat = fiat_suffix(PREMIUM_QUARTERLY_STARS, rub=PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB, rub_enabled=PLATEGA_ENABLED)
-    rows = [
+    rows = []
+    trial_ok = bool(telegram_id) and trial_eligible(telegram_id)
+    if trial_ok:
+        # V3.88.0: the cheap first purchase goes on top.
+        trial_fiat = fiat_suffix(PREMIUM_TRIAL_STARS, rub=PLATEGA_PREMIUM_TRIAL_PRICE_RUB, rub_enabled=PLATEGA_ENABLED)
+        rows.append([InlineKeyboardButton(text=f'🔥 Попробовать {PREMIUM_TRIAL_DAYS} дня — {PREMIUM_TRIAL_STARS} Stars{trial_fiat}',
+                                          callback_data='buy:premium_trial')])
+    rows += [
         [InlineKeyboardButton(text=buy_label, callback_data='buy:premium')],
         # V3.34.1: the short plan for the undecided — same invoice pipeline.
         [InlineKeyboardButton(text=f'⭐ Premium на неделю — {PREMIUM_WEEKLY_STARS} Stars{week_fiat}', callback_data='buy:premium_week')],
@@ -1422,6 +1431,10 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
         # (Админка → Способы оплаты → статус) so the owner can remove any
         # button from the user menu without a deploy.
         if is_button_enabled('platega_rub'):
+            if trial_ok:
+                rows.append([_platega_pay_button(
+                    'premium_trial', PLATEGA_PREMIUM_TRIAL_PRICE_RUB,
+                    f'💳 🔥 {PREMIUM_TRIAL_DAYS} дня Premium — {PLATEGA_PREMIUM_TRIAL_PRICE_RUB} ₽ · карта / СБП')])
             rows.append([_platega_pay_button(
                 'premium_month', PLATEGA_PREMIUM_PRICE_RUB,
                 f'💳 Premium — {PLATEGA_PREMIUM_PRICE_RUB} ₽ · карта / СБП / крипта')])
@@ -1825,7 +1838,8 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
     track_event(db_uid, 'photo_requested', metadata={'scene': request.scene, 'customized': bool(request.customized)})
     observe_photo_preference(db_uid, request.scene, request.clothing, request.hairstyle, request.location, get_user_character(telegram_id))
     stage = get_relationship_stage(telegram_id, get_user_character(telegram_id))
-    if not scene_allowed_for_stage(request.scene, stage):
+    # V3.88.0: spicy scenes are gated by Premium below, not by level.
+    if not spicy_needs_premium(request) and not scene_allowed_for_stage(request.scene, stage):
         track_event(db_uid, 'photo_locked_view', metadata={'scene': request.scene, 'level': get_relationship_level(telegram_id, get_user_character(telegram_id))})
         await bot.send_message(chat_id, 'такой образ я пока оставлю при себе 😏')
         return
@@ -5758,6 +5772,18 @@ async def buy_premium_quarter(cq: types.CallbackQuery):
     await send_stars_invoice(cq.message.chat.id, 'Anna Premium', 'Premium-доступ на 90 дней', 'premium_quarter', PREMIUM_QUARTERLY_STARS)
 
 
+@dp.callback_query(F.data == 'buy:premium_trial')
+async def buy_premium_trial(cq: types.CallbackQuery):
+    """V3.88.0: the first-purchase trial — PREMIUM_TRIAL_DAYS for PREMIUM_TRIAL_STARS."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    if not trial_eligible(cq.from_user.id):
+        await cq.answer('пробный период уже использован — выбери неделю или месяц 💗', show_alert=True); return
+    await cq.answer()
+    await send_stars_invoice(cq.message.chat.id, 'Anna Premium', f'Premium на {PREMIUM_TRIAL_DAYS} дня — пробный', 'premium_trial', PREMIUM_TRIAL_STARS)
+
+
 @dp.callback_query(F.data == 'buy:premium_week')
 async def buy_premium_week(cq: types.CallbackQuery):
     """V3.34.1: the weekly Premium option — 7 days for PREMIUM_WEEKLY_STARS."""
@@ -6047,6 +6073,9 @@ def _platega_amount_for(product: str) -> int:
     if product == 'premium_week':
         # V3.34.1: card/SBP price of the weekly plan.
         return PLATEGA_PREMIUM_WEEKLY_PRICE_RUB
+    if product == 'premium_trial':
+        # V3.88.0: the 99 ₽ first-purchase trial.
+        return PLATEGA_PREMIUM_TRIAL_PRICE_RUB
     if product == 'premium_quarter':
         # V3.43.0: the 3-month plan is card/SBP-purchasable too.
         return PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB
@@ -6088,6 +6117,9 @@ async def platega_pay(cq: types.CallbackQuery):
     if not PLATEGA_ENABLED:
         await cq.answer('Оплата картой сейчас выключена — используй Stars ⭐', show_alert=True); return
     product = cq.data.split(':', 1)[1]
+    if product == 'premium_trial' and not trial_eligible(cq.from_user.id):
+        # V3.88.0: the trial is a one-time first purchase.
+        await cq.answer('пробный период уже использован — выбери неделю или месяц 💗', show_alert=True); return
     amount = _platega_amount_for(product)
     await cq.answer('создаю счёт…')
     order_id = platega_service.create_order(cq.from_user.id, product, str(amount))
@@ -6110,6 +6142,8 @@ async def platega_pay(cq: types.CallbackQuery):
     elif product == 'premium_week':
         # V3.34.1: the weekly card/SBP invoice.
         title = f'💳 Premium на неделю — {amount} ₽'
+    elif product == 'premium_trial':
+        title = f'🔥 Premium на {PREMIUM_TRIAL_DAYS} дня — {amount} ₽'
     elif product == 'premium_quarter':
         # V3.43.0: the 3-month card/SBP invoice.
         title = f'💳 Premium на 3 месяца — {amount} ₽'
@@ -6846,6 +6880,9 @@ async def pre_checkout(query: types.PreCheckoutQuery):
     elif payload=='premium_week':
         # V3.34.1: the weekly Premium option — chat and Mini App share it.
         ok=amount==PREMIUM_WEEKLY_STARS
+    elif payload=='premium_trial':
+        # V3.88.0: the first-purchase trial — once per user.
+        ok=amount==PREMIUM_TRIAL_STARS and trial_eligible(query.from_user.id)
     elif payload=='premium_quarter':
         # V3.62.8: the 3-month plan was never validated or granted — Stars
         # were taken and Premium never switched on.
@@ -6970,6 +7007,16 @@ async def successful_payment(message: types.Message):
             await message.answer('done ✨ Premium is active for 30 days and I added 12 photo credits. Every photo of mine now has an «Animate» button — 2 free videos a day 🎬 plus my video circles 🎥')
         else:
             await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — 2 раза в день сделаю видео бесплатно 🎬 а ещё тебе открыты мои кружочки 🎥')
+        return
+
+    if payload == 'premium_trial':
+        # V3.88.0: the 3-day first-purchase trial.
+        record_payment(message.from_user.id, 'premium_trial', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_trial'})
+        if user_lang(message.from_user.id) == EN:
+            await message.answer(f'done ✨ Premium is on for {PREMIUM_TRIAL_DAYS} days — everything is open now: my most private photos, «Undress», voice and unlimited chat 🔥')
+        else:
+            await message.answer(f'готово ✨ Premium включён на {PREMIUM_TRIAL_DAYS} дня — теперь тебе открыто всё: мои самые откровенные фото, «Раздеть», голос и общение без лимита 🔥')
         return
 
     if payload == 'premium_week':
@@ -10450,6 +10497,9 @@ async def _platega_callback(request: web.Request) -> web.Response:
                 balance = add_tokens(order['telegram_id'], int(product.split('_')[1]))
                 confirm = (f'🪙 Токены зачислены! Баланс: {balance} 🪙 '
                            f'— оживление фото стоит {VIDEO_TOKEN_COST} 🪙.')
+            elif product == 'premium_trial':
+                # V3.88.0: ruble-paid first-purchase trial.
+                confirm = f'💖 Оплата прошла! Premium включён на {PREMIUM_TRIAL_DAYS} дня — тебе открыто всё 🔥'
             elif product == 'premium_week':
                 # V3.34.1: ruble-paid weekly Premium — record_payment below grants it.
                 confirm = '💖 Оплата прошла! Premium активирован на 7 дней. Наслаждайся! 🎉'
@@ -11075,6 +11125,40 @@ async def _webapp_badge(request: web.Request) -> web.Response:
                         headers={'Cache-Control': 'public, max-age=3600'})
 
 
+_LOCKED_CARD_CACHE: dict[str, bytes] = {}
+
+
+async def _webapp_locked_card(request: web.Request) -> web.Response:
+    """V3.88.0: her heavily blurred locked card for the early chat tease — the
+    owner's own push photo of this girl when he uploaded one (/storyphoto),
+    else her everyday reference. Blurred beyond recognition; cached per girl."""
+    character_id = (request.match_info.get('character_id') or '').strip()
+    if not re.match(r'^[A-Za-z0-9_\-]{1,64}$', character_id):
+        return web.Response(status=404)
+    body = _LOCKED_CARD_CACHE.get(character_id)
+    if body is None:
+        from services import first_offer_service as fos, push_photos
+        from services.scheduler_service import _reference_photo
+        source = None
+        fid = await asyncio.to_thread(push_photos.pick, character_id)
+        if fid:
+            try:
+                source = await bot.download(fid)
+            except Exception:
+                logger.warning('locked card photo download failed character=%s', character_id)
+                source = None
+        if source is None:
+            source = _reference_photo(character_id)
+        try:
+            body = await asyncio.to_thread(fos.locked_card, source, 'только для тебя')
+        except Exception:
+            logger.exception('locked card render failed character=%s', character_id)
+            return web.Response(status=404)
+        _LOCKED_CARD_CACHE[character_id] = body
+    return web.Response(body=body, content_type='image/jpeg',
+                        headers={'Cache-Control': 'public, max-age=3600'})
+
+
 _WEBAPP_ART_DIR = Path(__file__).resolve().parent / 'webapp' / 'art'
 _WEBAPP_ART_RE = re.compile(r'^[a-z0-9_]{1,40}\.(jpg|png|webp)$')
 
@@ -11561,6 +11645,9 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
     product = next((p for p in _products if p['id'] == product_id), None)
     if not product:
         return web.json_response({'ok': False, 'error': 'unknown_product'}, status=400)
+    if product_id == 'premium_trial' and not await asyncio.to_thread(trial_eligible, telegram_id):
+        # V3.88.0: the trial is a one-time first purchase.
+        return web.json_response({'ok': False, 'error': 'trial_used'}, status=409)
     # V3.44.23: custom peach amount — the frontend sends the desired count in
     # ``amount``; the stars price and payload are computed dynamically.
     if product_id == 'peach_custom':
@@ -11653,6 +11740,9 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
 
     _products = await asyncio.to_thread(_catalogue)
     product = next((p for p in _products if p['id'] == product_id), None)
+    if product_id == 'premium_trial' and not await asyncio.to_thread(trial_eligible, telegram_id):
+        # V3.88.0: the trial is a one-time first purchase.
+        return web.json_response({'ok': False, 'error': 'trial_used'}, status=409)
     # V3.44.23: custom peach amount — compute the dynamic product fields from
     # the ``amount`` the frontend sends.
     if product_id == 'peach_custom':
@@ -11662,6 +11752,7 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
         product['rub'] = _ca * PEACH_CUSTOM_RUB_PER_UNIT if PLATEGA_ENABLED else None
     # order product keys record_payment knows how to grant
     order_product = {'premium': 'premium_month', 'premium_week': 'premium_week',
+                     'premium_trial': 'premium_trial',
                      'premium_quarter': 'premium_quarter',
                      'photo_credit': 'photo'}.get(product_id)
     if not order_product and product_id in PEACH_PACK_STARS:
@@ -12179,7 +12270,11 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | N
         return 'premium'
     if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
         return 'adult'
-    if not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
+    # V3.88.0: spicy scenes skip the level gate — Premium is the gate («с
+    # Premium открыто всё откровенное»); a fresh buyer at level 1 must get
+    # the photo he paid for, not «пока рано».
+    if not spicy_needs_premium(PhotoRequest(scene=scene)) \
+            and not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
         return 'stage'
     if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id) \
             and spicy_needs_premium(PhotoRequest(scene=scene)):
@@ -12340,6 +12435,22 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
             return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, **(extra or {})})
     payload = {'ok': True, 'reply': answer}
+    # V3.88.0: the early locked photo — on his 3rd message to her (non-Premium)
+    # her reply carries a blurred «только для тебя» card; a tap = Premium sheet.
+    try:
+        def _tease():
+            if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
+                return None
+            from services import locked_tease
+            if not locked_tease.bump(telegram_id, character_id):
+                return None
+            track_event(uid, 'paywall_view', metadata={'product': 'locked_tease', 'character_id': character_id})
+            return {'url': f'/webapp/locked/{character_id}.jpg'}
+        tease = await asyncio.to_thread(_tease)
+        if tease:
+            payload['locked_tease'] = tease
+    except Exception:
+        logger.exception('locked tease failed user=%s', telegram_id)
     # V3.72.0: the circle hook — in a flirty moment (or when asked) she offers
     # a circle under her reply. Free to show; the render starts on a paid tap.
     try:
@@ -13939,7 +14050,9 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             if scene not in PHOTO_MENU_ORDER:
                 logger.warning('webapp chat media bad scene user=%s character=%s scene=%r', telegram_id, character_id, scene)
                 return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-            if not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
+            # V3.88.0: spicy scenes are gated by Premium (below), not by level.
+            if not spicy_needs_premium(PhotoRequest(scene=scene)) \
+                    and not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
                 return web.json_response({'ok': False, 'error': 'locked'}, status=403)
             if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
                 return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
@@ -14185,9 +14298,11 @@ def _webapp_api_feature_impl(request: web.Request) -> web.Response:
         # photo keyboard shows, so the menus pop out in the app too. Labels
         # live in the frontend (all 7 interface languages); the backend owns
         # the order and the relationship-level gates.
+        # V3.88.0: spicy scenes are never level-locked — Premium is their gate
+        # (non-Premium taps open the Premium sheet).
         items = [{
             'id': scene,
-            'locked': SCENE_LEVELS.get(scene, 99) > level,
+            'locked': SCENE_LEVELS.get(scene, 99) > level and not spicy_needs_premium(PhotoRequest(scene=scene)),
             'min_level': SCENE_LEVELS.get(scene, 99),
         } for scene in PHOTO_MENU_ORDER]
         title = '📸 Photo' if lang == EN else '📸 Фото'
@@ -14201,6 +14316,8 @@ def _webapp_api_feature_impl(request: web.Request) -> web.Response:
         )
         usage = get_private_photo_usage(telegram_id)
         items = []
+        # V3.88.0: «Наедине» is Premium-only — say it on the menu itself.
+        prem_only = telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id)
         for cat_id, cat_data in PRIVATE_PHOTO_CATEGORIES.items():
             name_key = f'name_{"en" if lang == EN else "ru"}'
             raw_name = cat_data.get(name_key, cat_data['name_ru'])
@@ -14211,7 +14328,8 @@ def _webapp_api_feature_impl(request: web.Request) -> web.Response:
                 'id': cat_id,
                 'emoji': '',
                 'title': clean_name,
-                'subtitle': f"{cost} \U0001f351",
+                'subtitle': (('⭐ Premium only' if lang == EN else '⭐ только с Premium') if prem_only
+                             else f"{cost} \U0001f351"),
                 'locked': False,
                 'types': [{"id": t["id"], "name": t.get(name_key, t["name_ru"])} for t in cat_data.get('types', [])],
                 # V3.45.26: colour step is shown only for apparel categories
@@ -14928,6 +15046,7 @@ async def _start_web_server() -> None:
     # V3.47.1: achievement art (Mini App board) + reliable photo share-to-chat.
     app.router.add_get('/webapp/badge/{key}', _webapp_badge)
     app.router.add_get('/webapp/art/{name}', _webapp_art)  # V3.85.0: partner tab art
+    app.router.add_get('/webapp/locked/{character_id}.jpg', _webapp_locked_card)  # V3.88.0
     app.router.add_post('/webapp/api/gallery/save', _webapp_gallery_save)
     app.router.add_post('/webapp/api/gallery/prepare-share', _webapp_api_gallery_prepare_share)
     app.router.add_get('/webapp/shared/{uid}/{image_id}/{sig}.jpg', _webapp_shared_image)

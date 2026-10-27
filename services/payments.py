@@ -4,7 +4,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from services.db import SessionLocal
 from models.app_models import Subscription, StarTransaction, User
-from config import PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_STARS, PREMIUM_QUARTERLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS, PEACH_PACK_10_STARS, PEACH_PACK_30_STARS, PEACH_PACK_100_STARS, PEACH_PACK_CREDITS, PEACH_SCALE, PEACH_CUSTOM_UNIT
+from config import PREMIUM_TRIAL_STARS, PREMIUM_TRIAL_DAYS, PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_STARS, PREMIUM_QUARTERLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS, PEACH_PACK_10_STARS, PEACH_PACK_30_STARS, PEACH_PACK_100_STARS, PEACH_PACK_CREDITS, PEACH_SCALE, PEACH_CUSTOM_UNIT
 from services.access_service import is_premium
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,26 @@ def _credits_plus(amount):
     racing a spend can never overwrite it with a stale balance."""
     return func.coalesce(User.photo_credits, 0) + int(amount)
 
-PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"premium_week":PREMIUM_WEEKLY_STARS,"premium_quarter":PREMIUM_QUARTERLY_STARS,"video":VIDEO_COST_STARS,"peach_pack_10":PEACH_PACK_10_STARS,"peach_pack_30":PEACH_PACK_30_STARS,"peach_pack_100":PEACH_PACK_100_STARS}
+PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"premium_week":PREMIUM_WEEKLY_STARS,"premium_trial":PREMIUM_TRIAL_STARS,"premium_quarter":PREMIUM_QUARTERLY_STARS,"video":VIDEO_COST_STARS,"peach_pack_10":PEACH_PACK_10_STARS,"peach_pack_30":PEACH_PACK_30_STARS,"peach_pack_100":PEACH_PACK_100_STARS}
+
+def trial_eligible(telegram_id: int) -> bool:
+    """V3.88.0: the 3-day trial is for people who never bought Premium and
+    are not Premium right now (one cheap first purchase per user)."""
+    try:
+        if is_premium(telegram_id):
+            return False
+        with SessionLocal() as s:
+            user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+            if not user:
+                return True
+            bought = s.scalar(select(func.count(StarTransaction.id)).where(
+                StarTransaction.user_id == user.id,
+                StarTransaction.product.like('premium%')))
+            return not bought
+    except Exception:
+        logger.exception('trial eligibility check failed user=%s', telegram_id)
+        return False
+
 
 def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provider:str="stars", provider_payload:str|None=None):
     now=datetime.now(timezone.utc).replace(tzinfo=None)
@@ -31,12 +50,15 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
             provider=provider,
             provider_payload=provider_payload,
         ))
-        if product in {"premium_month","premium_month_discount","premium_week","premium_quarter"}:
+        if product in {"premium_month","premium_month_discount","premium_week","premium_quarter","premium_trial"}:
             # V3.34.1: premium_week grants 7 days + the weekly credit share;
             # V3.43.0: premium_quarter grants 90 days + three credit shares;
             # the monthly plans keep 30 days + the monthly share.
             if product == "premium_week":
                 days, credits = 7, PREMIUM_WEEKLY_PHOTO_CREDITS
+            elif product == "premium_trial":
+                # V3.88.0: the 99 ₽ first-purchase trial — Premium only, no gift.
+                days, credits = PREMIUM_TRIAL_DAYS, 0
             elif product == "premium_quarter":
                 days, credits = 90, PREMIUM_QUARTERLY_PHOTO_CREDITS
             else:

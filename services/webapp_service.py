@@ -63,6 +63,7 @@ from config import (
     PLATEGA_ENABLED,
     PLATEGA_PREMIUM_PRICE_RUB,
     PLATEGA_PREMIUM_WEEKLY_PRICE_RUB,
+    PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIAL_PRICE_RUB, PREMIUM_TRIAL_PRICE_USD,
     PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB,
     PREMIUM_QUARTERLY_STARS,
     PREMIUM_QUARTERLY_PHOTO_CREDITS,
@@ -344,6 +345,14 @@ def _user_row(telegram_id: int) -> User | None:
         return session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
 
 
+def _trial_eligible(telegram_id: int) -> bool:
+    try:
+        from services.payments import trial_eligible
+        return trial_eligible(telegram_id)
+    except Exception:
+        return False
+
+
 def api_me(telegram_id: int) -> dict:
     """Profile tab payload — mirrors what the bot already knows about the user."""
     lang = user_lang(telegram_id)
@@ -361,6 +370,8 @@ def api_me(telegram_id: int) -> dict:
         'name': (user.name or '') if user else '',
         'lang': lang,
         'premium': is_premium(telegram_id),
+        # V3.88.0: the 99 ₽ / 3-day first-purchase trial is on offer
+        'trial_eligible': _trial_eligible(telegram_id),
         # V3.51.1: the owner's Mini App sees the admin generation feed only
         # when this is true (the server re-checks on every admin API call).
         'admin': _is_admin(telegram_id),
@@ -685,6 +696,28 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
     """
     en = lang == EN
     return _with_price_usd([
+        # V3.88.0: the first-purchase trial (the app shows it only while
+        # /webapp/api/me says trial_eligible; the invoice routes re-check).
+        {
+            'id': 'premium_trial',
+            'emoji': '🔥',
+            'title': (f'Premium · {PREMIUM_TRIAL_DAYS} дня — попробовать' if not en
+                      else f'Premium · {PREMIUM_TRIAL_DAYS} days trial'),
+            'description': (
+                'всё откровенное открыто: фото в белье и без, «Раздеть», «Наедине», голос, без лимита'
+                if not en else
+                'everything explicit unlocked: lingerie & nude photos, «Undress», private shots, voice, unlimited'
+            ),
+            'tagline': ('разовая цена для первой покупки' if not en else 'one-time first-purchase price'),
+            'badge': ('пробный' if not en else 'trial'),
+            'gift': 0,
+            'days': PREMIUM_TRIAL_DAYS,
+            'stars': PREMIUM_TRIAL_STARS,
+            'payload': 'premium_trial',
+            'rub': PLATEGA_PREMIUM_TRIAL_PRICE_RUB if PLATEGA_ENABLED else None,
+            'usd': PREMIUM_TRIAL_PRICE_USD,
+            'trial': True,
+        },
         {
             'id': 'premium',
             'emoji': '⭐',
