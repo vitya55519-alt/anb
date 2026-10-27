@@ -48,4 +48,4 @@ def test_studio_explicit_is_premium_only():
     assert "if not prem_ok and webapp_service.picture_prompt_spicy(prompt):" in body
     assert "adult_ok = is_adult_confirmed(telegram_id) and prem_ok and ref_path is None" in body
     assert body.index('picture_prompt_spicy(prompt)') < body.index('generate_private_photo_t2i')
-    assert "if (jp.error === 'premium_required') { toast(L.pic_spicy_prem); showTab('shop'); return; }" in INDEX
+    assert "if (jp.error === 'premium_required') { toast(L.pic_spicy_prem); quickBuy('spicy'); return; }" in INDEX

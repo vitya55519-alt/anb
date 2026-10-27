@@ -1556,6 +1556,11 @@ const L_EN = {
   qb_limit: 'She is falling asleep till tomorrow 😴 wake her up',
   qb_peaches: 'Not enough peaches 🍑',
   qb_voice: 'Her voice is a Premium perk 🎙 hear how she says it',
+  qb_spicy: 'Her most private photos are for Premium 🔥 she is ready to show you',
+  spicy_btn: '🔥 Unlock with Premium',
+  sc_prem_only: '⭐ Premium only',
+  undress_tease: 'like it? 😏 want to see what is underneath… tap and I will take it off for you 🔥',
+  undress_tease_btn: '🔥 Undress her',
   say_btn: '▶ Voice',
   say_btn_prem: '🔊 Voice it · Premium',
   say_wait: '● recording a voice note…',
@@ -1798,6 +1803,11 @@ const L_RU = {
   qb_limit: 'Она засыпает до завтра 😴 разбуди её',
   qb_peaches: 'Не хватает персиков 🍑',
   qb_voice: 'Её голос — с Premium 🎙 услышь, как она это говорит',
+  qb_spicy: 'Самые откровенные фото — с Premium 🔥 она уже готова тебе показать',
+  spicy_btn: '🔥 Открыть с Premium',
+  sc_prem_only: '⭐ только с Premium',
+  undress_tease: 'нравится? 😏 а хочешь увидеть, что под ним… нажми — и я сниму это для тебя 🔥',
+  undress_tease_btn: '🔥 Раздеть её',
   say_btn: '▶ Голосом',
   say_btn_prem: '🔊 Озвучить · Premium',
   say_wait: '● записывает голосовое…',
@@ -3335,6 +3345,24 @@ async function sendChat() {
   }
 }
 
+// V3.87.1: owner — «покажи себя — бесплатно, и сразу раздеть». After her
+// (free) photo arrives she teases once per chat and offers «🔥 Раздеть» on
+// that very photo; without Premium the tap opens the Premium pay sheet.
+const _undressTeased = {};
+function undressTease(mediaUrl) {
+  if (!CHAT || !mediaUrl || CHAT.duo || _undressTeased[CHAT.id]) return;
+  if (String(mediaUrl).indexOf('/webapp/media/') !== 0) return;
+  _undressTeased[CHAT.id] = 1;
+  const box = document.getElementById('chatMsgs');
+  setTimeout(() => {
+    if (!CHAT) return;
+    box.insertAdjacentHTML('beforeend', chatBubble('bot', L.undress_tease, null));
+    box.insertAdjacentHTML('beforeend', '<div class="chat-offer"><button class="mchip on" data-pact="undress" data-media="' +
+      esc(mediaUrl) + '">' + esc(L.undress_tease_btn + (ME && ME.premium ? '' : ' ⭐')) + '</button></div>');
+    box.scrollTop = box.scrollHeight;
+  }, 1600);
+}
+
 // ── V3.57.0: voice messages and user photos in the app chat ──────────────
 function renderChatReply(j) {
   if (CHAT) loadChatLevel(CHAT.id);
@@ -3344,6 +3372,7 @@ function renderChatReply(j) {
   const box = document.getElementById('chatMsgs');
   if (j.photo_url) {
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
+    undressTease(j.photo_url);
   } else if (j.voice_url) {
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'voice', media_url: j.voice_url, ts: null }));
   } else {
@@ -3355,6 +3384,11 @@ function renderChatReply(j) {
   // V3.76.0: a card girl's photos are Premium-only — one tap to the shop.
   if (j.photo_block === 'premium') {
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="showTab('shop')">⭐ ${esc(L.need_premium)}</button></div>`);
+  }
+  // V3.87.0: a nude / lingerie photo — Premium-only; the pay sheet opens at once.
+  if (j.photo_block === 'spicy') {
+    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('spicy')">${esc(L.spicy_btn)}</button></div>`);
+    setTimeout(() => quickBuy('spicy'), 900);
   }
   if (j.photo_block === 'peaches') {
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="showTab('shop')">🍑 Пополнить персики · фото ${esc(String(Number(j.photo_price) || 200))} 🍑</button></div>`);
@@ -3546,9 +3580,8 @@ async function photoAction(action, mediaUrl, btn) {
       if (j.error === 'premium_required') {
         // V3.86.0: «Раздеть» is Premium-only — leave the chat and open the shop.
         toast(action === 'undress' ? L.pa_undress_prem : L.need_premium);
-        document.getElementById('chatview').classList.remove('open');
-        document.getElementById('charview').classList.remove('open');
-        showTab('shop');
+        // V3.87.0: the Premium pay sheet right in the chat (no leaving her).
+        quickBuy('spicy', () => photoAction(action, mediaUrl, btn));
         return;
       }
       toast(j.error === 'adult_confirm' ? L.adult_confirm_needed : L.locked);
@@ -3706,9 +3739,9 @@ async function requestMedia(kind, scene) {
     }
     if (r.status === 403) {
       const j = await r.json().catch(() => ({}));
-      toast(j.error === 'consent' ? L.consent_needed : (j.error === 'adult_confirm' ? L.adult_confirm_needed :
-        (j.error === 'premium_required' ? L.need_premium : L.locked)));
-      if (j.error === 'premium_required') showTab('shop');
+      // V3.87.0: spicy photos / «Наедине» / hot circle — the Premium pay sheet in place.
+      if (j.error === 'premium_required') { quickBuy('spicy', () => requestMedia(kind, scene)); return; }
+      toast(j.error === 'consent' ? L.consent_needed : (j.error === 'adult_confirm' ? L.adult_confirm_needed : L.locked));
       return;
     }
     const j = await r.json();
@@ -3718,6 +3751,7 @@ async function requestMedia(kind, scene) {
     // V3.64.0: a failed photo said «Не получилось ответить» — it is a photo.
     if (!j.ok) { toast(j.reason || L.pic_gen_fail || L.reply_err); return; }
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
+    if (kind === 'photo') undressTease(j.url);
     // V3.47.0: referral CTA right after a delivered media (not voice) — the
     // peak-emotion moment to share the invite link and earn a friend a 🍑.
     if (j.url && j.kind !== 'voice') {
@@ -3798,7 +3832,9 @@ function renderPhotoScenes(j) {
     g.scenes.forEach(id => {
       const it = byId[id];
       if (!it) return;
-      const sub = it.locked ? String(L.sc_locked(it.min_level)) : (typeof L['sch_' + id] === 'string' ? L['sch_' + id] : '');
+      // V3.87.0: the private group is Premium-only — say so before the tap.
+      const premOnly = g.key === 'private' && !(ME && ME.premium);
+      const sub = it.locked ? String(L.sc_locked(it.min_level)) : (premOnly ? L.sc_prem_only : (typeof L['sch_' + id] === 'string' ? L['sch_' + id] : ''));
       html += '<div class="featitem' + (it.locked ? ' locked' : '') + '" data-scene="' + esc(id) +
         '" data-locked="' + (it.locked ? '1' : '0') + '" data-hint="' + esc(sub) + '">' +
         '<div class="fet"><div class="fen">' + esc(typeof L['sc_' + id] === 'string' ? L['sc_' + id] : id) + '</div>' +
@@ -5060,7 +5096,7 @@ async function generatePicture() {
       // V3.86.0: explicit pictures are Premium-only — open the shop.
       const jp = await r.json().catch(() => ({}));
       result.innerHTML = ''; if (btn) btn.disabled = false;
-      if (jp.error === 'premium_required') { toast(L.pic_spicy_prem); showTab('shop'); return; }
+      if (jp.error === 'premium_required') { toast(L.pic_spicy_prem); quickBuy('spicy'); return; }
       toast(L.consent_needed); return;
     }
     if (r.status === 400) {
@@ -5448,11 +5484,12 @@ async function quickBuy(kind, retry, opts) {
   if (!SHOP) { try { await loadShop(); } catch (e) {} }
   const s = SHOP;
   if (!s) { showTab('shop'); return; }
-  const want = (kind === 'limit' || kind === 'voice') ? ['premium_week', 'premium'] : ['peach_pack_10', 'peach_pack_30', 'premium'];
+  // V3.87.0: 'spicy' — nude / lingerie / undress / 18+ pictures are Premium-only.
+  const want = (kind === 'limit' || kind === 'voice' || kind === 'spicy') ? ['premium_week', 'premium'] : ['peach_pack_10', 'peach_pack_30', 'premium'];
   const items = want.map(id => (s.purchases || []).find(p => p.id === id)).filter(Boolean);
   if (!items.length) { showTab('shop'); return; }
-  document.getElementById('payEmo').textContent = kind === 'limit' ? '😴' : (kind === 'voice' ? '🎙' : '🍑');
-  document.getElementById('payTitle').textContent = kind === 'limit' ? L.qb_limit : (kind === 'voice' ? L.qb_voice : L.qb_peaches);
+  document.getElementById('payEmo').textContent = kind === 'limit' ? '😴' : (kind === 'voice' ? '🎙' : (kind === 'spicy' ? '🔥' : '🍑'));
+  document.getElementById('payTitle').textContent = kind === 'limit' ? L.qb_limit : (kind === 'voice' ? L.qb_voice : (kind === 'spicy' ? L.qb_spicy : L.qb_peaches));
   const rows = [];
   if (kind === 'limit' && opts.demo) {
     rows.push(`<button class="mrow" data-q="__demo"><span class="ico">🎁</span><span class="nm">${esc(L.qb_demo)}</span><span class="pr">0 ₽</span></button>`);
