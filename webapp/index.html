@@ -598,6 +598,13 @@
   .mlbl { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .mprice { font-size: 12px; font-weight: 500; opacity: .6; white-space: nowrap; }
   .chat-offer { margin: 4px 0 10px; display: flex; }
+  /* V3.88.0: the early locked photo — blurred card + «open» button */
+  .ltease { align-self: flex-start; max-width: 74%; margin: 4px 0 10px; border-radius: 16px; overflow: hidden;
+    background: var(--card); border: 1px solid rgba(232,68,127,.45); cursor: pointer; box-shadow: 0 8px 22px rgba(232,68,127,.18); }
+  .ltease img { display: block; width: 100%; aspect-ratio: 3/4; object-fit: cover; background: var(--card2); }
+  .ltease .lt-c { padding: 10px 12px 12px; font-size: 13.5px; line-height: 1.4; }
+  .ltease .lt-b { margin-top: 8px; width: 100%; border: none; border-radius: 12px; padding: 10px; color: #fff;
+    font-weight: 700; font-size: 14px; background: linear-gradient(90deg, #ff2d78, #b03cff); }
   .chat-offer .mchip { width: auto; }
   .mchip.on { background: linear-gradient(90deg, #ff2d78, #b03cff); border-color: transparent; font-weight: 600; }
   .charblock { margin: 10px 16px; padding: 12px 14px; background: var(--card); border-radius: 14px; line-height: 1.45; white-space: pre-wrap; }
@@ -1463,11 +1470,14 @@ const L_EN = {
   // V3.55.2: the premium-characters section under the grid
   prem_chars_title: 'Premium characters', prem_chars_hint: 'Unlocked with a Premium subscription', prem_chars_owned: 'Open with your subscription',
   // V3.66.0: shop cards + missions with peaches
+  lt_text: 'I took this one just for you 🙈 want to see it?',
+  lt_btn: '🔓 Open the photo',
+  plan_trial: d => d + '-day trial', plan_trial_sub: 'one-time first-purchase price · everything explicit unlocked',
   plan_w1: '1 week', plan_m1: '1 month', plan_m3: '3 months', plan_per_week: n => n + ' ₽ a week',
   prem_get: 'Get', prem_extend: 'Extend', prem_once: 'One-time payment, no auto-renewal',
   prem_gift_line: n => n + ' 🍑 as a gift right away',
-  prem_tiles: [['💌', 'She never falls asleep', 'Unlimited chat, day and night'], ['🎙', 'Her voice', 'Voice replies']],
-  prem_list: ['All girls, premium ones too', '2 photo animations a day', 'Story replays', 'More memory: she remembers more about you'],
+  prem_tiles: [['🔥', 'Everything explicit', 'Lingerie & nude photos, «Undress»'], ['💌', 'She never falls asleep', 'Unlimited chat, day and night']],
+  prem_list: ['Private shots and 18+ pictures', 'Her voice — voice replies', 'All girls, premium ones too', '2 photo animations a day', 'Story replays', 'More memory: she remembers more about you'],
   peaches_title: 'Peaches', peaches_word: 'peaches', pack_hot: 'hit', peach_photo_hint: n => '1 photo of her = ' + n + ' 🍑',
   free_peaches_row: 'Free peaches every day — in Missions', price_list: 'What costs what',
   mis_today: 'Today', mis_reset: 'refresh at 03:00', mis_achievements: 'Achievements',
@@ -1710,11 +1720,14 @@ const L_RU = {
   // V3.55.2: секция премиум-персонажей под сеткой
   prem_chars_title: 'Премиум-персонажи', prem_chars_hint: 'Открываются подпиской Premium', prem_chars_owned: 'Открыты твоей подпиской',
   // V3.66.0: карточки магазина + миссии с персиками
+  lt_text: 'это фото я сделала только для тебя 🙈 открыть?',
+  lt_btn: '🔓 Открыть фото',
+  plan_trial: d => d + ' дня — попробовать', plan_trial_sub: 'разовая цена первой покупки · открыто всё откровенное',
   plan_w1: '1 неделя', plan_m1: '1 месяц', plan_m3: '3 месяца', plan_per_week: n => n + ' ₽ в неделю',
   prem_get: 'Получить', prem_extend: 'Продлить', prem_once: 'Разовый платёж, без автопродления',
   prem_gift_line: n => n + ' 🍑 в подарок сразу',
-  prem_tiles: [['💌', 'Она не засыпает', 'Общение без лимита днём и ночью'], ['🎙', 'Её голос', 'Отвечает голосовыми']],
-  prem_list: ['Все девушки, включая премиум', '2 оживления фото в день', 'Перезапуск историй', 'Больше памяти: помнит о тебе больше'],
+  prem_tiles: [['🔥', 'Всё откровенное', 'Фото в белье и без, «Раздеть»'], ['💌', 'Она не засыпает', 'Общение без лимита днём и ночью']],
+  prem_list: ['«Наедине» и 18+ картинки', 'Её голос — отвечает голосовыми', 'Все девушки, включая премиум', '2 оживления фото в день', 'Перезапуск историй', 'Больше памяти: помнит о тебе больше'],
   peaches_title: 'Персики', peaches_word: 'персиков', pack_hot: 'хит', peach_photo_hint: n => '1 фото от неё = ' + n + ' 🍑',
   free_peaches_row: 'Бесплатные персики каждый день — в «Миссиях»', price_list: 'Что сколько стоит',
   mis_today: 'Задания на сегодня', mis_reset: 'обновятся в 03:00', mis_achievements: 'Достижения',
@@ -2365,7 +2378,7 @@ async function buy(productId, btn, extra, onPaid) {
     tg.openInvoice(j.link, (status) => {
       done();
       if (status === 'paid') {
-        toast(productId === 'premium' || productId === 'premium_week' || productId === 'premium_quarter' ? L.paid_prem : L.paid_credit);
+        toast(productId === 'premium' || productId === 'premium_week' || productId === 'premium_quarter' || productId === 'premium_trial' ? L.paid_prem : L.paid_credit);
         loadMe(); loadShop(); loadCharacters();
         // V3.62.10: bought at the moment of desire — finish what he wanted.
         if (typeof onPaid === 'function') setTimeout(onPaid, 800);
@@ -3380,6 +3393,17 @@ function renderChatReply(j) {
     box.insertAdjacentHTML('beforeend', chatBubble('bot', parts[0], null));
     if (parts.length > 1) playFollowups(parts.slice(1));
   }
+  // V3.88.0: the early locked photo — a blurred «только для тебя» card; a tap
+  // opens the Premium pay sheet (the 3-day trial first while eligible).
+  if (j.locked_tease && j.locked_tease.url) {
+    const src = j.locked_tease.url;
+    setTimeout(() => {
+      if (!CHAT) return;
+      box.insertAdjacentHTML('beforeend', '<div class="ltease" data-ltease="1"><img src="' + esc(src) + '" alt="" loading="lazy">' +
+        '<div class="lt-c">' + esc(L.lt_text) + '<button type="button" class="lt-b">' + esc(L.lt_btn) + '</button></div></div>');
+      box.scrollTop = box.scrollHeight;
+    }, 1400);
+  }
   // V3.60.3: no peaches for the photo she promised — one tap to the shop.
   // V3.76.0: a card girl's photos are Premium-only — one tap to the shop.
   if (j.photo_block === 'premium') {
@@ -3695,6 +3719,11 @@ document.addEventListener('click', e => {
     au.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * au.duration;
     if (au.paused) vpPlay(au);
   }
+});
+document.addEventListener('click', e => {
+  // V3.88.0: the locked photo card → the Premium pay sheet.
+  const lt = e.target && e.target.closest ? e.target.closest('[data-ltease]') : null;
+  if (lt) { e.stopPropagation(); quickBuy('spicy', () => { if (CHAT) requestMedia('photo', 'lingerie'); }); }
 });
 document.addEventListener('click', e => {
   const b = e.target && e.target.closest ? e.target.closest('[data-pact]') : null;
@@ -5231,7 +5260,9 @@ async function loadShop() {
     // V3.67.0: owner — «как у конкурентов»: two perk tiles, a short list,
     // the plans as radio rows (week / month / 3 months) with the honest
     // «as if paid weekly» crossed-out price and ₽-per-week, ONE big button.
-    const plans = ['premium_week', 'premium', 'premium_quarter'].map(byId).filter(Boolean);
+    // V3.88.0: the 3-day first-purchase trial leads while he is eligible.
+    const trialOk = !!(ME && ME.trial_eligible && !ME.premium);
+    const plans = (trialOk ? ['premium_trial'] : []).concat(['premium_week', 'premium', 'premium_quarter']).map(byId).filter(Boolean);
     const weekPlan = byId('premium_week');
     const rubOf = x => x.price_rub || 0;
     const planRow = x => {
@@ -5239,13 +5270,13 @@ async function loadShop() {
       const weeks = days / 7;
       const full = weekPlan && x !== weekPlan ? Math.round(rubOf(weekPlan) * weeks / 10) * 10 : 0;
       const off = full && rubOf(x) < full ? Math.round((1 - rubOf(x) / full) * 100) : 0;
-      const label = x.id === 'premium_week' ? L.plan_w1 : (x.id === 'premium' ? L.plan_m1 : L.plan_m3);
-      const perWeek = x !== weekPlan && LANG !== 'en' ? Math.round(rubOf(x) / weeks) : 0;
+      const label = x.trial ? L.plan_trial(x.days || 3) : (x.id === 'premium_week' ? L.plan_w1 : (x.id === 'premium' ? L.plan_m1 : L.plan_m3));
+      const perWeek = x !== weekPlan && !x.trial && LANG !== 'en' ? Math.round(rubOf(x) / weeks) : 0;
       return `
         <button class="prow" data-plan="${esc(x.id)}">
           ${off ? `<span class="pr-off">−${esc(String(off))}%</span>` : ''}
           <span class="pr-radio"></span>
-          <span class="pr-l"><b>${esc(label)}</b>${perWeek ? `<small>${esc(L.plan_per_week(fmtN(perWeek)))}</small>` : ''}</span>
+          <span class="pr-l"><b>${esc(label)}</b>${perWeek ? `<small>${esc(L.plan_per_week(fmtN(perWeek)))}</small>` : (x.trial ? `<small>${esc(L.plan_trial_sub)}</small>` : '')}</span>
           <span class="pr-r">${off && LANG !== 'en' ? `<s>${esc(fmtN(full))} ₽</s>` : ''}<b>${esc(money(x))}</b></span>
         </button>`;
     };
@@ -5302,7 +5333,7 @@ async function loadShop() {
     document.querySelectorAll('#shopbody [data-pay]').forEach(b =>
       b.addEventListener('click', () => openPay(b.dataset.pay)));
     // V3.67.0: the plan radio — month preselected; the gift line follows it.
-    let premPick = byId('premium') ? 'premium' : (plans[0] && plans[0].id);
+    let premPick = trialOk && byId('premium_trial') ? 'premium_trial' : (byId('premium') ? 'premium' : (plans[0] && plans[0].id));
     const pickPlan = id => {
       premPick = id;
       document.querySelectorAll('#shopbody .prow').forEach(r => r.classList.toggle('on', r.dataset.plan === id));
@@ -5485,7 +5516,9 @@ async function quickBuy(kind, retry, opts) {
   const s = SHOP;
   if (!s) { showTab('shop'); return; }
   // V3.87.0: 'spicy' — nude / lingerie / undress / 18+ pictures are Premium-only.
-  const want = (kind === 'limit' || kind === 'voice' || kind === 'spicy') ? ['premium_week', 'premium'] : ['peach_pack_10', 'peach_pack_30', 'premium'];
+  // V3.88.0: the cheap 3-day trial goes first while he is eligible.
+  const trialFirst = (ME && ME.trial_eligible && !ME.premium) ? ['premium_trial'] : [];
+  const want = (kind === 'limit' || kind === 'voice' || kind === 'spicy') ? trialFirst.concat(['premium_week', 'premium']) : ['peach_pack_10', 'peach_pack_30', 'premium'];
   const items = want.map(id => (s.purchases || []).find(p => p.id === id)).filter(Boolean);
   if (!items.length) { showTab('shop'); return; }
   document.getElementById('payEmo').textContent = kind === 'limit' ? '😴' : (kind === 'voice' ? '🎙' : (kind === 'spicy' ? '🔥' : '🍑'));
@@ -5754,6 +5787,8 @@ async function loadMe() {
     renderProfileBody();
     // V3.55.5: the shop gift series mirrors ME — repaint it if the tab is open.
     renderGiftBlock();
+    // V3.88.0: the shop was drawn before ME arrived — redraw it with the trial row.
+    if (ME.trial_eligible && !ME.premium && typeof _shopLoaded !== 'undefined' && _shopLoaded && SHOP) loadShop();
   } catch (e) {
     document.getElementById('profilebody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }

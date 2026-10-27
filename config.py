@@ -452,6 +452,13 @@ PLATEGA_PREMIUM_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_PRICE_RUB", "6
 PLATEGA_PREMIUM_WEEKLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_WEEKLY_PRICE_RUB", "199")))
 # V3.43.0: the 3-month plan the competitor card shows (−50% vs buying monthly).
 PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB", "1799")))
+# V3.88.0: the first-purchase trial — 3 days of Premium for 99 ₽ (once per
+# user, only before any Premium purchase). Competitors take the first money
+# for pennies; whoever paid once pays again.
+PREMIUM_TRIAL_DAYS = max(1, int(os.getenv("PREMIUM_TRIAL_DAYS", "3")))
+PLATEGA_PREMIUM_TRIAL_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_TRIAL_PRICE_RUB", "99")))
+PREMIUM_TRIAL_STARS = max(1, int(os.getenv("PREMIUM_TRIAL_STARS", "75")))
+PREMIUM_TRIAL_PRICE_USD = float(os.getenv("PREMIUM_TRIAL_PRICE_USD", "1"))
 # Display-only dollar equivalent of the monthly plan. V3.20.1 charged it for
 # real through the FreeKassa multi-currency kassa; Platega invoices in rubles
 # (the payer picks SBP/card/crypto on its page), so this is now just a price tag.

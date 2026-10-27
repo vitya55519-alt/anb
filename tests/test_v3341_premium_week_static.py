@@ -34,7 +34,7 @@ def test_payments_grant_week():
     assert '"premium_week":PREMIUM_WEEKLY_STARS' in PAYMENTS
     # V3.43.0: the grant block grew the quarterly plan — week/quarter/month
     # each carry their own (days, credits) pair now.
-    grant = PAYMENTS[PAYMENTS.index('if product in {"premium_month","premium_month_discount","premium_week","premium_quarter"}'):]  # noqa: E501
+    grant = PAYMENTS[PAYMENTS.index('if product in {"premium_month","premium_month_discount","premium_week","premium_quarter","premium_trial"}'):]  # noqa: E501
     grant = grant[:grant.index('elif product in {"photo","custom_photo"}')]
     assert 'days, credits = 7, PREMIUM_WEEKLY_PHOTO_CREDITS' in grant
     assert 'days, credits = 90, PREMIUM_QUARTERLY_PHOTO_CREDITS' in grant

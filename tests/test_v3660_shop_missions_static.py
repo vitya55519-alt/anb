@@ -54,5 +54,6 @@ def test_premium_plans_like_competitors():
     # V3.67.0: radio plan rows incl. the 3-month plan, one buy button
     assert "'id': 'premium_quarter'" in WEB
     assert "'premium_quarter': 'premium_quarter'," in MAIN
-    assert "['premium_week', 'premium', 'premium_quarter'].map(byId)" in INDEX
+    # V3.88.0: the trial row leads while eligible
+    assert ".concat(['premium_week', 'premium', 'premium_quarter']).map(byId)" in INDEX
     assert 'id="premBuyBtn"' in INDEX and 'openPay(premPick)' in INDEX
