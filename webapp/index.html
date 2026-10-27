@@ -1559,6 +1559,8 @@ const L_EN = {
   qb_spicy: 'Her most private photos are for Premium 🔥 she is ready to show you',
   spicy_btn: '🔥 Unlock with Premium',
   sc_prem_only: '⭐ Premium only',
+  undress_tease: 'like it? 😏 want to see what is underneath… tap and I will take it off for you 🔥',
+  undress_tease_btn: '🔥 Undress her',
   say_btn: '▶ Voice',
   say_btn_prem: '🔊 Voice it · Premium',
   say_wait: '● recording a voice note…',
@@ -1804,6 +1806,8 @@ const L_RU = {
   qb_spicy: 'Самые откровенные фото — с Premium 🔥 она уже готова тебе показать',
   spicy_btn: '🔥 Открыть с Premium',
   sc_prem_only: '⭐ только с Premium',
+  undress_tease: 'нравится? 😏 а хочешь увидеть, что под ним… нажми — и я сниму это для тебя 🔥',
+  undress_tease_btn: '🔥 Раздеть её',
   say_btn: '▶ Голосом',
   say_btn_prem: '🔊 Озвучить · Premium',
   say_wait: '● записывает голосовое…',
@@ -3341,6 +3345,24 @@ async function sendChat() {
   }
 }
 
+// V3.87.1: owner — «покажи себя — бесплатно, и сразу раздеть». After her
+// (free) photo arrives she teases once per chat and offers «🔥 Раздеть» on
+// that very photo; without Premium the tap opens the Premium pay sheet.
+const _undressTeased = {};
+function undressTease(mediaUrl) {
+  if (!CHAT || !mediaUrl || CHAT.duo || _undressTeased[CHAT.id]) return;
+  if (String(mediaUrl).indexOf('/webapp/media/') !== 0) return;
+  _undressTeased[CHAT.id] = 1;
+  const box = document.getElementById('chatMsgs');
+  setTimeout(() => {
+    if (!CHAT) return;
+    box.insertAdjacentHTML('beforeend', chatBubble('bot', L.undress_tease, null));
+    box.insertAdjacentHTML('beforeend', '<div class="chat-offer"><button class="mchip on" data-pact="undress" data-media="' +
+      esc(mediaUrl) + '">' + esc(L.undress_tease_btn + (ME && ME.premium ? '' : ' ⭐')) + '</button></div>');
+    box.scrollTop = box.scrollHeight;
+  }, 1600);
+}
+
 // ── V3.57.0: voice messages and user photos in the app chat ──────────────
 function renderChatReply(j) {
   if (CHAT) loadChatLevel(CHAT.id);
@@ -3350,6 +3372,7 @@ function renderChatReply(j) {
   const box = document.getElementById('chatMsgs');
   if (j.photo_url) {
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
+    undressTease(j.photo_url);
   } else if (j.voice_url) {
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'voice', media_url: j.voice_url, ts: null }));
   } else {
@@ -3728,6 +3751,7 @@ async function requestMedia(kind, scene) {
     // V3.64.0: a failed photo said «Не получилось ответить» — it is a photo.
     if (!j.ok) { toast(j.reason || L.pic_gen_fail || L.reply_err); return; }
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
+    if (kind === 'photo') undressTease(j.url);
     // V3.47.0: referral CTA right after a delivered media (not voice) — the
     // peak-emotion moment to share the invite link and earn a friend a 🍑.
     if (j.url && j.kind !== 'voice') {

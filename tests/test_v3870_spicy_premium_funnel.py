@@ -43,3 +43,13 @@ def test_app_opens_the_premium_sheet():
 
 def test_shop_sells_it():
     assert "'откровенные фото: в белье, обнажённые, «Раздеть», «Наедине», 18+ картинки'" in WEB
+
+
+def test_free_selfie_then_undress_tease():
+    # «покажи себя» stays a free selfie (not a spicy scene)…
+    assert "'покажи себя'" in PS
+    # …and her first photo in a chat is followed by «🔥 Раздеть её» on that photo
+    assert 'function undressTease(mediaUrl) {' in INDEX
+    assert 'undressTease(j.photo_url);' in INDEX
+    assert "if (kind === 'photo') undressTease(j.url);" in INDEX
+    assert INDEX.count('undress_tease_btn:') >= 2
