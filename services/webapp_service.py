@@ -825,6 +825,9 @@ def api_shop(lang: str = 'ru') -> dict:
     """Structured prices for the shop tab (same constants the bot charges)."""
     en = lang == EN
     features = [
+        # V3.87.0: the 18+ content is Premium-only — lead with it.
+        ('🔥', 'откровенные фото: в белье, обнажённые, «Раздеть», «Наедине», 18+ картинки',
+         'explicit photos: lingerie, nude, «Undress», private shots, 18+ pictures'),
         # V3.83.0: owner — «с Premium можно выбрать любой уровень общения».
         ('🎚', 'любой уровень общения 1–10 с каждой девушкой — выбери сам', 'any relationship level 1–10 with every girl — your pick'),
         ('📸', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 каждый месяц в подарок', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 every month as a gift'),
@@ -839,12 +842,12 @@ def api_shop(lang: str = 'ru') -> dict:
                         UNDRESS_PEACH_COST, CIRCLE_PEACH_COST, HOT_CIRCLE_PEACH_COST)
     items = [
         ('📸', 'Фото в чате' if not en else 'Chat photo', CHAT_PHOTO_PEACH_COST),
-        ('🔒', 'Фото «Наедине»' if not en else 'Private photo', PRIVATE_PHOTO_PEACH_COST),
+        ('🔒', 'Фото «Наедине» (с Premium)' if not en else 'Private photo (Premium)', PRIVATE_PHOTO_PEACH_COST),
         ('🎭', 'Косплей' if not en else 'Cosplay photo', COSPLAY_PHOTO_PEACH_COST),
-        ('🔥', 'Раздеть фото' if not en else 'Undress a photo', UNDRESS_PEACH_COST),
+        ('🔥', 'Раздеть фото (с Premium)' if not en else 'Undress a photo (Premium)', UNDRESS_PEACH_COST),
         ('🎥', 'Кружочек' if not en else 'Video circle', CIRCLE_PEACH_COST),
-        ('🤫', 'Тайное видео' if not en else 'Secret video', HOT_CIRCLE_PEACH_COST),
-        ('🔥', 'Горячий кружок' if not en else 'Hot video circle', HOT_CIRCLE_PEACH_COST),
+        ('🤫', 'Тайное видео (с Premium)' if not en else 'Secret video (Premium)', HOT_CIRCLE_PEACH_COST),
+        ('🔥', 'Горячий кружок (с Premium)' if not en else 'Hot video circle (Premium)', HOT_CIRCLE_PEACH_COST),
         ('🎨', 'Картинка в студии' if not en else 'Studio picture', WEBAPP_PICTURE_COST_CREDITS),
         ('🎬', 'Видео в студии' if not en else 'Studio video', WEBAPP_VIDEO_COST_CREDITS),
         # V3.44.22: public personas are free, private ones cost peaches.

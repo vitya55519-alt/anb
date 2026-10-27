@@ -69,7 +69,7 @@ from services.photo_service import (
     get_gallery_page, get_gallery_item_bytes, GALLERY_PAGE_SIZE, generate_custom_avatar,
     generate_photo_set, photo_frame_bytes, AUTO_CAPTIONS,
     admin_pool_count, admin_pool_get, admin_pool_latest_id, admin_pool_neighbor, admin_pool_set_shared,
-    ensure_custom_avatar_cached, attach_guest,
+    ensure_custom_avatar_cached, attach_guest, spicy_needs_premium,
 )
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
@@ -1841,6 +1841,13 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
 
     if telegram_id in ADMIN_TELEGRAM_IDS:
         await _start_photo_background(chat_id, telegram_id, request, 'admin')
+        return
+
+    if not is_premium(telegram_id) and spicy_needs_premium(request):
+        # V3.87.0: nude / lingerie photos are Premium-only — sell Premium here.
+        track_event(db_uid, 'paywall_view', metadata={'product': 'spicy_photo', 'scene': request.scene, 'source': 'bot'})
+        await bot.send_message(chat_id, CHAT_PHOTO_BLOCK_TEXT['spicy'],
+                               reply_markup=premium_keyboard(telegram_id=telegram_id))
         return
 
     if is_custom_request(request):
@@ -6370,6 +6377,14 @@ async def private_photo_generate(cq: types.CallbackQuery):
         PrivatePhotoRequest, consume_free_private_photo,
         get_private_photo_usage, get_type_name, generate_private_photo_real,
     )
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS and not is_premium(cq.from_user.id):
+        # V3.87.0: «Наедине» shots are Premium-only — the button sells Premium.
+        track_event(ensure_user(cq.from_user.id), 'paywall_view',
+                    metadata={'product': 'spicy_private', 'scene': cat_id, 'source': 'bot'})
+        await cq.answer()
+        await cq.message.answer(CHAT_PHOTO_BLOCK_TEXT['spicy'],
+                                reply_markup=premium_keyboard(telegram_id=cq.from_user.id))
+        return
     usage = get_private_photo_usage(cq.from_user.id)
     is_free = consume_free_private_photo(cq.from_user.id, cat_id)
     if not is_free and not usage['hot_pass_active']:
@@ -12090,6 +12105,9 @@ CHAT_PHOTO_BLOCK_TEXT = {
     'failed': 'ой, фото не загрузилось 😔 попробуй ещё раз — персики не списались',
     # V3.76.0: card girls' pictures are a Premium thing (as at Come Closer).
     'premium': 'хочу показать тебе фото… но мои фото только для тех, у кого Premium 😏 оформишь — пришлю сразу',
+    # V3.87.0: nude / lingerie photos are Premium-only — the funnel to Premium.
+    'spicy': ('такие фото я показываю только самым близким 🙈 оформи Premium — '
+              'и я пришлю его сразу, а ещё раздену себя для тебя по кнопке 🔥'),
 }
 
 
@@ -12163,6 +12181,15 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | N
         return 'adult'
     if not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
         return 'stage'
+    if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id) \
+            and spicy_needs_premium(PhotoRequest(scene=scene)):
+        # V3.87.0: nude / lingerie — Premium-only, no free or peach route.
+        try:
+            track_event(ensure_user(telegram_id), 'paywall_view',
+                        metadata={'product': 'spicy_photo', 'scene': scene, 'source': 'chat'})
+        except Exception:
+            pass
+        return 'spicy'
     if telegram_id not in ADMIN_TELEGRAM_IDS and get_photo_credits(telegram_id) < CHAT_PHOTO_PEACH_COST:
         # V3.61.5: today's free chat photos go first.
         from services.chat_photo_allowance import free_chat_photos_left
@@ -12302,7 +12329,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             if payload:
                 return web.json_response(payload)
             block = 'failed'
-        if block in ('peaches', 'premium'):
+        if block in ('peaches', 'premium', 'spicy'):
             # keep her words, add the honest «out of peaches» / «Premium» note + button
             note = CHAT_PHOTO_BLOCK_TEXT[block].format(price=CHAT_PHOTO_PEACH_COST)
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
@@ -13916,6 +13943,17 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
                 return web.json_response({'ok': False, 'error': 'locked'}, status=403)
             if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
                 return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
+        # V3.87.0: nude / lingerie photos, the private «Наедине» shots and the
+        # hot circle are Premium-only — free peaches must never buy them.
+        if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id) and (
+                kind in ('hot', 'hotcircle')
+                or (kind == 'photo' and spicy_needs_premium(PhotoRequest(scene=scene)))):
+            try:
+                track_event(ensure_user(telegram_id), 'paywall_view',
+                            metadata={'product': 'spicy_' + kind, 'scene': scene, 'source': 'app'})
+            except Exception:
+                pass
+            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
         if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS \
                 and get_photo_credits(telegram_id) < PEACH_SCALE:
             # V3.44.22: a chat photo costs ONE credit (consume_photo_credit below) —

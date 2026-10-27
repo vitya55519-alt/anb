@@ -1245,6 +1245,18 @@ def requires_adult_confirmation(request: PhotoRequest) -> bool:
     return request.scene in {'lingerie', 'private_fashion', 'nude', 'tease'} or bool(INTIMATE_STYLE.search(' '.join([request.clothing, request.location, request.angle])))
 
 
+# V3.87.0: owner — «давать столько персиков бесплатно, чтобы не хватало на фото
+# голой / в белье, и вести на Premium». Free peaches pile up (welcome + channel
+# + promo + daily missions ≈ 2 700 🍑 on day one, +200 🍑 every day), so no
+# peach price holds the line: nude / lingerie / boudoir photos are Premium-only.
+PREMIUM_SPICY_SCENES = frozenset(SEEDREAM_ADULT_SCENES | ADULT_SCENES)
+
+
+def spicy_needs_premium(request: PhotoRequest) -> bool:
+    """A nude / lingerie / boudoir photo — Premium-only (V3.87.0)."""
+    return request.scene in PREMIUM_SPICY_SCENES or requires_adult_confirmation(request)
+
+
 def build_photo_menu(telegram_id: int, character_id: str = CHARACTER_ID):
     used, paid, limit = get_usage(telegram_id, character_id)
     return {
