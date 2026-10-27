@@ -106,6 +106,9 @@ GEMINI_TTS_VOICES = {
     'dasha_01': 'Sulafat',
     'kamila_01': 'Callirrhoe',
     'rita_01': 'Zephyr',
+    'yulya_01': 'Leda',
+    'liza_01': 'Aoede',
+    'kira_01': 'Despina',
 }
 GEMINI_FEMALE_VOICES = (
     'Leda', 'Kore', 'Aoede', 'Achernar', 'Autonoe',
@@ -149,6 +152,9 @@ GEMINI_TTS_MANNER = {
     'dasha_01': 'quiet, low and ironic, unhurried, ',
     'kamila_01': 'hot, fast and bold, with a warm southern energy, ',
     'rita_01': 'bright, giggly and playful, ',
+    'yulya_01': 'sweet, playful and purring, with a giggle, ',
+    'liza_01': 'soft, breathy and shy, with a sly smile, ',
+    'kira_01': 'low, smoky and confident, with a teasing smirk, ',
 }
 _DEFAULT_GEMINI_TTS_VOICE = GEMINI_TTS_VOICES['anna_01']
 
