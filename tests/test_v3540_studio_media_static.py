@@ -47,7 +47,8 @@ def test_picture_route_img2img_is_censored_only():
     assert "webapp_service.decode_data_image(str(body.get('image')))" in MAIN
     assert 'generate_custom_avatar(final_prompt, ref_path)' in MAIN
     # the adult uncensored leg is gated OFF whenever a photo was uploaded
-    assert 'adult_ok = is_adult_confirmed(telegram_id) and ref_path is None' in MAIN
+    # (V3.86.0: and only for Premium)
+    assert 'adult_ok = is_adult_confirmed(telegram_id) and prem_ok and ref_path is None' in MAIN
     # the upload never lingers, whatever the render outcome
     assert 'ref_path.unlink(missing_ok=True)' in MAIN
 

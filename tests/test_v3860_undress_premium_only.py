@@ -18,3 +18,34 @@ def test_app_sends_non_premium_to_the_shop():
     assert "toast(action === 'undress' ? L.pa_undress_prem : L.need_premium);" in INDEX
     assert INDEX.count('pa_undress_prem:') >= 2
     assert "esc(L.pa_undress + (ME && ME.premium ? '' : ' ⭐'))" in INDEX
+
+
+WEB = (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')
+
+
+def _spicy_re():
+    import re
+    i = WEB.index('_PICTURE_SPICY_RE = re.compile(')
+    j = WEB.index('\n)\n', i) + 3
+    ns = {'re': re}
+    exec(WEB[i:j], ns)
+    return ns['_PICTURE_SPICY_RE']
+
+
+def test_studio_spicy_prompts_detected_without_false_alarms():
+    r = _spicy_re()
+    for t in ('голая девушка на кровати', 'she is naked in the shower', 'девушка в нижнем белье',
+              'red lingerie', 'girl striptease', 'сексуальная блондинка'):
+        assert r.search(t), t
+    for t in ('девушка в красном платье в кафе', 'girl in striped dress', 'связанный свитер, осень',
+              'кончик носа', 'закончи рисунок', 'anime girl with sword', 'beach in bikini'):
+        assert not r.search(t), t
+
+
+def test_studio_explicit_is_premium_only():
+    i = MAIN.index('async def _webapp_api_picture_generate(')
+    body = MAIN[i:i + 6000]
+    assert "if not prem_ok and webapp_service.picture_prompt_spicy(prompt):" in body
+    assert "adult_ok = is_adult_confirmed(telegram_id) and prem_ok and ref_path is None" in body
+    assert body.index('picture_prompt_spicy(prompt)') < body.index('generate_private_photo_t2i')
+    assert "if (jp.error === 'premium_required') { toast(L.pic_spicy_prem); showTab('shop'); return; }" in INDEX

@@ -13086,7 +13086,15 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     # the «Наедине» nude flow uses. Minors/coercion are hard-blocked above and
     # never reach any engine. V3.54.0: a real uploaded face NEVER routes to the
     # uncensored engine — img2img stays on the censored Seedream/Gemini chain.
-    adult_ok = is_adult_confirmed(telegram_id) and ref_path is None
+    # V3.86.0: owner — explicit pictures are Premium-only. A spicy prompt from
+    # a non-Premium user gets the Premium sheet (nothing charged, no render);
+    # the uncensored engine is opened for Premium (and admins) only.
+    prem_ok = is_premium(telegram_id) or telegram_id in ADMIN_TELEGRAM_IDS
+    if not prem_ok and webapp_service.picture_prompt_spicy(prompt):
+        if ref_path is not None:
+            ref_path.unlink(missing_ok=True)
+        return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    adult_ok = is_adult_confirmed(telegram_id) and prem_ok and ref_path is None
     final_prompt = webapp_service.picture_final_prompt(prompt, style, fmt, adult=adult_ok)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
     try:

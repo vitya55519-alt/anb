@@ -1540,6 +1540,7 @@ const L_EN = {
   buy: 'Buy', auth_short: 'Open this app from Telegram',
   selected_toast: 'selected', locked: 'This girl is locked for now', need_premium: 'Available with Premium ⭐',
   pa_undress_prem: 'Undressing her is a Premium feature ⭐',
+  pic_spicy_prem: '18+ pictures are a Premium feature ⭐',
   plots_h: '🎬 Storylines', plots_sub: 'Role-play scenes: she writes first and stays in role all day', plots_locked: '🎬 Storylines unlock with Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'on', plots_hint: 'All storylines come with Premium', plots_cap: 'Storylines', plots_cap_ds: 'Role-play scenes with her, from light flirting to the hottest', heat_sub: 'How explicit should it be?', heat_soft: 'Tender', heat_soft_ds: 'Romance, flirting and kisses', heat_hot: 'Hot', heat_hot_ds: 'Passionate and bold', heat_wild: 'No limits', heat_wild_ds: 'As explicit as it gets', plot_exit: '✖ No roles', plot_act: 'act', plot_done: '🎬 Storyline complete!', plot_next: '▶ Next', plot_all_done: 'You have played all her storylines 🔥', plot_left: 'You left the role',
   paid_prem: 'Premium activated ✨', paid_credit: 'Photo credit added 📸',
   pay_failed: 'Payment failed', pay_cancelled: 'Payment cancelled',
@@ -1781,6 +1782,7 @@ const L_RU = {
   buy: 'Купить', auth_short: 'Открой приложение из Telegram',
   selected_toast: 'выбрана', locked: 'Эта девушка пока закрыта', need_premium: 'Доступна с Premium ⭐',
   pa_undress_prem: 'Раздеть её можно только с Premium ⭐',
+  pic_spicy_prem: 'Откровенные картинки — только с Premium ⭐',
   plots_h: '🎬 Сюжеты', plots_sub: 'Ролевые сцены: она пишет первой и держит роль весь день', plots_locked: '🎬 Сюжеты открываются с Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'идёт', plots_hint: 'Все сюжеты доступны с Premium', plots_cap: 'Сюжеты', plots_cap_ds: 'Ролевые сцены с ней: от лёгкого флирта до самого горячего', heat_sub: 'Насколько откровенно будет?', heat_soft: 'Нежно', heat_soft_ds: 'Романтика, флирт и поцелуи', heat_hot: 'Горячо', heat_hot_ds: 'Страстно и смело, откровенные намёки', heat_wild: 'Без тормозов', heat_wild_ds: 'Максимально откровенно и пошло', plot_exit: '✖ Без ролей', plot_act: 'акт', plot_done: '🎬 Сюжет пройден!', plot_next: '▶ Дальше', plot_all_done: 'Ты прошёл все её сюжеты 🔥', plot_left: 'Вы вышли из роли',
   paid_prem: 'Premium активирован ✨', paid_credit: 'Фото-кредит начислен 📸',
   pay_failed: 'Оплата не прошла', pay_cancelled: 'Оплата отменена',
@@ -5054,7 +5056,13 @@ async function generatePicture() {
     });
     if (r.status === 401) { toast(L.auth_short); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
     if (r.status === 402) { quickBuy('peaches'); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
-    if (r.status === 403) { toast(L.consent_needed); result.innerHTML = ''; if (btn) btn.disabled = false; return; }
+    if (r.status === 403) {
+      // V3.86.0: explicit pictures are Premium-only — open the shop.
+      const jp = await r.json().catch(() => ({}));
+      result.innerHTML = ''; if (btn) btn.disabled = false;
+      if (jp.error === 'premium_required') { toast(L.pic_spicy_prem); showTab('shop'); return; }
+      toast(L.consent_needed); return;
+    }
     if (r.status === 400) {
       // V3.59.2: say WHAT was wrong — a bad photo used to read as a banned prompt.
       const je = await r.json().catch(() => ({}));
