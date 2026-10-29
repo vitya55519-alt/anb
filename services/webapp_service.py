@@ -620,6 +620,12 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     # V3.50.0: batched read of the romance<->bold path for the card indicator.
     path_axes = _batch_path_axis(telegram_id, [c.character_id for c in cards])
     maritals = _batch_marital(telegram_id, [c.character_id for c in cards])
+    # V3.92.0: «🔥 Девушка дня» — open to everyone today, pinned first.
+    try:
+        from services import girl_of_day
+        gday = girl_of_day.current()
+    except Exception:
+        gday = None
     out = []
     for card in cards:
         custom = is_custom_character(card.character_id)
@@ -652,6 +658,7 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
                      if ov_ext == '.mp4' else None),
             # V3.40.0: the « 427k» view badge on the card corner.
             'views': views.get(card.character_id, 0),
+            'girl_of_day': card.character_id == gday,
             # V3.39.0: the Come Closer character page opens with a photo strip
             # (face + look references), so the card page needs every shot.
             # V3.47.4: admin-set carousel visuals win — pure storefront art

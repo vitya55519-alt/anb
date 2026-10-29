@@ -92,6 +92,11 @@
       font-size: 11px; padding: 3px 9px; border-radius: 12px;
       background: rgba(0,0,0,.55); backdrop-filter: blur(4px); color: #fff;
     }
+    .card .gday {
+      position: absolute; left: 8px; right: 8px; bottom: 36px; text-align: center;
+      font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 12px;
+      background: linear-gradient(90deg, #ff3d71, #ff8a3d); color: #fff;
+    }
   .card .body { padding: 10px 12px 12px; }
   .card .name { font-weight: 600; font-size: 15px; }
   .card .age { color: var(--muted); font-size: 12px; margin: 2px 0 6px; }
@@ -1466,7 +1471,7 @@ const L_EN = {
   chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', fork_romance: '❤️ I really like you', fork_passion: '🔥 I don\'t think of you as a friend 😏', fork_q: 'She is waiting for your answer: which path are you on?', fork_taken: 'The path is already chosen', fork_romance_on: '❤️ The path of romance', fork_passion_on: '🔥 The path of passion', fork_would: 'there:', path_map: 'Your road', path_romance: 'Romance', path_passion: 'Passion', path_romance_other: 'on the romance path', path_passion_other: 'on the passion path', lvl_pick_hint: 'Premium: tap any level and she talks that way right away', lvl_pick_reset: 'Back to the real level', lvl_pick_premium: 'With Premium you can pick any level 1–10', lvl_pick_done: 'level picked:', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', pa_failed: 'Did not work, nothing was charged — try again', pa_not_found: 'This photo can no longer be edited', video_limit: 'free animations are used up', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   typing_now: 'typing…',
-  active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.',
+  active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.', girl_of_day: 'Girl of the day · free',
   // V3.55.2: the premium-characters section under the grid
   prem_chars_title: 'Premium characters', prem_chars_hint: 'Unlocked with a Premium subscription', prem_chars_owned: 'Open with your subscription',
   // V3.66.0: shop cards + missions with peaches
@@ -1717,7 +1722,7 @@ const L_RU = {
   chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', fork_romance: '❤️ Ты мне правда нравишься', fork_passion: '🔥 Я думаю о тебе совсем не по-дружески 😏', fork_q: 'Она ждёт твоего ответа: какой у вас путь?', fork_taken: 'Путь уже выбран', fork_romance_on: '❤️ Вы на пути романтики', fork_passion_on: '🔥 Вы на пути страсти', fork_would: 'там:', path_map: 'Ваша дорога', path_romance: 'Романтика', path_passion: 'Страсть', path_romance_other: 'на пути романтики', path_passion_other: 'на пути страсти', lvl_pick_hint: 'Premium: нажми на любой уровень, и она сразу будет общаться так', lvl_pick_reset: 'Вернуть настоящий уровень', lvl_pick_premium: 'С Premium можно выбрать любой уровень 1–10', lvl_pick_done: 'уровень выбран:', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', pa_failed: 'Не получилось, персики не списаны — попробуй ещё раз', pa_not_found: 'Это фото уже нельзя изменить', video_limit: 'бесплатные оживления закончились', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   typing_now: 'печатает…',
-  active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет',
+  active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет', girl_of_day: 'Девушка дня · без Premium',
   // V3.55.2: секция премиум-персонажей под сеткой
   prem_chars_title: 'Премиум-персонажи', prem_chars_hint: 'Открываются подпиской Premium', prem_chars_owned: 'Открыты твоей подпиской',
   // V3.66.0: карточки магазина + миссии с персиками
@@ -2424,6 +2429,8 @@ function renderCharacters(list) {
     }
     return true;
   });
+  // V3.92.0: «🔥 Девушка дня» rides first in her segment.
+  shown.sort((a, b) => (b.girl_of_day ? 1 : 0) - (a.girl_of_day ? 1 : 0));
   const grid = document.getElementById('chargrid');
   // V3.45.28: the search box belongs to the community + premium витрины.
   const cs = document.getElementById('charSearch');
@@ -2456,6 +2463,8 @@ function renderCharacters(list) {
     // V3.40.0: the view badge («👁 427k») — built from esc()'d parts, shown
     // from the first view on; the grid card refreshes after each page open.
     const viewsBadge = c.views ? '<div class="views">👁 ' + esc(fmtK(c.views)) + '</div>' : '';
+    // V3.92.0: open to everyone today, no Premium.
+    const gdayBadge = c.girl_of_day ? `<div class="gday">🔥 ${esc(L.girl_of_day)}</div>` : '';
     // V3.45.28: free-text tags — up to three chips under the bio (constructor
     // girls only; built-ins return an empty list so nothing renders).
     const tagChips = (c.tags && c.tags.length)
@@ -2471,7 +2480,7 @@ function renderCharacters(list) {
       <div class="photo">
         ${cardMedia(c)}
         <div class="fallback">${esc(c.emoji)}</div>
-        ${badge}${viewsBadge}${c.selected ? `<span class="badge" style="left:8px;top:auto;bottom:8px;color:#e8447f">❤️</span>` : ''}${customBadge}
+        ${badge}${viewsBadge}${gdayBadge}${c.selected ? `<span class="badge" style="left:8px;top:auto;bottom:8px;color:#e8447f">❤️</span>` : ''}${customBadge}
       </div>
       <div class="body">
         <div class="name">${esc(c.name)}</div>

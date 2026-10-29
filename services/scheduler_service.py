@@ -924,6 +924,18 @@ async def _channel_bonus_holds(bot):
         await asyncio.sleep(0.5)
 
 
+async def _girl_of_day(bot):
+    """V3.92.0: «🔥 Девушка дня» (switches at 03:00 MSK) — at 09:00 MSK the admins get
+    the ready channel post with a «📣 В канал» button."""
+    from config import ADMIN_TELEGRAM_IDS
+    from services import girl_of_day
+    for admin_id in ADMIN_TELEGRAM_IDS:
+        try:
+            await girl_of_day.send_admin_preview(bot, admin_id)
+        except Exception:
+            logger.exception('girl of day preview failed admin=%s', admin_id)
+
+
 async def _db_backup(bot):
     """V3.82.0: Railway Hobby has no Postgres backups — dump the DB daily and
     send it to the admins as a Telegram document."""
@@ -977,6 +989,8 @@ def start_scheduler(bot):
     scheduler.add_job(_channel_bonus_holds,'interval',hours=1,args=[bot],id='channel_bonus_holds',replace_existing=True)
     # V3.82.0: daily DB backup to the admins (00:30 UTC = 03:30 MSK, quiet hours).
     scheduler.add_job(_db_backup,'cron',hour=0,minute=30,args=[bot],id='db_backup',replace_existing=True)
+    # V3.92.0: «🔥 Девушка дня» channel post for the admins at 09:00 MSK.
+    scheduler.add_job(_girl_of_day,'cron',hour=6,minute=0,args=[bot],id='girl_of_day',replace_existing=True)
     # V3.45.0: ежедневный подарок — раз в день в 12:00
     scheduler.add_job(_daily_gift,'cron',hour=12,minute=0,args=[bot],id='daily_gift',replace_existing=True)
     # V3.52.0: «Жизнь без тебя» — scans often, but the persisted slot log caps each

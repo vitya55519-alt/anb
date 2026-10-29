@@ -1951,6 +1951,14 @@ async def start(message: types.Message, command: CommandObject):
         if set_source(message.from_user.id, 'link:' + command.args.strip()[:40]):
             track_event(uid, 'source_opened', metadata={'src': 'link:' + command.args.strip()[:40]})
     track_event(uid, 'onboarding_completed')
+    # V3.92.0: the «🔥 Девушка дня» channel post opens a chat with her.
+    try:
+        from services import girl_of_day
+        gday = await asyncio.to_thread(girl_of_day.girl_from_payload, command.args)
+        if gday:
+            set_user_character(message.from_user.id, gday)
+    except Exception:
+        logger.warning('girl of day deep link failed user=%s', message.from_user.id, exc_info=True)
 
     if not has_accepted(message.from_user.id):
         lang = user_lang(message.from_user.id)
@@ -9855,6 +9863,46 @@ async def admin_backup_cmd(message: types.Message):
         return
     await message.answer_document(BufferedInputFile(data, filename=backup_service.backup_filename()),
                                   caption=caption[:1000])
+
+
+@dp.message(Command('girlday'))
+async def admin_girlday_cmd(message: types.Message):
+    """V3.92.0: today's «🔥 Девушка дня» with the channel post and a switch."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import girl_of_day
+    await girl_of_day.send_admin_preview(bot, message.chat.id)
+
+
+@dp.callback_query(F.data.startswith('gday:'))
+async def admin_girlday_cb(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    from services import girl_of_day
+    parts = cq.data.split(':')
+    if parts[1] == 'next':
+        girls = await asyncio.to_thread(girl_of_day.pool)
+        cur = await asyncio.to_thread(girl_of_day.current)
+        if not girls:
+            await cq.answer('нет девушек в ротации', show_alert=True)
+            return
+        nxt = girls[(girls.index(cur) + 1) % len(girls)] if cur in girls else girls[0]
+        await asyncio.to_thread(girl_of_day.set_today, nxt)
+        await cq.answer(f'сегодня: {girl_of_day.name_of(nxt)}')
+        await girl_of_day.send_admin_preview(bot, cq.message.chat.id, nxt)
+        return
+    if parts[1] == 'post' and len(parts) > 2:
+        channel = '@' + CHANNEL_SUBSCRIBE_USERNAME
+        try:
+            await girl_of_day.publish(bot, channel, parts[2])
+        except Exception as e:
+            logger.warning('girl of day publish failed: %s', e)
+            await cq.answer('не получилось: бот должен быть админом канала с правом публикации', show_alert=True)
+            return
+        await cq.answer('опубликовано в канале ✅', show_alert=True)
+        return
+    await cq.answer()
 
 
 @dp.message(Command('stats', 'adminstats'))
