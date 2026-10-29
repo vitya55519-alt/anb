@@ -860,6 +860,7 @@ BODY_SPECS = {
     'yulya_01': 'a petite hourglass build with a tiny waist, round full hips and a very large full natural-looking bust (Russian size 6, F cup)',
     'liza_01': 'a curvy hourglass build with a narrow waist, a big round lifted bottom, wide hips, soft thighs and a full natural bust (Russian size 3, C cup)',
     'kira_01': 'a slender toned hourglass build with a tiny waist, a soft flat stomach with a navel piercing, narrow hips, long legs and a medium perky bust (Russian size 2, B cup); fine-line tattoos on the arms, hip and thigh, a butterfly tattoo on the collarbone',
+    'agata_01': 'a very voluptuous hourglass build with a tiny cinched waist, wide round hips and a very large full natural-looking bust (Russian size 6, F cup)',
 }
 DEFAULT_FEMALE_BODY_SPEC = (
     'a curvy feminine hourglass build with a wasp waist, round lifted hips '

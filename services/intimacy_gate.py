@@ -40,6 +40,12 @@ def should_offer(telegram_id: int, character_id: str, text: str) -> bool:
     Notes the offer so it is shown at most OFFERS_PER_DAY a day."""
     if not wants_sext(text):
         return False
+    try:  # V3.91.0: she is explicit for everyone — nothing to upsell
+        from services.chat_service import DIRTY_FROM_START
+        if character_id in DIRTY_FROM_START:
+            return False
+    except Exception:
+        pass
     try:
         from config import ADMIN_TELEGRAM_IDS
         from services.access_service import is_premium

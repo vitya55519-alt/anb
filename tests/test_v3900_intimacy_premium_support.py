@@ -18,7 +18,7 @@ def test_explicit_sexting_needs_premium():
 
 
 def test_chat_prompt_wiring():
-    assert 'wild=plot_heat == \'wild\', premium=intim_ok)' in CHAT
+    assert 'wild=plot_heat == \'wild\', premium=intim_ok,' in CHAT  # V3.91.0: + dirty_start
     assert 'if card_girl and not spicy_line and intim_ok and _adult_ok(user_id):' in CHAT
     assert 'NON_PREMIUM_LINE' in CHAT
 
