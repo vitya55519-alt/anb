@@ -41,7 +41,7 @@ from config import (
     BOT_CHAT_REDIRECT,
     SUPPORT_BOT_USERNAME, SUPPORT_BOT_TOKEN, SUPPORT_WELCOME_TEXT,
     CHANNEL_SUBSCRIBE_USERNAME, CHANNEL_SUBSCRIBE_BONUS_CREDITS, CHANNEL_BONUS_HOLD_DAYS,
-    PEACH_PACK_STARS, PEACH_PACK_CREDITS, PEACH_PACK_RUB,
+    PEACH_PACK_STARS, PEACH_PACK_CREDITS, PEACH_PACK_RUB, PEACH_PACK_BONUS,
     PEACH_CUSTOM_STARS_PER_UNIT, PEACH_CUSTOM_RUB_PER_UNIT, PEACH_CUSTOM_UNIT, PEACH_SCALE,
     DAILY_GIFT_BALANCE_CAP, VIDEO_PEACH_COST,
     PLATEGA_MERCHANT_ID, PLATEGA_API_KEY, PLATEGA_API_BASE,
@@ -4463,24 +4463,29 @@ async def promo_cmd(message: types.Message, command: CommandObject):
 
 
 @dp.message(Command('referral', 'invite', 'partner'))
-async def referral_cmd(message: types.Message):
+async def referral_cmd(message: types.Message, who: types.User | None = None):
     """V3.37.0: the partner screen — stats, personal link, withdrawal, FAQ.
 
     The «💰 Партнёрка» button lands here: invited count + earned rubles + the
     live balance, one tap to copy the link, one tap to request a payout.
+
+    V3.95.0: `who` is the person who tapped. From an inline button the
+    message is the bot's own, so its from_user is the bot — everyone then got
+    the same ref_<bot id> link and the bot's empty stats.
     """
-    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    who = who or message.from_user
+    ensure_user(who.id, who.first_name, language_code=who.language_code)
     from services import partner_service
     from config import PARTNER_MIN_PAYOUT_RUB, PARTNER_PAYOUT_METHODS, REFERRAL_COMMISSION_PCT
-    user = get_user(message.from_user.id)
+    user = get_user(who.id)
     stats = partner_service.partner_stats(user.id) if user else {'invited': 0, 'earned_rub': 0.0, 'balance_rub': 0.0, 'pending_payout_id': None}
     try:
         me = await bot.get_me()
-        link = referral_link(me.username or 'bot', message.from_user.id)
+        link = referral_link(me.username or 'bot', who.id)
     except Exception:
         await message.answer('не удалось получить ссылку прямо сейчас, попробуй позже.')
         return
-    lang = user_lang(message.from_user.id)
+    lang = user_lang(who.id)
     pct = int(REFERRAL_COMMISSION_PCT) if float(REFERRAL_COMMISSION_PCT).is_integer() else REFERRAL_COMMISSION_PCT
     if lang == EN:
         text = (
@@ -4559,7 +4564,7 @@ async def partner_faq(cq: types.CallbackQuery):
 async def partner_open(cq: types.CallbackQuery):
     """V3.39.0: the «💰 Партнёрка» CTA on the welcome photo — same partner screen."""
     await cq.answer()
-    await referral_cmd(cq.message)
+    await referral_cmd(cq.message, cq.from_user)
 
 
 @dp.callback_query(F.data == 'credits:open')
@@ -4568,11 +4573,7 @@ async def credits_open(cq: types.CallbackQuery):
     app-shop entry as the reply-keyboard credits button (peaches are bought in
     the Mini App «Магазин» tab)."""
     await cq.answer()
-    await _send_app_entry(
-        cq.message,
-        '🍑 персики (фото-кредиты) покупаются в приложении — вкладка «Магазин» 👇',
-        '🍑 peaches (photo credits) are bought in the app — the «Shop» tab 👇',
-    )
+    await _send_peach_shop(cq.message, cq.from_user)
 
 
 # V3.43.0: the welcome «👥 Поддержка» row is a plain url button to the
@@ -8125,13 +8126,70 @@ async def app_button(message: types.Message):
 @dp.message(F.text.in_(kb_pair('credits')))
 @service_screen
 async def credits_button(message: types.Message):
-    """V3.38.0: «🍑 Персики» — buying photo credits now lives in the
-    app's «Магазин» tab; the button carries the user straight into the app."""
-    await _send_app_entry(
-        message,
-        '🍑 персики (фото-кредиты) покупаются в приложении — вкладка «Магазин» 👇',
-        '🍑 peaches (photo credits) are bought in the app — the «Shop» tab 👇',
-    )
+    """V3.38.0: «🍑 Персики». V3.95.0: the shop right in the chat — each
+    pack is one tap to a payment link, no Mini App needed."""
+    await _send_peach_shop(message)
+
+
+def peach_shop_keyboard(telegram_id: int, lang: str = 'ru') -> InlineKeyboardMarkup:
+    """V3.95.0: owner — «через бота сразу на ссылку оплаты, тот же магазин».
+    The same packs as the app's «Магазин» tab: card/SBP via the stock
+    ``platega:`` path, Stars via ``buy:peach_pack_*``; then Premium and the app."""
+    en = lang == EN
+    rows = []
+    card_ok = PLATEGA_ENABLED and is_button_enabled('platega_rub')
+    for key, credits in PEACH_PACK_CREDITS.items():
+        bonus = PEACH_PACK_BONUS.get(key, 0)
+        gift = f' (+{peach_num(bonus)} 🎁)' if bonus else ''
+        if card_ok:
+            rows.append([_platega_pay_button(
+                key, PEACH_PACK_RUB[key],
+                f'🍑 {peach_num(credits)}{gift} — {PEACH_PACK_RUB[key]} ₽ · ' + ('card / SBP' if en else 'карта / СБП'))])
+        rows.append([InlineKeyboardButton(
+            text=f'⭐ {peach_num(credits)} 🍑 — {PEACH_PACK_STARS[key]} Stars',
+            callback_data=f'buy:{key}')])
+    if not is_premium(telegram_id):
+        rows.append([InlineKeyboardButton(text='👑 Premium' if en else '👑 Premium — все девушки и откровенный режим',
+                                          callback_data='premium:view')])
+    if PUBLIC_BASE_URL:
+        rows.append([InlineKeyboardButton(text='🛍 Open the app shop' if en else '🛍 Магазин в приложении',
+                                          web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'))])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _send_peach_shop(message: types.Message, who: types.User | None = None):
+    """V3.95.0: «🍑 Персики» — balance + the pack ladder with pay buttons.
+    `who` is the person who tapped (an inline button's message is the bot's)."""
+    who = who or message.from_user
+    uid = ensure_user(who.id, who.first_name, language_code=who.language_code)
+    lang = user_lang(who.id)
+    balance = peach_num(get_photo_credits(who.id))
+    photo = peach_num(CHAT_PHOTO_PEACH_COST)
+    if lang == EN:
+        text = (f'🍑 Peaches\n\nYour balance: {balance} 🍑\n\n'
+                f'A photo from her in chat costs {photo} 🍑, peaches also open circles and secret videos.\n'
+                'Pick a pack: the payment page opens right away, peaches land within a minute.')
+    else:
+        text = (f'🍑 Персики\n\nТвой баланс: {balance} 🍑\n\n'
+                f'Фото от неё в чате — {photo} 🍑, ещё за персики кружочки и тайные видео.\n'
+                'Выбери пак: сразу откроется оплата, персики придут в течение минуты.')
+    track_event(uid, 'paywall_view', metadata={'product': 'peach_shop_bot'})
+    await message.answer(text, reply_markup=peach_shop_keyboard(who.id, lang))
+
+
+@dp.callback_query(F.data.startswith('buy:peach_pack_'))
+async def buy_peach_pack(cq: types.CallbackQuery):
+    """V3.95.0: a peach pack for Stars from the in-chat shop — the invoice
+    payload is the pack key, which pre-checkout and the grant already know."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    key = cq.data.split(':', 1)[1]
+    if key not in PEACH_PACK_STARS:
+        await cq.answer('…'); return
+    await cq.answer()
+    credits = peach_num(PEACH_PACK_CREDITS[key])
+    await send_stars_invoice(cq.message.chat.id, f'{credits} персиков', f'{credits} 🍑 на баланс', key, PEACH_PACK_STARS[key])
 
 
 @dp.message(F.text.in_(kb_pair('paint')))

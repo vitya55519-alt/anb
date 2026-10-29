@@ -47,14 +47,14 @@ def test_credits_and_support_labels_are_the_localized_pairs():
 
 # ── credits:open reuses the app-shop entry ────────────────────────────────
 
-def test_credits_open_callback_reuses_the_app_entry():
+def test_credits_open_callback_opens_the_chat_shop():
     assert "@dp.callback_query(F.data == 'credits:open')" in MAIN
     assert 'async def credits_open(cq: types.CallbackQuery):' in MAIN
     handler = MAIN[MAIN.index('async def credits_open(cq: types.CallbackQuery):'):]
     handler = handler[:handler.index('\nasync def ', 10)]
     assert 'await cq.answer()' in handler
-    assert '_send_app_entry(' in handler
-    assert '🍑 персики (фото-кредиты) покупаются в приложении' in handler
+    # V3.95.0: the in-chat shop (pay links + the app button) instead.
+    assert '_send_peach_shop(cq.message, cq.from_user)' in handler
 
 
 # ── support: the welcome callback is gone, the bot link replaced it ────────
