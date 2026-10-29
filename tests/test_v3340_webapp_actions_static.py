@@ -137,7 +137,7 @@ def test_no_unescaped_backend_strings_in_templates():
         expr = m.group(1).strip()
         if (expr.startswith('esc(') or expr in numeric_ok or expr.startswith('L.')
                 or expr in text_content_ok or expr in (
-            'badge', 'viewsBadge',
+            'badge', 'viewsBadge', 'gdayBadge',
             'c.selected ? `<span class="badge" style="left:8px;top:auto;bottom:8px;color:#e8447f">❤️</span>` : \'\'',
             'heroBtn', 'heroWeekBtn', 'moRub', 'wkRub', 'creditRow', 'items', 'feats', 'price',
             # V3.57.6: the shop free-tier chat label — every branch of it is

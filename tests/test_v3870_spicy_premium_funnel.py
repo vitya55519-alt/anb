@@ -19,7 +19,7 @@ def test_spicy_scene_set_covers_lingerie_and_nude():
 def test_every_spicy_route_is_gated():
     # app chat text requests
     i = MAIN.index('def _chat_photo_gate(')
-    gate = MAIN[i:i + 2000]
+    gate = MAIN[i:i + 3200]  # V3.93.0: the free-photo tiers made the gate longer
     assert "return 'spicy'" in gate
     assert gate.index("return 'spicy'") < gate.index("return 'peaches'")
     assert "'spicy': (" in MAIN

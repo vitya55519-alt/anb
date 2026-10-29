@@ -1830,6 +1830,14 @@ async def _start_photo_background(chat_id: int, telegram_id: int, request: Photo
         _photo_job_reservations.discard(telegram_id)
 
 
+def _to_jpeg(data: bytes) -> bytes:
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.open(io.BytesIO(data)).convert('RGB').save(buf, 'JPEG', quality=90)
+    return buf.getvalue()
+
+
 async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoRequest):
     db_uid = ensure_user(telegram_id)
     if not has_accepted(telegram_id):
@@ -1869,8 +1877,35 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
         await _offer_custom_photo(chat_id, telegram_id, request)
         return
 
+    # V3.93.0: without Premium — one free photo a day, a ready-made one (no
+    # render), then Premium; with Premium — two rendered a day, then peaches.
+    from services.chat_photo_allowance import free_chat_photos_left, use_free_chat_photo, reused_photo
+    premium = is_premium(telegram_id)
+    character_id = get_user_character(telegram_id)
+    if not premium:
+        if await asyncio.to_thread(free_chat_photos_left, db_uid, False) <= 0:
+            track_event(db_uid, 'paywall_view', metadata={'product': 'chat_photo', 'source': 'free_used_bot'})
+            await bot.send_message(chat_id, CHAT_PHOTO_BLOCK_TEXT['free_used'],
+                                   reply_markup=premium_keyboard(telegram_id=telegram_id))
+            return
+        ready = await asyncio.to_thread(reused_photo, character_id, db_uid)
+        if ready:
+            data, _mime, ext = ready
+            if ext == 'webp':
+                data = await asyncio.to_thread(_to_jpeg, data)
+                ext = 'jpg'
+            await bot.send_photo(chat_id, BufferedInputFile(data, filename=f'photo.{ext}'),
+                                 caption='📸 ' + random.choice(AUTO_CAPTIONS.get(request.scene, ('это тебе 😘',))))
+            await asyncio.to_thread(use_free_chat_photo, db_uid, character_id)
+            from services.chat_photo_allowance import POOL_EVENT, note_today
+            await asyncio.to_thread(note_today, db_uid, POOL_EVENT, character_id)
+            return
+        await asyncio.to_thread(use_free_chat_photo, db_uid, character_id)
+        await _start_photo_background(chat_id, telegram_id, request, 'free')
+        return
     credits = get_photo_credits(telegram_id)
-    if has_free_photo(telegram_id, get_user_character(telegram_id)):
+    if await asyncio.to_thread(free_chat_photos_left, db_uid, True) > 0:
+        await asyncio.to_thread(use_free_chat_photo, db_uid, character_id)
         await _start_photo_background(chat_id, telegram_id, request, 'free')
         return
     if credits > 0:
@@ -1951,6 +1986,14 @@ async def start(message: types.Message, command: CommandObject):
         if set_source(message.from_user.id, 'link:' + command.args.strip()[:40]):
             track_event(uid, 'source_opened', metadata={'src': 'link:' + command.args.strip()[:40]})
     track_event(uid, 'onboarding_completed')
+    # V3.92.0: the «🔥 Девушка дня» channel post opens a chat with her.
+    try:
+        from services import girl_of_day
+        gday = await asyncio.to_thread(girl_of_day.girl_from_payload, command.args)
+        if gday:
+            set_user_character(message.from_user.id, gday)
+    except Exception:
+        logger.warning('girl of day deep link failed user=%s', message.from_user.id, exc_info=True)
 
     if not has_accepted(message.from_user.id):
         lang = user_lang(message.from_user.id)
@@ -9857,6 +9900,46 @@ async def admin_backup_cmd(message: types.Message):
                                   caption=caption[:1000])
 
 
+@dp.message(Command('girlday'))
+async def admin_girlday_cmd(message: types.Message):
+    """V3.92.0: today's «🔥 Девушка дня» with the channel post and a switch."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import girl_of_day
+    await girl_of_day.send_admin_preview(bot, message.chat.id)
+
+
+@dp.callback_query(F.data.startswith('gday:'))
+async def admin_girlday_cb(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    from services import girl_of_day
+    parts = cq.data.split(':')
+    if parts[1] == 'next':
+        girls = await asyncio.to_thread(girl_of_day.pool)
+        cur = await asyncio.to_thread(girl_of_day.current)
+        if not girls:
+            await cq.answer('нет девушек в ротации', show_alert=True)
+            return
+        nxt = girls[(girls.index(cur) + 1) % len(girls)] if cur in girls else girls[0]
+        await asyncio.to_thread(girl_of_day.set_today, nxt)
+        await cq.answer(f'сегодня: {girl_of_day.name_of(nxt)}')
+        await girl_of_day.send_admin_preview(bot, cq.message.chat.id, nxt)
+        return
+    if parts[1] == 'post' and len(parts) > 2:
+        channel = '@' + CHANNEL_SUBSCRIBE_USERNAME
+        try:
+            await girl_of_day.publish(bot, channel, parts[2])
+        except Exception as e:
+            logger.warning('girl of day publish failed: %s', e)
+            await cq.answer('не получилось: бот должен быть админом канала с правом публикации', show_alert=True)
+            return
+        await cq.answer('опубликовано в канале ✅', show_alert=True)
+        return
+    await cq.answer()
+
+
 @dp.message(Command('stats', 'adminstats'))
 async def admin_stats_cmd(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
@@ -12207,6 +12290,9 @@ CHAT_PHOTO_BLOCK_TEXT = {
     'failed': 'ой, фото не загрузилось 😔 попробуй ещё раз — персики не списались',
     # V3.76.0: card girls' pictures are a Premium thing (as at Come Closer).
     'premium': 'хочу показать тебе фото… но мои фото только для тех, у кого Premium 😏 оформишь — пришлю сразу',
+    # V3.93.0: without Premium — one free photo a day, no more.
+    'free_used': ('сегодня я тебе уже показалась 🙈 следующее фото — завтра… или оформи Premium: '
+                  'там каждый день по 2 новых фото, а ещё можно за персики 😘'),
     # V3.87.0: nude / lingerie photos are Premium-only — the funnel to Premium.
     'spicy': ('такие фото я показываю только самым близким 🙈 оформи Premium — '
               'и я пришлю его сразу, а ещё раздену себя для тебя по кнопке 🔥'),
@@ -12253,26 +12339,27 @@ def _accepts_her_photo_offer(uid: int, character_id: str, text: str) -> bool:
 
 
 def _free_photo_from_pool(telegram_id: int, uid: int, character_id: str):
-    """V3.81.0: (bytes, mime, ext) of a pool photo when this chat photo would
-    be a FREE one and today's free-photo budget is spent; None means render
-    as usual (admin, Premium, paying with peaches, budget left, empty pool)."""
+    """V3.81.0: (bytes, mime, ext) of a ready photo instead of a new render;
+    None means render as usual.
+    V3.93.0: without Premium the one free photo of the day is ALWAYS a ready
+    one (her pool or a photo already rendered of her); Premium free photos
+    are rendered until the daily budget is spent (V3.81.0)."""
     if telegram_id in ADMIN_TELEGRAM_IDS:
         return None
     try:
-        from services.chat_photo_allowance import free_chat_photos_left, free_photo_budget_spent
-        if is_premium(telegram_id) or free_chat_photos_left(uid) <= 0 or not free_photo_budget_spent():
+        from services.chat_photo_allowance import free_chat_photos_left, free_photo_budget_spent, reused_photo
+        premium = is_premium(telegram_id)
+        if free_chat_photos_left(uid, premium=premium) <= 0:
             return None
-        from services.retention_features_service import random_proactive_photo
-        picked = random_proactive_photo(character_id, user_id=uid)
+        if premium and not free_photo_budget_spent():
+            return None
+        picked = reused_photo(character_id, uid)
     except Exception:
         logger.exception('free photo pool pick failed user=%s', telegram_id)
         return None
-    if not picked or picked[2] != 'photo':
-        return None
-    data, mime, _kind = picked
-    ext = 'png' if 'png' in (mime or '') else 'jpg'
-    logger.info('free photo from pool (budget spent) user=%s char=%s', telegram_id, character_id)
-    return data, ('image/png' if ext == 'png' else 'image/jpeg'), ext
+    if picked:
+        logger.info('free photo reused user=%s char=%s premium=%s', telegram_id, character_id, premium)
+    return picked
 
 
 def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | None:
@@ -12296,11 +12383,22 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | N
         except Exception:
             pass
         return 'spicy'
-    if telegram_id not in ADMIN_TELEGRAM_IDS and get_photo_credits(telegram_id) < CHAT_PHOTO_PEACH_COST:
+    if telegram_id not in ADMIN_TELEGRAM_IDS:
         # V3.61.5: today's free chat photos go first.
+        # V3.93.0: without Premium — one a day and that is it (free peaches
+        # must not burn the render budget); with Premium — two, then peaches.
         from services.chat_photo_allowance import free_chat_photos_left
-        if free_chat_photos_left(ensure_user(telegram_id)) <= 0:
-            return 'peaches'
+        premium = is_premium(telegram_id)
+        if free_chat_photos_left(ensure_user(telegram_id), premium=premium) <= 0:
+            if not premium:
+                try:
+                    track_event(ensure_user(telegram_id), 'paywall_view',
+                                metadata={'product': 'chat_photo', 'source': 'free_used'})
+                except Exception:
+                    pass
+                return 'free_used'
+            if get_photo_credits(telegram_id) < CHAT_PHOTO_PEACH_COST:
+                return 'peaches'
     return None
 
 
@@ -12389,9 +12487,10 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             else:
                 save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
             from services.chat_photo_allowance import free_chat_photos_left, use_free_chat_photo
+            premium = is_premium(telegram_id)
             if telegram_id not in ADMIN_TELEGRAM_IDS:
                 # V3.61.5: a free photo of the day first, then peaches.
-                if free_chat_photos_left(uid) > 0:
+                if free_chat_photos_left(uid, premium=premium) > 0:
                     use_free_chat_photo(uid, character_id)
                     if pooled:
                         from services.chat_photo_allowance import POOL_EVENT, note_today
@@ -12403,7 +12502,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             from services.collection_service import gallery_set_progress, note_gallery_set
             return {'ok': True, 'reply': cap, 'photo_url': url,
                     'credits_left': get_photo_credits(telegram_id),
-                    'free_photos_left': free_chat_photos_left(uid),
+                    'free_photos_left': free_chat_photos_left(uid, premium=premium),
                     'set_completed': note_gallery_set(telegram_id, character_id),
                     'gallery': gallery_set_progress(telegram_id, character_id),
                     **(extra or {})}
@@ -14088,6 +14187,10 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
                             metadata={'product': 'spicy_' + kind, 'scene': scene, 'source': 'app'})
             except Exception:
                 pass
+            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+        if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+            # V3.93.0: a rendered photo for peaches is a Premium thing — free
+            # peaches pile up and burned the render budget.
             return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
         if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS \
                 and get_photo_credits(telegram_id) < PEACH_SCALE:

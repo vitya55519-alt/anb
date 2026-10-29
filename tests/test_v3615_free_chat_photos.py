@@ -7,15 +7,18 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_free_allowance_counts_down_per_day():
     from services.db import init_db
     init_db()
-    from config import CHAT_FREE_PHOTOS_PER_DAY
+    from config import CHAT_FREE_PHOTOS_PER_DAY, CHAT_PREMIUM_PHOTOS_PER_DAY
     from services.chat_photo_allowance import free_chat_photos_left, use_free_chat_photo
-    assert CHAT_FREE_PHOTOS_PER_DAY == 2
+    # V3.93.0: 1 a day without Premium, 2 with it.
+    assert CHAT_FREE_PHOTOS_PER_DAY == 1 and CHAT_PREMIUM_PHOTOS_PER_DAY == 2
     uid = 9_100_001
-    assert free_chat_photos_left(uid) == 2
-    use_free_chat_photo(uid, 'vika_01')
+    assert free_chat_photos_left(uid, premium=True) == 2
     assert free_chat_photos_left(uid) == 1
-    use_free_chat_photo(uid, 'anna_01')
+    use_free_chat_photo(uid, 'vika_01')
     assert free_chat_photos_left(uid) == 0
+    assert free_chat_photos_left(uid, premium=True) == 1
+    use_free_chat_photo(uid, 'anna_01')
+    assert free_chat_photos_left(uid, premium=True) == 0
 
 
 def test_her_action_line_counts_as_a_photo_promise():
@@ -28,6 +31,6 @@ def test_her_action_line_counts_as_a_photo_promise():
 
 def test_gate_and_delivery_use_the_free_photos_first():
     src = (ROOT / 'main.py').read_text(encoding='utf-8')
-    assert 'free_chat_photos_left(ensure_user(telegram_id)) <= 0' in src
+    assert 'free_chat_photos_left(ensure_user(telegram_id), premium=premium) <= 0' in src
     assert 'use_free_chat_photo(uid, character_id)' in src
-    assert "'free_photos_left': free_chat_photos_left(uid)" in src
+    assert "'free_photos_left': free_chat_photos_left(uid, premium=premium)" in src

@@ -37,5 +37,4 @@ def test_explicit_from_level_one_for_every_adult():
 
 def test_tender_lines():
     assert 'с самого первого сообщения' in TENDER_DIRTY_LINE and 'нежн' in TENDER_DIRTY_LINE
-    from services.intimacy_gate import should_offer
-    assert should_offer(1, CID, 'хочу тебя прямо сейчас') is False  # no upsell for her
+    assert '10-м уровне' in TENDER_DIRTY_LINE

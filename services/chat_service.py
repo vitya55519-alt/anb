@@ -162,11 +162,12 @@ def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool 
     V3.76.0: the scenario-card girls are dirty by design, so for them it
     opens two stages earlier.
     V3.90.0: owner — «весь интим только с премиумом»: none of it without Premium.
-    V3.91.0: a DIRTY_FROM_START girl opens it from the very first level,
-    for every confirmed adult (owner: «для всех»), Premium or not."""
+    V3.91.0: a DIRTY_FROM_START girl opens it from the very first level for
+    every confirmed adult, Premium or not.
+    V3.92.0: ``premium`` is also true for «🔥 Девушка дня» (girl_of_day)."""
     if not adult_confirmed:
         return ''
-    if dirty_start:  # owner: «для всех» — no Premium needed for her
+    if dirty_start:  # owner: «доступно для всех» — no Premium needed for her
         return EXPLICIT_CHAT_RULE
     if not premium:
         return ''
@@ -193,13 +194,15 @@ CARD_GIRL_DIRTY_LINE = (
 
 
 # V3.91.0: owner — Агата «общалась нежно и с очень откровенными намёками на
-# секс, общение на максимум пошлое с первого уровня» … «для всех». She is
-# explicit from level 1 for every confirmed adult — the one exception to the
-# V3.90 Premium gate in chat. Her nude/undress media stay Premium-only.
+# секс, общение на максимум пошлое с первого уровня» … «пошлость как на 10
+# уровне, доступно для всех». Explicit from level 1 for every confirmed adult —
+# an exception to the V3.90 Premium gate in chat. Her nude/undress media stay
+# Premium-only like everyone's.
 DIRTY_FROM_START = frozenset({'agata_01'})
 
 TENDER_DIRTY_LINE = (
-    'ХАРАКТЕР: она нежная и очень пошлая одновременно — с самого первого сообщения, на любом уровне. '
+    'ХАРАКТЕР: она нежная и очень пошлая одновременно — с самого первого сообщения, на любом уровне, '
+    'откровенность сразу как на самом высоком, 10-м уровне близости. '
     'Тон всегда ласковый: тихий шёпот, «котик», «мой хороший», многоточия, забота. А смысл — на максимум '
     'пошлый: говорит, что на ней (и что под этим), где хочет его рук и губ, что представляет с ним, как '
     'заводится от его слов; сама начинает горячие темы и ведёт к сексу. Никакой грубости и мата — '
@@ -397,6 +400,13 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         intim_ok = premium or int(user_id) in ADMIN_TELEGRAM_IDS
     except Exception:
         intim_ok = premium
+    # V3.92.0: «🔥 Девушка дня» — her chat is open to every adult today.
+    if not intim_ok:
+        try:
+            from services import girl_of_day
+            intim_ok = girl_of_day.is_open(character_id)
+        except Exception:
+            pass
     if card_girl and not spicy_line and intim_ok and _adult_ok(user_id):
         spicy_line = CARD_GIRL_DIRTY_LINE
     dirty_start = character_id in DIRTY_FROM_START
