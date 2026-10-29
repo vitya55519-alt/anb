@@ -1568,6 +1568,7 @@ const L_EN = {
   qb_voice: 'Her voice is a Premium perk 🎙 hear how she says it',
   qb_spicy: 'Her most private photos are for Premium 🔥 she is ready to show you',
   spicy_btn: '🔥 Unlock with Premium',
+  sext_btn: '🔥 Explicit chat — with Premium',
   sc_prem_only: '⭐ Premium only',
   undress_tease: 'like it? 😏 want to see what is underneath… tap and I will take it off for you 🔥',
   undress_tease_btn: '🔥 Undress her',
@@ -1818,6 +1819,7 @@ const L_RU = {
   qb_voice: 'Её голос — с Premium 🎙 услышь, как она это говорит',
   qb_spicy: 'Самые откровенные фото — с Premium 🔥 она уже готова тебе показать',
   spicy_btn: '🔥 Открыть с Premium',
+  sext_btn: '🔥 Откровенно — с Premium',
   sc_prem_only: '⭐ только с Premium',
   undress_tease: 'нравится? 😏 а хочешь увидеть, что под ним… нажми — и я сниму это для тебя 🔥',
   undress_tease_btn: '🔥 Раздеть её',
@@ -3408,6 +3410,10 @@ function renderChatReply(j) {
   // V3.76.0: a card girl's photos are Premium-only — one tap to the shop.
   if (j.photo_block === 'premium') {
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="showTab('shop')">⭐ ${esc(L.need_premium)}</button></div>`);
+  }
+  // V3.90.0: his explicit message without Premium — a quiet chip, no auto sheet.
+  if (j.sext_offer) {
+    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('spicy')">${esc(L.sext_btn || L.spicy_btn)}</button></div>`);
   }
   // V3.87.0: a nude / lingerie photo — Premium-only; the pay sheet opens at once.
   if (j.photo_block === 'spicy') {

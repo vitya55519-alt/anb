@@ -182,7 +182,7 @@ def test_card_girls_are_semi_realistic_and_their_photos_need_premium():
 def test_card_girls_talk_dirty_for_adults():
     from services import chat_service as cs
     assert cs._is_card_girl('nika_01') and not cs._is_card_girl('anna_01')
-    assert cs.explicit_chat_line('close', adult_confirmed=True, card_girl=True) == cs.EXPLICIT_CHAT_RULE
+    assert cs.explicit_chat_line('close', adult_confirmed=True, card_girl=True, premium=True) == cs.EXPLICIT_CHAT_RULE
     assert cs.explicit_chat_line('close', adult_confirmed=True) == ''
     assert cs.explicit_chat_line('close', adult_confirmed=False, card_girl=True) == ''
-    assert 'card_girl and not spicy_line and _adult_ok(user_id)' in CHAT
+    assert 'card_girl and not spicy_line and intim_ok and _adult_ok(user_id)' in CHAT
