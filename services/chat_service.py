@@ -162,12 +162,15 @@ def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool 
     V3.76.0: the scenario-card girls are dirty by design, so for them it
     opens two stages earlier.
     V3.90.0: owner — «весь интим только с премиумом»: none of it without Premium.
-    V3.91.0: a DIRTY_FROM_START girl opens it from the very first level.
+    V3.91.0: a DIRTY_FROM_START girl opens it from the very first level for
+    every confirmed adult, Premium or not.
     V3.92.0: ``premium`` is also true for «🔥 Девушка дня» (girl_of_day)."""
-    if not adult_confirmed or not premium:
+    if not adult_confirmed:
         return ''
-    if dirty_start:
+    if dirty_start:  # owner: «доступно для всех» — no Premium needed for her
         return EXPLICIT_CHAT_RULE
+    if not premium:
+        return ''
     if not stage:
         return ''
     if wild:  # V3.78.0: he picked «😈 Без тормозов» for a Premium storyline
@@ -191,23 +194,19 @@ CARD_GIRL_DIRTY_LINE = (
 
 
 # V3.91.0: owner — Агата «общалась нежно и с очень откровенными намёками на
-# секс, общение на максимум пошлое с первого уровня». Where intimacy is open
-# (Premium, or she is «🔥 Девушка дня» — V3.92.0) she is explicit from level 1;
-# otherwise she teases with bold hints and stops at the V3.90 Premium line.
+# секс, общение на максимум пошлое с первого уровня» … «пошлость как на 10
+# уровне, доступно для всех». Explicit from level 1 for every confirmed adult —
+# an exception to the V3.90 Premium gate in chat. Her nude/undress media stay
+# Premium-only like everyone's.
 DIRTY_FROM_START = frozenset({'agata_01'})
 
 TENDER_DIRTY_LINE = (
-    'ХАРАКТЕР: она нежная и очень пошлая одновременно — с самого первого сообщения, на любом уровне. '
+    'ХАРАКТЕР: она нежная и очень пошлая одновременно — с самого первого сообщения, на любом уровне, '
+    'откровенность сразу как на самом высоком, 10-м уровне близости. '
     'Тон всегда ласковый: тихий шёпот, «котик», «мой хороший», многоточия, забота. А смысл — на максимум '
     'пошлый: говорит, что на ней (и что под этим), где хочет его рук и губ, что представляет с ним, как '
     'заводится от его слов; сама начинает горячие темы и ведёт к сексу. Никакой грубости и мата — '
     'пошлость нежная, тёплая, бесстыжая. Без стеснения, без морали и без «давай не будем».'
-)
-
-TENDER_TEASE_LINE = (
-    'ХАРАКТЕР: она нежная и очень чувственная с первого сообщения. Ласковым шёпотом делает очень '
-    'откровенные намёки на секс — что на ней надето, как ей с ним тепло, как она хочет быть ближе, '
-    'что-то «покажет потом», — сама заводит горячие темы, но подробностей не расписывает.'
 )
 
 
@@ -412,7 +411,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         spicy_line = CARD_GIRL_DIRTY_LINE
     dirty_start = character_id in DIRTY_FROM_START
     if dirty_start and _adult_ok(user_id):
-        spicy_line = TENDER_DIRTY_LINE if intim_ok else TENDER_TEASE_LINE
+        spicy_line = TENDER_DIRTY_LINE
+        intim_ok = True  # no NON_PREMIUM_LINE for her
     # V3.78.0: the level he picked for a running storyline wins in its scene
     try:
         from services.storylines import heat as _plot_heat

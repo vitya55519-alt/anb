@@ -40,9 +40,10 @@ def should_offer(telegram_id: int, character_id: str, text: str) -> bool:
     Notes the offer so it is shown at most OFFERS_PER_DAY a day."""
     if not wants_sext(text):
         return False
-    try:  # V3.92.0: «🔥 Девушка дня» is open to everyone today — nothing to upsell
+    try:  # V3.91/3.92: Агата and «🔥 Девушка дня» are open to everyone — nothing to upsell
         from services import girl_of_day
-        if girl_of_day.is_open(character_id):
+        from services.chat_service import DIRTY_FROM_START
+        if character_id in DIRTY_FROM_START or girl_of_day.is_open(character_id):
             return False
     except Exception:
         pass

@@ -3417,7 +3417,7 @@ function renderChatReply(j) {
   }
   // V3.60.3: no peaches for the photo she promised — one tap to the shop.
   // V3.76.0: a card girl's photos are Premium-only — one tap to the shop.
-  if (j.photo_block === 'premium') {
+  if (j.photo_block === 'premium' || j.photo_block === 'free_used') {
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="showTab('shop')">⭐ ${esc(L.need_premium)}</button></div>`);
   }
   // V3.90.0: his explicit message without Premium — a quiet chip, no auto sheet.

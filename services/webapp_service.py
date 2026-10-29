@@ -874,7 +874,9 @@ def api_shop(lang: str = 'ru') -> dict:
          'explicit photos: lingerie, nude, «Undress», private shots, 18+ pictures'),
         # V3.83.0: owner — «с Premium можно выбрать любой уровень общения».
         ('🎚', 'любой уровень общения 1–10 с каждой девушкой — выбери сам', 'any relationship level 1–10 with every girl — your pick'),
-        ('📸', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 каждый месяц в подарок', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 every month as a gift'),
+        # V3.93.0: without Premium — one ready photo a day; with it — two new ones + peaches.
+        ('📸', '2 новых фото в чате каждый день, дальше — за персики', '2 new chat photos every day, more for peaches'),
+        ('🍑', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 каждый месяц в подарок', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 every month as a gift'),
         ('🎬', '2 бесплатных видео-оживления в день', '2 free photo animations per day'),
         ('🎯', 'перезапуски историй и все персонажи', 'story replays and all characters'),
         ('💌', 'безлимитное общение — она не засыпает, и больше памяти', 'unlimited chat — she never falls asleep, more memory'),

@@ -75,7 +75,12 @@ PRIVATE_PHOTO_PEACH_COST = _peach_env("PRIVATE_PHOTO_PEACH_COST", 2)
 # V3.60.3: a photo asked for in the app chat (owner: «2 персика это фото»).
 CHAT_PHOTO_PEACH_COST = _peach_env("CHAT_PHOTO_PEACH_COST", 2)
 # V3.61.5: chat photos free per day (all girls together) before peaches are spent.
-CHAT_FREE_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_FREE_PHOTOS_PER_DAY", "2")))
+# V3.93.0: owner — «они бездарно сливают бюджет… нету према — всего одна фотка,
+# с премиумом две в день, остальное за персики». Without Premium: ONE free chat
+# photo a day, always a ready-made one (her pool or a photo already rendered of
+# her), never a new render, and no peach route; Premium: two rendered, then 🍑.
+CHAT_FREE_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_FREE_PHOTOS_PER_DAY_FREE", "1")))
+CHAT_PREMIUM_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_PREMIUM_PHOTOS_PER_DAY", "2")))
 # V3.81.0: a daily ceiling on what the FREE chat photos may cost (all users
 # together). Until it is spent every free photo is rendered for the moment, as
 # before; after it, a free photo comes from her ready-made pool (ProactivePhoto,

@@ -35,5 +35,6 @@ def test_pool_only_for_free_non_premium_photos():
     import main
     src = inspect.getsource(main._free_photo_from_pool)
     assert 'ADMIN_TELEGRAM_IDS' in src and 'is_premium(telegram_id)' in src
-    assert 'free_chat_photos_left(uid) <= 0' in src and 'free_photo_budget_spent()' in src
-    assert "picked[2] != 'photo'" in src
+    # V3.93.0: without Premium always a ready photo; Premium — after the budget.
+    assert 'free_chat_photos_left(uid, premium=premium) <= 0' in src and 'free_photo_budget_spent()' in src
+    assert 'reused_photo(character_id, uid)' in src
