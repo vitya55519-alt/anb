@@ -31,6 +31,12 @@ COMMON = ('adult woman, 23 years old, very pale porcelain skin, big dark doe eye
           'liner, small soft nose, full plump lips with matte dark plum-black lipstick, black spiked choker with a '
           'thin silver chain')
 
+GOTH = ('adult woman, 23 years old, very pale porcelain skin, oval face with softly rounded cheeks, dramatic goth '
+        'glam makeup: sharp black winged eyeliner, thick fluffy false lashes, sharply arched dark brows, full plump '
+        'lips with matte black lipstick, black spiked leather choker with a silver ring and a thin silver chain')
+BIG = ('an extremely voluptuous hourglass figure with a very narrow corseted waist, wide round hips and a huge, '
+       'very heavy round full bust (Russian size 8, H cup)')
+
 VARIANTS = [
     dict(face=f'Selfie portrait of an {COMMON}, long straight glossy jet-black hair with thick blunt bangs, black '
               'mesh long-sleeve top, lying on a bed with dark sheets, chin resting on her hand, dim bedroom lit by '
@@ -48,6 +54,27 @@ VARIANTS = [
          look='Full look, knees up: black velvet corset top with mesh long sleeves and a black pleated mini skirt '
               'with a belt of silver rings, black thigh-high socks, standing in a dark club with red light, '
               'looking over her shoulder with a soft smile'),
+    # V3.91.0 round 2: owner — «фигура не та»: closer to his photos' style
+    # (heavier goth makeup, much bigger bust, corset), the face stays her own.
+    dict(face=f'Selfie photo, waist up, of an {GOTH}, very long straight glossy jet-black hair with heavy blunt '
+              'bangs, tight black ribbed short-sleeve crop top stretched over a huge bust, bright white wall '
+              'background, wide happy smile showing teeth, glancing to the side',
+         look='Full look, knees up: tight black ribbed short-sleeve crop top showing a flat stomach and low black '
+              'jeans, standing by a bright white wall, one hand raised and waving, wide happy smile',
+         body=BIG),
+    dict(face=f'Portrait photo, chest up, of an {GOTH}, shoulder-length straight jet-black hair with heavy blunt '
+              'bangs, black sweetheart bustier with sheer black mesh long sleeves, silver chain necklace, outdoors '
+              'at a summer open-air rock festival with a blue sky, confident sultry closed-lip smile',
+         look='Full look, knees up: black sweetheart bustier with sheer black mesh long sleeves, black satin underbust '
+              'corset with silver clasps tightly cinching the waist, black leather mini skirt, outdoors at a summer '
+              'rock festival in sunlight, hands behind her back, confident sultry smile',
+         body=BIG),
+    dict(face=f'Selfie photo, chest up, of an {GOTH}, long straight jet-black hair with heavy blunt bangs, thin black '
+              'camisole straps, lying on a light grey sofa, cheek resting on her hand, cozy bright room, sweet wide '
+              'smile showing teeth',
+         look='Full look, knees up: black lace-trimmed satin corset top and a black pleated mini skirt, black '
+              'stockings, sitting on a light grey sofa in a bright cozy room, leaning forward with a sweet smile',
+         body=BIG),
 ]
 
 
@@ -62,7 +89,7 @@ def make_variants() -> None:
             if not look.exists():
                 uri = g.upload(face.read_bytes(), 'image/png')
                 prompt = ('The same woman as in the reference image: keep her exact face, eyes, nose, lips, '
-                          f'dark lipstick, black hair with bangs, pale skin. Her figure: {BODY}. {v["look"]}.'
+                          f'dark lipstick, black hair with bangs, pale skin. Her figure: {v.get("body", BODY)}. {v["look"]}.'
                           + SEXY + QUALITY)
                 look.write_bytes(g.render('bytedance/seedream-5.0-pro/edit', prompt, [uri]))
                 print('ok', look)
