@@ -6,6 +6,7 @@ ever sent to the model, only text, so nobody real gets cloned.
 Runs on the owner's PC (the cloud container cannot reach SpicyAPI):
     python _gen_v391_refs.py <file-with-SPICYAPI_KEY>          # 3 variants
     python _gen_v391_refs.py <file-with-SPICYAPI_KEY> pick 2   # make v2 canonical
+    python _gen_v391_refs.py <file-with-SPICYAPI_KEY> mix 4 6  # v4 face in v6 outfit
 Variants go to data/references/_agata_variants/; «pick» copies one to
 data/references/agata/00_agata_canonical_face.png + 01_agata_canonical_look.png.
 """
@@ -105,8 +106,28 @@ def pick(n: int) -> None:
     print('picked', n)
 
 
+def mix(face_n: int, look_n: int) -> None:
+    """Owner: «внешность 4, одежда 6» — her face from one variant, the
+    outfit/pose of another, rendered fresh from that face."""
+    out = ROOT / 'data' / 'references' / 'agata'
+    out.mkdir(parents=True, exist_ok=True)
+    face = VAR / f'agata_v{face_n}_face.png'
+    v = VARIANTS[look_n - 1]
+    uri = g.upload(face.read_bytes(), 'image/png')
+    prompt = ('The same woman as in the reference image: keep her exact face, eyes, nose, lips, '
+              f'dark lipstick, black hair length and bangs, pale skin. Her figure: {v.get("body", BODY)}. {v["look"]}.'
+              + SEXY + QUALITY)
+    mixed = VAR / f'agata_v{face_n}x{look_n}_look.png'
+    mixed.write_bytes(g.render('bytedance/seedream-5.0-pro/edit', prompt, [uri]))
+    shutil.copyfile(face, out / '00_agata_canonical_face.png')
+    shutil.copyfile(mixed, out / '01_agata_canonical_look.png')
+    print('mixed', face_n, look_n)
+
+
 if __name__ == '__main__':
     if len(ARGS) >= 3 and ARGS[1] == 'pick':
         pick(int(ARGS[2]))
+    elif len(ARGS) >= 4 and ARGS[1] == 'mix':
+        mix(int(ARGS[2]), int(ARGS[3]))
     else:
         make_variants()
