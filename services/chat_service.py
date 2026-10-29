@@ -155,12 +155,13 @@ def _adult_ok(telegram_id: int) -> bool:
 
 
 def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool = False,
-                       card_girl: bool = False, wild: bool = False) -> str:
+                       card_girl: bool = False, wild: bool = False, premium: bool = False) -> str:
     """Explicit sexting needs the 18+ confirmation AND level 5+ (or the
     premium spicy toggle at level 4+); everyone else keeps the non-graphic rule.
     V3.76.0: the scenario-card girls are dirty by design, so for them it
-    opens two stages earlier."""
-    if not adult_confirmed or not stage:
+    opens two stages earlier.
+    V3.90.0: owner — «весь интим только с премиумом»: none of it without Premium."""
+    if not adult_confirmed or not stage or not premium:
         return ''
     if wild:  # V3.78.0: he picked «😈 Без тормозов» for a Premium storyline
         return EXPLICIT_CHAT_RULE
@@ -366,7 +367,13 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     except Exception:
         spicy_line = ''
     card_girl = _is_card_girl(character_id)
-    if card_girl and not spicy_line and _adult_ok(user_id):
+    # V3.90.0: intimacy is Premium-only — admins test it as Premium.
+    try:
+        from config import ADMIN_TELEGRAM_IDS
+        intim_ok = premium or int(user_id) in ADMIN_TELEGRAM_IDS
+    except Exception:
+        intim_ok = premium
+    if card_girl and not spicy_line and intim_ok and _adult_ok(user_id):
         spicy_line = CARD_GIRL_DIRTY_LINE
     # V3.78.0: the level he picked for a running storyline wins in its scene
     try:
@@ -429,11 +436,14 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         # «без графического секса» now holds only below that line.
         explicit_line = explicit_chat_line(test_stage or rel_stage, adult_confirmed=_adult_ok(user_id),
                                            spicy=bool(spicy_line) and not card_girl, card_girl=card_girl,
-                                           wild=plot_heat == 'wild')
+                                           wild=plot_heat == 'wild', premium=intim_ok)
         if plot_heat == 'soft':
             explicit_line = ''
         if explicit_line:
             style_line = (style_line + '\n' if style_line else '') + explicit_line
+        elif not intim_ok:
+            from services.intimacy_gate import NON_PREMIUM_LINE
+            style_line = (style_line + '\n' if style_line else '') + NON_PREMIUM_LINE
     except Exception:
         style_line = ''
         marital_reminder = ''

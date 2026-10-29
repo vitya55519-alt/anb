@@ -92,12 +92,13 @@ def test_card_media_route_serves_the_override():
 def test_support_bot_welcome_and_forward():
     assert 'SUPPORT_BOT_TOKEN = os.getenv("SUPPORT_BOT_TOKEN", "").strip()' in CONFIG
     assert 'SUPPORT_WELCOME_TEXT = os.getenv(' in CONFIG
-    assert 'Напишите ваше обращение и менеджер с вами свяжется.' in CONFIG
+    assert 'менеджер ответит прямо здесь' in CONFIG  # V3.90.0
     assert 'async def _run_support_bot() -> None:' in MAIN
     assert '@support_dp.message(Command(\'start\'))' in MAIN
-    assert 'await msg.answer(SUPPORT_WELCOME_TEXT)' in MAIN
-    assert 'await msg.forward(chat_id=admin_id)' in MAIN
-    assert 'Приняла твоё обращение ✅ Менеджер свяжется с тобой вскоре.' in MAIN
+    # V3.90.0: welcome + FAQ menu, appeal cards answered by reply
+    assert 'await msg.answer(desk.WELCOME, reply_markup=_menu())' in MAIN
+    assert 'sent = await support_bot.send_message(admin_id, card)' in MAIN
+    assert 'await msg.answer(desk.ACK)' in MAIN
     # startup gate: no token — no polling, just a warning
     assert 'if SUPPORT_BOT_TOKEN:' in MAIN
     assert 'asyncio.create_task(_run_support_bot())' in MAIN

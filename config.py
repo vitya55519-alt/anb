@@ -783,8 +783,10 @@ BOT_USERNAME = os.getenv("BOT_USERNAME", "Anna67901_bot").strip().lstrip('@')
 SUPPORT_BOT_TOKEN = os.getenv("SUPPORT_BOT_TOKEN", "").strip()
 SUPPORT_WELCOME_TEXT = os.getenv(
     "SUPPORT_WELCOME_TEXT",
-    "Привет! Ваше сообщение для нас важно ❤️\n"
-    "Напишите ваше обращение и менеджер с вами свяжется.",
+    # V3.90.0: the welcome sits above a menu of ready answers now.
+    "Привет! Это поддержка Анны 💌\n\n"
+    "Выбери вопрос ниже — на частые отвечаем сразу. Если твоего вопроса нет, "
+    "просто напиши сообщение (можно со скриншотом), и менеджер ответит прямо здесь.",
 ).strip()
 # V3.43.0: «Бесплатные 🍑 за подписку на канал» — the owner's channel and the
 # one-time peach bonus for being a member (checked via getChatMember).

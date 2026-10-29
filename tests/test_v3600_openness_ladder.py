@@ -30,10 +30,10 @@ def test_she_starts_it_herself_at_higher_levels():
 
 def test_explicit_rule_needs_adult_and_level():
     from services.chat_service import EXPLICIT_CHAT_RULE, explicit_chat_line
-    assert explicit_chat_line('committed', adult_confirmed=True) == EXPLICIT_CHAT_RULE
+    assert explicit_chat_line('committed', adult_confirmed=True, premium=True) == EXPLICIT_CHAT_RULE
     assert explicit_chat_line('committed', adult_confirmed=False) == ''
-    assert explicit_chat_line('close', adult_confirmed=True, spicy=True) == ''
-    assert explicit_chat_line('intimate', adult_confirmed=True, spicy=True) == EXPLICIT_CHAT_RULE
+    assert explicit_chat_line('close', adult_confirmed=True, spicy=True, premium=True) == ''
+    assert explicit_chat_line('intimate', adult_confirmed=True, spicy=True, premium=True) == EXPLICIT_CHAT_RULE
     assert explicit_chat_line('intimate', adult_confirmed=True) == ''
     assert 'только взрослые' in EXPLICIT_CHAT_RULE and 'согласие' in EXPLICIT_CHAT_RULE
 

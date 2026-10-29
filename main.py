@@ -10410,6 +10410,17 @@ async def text_message(message: types.Message):
             logger.info('fake_photo_intercepted user=%s', message.from_user.id)
             asyncio.create_task(_deliver_intercepted_photo(message))
         await send_answer(message, answer)
+        # V3.90.0: intimacy is Premium-only — once a day his explicit message
+        # gets a Premium button under her reply.
+        try:
+            from services import intimacy_gate
+            if await asyncio.to_thread(intimacy_gate.should_offer, message.from_user.id,
+                                       get_user_character(message.from_user.id), text):
+                track_event(ensure_user(message.from_user.id), 'paywall_view', metadata={'product': 'sext_offer'})
+                await message.answer(intimacy_gate.OFFER_TEXT_RU,
+                                     reply_markup=premium_keyboard(telegram_id=message.from_user.id))
+        except Exception:
+            logger.warning('sext offer failed user=%s', message.from_user.id, exc_info=True)
         # Detect if Anna offered a photo in her response
         if _PHOTO_OFFER_DETECT.search(answer):
             _photo_offer_pending[message.from_user.id] = _time.time()
@@ -12451,6 +12462,17 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             payload['locked_tease'] = tease
     except Exception:
         logger.exception('locked tease failed user=%s', telegram_id)
+    # V3.90.0: intimacy is Premium-only — his explicit message gets a quiet
+    # «🔥 Откровенно — с Premium» chip under her reply (once a day).
+    if 'locked_tease' not in payload:
+        try:
+            from services import intimacy_gate
+            if await asyncio.to_thread(intimacy_gate.should_offer, telegram_id, character_id, text):
+                await asyncio.to_thread(track_event, uid, 'paywall_view',
+                                        metadata={'product': 'sext_offer', 'character_id': character_id})
+                payload['sext_offer'] = True
+        except Exception:
+            logger.warning('sext offer failed user=%s', telegram_id, exc_info=True)
     # V3.72.0: the circle hook — in a flirty moment (or when asked) she offers
     # a circle under her reply. Free to show; the render starts on a paid tap.
     try:
@@ -15151,26 +15173,107 @@ async def _run_support_bot() -> None:
     """V3.43.3: the support desk bot — /start welcome + appeals to the admins.
 
     Runs as a second aiogram bot inside this process when SUPPORT_BOT_TOKEN
-    is set (the rotated token of the support bot, env only). The owner's
-    benchmark: /start must answer at once («Напишите ваше обращение и
-    менеджер с вами свяжется»), otherwise the support chat looks dead.
+    is set (the rotated token of the support bot, env only).
+    V3.90.0: a real desk (services/support_desk.py) — ready answers on /start,
+    an appeal card for the admins, answers by reply, /tickets, a calm ack.
     """
     from aiogram import Bot as SupportBot, Dispatcher as SupportDispatcher
+    from services import support_desk as desk
     support_bot = SupportBot(token=SUPPORT_BOT_TOKEN)
     support_dp = SupportDispatcher()
+    # (admin chat, message id) -> user id, for replies to copied media
+    routes: dict[tuple[int, int], int] = {}
+    last_ack: dict[int, float] = {}
+
+    def _menu() -> InlineKeyboardMarkup:
+        rows = [[InlineKeyboardButton(text=btn, callback_data=f'sd:{key}')]
+                for key, (btn, _a) in desk.FAQ.items()]
+        rows.append([InlineKeyboardButton(text=desk.WRITE_BUTTON, callback_data=f'sd:{desk.WRITE_KEY}')])
+        return InlineKeyboardMarkup(inline_keyboard=rows)
+
+    def _back() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=desk.WRITE_BUTTON, callback_data=f'sd:{desk.WRITE_KEY}')],
+            [InlineKeyboardButton(text='↩️ Другие вопросы', callback_data='sd:menu')]])
 
     @support_dp.message(Command('start'))
     async def _support_start(msg: types.Message):
-        await msg.answer(SUPPORT_WELCOME_TEXT)
+        if msg.from_user.id in ADMIN_TELEGRAM_IDS:
+            await msg.answer('Ты админ поддержки 👋\n\nОбращения приходят сюда карточками. '
+                             'Ответь на карточку (или на сообщение под ней) — ответ уйдёт пользователю.\n'
+                             '/tickets — кто ждёт ответа\n/reply <id> <текст> — ответить по id')
+            return
+        await msg.answer(desk.WELCOME, reply_markup=_menu())
+
+    @support_dp.callback_query(F.data.startswith('sd:'))
+    async def _support_faq(cq: types.CallbackQuery):
+        key = cq.data.split(':', 1)[1]
+        await cq.answer()
+        if key == 'menu':
+            await cq.message.answer(desk.WELCOME, reply_markup=_menu())
+        elif key == desk.WRITE_KEY:
+            await cq.message.answer(desk.WRITE_ANSWER)
+        elif key in desk.FAQ:
+            await cq.message.answer(desk.FAQ[key][1], reply_markup=_back())
+
+    @support_dp.message(Command('tickets'))
+    async def _support_tickets(msg: types.Message):
+        if msg.from_user.id not in ADMIN_TELEGRAM_IDS:
+            return await _support_appeal(msg)
+        items = await asyncio.to_thread(desk.open_tickets)
+        await msg.answer(desk.tickets_text(items))
+
+    async def _send_answer(admin_msg: types.Message, user_id: int, text: str | None = None) -> None:
+        try:
+            if text is not None:
+                await support_bot.send_message(user_id, desk.ANSWER_PREFIX + text)
+            elif admin_msg.text:
+                await support_bot.send_message(user_id, desk.ANSWER_PREFIX + admin_msg.text)
+            else:
+                await support_bot.send_message(user_id, desk.ANSWER_PREFIX.strip())
+                await admin_msg.copy_to(user_id)
+        except Exception as exc:
+            await admin_msg.answer(f'⚠️ Не доставлено пользователю {user_id}: {type(exc).__name__}')
+            return
+        await asyncio.to_thread(desk.note_event, desk.ANSWER_EVENT, user_id, text or admin_msg.text or '')
+        await admin_msg.answer(f'✅ Отправлено пользователю {user_id}')
 
     @support_dp.message()
     async def _support_appeal(msg: types.Message):
+        uid = msg.from_user.id
+        if uid in ADMIN_TELEGRAM_IDS:
+            cmd = desk.parse_reply_command(msg.text or '')
+            if cmd:
+                await _send_answer(msg, cmd[0], cmd[1])
+                return
+            reply = msg.reply_to_message
+            target = None
+            if reply is not None:
+                target = routes.get((msg.chat.id, reply.message_id)) \
+                    or desk.user_id_from_card(reply.text or reply.caption)
+            if target:
+                await _send_answer(msg, target)
+            else:
+                await msg.answer('Чтобы ответить пользователю, ответь (reply) на его карточку '
+                                 'или используй /reply <id> <текст>. /tickets — кто ждёт ответа.')
+            return
+        text = msg.text or msg.caption or ''
+        card = await asyncio.to_thread(desk.user_card, uid, msg.from_user.full_name,
+                                       msg.from_user.username, text)
+        await asyncio.to_thread(desk.note_event, desk.APPEAL_EVENT, uid, text)
         for admin_id in ADMIN_TELEGRAM_IDS:
             try:
-                await msg.forward(chat_id=admin_id)
+                sent = await support_bot.send_message(admin_id, card)
+                routes[(admin_id, sent.message_id)] = uid
+                if not msg.text:  # a screenshot / voice / file goes under the card
+                    copied = await msg.copy_to(admin_id, reply_to_message_id=sent.message_id)
+                    routes[(admin_id, copied.message_id)] = uid
             except Exception as exc:
-                logger.warning('support forward failed admin=%s: %s', admin_id, exc)
-        await msg.answer('Приняла твоё обращение ✅ Менеджер свяжется с тобой вскоре.')
+                logger.warning('support appeal to admin=%s failed: %s', admin_id, exc)
+        now = _time.time()
+        if now - last_ack.get(uid, 0) >= desk.ACK_EVERY.total_seconds():
+            last_ack[uid] = now
+            await msg.answer(desk.ACK)
 
     try:
         await support_dp.start_polling(support_bot)
