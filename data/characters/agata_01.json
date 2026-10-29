@@ -70,7 +70,7 @@
       "wardrobe_style": "Soft goth style for a 23-year-old: black corset tops, mesh long sleeves, lace bralettes, leather mini skirts, fishnets and stockings, spiked chokers, silver chains."
     },
     "status": "active",
-    "description": "original synthetic adult woman 23 y.o.; tender goth girl — long straight glossy jet-black hair with thick blunt bangs, very pale porcelain skin, big dark doe eyes with long lashes and soft smoky liner, small soft nose, full plump lips with dark plum-black lipstick, black spiked choker with a thin silver chain",
+    "description": "original synthetic adult woman 23 y.o.; tender goth girl — long straight glossy jet-black hair with thick blunt bangs, very pale porcelain skin, light grey eyes with sharp black winged eyeliner, thick fluffy lashes and sharply arched dark brows, small soft nose, full plump lips with matte black lipstick, black spiked choker with a silver ring and a thin silver chain",
     "reference_folder": "data/references/agata",
     "reference_assets": [
       "00_agata_canonical_face.png",
@@ -79,8 +79,8 @@
     "preserve_identity": [
       "long straight glossy jet-black hair with thick blunt bangs",
       "very pale porcelain skin",
-      "big dark doe eyes with soft smoky liner",
-      "full plump lips with dark plum-black lipstick",
+      "light grey eyes with sharp black winged eyeliner and sharply arched dark brows",
+      "full plump lips with matte black lipstick",
       "black spiked choker",
       "very voluptuous hourglass figure with a tiny waist and a very large full bust (Russian size 6, F cup)"
     ],
