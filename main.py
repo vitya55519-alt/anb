@@ -757,6 +757,8 @@ def admin_keyboard():
         [InlineKeyboardButton(text='💡 Идеи для фото', callback_data='admin:ideas')],
         [InlineKeyboardButton(text='🏆 Арт достижений/миссий', callback_data='admin:badges')],
         [InlineKeyboardButton(text='📸 Медиа для утра/вечера', callback_data='admin:prophoto')],
+        # V3.94.0: a ready «🔥 Девушка дня» channel post in two taps.
+        [InlineKeyboardButton(text='📣 Пост в канал', callback_data='gday:menu')],
         [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats'),
          InlineKeyboardButton(text='🩺 Отказы', callback_data='admin:providers')],
         [InlineKeyboardButton(text='🎁 Выдать премиум/токены', callback_data='admin:grant')],
@@ -9900,13 +9902,16 @@ async def admin_backup_cmd(message: types.Message):
                                   caption=caption[:1000])
 
 
-@dp.message(Command('girlday'))
+@dp.message(Command('girlday', 'post'))
 async def admin_girlday_cmd(message: types.Message):
-    """V3.92.0: today's «🔥 Девушка дня» with the channel post and a switch."""
+    """V3.92.0: today's «🔥 Девушка дня» with the channel post and a switch.
+    V3.94.0: starts with the girl picker."""
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
     from services import girl_of_day
-    await girl_of_day.send_admin_preview(bot, message.chat.id)
+    markup = await asyncio.to_thread(girl_of_day.picker_markup)
+    await message.answer('📣 Пост в канал: выбери девушку (🔥 — сегодняшняя). '
+                         'Она станет «Девушкой дня» до 03:00 МСК.', reply_markup=markup)
 
 
 @dp.callback_query(F.data.startswith('gday:'))
@@ -9916,21 +9921,28 @@ async def admin_girlday_cb(cq: types.CallbackQuery):
         return
     from services import girl_of_day
     parts = cq.data.split(':')
-    if parts[1] == 'next':
+    # V3.94.0: «📣 Пост в канал» → pick the girl → a ready post with a random
+    # inviting text; «🎲 Другой текст» rolls another one.
+    if parts[1] in ('menu', 'next'):
+        markup = await asyncio.to_thread(girl_of_day.picker_markup)
+        await cq.answer()
+        await cq.message.answer('📣 Пост в канал: выбери девушку (🔥 — сегодняшняя). '
+                                'Она станет «Девушкой дня» до 03:00 МСК.', reply_markup=markup)
+        return
+    if parts[1] == 'pick' and len(parts) > 2:
         girls = await asyncio.to_thread(girl_of_day.pool)
-        cur = await asyncio.to_thread(girl_of_day.current)
-        if not girls:
-            await cq.answer('нет девушек в ротации', show_alert=True)
+        if parts[2] not in girls:
+            await cq.answer('этой девушки нет в ротации', show_alert=True)
             return
-        nxt = girls[(girls.index(cur) + 1) % len(girls)] if cur in girls else girls[0]
-        await asyncio.to_thread(girl_of_day.set_today, nxt)
-        await cq.answer(f'сегодня: {girl_of_day.name_of(nxt)}')
-        await girl_of_day.send_admin_preview(bot, cq.message.chat.id, nxt)
+        await asyncio.to_thread(girl_of_day.set_today, parts[2])
+        await cq.answer(f'сегодня: {girl_of_day.name_of(parts[2])}')
+        await girl_of_day.send_admin_preview(bot, cq.message.chat.id, parts[2])
         return
     if parts[1] == 'post' and len(parts) > 2:
         channel = '@' + CHANNEL_SUBSCRIBE_USERNAME
+        variant = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None
         try:
-            await girl_of_day.publish(bot, channel, parts[2])
+            await girl_of_day.publish(bot, channel, parts[2], variant)
         except Exception as e:
             logger.warning('girl of day publish failed: %s', e)
             await cq.answer('не получилось: бот должен быть админом канала с правом публикации', show_alert=True)
