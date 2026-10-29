@@ -86,7 +86,8 @@ def test_welcome_back_rows_open_app_partner_and_legal():
     assert "callback_data='partner:open'" in MAIN
     assert '@dp.callback_query(F.data == \'partner:open\')' in MAIN
     assert 'async def partner_open(cq: types.CallbackQuery)' in MAIN
-    assert 'await referral_cmd(cq.message)' in MAIN
+    # V3.95.0: the tapper is passed on — cq.message.from_user is the bot.
+    assert 'await referral_cmd(cq.message, cq.from_user)' in MAIN
     assert 'markup = InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang))' in MAIN
     assert 'rows.extend(_pair_rows(_character_pick_buttons(\'onboard\')))' not in MAIN
 
@@ -97,7 +98,8 @@ def test_peaches_replaced_strawberries():
     # V3.43.5: the label lost the verb — the plain «Персики» button.
     assert "'credits': ('🍑 Персики', '🍑 Peaches')," in UI_LANG
     assert '🍑 Персики' in MAIN
-    assert '🍑 peaches (photo credits) are bought in the app' in MAIN
+    # V3.95.0: the button opens the in-chat shop.
+    assert 'async def _send_peach_shop(' in MAIN
     assert "wiz_create_peaches: n => '🎨 Создать · 🍑 ' + n" in INDEX
     assert 'Не хватает 🍑' in INDEX
     # no strawberry branding left anywhere user-facing
