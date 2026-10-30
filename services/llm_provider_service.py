@@ -112,6 +112,10 @@ logger.info(
 )
 
 
+# V3.96.0: calls that carry an image part.
+VISION_PURPOSES = frozenset({'photo_reaction'})
+
+
 @dataclass(frozen=True)
 class LLMResult:
     text: str
@@ -158,7 +162,9 @@ async def generate_text(
 
     minimax_empty = False
     # ── 1. MiniMax (V3.45: primary chat provider) ─────────────────────
-    if _minimax:
+    # V3.96.0: a photo he sends needs eyes — MiniMax chat models are text-only,
+    # so vision calls go straight to Gemini.
+    if _minimax and purpose not in VISION_PURPOSES:
         mm_model = MINIMAX_DIALOGUE_MODEL if purpose == 'dialogue' else MINIMAX_MODEL
         mm_kwargs = {}
         if purpose == 'dialogue':

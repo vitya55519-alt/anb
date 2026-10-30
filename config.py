@@ -702,7 +702,10 @@ def fiat_suffix(stars: int, rub: int | None = None, usd: float | None = None,
 # V3.57.4: the owner removed the ability to send a photo to the character, so the
 # whole reaction path is off by default — it gates BOTH the bot chat and the Mini
 # App endpoint (/webapp/api/chat/photo). Set PHOTO_REACTION_ENABLED=true to revive.
-PHOTO_REACTION_ENABLED = os.getenv("PHOTO_REACTION_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+# V3.96.0: the owner asked for the 📎 back — on by default again. She only SEES
+# the photo (Gemini vision) and answers in text; his photo is never edited,
+# animated or sent to any image engine.
+PHOTO_REACTION_ENABLED = os.getenv("PHOTO_REACTION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 PHOTO_REACTION_COOLDOWN_SECONDS = max(0, int(os.getenv("PHOTO_REACTION_COOLDOWN_SECONDS", "15")))
 
 # Referral & first-start "wow" bonuses. Both sides receive photo credits.

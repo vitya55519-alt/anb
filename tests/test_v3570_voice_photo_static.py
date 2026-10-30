@@ -54,22 +54,23 @@ def test_reply_voice_note_keeps_the_premium_gate():
 
 def test_photo_endpoint_reuses_vision_reaction():
     body = MAIN[MAIN.index('async def _webapp_api_chat_photo('):MAIN.index('async def _webapp_api_chat_persona(')]
-    assert 'await react_to_photo(image_b64, mime_type=mime, character_id=character_id)' in body
+    assert 'await react_to_photo(image_b64, mime_type=mime, caption=caption or None, character_id=character_id)' in body
     # same cooldown as the bot photo reaction, same size cap
     assert '_photo_reaction_ts.get(telegram_id, 0) < PHOTO_REACTION_COOLDOWN_SECONDS' in body
-    assert 'len(data) > MAX_BASE64_BYTES' in body
+    assert 'len(image_b64) > MAX_BASE64_BYTES' in body
     # only real image formats, and the dialog keeps both sides of the moment
     assert "('image/jpeg', 'image/png', 'image/webp')" in body
-    assert "save_message(uid, character_id, 'user', '📷', media_kind='photo', media_url=url)" in body
+    assert "save_message(uid, character_id, 'user', caption or '📷', media_kind='photo', media_url=url)" in body
     assert "save_message(uid, character_id, 'assistant', reaction)" in body
 
 
 def test_spa_mic_and_attach_buttons_exist():
-    assert 'id="chatMic"' in SPA
+    # V3.96.0: the mic is the round send button while the field is empty
+    assert 'id="chatSend" class="mic"' in SPA
     assert 'id="chatAttach"' in SPA
     assert 'id="chatFileIn"' in SPA
     # V3.57.1: the mic moved to pointer events (hold-to-send like Telegram)
-    assert "_micBtn.addEventListener('pointerdown'" in SPA
+    assert "_sendBtn.addEventListener('pointerdown'" in SPA
     assert "document.getElementById('chatFileIn').addEventListener('change'" in SPA
 
 
@@ -79,7 +80,7 @@ def test_spa_records_with_mediarecorder_and_posts_base64():
     assert "'/webapp/api/chat/voice?init_data='" in SPA
     assert "'/webapp/api/chat/photo?init_data='" in SPA
     # 60 s auto-stop like a Telegram voice note; too-short takes are dropped
-    assert 'if (s >= 60 && _rec) _rec.stop();' in SPA
+    assert 'if (sec >= 60 && _rec) _rec.stop();' in SPA
     assert 'L.mic_short' in SPA
     assert 'L.mic_denied' in SPA
 
@@ -87,8 +88,8 @@ def test_spa_records_with_mediarecorder_and_posts_base64():
 def test_spa_renders_heard_text_voice_and_photo_reply():
     assert 'function renderChatReply(' in SPA
     assert "media_kind: 'voice', media_url: j.voice_url" in SPA
-    # his bubble shows what the recognition actually heard
-    assert "content: '🎤 ' + (j.user_text || '')" in SPA
+    # his bubble shows what the recognition actually heard (V3.96.0: under his voice note)
+    assert "if (tx) tx.textContent = j.user_text || '';" in SPA
     # the photo path renders her compliment
     assert 'async function sendChatPhoto(' in SPA
     # the old sendChat must render through the shared helper now

@@ -38,16 +38,17 @@ def test_spa_buttons_live_inside_the_field():
     assert '.chat-field input { flex: 1; min-width: 0; padding-right: 48px; }' in SPA
     assert '<div class="chat-field">' in SPA
     assert 'class="inbtn"' in SPA
-    field = SPA[SPA.index('<div class="chat-field">'):SPA.index('</div>\n    <button id="chatSend">')]
-    assert 'id="chatMic"' in field and 'id="chatAttach"' in field
+    # V3.96.0: 📎 in the field; the mic is the round button outside it
+    field = SPA[SPA.index('<div class="chat-field">'):SPA.index('<button id="chatSend"')]
+    assert 'id="chatAttach"' in field and 'id="recBar"' in field
     assert 'id="chatSend"' not in field
 
 
 def test_hold_to_record_pointer_flow():
-    assert "function micDown()" in SPA
+    assert "function micDown(e)" in SPA
     assert "function micUp()" in SPA
     assert 'window.addEventListener(\'pointerup\', micUp)' in SPA
     # release after a hold sends; a quick tap keeps recording hands-free
-    assert 'if ((Date.now() - _recStart) > 450) _rec.stop();' in SPA
+    assert 'if ((Date.now() - _recStart) > 450) { _rec.stop(); return; }' in SPA
     # the old click-toggle is gone for good
     assert 'toggleChatMic' not in SPA
