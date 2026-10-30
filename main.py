@@ -12969,6 +12969,8 @@ async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', ''))
     image_b64 = str(body.get('image', ''))
     mime = str(body.get('mime', 'image/jpeg'))
+    # V3.96.0: the text he typed before tapping 📎 rides as the caption.
+    caption = str(body.get('caption', '') or '').strip()[:300]
     if not character_id or not image_b64 or mime not in ('image/jpeg', 'image/png', 'image/webp'):
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     # V3.57.2: the gate is four PostgreSQL reads — off the event loop.
@@ -12984,11 +12986,13 @@ async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
         data = base64.b64decode(image_b64)
     except Exception:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    if len(data) < 100 or len(data) > MAX_BASE64_BYTES:
+    if len(data) < 100:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    if len(image_b64) > MAX_BASE64_BYTES:
+        return web.json_response({'ok': False, 'error': 'too_big'}, status=413)
     _photo_reaction_ts[telegram_id] = now
     try:
-        reaction = await react_to_photo(image_b64, mime_type=mime, character_id=character_id)
+        reaction = await react_to_photo(image_b64, mime_type=mime, caption=caption or None, character_id=character_id)
     except Exception:
         logger.exception('webapp photo reaction failed user=%s', telegram_id)
         reaction = None
@@ -13001,7 +13005,7 @@ async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
         filename = webapp_service.save_chat_media(telegram_id, data, 'jpg', mime)
         url = f'/webapp/media/{filename}'
-        save_message(uid, character_id, 'user', '📷', media_kind='photo', media_url=url)
+        save_message(uid, character_id, 'user', caption or '📷', media_kind='photo', media_url=url)
         save_message(uid, character_id, 'assistant', reaction)
         track_event(uid, 'photo_reaction_sent', metadata={'character_id': character_id, 'source': 'webapp'})
         return url

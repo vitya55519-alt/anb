@@ -359,14 +359,37 @@
     padding: 0; border: none; border-radius: 50%; background: transparent;
     color: var(--muted); font-size: 17px; cursor: pointer;
   }
-  /* V3.57.4: the owner removed sending photos to the character. The 📎 control is
-     hidden and the intake is switched off server-side (PHOTO_REACTION_ENABLED now
-     defaults to false), so both the app endpoint and the bot's vision reaction are
-     dead. The markup and JS stay in place — flipping the flag back restores it. */
-  #chatAttach { display: none; }
-  #chatMic { right: 8px; }
-  .chat-field .inbtn.rec { right: 8px; width: auto; padding: 0 12px; border-radius: 17px; background: linear-gradient(135deg, #e74c3c, #c0392b); color: #fff; font-size: 12px; animation: recpulse 1.2s ease-in-out infinite; }
-  @keyframes recpulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
+  /* V3.96.0: the owner asked for Telegram's input back — 📎 inside the field
+     sends her a photo (she sees it and answers in text), and the round button on
+     the right is the mic while the field is empty, the paper plane once he types.
+     Hold the mic to record, release to send, slide left to cancel; a quick tap
+     records hands-free until the next tap. */
+  #chatAttach { right: 6px; display: flex; align-items: center; justify-content: center; }
+  .chat-field .inbtn svg { width: 23px; height: 23px; }
+  .chat-input #chatSend { position: relative; flex: none; width: 46px; height: 46px; padding: 0; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; touch-action: none; user-select: none; -webkit-user-select: none;
+    transition: transform .15s ease, box-shadow .15s ease; }
+  #chatSend svg { width: 22px; height: 22px; position: absolute; transition: opacity .12s ease, transform .12s ease; }
+  #chatSend .ic-send { opacity: 0; transform: scale(.5); }
+  #chatSend.mic .ic-mic { opacity: 1; transform: none; }
+  #chatSend:not(.mic) .ic-mic { opacity: 0; transform: scale(.5); }
+  #chatSend:not(.mic) .ic-send { opacity: 1; transform: none; }
+  #chatSend.holding { transform: scale(1.3); transform-origin: 70% 50%; box-shadow: 0 0 0 8px rgba(232,68,127,.22), 0 0 22px rgba(232,68,127,.5); }
+  .recbar { position: absolute; inset: 0; display: none; align-items: center; gap: 10px; padding: 0 14px;
+    background: var(--card); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; font-size: 15px; overflow: hidden; }
+  .chat-field.recording .recbar { display: flex; }
+  .recbar .rdot { width: 10px; height: 10px; border-radius: 50%; background: #ff4d4d; flex: none; animation: recpulse 1s ease-in-out infinite; }
+  .recbar .rtime { font-variant-numeric: tabular-nums; min-width: 38px; }
+  .recbar .rhint { flex: 1; text-align: center; color: var(--muted); font-size: 13px; white-space: nowrap; transition: transform .05s linear; }
+  .recbar .rcancel { display: none; flex: 1; border: 0; background: transparent; color: var(--accent); font-size: 15px; font-weight: 600; cursor: pointer; }
+  .chat-field.locked .rhint { display: none; }
+  .chat-field.locked .rcancel { display: block; }
+  @keyframes recpulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  /* his own voice note: a player plus what she «heard» in small type */
+  .msg.user .vp .vp-btn { background: rgba(255,255,255,.22); }
+  .msg.user .vtx { margin-top: 5px; font-size: 12px; opacity: .85; }
+  .msg.user .vtx:empty { display: none; }
+  .msg.user .ucap { margin-top: 5px; }
   /* V3.39.0: Come Closer character page — photo strip, CTA, plot block */
   .strip { display: flex; gap: 8px; overflow-x: auto; padding: 12px 14px 4px; }
   .strip img { width: 74px; height: 96px; object-fit: cover; border-radius: 12px; border: 2px solid transparent; cursor: pointer; flex: 0 0 auto; background: var(--card2); }
@@ -1221,10 +1244,10 @@
     <button id="featMenuBtn" class="featmenu" type="button"><span class="fm-t" id="lbFeatMenu"></span><span class="fm-s" id="lbFeatMenuSub"></span></button>
     <div class="chat-field">
       <input id="chatText" maxlength="4000" placeholder="">
-      <button id="chatAttach" class="inbtn" type="button">📎</button>
-      <button id="chatMic" class="inbtn" type="button">🎤</button>
+      <button id="chatAttach" class="inbtn" type="button" aria-label="photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5 12.4 20.1a5.5 5.5 0 0 1-7.8-7.8l8.9-8.9a3.7 3.7 0 0 1 5.2 5.2l-8.9 8.9a1.8 1.8 0 0 1-2.6-2.6l8.2-8.2"/></svg></button>
+      <div class="recbar" id="recBar"><span class="rdot"></span><span class="rtime" id="recTime">0:00</span><span class="rhint" id="recHint"></span><button class="rcancel" id="recCancel" type="button"></button></div>
     </div>
-    <button id="chatSend">➤</button>
+    <button id="chatSend" class="mic" type="button" aria-label="send"><svg class="ic-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg><svg class="ic-send" viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4 21 12 3.4 3.6l-.01 6.53L15 12 3.39 13.87z"/></svg></button>
     <input type="file" id="chatFileIn" accept="image/*" style="display:none">
   </div>
 </div>
@@ -1660,7 +1683,7 @@ const L_EN = {
   char_search_ph: 'Search the community by name or #tag…',
   media_busy: 'Wait a moment, she is still busy with the previous photo…', media_wait_photo: 'Sending a photo…', media_wait_circle: 'Recording a circle — 1–3 min…',
   media_wait_voice: 'Recording her voice…', media_wait_video: 'Rendering a video — 1–3 min…',
-  stt_wait: 'Reading your voice message…', mic_denied: 'No microphone access — allow it in the browser settings', mic_short: 'Too short — say something 🙂', mic_nospeech: 'Could not make out the words — try again', mic_err: 'Voice message failed — try again', attach_err: 'Could not send the photo', attach_big: 'Photo too heavy — send a lighter one',
+  stt_wait: 'Reading your voice message…', mic_denied: 'No microphone access — allow it in the browser settings', mic_short: 'Too short — say something 🙂', mic_nospeech: 'Could not make out the words — try again', mic_err: 'Voice message failed — try again', attach_err: 'Could not send the photo', attach_big: 'Photo too heavy — send a lighter one', attach_wait: 'Wait a few seconds before the next photo 🙂', rec_hint: '‹ slide to cancel', rec_cancel: 'Cancel',
   circle_limit: 'Not enough 🍑 for a circle',
   co_circle: '🎥 Video circle from her', co_hot: '🤫 Secret video — just for you',
   feat_hot_circle: 'Secret video', cap_hot_circle: 'A private video circle only for you: she undresses and touches herself. 4 000 🍑, charged only if it works',
@@ -1911,7 +1934,7 @@ const L_RU = {
   char_search_ph: 'Поиск по сообществу: имя или #тег…',
   media_busy: 'Подожди, она ещё занята прошлым фото…', media_wait_photo: 'Отправляю фото…', media_wait_circle: 'Записываю кружочек — 1–3 минуты…',
   media_wait_voice: 'Записываю голос…', media_wait_video: 'Рисую видео — 1–3 минуты…',
-  stt_wait: 'Узнаю твой голос…', mic_denied: 'Нет доступа к микрофону — разреши его в настройках', mic_short: 'Слишком коротко — скажи что-нибудь 🙂', mic_nospeech: 'Не смогла разобрать слова — попробуй ещё раз', mic_err: 'Голосовое не отправилось — попробуй ещё раз', attach_err: 'Не удалось отправить фото', attach_big: 'Фото слишком тяжёлое — пришли полегче',
+  stt_wait: 'Узнаю твой голос…', mic_denied: 'Нет доступа к микрофону — разреши его в настройках', mic_short: 'Слишком коротко — скажи что-нибудь 🙂', mic_nospeech: 'Не смогла разобрать слова — попробуй ещё раз', mic_err: 'Голосовое не отправилось — попробуй ещё раз', attach_err: 'Не удалось отправить фото', attach_big: 'Фото слишком тяжёлое — пришли полегче', attach_wait: 'Подожди пару секунд перед следующим фото 🙂', rec_hint: '‹ влево — отмена', rec_cancel: 'Отмена',
   circle_limit: 'На кружочек не хватает 🍑',
   co_circle: '🎥 Кружочек от неё', co_hot: '🤫 Тайное видео — только тебе',
   feat_hot_circle: 'Тайное видео', cap_hot_circle: 'Её секретный кружочек только для тебя: раздевается и ласкает себя. 4 000 🍑, спишем только если получится',
@@ -2927,6 +2950,9 @@ function openChat(c) {
   sel.textContent = '❤️ ' + L.set_main;
   sel.style.display = c.selected ? 'none' : '';
   document.getElementById('chatText').placeholder = L.input_ph;
+  document.getElementById('recHint').textContent = L.rec_hint;
+  document.getElementById('recCancel').textContent = L.rec_cancel;
+  syncSendBtn();
   document.getElementById('chatMsgs').innerHTML = `<div class="loading">${esc(L.loading)}</div>`;
   document.getElementById('chatview').classList.add('open');
   const history = loadChatHistory(c.id);
@@ -3326,6 +3352,7 @@ async function sendChat() {
   if (!tg.initData) { toast(L.auth_short); return; }
   chatBusy = true;
   input.value = '';
+  syncSendBtn();
   const hints = document.getElementById('chatHints'); if (hints) hints.remove();
   const box = document.getElementById('chatMsgs');
   const empty = box.querySelector('.chat-empty');
@@ -3460,26 +3487,64 @@ function blobToB64(blob) {
 }
 
 let _rec = null, _recChunks = [], _recStart = 0, _recTick = null, _recHold = false;
+// V3.96.0: Telegram's input — slide-to-cancel and the hands-free (locked) mode.
+let _recCancel = false, _recX = 0, _recLocked = false, _sendWasMic = false;
+
+function syncSendBtn() {
+  const btn = document.getElementById('chatSend');
+  const input = document.getElementById('chatText');
+  if (!btn || !input) return;
+  btn.classList.toggle('mic', !_recLocked && !input.value.trim());
+}
+
+function _recUi(on) {
+  const field = document.querySelector('.chat-field');
+  const btn = document.getElementById('chatSend');
+  field.classList.toggle('recording', on);
+  field.classList.toggle('locked', on && _recLocked);
+  btn.classList.toggle('holding', on && !_recLocked);
+  if (!on) document.getElementById('recHint').style.transform = '';
+}
 
 function _micIdle() {
-  const btn = document.getElementById('chatMic');
-  btn.classList.remove('rec');
-  btn.textContent = '🎤';
+  _recLocked = false; _recHold = false;
+  _recUi(false);
+  syncSendBtn();
   if (_recTick) { clearInterval(_recTick); _recTick = null; }
 }
 
-// V3.57.1: Telegram behavior — hold the mic and release to send; a quick tap
-// keeps recording hands-free until the next tap.
-function micDown() {
+function cancelChatVoice() {
+  if (!_rec) return;
+  _recCancel = true;
+  _rec.stop();
+}
+
+// V3.57.1 → V3.96.0: hold the round mic and release to send; slide left past
+// 90px to cancel; a quick tap keeps recording hands-free — then the button is
+// the paper plane and «Отмена» sits in the field.
+function micDown(e) {
   if (_rec) { _rec.stop(); return; }
   _recHold = true;
+  _recX = e && e.clientX || 0;
   startChatVoice();
 }
 
+function micMove(e) {
+  if (!_rec || !_recHold || _recLocked) return;
+  const dx = Math.max(0, _recX - e.clientX);
+  document.getElementById('recHint').style.transform = 'translateX(' + (-Math.min(dx, 120)) + 'px)';
+  if (dx > 90) { _recHold = false; cancelChatVoice(); }
+}
+
 function micUp() {
-  if (!_rec || !_recHold) return;
+  if (!_recHold) return;
   _recHold = false;
-  if ((Date.now() - _recStart) > 450) _rec.stop();
+  if (!_rec) return;  // still opening the mic — startChatVoice goes hands-free
+  if ((Date.now() - _recStart) > 450) { _rec.stop(); return; }
+  // a quick tap: hands-free until the next tap on ➤ (or «Отмена»)
+  _recLocked = true;
+  _recUi(true);
+  syncSendBtn();
 }
 
 async function startChatVoice() {
@@ -3488,42 +3553,55 @@ async function startChatVoice() {
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (e) { toast(L.mic_denied); return; }
+  } catch (e) { _recHold = false; toast(L.mic_denied); return; }
   const mime = (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) ? 'audio/ogg;codecs=opus' : '';
   try {
     _rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
   } catch (e) {
     _rec = null; stream.getTracks().forEach(t => t.stop()); toast(L.mic_err); return;
   }
-  _recChunks = [];
+  _recChunks = []; _recCancel = false;
   _rec.ondataavailable = (e) => { if (e.data && e.data.size) _recChunks.push(e.data); };
   _rec.onstop = () => {
     const blob = new Blob(_recChunks, { type: mime || 'audio/webm' });
-    _recChunks = []; _rec = null;
+    const cancelled = _recCancel;
+    _recChunks = []; _rec = null; _recCancel = false;
     stream.getTracks().forEach(t => t.stop());
     _micIdle();
+    if (cancelled) { try { tg.HapticFeedback.notificationOccurred('warning'); } catch (e) {} return; }
     const secs = (Date.now() - _recStart) / 1000;
     if (secs < 0.8 || blob.size < 1500) { toast(L.mic_short); return; }
-    sendChatVoice(blob);
+    sendChatVoice(blob, secs);
   };
   _rec.start();
   _recStart = Date.now();
-  const btn = document.getElementById('chatMic');
-  btn.classList.add('rec');
-  btn.textContent = '⏹ 0"';
+  try { tg.HapticFeedback.impactOccurred('light'); } catch (e) {}
+  // the finger may already be up (getUserMedia asked for permission)
+  if (!_recHold && !_recLocked) _recLocked = true;
+  _recUi(true);
+  syncSendBtn();
+  const tm = document.getElementById('recTime');
+  tm.textContent = '0:00';
   _recTick = setInterval(() => {
-    const s = Math.floor((Date.now() - _recStart) / 1000);
-    btn.textContent = '⏹ ' + s + '"';
-    if (s >= 60 && _rec) _rec.stop();
-  }, 400);
+    const sec = (Date.now() - _recStart) / 1000;
+    tm.textContent = vpFmt(Math.floor(sec));
+    if (sec >= 60 && _rec) _rec.stop();
+  }, 250);
 }
 
-async function sendChatVoice(blob) {
+async function sendChatVoice(blob, secs) {
   if (!CHAT || chatBusy) return;
   chatBusy = true;
   const box = document.getElementById('chatMsgs');
   const empty = box.querySelector('.chat-empty');
   if (empty) empty.remove();
+  // V3.96.0: his bubble is a real voice note at once, like in Telegram; what
+  // the speech recognition heard is filled in under it when the answer lands.
+  const vid = 'myv' + Date.now();
+  box.insertAdjacentHTML('beforeend', '<div class="msg user" id="' + vid + '">' + voicePlayer(URL.createObjectURL(blob))
+    + '<div class="vtx"></div></div>');
+  const dur = document.querySelector('#' + vid + ' .vp-dur');
+  if (dur && secs) dur.textContent = vpFmt(secs);
   box.insertAdjacentHTML('beforeend', `<div class="typing" id="chatTyping">${esc(L.stt_wait)}</div>`);
   box.scrollTop = box.scrollHeight;
   try {
@@ -3536,13 +3614,14 @@ async function sendChatVoice(blob) {
     try { j = await r.json(); } catch (e) {}
     if (!j || !j.ok) {
       const err = j && j.error;
+      const mine = document.getElementById(vid); if (mine) mine.remove();
       toast(err === 'no_speech' ? L.mic_nospeech : (err === 'limit' ? L.limit_reached : L.mic_err));
       if (err === 'limit') showTab('shop');
       return;
     }
     noteMissionsDone(j);
-    // his bubble — what the speech recognition actually heard
-    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'user', content: '🎤 ' + (j.user_text || ''), ts: null }));
+    const tx = document.querySelector('#' + vid + ' .vtx');
+    if (tx) tx.textContent = j.user_text || '';
     renderChatReply(j);
   } catch (e) {
     toast(L.mic_err);
@@ -3553,34 +3632,63 @@ async function sendChatVoice(blob) {
   }
 }
 
+// V3.96.0: phone photos are 3–12 MB — shrink to 1280px JPEG before upload so
+// the vision call stays inside its payload limit (MAX_BASE64_BYTES).
+function shrinkImage(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(b => resolve(b || file), 'image/jpeg', 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 async function sendChatPhoto(file) {
-  // V3.57.0: he sends a photo (a selfie) — she looks at it and compliments him.
+  // V3.57.0: he sends a photo (a selfie) — she looks at it and answers in text.
+  // V3.96.0: back on the owner's ask; the text in the field rides as a caption.
   if (!CHAT || chatBusy) return;
   if (!tg.initData) { toast(L.auth_short); return; }
-  if (file.size > 4 * 1024 * 1024) { toast(L.attach_big); return; }
+  if (!/^image\//.test(file.type || 'image/jpeg')) { toast(L.attach_err); return; }
+  if (file.size > 25 * 1024 * 1024) { toast(L.attach_big); return; }
   chatBusy = true;
+  const input = document.getElementById('chatText');
+  const caption = input.value.trim().slice(0, 300);
+  input.value = ''; syncSendBtn();
   const box = document.getElementById('chatMsgs');
   const empty = box.querySelector('.chat-empty');
   if (empty) empty.remove();
-  box.insertAdjacentHTML('beforeend', `<div class="msg user"><img class="m" src="${URL.createObjectURL(file)}" alt=""></div>`);
-  box.insertAdjacentHTML('beforeend', `<div class="typing" id="chatTyping">${esc(CHAT.name)} …</div>`);
+  const pid = 'myp' + Date.now();
+  box.insertAdjacentHTML('beforeend', '<div class="msg user" id="' + esc(pid) + '"><img class="m" src="' + esc(URL.createObjectURL(file)) + '" data-lb="1" alt="">'
+    + (caption ? '<div class="ucap">' + esc(caption) + '</div>' : '') + '</div>');
+  box.insertAdjacentHTML('beforeend', `<div class="typing" id="chatTyping">${esc(CHAT.name)} ${esc(L.typing_now)}</div>`);
   box.scrollTop = box.scrollHeight;
   try {
-    const b64 = await blobToB64(file);
+    const small = await shrinkImage(file);
+    const b64 = await blobToB64(small);
     const r = await fetch('/webapp/api/chat/photo?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: CHAT.id, image: b64, mime: file.type || 'image/jpeg' }),
+      body: JSON.stringify({ character_id: CHAT.id, image: b64, mime: small.type || 'image/jpeg', caption: caption }),
     });
     let j = null;
     try { j = await r.json(); } catch (e) {}
     if (!j || !j.ok) {
       const err = j && j.error;
-      toast(err === 'limit' ? L.limit_reached : L.attach_err);
+      const mine = document.getElementById(pid); if (mine) mine.remove();
+      if (caption && !input.value) { input.value = caption; syncSendBtn(); }
+      toast(err === 'limit' ? L.limit_reached : (err === 'cooldown' ? L.attach_wait : (err === 'too_big' ? L.attach_big : L.attach_err)));
       if (err === 'limit') showTab('shop');
       return;
     }
-    if (j.reply) box.insertAdjacentHTML('beforeend', chatBubble('bot', j.reply, null));
-    box.scrollTop = box.scrollHeight;
+    noteMissionsDone(j);
+    renderChatReply(j);
   } catch (e) {
     toast(L.attach_err);
   } finally {
@@ -6151,15 +6259,30 @@ document.getElementById('chatBack').addEventListener('click', () => {
   // a reply may have landed — refresh the dialog list preview
   loadChats();
 });
-document.getElementById('chatSend').addEventListener('click', sendChat);
+document.getElementById('chatSend').addEventListener('click', () => {
+  if (_sendWasMic) { _sendWasMic = false; return; }  // the press was a recording
+  if (_rec && _recLocked) { _rec.stop(); return; }    // hands-free note → send
+  sendChat();
+});
 document.getElementById('chatText').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendChat();
 });
-// V3.57.0/1: mic (voice message, hold or tap-toggle) and 📎 (his photo → her compliment)
-const _micBtn = document.getElementById('chatMic');
-_micBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); micDown(); });
+// V3.96.0: one round button, Telegram-style — the mic while the field is
+// empty (hold / tap to record), the paper plane once he types or records
+// hands-free; 📎 in the field sends her a photo.
+const _sendBtn = document.getElementById('chatSend');
+_sendBtn.addEventListener('pointerdown', (e) => {
+  _sendWasMic = _sendBtn.classList.contains('mic') && !_rec;
+  if (!_sendWasMic) return;
+  e.preventDefault();
+  try { _sendBtn.setPointerCapture(e.pointerId); } catch (err) {}
+  micDown(e);
+});
+_sendBtn.addEventListener('pointermove', micMove);
 window.addEventListener('pointerup', micUp);
 window.addEventListener('pointercancel', micUp);
+document.getElementById('chatText').addEventListener('input', syncSendBtn);
+document.getElementById('recCancel').addEventListener('click', cancelChatVoice);
 document.getElementById('chatAttach').addEventListener('click', () => document.getElementById('chatFileIn').click());
 document.getElementById('chatFileIn').addEventListener('change', (e) => {
   const f = e.target.files && e.target.files[0];
