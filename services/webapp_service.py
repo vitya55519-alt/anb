@@ -706,7 +706,28 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
       that replaced the standalone +1 photo credit square.
     """
     en = lang == EN
+    from services import vip_offer
     return _with_price_usd([
+        # V3.97.0: the one-time −50% month for the most active users. Always in
+        # the catalogue; the app shows it only when the limit answer says
+        # vip:true, and the invoice routes re-check the window.
+        {
+            'id': 'premium_vip',
+            'emoji': '💝',
+            'title': (f'Premium · 30 дней −{vip_offer.VIP_PERCENT}% — только для тебя' if not en
+                      else f'Premium · 30 days −{vip_offer.VIP_PERCENT}% — just for you'),
+            'description': ('ты пишешь мне чаще всех — поэтому месяц без лимитов за полцены, один раз'
+                            if not en else
+                            'you write to me more than anyone — so a month with no limits at half price, once'),
+            'badge': ('−%d%%' % vip_offer.VIP_PERCENT),
+            'gift': 0,
+            'days': 30,
+            'stars': vip_offer.VIP_STARS,
+            'payload': vip_offer.PRODUCT,
+            'rub': vip_offer.VIP_RUB if PLATEGA_ENABLED else None,
+            'usd': None,
+            'vip': True,
+        },
         # V3.88.0: the first-purchase trial (the app shows it only while
         # /webapp/api/me says trial_eligible; the invoice routes re-check).
         {

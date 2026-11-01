@@ -1597,6 +1597,8 @@ const L_EN = {
   qb_spicy: 'Her most private photos are for Premium 🔥 she is ready to show you',
   spicy_btn: '🔥 Unlock with Premium',
   sext_btn: '🔥 Explicit chat — with Premium',
+  trial_chip: '🔥 3 days of Premium',
+  speak_free_left: n => n > 0 ? `🎙 free listens left today: ${n}` : '🎙 that was the last free listen today',
   sc_prem_only: '⭐ Premium only',
   undress_tease: 'like it? 😏 want to see what is underneath… tap and I will take it off for you 🔥',
   undress_tease_btn: '🔥 Undress her',
@@ -1848,6 +1850,8 @@ const L_RU = {
   qb_spicy: 'Самые откровенные фото — с Premium 🔥 она уже готова тебе показать',
   spicy_btn: '🔥 Открыть с Premium',
   sext_btn: '🔥 Откровенно — с Premium',
+  trial_chip: '🔥 3 дня Premium',
+  speak_free_left: n => n > 0 ? `🎙 бесплатных прослушиваний сегодня: ещё ${n}` : '🎙 это было последнее бесплатное прослушивание сегодня',
   sc_prem_only: '⭐ только с Premium',
   undress_tease: 'нравится? 😏 а хочешь увидеть, что под ним… нажми — и я сниму это для тебя 🔥',
   undress_tease_btn: '🔥 Раздеть её',
@@ -2408,7 +2412,7 @@ async function buy(productId, btn, extra, onPaid) {
     tg.openInvoice(j.link, (status) => {
       done();
       if (status === 'paid') {
-        toast(productId === 'premium' || productId === 'premium_week' || productId === 'premium_quarter' || productId === 'premium_trial' ? L.paid_prem : L.paid_credit);
+        toast(productId === 'premium' || productId === 'premium_week' || productId === 'premium_quarter' || productId === 'premium_trial' || productId === 'premium_vip' ? L.paid_prem : L.paid_credit);
         loadMe(); loadShop(); loadCharacters();
         // V3.62.10: bought at the moment of desire — finish what he wanted.
         if (typeof onPaid === 'function') setTimeout(onPaid, 800);
@@ -3372,7 +3376,7 @@ async function sendChat() {
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 429) {
       const jl = await r.json().catch(() => ({}));
-      quickBuy('limit', () => { const i = document.getElementById('chatText'); if (i && !i.value) { i.value = text; sendChat(); } }, { demo: !!jl.demo });
+      quickBuy('limit', () => { const i = document.getElementById('chatText'); if (i && !i.value) { i.value = text; sendChat(); } }, { demo: !!jl.demo, vip: !!jl.vip });
       return;
     }
     if (r.status === 403) {
@@ -3444,12 +3448,13 @@ function renderChatReply(j) {
   }
   // V3.60.3: no peaches for the photo she promised — one tap to the shop.
   // V3.76.0: a card girl's photos are Premium-only — one tap to the shop.
+  // V3.97.0: straight to the trial-first sheet instead of the whole shop.
   if (j.photo_block === 'premium' || j.photo_block === 'free_used') {
-    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="showTab('shop')">⭐ ${esc(L.need_premium)}</button></div>`);
+    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('spicy')">${esc(trialChip('⭐ ' + L.need_premium))}</button></div>`);
   }
   // V3.90.0: his explicit message without Premium — a quiet chip, no auto sheet.
   if (j.sext_offer) {
-    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('spicy')">${esc(L.sext_btn || L.spicy_btn)}</button></div>`);
+    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('spicy')">${esc(trialChip(L.sext_btn || L.spicy_btn))}</button></div>`);
   }
   // V3.87.0: a nude / lingerie photo — Premium-only; the pay sheet opens at once.
   if (j.photo_block === 'spicy') {
@@ -3767,6 +3772,7 @@ async function speakLazy(vp) {
     const j = await r.json().catch(() => ({}));
     if (r.status === 403 && j.error === 'premium_required') { quickBuy('voice'); return; }
     if (!j.ok || !j.url) { toast(L.reply_err); return; }
+    if (typeof j.free_left === 'number' && typeof L.speak_free_left === 'function') toast(L.speak_free_left(j.free_left));
     const au = document.createElement('audio');
     au.preload = 'auto';
     au.src = j.url + '?init_data=' + encodeURIComponent(tg.initData || '');
@@ -5633,6 +5639,12 @@ function openPay(id, onPaid) {
 // limit used to toast and drop the user on the shop tab (0 purchases in 30
 // days) — now a one-tap sheet with the right packs opens right there, and a
 // Stars payment finishes the action he wanted (the photo, the message).
+// V3.97.0: while he can still take the 3-day trial, every Premium chip in the
+// chat names it with its price — the only offer people actually buy.
+function trialChip(fallback) {
+  const t = (ME && ME.trial_eligible && !ME.premium && SHOP) ? (SHOP.purchases || []).find(p => p.id === 'premium_trial') : null;
+  return t ? (L.trial_chip + ' · ' + money(t)) : fallback;
+}
 async function quickBuy(kind, retry, opts) {
   opts = opts || {};
   if (!SHOP) { try { await loadShop(); } catch (e) {} }
@@ -5641,7 +5653,9 @@ async function quickBuy(kind, retry, opts) {
   // V3.87.0: 'spicy' — nude / lingerie / undress / 18+ pictures are Premium-only.
   // V3.88.0: the cheap 3-day trial goes first while he is eligible.
   const trialFirst = (ME && ME.trial_eligible && !ME.premium) ? ['premium_trial'] : [];
+  // V3.97.0: his personal one-time −50% month (the limit answer says vip:true).
   const want = (kind === 'limit' || kind === 'voice' || kind === 'spicy') ? trialFirst.concat(['premium_week', 'premium']) : ['peach_pack_10', 'peach_pack_30', 'premium'];
+  if (kind === 'limit' && opts.vip) want.unshift('premium_vip');
   const items = want.map(id => (s.purchases || []).find(p => p.id === id)).filter(Boolean);
   if (!items.length) { showTab('shop'); return; }
   document.getElementById('payEmo').textContent = kind === 'limit' ? '😴' : (kind === 'voice' ? '🎙' : (kind === 'spicy' ? '🔥' : '🍑'));

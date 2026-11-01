@@ -22,6 +22,7 @@ from services.access_service import is_premium
 from services.adaptation_service import observe_message, maybe_analyze_profile, build_adaptation_context
 
 
+
 _logger = logging.getLogger(__name__)
 # Strong references keep fire-and-forget tasks alive until they finish
 # (asyncio only holds weak references to running tasks).
@@ -85,13 +86,41 @@ ASSISTANTY = re.compile(
 )
 
 
+# V3.97.0: «хм… я зависла на секунду 🙈» went out 141 times a week whenever
+# both providers came back empty — the same robotic line, even to «целую, я
+# поехал». When nothing came back she now answers like a busy live girl, with
+# a different line each time, in his language.
+STALL_LINES_RU = (
+    'ой, секунду, мне тут звонят 🙈 не уходи, ладно?',
+    'подожди, отвлеклась на минутку… так, о чём ты? 😌',
+    'ммм, я тут задумалась над тем, что ты написал 😏 скажи ещё раз, по-другому',
+    'прости, подруга написала, отвлекла 🙈 я снова только твоя',
+    'так, я перечитала твоё сообщение и улыбаюсь как дурочка 😊 продолжай',
+    'стоп, повтори, я хочу это прочитать ещё раз 😏',
+)
+STALL_LINES_EN = (
+    'oops, one sec, someone is calling me 🙈 don\'t go anywhere, ok?',
+    'sorry, got distracted for a moment… so, where were we? 😌',
+    'hmm, I\'m still thinking about what you wrote 😏 say it again, differently',
+    'my friend just texted me 🙈 I\'m all yours again',
+)
+
+
+def stall_line(lang: str = 'ru', recent: list[str] | None = None) -> str:
+    import random
+    pool = STALL_LINES_EN if lang == 'en' else STALL_LINES_RU
+    recent_set = {(r or '').strip() for r in (recent or [])}
+    fresh = [p for p in pool if p not in recent_set] or list(pool)
+    return random.choice(fresh)
+
+
 def _clean(answer: str) -> str:
-    answer = (answer or "хм… я зависла на секунду 🙈").strip()
+    answer = (answer or stall_line()).strip()
     answer = re.sub(r"^(Конечно|Разумеется|Понимаю тебя|Хорошо,? |Да,? (?:конечно|разумеется))[,!:。.\.\s]+", "", answer, flags=re.I)
     answer = re.sub(r"\n[-*•]\s", "\n", answer)  # strip markdown lists
     answer = re.sub(r"\*\*(.+?)\*\*", r"\1", answer)  # strip bold
     answer = re.sub(r"\n{3,}", "\n\n", answer)
-    return answer.strip() or "хм… я зависла на секунду 🙈"
+    return answer.strip() or stall_line()
 
 
 # V3.60.6: the chat model's own safety refusal reads like a help desk
@@ -528,12 +557,17 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     if scene:
         token_budget = 420
     r = await generate_text(messages, max_tokens=token_budget, temperature=1.0, purpose='dialogue')
-    answer = _clean(r.text)
-    if REFUSAL.search(answer):
-        answer = await _recover_from_refusal(answer, character)
-    elif BREAKUP.search(answer):
-        answer = await _stay_in_chat(answer, character)
-    answer = await _rewrite_if_needed(messages, user_text, answer, character)
+    if not (r.text or '').strip():
+        _lang = 'en' if (language_code or '').lower().startswith('en') else 'ru'
+        answer = stall_line(_lang, [m.content for m in history if m.role == 'assistant'][-6:])
+        _logger.warning('dialogue empty from all providers user=%s character=%s', user_id, character_id)
+    else:
+        answer = _clean(r.text)
+        if REFUSAL.search(answer):
+            answer = await _recover_from_refusal(answer, character)
+        elif BREAKUP.search(answer):
+            answer = await _stay_in_chat(answer, character)
+        answer = await _rewrite_if_needed(messages, user_text, answer, character)
     answer = diversify_emoji(answer, [m.content for m in history if m.role == 'assistant'][-4:])
     if not behavior_kind.startswith('task'):
         answer = casual_punctuation(answer)
@@ -603,6 +637,54 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
         answer = get_retention_text('miss', character_id)
     save_message(db_user_id, character_id, "assistant", answer)
     return answer
+
+
+async def morning_callback(user_id: int, user_name: str, language_code: str | None = None,
+                           character_id: str = CHARACTER_ID) -> str:
+    """V3.97.0: the morning message continues YESTERDAY'S talk instead of a
+    template («доброе утро ☀️ обещала же, держи» went out hundreds of times).
+    Only when he really talked to her in the last 36 hours; '' otherwise, and
+    the ritual keeps its usual line. Not saved here — the ritual saves what it
+    actually sends."""
+    db_user_id = ensure_user(user_id, user_name, language_code=language_code)
+    history = get_recent_messages(db_user_id, character_id, 12)
+    mine = [m for m in history if m.role == 'user']
+    if len(mine) < 3:
+        return ''
+    last = getattr(mine[-1], 'created_at', None)
+    if last is not None and (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - last) > dt.timedelta(hours=36):
+        return ''
+    try:
+        from services.custom_character_service import custom_base_character
+        persona = custom_base_character(character_id)
+        character = persona or get_character(character_id)
+    except Exception:
+        character = get_character(character_id)
+    memories = get_memories(db_user_id, character_id, 10)
+    from services.relationship_service import get_context
+    rel_context = await get_context(user_id, character_id=character_id) or "Отношения только начинаются."
+    try:
+        from services.photo_service import get_relationship_level
+        adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id, character_id), character_id)
+    except Exception:
+        adaptation = build_adaptation_context(db_user_id, 1, character_id)
+    system = build_system_prompt(
+        character, rel_context, [m.content for m in memories],
+        "Сейчас утро, и ты пишешь ему первой. Продолжи ваш вчерашний разговор: вспомни одну конкретную деталь "
+        "из него (его планы, то, что он рассказал, вашу шутку или недоговорённую тему) и спроси, как это прошло, "
+        "или вернись к ней. Одно-два коротких живых предложения, как сообщение в мессенджере. Не пересказывай "
+        "весь разговор, не говори «вчера мы общались». Пиши на том же языке, на котором пишет он.",
+        state_context(user_id, character_id), adaptation,
+        time_context=_time_context(user_id, character_id),
+        character_id=character_id,
+    )
+    messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
+    messages.append({"role": "user", "content": "Утро. Напиши ему первой, продолжая вчерашний разговор."})
+    r = await generate_text(messages, max_tokens=110, temperature=0.95, purpose='proactive')
+    raw = _clean(r.text) if (r.text or '').strip() else ''
+    lang = 'en' if (language_code or '').lower().startswith('en') else 'ru'
+    recent = [m.content for m in history if m.role == 'assistant'][-6:]
+    return polish_first_message(finish_or_drop(raw, getattr(r, 'complete', True), lang), recent) or ''
 
 
 async def story_reaction(user_id: int, user_name: str, character_id: str, quest_title: str,
