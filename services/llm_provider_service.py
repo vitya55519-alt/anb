@@ -79,6 +79,11 @@ MINIMAX_REASONING_HEADROOM = max(0, int(os.getenv('MINIMAX_REASONING_HEADROOM', 
 # V3.64.8: for the one-liners she sends first M3 often thinks ~600 tokens and
 # came back EMPTY every other time; those calls get more room.
 _MINIMAX_HEADROOM_BY_PURPOSE = {'life_event': 1200, 'proactive': 1200}
+# V3.97.0: dialogue replies got EMPTY with out=reasoning=832 (320 + 512):
+# more room for the thinking up front, and one retry with a lot more room.
+_MINIMAX_HEADROOM_BY_PURPOSE['dialogue'] = max(0, int(os.getenv('MINIMAX_DIALOGUE_HEADROOM', '1024')))
+MINIMAX_EMPTY_RETRY_HEADROOM = max(512, int(os.getenv('MINIMAX_EMPTY_RETRY_HEADROOM', '2400')))
+RETRY_EMPTY_PURPOSES = frozenset({'dialogue'})
 # V3.64.8: Gemini 3.x counts its hidden thinking inside max_tokens too, so a
 # 90-token life moment came back as 2–4 words («Надела сегодня тот»).
 GEMINI_REASONING_HEADROOM = max(0, int(os.getenv('GEMINI_REASONING_HEADROOM', '512')))
@@ -187,6 +192,27 @@ async def generate_text(
             logger.info('LLM ok provider=minimax model=%s purpose=%s len=%d', mm_model, purpose, len(text))
             if text:
                 return LLMResult(text, 'minimax', mm_model, _complete(r))
+            # V3.97.0: in a dialogue an EMPTY M3 answer means the reasoning ate
+            # the whole cap (out == reasoning == cap in the logs). The free
+            # Gemini fallback then often comes back empty too on adult chats,
+            # and she answered «я зависла» 141 times a week. One retry with
+            # a much larger room for the thinking comes first.
+            if purpose in RETRY_EMPTY_PURPOSES:
+                try:
+                    r = await _minimax.chat.completions.create(
+                        model=mm_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens + MINIMAX_EMPTY_RETRY_HEADROOM,
+                        **mm_kwargs,
+                    )
+                    text = _strip_thinking((r.choices[0].message.content or '').strip())
+                    _record_usage(purpose, 'minimax', mm_model, r)
+                    logger.info('LLM retry provider=minimax purpose=%s len=%d', purpose, len(text))
+                    if text:
+                        return LLMResult(text, 'minimax', mm_model, _complete(r))
+                except Exception as exc:
+                    logger.warning('MiniMax retry FAILED purpose=%s %s: %s', purpose, type(exc).__name__, _safe(str(exc)))
             # empty answer: let the free Gemini fallback try instead
             errors.append(f'MiniMax({mm_model}): empty text')
             minimax_empty = True

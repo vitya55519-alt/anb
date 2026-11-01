@@ -50,7 +50,7 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
             provider=provider,
             provider_payload=provider_payload,
         ))
-        if product in {"premium_month","premium_month_discount","premium_week","premium_quarter","premium_trial"}:
+        if product in {"premium_month","premium_month_discount","premium_week","premium_quarter","premium_trial"} or product == "premium_month_vip":
             # V3.34.1: premium_week grants 7 days + the weekly credit share;
             # V3.43.0: premium_quarter grants 90 days + three credit shares;
             # the monthly plans keep 30 days + the monthly share.

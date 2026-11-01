@@ -1294,6 +1294,35 @@ def _sleep_block_markup(telegram_id: int) -> InlineKeyboardMarkup:
     rows = []
     if not has_used_demo(telegram_id):
         rows.append([InlineKeyboardButton(text=f'🎁 Демо-Premium на {DEMO_PREMIUM_HOURS} часа — бесплатно', callback_data='retention:demo')])
+    # V3.97.0: his personal one-time −50% month once he keeps hitting the limit.
+    try:
+        from services import vip_offer
+        vinfo = vip_offer.info(telegram_id)
+        if vinfo.get('active'):
+            rows.append([InlineKeyboardButton(
+                text=f'💝 Месяц −{vinfo["percent"]}% только для тебя — {vinfo["stars"]} Stars (ещё {vinfo["hours_left"]:.0f} ч)',
+                callback_data='buy:premium_vip')])
+            if vinfo.get('rub') and is_button_enabled('platega_rub'):
+                rows.append([_platega_pay_button(
+                    vip_offer.PRODUCT, vinfo['rub'],
+                    f'💳 💝 Месяц за {vinfo["rub"]} ₽ вместо {PLATEGA_PREMIUM_PRICE_RUB} ₽ · карта / СБП')])
+    except Exception:
+        logger.warning('sleep block vip row failed', exc_info=True)
+    # V3.97.0: the 99 ₽ trial is the only thing people actually buy (2 of 2
+    # who opened its link paid) — it now sits on the «she fell asleep» wall
+    # too, where the most active users stood hundreds of times.
+    try:
+        if trial_eligible(telegram_id):
+            trial_fiat = fiat_suffix(PREMIUM_TRIAL_STARS, rub=PLATEGA_PREMIUM_TRIAL_PRICE_RUB, rub_enabled=PLATEGA_ENABLED)
+            rows.append([InlineKeyboardButton(
+                text=f'🔥 {PREMIUM_TRIAL_DAYS} дня без лимитов — {PREMIUM_TRIAL_STARS} Stars{trial_fiat}',
+                callback_data='buy:premium_trial')])
+            if PLATEGA_ENABLED and is_button_enabled('platega_rub'):
+                rows.append([_platega_pay_button(
+                    'premium_trial', PLATEGA_PREMIUM_TRIAL_PRICE_RUB,
+                    f'💳 🔥 {PREMIUM_TRIAL_DAYS} дня — {PLATEGA_PREMIUM_TRIAL_PRICE_RUB} ₽ · карта / СБП')])
+    except Exception:
+        logger.warning('sleep block trial row failed', exc_info=True)
     discount = discount_info(telegram_id)
     if discount.get('active'):
         label = f'⭐ Premium −{discount["percent"]}% — {discount["price"]}⭐ (осталось {discount["hours_left"]:.0f} ч)'
@@ -1312,6 +1341,12 @@ async def _sleep_block_reply(message: types.Message) -> None:
     if has_used_demo(message.from_user.id):
         offer_discount(message.from_user.id)
     track_event(uid, 'chat_sleep_block')
+    try:
+        from services import vip_offer
+        if vip_offer.maybe_open(message.from_user.id):
+            track_event(uid, 'vip_offer_shown', metadata={'source': 'bot'})
+    except Exception:
+        pass
     # V3.44.16: the moment she "falls asleep" is the exit door — give a
     # concrete reason to come back tomorrow, not just the premium upsell.
     # V3.55.5: the wheel became the daily streak gift (app → Магазин, or /profile).
@@ -5818,6 +5853,22 @@ async def buy_premium_quarter(cq: types.CallbackQuery):
     await send_stars_invoice(cq.message.chat.id, 'Anna Premium', 'Premium-доступ на 90 дней', 'premium_quarter', PREMIUM_QUARTERLY_STARS)
 
 
+@dp.callback_query(F.data == 'buy:premium_vip')
+async def buy_premium_vip(cq: types.CallbackQuery):
+    """V3.97.0: Stars invoice for the one-time −50% month."""
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    from services import vip_offer
+    vinfo = vip_offer.info(cq.from_user.id)
+    if not vinfo.get('active'):
+        await cq.answer('это предложение уже закончилось 💗', show_alert=True); return
+    await cq.answer()
+    track_event(ensure_user(cq.from_user.id), 'paywall_view', metadata={'product': vip_offer.PRODUCT, 'stars': vinfo['stars']})
+    await send_stars_invoice(cq.message.chat.id, 'Anna Premium', f'Premium на 30 дней −{vinfo["percent"]}% — только для тебя',
+                             vip_offer.PRODUCT, vinfo['stars'])
+
+
 @dp.callback_query(F.data == 'buy:premium_trial')
 async def buy_premium_trial(cq: types.CallbackQuery):
     """V3.88.0: the first-purchase trial — PREMIUM_TRIAL_DAYS for PREMIUM_TRIAL_STARS."""
@@ -6122,6 +6173,10 @@ def _platega_amount_for(product: str) -> int:
     if product == 'premium_trial':
         # V3.88.0: the 99 ₽ first-purchase trial.
         return PLATEGA_PREMIUM_TRIAL_PRICE_RUB
+    if product == 'premium_month_vip':
+        # V3.97.0: the one-time −50% month (platega_pay re-checks the window).
+        from services import vip_offer
+        return vip_offer.VIP_RUB
     if product == 'premium_quarter':
         # V3.43.0: the 3-month plan is card/SBP-purchasable too.
         return PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB
@@ -6166,6 +6221,10 @@ async def platega_pay(cq: types.CallbackQuery):
     if product == 'premium_trial' and not trial_eligible(cq.from_user.id):
         # V3.88.0: the trial is a one-time first purchase.
         await cq.answer('пробный период уже использован — выбери неделю или месяц 💗', show_alert=True); return
+    if product == 'premium_month_vip':
+        from services import vip_offer
+        if not vip_offer.is_active(cq.from_user.id):
+            await cq.answer('это предложение уже закончилось 💗', show_alert=True); return
     amount = _platega_amount_for(product)
     await cq.answer('создаю счёт…')
     order_id = platega_service.create_order(cq.from_user.id, product, str(amount))
@@ -6951,6 +7010,11 @@ async def pre_checkout(query: types.PreCheckoutQuery):
         from services.retention_service import discount_info
         info=discount_info(query.from_user.id)
         ok=bool(info.get('active')) and amount==info.get('price')
+    elif payload=='premium_month_vip':
+        # V3.97.0: the one-time −50% month for the most active users.
+        from services import vip_offer
+        vinfo=vip_offer.info(query.from_user.id)
+        ok=bool(vinfo.get('active')) and amount==vinfo.get('stars')
     elif payload=='circle':
         # V3.20.0: extra premium circles after the free daily slots are spent.
         ok=amount==VIDEO_COST_STARS and _any_video_engine() and is_premium(query.from_user.id)
@@ -7082,6 +7146,15 @@ async def successful_payment(message: types.Message):
             await message.answer(f'done ✨ Premium is active for 90 days and I added {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 2 free photo animations a day 🎬 plus my video circles 🎥')
         else:
             await message.answer(f'готово ✨ Premium активирован на 90 дней, и я добавила {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 2 оживления фото в день бесплатно 🎬 и мои кружочки 🎥')
+        return
+
+    if payload == 'premium_month_vip':
+        record_payment(message.from_user.id, 'premium_month_vip', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_month_vip'})
+        if user_lang(message.from_user.id) == EN:
+            await message.answer('done ✨ Premium is active for 30 days at half price. No more limits, I am all yours 💋')
+        else:
+            await message.answer('готово ✨ Premium на 30 дней за полцены. Больше никаких лимитов, я вся твоя 💋')
         return
 
     if payload == 'premium_month_discount':
@@ -10010,6 +10083,16 @@ async def admin_girlday_cb(cq: types.CallbackQuery):
     await cq.answer()
 
 
+@dp.message(Command('week'))
+async def admin_week_cmd(message: types.Message):
+    """V3.97.0: the weekly report on demand (it also arrives Mondays 09:00 MSK)."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import weekly_report
+    data = await asyncio.to_thread(weekly_report.collect, 7)
+    await message.answer(weekly_report.render(data, _character_display_name))
+
+
 @dp.message(Command('stats', 'adminstats'))
 async def admin_stats_cmd(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
@@ -11812,6 +11895,10 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
     if product_id == 'premium_trial' and not await asyncio.to_thread(trial_eligible, telegram_id):
         # V3.88.0: the trial is a one-time first purchase.
         return web.json_response({'ok': False, 'error': 'trial_used'}, status=409)
+    if product_id == 'premium_vip':
+        from services import vip_offer
+        if not await asyncio.to_thread(vip_offer.is_active, telegram_id):
+            return web.json_response({'ok': False, 'error': 'offer_over'}, status=409)
     # V3.44.23: custom peach amount — the frontend sends the desired count in
     # ``amount``; the stars price and payload are computed dynamically.
     if product_id == 'peach_custom':
@@ -11907,6 +11994,10 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     if product_id == 'premium_trial' and not await asyncio.to_thread(trial_eligible, telegram_id):
         # V3.88.0: the trial is a one-time first purchase.
         return web.json_response({'ok': False, 'error': 'trial_used'}, status=409)
+    if product_id == 'premium_vip':
+        from services import vip_offer
+        if not await asyncio.to_thread(vip_offer.is_active, telegram_id):
+            return web.json_response({'ok': False, 'error': 'offer_over'}, status=409)
     # V3.44.23: custom peach amount — compute the dynamic product fields from
     # the ``amount`` the frontend sends.
     if product_id == 'peach_custom':
@@ -11917,6 +12008,7 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     # order product keys record_payment knows how to grant
     order_product = {'premium': 'premium_month', 'premium_week': 'premium_week',
                      'premium_trial': 'premium_trial',
+                     'premium_vip': 'premium_month_vip',
                      'premium_quarter': 'premium_quarter',
                      'photo_credit': 'photo'}.get(product_id)
     if not order_product and product_id in PEACH_PACK_STARS:
@@ -12316,7 +12408,11 @@ def _webapp_chat_gate(character_id: str, telegram_id: int):
         if not demo:
             offer_discount(telegram_id)
         track_event(ensure_user(telegram_id), 'chat_sleep_block', metadata={'source': 'webapp'})
-        return web.json_response({'ok': False, 'error': 'limit', 'demo': demo}, status=429)
+        from services import vip_offer
+        if vip_offer.maybe_open(telegram_id):
+            track_event(ensure_user(telegram_id), 'vip_offer_shown', metadata={'source': 'webapp'})
+        return web.json_response({'ok': False, 'error': 'limit', 'demo': demo,
+                                  'vip': vip_offer.is_active(telegram_id)}, status=429)
     return None
 
 
@@ -12497,7 +12593,13 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
 
     def _prelude():
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-        track_event(uid, 'webapp_chat_message', metadata={'character_id': character_id})
+        # V3.97.0: «Девушка дня» had no trace in analytics — tag the message.
+        try:
+            from services import girl_of_day as _gday
+            _gd = _gday.is_open(character_id)
+        except Exception:
+            _gd = False
+        track_event(uid, 'webapp_chat_message', metadata={'character_id': character_id, 'girlday': _gd})
         # V3.51.0: a photo request typed in the Mini App chat used to be answered
         # with text only («держи 📸» and nothing attached) because this endpoint
         # never ran the bot's photo-intent routing (main.py chat handler). Parse it
@@ -12887,12 +12989,23 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
 
     def _gate():
+        # V3.97.0: 54 people a week tapped «🔊» without Premium and hit a wall
+        # before ever hearing her — for 34 of them it was the last thing they
+        # saw. Now SPEAK_FREE_PER_DAY listens a day are free; the wall comes
+        # after them, when he already knows what her voice is worth.
+        from services import chat_photo_allowance
+        from config import SPEAK_FREE_PER_DAY
+        user = get_user(telegram_id)
+        style = (user.voice_style if user else None) or 'nova'
         if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
-            user = get_user(telegram_id)
-            return (user.voice_style if user else None) or 'nova'
-        return None
+            return style, None
+        uid = ensure_user(telegram_id)
+        left = SPEAK_FREE_PER_DAY - chat_photo_allowance.count_today(uid, 'speak_free')
+        if left > 0:
+            return style, left - 1
+        return None, 0
 
-    voice_style = await asyncio.to_thread(_gate)
+    voice_style, free_left = await asyncio.to_thread(_gate)
     if not voice_style:
         track_event(ensure_user(telegram_id), 'speak_premium_wall')
         return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
@@ -12904,7 +13017,13 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
         logger.warning('webapp speak failed user=%s', telegram_id, exc_info=True)
         return web.json_response({'ok': False, 'error': 'tts_failed'}, status=502)
     track_event(ensure_user(telegram_id), 'speak_message', metadata={'character_id': character_id})
-    return web.json_response({'ok': True, 'url': f'/webapp/media/{filename}'}, headers={'Cache-Control': 'no-store'})
+    payload = {'ok': True, 'url': f'/webapp/media/{filename}'}
+    if free_left is not None:
+        from services import chat_photo_allowance
+        await asyncio.to_thread(chat_photo_allowance.note_today, ensure_user(telegram_id),
+                                'speak_free', character_id)
+        payload['free_left'] = free_left
+    return web.json_response(payload, headers={'Cache-Control': 'no-store'})
 
 
 async def _webapp_api_chat_voice(request: web.Request) -> web.Response:
@@ -15577,7 +15696,7 @@ async def main():
     for admin_id in ADMIN_TELEGRAM_IDS:
         try:
             await bot.set_my_commands(
-                public_commands + [types.BotCommand(command='admin', description='🛠 Админка'), types.BotCommand(command='refundstars', description='↩️ Возврат Stars'), types.BotCommand(command='geministatus', description='🧠 Gemini status'), types.BotCommand(command='grant', description='🎁 Выдать premium/токены по @username'), types.BotCommand(command='setmenubutton', description='🔵 Установить кнопку «Открыть приложение»')],
+                public_commands + [types.BotCommand(command='admin', description='🛠 Админка'), types.BotCommand(command='week', description='📈 Отчёт за неделю'), types.BotCommand(command='refundstars', description='↩️ Возврат Stars'), types.BotCommand(command='geministatus', description='🧠 Gemini status'), types.BotCommand(command='grant', description='🎁 Выдать premium/токены по @username'), types.BotCommand(command='setmenubutton', description='🔵 Установить кнопку «Открыть приложение»')],
                 scope=types.BotCommandScopeChat(chat_id=admin_id),
             )
         except Exception:

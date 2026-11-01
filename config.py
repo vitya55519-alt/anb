@@ -80,6 +80,8 @@ CHAT_PHOTO_PEACH_COST = _peach_env("CHAT_PHOTO_PEACH_COST", 2)
 # photo a day, always a ready-made one (her pool or a photo already rendered of
 # her), never a new render, and no peach route; Premium: two rendered, then 🍑.
 CHAT_FREE_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_FREE_PHOTOS_PER_DAY_FREE", "1")))
+# V3.97.0: free «🔊 Озвучить» listens a day without Premium (then the wall).
+SPEAK_FREE_PER_DAY = max(0, int(os.getenv("SPEAK_FREE_PER_DAY", "3")))
 CHAT_PREMIUM_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_PREMIUM_PHOTOS_PER_DAY", "2")))
 # V3.81.0: a daily ceiling on what the FREE chat photos may cost (all users
 # together). Until it is spent every free photo is rendered for the moment, as

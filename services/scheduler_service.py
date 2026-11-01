@@ -587,6 +587,19 @@ async def _rituals(bot):
                 # one greeting, not «доброе утро» glued onto another «утро»
                 text=random.choice(_PROMISE_KEPT)
                 _ritual_promised.discard((uid,today_key))
+            if kind=='morning':
+                # V3.97.0: when he talked to her yesterday, the morning picks
+                # up THAT talk (his plans, their joke) instead of a template.
+                try:
+                    from services.chat_service import morning_callback
+                    from services.ui_lang import user_lang, EN
+                    _ml='en' if user_lang(int(tg_id))==EN else 'ru'
+                    callback=await morning_callback(int(tg_id), name, _ml, char_id)
+                    if callback:
+                        text=callback if not text.startswith(tuple(_PROMISE_KEPT)) else text+'\n\n'+callback
+                        track_event(uid,'morning_callback_sent',character_id=char_id)
+                except Exception:
+                    logger.exception('morning callback failed user=%s',uid)
             if streak and streak >= 3 and not shot:
                 text+=f'\n\nкстати, мы общаемся {streak} дней подряд 🔥 не прерывай серию 😉'
             markup=None
@@ -924,6 +937,118 @@ async def _channel_bonus_holds(bot):
         await asyncio.sleep(0.5)
 
 
+def _char_name(cid: str) -> str:
+    try:
+        from services.character_service import get_character
+        return (get_character(cid) or {}).get('name') or cid
+    except Exception:
+        return cid
+
+
+async def _weekly_report(bot):
+    """V3.97.0: Monday 09:00 MSK — the week in one message to the admins."""
+    from config import ADMIN_TELEGRAM_IDS
+    from services import weekly_report
+    try:
+        data = await asyncio.to_thread(weekly_report.collect, 7)
+        text = weekly_report.render(data, _char_name)
+    except Exception:
+        logger.exception('weekly report failed'); return
+    for admin_id in ADMIN_TELEGRAM_IDS:
+        try:
+            await bot.send_message(admin_id, text)
+        except Exception:
+            logger.exception('weekly report send failed admin=%s', admin_id)
+
+
+async def _first_minutes(bot):
+    """V3.97.0: one nudge for the people who went quiet in their first ten
+    minutes (services/first_minutes.py) — consent step or first message."""
+    from services import first_minutes as fm
+    if not fm.ENABLED:
+        return
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    from services.consent_service import has_accepted
+    from services.ui_lang import user_lang, EN
+    try:
+        rows = await asyncio.to_thread(fm.candidates)
+    except Exception:
+        logger.exception('first minutes scan failed'); return
+    for uid, telegram_id, char_id in rows:
+        try:
+            stage = 'silent' if has_accepted(telegram_id) else 'consent'
+            await asyncio.to_thread(fm.mark, uid, stage, char_id or CHARACTER_ID)
+            en = user_lang(telegram_id) == EN
+            if stage == 'consent':
+                kb = [[InlineKeyboardButton(text='✅ I am 18+ · I accept the terms' if en else '✅ Мне есть 18 · принимаю условия',
+                                            callback_data='consent:accept')]]
+            elif PUBLIC_BASE_URL:
+                kb = [[InlineKeyboardButton(text='💬 say hi' if en else '💬 написать ей',
+                                            web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))]]
+            else:
+                kb = []
+            text = fm.text(stage, 'en' if en else 'ru')
+            await bot.send_message(telegram_id, text,
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=kb) if kb else None)
+            if stage == 'silent':
+                _to_app_chat(uid, telegram_id, char_id or CHARACTER_ID, text)
+            track_event(uid, 'first_minutes_nudge_sent', metadata={'stage': stage}, character_id=char_id or CHARACTER_ID)
+        except TelegramForbiddenError:
+            _mark_blocked(uid)
+        except Exception:
+            logger.exception('first minutes nudge failed user=%s', uid)
+
+
+async def _trial_followup(bot):
+    """V3.97.0: she writes before the 99 ₽ trial ends and once after it ran
+    out (services/trial_followup.py) — with the week / month buttons."""
+    from services import trial_followup as tf
+    if not tf.ENABLED:
+        return
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    from services.ui_lang import user_lang, EN
+    from services.character_service import get_character
+    from config import (PREMIUM_WEEKLY_STARS, PREMIUM_MONTHLY_STARS, PLATEGA_ENABLED,
+                        PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, PLATEGA_PREMIUM_PRICE_RUB)
+    try:
+        rows = await asyncio.to_thread(tf.candidates)
+    except Exception:
+        logger.exception('trial followup scan failed'); return
+    for uid, telegram_id, char_id, stage in rows:
+        try:
+            # the slot first — a failed send must not re-fire every scan
+            await asyncio.to_thread(tf.mark, uid, stage, char_id or CHARACTER_ID)
+            lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+            try:
+                name = (get_character(char_id or CHARACTER_ID) or {}).get('name', '')
+            except Exception:
+                name = ''
+            text = tf.text(stage, name, lang)
+            en = lang == 'en'
+            kb = [[InlineKeyboardButton(text=(f'💗 a week — {PREMIUM_WEEKLY_STARS} Stars' if en
+                                              else f'💗 неделя — {PREMIUM_WEEKLY_STARS} Stars'),
+                                        callback_data='buy:premium_week')]]
+            if PLATEGA_ENABLED and not en:
+                kb.append([InlineKeyboardButton(text=f'💳 неделя — {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · карта / СБП',
+                                                callback_data='platega:premium_week')])
+                kb.append([InlineKeyboardButton(text=f'💳 месяц — {PLATEGA_PREMIUM_PRICE_RUB} ₽ · карта / СБП',
+                                                callback_data='platega:premium_month')])
+            else:
+                kb.append([InlineKeyboardButton(text=(f'⭐ a month — {PREMIUM_MONTHLY_STARS} Stars' if en
+                                                      else f'⭐ месяц — {PREMIUM_MONTHLY_STARS} Stars'),
+                                                callback_data='buy:premium')])
+            if PUBLIC_BASE_URL:
+                kb.append([InlineKeyboardButton(text='💬 reply to her' if en else '💬 ответить ей',
+                                                web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
+            await bot.send_message(telegram_id, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+            _to_app_chat(uid, telegram_id, char_id or CHARACTER_ID, text)
+            track_event(uid, 'trial_followup_sent', metadata={'stage': stage}, character_id=char_id or CHARACTER_ID)
+        except TelegramForbiddenError:
+            _mark_blocked(uid)
+        except Exception:
+            logger.exception('trial followup failed user=%s', uid)
+
+
 async def _girl_of_day(bot):
     """V3.92.0: «🔥 Девушка дня» (switches at 03:00 MSK) — at 09:00 MSK the admins get
     the ready channel post with a «📣 В канал» button."""
@@ -973,6 +1098,9 @@ def start_scheduler(bot):
     # V3.44.16: the day-1 hook scans often but sends at most once per user.
     scheduler.add_job(_day1_hook,'interval',minutes=15,args=[bot],id='day1_hook',replace_existing=True)
     scheduler.add_job(_first_offer,'interval',minutes=10,args=[bot],id='first_offer',replace_existing=True)
+    scheduler.add_job(_trial_followup,'interval',minutes=15,args=[bot],id='trial_followup',replace_existing=True)
+    scheduler.add_job(_first_minutes,'interval',minutes=3,args=[bot],id='first_minutes',replace_existing=True)
+    scheduler.add_job(_weekly_report,'cron',day_of_week='mon',hour=6,minute=0,args=[bot],id='weekly_report',replace_existing=True)
     # V3.75.0: scenario cards — scans often, one card a day per user at most.
     scheduler.add_job(_scenario_cards,'interval',minutes=20,args=[bot],id='scenario_cards',replace_existing=True)
     if RITUALS_ENABLED:
