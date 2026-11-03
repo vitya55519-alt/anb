@@ -194,8 +194,8 @@ async def _proactive(bot):
                     # stays as the fallback when there is no talk to pick up.
                     try:
                         msg=await proactive_reply(telegram_id,name,hours,character_id=char_id,topic=True)
-                    except Exception:
-                        logger.exception('topic push failed user=%s',uid)
+                    except Exception as topic_exc:
+                        logger.warning('topic push failed user=%s: %s',uid,topic_exc)
                         msg=''
                     if msg:
                         kind=kind+'_topic'
