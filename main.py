@@ -2146,9 +2146,74 @@ async def consent_accept(cq: types.CallbackQuery):
     # referral link and a donation ask — and then silence: no girl ever spoke,
     # so most people left before their first message (D1 ≈ 1%). Her greeting
     # is the last thing in the chat and ends with a question to answer.
+    # V3.98.0: 64 of 92 newcomers stayed with the default Anna — nobody chose
+    # "their" girl. A new user without a saved choice now picks one in a tap;
+    # if he ignores the picker, the default hello still goes out after 2 minutes.
     try:
-        character_id = get_user_character(cq.from_user.id)
-        greeting = _first_hello(character_id, cq.from_user.first_name or '', lang)
+        user_row = await asyncio.to_thread(get_user, cq.from_user.id)
+        already_chosen = bool((getattr(user_row, 'selected_character', '') or '').strip())
+        if not already_chosen and await _send_girl_picker(cq.bot, cq.message.chat.id, cq.from_user.id, lang):
+            track_event(uid, 'girl_picker_shown')
+            _spawn_background(_first_hello_fallback(cq.bot, cq.message.chat.id, cq.from_user.id,
+                                                    uid, cq.from_user.first_name or '', lang))
+            return
+    except Exception:
+        logger.exception('girl picker failed user=%s', cq.from_user.id)
+    await _deliver_first_hello(cq.bot, cq.message.chat.id, cq.from_user.id, uid,
+                               cq.from_user.first_name or '', lang)
+
+
+# V3.98.0: the first-minute choice of "his" girl.
+_PICKER_GIRLS = (
+    ('agata_01', '🥀 Агата — нежная готка, шепчет ASMR', '🥀 Agata — tender goth, whispers ASMR'),
+    ('anna_01', '👩🏻 Анна — нежность и страсть', '👩🏻 Anna — tenderness and passion'),
+    ('alisa_01', '📚 Алиса — застенчивая учительница', '📚 Alisa — shy young teacher'),
+    ('kamila_01', '🏎 Камила — горячая южанка', '🏎 Kamila — hot southern racer'),
+    ('rita_01', '🦊 Рита — рыжая хохотушка', '🦊 Rita — red-haired tease'),
+)
+_first_hello_done: set[int] = set()
+
+
+def _picker_keyboard(lang: str) -> InlineKeyboardMarkup:
+    rows = []
+    try:
+        from services import girl_of_day
+        gid = girl_of_day.current()
+    except Exception:
+        gid = None
+    shown = set()
+    if gid and gid not in {g[0] for g in _PICKER_GIRLS}:
+        name = _character_display_name(gid)
+        rows.append([InlineKeyboardButton(
+            text=(f'🔥 Girl of the day — {name}' if lang == EN else f'🔥 Девушка дня — {name}'),
+            callback_data=f'pickgirl:{gid}')])
+        shown.add(gid)
+    for cid, ru, en in _PICKER_GIRLS:
+        if cid in shown or len(rows) >= 5:
+            continue
+        label = en if lang == EN else ru
+        if gid == cid:
+            label = '🔥 ' + label  # today's open girl
+        rows.append([InlineKeyboardButton(text=label, callback_data=f'pickgirl:{cid}')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _send_girl_picker(bot, chat_id: int, telegram_id: int, lang: str) -> bool:
+    text = ('who do you want to talk to first? pick the one you like — you can change her any time 👇'
+            if lang == EN else
+            'с кем хочешь познакомиться? выбери ту, что нравится, — потом можно сменить в любой момент 👇')
+    await bot.send_message(chat_id, text, reply_markup=_picker_keyboard(lang))
+    return True
+
+
+async def _deliver_first_hello(bot, chat_id: int, telegram_id: int, uid: int, first_name: str, lang: str) -> None:
+    """Her first hello + the welcome selfie, once per user per process."""
+    if telegram_id in _first_hello_done:
+        return
+    _first_hello_done.add(telegram_id)
+    try:
+        character_id = get_user_character(telegram_id)
+        greeting = _first_hello(character_id, first_name, lang)
         # V3.62.7: half of new users accepted 18+ and never wrote a word —
         # they had to invent a first line. Three one-tap answers under her hello.
         # V3.63.2: plus «💬 ответить ей» — with the chat living in the Mini App
@@ -2159,14 +2224,50 @@ async def consent_accept(cq: types.CallbackQuery):
             hello_kb.inline_keyboard.append([InlineKeyboardButton(
                 text='💬 reply to her in the app' if lang == EN else '💬 ответить ей в приложении',
                 web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
-        await cq.message.answer(greeting, reply_markup=hello_kb)
+        await bot.send_message(chat_id, greeting, reply_markup=hello_kb)
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', greeting)
         track_event(uid, 'first_hello_sent', character_id=character_id)
         # V3.59.2: and a free selfie right behind the hello — the «wow» of the
         # first minute, rendered in the background so the hello is instant.
-        _spawn_background(_send_welcome_selfie(cq.bot, cq.message.chat.id, cq.from_user.id, uid, character_id, lang))
+        _spawn_background(_send_welcome_selfie(bot, chat_id, telegram_id, uid, character_id, lang))
     except Exception:
-        logger.exception('first hello failed user=%s', cq.from_user.id)
+        _first_hello_done.discard(telegram_id)
+        logger.exception('first hello failed user=%s', telegram_id)
+
+
+async def _first_hello_fallback(bot, chat_id: int, telegram_id: int, uid: int, first_name: str, lang: str) -> None:
+    """He ignored the picker: after 2 minutes the default girl says hello anyway."""
+    await asyncio.sleep(120)
+    if telegram_id in _first_hello_done:
+        return
+    await _deliver_first_hello(bot, chat_id, telegram_id, uid, first_name, lang)
+
+
+@dp.callback_query(F.data.startswith('pickgirl:'))
+async def pick_girl_cb(cq: types.CallbackQuery):
+    cid = cq.data.split(':', 1)[1]
+    valid = {g[0] for g in _PICKER_GIRLS}
+    try:
+        from services import girl_of_day
+        gid = girl_of_day.current()
+        if gid:
+            valid.add(gid)
+    except Exception:
+        pass
+    if cid not in valid or cq.from_user.id in _first_hello_done:
+        await cq.answer()
+        return
+    await cq.answer()
+    lang = user_lang(cq.from_user.id)
+    set_user_character(cq.from_user.id, cid)
+    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    track_event(uid, 'girl_picked', character_id=cid)
+    try:
+        await cq.message.delete()
+    except Exception:
+        pass
+    await _deliver_first_hello(cq.bot, cq.message.chat.id, cq.from_user.id, uid,
+                               cq.from_user.first_name or '', lang)
 
 
 async def _send_welcome_selfie(bot, chat_id: int, telegram_id: int, uid: int, character_id: str, lang: str) -> None:
@@ -12644,6 +12745,22 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo',
                                     character_id, text, f'{type(exc).__name__}: {exc}')
             data = None
+        fallback = False
+        if not data and telegram_id not in ADMIN_TELEGRAM_IDS \
+                and not spicy_needs_premium(PhotoRequest(scene=scene)):
+            # V3.98.0: 31 «фото не загрузилось» in a week, each one at the moment
+            # he asked — she sends a ready photo of herself instead, free of
+            # charge and without spending the day's allowance.
+            try:
+                from services.chat_photo_allowance import reused_photo
+                picked = await asyncio.to_thread(reused_photo, character_id, uid)
+            except Exception:
+                picked = None
+            if picked:
+                data, mime, ext = picked
+                fallback = True
+                await asyncio.to_thread(track_event, uid, 'photo_fallback_pool',
+                                        metadata={'character_id': character_id, 'scene': scene})
         if not data:
             return None
         cap = said or ('📸 ' + random.choice(AUTO_CAPTIONS.get(scene, ('отправила фото',))))
@@ -12660,7 +12777,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                 save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
             from services.chat_photo_allowance import free_chat_photos_left, use_free_chat_photo
             premium = is_premium(telegram_id)
-            if telegram_id not in ADMIN_TELEGRAM_IDS:
+            if telegram_id not in ADMIN_TELEGRAM_IDS and not fallback:
                 # V3.61.5: a free photo of the day first, then peaches.
                 if free_chat_photos_left(uid, premium=premium) > 0:
                     use_free_chat_photo(uid, character_id)

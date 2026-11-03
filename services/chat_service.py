@@ -552,13 +552,20 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         hook = next_hook(user_id, character_id, behavior_kind, has_memories=bool(memories))
         if hook:
             messages.append({"role": "system", "content": hook})
+    # V3.98.0: he writes English → she answers English (14% of such replies
+    # used to come back in Russian). The directive sits right before his text.
+    from services import lang_guard
+    english = lang_guard.looks_english(user_text, language_code,
+                                       [m.content for m in history if m.role == 'user'])
+    if english:
+        messages.append({"role": "system", "content": lang_guard.DIRECTIVE})
     messages.append({"role": "user", "content": user_text})
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
     if scene:
         token_budget = 420
     r = await generate_text(messages, max_tokens=token_budget, temperature=1.0, purpose='dialogue')
     if not (r.text or '').strip():
-        _lang = 'en' if (language_code or '').lower().startswith('en') else 'ru'
+        _lang = 'en' if (english or (language_code or '').lower().startswith('en')) else 'ru'
         answer = stall_line(_lang, [m.content for m in history if m.role == 'assistant'][-6:])
         _logger.warning('dialogue empty from all providers user=%s character=%s', user_id, character_id)
     else:
@@ -568,6 +575,20 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         elif BREAKUP.search(answer):
             answer = await _stay_in_chat(answer, character)
         answer = await _rewrite_if_needed(messages, user_text, answer, character)
+        if english and lang_guard.is_cyrillic_dominant(answer):
+            # still Russian: one firm regeneration, keep the old line if it fails too
+            try:
+                retry = await generate_text(
+                    messages + [{"role": "assistant", "content": answer},
+                                {"role": "system", "content": lang_guard.STRICT_DIRECTIVE}],
+                    max_tokens=token_budget, temperature=0.9, purpose='dialogue')
+                fixed = _clean(retry.text or '')
+                if fixed and not lang_guard.is_cyrillic_dominant(fixed):
+                    answer = fixed
+                else:
+                    _logger.warning('english reply stayed russian user=%s', user_id)
+            except Exception:
+                _logger.warning('english regeneration failed user=%s', user_id, exc_info=True)
     answer = diversify_emoji(answer, [m.content for m in history if m.role == 'assistant'][-4:])
     if not behavior_kind.startswith('task'):
         answer = casual_punctuation(answer)
