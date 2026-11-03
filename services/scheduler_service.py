@@ -187,12 +187,25 @@ async def _proactive(bot):
                     track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': 'story', 'nudge': nudge_count + 1})
                     continue
                 # V3.44.2: per-character retention texts
-                msg=retention_features_service.get_retention_text(kind, char_id)
+                msg=''
+                if kind in ('cliffhanger','miss'):
+                    # V3.101.0: the push picks up THE topic of his last talk (0 of
+                    # 136 proactive pushes got a reply in 3 h) — the static line
+                    # stays as the fallback when there is no talk to pick up.
+                    try:
+                        msg=await proactive_reply(telegram_id,name,hours,character_id=char_id,topic=True)
+                    except Exception as topic_exc:
+                        logger.warning('topic push failed user=%s: %s',uid,topic_exc)
+                        msg=''
+                    if msg:
+                        kind=kind+'_topic'
+                if not msg:
+                    msg=retention_features_service.get_retention_text(kind, char_id)
                 await bot.send_message(telegram_id,msg)
                 _to_app_chat(uid,telegram_id,char_id,msg)
                 track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': kind, 'nudge': nudge_count + 1})
             else:
-                msg=await proactive_reply(telegram_id,name,hours,character_id=char_id)
+                msg=await proactive_reply(telegram_id,name,hours,character_id=char_id,topic=True)
                 if not msg:
                     # Provider hiccup: the slot is already spent — do not send
                     # an empty message (that used to raise and re-arm the retry).
@@ -576,6 +589,19 @@ async def _rituals(bot):
             # the evening only checks the pool (its photo waits for the morning),
             # so only a shot that is really sent counts in his rotation
             shot = retention_features_service.random_proactive_photo(char_id, user_id=uid if kind=='morning' else None)
+            if kind=='evening':
+                # V3.101.0: «как прошёл день» tied to what she knows about him
+                # (the template evening got replies from 10%).
+                try:
+                    from services.chat_service import morning_callback
+                    from services.ui_lang import user_lang, EN
+                    _el='en' if user_lang(int(tg_id))==EN else 'ru'
+                    evening_text=await morning_callback(int(tg_id), name, _el, char_id, evening=True)
+                    if evening_text:
+                        text=evening_text
+                        track_event(uid,'evening_callback_sent',character_id=char_id)
+                except Exception:
+                    logger.exception('evening callback failed user=%s',uid)
             # V3.59.2: the evening plants a reason to come back — a promise the
             # morning ritual keeps with a photo. Only promised when her media
             # pool can actually deliver one.

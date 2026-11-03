@@ -641,7 +641,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     return answer
 
 
-async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, language_code: str | None = None, character_id: str = CHARACTER_ID) -> str:
+async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, language_code: str | None = None, character_id: str = CHARACTER_ID,
+                          topic: bool = False) -> str:
     db_user_id = ensure_user(user_id, user_name, language_code=language_code)
     # V3.31.8: constructor personas keep their own identity in proactive replies too.
     try:
@@ -660,7 +661,8 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
         adaptation = build_adaptation_context(db_user_id, 1, character_id)
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories],
-        "Напиши одну короткую спонтанную реплику первой. Не объясняй, зачем пишешь, и не обязательно задавай вопрос.",
+        (TOPIC_PUSH_LINE if topic and sum(1 for m in history if m.role == 'user') >= 2 else
+         "Напиши одну короткую спонтанную реплику первой. Не объясняй, зачем пишешь, и не обязательно задавай вопрос."),
         state_context(user_id, character_id), adaptation,
         time_context=_time_context(user_id, character_id),
         character_id=character_id,
@@ -689,20 +691,36 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
     return answer
 
 
+EVENING_CALLBACK_LINE = (
+    "Сейчас вечер, и ты пишешь ему первой. Спроси, как прошёл его день, но не общими словами: свяжи это с "
+    "чем-то конкретным, что ты о нём знаешь (его работа, планы, настроение, то, о чём вы говорили в последний раз). "
+    "Одно-два коротких живых предложения, тепло и с лёгким флиртом, как сообщение в мессенджере. Никакого "
+    "голого «как дела?» без привязки. Пиши на том же языке, на котором пишет он."
+)
+TOPIC_PUSH_LINE = (
+    "Напиши первой одну короткую живую реплику, привязанную к ТОЧНОЙ теме вашего последнего разговора: что он "
+    "говорил, о чём спрашивал, какую шутку вы шутили. Продолжи её или вернись к недосказанному и задай один "
+    "конкретный вопрос по ней, чтобы захотелось ответить. Не пиши общего «скучаю» или «как дела?»."
+)
+
+
 async def morning_callback(user_id: int, user_name: str, language_code: str | None = None,
-                           character_id: str = CHARACTER_ID) -> str:
+                           character_id: str = CHARACTER_ID, evening: bool = False) -> str:
     """V3.97.0: the morning message continues YESTERDAY'S talk instead of a
     template («доброе утро ☀️ обещала же, держи» went out hundreds of times).
     Only when he really talked to her in the last 36 hours; '' otherwise, and
     the ritual keeps its usual line. Not saved here — the ritual saves what it
-    actually sends."""
+    actually sends.
+    V3.101.0: ``evening=True`` — «как прошёл день» tied to something she knows
+    about him (the evening ritual got replies from 10% only); window 72 h, and
+    no open-loop / care keeps (those belong to the morning)."""
     db_user_id = ensure_user(user_id, user_name, language_code=language_code)
     history = get_recent_messages(db_user_id, character_id, 12)
     mine = [m for m in history if m.role == 'user']
     if len(mine) < 3:
         return ''
     last = getattr(mine[-1], 'created_at', None)
-    if last is not None and (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - last) > dt.timedelta(hours=36):
+    if last is not None and (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - last) > dt.timedelta(hours=72 if evening else 36):
         return ''
     try:
         from services.custom_character_service import custom_base_character
@@ -722,14 +740,16 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
     owed = ''
     try:
         from services import open_loop
-        owed = await asyncio.to_thread(open_loop.pending, db_user_id, character_id)
+        if not evening:
+            owed = await asyncio.to_thread(open_loop.pending, db_user_id, character_id)
     except Exception:
         owed = ''
     # V3.100.0: yesterday he was down — the morning asks how he is, before anything else.
     cared = ''
     try:
         from services import care_followup
-        cared = await asyncio.to_thread(care_followup.pending, db_user_id, character_id)
+        if not evening:
+            cared = await asyncio.to_thread(care_followup.pending, db_user_id, character_id)
     except Exception:
         cared = ''
     if cared:
@@ -740,16 +760,18 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
         keep_line = care_followup.MORNING_LINE
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories],
-        keep_line + "Сейчас утро, и ты пишешь ему первой. Продолжи ваш вчерашний разговор: вспомни одну конкретную деталь "
+        keep_line + (EVENING_CALLBACK_LINE if evening else
+        "Сейчас утро, и ты пишешь ему первой. Продолжи ваш вчерашний разговор: вспомни одну конкретную деталь "
         "из него (его планы, то, что он рассказал, вашу шутку или недоговорённую тему) и спроси, как это прошло, "
         "или вернись к ней. Одно-два коротких живых предложения, как сообщение в мессенджере. Не пересказывай "
-        "весь разговор, не говори «вчера мы общались». Пиши на том же языке, на котором пишет он.",
+        "весь разговор, не говори «вчера мы общались». Пиши на том же языке, на котором пишет он."),
         state_context(user_id, character_id), adaptation,
         time_context=_time_context(user_id, character_id),
         character_id=character_id,
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
-    messages.append({"role": "user", "content": "Утро. Напиши ему первой, продолжая вчерашний разговор."})
+    messages.append({"role": "user", "content": ("Вечер. Напиши ему первой: как прошёл его день, с привязкой к тому, что ты о нём знаешь."
+                                                 if evening else "Утро. Напиши ему первой, продолжая вчерашний разговор.")})
     r = await generate_text(messages, max_tokens=110, temperature=0.95, purpose='proactive')
     raw = _clean(r.text) if (r.text or '').strip() else ''
     lang = 'en' if (language_code or '').lower().startswith('en') else 'ru'

@@ -43,5 +43,5 @@ def test_first_hello_text():
 def test_pushes_use_the_selected_character():
     pro = SCHED[SCHED.index('async def _proactive('):SCHED.index('async def _day1_hook(')]
     assert "char_id=(getattr(u,'selected_character','') or '').strip() or CHARACTER_ID" in pro
-    assert 'proactive_reply(telegram_id,name,hours,character_id=char_id)' in pro
+    assert 'proactive_reply(telegram_id,name,hours,character_id=char_id' in pro  # V3.101.0 adds topic=True
     assert 'CharacterState.character_id==char_id' in pro
