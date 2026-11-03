@@ -175,6 +175,14 @@ EXPLICIT_CHAT_RULE = (
 )
 
 
+def _is_admin(telegram_id: int) -> bool:
+    try:
+        from config import ADMIN_TELEGRAM_IDS
+        return int(telegram_id) in ADMIN_TELEGRAM_IDS
+    except Exception:
+        return False
+
+
 def _adult_ok(telegram_id: int) -> bool:
     try:
         from services.user_service import is_adult_confirmed
@@ -501,12 +509,23 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         # V3.60.0: a confirmed adult deep enough into the story gets explicit
         # sexting instead of «детальные сцены — это не моё»: the old blanket
         # «без графического секса» now holds only below that line.
+        # V3.102.0: «🎭 Фетиши» — a theme he picked (Premium + 18+) is led by her at any level.
+        fetish_line = ''
+        if premium or _is_admin(user_id):
+            if _adult_ok(user_id):
+                try:
+                    from services import fetish_mode
+                    fetish_line = fetish_mode.direction_for(user_id, character_id, str(character.get('name') or ''))
+                except Exception:
+                    fetish_line = ''
         explicit_line = explicit_chat_line(test_stage or rel_stage, adult_confirmed=_adult_ok(user_id),
                                            spicy=bool(spicy_line) and not card_girl, card_girl=card_girl,
-                                           wild=plot_heat == 'wild', premium=intim_ok,
+                                           wild=plot_heat == 'wild' or bool(fetish_line), premium=intim_ok,
                                            dirty_start=dirty_start)
-        if plot_heat == 'soft':
+        if plot_heat == 'soft' and not fetish_line:
             explicit_line = ''
+        if fetish_line:
+            explicit_line = (explicit_line or EXPLICIT_CHAT_RULE) + '\n' + fetish_line
         if explicit_line:
             style_line = (style_line + '\n' if style_line else '') + explicit_line
         elif not intim_ok:
