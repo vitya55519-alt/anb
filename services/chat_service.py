@@ -552,6 +552,18 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         hook = next_hook(user_id, character_id, behavior_kind, has_memories=bool(memories))
         if hook:
             messages.append({"role": "system", "content": hook})
+    # V3.99.0: after a long session she cuts the talk on the juiciest spot and
+    # promises tomorrow morning (services/open_loop.py); until then she dodges.
+    loop_kind = ''
+    if not scene and not guest_reminder:
+        try:
+            from services import open_loop
+            loop_note, loop_kind = await asyncio.to_thread(
+                open_loop.directive_for, db_user_id, character_id, behavior_kind, not premium)
+            if loop_note:
+                messages.append({"role": "system", "content": loop_note})
+        except Exception:
+            loop_kind = ''
     # V3.98.0: he writes English → she answers English (14% of such replies
     # used to come back in Russian). The directive sits right before his text.
     from services import lang_guard
@@ -594,6 +606,14 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         answer = casual_punctuation(answer)
     save_message(db_user_id, character_id, "user", user_text)
     save_message(db_user_id, character_id, "assistant", answer)
+    if loop_kind == 'plant' and (r.text or '').strip():
+        try:
+            from services import open_loop
+            from services.analytics_service import track_event
+            await asyncio.to_thread(open_loop.record_planted, db_user_id, character_id, answer)
+            track_event(db_user_id, 'open_loop_shown', character_id=character_id)
+        except Exception:
+            _logger.warning('open loop record failed user=%s', user_id, exc_info=True)
     # V3.57.8: memory extraction and style analysis are extra LLM round trips the
     # user never reads. They used to be awaited here, so every reply waited for
     # them; now they run in the background after the answer is returned.
@@ -689,9 +709,18 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
         adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id, character_id), character_id)
     except Exception:
         adaptation = build_adaptation_context(db_user_id, 1, character_id)
+    # V3.99.0: yesterday she cut the talk and promised him something for the morning.
+    owed = ''
+    try:
+        from services import open_loop
+        owed = await asyncio.to_thread(open_loop.pending, db_user_id, character_id)
+    except Exception:
+        owed = ''
+    keep_line = (f'Вчера ты оборвала разговор и пообещала ему на утро: «{owed}». Сдержи слово: раскрой то, что '
+                 'намекала (придумай конкретно и интересно), и сразу зацепи его вопросом. ') if owed else ''
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories],
-        "Сейчас утро, и ты пишешь ему первой. Продолжи ваш вчерашний разговор: вспомни одну конкретную деталь "
+        keep_line + "Сейчас утро, и ты пишешь ему первой. Продолжи ваш вчерашний разговор: вспомни одну конкретную деталь "
         "из него (его планы, то, что он рассказал, вашу шутку или недоговорённую тему) и спроси, как это прошло, "
         "или вернись к ней. Одно-два коротких живых предложения, как сообщение в мессенджере. Не пересказывай "
         "весь разговор, не говори «вчера мы общались». Пиши на том же языке, на котором пишет он.",
@@ -705,7 +734,15 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
     raw = _clean(r.text) if (r.text or '').strip() else ''
     lang = 'en' if (language_code or '').lower().startswith('en') else 'ru'
     recent = [m.content for m in history if m.role == 'assistant'][-6:]
-    return polish_first_message(finish_or_drop(raw, getattr(r, 'complete', True), lang), recent) or ''
+    out = polish_first_message(finish_or_drop(raw, getattr(r, 'complete', True), lang), recent) or ''
+    if owed and out:
+        try:
+            from services.analytics_service import track_event
+            await asyncio.to_thread(open_loop.mark_kept, db_user_id, character_id)
+            track_event(db_user_id, 'open_loop_kept_sent', character_id=character_id)
+        except Exception:
+            _logger.warning('open loop keep failed user=%s', user_id, exc_info=True)
+    return out
 
 
 async def story_reaction(user_id: int, user_name: str, character_id: str, quest_title: str,
