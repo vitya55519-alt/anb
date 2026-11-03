@@ -12338,6 +12338,82 @@ async def _webapp_api_storyline_stop(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'stopped': bool(stopped)}, headers={'Cache-Control': 'no-store'})
 
 
+async def _webapp_fetish_auth(request: web.Request):
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return None, None
+    info = webapp_service.init_data_user(pairs)
+    return info.get('id'), info
+
+
+async def _webapp_api_fetishes(request: web.Request) -> web.Response:
+    """V3.102.0: «🎭 Фетиши» — the theme list, the running theme and whether he can use it (Premium)."""
+    telegram_id, info = await _webapp_fetish_auth(request)
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    from services import fetish_mode
+    character_id = str(request.query.get('character_id', ''))
+    lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+
+    def _read():
+        unlocked = telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id)
+        return {'items': fetish_mode.public_list(lang), 'unlocked': bool(unlocked),
+                'active': fetish_mode.status(telegram_id, character_id, lang)}
+
+    return web.json_response({'ok': True, **(await asyncio.to_thread(_read))}, headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_api_fetish_set(request: web.Request) -> web.Response:
+    """V3.102.0: he picked a theme (or typed his own). Premium (or admin) and 18+ are required;
+    her opening line lands in the dialog and she leads the theme from the next reply."""
+    telegram_id, info = await _webapp_fetish_auth(request)
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    from services import fetish_mode
+    character_id = str((body or {}).get('character_id', ''))
+    key = str((body or {}).get('key', '')).strip()
+    custom = str((body or {}).get('custom', ''))
+
+    def _apply():
+        card = get_card(character_id)
+        if not card or not card.is_visible or card.status not in ('active', 'premium'):
+            return 'locked'
+        if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+            return 'premium_required'
+        if not is_adult_confirmed(telegram_id):
+            return 'adult'
+        started = fetish_mode.start(telegram_id, character_id, key=key if key != 'custom' else '', custom=custom)
+        if not started:
+            return 'refused'
+        uid = ensure_user(telegram_id, (info or {}).get('first_name') or '', language_code=(info or {}).get('language_code'))
+        save_message(uid, character_id, 'assistant', started['opening'])
+        track_event(uid, 'fetish_mode_on', character_id=character_id, metadata={'key': started['key']})
+        return {'title': started['title'], 'key': started['key']}
+
+    result = await asyncio.to_thread(_apply)
+    if isinstance(result, str):
+        return web.json_response({'ok': False, 'error': result},
+                                 status=403 if result in ('premium_required', 'adult') else 400)
+    return web.json_response({'ok': True, **result}, headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_api_fetish_stop(request: web.Request) -> web.Response:
+    telegram_id, _info = await _webapp_fetish_auth(request)
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    from services import fetish_mode
+    stopped = await asyncio.to_thread(fetish_mode.stop, telegram_id, str((body or {}).get('character_id', '')))
+    return web.json_response({'ok': True, 'stopped': bool(stopped)}, headers={'Cache-Control': 'no-store'})
+
+
 async def _webapp_api_spicy(request: web.Request) -> web.Response:
     """V3.43.5: the «пошлый режим» switch inside the Mini App Settings.
 
@@ -15527,6 +15603,9 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/storylines', _webapp_api_storylines)
     app.router.add_post('/webapp/api/storyline/start', _webapp_api_storyline_start)
     app.router.add_post('/webapp/api/storyline/stop', _webapp_api_storyline_stop)
+    app.router.add_get('/webapp/api/fetishes', _webapp_api_fetishes)
+    app.router.add_post('/webapp/api/fetish/set', _webapp_api_fetish_set)
+    app.router.add_post('/webapp/api/fetish/stop', _webapp_api_fetish_stop)
     app.router.add_post('/webapp/api/spicy', _webapp_api_spicy)
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
