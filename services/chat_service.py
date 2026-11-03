@@ -547,15 +547,24 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         if scene:
             messages.append({"role": "system", "content": scene})
     behavior_kind = chosen.intent
+    # V3.100.0: when he says it is hard, she listens first — no flirting, no cliffhanger.
+    care_kind = ''
+    try:
+        from services import care_followup
+        care_note, care_kind = await asyncio.to_thread(care_followup.directive_for, db_user_id, character_id, user_text)
+        if care_note:
+            messages.append({"role": "system", "content": care_note})
+    except Exception:
+        care_kind = ''
     # V3.63.12: one concrete hook for this reply, right before his message.
-    if not scene and not guest_reminder:
+    if not scene and not guest_reminder and not care_kind:
         hook = next_hook(user_id, character_id, behavior_kind, has_memories=bool(memories))
         if hook:
             messages.append({"role": "system", "content": hook})
     # V3.99.0: after a long session she cuts the talk on the juiciest spot and
     # promises tomorrow morning (services/open_loop.py); until then she dodges.
     loop_kind = ''
-    if not scene and not guest_reminder:
+    if not scene and not guest_reminder and not care_kind:
         try:
             from services import open_loop
             loop_note, loop_kind = await asyncio.to_thread(
@@ -716,8 +725,19 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
         owed = await asyncio.to_thread(open_loop.pending, db_user_id, character_id)
     except Exception:
         owed = ''
+    # V3.100.0: yesterday he was down — the morning asks how he is, before anything else.
+    cared = ''
+    try:
+        from services import care_followup
+        cared = await asyncio.to_thread(care_followup.pending, db_user_id, character_id)
+    except Exception:
+        cared = ''
+    if cared:
+        owed = ''  # a hard day beats a cliffhanger: no teasing the morning after
     keep_line = (f'Вчера ты оборвала разговор и пообещала ему на утро: «{owed}». Сдержи слово: раскрой то, что '
                  'намекала (придумай конкретно и интересно), и сразу зацепи его вопросом. ') if owed else ''
+    if cared:
+        keep_line = care_followup.MORNING_LINE
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories],
         keep_line + "Сейчас утро, и ты пишешь ему первой. Продолжи ваш вчерашний разговор: вспомни одну конкретную деталь "
@@ -735,6 +755,13 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
     lang = 'en' if (language_code or '').lower().startswith('en') else 'ru'
     recent = [m.content for m in history if m.role == 'assistant'][-6:]
     out = polish_first_message(finish_or_drop(raw, getattr(r, 'complete', True), lang), recent) or ''
+    if cared and out:
+        try:
+            from services.analytics_service import track_event
+            await asyncio.to_thread(care_followup.mark_sent, db_user_id, character_id)
+            track_event(db_user_id, 'care_followup_sent_morning', character_id=character_id)
+        except Exception:
+            _logger.warning('care followup mark failed user=%s', user_id, exc_info=True)
     if owed and out:
         try:
             from services.analytics_service import track_event
