@@ -10205,11 +10205,15 @@ async def admin_week_cmd(message: types.Message):
 # сексуальное. посмотрим, как звучит». First the admin hears it himself; the
 # cast to everyone goes only after he taps the confirm button.
 _voice_cast_running = False
+# V3.108.1: owner — «2 записи и всё»: one Russian and one English recording in
+# the voice of the girl he tested with, the same file to every user.
+_voice_cast_cache: dict = {}
+_voice_cast_char = ''
 
 
 async def _voice_cast_audio(cache: dict, character_id: str, lang: str) -> bytes | None:
     from services import evening_voice
-    key = (character_id, lang)
+    key = lang
     if key not in cache:
         try:
             cache[key] = await synthesize_bytes(evening_voice.CAST_LINES[lang], None,
@@ -10225,21 +10229,26 @@ async def admin_voicecast_cmd(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
     from services import evening_voice
-    lang = 'en' if user_lang(message.from_user.id) == EN else 'ru'
+    global _voice_cast_char
     char_id = get_user_character(message.from_user.id) or CHARACTER_ID
-    await message.answer('🎙 Записываю пробное голосовое…')
-    audio = await _voice_cast_audio({}, char_id, lang)
-    if not audio:
-        await message.answer('⚠️ Голос не сгенерировался, смотри логи (tts).')
-        return
+    _voice_cast_char = char_id
+    _voice_cast_cache.clear()
+    await message.answer('🎙 Записываю пробные голосовые: русское и английское…')
+    # Owner: both versions come to the admin first, so he hears exactly what
+    # everyone gets. These two files are the whole cast.
+    for _lang in ('ru', 'en'):
+        audio = await _voice_cast_audio(_voice_cast_cache, char_id, _lang)
+        if not audio:
+            await message.answer(f'⚠️ Голос ({_lang}) не сгенерировался, смотри логи (tts).')
+            return
+        await bot.send_voice(message.chat.id, BufferedInputFile(audio, filename=f'voice_{_lang}.ogg'),
+                             caption=('🇷🇺 ' if _lang == 'ru' else '🇬🇧 ') + evening_voice.CAST_LINES[_lang])
     rows = await asyncio.to_thread(evening_voice.cast_recipients)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f'📣 Отправить всем ({len(rows)} чел.)', callback_data='vcast:go')]])
-    await bot.send_voice(message.chat.id, BufferedInputFile(audio, filename=f'{char_id}.ogg'),
-                         caption=evening_voice.CAST_LINES[lang])
     await message.answer(
-        f'Это пробник, так услышат все. Каждому придёт голосом его девушки, русским по-русски, '
-        f'остальным по-английски. Получатели: включены её сообщения и заходили за '
+        f'Это пробники, так услышат все: русская и английская запись этим голосом, '
+        f'русским по-русски, остальным по-английски. Получатели: включены её сообщения и заходили за '
         f'{evening_voice.CAST_ACTIVE_DAYS} дн. Отправить?', reply_markup=kb)
 
 
@@ -10262,17 +10271,18 @@ async def admin_voicecast_go(cq: types.CallbackQuery):
     from services import evening_voice
     from services.memory_service import save_message
     sent = failed = blocked = 0
-    cache: dict = {}
+    cache = _voice_cast_cache
+    cast_char = _voice_cast_char or CHARACTER_ID
     try:
         rows = await asyncio.to_thread(evening_voice.cast_recipients)
         for uid, tid, char, lang in rows:
             char_id = char or CHARACTER_ID
-            audio = await _voice_cast_audio(cache, char_id, lang)
+            audio = await _voice_cast_audio(cache, cast_char, lang)
             if not audio:
                 failed += 1
                 continue
             try:
-                await bot.send_voice(tid, BufferedInputFile(audio, filename=f'{char_id}.ogg'),
+                await bot.send_voice(tid, BufferedInputFile(audio, filename='voice.ogg'),
                                      caption=evening_voice.CAST_LINES[lang])
                 sent += 1
                 await asyncio.to_thread(save_message, uid, char_id, 'assistant', evening_voice.CAST_LINES[lang])
