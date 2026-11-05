@@ -13107,7 +13107,7 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     # V3.57.2: the gate is four PostgreSQL reads — off the event loop.
     gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)
-    if gate:
+    if gate is not None:
         return gate
     return await _webapp_chat_turn(telegram_id, user_info, character_id, text,
                                    extra=await _app_chat_missions(telegram_id, text=text))
@@ -13241,7 +13241,7 @@ async def _webapp_api_chat_voice(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     # V3.57.2: the gate is four PostgreSQL reads — off the event loop.
     gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)
-    if gate:
+    if gate is not None:
         return gate
     try:
         data = base64.b64decode(audio_b64)
@@ -13287,7 +13287,7 @@ async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     # V3.57.2: the gate is four PostgreSQL reads — off the event loop.
     gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)
-    if gate:
+    if gate is not None:
         return gate
     if not PHOTO_REACTION_ENABLED:
         return web.json_response({'ok': False, 'error': 'disabled'}, status=400)
