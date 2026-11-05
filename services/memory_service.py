@@ -39,9 +39,16 @@ def _extract_json(text):
     try: return json.loads(m.group(0))
     except json.JSONDecodeError: return None
 
+_EXTRACT_PROMPT_OLD='''Извлеки только устойчивые факты, которые пользователь сам сообщил и которые реально пригодятся в будущей переписке: предпочтения, важные планы, обещания, повторяющиеся темы, внутренние шутки. Не сохраняй пароли, платёжные данные, точные адреса, медицинские диагнозы, сексуальную историю, политические/религиозные убеждения и другие особо чувствительные данные. Верни только JSON: {"memories":[{"key":"...","content":"...","confidence":0.0,"importance":0.0,"type":"fact|preference|promise|inside_joke|pending"}]}. Если запоминать нечего: {"memories":[]}.'''
+_EXTRACT_PROMPT_V3104='''Извлеки только устойчивые факты, которые пользователь сам сообщил о себе и которые реально пригодятся в будущей переписке. В первую очередь: как его зовут (key "name", importance 0.9), работа или учёба (key "work"), близкие люди и питомцы (type "person"), что его сейчас беспокоит или расстраивает (type "worry", без диагнозов), предстоящие события и планы с указанием когда, если он сказал (type "pending": экзамен, собеседование, поездка, встреча), увлечения и предпочтения, обещания, внутренние шутки. Пиши content коротко, от третьего лица, своими словами (например: "в пятницу у него собеседование в банке"). Не сохраняй пароли, платёжные данные, точные адреса, медицинские диагнозы, сексуальную историю, политические/религиозные убеждения и другие особо чувствительные данные. Верни только JSON: {"memories":[{"key":"...","content":"...","confidence":0.0,"importance":0.0,"type":"fact|preference|promise|inside_joke|pending|worry|person"}]}. Если запоминать нечего: {"memories":[]}.'''
+
 async def extract_memory(user_id:int, character_id:str, user_text:str):
     if len(user_text.strip()) < 12: return
-    prompt='''Извлеки только устойчивые факты, которые пользователь сам сообщил и которые реально пригодятся в будущей переписке: предпочтения, важные планы, обещания, повторяющиеся темы, внутренние шутки. Не сохраняй пароли, платёжные данные, точные адреса, медицинские диагнозы, сексуальную историю, политические/религиозные убеждения и другие особо чувствительные данные. Верни только JSON: {"memories":[{"key":"...","content":"...","confidence":0.0,"importance":0.0,"type":"fact|preference|promise|inside_joke|pending"}]}. Если запоминать нечего: {"memories":[]}.'''
+    # V3.104.0 («память как подарок»): his name, work, close people, worries and
+    # upcoming events are asked for by name — she brings them up herself later
+    # (services/memory_gift.py), so they need clear keys and a «when».
+    from services import memory_gift
+    prompt=_EXTRACT_PROMPT_V3104 if memory_gift.ENABLED else _EXTRACT_PROMPT_OLD
     try:
         r = await generate_text(
             messages=[{"role":"system","content":prompt},{"role":"user","content":user_text}],

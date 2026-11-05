@@ -114,6 +114,7 @@ from services.llm_provider_service import provider_status
 from services.reminder_service import set_timezone, create_from_text, cancel_active_wake, due_reminders, is_wake_request, wake_trial_available
 from services.scheduler_service import start_scheduler
 from services.memory_service import reset_conversation as reset_memory, save_message
+from services.paid_welcome import PREMIUM_PRODUCTS as PAID_PREMIUM_PRODUCTS  # V3.104.0
 from services.provider_stats_service import provider_snapshot, record_provider
 from services.db import SessionLocal
 from models.relationship_models import UserCharacterRelationship, RelationshipEvent, RelationshipMilestone
@@ -7176,6 +7177,10 @@ async def successful_payment(message: types.Message):
     payment = message.successful_payment
     payload = payment.invoice_payload
     charge = payment.telegram_payment_charge_id
+    # V3.104.0: «что теперь открыто» + her own word a few seconds after the
+    # grant below (the task starts at the first await, after record_payment).
+    if payload in PAID_PREMIUM_PRODUCTS:
+        _spawn_background(_after_premium_paid(message.from_user.id, payload))
     if payload in PEACH_PACK_STARS:
         # V3.43.1: a peach pack — same record path as the single credit, the
         # payments layer grants the whole pack size in one go.
@@ -10877,6 +10882,9 @@ async def _platega_callback(request: web.Request) -> web.Response:
                 )
                 track_event(ensure_user(order['telegram_id']), 'platega_paid',
                             metadata={'product': order['product'], 'amount': str(order['amount'])})
+                if product in PAID_PREMIUM_PRODUCTS:
+                    # V3.104.0: the card follows the confirmation below.
+                    _spawn_background(_after_premium_paid(int(order['telegram_id']), product))
             except Exception:
                 logger.exception('Platega grant failed order=%s', order['id'])
             try:
@@ -15084,6 +15092,61 @@ async def _feature_scene_turn(telegram_id: int, user_info: dict, character_id: s
 
 
 _BACKGROUND_TASKS: set = set()
+
+
+async def _after_premium_paid(telegram_id: int, product: str) -> None:
+    """V3.104.0 (services/paid_welcome.py): right after a Premium payment —
+    open his loyalty month (first payment only), show «что теперь открыто»
+    with buttons, then she writes herself. Fail-silent: the payment and its
+    confirmation never depend on this."""
+    from services import paid_welcome, vip_offer
+    try:
+        await asyncio.sleep(3)
+        if not await asyncio.to_thread(is_premium, telegram_id):
+            return
+        loyal = await asyncio.to_thread(vip_offer.open_loyalty, telegram_id, product)
+        uid = await asyncio.to_thread(ensure_user, telegram_id)
+        if loyal:
+            await asyncio.to_thread(track_event, uid, 'loyal_offer_opened_shown', metadata={'product': product})
+        if not paid_welcome.ENABLED:
+            return
+        lang = 'en' if await asyncio.to_thread(user_lang, telegram_id) == EN else 'ru'
+        en = lang == 'en'
+        character_id = await asyncio.to_thread(get_user_character, telegram_id)
+        text = paid_welcome.unlocked_text(product, lang, PREMIUM_TRIAL_DAYS)
+        rows = []
+        if PUBLIC_BASE_URL:
+            rows.append([InlineKeyboardButton(text='💬 to her chat' if en else '💬 открыть наш чат',
+                                              web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
+        rows.append([InlineKeyboardButton(text='🌶 Spicy mode' if en else '🌶 Пошлый режим', callback_data='spicy:menu')])
+        vinfo = await asyncio.to_thread(vip_offer.info, telegram_id)
+        if loyal and vinfo.get('active') and vinfo.get('loyal'):
+            text += paid_welcome.loyal_line(vinfo['percent'], vinfo.get('rub'), PLATEGA_PREMIUM_PRICE_RUB,
+                                            vinfo['stars'], lang)
+            if vinfo.get('rub') and not en and is_button_enabled('platega_rub'):
+                rows.append([_platega_pay_button(vip_offer.PRODUCT, vinfo['rub'],
+                                                 f'💝 месяц за {vinfo["rub"]} ₽ · карта / СБП')])
+            rows.append([InlineKeyboardButton(
+                text=(f'💝 a month −{vinfo["percent"]}% — {vinfo["stars"]} Stars' if en
+                      else f'💝 месяц −{vinfo["percent"]}% — {vinfo["stars"]} Stars'),
+                callback_data='buy:premium_vip')])
+        await bot.send_message(telegram_id, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        await asyncio.to_thread(paid_welcome.mark, uid, paid_welcome.CARD_EVENT, character_id, product)
+        # she «types» for a moment, then writes herself
+        await asyncio.sleep(paid_welcome.HEROINE_DELAY_SECONDS)
+        try:
+            await bot.send_chat_action(telegram_id, 'typing')
+        except Exception:
+            pass
+        from services.chat_service import paid_moment
+        msg = await paid_moment(telegram_id, '', 'welcome', language_code='en' if en else None,
+                                character_id=character_id)
+        msg = msg or paid_welcome.fallback('welcome', lang)
+        await bot.send_message(telegram_id, msg)
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', msg)
+        await asyncio.to_thread(paid_welcome.mark, uid, paid_welcome.WELCOME_EVENT, character_id, product)
+    except Exception:
+        logger.warning('paid welcome failed user=%s product=%s', telegram_id, product, exc_info=True)
 
 
 def _spawn_background(coro) -> None:

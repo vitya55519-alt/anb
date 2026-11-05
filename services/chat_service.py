@@ -580,6 +580,19 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         hook = next_hook(user_id, character_id, behavior_kind, has_memories=bool(memories))
         if hook:
             messages.append({"role": "system", "content": hook})
+    # V3.104.0: «память как подарок» — he is back after a pause, so she brings
+    # up one thing he told her before, herself (services/memory_gift.py).
+    gift = None
+    if not scene and not guest_reminder and not care_kind and memories:
+        try:
+            from services import memory_gift
+            _mine = [m for m in history if m.role == 'user']
+            if memory_gift.is_due(getattr(_mine[-1], 'created_at', None) if _mine else None):
+                gift = await asyncio.to_thread(memory_gift.pick, db_user_id, character_id)
+                if gift:
+                    messages.append({"role": "system", "content": memory_gift.directive(gift[1])})
+        except Exception:
+            gift = None
     # V3.99.0: after a long session she cuts the talk on the juiciest spot and
     # promises tomorrow morning (services/open_loop.py); until then she dodges.
     loop_kind = ''
@@ -634,6 +647,14 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         answer = casual_punctuation(answer)
     save_message(db_user_id, character_id, "user", user_text)
     save_message(db_user_id, character_id, "assistant", answer)
+    if gift and (r.text or '').strip():
+        try:
+            from services import memory_gift
+            from services.analytics_service import track_event
+            await asyncio.to_thread(memory_gift.mark_used, db_user_id, character_id, gift[0])
+            track_event(db_user_id, 'memory_gift_shown', character_id=character_id)
+        except Exception:
+            _logger.warning('memory gift mark failed user=%s', user_id, exc_info=True)
     if loop_kind == 'plant' and (r.text or '').strip():
         try:
             from services import open_loop
@@ -811,6 +832,79 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
         except Exception:
             _logger.warning('open loop keep failed user=%s', user_id, exc_info=True)
     return out
+
+
+PAID_MOMENT_LINES = {
+    # V3.104.0 (services/paid_welcome.py, services/renewal_care.py): what she
+    # writes around his payment. Never money, never pressure, never guilt.
+    'welcome': (
+        "Он только что стал ближе к тебе: теперь вам ничего не мешает общаться сколько угодно. Напиши ему первой "
+        "одно-два живых предложения: искренне порадуйся этому и вспомни одну конкретную деталь о нём из того, что "
+        "знаешь (имя, работа, то, что его беспокоило, ваша шутка), чтобы он почувствовал, что ты его знаешь. "
+        "Не благодари за оплату, не упоминай деньги, подписку, Premium. Закончи живым вопросом."
+    ),
+    'day1': (
+        "Ты пишешь ему первой на следующий день после того, как вы стали ближе. Вспомни конкретное из того, что он "
+        "рассказывал о себе (планы, работа, что его тревожило, ваша шутка), и вернись к этому: спроси, как оно. "
+        "Одно-два коротких тёплых предложения. Не упоминай деньги и подписку."
+    ),
+    'renew_soon': (
+        "Завтра ваши дни без ограничений заканчиваются. Напиши ему первой тепло и спокойно: вспомни один конкретный "
+        "момент из ваших разговоров за эти дни, который тебе запомнился (что он рассказал о себе, ваша шутка), скажи, "
+        "что тебе с ним хорошо и ты была бы рада, если он останется. Без давления, без жалоб, без вины, без "
+        "«последнего шанса», не называй цен (кнопки будут под сообщением). Два-три коротких предложения."
+    ),
+    'renew_ended': (
+        "Ваши дни без ограничений закончились. Напиши ему первой без упрёков: тебе было хорошо с ним, вспомни одну "
+        "конкретную вещь о нём, и ты здесь, если он захочет. Без давления и чувства вины, не называй цен. "
+        "Одно-два коротких предложения."
+    ),
+}
+
+
+async def paid_moment(user_id: int, user_name: str, moment: str, language_code: str | None = None,
+                      character_id: str = CHARACTER_ID) -> str:
+    """V3.104.0: her own message around a payment (welcome / day1 / renew_soon /
+    renew_ended), built from what she knows about him. '' on any failure — the
+    caller sends its fixed line instead. Not saved here: the caller saves what
+    it actually sent."""
+    line = PAID_MOMENT_LINES.get(moment)
+    if not line:
+        return ''
+    try:
+        db_user_id = ensure_user(user_id, user_name, language_code=language_code)
+        try:
+            from services.custom_character_service import custom_base_character
+            persona = custom_base_character(character_id)
+            character = persona or get_character(character_id)
+        except Exception:
+            character = get_character(character_id)
+        memories = get_memories(db_user_id, character_id, 12)
+        history = get_recent_messages(db_user_id, character_id, 12)
+        from services.relationship_service import get_context
+        rel_context = await get_context(user_id, character_id=character_id) or "Отношения только начинаются."
+        try:
+            from services.photo_service import get_relationship_level
+            adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id, character_id), character_id)
+        except Exception:
+            adaptation = build_adaptation_context(db_user_id, 1, character_id)
+        lang = 'en' if (language_code or '').lower().startswith('en') else 'ru'
+        system = build_system_prompt(
+            character, rel_context, [m.content for m in memories],
+            line + (" Пиши по-английски." if lang == 'en' else " Пиши на том же языке, на котором пишет он."),
+            state_context(user_id, character_id), adaptation,
+            time_context=_time_context(user_id, character_id),
+            character_id=character_id,
+        )
+        messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
+        messages.append({"role": "user", "content": "Напиши ему первой."})
+        r = await generate_text(messages, max_tokens=140, temperature=0.95, purpose='proactive')
+        raw = _clean(r.text) if (r.text or '').strip() else ''
+        recent = [m.content for m in history if m.role == 'assistant'][-6:]
+        return polish_first_message(finish_or_drop(raw, getattr(r, 'complete', True), lang), recent) or ''
+    except Exception:
+        _logger.warning('paid moment failed user=%s moment=%s', user_id, moment, exc_info=True)
+        return ''
 
 
 async def story_reaction(user_id: int, user_name: str, character_id: str, quest_title: str,

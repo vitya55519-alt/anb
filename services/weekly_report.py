@@ -66,7 +66,8 @@ def collect(days: int = 7) -> dict:
         out['by_product'] = sorted(((p, int(n)) for p, n in by_product), key=lambda x: -x[1])
         for key in ('speak_premium_wall', 'speak_free', 'chat_sleep_block', 'vip_offer_shown',
                     'trial_followup_sent', 'morning_callback_sent', 'first_minutes_nudge_sent',
-                    'paywall_view', 'webapp_pay_link', 'referral_qualified', 'daily_mission_claimed'):
+                    'paywall_view', 'webapp_pay_link', 'referral_qualified', 'daily_mission_claimed',
+                    'paid_welcome_sent', 'paid_day1_sent', 'renewal_care_sent', 'memory_gift_used'):
             out[key] = _events(s, since, key)
         out['girlday_msgs'] = int(s.scalar(select(func.count(ProductEvent.id)).where(
             ProductEvent.created_at >= since, ProductEvent.event_name == 'webapp_chat_message',
@@ -111,6 +112,9 @@ def render(d: dict, name_of=lambda cid: cid) -> str:
         f'· «уснула» (лимит): {ev("chat_sleep_block")} · месяц −50% показан: {ev("vip_offer_shown")}',
         f'· открыли оплату: {ev("webapp_pay_link")} · видели предложение: {ev("paywall_view")}',
         f'· письмо о конце пробника: {ev("trial_followup_sent")}',
+        f'· после оплаты: «что открыто» {ev("paid_welcome_sent")} · на след. день {ev("paid_day1_sent")}',
+        f'· «останешься?» перед концом Premium: {ev("renewal_care_sent")}',
+        f'· она сама вспомнила о нём: {ev("memory_gift_used")}',
         f'· утро про вчерашний разговор: {ev("morning_callback_sent")}',
         f'· дожим в первые минуты: {ev("first_minutes_nudge_sent")}',
         f'· Девушка дня: {d["girlday_msgs"]} сообщений в приложении',
