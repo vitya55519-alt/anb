@@ -484,7 +484,7 @@ async def _first_offer(bot):
         rows=await asyncio.to_thread(fos.candidates)
     except Exception:
         logger.exception('first offer scan failed'); return
-    for uid,telegram_id,char_id in rows:
+    for uid,telegram_id,char_id,created_at in rows:
         try:
             if telegram_id in ADMIN_TELEGRAM_IDS or fos.already_offered(telegram_id):
                 continue
@@ -493,29 +493,67 @@ async def _first_offer(bot):
             # consume the slot first — a failed send must not re-fire every scan
             fos.mark_offered(telegram_id)
             lang=user_lang(telegram_id)
-            label='just for you' if lang==EN else 'только для тебя'
+            en=lang==EN
+            label='just for you' if en else 'только для тебя'
             # V3.63.2: her own photo (owner upload) blurred into the cover when
             # there is one; otherwise the repo's pre-blurred cover / reference.
             from services import push_photos
             source=_offer_reference(char_id)
             fid=push_photos.pick(char_id or CHARACTER_ID)
+            ref_path=str(source) if source else ''
             if fid:
                 try:
                     source=await bot.download(fid)
                 except Exception:
                     logger.warning('first offer photo download failed user=%s',uid)
+                    fid=None
             card=await asyncio.to_thread(fos.locked_card,source,label)
-            buttons=[[InlineKeyboardButton(text='🔓 open' if lang==EN else '🔓 открыть',callback_data='first_offer:open')]]
+            # V3.111.0: «витрина первого часа» — her voice first, then the card
+            # with the trial price on it and one-tap pay rows in his language.
+            from services.payments import trial_eligible
+            from services import offer_buttons
+            showcase=fos.is_showcase(created_at)
+            trial=trial_eligible(telegram_id)
+            if showcase:
+                await _showcase_voice(bot,telegram_id,char_id or CHARACTER_ID,'en' if en else 'ru')
+                buttons=[[InlineKeyboardButton(text=t,callback_data=c)] for t,c in offer_buttons.plan_rows(trial,en)]
+                t,c=offer_buttons.all_plans_row(en)
+                buttons.append([InlineKeyboardButton(text=t,callback_data=c)])
+                from config import PREMIUM_TRIAL_DAYS,PREMIUM_TRIAL_STARS,PLATEGA_PREMIUM_TRIAL_PRICE_RUB
+                price=f'{PLATEGA_PREMIUM_TRIAL_PRICE_RUB} ₽' if (not en and offer_buttons._platega_on()) else f'{PREMIUM_TRIAL_STARS} Stars'
+                cap=fos.showcase_caption('en' if en else 'ru',price,PREMIUM_TRIAL_DAYS) if trial else fos.caption('en' if en else 'ru')
+            else:
+                buttons=[[InlineKeyboardButton(text='🔓 open' if en else '🔓 открыть',callback_data='first_offer:open')]]
+                cap=fos.caption('en' if en else 'ru')
             if PUBLIC_BASE_URL:
-                buttons.append([InlineKeyboardButton(text='💬 reply to her' if lang==EN else '💬 ответить ей',
+                buttons.append([InlineKeyboardButton(text='💬 reply to her' if en else '💬 ответить ей',
                                                      web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
             await bot.send_photo(telegram_id,BufferedInputFile(card,filename='for_you.jpg'),
-                                 caption=fos.caption('en' if lang==EN else 'ru'),
-                                 reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
-            track_event(uid,'first_offer_sent',character_id=char_id or CHARACTER_ID)
+                                 caption=cap,reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+            fos.remember_photo(telegram_id,char_id or CHARACTER_ID,fid,None if fid else ref_path)
+            track_event(uid,'first_offer_sent',character_id=char_id or CHARACTER_ID,
+                        metadata={'showcase':int(showcase),'trial':int(trial)})
         except TelegramForbiddenError:
             _mark_blocked(uid)
         except Exception: logger.exception('first offer failed user=%s',uid)
+
+
+async def _showcase_voice(bot,telegram_id:int,char_id:str,lang:str)->None:
+    """V3.111.0: her short voice note before the showcase card. Fail-silent:
+    no voice (TTS down, language mismatch) and the card still goes."""
+    from aiogram.types import BufferedInputFile
+    from services import first_offer_service as fos
+    try:
+        from services.voice_service import synthesize_bytes
+        line=fos.voice_line(lang)
+        audio=await synthesize_bytes(line,None,character_id=char_id)
+        if audio:
+            await bot.send_voice(telegram_id,BufferedInputFile(audio,filename=f'{char_id}.ogg'))
+            await asyncio.sleep(2)
+    except TelegramForbiddenError:
+        raise
+    except Exception:
+        logger.warning('showcase voice failed user=%s',telegram_id,exc_info=True)
 
 
 def _user_local_hour(user) -> int | None:
@@ -1045,6 +1083,47 @@ async def _first_minutes(bot):
             logger.exception('first minutes nudge failed user=%s', uid)
 
 
+async def _heavy_offer(bot):
+    """V3.111.0: one honest Premium offer for a long-time free user
+    (services/heavy_offer.py) — once in his life, daytime Moscow only."""
+    from services import heavy_offer as ho
+    if not ho.ENABLED or not _msk_daytime():
+        return
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    from services.access_service import is_premium
+    from services.consent_service import has_accepted
+    from services.payments import trial_eligible
+    from services.ui_lang import user_lang, EN
+    from services import offer_buttons
+    from config import ADMIN_TELEGRAM_IDS
+    try:
+        rows = await asyncio.to_thread(ho.candidates)
+    except Exception:
+        logger.exception('heavy offer scan failed'); return
+    for uid, telegram_id, char_id, count in rows:
+        try:
+            if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id) or not has_accepted(telegram_id):
+                continue
+            # the slot first — a failed send must not re-fire every scan
+            await asyncio.to_thread(ho.mark, uid, char_id or CHARACTER_ID, count)
+            en = user_lang(telegram_id) == EN
+            text = ho.text(count, 'en' if en else 'ru')
+            kb = [[InlineKeyboardButton(text=t, callback_data=c)]
+                  for t, c in offer_buttons.plan_rows(trial_eligible(telegram_id), en)]
+            t, c = offer_buttons.all_plans_row(en)
+            kb.append([InlineKeyboardButton(text=t, callback_data=c)])
+            if PUBLIC_BASE_URL:
+                kb.append([InlineKeyboardButton(text='💬 just keep talking' if en else '💬 просто болтать дальше',
+                                                web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
+            await bot.send_message(telegram_id, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+            _to_app_chat(uid, telegram_id, char_id or CHARACTER_ID, text)
+            track_event(uid, 'heavy_offer_sent_ok', metadata={'messages': count}, character_id=char_id or CHARACTER_ID)
+        except TelegramForbiddenError:
+            _mark_blocked(uid)
+        except Exception:
+            logger.exception('heavy offer failed user=%s', uid)
+
+
 async def _trial_followup(bot):
     """V3.97.0: she writes before the 99 ₽ trial ends and once after it ran
     out (services/trial_followup.py) — with the week / month buttons."""
@@ -1225,6 +1304,8 @@ def start_scheduler(bot):
     scheduler.add_job(_day1_hook,'interval',minutes=15,args=[bot],id='day1_hook',replace_existing=True)
     scheduler.add_job(_first_offer,'interval',minutes=10,args=[bot],id='first_offer',replace_existing=True)
     scheduler.add_job(_trial_followup,'interval',minutes=15,args=[bot],id='trial_followup',replace_existing=True)
+    # V3.111.0: one honest offer after 150+ messages without Premium.
+    scheduler.add_job(_heavy_offer,'interval',minutes=30,args=[bot],id='heavy_offer',replace_existing=True)
     # V3.104.0: next-day message after a payment, and «останешься?» before the end.
     scheduler.add_job(_paid_day1,'interval',minutes=15,args=[bot],id='paid_day1',replace_existing=True)
     scheduler.add_job(_renewal_care,'interval',minutes=15,args=[bot],id='renewal_care',replace_existing=True)
