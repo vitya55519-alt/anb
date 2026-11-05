@@ -27,6 +27,7 @@ def test_grok_first_then_gemini(monkeypatch):
         return b'OggS' + mp3
 
     monkeypatch.setattr(vs, 'SPICY_TTS_ENABLED', True)
+    monkeypatch.setattr(vs, 'SPICY_GEMINI_TTS_ENABLED', False)  # V3.106.0: Gemini 3.8 goes first; Grok is next
     monkeypatch.setattr(vs, 'SPICYAPI_KEY', 'k')
     monkeypatch.setattr(spicy_jobs, 'run', fake_run)
     monkeypatch.setattr(spend_service, 'record_image_spend', lambda *a, **k: None)

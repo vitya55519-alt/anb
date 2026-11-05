@@ -130,6 +130,12 @@ SPICYAPI_TTS_COST_PER_1K_USD = float(os.getenv("SPICYAPI_TTS_COST_PER_1K_USD", "
 # V3.74.0: owner — «голос в обычных ответах на Грок». Grok TTS is the first
 # voice for every reply (~$0.004 each); free Gemini TTS stays the fallback.
 SPICY_TTS_ENABLED = os.getenv("SPICY_TTS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+# V3.106.0: owner — «гемини огонь». Gemini 3.8 Flash TTS through SpicyAPI is now
+# the first voice (each girl keeps her own Gemini voice + manner); Grok is the
+# fallback. ~$0.00032 per second of audio (~$0.003 for a 10 s note).
+SPICY_GEMINI_TTS_ENABLED = os.getenv("SPICY_GEMINI_TTS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+SPICY_GEMINI_TTS_MODEL = os.getenv("SPICY_GEMINI_TTS_MODEL", "google/gemini-3.8-flash-tts/text-to-speech").strip()
+SPICY_GEMINI_TTS_COST_PER_SEC_USD = float(os.getenv("SPICY_GEMINI_TTS_COST_PER_SEC_USD", "0.00032"))
 # V3.75.0: scenario cards (services/scenario_cards.py) — the Come Closer push:
 # a cover, a role-play setup and one button into the scene. Covers are rendered
 # once per scene — a Seedream photo (≈ $0.035) by default, optionally animated

@@ -81,3 +81,45 @@ def test_free_limit_tightens_from_day_four():
     from services import legal_service
     src = (ROOT / 'services' / 'legal_service.py').read_text(encoding='utf-8') if 'ROOT' in globals() else ''
     assert 'FREE_MESSAGES_PER_DAY_LATE' in (src or open(legal_service.__file__, encoding='utf-8').read())
+
+
+def test_gemini38_is_first_voice_with_its_own_tags():
+    from services import voice_humanize as vh
+    t, style = vh.for_gemini(vh.to_speech('ахаха, ну ты даёшь))) я тебя жду 😘'))
+    assert '<laugh>' in t and '[' not in t and style == 'vocal_smile'
+    t, style = vh.for_gemini(vh.to_speech('*шепчу* иди ко мне…'))
+    assert style == 'whisper' and '<whisper>' not in t and '<short pause>' in t
+    t, style = vh.for_gemini('<soft>я скучала [sigh] очень</soft>')
+    assert t == 'я скучала <sigh> очень' and style == 'empathetic'
+    src = open(vh.__file__.replace('voice_humanize', 'voice_service'), encoding='utf-8').read()
+    assert src.index('_tts_spicy_gemini(spoken or text') < src.index('_tts_grok(spoken or text')
+    assert "'voice_id': gemini_voice_for(character_id)" in src and 'tempo=1.0' in src
+    from config import SPICY_GEMINI_TTS_MODEL
+    assert SPICY_GEMINI_TTS_MODEL == 'google/gemini-3.8-flash-tts/text-to-speech'
+
+
+def test_gemini38_request_shape(monkeypatch):
+    import asyncio
+    from services import spend_service, spicy_jobs
+    from services import voice_service as vs
+    sent = []
+
+    async def fake_run(model, block, *, timeout, first_wait=3.0):
+        sent.append((model, dict(block)))
+        return b'RIFFwav', 'audio/wav', 0.0016
+
+    async def fake_opus(wav, tempo=None):
+        assert tempo == 1.0
+        return b'OggS' + wav
+
+    monkeypatch.setattr(vs, 'SPICY_GEMINI_TTS_ENABLED', True)
+    monkeypatch.setattr(vs, 'SPICYAPI_KEY', 'k')
+    monkeypatch.setattr(spicy_jobs, 'run', fake_run)
+    monkeypatch.setattr(vs, '_convert_wav_to_opus', fake_opus)
+    monkeypatch.setattr(spend_service, 'record_image_spend', lambda *a, **k: None)
+    out = asyncio.run(vs.synthesize_bytes('ахах, ну ты даёшь))) я тебя жду', character_id='anna_01'))
+    assert out == b'OggSRIFFwav'
+    model, block = sent[0]
+    assert model == 'google/gemini-3.8-flash-tts/text-to-speech'
+    assert block['voice_id'] == 'Leda' and '<laugh>' in block['text'] and block['style'] == 'vocal_smile'
+    assert 'русская речь' in block['instructions'] and 'playful' in block['instructions']

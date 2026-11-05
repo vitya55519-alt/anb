@@ -16,8 +16,10 @@ few of those tags (at most MAX_TAGS, so it never sounds staged):
 - *actions in stars*, links and the remaining emoji are removed (they were
   read aloud or skipped awkwardly).
 
-Only for Grok: ``strip_tags`` removes the tags again for the Gemini / edge
-fallbacks. Flag: VOICE_HUMANIZE_ENABLED.
+``strip_tags`` removes the tags again for the edge / old Gemini fallbacks;
+``for_gemini`` rewrites them into Gemini 3.8 TTS tags (``<laugh>``, ``<sigh>``,
+``<short pause>``) plus a ``style`` (whisper / empathetic / vocal_smile).
+Flag: VOICE_HUMANIZE_ENABLED.
 """
 from __future__ import annotations
 
@@ -94,3 +96,27 @@ def to_speech(text: str, character_id: str | None = None) -> str:
     if (character_id or '') in SOFT_CHARACTERS or _TENDER.search(t):
         return f'<soft>{t}</soft>'
     return t
+
+
+_GEM_MAP = (
+    (re.compile(r'\[(?:laugh|giggle|chuckle)\]'), '<laugh>'),
+    (re.compile(r'\[(?:sigh|exhale)\]'), '<sigh>'),
+    (re.compile(r'\[(?:pause|long-pause|breath|inhale)\]'), '<short pause>'),
+)
+
+
+def for_gemini(spoken: str) -> tuple[str, str]:
+    """V3.106.0: a to_speech() line → (Gemini 3.8 TTS text, style or '')."""
+    t = spoken or ''
+    style = ''
+    if '<whisper>' in t:
+        style = 'whisper'
+    elif '<soft>' in t:
+        style = 'empathetic'
+    t = re.sub(r'</?(?:soft|whisper|slow)>', '', t)
+    for pat, rep in _GEM_MAP:
+        t = pat.sub(rep, t)
+    if not style and '<laugh>' in t:
+        style = 'vocal_smile'
+    t = re.sub(r'\s{2,}', ' ', t).strip(' ,')
+    return t, style

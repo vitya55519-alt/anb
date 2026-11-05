@@ -25,3 +25,15 @@ gets 10 free messages a day instead of 20 (`access_service.free_limit_for`). Env
 `FREE_MESSAGES_PER_DAY_LATE` (10), `FREE_LATE_FROM_DAY` (4). To switch it off, set
 `FREE_MESSAGES_PER_DAY_LATE=20`. The tariff text and the shop note show «20 сообщений в день
 (с 4-го дня — 10)».
+
+## Gemini 3.8 Flash TTS — the first voice
+
+Витя listened to samples (Grok plain «робот», Grok with tags «полуробот», MiniMax 2.8,
+Qwen 3, Gemini 3.8): «гемини огонь». `voice_service._tts_spicy_gemini` now goes first:
+SpicyAPI `google/gemini-3.8-flash-tts/text-to-speech`, input {text, voice_id (her own
+Gemini voice from GEMINI_TTS_VOICES), instructions (RU/EN base + her manner), style}.
+`voice_humanize.for_gemini` turns the speech tags into Gemini's `<laugh>`, `<sigh>`,
+`<short pause>`; whisper/soft/laugh pick style whisper / empathetic / vocal_smile.
+WAV 24 kHz → opus without the old 1.12 speed-up. Order: Gemini 3.8 → Grok → direct Gemini
+→ edge. ~$0.00032/s (~$0.003 a 10 s note). Flags: SPICY_GEMINI_TTS_ENABLED,
+SPICY_GEMINI_TTS_MODEL. Note: SpicyAPI keeps the text 30 days.

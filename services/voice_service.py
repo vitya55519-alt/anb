@@ -21,6 +21,7 @@ from config import (
     TTS_API_KEY, TTS_MODEL, TTS_VOICE, AI_BASE_URL, OPENAI_VOICE_AVAILABLE,
     GEMINI_API_KEY, GEMINI_TTS_ENABLED, GEMINI_TTS_MODEL, GEMINI_VIDEO_BASE_URL, GEMINI_CHAT_MODEL,
     SPICYAPI_KEY, SPICY_TTS_ENABLED, SPICYAPI_TTS_MODEL, SPICYAPI_TTS_COST_PER_1K_USD,
+    SPICY_GEMINI_TTS_ENABLED, SPICY_GEMINI_TTS_MODEL, SPICY_GEMINI_TTS_COST_PER_SEC_USD,
 )
 
 logger = logging.getLogger(__name__)
@@ -339,7 +340,14 @@ async def synthesize_bytes(text: str, voice: str | None = None, character_id: st
     if not plain.strip():
         plain = text
 
-    # V3.74.0: Grok TTS (SpicyAPI) first — the owner liked eve/ara best.
+    # V3.106.0: Gemini 3.8 Flash TTS (SpicyAPI) first — «гемини огонь».
+    if SPICY_GEMINI_TTS_ENABLED and SPICYAPI_KEY:
+        try:
+            return await _tts_spicy_gemini(spoken or text, character_id)
+        except Exception as exc:
+            logger.warning('gemini-3.8-tts failed: %s; falling back to grok', exc)
+
+    # V3.74.0: Grok TTS (SpicyAPI) — the owner liked eve/ara best.
     if SPICY_TTS_ENABLED and SPICYAPI_KEY:
         try:
             return await _tts_grok(spoken or text, character_id)
@@ -370,6 +378,41 @@ async def synthesize_bytes(text: str, voice: str | None = None, character_id: st
         return await _tts_openai(text, v)
 
     raise RuntimeError('No TTS provider available. Install edge-tts: pip install edge-tts')
+
+
+_SPICY_GEMINI_BASE = {
+    'ru': ('Молодая девушка записывает голосовое сообщение близкому мужчине. Живая разговорная '
+           'русская речь, близко к микрофону, с улыбкой, в естественном темпе; не диктор и не робот. '),
+    'en': ('A young woman recording a quick voice message to a man she is close to: lively, natural, '
+           'close to the microphone, with a smile, never like an announcer or a robot. '),
+}
+
+
+async def _tts_spicy_gemini(spoken: str, character_id: str | None = None) -> bytes:
+    """V3.106.0: Gemini 3.8 Flash TTS through SpicyAPI (WAV 24 kHz → opus).
+    Her own Gemini voice and manner; Grok tags become <laugh>/<sigh>/<short pause>."""
+    from services import spend_service, spicy_jobs, voice_humanize
+    text, style = voice_humanize.for_gemini(spoken)
+    lang = 'ru' if detect_voice_language(text).startswith('ru') else 'en'
+    manner = GEMINI_TTS_MANNER.get(character_id or '', '').strip(' ,')
+    instructions = _SPICY_GEMINI_BASE[lang] + (f'Her manner: {manner}.' if manner else '')
+    block = {'text': text[:3000], 'voice_id': gemini_voice_for(character_id),
+             'instructions': instructions[:1000]}
+    if style:
+        block['style'] = style
+    ok, cost = False, 0.0
+    try:
+        wav, _, cost = await spicy_jobs.run(SPICY_GEMINI_TTS_MODEL, block, timeout=60, first_wait=2.0)
+        ok = True
+    finally:
+        est = cost or SPICY_GEMINI_TTS_COST_PER_SEC_USD * max(2.0, len(block['text']) / 14)
+        spend_service.record_image_spend('spicyapi_tts', 'voice', est, billed=ok, success=ok)
+    logger.info('tts ok provider=gemini38 voice=%s style=%s chars=%s', block['voice_id'], style or '-',
+                len(block['text']))
+    try:
+        return await _convert_wav_to_opus(wav, tempo=1.0)
+    except Exception:
+        return wav
 
 
 async def _tts_grok(text: str, character_id: str | None = None) -> bytes:
@@ -553,7 +596,7 @@ def _pcm16_to_wav(pcm: bytes, rate: int = 24000) -> bytes:
     return header + pcm
 
 
-async def _convert_wav_to_opus(wav_bytes: bytes) -> bytes:
+async def _convert_wav_to_opus(wav_bytes: bytes, tempo: float | None = None) -> bytes:
     """Convert wav bytes to opus using pydub + ffmpeg (for voice bubbles)."""
     import asyncio
 
@@ -561,7 +604,8 @@ async def _convert_wav_to_opus(wav_bytes: bytes) -> bytes:
         from pydub import AudioSegment
         audio = AudioSegment.from_wav(io.BytesIO(wav_bytes))
         out = io.BytesIO()
-        extra = ['-filter:a', f'atempo={TTS_TEMPO:.2f}'] if abs(TTS_TEMPO - 1.0) > 0.01 else None
+        t = TTS_TEMPO if tempo is None else tempo
+        extra = ['-filter:a', f'atempo={t:.2f}'] if abs(t - 1.0) > 0.01 else None
         audio.export(out, format='opus', codec='libopus', bitrate='64k', parameters=extra)
         return out.getvalue()
 
