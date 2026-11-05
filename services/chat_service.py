@@ -612,6 +612,9 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                                        [m.content for m in history if m.role == 'user'])
     if english:
         messages.append({"role": "system", "content": lang_guard.DIRECTIVE})
+    elif lang_guard.RU_PURITY_ENABLED and not (language_code or '').lower().startswith('en'):
+        # V3.105.0: no «especially» in the middle of a Russian line
+        messages.append({"role": "system", "content": lang_guard.RU_DIRECTIVE})
     messages.append({"role": "user", "content": user_text})
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
     if scene:
@@ -642,6 +645,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                     _logger.warning('english reply stayed russian user=%s', user_id)
             except Exception:
                 _logger.warning('english regeneration failed user=%s', user_id, exc_info=True)
+        elif not english:
+            answer = await _fix_stray_english(answer, [user_text] + [m.content for m in history if m.role == 'user'], user_id)
     answer = diversify_emoji(answer, [m.content for m in history if m.role == 'assistant'][-4:])
     if not behavior_kind.startswith('task'):
         answer = casual_punctuation(answer)
@@ -832,6 +837,29 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
         except Exception:
             _logger.warning('open loop keep failed user=%s', user_id, exc_info=True)
     return out
+
+
+async def _fix_stray_english(answer: str, user_texts, user_id=None) -> str:
+    """V3.105.0: English words that slipped into a Russian reply are replaced
+    by one short corrector call. The original stays when the fix fails, comes
+    back changed too much, or still has the words."""
+    from services import lang_guard
+    words = lang_guard.stray_english(answer, user_texts)
+    if not words:
+        return answer
+    try:
+        r = await generate_text(lang_guard.repair_prompt(answer, words), max_tokens=min(900, 60 + len(answer)),
+                                temperature=0, purpose='lang_repair')
+        fixed = _clean(r.text or '')
+        if (fixed and 0.6 * len(answer) <= len(fixed) <= 1.6 * len(answer)
+                and not lang_guard.stray_english(fixed, user_texts)):
+            from services.analytics_service import track_event
+            track_event(None, 'lang_repair', metadata={'words': len(words)})
+            return fixed
+        _logger.info('stray english kept user=%s words=%s', user_id, words)
+    except Exception:
+        _logger.warning('stray english repair failed user=%s', user_id, exc_info=True)
+    return answer
 
 
 PAID_MOMENT_LINES = {
