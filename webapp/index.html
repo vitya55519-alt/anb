@@ -429,6 +429,13 @@
   #honestmodal .li { display: flex; gap: 8px; font-size: 13.5px; line-height: 1.35; margin: 6px 0; color: var(--text); }
   #honestmodal .li .ok { color: #5fd39a; flex: none; }
   #honestmodal .go { width: 100%; border: 0; border-radius: 14px; padding: 12px; margin-top: 14px; font-size: 15px; font-weight: 700; color: #fff; background: linear-gradient(90deg, var(--accent), var(--accent2)); cursor: pointer; }
+  #honestmodal .fb { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); }
+  #honestmodal .fb .t { font-size: 14px; font-weight: 700; color: var(--text); }
+  #honestmodal .fb .s { font-size: 12px; color: var(--muted); margin: 2px 0 8px; }
+  #honestmodal .fb textarea { width: 100%; min-height: 64px; resize: vertical; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: var(--card2); color: var(--text); padding: 10px; font: inherit; font-size: 13.5px; box-sizing: border-box; }
+  #honestmodal .fb .send { width: 100%; margin-top: 8px; border: 0; border-radius: 12px; padding: 10px; font-size: 14px; font-weight: 600; color: var(--text); background: var(--card2); cursor: pointer; }
+  #honestmodal .fb .send:disabled { opacity: .5; }
+  #honestmodal .fb .done { font-size: 13px; color: #5fd39a; margin-top: 8px; display: none; }
   .honestlink { width: 100%; border: 0; border-radius: 12px; padding: 12px; margin-bottom: 10px; font-size: 14px; font-weight: 600; color: var(--text); background: var(--card2); cursor: pointer; text-align: left; }
   #chanmodal, #spicymodal {
     position: fixed; inset: 0; z-index: 45; display: none;
@@ -1220,6 +1227,13 @@
   <h3 id="honestTitle"></h3>
   <div class="sub" id="honestSub"></div>
   <div id="honestBody"></div>
+  <div class="fb">
+    <div class="t" id="fbTitle"></div>
+    <div class="s" id="fbSub"></div>
+    <textarea id="fbText" maxlength="1000"></textarea>
+    <button class="send" id="fbSend"></button>
+    <div class="done" id="fbDone"></div>
+  </div>
   <button class="go" id="honestGo"></button>
 </div></div>
 <div id="paymodal">
@@ -1640,6 +1654,8 @@ const L_EN = {
   hn_money: 'Free and Premium',
   hn_free: (f) => '💬 Free: ' + f.free_messages + ' messages a day' + (f.free_messages_later < f.free_messages ? ' (from day ' + f.later_from_day + ': ' + f.free_messages_later + ')' : '') + ' and ' + f.free_photos + ' photo',
   hn_prem: (price) => '💎 Premium from ' + price + ': one-time payment, no auto-renewal',
+  fb_title: 'We would love your ideas 💡', fb_sub: 'What should we improve in the bot? The team reads every message',
+  fb_ph: 'Your idea or wish…', fb_send: 'Send', fb_done: 'Thank you! Your idea went to the team 💜', fb_err: 'Could not send, try again a bit later',
   hn_go: 'OK, choose a heroine', hn_link: '💜 Honestly about us',
   trial_chip: '🔥 3 days of Premium',
   speak_free_left: n => n > 0 ? `🎙 free listens left today: ${n}` : '🎙 that was the last free listen today',
@@ -1903,6 +1919,8 @@ const L_RU = {
   hn_money: 'Бесплатно и Premium',
   hn_free: (f) => '💬 Бесплатно: ' + f.free_messages + ' сообщений в день' + (f.free_messages_later < f.free_messages ? ' (с ' + f.later_from_day + '-го дня — ' + f.free_messages_later + ')' : '') + ' и ' + f.free_photos + ' фото',
   hn_prem: (price) => '💎 Premium от ' + price + ': разовый платёж, без автопродления',
+  fb_title: 'Будем рады вашим пожеланиям 💡', fb_sub: 'Что улучшить в боте? Ждём ваших предложений, читаем каждое',
+  fb_ph: 'Твоё предложение или пожелание…', fb_send: 'Отправить', fb_done: 'Спасибо! Предложение ушло команде 💜', fb_err: 'Не получилось отправить, попробуй чуть позже',
   hn_go: 'Ок, выбрать героиню', hn_link: '💜 Честно о нас',
   trial_chip: '🔥 3 дня Premium',
   speak_free_left: n => n > 0 ? `🎙 бесплатных прослушиваний сегодня: ещё ${n}` : '🎙 это было последнее бесплатное прослушивание сегодня',
@@ -6063,6 +6081,11 @@ function openHonest() {
   document.getElementById('honestBody').innerHTML =
     '<h4>' + esc(L.hn_can) + '</h4>' + L.hn_list.map(t => li(t, true)).join('') +
     '<h4>' + esc(L.hn_money) + '</h4>' + li(L.hn_free(f)) + li(L.hn_prem(price));
+  document.getElementById('fbTitle').textContent = L.fb_title;
+  document.getElementById('fbSub').textContent = L.fb_sub;
+  document.getElementById('fbText').placeholder = L.fb_ph;
+  document.getElementById('fbSend').textContent = L.fb_send;
+  document.getElementById('fbDone').style.display = 'none';
   document.getElementById('honestmodal').classList.add('open');
 }
 function closeHonest() {
@@ -6076,6 +6099,29 @@ function maybeShowHonest() {
   _honestShown = true;
   openHonest();
 }
+// V3.107.0: a wish from the card goes to the owner's support chat.
+async function sendFeedback() {
+  const ta = document.getElementById('fbText');
+  const btn = document.getElementById('fbSend');
+  const text = (ta.value || '').trim();
+  if (text.length < 3) { ta.focus(); return; }
+  btn.disabled = true;
+  try {
+    const r = await fetch('/webapp/api/feedback?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) { toast(L.fb_err); return; }
+    ta.value = '';
+    const done = document.getElementById('fbDone');
+    done.textContent = L.fb_done; done.style.display = 'block';
+  } catch (e) {
+    toast(L.fb_err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+document.getElementById('fbSend').addEventListener('click', sendFeedback);
 document.getElementById('honestClose').addEventListener('click', closeHonest);
 document.getElementById('honestGo').addEventListener('click', closeHonest);
 document.getElementById('honestmodal').addEventListener('click', (e) => { if (e.target.id === 'honestmodal') closeHonest(); });

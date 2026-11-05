@@ -15702,6 +15702,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/demo', _webapp_api_demo)
     # V3.43.0: the pay-method modal — card/SBP and crypto payment links.
     app.router.add_post('/webapp/api/pay_link', _webapp_api_pay_link)
+    app.router.add_post('/webapp/api/feedback', _webapp_api_feedback)  # V3.107.0
     app.router.add_post('/webapp/api/select', _webapp_api_select)
     app.router.add_post('/webapp/api/scenario/start', _webapp_api_scenario_start)
     app.router.add_get('/webapp/api/storylines', _webapp_api_storylines)
@@ -15765,6 +15766,48 @@ async def _start_web_server() -> None:
     logger.info('web server listening port=%s platega=%s base=%s', WEB_PORT, PLATEGA_ENABLED, PUBLIC_BASE_URL or '-')
 
 
+# V3.107.0: the running support bot (None until it starts / without a token).
+_SUPPORT_BOT = None
+
+
+async def _webapp_api_feedback(request: web.Request) -> web.Response:
+    """V3.107.0: a wish from the honest card → the admins' support chat."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    from services import app_feedback
+    from services import support_desk
+    text = app_feedback.clean((body or {}).get('text'))
+    if len(text) < app_feedback.MIN_LEN:
+        return web.json_response({'ok': False, 'error': 'short'}, status=400)
+    if not app_feedback.allowed(telegram_id):
+        return web.json_response({'ok': False, 'error': 'rate'}, status=429)
+    name = ' '.join(x for x in (user_info.get('first_name'), user_info.get('last_name')) if x)
+    card = await asyncio.to_thread(app_feedback.admin_card, int(telegram_id), name,
+                                   user_info.get('username'), text)
+    sender = _SUPPORT_BOT or bot
+    delivered = 0
+    for admin_id in ADMIN_TELEGRAM_IDS:
+        try:
+            await sender.send_message(admin_id, card)
+            delivered += 1
+        except Exception as exc:
+            logger.warning('app feedback to admin=%s failed: %s', admin_id, exc)
+    if not delivered:
+        return web.json_response({'ok': False, 'error': 'send'}, status=502)
+    app_feedback.remember(telegram_id)
+    await asyncio.to_thread(support_desk.note_event, 'app_feedback', int(telegram_id), text)
+    return web.json_response({'ok': True})
+
+
 async def _run_support_bot() -> None:
     """V3.43.3: the support desk bot — /start welcome + appeals to the admins.
 
@@ -15775,7 +15818,9 @@ async def _run_support_bot() -> None:
     """
     from aiogram import Bot as SupportBot, Dispatcher as SupportDispatcher
     from services import support_desk as desk
+    global _SUPPORT_BOT
     support_bot = SupportBot(token=SUPPORT_BOT_TOKEN)
+    _SUPPORT_BOT = support_bot  # V3.107.0: app wishes go out through it
     support_dp = SupportDispatcher()
     # (admin chat, message id) -> user id, for replies to copied media
     routes: dict[tuple[int, int], int] = {}

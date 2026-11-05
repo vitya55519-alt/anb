@@ -82,3 +82,32 @@ def test_scheduler_sends_evening_as_voice_for_everyone():
     # no Premium gate on the evening voice
     block = SCHED[SCHED.index('evening_voice=None'):SCHED.index("track_event(uid, 'evening_voice_sent'")]
     assert 'is_premium' not in block
+
+
+# ── wishes from the card → support chat ───────────────────────────────────
+from services import app_feedback as fb
+
+
+def test_feedback_rate_limit_and_clean():
+    fb._sent.clear()
+    assert fb.clean('  хочу   больше\nдевушек ') == 'хочу больше девушек'
+    assert len(fb.clean('x' * 5000)) == fb.MAX_LEN
+    for i in range(fb.PER_HOUR):
+        assert fb.allowed(1, now=1000 + i)
+        fb.remember(1, now=1000 + i)
+    assert not fb.allowed(1, now=1100)
+    assert fb.allowed(1, now=1000 + 3700)
+
+
+def test_feedback_card_title_and_reply_routing():
+    from services import support_desk
+    card = fb.admin_card(424242, 'Петя', 'petya', 'добавьте аниме')
+    assert card.startswith('💡 Предложение из приложения') and 'добавьте аниме' in card
+    assert support_desk.user_id_from_card(card) == 424242
+
+
+def test_feedback_endpoint_and_ui():
+    assert "app.router.add_post('/webapp/api/feedback', _webapp_api_feedback)" in MAIN
+    assert 'sender = _SUPPORT_BOT or bot' in MAIN and '_SUPPORT_BOT = support_bot' in MAIN
+    assert 'id="fbText"' in HTML and "'/webapp/api/feedback?init_data='" in HTML
+    assert "fb_title: 'Будем рады вашим пожеланиям 💡'" in HTML
