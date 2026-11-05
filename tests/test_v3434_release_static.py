@@ -97,7 +97,7 @@ def test_default_flirt_block_is_bolder():
     # V3.44.4: the flirt block is now maximally bold and provocative.
     assert 'Без графического секса и анатомических деталей' in CHARACTER_SVC
     # the new V3.44.4 default heat: always flirt, dirty innuendo, sensory words
-    assert 'ВСЕГДА флиртуй' in CHARACTER_SVC
+    assert 'Флиртуй часто' in CHARACTER_SVC  # V3.113.0: but a person first when he is down
     assert 'Грязноватые намёки — норма' in CHARACTER_SVC
     assert 'Инициатива ВСЕГДА твоя' in CHARACTER_SVC
     assert 'чувственные слова' in CHARACTER_SVC

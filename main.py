@@ -12921,10 +12921,14 @@ PHOTO_PROMISE = re.compile(
     r'(?:\*[^*\n]{0,40}\b(?:шлю|отправля\w*|скидыва\w*|присыла\w*|делаю|делает|снима\w*)\b[^*\n]{0,30}(?:фот|селфи|снимок)[^*\n]{0,30}\*)',
     re.IGNORECASE)
 # her question/offer about a photo, and a short «yes» to it
-PHOTO_OFFER = re.compile(r'(фот|селфи|📸|снимок|скинуть|скину|прислать|показать)', re.IGNORECASE)
+PHOTO_OFFER = re.compile(r'(фот|селфи|📸|снимок|скинуть|скину|прислать|показать|покажу|кадр|увидеть|посмотреть|глянуть|надето|на мне)', re.IGNORECASE)
 PHOTO_AGREE = re.compile(
     r'^\W*(?:да+|давай|ага|конечно|скинь|кидай|кинь|присылай|пришли|покажи|хочу|жду|ок|окей|го|yes|sure)\b',
     re.IGNORECASE)
+
+
+_HANDS_OVER = re.compile(r'^\W*(?:вот,?\s+)?(?:лови|держи|смотри|глянь|here you go)\b', re.IGNORECASE)
+_ASKED_TO_SEE = re.compile(r'(покаж|скин|кинь|пришли|присыл|отправ|фот|селфи|хочу увидеть|show|send|pic|photo)', re.IGNORECASE)
 
 
 def _accepts_her_photo_offer(uid: int, character_id: str, text: str) -> bool:
@@ -12940,6 +12944,34 @@ def _accepts_her_photo_offer(uid: int, character_id: str, text: str) -> bool:
     if last is None or getattr(last, 'media_url', None):
         return False
     return bool(PHOTO_OFFER.search(last.content or ''))
+
+
+# V3.113.0: «Покажи сиськи», «скинь попку», «покажи)» — 20 of 25 such asks in
+# the 1 Nov backup got neither a photo nor an honest «Premium / завтра»: the
+# photo parser only knew «фото/селфи», so the model answered «держи 😏» empty.
+_SHOW_ME = re.compile(r'^\W*(?:покажи|покажись|скинь|кинь|пришли|присылай|отправь|вышли|show me|send me)\b(.{0,40})$', re.IGNORECASE)
+_SHOW_BODY_NUDE = re.compile(r'(сиськ|сисечк|грудь|груд[иь]|соск|киск|голая|голую|голой|без одежд|разден|tits|boobs|naked|nude)', re.IGNORECASE)
+_SHOW_BODY_REAR = re.compile(r'(попк|попу|жоп|задниц|ягодиц|ass\b|butt)', re.IGNORECASE)
+_SHOW_BODY_LINGERIE = re.compile(r'(трус|бель|лифчик|чулк|lingerie|panties)', re.IGNORECASE)
+
+
+def _show_me_request(text: str) -> PhotoRequest | None:
+    """«покажи сиськи» / «скинь попку» / «покажись» as a photo request; None otherwise.
+    A bare «покажи» counts only through _accepts_her_photo_offer (after her offer)."""
+    m = _SHOW_ME.match((text or '').strip())
+    if not m:
+        return None
+    rest = m.group(1) or ''
+    # the chat renders only menu scenes (explicit ones left the menu in V3.30.0):
+    # a body ask becomes her boudoir shot, which is Premium-only — a free user
+    # gets her blurred card and the pay button, not a fully dressed selfie.
+    if _SHOW_BODY_NUDE.search(rest) or _SHOW_BODY_LINGERIE.search(rest):
+        return PhotoRequest(scene='lingerie')
+    if _SHOW_BODY_REAR.search(rest):
+        return PhotoRequest(scene='personal')
+    if re.search(r'(себя|себе|лицо|как выглядишь|как ты выглядишь|платье|наряд|образ|yourself)', rest, re.I):
+        return PhotoRequest(scene='selfie')
+    return None
 
 
 def _free_photo_from_pool(telegram_id: int, uid: int, character_id: str):
@@ -13006,6 +13038,12 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | N
     return None
 
 
+# V3.113.0: owner — «пишет покажи, а ничего не скидывает». When the photo is
+# closed (free one used, Premium-only), he still SEES something: her blurred
+# photo card with the pay button, instead of words alone.
+_LOCKED_CARD_REASONS = frozenset({'free_used', 'premium', 'spicy'})
+
+
 def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | None) -> dict:
     text = CHAT_PHOTO_BLOCK_TEXT[reason].format(price=CHAT_PHOTO_PEACH_COST)
     try:
@@ -13013,6 +13051,12 @@ def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | 
     except Exception:
         logger.warning('chat photo block message not saved uid=%s', uid)
     payload = {'ok': True, 'reply': text, 'photo_block': reason, 'photo_price': CHAT_PHOTO_PEACH_COST}
+    if reason in _LOCKED_CARD_REASONS:
+        payload['locked_tease'] = {'url': f'/webapp/locked/{character_id}.jpg'}
+        try:
+            track_event(uid, 'photo_locked_card', character_id=character_id, metadata={'reason': reason})
+        except Exception:
+            pass
     payload.update(extra or {})
     return payload
 
@@ -13044,6 +13088,8 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         # here and, when the scene clears the same stage/adult/credit gates the app
         # photo button enforces, deliver a real photo into the shared dialog.
         photo_request = _contextualize_vague_photo(telegram_id, text, parse_photo_request(text))
+        if not photo_request:
+            photo_request = _show_me_request(text)
         # V3.60.9: «скинь конечно» right after she offered a photo is a request too.
         if not photo_request and _accepts_her_photo_offer(uid, character_id, text):
             photo_request = parse_photo_request('пришли селфи')
@@ -13150,7 +13196,9 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         logger.exception('webapp chat reply failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
     # V3.60.9: she wrote «лови фотку 📸» on her own — the photo must really come.
-    if PHOTO_PROMISE.search(answer or ''):
+    # V3.113.0: also a bare «держи 😏» / «лови 💋» right after he asked to see her.
+    if PHOTO_PROMISE.search(answer or '') or (
+            _HANDS_OVER.match(answer or '') and _ASKED_TO_SEE.search(text or '')):
         def _promise_gate():
             req = _selfie_from_dialog(uid, character_id, parse_photo_request('пришли селфи'))
             return req, _chat_photo_gate(telegram_id, character_id, 'selfie')
@@ -13160,12 +13208,17 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             if payload:
                 return web.json_response(payload)
             block = 'failed'
-        if block in ('peaches', 'premium', 'spicy'):
+        if block in ('peaches', 'premium', 'spicy', 'free_used', 'stage', 'adult'):
             # keep her words, add the honest «out of peaches» / «Premium» note + button
+            # V3.113.0: «лови 😏» with the free photo already used went out with
+            # nothing attached — now the honest note and her blurred card come too.
             note = CHAT_PHOTO_BLOCK_TEXT[block].format(price=CHAT_PHOTO_PEACH_COST)
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
-            return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, 'photo_block': block,
-                                      'photo_price': CHAT_PHOTO_PEACH_COST, **(extra or {})})
+            out = {'ok': True, 'reply': answer + '\n\n' + note, 'photo_block': block,
+                   'photo_price': CHAT_PHOTO_PEACH_COST, **(extra or {})}
+            if block in _LOCKED_CARD_REASONS:
+                out['locked_tease'] = {'url': f'/webapp/locked/{character_id}.jpg'}
+            return web.json_response(out)
         if block == 'failed':
             note = CHAT_PHOTO_BLOCK_TEXT['failed']
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)

@@ -576,6 +576,33 @@ _PROMISE_KEPT = (
 )
 
 
+# V3.113.0: «а завтра утром пришлю тебе кое-что, не прос… 😏» went out 224
+# times in one week, word for word — a template tail gives her away as a bot.
+_EVENING_PROMISE_RU = (
+    'а утром у меня для тебя кое-что будет 🙂',
+    'завтра утром покажу тебе одну вещь, напомни мне, если забуду',
+    'кстати, утром кое-что пришлю. спокойной ночи',
+    'утром жди от меня маленький сюрприз 🌙',
+    'я тут кое-что приготовила, но это до утра',
+)
+_EVENING_PROMISE_EN = (
+    'I\'ll have something for you in the morning 🙂',
+    'tomorrow morning I\'ll show you one thing, remind me if I forget',
+    'by the way, there\'s a little surprise coming in the morning 🌙',
+)
+# A streak is a game counter, not something she would say every evening, and
+# «не прерывай …» was pressure. Now only on round numbers, warmly.
+_STREAK_MARKS = (3, 7, 14, 30, 60, 100)
+
+
+def _streak_line(streak, lang: str = 'ru') -> str:
+    if streak not in _STREAK_MARKS:
+        return ''
+    if lang == 'en':
+        return f'\n\nby the way, we\'ve talked {streak} days in a row now. I like that 🙂'
+    return f'\n\nкстати, мы уже {streak} дней подряд болтаем. мне это правда нравится 🙂'
+
+
 async def _rituals(bot):
     """V3.20.0: morning/evening rituals — she writes first in the user's local
     time window. Only recent (RITUAL_MAX_INACTIVE_DAYS) opt-in users get them."""
@@ -658,8 +685,7 @@ async def _rituals(bot):
             # morning ritual keeps with a photo. Only promised when her media
             # pool can actually deliver one.
             if kind=='evening' and shot:
-                text+=('\n\nand tomorrow morning I\'ll send you something, don\'t oversleep 😏' if _el=='en'
-                       else '\n\nа завтра утром пришлю тебе кое-что, не проспи 😏')
+                text+='\n\n'+random.choice(_EVENING_PROMISE_EN if _el=='en' else _EVENING_PROMISE_RU)
                 _ritual_promised.add((uid,(now+dt.timedelta(days=1)).date().isoformat()))
                 shot=None  # the promise IS the hook; the photo waits for the morning
             elif kind=='morning' and shot and (uid,today_key) in _ritual_promised:
@@ -680,7 +706,12 @@ async def _rituals(bot):
                 except Exception:
                     logger.exception('morning callback failed user=%s',uid)
             if streak and streak >= 3 and not shot:
-                text+=f'\n\nкстати, мы общаемся {streak} дней подряд 🔥 не прерывай серию 😉'
+                try:
+                    from services.ui_lang import user_lang, EN
+                    _sl='en' if user_lang(int(tg_id))==EN else 'ru'
+                except Exception:
+                    _sl='ru'
+                text+=_streak_line(streak,_sl)
             markup=None
             if gift_label:
                 if PUBLIC_BASE_URL:

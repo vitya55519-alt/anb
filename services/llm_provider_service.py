@@ -140,9 +140,18 @@ def _complete(r) -> bool:
 import re
 _THINK_RE = re.compile(r'<think(?:ing)?>.*?</think(?:ing)?>', re.DOTALL | re.IGNORECASE)
 
+_OPEN_THINK_RE = re.compile(r'<think(?:ing)?>.*\Z', re.DOTALL | re.IGNORECASE)
+_CLOSE_THINK_RE = re.compile(r'\A.*?</think(?:ing)?>', re.DOTALL | re.IGNORECASE)
+
+
 def _strip_thinking(text: str) -> str:
-    """V3.45: remove / tags that MiniMax/reasoning models leak."""
-    return _THINK_RE.sub('', text).strip()
+    """V3.45: remove / tags that MiniMax/reasoning models leak.
+    V3.113.0: also a thinking block cut on the token cap (no closing tag) and
+    an answer that starts right after a lone closing tag."""
+    text = _THINK_RE.sub('', text or '')
+    text = _CLOSE_THINK_RE.sub('', text)
+    text = _OPEN_THINK_RE.sub('', text)
+    return text.strip()
 
 
 async def generate_text(

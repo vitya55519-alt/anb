@@ -575,11 +575,33 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             messages.append({"role": "system", "content": care_note})
     except Exception:
         care_kind = ''
+    # V3.113.0: her own small story for these days (services/her_story.py) —
+    # something happens in her life, she tells it and asks what he thinks.
+    if not scene and not guest_reminder and not care_kind and not _is_card_girl(character_id):
+        try:
+            from services import her_story
+            story_note = await asyncio.to_thread(her_story.directive, db_user_id, user_id, character_id)
+            if story_note:
+                messages.append({"role": "system", "content": story_note})
+        except Exception:
+            _logger.warning('her story failed user=%s', user_id, exc_info=True)
+    # V3.113.0: in his rhythm, and no second condition in a row.
+    from services import live_talk
+    _her_recent = [m.content for m in history if m.role == 'assistant']
+    _short = live_talk.rhythm_kind(user_text) == 'short'
+    _bargained = live_talk.bargained_recently(_her_recent)
     # V3.63.12: one concrete hook for this reply, right before his message.
     if not scene and not guest_reminder and not care_kind:
-        hook = next_hook(user_id, character_id, behavior_kind, has_memories=bool(memories))
+        hook = next_hook(user_id, character_id, behavior_kind, has_memories=bool(memories),
+                         short=_short and live_talk.ENABLED, no_game=_bargained)
         if hook:
             messages.append({"role": "system", "content": hook})
+    if live_talk.ENABLED and not behavior_kind.startswith('task'):
+        if _bargained and not scene:
+            messages.append({"role": "system", "content": live_talk.NO_BARGAIN_NOTE})
+        rhythm = live_talk.rhythm_note(user_text)
+        if rhythm and not care_kind:
+            messages.append({"role": "system", "content": rhythm})
     # V3.104.0: «память как подарок» — he is back after a pause, so she brings
     # up one thing he told her before, herself (services/memory_gift.py).
     gift = None
@@ -626,6 +648,22 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         _logger.warning('dialogue empty from all providers user=%s character=%s', user_id, character_id)
     else:
         answer = _clean(r.text)
+        # V3.113.0: her planning notes in English («*   Is it in character»)
+        # and a reply cut mid-word on the token cap were sent as they were.
+        if live_talk.looks_leaked(answer) and not english:
+            _logger.warning('dialogue reasoning leak user=%s provider=%s', user_id, r.provider)
+            try:
+                retry = await generate_text(messages, max_tokens=token_budget, temperature=0.9, purpose='dialogue')
+                fixed = _clean(retry.text or '') if (retry.text or '').strip() else ''
+                if fixed and not live_talk.looks_leaked(fixed):
+                    answer, r = fixed, retry
+                else:
+                    answer = stall_line('ru', _her_recent[-6:])
+            except Exception:
+                answer = stall_line('ru', _her_recent[-6:])
+        elif not getattr(r, 'complete', True):
+            _lang = 'en' if english else 'ru'
+            answer = finish_or_drop(answer, False, _lang) or answer
         if REFUSAL.search(answer):
             answer = await _recover_from_refusal(answer, character)
         elif BREAKUP.search(answer):
@@ -647,6 +685,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                 _logger.warning('english regeneration failed user=%s', user_id, exc_info=True)
         elif not english:
             answer = await _fix_stray_english(answer, [user_text] + [m.content for m in history if m.role == 'user'], user_id)
+    if not behavior_kind.startswith('task') and not scene and not care_kind:
+        answer = live_talk.fit_rhythm(answer, user_text)
     answer = diversify_emoji(answer, [m.content for m in history if m.role == 'assistant'][-4:])
     if not behavior_kind.startswith('task'):
         answer = casual_punctuation(answer)
@@ -803,6 +843,18 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
                  'намекала (придумай конкретно и интересно), и сразу зацепи его вопросом. ') if owed else ''
     if cared:
         keep_line = care_followup.MORNING_LINE
+    # V3.113.0: the day her story happens, the morning or evening may bring it up.
+    story_line = ''
+    if not cared and not owed and not _is_card_girl(character_id):
+        try:
+            from services import her_story
+            got = await asyncio.to_thread(her_story.current, db_user_id, user_id, character_id, start=False)
+            if got and got[1] >= 1:
+                story_line = await asyncio.to_thread(her_story.directive, db_user_id, user_id, character_id)
+                story_line = (story_line + ' Можно начать с этого вместо вопроса о нём, одной-двумя фразами. ') if story_line else ''
+        except Exception:
+            story_line = ''
+    keep_line = keep_line + story_line
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories],
         keep_line + (EVENING_CALLBACK_LINE if evening else
