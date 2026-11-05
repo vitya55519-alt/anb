@@ -137,3 +137,8 @@ def test_voicecast_is_admin_only_and_needs_confirm():
     assert 'key = lang' in block and 'audio = await _voice_cast_audio(cache, cast_char, lang)' in block
     assert set(ev.CAST_LINES) == {'ru', 'en'} and ev.language_matches(ev.CAST_LINES['en'], 'en')
 
+
+
+def test_voicecast_sends_both_versions_to_admin():
+    block = MAIN[MAIN.index("@dp.message(Command('voicecast'))"):MAIN.index("@dp.callback_query(F.data == 'vcast:go')")]
+    assert "for _lang in ('ru', 'en'):" in block and 'voice_{_lang}.ogg' in block

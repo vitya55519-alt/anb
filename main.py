@@ -10229,23 +10229,25 @@ async def admin_voicecast_cmd(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
     from services import evening_voice
-    lang = 'en' if user_lang(message.from_user.id) == EN else 'ru'
     global _voice_cast_char
     char_id = get_user_character(message.from_user.id) or CHARACTER_ID
     _voice_cast_char = char_id
     _voice_cast_cache.clear()
-    await message.answer('🎙 Записываю пробное голосовое…')
-    audio = await _voice_cast_audio(_voice_cast_cache, char_id, lang)
-    if not audio:
-        await message.answer('⚠️ Голос не сгенерировался, смотри логи (tts).')
-        return
+    await message.answer('🎙 Записываю пробные голосовые: русское и английское…')
+    # Owner: both versions come to the admin first, so he hears exactly what
+    # everyone gets. These two files are the whole cast.
+    for _lang in ('ru', 'en'):
+        audio = await _voice_cast_audio(_voice_cast_cache, char_id, _lang)
+        if not audio:
+            await message.answer(f'⚠️ Голос ({_lang}) не сгенерировался, смотри логи (tts).')
+            return
+        await bot.send_voice(message.chat.id, BufferedInputFile(audio, filename=f'voice_{_lang}.ogg'),
+                             caption=('🇷🇺 ' if _lang == 'ru' else '🇬🇧 ') + evening_voice.CAST_LINES[_lang])
     rows = await asyncio.to_thread(evening_voice.cast_recipients)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f'📣 Отправить всем ({len(rows)} чел.)', callback_data='vcast:go')]])
-    await bot.send_voice(message.chat.id, BufferedInputFile(audio, filename=f'{char_id}.ogg'),
-                         caption=evening_voice.CAST_LINES[lang])
     await message.answer(
-        f'Это пробник, так услышат все: одна русская и одна английская запись этим голосом, '
+        f'Это пробники, так услышат все: русская и английская запись этим голосом, '
         f'русским по-русски, остальным по-английски. Получатели: включены её сообщения и заходили за '
         f'{evening_voice.CAST_ACTIVE_DAYS} дн. Отправить?', reply_markup=kb)
 
