@@ -71,7 +71,7 @@ def test_his_photo_only_goes_to_vision_never_to_an_image_engine():
     for bad in ('spicy', 'Spicy', 'seedream', 'undress', 'edit_image', 'fal'):
         assert bad not in ep, bad
     # vision skips the text-only MiniMax and goes straight to Gemini
-    assert "VISION_PURPOSES = frozenset({'photo_reaction'})" in LLM
+    assert "VISION_PURPOSES = frozenset({'photo_reaction', 'evening_photo_qc'})" in LLM
     assert 'if _minimax and purpose not in VISION_PURPOSES:' in LLM
     # hard lines in the prompt: no body talk, nude photos declined, no promises to edit
     assert 'Если на фото обнажённое тело или интим' in REACT

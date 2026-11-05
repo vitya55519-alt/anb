@@ -55,7 +55,7 @@ def language_matches(text: str, lang: str) -> bool:
     return got.startswith('en') if lang == 'en' else got.startswith('ru')
 
 
-async def voice_bytes(text: str, character_id: str, lang: str) -> bytes | None:
+async def voice_bytes(text: str, character_id: str, lang: str, mood: str = 'evening') -> bytes | None:
     """Her voice for the evening line, or None (then the text goes as before)."""
     if not ENABLED:
         return None
@@ -64,7 +64,7 @@ async def voice_bytes(text: str, character_id: str, lang: str) -> bytes | None:
         return None
     try:
         from services.voice_service import synthesize_bytes
-        audio = await synthesize_bytes(line, None, character_id=character_id, mood='evening')
+        audio = await synthesize_bytes(line, None, character_id=character_id, mood=mood)
         return audio or None
     except Exception:
         logger.exception('evening voice synth failed character=%s', character_id)
@@ -76,28 +76,231 @@ def caption(text: str) -> str:
 
 
 # ── V3.110.0: a photo of her comes with the evening voice ───────────────
-# Owner: «хотелось чтобы с голосовым каждый вечер приходила фотка». Budget
-# rule (29.10): no new renders for this — the photo is one that already
-# exists (her pool first, then a clean chat photo already rendered of her),
-# rotated per user so he does not get the same one twice. Spicy prompts are
-# filtered out in reused_photo, so free users never get anything intimate.
+# Owner: «хотелось чтобы с голосовым каждый вечер приходила фотка» and «бери
+# рандомные фотки из генерации» — the plain «photo» entries of the admin feed
+# «Генерации пользователей» for THIS girl (same character_id as his chat).
+# Budget rule (29.10): no new renders, only photos that already exist.
+#  • lingerie/flirty is fine as bait, but only for users who confirmed 18+;
+#    full nudity never goes out (the evening reaches free users too);
+#  • «undress:»/«animate:» results, «hot»/«cosplay» kinds and failed renders
+#    are never candidates; user uploads are not in that feed at all;
+#  • «трёхрукие»: each candidate gets one cheap Gemini vision check (cached
+#    per photo forever) for broken anatomy and nudity, and the owner can hide
+#    any photo with «🚫 Брак» in the feed;
+#  • each user gets a photo he has not had in the evening before; when none
+#    is left, her ready pool is the fallback.
 PHOTO_ENABLED = os.getenv('EVENING_PHOTO_ENABLED', 'true').strip().lower() not in ('0', 'false', 'no', 'off')
+PICK_EVENT = 'evening_photo_pick'
+QC_EVENT = 'evening_photo_qc'
+QC_PER_PICK = max(1, int(os.getenv('EVENING_PHOTO_QC_PER_PICK', '4')))
+_NUDE_TEXT = re.compile(
+    r'(гол(ая|ую|ой|еньк|ыш)|обнаж|без одежд|разде|топлес|без бель|без трус|без лифчик|сиськ|сос(ок|ки)|киск|'
+    r'nude|naked|topless|undress|fully_nude)', re.I)
+QC_PROMPT = (
+    'Check this AI-generated photo of a woman. Reply with ONE line of JSON only: '
+    '{"defect": true|false, "nudity": "none"|"lingerie"|"nude"}. '
+    'defect=true if anything is anatomically wrong: extra or missing arms, hands, legs or fingers, '
+    'merged or melted body parts, a distorted face, two heads, broken limbs, garbled body. '
+    'nudity: "nude" if a nipple, genitals or a bare bottom is visible; "lingerie" for underwear, '
+    'swimwear or see-through clothes; otherwise "none".'
+)
 
 
-def evening_photo(character_id: str, uid: int | None) -> tuple[bytes, str, str] | None:
-    """(bytes, content_type, 'photo') of a ready photo of her, or None. $0."""
+def candidate_prompt_ok(prompt: str) -> bool:
+    """Cheap text pre-filter before the vision check."""
+    p = (prompt or '').strip()
+    if not p or p.startswith(('❌', 'animate')) or 'http' in p.lower():
+        return False
+    if p.startswith('undress'):
+        # owner: «раздевание сделано нашей моделью» — allowed only when the
+        # source is proven to be a bot render of her (checked in _candidates)
+        return bool(undress_source(p)) and not _NUDE_TEXT.search(p.replace('undress', ''))
+    if ':' in p.split()[0] or '/webapp/media/' in p:
+        return False  # hot-menu keys / anything made from an uploaded photo
+    return not _NUDE_TEXT.search(p)
+
+
+_SRC = re.compile(r'^undress:\s*/webapp/media/([A-Za-z0-9_.\-]+)\s*$')
+
+
+def undress_source(prompt: str) -> str | None:
+    m = _SRC.match((prompt or '').strip())
+    return m.group(1) if m else None
+
+
+def parse_qc(text: str) -> dict | None:
+    import json
+    m = re.search(r'\{.*\}', text or '', re.S)
+    if not m:
+        return None
+    try:
+        d = json.loads(m.group(0))
+    except Exception:
+        return None
+    nud = str(d.get('nudity', '')).lower()
+    if nud not in ('none', 'lingerie', 'nude') or not isinstance(d.get('defect'), bool):
+        return None
+    return {'defect': d['defect'], 'nudity': nud}
+
+
+def verdict_allows(v: dict | None, adult: bool) -> bool:
+    if not v or v.get('rejected') or v.get('defect'):
+        return False
+    return v.get('nudity') == 'none' or (v.get('nudity') == 'lingerie' and adult)
+
+
+def _verdicts(s, ids) -> dict[int, dict]:
+    import json
+    from sqlalchemy import select
+    from models.app_models import ProductEvent
+    out: dict[int, dict] = {}
+    if not ids:
+        return out
+    for value, meta in s.execute(select(ProductEvent.value, ProductEvent.metadata_json)
+                                 .where(ProductEvent.event_name == QC_EVENT,
+                                        ProductEvent.value.in_([float(i) for i in ids]))
+                                 .order_by(ProductEvent.id)).all():
+        try:
+            d = json.loads(meta or '{}')
+        except Exception:
+            d = {}
+        gid = int(value)
+        if out.get(gid, {}).get('rejected'):
+            continue  # the owner's «брак» always wins
+        out[gid] = d
+    return out
+
+
+def save_verdict(gen_id: int, verdict: dict) -> None:
+    import json
+    from models.app_models import ProductEvent
+    from services.db import SessionLocal
+    with SessionLocal() as s:
+        s.add(ProductEvent(user_id=None, character_id='', event_name=QC_EVENT,
+                           value=float(gen_id), metadata_json=json.dumps(verdict)))
+        s.commit()
+
+
+def reject_generation(gen_id: int) -> None:
+    """Owner's «🚫 Брак»: this photo never goes out in the evening again."""
+    save_verdict(int(gen_id), {'rejected': True})
+
+
+async def vision_check(data: bytes, mime: str) -> dict | None:
+    import base64
+    b64 = base64.b64encode(data).decode()
+    if len(b64) > 3_000_000:
+        return None
+    try:
+        from services.llm_provider_service import generate_text
+        r = await generate_text([{'role': 'user', 'content': [
+            {'type': 'text', 'text': QC_PROMPT},
+            {'type': 'image_url', 'image_url': {'url': f'data:{mime};base64,{b64}'}},
+        ]}], max_tokens=60, temperature=0.0, purpose='evening_photo_qc')
+    except Exception as exc:
+        logger.warning('evening photo qc failed: %s: %s', type(exc).__name__, exc)
+        return None
+    return parse_qc(r.text)
+
+
+def _candidates(character_id: str, uid: int | None):
+    """[(gen_id, filename, verdict|None)] — fresh clean-prompt photos of her."""
+    import random
+    from sqlalchemy import select
+    from models.app_models import ProductEvent, UserGeneration
+    from services.db import SessionLocal
+    with SessionLocal() as s:
+        rows = s.execute(
+            select(UserGeneration.id, UserGeneration.filename, UserGeneration.prompt)
+            .where(UserGeneration.kind == 'photo', UserGeneration.character_id == character_id,
+                   UserGeneration.filename.is_not(None),
+                   (UserGeneration.engine.is_(None)) | (UserGeneration.engine != 'error'))
+            .order_by(UserGeneration.id.desc()).limit(500)
+        ).all()
+        seen = set()
+        if uid:
+            seen = {int(v) for (v,) in s.execute(
+                select(ProductEvent.value).where(ProductEvent.user_id == uid,
+                                                 ProductEvent.event_name == PICK_EVENT)).all() if v}
+        fresh = [r for r in rows if r.id not in seen and candidate_prompt_ok(r.prompt)]
+        # an «undress» stays only if its source file is itself a bot render of
+        # HER from text (not an upload, not another photo action)
+        srcs = {undress_source(r.prompt) for r in fresh if undress_source(r.prompt)}
+        good_src = set()
+        if srcs:
+            for fn, pr in s.execute(select(UserGeneration.filename, UserGeneration.prompt)
+                                    .where(UserGeneration.filename.in_(srcs),
+                                           UserGeneration.character_id == character_id,
+                                           UserGeneration.kind.in_(('photo', 'hot', 'cosplay')),
+                                           (UserGeneration.engine.is_(None)) | (UserGeneration.engine != 'error'))).all():
+                if '/webapp/media/' not in (pr or '') and not (pr or '').startswith(('undress', 'animate')):
+                    good_src.add(fn)
+        fresh = [r for r in fresh if not undress_source(r.prompt) or undress_source(r.prompt) in good_src]
+        verdicts = _verdicts(s, [r.id for r in fresh])
+    random.shuffle(fresh)
+    return [(r.id, r.filename, verdicts.get(r.id)) for r in fresh]
+
+
+def _media(filename: str):
+    from sqlalchemy import select
+    from models.app_models import ChatMedia
+    from services.db import SessionLocal
+    with SessionLocal() as s:
+        m = s.execute(select(ChatMedia.data, ChatMedia.content_type)
+                      .where(ChatMedia.filename == filename).limit(1)).first()
+    ctype = (m.content_type or '') if m else ''
+    return (m.data, ctype) if m and m.data and ctype.startswith('image/') else None
+
+
+def _record_pick(uid: int, character_id: str, gen_id: int, filename: str) -> None:
+    import json
+    from models.app_models import ProductEvent
+    from services.db import SessionLocal
+    with SessionLocal() as s:
+        s.add(ProductEvent(user_id=uid, character_id=character_id, event_name=PICK_EVENT,
+                           value=float(gen_id), metadata_json=json.dumps({'file': filename})))
+        s.commit()
+
+
+async def evening_photo(character_id: str, uid: int | None, adult: bool = False) -> tuple[bytes, str, str] | None:
+    """(bytes, content_type, 'photo') of a ready photo of her, or None. $0 renders."""
+    import asyncio
     if not PHOTO_ENABLED or not character_id:
         return None
     try:
-        from services.chat_photo_allowance import reused_photo
-        picked = reused_photo(character_id, uid)
+        cands = await asyncio.to_thread(_candidates, character_id, uid)
+        checks = 0
+        # already-approved photos first, then unchecked ones (a few per pick)
+        cands.sort(key=lambda c: 0 if c[2] else 1)
+        for gen_id, filename, verdict in cands:
+            if verdict is not None and not verdict_allows(verdict, adult):
+                continue
+            media = await asyncio.to_thread(_media, filename)
+            if not media:
+                continue
+            if verdict is None:
+                if checks >= QC_PER_PICK:
+                    continue
+                checks += 1
+                verdict = await vision_check(*media)
+                if verdict is None:
+                    continue  # no verdict, no send; checked again next time
+                await asyncio.to_thread(save_verdict, gen_id, verdict)
+                if not verdict_allows(verdict, adult):
+                    continue
+            if uid:
+                await asyncio.to_thread(_record_pick, uid, character_id, gen_id, filename)
+            return media[0], media[1], 'photo'
     except Exception:
-        logger.exception('evening photo pick failed character=%s', character_id)
-        return None
-    if not picked or not picked[0]:
-        return None
-    data, mime, _ext = picked
-    return data, mime or 'image/jpeg', 'photo'
+        logger.exception('evening photo (user generations) failed character=%s', character_id)
+    try:
+        from services.retention_features_service import random_proactive_photo
+        picked = await asyncio.to_thread(random_proactive_photo, character_id, uid)
+        if picked and picked[2] == 'photo' and picked[0]:
+            return picked[0], picked[1] or 'image/jpeg', 'photo'
+    except Exception:
+        logger.exception('evening photo (pool) failed character=%s', character_id)
+    return None
 
 
 # ── V3.108.0: owner's one-off voice cast to everyone ─────────────────────

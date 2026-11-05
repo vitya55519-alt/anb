@@ -522,7 +522,10 @@ def _user_local_hour(user) -> int | None:
     """Best-effort local hour for rituals; None when the timezone is unusable."""
     try:
         from zoneinfo import ZoneInfo
-        tz=ZoneInfo(user.timezone or 'UTC')
+        # V3.110.0: owner — «9 утра и 8 вечера по МСК». Most users never set a
+        # timezone (DB default 'UTC'); they get Moscow time, the rest their own.
+        name=(user.timezone or '').strip()
+        tz=ZoneInfo('Europe/Moscow' if name in ('','UTC','Etc/UTC','GMT') else name)
         return dt.datetime.now(tz).hour
     except Exception:
         return dt.datetime.now(dt.timezone.utc).hour
@@ -590,6 +593,7 @@ async def _rituals(bot):
             # so only a shot that is really sent counts in his rotation
             shot = retention_features_service.random_proactive_photo(char_id, user_id=uid if kind=='morning' else None)
             evening_voice=None
+            morning_voice=None
             if kind=='evening':
                 # V3.101.0: «как прошёл день» tied to what she knows about him
                 # (the template evening got replies from 10%).
@@ -622,7 +626,8 @@ async def _rituals(bot):
             if kind=='evening':
                 try:
                     from services import evening_voice as _ev
-                    evening_shot=await asyncio.to_thread(_ev.evening_photo, char_id, uid)
+                    from services.user_service import is_adult_confirmed as _adult
+                    evening_shot=await _ev.evening_photo(char_id, uid, await asyncio.to_thread(_adult, int(tg_id)))
                 except Exception:
                     logger.exception('evening photo failed user=%s',uid)
                     evening_shot=None
@@ -655,6 +660,14 @@ async def _rituals(bot):
                         track_event(uid,'morning_callback_sent',character_id=char_id)
                 except Exception:
                     logger.exception('morning callback failed user=%s',uid)
+                # V3.110.0: owner — «один голос утром»: the morning line is her
+                # voice note too (the pool photo, if any, goes right before it).
+                try:
+                    from services import evening_voice as _ev
+                    from services.ui_lang import user_lang, EN
+                    morning_voice=await _ev.voice_bytes(text, char_id, 'en' if user_lang(int(tg_id))==EN else 'ru', mood='morning')
+                except Exception:
+                    logger.exception('morning voice failed user=%s',uid)
             if streak and streak >= 3 and (not shot or evening_shot):
                 text+=f'\n\nкстати, мы общаемся {streak} дней подряд 🔥 не прерывай серию 😉'
             markup=None
@@ -665,20 +678,25 @@ async def _rituals(bot):
                         text=gift_label, web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'))]])
                 else:
                     text+='\n\n'+gift_label.replace('Забрать подарок','дневной подарок ждёт в приложении,')
-            if evening_voice and evening_shot:
-                # photo first (quiet, no caption), then her voice with the words
+            ritual_voice=evening_voice if kind=='evening' else morning_voice
+            if ritual_voice:
+                # V3.110.0: her photo first (quiet, no caption), then her voice
+                # with the words — evening (photo from user generations) and
+                # morning (pool photo) alike.
                 from aiogram.types import BufferedInputFile
                 from services import evening_voice as _ev
-                _pd, _pc, _pk = evening_shot
-                await bot.send_photo(int(tg_id), BufferedInputFile(_pd, filename='evening.jpg'))
-                await bot.send_voice(int(tg_id), BufferedInputFile(evening_voice, filename=f'{char_id}.ogg'), caption=_ev.caption(text), reply_markup=markup)
-                track_event(uid, 'evening_voice_sent', character_id=char_id)
-                track_event(uid, 'evening_photo_sent', character_id=char_id)
-            elif evening_voice and not shot:
-                from aiogram.types import BufferedInputFile
-                from services import evening_voice as _ev
-                await bot.send_voice(int(tg_id), BufferedInputFile(evening_voice, filename=f'{char_id}.ogg'), caption=_ev.caption(text), reply_markup=markup)
-                track_event(uid, 'evening_voice_sent', character_id=char_id)
+                if shot:
+                    data, ctype, media_kind = shot
+                    if media_kind == 'gif':
+                        await bot.send_animation(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'))
+                    elif media_kind == 'video':
+                        await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'))
+                    else:
+                        await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'))
+                await bot.send_voice(int(tg_id), BufferedInputFile(ritual_voice, filename=f'{char_id}.ogg'), caption=_ev.caption(text), reply_markup=markup)
+                track_event(uid, f'{kind}_voice_sent', character_id=char_id)
+                if evening_shot:
+                    track_event(uid, 'evening_photo_sent', character_id=char_id)
             elif shot:
                 from aiogram.types import BufferedInputFile
                 data, ctype, media_kind = shot

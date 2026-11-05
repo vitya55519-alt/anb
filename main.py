@@ -15471,6 +15471,24 @@ async def _webapp_picture(request: web.Request) -> web.Response:
     return web.FileResponse(path, headers={'Cache-Control': 'private, max-age=3600'})
 
 
+async def _webapp_api_admin_gen_reject(request: web.Request):
+    """V3.110.0: owner's «🚫 Брак» on a feed photo — it never goes out as
+    the evening photo again (three arms and other mutants)."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id or not webapp_service._is_admin(telegram_id):
+        return web.json_response({'ok': False, 'error': 'forbidden'}, status=403)
+    try:
+        gen_id = int((await request.json()).get('id'))
+    except Exception:
+        return web.json_response({'ok': False, 'error': 'bad_id'}, status=400)
+    from services import evening_voice
+    await asyncio.to_thread(evening_voice.reject_generation, gen_id)
+    return web.json_response({'ok': True})
+
+
 async def _webapp_api_admin_generations(request: web.Request) -> web.Response:
     # V3.51.1: the owner's Mini App feed of what users generate. Admin-only
     # (re-checked server-side on every call), newest first, each row enriched
@@ -15847,6 +15865,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/picture/{filename}', _webapp_picture)
     # V3.51.1: admin-only feed of what users generate in the Mini App.
     app.router.add_get('/webapp/api/admin/generations', _webapp_api_admin_generations)
+    app.router.add_post('/webapp/api/admin/gen_reject', _webapp_api_admin_gen_reject)
     app.router.add_get('/webapp/api/admin/gen_media/{owner}/{filename}', _webapp_api_admin_gen_media)
     app.router.add_get('/webapp/api/constructor/options', _webapp_api_constructor_options)
     app.router.add_get('/webapp/api/constructor/status', _webapp_api_constructor_status)
