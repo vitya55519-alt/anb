@@ -902,7 +902,8 @@ def api_shop(lang: str = 'ru') -> dict:
         # V3.93.0: without Premium — one ready photo a day; with it — two new ones + peaches.
         ('📸', '2 новых фото в чате каждый день, дальше — за персики', '2 new chat photos every day, more for peaches'),
         ('🍑', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 каждый месяц в подарок', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 every month as a gift'),
-        ('🎬', '2 бесплатных видео-оживления в день', '2 free photo animations per day'),
+        # V3.112.0: animation only on a month or longer plan, one a day.
+        ('🎬', '1 оживление фото в день — в Premium на месяц и дольше', '1 photo animation a day — on a month or longer plan'),
         ('🎯', 'перезапуски историй и все персонажи', 'story replays and all characters'),
         ('💌', 'безлимитное общение — она не засыпает, и больше памяти', 'unlimited chat — she never falls asleep, more memory'),
         ('🎙', 'голосовые ответы', 'voice replies'),

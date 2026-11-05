@@ -19,7 +19,7 @@ MODELS = (ROOT / 'models' / 'app_models.py').read_text(encoding='utf-8')
 
 def test_video_pricing_and_free_slots():
     assert 'VIDEO_COST_STARS", "50"' in CONFIG
-    assert 'VIDEO_PREMIUM_FREE_DAILY", "2"' in CONFIG
+    assert 'VIDEO_PREMIUM_FREE_DAILY", "1"' in CONFIG  # V3.112.0
 
 
 def test_retention_config_flags():
@@ -113,7 +113,7 @@ def test_scheduler_retention_tiers_and_rituals():
 
 def test_premium_pitch_mentions_new_perks_and_plateau():
     pitch = MAIN[MAIN.index('def premium_pitch_text('):MAIN.index('def _sleep_block_markup(')]
-    assert '2 бесплатных оживления фото каждый день' in pitch
+    assert '1 оживление фото в день' in pitch  # V3.112.0
     assert 'видео-кружочки' in pitch
     assert 'безлимит сообщений' in pitch
     # V3.21.0 renamed the plateau line to the two premium levels.

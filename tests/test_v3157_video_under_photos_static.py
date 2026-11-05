@@ -35,10 +35,10 @@ def test_video_gate_free_premium_then_paid():
     gate = gate.split('\n@dp.', 1)[0]
     # Admins animate photos for free without limits; Premium gets the daily slot.
     assert 'ADMIN_TELEGRAM_IDS' in gate
-    assert 'is_premium(' in gate
+    # V3.112.0: monthly Premium only, one a day, no Stars invoice any more.
+    assert 'has_monthly_premium(' in gate
     assert 'consume_premium_video_free(' in gate
-    assert 'send_stars_invoice(' in gate
-    assert 'VIDEO_COST_STARS' in gate
+    assert 'send_stars_invoice(' not in gate
     # One unified job handles free (charge_id=None) runs with engine fallback.
     assert "_run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset)" in gate
 
@@ -61,9 +61,9 @@ def test_premium_daily_free_limit_helpers():
     assert 'video_free_used' in USER_MODEL
     assert "'video_free_date'" in DB
     assert "'video_free_used'" in DB
-    # V3.20.0: perk raised to 2 free animations per day on Premium.
-    assert '"VIDEO_PREMIUM_FREE_DAILY", "2"' in CONFIG
+    # V3.112.0: one animation a day, monthly Premium only (owner).
+    assert '"VIDEO_PREMIUM_FREE_DAILY", "1"' in CONFIG
 
 
 def test_premium_pitch_mentions_daily_free_video():
-    assert '2 бесплатных оживления фото каждый день' in MAIN
+    assert '1 оживление фото в день — в Premium на месяц и дольше' in MAIN

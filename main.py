@@ -76,7 +76,7 @@ from services.photo_idea_service import (
 )
 from config import PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIAL_PRICE_RUB  # V3.88.0
 from services.payments import trial_eligible  # V3.88.0
-from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
+from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, has_monthly_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
 from services.bot_description import apply_bot_descriptions
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
@@ -1226,7 +1226,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             'Premium:',
             '• unlimited messages — I never “fall asleep” mid-conversation 😴',
             '• 12 extra photo credits',
-            '• 2 free photo animations every day 🎬',
+            '• 🎬 1 photo animation a day — on a month or longer plan',
             '• 🎥 video circles from me — paid in 🍑',
             '• 🎙 voice replies — Premium only',
             '• 💋 relationship levels 7–10 — the top of the romance or passion path',
@@ -1239,7 +1239,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             'Premium:',
             '• безлимит сообщений — я больше не «засыпаю» посреди разговора 😴',
             '• 12 дополнительных photo credits',
-            '• 2 бесплатных оживления фото каждый день 🎬',
+            '• 🎬 1 оживление фото в день — в Premium на месяц и дольше',
             '• 🎥 видео-кружочки от меня — за 🍑',
             '• 🎙 голосовые ответы — только для Premium',
             '• 💋 уровни 7–10 отношений — вершина пути романтики или страсти',
@@ -1477,7 +1477,7 @@ def _premium_keyboard_en(discount: dict | None, telegram_id: int):
         rows.append([_platega_pay_button('premium_month', PLATEGA_PREMIUM_PRICE_RUB,
                                          f'💎 a month — crypto / card · {PLATEGA_PREMIUM_PRICE_RUB} ₽')])
     if _any_video_engine():
-        rows.append([InlineKeyboardButton(text=f'🎬 Animate a photo — {VIDEO_COST_STARS}⭐', callback_data='video:animate_last')])
+        rows.append([InlineKeyboardButton(text='🎬 Animate a photo · Premium month, 1 a day', callback_data='video:animate_last')])
     rows.append([InlineKeyboardButton(text=f'🎥 A video circle from her — {peach_num(CIRCLE_PEACH_COST)} 🍑', callback_data='video:circle')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -1489,7 +1489,7 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
     except Exception:
         logger.warning('en premium keyboard failed user=%s', telegram_id, exc_info=True)
     if _any_video_engine():
-        video_button = InlineKeyboardButton(text=f'🎬 Оживить фото — {VIDEO_COST_STARS}⭐{fiat_suffix(VIDEO_COST_STARS)}', callback_data='video:animate_last')
+        video_button = InlineKeyboardButton(text='🎬 Оживить фото · Premium на месяц, 1 в день', callback_data='video:animate_last')
     else:
         video_button = InlineKeyboardButton(text='🔒 🎬 Оживить фото · скоро', callback_data='future:animate_photo')
     if discount and discount.get('active'):
@@ -5323,7 +5323,7 @@ async def gallery_view_cb(cq: types.CallbackQuery):
     await cq.answer()
     # Show the photo full-size with a clean action row: animate / download / back.
     row = [
-        types.InlineKeyboardButton(text=f'🎬 Оживить · {VIDEO_COST_STARS}⭐{fiat_suffix(VIDEO_COST_STARS)}', callback_data=f'gallery:animate:{delivery_id}'),
+        types.InlineKeyboardButton(text='🎬 Оживить · Premium на месяц', callback_data=f'gallery:animate:{delivery_id}'),
         types.InlineKeyboardButton(text=f'⬇ Скачать · {GALLERY_DOWNLOAD_STARS}⭐{fiat_suffix(GALLERY_DOWNLOAD_STARS)}', callback_data=f'gallery:dl:{delivery_id}'),
         types.InlineKeyboardButton(text='↩ назад', callback_data='gallery:back'),
     ]
@@ -5667,40 +5667,49 @@ async def video_preset_cb(cq: types.CallbackQuery):
 
 
 async def _video_gate(cq: types.CallbackQuery, delivery: dict, motion_preset: str | None = None) -> None:
-    """Start the animation free (admin or Premium daily slot) or invoice Stars."""
+    """V3.112.0: photo animation is a monthly-Premium perk — one a day for a
+    month (or longer) plan, nothing free, no Stars or token route (owner:
+    every animation is a paid SpicyAPI video). Admins stay unlimited."""
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     track_event(uid, 'video_animate_click', metadata={'delivery_id': delivery['id'], 'preset': motion_preset or 'auto'})
-    free = cq.from_user.id in ADMIN_TELEGRAM_IDS
-    if not free and is_premium(cq.from_user.id):
-        free = consume_premium_video_free(cq.from_user.id)
-    if free:
-        track_event(uid, 'video_free_used', metadata={'delivery_id': delivery['id'], 'admin': cq.from_user.id in ADMIN_TELEGRAM_IDS})
-        _video_jobs[cq.from_user.id] = _spawn_job(
-            'video', cq.from_user.id,
-            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset),
-            payload={'preset': motion_preset or 'auto'},
-        )
+    admin = cq.from_user.id in ADMIN_TELEGRAM_IDS
+    en = user_lang(cq.from_user.id) == EN
+    if not admin and not has_monthly_premium(cq.from_user.id):
+        track_event(uid, 'video_month_wall', metadata={'premium': is_premium(cq.from_user.id)})
+        await cq.message.answer(_video_month_wall_text(en), reply_markup=_video_month_wall_markup(en))
         return
-    # V3.27.0: tokens (bought with rubles on Platega) are an alternative to
-    # Stars — spend them first so card-paying users animate without Stars.
-    if spend_tokens(cq.from_user.id, VIDEO_TOKEN_COST):
-        track_event(uid, 'tokens_spent', metadata={'amount': VIDEO_TOKEN_COST, 'delivery_id': delivery['id'], 'preset': motion_preset or 'auto'})
-        await cq.message.answer(f'🪙 Списано {VIDEO_TOKEN_COST} токенов — оживляю фото! Баланс: {get_token_balance(cq.from_user.id)} 🪙')
-        _video_jobs[cq.from_user.id] = _spawn_job(
-            'video', cq.from_user.id,
-            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset),
-            payload={'preset': motion_preset or 'auto'},
-        )
+    if not admin and not consume_premium_video_free(cq.from_user.id):
+        await cq.message.answer('you already animated a photo today 🎬 the next one tomorrow' if en
+                                else 'сегодня ты уже оживлял фото 🎬 следующее можно завтра')
         return
-    # Preset rides along inside the invoice payload: video:<delivery_id>:<preset>
-    payload = f'video:{delivery["id"]}:{motion_preset or "auto"}'
-    await send_stars_invoice(
-        cq.message.chat.id,
-        'Оживить фото Анны',
-        'Короткое AI-видео из выбранного фото. Генерация занимает 1–3 минуты.',
-        payload,
-        VIDEO_COST_STARS,
+    track_event(uid, 'video_free_used', metadata={'delivery_id': delivery['id'], 'admin': admin})
+    _video_jobs[cq.from_user.id] = _spawn_job(
+        'video', cq.from_user.id,
+        _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset),
+        payload={'preset': motion_preset or 'auto'},
     )
+
+
+def _video_month_wall_text(en: bool) -> str:
+    if en:
+        return ('🎬 Photo animation comes with Premium for a month or longer: one animation every day.\n'
+                'The trial and the week do not include it.')
+    return ('🎬 Оживление фото входит в Premium на месяц и дольше: одно оживление каждый день.\n'
+            'В пробный период и неделю оно не входит.')
+
+
+def _video_month_wall_markup(en: bool) -> InlineKeyboardMarkup:
+    rows = []
+    if not en and PLATEGA_ENABLED and is_button_enabled('platega_rub'):
+        rows.append([_platega_pay_button('premium_month', PLATEGA_PREMIUM_PRICE_RUB,
+                                         f'💳 Premium на месяц — {PLATEGA_PREMIUM_PRICE_RUB} ₽ · карта / СБП')])
+    rows.append([InlineKeyboardButton(text=(f'⭐ Premium for a month — {PREMIUM_MONTHLY_STARS} Stars' if en
+                                            else f'⭐ Premium на месяц — {PREMIUM_MONTHLY_STARS} Stars'),
+                                      callback_data='buy:premium')])
+    if en and PLATEGA_ENABLED and is_button_enabled('platega_rub'):
+        rows.append([_platega_pay_button('premium_month', PLATEGA_PREMIUM_PRICE_RUB,
+                                         f'💎 a month — crypto / card · {PLATEGA_PREMIUM_PRICE_RUB} ₽')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @dp.callback_query(F.data.startswith('video:animate:'))
@@ -7237,7 +7246,9 @@ async def pre_checkout(query: types.PreCheckoutQuery):
         except (ValueError, IndexError):
             ok = False
         else:
-            ok = amount == VIDEO_COST_STARS and bool(get_photo_delivery_for_user(query.from_user.id, delivery_id)) and _any_video_engine()
+            # V3.112.0: animation is not sold for Stars any more (monthly
+            # Premium only) — an old invoice left in a chat is refused here.
+            ok = False
     elif payload.startswith('constructor:'):
         ok = amount == CONSTRUCTOR_COST_STARS
     elif payload.startswith('gallery_dl:'):
@@ -14669,8 +14680,9 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         if action == 'animate':
             if admin:
                 return uid, None, 'admin'
-            if not is_premium(telegram_id):
-                return uid, ('premium_required', 403), None
+            if not has_monthly_premium(telegram_id):
+                # V3.112.0: a month (or longer) Premium only, one a day.
+                return uid, ('month_required', 403), None
             if not consume_premium_video_free(telegram_id):
                 return uid, ('video_limit', 402), None
             return uid, None, 'premium'
@@ -14855,8 +14867,9 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             # V3.41.0: app video shares the Premium free-animation slots, exactly
             # like the bot's «🎬 Оживить фото»; a separate gate keeps the circle
             # branch (and its static test) untouched.
-            if not is_premium(telegram_id):
-                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+            if not has_monthly_premium(telegram_id):
+                # V3.112.0: a month (or longer) Premium only, one a day.
+                return web.json_response({'ok': False, 'error': 'month_required'}, status=403)
             if not consume_premium_video_free(telegram_id):
                 return web.json_response({'ok': False, 'error': 'video_limit'}, status=402)
         if kind == 'voice' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
