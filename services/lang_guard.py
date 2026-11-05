@@ -66,3 +66,51 @@ STRICT_DIRECTIVE = (
     'СТРОГО: твой предыдущий ответ вышел по-русски, а пользователь пишет по-английски. Напиши этот ответ '
     'заново ПОЛНОСТЬЮ на английском. Ни одной русской буквы. Тот же смысл, тот же характер.'
 )
+
+
+# V3.105.0: English words slipping into a Russian reply («нормально, especially
+# когда это важное дело») — MiniMax does it now and then. A short directive for
+# Russian talks, and one cheap repair call when a reply still has stray words.
+import os as _os
+
+RU_PURITY_ENABLED = _os.getenv('LANG_RU_PURITY_ENABLED', 'true').strip().lower() not in ('0', 'false', 'no', 'off')
+_LAT_WORD = re.compile(r"(?<![A-Za-z0-9_@/.#])[A-Za-z][A-Za-z'\-]{2,}(?![A-Za-z0-9_@/.])")
+# words that are fine in a Russian chat with this bot (product names, slang)
+_ALLOWED = frozenset((
+    'premium', 'vip', 'stars', 'telegram', 'tg', 'ok', 'okay', 'lol', 'wow', 'omg', 'sms', 'iphone',
+    'instagram', 'inst', 'tiktok', 'youtube', 'netflix', 'wifi', 'wi-fi', 'online', 'offline', 'selfie',
+    'emoji', 'gif', 'mp3', 'usb', 'pdf', 'xxx', 'bmw', 'audi', 'mercedes', 'kia', 'lada', 'nike', 'adidas',
+    'zara', 'apple', 'samsung', 'xiaomi', 'playstation', 'xbox', 'ps5', 'dota', 'cs', 'fifa', 'gta',
+    'minecraft', 'spotify', 'whatsapp', 'vk', 'ozon', 'wildberries', 'yandex', 'google', 'chatgpt', 'ai',
+))
+
+RU_DIRECTIVE = (
+    'Пиши только по-русски: ни одного английского слова посреди фразы (не «especially», «anyway», «baby» — '
+    'а «особенно», «короче», «малыш»). Латиницей можно только названия брендов и то, что он сам так написал.'
+)
+
+
+def stray_english(answer: str, user_texts=()) -> list[str]:
+    """English words inside a Russian reply that he did not use himself."""
+    if not RU_PURITY_ENABLED or not is_cyrillic_dominant(answer):
+        return []
+    his = set()
+    for t in user_texts or ():
+        his.update(w.lower() for w in _LAT_WORD.findall(t or ''))
+    out = []
+    for w in _LAT_WORD.findall(answer or ''):
+        lw = w.lower()
+        if lw in _ALLOWED or lw in his or w.isupper() or lw in out:
+            continue
+        out.append(lw)
+    return out
+
+
+def repair_prompt(answer: str, words: list[str]) -> list[dict]:
+    return [
+        {'role': 'system', 'content': (
+            'Ты корректор. В русском сообщении девушки проскочили английские слова: ' + ', '.join(words) +
+            '. Замени каждое на естественное русское слово или выражение по смыслу. Больше НИЧЕГО не меняй: '
+            'тот же текст, те же эмодзи, та же пунктуация и регистр. Верни только исправленное сообщение.')},
+        {'role': 'user', 'content': answer},
+    ]
