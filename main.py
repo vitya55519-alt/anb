@@ -15874,8 +15874,17 @@ async def _run_support_bot() -> None:
                 await support_bot.send_message(user_id, desk.ANSWER_PREFIX.strip())
                 await admin_msg.copy_to(user_id)
         except Exception as exc:
-            await admin_msg.answer(f'⚠️ Не доставлено пользователю {user_id}: {type(exc).__name__}')
-            return
+            # V3.107.0: he never opened the support bot (an app wish) — the
+            # answer goes through the main bot, which he surely started.
+            body = text if text is not None else (admin_msg.text or '')
+            try:
+                if not body:
+                    raise exc
+                await bot.send_message(user_id, desk.ANSWER_PREFIX + body)
+            except Exception:
+                await admin_msg.answer(f'⚠️ Не доставлено пользователю {user_id}: {type(exc).__name__}')
+                return
+            await admin_msg.answer('ℹ️ Бот поддержки он не открывал — ответ ушёл через основной бот.')
         await asyncio.to_thread(desk.note_event, desk.ANSWER_EVENT, user_id, text or admin_msg.text or '')
         await admin_msg.answer(f'✅ Отправлено пользователю {user_id}')
 

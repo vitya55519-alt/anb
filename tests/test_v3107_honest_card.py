@@ -111,3 +111,8 @@ def test_feedback_endpoint_and_ui():
     assert 'sender = _SUPPORT_BOT or bot' in MAIN and '_SUPPORT_BOT = support_bot' in MAIN
     assert 'id="fbText"' in HTML and "'/webapp/api/feedback?init_data='" in HTML
     assert "fb_title: 'Будем рады вашим пожеланиям 💡'" in HTML
+
+
+def test_support_answer_falls_back_to_main_bot():
+    block = MAIN[MAIN.index('async def _send_answer('):MAIN.index('async def _support_appeal(')]
+    assert 'await bot.send_message(user_id, desk.ANSWER_PREFIX + body)' in block
