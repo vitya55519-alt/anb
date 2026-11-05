@@ -133,7 +133,7 @@ def test_voicecast_is_admin_only_and_needs_confirm():
     block = MAIN[MAIN.index("async def _voice_cast_audio("):MAIN.index("@dp.message(Command('stats', 'adminstats'))")]
     assert block.count('not in ADMIN_TELEGRAM_IDS') == 2
     assert "callback_data='vcast:go'" in block and '_voice_cast_running' in block
-    # one voice per (girl, language), reused for everyone
-    assert 'key = (character_id, lang)' in block
+    # owner: exactly two recordings (ru + en), reused for everyone
+    assert 'key = lang' in block and 'audio = await _voice_cast_audio(cache, cast_char, lang)' in block
     assert set(ev.CAST_LINES) == {'ru', 'en'} and ev.language_matches(ev.CAST_LINES['en'], 'en')
 
