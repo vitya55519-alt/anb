@@ -75,7 +75,6 @@ def test_main_every_star_price_has_fiat():
         'fiat_suffix(QUEST_REPLAY_STARS)',
         'fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD',
         'fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD',
-        'fiat_suffix(VIDEO_COST_STARS)',
         'fiat_suffix(CUSTOM_PHOTO_COST_STARS)',
         'fiat_suffix(PHOTO_COST_STARS)',
         'fiat_suffix(GALLERY_DOWNLOAD_STARS)',
@@ -131,7 +130,6 @@ def test_legal_tariffs_fiat_both_languages():
     assert 'fiat_suffix(CHAT_PHOTO_OFFER_STARS)' in LEGAL
     assert 'fiat_suffix(CUSTOM_PHOTO_COST_STARS)' in LEGAL
     assert 'fiat_suffix(GALLERY_DOWNLOAD_STARS)' in LEGAL
-    assert 'fiat_suffix(VIDEO_COST_STARS)' in LEGAL
     assert 'fiat_suffix(QUEST_REPLAY_STARS)' in LEGAL
     # V3.44.22: the constructor line is peach-priced (public free / private
     # peaches) — the old stars+rub+usd tier is retired from the sheet

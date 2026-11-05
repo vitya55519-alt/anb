@@ -244,8 +244,8 @@ def tariffs_text(lang: str = 'ru') -> str:
             # V3.36.0: every Stars price carries its rub + dollar equivalent.
             f'⭐ Premium — 30-day subscription: {PREMIUM_MONTHLY_STARS}⭐{fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD, rub_enabled=rub_lines)}',
             f'Includes: {PREMIUM_MONTHLY_PHOTO_CREDITS} photo credits/month, '
-            f'{PREMIUM_MONTHLY_QUEST_REPLAYS} story replays, {VIDEO_PREMIUM_FREE_DAILY} free video '
-            'animations per day, wider chat limits and all characters.',
+            f'{PREMIUM_MONTHLY_QUEST_REPLAYS} story replays, {VIDEO_PREMIUM_FREE_DAILY} photo '
+            'animation per day, wider chat limits and all characters.',
             f'⭐ Premium — 7-day subscription: {PREMIUM_WEEKLY_STARS}⭐{fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=rub_lines)}',
             f'Includes: {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits for the week and the same '
             'features as the 30-day plan.',
@@ -267,8 +267,8 @@ def tariffs_text(lang: str = 'ru') -> str:
             f'• full-resolution gallery download — {GALLERY_DOWNLOAD_STARS}⭐ per photo{fiat_suffix(GALLERY_DOWNLOAD_STARS)}',
             '',
             '🎬 Video:',
-            f'• photo animation (video or video circle) — {VIDEO_COST_STARS}⭐{fiat_suffix(VIDEO_COST_STARS)}',
-            f'• Premium: {VIDEO_PREMIUM_FREE_DAILY} free per day',
+            f'• photo animation — only with Premium for 30 days or longer: {VIDEO_PREMIUM_FREE_DAILY} per day; '
+            'not sold separately and not included in the trial or the 7-day plan',
             '',
             '🎯 Stories & characters:',
             f'• alternative story branch — {QUEST_REPLAY_STARS}⭐{fiat_suffix(QUEST_REPLAY_STARS)}',
@@ -288,11 +288,11 @@ def tariffs_text(lang: str = 'ru') -> str:
         '',
         f'⭐ Premium — подписка на 30 дней: {PREMIUM_MONTHLY_STARS}⭐{fiat_suffix(PREMIUM_MONTHLY_STARS, rub=PLATEGA_PREMIUM_PRICE_RUB, usd=PREMIUM_PRICE_USD, rub_enabled=rub_lines)}',
         f'Входит: {PREMIUM_MONTHLY_PHOTO_CREDITS} фото-кредитов в месяц, '
-        f'{PREMIUM_MONTHLY_QUEST_REPLAYS} перезапуска историй, {VIDEO_PREMIUM_FREE_DAILY} бесплатных '
-        'видео-оживлений в день, расширенные лимиты общения и все персонажи.',
+        f'{PREMIUM_MONTHLY_QUEST_REPLAYS} перезапуска историй, {VIDEO_PREMIUM_FREE_DAILY} '
+        'оживление фото в день, расширенные лимиты общения и все персонажи.',
         f'⭐ Premium — подписка на 7 дней: {PREMIUM_WEEKLY_STARS}⭐{fiat_suffix(PREMIUM_WEEKLY_STARS, rub=PLATEGA_PREMIUM_WEEKLY_PRICE_RUB, usd=PREMIUM_WEEKLY_PRICE_USD, rub_enabled=rub_lines)}',
         f'Входит: {PREMIUM_WEEKLY_PHOTO_CREDITS} фото-кредитов за неделю и те же '
-        'возможности, что в подписке на 30 дней.',
+        'возможности, что в подписке на 30 дней, кроме оживления фото.',
         '',
         'Бесплатный функционал:',
         f'• общение — {chat_free_ru}',
@@ -311,8 +311,8 @@ def tariffs_text(lang: str = 'ru') -> str:
         f'• скачивание из галереи в полном разрешении — {GALLERY_DOWNLOAD_STARS}⭐ за фото{fiat_suffix(GALLERY_DOWNLOAD_STARS)}',
         '',
         '🎬 Видео:',
-        f'• оживление фото (видео или кружочек) — {VIDEO_COST_STARS}⭐{fiat_suffix(VIDEO_COST_STARS)}',
-        f'• Premium: {VIDEO_PREMIUM_FREE_DAILY} бесплатно в день',
+        f'• оживление фото — только в Premium на 30 дней и дольше: {VIDEO_PREMIUM_FREE_DAILY} в день; '
+        'отдельно не продаётся, в пробный период и неделю не входит',
         '',
         '🎯 Истории и персонажи:',
         f'• альтернативная ветка истории — {QUEST_REPLAY_STARS}⭐{fiat_suffix(QUEST_REPLAY_STARS)}',
