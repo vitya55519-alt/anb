@@ -108,7 +108,7 @@ def test_scheduler_retention_tiers_and_rituals():
     assert 'async def _rituals(' in SCHEDULER
     assert 'retention_service.pick_text(kind)' in SCHEDULER
     assert "scheduler.add_job(_rituals,'interval',minutes=30" in SCHEDULER
-    assert 'не прерывай серию' in SCHEDULER
+    assert '_streak_line(streak' in SCHEDULER  # V3.113.0: no «не прерывай серию» pressure
 
 
 def test_premium_pitch_mentions_new_perks_and_plateau():
