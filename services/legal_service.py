@@ -22,7 +22,9 @@ from __future__ import annotations
 import os
 
 from config import (
+    FREE_LATE_FROM_DAY,
     FREE_MESSAGES_PER_DAY,
+    FREE_MESSAGES_PER_DAY_LATE,
     FREE_PHOTOS_LEVEL_1_2,
     FREE_PHOTOS_LEVEL_3_6,
     PREMIUM_MONTHLY_STARS,
@@ -230,6 +232,9 @@ def tariffs_text(lang: str = 'ru') -> str:
                     else f'{FREE_MESSAGES_PER_DAY} messages per day')
     chat_free_ru = ('без ограничения количества сообщений' if FREE_MESSAGES_PER_DAY >= 1000
                     else f'{FREE_MESSAGES_PER_DAY} сообщений в день')
+    if FREE_MESSAGES_PER_DAY < 1000 and FREE_MESSAGES_PER_DAY_LATE < FREE_MESSAGES_PER_DAY:
+        chat_free_en += f' (from day {FREE_LATE_FROM_DAY}: {FREE_MESSAGES_PER_DAY_LATE})'
+        chat_free_ru += f' (с {FREE_LATE_FROM_DAY}-го дня — {FREE_MESSAGES_PER_DAY_LATE})'
     if lang == 'en':
         lines = [
             '💰 Prices & tariffs',

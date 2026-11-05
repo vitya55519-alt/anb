@@ -1208,6 +1208,7 @@
     <div class="emo" id="payEmo">⭐</div>
     <h3 id="payTitle"></h3>
     <div id="payRows"></div>
+    <div id="payNote" style="margin-top:10px;font-size:12px;opacity:.7;text-align:center"></div>
   </div>
 </div>
 <!-- V3.43.0: full-screen photo lightbox — tap a photo and it opens -->
@@ -1611,6 +1612,8 @@ const L_EN = {
   qb_spicy: 'Her most private photos are for Premium 🔥 she is ready to show you',
   spicy_btn: '🔥 Unlock with Premium',
   sext_btn: '🔥 Explicit chat — with Premium',
+  voice_btn: '🎙 Hear her voice every time', pay_once: 'One-time payment · no auto-renewal',
+  pay_stars_en: 'Telegram Stars — bought right in Telegram (Apple Pay / Google Pay / card)', pay_sbp_en: 'Crypto / Russian card',
   trial_chip: '🔥 3 days of Premium',
   speak_free_left: n => n > 0 ? `🎙 free listens left today: ${n}` : '🎙 that was the last free listen today',
   sc_prem_only: '⭐ Premium only',
@@ -1865,6 +1868,8 @@ const L_RU = {
   qb_spicy: 'Самые откровенные фото — с Premium 🔥 она уже готова тебе показать',
   spicy_btn: '🔥 Открыть с Premium',
   sext_btn: '🔥 Откровенно — с Premium',
+  voice_btn: '🎙 Слышать её голос всегда', pay_once: 'Разовый платёж · без автопродления',
+  pay_stars_en: 'Telegram Stars', pay_sbp_en: 'Карта / СБП / крипта',
   trial_chip: '🔥 3 дня Premium',
   speak_free_left: n => n > 0 ? `🎙 бесплатных прослушиваний сегодня: ещё ${n}` : '🎙 это было последнее бесплатное прослушивание сегодня',
   sc_prem_only: '⭐ только с Premium',
@@ -3532,6 +3537,10 @@ function renderChatReply(j) {
   // V3.90.0: his explicit message without Premium — a quiet chip, no auto sheet.
   if (j.sext_offer) {
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('spicy')">${esc(trialChip(L.sext_btn || L.spicy_btn))}</button></div>`);
+  }
+  // V3.106.0: her free voice notes are used up — «слышать её голос всегда».
+  if (j.voice_offer) {
+    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('voice')">${esc(trialChip(L.voice_btn || L.qb_voice))}</button></div>`);
   }
   // V3.87.0: a nude / lingerie photo — Premium-only; the pay sheet opens at once.
   if (j.photo_block === 'spicy') {
@@ -5524,7 +5533,8 @@ async function loadShop() {
     // «unlimited» only if the ceiling is ever raised past a fair-use 1000.
     const chatNote = s.free_tier.messages_per_day >= 1000
       ? esc(L.unlim_title)
-      : `${s.free_tier.messages_per_day} ${esc(L.msg_day)}`;
+      : `${s.free_tier.messages_per_day} ${esc(L.msg_day)}` + (s.free_tier.messages_per_day_later && s.free_tier.messages_per_day_later < s.free_tier.messages_per_day
+        ? ` (${esc((LANG === 'ru' ? 'с ' + s.free_tier.later_from_day + '-го дня — ' : 'from day ' + s.free_tier.later_from_day + ': ') + s.free_tier.messages_per_day_later)})` : '');
     const photoPrice = s.photo_peaches || 0;
     document.getElementById('shopbody').innerHTML = `
       ${premCard}
@@ -5704,10 +5714,21 @@ function openPay(id, onPaid) {
   document.getElementById('payTitle').textContent = x.title;
   // V3.62.12: card/SBP leads (rubles), Telegram Stars follows.
   const rows = [];
-  if (x.rub && s.platega) rows.push(`<button class="mrow" data-m="sbp"><span class="ico">💳</span><span class="nm">${esc(L.pay_sbp)}</span><span class="pr">${esc(x.rub)} ₽</span></button>`);
-  rows.push(`<button class="mrow" data-m="stars"><span class="ico">⭐</span><span class="nm">${esc(L.pay_stars)}</span><span class="pr">${x.stars} ⭐</span></button>`);
-  if (s.wallet_pay) rows.push(`<button class="mrow" data-m="crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto)}</span><span class="pr">$${esc(x.usd || (x.stars * 0.02).toFixed(2))}</span></button>`);
+  const sbpRow = `<button class="mrow" data-m="sbp"><span class="ico">💳</span><span class="nm">${esc(LANG !== 'ru' ? (L.pay_sbp_en || L.pay_sbp) : L.pay_sbp)}</span><span class="pr">${esc(x.rub)} ₽</span></button>`;
+  const starsRow = `<button class="mrow" data-m="stars"><span class="ico">⭐</span><span class="nm">${esc(LANG !== 'ru' ? (L.pay_stars_en || L.pay_stars) : L.pay_stars)}</span><span class="pr">${x.stars} ⭐</span></button>`;
+  const cryptoRow = `<button class="mrow" data-m="crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto)}</span><span class="pr">$${esc(x.usd || (x.stars * 0.02).toFixed(2))}</span></button>`;
+  // V3.106.0: abroad a Russian card / SBP page is a dead end — Stars lead.
+  if (LANG !== 'ru') {
+    rows.push(starsRow);
+    if (s.wallet_pay) rows.push(cryptoRow);
+    if (x.rub && s.platega) rows.push(sbpRow);
+  } else {
+    if (x.rub && s.platega) rows.push(sbpRow);
+    rows.push(starsRow);
+    if (s.wallet_pay) rows.push(cryptoRow);
+  }
   document.getElementById('payRows').innerHTML = rows.join('');
+  document.getElementById('payNote').textContent = L.pay_once || '';
   document.querySelectorAll('#payRows [data-m]').forEach(b =>
     b.addEventListener('click', () => payVia(x.id, b.dataset.m, b, {}, onPaid)));
   document.getElementById('paymodal').classList.add('open');
@@ -5744,6 +5765,7 @@ async function quickBuy(kind, retry, opts) {
   items.forEach(x => rows.push(`<button class="mrow" data-q="${esc(x.id)}"><span class="ico">${esc(x.emoji || '⭐')}</span><span class="nm">${esc(x.title)}${x.badge ? ' · ' + esc(x.badge) : ''}${x.description ? '<small class="qbd">' + esc(x.description) + '</small>' : ''}</span><span class="pr">${esc(money(x))}</span></button>`));
   rows.push(`<button class="mrow" data-q="__shop"><span class="ico">🛍</span><span class="nm">${esc(L.qb_more)}</span><span class="pr"></span></button>`);
   document.getElementById('payRows').innerHTML = rows.join('');
+  document.getElementById('payNote').textContent = L.pay_once || '';
   document.querySelectorAll('#payRows [data-q]').forEach(b => b.addEventListener('click', async () => {
     const id = b.dataset.q;
     document.getElementById('paymodal').classList.remove('open');
@@ -5781,6 +5803,7 @@ function openPayCustom(units, unit, item) {
   document.getElementById('payRows').innerHTML = rows.join('');
   document.querySelectorAll('#payRows [data-m]').forEach(b =>
     b.addEventListener('click', () => payVia('peach_custom', b.dataset.m, b, { peaches: n })));
+  document.getElementById('payNote').textContent = L.pay_once || '';
   document.getElementById('paymodal').classList.add('open');
 }
 async function payVia(id, method, btn, extra, onPaid) {

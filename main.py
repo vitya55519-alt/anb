@@ -6380,6 +6380,7 @@ async def platega_pay(cq: types.CallbackQuery):
         cq.message.chat.id,
         f'{title} · оплата картой / СБП / криптой\n\n'
         'Способ оплаты выберешь на странице платежа. '
+        'Это разовый платёж, без автопродления: сам ничего не спишется. '
         'После оплаты всё включится автоматически в течение минуты. '
         'Если что-то пойдёт не так — напиши /support.',
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='💳 Оплатить', url=link)]]),
@@ -7487,7 +7488,7 @@ async def _send_voice_note(chat_id: int, telegram_id: int, text: str) -> None:
         user = get_user(telegram_id)
         if not user or not getattr(user, 'voice_enabled', False):
             return
-        clean = ''.join(ch for ch in text if ch.isalnum() or ch in ' .,!?:;-—…()«»\'\n')
+        clean = _tts_text(text)
         if not clean.strip():
             return
         character_id = get_user_character(telegram_id)
@@ -12601,6 +12602,16 @@ def _webapp_chat_gate(character_id: str, telegram_id: int):
     return None
 
 
+def _tts_text(text: str) -> str:
+    """Text for her voice note. V3.106.0: with VOICE_HUMANIZE_ENABLED the raw
+    line goes on (emoji, «)))», «хаха» become laughs / sighs in
+    services/voice_humanize.py); otherwise the old letters-and-punctuation cut."""
+    from services import voice_humanize
+    if voice_humanize.ENABLED:
+        return (text or '')[:600]
+    return ''.join(ch for ch in (text or '') if ch.isalnum() or ch in ' .,!?:;-—…()«»\'\n')[:600]
+
+
 async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str):
     """V3.57.0: synthesize her voice note for an app-chat reply when allowed —
     same rules as the Telegram _send_voice_note: the voice_enabled toggle plus
@@ -12609,23 +12620,42 @@ async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str
     try:
         # V3.57.2: the permission read and the media write are PostgreSQL/disk
         # work — off the loop, only the synthesis itself stays awaited.
+        taste = ['']
+
         def _allowed():
             user = get_user(telegram_id)
-            if not user or not getattr(user, 'voice_enabled', False):
+            if not user:
                 return None
-            if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
-                return None
-            return user.voice_style or 'nova'
+            if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
+                return (user.voice_style or 'nova') if getattr(user, 'voice_enabled', False) else None
+            # V3.106.0: without Premium — her first replies come as voice on
+            # their own (services/voice_taste.py), then a quiet «слышать всегда».
+            from services import voice_taste
+            from models.app_models import Message
+            from sqlalchemy import func
+            with SessionLocal() as s:
+                mine = int(s.scalar(select(func.count(Message.id)).where(
+                    Message.user_id == user.id, Message.character_id == character_id,
+                    Message.role == 'user')) or 0)
+            taste[0] = voice_taste.decide(telegram_id, text, mine)
+            return (user.voice_style or 'nova') if taste[0] == 'voice' else None
 
         voice_style = await asyncio.to_thread(_allowed)
+        if taste[0] == 'offer':
+            await asyncio.to_thread(track_event, ensure_user(telegram_id), 'paywall_view',
+                                    metadata={'product': 'voice_taste', 'character_id': character_id})
+            return 'offer'
         if not voice_style:
             return None
-        clean = ''.join(ch for ch in text if ch.isalnum() or ch in ' .,!?:;-—…()«»\'\n')[:600]
+        clean = _tts_text(text)
         if not clean.strip():
             return None
         audio = await synthesize_bytes(clean, voice_style, character_id=character_id)
         filename = await asyncio.to_thread(
             webapp_service.save_chat_media, telegram_id, audio, 'ogg', 'audio/ogg')
+        if taste[0] == 'voice':
+            from services import voice_taste
+            await asyncio.to_thread(voice_taste.mark_sent, telegram_id, character_id)
         return f'/webapp/media/{filename}'
     except Exception:
         logger.warning('webapp reply voice failed user=%s', telegram_id)
@@ -12954,7 +12984,10 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     except Exception:
         logger.warning('circle offer failed user=%s', telegram_id, exc_info=True)
     voice_url = await _webapp_reply_voice_url(telegram_id, character_id, answer)
-    if voice_url:
+    if voice_url == 'offer':
+        if not any(k in payload for k in ('locked_tease', 'sext_offer')):
+            payload['voice_offer'] = True  # V3.106.0: «🎙 слышать её голос всегда»
+    elif voice_url:
         payload['voice_url'] = voice_url
     payload.update(extra or {})
     return web.json_response(payload)
@@ -13185,7 +13218,7 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
     body = body or {}
     character_id = str(body.get('character_id', ''))[:64]
     text = str(body.get('text', ''))
-    clean = ''.join(ch for ch in text if ch.isalnum() or ch in ' .,!?:;-—…()«»\'\n')[:600]
+    clean = _tts_text(text)
     if not character_id or not clean.strip():
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
 
@@ -14157,7 +14190,7 @@ async def _webapp_media_voice(telegram_id: int, character_id: str):
         return text, (user.voice_style if user else None) or 'nova'
 
     text, voice_style = await asyncio.to_thread(_pick_line)
-    clean = ''.join(ch for ch in text if ch.isalnum() or ch in ' .,!?:;-—…()«»\'\n')[:600]
+    clean = _tts_text(text)
     audio = await synthesize_bytes(clean, voice_style, character_id=character_id)
     return audio, 'audio/ogg', 'ogg'
 

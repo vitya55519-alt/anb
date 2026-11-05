@@ -42,7 +42,10 @@ def test_reply_voice_note_keeps_the_premium_gate():
     body = MAIN[MAIN.index('async def _webapp_reply_voice_url('):MAIN.index('async def _webapp_chat_turn(')]
     # same rules as the Telegram _send_voice_note: toggle + Premium (admins bypass)
     assert "getattr(user, 'voice_enabled', False)" in body
-    assert 'if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):' in body
+    # V3.106.0: Premium/admins still need the toggle; without Premium only the
+    # voice taste (services/voice_taste.py) may speak
+    assert 'if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):' in body
+    assert "if taste[0] == 'voice' else None" in body
     assert 'await synthesize_bytes(clean, voice_style, character_id=character_id)' in body
     assert "save_chat_media, telegram_id, audio, 'ogg', 'audio/ogg'" in body
     # a broken TTS must never eat the text reply

@@ -130,6 +130,12 @@ SPICYAPI_TTS_COST_PER_1K_USD = float(os.getenv("SPICYAPI_TTS_COST_PER_1K_USD", "
 # V3.74.0: owner — «голос в обычных ответах на Грок». Grok TTS is the first
 # voice for every reply (~$0.004 each); free Gemini TTS stays the fallback.
 SPICY_TTS_ENABLED = os.getenv("SPICY_TTS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+# V3.106.0: owner — «гемини огонь». Gemini 3.8 Flash TTS through SpicyAPI is now
+# the first voice (each girl keeps her own Gemini voice + manner); Grok is the
+# fallback. ~$0.00032 per second of audio (~$0.003 for a 10 s note).
+SPICY_GEMINI_TTS_ENABLED = os.getenv("SPICY_GEMINI_TTS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
+SPICY_GEMINI_TTS_MODEL = os.getenv("SPICY_GEMINI_TTS_MODEL", "google/gemini-3.8-flash-tts/text-to-speech").strip()
+SPICY_GEMINI_TTS_COST_PER_SEC_USD = float(os.getenv("SPICY_GEMINI_TTS_COST_PER_SEC_USD", "0.00032"))
 # V3.75.0: scenario cards (services/scenario_cards.py) — the Come Closer push:
 # a cover, a role-play setup and one button into the scene. Covers are rendered
 # once per scene — a Seedream photo (≈ $0.035) by default, optionally animated
@@ -514,6 +520,14 @@ ADAPTATION_MAX_EXPRESSIONS = max(3, min(20, int(os.getenv("ADAPTATION_MAX_EXPRES
 # NOTE: the gate is `count < FREE_MESSAGES_PER_DAY`, so 0 here means «nobody may
 # write», not «unlimited» — never set it to zero.
 FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "20"))
+# V3.106.0: the owner tightened the free tier for people who have been here a
+# while: from day FREE_LATE_FROM_DAY after sign-up (day 1 = the sign-up day) a
+# non-Premium man gets FREE_MESSAGES_PER_DAY_LATE a day instead. Backup 5 Nov:
+# heavy free users (200–500 msgs) never paid; every payment came in the first
+# session. Set FREE_MESSAGES_PER_DAY_LATE equal to FREE_MESSAGES_PER_DAY to switch
+# it off. Never 0 (see the note above).
+FREE_MESSAGES_PER_DAY_LATE = max(1, int(os.getenv("FREE_MESSAGES_PER_DAY_LATE", "10")))
+FREE_LATE_FROM_DAY = max(2, int(os.getenv("FREE_LATE_FROM_DAY", "4")))
 # V3.47.2: a brand-new user gets unlimited TEXT messages for this many hours
 # after registration (activation lever, mirrors the benchmark's «первые 24 часа
 # текст бесплатно»). Photo/video gates are untouched — text only.

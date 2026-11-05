@@ -27,6 +27,7 @@ def test_grok_first_then_gemini(monkeypatch):
         return b'OggS' + mp3
 
     monkeypatch.setattr(vs, 'SPICY_TTS_ENABLED', True)
+    monkeypatch.setattr(vs, 'SPICY_GEMINI_TTS_ENABLED', False)  # V3.106.0: Gemini 3.8 goes first; Grok is next
     monkeypatch.setattr(vs, 'SPICYAPI_KEY', 'k')
     monkeypatch.setattr(spicy_jobs, 'run', fake_run)
     monkeypatch.setattr(spend_service, 'record_image_spend', lambda *a, **k: None)
@@ -35,7 +36,8 @@ def test_grok_first_then_gemini(monkeypatch):
     assert out == b'OggSID3mp3'
     (model, block), = sent
     assert model == 'xai/grok-tts/text-to-speech'
-    assert block == {'text': 'Привет, я скучала', 'voice_id': 'ara', 'language': 'ru'}
+    # V3.106.0: a tender line is spoken softly (services/voice_humanize.py)
+    assert block == {'text': '<soft>Привет, я скучала</soft>', 'voice_id': 'ara', 'language': 'ru'}
 
 
 def test_grok_failure_falls_back_to_gemini(monkeypatch):
