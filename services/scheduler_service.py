@@ -1051,18 +1051,24 @@ async def _trial_followup(bot):
                 name = ''
             text = tf.text(stage, name, lang)
             en = lang == 'en'
-            kb = [[InlineKeyboardButton(text=(f'💗 a week — {PREMIUM_WEEKLY_STARS} Stars' if en
-                                              else f'💗 неделя — {PREMIUM_WEEKLY_STARS} Stars'),
-                                        callback_data='buy:premium_week')]]
-            if PLATEGA_ENABLED and not en:
-                kb.append([InlineKeyboardButton(text=f'💳 неделя — {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · карта / СБП',
-                                                callback_data='platega:premium_week')])
-                kb.append([InlineKeyboardButton(text=f'💳 месяц — {PLATEGA_PREMIUM_PRICE_RUB} ₽ · карта / СБП',
-                                                callback_data='platega:premium_month')])
+            from services import vip_offer
+            if vip_offer.info(telegram_id).get('loyal'):
+                # V3.104.0: his loyalty month (−50%) from the first payment.
+                from services.renewal_care import stay_buttons
+                kb = stay_buttons(telegram_id, en)
             else:
-                kb.append([InlineKeyboardButton(text=(f'⭐ a month — {PREMIUM_MONTHLY_STARS} Stars' if en
-                                                      else f'⭐ месяц — {PREMIUM_MONTHLY_STARS} Stars'),
-                                                callback_data='buy:premium')])
+                kb = [[InlineKeyboardButton(text=(f'💗 a week — {PREMIUM_WEEKLY_STARS} Stars' if en
+                                                  else f'💗 неделя — {PREMIUM_WEEKLY_STARS} Stars'),
+                                            callback_data='buy:premium_week')]]
+                if PLATEGA_ENABLED and not en:
+                    kb.append([InlineKeyboardButton(text=f'💳 неделя — {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽ · карта / СБП',
+                                                    callback_data='platega:premium_week')])
+                    kb.append([InlineKeyboardButton(text=f'💳 месяц — {PLATEGA_PREMIUM_PRICE_RUB} ₽ · карта / СБП',
+                                                    callback_data='platega:premium_month')])
+                else:
+                    kb.append([InlineKeyboardButton(text=(f'⭐ a month — {PREMIUM_MONTHLY_STARS} Stars' if en
+                                                          else f'⭐ месяц — {PREMIUM_MONTHLY_STARS} Stars'),
+                                                    callback_data='buy:premium')])
             if PUBLIC_BASE_URL:
                 kb.append([InlineKeyboardButton(text='💬 reply to her' if en else '💬 ответить ей',
                                                 web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
@@ -1073,6 +1079,80 @@ async def _trial_followup(bot):
             _mark_blocked(uid)
         except Exception:
             logger.exception('trial followup failed user=%s', uid)
+
+
+def _msk_daytime(now: dt.datetime | None = None) -> bool:
+    """09:00–22:59 Moscow time: personal messages never wake him at night."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    return 9 <= (now.hour + 3) % 24 <= 22
+
+
+async def _paid_day1(bot):
+    """V3.104.0: the day after he paid she writes first about something he told
+    her (services/paid_welcome.py). Once per payment; skipped while he is here."""
+    from services import paid_welcome as pw
+    if not (pw.DAY1_ENABLED and _msk_daytime()):
+        return
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    from services.ui_lang import user_lang, EN
+    from services.chat_service import paid_moment
+    try:
+        rows = await asyncio.to_thread(pw.day1_candidates)
+    except Exception:
+        logger.exception('paid day1 scan failed'); return
+    for uid, telegram_id, char_id, product in rows:
+        char_id = char_id or CHARACTER_ID
+        try:
+            # the slot first — a failed send must not re-fire every scan
+            await asyncio.to_thread(pw.mark, uid, pw.DAY1_EVENT, char_id, product)
+            lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+            text = await paid_moment(telegram_id, '', 'day1', language_code='en' if lang == 'en' else None,
+                                     character_id=char_id) or pw.fallback('day1', lang)
+            kb = None
+            if PUBLIC_BASE_URL:
+                kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                    text='💬 reply to her' if lang == 'en' else '💬 ответить ей',
+                    web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))]])
+            await bot.send_message(telegram_id, text, reply_markup=kb)
+            _to_app_chat(uid, telegram_id, char_id, text)
+        except TelegramForbiddenError:
+            _mark_blocked(uid)
+        except Exception:
+            logger.exception('paid day1 failed user=%s', uid)
+
+
+async def _renewal_care(bot):
+    """V3.104.0: a day before his paid week/month ends she remembers their talks
+    and asks him to stay; once more after it ran out (services/renewal_care.py)."""
+    from services import renewal_care as rc
+    if not (rc.ENABLED and _msk_daytime()):
+        return
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    from services.ui_lang import user_lang, EN
+    from services.chat_service import paid_moment
+    try:
+        rows = await asyncio.to_thread(rc.candidates)
+    except Exception:
+        logger.exception('renewal care scan failed'); return
+    for uid, telegram_id, char_id, stage, product in rows:
+        char_id = char_id or CHARACTER_ID
+        try:
+            await asyncio.to_thread(rc.mark, uid, stage, char_id)
+            lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+            en = lang == 'en'
+            text = await paid_moment(telegram_id, '', 'renew_soon' if stage == 'soon' else 'renew_ended',
+                                     language_code='en' if en else None, character_id=char_id) or rc.fallback(stage, lang)
+            kb = rc.stay_buttons(telegram_id, en)
+            if PUBLIC_BASE_URL:
+                kb.append([InlineKeyboardButton(text='💬 reply to her' if en else '💬 ответить ей',
+                                                web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
+            await bot.send_message(telegram_id, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+            _to_app_chat(uid, telegram_id, char_id, text)
+            track_event(uid, 'renewal_care_sent', metadata={'stage': stage, 'product': product}, character_id=char_id)
+        except TelegramForbiddenError:
+            _mark_blocked(uid)
+        except Exception:
+            logger.exception('renewal care failed user=%s', uid)
 
 
 async def _girl_of_day(bot):
@@ -1125,6 +1205,9 @@ def start_scheduler(bot):
     scheduler.add_job(_day1_hook,'interval',minutes=15,args=[bot],id='day1_hook',replace_existing=True)
     scheduler.add_job(_first_offer,'interval',minutes=10,args=[bot],id='first_offer',replace_existing=True)
     scheduler.add_job(_trial_followup,'interval',minutes=15,args=[bot],id='trial_followup',replace_existing=True)
+    # V3.104.0: next-day message after a payment, and «останешься?» before the end.
+    scheduler.add_job(_paid_day1,'interval',minutes=15,args=[bot],id='paid_day1',replace_existing=True)
+    scheduler.add_job(_renewal_care,'interval',minutes=15,args=[bot],id='renewal_care',replace_existing=True)
     scheduler.add_job(_first_minutes,'interval',minutes=3,args=[bot],id='first_minutes',replace_existing=True)
     scheduler.add_job(_weekly_report,'cron',day_of_week='mon',hour=6,minute=0,args=[bot],id='weekly_report',replace_existing=True)
     # V3.75.0: scenario cards — scans often, one card a day per user at most.
