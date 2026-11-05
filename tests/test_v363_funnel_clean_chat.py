@@ -108,7 +108,7 @@ def test_webapp_deep_opens_selected_chat():
 def test_first_offer_scheduled_and_deduped_before_send():
     assert "scheduler.add_job(_first_offer,'interval',minutes=10" in SCHED
     i = SCHED.index('async def _first_offer(bot):')
-    body = SCHED[i:i + 3000]
+    body = SCHED[i:SCHED.index('async def _showcase_voice(', i)]
     assert body.index('fos.mark_offered(telegram_id)') < body.index('await bot.send_photo(')
     assert 'is_premium(telegram_id)' in body and 'has_accepted(telegram_id)' in body
     assert 'ADMIN_TELEGRAM_IDS' in body
