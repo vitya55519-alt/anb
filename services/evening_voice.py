@@ -75,6 +75,31 @@ def caption(text: str) -> str:
     return text if len(text) <= CAPTION_LIMIT else text[:CAPTION_LIMIT - 1].rstrip() + '…'
 
 
+# ── V3.110.0: a photo of her comes with the evening voice ───────────────
+# Owner: «хотелось чтобы с голосовым каждый вечер приходила фотка». Budget
+# rule (29.10): no new renders for this — the photo is one that already
+# exists (her pool first, then a clean chat photo already rendered of her),
+# rotated per user so he does not get the same one twice. Spicy prompts are
+# filtered out in reused_photo, so free users never get anything intimate.
+PHOTO_ENABLED = os.getenv('EVENING_PHOTO_ENABLED', 'true').strip().lower() not in ('0', 'false', 'no', 'off')
+
+
+def evening_photo(character_id: str, uid: int | None) -> tuple[bytes, str, str] | None:
+    """(bytes, content_type, 'photo') of a ready photo of her, or None. $0."""
+    if not PHOTO_ENABLED or not character_id:
+        return None
+    try:
+        from services.chat_photo_allowance import reused_photo
+        picked = reused_photo(character_id, uid)
+    except Exception:
+        logger.exception('evening photo pick failed character=%s', character_id)
+        return None
+    if not picked or not picked[0]:
+        return None
+    data, mime, _ext = picked
+    return data, mime or 'image/jpeg', 'photo'
+
+
 # ── V3.108.0: owner's one-off voice cast to everyone ─────────────────────
 # «всем одно и то же»: one line per language, voiced once per girl and
 # reused for every user of that girl (a handful of TTS calls, not hundreds).

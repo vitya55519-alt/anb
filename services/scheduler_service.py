@@ -616,10 +616,24 @@ async def _rituals(bot):
                     evening_voice=await _ev.voice_bytes(text, char_id, _el)
                 except Exception:
                     logger.exception('evening voice failed user=%s',uid)
+            # V3.110.0: owner — a photo of her comes with the evening voice
+            # every evening. Only a ready photo (no new render), rotated per user.
+            evening_shot=None
+            if kind=='evening':
+                try:
+                    from services import evening_voice as _ev
+                    evening_shot=await asyncio.to_thread(_ev.evening_photo, char_id, uid)
+                except Exception:
+                    logger.exception('evening photo failed user=%s',uid)
+                    evening_shot=None
             # V3.59.2: the evening plants a reason to come back — a promise the
             # morning ritual keeps with a photo. Only promised when her media
             # pool can actually deliver one.
-            if kind=='evening' and shot:
+            # V3.110.0: with the evening photo there, the promise is dropped —
+            # the photo is already in his hands tonight.
+            if kind=='evening' and evening_shot:
+                shot=evening_shot
+            elif kind=='evening' and shot:
                 text+=('\n\nand tomorrow morning I\'ll send you something, don\'t oversleep 😏' if _el=='en'
                        else '\n\nа завтра утром пришлю тебе кое-что, не проспи 😏')
                 _ritual_promised.add((uid,(now+dt.timedelta(days=1)).date().isoformat()))
@@ -641,7 +655,7 @@ async def _rituals(bot):
                         track_event(uid,'morning_callback_sent',character_id=char_id)
                 except Exception:
                     logger.exception('morning callback failed user=%s',uid)
-            if streak and streak >= 3 and not shot:
+            if streak and streak >= 3 and (not shot or evening_shot):
                 text+=f'\n\nкстати, мы общаемся {streak} дней подряд 🔥 не прерывай серию 😉'
             markup=None
             if gift_label:
@@ -651,7 +665,16 @@ async def _rituals(bot):
                         text=gift_label, web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'))]])
                 else:
                     text+='\n\n'+gift_label.replace('Забрать подарок','дневной подарок ждёт в приложении,')
-            if evening_voice and not shot:
+            if evening_voice and evening_shot:
+                # photo first (quiet, no caption), then her voice with the words
+                from aiogram.types import BufferedInputFile
+                from services import evening_voice as _ev
+                _pd, _pc, _pk = evening_shot
+                await bot.send_photo(int(tg_id), BufferedInputFile(_pd, filename='evening.jpg'))
+                await bot.send_voice(int(tg_id), BufferedInputFile(evening_voice, filename=f'{char_id}.ogg'), caption=_ev.caption(text), reply_markup=markup)
+                track_event(uid, 'evening_voice_sent', character_id=char_id)
+                track_event(uid, 'evening_photo_sent', character_id=char_id)
+            elif evening_voice and not shot:
                 from aiogram.types import BufferedInputFile
                 from services import evening_voice as _ev
                 await bot.send_voice(int(tg_id), BufferedInputFile(evening_voice, filename=f'{char_id}.ogg'), caption=_ev.caption(text), reply_markup=markup)
@@ -665,6 +688,8 @@ async def _rituals(bot):
                     await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=text, reply_markup=markup)
                 else:
                     await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=text, reply_markup=markup)
+                if evening_shot:
+                    track_event(uid, 'evening_photo_sent', character_id=char_id)
             else:
                 await bot.send_message(int(tg_id),text,reply_markup=markup)
             _to_app_chat(uid,tg_id,char_id,text,shot)
