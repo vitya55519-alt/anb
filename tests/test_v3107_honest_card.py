@@ -42,3 +42,43 @@ def test_crypto_row_goes_to_platega_page():
     assert "if method == 'sbp' or method == 'platega_crypto':" in MAIN
     assert 'data-m="platega_crypto"' in HTML
     assert "pay_crypto_pg: 'Криптовалюта'" in HTML
+
+
+# ── evening voice ─────────────────────────────────────────────────────────
+import asyncio
+
+from services import evening_voice as ev
+
+SCHED = (ROOT / 'services' / 'scheduler_service.py').read_text(encoding='utf-8')
+
+
+def test_evening_voice_language_guard():
+    assert ev.language_matches('как прошёл твой день?', 'ru')
+    assert not ev.language_matches('как прошёл твой день?', 'en')
+    assert ev.language_matches(ev.en_evening_line(), 'en')
+    assert ev.spoken_text('привет 😘 *шепчу*  ты где?') == 'привет шепчу ты где?'
+    assert len(ev.caption('а' * 1500)) == ev.CAPTION_LIMIT
+
+
+def test_evening_voice_skips_wrong_language(monkeypatch):
+    called = []
+
+    async def fake(text, voice=None, character_id=None):
+        called.append(text)
+        return b'ogg'
+
+    import services.voice_service as vs
+    monkeypatch.setattr(vs, 'synthesize_bytes', fake)
+    assert asyncio.run(ev.voice_bytes('как прошёл день? 🌙', 'anna_01', 'en')) is None
+    assert asyncio.run(ev.voice_bytes('как прошёл день? 🌙', 'anna_01', 'ru')) == b'ogg'
+    assert called == ['как прошёл день?']
+
+
+def test_scheduler_sends_evening_as_voice_for_everyone():
+    assert "evening_voice=await _ev.voice_bytes(text, char_id, _el)" in SCHED
+    assert "await bot.send_voice(int(tg_id), BufferedInputFile(evening_voice" in SCHED
+    assert "track_event(uid, 'evening_voice_sent'" in SCHED
+    assert "text=_ev.en_evening_line()" in SCHED
+    # no Premium gate on the evening voice
+    block = SCHED[SCHED.index('evening_voice=None'):SCHED.index("track_event(uid, 'evening_voice_sent'")]
+    assert 'is_premium' not in block
