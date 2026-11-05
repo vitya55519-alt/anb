@@ -331,12 +331,21 @@ async def synthesize_bytes(text: str, voice: str | None = None, character_id: st
     """
     v = voice if voice in _EDGE_VOICE_MAP else TTS_VOICE
 
+    # V3.106.0: a spoken line — laughs, sighs, pauses as Grok speech tags; the
+    # fallbacks below get the same line without the tags.
+    from services import voice_humanize
+    spoken = voice_humanize.to_speech(text, character_id)
+    plain = voice_humanize.strip_tags(spoken) if voice_humanize.ENABLED else text
+    if not plain.strip():
+        plain = text
+
     # V3.74.0: Grok TTS (SpicyAPI) first — the owner liked eve/ara best.
     if SPICY_TTS_ENABLED and SPICYAPI_KEY:
         try:
-            return await _tts_grok(text, character_id)
+            return await _tts_grok(spoken or text, character_id)
         except Exception as exc:
             logger.warning('grok-tts failed: %s; falling back to gemini', exc)
+    text = plain
 
     # V3.20.1: Gemini TTS first — a natural, human-like cute voice (the same
     # audio family heard in Veo videos); edge-tts sounded robotic to the owner.

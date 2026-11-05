@@ -35,7 +35,8 @@ def test_grok_first_then_gemini(monkeypatch):
     assert out == b'OggSID3mp3'
     (model, block), = sent
     assert model == 'xai/grok-tts/text-to-speech'
-    assert block == {'text': 'Привет, я скучала', 'voice_id': 'ara', 'language': 'ru'}
+    # V3.106.0: a tender line is spoken softly (services/voice_humanize.py)
+    assert block == {'text': '<soft>Привет, я скучала</soft>', 'voice_id': 'ara', 'language': 'ru'}
 
 
 def test_grok_failure_falls_back_to_gemini(monkeypatch):
