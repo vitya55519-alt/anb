@@ -63,7 +63,7 @@ def test_evening_voice_language_guard():
 def test_evening_voice_skips_wrong_language(monkeypatch):
     called = []
 
-    async def fake(text, voice=None, character_id=None):
+    async def fake(text, voice=None, character_id=None, mood=None):
         called.append(text)
         return b'ogg'
 
@@ -116,3 +116,24 @@ def test_feedback_endpoint_and_ui():
 def test_support_answer_falls_back_to_main_bot():
     block = MAIN[MAIN.index('async def _send_answer('):MAIN.index('async def _support_appeal(')]
     assert 'await bot.send_message(user_id, desk.ANSWER_PREFIX + body)' in block
+
+
+# ── V3.108.0: soft evening mood + /voicecast ──────────────────────────────
+VOICE = (ROOT / 'services' / 'voice_service.py').read_text(encoding='utf-8')
+
+
+def test_evening_mood_reaches_gemini_tts():
+    import services.voice_service as vs
+    assert 'тихо, мягко и медленно' in vs._SPICY_GEMINI_MOOD['evening']['ru']
+    assert "_tts_spicy_gemini(spoken or text, character_id, mood=mood)" in VOICE
+    assert "mood='evening'" in (ROOT / 'services' / 'evening_voice.py').read_text(encoding='utf-8')
+
+
+def test_voicecast_is_admin_only_and_needs_confirm():
+    block = MAIN[MAIN.index("async def _voice_cast_audio("):MAIN.index("@dp.message(Command('stats', 'adminstats'))")]
+    assert block.count('not in ADMIN_TELEGRAM_IDS') == 2
+    assert "callback_data='vcast:go'" in block and '_voice_cast_running' in block
+    # one voice per (girl, language), reused for everyone
+    assert 'key = (character_id, lang)' in block
+    assert set(ev.CAST_LINES) == {'ru', 'en'} and ev.language_matches(ev.CAST_LINES['en'], 'en')
+

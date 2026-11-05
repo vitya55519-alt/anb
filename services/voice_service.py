@@ -324,7 +324,8 @@ async def _transcribe_openai(voice_bytes: io.BytesIO) -> str:
     return r.text
 
 
-async def synthesize_bytes(text: str, voice: str | None = None, character_id: str | None = None) -> bytes:
+async def synthesize_bytes(text: str, voice: str | None = None, character_id: str | None = None,
+                           mood: str | None = None) -> bytes:
     """Synthesize text to speech audio bytes (opus format).
 
     The voice follows the character (each girl has her own cute voice) and the
@@ -343,7 +344,7 @@ async def synthesize_bytes(text: str, voice: str | None = None, character_id: st
     # V3.106.0: Gemini 3.8 Flash TTS (SpicyAPI) first — «гемини огонь».
     if SPICY_GEMINI_TTS_ENABLED and SPICYAPI_KEY:
         try:
-            return await _tts_spicy_gemini(spoken or text, character_id)
+            return await _tts_spicy_gemini(spoken or text, character_id, mood=mood)
         except Exception as exc:
             logger.warning('gemini-3.8-tts failed: %s; falling back to grok', exc)
 
@@ -388,14 +389,29 @@ _SPICY_GEMINI_BASE = {
 }
 
 
-async def _tts_spicy_gemini(spoken: str, character_id: str | None = None) -> bytes:
+# V3.108.0: a delivery mood on top of her own manner — the evening voice note
+# (owner: «мягкое, человеческое, сексуальное»).
+_SPICY_GEMINI_MOOD = {
+    'evening': {
+        'ru': ('Поздний вечер, она уже лежит в постели и записывает ему голосовое перед сном: говорит '
+               'тихо, мягко и медленно, близко-близко к микрофону, с тёплой лёгкой хрипотцой и '
+               'придыханием, чуть игриво и соблазнительно, с паузами и улыбкой в голосе. '),
+        'en': ('Late evening, she is already in bed recording him a voice note before sleep: quiet, soft '
+               'and slow, very close to the microphone, warm and a little husky, breathy, playful and '
+               'seductive, with small pauses and a smile in her voice. '),
+    },
+}
+
+
+async def _tts_spicy_gemini(spoken: str, character_id: str | None = None, mood: str | None = None) -> bytes:
     """V3.106.0: Gemini 3.8 Flash TTS through SpicyAPI (WAV 24 kHz → opus).
     Her own Gemini voice and manner; Grok tags become <laugh>/<sigh>/<short pause>."""
     from services import spend_service, spicy_jobs, voice_humanize
     text, style = voice_humanize.for_gemini(spoken)
     lang = 'ru' if detect_voice_language(text).startswith('ru') else 'en'
     manner = GEMINI_TTS_MANNER.get(character_id or '', '').strip(' ,')
-    instructions = _SPICY_GEMINI_BASE[lang] + (f'Her manner: {manner}.' if manner else '')
+    instructions = (_SPICY_GEMINI_BASE[lang] + _SPICY_GEMINI_MOOD.get(mood or '', {}).get(lang, '')
+                    + (f'Her manner: {manner}.' if manner else ''))
     block = {'text': text[:3000], 'voice_id': gemini_voice_for(character_id),
              'instructions': instructions[:1000]}
     if style:

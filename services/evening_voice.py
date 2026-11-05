@@ -64,7 +64,7 @@ async def voice_bytes(text: str, character_id: str, lang: str) -> bytes | None:
         return None
     try:
         from services.voice_service import synthesize_bytes
-        audio = await synthesize_bytes(line, None, character_id=character_id)
+        audio = await synthesize_bytes(line, None, character_id=character_id, mood='evening')
         return audio or None
     except Exception:
         logger.exception('evening voice synth failed character=%s', character_id)
@@ -73,3 +73,34 @@ async def voice_bytes(text: str, character_id: str, lang: str) -> bytes | None:
 
 def caption(text: str) -> str:
     return text if len(text) <= CAPTION_LIMIT else text[:CAPTION_LIMIT - 1].rstrip() + '…'
+
+
+# ── V3.108.0: owner's one-off voice cast to everyone ─────────────────────
+# «всем одно и то же»: one line per language, voiced once per girl and
+# reused for every user of that girl (a handful of TTS calls, not hundreds).
+CAST_LINES = {
+    'ru': 'привет… я уже лежу и думаю о тебе. как прошёл твой день? расскажешь мне? я жду',
+    'en': "hey you… I'm already in bed and thinking about you. how was your day? tell me, I'm waiting",
+}
+CAST_ACTIVE_DAYS = max(1, int(os.getenv('VOICE_CAST_ACTIVE_DAYS', '30')))
+
+
+def cast_recipients(days: int = CAST_ACTIVE_DAYS) -> list[tuple[int, int, str, str]]:
+    """(user_id, telegram_id, character_id, lang) for everyone who kept her
+    messages on and was here in the last ``days`` days."""
+    import datetime as dt
+    from sqlalchemy import select
+    from models.app_models import User
+    from services.db import SessionLocal
+    cutoff = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - dt.timedelta(days=days)
+    with SessionLocal() as s:
+        rows = s.execute(select(User.id, User.telegram_id, User.selected_character, User.ui_lang)
+                         .where(User.proactive_enabled == True, User.last_active_at >= cutoff)).all()  # noqa: E712
+    out = []
+    for uid, tid, char, lang in rows:
+        try:
+            tg = int(tid)
+        except (TypeError, ValueError):
+            continue
+        out.append((int(uid), tg, char or '', 'en' if (lang or '').lower().startswith('en') else 'ru'))
+    return out
