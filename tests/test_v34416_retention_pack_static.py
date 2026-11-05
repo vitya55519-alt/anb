@@ -70,7 +70,7 @@ def test_day1_hook_job():
 def test_morning_ritual_mentions_unclaimed_gift():
     # V3.55.5: the morning ritual now points at the unclaimed streak gift
     # (the V3.44.0 wheel check is gone with the wheel itself).
-    rituals = SCHEDULER[SCHEDULER.index('async def _rituals(bot):'):SCHEDULER.index('async def _donation_reminder(bot):')]
+    rituals = SCHEDULER[SCHEDULER.index('async def _rituals(bot, only_tg=None, force_kind=None):'):SCHEDULER.index('async def _donation_reminder(bot):')]
     assert "gift_service.gift_status(int(tg_id))" in rituals
     assert 'забирай дневной подарок' in rituals
 

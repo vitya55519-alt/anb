@@ -10205,6 +10205,32 @@ async def admin_week_cmd(message: types.Message):
 # сексуальное. посмотрим, как звучит». First the admin hears it himself; the
 # cast to everyone goes only after he taps the confirm button.
 _voice_cast_running = False
+@dp.callback_query(F.data.startswith('ritual_ok:'))
+async def admin_ritual_approve(cq: types.CallbackQuery):
+    """V3.110.0: test mode — the owner's «✅ Отправить всем» under the ritual
+    preview releases today's morning/evening ritual to every user."""
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    try:
+        _, kind, day = (cq.data or '').split(':', 2)
+    except ValueError:
+        await cq.answer()
+        return
+    if kind not in ('morning', 'evening'):
+        await cq.answer()
+        return
+    from services import scheduler_service as _ss
+    await asyncio.to_thread(_ss.approve_ritual, kind, day, cq.from_user.id)
+    await cq.answer('Отправляю всем…')
+    try:
+        await cq.message.edit_reply_markup(reply_markup=None)
+        await cq.message.answer('✅ Одобрено. Голосовые с фото уходят сейчас, а у кого другой часовой пояс, придут в их 9:00/20:00.')
+    except Exception:
+        pass
+    asyncio.create_task(_ss._rituals(bot))
+
+
 # V3.108.1: owner — «2 записи и всё»: one Russian and one English recording in
 # the voice of the girl he tested with, the same file to every user.
 _voice_cast_cache: dict = {}

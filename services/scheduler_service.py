@@ -541,14 +541,100 @@ _PROMISE_KEPT = (
 )
 
 
-async def _rituals(bot):
+# ── V3.110.0: test mode — the owner approves each ritual before it goes out ──
+# Owner: «перед тем, как это отправлять, сначала мне отправляешь, я нажимаю.
+# Мы так тестим 2-3 дня, а потом на автомат переключимся». While
+# RITUAL_APPROVAL_MODE is on (default), at the start of each window (Moscow
+# time) the admins get the ritual exactly as a user would (photo + voice) and
+# a «✅ Отправить всем» button; users get that ritual only after the press.
+# RITUAL_APPROVAL_MODE=false on Railway = fully automatic, nothing else changes.
+import os as _os
+RITUAL_APPROVAL_MODE=_os.getenv('RITUAL_APPROVAL_MODE','true').strip().lower() not in ('0','false','no','off')
+RITUAL_APPROVAL_GRACE_HOURS=max(0,int(_os.getenv('RITUAL_APPROVAL_GRACE_HOURS','3')))
+_ritual_approved: set = set()
+_ritual_previewed: set = set()
+
+
+def _msk_now() -> dt.datetime:
+    from zoneinfo import ZoneInfo
+    return dt.datetime.now(ZoneInfo('Europe/Moscow'))
+
+
+def ritual_kind_at(hour: int, grace: int = 0) -> str | None:
+    if RITUAL_MORNING_START_HOUR <= hour < RITUAL_MORNING_END_HOUR + grace:
+        return 'morning'
+    if RITUAL_EVENING_START_HOUR <= hour < RITUAL_EVENING_END_HOUR + grace:
+        return 'evening'
+    return None
+
+
+def ritual_is_approved(kind: str, day: str) -> bool:
+    if (kind, day) in _ritual_approved:
+        return True
+    try:
+        import json
+        from models.app_models import ProductEvent
+        with SessionLocal() as s:
+            for (meta,) in s.execute(select(ProductEvent.metadata_json).where(
+                    ProductEvent.event_name=='ritual_approved')
+                    .order_by(ProductEvent.id.desc()).limit(20)).all():
+                d=json.loads(meta or '{}')
+                if d.get('kind')==kind and d.get('day')==day:
+                    _ritual_approved.add((kind, day))
+                    return True
+    except Exception:
+        logger.exception('ritual approval read failed')
+    return False
+
+
+def approve_ritual(kind: str, day: str, admin_tg: int) -> None:
+    import json
+    from models.app_models import ProductEvent
+    _ritual_approved.add((kind, day))
+    with SessionLocal() as s:
+        s.add(ProductEvent(user_id=None, character_id='', event_name='ritual_approved', value=float(admin_tg),
+                           metadata_json=json.dumps({'kind': kind, 'day': day})))
+        s.commit()
+
+
+async def _ritual_preview(bot, kind: str, day: str) -> None:
+    """Admins get the ritual as a user would, then the approve button."""
+    from config import ADMIN_TELEGRAM_IDS
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    await _rituals(bot, only_tg=set(ADMIN_TELEGRAM_IDS), force_kind=kind)
+    label='утреннее' if kind=='morning' else 'вечернее'
+    kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text='✅ Отправить всем', callback_data=f'ritual_ok:{kind}:{day}')]])
+    for admin in ADMIN_TELEGRAM_IDS:
+        try:
+            await bot.send_message(int(admin), f'🧪 Тест: выше {label} голосовое с фото, как его получит пользователь '
+                                   f'(у каждого своя героиня и своё фото). Отправить всем?', reply_markup=kb)
+        except Exception:
+            logger.exception('ritual preview prompt failed admin=%s', admin)
+
+
+async def _rituals(bot, only_tg=None, force_kind=None):
     """V3.20.0: morning/evening rituals — she writes first in the user's local
-    time window. Only recent (RITUAL_MAX_INACTIVE_DAYS) opt-in users get them."""
+    time window. Only recent (RITUAL_MAX_INACTIVE_DAYS) opt-in users get them.
+    V3.110.0: only_tg + force_kind = the owner's preview (test mode)."""
     now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     fresh_cutoff=now-dt.timedelta(days=RITUAL_MAX_INACTIVE_DAYS)
+    preview=bool(only_tg)
+    msk_day=_msk_now().date().isoformat()
+    if RITUAL_APPROVAL_MODE and not preview:
+        msk_kind=ritual_kind_at(_msk_now().hour)
+        if msk_kind and (msk_kind,msk_day) not in _ritual_previewed and not ritual_is_approved(msk_kind,msk_day):
+            _ritual_previewed.add((msk_kind,msk_day))
+            try:
+                await _ritual_preview(bot, msk_kind, msk_day)
+            except Exception:
+                logger.exception('ritual preview failed kind=%s', msk_kind)
     with SessionLocal() as s:
-        # V3.21.0: notify_rituals is the per-user opt-out (NULL = legacy on).
-        users=s.scalars(select(User).where(User.proactive_enabled==True,User.notify_rituals!=False,User.last_active_at>=fresh_cutoff)).all()
+        if preview:
+            users=s.scalars(select(User).where(User.telegram_id.in_([str(t) for t in only_tg]))).all()
+        else:
+            # V3.21.0: notify_rituals is the per-user opt-out (NULL = legacy on).
+            users=s.scalars(select(User).where(User.proactive_enabled==True,User.notify_rituals!=False,User.last_active_at>=fresh_cutoff)).all()
         snapshot=[(u.id,u.telegram_id,u.name or 'ты',u.streak_count or 0,u.timezone,u.selected_character or '') for u in users]
     today_key=now.date().isoformat()
     for uid,tg_id,name,streak,tz,sel_char in snapshot:
@@ -557,14 +643,18 @@ async def _rituals(bot):
                 u=s.get(User,uid)
                 if not u: continue
                 local_hour=_user_local_hour(u)
-            kind=None
-            if RITUAL_MORNING_START_HOUR <= local_hour < RITUAL_MORNING_END_HOUR:
-                kind='morning'
-            elif RITUAL_EVENING_START_HOUR <= local_hour < RITUAL_EVENING_END_HOUR:
-                kind='evening'
+            if preview:
+                kind=force_kind
+            elif RITUAL_APPROVAL_MODE:
+                # test mode: the window stays open a few hours for a late press
+                kind=ritual_kind_at(local_hour, RITUAL_APPROVAL_GRACE_HOURS)
+                if kind and not ritual_is_approved(kind, msk_day):
+                    continue
+            else:
+                kind=ritual_kind_at(local_hour)
             if not kind: continue
             guard=(uid,kind,today_key)
-            if guard in _ritual_sent: continue
+            if guard in _ritual_sent and not preview: continue
             # V3.44.2: per-character ritual messages
             # V3.56.7: the ritual belongs to the character the USER chats with,
             # and so does the attached pool photo — the global CHARACTER_ID
@@ -622,8 +712,10 @@ async def _rituals(bot):
                     logger.exception('evening voice failed user=%s',uid)
             # V3.110.0: owner — a photo of her comes with the evening voice
             # every evening. Only a ready photo (no new render), rotated per user.
+            # V3.110.0: owner — «утреннее голосовое тоже с фото»: the same pick
+            # (user generations → her pool) for the morning as well.
             evening_shot=None
-            if kind=='evening':
+            if kind in ('evening','morning'):
                 try:
                     from services import evening_voice as _ev
                     from services.user_service import is_adult_confirmed as _adult
@@ -636,14 +728,14 @@ async def _rituals(bot):
             # pool can actually deliver one.
             # V3.110.0: with the evening photo there, the promise is dropped —
             # the photo is already in his hands tonight.
-            if kind=='evening' and evening_shot:
+            if evening_shot:
                 shot=evening_shot
             elif kind=='evening' and shot:
                 text+=('\n\nand tomorrow morning I\'ll send you something, don\'t oversleep 😏' if _el=='en'
                        else '\n\nа завтра утром пришлю тебе кое-что, не проспи 😏')
                 _ritual_promised.add((uid,(now+dt.timedelta(days=1)).date().isoformat()))
                 shot=None  # the promise IS the hook; the photo waits for the morning
-            elif kind=='morning' and shot and (uid,today_key) in _ritual_promised:
+            if kind=='morning' and shot and (uid,today_key) in _ritual_promised:
                 # one greeting, not «доброе утро» glued onto another «утро»
                 text=random.choice(_PROMISE_KEPT)
                 _ritual_promised.discard((uid,today_key))
@@ -696,7 +788,7 @@ async def _rituals(bot):
                 await bot.send_voice(int(tg_id), BufferedInputFile(ritual_voice, filename=f'{char_id}.ogg'), caption=_ev.caption(text), reply_markup=markup)
                 track_event(uid, f'{kind}_voice_sent', character_id=char_id)
                 if evening_shot:
-                    track_event(uid, 'evening_photo_sent', character_id=char_id)
+                    track_event(uid, f'{kind}_photo_sent', character_id=char_id)
             elif shot:
                 from aiogram.types import BufferedInputFile
                 data, ctype, media_kind = shot
@@ -707,9 +799,11 @@ async def _rituals(bot):
                 else:
                     await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=text, reply_markup=markup)
                 if evening_shot:
-                    track_event(uid, 'evening_photo_sent', character_id=char_id)
+                    track_event(uid, f'{kind}_photo_sent', character_id=char_id)
             else:
                 await bot.send_message(int(tg_id),text,reply_markup=markup)
+            if preview:
+                continue
             _to_app_chat(uid,tg_id,char_id,text,shot)
             _ritual_sent.add(guard)
             track_event(uid, f'ritual_{kind}_sent', metadata={'streak': streak, 'tz': tz})

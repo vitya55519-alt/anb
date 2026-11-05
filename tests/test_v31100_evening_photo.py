@@ -70,7 +70,7 @@ def test_evening_photo_flag_off(monkeypatch):
 def test_scheduler_photo_then_voice_morning_and_evening():
     assert "evening_shot=await _ev.evening_photo(char_id, uid, await asyncio.to_thread(_adult, int(tg_id)))" in SCHED
     assert "morning_voice=await _ev.voice_bytes(text, char_id" in SCHED and "mood='morning'" in SCHED
-    block = SCHED[SCHED.index("ritual_voice=evening_voice if kind=='evening' else morning_voice"):SCHED.index("track_event(uid, 'evening_photo_sent'")]
+    block = SCHED[SCHED.index("ritual_voice=evening_voice if kind=='evening' else morning_voice"):SCHED.index("track_event(uid, f'{kind}_photo_sent'")]
     assert block.index('send_photo') < block.index('send_voice')
     assert 'is_premium' not in block
 
@@ -94,3 +94,23 @@ def test_undress_source_must_be_her_text_render():
     assert 'UserGeneration.character_id == character_id' in block
     assert "UserGeneration.kind.in_(('photo', 'hot', 'cosplay'))" in block
     assert "'/webapp/media/' not in (pr or '')" in block
+
+
+def test_ritual_approval_mode():
+    from services import scheduler_service as ss
+    assert ss.RITUAL_APPROVAL_MODE is True  # default during the 2-3 test days
+    assert ss.ritual_kind_at(9) == 'morning' and ss.ritual_kind_at(20) == 'evening'
+    assert ss.ritual_kind_at(10) is None and ss.ritual_kind_at(11, 3) == 'morning'
+    ss._ritual_approved.add(('evening', '2026-11-06'))
+    assert ss.ritual_is_approved('evening', '2026-11-06')
+    body = SCHED[SCHED.index('async def _rituals(bot, only_tg=None, force_kind=None)'):SCHED.index('async def _donation_reminder')]
+    assert "if kind and not ritual_is_approved(kind, msk_day):" in body
+    assert "await _ritual_preview(bot, msk_kind, msk_day)" in body
+    assert "callback_data=f'ritual_ok:{kind}:{day}'" in SCHED
+    h = MAIN[MAIN.index("async def admin_ritual_approve"):MAIN.index("async def _voice_cast_audio(")]
+    assert 'not in ADMIN_TELEGRAM_IDS' in h and 'approve_ritual' in h and '_ss._rituals(bot)' in h
+
+
+def test_morning_gets_photo_too():
+    assert "if kind in ('evening','morning'):" in SCHED
+    assert "track_event(uid, f'{kind}_photo_sent'" in SCHED
