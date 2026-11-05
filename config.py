@@ -514,6 +514,14 @@ ADAPTATION_MAX_EXPRESSIONS = max(3, min(20, int(os.getenv("ADAPTATION_MAX_EXPRES
 # NOTE: the gate is `count < FREE_MESSAGES_PER_DAY`, so 0 here means «nobody may
 # write», not «unlimited» — never set it to zero.
 FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "20"))
+# V3.106.0: the owner tightened the free tier for people who have been here a
+# while: from day FREE_LATE_FROM_DAY after sign-up (day 1 = the sign-up day) a
+# non-Premium man gets FREE_MESSAGES_PER_DAY_LATE a day instead. Backup 5 Nov:
+# heavy free users (200–500 msgs) never paid; every payment came in the first
+# session. Set FREE_MESSAGES_PER_DAY_LATE equal to FREE_MESSAGES_PER_DAY to switch
+# it off. Never 0 (see the note above).
+FREE_MESSAGES_PER_DAY_LATE = max(1, int(os.getenv("FREE_MESSAGES_PER_DAY_LATE", "10")))
+FREE_LATE_FROM_DAY = max(2, int(os.getenv("FREE_LATE_FROM_DAY", "4")))
 # V3.47.2: a brand-new user gets unlimited TEXT messages for this many hours
 # after registration (activation lever, mirrors the benchmark's «первые 24 часа
 # текст бесплатно»). Photo/video gates are untouched — text only.

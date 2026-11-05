@@ -17,3 +17,11 @@ before paying; that wall was hit by 61 people in two weeks. An English user trie
 - Bot Platega link message: «Это разовый платёж, без автопродления».
 - Tests: `tests/test_v3106_voice_and_pay.py`; pins updated in `test_v3570_voice_photo_static`
   (new gate) and `test_v3740_grok_voice` (soft line).
+
+## Free limit from day 4
+
+Витя's call: from day 4 after sign-up (day 1 = the sign-up day, UTC) a non-Premium man
+gets 10 free messages a day instead of 20 (`access_service.free_limit_for`). Env:
+`FREE_MESSAGES_PER_DAY_LATE` (10), `FREE_LATE_FROM_DAY` (4). To switch it off, set
+`FREE_MESSAGES_PER_DAY_LATE=20`. The tariff text and the shop note show «20 сообщений в день
+(с 4-го дня — 10)».

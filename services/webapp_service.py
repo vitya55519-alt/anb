@@ -43,7 +43,9 @@ from config import (
     CONSTRUCTOR_COST_RUB,
     CONSTRUCTOR_PRICE_USD,
     CUSTOM_PHOTO_COST_STARS,
+    FREE_LATE_FROM_DAY,
     FREE_MESSAGES_PER_DAY,
+    FREE_MESSAGES_PER_DAY_LATE,
     FREE_PHOTOS_LEVEL_1_2,
     FREE_PHOTOS_LEVEL_3_6,
     GALLERY_DOWNLOAD_STARS,
@@ -933,6 +935,8 @@ def api_shop(lang: str = 'ru') -> dict:
         },
         'free_tier': {
             'messages_per_day': FREE_MESSAGES_PER_DAY,
+            'messages_per_day_later': min(FREE_MESSAGES_PER_DAY, FREE_MESSAGES_PER_DAY_LATE),
+            'later_from_day': FREE_LATE_FROM_DAY,
             'photos_level_1_2': FREE_PHOTOS_LEVEL_1_2,
             'photos_level_3_6': FREE_PHOTOS_LEVEL_3_6,
         },

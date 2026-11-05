@@ -67,3 +67,17 @@ def test_wiring_app_and_pay_sheet():
     assert 'Разовый платёж · без автопродления' in HTML and 'One-time payment · no auto-renewal' in HTML
     assert 'id="payNote"' in HTML
     assert 'разовый платёж, без автопродления' in MAIN
+
+
+def test_free_limit_tightens_from_day_four():
+    from datetime import datetime
+    from config import FREE_LATE_FROM_DAY, FREE_MESSAGES_PER_DAY, FREE_MESSAGES_PER_DAY_LATE
+    from services.access_service import free_limit_for
+    now = datetime(2026, 11, 10, 12, 0)
+    assert FREE_LATE_FROM_DAY == 4 and FREE_MESSAGES_PER_DAY_LATE == 10
+    assert free_limit_for(None, now) == FREE_MESSAGES_PER_DAY
+    assert free_limit_for(datetime(2026, 11, 8, 23, 0), now) == FREE_MESSAGES_PER_DAY  # day 3
+    assert free_limit_for(datetime(2026, 11, 7, 0, 5), now) == 10  # day 4
+    from services import legal_service
+    src = (ROOT / 'services' / 'legal_service.py').read_text(encoding='utf-8') if 'ROOT' in globals() else ''
+    assert 'FREE_MESSAGES_PER_DAY_LATE' in (src or open(legal_service.__file__, encoding='utf-8').read())

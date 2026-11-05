@@ -5533,7 +5533,8 @@ async function loadShop() {
     // «unlimited» only if the ceiling is ever raised past a fair-use 1000.
     const chatNote = s.free_tier.messages_per_day >= 1000
       ? esc(L.unlim_title)
-      : `${s.free_tier.messages_per_day} ${esc(L.msg_day)}`;
+      : `${s.free_tier.messages_per_day} ${esc(L.msg_day)}` + (s.free_tier.messages_per_day_later && s.free_tier.messages_per_day_later < s.free_tier.messages_per_day
+        ? ` (${esc((LANG === 'ru' ? 'с ' + s.free_tier.later_from_day + '-го дня — ' : 'from day ' + s.free_tier.later_from_day + ': ') + s.free_tier.messages_per_day_later)})` : '');
     const photoPrice = s.photo_peaches || 0;
     document.getElementById('shopbody').innerHTML = `
       ${premCard}
