@@ -10200,6 +10200,95 @@ async def admin_week_cmd(message: types.Message):
     await message.answer(weekly_report.render(data, _character_display_name))
 
 
+# ── V3.108.0: /voicecast — the owner's one-off evening voice to everyone ──
+# Owner: «отправить всем пользователям голосовое… мягкое, человеческое,
+# сексуальное. посмотрим, как звучит». First the admin hears it himself; the
+# cast to everyone goes only after he taps the confirm button.
+_voice_cast_running = False
+
+
+async def _voice_cast_audio(cache: dict, character_id: str, lang: str) -> bytes | None:
+    from services import evening_voice
+    key = (character_id, lang)
+    if key not in cache:
+        try:
+            cache[key] = await synthesize_bytes(evening_voice.CAST_LINES[lang], None,
+                                                character_id=character_id, mood='evening')
+        except Exception:
+            logger.exception('voice cast synth failed character=%s lang=%s', character_id, lang)
+            cache[key] = None
+    return cache[key]
+
+
+@dp.message(Command('voicecast'))
+async def admin_voicecast_cmd(message: types.Message):
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import evening_voice
+    lang = 'en' if user_lang(message.from_user.id) == EN else 'ru'
+    char_id = get_user_character(message.from_user.id) or CHARACTER_ID
+    await message.answer('🎙 Записываю пробное голосовое…')
+    audio = await _voice_cast_audio({}, char_id, lang)
+    if not audio:
+        await message.answer('⚠️ Голос не сгенерировался, смотри логи (tts).')
+        return
+    rows = await asyncio.to_thread(evening_voice.cast_recipients)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f'📣 Отправить всем ({len(rows)} чел.)', callback_data='vcast:go')]])
+    await bot.send_voice(message.chat.id, BufferedInputFile(audio, filename=f'{char_id}.ogg'),
+                         caption=evening_voice.CAST_LINES[lang])
+    await message.answer(
+        f'Это пробник, так услышат все. Каждому придёт голосом его девушки, русским по-русски, '
+        f'остальным по-английски. Получатели: включены её сообщения и заходили за '
+        f'{evening_voice.CAST_ACTIVE_DAYS} дн. Отправить?', reply_markup=kb)
+
+
+@dp.callback_query(F.data == 'vcast:go')
+async def admin_voicecast_go(cq: types.CallbackQuery):
+    global _voice_cast_running
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    if _voice_cast_running:
+        await cq.answer('Уже отправляется', show_alert=True)
+        return
+    _voice_cast_running = True
+    await cq.answer('Отправляю…')
+    try:
+        await cq.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    from aiogram.exceptions import TelegramForbiddenError
+    from services import evening_voice
+    from services.memory_service import save_message
+    sent = failed = blocked = 0
+    cache: dict = {}
+    try:
+        rows = await asyncio.to_thread(evening_voice.cast_recipients)
+        for uid, tid, char, lang in rows:
+            char_id = char or CHARACTER_ID
+            audio = await _voice_cast_audio(cache, char_id, lang)
+            if not audio:
+                failed += 1
+                continue
+            try:
+                await bot.send_voice(tid, BufferedInputFile(audio, filename=f'{char_id}.ogg'),
+                                     caption=evening_voice.CAST_LINES[lang])
+                sent += 1
+                await asyncio.to_thread(save_message, uid, char_id, 'assistant', evening_voice.CAST_LINES[lang])
+                await asyncio.to_thread(track_event, uid, 'voice_cast_sent', character_id=char_id)
+            except TelegramForbiddenError:
+                blocked += 1
+            except Exception as exc:
+                failed += 1
+                logger.warning('voice cast to %s failed: %s', tid, exc)
+            await asyncio.sleep(0.07)  # stay under Telegram's ~30 msg/s
+    finally:
+        _voice_cast_running = False
+    await cq.message.answer(f'📣 Голосовое разослано: {sent} доставлено, {blocked} заблокировали бота, '
+                            f'{failed} ошибок.')
+
+
 @dp.message(Command('stats', 'adminstats'))
 async def admin_stats_cmd(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
