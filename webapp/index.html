@@ -418,6 +418,25 @@
   .spicybanner .t small { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--muted); }
   .spicybanner .ar.on { width: auto; padding: 0 10px; border-radius: 16px; font-size: 12px; font-weight: 700; background: #ff5c38; }
   /* V3.43.0: the centered gift modal for the channel bonus */
+  /* V3.107.0: «Честно о нас» — one-time honest card (owner picked variant A) */
+  #honestmodal { position: fixed; inset: 0; z-index: 46; display: none; align-items: center; justify-content: center; background: rgba(10,5,14,.62); }
+  #honestmodal.open { display: flex; }
+  #honestmodal .box { width: min(340px, 92vw); max-height: 88vh; overflow-y: auto; background: var(--card); border-radius: 20px; padding: 18px 16px 16px; position: relative; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+  #honestmodal .x { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(255,255,255,.1); color: #fff; font-size: 15px; cursor: pointer; }
+  #honestmodal h3 { margin: 0 40px 3px 0; font-size: 19px; color: var(--text); }
+  #honestmodal .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 4px; }
+  #honestmodal h4 { margin: 12px 0 6px; font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  #honestmodal .li { display: flex; gap: 8px; font-size: 13.5px; line-height: 1.35; margin: 6px 0; color: var(--text); }
+  #honestmodal .li .ok { color: #5fd39a; flex: none; }
+  #honestmodal .go { width: 100%; border: 0; border-radius: 14px; padding: 12px; margin-top: 14px; font-size: 15px; font-weight: 700; color: #fff; background: linear-gradient(90deg, var(--accent), var(--accent2)); cursor: pointer; }
+  #honestmodal .fb { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); }
+  #honestmodal .fb .t { font-size: 14px; font-weight: 700; color: var(--text); }
+  #honestmodal .fb .s { font-size: 12px; color: var(--muted); margin: 2px 0 8px; }
+  #honestmodal .fb textarea { width: 100%; min-height: 64px; resize: vertical; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: var(--card2); color: var(--text); padding: 10px; font: inherit; font-size: 13.5px; box-sizing: border-box; }
+  #honestmodal .fb .send { width: 100%; margin-top: 8px; border: 0; border-radius: 12px; padding: 10px; font-size: 14px; font-weight: 600; color: var(--text); background: var(--card2); cursor: pointer; }
+  #honestmodal .fb .send:disabled { opacity: .5; }
+  #honestmodal .fb .done { font-size: 13px; color: #5fd39a; margin-top: 8px; display: none; }
+  .honestlink { width: 100%; border: 0; border-radius: 12px; padding: 12px; margin-bottom: 10px; font-size: 14px; font-weight: 600; color: var(--text); background: var(--card2); cursor: pointer; text-align: left; }
   #chanmodal, #spicymodal {
     position: fixed; inset: 0; z-index: 45; display: none;
     align-items: center; justify-content: center; background: rgba(10,5,14,.62);
@@ -1202,6 +1221,21 @@
   </div>
 </div>
 <!-- V3.43.0: pay-method modal (Come Closer: tap a square → Stars/SBP/crypto) -->
+<!-- V3.107.0: «Честно о нас» — the honest card, shown on every app open -->
+<div id="honestmodal"><div class="box">
+  <button class="x" id="honestClose">✕</button>
+  <h3 id="honestTitle"></h3>
+  <div class="sub" id="honestSub"></div>
+  <div id="honestBody"></div>
+  <div class="fb">
+    <div class="t" id="fbTitle"></div>
+    <div class="s" id="fbSub"></div>
+    <textarea id="fbText" maxlength="1000"></textarea>
+    <button class="send" id="fbSend"></button>
+    <div class="done" id="fbDone"></div>
+  </div>
+  <button class="go" id="honestGo"></button>
+</div></div>
 <div id="paymodal">
   <div class="box">
     <button class="x" id="payClose">✕</button>
@@ -1614,6 +1648,15 @@ const L_EN = {
   sext_btn: '🔥 Explicit chat — with Premium',
   voice_btn: '🎙 Hear her voice every time', pay_once: 'One-time payment · no auto-renewal',
   pay_stars_en: 'Telegram Stars — bought right in Telegram (Apple Pay / Google Pay / card)', pay_sbp_en: 'Crypto / Russian card',
+  pay_crypto_pg: 'Crypto', pay_sbp_only: 'Russian card / SBP', hn_title: 'Honestly about us 💜', hn_sub: '30 seconds to know everything upfront',
+  hn_can: 'What she can do',
+  hn_list: ['Chats 24/7 and remembers your name and what matters to you', 'Writes first, misses you and waits for you', 'Voice notes in her own voice', 'Photos and video circles', 'Dates and stories with a plot', '«Girl of the day»: a new heroine every day', 'Openly 18+: adults only, with Premium'],
+  hn_money: 'Free and Premium',
+  hn_free: (f) => '💬 Free: ' + f.free_messages + ' messages a day' + (f.free_messages_later < f.free_messages ? ' (from day ' + f.later_from_day + ': ' + f.free_messages_later + ')' : '') + ' and ' + f.free_photos + ' photo',
+  hn_prem: (price) => '💎 Premium from ' + price + ': one-time payment, no auto-renewal',
+  fb_title: 'We would love your ideas 💡', fb_sub: 'What should we improve in the bot? The team reads every message',
+  fb_ph: 'Your idea or wish…', fb_send: 'Send', fb_done: 'Thank you! Your idea went to the team 💜', fb_err: 'Could not send, try again a bit later',
+  hn_go: 'OK, choose a heroine', hn_link: '💜 Honestly about us',
   trial_chip: '🔥 3 days of Premium',
   speak_free_left: n => n > 0 ? `🎙 free listens left today: ${n}` : '🎙 that was the last free listen today',
   sc_prem_only: '⭐ Premium only',
@@ -1870,6 +1913,15 @@ const L_RU = {
   sext_btn: '🔥 Откровенно — с Premium',
   voice_btn: '🎙 Слышать её голос всегда', pay_once: 'Разовый платёж · без автопродления',
   pay_stars_en: 'Telegram Stars', pay_sbp_en: 'Карта / СБП / крипта',
+  pay_crypto_pg: 'Криптовалюта', pay_sbp_only: 'Карта / СБП', hn_title: 'Честно о нас 💜', hn_sub: '30 секунд, чтобы знать всё заранее',
+  hn_can: 'Что она умеет',
+  hn_list: ['Переписка 24/7, помнит твоё имя и важное о тебе', 'Пишет первой, скучает и ждёт тебя', 'Голосовые своим голосом', 'Фото и видео-кружки', 'Свидания и сюжеты с продолжением', '«Девушка дня»: новая героиня каждый день', 'Откровенно 18+: только для взрослых, в Premium'],
+  hn_money: 'Бесплатно и Premium',
+  hn_free: (f) => '💬 Бесплатно: ' + f.free_messages + ' сообщений в день' + (f.free_messages_later < f.free_messages ? ' (с ' + f.later_from_day + '-го дня — ' + f.free_messages_later + ')' : '') + ' и ' + f.free_photos + ' фото',
+  hn_prem: (price) => '💎 Premium от ' + price + ': разовый платёж, без автопродления',
+  fb_title: 'Будем рады вашим пожеланиям 💡', fb_sub: 'Что улучшить в боте? Ждём ваших предложений, читаем каждое',
+  fb_ph: 'Твоё предложение или пожелание…', fb_send: 'Отправить', fb_done: 'Спасибо! Предложение ушло команде 💜', fb_err: 'Не получилось отправить, попробуй чуть позже',
+  hn_go: 'Ок, выбрать героиню', hn_link: '💜 Честно о нас',
   trial_chip: '🔥 3 дня Premium',
   speak_free_left: n => n > 0 ? `🎙 бесплатных прослушиваний сегодня: ещё ${n}` : '🎙 это было последнее бесплатное прослушивание сегодня',
   sc_prem_only: '⭐ только с Premium',
@@ -5714,18 +5766,26 @@ function openPay(id, onPaid) {
   document.getElementById('payTitle').textContent = x.title;
   // V3.62.12: card/SBP leads (rubles), Telegram Stars follows.
   const rows = [];
-  const sbpRow = `<button class="mrow" data-m="sbp"><span class="ico">💳</span><span class="nm">${esc(LANG !== 'ru' ? (L.pay_sbp_en || L.pay_sbp) : L.pay_sbp)}</span><span class="pr">${esc(x.rub)} ₽</span></button>`;
+  // V3.107.0: crypto has its own row now — the card row stops promising it.
+  const _pgCrypto = !s.wallet_pay && x.rub && s.platega;
+  const sbpRow = `<button class="mrow" data-m="sbp"><span class="ico">💳</span><span class="nm">${esc(_pgCrypto ? L.pay_sbp_only : (LANG !== 'ru' ? (L.pay_sbp_en || L.pay_sbp) : L.pay_sbp))}</span><span class="pr">${esc(x.rub)} ₽</span></button>`;
   const starsRow = `<button class="mrow" data-m="stars"><span class="ico">⭐</span><span class="nm">${esc(LANG !== 'ru' ? (L.pay_stars_en || L.pay_stars) : L.pay_stars)}</span><span class="pr">${x.stars} ⭐</span></button>`;
   const cryptoRow = `<button class="mrow" data-m="crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto)}</span><span class="pr">$${esc(x.usd || (x.stars * 0.02).toFixed(2))}</span></button>`;
+  // V3.107.0: without Wallet Pay the «💎 Криптовалюта» row opens the same
+  // Platega page (crypto is an active method there; the payer picks it).
+  const pgCryptoRow = _pgCrypto
+    ? `<button class="mrow" data-m="platega_crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto_pg)}</span><span class="pr">${esc(x.rub)} ₽</span></button>` : '';
   // V3.106.0: abroad a Russian card / SBP page is a dead end — Stars lead.
   if (LANG !== 'ru') {
     rows.push(starsRow);
     if (s.wallet_pay) rows.push(cryptoRow);
+    if (pgCryptoRow) rows.push(pgCryptoRow);
     if (x.rub && s.platega) rows.push(sbpRow);
   } else {
     if (x.rub && s.platega) rows.push(sbpRow);
     rows.push(starsRow);
     if (s.wallet_pay) rows.push(cryptoRow);
+    if (pgCryptoRow) rows.push(pgCryptoRow);
   }
   document.getElementById('payRows').innerHTML = rows.join('');
   document.getElementById('payNote').textContent = L.pay_once || '';
@@ -5798,7 +5858,8 @@ function openPayCustom(units, unit, item) {
   document.getElementById('payEmo').textContent = '🍑';
   document.getElementById('payTitle').textContent = title;
   const rows = [`<button class="mrow" data-m="stars"><span class="ico">⭐</span><span class="nm">${esc(L.pay_stars)}</span><span class="pr">${stars} ⭐</span></button>`];
-  if (rub) rows.push(`<button class="mrow" data-m="sbp"><span class="ico">🏦</span><span class="nm">${esc(L.pay_sbp)}</span><span class="pr">${rub} ₽</span></button>`);
+  if (rub) rows.push(`<button class="mrow" data-m="sbp"><span class="ico">🏦</span><span class="nm">${esc(s.wallet_pay ? L.pay_sbp : L.pay_sbp_only)}</span><span class="pr">${rub} ₽</span></button>`);
+  if (rub && !s.wallet_pay) rows.push(`<button class="mrow" data-m="platega_crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto_pg)}</span><span class="pr">${rub} ₽</span></button>`);
   if (s.wallet_pay) rows.push(`<button class="mrow" data-m="crypto"><span class="ico">💎</span><span class="nm">${esc(L.pay_crypto)}</span><span class="pr">$${(stars * 0.02).toFixed(2)}</span></button>`);
   document.getElementById('payRows').innerHTML = rows.join('');
   document.querySelectorAll('#payRows [data-m]').forEach(b =>
@@ -6004,6 +6065,66 @@ document.getElementById('spicyGo').addEventListener('click', async () => {
   document.getElementById('spicymodal').classList.remove('open');
   await toggleSpicy();
 });
+// ── V3.107.0: «Честно о нас» — one honest card on the first open ─────────
+// Live numbers from /webapp/api/me (services/honest_card.py); no counters,
+// no social proof. Shown on every app open; the docs tab reopens it any time.
+// Price: rubles for Russian, Telegram Stars for everyone else (owner: abroad
+// nobody will work out what a ruble price means).
+function openHonest() {
+  const f = ME && ME.honest;
+  if (!f) return;
+  const price = (LANG === 'ru' && f.week_rub) ? f.week_rub + ' ₽' : f.week_stars + ' ⭐';
+  const li = (t, mark) => '<div class="li">' + (mark ? '<span class="ok">✓</span>' : '') + '<span>' + esc(t) + '</span></div>';
+  document.getElementById('honestTitle').textContent = L.hn_title;
+  document.getElementById('honestSub').textContent = L.hn_sub;
+  document.getElementById('honestGo').textContent = L.hn_go;
+  document.getElementById('honestBody').innerHTML =
+    '<h4>' + esc(L.hn_can) + '</h4>' + L.hn_list.map(t => li(t, true)).join('') +
+    '<h4>' + esc(L.hn_money) + '</h4>' + li(L.hn_free(f)) + li(L.hn_prem(price));
+  document.getElementById('fbTitle').textContent = L.fb_title;
+  document.getElementById('fbSub').textContent = L.fb_sub;
+  document.getElementById('fbText').placeholder = L.fb_ph;
+  document.getElementById('fbSend').textContent = L.fb_send;
+  document.getElementById('fbDone').style.display = 'none';
+  document.getElementById('honestmodal').classList.add('open');
+}
+function closeHonest() {
+  document.getElementById('honestmodal').classList.remove('open');
+}
+// Owner: «всегда при открытии мини приложения» — every app open, once per
+// session (loadMe can run again later; the card must not pop up mid-use).
+let _honestShown = false;
+function maybeShowHonest() {
+  if (_honestShown || !ME || !ME.honest || !ME.honest.enabled) return;
+  _honestShown = true;
+  openHonest();
+}
+// V3.107.0: a wish from the card goes to the owner's support chat.
+async function sendFeedback() {
+  const ta = document.getElementById('fbText');
+  const btn = document.getElementById('fbSend');
+  const text = (ta.value || '').trim();
+  if (text.length < 3) { ta.focus(); return; }
+  btn.disabled = true;
+  try {
+    const r = await fetch('/webapp/api/feedback?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) { toast(L.fb_err); return; }
+    ta.value = '';
+    const done = document.getElementById('fbDone');
+    done.textContent = L.fb_done; done.style.display = 'block';
+  } catch (e) {
+    toast(L.fb_err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+document.getElementById('fbSend').addEventListener('click', sendFeedback);
+document.getElementById('honestClose').addEventListener('click', closeHonest);
+document.getElementById('honestGo').addEventListener('click', closeHonest);
+document.getElementById('honestmodal').addEventListener('click', (e) => { if (e.target.id === 'honestmodal') closeHonest(); });
 async function loadMe() {
   const chip = document.getElementById('userchip');
   try {
@@ -6021,6 +6142,7 @@ async function loadMe() {
     chip.className = 'chip' + (ME.premium ? ' premium' : '');
     renderUnlimitedBanner();
     renderSpicyBanner();
+    maybeShowHonest();
     renderProfileBody();
     // V3.55.5: the shop gift series mirrors ME — repaint it if the tab is open.
     renderGiftBlock();
@@ -6154,10 +6276,13 @@ async function loadDocs() {
     const d = j.legal;
     document.getElementById('checkword').textContent = `${L.checkword}: ${d.check_word}`;
     document.getElementById('docsbody').innerHTML = `
+      ${ME && ME.honest ? `<button class="honestlink" id="honestReopen">${esc(L.hn_link)}</button>` : ''}
       <details class="doc"><summary>🔐 ${esc(L.privacy)}</summary><div class="txt">${esc(d.privacy)}</div></details>
       <details class="doc"><summary>📄 ${esc(L.agreement)}</summary><div class="txt">${esc(d.agreement)}</div></details>
       <details class="doc"><summary>💰 ${esc(L.tariffs)}</summary><div class="txt">${esc(d.tariffs)}</div></details>
       <details class="doc"><summary>🛟 ${esc(L.support)}</summary><div class="txt">${esc(d.support)}</div></details>`;
+    const hr = document.getElementById('honestReopen');
+    if (hr) hr.addEventListener('click', openHonest);
   } catch (e) {
     document.getElementById('docsbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }

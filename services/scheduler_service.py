@@ -589,9 +589,11 @@ async def _rituals(bot):
             # the evening only checks the pool (its photo waits for the morning),
             # so only a shot that is really sent counts in his rotation
             shot = retention_features_service.random_proactive_photo(char_id, user_id=uid if kind=='morning' else None)
+            evening_voice=None
             if kind=='evening':
                 # V3.101.0: «как прошёл день» tied to what she knows about him
                 # (the template evening got replies from 10%).
+                _el='ru'
                 try:
                     from services.chat_service import morning_callback
                     from services.ui_lang import user_lang, EN
@@ -600,13 +602,26 @@ async def _rituals(bot):
                     if evening_text:
                         text=evening_text
                         track_event(uid,'evening_callback_sent',character_id=char_id)
+                    elif _el=='en':
+                        # V3.107.0: the template pool is Russian-only — English
+                        # users get an English evening (and hear it in English).
+                        from services import evening_voice as _ev
+                        text=_ev.en_evening_line()
                 except Exception:
                     logger.exception('evening callback failed user=%s',uid)
+                # V3.107.0: owner — the evening comes as her voice note, for
+                # everyone, in his language. Only her own line is spoken.
+                try:
+                    from services import evening_voice as _ev
+                    evening_voice=await _ev.voice_bytes(text, char_id, _el)
+                except Exception:
+                    logger.exception('evening voice failed user=%s',uid)
             # V3.59.2: the evening plants a reason to come back — a promise the
             # morning ritual keeps with a photo. Only promised when her media
             # pool can actually deliver one.
             if kind=='evening' and shot:
-                text+='\n\nа завтра утром пришлю тебе кое-что, не проспи 😏'
+                text+=('\n\nand tomorrow morning I\'ll send you something, don\'t oversleep 😏' if _el=='en'
+                       else '\n\nа завтра утром пришлю тебе кое-что, не проспи 😏')
                 _ritual_promised.add((uid,(now+dt.timedelta(days=1)).date().isoformat()))
                 shot=None  # the promise IS the hook; the photo waits for the morning
             elif kind=='morning' and shot and (uid,today_key) in _ritual_promised:
@@ -636,7 +651,12 @@ async def _rituals(bot):
                         text=gift_label, web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'))]])
                 else:
                     text+='\n\n'+gift_label.replace('Забрать подарок','дневной подарок ждёт в приложении,')
-            if shot:
+            if evening_voice and not shot:
+                from aiogram.types import BufferedInputFile
+                from services import evening_voice as _ev
+                await bot.send_voice(int(tg_id), BufferedInputFile(evening_voice, filename=f'{char_id}.ogg'), caption=_ev.caption(text), reply_markup=markup)
+                track_event(uid, 'evening_voice_sent', character_id=char_id)
+            elif shot:
                 from aiogram.types import BufferedInputFile
                 data, ctype, media_kind = shot
                 if media_kind == 'gif':
