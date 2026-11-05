@@ -11150,6 +11150,12 @@ async def _webapp_api_me(request: web.Request) -> web.Response:
         me['unlimited_remaining'] = unlimited_text_remaining(telegram_id)
     except Exception:
         me['unlimited_remaining'] = 0
+    # V3.107.0: «Без сюрпризов» — live numbers for the one-time honest card.
+    try:
+        from services import honest_card
+        me['honest'] = honest_card.facts()
+    except Exception:
+        logger.exception('honest card facts failed user=%s', telegram_id)
     return web.json_response({'ok': True, 'me': me})
 
 
@@ -12133,7 +12139,9 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     uid = await asyncio.to_thread(
         ensure_user, telegram_id, user_info.get('first_name') or '',
         language_code=user_info.get('language_code'))
-    if method == 'sbp':
+    if method == 'sbp' or method == 'platega_crypto':
+        # V3.107.0: 'platega_crypto' is the «💎 Криптовалюта» row — the same
+        # Platega payment page (the payer picks crypto there), tracked apart.
         if not PLATEGA_ENABLED or not product.get('rub'):
             return web.json_response({'ok': False, 'error': 'method_off'}, status=400)
         amount = str(product['rub'])
@@ -12145,7 +12153,7 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
             # No SCI fallback exists (that was a FreeKassa thing) — 502 so the
             # frontend toasts its pay-link error instead of a dead tab.
             return web.json_response({'ok': False, 'error': 'invoice'}, status=502)
-        await asyncio.to_thread(track_event, uid, 'webapp_pay_link', metadata={'product': product_id, 'method': 'sbp'})
+        await asyncio.to_thread(track_event, uid, 'webapp_pay_link', metadata={'product': product_id, 'method': method})
         return web.json_response({'ok': True, 'url': link})
     if method == 'crypto':
         if not WALLET_PAY_ENABLED:
