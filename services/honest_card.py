@@ -1,4 +1,4 @@
-"""V3.107.0 — «Без сюрпризов»: an honest one-time card in the Mini App.
+"""V3.107.0 — «Без сюрпризов»: an honest card on every Mini App open.
 
 Owner: «когда человек переходит в бот… маленькое окошечко с крестиком… что
 она умеет, что не умеет, чтобы сразу все видели». Market research

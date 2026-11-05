@@ -1214,7 +1214,7 @@
   </div>
 </div>
 <!-- V3.43.0: pay-method modal (Come Closer: tap a square → Stars/SBP/crypto) -->
-<!-- V3.107.0: «Честно о нас» — the honest card, shown once on the first open -->
+<!-- V3.107.0: «Честно о нас» — the honest card, shown on every app open -->
 <div id="honestmodal"><div class="box">
   <button class="x" id="honestClose">✕</button>
   <h3 id="honestTitle"></h3>
@@ -6049,7 +6049,7 @@ document.getElementById('spicyGo').addEventListener('click', async () => {
 });
 // ── V3.107.0: «Честно о нас» — one honest card on the first open ─────────
 // Live numbers from /webapp/api/me (services/honest_card.py); no counters,
-// no social proof. Seen once per device; the docs tab reopens it any time.
+// no social proof. Shown on every app open; the docs tab reopens it any time.
 // Price: rubles for Russian, Telegram Stars for everyone else (owner: abroad
 // nobody will work out what a ruble price means).
 function openHonest() {
@@ -6067,13 +6067,14 @@ function openHonest() {
 }
 function closeHonest() {
   document.getElementById('honestmodal').classList.remove('open');
-  try { localStorage.setItem('anbHonestSeen', '1'); } catch (e) {}
 }
+// Owner: «всегда при открытии мини приложения» — every app open, once per
+// session (loadMe can run again later; the card must not pop up mid-use).
+let _honestShown = false;
 function maybeShowHonest() {
-  if (!ME || !ME.honest || !ME.honest.enabled) return;
-  let seen = false;
-  try { seen = localStorage.getItem('anbHonestSeen') === '1'; } catch (e) {}
-  if (!seen) openHonest();
+  if (_honestShown || !ME || !ME.honest || !ME.honest.enabled) return;
+  _honestShown = true;
+  openHonest();
 }
 document.getElementById('honestClose').addEventListener('click', closeHonest);
 document.getElementById('honestGo').addEventListener('click', closeHonest);

@@ -30,7 +30,7 @@ def test_no_fake_social_proof_on_the_card():
 def test_me_payload_and_sheet_wiring():
     assert "me['honest'] = honest_card.facts()" in MAIN
     assert 'id="honestmodal"' in HTML and 'id="honestClose"' in HTML
-    assert "localStorage.setItem('anbHonestSeen', '1')" in HTML
+    assert 'anbHonestSeen' not in HTML and '_honestShown = true;' in HTML
     assert 'maybeShowHonest();' in HTML and 'id="honestReopen"' in HTML
     assert "hn_title: 'Честно о нас 💜'" in HTML and "hn_title: 'Honestly about us 💜'" in HTML
     assert "hn_go: 'Ок, выбрать героиню'" in HTML and 'без автопродления' in HTML
