@@ -76,7 +76,7 @@ from services.photo_idea_service import (
 )
 from config import PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIAL_PRICE_RUB  # V3.88.0
 from services.payments import trial_eligible  # V3.88.0
-from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
+from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, has_monthly_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
 from services.bot_description import apply_bot_descriptions
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
@@ -1226,7 +1226,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             'Premium:',
             '• unlimited messages — I never “fall asleep” mid-conversation 😴',
             '• 12 extra photo credits',
-            '• 2 free photo animations every day 🎬',
+            '• 🎬 1 photo animation a day — on a month or longer plan',
             '• 🎥 video circles from me — paid in 🍑',
             '• 🎙 voice replies — Premium only',
             '• 💋 relationship levels 7–10 — the top of the romance or passion path',
@@ -1239,7 +1239,7 @@ def premium_pitch_text(telegram_id: int) -> str:
             'Premium:',
             '• безлимит сообщений — я больше не «засыпаю» посреди разговора 😴',
             '• 12 дополнительных photo credits',
-            '• 2 бесплатных оживления фото каждый день 🎬',
+            '• 🎬 1 оживление фото в день — в Premium на месяц и дольше',
             '• 🎥 видео-кружочки от меня — за 🍑',
             '• 🎙 голосовые ответы — только для Premium',
             '• 💋 уровни 7–10 отношений — вершина пути романтики или страсти',
@@ -1293,6 +1293,29 @@ def _sleep_block_markup(telegram_id: int) -> InlineKeyboardMarkup:
     """V3.20.0 daily-limit paywall: demo premium first, then premium."""
     from services.retention_service import has_used_demo, discount_info
     rows = []
+    try:
+        _en = user_lang(telegram_id) == EN
+    except Exception:
+        _en = False
+    if _en:
+        # V3.111.0: the wall the heaviest EN users stood at was all Russian and
+        # card/SBP only — English, Stars first, crypto/card second.
+        if not has_used_demo(telegram_id):
+            rows.append([InlineKeyboardButton(text=f'🎁 Free Premium demo for {DEMO_PREMIUM_HOURS} hours', callback_data='retention:demo')])
+        try:
+            from services import vip_offer
+            vinfo = vip_offer.info(telegram_id)
+            if vinfo.get('active'):
+                rows.append([InlineKeyboardButton(
+                    text=f'💝 A month −{vinfo["percent"]}% just for you — {vinfo["stars"]} Stars ({vinfo["hours_left"]:.0f} h left)',
+                    callback_data='buy:premium_vip')])
+        except Exception:
+            logger.warning('sleep block vip row failed', exc_info=True)
+        from services import offer_buttons
+        for t, c in offer_buttons.plan_rows(trial_eligible(telegram_id), True):
+            rows.append([InlineKeyboardButton(text=t, callback_data=c)])
+        rows.append([InlineKeyboardButton(text='⭐ Premium — wake her up, no limits', callback_data='retention:premium')])
+        return InlineKeyboardMarkup(inline_keyboard=rows)
     if not has_used_demo(telegram_id):
         rows.append([InlineKeyboardButton(text=f'🎁 Демо-Premium на {DEMO_PREMIUM_HOURS} часа — бесплатно', callback_data='retention:demo')])
     # V3.97.0: his personal one-time −50% month once he keeps hitting the limit.
@@ -1423,9 +1446,50 @@ def _platega_pay_button(product: str, amount: int, text: str):
     return InlineKeyboardButton(text=text, callback_data=f'platega:{product}')
 
 
-def premium_keyboard(discount: dict | None = None, telegram_id: int | None = None):
+def _premium_keyboard_en(discount: dict | None, telegram_id: int):
+    """V3.111.0: the Premium keyboard for English speakers. The Russian one
+    hid every non-Stars row from them and spoke Russian («карта / СБП»), so
+    abroad Stars was the only door — and Stars already failed for one of them.
+    Now: Stars plans first, then one «💎 crypto / card» row per plan (Platega
+    page, crypto is active there), Wallet Pay when configured."""
+    rows = []
+    trial_ok = trial_eligible(telegram_id)
+    if trial_ok:
+        rows.append([InlineKeyboardButton(text=f'🔥 Try {PREMIUM_TRIAL_DAYS} days — {PREMIUM_TRIAL_STARS} Stars',
+                                          callback_data='buy:premium_trial')])
+    if discount and discount.get('active'):
+        month = f'⭐ Premium −{discount["percent"]}% — {discount["price"]} Stars ({discount["hours_left"]:.0f} h left)'
+    else:
+        month = f'⭐ Premium — {PREMIUM_MONTHLY_STARS} Stars / 30 days'
+    rows += [
+        [InlineKeyboardButton(text=month, callback_data='buy:premium')],
+        [InlineKeyboardButton(text=f'⭐ Premium for a week — {PREMIUM_WEEKLY_STARS} Stars', callback_data='buy:premium_week')],
+        [InlineKeyboardButton(text=f'⭐ Premium for 3 months — {PREMIUM_QUARTERLY_STARS} Stars', callback_data='buy:premium_quarter')],
+    ]
+    if WALLET_PAY_ENABLED:
+        rows.append([InlineKeyboardButton(text='💎 Premium — Wallet Pay (crypto)', callback_data='walletpay:premium')])
+    if PLATEGA_ENABLED and is_button_enabled('platega_rub'):
+        if trial_ok:
+            rows.append([_platega_pay_button('premium_trial', PLATEGA_PREMIUM_TRIAL_PRICE_RUB,
+                                             f'💎 {PREMIUM_TRIAL_DAYS} days — crypto / card · {PLATEGA_PREMIUM_TRIAL_PRICE_RUB} ₽')])
+        rows.append([_platega_pay_button('premium_week', PLATEGA_PREMIUM_WEEKLY_PRICE_RUB,
+                                         f'💎 a week — crypto / card · {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽')])
+        rows.append([_platega_pay_button('premium_month', PLATEGA_PREMIUM_PRICE_RUB,
+                                         f'💎 a month — crypto / card · {PLATEGA_PREMIUM_PRICE_RUB} ₽')])
     if _any_video_engine():
-        video_button = InlineKeyboardButton(text=f'🎬 Оживить фото — {VIDEO_COST_STARS}⭐{fiat_suffix(VIDEO_COST_STARS)}', callback_data='video:animate_last')
+        rows.append([InlineKeyboardButton(text='🎬 Animate a photo · Premium month, 1 a day', callback_data='video:animate_last')])
+    rows.append([InlineKeyboardButton(text=f'🎥 A video circle from her — {peach_num(CIRCLE_PEACH_COST)} 🍑', callback_data='video:circle')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def premium_keyboard(discount: dict | None = None, telegram_id: int | None = None):
+    try:
+        if telegram_id and user_lang(telegram_id) == EN:
+            return _premium_keyboard_en(discount, telegram_id)
+    except Exception:
+        logger.warning('en premium keyboard failed user=%s', telegram_id, exc_info=True)
+    if _any_video_engine():
+        video_button = InlineKeyboardButton(text='🎬 Оживить фото · Premium на месяц, 1 в день', callback_data='video:animate_last')
     else:
         video_button = InlineKeyboardButton(text='🔒 🎬 Оживить фото · скоро', callback_data='future:animate_photo')
     if discount and discount.get('active'):
@@ -1686,7 +1750,29 @@ def _track_proactive_reply_if_any(telegram_id: int, uid: int):
         pass
 
 
+_EN_INVOICE = {
+    # V3.111.0: the Stars invoice is what an EN user sees last before paying —
+    # it was Russian («Premium на 3 дня — пробный»).
+    'premium_trial': lambda: ('Premium trial', f'{PREMIUM_TRIAL_DAYS} days of Premium: no limits, voice, photos'),
+    'premium_week': lambda: ('Premium', '7 days of Premium: no limits, voice, photos'),
+    'premium_month': lambda: ('Premium', '30 days of Premium: no limits, voice, photos'),
+    'premium_month_discount': lambda: ('Premium', '30 days of Premium at a one-time discount'),
+    'premium_quarter': lambda: ('Premium', '90 days of Premium: no limits, voice, photos'),
+    'premium_month_vip': lambda: ('Premium', '30 days of Premium at your personal discount'),
+}
+
+
+def _invoice_texts_en(chat_id: int, title: str, description: str, payload: str) -> tuple[str, str]:
+    try:
+        if payload in _EN_INVOICE and user_lang(chat_id) == EN:
+            return _EN_INVOICE[payload]()
+    except Exception:
+        pass
+    return title, description
+
+
 async def send_stars_invoice(chat_id: int, title: str, description: str, payload: str, stars: int):
+    title, description = _invoice_texts_en(chat_id, title, description, payload)
     await bot.send_invoice(
         chat_id=chat_id,
         title=title,
@@ -5237,7 +5323,7 @@ async def gallery_view_cb(cq: types.CallbackQuery):
     await cq.answer()
     # Show the photo full-size with a clean action row: animate / download / back.
     row = [
-        types.InlineKeyboardButton(text=f'🎬 Оживить · {VIDEO_COST_STARS}⭐{fiat_suffix(VIDEO_COST_STARS)}', callback_data=f'gallery:animate:{delivery_id}'),
+        types.InlineKeyboardButton(text='🎬 Оживить · Premium на месяц', callback_data=f'gallery:animate:{delivery_id}'),
         types.InlineKeyboardButton(text=f'⬇ Скачать · {GALLERY_DOWNLOAD_STARS}⭐{fiat_suffix(GALLERY_DOWNLOAD_STARS)}', callback_data=f'gallery:dl:{delivery_id}'),
         types.InlineKeyboardButton(text='↩ назад', callback_data='gallery:back'),
     ]
@@ -5581,40 +5667,49 @@ async def video_preset_cb(cq: types.CallbackQuery):
 
 
 async def _video_gate(cq: types.CallbackQuery, delivery: dict, motion_preset: str | None = None) -> None:
-    """Start the animation free (admin or Premium daily slot) or invoice Stars."""
+    """V3.112.0: photo animation is a monthly-Premium perk — one a day for a
+    month (or longer) plan, nothing free, no Stars or token route (owner:
+    every animation is a paid SpicyAPI video). Admins stay unlimited."""
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     track_event(uid, 'video_animate_click', metadata={'delivery_id': delivery['id'], 'preset': motion_preset or 'auto'})
-    free = cq.from_user.id in ADMIN_TELEGRAM_IDS
-    if not free and is_premium(cq.from_user.id):
-        free = consume_premium_video_free(cq.from_user.id)
-    if free:
-        track_event(uid, 'video_free_used', metadata={'delivery_id': delivery['id'], 'admin': cq.from_user.id in ADMIN_TELEGRAM_IDS})
-        _video_jobs[cq.from_user.id] = _spawn_job(
-            'video', cq.from_user.id,
-            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset),
-            payload={'preset': motion_preset or 'auto'},
-        )
+    admin = cq.from_user.id in ADMIN_TELEGRAM_IDS
+    en = user_lang(cq.from_user.id) == EN
+    if not admin and not has_monthly_premium(cq.from_user.id):
+        track_event(uid, 'video_month_wall', metadata={'premium': is_premium(cq.from_user.id)})
+        await cq.message.answer(_video_month_wall_text(en), reply_markup=_video_month_wall_markup(en))
         return
-    # V3.27.0: tokens (bought with rubles on Platega) are an alternative to
-    # Stars — spend them first so card-paying users animate without Stars.
-    if spend_tokens(cq.from_user.id, VIDEO_TOKEN_COST):
-        track_event(uid, 'tokens_spent', metadata={'amount': VIDEO_TOKEN_COST, 'delivery_id': delivery['id'], 'preset': motion_preset or 'auto'})
-        await cq.message.answer(f'🪙 Списано {VIDEO_TOKEN_COST} токенов — оживляю фото! Баланс: {get_token_balance(cq.from_user.id)} 🪙')
-        _video_jobs[cq.from_user.id] = _spawn_job(
-            'video', cq.from_user.id,
-            _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset),
-            payload={'preset': motion_preset or 'auto'},
-        )
+    if not admin and not consume_premium_video_free(cq.from_user.id):
+        await cq.message.answer('you already animated a photo today 🎬 the next one tomorrow' if en
+                                else 'сегодня ты уже оживлял фото 🎬 следующее можно завтра')
         return
-    # Preset rides along inside the invoice payload: video:<delivery_id>:<preset>
-    payload = f'video:{delivery["id"]}:{motion_preset or "auto"}'
-    await send_stars_invoice(
-        cq.message.chat.id,
-        'Оживить фото Анны',
-        'Короткое AI-видео из выбранного фото. Генерация занимает 1–3 минуты.',
-        payload,
-        VIDEO_COST_STARS,
+    track_event(uid, 'video_free_used', metadata={'delivery_id': delivery['id'], 'admin': admin})
+    _video_jobs[cq.from_user.id] = _spawn_job(
+        'video', cq.from_user.id,
+        _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset),
+        payload={'preset': motion_preset or 'auto'},
     )
+
+
+def _video_month_wall_text(en: bool) -> str:
+    if en:
+        return ('🎬 Photo animation comes with Premium for a month or longer: one animation every day.\n'
+                'The trial and the week do not include it.')
+    return ('🎬 Оживление фото входит в Premium на месяц и дольше: одно оживление каждый день.\n'
+            'В пробный период и неделю оно не входит.')
+
+
+def _video_month_wall_markup(en: bool) -> InlineKeyboardMarkup:
+    rows = []
+    if not en and PLATEGA_ENABLED and is_button_enabled('platega_rub'):
+        rows.append([_platega_pay_button('premium_month', PLATEGA_PREMIUM_PRICE_RUB,
+                                         f'💳 Premium на месяц — {PLATEGA_PREMIUM_PRICE_RUB} ₽ · карта / СБП')])
+    rows.append([InlineKeyboardButton(text=(f'⭐ Premium for a month — {PREMIUM_MONTHLY_STARS} Stars' if en
+                                            else f'⭐ Premium на месяц — {PREMIUM_MONTHLY_STARS} Stars'),
+                                      callback_data='buy:premium')])
+    if en and PLATEGA_ENABLED and is_button_enabled('platega_rub'):
+        rows.append([_platega_pay_button('premium_month', PLATEGA_PREMIUM_PRICE_RUB,
+                                         f'💎 a month — crypto / card · {PLATEGA_PREMIUM_PRICE_RUB} ₽')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @dp.callback_query(F.data.startswith('video:animate:'))
@@ -5978,7 +6073,8 @@ async def buy_premium_trial(cq: types.CallbackQuery):
     if not has_accepted(cq.from_user.id):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
     if not trial_eligible(cq.from_user.id):
-        await cq.answer('пробный период уже использован — выбери неделю или месяц 💗', show_alert=True); return
+        await cq.answer('the trial is already used — pick a week or a month 💗' if user_lang(cq.from_user.id) == EN
+                        else 'пробный период уже использован — выбери неделю или месяц 💗', show_alert=True); return
     await cq.answer()
     await send_stars_invoice(cq.message.chat.id, 'Anna Premium', f'Premium на {PREMIUM_TRIAL_DAYS} дня — пробный', 'premium_trial', PREMIUM_TRIAL_STARS)
 
@@ -6320,15 +6416,17 @@ async def platega_pay(cq: types.CallbackQuery):
     if not PLATEGA_ENABLED:
         await cq.answer('Оплата картой сейчас выключена — используй Stars ⭐', show_alert=True); return
     product = cq.data.split(':', 1)[1]
+    _en = user_lang(cq.from_user.id) == EN
     if product == 'premium_trial' and not trial_eligible(cq.from_user.id):
         # V3.88.0: the trial is a one-time first purchase.
-        await cq.answer('пробный период уже использован — выбери неделю или месяц 💗', show_alert=True); return
+        await cq.answer('the trial is already used — pick a week or a month 💗' if _en
+                        else 'пробный период уже использован — выбери неделю или месяц 💗', show_alert=True); return
     if product == 'premium_month_vip':
         from services import vip_offer
         if not vip_offer.is_active(cq.from_user.id):
             await cq.answer('это предложение уже закончилось 💗', show_alert=True); return
     amount = _platega_amount_for(product)
-    await cq.answer('создаю счёт…')
+    await cq.answer('creating the invoice…' if _en else 'создаю счёт…')
     order_id = platega_service.create_order(cq.from_user.id, product, str(amount))
     link = await platega_service.create_payment(
         order_id, str(amount), telegram_id=cq.from_user.id,
@@ -6339,6 +6437,8 @@ async def platega_pay(cq: types.CallbackQuery):
         # (that was a FreeKassa thing), so say so instead of a dead link.
         await bot.send_message(
             cq.message.chat.id,
+            "couldn't create the invoice 😔 try again in a minute or pay with Stars right here ⭐\n\n"
+            '💡 if it keeps happening, write /support' if _en else
             'не получилось создать счёт 😔 попробуй ещё раз через минуту '
             'или оплати Stars прямо в боте ⭐\n\n'
             '💡 если повторяется — напиши /support',
@@ -6376,6 +6476,20 @@ async def platega_pay(cq: types.CallbackQuery):
         title = f'🪙 Токены — {amount} ₽'
     # V3.62.8: a tap-to-pay button instead of a bare URL in the text.
     track_event(ensure_user(cq.from_user.id), 'platega_link_created', metadata={'product': product, 'amount': str(amount)})
+    if _en:
+        # V3.111.0: abroad this page is the crypto way (USDT etc.) — say so in English.
+        _en_names = {'premium_trial': f'Premium for {PREMIUM_TRIAL_DAYS} days', 'premium_week': 'Premium for a week',
+                     'premium_month': 'Premium for a month', 'premium_quarter': 'Premium for 3 months',
+                     'premium_month_vip': 'Premium for a month, your discount'}
+        await bot.send_message(
+            cq.message.chat.id,
+            f'💎 {_en_names.get(product, "Purchase")} — {amount} ₽ · crypto or card\n\n'
+            'On the payment page pick crypto (USDT and others) or a card. The price is in rubles; '
+            'the page converts it. One-time payment, no auto-renewal. '
+            'Everything turns on automatically within a minute after payment. Problems? Write /support.',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='💎 Pay', url=link)]]),
+        )
+        return
     await bot.send_message(
         cq.message.chat.id,
         f'{title} · оплата картой / СБП / криптой\n\n'
@@ -7132,7 +7246,9 @@ async def pre_checkout(query: types.PreCheckoutQuery):
         except (ValueError, IndexError):
             ok = False
         else:
-            ok = amount == VIDEO_COST_STARS and bool(get_photo_delivery_for_user(query.from_user.id, delivery_id)) and _any_video_engine()
+            # V3.112.0: animation is not sold for Stars any more (monthly
+            # Premium only) — an old invoice left in a chat is refused here.
+            ok = False
     elif payload.startswith('constructor:'):
         ok = amount == CONSTRUCTOR_COST_STARS
     elif payload.startswith('gallery_dl:'):
@@ -12831,10 +12947,14 @@ PHOTO_PROMISE = re.compile(
     r'(?:\*[^*\n]{0,40}\b(?:шлю|отправля\w*|скидыва\w*|присыла\w*|делаю|делает|снима\w*)\b[^*\n]{0,30}(?:фот|селфи|снимок)[^*\n]{0,30}\*)',
     re.IGNORECASE)
 # her question/offer about a photo, and a short «yes» to it
-PHOTO_OFFER = re.compile(r'(фот|селфи|📸|снимок|скинуть|скину|прислать|показать)', re.IGNORECASE)
+PHOTO_OFFER = re.compile(r'(фот|селфи|📸|снимок|скинуть|скину|прислать|показать|покажу|кадр|увидеть|посмотреть|глянуть|надето|на мне)', re.IGNORECASE)
 PHOTO_AGREE = re.compile(
     r'^\W*(?:да+|давай|ага|конечно|скинь|кидай|кинь|присылай|пришли|покажи|хочу|жду|ок|окей|го|yes|sure)\b',
     re.IGNORECASE)
+
+
+_HANDS_OVER = re.compile(r'^\W*(?:вот,?\s+)?(?:лови|держи|смотри|глянь|here you go)\b', re.IGNORECASE)
+_ASKED_TO_SEE = re.compile(r'(покаж|скин|кинь|пришли|присыл|отправ|фот|селфи|хочу увидеть|show|send|pic|photo)', re.IGNORECASE)
 
 
 def _accepts_her_photo_offer(uid: int, character_id: str, text: str) -> bool:
@@ -12850,6 +12970,34 @@ def _accepts_her_photo_offer(uid: int, character_id: str, text: str) -> bool:
     if last is None or getattr(last, 'media_url', None):
         return False
     return bool(PHOTO_OFFER.search(last.content or ''))
+
+
+# V3.113.0: «Покажи сиськи», «скинь попку», «покажи)» — 20 of 25 such asks in
+# the 1 Nov backup got neither a photo nor an honest «Premium / завтра»: the
+# photo parser only knew «фото/селфи», so the model answered «держи 😏» empty.
+_SHOW_ME = re.compile(r'^\W*(?:покажи|покажись|скинь|кинь|пришли|присылай|отправь|вышли|show me|send me)\b(.{0,40})$', re.IGNORECASE)
+_SHOW_BODY_NUDE = re.compile(r'(сиськ|сисечк|грудь|груд[иь]|соск|киск|голая|голую|голой|без одежд|разден|tits|boobs|naked|nude)', re.IGNORECASE)
+_SHOW_BODY_REAR = re.compile(r'(попк|попу|жоп|задниц|ягодиц|ass\b|butt)', re.IGNORECASE)
+_SHOW_BODY_LINGERIE = re.compile(r'(трус|бель|лифчик|чулк|lingerie|panties)', re.IGNORECASE)
+
+
+def _show_me_request(text: str) -> PhotoRequest | None:
+    """«покажи сиськи» / «скинь попку» / «покажись» as a photo request; None otherwise.
+    A bare «покажи» counts only through _accepts_her_photo_offer (after her offer)."""
+    m = _SHOW_ME.match((text or '').strip())
+    if not m:
+        return None
+    rest = m.group(1) or ''
+    # the chat renders only menu scenes (explicit ones left the menu in V3.30.0):
+    # a body ask becomes her boudoir shot, which is Premium-only — a free user
+    # gets her blurred card and the pay button, not a fully dressed selfie.
+    if _SHOW_BODY_NUDE.search(rest) or _SHOW_BODY_LINGERIE.search(rest):
+        return PhotoRequest(scene='lingerie')
+    if _SHOW_BODY_REAR.search(rest):
+        return PhotoRequest(scene='personal')
+    if re.search(r'(себя|себе|лицо|как выглядишь|как ты выглядишь|платье|наряд|образ|yourself)', rest, re.I):
+        return PhotoRequest(scene='selfie')
+    return None
 
 
 def _free_photo_from_pool(telegram_id: int, uid: int, character_id: str):
@@ -12916,6 +13064,12 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | N
     return None
 
 
+# V3.113.0: owner — «пишет покажи, а ничего не скидывает». When the photo is
+# closed (free one used, Premium-only), he still SEES something: her blurred
+# photo card with the pay button, instead of words alone.
+_LOCKED_CARD_REASONS = frozenset({'free_used', 'premium', 'spicy'})
+
+
 def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | None) -> dict:
     text = CHAT_PHOTO_BLOCK_TEXT[reason].format(price=CHAT_PHOTO_PEACH_COST)
     try:
@@ -12923,6 +13077,12 @@ def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | 
     except Exception:
         logger.warning('chat photo block message not saved uid=%s', uid)
     payload = {'ok': True, 'reply': text, 'photo_block': reason, 'photo_price': CHAT_PHOTO_PEACH_COST}
+    if reason in _LOCKED_CARD_REASONS:
+        payload['locked_tease'] = {'url': f'/webapp/locked/{character_id}.jpg'}
+        try:
+            track_event(uid, 'photo_locked_card', character_id=character_id, metadata={'reason': reason})
+        except Exception:
+            pass
     payload.update(extra or {})
     return payload
 
@@ -12954,6 +13114,8 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         # here and, when the scene clears the same stage/adult/credit gates the app
         # photo button enforces, deliver a real photo into the shared dialog.
         photo_request = _contextualize_vague_photo(telegram_id, text, parse_photo_request(text))
+        if not photo_request:
+            photo_request = _show_me_request(text)
         # V3.60.9: «скинь конечно» right after she offered a photo is a request too.
         if not photo_request and _accepts_her_photo_offer(uid, character_id, text):
             photo_request = parse_photo_request('пришли селфи')
@@ -13060,7 +13222,9 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         logger.exception('webapp chat reply failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
     # V3.60.9: she wrote «лови фотку 📸» on her own — the photo must really come.
-    if PHOTO_PROMISE.search(answer or ''):
+    # V3.113.0: also a bare «держи 😏» / «лови 💋» right after he asked to see her.
+    if PHOTO_PROMISE.search(answer or '') or (
+            _HANDS_OVER.match(answer or '') and _ASKED_TO_SEE.search(text or '')):
         def _promise_gate():
             req = _selfie_from_dialog(uid, character_id, parse_photo_request('пришли селфи'))
             return req, _chat_photo_gate(telegram_id, character_id, 'selfie')
@@ -13070,12 +13234,17 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             if payload:
                 return web.json_response(payload)
             block = 'failed'
-        if block in ('peaches', 'premium', 'spicy'):
+        if block in ('peaches', 'premium', 'spicy', 'free_used', 'stage', 'adult'):
             # keep her words, add the honest «out of peaches» / «Premium» note + button
+            # V3.113.0: «лови 😏» with the free photo already used went out with
+            # nothing attached — now the honest note and her blurred card come too.
             note = CHAT_PHOTO_BLOCK_TEXT[block].format(price=CHAT_PHOTO_PEACH_COST)
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
-            return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, 'photo_block': block,
-                                      'photo_price': CHAT_PHOTO_PEACH_COST, **(extra or {})})
+            out = {'ok': True, 'reply': answer + '\n\n' + note, 'photo_block': block,
+                   'photo_price': CHAT_PHOTO_PEACH_COST, **(extra or {})}
+            if block in _LOCKED_CARD_REASONS:
+                out['locked_tease'] = {'url': f'/webapp/locked/{character_id}.jpg'}
+            return web.json_response(out)
         if block == 'failed':
             note = CHAT_PHOTO_BLOCK_TEXT['failed']
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
@@ -14590,8 +14759,9 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         if action == 'animate':
             if admin:
                 return uid, None, 'admin'
-            if not is_premium(telegram_id):
-                return uid, ('premium_required', 403), None
+            if not has_monthly_premium(telegram_id):
+                # V3.112.0: a month (or longer) Premium only, one a day.
+                return uid, ('month_required', 403), None
             if not consume_premium_video_free(telegram_id):
                 return uid, ('video_limit', 402), None
             return uid, None, 'premium'
@@ -14776,8 +14946,9 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             # V3.41.0: app video shares the Premium free-animation slots, exactly
             # like the bot's «🎬 Оживить фото»; a separate gate keeps the circle
             # branch (and its static test) untouched.
-            if not is_premium(telegram_id):
-                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+            if not has_monthly_premium(telegram_id):
+                # V3.112.0: a month (or longer) Premium only, one a day.
+                return web.json_response({'ok': False, 'error': 'month_required'}, status=403)
             if not consume_premium_video_free(telegram_id):
                 return web.json_response({'ok': False, 'error': 'video_limit'}, status=402)
         if kind == 'voice' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
@@ -15298,6 +15469,7 @@ async def _after_premium_paid(telegram_id: int, product: str) -> None:
                 callback_data='buy:premium_vip')])
         await bot.send_message(telegram_id, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
         await asyncio.to_thread(paid_welcome.mark, uid, paid_welcome.CARD_EVENT, character_id, product)
+        await _deliver_showcase_photo(telegram_id, uid, lang)
         # she «types» for a moment, then writes herself
         await asyncio.sleep(paid_welcome.HEROINE_DELAY_SECONDS)
         try:
@@ -15313,6 +15485,36 @@ async def _after_premium_paid(telegram_id: int, product: str) -> None:
         await asyncio.to_thread(paid_welcome.mark, uid, paid_welcome.WELCOME_EVENT, character_id, product)
     except Exception:
         logger.warning('paid welcome failed user=%s product=%s', telegram_id, product, exc_info=True)
+
+
+async def _deliver_showcase_photo(telegram_id: int, uid: int, lang: str) -> None:
+    """V3.111.0: the photo that was blurred on his first-hour card, clean,
+    once — the card said «открою», so after the payment it opens."""
+    from services import first_offer_service as fos
+    try:
+        pending = await asyncio.to_thread(fos.take_pending_photo, telegram_id)
+        if not pending:
+            return
+        caption = fos.deliver_caption(lang)
+        if pending.get('fid'):
+            await bot.send_photo(telegram_id, pending['fid'], caption=caption)
+        else:
+            path = Path(pending.get('path') or '')
+            if not path.is_file():
+                return
+            def _jpg() -> bytes:
+                import io
+                from PIL import Image
+                img = Image.open(path).convert('RGB')
+                img.thumbnail((1080, 1440))
+                buf = io.BytesIO()
+                img.save(buf, 'JPEG', quality=90)
+                return buf.getvalue()
+            body = await asyncio.to_thread(_jpg)
+            await bot.send_photo(telegram_id, types.BufferedInputFile(body, filename='for_you.jpg'), caption=caption)
+        await asyncio.to_thread(track_event, uid, 'showcase_photo_delivered')
+    except Exception:
+        logger.warning('showcase photo delivery failed user=%s', telegram_id, exc_info=True)
 
 
 def _spawn_background(coro) -> None:

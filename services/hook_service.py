@@ -15,9 +15,13 @@ SKIP_INTENTS = {'support', 'meta', 'task_execute', 'task_clarify', 'task_charact
 
 MOVES: dict[str, str] = {
     'tease': 'подколи собеседника или поспорь понарошку, с улыбкой; не соглашайся сразу',
-    'detail': 'вставь живую деталь из своей жизни прямо сейчас: что делаешь, что на тебе, что вокруг (не повторяй прошлые детали)',
+    # V3.113.0: «сижу на диване в чёрной майке, рядом остывший кофе» in every
+    # other reply read as a stage direction; one small thing, never clothes.
+    'detail': 'вставь одну маленькую живую деталь из того, что ты сейчас делаешь (не одежду и не перечисление обстановки; если выше уже сказала, где ты, — ты всё ещё там)',
     'callback': 'вспомни то, что собеседник рассказывал раньше, и свяжи с этим ответ: «кстати, а как там…»',
-    'game': 'предложи маленькую игру или условие на двоих: угадайку, «правда или действие», «скажешь — покажу»',
+    # V3.113.0: no «скажешь — покажу» — 10% of replies were a condition, and
+    # chains of them came right before he left.
+    'game': 'предложи лёгкую игру на двоих (без условий и без «сначала ты»), только если разговор лёгкий и весёлый',
     'secret': 'оставь недосказанность: намекни, что у тебя что-то есть или что-то на уме, но не договаривай',
     'feeling': 'скажи честно одну свою эмоцию о нём или о разговоре, коротко и по-живому, без пафоса',
     'reaction': 'ответь коротко живой реакцией, без вопроса в конце: пусть собеседник сам продолжит',
@@ -39,17 +43,26 @@ _BY_INTENT: dict[str, tuple[str, ...]] = {
 _HEADER = 'Режиссёр (собеседнику не показывай и не упоминай): в этом ответе '
 
 
+# V3.113.0: to a two-word message she answers with one line, so no essay-moves.
+_SHORT_MOVES = ('reaction', 'tease', 'feeling')
+
+
 def hook_note(intent: str, last_move: str = '', has_memories: bool = False,
-              rng: random.Random | None = None) -> tuple[str, str]:
+              rng: random.Random | None = None, *, short: bool = False,
+              no_game: bool = False) -> tuple[str, str]:
     """Return (note, move). Empty note when this reply should get none."""
     if intent in SKIP_INTENTS:
         return '', ''
     rng = rng or random
     moves = [m for m in _BY_INTENT.get(intent, tuple(MOVES)) if m != last_move]
+    if short:
+        moves = [m for m in moves if m in _SHORT_MOVES] or [m for m in _SHORT_MOVES if m != last_move]
+    if no_game:
+        moves = [m for m in moves if m != 'game']
     if not has_memories:
         moves = [m for m in moves if m != 'callback']
     if not moves:
-        moves = [m for m in MOVES if m not in (last_move, 'callback')]
+        moves = [m for m in MOVES if m not in (last_move, 'callback', 'game', 'two', 'detail')]
     move = rng.choice(moves)
     return _HEADER + MOVES[move] + '. Остальное как обычно, в твоём голосе.', move
 
@@ -58,9 +71,10 @@ def hook_note(intent: str, last_move: str = '', has_memories: bool = False,
 _LAST_MOVE: dict[tuple[int, str], str] = {}
 
 
-def next_hook(user_id: int, character_id: str, intent: str, has_memories: bool = False) -> str:
+def next_hook(user_id: int, character_id: str, intent: str, has_memories: bool = False, *,
+              short: bool = False, no_game: bool = False) -> str:
     key = (user_id, character_id)
-    note, move = hook_note(intent, _LAST_MOVE.get(key, ''), has_memories)
+    note, move = hook_note(intent, _LAST_MOVE.get(key, ''), has_memories, short=short, no_game=no_game)
     if move:
         if len(_LAST_MOVE) > 20000:
             _LAST_MOVE.clear()

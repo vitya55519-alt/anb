@@ -91,8 +91,10 @@ def state_context(telegram_id: int, character_id: str = '') -> str:
     parts.append(f"энергия: {'низкая' if s.energy < .4 else 'обычная' if s.energy < .75 else 'высокая'}")
     if s.activity and not own_day: parts.append(f"сейчас по условной истории: {s.activity}")
     if s.location and not own_day: parts.append(f"текущая локация истории: {s.location}")
-    if s.outfit: parts.append(f"последний показанный образ: {s.outfit}")
-    if s.hairstyle: parts.append(f"последняя причёска: {s.hairstyle}")
+    # V3.113.0: «в чёрной майке» rode in 45 replies a week because the last
+    # photo's outfit sat here unlabelled; it is for photo continuity only.
+    if s.outfit: parts.append(f"последний показанный на фото образ (только для фото; в тексте не называй одежду, если он не спросил): {s.outfit}")
+    if s.hairstyle: parts.append(f"последняя причёска на фото: {s.hairstyle}")
     if s.pending_hook: parts.append(f"незакрытая тема пользователя, к которой можно естественно вернуться: {s.pending_hook}")
     return '; '.join(parts) + '. Используй время естественно: ночью можно спросить «чего не спишь?», утром — «доброе утро», вечером — предложить что-то. Не перечисляй это пользователю списком и не утверждай, что это реальные внешние события.'
 

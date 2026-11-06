@@ -238,9 +238,33 @@ def _today_utc() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 
 
+def has_monthly_premium(telegram_id: int) -> bool:
+    """V3.112.0: an active Premium bought for a month or longer (month,
+    discounted / VIP month, quarter, or an admin grant of 28+ days). The
+    3-day trial, the week and the free demo do not count."""
+    from config import VIDEO_MIN_PLAN_DAYS
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    try:
+        with SessionLocal() as s:
+            user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+            if not user:
+                return False
+            subs = s.scalars(select(Subscription).where(
+                Subscription.user_id == user.id, Subscription.status == "active",
+                Subscription.expires_at > now)).all()
+            for sub in subs:
+                if sub.started_at and sub.expires_at and \
+                        sub.expires_at - sub.started_at >= timedelta(days=VIDEO_MIN_PLAN_DAYS):
+                    return True
+            return False
+    except Exception:
+        logger.exception('monthly premium check failed user=%s', telegram_id)
+        return False
+
+
 def premium_video_free_left(telegram_id: int) -> int:
-    """Free photo-animation slots left today for a Premium user."""
-    if not VIDEO_PREMIUM_FREE_DAILY or not is_premium(telegram_id):
+    """Photo-animation slots left today (monthly Premium only, V3.112.0)."""
+    if not VIDEO_PREMIUM_FREE_DAILY or not has_monthly_premium(telegram_id):
         return 0
     with SessionLocal() as s:
         user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
@@ -252,8 +276,8 @@ def premium_video_free_left(telegram_id: int) -> int:
 
 
 def consume_premium_video_free(telegram_id: int) -> bool:
-    """Atomically consume one free Premium animation slot for today."""
-    if not VIDEO_PREMIUM_FREE_DAILY or not is_premium(telegram_id):
+    """Atomically consume one monthly-Premium animation slot for today."""
+    if not VIDEO_PREMIUM_FREE_DAILY or not has_monthly_premium(telegram_id):
         return False
     today = _today_utc()
     with SessionLocal() as s:

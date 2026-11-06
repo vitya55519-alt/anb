@@ -251,7 +251,11 @@ VIDEO_COST_STARS = max(1, int(os.getenv("VIDEO_COST_STARS", "50")))
 GALLERY_DOWNLOAD_STARS = max(1, int(os.getenv("GALLERY_DOWNLOAD_STARS", "30")))
 # Premium perk: this many photo animations per day are free for Premium users;
 # any extra animation on the same day is sold for VIDEO_COST_STARS Stars.
-VIDEO_PREMIUM_FREE_DAILY = max(0, int(os.getenv("VIDEO_PREMIUM_FREE_DAILY", "2")))
+# V3.112.0: owner — photo animation is a monthly-Premium perk only (a month or
+# longer: month / quarter), one a day, nothing free and no Stars/token route.
+# Every animation is a paid SpicyAPI video; trial/week buyers could not cover it.
+VIDEO_PREMIUM_FREE_DAILY = max(0, int(os.getenv("VIDEO_PREMIUM_FREE_DAILY", "1")))
+VIDEO_MIN_PLAN_DAYS = max(1, int(os.getenv("VIDEO_MIN_PLAN_DAYS", "28")))
 # V3.53.0: «Собери галерею» — every GALLERY_SET_SIZE delivered photos of one
 # character (bot chat + Mini App chat/private/circle/video) completes a gallery
 # set («quest done»), then the next set begins. One rolling counter per character.
