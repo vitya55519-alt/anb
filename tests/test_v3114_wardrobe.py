@@ -56,7 +56,7 @@ def test_wear_only_owned_and_photo_overrides():
     assert 'room' not in o  # a cafe is not her room
     o = wd.photo_overrides(uid, 'anna_01', 'home', 'home')
     assert 'fairy lights' in o['room']
-    assert wd.photo_overrides(uid, 'anna_01', 'restaurant', 'evening').get('clothing') is None
+    assert wd.photo_overrides(uid, 'anna_01', 'restaurant', 'evening')['clothing'] == wd.get('sundress').prompt  # worn today = everywhere ordinary
     assert wd.wear(uid, 'anna_01', '')
     assert wd.worn_today(uid, 'anna_01') is None
 
@@ -89,3 +89,52 @@ def test_wiring():
     assert 'wardrobe_service import chat_line' in CHAT
     assert 'id="wdSheet"' in APP and 'openWardrobe' in APP and "open') === 'wardrobe'" in APP
     assert "Command('wardrobe')" in MAIN
+
+
+# ── V3.116.0: «🏠 Дом» ──────────────────────────────────────────────────
+
+def test_home_catalog_places_and_styles():
+    from services.wardrobe_catalog import SLOTS, STYLES
+    room = [i for i in wd.ITEMS if i.kind == 'room']
+    assert room and all(i.slot for i in room)
+    assert {i.slot for i in room} == {k for k, _r, _e in SLOTS}
+    assert len(STYLES) == 8 and {'arabic', 'indian', 'japanese'} <= {x.id for x in STYLES}
+
+
+def test_home_furnish_replaces_per_place_and_prompt_stays_short():
+    uid = _uid()
+    assert wd.set_style(uid, 'anna_01', 'arabic')
+    for iid in ('bed_soft', 'canopy', 'lights', 'kitten', 'sofa_velvet', 'tapestry', 'monstera', 'silk_sheets', 'rug_persian'):
+        wd.grant(uid, 'anna_01', iid)
+    home = wd.home_state(uid, 'anna_01')
+    assert home['style'] == 'arabic'
+    assert home['slots']['bed'] == 'canopy'  # the later bed replaced the first
+    assert home['active'][0] == 'canopy'
+    o = wd.photo_overrides(uid, 'anna_01', 'home', 'home')
+    assert 'Arabic' in o['room']
+    assert len(o['room']) < 900  # 5 places max + the style: far from SpicyAPI's 5000 cap
+    assert wd.place(uid, 'anna_01', 'bed_soft')
+    assert wd.home_state(uid, 'anna_01')['slots']['bed'] == 'bed_soft'
+    assert not wd.place(uid, 'anna_01', 'bed_round')  # not owned
+    edit = wd.room_prompt_edit('bed_soft', 'canopy')
+    assert 'same room' in edit and 'canopy' in edit
+    assert 'Arabic' in wd.room_prompt_full('arabic', home['active'])
+    line = wd.chat_line(uid, 'anna_01')
+    assert 'арабском' in line and 'котёнок' in line
+
+
+def test_home_wiring():
+    assert "'/webapp/api/home/style'" in MAIN and "'/webapp/api/home/place'" in MAIN
+    assert 'room_prompt_edit' in MAIN and "'need_style'" in MAIN
+    assert 'function renderHome' in APP and "'/webapp/api/home/'" in APP
+
+
+def test_worn_gift_beats_level_lingerie_rule():
+    # Витя: sports set «Надеть сегодня», level 9 — photos still came in lingerie
+    uid = _uid()
+    wd.grant(uid, 'anna_01', 'sport')
+    o = wd.photo_overrides(uid, 'anna_01', 'selfie', 'day_casual')
+    assert o['clothing'] == wd.get('sport').prompt  # any ordinary scene, not only gym
+    assert 'clothing' not in wd.photo_overrides(uid, 'anna_01', 'lingerie', 'adult')
+    assert 'gift_outfit=True' in PHOTO and 'if request.gift_outfit:' in PHOTO
+    assert 'home_lingerie_mode = home_lingerie_mode or _gift_worn' in PHOTO

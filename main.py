@@ -15991,6 +15991,9 @@ async def _webapp_api_wardrobe_buy_impl(request: web.Request) -> web.Response:
         uid_ = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
         if item.kind == 'adult' and not _wardrobe_adult_open(telegram_id):
             return {'error': 'adult' if is_premium(telegram_id) else 'premium_required', 'status': 403}
+        if item.slot and not wardrobe_service.home_state(telegram_id, cid)['style']:
+            return {'error': 'need_style', 'status': 409}
+        prev_slot = wardrobe_service.home_state(telegram_id, cid)['slots'].get(item.slot, '') if item.slot else ''
         if item.id in wardrobe_service.owned_ids(telegram_id, cid):
             return {'error': 'owned', 'status': 409}
         if not admin and not spend_peaches(telegram_id, item.price):
@@ -16001,7 +16004,7 @@ async def _webapp_api_wardrobe_buy_impl(request: web.Request) -> web.Response:
             return {'error': 'owned', 'status': 409}
         track_event(uid_, 'wardrobe_buy', character_id=cid,
                     metadata={'item': item.id, 'kind': item.kind, 'price': 0 if admin else item.price})
-        return {'cid': cid, 'uid': uid_}
+        return {'cid': cid, 'uid': uid_, 'prev_slot': prev_slot if item.slot else ''}
     res = await asyncio.to_thread(_charge)
     if res.get('error'):
         status = res.pop('status', 400)
@@ -16024,7 +16027,11 @@ async def _webapp_api_wardrobe_buy_impl(request: web.Request) -> web.Response:
         answer = ('Oh, thank you! 😍 Give me a minute…' if lang == 'en'
                   else 'Это мне?! 😍 Спасибо… подожди минутку')
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', answer)
-    _spawn_background(_deliver_wardrobe_photo(telegram_id, character_id, uid, item.id, refund=not admin))
+    if item.slot:
+        _spawn_background(_render_home(telegram_id, character_id, uid, item_id=item.id,
+                                       replaced=res.get('prev_slot', ''), refund=0 if admin else CHAT_PHOTO_PEACH_COST))
+    else:
+        _spawn_background(_deliver_wardrobe_photo(telegram_id, character_id, uid, item.id, refund=not admin))
     return web.json_response({'ok': True, 'text': answer, 'user_text': action if answer else '',
                               'photo_pending': True, 'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
 
@@ -16066,6 +16073,142 @@ async def _deliver_wardrobe_photo(telegram_id: int, character_id: str, uid: int,
         save_message(uid, character_id, 'assistant', text)
         track_event(uid, 'wardrobe_photo_failed', character_id=character_id, metadata={'item': item_id})
     await asyncio.to_thread(_sorry)
+
+
+async def _render_home(telegram_id: int, character_id: str, uid: int, *, item_id: str = '',
+                       replaced: str = '', refund: int = 0) -> None:
+    """V3.116.0: «🏠 Дом» — redraw her room. With a previous picture and one new
+    thing it is an EDIT of that picture (the room stays the same room); a new
+    style or a first picture is drawn from scratch. The picture lands in the
+    chat as her message and becomes the room view. On failure `refund` peaches go back."""
+    from services import spicy_jobs, spend_service, wardrobe_service
+    from config import SPICYAPI_IMAGE_MODEL, SPICYAPI_T2I_MODEL
+    home = await asyncio.to_thread(wardrobe_service.home_state, telegram_id, character_id)
+    prev = None
+    if item_id and home['image']:
+        path = await asyncio.to_thread(webapp_service.chat_media_file_path, telegram_id, home['image'])
+        if path:
+            prev = await asyncio.to_thread(path.read_bytes)
+    block = {'aspect_ratio': '4:3', 'resolution': '1k', 'output_format': 'png', 'enable_thinking': True}
+    data = None
+    ok, cost = False, 0.0
+    try:
+        allowed, _why = await asyncio.to_thread(budget_allows_photo)
+        if not allowed:
+            raise RuntimeError('budget')
+        if prev:
+            uri = await spicy_jobs.upload(prev, 'image/jpeg' if prev[:2] == b'\xff\xd8' else 'image/png')
+            block.update(prompt=wardrobe_service.room_prompt_edit(item_id, replaced), image_urls=[uri])
+            data, _mime, cost = await spicy_jobs.run(SPICYAPI_IMAGE_MODEL, block, timeout=240)
+        else:
+            block['prompt'] = wardrobe_service.room_prompt_full(home['style'], home['active'])
+            data, _mime, cost = await spicy_jobs.run(SPICYAPI_T2I_MODEL, block, timeout=240)
+        ok = bool(data)
+    except Exception as exc:
+        logger.exception('home render failed user=%s item=%s', telegram_id, item_id)
+        await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo', character_id,
+                                item_id or 'home', f'home: {type(exc).__name__}: {exc}')
+    finally:
+        await asyncio.to_thread(spend_service.record_image_spend, 'spicyapi', 'home', cost, billed=ok, success=ok)
+
+    def _finish():
+        if data:
+            ext = 'png' if data[:8] == b'\x89PNG\r\n\x1a\n' else 'jpg'
+            filename = webapp_service.save_chat_media(telegram_id, data, ext, 'image/png' if ext == 'png' else 'image/jpeg')
+            wardrobe_service.set_room_image(telegram_id, character_id, filename)
+            cap = '📸 смотри, как теперь у меня 🏠' if item_id else '📸 вот моя новая комната 🏠 обставим вместе?'
+            save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=f'/webapp/media/{filename}')
+            track_event(uid, 'home_render', character_id=character_id, metadata={'item': item_id or 'style', 'edit': bool(prev)})
+            return
+        if refund:
+            add_peaches(telegram_id, refund)
+        save_message(uid, character_id, 'assistant',
+                     'фото комнаты сейчас не получилось 🙈 всё стоит на месте' + (f', а за фото вернула тебе {refund} 🍑' if refund else ''))
+        track_event(uid, 'home_render_failed', character_id=character_id, metadata={'item': item_id or 'style'})
+    await asyncio.to_thread(_finish)
+
+
+async def _webapp_api_home_style(request: web.Request) -> web.Response:
+    """Pick her room style: the first one is free, a change costs STYLE_CHANGE_PRICE."""
+    from services import wardrobe_service
+    user_info = _wardrobe_auth(request)
+    if not user_info:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = int(user_info['id'])
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    style_id = str(body.get('style_id', ''))
+    if not wardrobe_service.get_style(style_id):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    admin = telegram_id in ADMIN_TELEGRAM_IDS
+
+    def _apply():
+        if not has_accepted(telegram_id):
+            return {'error': 'consent', 'status': 403}
+        cid = str(body.get('character_id', '')) or get_user_character(telegram_id)
+        uid_ = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        cur = wardrobe_service.home_state(telegram_id, cid)['style']
+        if cur == style_id:
+            return {'error': 'same', 'status': 409}
+        price = wardrobe_service.STYLE_CHANGE_PRICE if (cur and not admin) else 0
+        if price and not spend_peaches(telegram_id, price):
+            return {'error': 'insufficient_peaches', 'cost': price, 'status': 402}
+        if not wardrobe_service.set_style(telegram_id, cid, style_id):
+            if price:
+                add_peaches(telegram_id, price)
+            return {'error': 'temporarily_unavailable', 'status': 500}
+        track_event(uid_, 'home_style', character_id=cid, metadata={'style': style_id, 'price': price})
+        return {'cid': cid, 'uid': uid_, 'price': price}
+    res = await asyncio.to_thread(_apply)
+    if res.get('error'):
+        status = res.pop('status', 400)
+        return web.json_response(dict(res, ok=False), status=status)
+    _spawn_background(_render_home(telegram_id, res['cid'], res['uid'], refund=res['price']))
+    return web.json_response({'ok': True, 'photo_pending': True,
+                              'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
+
+
+async def _webapp_api_home_place(request: web.Request) -> web.Response:
+    """Put back a thing she already has (one new room picture, HOME_REDRAW_PRICE)."""
+    from services import wardrobe_service
+    user_info = _wardrobe_auth(request)
+    if not user_info:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = int(user_info['id'])
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    item = wardrobe_service.get(str(body.get('item_id', '')))
+    if not item or not item.slot:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    admin = telegram_id in ADMIN_TELEGRAM_IDS
+
+    def _apply():
+        cid = str(body.get('character_id', '')) or get_user_character(telegram_id)
+        uid_ = ensure_user(telegram_id)
+        home = wardrobe_service.home_state(telegram_id, cid)
+        if item.id not in wardrobe_service.owned_ids(telegram_id, cid):
+            return {'error': 'not_owned', 'status': 403}
+        if home['slots'].get(item.slot) == item.id:
+            return {'error': 'same', 'status': 409}
+        price = 0 if admin else wardrobe_service.HOME_REDRAW_PRICE
+        if price and not spend_peaches(telegram_id, price):
+            return {'error': 'insufficient_peaches', 'cost': price, 'status': 402}
+        wardrobe_service.place(telegram_id, cid, item.id)
+        return {'cid': cid, 'uid': uid_, 'price': price, 'prev': home['slots'].get(item.slot, '')}
+    res = await asyncio.to_thread(_apply)
+    if res.get('error'):
+        status = res.pop('status', 400)
+        return web.json_response(dict(res, ok=False), status=status)
+    _spawn_background(_render_home(telegram_id, res['cid'], res['uid'], item_id=item.id,
+                                   replaced=res['prev'], refund=res['price']))
+    return web.json_response({'ok': True, 'photo_pending': True,
+                              'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
 
 
 async def _webapp_api_wardrobe_wear(request: web.Request) -> web.Response:
@@ -16611,6 +16754,8 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/wardrobe/buy', _webapp_api_wardrobe_buy)
     app.router.add_post('/webapp/api/wardrobe/wear', _webapp_api_wardrobe_wear)
     app.router.add_post('/webapp/api/wardrobe/pet', _webapp_api_wardrobe_pet)
+    app.router.add_post('/webapp/api/home/style', _webapp_api_home_style)  # V3.116.0
+    app.router.add_post('/webapp/api/home/place', _webapp_api_home_place)
     app.router.add_post('/webapp/api/fetish/set', _webapp_api_fetish_set)
     app.router.add_post('/webapp/api/fetish/stop', _webapp_api_fetish_stop)
     app.router.add_post('/webapp/api/spicy', _webapp_api_spicy)

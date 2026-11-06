@@ -751,4 +751,9 @@ class WardrobeState(Base):
     mood: Mapped[int] = mapped_column(Integer, default=50)
     mood_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     pet_name: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # V3.116.0: «🏠 Дом» — her room style, the latest room picture (chat media
+    # file name) and the active thing per place as JSON {slot: item_id}.
+    room_style: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    room_image: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    room_slots_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

@@ -8,7 +8,7 @@ fixed pose, one room, one camera and one written body lock; only the garment
 
 Runs on the owner's PC (the cloud container cannot reach SpicyAPI):
     python _gen_v3114_wardrobe_art.py <file-with-SPICYAPI_KEY> [item_id ...]
-Writes webapp/art/wd_<item>.jpg (600x800) and a review sheet
+Writes webapp/art/wd_<item>.jpg (600x800), webapp/art/home_<style>.jpg (V3.116.0) and a review sheet
 %USERPROFILE%/Desktop/wardrobe_cards.jpg. Existing cards are skipped; delete a
 card file to re-render it.
 """
@@ -22,7 +22,7 @@ import _gen_v379_refs as g  # noqa: E402
 from PIL import Image  # noqa: E402
 
 sys.path.insert(0, str(g.ROOT))
-from services.wardrobe_catalog import ITEMS  # noqa: E402  (pure data, no DB)
+from services.wardrobe_catalog import ITEMS, STYLES  # noqa: E402  (pure data, no DB)
 
 EDIT = 'bytedance/seedream-5.0-pro/edit'
 REF = g.ROOT / 'data' / 'references' / 'anna'
@@ -51,7 +51,7 @@ QUALITY = (' Photorealistic smartphone photo, natural skin texture, sharp focus,
 
 def prompt_for(item) -> str:
     if item.kind == 'room':
-        extra = ' She holds the small fluffy grey kitten in her arms.' if item.id == 'kitten' else ''
+        extra = {'kitten': ' She holds the small fluffy grey kitten in her arms.', 'puppy': ' She holds the tiny fluffy cream Pomeranian puppy in her arms.'}.get(item.id, '')
         return KEEP + BODY + ROOM + item.prompt + '. She wears a tight cropped white top and tiny denim shorts.' + extra + SEXY + QUALITY
     if item.kind == 'jewel':
         return KEEP + BODY + CLOSE + f'She wears {item.prompt}, clearly visible, with a fitted black top with a deep neckline.' + SEXY + QUALITY
@@ -79,11 +79,30 @@ def main() -> None:
             print('ok', path.name, flush=True)
         except Exception as e:  # keep going with the rest
             print('error', item.id, e, flush=True)
+    # V3.116.0: «🏠 Дом» style cards — the empty room of each style, nobody in it
+    T2I = 'bytedance/seedream-5.0-pro/text-to-image'
+    for st in STYLES:
+        if ARGS and f'style:{st.id}' not in ARGS and 'styles' not in ARGS:
+            continue
+        path = OUT / f'home_{st.id}.jpg'
+        if path.exists():
+            continue
+        try:
+            prompt = (f'Interior photo of a young woman\'s bedroom: {st.prompt}. Tastefully furnished, cozy and '
+                      'inviting, wide angle from the doorway, eye level, natural light. No people, no text, no '
+                      'watermark, no logo. Photorealistic.')
+            raw = g.render(T2I, prompt)
+            im = Image.open(io.BytesIO(raw)).convert('RGB').resize((600, 800), Image.LANCZOS)
+            im.save(path, 'JPEG', quality=86, optimize=True)
+            print('ok', path.name, flush=True)
+        except Exception as e:
+            print('error', st.id, e, flush=True)
     make_sheet()
 
 
 def make_sheet() -> None:
     cards = [(i, OUT / f'wd_{i.id}.jpg') for i in ITEMS if (OUT / f'wd_{i.id}.jpg').exists()]
+    cards += [(st, OUT / f'home_{st.id}.jpg') for st in STYLES if (OUT / f'home_{st.id}.jpg').exists()]
     if not cards:
         return
     cols, w, h = 6, 300, 400

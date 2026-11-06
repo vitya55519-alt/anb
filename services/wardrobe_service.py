@@ -44,8 +44,10 @@ ROOM_RELATIONSHIP = 1.0
 PET_NAME_MAX = 20
 
 from services.wardrobe_catalog import (  # noqa: F401  (re-exported)
-    ADULT_SCENES, CASUAL, EVENING, HOME, ITEMS, ROOM_SCENES, SECTION_TITLES, SECTIONS, SPORT, Item, _BY_ID,
+    ADULT_SCENES, CASUAL, EVENING, HOME, ITEMS, PETS, PHOTO_SLOTS_MAX, ROOM_SCENES, SECTION_TITLES, SECTIONS,
+    SLOTS, SPORT, STYLE_CHANGE_PRICE, STYLES, Item, Style, _BY_ID, style as get_style,
 )
+import json
 
 
 def get(item_id: str) -> Item | None:
@@ -157,6 +159,10 @@ def grant(telegram_id: int, character_id: str, item_id: str) -> bool:
             if item.kind in ('wear', 'adult'):
                 st.worn_item = item.id
                 st.worn_day = _today()
+            elif item.slot:
+                slots = _slots(st)
+                slots[item.slot] = item.id
+                st.room_slots_json = json.dumps(slots)
             s.commit()
         return True
     except Exception:
@@ -184,7 +190,7 @@ def wear(telegram_id: int, character_id: str, item_id: str) -> bool:
 
 def set_pet_name(telegram_id: int, character_id: str, name: str) -> str:
     name = clean_pet_name(name)
-    if not name or 'kitten' not in owned_ids(telegram_id, character_id):
+    if not name or not (PETS & set(owned_ids(telegram_id, character_id))):
         return ''
     try:
         with SessionLocal() as s:
@@ -220,7 +226,8 @@ def catalog(telegram_id: int, character_id: str, lang: str = 'ru', *, adult_open
         'total_wear': len(ITEMS) - room_total,
         'owned_room': sum(1 for i in owned if _BY_ID[i].kind == 'room'), 'total_room': room_total,
         'worn': worn.id if worn else '', 'pet_name': pet_name(telegram_id, character_id),
-        'sections': sections,
+        'sections': [x for x in sections if x['key'] != 'room'],
+        'home': home_catalog(telegram_id, character_id, lang, list(owned)),
     }
 
 
@@ -235,7 +242,10 @@ def photo_overrides(telegram_id: int, character_id: str, scene: str, group: str)
             return {}
         out: dict = {}
         worn = worn_today(telegram_id, character_id)
-        if worn and worn.kind == 'wear' and group in worn.groups:
+        # V3.116.0: «Надеть сегодня» means today, in every ordinary photo — not
+        # only the scene type the garment was made for (a sports set in a selfie
+        # at home too). Intimate scenes keep their own wardrobe.
+        if worn and worn.kind == 'wear' and group not in ('adult', 'personal'):
             out['clothing'] = worn.prompt
         elif worn and worn.kind == 'adult':
             if scene in ADULT_SCENES:
@@ -245,9 +255,11 @@ def photo_overrides(telegram_id: int, character_id: str, scene: str, group: str)
         if jewels:
             out['accessory'] = ' and '.join(jewels)
         if scene in ROOM_SCENES:
-            room = [_BY_ID[i].prompt for i in owned if _BY_ID[i].kind == 'room']
-            if room:
-                out['room'] = 'in her room: ' + '; '.join(room[:4])
+            home = home_state(telegram_id, character_id, owned)
+            st_ = get_style(home['style'])
+            things = [_BY_ID[i].prompt for i in home['active'][:PHOTO_SLOTS_MAX]]
+            if st_ or things:
+                out['room'] = 'her room: ' + '; '.join(([st_.prompt] if st_ else []) + things)
         return out
     except Exception:
         logger.exception('wardrobe photo overrides failed user=%s', telegram_id)
@@ -269,13 +281,17 @@ def chat_line(telegram_id: int, character_id: str) -> str:
         jewels = [_BY_ID[i].say for i in owned if _BY_ID[i].kind == 'jewel']
         if jewels:
             parts.append('ты носишь его ' + ' и '.join(jewels))
-        room = [_BY_ID[i] for i in owned if _BY_ID[i].kind == 'room']
-        if room:
+        home = home_state(telegram_id, character_id, owned)
+        st_ = get_style(home['style'])
+        if st_:
+            parts.append(f'твоя комната — {st_.say}, вы обставляете её вместе')
+        if home['active']:
             names = []
-            for i in room:
-                if i.id == 'kitten':
+            for iid in home['active']:
+                i = _BY_ID[iid]
+                if i.id in PETS:
                     pn = pet_name(telegram_id, character_id)
-                    names.append(f'котёнок {pn}' if pn else 'котёнок (он ещё не дал ему имя — можешь попросить придумать)')
+                    names.append(f'{i.say} {pn}' if pn else f'{i.say} (он ещё не дал имя — можешь попросить придумать)')
                 else:
                     names.append(i.say)
             parts.append('у тебя в комнате его подарки: ' + ', '.join(names))
@@ -286,7 +302,7 @@ def chat_line(telegram_id: int, character_id: str) -> str:
         mood_note = (' Ты сейчас счастлива после его подарка: чуть теплее и игривее обычного.' if m >= 80 else '')
         return ('ЕГО ПОДАРКИ (правда твоей жизни): ' + '; '.join(parts) + '.' + mood_note +
                 ' Упоминай это естественно и изредка, когда к слову (не в каждом ответе): как тебе в этой вещи, '
-                'что делает котёнок, как горит гирлянда. Никогда не проси новых подарков, не намекай на покупки '
+                'что делает питомец, как теперь в комнате. Никогда не проси новых подарков, не намекай на покупки '
                 'и не обижайся, что он чего-то не подарил.')
     except Exception:
         logger.exception('wardrobe chat line failed user=%s', telegram_id)
@@ -314,3 +330,122 @@ def gift_scene(item: Item, name: str = '') -> str:
     return (f'СЦЕНА ПОДАРКА: он только что подарил тебе, {who}, {what}. Отреагируй живо и по-настоящему: '
             f'удивление, радость, пару деталей, почему тебе это нравится. {tail} '
             '2-4 коротких предложения, без пафоса и без просьб о новых подарках.')
+
+
+# ── V3.116.0: «🏠 Дом» — she gets an empty room in a style he picks, and he
+# furnishes it place by place. Every purchase redraws the room picture FROM THE
+# PREVIOUS ONE (edit, not a fresh render), so it stays the same room.
+HOME_REDRAW_PRICE = 200  # putting back a thing she already has = one new picture
+
+
+def _slots(st) -> dict:
+    try:
+        data = json.loads(st.room_slots_json or '{}') if st is not None else {}
+        return {k: v for k, v in data.items() if v in _BY_ID and _BY_ID[v].slot == k}
+    except Exception:
+        return {}
+
+
+def home_state(telegram_id: int, character_id: str, owned: list[str] | None = None) -> dict:
+    """{'style', 'image', 'slots': {slot: item_id}, 'active': [item_id ordered by SLOTS]}.
+    Room things bought before V3.116.0 (no slot map yet) count as placed."""
+    try:
+        with SessionLocal() as s:
+            st = _state(s, telegram_id, character_id)
+            style_id = (st.room_style or '') if st else ''
+            image = (st.room_image or '') if st else ''
+            slots = _slots(st)
+    except Exception:
+        style_id, image, slots = '', '', {}
+    if not slots:
+        owned = owned if owned is not None else owned_ids(telegram_id, character_id)
+        for iid in owned:
+            it = _BY_ID.get(iid)
+            if it and it.slot:
+                slots[it.slot] = iid
+    active = [slots[k] for k, _ru, _en in SLOTS if k in slots]
+    return {'style': style_id, 'image': image, 'slots': slots, 'active': active}
+
+
+def set_style(telegram_id: int, character_id: str, style_id: str) -> bool:
+    if not get_style(style_id):
+        return False
+    try:
+        with SessionLocal() as s:
+            st = _state(s, telegram_id, character_id, create=True)
+            st.room_style = style_id
+            s.commit()
+        return True
+    except Exception:
+        logger.exception('home style failed user=%s', telegram_id)
+        return False
+
+
+def place(telegram_id: int, character_id: str, item_id: str) -> bool:
+    """Put back an owned room thing in its place."""
+    it = _BY_ID.get(item_id)
+    if not it or not it.slot or item_id not in owned_ids(telegram_id, character_id):
+        return False
+    try:
+        with SessionLocal() as s:
+            st = _state(s, telegram_id, character_id, create=True)
+            slots = home_state(telegram_id, character_id)['slots']
+            slots[it.slot] = it.id
+            st.room_slots_json = json.dumps(slots)
+            s.commit()
+        return True
+    except Exception:
+        logger.exception('home place failed user=%s', telegram_id)
+        return False
+
+
+def set_room_image(telegram_id: int, character_id: str, filename: str) -> None:
+    try:
+        with SessionLocal() as s:
+            st = _state(s, telegram_id, character_id, create=True)
+            st.room_image = filename
+            s.commit()
+    except Exception:
+        logger.exception('home image save failed user=%s', telegram_id)
+
+
+ROOM_QUALITY = (' Photorealistic interior photo shot on a phone, wide angle from the doorway, eye level, natural '
+                'light, cozy lived-in feeling, no people, no text, no watermark, no logo.')
+
+
+def room_prompt_full(style_id: str, active: list[str]) -> str:
+    st_ = get_style(style_id)
+    base = f'Interior of a young woman\'s bedroom: {st_.prompt if st_ else "a cozy bedroom"}.'
+    if active:
+        base += ' In the room: ' + '; '.join(_BY_ID[i].prompt for i in active) + '.'
+    else:
+        base += ' The room is still almost empty: only a simple mattress on the floor, bare walls and a window.'
+    return base + ROOM_QUALITY
+
+
+def room_prompt_edit(item_id: str, replaced: str = '') -> str:
+    it = _BY_ID[item_id]
+    swap = (f' It replaces {_BY_ID[replaced].prompt}, which is removed.' if replaced and replaced in _BY_ID else '')
+    return ('The same room as in the reference image: keep the exact walls, floor, window, camera angle, light and '
+            f'every other object unchanged. Add {it.prompt} in a natural place.{swap}' + ROOM_QUALITY)
+
+
+def home_catalog(telegram_id: int, character_id: str, lang: str = 'ru', owned: list[str] | None = None) -> dict:
+    owned = owned if owned is not None else owned_ids(telegram_id, character_id)
+    home = home_state(telegram_id, character_id, owned)
+    en = lang == 'en'
+    slots = []
+    for key, ru, en_t in SLOTS:
+        slots.append({'key': key, 'title': en_t if en else ru, 'items': [{
+            'id': i.id, 'emoji': i.emoji, 'title': i.en if en else i.ru, 'price': i.price,
+            'owned': i.id in owned, 'active': home['slots'].get(key) == i.id, 'pet': i.id in PETS,
+            'art': f'/webapp/art/{card_art(i.id)}',
+        } for i in ITEMS if i.slot == key]})
+    return {
+        'style': home['style'],
+        'image': f'/webapp/media/{home["image"]}' if home['image'] else '',
+        'styles': [{'id': x.id, 'emoji': x.emoji, 'title': x.en if en else x.ru,
+                    'art': f'/webapp/art/home_{x.id}.jpg'} for x in STYLES],
+        'style_price': STYLE_CHANGE_PRICE, 'redraw_price': HOME_REDRAW_PRICE,
+        'slots': slots,
+    }
