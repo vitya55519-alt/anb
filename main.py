@@ -16856,7 +16856,9 @@ BOT_PROFILE = {
 
 
 async def _apply_bot_profile() -> None:
-    if os.getenv('BOT_PROFILE_ENABLED', '1') != '1':
+    # V3.118.0: off by default — the owner edits name/description in BotFather
+    # and every deploy used to overwrite them. BOT_PROFILE_ENABLED=1 turns it on.
+    if os.getenv('BOT_PROFILE_ENABLED', '0') != '1':
         return
     for lang, prof in BOT_PROFILE.items():
         code = '' if lang == 'ru' else lang
