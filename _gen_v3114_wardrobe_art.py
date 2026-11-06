@@ -33,14 +33,17 @@ KEEP = ('The same woman as in both reference images: keep her exact face, eyes, 
         'dark-brown brunette hair and skin tone. ')
 BODY = ('Her figure is identical in every picture of this series: distinctly slim and fit body, narrow waist, '
         'full bust with silicone implants (Russian size 5, E cup), the same hips and legs; never bigger or smaller. ')
-POSE = ('Full body from head to feet, standing straight facing the camera, weight on one leg, one hand relaxed at '
-        'her side, the other lightly touching her hair, soft warm smile, eye contact. She stands in a bright cozy '
-        'bedroom with a white wall, a light wooden floor and a tall mirror, soft natural daylight. Camera at chest '
-        'height, vertical 3:4 frame, the same framing as a catalogue photo. ')
-CLOSE = ('Waist-up portrait facing the camera, one hand lightly touching her collarbone, soft warm smile, the same '
-         'bright cozy bedroom with a white wall behind her, soft natural daylight. ')
+POSE = ('Full body from head to feet, standing facing the camera in a confident sexy glamour pose: weight on one '
+        'leg with the hip pushed out, one hand on her hip, the other running through her hair, chest slightly forward, '
+        'flirty seductive half-smile, sultry eye contact with the viewer. She stands in a cozy warm-lit bedroom with a '
+        'white wall, a light wooden floor and a tall mirror, soft golden light. Camera at chest height, vertical 3:4 '
+        'frame, the same framing for every picture of the series, like a glossy fashion catalogue. ')
+CLOSE = ('Waist-up glamour portrait facing the camera, one fingertip touching her collarbone, flirty seductive '
+         'half-smile, sultry eye contact, the same cozy warm-lit bedroom with a white wall behind her, soft golden light. ')
 ROOM = ('She sits on the edge of her bed in her cozy bedroom with a white wall and a light wooden floor, soft warm '
-        'evening light, relaxed happy smile, eye contact. The room clearly shows: ')
+        'evening light, legs crossed, leaning back on one hand, flirty smile, sultry eye contact. The room clearly shows: ')
+SEXY = (' Sensual glamour mood: the outfit fits her body tightly and shows off her curves, confident seductive body '
+        'language, glossy lips, glamorous makeup.')
 QUALITY = (' Photorealistic smartphone photo, natural skin texture, sharp focus, anatomically correct: exactly two '
            'arms and two hands, five fingers on each hand. Adult woman, one person only, no nudity, no text, '
            'no watermark, no logo.')
@@ -49,13 +52,13 @@ QUALITY = (' Photorealistic smartphone photo, natural skin texture, sharp focus,
 def prompt_for(item) -> str:
     if item.kind == 'room':
         extra = ' She holds the small fluffy grey kitten in her arms.' if item.id == 'kitten' else ''
-        return KEEP + BODY + ROOM + item.prompt + '. She wears a cozy cream knit sweater and light jeans.' + extra + QUALITY
+        return KEEP + BODY + ROOM + item.prompt + '. She wears a tight cropped white top and tiny denim shorts.' + extra + SEXY + QUALITY
     if item.kind == 'jewel':
-        return KEEP + BODY + CLOSE + f'She wears {item.prompt}, clearly visible, with a plain white fitted top.' + QUALITY
+        return KEEP + BODY + CLOSE + f'She wears {item.prompt}, clearly visible, with a fitted black top with a deep neckline.' + SEXY + QUALITY
     wear = item.prompt
     if item.kind == 'adult':
-        wear += ', tasteful boudoir catalogue style, the lingerie fully covers her, no nipples'
-    return KEEP + BODY + POSE + f'She wears {wear}.' + QUALITY
+        wear += ', seductive boudoir catalogue photo, the lingerie covers her intimate areas'
+    return KEEP + BODY + POSE + f'She wears {wear}.' + SEXY + QUALITY
 
 
 def main() -> None:
