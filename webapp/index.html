@@ -5055,12 +5055,12 @@ function openCharPage(el) {
   } else {
     plot.style.display = 'none';
   }
-  // V3.43.9: relationship progress bar (level 0-8, max 100%)
+  // V3.43.9: relationship progress bar; V3.115.2: 10 levels, not 8
   const relBar = document.getElementById('charRelBar');
   if (c.level && c.level > 0) {
     relBar.style.display = '';
-    const pct = Math.min(100, Math.round(c.level / 8 * 100));
-    document.getElementById('charRelLbl').textContent = '💕 ' + L.rel_level + ' ' + c.level + '/8';
+    const pct = Math.min(100, Math.round(c.level / 10 * 100));
+    document.getElementById('charRelLbl').textContent = '💕 ' + L.rel_level + ' ' + c.level + '/10';
     document.getElementById('charRelPct').textContent = pct + '%';
     document.getElementById('charRelFill').style.width = pct + '%';
   } else {

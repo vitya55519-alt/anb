@@ -16780,33 +16780,13 @@ async def _run_support_bot() -> None:
 # blurb and the text an empty chat shows before «Запустить». Kept in code so
 # BotFather never drifts; each field is written only when it differs, because
 # Telegram rate-limits setMyName hard. BOT_PROFILE_ENABLED=0 leaves it alone.
+# V3.115.2: descriptions moved to services/bot_description.py only (EN default
+# + RU). Two writers raced on every deploy: this one put the RU text into the
+# default locale, apply_bot_descriptions() the EN text, and the old «8 levels»
+# era copy kept coming back. Here only the display NAME is kept.
 BOT_PROFILE = {
-    'ru': {
-        'name': os.getenv('BOT_DISPLAY_NAME', 'Анна · AI-девушка'),
-        'short': 'Она пишет первой, шлёт селфи и скучает, когда тебя нет. Твоя AI-девушка в Telegram 💌 18+',
-        'description': (
-            '💌 Твоя AI-девушка в Telegram.\n\n'
-            'Она пишет первой, присылает селфи, помнит, о чём вы говорили, и скучает, когда тебя нет.\n\n'
-            '❤️ 10 уровней отношений: романтика или страсть\n'
-            '📸 селфи и приватные фото «Наедине»\n'
-            '🎯 истории и свидания\n'
-            '👩 выбери девушку или создай свою\n\n'
-            'Только 18+. Жми «Запустить» — она уже ждёт 😏'
-        ),
-    },
-    'en': {
-        'name': os.getenv('BOT_DISPLAY_NAME_EN', 'Anna · AI girlfriend'),
-        'short': 'She texts first, sends selfies and misses you. Your AI girlfriend in Telegram 💌 18+',
-        'description': (
-            '💌 Your AI girlfriend in Telegram.\n\n'
-            'She texts first, sends selfies, remembers what you talked about and misses you when you are away.\n\n'
-            '❤️ 10 relationship levels: romance or passion\n'
-            '📸 selfies and private photos\n'
-            '🎯 stories and dates\n'
-            '👩 pick a girl or create your own\n\n'
-            '18+ only. Tap «Start» — she is waiting 😏'
-        ),
-    },
+    'ru': {'name': os.getenv('BOT_DISPLAY_NAME', 'Анна · AI-девушка')},
+    'en': {'name': os.getenv('BOT_DISPLAY_NAME_EN', 'Anna · AI girlfriend')},
 }
 
 
@@ -16819,12 +16799,6 @@ async def _apply_bot_profile() -> None:
             cur = await bot.get_my_name(language_code=code)
             if (cur.name or '') != prof['name']:
                 await bot.set_my_name(name=prof['name'][:64], language_code=code)
-            cur = await bot.get_my_short_description(language_code=code)
-            if (cur.short_description or '') != prof['short']:
-                await bot.set_my_short_description(short_description=prof['short'][:120], language_code=code)
-            cur = await bot.get_my_description(language_code=code)
-            if (cur.description or '') != prof['description']:
-                await bot.set_my_description(description=prof['description'][:512], language_code=code)
             logger.info('bot profile ok lang=%s', lang)
         except Exception:
             logger.exception('bot profile update failed lang=%s', lang)
