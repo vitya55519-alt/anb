@@ -13622,6 +13622,243 @@ async def _webapp_api_chat_voice(request: web.Request) -> web.Response:
                                    extra={'user_text': heard, **(await _app_chat_missions(telegram_id, voice=True, text=heard))})
 
 
+# ── V3.115.0: «📞 Позвонить» (services/voice_call.py) ──────────────────────
+
+def _call_gate(character_id: str, telegram_id: int):
+    """Who may call her: the same character access and consent as the chat,
+    but not the daily message limit — calls have their own minutes."""
+    if is_custom_character(character_id):
+        if not get_custom_character_by_id(character_id):
+            return 'unknown_character'
+        if _custom_premium_gate_block(character_id, telegram_id):
+            return 'premium_required'
+    else:
+        card = get_card(character_id)
+        if not card or card.status not in ('active', 'premium'):
+            return 'locked'
+        if card.status == 'premium' and not is_premium(telegram_id):
+            return 'premium_required'
+    if not has_accepted(telegram_id):
+        return 'consent'
+    return None
+
+
+def _call_auth(request: web.Request):
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return None, None
+    user_info = webapp_service.init_data_user(pairs)
+    return user_info.get('id'), user_info
+
+
+def _call_state(telegram_id: int, user_info: dict, character_id: str, asked: str = ''):
+    from services import voice_call
+    admin = telegram_id in ADMIN_TELEGRAM_IDS
+    err = _call_gate(character_id, telegram_id)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+    mode = voice_call.mode_for(is_premium(telegram_id), admin, asked)
+    return uid, err, mode, voice_call.seconds_left(uid, mode, admin)
+
+
+async def _webapp_api_call_info(request: web.Request) -> web.Response:
+    """Before the call screen opens: which call he gets and how much is left."""
+    from services import voice_call
+    telegram_id, user_info = _call_auth(request)
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    character_id = str(request.query.get('character_id', ''))[:64]
+    if not voice_call.ENABLED or not character_id:
+        return web.json_response({'ok': False, 'error': 'disabled'}, status=400)
+    uid, err, mode, left = await asyncio.to_thread(
+        _call_state, telegram_id, user_info, character_id, request.query.get('mode', ''))
+    if err:
+        return web.json_response({'ok': False, 'error': err}, status=403)
+    from config import GEMINI_API_KEY
+    if mode == 'live' and not (voice_call.LIVE_ENABLED and GEMINI_API_KEY):
+        return web.json_response({'ok': False, 'error': 'premium_required', 'mode': mode}, status=403)
+    await asyncio.to_thread(track_event, uid, 'call_open',
+                            metadata={'character_id': character_id, 'mode': mode, 'left': left})
+    return web.json_response({
+        'ok': True, 'mode': mode, 'seconds_left': left,
+        'premium_minutes': voice_call.PREMIUM_SECONDS_PER_DAY // 60,
+        'free_minutes': round(voice_call.FREE_SECONDS_PER_DAY / 60, 1),
+    }, headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_api_call_turn(request: web.Request) -> web.Response:
+    """A Premium call turn: his recorded phrase (or the pick-up when hello is
+    set) → the chat pipeline with a phone direction → her line in her voice."""
+    from services import voice_call
+    telegram_id, user_info = _call_auth(request)
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    call_id = str(body.get('call_id', ''))[:64]
+    hello = bool(body.get('hello'))
+    audio_b64 = str(body.get('audio', '') or '')
+    if not voice_call.ENABLED or not character_id or not call_id or (not hello and not audio_b64):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    uid, err, mode, left = await asyncio.to_thread(
+        _call_state, telegram_id, user_info, character_id, str(body.get('mode', '')))
+    if err:
+        return web.json_response({'ok': False, 'error': err}, status=403)
+    if mode != 'premium':
+        return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    if left <= 0:
+        return web.json_response({'ok': False, 'error': 'limit', 'seconds_left': 0}, status=429)
+    spent = voice_call.premium_turn_seconds(call_id)
+    if spent:
+        await asyncio.to_thread(voice_call.add_seconds, uid, 'premium', spent, character_id)
+        left = max(0, left - int(spent))
+    heard = ''
+    if hello:
+        text, scene = voice_call.HELLO_MARK, voice_call.CALL_HELLO_SCENE
+    else:
+        try:
+            data = base64.b64decode(audio_b64)
+        except Exception:
+            return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+        if not data or len(data) > 5 * 1024 * 1024:
+            return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+        try:
+            heard = ((await transcribe(io.BytesIO(data))) or '').strip()[:2000]
+        except Exception:
+            logger.warning('call stt failed user=%s', telegram_id, exc_info=True)
+            return web.json_response({'ok': False, 'error': 'stt'}, status=502)
+        if not heard:
+            return web.json_response({'ok': False, 'error': 'no_speech'}, status=400)
+        text, scene = heard, voice_call.CALL_SCENE
+    try:
+        answer = await anna_reply(telegram_id, user_info.get('first_name') or 'ты', text,
+                                  language_code=user_info.get('language_code'),
+                                  character_id=character_id, scene=scene)
+    except Exception:
+        logger.exception('call reply failed user=%s character=%s', telegram_id, character_id)
+        return web.json_response({'ok': False, 'error': 'reply'}, status=502)
+    said = voice_call.spoken(answer) or '…'
+    try:
+        audio = await synthesize_bytes(said, None, character_id=character_id)
+        filename = await asyncio.to_thread(webapp_service.save_chat_media, telegram_id, audio, 'ogg', 'audio/ogg')
+    except Exception:
+        logger.warning('call tts failed user=%s', telegram_id, exc_info=True)
+        return web.json_response({'ok': True, 'heard': heard, 'text': said, 'audio_url': None,
+                                  'seconds_left': left})
+    await asyncio.to_thread(track_event, uid, 'call_turn',
+                            metadata={'character_id': character_id, 'mode': 'premium', 'hello': hello})
+    return web.json_response({'ok': True, 'heard': heard, 'text': said,
+                              'audio_url': f'/webapp/media/{filename}', 'seconds_left': left},
+                             headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_ws_call(request: web.Request) -> web.StreamResponse:
+    """The live call (without Premium): the app streams his mic as PCM16 16 kHz
+    and gets her voice back as PCM16 24 kHz through Gemini Live."""
+    from services import voice_call
+    from services.voice_service import gemini_voice_for
+    from config import GEMINI_API_KEY
+    ws = web.WebSocketResponse(heartbeat=20, max_msg_size=1024 * 1024)
+    await ws.prepare(request)
+    telegram_id, user_info = _call_auth(request)
+    character_id = str(request.query.get('character_id', ''))[:64]
+    if not telegram_id or not character_id:
+        await ws.send_json({'type': 'error', 'error': 'auth'})
+        await ws.close()
+        return ws
+    uid, err, mode, left = await asyncio.to_thread(
+        _call_state, telegram_id, user_info, character_id, request.query.get('mode', ''))
+    if not err and mode != 'live':
+        err = 'premium_call'
+    if not err and not (voice_call.ENABLED and voice_call.LIVE_ENABLED and GEMINI_API_KEY):
+        err = 'disabled'
+    if not err and left <= 0:
+        err = 'limit'
+    if err:
+        await ws.send_json({'type': 'error', 'error': err})
+        await ws.close()
+        return ws
+
+    def _prompt():
+        from services.memory_service import get_memories, get_recent_messages
+        from services import lang_guard
+        from services.character_service import get_character
+        try:
+            from services.custom_character_service import custom_base_character
+            character = custom_base_character(character_id) or get_character(character_id)
+        except Exception:
+            character = get_character(character_id)
+        memories = [m.content for m in get_memories(uid, character_id, 14)]
+        history = [(m.role, m.content) for m in get_recent_messages(uid, character_id, 12)]
+        english = lang_guard.looks_english(
+            next((c for r, c in reversed(history) if r == 'user'), ''), user_info.get('language_code'),
+            [c for r, c in history if r == 'user'])
+        return voice_call.live_system_prompt(character, user_info.get('first_name') or '', memories,
+                                             history, english=english), english
+
+    system_prompt, english = await asyncio.to_thread(_prompt)
+    try:
+        seconds, transcript, reason = await voice_call.live_bridge(
+            ws, api_key=GEMINI_API_KEY, voice_name=gemini_voice_for(character_id),
+            system_prompt=system_prompt, seconds_allowed=left, english=english)
+    except Exception as exc:
+        logger.warning('live call failed user=%s: %s', telegram_id, exc)
+        await asyncio.to_thread(track_event, uid, 'call_failed',
+                                metadata={'character_id': character_id, 'mode': 'live', 'error': str(exc)[:200]})
+        if not ws.closed:
+            await ws.send_json({'type': 'error', 'error': 'live_failed'})
+            await ws.close()
+        return ws
+
+    def _store():
+        voice_call.add_seconds(uid, 'live', seconds, character_id)
+        mins = int(seconds // 60)
+        save_message(uid, character_id, 'assistant', f'📞 Звонок · {mins}:{int(seconds % 60):02d}')
+        for role, line in transcript[-40:]:
+            save_message(uid, character_id, role, line)
+        track_event(uid, 'call_end', value=voice_call.live_cost_usd(seconds),
+                    metadata={'character_id': character_id, 'mode': 'live', 'seconds': round(seconds, 1),
+                              'reason': reason, 'lines': len(transcript)})
+
+    if seconds >= 1:
+        await asyncio.to_thread(_store)
+    if not ws.closed:
+        try:
+            await ws.send_json({'type': 'end', 'reason': reason, 'seconds': round(seconds)})
+        except Exception:
+            pass
+        await ws.close()
+    return ws
+
+
+async def _webapp_api_call_end(request: web.Request) -> web.Response:
+    """A Premium call ended: count the tail since the last turn."""
+    from services import voice_call
+    telegram_id, user_info = _call_auth(request)
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    call_id = str(body.get('call_id', ''))[:64]
+    if not character_id or not call_id:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    spent = voice_call.premium_turn_seconds(call_id)
+    uid = await asyncio.to_thread(ensure_user, telegram_id)
+    if spent:
+        await asyncio.to_thread(voice_call.add_seconds, uid, 'premium', spent, character_id)
+    await asyncio.to_thread(track_event, uid, 'call_end',
+                            metadata={'character_id': character_id, 'mode': 'premium',
+                                      'seconds': round(float(body.get('seconds') or 0), 1)})
+    return web.json_response({'ok': True})
+
+
 async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
     """V3.57.0: the user sends a photo (a selfie, for example) in the app chat —
     the vision model looks at it and she reacts in character (compliments him).
@@ -16268,6 +16505,10 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
     app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)
     app.router.add_post('/webapp/api/chat/voice', _webapp_api_chat_voice)
+    app.router.add_get('/webapp/api/call/info', _webapp_api_call_info)  # V3.115.0
+    app.router.add_post('/webapp/api/call/turn', _webapp_api_call_turn)
+    app.router.add_post('/webapp/api/call/end', _webapp_api_call_end)
+    app.router.add_get('/webapp/ws/call', _webapp_ws_call)
     app.router.add_post('/webapp/api/chat/speak', _webapp_api_chat_speak)
     app.router.add_post('/webapp/api/chat/photo', _webapp_api_chat_photo)
     app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
