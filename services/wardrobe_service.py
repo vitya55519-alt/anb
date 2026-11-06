@@ -242,7 +242,10 @@ def photo_overrides(telegram_id: int, character_id: str, scene: str, group: str)
             return {}
         out: dict = {}
         worn = worn_today(telegram_id, character_id)
-        if worn and worn.kind == 'wear' and group in worn.groups:
+        # V3.116.0: «Надеть сегодня» means today, in every ordinary photo — not
+        # only the scene type the garment was made for (a sports set in a selfie
+        # at home too). Intimate scenes keep their own wardrobe.
+        if worn and worn.kind == 'wear' and group not in ('adult', 'personal'):
             out['clothing'] = worn.prompt
         elif worn and worn.kind == 'adult':
             if scene in ADULT_SCENES:

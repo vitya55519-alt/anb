@@ -1175,6 +1175,9 @@ class PhotoRequest:
     story_detail: str = ''
     # V3.61.2: «сфоткайтесь вдвоём» — the girl invited into this chat shares the frame.
     with_guest: str = ''
+    # V3.116.0: today's garment he gave her («👗 Надеть сегодня») — wins over the
+    # level-5+ at-home lingerie rule and the community pool.
+    gift_outfit: bool = False
 
 
 class PhotoGenerationError(RuntimeError):
@@ -2090,7 +2093,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         except Exception:
             wd = {}
     if wd.get('clothing') and not request.clothing and not request.pack_outfits:
-        request = replace(request, clothing=wd['clothing'])
+        request = replace(request, clothing=wd['clothing'], gift_outfit=True)
     if wd.get('accessory') and not request.accessory:
         request = replace(request, accessory=wd['accessory'])
     pack_outfits = tuple(request.pack_outfits) if request.pack_outfits else _choose_progression_outfits(telegram_id, request, season, character_id=character_id)
@@ -2212,6 +2215,8 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # wardrobes to stay within its moderation envelope.
     adult_scene = seedream and request.scene in ADULT_SCENES and not force_safe
     home_lingerie = seedream and level_key >= 5 and request.scene in HOME_LINGERIE_SCENES and not force_safe
+    if request.gift_outfit:  # V3.116.0: today's gift garment wins over the level-5+ lingerie rule
+        home_lingerie = False
     if adult_scene:
         wardrobe = 'nothing at all — an elegant fine-art nude composition, tasteful and intimate, styled like classic boudoir photography'
         underlay_rule = ''
@@ -3642,6 +3647,14 @@ async def deliver_photo(
         request.scene in HOME_LINGERIE_SCENES
         and get_relationship_level(telegram_id, character_id) >= 5
     )
+    # V3.116.0: a garment he gave her for today is in no shared photo — render fresh.
+    try:
+        from services.wardrobe_service import worn_today as _worn_today
+        _gift_worn = _worn_today(telegram_id, character_id) is not None
+    except Exception:
+        _gift_worn = False
+    # same pool rules as the at-home lingerie sets: not served from, not fed into the pool
+    home_lingerie_mode = home_lingerie_mode or _gift_worn
 
     # Community pool first for free/story sets: when other users' AI
     # generations already cover this character+scene, serve the shared photos

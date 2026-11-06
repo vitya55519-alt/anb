@@ -56,7 +56,7 @@ def test_wear_only_owned_and_photo_overrides():
     assert 'room' not in o  # a cafe is not her room
     o = wd.photo_overrides(uid, 'anna_01', 'home', 'home')
     assert 'fairy lights' in o['room']
-    assert wd.photo_overrides(uid, 'anna_01', 'restaurant', 'evening').get('clothing') is None
+    assert wd.photo_overrides(uid, 'anna_01', 'restaurant', 'evening')['clothing'] == wd.get('sundress').prompt  # worn today = everywhere ordinary
     assert wd.wear(uid, 'anna_01', '')
     assert wd.worn_today(uid, 'anna_01') is None
 
@@ -127,3 +127,14 @@ def test_home_wiring():
     assert "'/webapp/api/home/style'" in MAIN and "'/webapp/api/home/place'" in MAIN
     assert 'room_prompt_edit' in MAIN and "'need_style'" in MAIN
     assert 'function renderHome' in APP and "'/webapp/api/home/'" in APP
+
+
+def test_worn_gift_beats_level_lingerie_rule():
+    # Витя: sports set «Надеть сегодня», level 9 — photos still came in lingerie
+    uid = _uid()
+    wd.grant(uid, 'anna_01', 'sport')
+    o = wd.photo_overrides(uid, 'anna_01', 'selfie', 'day_casual')
+    assert o['clothing'] == wd.get('sport').prompt  # any ordinary scene, not only gym
+    assert 'clothing' not in wd.photo_overrides(uid, 'anna_01', 'lingerie', 'adult')
+    assert 'gift_outfit=True' in PHOTO and 'if request.gift_outfit:' in PHOTO
+    assert 'home_lingerie_mode = home_lingerie_mode or _gift_worn' in PHOTO
