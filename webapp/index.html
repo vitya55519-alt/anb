@@ -1096,6 +1096,36 @@
   .unlim .us { font-size: 11px; opacity: .75; line-height: 1.3; }
   .unlim .utime { font-size: 12px; font-weight: 700; white-space: nowrap;
     padding: 4px 8px; border-radius: 10px; background: rgba(0,0,0,.35); }
+  /* V3.115.0: the call screen */
+  .callview { position: fixed; inset: 0; z-index: 95; display: flex; flex-direction: column; color: #fff;
+    background: #120a18; overflow: hidden; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
+  .callview .cv-bg { position: absolute; inset: -40px; background-size: cover; background-position: center;
+    filter: blur(28px) brightness(.45); transform: scale(1.1); }
+  .callview > *:not(.cv-bg) { position: relative; }
+  .cv-top { display: flex; justify-content: space-between; align-items: center; font-size: 13px; opacity: .85; }
+  .cv-mode { padding: 4px 10px; border-radius: 10px; background: rgba(255,255,255,.12); }
+  .cv-time { font-variant-numeric: tabular-nums; font-size: 15px; }
+  .cv-mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; min-height: 0; }
+  .cv-ring { width: 150px; height: 150px; border-radius: 50%; padding: 4px;
+    background: linear-gradient(135deg,#ff5fa2,#b44cff); transition: transform .15s; }
+  .cv-ring img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; background: #2a1a33; }
+  .cv-ring.talk { animation: cvtalk 1s ease-in-out infinite; }
+  .cv-ring.wait { animation: cvwait 1.6s ease-in-out infinite; }
+  @keyframes cvtalk { 0%,100% { box-shadow: 0 0 0 0 rgba(255,95,162,.55); } 50% { box-shadow: 0 0 0 18px rgba(255,95,162,0); } }
+  @keyframes cvwait { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
+  .cv-name { font-size: 24px; font-weight: 700; }
+  .cv-status { font-size: 14px; opacity: .8; min-height: 18px; }
+  .cv-cap { font-size: 15px; line-height: 1.45; max-width: 100%; max-height: 30vh; overflow: hidden;
+    opacity: .92; padding: 0 6px; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; }
+  .cv-btns { display: flex; justify-content: space-around; align-items: flex-start; gap: 8px; }
+  .cv-b { border: 0; background: none; color: #fff; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; min-width: 72px; }
+  .cv-b span { width: 62px; height: 62px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 26px; background: rgba(255,255,255,.16); }
+  .cv-b small { font-size: 12px; opacity: .8; }
+  .cv-end span { background: #e53950; transform: rotate(135deg); }
+  .cv-mute.on span { background: #fff; color: #000; }
+  .cv-skip { visibility: hidden; }
+  .cv-skip.show { visibility: visible; }
 </style>
 </head>
 <body>
@@ -1263,6 +1293,7 @@
       <span class="lvlchip" id="chatLvl" style="display:none"></span>
     </div>
     <div class="spacer"></div>
+    <button class="iconbtn" id="chatCall" style="font-size:16px" title="Позвонить">📞</button>
     <button class="iconbtn" id="chatInvite" style="font-size:15px;display:none" title="Позвать в чат">👭</button>
     <button class="iconbtn" id="chatSelect" style="font-size:13px">❤️</button>
   </div>
@@ -1286,6 +1317,28 @@
     <input type="file" id="chatFileIn" accept="image/*" style="display:none">
   </div>
 </div>
+<!-- V3.115.0: «📞 Позвонить» — the call screen (Premium: her voice + 18+, free: live Gemini) -->
+<div class="callview" id="callview" style="display:none">
+  <div class="cv-bg" id="callBg"></div>
+  <div class="cv-top"><span class="cv-mode" id="callMode"></span><span class="cv-time" id="callTime">0:00</span></div>
+  <div class="cv-mid">
+    <div class="cv-ring" id="callRing"><img id="callPhoto" alt=""></div>
+    <div class="cv-name" id="callName"></div>
+    <div class="cv-status" id="callStatus"></div>
+    <div class="cv-cap" id="callCap"></div>
+  </div>
+  <div class="cv-btns">
+    <button class="cv-b cv-mute" id="callMute" type="button"><span>🎙</span><small id="callMuteLb"></small></button>
+    <button class="cv-b cv-end" id="callEnd" type="button"><span>📞</span><small id="callEndLb"></small></button>
+    <button class="cv-b cv-skip" id="callSkip" type="button"><span>✋</span><small id="callSkipLb"></small></button>
+  </div>
+</div>
+<div class="startsheet" id="callUpsell" style="display:none"><div class="box">
+  <div class="st-h" id="callUpH"></div>
+  <div style="font-size:14px;opacity:.85;line-height:1.45;margin-bottom:12px" id="callUpTx"></div>
+  <button class="st-opt" id="callUpGo" style="text-align:center;font-weight:700;background:linear-gradient(90deg,#ff5fa2,#b44cff);border:0"></button>
+  <button class="st-opt" id="callUpNo" style="text-align:center"></button>
+</div></div>
 <!-- V3.64.0: «✨ Возможности» — every chat feature with what it does -->
 <div class="capsheet" id="capSheet" style="display:none"><div class="box">
   <div class="cap-h" id="capTitle"></div>
@@ -1539,6 +1592,7 @@ const LANG = APP_LANGS.includes(_savedLang) ? _savedLang
   : (_tgLang.startsWith('ru') ? 'ru' : (APP_LANGS.find(x => _tgLang.startsWith(x)) || 'en'));
 
 const L_EN = {
+  call_btn: 'Call', call_connecting: 'Calling…', call_listen: 'Listening…', call_think: 'Thinking…', call_talk: 'Speaking…', call_ready: 'Connected', call_end: 'Hang up', call_mute: 'Mic', call_skip: 'Interrupt', call_mode_prem: '👑 Premium call · 18+', call_mode_live: '⚡ Live call', call_fail: 'Could not get through — try again', call_limit_prem: 'Call minutes for today are used up, tomorrow 15 minutes again 💛', call_up_h: 'Want to talk more? 📞', call_up_tx: 'Free: {m} min of live call a day, nothing explicit. With Premium: {p} minutes a day, and the call can go anywhere the chat can, 18+.', call_up_go: '👑 Open Premium', call_up_no: 'Later', call_bye: 'Call ended', call_nospeech: 'Didn\'t catch that — say it again', call_left: 'left',
   chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', fork_romance: '❤️ I really like you', fork_passion: '🔥 I don\'t think of you as a friend 😏', fork_q: 'She is waiting for your answer: which path are you on?', fork_taken: 'The path is already chosen', fork_romance_on: '❤️ The path of romance', fork_passion_on: '🔥 The path of passion', fork_would: 'there:', path_map: 'Your road', path_romance: 'Romance', path_passion: 'Passion', path_romance_other: 'on the romance path', path_passion_other: 'on the passion path', lvl_pick_hint: 'Premium: tap any level and she talks that way right away', lvl_pick_reset: 'Back to the real level', lvl_pick_premium: 'With Premium you can pick any level 1–10', lvl_pick_done: 'level picked:', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', pa_failed: 'Did not work, nothing was charged — try again', pa_not_found: 'This photo can no longer be edited', video_limit: 'free animations are used up', video_limit_day: 'you already animated a photo today, the next one tomorrow 🎬', video_month: 'Photo animation comes with Premium for a month or longer: 1 a day', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   typing_now: 'typing…',
@@ -1804,6 +1858,7 @@ const L_EN = {
 // V3.43.5: the full Russian dictionary stays the base; five more interface
 // languages arrive below as partial overrides on top of the English one.
 const L_RU = {
+  call_btn: 'Позвонить', call_connecting: 'Звоню…', call_listen: 'Слушает тебя…', call_think: 'Думает…', call_talk: 'Говорит…', call_ready: 'На связи', call_end: 'Сбросить', call_mute: 'Микрофон', call_skip: 'Перебить', call_mode_prem: '👑 Premium-звонок · 18+', call_mode_live: '⚡ Живой звонок', call_fail: 'Не получилось дозвониться — попробуй ещё раз', call_limit_prem: 'Минуты звонков на сегодня закончились, завтра снова 15 минут 💛', call_up_h: 'Хочешь поговорить ещё? 📞', call_up_tx: 'Бесплатно — {m} мин живого звонка в день, без откровенного. С Premium — {p} минут в день, и в звонке можно всё, как в переписке, 18+.', call_up_go: '👑 Открыть Premium', call_up_no: 'Позже', call_bye: 'Звонок завершён', call_nospeech: 'Не расслышала — скажи ещё раз', call_left: 'осталось',
   chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', fork_romance: '❤️ Ты мне правда нравишься', fork_passion: '🔥 Я думаю о тебе совсем не по-дружески 😏', fork_q: 'Она ждёт твоего ответа: какой у вас путь?', fork_taken: 'Путь уже выбран', fork_romance_on: '❤️ Вы на пути романтики', fork_passion_on: '🔥 Вы на пути страсти', fork_would: 'там:', path_map: 'Ваша дорога', path_romance: 'Романтика', path_passion: 'Страсть', path_romance_other: 'на пути романтики', path_passion_other: 'на пути страсти', lvl_pick_hint: 'Premium: нажми на любой уровень, и она сразу будет общаться так', lvl_pick_reset: 'Вернуть настоящий уровень', lvl_pick_premium: 'С Premium можно выбрать любой уровень 1–10', lvl_pick_done: 'уровень выбран:', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', pa_failed: 'Не получилось, персики не списаны — попробуй ещё раз', pa_not_found: 'Это фото уже нельзя изменить', video_limit: 'бесплатные оживления закончились', video_limit_day: 'сегодня ты уже оживлял фото, следующее завтра 🎬', video_month: 'Оживление фото входит в Premium на месяц и дольше: 1 в день', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   typing_now: 'печатает…',
@@ -7147,6 +7202,308 @@ function openGallery() {
 document.getElementById('galBack').addEventListener('click', () => {
   document.getElementById('galview').classList.remove('open');
 });
+
+// ── V3.115.0: «📞 Позвонить» ────────────────────────────────────────────────
+// Premium: he speaks, a pause sends the phrase, she answers in her own voice
+// (chat pipeline, 18+ as in the chat). Free: a live Gemini call over a
+// WebSocket — PCM16 16 kHz up, PCM16 24 kHz down, she can be interrupted.
+let CALL = null;
+const _SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
+function _cv(id) { return document.getElementById(id); }
+function _callStatus(t, ring) {
+  _cv('callStatus').textContent = t || '';
+  _cv('callRing').className = 'cv-ring' + (ring ? ' ' + ring : '');
+}
+function _callCap(t) { _cv('callCap').textContent = t || ''; }
+
+async function openCall() {
+  if (!CHAT || CALL) return;
+  if (!tg.initData) { toast(L.auth_short); return; }
+  // unlock audio playback inside the tap (iOS)
+  const player = new Audio(_SILENT_WAV);
+  try { player.play().catch(() => {}); } catch (e) {}
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  let ctx = null;
+  try { ctx = new Ctx(); if (ctx.resume) ctx.resume(); } catch (e) {}
+  const cid = CHAT.id;
+  const closeCtx = () => { try { if (ctx) ctx.close(); } catch (e) {} };
+  let j = null;
+  try {
+    const r = await fetch('/webapp/api/call/info?init_data=' + encodeURIComponent(tg.initData) + '&character_id=' + encodeURIComponent(cid));
+    j = await r.json();
+  } catch (e) {}
+  if (!j || !j.ok) {
+    closeCtx();
+    const err = j && j.error;
+    if (err === 'consent') toast(L.consent_needed);
+    else if (err === 'premium_required') { toast(L.need_premium); showTab('shop'); }
+    else toast(L.call_fail);
+    return;
+  }
+  if (j.seconds_left <= 0) {
+    closeCtx();
+    if (j.mode === 'premium') toast(L.call_limit_prem); else _callUpsell(j);
+    return;
+  }
+  if (!ctx) { toast(L.call_fail); return; }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) { closeCtx(); toast(L.mic_denied); return; }
+  CALL = { cid, mode: j.mode, info: j, left: j.seconds_left, stream, ctx, player,
+           id: 'c' + Date.now() + Math.random().toString(36).slice(2, 8), start: 0, muted: false, ended: false };
+  _cv('callName').textContent = CHAT.name || '';
+  _cv('callPhoto').src = CHAT.photo || '';
+  _cv('callBg').style.backgroundImage = CHAT.photo ? 'url("' + CHAT.photo + '")' : '';
+  _cv('callMode').textContent = j.mode === 'premium' ? L.call_mode_prem : L.call_mode_live;
+  _cv('callEndLb').textContent = L.call_end;
+  _cv('callMuteLb').textContent = L.call_mute;
+  _cv('callSkipLb').textContent = L.call_skip;
+  _cv('callMute').classList.remove('on');
+  _cv('callSkip').classList.toggle('show', j.mode === 'premium');
+  _cv('callTime').textContent = '0:00';
+  _callCap('');
+  _callStatus(L.call_connecting, 'wait');
+  _cv('callview').style.display = 'flex';
+  try { tg.HapticFeedback.impactOccurred('medium'); } catch (e) {}
+  if (j.mode === 'premium') _premCall(); else _liveCall();
+}
+
+function _callTimerStart() {
+  if (!CALL || CALL.start) return;
+  const c = CALL;
+  c.start = Date.now();
+  c.tick = setInterval(() => {
+    if (CALL !== c) return;
+    const sec = Math.floor((Date.now() - c.start) / 1000);
+    const left = Math.max(0, c.left - sec);
+    _cv('callTime').textContent = vpFmt(sec) + (left <= 60 ? ' · ' + L.call_left + ' ' + vpFmt(left) : '');
+    if (c.mode === 'premium' && left <= 0) endCall('limit');
+  }, 500);
+}
+
+function endCall(reason) {
+  const c = CALL;
+  if (!c || c.ended) return;
+  c.ended = true;
+  CALL = null;
+  clearInterval(c.tick); clearInterval(c.vad);
+  try { if (c.rec && c.rec.state !== 'inactive') { c.rec.onstop = null; c.rec.stop(); } } catch (e) {}
+  try { c.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+  try { c.player.pause(); } catch (e) {}
+  (c.sources || []).forEach(s => { try { s.stop(); } catch (e) {} });
+  try { if (c.proc) c.proc.disconnect(); } catch (e) {}
+  if (c.ws) {
+    try { if (c.ws.readyState === 1) c.ws.send(JSON.stringify({ type: 'hangup' })); } catch (e) {}
+    setTimeout(() => { try { c.ws.close(); } catch (e) {} }, 600);
+  }
+  try { c.ctx.close(); } catch (e) {}
+  const secs = c.start ? (Date.now() - c.start) / 1000 : 0;
+  if (c.mode === 'premium') {
+    fetch('/webapp/api/call/end?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: c.cid, call_id: c.id, seconds: secs }),
+    }).catch(() => {});
+  }
+  _cv('callview').style.display = 'none';
+  try { tg.HapticFeedback.notificationOccurred('success'); } catch (e) {}
+  if (reason === 'error') toast(L.call_fail);
+  else if (c.mode === 'premium' && reason === 'limit') toast(L.call_limit_prem);
+  else toast(L.call_bye);
+  if (CHAT && CHAT.id === c.cid) setTimeout(() => loadChatHistory(c.cid), c.mode === 'live' ? 1500 : 200);
+  if (c.mode === 'live' && c.start && (reason === 'limit' || c.left - secs < 30)) setTimeout(() => _callUpsell(c.info), 700);
+}
+
+function _callUpsell(info) {
+  _cv('callUpH').textContent = L.call_up_h;
+  _cv('callUpTx').textContent = L.call_up_tx.replace('{m}', String((info && info.free_minutes) || 3))
+    .replace('{p}', String((info && info.premium_minutes) || 15));
+  _cv('callUpGo').textContent = L.call_up_go;
+  _cv('callUpNo').textContent = L.call_up_no;
+  _cv('callUpsell').style.display = 'flex';
+}
+
+// ── Premium: phrase by phrase ───────────────────────────────────────────────
+function _premCall() {
+  const c = CALL;
+  try {
+    const src = c.ctx.createMediaStreamSource(c.stream);
+    c.an = c.ctx.createAnalyser(); c.an.fftSize = 1024;
+    src.connect(c.an);
+  } catch (e) { c.an = null; }
+  _callTimerStart();
+  _premTurn(null, true);
+}
+
+function _rms(an) {
+  if (!an) return 0;
+  const d = new Float32Array(an.fftSize);
+  an.getFloatTimeDomainData(d);
+  let s = 0;
+  for (let i = 0; i < d.length; i++) s += d[i] * d[i];
+  return Math.sqrt(s / d.length);
+}
+
+function _premListen() {
+  const c = CALL;
+  if (!c || c.ended) return;
+  _callStatus(L.call_listen, '');
+  const mime = (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) ? 'audio/ogg;codecs=opus' : '';
+  let rec;
+  try { rec = new MediaRecorder(c.stream, mime ? { mimeType: mime } : {}); } catch (e) { endCall('error'); return; }
+  const chunks = [];
+  rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  let floor = 0, n = 0, voiced = 0, lastVoice = 0;
+  const began = Date.now();
+  rec.onstop = () => {
+    clearInterval(c.vad);
+    if (CALL !== c || c.ended) return;
+    if (!voiced) { _premListen(); return; }
+    _premTurn(new Blob(chunks, { type: mime || rec.mimeType || 'audio/webm' }), false);
+  };
+  c.rec = rec;
+  rec.start(250);
+  clearInterval(c.vad);
+  c.vad = setInterval(() => {
+    if (rec.state === 'inactive') return;
+    if (c.muted) { voiced = 0; lastVoice = 0; return; }
+    const v = _rms(c.an), now = Date.now();
+    if (n < 8) { floor = (floor * n + v) / (n + 1); n++; return; }
+    const th = Math.max(0.015, floor * 2.6);
+    if (v > th) { if (!voiced) voiced = now; lastVoice = now; }
+    if (voiced && now - lastVoice > 900 && lastVoice - voiced > 350) rec.stop();
+    else if (voiced && now - voiced > 30000) rec.stop();
+    else if (!voiced && now - began > 60000) { rec.onstop = null; rec.stop(); endCall('idle'); }
+  }, 60);
+}
+
+async function _premTurn(blob, hello) {
+  const c = CALL;
+  if (!c || c.ended) return;
+  _callStatus(L.call_think, 'wait');
+  let j = null;
+  try {
+    const body = { character_id: c.cid, call_id: c.id, hello: !!hello };
+    if (blob) body.audio = await blobToB64(blob);
+    const r = await fetch('/webapp/api/call/turn?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    try { j = await r.json(); } catch (e) {}
+  } catch (e) {}
+  if (CALL !== c || c.ended) return;
+  if (!j || !j.ok) {
+    const err = j && j.error;
+    if (err === 'limit') { endCall('limit'); return; }
+    if (hello) { endCall('error'); return; }
+    _callCap(L.call_nospeech); _premListen(); return;
+  }
+  if (typeof j.seconds_left === 'number') c.left = Math.floor((Date.now() - c.start) / 1000) + j.seconds_left;
+  _callCap(j.text || '');
+  if (!j.audio_url) { _premListen(); return; }
+  _callStatus(L.call_talk, 'talk');
+  const a = c.player;
+  a.onended = () => { if (CALL === c && !c.ended) _premListen(); };
+  a.onerror = () => { if (CALL === c && !c.ended) _premListen(); };
+  a.src = j.audio_url + (j.audio_url.indexOf('?') < 0 ? '?' : '&') + 'init_data=' + encodeURIComponent(tg.initData || '');
+  try { await a.play(); } catch (e) { if (CALL === c && !c.ended) _premListen(); }
+}
+
+// ── Live: Gemini over a WebSocket ───────────────────────────────────────────
+function _liveCall() {
+  const c = CALL;
+  c.sources = []; c.next = 0;
+  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const ws = new WebSocket(proto + location.host + '/webapp/ws/call?init_data=' + encodeURIComponent(tg.initData || '')
+    + '&character_id=' + encodeURIComponent(c.cid));
+  ws.binaryType = 'arraybuffer';
+  c.ws = ws;
+  ws.onmessage = (ev) => {
+    if (CALL !== c || c.ended) return;
+    if (typeof ev.data !== 'string') { _livePlay(c, ev.data); return; }
+    let m = null;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (m.type === 'ready') {
+      if (typeof m.seconds_left === 'number') c.left = m.seconds_left;
+      _callTimerStart(); _callStatus(L.call_ready, ''); _liveMic(c);
+    } else if (m.type === 'her') {
+      if (c.capRole !== 'her') { c.cap = ''; c.capRole = 'her'; }
+      c.cap += m.text; _callCap(c.cap);
+    } else if (m.type === 'you') {
+      if (c.capRole !== 'you') { c.cap = ''; c.capRole = 'you'; }
+      c.cap += m.text; _callCap('— ' + c.cap.trim());
+    } else if (m.type === 'interrupted') {
+      c.sources.forEach(s => { try { s.stop(); } catch (e) {} });
+      c.sources = []; c.next = 0; _callStatus(L.call_listen, '');
+    } else if (m.type === 'end') {
+      endCall(m.reason === 'limit' ? 'limit' : (m.reason === 'error' ? 'error' : 'hangup'));
+    } else if (m.type === 'error') {
+      endCall(m.error === 'limit' ? 'limit' : 'error');
+    }
+  };
+  ws.onclose = () => { if (CALL === c && !c.ended) endCall(c.start ? 'hangup' : 'error'); };
+  ws.onerror = () => {};
+}
+
+function _liveMic(c) {
+  const ctx = c.ctx;
+  const src = ctx.createMediaStreamSource(c.stream);
+  const proc = ctx.createScriptProcessor(4096, 1, 1);
+  const mute = ctx.createGain(); mute.gain.value = 0;
+  src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  c.proc = proc;
+  const ratio = ctx.sampleRate / 16000;
+  proc.onaudioprocess = (e) => {
+    if (CALL !== c || c.ended || c.muted || !c.ws || c.ws.readyState !== 1) return;
+    const inp = e.inputBuffer.getChannelData(0);
+    const len = Math.floor(inp.length / ratio);
+    const out = new Int16Array(len);
+    for (let i = 0; i < len; i++) {
+      const s = Math.max(-1, Math.min(1, inp[Math.floor(i * ratio)]));
+      out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    try { c.ws.send(out.buffer); } catch (err) {}
+  };
+}
+
+function _livePlay(c, data) {
+  const ctx = c.ctx;
+  const n = Math.floor(data.byteLength / 2);
+  if (!n) return;
+  const pcm = new Int16Array(data, 0, n);
+  const buf = ctx.createBuffer(1, n, 24000);
+  const ch = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) ch[i] = pcm[i] / 32768;
+  const s = ctx.createBufferSource();
+  s.buffer = buf; s.connect(ctx.destination);
+  const at = Math.max(ctx.currentTime + 0.04, c.next || 0);
+  s.start(at); c.next = at + buf.duration;
+  c.sources.push(s);
+  _callStatus(L.call_talk, 'talk');
+  s.onended = () => {
+    c.sources = c.sources.filter(x => x !== s);
+    if (!c.sources.length && CALL === c) _callStatus(L.call_listen, '');
+  };
+}
+
+document.getElementById('chatCall').addEventListener('click', openCall);
+document.getElementById('callEnd').addEventListener('click', () => endCall('hangup'));
+document.getElementById('callMute').addEventListener('click', () => {
+  if (!CALL) return;
+  CALL.muted = !CALL.muted;
+  _cv('callMute').classList.toggle('on', CALL.muted);
+});
+document.getElementById('callSkip').addEventListener('click', () => {
+  const c = CALL;
+  if (!c || c.mode !== 'premium' || c.player.paused) return;
+  try { c.player.pause(); } catch (e) {}
+  _premListen();
+});
+document.getElementById('callUpGo').addEventListener('click', () => {
+  _cv('callUpsell').style.display = 'none';
+  document.getElementById('chatview').classList.remove('open');
+  showTab('shop');
+});
+document.getElementById('callUpNo').addEventListener('click', () => { _cv('callUpsell').style.display = 'none'; });
 </script>
 </body>
 </html>
