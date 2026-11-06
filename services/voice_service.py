@@ -189,12 +189,42 @@ def detect_voice_language(text: str) -> str:
     return 'ru' if any('\u0400' <= ch <= '\u04FF' for ch in text) else 'en'
 
 
+# V3.117.0: free fallback voices for the other chat languages
+_EDGE_NATIVE_VOICES = {
+    'bn': 'bn-IN-TanishaaNeural', 'hi': 'hi-IN-SwaraNeural', 'es': 'es-ES-ElviraNeural',
+    'it': 'it-IT-ElsaNeural', 'fr': 'fr-FR-DeniseNeural', 'pt': 'pt-BR-FranciscaNeural',
+    'de': 'de-DE-KatjaNeural', 'zh': 'zh-CN-XiaoxiaoNeural', 'ja': 'ja-JP-NanamiNeural',
+    'ko': 'ko-KR-SunHiNeural', 'ar': 'ar-SA-ZariyahNeural', 'th': 'th-TH-PremwadeeNeural',
+}
+
+
+def _native_code(text: str) -> str:
+    """'bn', 'es', 'ja'… for a line in a language other than RU/EN, else ''."""
+    try:
+        from services import lang_guard
+        code = lang_guard.text_lang(text)
+    except Exception:
+        return ''
+    return code if code not in ('', 'ru', 'en') else ''
+
+
+def _native_lang(text: str) -> str:
+    code = _native_code(text)
+    if not code:
+        return ''
+    from services import lang_guard
+    return lang_guard.LANG_NAMES.get(code, ('', code))[1]
+
+
 def pick_edge_voice(text: str, character_id: str | None = None) -> tuple[str, dict]:
     """Return (edge_voice, edge_kwargs) for a character and the text language."""
     profile = CHARACTER_VOICE_PROFILES.get(character_id or '')
     if profile is None and is_custom_character(character_id):
         profile = CUSTOM_CHARACTER_VOICE_PROFILE
     profile = profile or _DEFAULT_VOICE_PROFILE
+    native = _native_code(text)
+    if native in _EDGE_NATIVE_VOICES:
+        return _EDGE_NATIVE_VOICES[native], dict(profile['en'][1])
     return profile[detect_voice_language(text)]
 
 # ── OpenAI client (optional, only if key is present) ──────────────────────
@@ -423,6 +453,10 @@ async def _tts_spicy_gemini(spoken: str, character_id: str | None = None, mood: 
     manner = GEMINI_TTS_MANNER.get(character_id or '', '').strip(' ,')
     instructions = (_SPICY_GEMINI_BASE[lang] + _SPICY_GEMINI_MOOD.get(mood or '', {}).get(lang, '')
                     + (f'Her manner: {manner}.' if manner else ''))
+    # V3.117.0: a Bengali / Spanish / Japanese line is spoken by a native speaker
+    native = _native_lang(text)
+    if native:
+        instructions = f'She speaks {native} natively, with a natural accent of her language. ' + instructions
     block = {'text': text[:3000], 'voice_id': gemini_voice_for(character_id),
              'instructions': instructions[:1000]}
     if style:

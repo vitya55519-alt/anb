@@ -11959,16 +11959,57 @@ async def _webapp_api_simulated_message_deliver(request: web.Request) -> web.Res
     return web.json_response({'ok': ok})
 
 
+def _ru_or_en(lang: str | None) -> str:
+    """V3.117.0: the server texts exist in RU and EN; a Spanish, Japanese or
+    Bengali app got the Russian shop (rubles, SBP first) — any non-Russian
+    interface gets the English one with Stars first."""
+    return 'ru' if (lang or 'ru').strip().lower().startswith('ru') else 'en'
+
+
 async def _webapp_api_shop(request: web.Request) -> web.Response:
     # V3.57.2: the catalogue reads prices/settings from PostgreSQL.
     return web.json_response({'ok': True, 'shop': await asyncio.to_thread(
-        webapp_service.api_shop, request.query.get('lang', 'ru'))})
+        webapp_service.api_shop, _ru_or_en(request.query.get('lang', 'ru')))})
 
 
 async def _webapp_api_legal(request: web.Request) -> web.Response:
     # The Platega-required documents, visible in the Mini App as well.
     return web.json_response({'ok': True, 'legal': await asyncio.to_thread(
-        webapp_service.api_legal, request.query.get('lang', 'ru'))})
+        webapp_service.api_legal, _ru_or_en(request.query.get('lang', 'ru')))})
+
+
+async def _webapp_api_lang(request: web.Request) -> web.Response:
+    """V3.117.0: he picked an interface language in the app settings — she
+    talks to him in it from now on (until he writes in another one), and the
+    bot menus follow (Russian for «Русский», English for everything else)."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    from services import lang_guard
+    lang = lang_guard.norm_code(str((body or {}).get('lang', '')))
+    if not lang:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+
+    def _save():
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        lang_guard.remember(uid, lang)
+        with SessionLocal() as session:
+            user = session.get(User, uid)
+            if user is not None:
+                user.ui_lang = _ru_or_en(lang)
+                session.commit()
+        track_event(uid, 'app_lang_picked', metadata={'lang': lang})
+
+    await asyncio.to_thread(_save)
+    return web.json_response({'ok': True, 'lang': lang})
 
 
 async def _webapp_api_partner(request: web.Request) -> web.Response:
@@ -13387,6 +13428,27 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
             scene = (r.text or '').strip() or None
         except Exception:
             logger.warning('opening scene generation failed char=%s', character_id)
+    # V3.117.0: the opening scenes are written in Russian — a Bengali or
+    # Spanish user gets the scene in his own language.
+    if uid and scene:
+        try:
+            from services import lang_guard
+            _lang = await asyncio.to_thread(lang_guard.lang_for_push, uid, user_info.get('language_code'))
+            if _lang != 'ru' and lang_guard.is_cyrillic_dominant(scene):
+                from services.llm_provider_service import generate_text
+                _ru_name, _own = lang_guard.LANG_NAMES.get(_lang, ('английском', 'English'))
+                r = await generate_text([
+                    {'role': 'system', 'content': (
+                        f'Переведи первое сообщение девушки из чата на {_ru_name} язык ({_own}): живо и '
+                        'разговорно, как написал бы носитель. Сохрани *звёздочки*, эмодзи и смысл. '
+                        'Верни только перевод.')},
+                    {'role': 'user', 'content': scene},
+                ], max_tokens=320, temperature=0.4, purpose='opening')
+                _tr = (r.text or '').strip()
+                if _tr and lang_guard.reply_ok(_tr, _lang) and getattr(r, 'complete', True):
+                    scene = _tr
+        except Exception:
+            logger.warning('opening scene translation failed char=%s', character_id)
     if uid and scene:
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', scene)
     return web.json_response({'ok': True, 'reply': scene})
@@ -13842,11 +13904,13 @@ async def _webapp_ws_call(request: web.Request) -> web.StreamResponse:
             character = get_character(character_id)
         memories = [m.content for m in get_memories(uid, character_id, 14)]
         history = [(m.role, m.content) for m in get_recent_messages(uid, character_id, 12)]
-        english = lang_guard.looks_english(
+        # V3.117.0: his language, not only RU/EN
+        lang = lang_guard.detect_lang(
             next((c for r, c in reversed(history) if r == 'user'), ''), user_info.get('language_code'),
-            [c for r, c in history if r == 'user'])
+            [c for r, c in history if r == 'user'], lang_guard.stored_lang(uid))
+        english = lang != 'ru'
         return voice_call.live_system_prompt(character, user_info.get('first_name') or '', memories,
-                                             history, english=english), english
+                                             history, english=english, lang=lang), english
 
     system_prompt, english = await asyncio.to_thread(_prompt)
     try:
@@ -16412,7 +16476,7 @@ async def _webapp_api_constructor_options(request: web.Request) -> web.Response:
             telegram_id = webapp_service.init_data_user(pairs).get('id')
             free = bool(telegram_id) and telegram_id in ADMIN_TELEGRAM_IDS
     # V3.57.2: wizard steps are read from the DB — off the event loop
-    steps = await asyncio.to_thread(webapp_service.api_constructor_steps, request.query.get('lang', 'ru'), admin=free)
+    steps = await asyncio.to_thread(webapp_service.api_constructor_steps, _ru_or_en(request.query.get('lang', 'ru')), admin=free)
     return web.json_response({
         'ok': True,
         'steps': steps,
@@ -16698,6 +16762,7 @@ async def _start_web_server() -> None:
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
     app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)
+    app.router.add_post('/webapp/api/lang', _webapp_api_lang)
     app.router.add_post('/webapp/api/chat/voice', _webapp_api_chat_voice)
     app.router.add_get('/webapp/api/call/info', _webapp_api_call_info)  # V3.115.0
     app.router.add_post('/webapp/api/call/turn', _webapp_api_call_turn)
@@ -16925,33 +16990,13 @@ async def _run_support_bot() -> None:
 # blurb and the text an empty chat shows before «Запустить». Kept in code so
 # BotFather never drifts; each field is written only when it differs, because
 # Telegram rate-limits setMyName hard. BOT_PROFILE_ENABLED=0 leaves it alone.
+# V3.115.2: descriptions moved to services/bot_description.py only (EN default
+# + RU). Two writers raced on every deploy: this one put the RU text into the
+# default locale, apply_bot_descriptions() the EN text, and the old «8 levels»
+# era copy kept coming back. Here only the display NAME is kept.
 BOT_PROFILE = {
-    'ru': {
-        'name': os.getenv('BOT_DISPLAY_NAME', 'Анна · AI-девушка'),
-        'short': 'Она пишет первой, шлёт селфи и скучает, когда тебя нет. Твоя AI-девушка в Telegram 💌 18+',
-        'description': (
-            '💌 Твоя AI-девушка в Telegram.\n\n'
-            'Она пишет первой, присылает селфи, помнит, о чём вы говорили, и скучает, когда тебя нет.\n\n'
-            '❤️ 10 уровней отношений: романтика или страсть\n'
-            '📸 селфи и приватные фото «Наедине»\n'
-            '🎯 истории и свидания\n'
-            '👩 выбери девушку или создай свою\n\n'
-            'Только 18+. Жми «Запустить» — она уже ждёт 😏'
-        ),
-    },
-    'en': {
-        'name': os.getenv('BOT_DISPLAY_NAME_EN', 'Anna · AI girlfriend'),
-        'short': 'She texts first, sends selfies and misses you. Your AI girlfriend in Telegram 💌 18+',
-        'description': (
-            '💌 Your AI girlfriend in Telegram.\n\n'
-            'She texts first, sends selfies, remembers what you talked about and misses you when you are away.\n\n'
-            '❤️ 10 relationship levels: romance or passion\n'
-            '📸 selfies and private photos\n'
-            '🎯 stories and dates\n'
-            '👩 pick a girl or create your own\n\n'
-            '18+ only. Tap «Start» — she is waiting 😏'
-        ),
-    },
+    'ru': {'name': os.getenv('BOT_DISPLAY_NAME', 'Анна · AI-девушка')},
+    'en': {'name': os.getenv('BOT_DISPLAY_NAME_EN', 'Anna · AI girlfriend')},
 }
 
 
@@ -16964,12 +17009,6 @@ async def _apply_bot_profile() -> None:
             cur = await bot.get_my_name(language_code=code)
             if (cur.name or '') != prof['name']:
                 await bot.set_my_name(name=prof['name'][:64], language_code=code)
-            cur = await bot.get_my_short_description(language_code=code)
-            if (cur.short_description or '') != prof['short']:
-                await bot.set_my_short_description(short_description=prof['short'][:120], language_code=code)
-            cur = await bot.get_my_description(language_code=code)
-            if (cur.description or '') != prof['description']:
-                await bot.set_my_description(description=prof['description'][:512], language_code=code)
             logger.info('bot profile ok lang=%s', lang)
         except Exception:
             logger.exception('bot profile update failed lang=%s', lang)

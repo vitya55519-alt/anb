@@ -43,6 +43,7 @@ LIVE_MODELS = tuple(m.strip() for m in os.getenv(
     'gemini-3.8-live,gemini-3.1-flash-live-preview,gemini-2.5-flash-native-audio-preview-12-2025',
 ).split(',') if m.strip())
 # Gemini Live: $0.005/min audio in + $0.018/min audio out (pricing 2026-11).
+LIVE_SILENCE_MS = int(os.getenv('CALL_LIVE_SILENCE_MS', '900'))
 LIVE_COST_PER_MIN_USD = float(os.getenv('CALL_LIVE_COST_PER_MIN_USD', '0.023'))
 
 EVENT_PREMIUM = 'call_premium_sec'
@@ -202,7 +203,7 @@ LIVE_BYE = '(Время звонка почти вышло. Тепло скаж�
 
 
 def live_system_prompt(character: dict, his_name: str, memories: list[str],
-                       history: list[tuple[str, str]], english: bool = False) -> str:
+                       history: list[tuple[str, str]], english: bool = False, lang: str = '') -> str:
     """A compact persona for the live call — her character, what she knows
     about him and the last lines of their chat."""
     name = character.get('name') or 'Анна'
@@ -230,6 +231,11 @@ def live_system_prompt(character: dict, his_name: str, memories: list[str],
         if tail:
             lines.append('Последние сообщения вашей переписки:\n' + tail)
     lines.append(LIVE_RULES_EN if english else LIVE_RULES_RU)
+    # V3.117.0: Bengali, Spanish, Japanese… — the call is in his language too
+    if lang and lang not in ('ru', 'en'):
+        from services import lang_guard
+        own = lang_guard.LANG_NAMES.get(lang, ('', lang))[1]
+        lines.append(f'Speak ONLY {own} ({lang}) on this call, like a native speaker: it is his language.')
     return '\n\n'.join(lines)
 
 
@@ -256,6 +262,16 @@ async def live_bridge(ws, *, api_key: str, voice_name: str, system_prompt: str,
         system_instruction=system_prompt,
         input_audio_transcription=types.AudioTranscriptionConfig(),
         output_audio_transcription=types.AudioTranscriptionConfig(),
+        # V3.115.3: Витя — «она вообще прерывает». A cough, a breath or her own
+        # voice from the speaker started «his turn» at once. Low start
+        # sensitivity + a longer pause before his turn ends.
+        realtime_input_config=types.RealtimeInputConfig(
+            automatic_activity_detection=types.AutomaticActivityDetection(
+                start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_LOW,
+                end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
+                prefix_padding_ms=300,
+                silence_duration_ms=LIVE_SILENCE_MS,
+            )),
     )
     transcript: list[tuple[str, str]] = []
     buf = {'user': '', 'assistant': ''}

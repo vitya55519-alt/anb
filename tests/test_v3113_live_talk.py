@@ -73,7 +73,7 @@ def test_wired_into_reply_and_morning():
     assert 'live_talk.rhythm_note(user_text)' in CHAT
     assert 'live_talk.fit_rhythm(answer, user_text)' in CHAT
     assert 'live_talk.looks_leaked(answer)' in CHAT
-    assert "finish_or_drop(answer, False, _lang)" in CHAT
+    assert "finish_or_drop(answer, False, lang)" in CHAT
     rhythm_at = CHAT.index('live_talk.rhythm_note(user_text)')
     assert rhythm_at < CHAT.index('messages.append({"role": "user", "content": user_text})', rhythm_at)
     assert 'her_story.current, db_user_id, user_id, character_id, start=False' in CHAT
