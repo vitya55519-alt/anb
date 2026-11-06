@@ -511,6 +511,7 @@
     letter-spacing: .06em; text-transform: uppercase; box-shadow: 0 6px 20px rgba(232,68,127,.35); }
   .pc-buy:active, .prow:active { transform: scale(.98); }
   .pc-note { text-align: center; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+  .pc-auto { display: block; margin: 6px auto 0; background: none; border: 0; color: var(--muted); font-size: 12px; text-decoration: underline; cursor: pointer; }
   .pack:active { transform: scale(.97); }
   .sec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 4px 2px 0; }
   .sec-h span { font-size: 16px; font-weight: 800; }
@@ -1659,7 +1660,7 @@ const L_EN = {
   lt_btn: '🔓 Open the photo',
   plan_trial: d => d + '-day trial', plan_trial_sub: 'one-time first-purchase price · everything explicit unlocked',
   plan_w1: '1 week', plan_m1: '1 month', plan_m3: '3 months', plan_per_week: n => n + ' ₽ a week',
-  prem_get: 'Get', prem_extend: 'Extend', prem_once: 'One-time payment, no auto-renewal',
+  prem_get: 'Get', prem_extend: 'Extend', prem_once: 'One-time payment, no auto-renewal', prem_auto: '🔁 Auto-renewal — only if you turn it on',
   prem_gift_line: n => n + ' 🍑 as a gift right away',
   prem_tiles: [['🔥', 'Everything explicit', 'Lingerie & nude photos, «Undress»'], ['💌', 'She never falls asleep', 'Unlimited chat, day and night']],
   prem_list: ['Private shots and 18+ pictures', 'Her voice — voice replies', 'All girls, premium ones too', '2 photo animations a day', 'Story replays', 'More memory: she remembers more about you'],
@@ -1927,7 +1928,7 @@ const L_RU = {
   lt_btn: '🔓 Открыть фото',
   plan_trial: d => d + ' дня — попробовать', plan_trial_sub: 'разовая цена первой покупки · открыто всё откровенное',
   plan_w1: '1 неделя', plan_m1: '1 месяц', plan_m3: '3 месяца', plan_per_week: n => n + ' ₽ в неделю',
-  prem_get: 'Получить', prem_extend: 'Продлить', prem_once: 'Разовый платёж, без автопродления',
+  prem_get: 'Получить', prem_extend: 'Продлить', prem_once: 'Разовый платёж, без автопродления', prem_auto: '🔁 Автопродление — только если включишь сам',
   prem_gift_line: n => n + ' 🍑 в подарок сразу',
   prem_tiles: [['🔥', 'Всё откровенное', 'Фото в белье и без, «Раздеть»'], ['💌', 'Она не засыпает', 'Общение без лимита днём и ночью']],
   prem_list: ['«Наедине» и 18+ картинки', 'Её голос — отвечает голосовыми', 'Все девушки, включая премиум', '2 оживления фото в день', 'Перезапуск историй', 'Больше памяти: помнит о тебе больше'],
@@ -5945,6 +5946,7 @@ async function loadShop() {
         <div class="prows">${plans.map(planRow).join('')}</div>
         <button class="pc-buy" id="premBuyBtn">${esc(ME && ME.premium ? L.prem_extend : L.prem_get)}</button>
         <div class="pc-note">${esc(L.prem_once)}</div>
+        <button class="pc-auto" id="premAutoBtn">${esc(L.prem_auto || '🔁 Auto-renewal — only if you turn it on')}</button>
       </div>`;
     // V3.43.1 → V3.66.0: the bonus reads as one accent line («+500 🎁»); the
     // middle pack wears the «хит» ribbon. Every tile has the same rows, so
@@ -5997,6 +5999,20 @@ async function loadShop() {
       if (gl) gl.textContent = x && x.gift ? L.prem_gift_line(fmtN(x.gift)) : '';
     };
     document.querySelectorAll('#shopbody .prow').forEach(r => r.addEventListener('click', () => pickPlan(r.dataset.plan)));
+    // V3.120.0: auto-renewal is opt-in and lives in the bot chat: the bot
+    // sends the honest terms (or «manage / turn off») and the app opens it.
+    const autoBtn = document.getElementById('premAutoBtn');
+    if (autoBtn) autoBtn.addEventListener('click', async () => {
+      autoBtn.disabled = true;
+      try {
+        const r = await fetch('/webapp/api/autopay?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
+        if (r.status === 401) { toast(L.auth_short); return; }
+        const j = await r.json();
+        if (!j.ok) { toast(L.pay_link_err); return; }
+        if (j.url && typeof tg.openTelegramLink === 'function') tg.openTelegramLink(j.url);
+      } catch (e) { toast(L.pay_link_err); }
+      finally { autoBtn.disabled = false; }
+    });
     if (premPick) pickPlan(premPick);
     const pbb = document.getElementById('premBuyBtn');
     if (pbb) pbb.addEventListener('click', () => { if (premPick) openPay(premPick); });

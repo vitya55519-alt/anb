@@ -1254,6 +1254,9 @@ def premium_pitch_text(telegram_id: int) -> str:
     lines.extend(_premium_tariff_lines(lang))
     lines.append('')
     lines.append('One-time payment, no auto-renewal.' if lang == EN else 'Разовый платёж, без автопродления.')
+    # V3.120.0: auto-renewal exists, but only as his own choice — say where.
+    lines.append('Want it to renew by itself? Only if you turn it on: /autopay' if lang == EN
+                 else 'Хочешь, чтобы продлевалось само? Только если включишь сам: /autopay')
     lines.append('')
     if lang == EN:
         lines += [
@@ -1446,6 +1449,24 @@ def _platega_pay_button(product: str, amount: int, text: str):
     return InlineKeyboardButton(text=text, callback_data=f'platega:{product}')
 
 
+def _autopay_row(telegram_id: int | None, en: bool):
+    """V3.120.0: one row under the one-time plans — the opt-in auto-renewal
+    menu (terms first, then the pay link), or «manage» when it is on."""
+    from services import autopay
+    if not autopay.ENABLED or not telegram_id:
+        return None
+    try:
+        live = autopay.get_live(telegram_id)
+    except Exception:
+        logger.warning('autopay row lookup failed user=%s', telegram_id, exc_info=True)
+        live = None
+    if live:
+        text = '🔁 Auto-renewal is on · manage' if en else '🔁 Автопродление включено · управлять'
+    else:
+        text = '🔁 Premium with auto-renewal · terms' if en else '🔁 Premium с автопродлением · условия'
+    return [InlineKeyboardButton(text=text, callback_data='autopay:menu')]
+
+
 def _premium_keyboard_en(discount: dict | None, telegram_id: int):
     """V3.111.0: the Premium keyboard for English speakers. The Russian one
     hid every non-Stars row from them and spoke Russian («карта / СБП»), so
@@ -1466,6 +1487,9 @@ def _premium_keyboard_en(discount: dict | None, telegram_id: int):
         [InlineKeyboardButton(text=f'⭐ Premium for a week — {PREMIUM_WEEKLY_STARS} Stars', callback_data='buy:premium_week')],
         [InlineKeyboardButton(text=f'⭐ Premium for 3 months — {PREMIUM_QUARTERLY_STARS} Stars', callback_data='buy:premium_quarter')],
     ]
+    _ap_row = _autopay_row(telegram_id, True)
+    if _ap_row:
+        rows.append(_ap_row)
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text='💎 Premium — Wallet Pay (crypto)', callback_data='walletpay:premium')])
     if PLATEGA_ENABLED and is_button_enabled('platega_rub'):
@@ -1515,6 +1539,9 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
         # V3.43.0: the 3-month plan from the benchmarked card — best per-week price.
         [InlineKeyboardButton(text=f'⭐ Premium на 3 месяца — {PREMIUM_QUARTERLY_STARS} Stars{quarter_fiat}', callback_data='buy:premium_quarter')],
     ]
+    _ap_row = _autopay_row(telegram_id, False)
+    if _ap_row:
+        rows.append(_ap_row)
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text=f'💎 Premium — Wallet Pay (крипта/карта)', callback_data='walletpay:premium')])
     # V3.31.0: owner-configured external methods switched to «active» in the
@@ -6033,7 +6060,7 @@ async def premium(message: types.Message):
         await message.answer('Сначала подтверди 18+ и условия через /start.', reply_markup=consent_keyboard()); return
     track_event(uid, 'paywall_view', metadata={'product': 'premium_month', 'stars': PREMIUM_MONTHLY_STARS})
     if is_premium(message.from_user.id):
-        await message.answer(f'Premium уже активен ✨\nФото-кредиты: {get_photo_credits(message.from_user.id)}\nQuest replay осталось в этом месяце: {premium_replays_left(message.from_user.id)}')
+        await message.answer(f'Premium уже активен ✨\nФото-кредиты: {get_photo_credits(message.from_user.id)}\nQuest replay осталось в этом месяце: {premium_replays_left(message.from_user.id)}\n\n🔁 Автопродление (по желанию): /autopay')
         return
     from services.retention_service import discount_info
     await message.answer(premium_pitch_text(message.from_user.id), reply_markup=premium_keyboard(discount_info(message.from_user.id), telegram_id=message.from_user.id))
@@ -6420,6 +6447,308 @@ def _platega_amount_for(product: str) -> int:
     if product.startswith('tokens_'):
         return int(product.split('_')[1]) * TOKEN_PRICE_RUB
     return PLATEGA_PREMIUM_PRICE_RUB
+
+
+# ---------------------------------------------------------------- V3.120.0
+# Premium auto-renewal (services/autopay.py): opt-in only, terms before the
+# pay link, a reminder before every charge, «Отключить» in one tap.
+
+def _autopay_menu_keyboard(telegram_id: int, en: bool, live: dict | None) -> InlineKeyboardMarkup:
+    from services import autopay
+    rows = []
+    if live:
+        rows.append([InlineKeyboardButton(text='❌ Turn off auto-renewal' if en else '❌ Отключить автопродление',
+                                          callback_data='autopay:cancel_ask')])
+        return InlineKeyboardMarkup(inline_keyboard=rows)
+    if (not en and PLATEGA_ENABLED and autopay.PLATEGA_SUB_ENABLED and is_button_enabled('platega_rub')):
+        rows.append([InlineKeyboardButton(text=f'🔁 Месяц — {PLATEGA_PREMIUM_PRICE_RUB} ₽ раз в месяц · СБП',
+                                          callback_data='autopay:sbp:premium_month')])
+        rows.append([InlineKeyboardButton(text=f'🔁 Неделя — {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽ раз в неделю · СБП',
+                                          callback_data='autopay:sbp:premium_week')])
+    if autopay.STARS_ENABLED:
+        rows.append([InlineKeyboardButton(
+            text=(f'🔁 A month — {PREMIUM_MONTHLY_STARS} Stars every 30 days' if en
+                  else f'🔁 Месяц — {PREMIUM_MONTHLY_STARS} Stars раз в 30 дней'),
+            callback_data='autopay:stars')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _autopay_show(chat_id: int, telegram_id: int) -> None:
+    from services import autopay
+    en = user_lang(telegram_id) == EN
+    if not autopay.ENABLED:
+        await bot.send_message(chat_id, 'Auto-renewal is not available right now — plans in /premium are one-time.' if en
+                               else 'Автопродление сейчас недоступно — тарифы в /premium разовые.')
+        return
+    live = await asyncio.to_thread(autopay.get_live, telegram_id)
+    text = autopay.status_text(live, en) if live else autopay.terms_text(en)
+    await bot.send_message(chat_id, text, parse_mode='HTML',
+                           reply_markup=_autopay_menu_keyboard(telegram_id, en, live))
+
+
+@dp.message(Command('autopay'))
+async def autopay_cmd(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    if not has_accepted(message.from_user.id):
+        await message.answer('Сначала подтверди 18+ и условия через /start.'); return
+    await _autopay_show(message.chat.id, message.from_user.id)
+
+
+@dp.callback_query(F.data == 'autopay:menu')
+async def autopay_menu(cq: types.CallbackQuery):
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    await cq.answer()
+    await _autopay_show(cq.message.chat.id, cq.from_user.id)
+
+
+@dp.callback_query(F.data == 'autopay:stars')
+async def autopay_stars(cq: types.CallbackQuery):
+    from services import autopay
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    en = user_lang(cq.from_user.id) == EN
+    if not (autopay.ENABLED and autopay.STARS_ENABLED):
+        await cq.answer('not available right now' if en else 'сейчас недоступно', show_alert=True); return
+    if await asyncio.to_thread(autopay.get_live, cq.from_user.id):
+        await cq.answer('auto-renewal is already on — /autopay' if en else 'автопродление уже включено — /autopay',
+                        show_alert=True); return
+    await cq.answer()
+    title = 'Premium · auto-renewal' if en else 'Premium · автопродление'
+    desc = (f'Premium for 30 days, renews every 30 days for {PREMIUM_MONTHLY_STARS} Stars. Cancel any time: /autopay'
+            if en else
+            f'Premium на 30 дней, продлевается каждые 30 дней за {PREMIUM_MONTHLY_STARS} Stars. Отключить в любой момент: /autopay')
+    try:
+        link = await bot.create_invoice_link(
+            title=title, description=desc, payload=autopay.STARS_PAYLOAD,
+            provider_token='', currency='XTR',
+            prices=[LabeledPrice(label=title, amount=PREMIUM_MONTHLY_STARS)],
+            subscription_period=autopay.STARS_PERIOD_SECONDS,
+        )
+    except Exception:
+        logger.exception('autopay stars invoice failed user=%s', cq.from_user.id)
+        await bot.send_message(cq.message.chat.id, "couldn't create the subscription 😔 one-time plans: /premium" if en
+                               else 'не получилось оформить подписку 😔 разовые тарифы — в /premium')
+        return
+    await asyncio.to_thread(autopay.create_pending, cq.from_user.id, 'stars', 'premium_month', PREMIUM_MONTHLY_STARS)
+    track_event(ensure_user(cq.from_user.id), 'autopay_link_created', metadata={'provider': 'stars', 'plan': 'premium_month'})
+    await bot.send_message(
+        cq.message.chat.id,
+        (f'⭐ Stars subscription: {PREMIUM_MONTHLY_STARS} Stars now and then every 30 days.\n'
+         'A reminder comes the day before each charge; turn it off any time in /autopay or in Telegram settings.')
+        if en else
+        (f'⭐ Подписка в Stars: {PREMIUM_MONTHLY_STARS} Stars сейчас и дальше раз в 30 дней.\n'
+         'Накануне каждого списания напомню; отключить можно в любой момент в /autopay или в настройках Telegram.'),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=(f'⭐ Subscribe — {PREMIUM_MONTHLY_STARS} Stars / 30 days' if en
+                  else f'⭐ Оформить — {PREMIUM_MONTHLY_STARS} Stars / 30 дней'), url=link)]]),
+    )
+
+
+@dp.callback_query(F.data.startswith('autopay:sbp:'))
+async def autopay_sbp(cq: types.CallbackQuery):
+    from services import autopay
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    plan = cq.data.split(':', 2)[2]
+    if plan not in autopay.PLATEGA_INTERVAL or not (autopay.ENABLED and autopay.PLATEGA_SUB_ENABLED and PLATEGA_ENABLED):
+        await cq.answer('сейчас недоступно', show_alert=True); return
+    if await asyncio.to_thread(autopay.get_live, cq.from_user.id):
+        await cq.answer('автопродление уже включено — /autopay', show_alert=True); return
+    amount = PLATEGA_PREMIUM_WEEKLY_PRICE_RUB if plan == 'premium_week' else PLATEGA_PREMIUM_PRICE_RUB
+    await cq.answer('создаю подписку…')
+    row_id = await asyncio.to_thread(autopay.create_pending, cq.from_user.id, 'platega', plan, amount)
+    link = await autopay.platega_create(row_id, cq.from_user.id, plan, amount, username=cq.from_user.username)
+    if not link:
+        await asyncio.to_thread(autopay.set_status, row_id, 'failed')
+        await bot.send_message(cq.message.chat.id,
+                               'не получилось оформить автопродление 😔 можно оплатить разово в /premium — '
+                               'ничего не будет списываться само. Если повторяется — /support')
+        return
+    track_event(ensure_user(cq.from_user.id), 'autopay_link_created', metadata={'provider': 'platega', 'plan': plan})
+    period = 'раз в неделю' if plan == 'premium_week' else 'раз в месяц'
+    await bot.send_message(
+        cq.message.chat.id,
+        f'🔁 Автопродление через СБП: {amount} ₽ {period}.\n\n'
+        'На странице подтверди привязку в своём банке — это одно согласие на регулярные списания. '
+        'Premium включится сразу после первого списания. Накануне каждого следующего я напомню; '
+        'отключить можно в любой момент в /autopay (или по ссылке отмены в письме от Platega).',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=f'🏦 Подключить — {amount} ₽ {period}', url=link)]]),
+    )
+
+
+@dp.callback_query(F.data == 'autopay:cancel_ask')
+async def autopay_cancel_ask(cq: types.CallbackQuery):
+    from services import autopay
+    en = user_lang(cq.from_user.id) == EN
+    live = await asyncio.to_thread(autopay.get_live, cq.from_user.id)
+    await cq.answer()
+    if not live:
+        await bot.send_message(cq.message.chat.id, 'Auto-renewal is already off 💗' if en else 'Автопродление уже выключено 💗')
+        return
+    await bot.send_message(
+        cq.message.chat.id,
+        'Turn off auto-renewal? Nothing more will be charged, your paid days stay.' if en
+        else 'Отключить автопродление? Больше ничего не спишется, оплаченные дни останутся.',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='❌ Yes, turn off' if en else '❌ Да, отключить',
+                                  callback_data=f'autopay:cancel:{live["id"]}')],
+            [InlineKeyboardButton(text='✅ Keep it' if en else '✅ Оставить', callback_data='autopay:keep')],
+        ]))
+
+
+@dp.callback_query(F.data == 'autopay:keep')
+async def autopay_keep(cq: types.CallbackQuery):
+    en = user_lang(cq.from_user.id) == EN
+    await cq.answer('ok, auto-renewal stays on 💗' if en else 'хорошо, автопродление остаётся 💗')
+
+
+@dp.callback_query(F.data.startswith('autopay:cancel:'))
+async def autopay_cancel(cq: types.CallbackQuery):
+    from services import autopay
+    en = user_lang(cq.from_user.id) == EN
+    try:
+        row_id = int(cq.data.rsplit(':', 1)[1])
+    except ValueError:
+        await cq.answer(); return
+    row = await asyncio.to_thread(autopay.get, row_id)
+    if not row or row['telegram_id'] != int(cq.from_user.id):
+        await cq.answer(); return
+    if row['status'] not in autopay.LIVE:
+        await cq.answer('already off 💗' if en else 'уже выключено 💗', show_alert=True); return
+    await cq.answer('turning off…' if en else 'отключаю…')
+    ok = False
+    if row['provider'] == 'stars':
+        try:
+            ok = bool(await bot.edit_user_star_subscription(
+                user_id=cq.from_user.id, telegram_payment_charge_id=row['external_id'], is_canceled=True))
+        except Exception:
+            logger.exception('stars subscription cancel failed user=%s row=%s', cq.from_user.id, row_id)
+    else:
+        ok = await autopay.platega_cancel(row['external_id'])
+    if not ok:
+        await bot.send_message(
+            cq.message.chat.id,
+            ("couldn't turn it off right now 😔 try again in a minute or write /support. "
+             'A Stars subscription can also be cancelled in Telegram settings → My Stars.') if en else
+            ('не получилось отключить прямо сейчас 😔 попробуй через минуту или напиши /support — отключим вручную.'
+             + (' Подписку в Stars можно отменить и в настройках Telegram → Мои звёзды.' if row['provider'] == 'stars' else '')))
+        try:
+            for admin_id in ADMIN_TELEGRAM_IDS:
+                await bot.send_message(admin_id, f'⚠️ autopay cancel failed user={cq.from_user.id} row={row_id} provider={row["provider"]}')
+        except Exception:
+            pass
+        return
+    await asyncio.to_thread(autopay.set_status, row_id, 'canceled')
+    track_event(ensure_user(cq.from_user.id), 'autopay_canceled', metadata={'provider': row['provider'], 'plan': row['plan'],
+                                                                             'charges': row['charges']})
+    until = await asyncio.to_thread(autopay.premium_until, cq.from_user.id)
+    await bot.send_message(cq.message.chat.id, autopay.canceled_text(until, en))
+
+
+def _autopay_stars_row(telegram_id: int, first: bool) -> int:
+    """The row a Stars subscription payment belongs to (created if missing)."""
+    from services import autopay
+    from models.app_models import AutoRenewal
+    from services.db import SessionLocal
+    with SessionLocal() as s:
+        q = s.query(AutoRenewal).filter(AutoRenewal.telegram_id == int(telegram_id), AutoRenewal.provider == 'stars')
+        statuses = ('pending',) if first else ('active', 'past_due', 'canceled', 'pending')
+        row = q.filter(AutoRenewal.status.in_(statuses)).order_by(AutoRenewal.id.desc()).first()
+        if row is not None:
+            return row.id
+    return autopay.create_pending(telegram_id, 'stars', 'premium_month', PREMIUM_MONTHLY_STARS)
+
+
+async def _autopay_stars_paid(message: types.Message) -> None:
+    from services import autopay
+    payment = message.successful_payment
+    tid = message.from_user.id
+    charge = payment.telegram_payment_charge_id
+    recurring = bool(getattr(payment, 'is_recurring', False))
+    first = bool(getattr(payment, 'is_first_recurring', False)) or not recurring
+    record_payment(tid, 'premium_month', payment.total_amount, charge, provider_payload='autopay=stars')
+    row_id = await asyncio.to_thread(_autopay_stars_row, tid, first)
+    if first:
+        # the first payment's charge id is the handle editUserStarSubscription needs
+        await asyncio.to_thread(autopay.set_external, row_id, charge)
+    nxt = autopay.parse_dt(getattr(payment, 'subscription_expiration_date', None))
+    await asyncio.to_thread(autopay.record_charge, row_id, nxt)
+    await asyncio.to_thread(autopay.extend_premium_to, tid, nxt)
+    track_event(ensure_user(tid), 'stars_purchase', value=payment.total_amount,
+                metadata={'product': 'premium_month', 'autopay': 'first' if first else 'renewal'})
+    row = await asyncio.to_thread(autopay.get, row_id)
+    en = user_lang(tid) == EN
+    await message.answer(autopay.renewed_text(row, (row or {}).get('next_charge_at'), first, en))
+    if first:
+        _spawn_background(_after_premium_paid(tid, 'premium_month'))
+
+
+async def _autopay_platega_callback(body: dict) -> None:
+    from services import autopay
+    status = str(body.get('status') or '').strip().upper()
+    row = await autopay.resolve_callback_row(body)
+    if row is None:
+        logger.warning('Platega subscription callback for unknown subscription id=%s sub=%s status=%s',
+                       body.get('id'), body.get('subscriptionId'), status)
+        return
+    tid = row['telegram_id']
+    en = user_lang(tid) == EN
+    if status == platega_service.STATUS_CONFIRMED:
+        payment_id = str(body.get('id') or '').strip()
+        charge = f'platega_sub:{payment_id}'
+        if not payment_id or await asyncio.to_thread(autopay.charge_seen, charge):
+            return
+        remote = await platega_service.get_transaction(payment_id)
+        if remote is not None and str(remote.get('status') or '').upper() != platega_service.STATUS_CONFIRMED:
+            logger.warning('Platega subscription debit status mismatch id=%s remote=%s', payment_id, remote.get('status'))
+            return
+        if not platega_service.amount_covers(body.get('amount'), str(row['amount'])):
+            logger.error('Platega subscription amount mismatch row=%s expected=%s paid=%s',
+                         row['id'], row['amount'], body.get('amount'))
+            return
+        record_payment(tid, row['plan'], 0, charge, provider='platega',
+                       provider_payload=f'autopay=platega;sub={row.get("external_id")};amount={row["amount"]}')
+        nxt = autopay.parse_dt(body.get('nextChargeAt'))
+        first = await asyncio.to_thread(autopay.record_charge, row['id'], nxt)
+        await asyncio.to_thread(autopay.extend_premium_to, tid, nxt)
+        track_event(ensure_user(tid), 'platega_paid', metadata={'product': row['plan'], 'amount': str(row['amount']),
+                                                                 'autopay': 'first' if first else 'renewal'})
+        fresh = await asyncio.to_thread(autopay.get, row['id'])
+        try:
+            await bot.send_message(tid, autopay.renewed_text(fresh, (fresh or {}).get('next_charge_at'), first, en))
+        except Exception:
+            logger.exception('autopay renewal message failed user=%s', tid)
+        if first:
+            _spawn_background(_after_premium_paid(int(tid), row['plan']))
+        return
+    mapped = autopay.SUB_STATUSES.get(status)
+    if mapped:
+        before = row['status']
+        if mapped == 'active' and before != 'pending':
+            return  # already active (a debit came first)
+        await asyncio.to_thread(autopay.set_status, row['id'], mapped)
+        try:
+            if mapped == 'canceled' and before in autopay.LIVE:
+                until = await asyncio.to_thread(autopay.premium_until, tid)
+                await bot.send_message(tid, autopay.canceled_text(until, en))
+            elif mapped == 'failed':
+                await bot.send_message(tid, 'не получилось подключить автопродление в банке 😔 '
+                                            'можно оплатить разово в /premium — ничего само списываться не будет.')
+            elif mapped == 'past_due' and before == 'active':
+                fresh = await asyncio.to_thread(autopay.get, row['id'])
+                await bot.send_message(tid, autopay.status_text(fresh, en))
+        except Exception:
+            logger.exception('autopay status message failed user=%s', tid)
+        return
+    if status == platega_service.STATUS_CANCELED and row['status'] == 'pending':
+        await asyncio.to_thread(autopay.set_status, row['id'], 'failed')
+        return
+    logger.warning('Platega subscription callback status=%s row=%s (no action)', status, row['id'])
 
 
 @dp.callback_query(F.data.startswith('platega:'))
@@ -7215,6 +7544,9 @@ async def pre_checkout(query: types.PreCheckoutQuery):
         ok=False
     elif payload=='premium_month':
         ok=amount==PREMIUM_MONTHLY_STARS
+    elif payload=='premium_month_auto':
+        # V3.120.0: the opt-in Stars subscription (30 days, same month price).
+        ok=amount==PREMIUM_MONTHLY_STARS
     elif payload=='premium_week':
         # V3.34.1: the weekly Premium option — chat and Mini App share it.
         ok=amount==PREMIUM_WEEKLY_STARS
@@ -7312,6 +7644,10 @@ async def successful_payment(message: types.Message):
     charge = payment.telegram_payment_charge_id
     # V3.104.0: «что теперь открыто» + her own word a few seconds after the
     # grant below (the task starts at the first await, after record_payment).
+    if payload == 'premium_month_auto':
+        # V3.120.0: first payment or a renewal of his Stars subscription.
+        await _autopay_stars_paid(message)
+        return
     if payload in PAID_PREMIUM_PRODUCTS:
         _spawn_background(_after_premium_paid(message.from_user.id, payload))
     if payload in PEACH_PACK_STARS:
@@ -11066,6 +11402,14 @@ async def _platega_callback(request: web.Request) -> web.Response:
     except Exception:
         return web.Response(text='NO|json', status=400)
     body = body or {}
+    from services import autopay
+    if autopay.is_subscription_callback(body):
+        # V3.120.0: an SBP auto-renewal debit or a subscription status change.
+        try:
+            await _autopay_platega_callback(body)
+        except Exception:
+            logger.exception('Platega subscription callback failed body=%s', str(body)[:300])
+        return web.Response(text='OK')
     status = str(body.get('status') or '').strip().upper()
     transaction_id = str(body.get('id') or '').strip()
     payload = str(body.get('payload') or '')
@@ -12377,6 +12721,25 @@ async def _webapp_api_demo(request: web.Request) -> web.Response:
 
     ok = await asyncio.to_thread(_grant)
     return web.json_response({'ok': bool(ok), 'hours': DEMO_PREMIUM_HOURS} if ok else {'ok': False, 'error': 'used'})
+
+
+async def _webapp_api_autopay(request: web.Request) -> web.Response:
+    """V3.120.0: the shop card's «🔁 Автопродление» link — the bot sends the
+    terms / manage menu into his chat and the app opens that chat."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id or not await asyncio.to_thread(has_accepted, telegram_id):
+        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    try:
+        await _autopay_show(int(telegram_id), int(telegram_id))
+    except Exception:
+        logger.exception('webapp autopay menu failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'send'}, status=502)
+    from config import BOT_USERNAME as _bot_name
+    url = f'https://t.me/{_bot_name}' if _bot_name else ''
+    return web.json_response({'ok': True, 'url': url})
 
 
 async def _webapp_api_pay_link(request: web.Request) -> web.Response:
@@ -16741,6 +17104,7 @@ async def _start_web_server() -> None:
     # V3.34.0: storefront actions — Stars purchases and character selection.
     app.router.add_post('/webapp/api/invoice', _webapp_api_invoice)
     app.router.add_post('/webapp/api/demo', _webapp_api_demo)
+    app.router.add_post('/webapp/api/autopay', _webapp_api_autopay)
     # V3.43.0: the pay-method modal — card/SBP and crypto payment links.
     app.router.add_post('/webapp/api/pay_link', _webapp_api_pay_link)
     app.router.add_post('/webapp/api/feedback', _webapp_api_feedback)  # V3.107.0
