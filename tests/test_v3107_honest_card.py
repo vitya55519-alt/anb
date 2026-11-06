@@ -76,11 +76,11 @@ def test_evening_voice_skips_wrong_language(monkeypatch):
 
 def test_scheduler_sends_evening_as_voice_for_everyone():
     assert "evening_voice=await _ev.voice_bytes(text, char_id, _el)" in SCHED
-    assert "await bot.send_voice(int(tg_id), BufferedInputFile(evening_voice" in SCHED
-    assert "track_event(uid, 'evening_voice_sent'" in SCHED
+    assert "await bot.send_voice(int(tg_id), BufferedInputFile(ritual_voice" in SCHED
+    assert "track_event(uid, f'{kind}_voice_sent'" in SCHED
     assert "text=_ev.en_evening_line()" in SCHED
     # no Premium gate on the evening voice
-    block = SCHED[SCHED.index('evening_voice=None'):SCHED.index("track_event(uid, 'evening_voice_sent'")]
+    block = SCHED[SCHED.index('evening_voice=None'):SCHED.index("track_event(uid, f'{kind}_voice_sent'")]
     assert 'is_premium' not in block
 
 
@@ -126,7 +126,7 @@ def test_evening_mood_reaches_gemini_tts():
     import services.voice_service as vs
     assert 'тихо, мягко и медленно' in vs._SPICY_GEMINI_MOOD['evening']['ru']
     assert "_tts_spicy_gemini(spoken or text, character_id, mood=mood)" in VOICE
-    assert "mood='evening'" in (ROOT / 'services' / 'evening_voice.py').read_text(encoding='utf-8')
+    assert "mood: str = 'evening'" in (ROOT / 'services' / 'evening_voice.py').read_text(encoding='utf-8')
 
 
 def test_voicecast_is_admin_only_and_needs_confirm():

@@ -36,4 +36,4 @@ def test_evening_promise_kept_in_the_morning():
     r = SCHED[SCHED.index('async def _rituals('):]
     assert "if kind=='evening' and shot:" in r
     assert "_ritual_promised.add((uid,(now+dt.timedelta(days=1)).date().isoformat()))" in r
-    assert "elif kind=='morning' and shot and (uid,today_key) in _ritual_promised:" in r
+    assert "if kind=='morning' and shot and (uid,today_key) in _ritual_promised:" in r

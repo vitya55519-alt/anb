@@ -396,6 +396,13 @@ _SPICY_GEMINI_BASE = {
 # V3.108.0: a delivery mood on top of her own manner — the evening voice note
 # (owner: «мягкое, человеческое, сексуальное»).
 _SPICY_GEMINI_MOOD = {
+    # V3.110.0: the morning ritual is a voice note too
+    'morning': {
+        'ru': ('Утро, она только проснулась и записывает ему голосовое ещё в постели: говорит тихо, '
+               'чуть сонно и нежно, с тёплой улыбкой в голосе, неторопливо, с лёгкими паузами. '),
+        'en': ('Morning, she has just woken up and records him a voice note still in bed: quiet, a little '
+               'sleepy and tender, a warm smile in her voice, unhurried, with small pauses. '),
+    },
     'evening': {
         'ru': ('Поздний вечер, она уже лежит в постели и записывает ему голосовое перед сном: говорит '
                'тихо, мягко и медленно, близко-близко к микрофону, с тёплой лёгкой хрипотцой и '

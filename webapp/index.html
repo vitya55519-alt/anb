@@ -4729,6 +4729,7 @@ function renderGenFeed(rows, reset, spentToday) {
       + thumb
       + '<div style="font-size:12px;opacity:.8;margin-bottom:4px">' + esc(String(g.kind || '')) + ' · ' + esc(g.character || '—') + ' · id ' + esc(String(g.user || '')) + (when ? (' · ' + esc(when)) : '') + money + '</div>'
       + '<div style="font-size:13px;white-space:pre-wrap;word-break:break-word">' + esc(g.prompt || '') + '</div>'
+      + ((g.kind === 'photo' && g.thumb) ? ('<button class="btn-back gen-reject" data-gid="' + esc(String(g.id)) + '" style="margin-top:6px">🚫 Брак</button>') : '')
       + '</div>';
   });
   if (rows.length >= 60) html += '<div style="text-align:center;margin:10px 0"><button class="btn-back" id="genMore">' + esc(L.gen_more) + '</button></div>';
@@ -4736,6 +4737,19 @@ function renderGenFeed(rows, reset, spentToday) {
   GEN_OFFSET += rows.length;
   const more = document.getElementById('genMore');
   if (more) more.onclick = () => { more.remove(); loadGenFeed(false); };
+  // V3.110.0: hide a broken photo (three arms…) from the evening photo pick
+  box.querySelectorAll('.gen-reject').forEach(b => {
+    if (b.dataset.bound) return; b.dataset.bound = '1';
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const r = await fetch('/webapp/api/admin/gen_reject?init_data=' + encodeURIComponent(tg.initData || ''), {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: Number(b.dataset.gid)})});
+        const j = await r.json();
+        b.textContent = j.ok ? '✓ Брак, вечером не уйдёт' : '⚠️ не получилось';
+      } catch (e) { b.textContent = '⚠️ не получилось'; b.disabled = false; }
+    };
+  });
 }
 
 // ── V3.39.0: the Come Closer character page (strip → CTA → bio → СЮЖЕТ) ────

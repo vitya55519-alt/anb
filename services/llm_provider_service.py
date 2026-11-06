@@ -118,7 +118,7 @@ logger.info(
 
 
 # V3.96.0: calls that carry an image part.
-VISION_PURPOSES = frozenset({'photo_reaction'})
+VISION_PURPOSES = frozenset({'photo_reaction', 'evening_photo_qc'})
 
 
 @dataclass(frozen=True)

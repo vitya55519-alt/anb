@@ -39,7 +39,7 @@ def test_retag_and_add_carry_character():
 
 # ── senders: all three proactive rails pass the real character ──────────────
 def test_ritual_uses_user_selected_character():
-    ritual = SCHED[SCHED.index('async def _rituals(bot):'):SCHED.index('async def _donation_reminder(bot):')]
+    ritual = SCHED[SCHED.index('async def _rituals(bot, only_tg=None, force_kind=None):'):SCHED.index('async def _donation_reminder(bot):')]
     assert 'u.selected_character or ' in ritual          # snapshot carries it
     assert "char_id = sel_char or CHARACTER_ID or 'anna_01'" in ritual
     assert 'random_proactive_photo(char_id, user_id=' in ritual

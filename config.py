@@ -621,10 +621,12 @@ DAY1_HOOK_MAX_ACCOUNT_HOURS = max(24, int(os.getenv("DAY1_HOOK_MAX_ACCOUNT_HOURS
 DAY1_HOOK_MIN_INACTIVE_HOURS = max(6, int(os.getenv("DAY1_HOOK_MIN_INACTIVE_HOURS", "18")))
 # Morning/evening rituals: she writes first in the user's local time windows.
 RITUALS_ENABLED = os.getenv("RITUALS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
-RITUAL_MORNING_START_HOUR = max(0, min(23, int(os.getenv("RITUAL_MORNING_START_HOUR", "7"))))
+# V3.110.0: owner — morning voice at 9:00, evening voice + photo at 20:00 (MSK for
+# Russians: users without a real timezone count as Moscow, see scheduler).
+RITUAL_MORNING_START_HOUR = max(0, min(23, int(os.getenv("RITUAL_MORNING_START_HOUR", "9"))))
 RITUAL_MORNING_END_HOUR = max(0, min(23, int(os.getenv("RITUAL_MORNING_END_HOUR", "10"))))
-RITUAL_EVENING_START_HOUR = max(0, min(23, int(os.getenv("RITUAL_EVENING_START_HOUR", "21"))))
-RITUAL_EVENING_END_HOUR = max(0, min(23, int(os.getenv("RITUAL_EVENING_END_HOUR", "23"))))
+RITUAL_EVENING_START_HOUR = max(0, min(23, int(os.getenv("RITUAL_EVENING_START_HOUR", "20"))))
+RITUAL_EVENING_END_HOUR = max(0, min(23, int(os.getenv("RITUAL_EVENING_END_HOUR", "21"))))
 RITUAL_MAX_INACTIVE_DAYS = max(1, int(os.getenv("RITUAL_MAX_INACTIVE_DAYS", "7")))
 
 # V3.52.0: «Жизнь без тебя» — proactive, personality-grounded life moments she

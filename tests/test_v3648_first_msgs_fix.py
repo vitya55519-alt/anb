@@ -83,7 +83,7 @@ def test_fixed_texts_have_no_double_spaces_or_dashes():
 
 def test_morning_caption_is_her_words_and_gift_is_a_button():
     sched = (ROOT / 'services' / 'scheduler_service.py').read_text(encoding='utf-8')
-    ritual = sched[sched.index('async def _rituals(bot):'):sched.index('async def _donation_reminder(bot):')]
+    ritual = sched[sched.index('async def _rituals(bot, only_tg=None, force_kind=None):'):sched.index('async def _donation_reminder(bot):')]
     assert 'text+=f"\\n🎁 забирай' not in ritual
     assert "gift_label=f\"🎁 Забрать подарок +{gs.get('amount',1)} 🍑\"" in ritual
     assert 'text=random.choice(_PROMISE_KEPT)' in ritual   # one greeting, not two

@@ -24,7 +24,7 @@ SCHEDULER = (ROOT / 'services' / 'scheduler_service.py').read_text(encoding='utf
 
 PROACTIVE = SCHEDULER[SCHEDULER.index('async def _proactive(bot):'):SCHEDULER.index('async def _day1_hook(bot):')]
 DAY1 = SCHEDULER[SCHEDULER.index('async def _day1_hook(bot):'):SCHEDULER.index('def _user_local_hour(')]
-RITUALS = SCHEDULER[SCHEDULER.index('async def _rituals(bot):'):SCHEDULER.index('async def _donation_reminder(bot):')]
+RITUALS = SCHEDULER[SCHEDULER.index('async def _rituals(bot, only_tg=None, force_kind=None):'):SCHEDULER.index('async def _donation_reminder(bot):')]
 LIFE = SCHEDULER[SCHEDULER.index('async def _life_events(bot):'):SCHEDULER.index('def start_scheduler(')]
 REMINDERS = SCHEDULER[SCHEDULER.index('async def _reminders(bot):'):SCHEDULER.index('async def _proactive(bot):')]
 
