@@ -50,7 +50,7 @@ VARIANTS = {
                   'standing on a sunny seaside promenade with the sea behind her, one hand in her hair, big smile',
              back='Full body from behind: same fitted cream ribbed knit midi dress, she walks away along the sunny '
                   'seaside promenade and looks back over her shoulder at the viewer with a big playful smile; '
-                  'her wide hips and big round butt are clearly visible in the tight dress; her face is clearly '
+                  'her wide hips and round toned butt are clearly visible in the tight dress; her face is clearly '
                   'visible in three-quarter profile'),
         dict(face=f'Portrait photo of an {AYLA_FACE}, white off-shoulder blouse, thin gold necklace, cozy pastry shop '
                   'with trays of baklava behind her, warm light, sweet shy smile',
@@ -58,7 +58,7 @@ VARIANTS = {
                   'thin gold necklace, standing in a cozy pastry shop holding a small tray of baklava, warm smile',
              back='Full body from behind: same white off-shoulder blouse and tight high-waisted blue jeans, standing '
                   'at the pastry shop counter with her back to the viewer, glancing back over her shoulder with a '
-                  'sweet smile; her wide hips and big round butt are clearly visible in the tight jeans; her face is '
+                  'sweet smile; her wide hips and round toned butt are clearly visible in the tight jeans; her face is '
                   'clearly visible in three-quarter profile'),
     ],
     'priya': [
@@ -70,7 +70,7 @@ VARIANTS = {
              back='Full body from behind: same saffron-orange crop blouse and high-waisted lehenga skirt hugging her '
                   'wide hips, long jet-black hair in a thick braid down her back, standing in the dance studio with '
                   'her back to the viewer and looking back over her shoulder with a radiant smile; her wide hips and '
-                  'big round butt are clearly visible; her face is clearly visible in three-quarter profile'),
+                  'round toned butt are clearly visible; her face is clearly visible in three-quarter profile'),
         dict(face=f'Portrait photo of an {PRIYA_FACE}, emerald-green fitted wrap top, gold jhumka earrings, '
                   'rooftop terrace at sunset with fairy lights, holding a cup of masala chai, warm laugh',
              look='Full look, knees up: emerald-green fitted wrap top and a tight black high-waisted midi skirt, '
@@ -78,11 +78,15 @@ VARIANTS = {
                   'radiant smile',
              back='Full body from behind: same emerald-green wrap top and tight black high-waisted midi skirt, '
                   'standing at the rooftop railing at sunset with her back to the viewer, looking back over her '
-                  'shoulder with a warm laugh; her wide hips and big round butt are clearly visible in the tight '
+                  'shoulder with a warm laugh; her wide hips and round toned butt are clearly visible in the tight '
                   'skirt; her face is clearly visible in three-quarter profile'),
     ],
 }
 BODY = {'ayla': AYLA_BODY, 'priya': PRIYA_BODY}
+# Round 2: owner wants «попы спортивные круглые» — a toned athletic round butt.
+ATHLETIC = ('a very curvy toned hourglass figure with a slim fit waist, wide round hips, toned thighs, a round firm '
+            'lifted athletic glute-trained butt (gym-toned bubble butt)')
+BODY2 = {'ayla': ATHLETIC + ' and a full natural bust (D cup)', 'priya': ATHLETIC + ' and a large full natural bust (E cup)'}
 KEEP = ('The same woman as in the reference image: keep her exact face, eyes, nose, lips, dimples, '
         'hair color and length, skin tone. Her figure: {body}. ')
 
@@ -163,7 +167,7 @@ def make_round2() -> None:
     for name, items in ROUND2.items():
         for i, v in enumerate(items, 3):
             face, look, back = (VAR / f'{name}_v{i}_{k}.png' for k in ('face', 'look', 'back'))
-            keep = KEEP.format(body=BODY[name]).replace('dimples, ', '')
+            keep = KEEP.format(body=BODY2[name]).replace('dimples, ', '')
             try:
                 if not face.exists():  # text only: nobody real gets cloned
                     face.write_bytes(g.render(T2I, v['face'] + '.' + SOFT + QUALITY))
