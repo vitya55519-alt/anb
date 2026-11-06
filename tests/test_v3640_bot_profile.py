@@ -19,3 +19,11 @@ def test_descriptions_mention_calls_and_ten_levels():
     assert '10 уровней' in bd.DESCRIPTION_RU and '10 relationship levels' in bd.DESCRIPTION_DEFAULT
     assert 'позвонить' in bd.DESCRIPTION_RU and 'позвонить' in bd.SHORT_DESCRIPTION_RU
     assert 'call her' in bd.DESCRIPTION_DEFAULT and 'call her' in bd.SHORT_DESCRIPTION_DEFAULT
+
+
+def test_profile_and_descriptions_off_by_default():
+    """V3.118.0: the owner edits name/description in BotFather; deploys must not overwrite them."""
+    fn = MAIN[MAIN.index('async def _apply_bot_profile('):]
+    assert "os.getenv('BOT_PROFILE_ENABLED', '0') != '1'" in fn[:fn.index('\n\n')]
+    src = (Path(__file__).resolve().parents[1] / 'services' / 'bot_description.py').read_text(encoding='utf-8')
+    assert "os.getenv('BOT_PROFILE_ENABLED', '0') != '1'" in src
