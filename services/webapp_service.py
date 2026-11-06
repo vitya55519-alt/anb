@@ -302,6 +302,8 @@ _FACE_REFERENCES = {
     'jina_01': ('references', 'jina', '00_jina_canonical_face.png'),
     'lana_01': ('references', 'lana', '00_lana_canonical_face.png'),
     'amira_01': ('references', 'amira', '00_amira_canonical_face.png'),
+    'ayla_01': ('references', 'ayla', '00_ayla_canonical_face.png'),
+    'priya_01': ('references', 'priya', '00_priya_canonical_face.png'),
 }
 
 
