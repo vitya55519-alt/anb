@@ -719,6 +719,32 @@ async def _shared_ritual(kind: str, day: str, char_id: str, lang: str):
         return _shared_bundles[key]
 
 
+# V3.121.1: a redeploy wiped _ritual_sent mid-window, and with the approval
+# grace window still open everyone would get tonight's ritual twice. The
+# ritual_<kind>_sent events are the persisted truth; load today's once per boot/day.
+_ritual_hydrated: set = set()
+
+
+def _hydrate_ritual_sent(now) -> None:
+    day=now.date().isoformat()
+    if day in _ritual_hydrated:
+        return
+    try:
+        from models.app_models import ProductEvent
+        start=dt.datetime(now.year, now.month, now.day)
+        with SessionLocal() as s:
+            rows=s.execute(select(ProductEvent.user_id, ProductEvent.event_name).where(
+                ProductEvent.event_name.in_(('ritual_morning_sent','ritual_evening_sent')),
+                ProductEvent.created_at>=start)).all()
+        for uid, name in rows:
+            if uid:
+                _ritual_sent.add((uid, name.split('_')[1], day))
+        _ritual_hydrated.add(day)
+        logger.info('ritual sent-guard restored day=%s rows=%s', day, len(rows))
+    except Exception:
+        logger.exception('ritual sent-guard restore failed')
+
+
 async def _rituals(bot, only_tg=None, force_kind=None):
     """V3.20.0: morning/evening rituals — she writes first in the user's local
     time window. Only recent (RITUAL_MAX_INACTIVE_DAYS) opt-in users get them.
@@ -743,6 +769,8 @@ async def _rituals(bot, only_tg=None, force_kind=None):
             users=s.scalars(select(User).where(User.proactive_enabled==True,User.notify_rituals!=False,User.last_active_at>=fresh_cutoff)).all()
         snapshot=[(u.id,u.telegram_id,u.name or 'ты',u.streak_count or 0,u.timezone,u.selected_character or '') for u in users]
     today_key=now.date().isoformat()
+    if not preview:
+        _hydrate_ritual_sent(now)
     for uid,tg_id,name,streak,tz,sel_char in snapshot:
         try:
             with SessionLocal() as s:

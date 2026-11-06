@@ -42,3 +42,19 @@ def test_bundle_built_once_per_girl_language_day(monkeypatch):
     assert calls == {'tts': 2, 'photo': 2}
     asyncio.run(S._shared_ritual('morning', '2026-11-07', 'anna_01', 'en'))
     assert all(k[1] == '2026-11-07' for k in S._shared_bundles)
+
+
+def test_sent_guard_restored_from_events_after_redeploy():
+    import datetime as dt
+    from services.db import init_db, SessionLocal
+    init_db()
+    from models.app_models import ProductEvent
+    from services import scheduler_service as S
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    with SessionLocal() as s:
+        s.add(ProductEvent(user_id=987654, character_id='', event_name='ritual_evening_sent', created_at=now))
+        s.commit()
+    S._ritual_sent.clear(); S._ritual_hydrated.clear()
+    S._hydrate_ritual_sent(now)
+    assert (987654, 'evening', now.date().isoformat()) in S._ritual_sent
+    assert '_hydrate_ritual_sent(now)' in SCHED
