@@ -637,11 +637,18 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             loop_kind = ''
     # V3.98.0: he writes English → she answers English (14% of such replies
     # used to come back in Russian). The directive sits right before his text.
+    # V3.117.0: not only English — Bengali, Spanish, Japanese… whatever he
+    # writes in (or picked in the app); Cyrillic is always answered in Russian.
     from services import lang_guard
-    english = lang_guard.looks_english(user_text, language_code,
-                                       [m.content for m in history if m.role == 'user'])
-    if english:
-        messages.append({"role": "system", "content": lang_guard.DIRECTIVE})
+    _pref = lang_guard.stored_lang(db_user_id)
+    lang = lang_guard.detect_lang(user_text, language_code,
+                                  [m.content for m in history if m.role == 'user'], _pref)
+    _own = lang_guard.text_lang(user_text, _pref)
+    if _own and _own != _pref:
+        lang_guard.remember(db_user_id, _own)
+    foreign = lang != 'ru'
+    if foreign:
+        messages.append({"role": "system", "content": lang_guard.directive(lang)})
     elif lang_guard.RU_PURITY_ENABLED and not (language_code or '').lower().startswith('en'):
         # V3.105.0: no «especially» in the middle of a Russian line
         messages.append({"role": "system", "content": lang_guard.RU_DIRECTIVE})
@@ -651,14 +658,14 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         token_budget = 420
     r = await generate_text(messages, max_tokens=token_budget, temperature=1.0, purpose='dialogue')
     if not (r.text or '').strip():
-        _lang = 'en' if (english or (language_code or '').lower().startswith('en')) else 'ru'
+        _lang = 'en' if (foreign or (language_code or '').lower().startswith('en')) else 'ru'
         answer = stall_line(_lang, [m.content for m in history if m.role == 'assistant'][-6:])
         _logger.warning('dialogue empty from all providers user=%s character=%s', user_id, character_id)
     else:
         answer = _clean(r.text)
         # V3.113.0: her planning notes in English («*   Is it in character»)
         # and a reply cut mid-word on the token cap were sent as they were.
-        if live_talk.looks_leaked(answer) and not english:
+        if live_talk.looks_leaked(answer) and not foreign:
             _logger.warning('dialogue reasoning leak user=%s provider=%s', user_id, r.provider)
             try:
                 retry = await generate_text(messages, max_tokens=token_budget, temperature=0.9, purpose='dialogue')
@@ -670,28 +677,28 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             except Exception:
                 answer = stall_line('ru', _her_recent[-6:])
         elif not getattr(r, 'complete', True):
-            _lang = 'en' if english else 'ru'
-            answer = finish_or_drop(answer, False, _lang) or answer
+            answer = finish_or_drop(answer, False, lang) or answer
         if REFUSAL.search(answer):
             answer = await _recover_from_refusal(answer, character)
         elif BREAKUP.search(answer):
             answer = await _stay_in_chat(answer, character)
         answer = await _rewrite_if_needed(messages, user_text, answer, character)
-        if english and lang_guard.is_cyrillic_dominant(answer):
-            # still Russian: one firm regeneration, keep the old line if it fails too
+        if foreign and not lang_guard.reply_ok(answer, lang, user_text):
+            # still Russian (or plain Latin to a Bengali line): one firm
+            # regeneration, keep the old line if it fails too
             try:
                 retry = await generate_text(
                     messages + [{"role": "assistant", "content": answer},
-                                {"role": "system", "content": lang_guard.STRICT_DIRECTIVE}],
+                                {"role": "system", "content": lang_guard.strict_directive(lang)}],
                     max_tokens=token_budget, temperature=0.9, purpose='dialogue')
                 fixed = _clean(retry.text or '')
-                if fixed and not lang_guard.is_cyrillic_dominant(fixed):
+                if fixed and lang_guard.reply_ok(fixed, lang, user_text):
                     answer = fixed
                 else:
-                    _logger.warning('english reply stayed russian user=%s', user_id)
+                    _logger.warning('%s reply stayed in another language user=%s', lang, user_id)
             except Exception:
-                _logger.warning('english regeneration failed user=%s', user_id, exc_info=True)
-        elif not english:
+                _logger.warning('%s regeneration failed user=%s', lang, user_id, exc_info=True)
+        elif not foreign:
             answer = await _fix_stray_english(answer, [user_text] + [m.content for m in history if m.role == 'user'], user_id)
     if not behavior_kind.startswith('task') and not scene and not care_kind:
         answer = live_talk.fit_rhythm(answer, user_text)
@@ -762,9 +769,13 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": f"Пользователь не писал около {hours_inactive} часов. Напиши естественно первой, не упоминая отслеживание активности."})
+    # V3.117.0: she writes first in the language he talks in (Bengali, Spanish…)
+    from services import lang_guard
+    lang = lang_guard.lang_for_push(db_user_id, language_code)
+    if lang != 'ru':
+        messages.append({"role": "system", "content": lang_guard.name_line(lang).strip()})
     r = await generate_text(messages, max_tokens=100, temperature=0.95, purpose='proactive')
     raw = _clean(r.text) if (r.text or '').strip() else ''
-    lang = 'en' if (language_code or '').lower().startswith('en') else 'ru'
     recent = [m.content for m in history if m.role == 'assistant'][-6:]
     answer = polish_first_message(finish_or_drop(raw, getattr(r, 'complete', True), lang), recent)
     if not answer:
@@ -877,9 +888,13 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": ("Вечер. Напиши ему первой: как прошёл его день, с привязкой к тому, что ты о нём знаешь."
                                                  if evening else "Утро. Напиши ему первой, продолжая вчерашний разговор.")})
+    # V3.117.0: she writes first in the language he talks in (Bengali, Spanish…)
+    from services import lang_guard
+    lang = lang_guard.lang_for_push(db_user_id, language_code)
+    if lang != 'ru':
+        messages.append({"role": "system", "content": lang_guard.name_line(lang).strip()})
     r = await generate_text(messages, max_tokens=110, temperature=0.95, purpose='proactive')
     raw = _clean(r.text) if (r.text or '').strip() else ''
-    lang = 'en' if (language_code or '').lower().startswith('en') else 'ru'
     recent = [m.content for m in history if m.role == 'assistant'][-6:]
     out = polish_first_message(finish_or_drop(raw, getattr(r, 'complete', True), lang), recent) or ''
     if cared and out:
@@ -976,10 +991,11 @@ async def paid_moment(user_id: int, user_name: str, moment: str, language_code: 
             adaptation = build_adaptation_context(db_user_id, get_relationship_level(user_id, character_id), character_id)
         except Exception:
             adaptation = build_adaptation_context(db_user_id, 1, character_id)
-        lang = 'en' if (language_code or '').lower().startswith('en') else 'ru'
+        from services import lang_guard
+        lang = lang_guard.lang_for_push(db_user_id, language_code)
         system = build_system_prompt(
             character, rel_context, [m.content for m in memories],
-            line + (" Пиши по-английски." if lang == 'en' else " Пиши на том же языке, на котором пишет он."),
+            line + (lang_guard.name_line(lang) or " Пиши на том же языке, на котором пишет он."),
             state_context(user_id, character_id), adaptation,
             time_context=_time_context(user_id, character_id),
             character_id=character_id,

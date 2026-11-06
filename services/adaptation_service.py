@@ -260,7 +260,7 @@ def build_adaptation_context(user_id: int, relationship_level: int = 1, characte
     style = _load_json(row.style_json, {})
     expressions = [x for x in _load_json(row.slang_json, []) if isinstance(x, dict) and float(x.get('confidence', 0)) >= 0.58]
     expressions = expressions[:6]
-    lang_name = {'ru':'русский','en':'English','zh':'中文','es':'Español','de':'Deutsch','fr':'Français','it':'Italiano','pt':'Português','uk':'Українська','ja':'日本語','ko':'한국어'}.get(row.preferred_language, row.preferred_language if row.preferred_language != 'auto' else 'язык последнего сообщения')
+    lang_name = {'ru':'русский','en':'English','zh':'中文','es':'Español','de':'Deutsch','fr':'Français','it':'Italiano','pt':'Português','uk':'Українська','ja':'日本語','ko':'한국어','bn':'বাংলা','hi':'हिन्दी','ar':'العربية','th':'ไทย'}.get(row.preferred_language, row.preferred_language if row.preferred_language != 'auto' else 'язык последнего сообщения')
     avg = float(row.avg_message_length or 0)
     local_length = 'короткие' if avg < 55 else ('средние' if avg < 180 else 'развёрнутые')
     adaptation = min(0.42, 0.14 + max(0, relationship_level - 1) * 0.055)

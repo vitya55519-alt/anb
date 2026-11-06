@@ -114,7 +114,7 @@ def test_frontend_renders_fiat_next_to_stars():
     # V3.62.12: owner asked for money instead of Stars — one money() label
     # (₽ for RU, $ for EN, Stars last) on tiles, Premium and the price list.
     assert 'function money(x)' in INDEX
-    assert "if (LANG !== 'en' && rub) return String(rub).replace(" in INDEX
+    assert "if (LANG === 'ru' && rub) return String(rub).replace(" in INDEX
     assert 'esc(money(x))' in INDEX
     assert "esc(fmtN(i.peaches || s.constructor_peaches))} 🍑" in INDEX
     assert "esc(money(x))" in INDEX

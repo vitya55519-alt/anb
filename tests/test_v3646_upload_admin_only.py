@@ -15,7 +15,7 @@ def test_studio_upload_refused_for_users():
 def test_constructor_drops_uploaded_refs_for_users():
     assert "if k not in ('photo_reference_base64', 'face_bytes', 'face_file_id')}" in MAIN
     assert "if step.get('photo_upload') and not admin:" in WEB
-    assert "api_constructor_steps, request.query.get('lang', 'ru'), admin=free)" in MAIN
+    assert "api_constructor_steps, _ru_or_en(request.query.get('lang', 'ru')), admin=free)" in MAIN
 
 
 def test_upload_button_hidden_for_users():

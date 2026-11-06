@@ -145,7 +145,7 @@ def test_scene_menu_is_localized_in_all_seven_languages():
     for key in ('photo_menu_title:', 'sc_locked:', 'scg_everyday:',
                 'sc_selfie:', 'sc_personal:', 'sc_private_fashion:',
                 'adult_confirm_needed:'):
-        assert INDEX.count(key) == 7, f'{key} must exist in all 7 dictionaries'
+        assert INDEX.count(key) == 8, f'{key} must exist in all 8 dictionaries'  # V3.117.0: + bn
 
 
 def test_scene_menu_markup_is_escaped():
