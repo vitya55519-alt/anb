@@ -58,7 +58,15 @@ DESCRIPTION_RU = (
 
 
 async def apply_bot_descriptions(bot) -> None:
-    """Set profile + short descriptions for the default (EN) and RU locales."""
+    """Set profile + short descriptions for the default (EN) and RU locales.
+
+    V3.118.0: only when BOT_PROFILE_ENABLED=1. Off by default so the texts the
+    owner sets in BotFather are no longer overwritten on every deploy.
+    """
+    import os
+    if os.getenv('BOT_PROFILE_ENABLED', '0') != '1':
+        logger.info('bot descriptions left to BotFather (BOT_PROFILE_ENABLED!=1)')
+        return
     for language_code, description, short in (
         (None, DESCRIPTION_DEFAULT, SHORT_DESCRIPTION_DEFAULT),
         ('ru', DESCRIPTION_RU, SHORT_DESCRIPTION_RU),
