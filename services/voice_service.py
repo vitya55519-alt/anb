@@ -113,6 +113,7 @@ GEMINI_TTS_VOICES = {
     'agata_01': 'Achernar',
     'jina_01': 'Autonoe',
     'lana_01': 'Sulafat',
+    'amira_01': 'Kore',
 }
 GEMINI_FEMALE_VOICES = (
     'Leda', 'Kore', 'Aoede', 'Achernar', 'Autonoe',
@@ -162,6 +163,7 @@ GEMINI_TTS_MANNER = {
     'agata_01': 'soft, breathy and tender, a slow intimate whisper, ',
     'jina_01': 'bright, bubbly and teasing, with a playful laugh in her voice, ',
     'lana_01': 'low, velvety and confident, with a slow knowing smile, ',
+    'amira_01': 'calm, low and a little cool, with a quiet hidden warmth, ',
 }
 _DEFAULT_GEMINI_TTS_VOICE = GEMINI_TTS_VOICES['anna_01']
 

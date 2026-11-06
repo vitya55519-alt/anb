@@ -863,6 +863,7 @@ BODY_SPECS = {
     'agata_01': 'a very voluptuous hourglass build with a tiny cinched waist, wide round hips and a very large full natural-looking bust (Russian size 6, F cup)',
     'jina_01': 'a curvy hourglass build with a narrow waist, round hips, long legs and a full natural bust (D cup)',
     'lana_01': 'an extremely voluptuous hourglass build with a very narrow waist, wide round hips and huge, perfectly round, high and firm augmented silicone breast implants (Russian size 8, H cup)',
+    'amira_01': 'a curvy hourglass build with a slim waist, very wide hips, a large round butt and large, full, round and firm augmented silicone breasts',
 }
 DEFAULT_FEMALE_BODY_SPEC = (
     'a curvy feminine hourglass build with a wasp waist, round lifted hips '
