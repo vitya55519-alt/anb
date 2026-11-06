@@ -506,6 +506,14 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                     'СЕМЕЙНОЕ ПОЛОЖЕНИЕ (выбор пользователя, важнее описания выше): ' + marital_line)
                 marital_reminder = ('Напоминание о роли: ' + marital_line + ' Если раньше в переписке ты '
                                     'говорила иначе — теперь это так; не называй себя свободной, если это не так.')
+        # V3.114.0: «👗 Гардероб» — what he gave her is part of her life now.
+        try:
+            from services.wardrobe_service import chat_line as _wardrobe_line
+            _wd = _wardrobe_line(user_id, character_id)
+            if _wd:
+                style_line = (style_line + '\n' if style_line else '') + _wd
+        except Exception:
+            pass
         # V3.60.0: a confirmed adult deep enough into the story gets explicit
         # sexting instead of «детальные сцены — это не моё»: the old blanket
         # «без графического секса» now holds only below that line.

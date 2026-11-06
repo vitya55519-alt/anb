@@ -5017,6 +5017,22 @@ async def legal_cmd(message: types.Message):
     lang = user_lang(message.from_user.id)
     await message.answer(legal_service.legal_menu_text(lang), reply_markup=legal_keyboard(lang))
 
+@dp.message(Command('wardrobe'))
+async def wardrobe_cmd(message: types.Message):
+    """V3.114.0: «👗 Гардероб» lives in the app — the button opens her chat with the wardrobe sheet."""
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    en = user_lang(message.from_user.id) == EN
+    if not PUBLIC_BASE_URL:
+        await message.answer('👗 …')
+        return
+    await message.answer(
+        '👗 Give her clothes and things for her room: she wears them in her photos and remembers who gave them.' if en else
+        '👗 Дари ей одежду и вещи для комнаты: она будет в них на фото и помнит, кто подарил.',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text='👗 Open the wardrobe' if en else '👗 Открыть гардероб',
+            web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=wardrobe'))]]))
+
+
 @dp.message(Command('app'))
 async def app_cmd(message: types.Message):
     # V3.33.1: guaranteed Mini App entry point. The profile «Открыть
@@ -8448,6 +8464,8 @@ def peach_shop_keyboard(telegram_id: int, lang: str = 'ru') -> InlineKeyboardMar
         rows.append([InlineKeyboardButton(text='👑 Premium' if en else '👑 Premium — все девушки и откровенный режим',
                                           callback_data='premium:view')])
     if PUBLIC_BASE_URL:
+        rows.append([InlineKeyboardButton(text='👗 Her wardrobe' if en else '👗 Гардероб: одежда и комната для неё',
+                                          web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=wardrobe'))])
         rows.append([InlineKeyboardButton(text='🛍 Open the app shop' if en else '🛍 Магазин в приложении',
                                           web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -15844,6 +15862,191 @@ async def _deliver_date_photo(telegram_id: int, character_id: str, uid: int, dat
         await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo', character_id, scene, f'date: {type(exc).__name__}: {exc}')
 
 
+# ── V3.114.0: «👗 Гардероб» — clothes and room things for her, for peaches ──
+def _wardrobe_auth(request: web.Request):
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return None
+    user_info = webapp_service.init_data_user(pairs)
+    return user_info if user_info.get('id') else None
+
+
+def _wardrobe_adult_open(telegram_id: int) -> bool:
+    from services import wardrobe_service
+    return wardrobe_service.can_buy_adult(premium=is_premium(telegram_id), adult=is_adult_confirmed(telegram_id),
+                                          admin=telegram_id in ADMIN_TELEGRAM_IDS)
+
+
+async def _webapp_api_wardrobe(request: web.Request) -> web.Response:
+    user_info = _wardrobe_auth(request)
+    if not user_info:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = int(user_info['id'])
+
+    def _load():
+        from services import wardrobe_service
+        cid = str(request.query.get('character_id', '')) or get_user_character(telegram_id)
+        lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+        data = wardrobe_service.catalog(telegram_id, cid, lang, adult_open=_wardrobe_adult_open(telegram_id))
+        return dict(data, ok=True, character_id=cid, credits=get_photo_credits(telegram_id))
+    try:
+        return web.json_response(await asyncio.to_thread(_load))
+    except Exception:
+        logger.exception('webapp wardrobe load failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'temporarily_unavailable'})
+
+
+async def _webapp_api_wardrobe_buy(request: web.Request) -> web.Response:
+    try:
+        return await _webapp_api_wardrobe_buy_impl(request)
+    except Exception:
+        logger.exception('webapp wardrobe buy failed')
+        return web.json_response({'ok': False, 'error': 'temporarily_unavailable'})
+
+
+async def _webapp_api_wardrobe_buy_impl(request: web.Request) -> web.Response:
+    from services import wardrobe_service
+    user_info = _wardrobe_auth(request)
+    if not user_info:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = int(user_info['id'])
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    item = wardrobe_service.get(str(body.get('item_id', '')))
+    if not item:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    admin = telegram_id in ADMIN_TELEGRAM_IDS
+
+    def _charge():
+        if not has_accepted(telegram_id):
+            return {'error': 'consent', 'status': 403}
+        cid = str(body.get('character_id', '')) or get_user_character(telegram_id)
+        uid_ = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        if item.kind == 'adult' and not _wardrobe_adult_open(telegram_id):
+            return {'error': 'adult' if is_premium(telegram_id) else 'premium_required', 'status': 403}
+        if item.id in wardrobe_service.owned_ids(telegram_id, cid):
+            return {'error': 'owned', 'status': 409}
+        if not admin and not spend_peaches(telegram_id, item.price):
+            return {'error': 'insufficient_peaches', 'cost': item.price, 'status': 402}
+        if not wardrobe_service.grant(telegram_id, cid, item.id):
+            if not admin:
+                add_peaches(telegram_id, item.price)
+            return {'error': 'owned', 'status': 409}
+        track_event(uid_, 'wardrobe_buy', character_id=cid,
+                    metadata={'item': item.id, 'kind': item.kind, 'price': 0 if admin else item.price})
+        return {'cid': cid, 'uid': uid_}
+    res = await asyncio.to_thread(_charge)
+    if res.get('error'):
+        status = res.pop('status', 400)
+        return web.json_response(dict(res, ok=False), status=status)
+    character_id, uid = res['cid'], res['uid']
+    user_name = user_info.get('first_name') or ''
+    await record_user_message(telegram_id, user_name,
+                              relationship=wardrobe_service.ROOM_RELATIONSHIP if item.kind == 'room' else wardrobe_service.WEAR_RELATIONSHIP,
+                              trust=0.3, event_type='gift', reason=f'wardrobe:{item.id}', character_id=character_id)
+    lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+    action = wardrobe_service.gift_action(item, lang)
+    try:
+        from services.character_registry import get_character as _gc
+        name = (_gc(character_id) or {}).get('name') or ''
+    except Exception:
+        name = ''
+    answer = await _feature_scene_turn(telegram_id, user_info, character_id, action,
+                                       wardrobe_service.gift_scene(item, name))
+    if not answer:
+        answer = ('Oh, thank you! 😍 Give me a minute…' if lang == 'en'
+                  else 'Это мне?! 😍 Спасибо… подожди минутку')
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', answer)
+    _spawn_background(_deliver_wardrobe_photo(telegram_id, character_id, uid, item.id, refund=not admin))
+    return web.json_response({'ok': True, 'text': answer, 'user_text': action if answer else '',
+                              'photo_pending': True, 'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
+
+
+async def _deliver_wardrobe_photo(telegram_id: int, character_id: str, uid: int, item_id: str, *, refund: bool) -> None:
+    """The try-on photo included in the price. On a failed render the photo part
+    (CHAT_PHOTO_PEACH_COST) goes back and she says so — the item stays his."""
+    from services import wardrobe_service
+    item = wardrobe_service.get(item_id)
+    if not item:
+        return
+    if item.kind in ('wear', 'adult'):
+        req = PhotoRequest(scene=item.tryon, clothing=item.prompt)
+    elif item.kind == 'jewel':
+        req = PhotoRequest(scene=item.tryon, accessory=item.prompt)
+    else:
+        req = PhotoRequest(scene='home')  # room things come in through photo_overrides
+    try:
+        data, mime, ext = await _webapp_pipeline_photo(telegram_id, character_id, req)
+    except Exception as exc:
+        logger.exception('wardrobe try-on photo failed user=%s item=%s', telegram_id, item_id)
+        await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo', character_id,
+                                item_id, f'wardrobe: {type(exc).__name__}: {exc}')
+        data = None
+    if data:
+        def _save():
+            filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+            cap = '📸 ' + ('в твоём подарке' if item.kind != 'room' else 'смотри, как теперь у меня')
+            save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=f'/webapp/media/{filename}')
+        await asyncio.to_thread(_save)
+        return
+    def _sorry():
+        back = 0
+        if refund:
+            back = CHAT_PHOTO_PEACH_COST
+            add_peaches(telegram_id, back)
+        text = ('фото сейчас не получилось 🙈 подарок у меня, а за фото вернула тебе '
+                f'{back} 🍑' if back else 'фото сейчас не получилось 🙈 но подарок уже у меня')
+        save_message(uid, character_id, 'assistant', text)
+        track_event(uid, 'wardrobe_photo_failed', character_id=character_id, metadata={'item': item_id})
+    await asyncio.to_thread(_sorry)
+
+
+async def _webapp_api_wardrobe_wear(request: web.Request) -> web.Response:
+    from services import wardrobe_service
+    user_info = _wardrobe_auth(request)
+    if not user_info:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = int(user_info['id'])
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    cid = str(body.get('character_id', '')) or await asyncio.to_thread(get_user_character, telegram_id)
+    item_id = str(body.get('item_id', ''))
+    item = wardrobe_service.get(item_id)
+    if item and item.kind == 'adult' and not await asyncio.to_thread(_wardrobe_adult_open, telegram_id):
+        return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    ok = await asyncio.to_thread(wardrobe_service.wear, telegram_id, cid, item_id)
+    return web.json_response({'ok': bool(ok)})
+
+
+async def _webapp_api_wardrobe_pet(request: web.Request) -> web.Response:
+    from services import wardrobe_service
+    user_info = _wardrobe_auth(request)
+    if not user_info:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = int(user_info['id'])
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    cid = str(body.get('character_id', '')) or await asyncio.to_thread(get_user_character, telegram_id)
+    name = await asyncio.to_thread(wardrobe_service.set_pet_name, telegram_id, cid, str(body.get('name', '')))
+    if not name:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    def _note():
+        uid_ = ensure_user(telegram_id)
+        save_message(uid_, cid, 'user', f'*называю котёнка: {name}* 🐈')
+        save_message(uid_, cid, 'assistant', f'{name}! 😍 ему идёт. Слышишь, {name}? Это тебя так зовут теперь 🐾')
+    await asyncio.to_thread(_note)
+    return web.json_response({'ok': True, 'name': name})
+
+
 async def _webapp_api_story(request: web.Request) -> web.Response:
     # V3.57.2: the story list reads the ladder, the quests and the relationship
     # row — all synchronous PostgreSQL work, off the event loop.
@@ -16340,6 +16543,10 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/storyline/start', _webapp_api_storyline_start)
     app.router.add_post('/webapp/api/storyline/stop', _webapp_api_storyline_stop)
     app.router.add_get('/webapp/api/fetishes', _webapp_api_fetishes)
+    app.router.add_get('/webapp/api/wardrobe', _webapp_api_wardrobe)  # V3.114.0
+    app.router.add_post('/webapp/api/wardrobe/buy', _webapp_api_wardrobe_buy)
+    app.router.add_post('/webapp/api/wardrobe/wear', _webapp_api_wardrobe_wear)
+    app.router.add_post('/webapp/api/wardrobe/pet', _webapp_api_wardrobe_pet)
     app.router.add_post('/webapp/api/fetish/set', _webapp_api_fetish_set)
     app.router.add_post('/webapp/api/fetish/stop', _webapp_api_fetish_stop)
     app.router.add_post('/webapp/api/spicy', _webapp_api_spicy)

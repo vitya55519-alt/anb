@@ -724,3 +724,27 @@ class AdminTestStage(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     stage: Mapped[str] = mapped_column(String(32), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class WardrobeOwned(Base):
+    """V3.114.0: «👗 Гардероб» — one row per thing he gave one girl (clothes,
+    jewellery, 18+ sets, room things). Owned forever. Auto-created."""
+    __tablename__ = "wardrobe_owned"
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    character_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    item_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class WardrobeState(Base):
+    """V3.114.0: what she wears today (MSK day), her mood meter and the kitten's
+    name, per (user, girl). Auto-created."""
+    __tablename__ = "wardrobe_state"
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    character_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    worn_item: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    worn_day: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    mood: Mapped[int] = mapped_column(Integer, default=50)
+    mood_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    pet_name: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
