@@ -69,7 +69,7 @@
       "wardrobe_style": "Bright Bollywood-glam style for a 23-year-old woman: fitted silk crop blouses with high-waisted lehenga skirts, wrap tops, tight midi skirts, saffron, emerald and magenta, gold jhumka earrings and bangles, a tiny gold nose stud."
     },
     "status": "active",
-    "description": "original synthetic adult Indian woman 23 y.o.; very long thick glossy jet-black hair, large dark brown eyes lined with black kajal, thick arched brows, heart-shaped face, tiny gold nose stud, small red bindi, full berry lips, wide bright smile, warm caramel-brown skin",
+    "description": "original synthetic adult Indian woman 23 y.o.; very long thick glossy jet-black hair, soft large dark brown doe eyes with a thin line of kajal, softly arched brows, delicate soft oval face, tiny gold nose stud, tiny red bindi, soft full rose-berry lips, gentle closed-lip smile, warm caramel-brown skin",
     "reference_folder": "data/references/priya",
     "reference_assets": [
       "00_priya_canonical_face.png",
@@ -78,10 +78,10 @@
     ],
     "preserve_identity": [
       "very long thick glossy jet-black hair",
-      "large dark brown eyes lined with black kajal",
-      "tiny gold nose stud and small red bindi",
-      "full berry lips, wide bright smile and warm caramel-brown skin",
-      "very curvy hourglass figure with a narrow waist, very wide round hips, thick thighs, a big round full butt and a large full natural bust (E cup)"
+      "soft large dark brown doe eyes with a thin line of kajal",
+      "tiny gold nose stud and tiny red bindi",
+      "soft full rose-berry lips, gentle closed-lip smile and warm caramel-brown skin",
+      "very curvy toned hourglass figure with a slim fit waist, wide round hips, toned thighs, a round firm lifted athletic gym-toned butt and a large full natural bust (E cup)"
     ],
     "variable_scene_attributes": [
       "clothing",
@@ -92,7 +92,7 @@
       "mood",
       "hairstyle"
     ],
-    "identity_lock": "Priya is a 23-year-old adult Indian dance teacher. Preserve her face, kajal eyes, nose stud, jet-black hair and very curvy figure with wide hips and a big round butt from the canonical references in every photo.",
+    "identity_lock": "Priya is a 23-year-old adult Indian dance teacher. Preserve her face, kajal eyes, nose stud, jet-black hair and very curvy figure with wide hips and a round athletic butt from the canonical references in every photo.",
     "identity_version": "priya_v1_2026_11_06",
     "openai_face_anchor": "00_priya_canonical_face.png",
     "openai_body_anchor": "01_priya_canonical_look.png",
