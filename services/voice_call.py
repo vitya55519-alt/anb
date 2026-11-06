@@ -117,15 +117,57 @@ CALL_SCENE = (
     'произносишь. Не обещай прислать фото во время звонка. Задай встречный вопрос, если разговор '
     'затихает. Говори на его языке.'
 )
-CALL_HELLO_SCENE = (
-    'Он только что позвонил тебе, и ты взяла трубку. Скажи первую фразу в трубку: живо, тепло, '
-    'по своему характеру и по тому, что было у вас в последних сообщениях (1–2 коротких предложения). '
-    'Без звёздочек и эмодзи — только то, что произносишь вслух.'
-)
-HELLO_MARK = '📞'
+
+# V3.115.1: the pick-up is instant — a short «алло» in her voice, synthesized
+# once per girl and kept in memory, instead of 12–17 s of LLM + TTS while he
+# stares at «Думает…» (Витя hung up before she answered).
+HELLO_LINES = {
+    'ru': ('алло… привет, котик', 'алло? ну наконец-то, я ждала', 'привет… как же я рада тебя слышать'),
+    'en': ('hello… hi, sweetheart', 'hey… finally, I was waiting', 'hi… I am so glad to hear you'),
+}
+_hello_audio: dict[tuple[str, str, int], bytes] = {}
+
+
+def hello_line(lang: str, n: int) -> tuple[int, str]:
+    lines = HELLO_LINES.get(lang) or HELLO_LINES['ru']
+    i = n % len(lines)
+    return i, lines[i]
+
+
+def hello_cached(character_id: str, lang: str, i: int) -> bytes | None:
+    return _hello_audio.get((character_id, lang, i))
+
+
+def hello_store(character_id: str, lang: str, i: int, audio: bytes) -> None:
+    if len(_hello_audio) > 600:
+        _hello_audio.clear()
+    _hello_audio[(character_id, lang, i)] = audio
+
+
+_SENT_END = re.compile(r'(?<=[.!?…])\s+')
+
+
+def split_for_speech(text: str, first_max: int = 110) -> list[str]:
+    """Her answer in two parts: a short first phrase that is voiced and played
+    at once, and the rest, voiced while the first one plays."""
+    t = re.sub(r'\s+', ' ', text or '').strip()
+    if len(t) <= first_max:
+        return [t] if t else []
+    parts = _SENT_END.split(t)
+    first, k = parts[0], 1
+    while len(first) < 40 and k < len(parts) and len(first) + len(parts[k]) < first_max * 1.6:
+        first, k = first + ' ' + parts[k], k + 1
+    if len(first) > first_max * 1.6:
+        cut = t.rfind(',', 0, first_max)
+        if cut < 25:
+            return [t]
+        return [t[:cut + 1].strip(), t[cut + 1:].strip()]
+    rest = ' '.join(parts[k:]).strip()
+    return [first, rest] if rest else [first]
+
 
 _STARS = re.compile(r'\*[^*]{0,300}\*')
-_EMOJI = re.compile('[\U0001F000-\U0001FAFF☀-➿️‍]')
+_EMOJI = re.compile('[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D]')
 
 
 def spoken(text: str) -> str:
