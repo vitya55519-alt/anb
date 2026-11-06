@@ -160,3 +160,39 @@ def test_live_bridge_relays_audio_and_transcript(monkeypatch):
     assert ws.sent_bytes and ws.sent_bytes[0] == b'\x01\x00' * 4
     assert ('assistant', 'Привет, котик') in transcript
     assert reason == 'hangup' and seconds >= 0
+
+
+# ── V3.115.1: faster pick-up, answer in parts, tidy header ─────────────────
+
+def test_split_for_speech_first_phrase_then_rest():
+    long = ('ну привет… я как раз думала о тебе весь вечер. расскажи, как прошёл день, '
+            'что было на работе, и почему ты так поздно сегодня звонишь мне?')
+    parts = voice_call.split_for_speech(long)
+    assert len(parts) == 2 and parts[0].endswith('вечер.') and parts[1].startswith('расскажи')
+    assert voice_call.split_for_speech('коротко') == ['коротко']
+    assert voice_call.split_for_speech('') == []
+
+
+def test_hello_is_cached_per_girl():
+    i, line = voice_call.hello_line('ru', 4)
+    assert line in voice_call.HELLO_LINES['ru']
+    assert voice_call.hello_cached('x_01', 'ru', i) is None
+    voice_call.hello_store('x_01', 'ru', i, b'ogg')
+    assert voice_call.hello_cached('x_01', 'ru', i) == b'ogg'
+
+
+def test_turn_hello_skips_the_llm_and_rest_goes_to_say():
+    turn = MAIN[MAIN.index('async def _webapp_api_call_turn'):MAIN.index('async def _webapp_api_call_say')]
+    hello = turn[turn.index('if hello:'):turn.index('    else:')]
+    assert 'anna_reply' not in hello and 'hello_cached' in hello
+    assert "'rest': parts[1:]" in turn
+    assert "'/webapp/api/call/say'" in MAIN
+    assert "_premSay(c, t)" in HTML and "'/webapp/api/call/say?" in HTML
+
+
+def test_header_call_button_and_admin_picker():
+    assert 'class="callbtn" id="chatCall"' in HTML
+    assert "sel.textContent = '❤️';" in HTML
+    assert "' ур. ' + j.level + ' · ' + j.title + ' ›'" in HTML
+    assert 'id="callPick"' in HTML and "openCall('live')" in HTML
+    assert "'admin': telegram_id in ADMIN_TELEGRAM_IDS" in MAIN

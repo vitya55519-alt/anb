@@ -13661,7 +13661,7 @@ async def _webapp_api_call_info(request: web.Request) -> web.Response:
     await asyncio.to_thread(track_event, uid, 'call_open',
                             metadata={'character_id': character_id, 'mode': mode, 'left': left})
     return web.json_response({
-        'ok': True, 'mode': mode, 'seconds_left': left,
+        'ok': True, 'mode': mode, 'seconds_left': left, 'admin': telegram_id in ADMIN_TELEGRAM_IDS,
         'premium_minutes': voice_call.PREMIUM_SECONDS_PER_DAY // 60,
         'free_minutes': round(voice_call.FREE_SECONDS_PER_DAY / 60, 1),
     }, headers={'Cache-Control': 'no-store'})
@@ -13699,7 +13699,24 @@ async def _webapp_api_call_turn(request: web.Request) -> web.Response:
         left = max(0, left - int(spent))
     heard = ''
     if hello:
-        text, scene = voice_call.HELLO_MARK, voice_call.CALL_HELLO_SCENE
+        # V3.115.1: an instant «алло» in her voice, cached per girl.
+        lang = 'en' if (user_info.get('language_code') or '').lower().startswith('en') else 'ru'
+        i, line = voice_call.hello_line(lang, int(_time.time()) // 7)
+        audio = voice_call.hello_cached(character_id, lang, i)
+        if audio is None:
+            try:
+                audio = await synthesize_bytes(line, None, character_id=character_id)
+                voice_call.hello_store(character_id, lang, i, audio)
+            except Exception:
+                logger.warning('call hello tts failed user=%s', telegram_id, exc_info=True)
+                return web.json_response({'ok': True, 'heard': '', 'text': line, 'audio_url': None,
+                                          'seconds_left': left})
+        filename = await asyncio.to_thread(webapp_service.save_chat_media, telegram_id, audio, 'ogg', 'audio/ogg')
+        await asyncio.to_thread(track_event, uid, 'call_turn',
+                                metadata={'character_id': character_id, 'mode': 'premium', 'hello': True})
+        return web.json_response({'ok': True, 'heard': '', 'text': line,
+                                  'audio_url': f'/webapp/media/{filename}', 'seconds_left': left},
+                                 headers={'Cache-Control': 'no-store'})
     else:
         try:
             data = base64.b64decode(audio_b64)
@@ -13723,8 +13740,11 @@ async def _webapp_api_call_turn(request: web.Request) -> web.Response:
         logger.exception('call reply failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
     said = voice_call.spoken(answer) or '…'
+    # V3.115.1: the first phrase is voiced alone so she starts speaking sooner;
+    # the app asks /call/say for the rest while the first part plays.
+    parts = voice_call.split_for_speech(said) or [said]
     try:
-        audio = await synthesize_bytes(said, None, character_id=character_id)
+        audio = await synthesize_bytes(parts[0], None, character_id=character_id)
         filename = await asyncio.to_thread(webapp_service.save_chat_media, telegram_id, audio, 'ogg', 'audio/ogg')
     except Exception:
         logger.warning('call tts failed user=%s', telegram_id, exc_info=True)
@@ -13732,8 +13752,37 @@ async def _webapp_api_call_turn(request: web.Request) -> web.Response:
                                   'seconds_left': left})
     await asyncio.to_thread(track_event, uid, 'call_turn',
                             metadata={'character_id': character_id, 'mode': 'premium', 'hello': hello})
-    return web.json_response({'ok': True, 'heard': heard, 'text': said,
+    return web.json_response({'ok': True, 'heard': heard, 'text': said, 'rest': parts[1:],
                               'audio_url': f'/webapp/media/{filename}', 'seconds_left': left},
+                             headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_api_call_say(request: web.Request) -> web.Response:
+    """V3.115.1: the rest of her Premium-call answer in her voice."""
+    from services import voice_call
+    telegram_id, user_info = _call_auth(request)
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    text = voice_call.spoken(str(body.get('text', '') or ''))[:600]
+    if not character_id or not text:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    uid, err, mode, left = await asyncio.to_thread(
+        _call_state, telegram_id, user_info, character_id, str(body.get('mode', '')))
+    if err or mode != 'premium':
+        return web.json_response({'ok': False, 'error': err or 'premium_required'}, status=403)
+    try:
+        audio = await synthesize_bytes(text, None, character_id=character_id)
+        filename = await asyncio.to_thread(webapp_service.save_chat_media, telegram_id, audio, 'ogg', 'audio/ogg')
+    except Exception:
+        logger.warning('call say tts failed user=%s', telegram_id, exc_info=True)
+        return web.json_response({'ok': False, 'error': 'tts_failed'}, status=502)
+    return web.json_response({'ok': True, 'audio_url': f'/webapp/media/{filename}'},
                              headers={'Cache-Control': 'no-store'})
 
 
@@ -16301,6 +16350,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/call/info', _webapp_api_call_info)  # V3.115.0
     app.router.add_post('/webapp/api/call/turn', _webapp_api_call_turn)
     app.router.add_post('/webapp/api/call/end', _webapp_api_call_end)
+    app.router.add_post('/webapp/api/call/say', _webapp_api_call_say)  # V3.115.1
     app.router.add_get('/webapp/ws/call', _webapp_ws_call)
     app.router.add_post('/webapp/api/chat/speak', _webapp_api_chat_speak)
     app.router.add_post('/webapp/api/chat/photo', _webapp_api_chat_photo)

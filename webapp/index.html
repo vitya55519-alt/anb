@@ -1096,6 +1096,17 @@
   .unlim .us { font-size: 11px; opacity: .75; line-height: 1.3; }
   .unlim .utime { font-size: 12px; font-weight: 700; white-space: nowrap;
     padding: 4px 8px; border-radius: 10px; background: rgba(0,0,0,.35); }
+  /* V3.115.0: a tidy chat header — name block shrinks, the call button stands out */
+  .chat-head .hd-who { flex: 1; min-width: 0; }
+  .chat-head .hd-who .nm, .chat-head .hd-who .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-head .lvlchip { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
+  .chat-head .iconbtn { flex-shrink: 0; }
+  .chat-head .hd-heart { font-size: 17px; padding: 8px 10px; }
+  .callbtn { flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #2fd17a, #14a85b); box-shadow: 0 0 0 0 rgba(47,209,122,.6); animation: callglow 2.4s ease-out infinite; }
+  .callbtn svg { width: 22px; height: 22px; }
+  @keyframes callglow { 0% { box-shadow: 0 0 0 0 rgba(47,209,122,.55); } 70%,100% { box-shadow: 0 0 0 12px rgba(47,209,122,0); } }
   /* V3.115.0: the call screen */
   .callview { position: fixed; inset: 0; z-index: 95; display: flex; flex-direction: column; color: #fff;
     background: #120a18; overflow: hidden; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
@@ -1287,15 +1298,14 @@
     <button class="iconbtn" id="chatBack">‹</button>
     <img class="p" id="chatPhoto" alt="" style="display:none">
     <div class="p pdiv" id="chatEmoji">👩</div>
-    <div>
+    <div class="hd-who">
       <div class="nm" id="chatName"></div>
       <div class="sub" id="chatSub"></div>
       <span class="lvlchip" id="chatLvl" style="display:none"></span>
     </div>
-    <div class="spacer"></div>
-    <button class="iconbtn" id="chatCall" style="font-size:16px" title="Позвонить">📞</button>
     <button class="iconbtn" id="chatInvite" style="font-size:15px;display:none" title="Позвать в чат">👭</button>
-    <button class="iconbtn" id="chatSelect" style="font-size:13px">❤️</button>
+    <button class="iconbtn hd-heart" id="chatSelect">❤️</button>
+    <button class="callbtn" id="chatCall" type="button" title="Позвонить" aria-label="Позвонить"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg></button>
   </div>
   <!-- V3.78.0: the running storyline: act, level and «Без ролей» -->
   <div class="plotbar" id="plotBar" style="display:none"><span class="pbt" id="plotBarText"></span><button id="plotBarExit" type="button"></button></div>
@@ -1333,6 +1343,12 @@
     <button class="cv-b cv-skip" id="callSkip" type="button"><span>✋</span><small id="callSkipLb"></small></button>
   </div>
 </div>
+<div class="startsheet" id="callPick" style="display:none"><div class="box">
+  <div class="st-h">📞 Какой звонок проверить?</div>
+  <button class="st-opt" id="callPickPrem">👑 Premium-звонок<span>как у подписчиков: MiniMax + её голос, 18+</span></button>
+  <button class="st-opt" id="callPickLive">⚡ Живой звонок<span>как у бесплатных: Gemini Live, без 18+</span></button>
+  <button class="st-opt" id="callPickNo" style="text-align:center">Отмена</button>
+</div></div>
 <div class="startsheet" id="callUpsell" style="display:none"><div class="box">
   <div class="st-h" id="callUpH"></div>
   <div style="font-size:14px;opacity:.85;line-height:1.45;margin-bottom:12px" id="callUpTx"></div>
@@ -3140,7 +3156,8 @@ function openChat(c) {
   ph.onerror = () => { ph.style.display = 'none'; em.style.display = 'flex'; };
   ph.src = c.photo;
   const sel = document.getElementById('chatSelect');
-  sel.textContent = '❤️ ' + L.set_main;
+  sel.textContent = '❤️';
+  sel.title = L.set_main; sel.setAttribute('aria-label', L.set_main);
   sel.style.display = c.selected ? 'none' : '';
   document.getElementById('chatText').placeholder = L.input_ph;
   document.getElementById('recHint').textContent = L.rec_hint;
@@ -3242,7 +3259,7 @@ async function loadChatLevel(characterId) {
     CHAT_LEVEL = Object.assign({ cid: characterId }, j);
     if (j.branch) document.querySelectorAll('.forkrow').forEach(x => x.remove());
     const lvlIcon = j.branch === 'passion' ? '🔥' : (j.branch === 'romance' ? '❤️' : '💕');
-    chip.textContent = lvlIcon + ' ур. ' + j.level + ' · ' + j.title + ' · 🔥' + j.passion + '% ›';
+    chip.textContent = lvlIcon + ' ур. ' + j.level + ' · ' + j.title + ' ›';
     chip.style.display = '';
     chip.onclick = openLevelSheet;
     if (prev && j.level > prev) toast('🎉 новый уровень: ' + j.level + ' · ' + j.title);
@@ -7216,8 +7233,21 @@ function _callStatus(t, ring) {
 }
 function _callCap(t) { _cv('callCap').textContent = t || ''; }
 
-async function openCall() {
+function _ring(ctx) {
+  // a short ringback while she «picks up»
+  try {
+    [0, 0.55].forEach(t0 => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 425; g.gain.value = 0.08;
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + t0); o.stop(ctx.currentTime + t0 + 0.4);
+    });
+  } catch (e) {}
+}
+
+async function openCall(asked) {
   if (!CHAT || CALL) return;
+  asked = (asked === 'premium' || asked === 'live') ? asked : '';
   if (!tg.initData) { toast(L.auth_short); return; }
   // unlock audio playback inside the tap (iOS)
   const player = new Audio(_SILENT_WAV);
@@ -7229,7 +7259,7 @@ async function openCall() {
   const closeCtx = () => { try { if (ctx) ctx.close(); } catch (e) {} };
   let j = null;
   try {
-    const r = await fetch('/webapp/api/call/info?init_data=' + encodeURIComponent(tg.initData) + '&character_id=' + encodeURIComponent(cid));
+    const r = await fetch('/webapp/api/call/info?init_data=' + encodeURIComponent(tg.initData) + '&character_id=' + encodeURIComponent(cid) + (asked ? '&mode=' + asked : ''));
     j = await r.json();
   } catch (e) {}
   if (!j || !j.ok) {
@@ -7238,6 +7268,12 @@ async function openCall() {
     if (err === 'consent') toast(L.consent_needed);
     else if (err === 'premium_required') { toast(L.need_premium); showTab('shop'); }
     else toast(L.call_fail);
+    return;
+  }
+  if (j.admin && !asked) {
+    // admins test both calls
+    closeCtx();
+    _cv('callPick').style.display = 'flex';
     return;
   }
   if (j.seconds_left <= 0) {
@@ -7250,7 +7286,7 @@ async function openCall() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
   } catch (e) { closeCtx(); toast(L.mic_denied); return; }
-  CALL = { cid, mode: j.mode, info: j, left: j.seconds_left, stream, ctx, player,
+  CALL = { cid, mode: j.mode, asked, info: j, left: j.seconds_left, stream, ctx, player,
            id: 'c' + Date.now() + Math.random().toString(36).slice(2, 8), start: 0, muted: false, ended: false };
   _cv('callName').textContent = CHAT.name || '';
   _cv('callPhoto').src = CHAT.photo || '';
@@ -7266,6 +7302,7 @@ async function openCall() {
   _callStatus(L.call_connecting, 'wait');
   _cv('callview').style.display = 'flex';
   try { tg.HapticFeedback.impactOccurred('medium'); } catch (e) {}
+  _ring(ctx);
   if (j.mode === 'premium') _premCall(); else _liveCall();
 }
 
@@ -7383,7 +7420,7 @@ async function _premTurn(blob, hello) {
   _callStatus(L.call_think, 'wait');
   let j = null;
   try {
-    const body = { character_id: c.cid, call_id: c.id, hello: !!hello };
+    const body = { character_id: c.cid, call_id: c.id, hello: !!hello, mode: c.asked || '' };
     if (blob) body.audio = await blobToB64(blob);
     const r = await fetch('/webapp/api/call/turn?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -7400,12 +7437,34 @@ async function _premTurn(blob, hello) {
   if (typeof j.seconds_left === 'number') c.left = Math.floor((Date.now() - c.start) / 1000) + j.seconds_left;
   _callCap(j.text || '');
   if (!j.audio_url) { _premListen(); return; }
+  // V3.115.1: the rest of her answer is voiced while the first phrase plays
+  const queue = (j.rest || []).filter(Boolean).map(t => _premSay(c, t));
+  _premPlay(c, j.audio_url, queue);
+}
+
+function _premSay(c, text) {
+  return fetch('/webapp/api/call/say?init_data=' + encodeURIComponent(tg.initData || ''), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ character_id: c.cid, text, mode: c.asked || '' }),
+  }).then(r => r.json()).then(k => (k && k.ok ? k.audio_url : null)).catch(() => null);
+}
+
+async function _premPlay(c, url, queue) {
+  if (CALL !== c || c.ended) return;
+  if (!url) {
+    const next = queue.shift();
+    if (!next) { _premListen(); return; }
+    _callStatus(L.call_think, 'wait');
+    _premPlay(c, await next, queue);
+    return;
+  }
   _callStatus(L.call_talk, 'talk');
   const a = c.player;
-  a.onended = () => { if (CALL === c && !c.ended) _premListen(); };
-  a.onerror = () => { if (CALL === c && !c.ended) _premListen(); };
-  a.src = j.audio_url + (j.audio_url.indexOf('?') < 0 ? '?' : '&') + 'init_data=' + encodeURIComponent(tg.initData || '');
-  try { await a.play(); } catch (e) { if (CALL === c && !c.ended) _premListen(); }
+  const after = () => { if (CALL === c && !c.ended) _premPlay(c, null, queue); };
+  a.onended = after;
+  a.onerror = after;
+  a.src = url + (url.indexOf('?') < 0 ? '?' : '&') + 'init_data=' + encodeURIComponent(tg.initData || '');
+  try { await a.play(); } catch (e) { after(); }
 }
 
 // ── Live: Gemini over a WebSocket ───────────────────────────────────────────
@@ -7414,7 +7473,7 @@ function _liveCall() {
   c.sources = []; c.next = 0;
   const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
   const ws = new WebSocket(proto + location.host + '/webapp/ws/call?init_data=' + encodeURIComponent(tg.initData || '')
-    + '&character_id=' + encodeURIComponent(c.cid));
+    + '&character_id=' + encodeURIComponent(c.cid) + (c.asked ? '&mode=' + c.asked : ''));
   ws.binaryType = 'arraybuffer';
   c.ws = ws;
   ws.onmessage = (ev) => {
@@ -7485,7 +7544,10 @@ function _livePlay(c, data) {
   };
 }
 
-document.getElementById('chatCall').addEventListener('click', openCall);
+document.getElementById('chatCall').addEventListener('click', () => openCall(''));
+document.getElementById('callPickPrem').addEventListener('click', () => { _cv('callPick').style.display = 'none'; openCall('premium'); });
+document.getElementById('callPickLive').addEventListener('click', () => { _cv('callPick').style.display = 'none'; openCall('live'); });
+document.getElementById('callPickNo').addEventListener('click', () => { _cv('callPick').style.display = 'none'; });
 document.getElementById('callEnd').addEventListener('click', () => endCall('hangup'));
 document.getElementById('callMute').addEventListener('click', () => {
   if (!CALL) return;
@@ -7495,7 +7557,7 @@ document.getElementById('callMute').addEventListener('click', () => {
 document.getElementById('callSkip').addEventListener('click', () => {
   const c = CALL;
   if (!c || c.mode !== 'premium' || c.player.paused) return;
-  try { c.player.pause(); } catch (e) {}
+  try { c.player.pause(); c.player.onended = null; c.player.onerror = null; } catch (e) {}
   _premListen();
 });
 document.getElementById('callUpGo').addEventListener('click', () => {
