@@ -707,6 +707,28 @@
   .capsheet .cap-h { text-align: center; font-weight: 700; font-size: 18px; }
   .capsheet .cap-sub { text-align: center; font-size: 12px; opacity: .7; margin: 4px 0 12px; }
   .capsheet .chat-media { flex-direction: column; flex-wrap: nowrap; gap: 8px; overflow: visible; }
+  /* V3.114.0: «👗 Гардероб» */
+  .wd-mood { background: var(--card); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; }
+  .wd-mood .row { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .wd-bar { height: 7px; border-radius: 9px; background: var(--card2); margin-top: 6px; overflow: hidden; }
+  .wd-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .6s; }
+  .wd-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+  .wd-tabs button { flex: 1; font: inherit; font-weight: 600; font-size: 13px; color: var(--muted); background: var(--card); border: 0; border-radius: 12px; padding: 9px; }
+  .wd-tabs button.on { background: var(--accent); color: #fff; }
+  .wd-sec { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .04em; margin: 12px 2px 6px; text-transform: uppercase; }
+  .wd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .wd-it { background: var(--card); border: 0; color: var(--text); font: inherit; text-align: left; border-radius: 14px; padding: 8px; display: flex; flex-direction: column; gap: 4px; position: relative; }
+  .wd-it.on { outline: 2px solid var(--ok); }
+  .wd-pic { aspect-ratio: 3/4; border-radius: 10px; background: var(--card2); overflow: hidden; display: grid; place-items: center; font-size: 34px; }
+  .wd-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .wd-it b { font-size: 13px; line-height: 1.25; }
+  .wd-pr { font-size: 12px; font-weight: 700; color: var(--premium); }
+  .wd-it.own .wd-pr { color: var(--ok); }
+  .wd-lock { position: absolute; top: 12px; right: 12px; font-size: 10px; font-weight: 700; background: rgba(0,0,0,.65); padding: 2px 6px; border-radius: 8px; color: var(--premium); }
+  .wd-act { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .wd-act button { font: inherit; font-weight: 700; font-size: 14px; color: #fff; background: linear-gradient(90deg, var(--accent), var(--accent2)); border: 0; border-radius: 14px; padding: 12px; }
+  .wd-act button.sec { background: var(--card2); }
+  .wd-act input { background: var(--card); border: 1px solid rgba(255,140,190,.25); color: var(--text); border-radius: 12px; padding: 10px 12px; font: inherit; }
   .capsheet .chat-media button { flex-direction: row; align-items: center; gap: 12px; width: 100%; text-align: left;
     padding: 11px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); color: var(--text); }
   .capsheet .chat-media button .ic { font-size: 24px; width: 30px; text-align: center; flex: none; }
@@ -1293,6 +1315,7 @@
   <div class="chat-media">
     <button id="mediaPhoto"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbMediaPhoto"></span><span class="ds" id="dsMediaPhoto"></span></span></button>
     <button id="featPlots" class="hot"><span class="ic">🎬</span><span class="tx"><span class="lb" id="lbFeatPlots"></span><span class="ds" id="dsFeatPlots"></span></span></button>
+    <button id="featWardrobe" class="hot"><span class="ic">👗</span><span class="tx"><span class="lb" id="lbFeatWardrobe"></span><span class="ds" id="dsFeatWardrobe"></span></span></button>
     <button id="featFetish" class="hot"><span class="ic">🎭</span><span class="tx"><span class="lb" id="lbFeatFetish"></span><span class="ds" id="dsFeatFetish"></span></span></button>
     <button id="featQuest"><span class="ic">🎯</span><span class="tx"><span class="lb" id="lbFeatQuest"></span><span class="ds" id="dsFeatQuest"></span></span></button>
     <button id="featStory"><span class="ic">📖</span><span class="tx"><span class="lb" id="lbFeatStory"></span><span class="ds" id="dsFeatStory"></span></span></button>
@@ -1311,6 +1334,16 @@
   <div class="cap-sub" id="plotSheetSub"></div>
   <div class="plotlist" id="plotSheetList"></div>
   <button class="cap-close" id="plotSheetClose" type="button"></button>
+</div></div>
+<!-- V3.114.0: «👗 Гардероб» — clothes and room things he gives her -->
+<div class="capsheet" id="wdSheet" style="display:none"><div class="box">
+  <div class="cap-h" id="wdTitle"></div>
+  <div class="cap-sub" id="wdSub"></div>
+  <div class="wd-mood"><div class="row"><span id="wdMoodL"></span><span id="wdMoodV"></span></div><div class="wd-bar"><i id="wdMoodBar" style="width:50%"></i></div></div>
+  <div class="wd-tabs"><button id="wdTabWear" class="on" type="button"></button><button id="wdTabRoom" type="button"></button></div>
+  <div id="wdList"></div>
+  <div class="wd-act" id="wdAct"></div>
+  <button class="cap-close" id="wdClose" type="button"></button>
 </div></div>
 <!-- V3.102.0: «🎭 Фетиши» — pick an adult theme, she leads it -->
 <div class="capsheet" id="fetishSheet" style="display:none"><div class="box">
@@ -1627,6 +1660,7 @@ const L_EN = {
   selected_toast: 'selected', locked: 'This girl is locked for now', need_premium: 'Available with Premium ⭐',
   pa_undress_prem: 'Undressing her is a Premium feature ⭐',
   pic_spicy_prem: '18+ pictures are a Premium feature ⭐',
+  wd_cap: 'Wardrobe', wd_cap_ds: 'Give her clothes and things for her room: she wears them in photos', wd_h: '👗 {name}\'s wardrobe', wd_sub: 'Every gift stays hers forever. The price includes a try-on photo', wd_mood: '💗 Mood', wd_tab_wear: '👗 Clothes', wd_tab_room: '🏠 Room', wd_owned: '✓ she has it', wd_worn: '✓ wearing today', wd_buy: 'Give: {title} · {price} 🍑', wd_wear: '👗 Wear today', wd_unwear: 'Take it off', wd_have: 'She already has it', wd_locked: '18+ items open with Premium ⭐', wd_wait: 'she is trying it on… 📸', wd_pet_ph: 'Kitten name', wd_pet_go: 'Name the kitten', wd_pick: 'Tap a thing to see it', wd_worn_set: 'She is wearing it today 👗',
   fet_cap: 'Fetishes', fet_cap_ds: 'Pick a theme and she leads it, at any level', fet_h: '🎭 Fetishes', fet_sub: 'Adults only, mutual play. Pick a theme, or write your own', fet_locked: '🎭 Fetish mode unlocks with Premium ⭐', fet_ph: 'Your own theme (up to 80 characters)', fet_go: 'Start', fet_off: '✖ Turn off the theme', fet_refused: 'This theme is not possible', fet_on: 'on', fet_set: 'Theme is on',
   plots_h: '🎬 Storylines', plots_sub: 'Role-play scenes: she writes first and stays in role all day', plots_locked: '🎬 Storylines unlock with Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'on', plots_hint: 'All storylines come with Premium', plots_cap: 'Storylines', plots_cap_ds: 'Role-play scenes with her, from light flirting to the hottest', heat_sub: 'How explicit should it be?', heat_soft: 'Tender', heat_soft_ds: 'Romance, flirting and kisses', heat_hot: 'Hot', heat_hot_ds: 'Passionate and bold', heat_wild: 'No limits', heat_wild_ds: 'As explicit as it gets', plot_exit: '✖ No roles', plot_act: 'act', plot_done: '🎬 Storyline complete!', plot_next: '▶ Next', plot_all_done: 'You have played all her storylines 🔥', plot_left: 'You left the role',
   paid_prem: 'Premium activated ✨', paid_credit: 'Photo credit added 📸',
@@ -1892,6 +1926,7 @@ const L_RU = {
   selected_toast: 'выбрана', locked: 'Эта девушка пока закрыта', need_premium: 'Доступна с Premium ⭐',
   pa_undress_prem: 'Раздеть её можно только с Premium ⭐',
   pic_spicy_prem: 'Откровенные картинки — только с Premium ⭐',
+  wd_cap: 'Гардероб', wd_cap_ds: 'Дари ей одежду и вещи для комнаты, она будет в них на фото', wd_h: '👗 Гардероб: {name}', wd_sub: 'Подарок остаётся у неё навсегда. В цену входит фото примерки', wd_mood: '💗 Настроение', wd_tab_wear: '👗 Одежда', wd_tab_room: '🏠 Комната', wd_owned: '✓ у неё есть', wd_worn: '✓ надето сегодня', wd_buy: 'Подарить: {title} · {price} 🍑', wd_wear: '👗 Надеть сегодня', wd_unwear: 'Снять', wd_have: 'Это у неё уже есть', wd_locked: 'Вещи 18+ открываются с Premium ⭐', wd_wait: 'примеряет… 📸', wd_pet_ph: 'Имя котёнка', wd_pet_go: 'Назвать котёнка', wd_pick: 'Нажми на вещь, чтобы выбрать', wd_worn_set: 'Сегодня она в этом 👗',
   fet_cap: 'Фетиши', fet_cap_ds: 'Выбери тему, и она поведёт её сама, на любом уровне', fet_h: '🎭 Фетиши', fet_sub: 'Только для взрослых и по взаимной игре. Выбери тему или напиши свою', fet_locked: '🎭 Режим фетишей открывается с Premium ⭐', fet_ph: 'Своя тема (до 80 символов)', fet_go: 'Начать', fet_off: '✖ Выключить тему', fet_refused: 'Такая тема невозможна', fet_on: 'идёт', fet_set: 'Тема включена',
   plots_h: '🎬 Сюжеты', plots_sub: 'Ролевые сцены: она пишет первой и держит роль весь день', plots_locked: '🎬 Сюжеты открываются с Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'идёт', plots_hint: 'Все сюжеты доступны с Premium', plots_cap: 'Сюжеты', plots_cap_ds: 'Ролевые сцены с ней: от лёгкого флирта до самого горячего', heat_sub: 'Насколько откровенно будет?', heat_soft: 'Нежно', heat_soft_ds: 'Романтика, флирт и поцелуи', heat_hot: 'Горячо', heat_hot_ds: 'Страстно и смело, откровенные намёки', heat_wild: 'Без тормозов', heat_wild_ds: 'Максимально откровенно и пошло', plot_exit: '✖ Без ролей', plot_act: 'акт', plot_done: '🎬 Сюжет пройден!', plot_next: '▶ Дальше', plot_all_done: 'Ты прошёл все её сюжеты 🔥', plot_left: 'Вы вышли из роли',
   paid_prem: 'Premium активирован ✨', paid_credit: 'Фото-кредит начислен 📸',
@@ -2363,6 +2398,8 @@ document.getElementById('charSearch').placeholder = L.char_search_ph;
 // V3.44.17: the «Видео»/«Кружок» label assignments are gone together with the
 // buttons themselves — only the pills still on screen get labels.
 document.getElementById('lbMediaPhoto').textContent = L.media_photo;
+document.getElementById('lbFeatWardrobe').textContent = L.wd_cap;
+document.getElementById('dsFeatWardrobe').textContent = L.wd_cap_ds;
 document.getElementById('lbFeatFetish').textContent = L.fet_cap;
 document.getElementById('dsFeatFetish').textContent = L.fet_cap_ds;
 document.getElementById('lbFeatPlots').textContent = L.plots_cap;
@@ -2681,12 +2718,14 @@ function maybeDeepOpenChat(chars) {
     // V3.71.0: «🍑 пополнить» from the bot's circle paywall lands on the shop.
     if (sp.get('open') === 'shop') { showTab('shop'); return; }
     if (sp.get('open') === 'partner') { showTab('partner'); return; }  // V3.85.0
-    if (sp.get('open') !== 'chat') return;
+    const wardrobe = sp.get('open') === 'wardrobe';  // V3.114.0: the bot's «👗 Гардероб» button
+    if (sp.get('open') !== 'chat' && !wardrobe) return;
     // V3.75.0: a scenario card's button — straight into that scene with her.
     if (sp.get('scene')) { startScenario(sp.get('scene')); return; }
     const c = (chars || []).find(x => x.selected) || (chars || []).find(x => x.status === 'active');
     if (!c || (c.status !== 'active' && !(c.status === 'premium' && ME && ME.premium))) return;
     openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: !!c.custom, selected: !!c.selected });
+    if (wardrobe) openWardrobe();
   } catch (e) {}
 }
 
@@ -2882,6 +2921,118 @@ async function openFetishSheet() {
     if (v.length >= 3) pick({ key: 'custom', custom: v });
   };
 }
+// V3.114.0: «👗 Гардероб» — he gives her clothes and room things for peaches.
+let WD = null, WD_TAB = 'wear', WD_SEL = '';
+async function openWardrobe() {
+  if (!CHAT || !CHAT.id) return;
+  const sheet = document.getElementById('wdSheet');
+  document.getElementById('wdTitle').textContent = L.wd_h.replace('{name}', CHAT.name || '');
+  document.getElementById('wdSub').textContent = L.wd_sub;
+  document.getElementById('wdMoodL').textContent = L.wd_mood;
+  document.getElementById('wdTabWear').textContent = L.wd_tab_wear;
+  document.getElementById('wdTabRoom').textContent = L.wd_tab_room;
+  document.getElementById('wdClose').textContent = L.cap_close || '✕';
+  document.getElementById('wdList').innerHTML = '<div class="loading">' + esc(L.loading) + '</div>';
+  document.getElementById('wdAct').innerHTML = '';
+  WD_SEL = '';
+  sheet.style.display = 'flex';
+  await loadWardrobe();
+}
+async function loadWardrobe() {
+  const cid = CHAT && CHAT.id;
+  if (!cid) return;
+  try {
+    const r = await fetch('/webapp/api/wardrobe?character_id=' + encodeURIComponent(cid) + '&init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store' });
+    WD = await r.json();
+  } catch (e) { WD = null; }
+  if (!WD || !WD.ok) { document.getElementById('wdList').innerHTML = '<div class="chat-empty">' + esc(L.load_failed) + '</div>'; return; }
+  renderWardrobe();
+}
+function wdItem(id) {
+  for (const sec of (WD ? WD.sections : [])) for (const it of sec.items) if (it.id === id) return it;
+  return null;
+}
+function renderWardrobe() {
+  document.getElementById('wdMoodV').textContent = WD.mood_label + ' · ' + WD.mood;
+  document.getElementById('wdMoodBar').style.width = Math.max(4, Math.min(100, WD.mood)) + '%';
+  document.getElementById('wdTabWear').classList.toggle('on', WD_TAB === 'wear');
+  document.getElementById('wdTabRoom').classList.toggle('on', WD_TAB === 'room');
+  const secs = WD.sections.filter(s => WD_TAB === 'room' ? s.key === 'room' : s.key !== 'room');
+  document.getElementById('wdList').innerHTML = secs.map(sec => '<div class="wd-sec">' + esc(sec.title) + '</div><div class="wd-grid">'
+    + sec.items.map(it => '<button type="button" class="wd-it' + (it.owned ? ' own' : '') + (it.worn || WD_SEL === it.id ? ' on' : '') + '" data-wd="' + esc(it.id) + '">'
+      + (it.locked ? '<span class="wd-lock">18+ · 💎</span>' : '')
+      + '<span class="wd-pic"><img alt="" loading="lazy" src="' + esc(it.art) + '" onerror="var p=this.parentNode;if(p)p.textContent=\'' + esc(it.emoji) + '\'"></span>'
+      + '<b>' + esc(it.title) + '</b>'
+      + '<span class="wd-pr">' + (it.worn ? esc(L.wd_worn) : it.owned ? esc(L.wd_owned) : esc(it.price + ' 🍑')) + '</span></button>').join('')
+    + '</div>').join('');
+  document.querySelectorAll('#wdList [data-wd]').forEach(b => b.onclick = () => { WD_SEL = b.dataset.wd; renderWardrobe(); });
+  renderWardrobeAct();
+}
+function renderWardrobeAct() {
+  const box = document.getElementById('wdAct');
+  const it = WD_SEL ? wdItem(WD_SEL) : null;
+  let html = '';
+  if (!it) html = '<div class="cap-sub">' + esc(L.wd_pick) + '</div>';
+  else if (!it.owned) html = '<button type="button" id="wdBuy">' + esc(L.wd_buy.replace('{title}', it.title).replace('{price}', it.price)) + '</button>';
+  else if (it.wearable) html = it.worn ? '<button type="button" class="sec" id="wdWear" data-off="1">' + esc(L.wd_unwear) + '</button>'
+                                       : '<button type="button" id="wdWear">' + esc(L.wd_wear) + '</button>';
+  else html = '<div class="cap-sub">' + esc(L.wd_have) + '</div>';
+  if (it && it.id === 'kitten' && it.owned) html += '<input id="wdPet" maxlength="20" placeholder="' + esc(L.wd_pet_ph) + '" value="' + esc(WD.pet_name || '') + '"><button type="button" class="sec" id="wdPetGo">' + esc(L.wd_pet_go) + '</button>';
+  box.innerHTML = html;
+  const buy = document.getElementById('wdBuy'); if (buy) buy.onclick = () => wardrobeBuy(it);
+  const wear = document.getElementById('wdWear'); if (wear) wear.onclick = () => wardrobeWear(wear.dataset.off ? '' : it.id);
+  const pg = document.getElementById('wdPetGo'); if (pg) pg.onclick = () => wardrobePet(document.getElementById('wdPet').value);
+}
+async function wardrobePost(path, payload) {
+  const r = await fetch('/webapp/api/wardrobe/' + path + '?init_data=' + encodeURIComponent(tg.initData || ''), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ character_id: CHAT.id }, payload)) });
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  return { status: r.status, j: j };
+}
+async function wardrobeBuy(it) {
+  if (it.locked) { document.getElementById('wdSheet').style.display = 'none'; toast(L.wd_locked); document.getElementById('chatview').classList.remove('open'); showTab('shop'); return; }
+  const btn = document.getElementById('wdBuy'); if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const { status, j } = await wardrobePost('buy', { item_id: it.id });
+    if (status === 401) { toast(L.auth_short); return; }
+    if (status === 402) { toast('Нужно ' + (j.cost || it.price) + ' 🍑 — не хватает персиков'); quickBuy('peaches'); return; }
+    if (!j.ok) {
+      if (j.error === 'premium_required') toast(L.wd_locked);
+      else if (j.error === 'adult') toast(L.adult_confirm_needed);
+      else if (j.error === 'owned') toast(L.wd_have);
+      else toast(L.reply_err);
+      return;
+    }
+    document.getElementById('wdSheet').style.display = 'none';
+    const box = document.getElementById('chatMsgs');
+    const empty = box.querySelector('.chat-empty'); if (empty) empty.remove();
+    if (j.user_text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'user', content: j.user_text, ts: null }));
+    if (j.text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.text, ts: null }));
+    box.scrollTop = box.scrollHeight;
+    celebrate(it.kind === 'room' ? ['🏠', '✨', '💗'] : ['👗', '💗', '✨']);
+    if (typeof loadMe === 'function') loadMe();
+    if (j.photo_pending) waitForDatePhoto(CHAT.id, L.wd_wait);
+  } catch (e) { toast(L.reply_err); }
+  finally { const b = document.getElementById('wdBuy'); if (b) b.disabled = false; }
+}
+async function wardrobeWear(id) {
+  const { j } = await wardrobePost('wear', { item_id: id });
+  if (!j.ok) { toast(j.error === 'premium_required' ? L.wd_locked : L.reply_err); return; }
+  if (id) toast(L.wd_worn_set);
+  await loadWardrobe();
+}
+async function wardrobePet(name) {
+  if (!name || name.trim().length < 1) return;
+  const { j } = await wardrobePost('pet', { name: name });
+  if (!j.ok) { toast(L.reply_err); return; }
+  document.getElementById('wdSheet').style.display = 'none';
+  loadChatHistory(CHAT.id);
+}
+document.getElementById('wdTabWear').addEventListener('click', () => { WD_TAB = 'wear'; WD_SEL = ''; if (WD) renderWardrobe(); });
+document.getElementById('wdTabRoom').addEventListener('click', () => { WD_TAB = 'room'; WD_SEL = ''; if (WD) renderWardrobe(); });
+document.getElementById('wdClose').addEventListener('click', () => { document.getElementById('wdSheet').style.display = 'none'; });
+document.getElementById('wdSheet').addEventListener('click', (e) => { if (e.target.id === 'wdSheet') e.target.style.display = 'none'; });
+if (document.getElementById('featWardrobe')) document.getElementById('featWardrobe').addEventListener('click', () => { document.getElementById('capSheet').style.display = 'none'; openWardrobe(); });
 document.getElementById('fetishClose').addEventListener('click', () => { document.getElementById('fetishSheet').style.display = 'none'; });
 document.getElementById('fetishSheet').addEventListener('click', (e) => { if (e.target.id === 'fetishSheet') e.target.style.display = 'none'; });
 if (document.getElementById('featFetish')) document.getElementById('featFetish').addEventListener('click', openFetishSheet);
@@ -4372,9 +4523,9 @@ function pollNewChatPhoto(characterId, onPhoto, onGiveUp) {
   tick();
 }
 
-function waitForDatePhoto(characterId) {
+function waitForDatePhoto(characterId, label) {
   const box = document.getElementById('chatMsgs');
-  box.insertAdjacentHTML('beforeend', '<div class="typing" id="dateTyping">' + esc(L.date_photo_wait) + '</div>');
+  box.insertAdjacentHTML('beforeend', '<div class="typing" id="dateTyping">' + esc(label || L.date_photo_wait) + '</div>');
   box.scrollTop = box.scrollHeight;
   let seen = null;
   let tries = 0;

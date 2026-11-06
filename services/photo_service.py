@@ -2081,6 +2081,18 @@ def marital_photo_detail(telegram_id: int, character_id: str, *, allow_sometimes
 def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: str = CHARACTER_ID) -> PhotoRequest:
     state = ensure_life_state(telegram_id)
     season = request.season or _default_season()
+    # V3.114.0: «👗 Гардероб» — what he gave her: today's garment, jewellery, room things.
+    wd = {}
+    if not request.with_guest:
+        try:
+            from services.wardrobe_service import photo_overrides
+            wd = photo_overrides(telegram_id, character_id, request.scene, SCENE_GROUP.get(request.scene, 'day_casual'))
+        except Exception:
+            wd = {}
+    if wd.get('clothing') and not request.clothing and not request.pack_outfits:
+        request = replace(request, clothing=wd['clothing'])
+    if wd.get('accessory') and not request.accessory:
+        request = replace(request, accessory=wd['accessory'])
     pack_outfits = tuple(request.pack_outfits) if request.pack_outfits else _choose_progression_outfits(telegram_id, request, season, character_id=character_id)
     clothing = pack_outfits[-1] if pack_outfits else request.clothing
     # V3.43.8: character-specific styling. Each built-in heroine has her own
@@ -2129,6 +2141,9 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     time_of_day = _outdoor_light(request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL), request.scene)
     underwear_color = random.choice(UNDERWEAR_COLOR_POOL)
     underwear_style = random.choice(UNDERWEAR_STYLE_POOL)
+    if wd.get('underwear'):
+        # his 18+ gift is the set she wears when the home-lingerie rule applies
+        underwear_color, underwear_style = 'his gift', wd['underwear']
     # V3.31.7: variety rotations. A chat-mood expression still wins over the
     # rotation; otherwise every frame of the pack walks its own shuffled
     # expression and pose note instead of repeating one fixed look.
@@ -2165,7 +2180,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
                    accessory=accessory, time_of_day=time_of_day,
                    underwear_color=underwear_color, underwear_style=underwear_style,
                    expression_rotation=expression_rotation, pose_rotation=pose_rotation,
-                   story_detail=request.story_detail or marital_photo_detail(telegram_id, character_id))
+                   story_detail='; '.join(x for x in (request.story_detail or marital_photo_detail(telegram_id, character_id), wd.get('room', '')) if x))
 
 
 def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
@@ -2203,6 +2218,8 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     elif home_lingerie:
         style_note = f' ({request.underwear_style})' if request.underwear_style else ''
         set_desc = f'{request.underwear_color} lingerie{style_note} set' if request.underwear_color else 'elegant lingerie set'
+        if request.underwear_color == 'his gift':  # V3.114.0: his 18+ wardrobe gift
+            set_desc = request.underwear_style
         wardrobe = f'only her {set_desc} — a matching bra and panties worn as the entire outfit in the privacy of her home, no outerwear at all'
         underlay_rule = 'Her lingerie is the outfit itself in this private at-home moment: nothing is worn over it and no other clothing appears in the frame.'
     # Inject specific underwear color and style only in the dedicated private
