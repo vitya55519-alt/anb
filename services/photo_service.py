@@ -413,6 +413,9 @@ POSE_POOL = [
     'relaxed arms with a natural weight shift onto one leg',
     'a hand resting lightly on her hip or in a pocket',
     'a soft glance back over her shoulder',
+    # V3.122.0: owner noticed every heroine faces the camera; one everyday
+    # pose turns her back so the figure from behind shows up in packs too.
+    'body turned three-quarters away from the camera, looking back over her shoulder with a warm smile, her face clearly visible',
     'a mid-step walking pose with a natural stride',
     'seated with legs crossed and a relaxed open posture',
     'leaning lightly against a wall or railing',
@@ -561,17 +564,17 @@ DAYLIGHT_POOL = [
 SHOT_VARIANTS = {
     'selfie': ['front-camera selfie at arm’s length, natural eye contact', 'slightly high-angle front-camera selfie, spontaneous smartphone perspective', 'best polished personal selfie with flattering natural phone-camera framing'],
     'home': ['front-camera selfie on the sofa, relaxed and smiling', 'self-timer photo sitting on the kitchen counter with a mug', 'full-body home photo in the living room with cozy evening lamps'],
-    'park': ['front-camera selfie on the park path with trees behind her', 'self-timer photo sitting on a park bench, three-quarter framing', 'full-body photo on the path in golden-hour light'],
+    'park': ['front-camera selfie on the park path with trees behind her', 'self-timer photo sitting on a park bench, three-quarter framing', 'full-body photo from behind on the path in golden-hour light, she looks back over her shoulder with a smile; her face stays clearly visible over her shoulder, exactly the same face as reference image 1, and her hips and the back of her outfit show her curvy figure'],
     'cafe': ['front-camera selfie at the cafe table with her coffee in frame', 'three-quarter photo by the window, cup in her hands', 'over-the-table photo with latte art and dessert in the foreground'],
     'street': ['front-camera selfie on a busy street', 'mid-step street-style photo, three-quarter framing', 'full-body street-style photo at a crosswalk'],
     'shop': ['fitting-room mirror selfie in a new outfit', 'photo between the clothing racks holding a dress up to herself', 'full-body boutique mirror photo with shopping bags'],
     'car': ['front-camera selfie in the driver seat', 'slightly high-angle selfie with the dashboard in frame', 'three-quarter photo leaning on the open car door'],
-    'gym': ['gym mirror selfie during a break', 'self-timer photo stretching on a mat', 'full-body mirror photo next to the training equipment'],
-    'mirror': ['full-body mirror selfie, phone in hand', 'three-quarter mirror selfie turned slightly sideways', 'full-body mirror selfie with one hand on her hip'],
-    'outfit': ['full-body hallway-mirror photo of today’s outfit', 'three-quarter outfit photo by the front door, bag in hand', 'full-body outfit photo on the stairs outside her building'],
+    'gym': ['gym mirror selfie during a break', 'self-timer photo stretching on a mat', 'full-body gym mirror photo turned three-quarters away in her leggings, glancing back over her shoulder; her face stays clearly visible over her shoulder, exactly the same face as reference image 1, and her hips and the back of her outfit show her curvy figure'],
+    'mirror': ['full-body mirror selfie, phone in hand', 'three-quarter mirror selfie turned slightly sideways', 'full-body mirror selfie standing with her back half-turned to the mirror, glancing over her shoulder at her reflection; her face stays clearly visible over her shoulder, exactly the same face as reference image 1, and her hips and the back of her outfit show her curvy figure'],
+    'outfit': ['full-body hallway-mirror photo of today’s outfit', 'three-quarter outfit photo by the front door, bag in hand', 'full-body outfit photo from behind on the stairs outside her building, looking back over her shoulder; her face stays clearly visible over her shoulder, exactly the same face as reference image 1, and her hips and the back of her outfit show her curvy figure'],
     'restaurant': ['front-camera selfie at the dinner table, candle in frame', 'three-quarter photo across the table with wine glass', 'photo of her laughing at the table, plates and candles in the foreground'],
     'cinema': ['front-camera selfie in the lobby with popcorn', 'three-quarter photo next to a movie poster', 'full-body photo by the neon cinema sign'],
-    'embankment': ['front-camera selfie with the river behind her', 'three-quarter photo leaning on the railing', 'full-body sunset photo walking along the embankment'],
+    'embankment': ['front-camera selfie with the river behind her', 'three-quarter photo leaning on the railing', 'full-body sunset photo from behind walking along the embankment, looking back over her shoulder with a smile; her face stays clearly visible over her shoulder, exactly the same face as reference image 1, and her hips and the back of her outfit show her curvy figure'],
     'evening': ['full-body mirror photo in her evening dress before going out', 'three-quarter portrait by the door, clutch in hand', 'elegant full-body photo in the lobby, warm evening light'],
     'fashion': ['full-body studio fashion shot against a plain backdrop', 'three-quarter editorial pose under softbox light', 'close fashion portrait with dramatic studio lighting'],
     'bar': ['front-camera selfie at the bar counter with a cocktail', 'three-quarter photo sitting on a bar stool', 'photo raising her cocktail toward the camera, warm amber bokeh'],
@@ -864,6 +867,8 @@ BODY_SPECS = {
     'jina_01': 'a curvy hourglass build with a narrow waist, round hips, long legs and a full natural bust (D cup)',
     'lana_01': 'an extremely voluptuous hourglass build with a very narrow waist, wide round hips and huge, perfectly round, high and firm augmented silicone breast implants (Russian size 8, H cup)',
     'amira_01': 'a curvy hourglass build with a slim waist, very wide hips, a large round butt and large, full, round and firm augmented silicone breasts',
+    'ayla_01': 'a very curvy hourglass build with a slim waist, very wide round hips, thick thighs, a big round full lifted butt and a full natural bust (D cup)',
+    'priya_01': 'a very curvy hourglass build with a narrow waist, very wide round hips, thick thighs, a big round full butt and a large full natural bust (E cup)',
 }
 DEFAULT_FEMALE_BODY_SPEC = (
     'a curvy feminine hourglass build with a wasp waist, round lifted hips '
