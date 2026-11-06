@@ -185,8 +185,28 @@ def make_round2() -> None:
                 print('error', name, i, e, flush=True)
 
 
+def bigger_butt(name: str, n: int) -> None:
+    """Owner: «прия вариант 3 но попу больше». Keep the face of v<n>, render the
+    look and the back again with a bigger round butt; saved as v<n>b."""
+    body = ('a very curvy toned hourglass figure with a slim fit waist, very wide round hips, thick toned thighs, '
+            'a big round firm lifted athletic bubble butt (much bigger, fuller and rounder) and a large full natural '
+            'bust (E cup)')
+    keep = KEEP.format(body=body).replace('dimples, ', '')
+    face = VAR / f'{name}_v{n}_face.png'
+    uri = g.upload(face.read_bytes(), 'image/png')
+    v = ROUND2[name][n - 3]
+    for kind in ('look', 'back'):
+        out = VAR / f'{name}_v{n}b_{kind}.png'
+        if not out.exists():
+            out.write_bytes(g.render(EDIT, keep + v[kind].replace('round toned butt', 'big round full bubble butt') + '.' + SOFT + QUALITY, [uri]))
+            print('ok', out.name, flush=True)
+    shutil.copyfile(face, VAR / f'{name}_v{n}b_face.png')
+
+
 if __name__ == '__main__':
-    if len(ARGS) >= 2 and ARGS[1] == 'round2':
+    if len(ARGS) >= 4 and ARGS[1] == 'bigger':
+        bigger_butt(ARGS[2], int(ARGS[3]))
+    elif len(ARGS) >= 2 and ARGS[1] == 'round2':
         make_round2()
     elif len(ARGS) >= 4 and ARGS[1] == 'pick':
         pick(ARGS[2], int(ARGS[3]))
