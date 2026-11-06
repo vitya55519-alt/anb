@@ -1422,6 +1422,55 @@ async def _renewal_care(bot):
             logger.exception('renewal care failed user=%s', uid)
 
 
+async def _autopay_scan(bot):
+    """V3.120.0: the honest reminder before every auto-renewal charge (amount,
+    date, «Отключить»), and closing renewals that never came."""
+    from services import autopay
+    if not autopay.ENABLED:
+        return
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    from services.ui_lang import user_lang, EN
+    try:
+        lapsed = await asyncio.to_thread(autopay.lapse_overdue)
+    except Exception:
+        logger.exception('autopay lapse scan failed'); lapsed = []
+    for row in lapsed:
+        try:
+            en = user_lang(row['telegram_id']) == EN
+            if row['status'] == 'past_due':
+                text = autopay.status_text(row, en)
+            else:
+                text = ('Your Stars auto-renewal did not go through, so it is off now — nothing more will be charged. '
+                        'Premium can be renewed in /premium 💗' if en else
+                        'Продление через Stars не прошло, поэтому автопродление выключено — больше ничего не спишется. '
+                        'Продлить Premium можно в /premium 💗')
+            await bot.send_message(row['telegram_id'], text)
+        except TelegramForbiddenError:
+            pass
+        except Exception:
+            logger.exception('autopay lapse message failed row=%s', row.get('id'))
+    if not _msk_daytime():
+        return
+    try:
+        rows = await asyncio.to_thread(autopay.due_reminders)
+    except Exception:
+        logger.exception('autopay reminder scan failed'); return
+    for row in rows:
+        try:
+            await asyncio.to_thread(autopay.mark_reminded, row['id'], row['next_charge_at'])
+            en = user_lang(row['telegram_id']) == EN
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='❌ Turn off auto-renewal' if en else '❌ Отключить автопродление',
+                                      callback_data='autopay:cancel_ask')],
+                [InlineKeyboardButton(text='✅ Keep it' if en else '✅ Оставить', callback_data='autopay:keep')],
+            ])
+            await bot.send_message(row['telegram_id'], autopay.reminder_text(row, en), reply_markup=kb)
+        except TelegramForbiddenError:
+            pass
+        except Exception:
+            logger.exception('autopay reminder failed row=%s', row.get('id'))
+
+
 async def _girl_of_day(bot):
     """V3.92.0: «🔥 Девушка дня» (switches at 03:00 MSK) — at 09:00 MSK the admins get
     the ready channel post with a «📣 В канал» button."""
@@ -1477,6 +1526,7 @@ def start_scheduler(bot):
     # V3.104.0: next-day message after a payment, and «останешься?» before the end.
     scheduler.add_job(_paid_day1,'interval',minutes=15,args=[bot],id='paid_day1',replace_existing=True)
     scheduler.add_job(_renewal_care,'interval',minutes=15,args=[bot],id='renewal_care',replace_existing=True)
+    scheduler.add_job(_autopay_scan,'interval',minutes=15,args=[bot],id='autopay_scan',replace_existing=True)
     scheduler.add_job(_first_minutes,'interval',minutes=3,args=[bot],id='first_minutes',replace_existing=True)
     scheduler.add_job(_weekly_report,'cron',day_of_week='mon',hour=6,minute=0,args=[bot],id='weekly_report',replace_existing=True)
     # V3.75.0: scenario cards — scans often, one card a day per user at most.
