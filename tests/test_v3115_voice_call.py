@@ -196,3 +196,10 @@ def test_header_call_button_and_admin_picker():
     assert "' ур. ' + j.level + ' · ' + j.title + ' ›'" in HTML
     assert 'id="callPick"' in HTML and "openCall('live')" in HTML
     assert "'admin': telegram_id in ADMIN_TELEGRAM_IDS" in MAIN
+
+
+def test_live_call_does_not_cut_her_off():
+    src = (ROOT / 'services' / 'voice_call.py').read_text(encoding='utf-8')
+    assert 'START_SENSITIVITY_LOW' in src and 'silence_duration_ms=LIVE_SILENCE_MS' in src
+    # her own voice from the speaker goes as silence unless he is clearly louder
+    assert 'const speaking = c.sources.length > 0' in HTML and 'pass = loud >= 2' in HTML

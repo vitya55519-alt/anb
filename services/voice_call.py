@@ -43,6 +43,7 @@ LIVE_MODELS = tuple(m.strip() for m in os.getenv(
     'gemini-3.8-live,gemini-3.1-flash-live-preview,gemini-2.5-flash-native-audio-preview-12-2025',
 ).split(',') if m.strip())
 # Gemini Live: $0.005/min audio in + $0.018/min audio out (pricing 2026-11).
+LIVE_SILENCE_MS = int(os.getenv('CALL_LIVE_SILENCE_MS', '900'))
 LIVE_COST_PER_MIN_USD = float(os.getenv('CALL_LIVE_COST_PER_MIN_USD', '0.023'))
 
 EVENT_PREMIUM = 'call_premium_sec'
@@ -256,6 +257,16 @@ async def live_bridge(ws, *, api_key: str, voice_name: str, system_prompt: str,
         system_instruction=system_prompt,
         input_audio_transcription=types.AudioTranscriptionConfig(),
         output_audio_transcription=types.AudioTranscriptionConfig(),
+        # V3.115.3: Витя — «она вообще прерывает». A cough, a breath or her own
+        # voice from the speaker started «his turn» at once. Low start
+        # sensitivity + a longer pause before his turn ends.
+        realtime_input_config=types.RealtimeInputConfig(
+            automatic_activity_detection=types.AutomaticActivityDetection(
+                start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_LOW,
+                end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
+                prefix_padding_ms=300,
+                silence_duration_ms=LIVE_SILENCE_MS,
+            )),
     )
     transcript: list[tuple[str, str]] = []
     buf = {'user': '', 'assistant': ''}
