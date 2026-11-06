@@ -38,6 +38,19 @@ def en_evening_line() -> str:
     return random.choice(EN_EVENING)
 
 
+# V3.121.0: shared morning ritual needs an English line too.
+EN_MORNING = (
+    "good morning… I just woke up and you were my first thought",
+    "morning 🙂 did you sleep well? I want to hear how your day starts",
+    "hey sleepyhead… coffee's ready, how are you this morning?",
+    "good morning, you. have a good day, and tell me about it tonight",
+)
+
+
+def en_morning_line() -> str:
+    return random.choice(EN_MORNING)
+
+
 def spoken_text(text: str) -> str:
     """What she says aloud: no emojis, no markup, collapsed spaces."""
     t = _EMOJI.sub(' ', text or '')
