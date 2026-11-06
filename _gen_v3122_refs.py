@@ -7,6 +7,7 @@ edits from that new face, so the same girl stays in every shot.
 
 Runs on the owner's PC (the cloud container cannot reach SpicyAPI):
     python _gen_v3122_refs.py <key-file>                 # 2 variants per girl
+    python _gen_v3122_refs.py <key-file> round2          # softer faces, v3/v4
     python _gen_v3122_refs.py <key-file> pick ayla 2     # v2 -> canonical refs
 Variants go to %USERPROFILE%/Desktop/new_girls_preview_v3122, not to the repo.
 """
@@ -120,8 +121,70 @@ def pick(name: str, n: int) -> None:
     print('picked', name, n)
 
 
+# Round 2 (owner: «фигура да, лица страшные, мягче лица и улыбки не во весь рот»):
+# softer, more delicate faces and a gentle closed-lip smile. Same outfits and
+# figure as the variants he liked (Айла v2, Прия v1). Saved as v3/v4.
+SOFT = (' Soft tender mood: a gentle subtle closed-lip smile, no teeth showing, no wide grin, no laughing, '
+        'calm warm eyes looking at the viewer, delicate soft feminine facial features, smooth soft jawline, '
+        'soft natural glam makeup, beautiful and sweet.')
+AYLA_FACE2 = ('adult Turkish woman, 24 years old, very long voluminous glossy dark chocolate-brown hair in soft '
+              'waves, soft almond-shaped warm honey-brown eyes, softly arched groomed dark brows, a delicate oval '
+              'face with soft rounded cheeks, a small refined nose, a small beauty mark on her right cheekbone, '
+              'soft full caramel-pink lips, light olive skin')
+PRIYA_FACE2 = ('adult Indian woman, 23 years old, very long thick glossy jet-black hair, soft large dark brown doe '
+               'eyes with a thin line of kajal, softly arched brows, a delicate soft oval face, a small refined '
+               'nose with a tiny gold nose stud, a tiny red bindi, soft full rose-berry lips, warm caramel-brown skin')
+ROUND2 = {
+    'ayla': [
+        dict(face=f'Portrait photo of an {AYLA_FACE2}, white off-shoulder blouse, thin gold necklace, cozy pastry '
+                  'shop with trays of baklava behind her, warm light',
+             look=VARIANTS['ayla'][1]['look'].replace('warm smile', 'gentle closed-lip smile'),
+             back=VARIANTS['ayla'][1]['back'].replace('sweet smile', 'soft closed-lip smile')),
+        dict(face=f'Selfie portrait of an {AYLA_FACE2}, fitted cream ribbed knit top, small gold hoop earrings, '
+                  'sitting by a sunny window of a cozy cafe with a glass of Turkish tea',
+             look=VARIANTS['ayla'][1]['look'].replace('warm smile', 'gentle closed-lip smile'),
+             back=VARIANTS['ayla'][1]['back'].replace('sweet smile', 'soft closed-lip smile')),
+    ],
+    'priya': [
+        dict(face=f'Portrait photo of an {PRIYA_FACE2}, saffron-orange fitted silk crop blouse, gold jhumka '
+                  'earrings, thin gold bangles, bright dance studio with mirrors',
+             look=VARIANTS['priya'][0]['look'].replace('mid-dance pose, radiant smile', 'graceful dance pose, gentle closed-lip smile'),
+             back=VARIANTS['priya'][0]['back'].replace('radiant smile', 'soft closed-lip smile')),
+        dict(face=f'Selfie portrait of an {PRIYA_FACE2}, saffron-orange fitted silk crop blouse, gold jhumka '
+                  'earrings, warm evening light by a window with sheer curtains',
+             look=VARIANTS['priya'][0]['look'].replace('mid-dance pose, radiant smile', 'graceful dance pose, gentle closed-lip smile'),
+             back=VARIANTS['priya'][0]['back'].replace('radiant smile', 'soft closed-lip smile')),
+    ],
+}
+
+
+def make_round2() -> None:
+    VAR.mkdir(parents=True, exist_ok=True)
+    for name, items in ROUND2.items():
+        for i, v in enumerate(items, 3):
+            face, look, back = (VAR / f'{name}_v{i}_{k}.png' for k in ('face', 'look', 'back'))
+            keep = KEEP.format(body=BODY[name]).replace('dimples, ', '')
+            try:
+                if not face.exists():  # text only: nobody real gets cloned
+                    face.write_bytes(g.render(T2I, v['face'] + '.' + SOFT + QUALITY))
+                    print('ok', face.name, flush=True)
+                uri = None
+                if not look.exists():
+                    uri = g.upload(face.read_bytes(), 'image/png')
+                    look.write_bytes(g.render(EDIT, keep + v['look'] + '.' + SOFT + QUALITY, [uri]))
+                    print('ok', look.name, flush=True)
+                if not back.exists():
+                    uri = uri or g.upload(face.read_bytes(), 'image/png')
+                    back.write_bytes(g.render(EDIT, keep + v['back'] + '.' + SOFT + QUALITY, [uri]))
+                    print('ok', back.name, flush=True)
+            except Exception as e:
+                print('error', name, i, e, flush=True)
+
+
 if __name__ == '__main__':
-    if len(ARGS) >= 4 and ARGS[1] == 'pick':
+    if len(ARGS) >= 2 and ARGS[1] == 'round2':
+        make_round2()
+    elif len(ARGS) >= 4 and ARGS[1] == 'pick':
         pick(ARGS[2], int(ARGS[3]))
     else:
         make_variants()
