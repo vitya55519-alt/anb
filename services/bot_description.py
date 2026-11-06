@@ -18,21 +18,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# V3.115.2: owner — mention the new calls and the 10 levels (not 8), RU and EN.
 SHORT_DESCRIPTION_DEFAULT = (
-    'Pick your AI girlfriend: she texts first, remembers everything about you and is always there. 18+'
+    'Your AI girlfriend: texts first, remembers everything about you, and now you can call her 📞 18+'
 )
 SHORT_DESCRIPTION_RU = (
-    'Выбери свою ИИ-девушку: она пишет первой, помнит всё о тебе и всегда на связи. 18+'
+    'Твоя ИИ-девушка: пишет первой, помнит всё о тебе, и теперь ей можно позвонить 📞 18+'
 )
 
 DESCRIPTION_DEFAULT = (
     'When you want to talk — she is already texting you 💬\n'
     '\n'
-    '👩 Pick yours: Anna, Vika, Zlata, Emily, Sonya, Maria and more\n'
-    '🧠 Remembers your name, your day and what you talked about yesterday\n'
-    '✍️ Texts first when you go quiet\n'
-    '📸 Photos, 🎙 voice notes and 🎬 Videos — from cozy to very personal\n'
-    '🎁 Dates, gifts and a relationship that grows\n'
+    '📞 NEW: call her — her live voice right in the app\n'
+    '👩 Anna, Emily, Zlata, Vika and 30+ more — or create your own\n'
+    '🧠 Remembers your name, your day and yesterday\'s talk\n'
+    '✍️ Texts first and sends voice notes\n'
+    '❤️ 10 relationship levels: romance or passion\n'
+    '📸 Photos, 🎬 Videos and 👗 a wardrobe for her\n'
     '\n'
     'Just say "hi" — she will take it from there.\n'
     '\n'
@@ -42,11 +44,12 @@ DESCRIPTION_DEFAULT = (
 DESCRIPTION_RU = (
     'Когда хочется поговорить — она уже пишет тебе 💬\n'
     '\n'
-    '👩 Выбери свою: Анна, Вика, Злата, Emily, Соня, Mary и другие\n'
-    '🧠 Помнит твоё имя, твой день и то, о чём вы говорили вчера\n'
-    '✍️ Пишет первой, если ты пропал\n'
-    '📸 Фото, 🎙 голосовые и 🎬 Видео — от уютных до очень личных\n'
-    '🎁 Свидания, подарки и отношения, которые растут\n'
+    '📞 НОВОЕ: ей можно позвонить — живой голос прямо в приложении\n'
+    '👩 Анна, Emily, Злата, Вика и ещё 30+ девушек — или создай свою\n'
+    '🧠 Помнит твоё имя, твой день и вчерашний разговор\n'
+    '✍️ Пишет первой и присылает голосовые\n'
+    '❤️ 10 уровней отношений: романтика или страсть\n'
+    '📸 Фото, 🎬 Видео и 👗 гардероб для неё\n'
     '\n'
     'Просто скажи «привет» — дальше она сама.\n'
     '\n'
