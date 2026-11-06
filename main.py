@@ -12767,6 +12767,21 @@ async def _webapp_api_spicy(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'spicy_mode': flipped}, headers={'Cache-Control': 'no-store'})
 
 
+async def _webapp_api_presence(request: web.Request) -> web.Response:
+    """V3.120.0: the SPA's heartbeat (on screen) and away beacon (hidden or
+    closed). In memory only, no DB: services/app_ping.py pings the bot chat
+    only for messages that landed while he was away."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    from services import app_ping
+    app_ping.touch(int(telegram_id), away=request.query.get('state') == 'away')
+    return web.json_response({'ok': True})
+
+
 async def _webapp_api_chat_history(request: web.Request) -> web.Response:
     # V3.35.0: chat in the app — the dialog the bot and the app share.
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
@@ -13146,8 +13161,33 @@ def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | 
     return payload
 
 
+def _app_ping(telegram_id: int, character_id: str, text: str, media: str | None = None) -> None:
+    """V3.120.0: her message landed in the app chat only — if he is not in the
+    app, a short collapsed ping goes to the bot chat (services/app_ping.py)."""
+    try:
+        from services import app_ping
+        app_ping.note(bot, telegram_id, character_id, text, media)
+    except Exception:
+        logger.warning('app ping hook failed user=%s', telegram_id, exc_info=True)
+
+
 async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str,
                             text: str, extra: dict | None = None) -> web.Response:
+    """V3.120.0: one app chat turn; when he closed the app before her answer
+    came, the answer also pings the bot chat (services/app_ping.py)."""
+    resp = await _webapp_chat_turn_inner(telegram_id, user_info, character_id, text, extra)
+    try:
+        body = json.loads(resp.body) if getattr(resp, 'body', None) else {}
+        if isinstance(body, dict) and body.get('ok') and body.get('reply'):
+            _app_ping(telegram_id, character_id, str(body.get('reply') or ''),
+                      'photo' if body.get('photo_url') else None)
+    except Exception:
+        logger.warning('app ping on chat turn failed user=%s', telegram_id, exc_info=True)
+    return resp
+
+
+async def _webapp_chat_turn_inner(telegram_id: int, user_info: dict, character_id: str,
+                                  text: str, extra: dict | None = None) -> web.Response:
     # V3.35.0: a message typed in the app goes through the exact pipeline the
     # bot chat uses (memory, relationships, persona) — same gates too: 18+
     # consent and the daily free-message limit.
@@ -15205,7 +15245,9 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         return {'ok': True, 'kind': kind, 'url': url, 'content': content,
                 'credits_left': get_photo_credits(telegram_id)}
 
-    return web.json_response(await asyncio.to_thread(_deliver))
+    out = await asyncio.to_thread(_deliver)
+    _app_ping(telegram_id, character_id, out.get('content') or '', 'video' if kind == 'video' else 'photo')
+    return web.json_response(out)
 
 
 async def _webapp_media_scene(telegram_id: int, character_id: str, scene: str):
@@ -15426,7 +15468,11 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
                 'set_completed': _set_completed,
                 'gallery': _gallery}
 
-    return web.json_response(await asyncio.to_thread(_finish))
+    out = await asyncio.to_thread(_finish)
+    if isinstance(out, dict) and out.get('ok'):
+        _app_ping(telegram_id, character_id, out.get('content') or '',
+                  out.get('kind') if out.get('kind') in ('photo', 'video', 'circle') else None)
+    return web.json_response(out)
 
 
 async def _webapp_media(request: web.Request) -> web.Response:
@@ -15903,6 +15949,7 @@ async def _deliver_scene_photo(telegram_id: int, character_id: str, uid: int, sc
             photo_url = f'/webapp/media/{filename}'
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', caption,
                                     media_kind='photo', media_url=photo_url)
+            _app_ping(telegram_id, character_id, caption, 'photo')
         else:
             logger.warning('webapp %s photo empty user=%s scene=%s', what, telegram_id, scene)
             await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo', character_id, scene, f'{what}: empty')
@@ -15919,6 +15966,7 @@ async def _deliver_date_photo(telegram_id: int, character_id: str, uid: int, dat
             filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
             photo_url = f'/webapp/media/{filename}'
             save_message(uid, character_id, 'assistant', '📸 фото с нашей прогулки', media_kind='photo', media_url=photo_url)
+            _app_ping(telegram_id, character_id, '📸 фото с нашей прогулки', 'photo')
         else:
             logger.warning('webapp date photo empty user=%s date=%s', telegram_id, date_id)
     except Exception as exc:
@@ -16061,7 +16109,8 @@ async def _deliver_wardrobe_photo(telegram_id: int, character_id: str, uid: int,
             filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
             cap = '📸 ' + ('в твоём подарке' if item.kind != 'room' else 'смотри, как теперь у меня')
             save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=f'/webapp/media/{filename}')
-        await asyncio.to_thread(_save)
+            return cap
+        _app_ping(telegram_id, character_id, await asyncio.to_thread(_save), 'photo')
         return
     def _sorry():
         back = 0
@@ -16119,13 +16168,16 @@ async def _render_home(telegram_id: int, character_id: str, uid: int, *, item_id
             cap = '📸 смотри, как теперь у меня 🏠' if item_id else '📸 вот моя новая комната 🏠 обставим вместе?'
             save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=f'/webapp/media/{filename}')
             track_event(uid, 'home_render', character_id=character_id, metadata={'item': item_id or 'style', 'edit': bool(prev)})
-            return
+            return cap
         if refund:
             add_peaches(telegram_id, refund)
         save_message(uid, character_id, 'assistant',
                      'фото комнаты сейчас не получилось 🙈 всё стоит на месте' + (f', а за фото вернула тебе {refund} 🍑' if refund else ''))
         track_event(uid, 'home_render_failed', character_id=character_id, metadata={'item': item_id or 'style'})
-    await asyncio.to_thread(_finish)
+        return None
+    cap = await asyncio.to_thread(_finish)
+    if cap:
+        _app_ping(telegram_id, character_id, cap, 'photo')
 
 
 async def _webapp_api_home_style(request: web.Request) -> web.Response:
@@ -16761,6 +16813,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/spicy', _webapp_api_spicy)
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
+    app.router.add_post('/webapp/api/presence', _webapp_api_presence)  # V3.120.0
     app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)
     app.router.add_post('/webapp/api/lang', _webapp_api_lang)
     app.router.add_post('/webapp/api/chat/voice', _webapp_api_chat_voice)
