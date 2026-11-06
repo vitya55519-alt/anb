@@ -1633,8 +1633,8 @@ try { tg.setHeaderColor('#1a1023'); tg.setBackgroundColor('#1a1023'); } catch (e
 const user0 = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {};
 // V3.43.5: the interface language is user-controlled — the pick made in the
 // app Settings (localStorage) beats the Telegram account language.
-// Supported: ru / en / es / it / fr / zh / ja; anything else falls back to en.
-const APP_LANGS = ['ru', 'en', 'es', 'it', 'fr', 'zh', 'ja'];
+// Supported: ru / en / es / it / fr / zh / ja / bn; anything else falls back to en.
+const APP_LANGS = ['ru', 'en', 'es', 'it', 'fr', 'zh', 'ja', 'bn'];
 const _savedLang = String(localStorage.getItem('app_lang') || '').toLowerCase();
 const _tgLang = String(user0.language_code || 'ru').toLowerCase();
 const LANG = APP_LANGS.includes(_savedLang) ? _savedLang
@@ -2447,6 +2447,73 @@ const L_OV = {
     promo_err_unknown: 'コードが見つかりません', promo_err_expired: 'このコードは期限切れです', promo_err_exhausted: '利用枠が満杯です',
     promo_err_inactive: 'このコードは無効です', promo_err_duplicate: 'このコードは既に使いました', promo_err_consent: 'まずボットで利用規約に同意してください', promo_err_auth: 'まずボットを開いてください',
   },
+  // V3.117.0: বাংলা — owner: a Bengali user asked, «мы же теряем аудиторию»
+  bn: {
+    chars_title: 'মেয়েরা', loading: 'লোড হচ্ছে…',
+    chars_hint: 'একটি কার্ডে ট্যাপ করো — চ্যাট এখানেই খুলবে। ইতিহাস বটের সাথে একই থাকে।',
+    active: 'অনলাইন', selected: 'তোমার মেয়ে', shop_title: 'দোকান', missions_title: 'মিশন', profile_title: 'প্রোফাইল',
+    premium_on: 'Premium চালু', premium_off: 'ফ্রি অ্যাকাউন্ট',
+    streak: 'টানা দিন', level: 'সম্পর্কের লেভেল', selected_girl: 'বেছে নেওয়া মেয়ে',
+    open_bot: 'চ্যাট করতে বট খোলো 💬', docs_title: 'ডকুমেন্ট ও দাম',
+    partner_title: 'পার্টনার প্রোগ্রাম', my_chars: 'আমার চরিত্র', create_char: '＋ তৈরি করো',
+    no_chars: 'এখনও কোনো চরিত্র নেই — নিজের মেয়ে তৈরি করো।', partner_row: '💰 পার্টনার প্রোগ্রাম',
+    docs_row: '📜 ডকুমেন্ট ও দাম', open_chat: 'চ্যাট', start_chat: 'চ্যাট শুরু করো',
+    make_mine: '❤️ ওকে আমার করো', seg_official: '🍑 অফিসিয়াল', seg_community: '👥 কমিউনিটি', seg_premium: '⭐ প্রিমিয়াম',
+    create_own: 'নিজেরটা তৈরি করো', create_sub: 'চেহারা, ফিগার আর স্বভাব — তুমি যেমন বেছে নেবে, ও তেমনই কথা বলবে',
+    chats_title: 'চ্যাট', pic_title: 'ছবি তৈরি করো',
+    pic_prompt_ph: 'ছবির বর্ণনা দাও — কে, কোথায়, কেমন মুড…', pic_style: 'স্টাইল',
+    style_anime: 'অ্যানিমে', style_realistic: 'বাস্তব', style_fantasy: 'ফ্যান্টাসি',
+    pic_format: 'ফরম্যাট', pic_square: 'বর্গাকার', pic_portrait: 'লম্বালম্বি',
+    pic_advanced: 'অ্যাডভান্সড মোড', pic_cost: 'একটি ছবি — 1000 🍑', pic_generate: 'তৈরি করো · 1000 🍑',
+    pic_wait: 'আঁকছি — এক মিনিট পর্যন্ত লাগতে পারে…', pic_gallery: 'আমার ছবি',
+    pic_empty: 'এখনও কোনো ছবি নেই — তোমার কাজ এখানে দেখা যাবে।',
+    mode_pic: 'ছবি', mode_video: 'ভিডিও',
+    upload_photo: 'নিজের ছবি', upload_hint: 'JPG / PNG / WebP · সর্বোচ্চ 8 MB', upload_remove: 'সরাও',
+    video_prompt_ph: 'ভিডিওতে কী হবে… (শুধু একটা ছবি দিলেও চলবে)',
+    video_cost: 'একটি ভিডিও — 2000 🍑', video_generate: 'ভিডিও তৈরি করো · 2000 🍑',
+    video_wait: 'ভিডিও তৈরি হচ্ছে — ১–৩ মিনিট লাগবে…', video_fail: 'ভিডিও তৈরি হলো না — আবার চেষ্টা করো',
+    need_prompt_or_photo: 'দৃশ্যের বর্ণনা দাও অথবা একটা ছবি যোগ করো',
+    videos_title: 'আমার ভিডিও', videos_empty: 'এখনও কোনো ভিডিও নেই — তোমার ক্লিপ এখানে দেখা যাবে।',
+    preset_auto: 'অটো', preset_kiss: 'চুমু', preset_wink: 'চোখ টিপ', preset_turn: 'ঘুরে দাঁড়ানো',
+    preset_whisper: 'ফিসফিস', preset_touch: 'ছোঁয়া', preset_caress: 'আদর',
+    media_photo: 'ছবি', media_video: 'ভিডিও', media_circle: 'ভিডিও সার্কেল', buy: 'কিনুন',
+    need_premium: 'Premium-এ পাওয়া যায় ⭐', locked: 'এই মেয়েটি এখনও লক করা',
+    settings_title: 'সেটিংস', spicy_title: '🌶 হট মোড', spicy_on: 'চালু', spicy_off: 'বন্ধ',
+    spicy_prem: 'হট মোড Premium-এর সুবিধা ⭐',
+    prem_chars_title: 'প্রিমিয়াম চরিত্র', prem_chars_hint: 'Premium সাবস্ক্রিপশনে খুলে যায়', prem_chars_owned: 'তোমার সাবস্ক্রিপশনে খোলা',
+    spicy_toast_on: 'হট মোড চালু হয়েছে 🔥', spicy_toast_off: 'হট মোড বন্ধ হয়েছে 🌙',
+    lang_title: '🌐 ভাষা',
+    photo_menu_title: '📸 কোন ছবি চাও?',
+    collect_lbl: 'গ্যালারি', collect_sets: n => n + ' সেট', collect_done: '🖼 গ্যালারির একটা সেট পূর্ণ! +1 🏆 — পরের 50টা শুরু করো',
+    sc_locked: n => 'লেভেল ' + n + '-এ খুলবে',
+    scg_everyday: 'রোজকার', scg_fashion: 'ফ্যাশন', scg_evening: 'সন্ধ্যার বাইরে', scg_private: 'একান্তে',
+    sc_selfie: '📸 সেলফি', sc_home: '🏠 বাড়িতে', sc_park: '🌿 পার্কে', sc_cafe: '☕ ক্যাফেতে',
+    sc_street: '🌆 রাস্তায়', sc_mirror: '🪞 আয়নায়', sc_outfit: '👗 আজকের পোশাক', sc_shop: '🛍 শপিং',
+    sc_car: '🚗 গাড়িতে', sc_gym: '🏋️ জিমে', sc_restaurant: '🍽 রেস্তোরাঁয়', sc_cinema: '🎬 সিনেমায়',
+    sc_embankment: '🌊 নদীর ধারে', sc_fashion: '💎 ফ্যাশন', sc_evening: '✨ সন্ধ্যার সাজ',
+    sc_bar: '🍸 বারে', sc_karaoke: '🎤 কারাওকে', sc_rooftop: '🌃 ছাদে', sc_club: '💃 ক্লাবে',
+    sc_personal: '💌 ব্যক্তিগত ছবি', sc_lingerie: '🖤 একান্ত ফ্যাশন', sc_private_fashion: '🔐 প্রিমিয়াম একান্তে',
+    adult_confirm_needed: 'আগে বটের চ্যাটে 18+ নিশ্চিত করো',
+    gift_title: 'আজকের উপহার', gift_day: n => `দিন ${n} / 7`, gift_claim: n => `+${n} 🍑 নাও`,
+    gift_taken: 'আজ নেওয়া হয়ে গেছে — 03:00-এ আবার', gift_capped: 'পিগি ব্যাংক ভর্তি (1500 🍑) — কিছু খরচ করে তারপর নাও', gift_jackpot: '300🍑',
+    persona_q: 'তোমার সাথে আমি কেমন হব — কোমল নাকি আবেগী? একবারই বেছে নাও, আমি মনে রাখব 🍑', persona_tender: 'কোমল', persona_passionate: 'আবেগী', persona_saved_tender: 'এখন থেকে আমি তোমার কোমল মেয়ে 🌸', persona_saved_passionate: 'এখন থেকে আমি তোমার আবেগী মেয়ে 🔥',
+    promo_title: 'প্রোমো কোড', promo_ph: 'কোড লেখো', promo_btn: 'চালু করো', promo_ok: n => `কোড চালু হয়েছে: +${n} 🍑`,
+    promo_err_unknown: 'কোড পাওয়া যায়নি — বানান দেখো', promo_err_expired: 'এই কোডের মেয়াদ শেষ', promo_err_exhausted: 'সব অ্যাক্টিভেশন শেষ',
+    promo_err_inactive: 'এই কোড বন্ধ', promo_err_duplicate: 'তুমি এই কোড আগেই ব্যবহার করেছ', promo_err_consent: 'আগে বটে শর্তাবলি মেনে নাও', promo_err_auth: 'আগে বট খোলো',
+    // the chat and the shop — the parts he sees most
+    chat_hints: ['হাই 😊', 'তোমার কথা বলো', 'নিজেকে দেখাও 📸'], typing_now: 'লিখছে…',
+    years: 'বছর', soon: 'শীঘ্রই', prem: 'Premium', girl_of_day: 'আজকের মেয়ে · ফ্রি',
+    photo_save: '⬇️ ছবি সেভ করো', pa_save: '⬇️ সেভ', load_failed: 'লোড হলো না — ইন্টারনেট দেখো', retry: 'আবার চেষ্টা করো',
+    call_btn: 'কল', call_connecting: 'কল করছি…', call_listen: 'শুনছি…', call_think: 'ভাবছি…', call_talk: 'বলছি…',
+    call_ready: 'সংযুক্ত', call_end: 'কল কাটো', call_mute: 'মাইক', call_bye: 'কল শেষ', call_fail: 'কল যায়নি — আবার চেষ্টা করো',
+    call_nospeech: 'শুনতে পেলাম না — আবার বলো', call_up_go: '👑 Premium খোলো', call_up_no: 'পরে',
+    plan_w1: '১ সপ্তাহ', plan_m1: '১ মাস', plan_m3: '৩ মাস', prem_get: 'নাও', prem_extend: 'বাড়াও',
+    prem_once: 'একবারের পেমেন্ট, অটো-রিনিউ নেই',
+    prem_tiles: [['🔥', 'সব খোলামেলা', 'অন্তর্বাস ও নগ্ন ছবি, «কাপড় খোলো»'], ['💌', 'ও কখনও ঘুমিয়ে পড়ে না', 'সীমাহীন চ্যাট, দিনরাত']],
+    prem_list: ['একান্ত ছবি আর 18+ ছবি', 'ওর কণ্ঠস্বর — ভয়েস উত্তর', 'সব মেয়ে, প্রিমিয়ামরাও', 'দিনে ২টা ছবি অ্যানিমেশন', 'গল্প আবার খেলা', 'বেশি স্মৃতি: ও তোমার সম্পর্কে আরও মনে রাখে'],
+    peaches_title: 'পিচ', peaches_word: 'পিচ', free_peaches_row: 'প্রতিদিন ফ্রি 🍑 — মিশনে', price_list: 'কীসের কত দাম',
+    mis_today: 'আজ', mis_claim: n => '+' + n + ' 🍑 নাও', pay_hint: 'একটা প্যাক বেছে নাও — Telegram Stars বা ক্রিপ্টো দিয়ে পেমেন্ট।',
+  }
 };
 const L = LANG === 'ru' ? L_RU : Object.assign({}, L_EN, (L_OV[LANG] || {}));
 
@@ -2513,6 +2580,7 @@ const NAV_LABELS = {
   fr: ['Filles','Tchats','Images','Boutique','Missions','Partenaires','Profil'],
   zh: ['女孩','聊天','图片','商店','任务','合伙人','我的'],
   ja: ['女の子','チャット','画像','ショップ','ミッション','パートナー','プロフィール'],
+  bn: ['মেয়েরা','চ্যাট','ছবি','দোকান','মিশন','পার্টনার','প্রোফাইল'],
 };
 document.querySelectorAll('#bottomnav .lbl').forEach((el, i) => {
   el.textContent = (NAV_LABELS[LANG] || NAV_LABELS.en)[i];
@@ -5779,13 +5847,13 @@ async function loadShop() {
       const full = weekPlan && x !== weekPlan ? Math.round(rubOf(weekPlan) * weeks / 10) * 10 : 0;
       const off = full && rubOf(x) < full ? Math.round((1 - rubOf(x) / full) * 100) : 0;
       const label = x.trial ? L.plan_trial(x.days || 3) : (x.id === 'premium_week' ? L.plan_w1 : (x.id === 'premium' ? L.plan_m1 : L.plan_m3));
-      const perWeek = x !== weekPlan && !x.trial && LANG !== 'en' ? Math.round(rubOf(x) / weeks) : 0;
+      const perWeek = x !== weekPlan && !x.trial && LANG === 'ru' ? Math.round(rubOf(x) / weeks) : 0;
       return `
         <button class="prow" data-plan="${esc(x.id)}">
           ${off ? `<span class="pr-off">−${esc(String(off))}%</span>` : ''}
           <span class="pr-radio"></span>
           <span class="pr-l"><b>${esc(label)}</b>${perWeek ? `<small>${esc(L.plan_per_week(fmtN(perWeek)))}</small>` : (x.trial ? `<small>${esc(L.plan_trial_sub)}</small>` : '')}</span>
-          <span class="pr-r">${off && LANG !== 'en' ? `<s>${esc(fmtN(full))} ₽</s>` : ''}<b>${esc(money(x))}</b></span>
+          <span class="pr-r">${off && LANG === 'ru' ? `<s>${esc(fmtN(full))} ₽</s>` : ''}<b>${esc(money(x))}</b></span>
         </button>`;
     };
     const tiles = L.prem_tiles.map(t => `<div class="ptile"><div class="pt-i">${esc(t[0])}</div><div class="pt-t">${esc(t[1])}</div><div class="pt-s">${esc(t[2])}</div></div>`).join('');
@@ -5993,7 +6061,7 @@ let SHOP = null;
 function money(x) {
   const rub = x.price_rub || x.rub, usd = x.price_usd || x.usd;
   // V3.67.0: 1799 → «1 799 ₽» (thin-grouped like the peach figures).
-  if (LANG !== 'en' && rub) return String(rub).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + ' ₽';
+  if (LANG === 'ru' && rub) return String(rub).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + ' ₽';
   if (usd) return '$' + usd;
   if (rub) return rub + ' ₽';
   return x.stars + ' ⭐';
@@ -6442,7 +6510,7 @@ function renderProfileBody() {
   // V3.45.28: the «МОИ ПЕРСОНАЖИ» block left the Profile — a user's characters
   // now live only in the creator cabinet, so this markup is no longer built here.
   // V3.43.5: чипы языков — локальный фрагмент, значения esc()-обёрнуты.
-  const LANG_NAMES = { ru: 'Русский', en: 'English', es: 'Español', it: 'Italiano', fr: 'Français', zh: '中文', ja: '日本語' };
+  const LANG_NAMES = { ru: 'Русский', en: 'English', es: 'Español', it: 'Italiano', fr: 'Français', zh: '中文', ja: '日本語', bn: 'বাংলা' };
   const langChipsHtml = APP_LANGS.map(code =>
     `<button type="button" class="langChip${code === LANG ? ' on' : ''}" data-lang="${esc(code)}">${esc(LANG_NAMES[code])}</button>`).join('');
   document.getElementById('profilebody').innerHTML = `
@@ -6499,7 +6567,11 @@ const mcr = document.getElementById('menuCreator');
   // V3.43.5: интерфейс на семи языках — выбор в настройках бьёт язык аккаунта.
   document.querySelectorAll('#langChips .langChip').forEach(ch => ch.addEventListener('click', () => {
     localStorage.setItem('app_lang', ch.dataset.lang);
-    location.reload();
+    // V3.117.0: the pick goes to the server too — she talks to him in it
+    fetch('/webapp/api/lang?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang: ch.dataset.lang }),
+    }).catch(() => {}).finally(() => location.reload());
   }));
   document.querySelectorAll('#profilebody [data-chat-id]').forEach(b =>
     b.addEventListener('click', () => {

@@ -64,6 +64,10 @@ class User(Base):
     selected_character: Mapped[str] = mapped_column(String(64), default="")
     # V3.22.0: interface language ('ru'/'en'); empty = Russian (legacy).
     ui_lang: Mapped[str] = mapped_column(String(8), default="")
+    # V3.117.0: the language she talks to him in ('' = not known yet, then
+    # Russian): the last language he wrote in, or the one he picked in the
+    # app settings. Auto-migrated by services/db.py.
+    chat_lang: Mapped[str] = mapped_column(String(8), default="")
     # V3.27.0: ruble-shop balances — tokens for video animation (1 token =
     # TOKEN_PRICE_RUB) and one-time constructor credits bought via FreeKassa.
     token_balance: Mapped[int] = mapped_column(Integer, default=0)

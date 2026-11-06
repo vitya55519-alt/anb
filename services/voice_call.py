@@ -203,7 +203,7 @@ LIVE_BYE = '(Время звонка почти вышло. Тепло скаж�
 
 
 def live_system_prompt(character: dict, his_name: str, memories: list[str],
-                       history: list[tuple[str, str]], english: bool = False) -> str:
+                       history: list[tuple[str, str]], english: bool = False, lang: str = '') -> str:
     """A compact persona for the live call — her character, what she knows
     about him and the last lines of their chat."""
     name = character.get('name') or 'Анна'
@@ -231,6 +231,11 @@ def live_system_prompt(character: dict, his_name: str, memories: list[str],
         if tail:
             lines.append('Последние сообщения вашей переписки:\n' + tail)
     lines.append(LIVE_RULES_EN if english else LIVE_RULES_RU)
+    # V3.117.0: Bengali, Spanish, Japanese… — the call is in his language too
+    if lang and lang not in ('ru', 'en'):
+        from services import lang_guard
+        own = lang_guard.LANG_NAMES.get(lang, ('', lang))[1]
+        lines.append(f'Speak ONLY {own} ({lang}) on this call, like a native speaker: it is his language.')
     return '\n\n'.join(lines)
 
 

@@ -107,7 +107,7 @@ def test_profile_screen_carries_the_settings_section():
 # ── 4. interface language picker: seven languages ────────────────────────────
 
 def test_seven_interface_languages_are_wired():
-    assert "const APP_LANGS = ['ru', 'en', 'es', 'it', 'fr', 'zh', 'ja'];" in INDEX
+    assert "const APP_LANGS = ['ru', 'en', 'es', 'it', 'fr', 'zh', 'ja', 'bn'];" in INDEX
     # the Settings pick beats the Telegram account language
     assert "localStorage.getItem('app_lang')" in INDEX
     # L_RU stays the base; everyone else merges over the English dictionary
@@ -136,7 +136,7 @@ def test_language_chips_switch_the_whole_interface():
     assert '<div class="langChips" id="langChips">${langChipsHtml}</div>' in INDEX
     # picking a chip persists the choice and reboots the UI in that language
     assert "localStorage.setItem('app_lang', ch.dataset.lang);" in INDEX
-    assert 'location.reload();' in INDEX
+    assert 'location.reload()' in INDEX
     # every dictionary carries the Settings vocabulary
     assert "settings_title: 'Settings', spicy_title: '🌶 Spicy mode'" in INDEX
     assert "settings_title: 'Настройки', spicy_title: '🌶 Пошлый режим'" in INDEX

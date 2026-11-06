@@ -36,11 +36,12 @@ def test_cyrillic_dominant():
 
 
 def test_chat_service_wires_language_guard():
-    assert 'lang_guard.looks_english(' in CHAT
-    assert 'lang_guard.DIRECTIVE' in CHAT
-    assert 'lang_guard.STRICT_DIRECTIVE' in CHAT
+    # V3.117.0: generalized from English to any language he writes in
+    assert 'lang_guard.detect_lang(' in CHAT
+    assert 'lang_guard.directive(lang)' in CHAT
+    assert 'lang_guard.strict_directive(lang)' in CHAT
     # the directive goes right before his message
-    assert CHAT.index('lang_guard.DIRECTIVE') < CHAT.index('messages.append({"role": "user", "content": user_text})')
+    assert CHAT.index('lang_guard.directive(lang)') < CHAT.index('messages.append({"role": "user", "content": user_text})')
 
 
 def test_girl_picker_after_consent_with_fallback():

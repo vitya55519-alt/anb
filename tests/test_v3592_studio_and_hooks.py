@@ -27,7 +27,7 @@ def test_welcome_selfie_follows_the_hello():
 
 def test_chat_openers():
     assert 'if (mine < 4) renderChatHints();' in INDEX
-    assert INDEX.count('chat_hints:') == 2
+    assert INDEX.count('chat_hints:') == 3  # en, ru, bn (V3.117.0)
     send = INDEX[INDEX.index('async function sendChat('):]
     assert "const hints = document.getElementById('chatHints'); if (hints) hints.remove();" in send[:800]
 

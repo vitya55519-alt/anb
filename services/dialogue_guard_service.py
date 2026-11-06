@@ -167,13 +167,15 @@ def polish_first_message(text: str, recent_bot_texts) -> str:
 
 # V3.64.8: a message cut on the token cap («Надела сегодня тот») or one that
 # came back as a stray English word («perspective,») must never be sent.
-_SENTENCE_END = re.compile(r'[.!?…)]|[\U0001F300-\U0001FAFF☀-➿]')
+_SENTENCE_END = re.compile(r'[.!?…)।。！？]|[\U0001F300-\U0001FAFF☀-➿]')
 
 
 def finish_or_drop(text: str, complete: bool = True, lang: str = 'ru') -> str:
     """Cut an unfinished message back to its last whole sentence; '' if none."""
     text = (text or '').strip()
-    if not re.search(r'[a-z]{3}' if lang == 'en' else r'[а-яё]{3}', text, re.I):
+    # V3.117.0: Bengali, Japanese, Spanish… — any letters count there
+    _letters = {'en': r'[a-z]{3}', 'ru': r'[а-яё]{3}'}.get(lang, r'[^\W\d_]{2}')
+    if not re.search(_letters, text, re.I):
         return ''
     if complete:
         return text
