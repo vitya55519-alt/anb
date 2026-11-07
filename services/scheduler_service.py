@@ -1262,7 +1262,8 @@ async def _channel_bonus_holds(bot):
             continue
         try:
             await bot.send_message(tid, f'🍑 Ты с нами уже {cbs.CHANNEL_BONUS_HOLD_DAYS} дня — спасибо, что остался в канале! '
-                                        f'+{CHANNEL_SUBSCRIBE_BONUS_CREDITS} персиков уже на балансе 😘')
+                                        f'+{CHANNEL_SUBSCRIBE_BONUS_CREDITS} бонусных персиков уже на балансе 😘 '
+                                        'Ими можно платить за гардероб, свидания и подарки.')
         except TelegramForbiddenError:
             _mark_blocked_tg(tid)
         except Exception:

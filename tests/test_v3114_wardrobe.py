@@ -22,7 +22,7 @@ def test_catalog_prices_cover_the_try_on_render():
     from config import CHAT_PHOTO_PEACH_COST
     assert len({i.id for i in wd.ITEMS}) == len(wd.ITEMS)
     for i in wd.ITEMS:
-        assert i.price > CHAT_PHOTO_PEACH_COST, i.id
+        assert i.price >= CHAT_PHOTO_PEACH_COST, i.id  # V3.123.0: photo now 300, hoodie 300
         assert len(i.prompt) <= 200, i.id  # one short WARDROBE value, SpicyAPI 5000 cap stays safe
     assert wd.get('kitten').price == 2500 and wd.get('hoodie').price == 300
 

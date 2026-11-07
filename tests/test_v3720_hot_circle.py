@@ -84,8 +84,8 @@ def test_endpoint_gates_and_charges_after_success():
     assert "if kind == 'hotcircle':" in block
     assert 'is_custom_character(character_id)' in block
     assert "'error': 'adult_confirm'" in block
-    assert 'get_photo_credits(telegram_id) < HOT_CIRCLE_PEACH_COST' in block
-    assert 'spend_peaches(telegram_id, HOT_CIRCLE_PEACH_COST)' in block[block.index('def _finish():'):]
+    assert 'get_paid_peaches(telegram_id) < HOT_CIRCLE_PEACH_COST' in block
+    assert 'spend_peaches(telegram_id, HOT_CIRCLE_PEACH_COST, paid_only=True)' in block[block.index('def _finish():'):]
     assert "payload['circle_offer'] = offer" in MAIN
     assert 'data-cmedia="hotcircle"' in INDEX
     # V3.73.0: one tap from the «✨ Возможности» sheet

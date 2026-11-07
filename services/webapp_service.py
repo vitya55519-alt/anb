@@ -387,7 +387,10 @@ def api_me(telegram_id: int) -> dict:
         # when this is true (the server re-checks on every admin API call).
         'admin': _is_admin(telegram_id),
         'streak': (user.streak_count or 0) if user else 0,
-        'photo_credits': (user.photo_credits or 0) if user else 0,
+        # V3.123.0: total balance + the two wallets (bought / bonus).
+        'photo_credits': ((user.photo_credits or 0) + (user.bonus_peaches or 0)) if user else 0,
+        'paid_peaches': (user.photo_credits or 0) if user else 0,
+        'bonus_peaches': (user.bonus_peaches or 0) if user else 0,
         # V3.43.5: the in-app Settings toggle shows the live flag (Premium is
         # already in this payload — enabling re-checks it server-side).
         'spicy_mode': bool(getattr(user, 'spicy_mode', False)) if user else False,

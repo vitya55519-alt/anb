@@ -1241,6 +1241,7 @@
   <!-- V3.46.0: missions funnel — a dedicated roadmap tab with per-mission CTAs -->
   <section class="tab" id="tab-missions">
     <h2 id="l_missions_title">Миссии</h2>
+    <div id="missionsBonusNote" class="sub" style="opacity:.75;font-size:13px;margin:-4px 0 10px">🎁 За миссии, канал и друзей начисляются бонусные персики. Ими можно платить за гардероб, свидания и подарки. Фото и видео только за купленные персики.</div>
     <div id="missionsbody"><div class="loading">…</div></div>
   </section>
   <!-- V3.85.0: owner — the partner program is its own bottom tab now
@@ -1729,7 +1730,7 @@ const L_EN = {
   chan_pending: n => `Subscribed ✅ The peaches arrive in ${n} d. if you stay in the channel`,
   chan_warn: '⚠️ The bonus is revoked if you unsubscribe',
   chan_go: 'To the channel', chan_check: 'Check subscription',
-  chan_ok: b => `+${b} 🍑 added!`, chan_already: 'Bonus already received ✅',
+  chan_ok: b => `+${b} bonus 🍑 added! They go to outfits, dates and gifts`, chan_already: 'Bonus already received ✅',
   chan_not: 'You are not subscribed to the channel yet',
   chan_revoked: 'Bonus revoked — you are no longer subscribed',
   chan_check_fail: 'Could not check the subscription — try again later',
@@ -1754,6 +1755,9 @@ const L_EN = {
   limit_reached: 'Daily free-message limit reached. Premium lifts it ⭐',
   qb_limit: 'She is falling asleep till tomorrow 😴 wake her up',
   qb_peaches: 'Not enough peaches 🍑',
+  bonus_word: 'bonus 🍑 · for outfits, dates, gifts',
+  bonus_note: n => 'Your ' + n + ' bonus 🍑 go to outfits, dates and gifts. Photos and videos take bought peaches.',
+  wallet_paid: 'Bought peaches', wallet_bonus: 'Bonus peaches', wallet_hint: 'Bonus 🍑 (missions, channel, friends) go to outfits, dates and gifts. Photos and videos take bought peaches.',
   qb_voice: 'Her voice is a Premium perk 🎙 hear how she says it',
   qb_spicy: 'Her most private photos are for Premium 🔥 she is ready to show you',
   spicy_btn: '🔥 Unlock with Premium',
@@ -1997,7 +2001,7 @@ const L_RU = {
   chan_pending: n => `Подписка есть ✅ Персики придут через ${n} дн., если останешься в канале`,
   chan_warn: '⚠️ При отписке бонус аннулируется',
   chan_go: 'В канал', chan_check: 'Проверить подписку',
-  chan_ok: b => `+${b} 🍑 начислено!`, chan_already: 'Бонус уже получен ✅',
+  chan_ok: b => `+${b} бонусных 🍑 начислено! Они идут на гардероб, свидания и подарки`, chan_already: 'Бонус уже получен ✅',
   chan_not: 'Ты пока не подписан на канал',
   chan_revoked: 'Бонус аннулирован — ты отписался от канала',
   chan_check_fail: 'Не удалось проверить подписку — попробуй позже',
@@ -2022,6 +2026,9 @@ const L_RU = {
   limit_reached: 'Дневной лимит бесплатных сообщений. Premium снимает лимит ⭐',
   qb_limit: 'Она засыпает до завтра 😴 разбуди её',
   qb_peaches: 'Не хватает персиков 🍑',
+  bonus_word: 'бонусных 🍑 · на гардероб, свидания, подарки',
+  bonus_note: n => 'Твои ' + n + ' бонусных 🍑 идут на гардероб, свидания и подарки. Фото и видео за купленные персики.',
+  wallet_paid: 'Купленные персики', wallet_bonus: 'Бонусные персики', wallet_hint: 'Бонусные 🍑 (задания, канал, друзья) идут на гардероб, свидания и подарки. Фото и видео за купленные.',
   qb_voice: 'Её голос — с Premium 🎙 услышь, как она это говорит',
   qb_spicy: 'Самые откровенные фото — с Premium 🔥 она уже готова тебе показать',
   spicy_btn: '🔥 Открыть с Premium',
@@ -2529,6 +2536,7 @@ const L = LANG === 'ru' ? L_RU : Object.assign({}, L_EN, (L_OV[LANG] || {}));
 document.getElementById('l_chars_title').textContent = L.chars_title;
 document.getElementById('l_shop_title').textContent = L.shop_title;
 document.getElementById('l_missions_title').textContent = L.missions_title;
+if (document.getElementById('missionsBonusNote')) document.getElementById('missionsBonusNote').textContent = L.wallet_hint;
 document.getElementById('l_chats_title2').textContent = L.chats_title;
 document.getElementById('l_pic_title').textContent = L.pic_title;
 document.getElementById('l_partner_ov').textContent = L.partner_title;
@@ -2900,7 +2908,7 @@ async function startScenario(key) {
     const c = (j.characters || []).find(x => x.id === j.character_id);
     if (!c) return;
     await openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: !!c.custom, selected: true });
-    if (j.bonus) toast('🎁 +' + j.bonus + '🍑');
+    if (j.bonus) toast('🎁 +' + j.bonus + ' ' + L.bonus_word);
     if (j.enter && CHAT && CHAT.id === c.id) {
       document.getElementById('chatText').value = j.enter;
       sendChat();
@@ -6121,7 +6129,7 @@ async function claimDailyGift() {
   try {
     const r = await fetch('/webapp/api/gift/claim?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
     const j = await r.json().catch(() => ({}));
-    if (j.ok) { toast('🎁 +' + j.amount + ' 🍑'); _applyGiftState(j); }
+    if (j.ok) { toast('🎁 +' + j.amount + ' ' + L.bonus_word); _applyGiftState(j); }
     else if (j.error === 'duplicate') { toast(L.gift_taken); _applyGiftState(j); }
     else if (j.error === 'capped') { toast(L.gift_capped); }
     else if (j.error === 'consent' || j.error === 'auth') { toast(L.promo_err_consent); }
@@ -6230,7 +6238,10 @@ async function quickBuy(kind, retry, opts) {
   items.forEach(x => rows.push(`<button class="mrow" data-q="${esc(x.id)}"><span class="ico">${esc(x.emoji || '⭐')}</span><span class="nm">${esc(x.title)}${x.badge ? ' · ' + esc(x.badge) : ''}${x.description ? '<small class="qbd">' + esc(x.description) + '</small>' : ''}</span><span class="pr">${esc(money(x))}</span></button>`));
   rows.push(`<button class="mrow" data-q="__shop"><span class="ico">🛍</span><span class="nm">${esc(L.qb_more)}</span><span class="pr"></span></button>`);
   document.getElementById('payRows').innerHTML = rows.join('');
-  document.getElementById('payNote').textContent = L.pay_once || '';
+  // V3.123.0: bonus peaches never pay for renders — say so instead of a silent «не хватает».
+  const bonusNote = (kind !== 'month' && kind !== 'limit' && kind !== 'voice' && kind !== 'spicy'
+    && ME && Number(ME.bonus_peaches || 0) > 0) ? L.bonus_note(ME.bonus_peaches) + ' ' : '';
+  document.getElementById('payNote').textContent = bonusNote + (L.pay_once || '');
   document.querySelectorAll('#payRows [data-q]').forEach(b => b.addEventListener('click', async () => {
     const id = b.dataset.q;
     document.getElementById('paymodal').classList.remove('open');
@@ -6620,7 +6631,9 @@ function renderProfileBody() {
          — зачем это в профиле?». Levels live per girl in her chat; author
          earnings live in the creator cabinet. -->
     <div class="stat"><span class="k">🔥 ${esc(L.streak)}</span><span class="v">${esc(m.streak)}</span></div>
-    <div class="stat"><span class="k">🍑 ${esc(L.paid_credit)}</span><span class="v">${esc(m.photo_credits)}</span></div>
+    <div class="stat"><span class="k">🍑 ${esc(L.wallet_paid)}</span><span class="v">${esc(m.paid_peaches != null ? m.paid_peaches : m.photo_credits)}</span></div>
+    <div class="stat"><span class="k">🎁 ${esc(L.wallet_bonus)}</span><span class="v">${esc(m.bonus_peaches || 0)}</span></div>
+    <div class="sub" style="padding:0 4px 8px;opacity:.7;font-size:12px">${esc(L.wallet_hint)}</div>
     <button class="cta" id="profileCreate">${esc(L.create_char)}</button>
     <div class="menurow" id="menuCreator"><span>${esc(L.creator_row)}</span><span class="arr">›</span></div>
     <div class="menurow" id="menuAch"><span>${esc(L.achievements_row)}</span><span class="arr">›</span></div>
@@ -7267,8 +7280,8 @@ async function claimMission(key, btn) {
     });
     const j = await r.json().catch(() => ({}));
     if (j.ok) {
-      toast('🍑 +' + j.amount);
-      if (ME && typeof j.balance === 'number') { ME.photo_credits = j.balance; _giftChip(); }
+      toast('🎁 +' + j.amount + ' ' + L.bonus_word);
+      if (ME && typeof j.balance === 'number') { ME.photo_credits = j.balance; ME.bonus_peaches = Number(ME.bonus_peaches || 0) + Number(j.amount || 0); _giftChip(); }
     } else if (j.error !== 'claimed') { toast(L.invoice_err); }
   } catch (e) { toast(L.invoice_err); }
   _misClaimBusy = false;

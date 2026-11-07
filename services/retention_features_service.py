@@ -1778,7 +1778,7 @@ ACHIEVEMENTS = {
         'description': 'Собери 10 фото',
         'reward_stars': 30,
         # V3.65.0: 10 old peaches = 1000 after the ×100 rescale.
-        'check': lambda user, state: (user.photo_credits or 0) >= 1000,
+        'check': lambda user, state: ((user.photo_credits or 0) + (user.bonus_peaches or 0)) >= 1000,
     },
     'level_5': {
         'name': 'Близкие отношения',

@@ -53,6 +53,7 @@ def _set_balance(telegram_id: int, value: int):
     with SessionLocal() as s:
         u = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
         u.photo_credits = value
+        u.bonus_peaches = 0  # V3.123.0: one wallet set, the other emptied
         s.commit()
 
 

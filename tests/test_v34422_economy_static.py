@@ -74,10 +74,10 @@ def test_chat_photo_guard_matches_its_one_credit_charge():
     # demand the studio's whole price and block users who could pay the charge
     start = MAIN.index("if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS")
     media = MAIN[start:start + 700]
-    assert 'get_photo_credits(telegram_id) < PEACH_SCALE:' in media
+    assert 'get_paid_peaches(telegram_id) < PEACH_SCALE:' in media
     assert 'WEBAPP_PICTURE_COST_CREDITS' not in media
     # the STUDIO guard keeps charging the full studio price
-    assert 'get_photo_credits(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS' in MAIN
+    assert 'get_paid_peaches(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS' in MAIN
 
 
 # ── 3. constructor: V3.45.28 — every creation costs 20 🍑 (only admins free) ─

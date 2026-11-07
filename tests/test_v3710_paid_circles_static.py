@@ -18,7 +18,7 @@ def test_price_is_700_peaches():
 def test_bot_circle_charges_and_refunds_peaches():
     gate = MAIN[MAIN.index("@dp.callback_query(F.data == 'video:circle')"):MAIN.index('async def _run_circle_background(')]
     assert 'not is_premium(' not in gate
-    assert 'spend_peaches(cq.from_user.id, CIRCLE_PEACH_COST)' in gate
+    assert 'spend_peaches(cq.from_user.id, CIRCLE_PEACH_COST, paid_only=True)' in gate
     assert 'peaches_keyboard(cq.from_user.id)' in gate
     job = MAIN[MAIN.index('async def _run_circle_background('):]
     job = job[:job.index('\n\n\n')]
@@ -31,7 +31,7 @@ def test_app_circle_charges_only_after_success():
     gate = block[:block.index('gated = await asyncio.to_thread(_gate)')]
     finish = block[block.index('def _finish():'):]
     assert "'error': 'circle_limit'" not in gate
-    assert "kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, CIRCLE_PEACH_COST)" in finish
+    assert "kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, CIRCLE_PEACH_COST, paid_only=True)" in finish
 
 
 def test_shop_and_premium_copy():
