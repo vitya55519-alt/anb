@@ -78,6 +78,7 @@ from config import PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIA
 from services.payments import trial_eligible  # V3.88.0
 from services.payments import record_payment, get_photo_credits, get_paid_peaches, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, has_monthly_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
 from services.bot_description import apply_bot_descriptions
+from services import seo_landing
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
     referral_user_lock, pending_referral, remember_referral, referral_leaderboard, referral_rank,
@@ -11688,13 +11689,35 @@ async def _platega_check(request: web.Request) -> web.Response:
 
 
 async def _root(request: web.Request) -> web.Response:
-    # V3.19.10: plain liveness page for the bare Railway domain. Without it the
-    # public URL showed aiohttp's default "404: Not Found" and looked like a
-    # broken deploy; only /healthz and the FreeKassa routes existed.
-    return web.Response(
-        text='AnnaBot web endpoint is alive. Health check: /healthz',
-        content_type='text/plain',
-    )
+    # V3.19.10: the bare Railway domain used to show aiohttp's 404.
+    # V3.126.0: it is now the search landing (services/seo_landing.py) so
+    # Yandex/Google can rank «ии девушка» pages; liveness stays on /healthz.
+    return await _seo_page(request)
+
+
+async def _seo_page(request: web.Request) -> web.Response:
+    page = seo_landing.PAGES_BY_PATH.get(request.path.rstrip('/') or '/')
+    if page is None:
+        raise web.HTTPNotFound()
+    from config import BOT_USERNAME
+    body = seo_landing.render_page(page, bot_username=BOT_USERNAME or 'Anna67901_bot',
+                                   base_url=PUBLIC_BASE_URL)
+    return web.Response(text=body, content_type='text/html', charset='utf-8',
+                        headers={'Cache-Control': 'public, max-age=3600'})
+
+
+async def _seo_robots(request: web.Request) -> web.Response:
+    return web.Response(text=seo_landing.robots_txt(PUBLIC_BASE_URL), content_type='text/plain')
+
+
+async def _seo_sitemap(request: web.Request) -> web.Response:
+    return web.Response(text=seo_landing.sitemap_xml(PUBLIC_BASE_URL), content_type='application/xml')
+
+
+async def _seo_banner(request: web.Request) -> web.StreamResponse:
+    if not WELCOME_BANNER_PATH.exists():
+        raise web.HTTPNotFound()
+    return web.FileResponse(WELCOME_BANNER_PATH, headers={'Cache-Control': 'public, max-age=86400'})
 
 
 # ---------------------------------------------------------------------------
@@ -17140,6 +17163,12 @@ async def _start_web_server() -> None:
     # V3.56.6: gzip every JSON/text API response the app fetches on boot.
     app.middlewares.append(_webapp_gzip)
     app.router.add_get('/', _root)
+    for _seo in seo_landing.PAGES:
+        if _seo.path != '/':
+            app.router.add_get(_seo.path, _seo_page)
+    app.router.add_get('/robots.txt', _seo_robots)
+    app.router.add_get('/sitemap.xml', _seo_sitemap)
+    app.router.add_get(seo_landing.BANNER_PATH, _seo_banner)
     app.router.add_route('*', '/platega/callback', _platega_callback)
     # Success/fail are browser redirects off the payment page; keep '*' so
     # they answer whether the provider sends GET or POST.
@@ -17473,7 +17502,27 @@ BOT_PROFILE = {
 }
 
 
+async def _apply_bot_name_overrides() -> None:
+    # V3.126.0: BotFather /setname only edits the default name, while a name
+    # stored per language (ru/en) wins for users with that app language. Log
+    # what Telegram has for '', ru and en, and write BOT_NAME_DEFAULT /
+    # BOT_NAME_RU / BOT_NAME_EN when set (only if they differ: setMyName is
+    # rate-limited). An empty-string value is not written; unset vars do nothing.
+    for code, var in (('', 'BOT_NAME_DEFAULT'), ('ru', 'BOT_NAME_RU'), ('en', 'BOT_NAME_EN')):
+        try:
+            cur = (await bot.get_my_name(language_code=code)).name or ''
+            want = os.getenv(var, '').strip()[:64]
+            if want and want != cur:
+                await bot.set_my_name(name=want, language_code=code)
+                logger.info('bot name lang=%s set %r -> %r', code or 'default', cur, want)
+            else:
+                logger.info('bot name lang=%s is %r', code or 'default', cur)
+        except Exception:
+            logger.exception('bot name check failed lang=%s', code or 'default')
+
+
 async def _apply_bot_profile() -> None:
+    await _apply_bot_name_overrides()
     # V3.118.0: off by default — the owner edits name/description in BotFather
     # and every deploy used to overwrite them. BOT_PROFILE_ENABLED=1 turns it on.
     if os.getenv('BOT_PROFILE_ENABLED', '0') != '1':
