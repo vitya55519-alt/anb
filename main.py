@@ -1342,7 +1342,7 @@ def _sleep_block_markup(telegram_id: int) -> InlineKeyboardMarkup:
         if trial_eligible(telegram_id):
             trial_fiat = fiat_suffix(PREMIUM_TRIAL_STARS, rub=PLATEGA_PREMIUM_TRIAL_PRICE_RUB, rub_enabled=PLATEGA_ENABLED)
             rows.append([InlineKeyboardButton(
-                text=f'🔥 {PREMIUM_TRIAL_DAYS} дня без лимитов — {PREMIUM_TRIAL_STARS} Stars{trial_fiat}',
+                text=f'🔥 {PREMIUM_TRIAL_DAYS} дня Premium — {PREMIUM_TRIAL_STARS} Stars{trial_fiat}',
                 callback_data='buy:premium_trial')])
             if PLATEGA_ENABLED and is_button_enabled('platega_rub'):
                 rows.append([_platega_pay_button(
@@ -1365,6 +1365,18 @@ async def _sleep_block_reply(message: types.Message) -> None:
     spent, the one-time 24h discount window opens."""
     from services.retention_service import pick_text, has_used_demo, offer_discount
     uid = ensure_user(message.from_user.id, message.from_user.first_name)
+    if is_premium(message.from_user.id):
+        # V3.124.0: a trial man used his trial messages — offer the full plans.
+        track_event(uid, 'trial_cap_messages', metadata={'source': 'bot'})
+        from services import trial_caps
+        if user_lang(message.from_user.id) == EN:
+            text = (f'mm, the {trial_caps.TRIAL_MESSAGES} trial messages are over 🥺 '
+                    'stay with me on full Premium: unlimited chat, voice, calls every day')
+        else:
+            text = (f'ммм, {trial_caps.TRIAL_MESSAGES} сообщений пробного закончились 🥺 '
+                    'останься со мной в полном Premium: общение без лимита, голос и звонки каждый день')
+        await message.answer(text, reply_markup=premium_keyboard(telegram_id=message.from_user.id))
+        return
     if has_used_demo(message.from_user.id):
         offer_discount(message.from_user.id)
     track_event(uid, 'chat_sleep_block')
@@ -1780,7 +1792,7 @@ def _track_proactive_reply_if_any(telegram_id: int, uid: int):
 _EN_INVOICE = {
     # V3.111.0: the Stars invoice is what an EN user sees last before paying —
     # it was Russian («Premium на 3 дня — пробный»).
-    'premium_trial': lambda: ('Premium trial', f'{PREMIUM_TRIAL_DAYS} days of Premium: no limits, voice, photos'),
+    'premium_trial': lambda: ('Premium trial', f'{PREMIUM_TRIAL_DAYS} days of Premium: explicit chat, photos, voice, a call'),
     'premium_week': lambda: ('Premium', '7 days of Premium: no limits, voice, photos'),
     'premium_month': lambda: ('Premium', '30 days of Premium: no limits, voice, photos'),
     'premium_month_discount': lambda: ('Premium', '30 days of Premium at a one-time discount'),
@@ -7715,9 +7727,9 @@ async def successful_payment(message: types.Message):
         record_payment(message.from_user.id, 'premium_trial', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_trial'})
         if user_lang(message.from_user.id) == EN:
-            await message.answer(f'done ✨ Premium is on for {PREMIUM_TRIAL_DAYS} days — everything is open now: my most private photos, «Undress», voice and unlimited chat 🔥')
+            await message.answer(f'done ✨ trial Premium is on for {PREMIUM_TRIAL_DAYS} days — my most private photos, «Undress», voice and a call with me 🔥')
         else:
-            await message.answer(f'готово ✨ Premium включён на {PREMIUM_TRIAL_DAYS} дня — теперь тебе открыто всё: мои самые откровенные фото, «Раздеть», голос и общение без лимита 🔥')
+            await message.answer(f'готово ✨ пробный Premium включён на {PREMIUM_TRIAL_DAYS} дня — мои самые откровенные фото, «Раздеть», голос и звонок со мной 🔥')
         return
 
     if payload == 'premium_week':
@@ -8671,12 +8683,32 @@ def _bubble_pause(part: str) -> float:
     return min(3.5, 0.9 + len(part) / 45)
 
 
+def _on_trial(telegram_id: int) -> bool:
+    if telegram_id in ADMIN_TELEGRAM_IDS:
+        return False
+    try:
+        from services import trial_caps
+        return trial_caps.window_start(telegram_id) is not None
+    except Exception:
+        return False
+
+
+def _trial_voice_ok(telegram_id: int) -> bool:
+    """V3.124.0: on the trial her voice notes are counted (TRIAL_VOICE)."""
+    try:
+        from services import trial_caps
+        return trial_caps.take_voice(telegram_id)
+    except Exception:
+        return True
+
+
 async def send_answer(message: types.Message, text: str):
     user = get_user(message.from_user.id)
     # V3.55.1: voice replies are a Premium perk (owner decision — the shop
     # card line «голосовые ответы» becomes literally true). Non-premium keeps
     # the toggle, gets text, and the once-a-day nudge at the bottom.
-    if user and user.voice_enabled and (is_premium(message.from_user.id) or message.from_user.id in ADMIN_TELEGRAM_IDS):
+    if user and user.voice_enabled and (is_premium(message.from_user.id) or message.from_user.id in ADMIN_TELEGRAM_IDS) \
+            and (message.from_user.id in ADMIN_TELEGRAM_IDS or _trial_voice_ok(message.from_user.id)):
         try:
             character_id = get_user_character(message.from_user.id)
             audio = await synthesize_bytes(text, user.voice_style, character_id=character_id)
@@ -13277,6 +13309,11 @@ def _webapp_chat_gate(character_id: str, telegram_id: int):
     if not has_accepted(telegram_id):
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
     if telegram_id not in ADMIN_TELEGRAM_IDS and not can_send_message(telegram_id):
+        if is_premium(telegram_id):
+            # V3.124.0: the trial's message total is spent — the full plans, no demo.
+            track_event(ensure_user(telegram_id), 'trial_cap_messages', metadata={'source': 'webapp'})
+            return web.json_response({'ok': False, 'error': 'limit', 'demo': False, 'vip': False,
+                                      'trial': True}, status=429)
         # V3.62.10: the app limit used to be a bare toast — tell the sheet
         # whether the free demo is still there, like the bot's sleep block.
         from services.retention_service import has_used_demo, offer_discount
@@ -13317,7 +13354,11 @@ async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str
             if not user:
                 return None
             if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
-                return (user.voice_style or 'nova') if getattr(user, 'voice_enabled', False) else None
+                if not getattr(user, 'voice_enabled', False):
+                    return None
+                if telegram_id not in ADMIN_TELEGRAM_IDS and not _trial_voice_ok(telegram_id):
+                    return None
+                return user.voice_style or 'nova'
             # V3.106.0: without Premium — her first replies come as voice on
             # their own (services/voice_taste.py), then a quiet «слышать всегда».
             from services import voice_taste
@@ -13995,8 +14036,11 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
         from config import SPEAK_FREE_PER_DAY
         user = get_user(telegram_id)
         style = (user.voice_style if user else None) or 'nova'
-        if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
+        if telegram_id in ADMIN_TELEGRAM_IDS:
             return style, None
+        if is_premium(telegram_id):
+            # V3.124.0: the trial's voice total covers «🔊 Озвучить» too.
+            return (style, None) if _trial_voice_ok(telegram_id) else (None, 0)
         uid = ensure_user(telegram_id)
         left = SPEAK_FREE_PER_DAY - chat_photo_allowance.count_today(uid, 'speak_free')
         if left > 0:
@@ -14126,6 +14170,8 @@ async def _webapp_api_call_info(request: web.Request) -> web.Response:
         'ok': True, 'mode': mode, 'seconds_left': left, 'admin': telegram_id in ADMIN_TELEGRAM_IDS,
         'premium_minutes': voice_call.PREMIUM_SECONDS_PER_DAY // 60,
         'free_minutes': round(voice_call.FREE_SECONDS_PER_DAY / 60, 1),
+        # V3.124.0: the trial's call minutes are a total, not daily.
+        'trial': mode == 'premium' and await asyncio.to_thread(_on_trial, telegram_id),
     }, headers={'Cache-Control': 'no-store'})
 
 
@@ -15382,6 +15428,19 @@ def _undress_premium_free(telegram_id: int, character_id: str) -> int:
     return UNDRESS_PREMIUM_FREE_L3_6 if level >= 3 else UNDRESS_PREMIUM_FREE_L1_2
 
 
+def _undress_allowance(uid: int, telegram_id: int, character_id: str, used_today: int) -> int:
+    """V3.124.0: the daily Premium allowance, capped by the trial total."""
+    allow = _undress_premium_free(telegram_id, character_id)
+    try:
+        from services import trial_caps
+        trial = trial_caps.undress_allowance_today(uid, used_today)
+        if trial is not None:
+            allow = min(allow, trial)
+    except Exception:
+        pass
+    return allow
+
+
 # The gentlest reveal — the last try when the engine refused the first pick.
 UNDRESS_SAFE_VARIANT = UNDRESS_VARIANTS_LINGERIE[3]
 
@@ -15524,7 +15583,8 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         # peach route for non-Premium users: the button sells Premium.
         if not is_premium(telegram_id):
             return uid, ('premium_required', 403), None
-        if count_today(uid, 'undress_free') < _undress_premium_free(telegram_id, character_id):
+        _used_today = count_today(uid, 'undress_free')
+        if _used_today < _undress_allowance(uid, telegram_id, character_id, _used_today):
             return uid, None, 'free'
         if get_paid_peaches(telegram_id) < UNDRESS_PEACH_COST:
             return uid, ('credits', 402), None

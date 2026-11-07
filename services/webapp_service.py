@@ -34,6 +34,7 @@ from urllib.parse import parse_qsl
 
 from sqlalchemy import func, select
 
+from services import trial_caps as _TC  # V3.124.0
 from config import (
     MARITAL_CHANGE_PEACHES,
     CHARACTER_ID,
@@ -746,9 +747,12 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'title': (f'Premium · {PREMIUM_TRIAL_DAYS} дня — попробовать' if not en
                       else f'Premium · {PREMIUM_TRIAL_DAYS} days trial'),
             'description': (
-                'всё откровенное открыто: фото в белье и без, «Раздеть», «Наедине», голос, без лимита'
+                # V3.124.0: the trial is capped — say what is inside.
+                f'всё откровенное открыто: {_TC.TRIAL_MESSAGES} сообщений, {_TC.TRIAL_PHOTOS} фото, '
+                f'{_TC.TRIAL_UNDRESS} «Раздеть», {max(1, _TC.TRIAL_CALL_SECONDS // 60)} мин звонка, {_TC.TRIAL_VOICE} голосовых'
                 if not en else
-                'everything explicit unlocked: lingerie & nude photos, «Undress», private shots, voice, unlimited'
+                f'everything explicit unlocked: {_TC.TRIAL_MESSAGES} messages, {_TC.TRIAL_PHOTOS} photos, '
+                f'{_TC.TRIAL_UNDRESS} «Undress», {max(1, _TC.TRIAL_CALL_SECONDS // 60)} call min, {_TC.TRIAL_VOICE} voice notes'
             ),
             'tagline': ('разовая цена для первой покупки' if not en else 'one-time first-purchase price'),
             'badge': ('пробный' if not en else 'trial'),

@@ -43,7 +43,14 @@ def daily_free_photos(premium: bool) -> int:
 
 def free_chat_photos_left(uid: int, premium: bool = False) -> int:
     try:
-        return max(0, daily_free_photos(premium) - free_chat_photos_used(uid))
+        daily = max(0, daily_free_photos(premium) - free_chat_photos_used(uid))
+        if premium:
+            # V3.124.0: a trial gets TRIAL_PHOTOS for the whole trial, not per day.
+            from services import trial_caps
+            total = trial_caps.photos_left(uid, EVENT)
+            if total is not None:
+                return min(daily, total)
+        return daily
     except Exception:
         return 0
 

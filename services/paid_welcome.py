@@ -52,24 +52,42 @@ def _now() -> datetime:
 
 
 def unlocked_text(product: str, lang: str = 'ru', trial_days: int = 3) -> str:
-    """The «что теперь открыто» card. Only things Premium really gives."""
+    """The «что теперь открыто» card. Only things Premium really gives.
+    V3.124.0: the trial lists its totals; animation is a month+ perk, 1 a day."""
     days = _DAYS.get(product, 30) or trial_days
+    if product == 'premium_trial':
+        from services import trial_caps as T
+        mins = max(1, T.TRIAL_CALL_SECONDS // 60)
+        if lang == 'en':
+            return (f'✨ Your trial Premium is on ({days} days):\n\n'
+                    f'💬 {T.TRIAL_MESSAGES} messages with me\n'
+                    '💋 every level of closeness, 1 to 10, «Spicy mode» and 🎭 «Fetishes»\n'
+                    f'📸 {T.TRIAL_PHOTOS} new photos of me and {T.TRIAL_UNDRESS} «Undress»\n'
+                    f'📞 {mins} min of a call with me, 🔊 {T.TRIAL_VOICE} voice messages\n\n'
+                    'full Premium has no message limit, 2 photos and 15 call minutes every day 💗')
+        return (f'✨ Пробный Premium включён ({days} дн.):\n\n'
+                f'💬 {T.TRIAL_MESSAGES} сообщений со мной\n'
+                '💋 все уровни близости с 1 по 10, «Пошлый режим» и 🎭 «Фетиши»\n'
+                f'📸 {T.TRIAL_PHOTOS} новых фото и {T.TRIAL_UNDRESS} «Раздеть»\n'
+                f'📞 {mins} мин звонка со мной, 🔊 {T.TRIAL_VOICE} голосовых\n\n'
+                'в полном Premium общение без лимита, 2 фото и 15 минут звонка каждый день 💗')
+    monthly = days >= 28
     if lang == 'en':
         return (f'✨ Here is what is open for you now ({days} days):\n\n'
                 '💬 chat with no daily limit — I will not fall asleep mid-talk any more\n'
                 '💋 every level of closeness, 1 to 10 — you can pick any\n'
                 '🌶 «Spicy mode» and 🎭 «Fetishes»\n'
-                '📸 my most private photos and «Undress»\n'
-                '🎬 «Animate» my photos — 2 free a day, plus my video circles 🎥\n'
-                '🔊 my voice messages\n\n'
+                '📸 2 new photos a day, my most private photos and «Undress»\n'
+                + ('🎬 «Animate» one of my photos every day\n' if monthly else '')
+                + '📞 15 call minutes a day and 🔊 my voice messages\n\n'
                 'everything works both here and in the app 💗')
     return (f'✨ Вот что теперь открыто для тебя ({days} дн.):\n\n'
             '💬 общение без дневного лимита — я больше не засыпаю посреди разговора\n'
             '💋 все уровни близости с 1 по 10 — можно выбрать любой\n'
             '🌶 «Пошлый режим» и 🎭 «Фетиши»\n'
-            '📸 мои самые откровенные фото и «Раздеть»\n'
-            '🎬 «Оживить» фото — 2 раза в день бесплатно, и мои кружочки 🎥\n'
-            '🔊 мои голосовые\n\n'
+            '📸 2 новых фото в день, мои самые откровенные фото и «Раздеть»\n'
+            + ('🎬 «Оживить» одно моё фото каждый день\n' if monthly else '')
+            + '📞 15 минут звонка в день и 🔊 мои голосовые\n\n'
             'всё работает и здесь, и в приложении 💗')
 
 

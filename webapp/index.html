@@ -1649,7 +1649,7 @@ const LANG = APP_LANGS.includes(_savedLang) ? _savedLang
   : (_tgLang.startsWith('ru') ? 'ru' : (APP_LANGS.find(x => _tgLang.startsWith(x)) || 'en'));
 
 const L_EN = {
-  call_btn: 'Call', call_connecting: 'Calling…', call_listen: 'Listening…', call_think: 'Thinking…', call_talk: 'Speaking…', call_ready: 'Connected', call_end: 'Hang up', call_mute: 'Mic', call_skip: 'Interrupt', call_mode_prem: '👑 Premium call · 18+', call_mode_live: '⚡ Live call', call_fail: 'Could not get through — try again', call_limit_prem: 'Call minutes for today are used up, tomorrow 15 minutes again 💛', call_up_h: 'Want to talk more? 📞', call_up_tx: 'Free: {m} min of live call a day, nothing explicit. With Premium: {p} minutes a day, and the call can go anywhere the chat can, 18+.', call_up_go: '👑 Open Premium', call_up_no: 'Later', call_bye: 'Call ended', call_nospeech: 'Didn\'t catch that — say it again', call_left: 'left',
+  call_btn: 'Call', call_connecting: 'Calling…', call_listen: 'Listening…', call_think: 'Thinking…', call_talk: 'Speaking…', call_ready: 'Connected', call_end: 'Hang up', call_mute: 'Mic', call_skip: 'Interrupt', call_mode_prem: '👑 Premium call · 18+', call_mode_live: '⚡ Live call', call_fail: 'Could not get through — try again', call_limit_prem: 'Call minutes for today are used up, tomorrow 15 minutes again 💛', call_limit_trial: 'The trial call minutes are used up. Full Premium gives 15 minutes every day 💛', trial_msgs_over: 'Trial messages are over — continue with full Premium 💛', call_up_h: 'Want to talk more? 📞', call_up_tx: 'Free: {m} min of live call a day, nothing explicit. With Premium: {p} minutes a day, and the call can go anywhere the chat can, 18+.', call_up_go: '👑 Open Premium', call_up_no: 'Later', call_bye: 'Call ended', call_nospeech: 'Didn\'t catch that — say it again', call_left: 'left',
   chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', fork_romance: '❤️ I really like you', fork_passion: '🔥 I don\'t think of you as a friend 😏', fork_q: 'She is waiting for your answer: which path are you on?', fork_taken: 'The path is already chosen', fork_romance_on: '❤️ The path of romance', fork_passion_on: '🔥 The path of passion', fork_would: 'there:', path_map: 'Your road', path_romance: 'Romance', path_passion: 'Passion', path_romance_other: 'on the romance path', path_passion_other: 'on the passion path', lvl_pick_hint: 'Premium: tap any level and she talks that way right away', lvl_pick_reset: 'Back to the real level', lvl_pick_premium: 'With Premium you can pick any level 1–10', lvl_pick_done: 'level picked:', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', pa_failed: 'Did not work, nothing was charged — try again', pa_not_found: 'This photo can no longer be edited', video_limit: 'free animations are used up', video_limit_day: 'you already animated a photo today, the next one tomorrow 🎬', video_month: 'Photo animation comes with Premium for a month or longer: 1 a day', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   typing_now: 'typing…',
@@ -1920,7 +1920,7 @@ const L_EN = {
 // V3.43.5: the full Russian dictionary stays the base; five more interface
 // languages arrive below as partial overrides on top of the English one.
 const L_RU = {
-  call_btn: 'Позвонить', call_connecting: 'Звоню…', call_listen: 'Слушает тебя…', call_think: 'Думает…', call_talk: 'Говорит…', call_ready: 'На связи', call_end: 'Сбросить', call_mute: 'Микрофон', call_skip: 'Перебить', call_mode_prem: '👑 Premium-звонок · 18+', call_mode_live: '⚡ Живой звонок', call_fail: 'Не получилось дозвониться — попробуй ещё раз', call_limit_prem: 'Минуты звонков на сегодня закончились, завтра снова 15 минут 💛', call_up_h: 'Хочешь поговорить ещё? 📞', call_up_tx: 'Бесплатно — {m} мин живого звонка в день, без откровенного. С Premium — {p} минут в день, и в звонке можно всё, как в переписке, 18+.', call_up_go: '👑 Открыть Premium', call_up_no: 'Позже', call_bye: 'Звонок завершён', call_nospeech: 'Не расслышала — скажи ещё раз', call_left: 'осталось',
+  call_btn: 'Позвонить', call_connecting: 'Звоню…', call_listen: 'Слушает тебя…', call_think: 'Думает…', call_talk: 'Говорит…', call_ready: 'На связи', call_end: 'Сбросить', call_mute: 'Микрофон', call_skip: 'Перебить', call_mode_prem: '👑 Premium-звонок · 18+', call_mode_live: '⚡ Живой звонок', call_fail: 'Не получилось дозвониться — попробуй ещё раз', call_limit_prem: 'Минуты звонков на сегодня закончились, завтра снова 15 минут 💛', call_limit_trial: 'Минуты звонка на пробном закончились. В полном Premium 15 минут каждый день 💛', trial_msgs_over: 'Сообщения пробного закончились, продолжим в полном Premium 💛', call_up_h: 'Хочешь поговорить ещё? 📞', call_up_tx: 'Бесплатно — {m} мин живого звонка в день, без откровенного. С Premium — {p} минут в день, и в звонке можно всё, как в переписке, 18+.', call_up_go: '👑 Открыть Premium', call_up_no: 'Позже', call_bye: 'Звонок завершён', call_nospeech: 'Не расслышала — скажи ещё раз', call_left: 'осталось',
   chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', fork_romance: '❤️ Ты мне правда нравишься', fork_passion: '🔥 Я думаю о тебе совсем не по-дружески 😏', fork_q: 'Она ждёт твоего ответа: какой у вас путь?', fork_taken: 'Путь уже выбран', fork_romance_on: '❤️ Вы на пути романтики', fork_passion_on: '🔥 Вы на пути страсти', fork_would: 'там:', path_map: 'Ваша дорога', path_romance: 'Романтика', path_passion: 'Страсть', path_romance_other: 'на пути романтики', path_passion_other: 'на пути страсти', lvl_pick_hint: 'Premium: нажми на любой уровень, и она сразу будет общаться так', lvl_pick_reset: 'Вернуть настоящий уровень', lvl_pick_premium: 'С Premium можно выбрать любой уровень 1–10', lvl_pick_done: 'уровень выбран:', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', pa_failed: 'Не получилось, персики не списаны — попробуй ещё раз', pa_not_found: 'Это фото уже нельзя изменить', video_limit: 'бесплатные оживления закончились', video_limit_day: 'сегодня ты уже оживлял фото, следующее завтра 🎬', video_month: 'Оживление фото входит в Premium на месяц и дольше: 1 в день', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   typing_now: 'печатает…',
@@ -3889,6 +3889,7 @@ async function sendChat() {
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 429) {
       const jl = await r.json().catch(() => ({}));
+      if (jl.trial) toast(L.trial_msgs_over);
       quickBuy('limit', () => { const i = document.getElementById('chatText'); if (i && !i.value) { i.value = text; sendChat(); } }, { demo: !!jl.demo, vip: !!jl.vip });
       return;
     }
@@ -7609,7 +7610,8 @@ async function openCall(asked) {
   }
   if (j.seconds_left <= 0) {
     closeCtx();
-    if (j.mode === 'premium') toast(L.call_limit_prem); else _callUpsell(j);
+    if (j.mode === 'premium' && j.trial) { toast(L.call_limit_trial); quickBuy('limit'); }
+    else if (j.mode === 'premium') toast(L.call_limit_prem); else _callUpsell(j);
     return;
   }
   if (!ctx) { toast(L.call_fail); return; }
@@ -7676,7 +7678,7 @@ function endCall(reason) {
   _cv('callview').style.display = 'none';
   try { tg.HapticFeedback.notificationOccurred('success'); } catch (e) {}
   if (reason === 'error') toast(L.call_fail);
-  else if (c.mode === 'premium' && reason === 'limit') toast(L.call_limit_prem);
+  else if (c.mode === 'premium' && reason === 'limit') toast((c.info && c.info.trial) ? L.call_limit_trial : L.call_limit_prem);
   else toast(L.call_bye);
   if (CHAT && CHAT.id === c.cid) setTimeout(() => loadChatHistory(c.cid), c.mode === 'live' ? 1500 : 200);
   if (c.mode === 'live' && c.start && (reason === 'limit' || c.left - secs < 30)) setTimeout(() => _callUpsell(c.info), 700);
