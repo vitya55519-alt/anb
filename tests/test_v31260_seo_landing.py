@@ -42,3 +42,12 @@ def test_routes_wired():
     assert "app.router.add_get('/sitemap.xml', _seo_sitemap)" in MAIN
     assert 'seo_landing.PAGES' in MAIN
     assert "app.router.add_get('/healthz', _healthz)" in MAIN
+
+
+def test_bot_name_overrides_only_from_env():
+    fn = MAIN[MAIN.index('async def _apply_bot_name_overrides'):MAIN.index('async def _apply_bot_profile')]
+    for var in ('BOT_NAME_DEFAULT', 'BOT_NAME_RU', 'BOT_NAME_EN'):
+        assert var in fn
+    assert 'if want and want != cur' in fn
+    prof = MAIN[MAIN.index('async def _apply_bot_profile'):MAIN.index('async def main(')]
+    assert prof.index('_apply_bot_name_overrides') < prof.index("BOT_PROFILE_ENABLED")

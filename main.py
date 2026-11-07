@@ -17502,7 +17502,27 @@ BOT_PROFILE = {
 }
 
 
+async def _apply_bot_name_overrides() -> None:
+    # V3.126.0: BotFather /setname only edits the default name, while a name
+    # stored per language (ru/en) wins for users with that app language. Log
+    # what Telegram has for '', ru and en, and write BOT_NAME_DEFAULT /
+    # BOT_NAME_RU / BOT_NAME_EN when set (only if they differ: setMyName is
+    # rate-limited). An empty-string value is not written; unset vars do nothing.
+    for code, var in (('', 'BOT_NAME_DEFAULT'), ('ru', 'BOT_NAME_RU'), ('en', 'BOT_NAME_EN')):
+        try:
+            cur = (await bot.get_my_name(language_code=code)).name or ''
+            want = os.getenv(var, '').strip()[:64]
+            if want and want != cur:
+                await bot.set_my_name(name=want, language_code=code)
+                logger.info('bot name lang=%s set %r -> %r', code or 'default', cur, want)
+            else:
+                logger.info('bot name lang=%s is %r', code or 'default', cur)
+        except Exception:
+            logger.exception('bot name check failed lang=%s', code or 'default')
+
+
 async def _apply_bot_profile() -> None:
+    await _apply_bot_name_overrides()
     # V3.118.0: off by default — the owner edits name/description in BotFather
     # and every deploy used to overwrite them. BOT_PROFILE_ENABLED=1 turns it on.
     if os.getenv('BOT_PROFILE_ENABLED', '0') != '1':
