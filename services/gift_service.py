@@ -96,7 +96,7 @@ def gift_status(telegram_id: int) -> dict:
             else:
                 # missed day (or first-ever): the series restarts from 1
                 streak = 0
-            capped = int(user.photo_credits or 0) >= DAILY_GIFT_BALANCE_CAP
+            capped = int((user.photo_credits or 0) + (user.bonus_peaches or 0)) >= DAILY_GIFT_BALANCE_CAP
             next_streak = streak + 1 if not claimed_today else 0
     except Exception:
         logger.exception('gift_status failed user=%s', telegram_id)
@@ -122,11 +122,11 @@ def claim_daily_gift(telegram_id: int) -> dict:
         user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
         if not user:
             return {'ok': False, 'error': 'auth', 'amount': 0, 'streak': 0, 'balance': 0, 'capped': False}
-        if int(user.photo_credits or 0) >= DAILY_GIFT_BALANCE_CAP:
+        if int((user.photo_credits or 0) + (user.bonus_peaches or 0)) >= DAILY_GIFT_BALANCE_CAP:
             # копилка полная — day is NOT consumed, streak does not move
             return {'ok': False, 'capped': True, 'error': 'capped',
                     'amount': 0, 'streak': _slot(user.gift_streak),
-                    'balance': int(user.photo_credits or 0)}
+                    'balance': int((user.photo_credits or 0) + (user.bonus_peaches or 0))}
         streak = (int(user.gift_streak or 0) + 1) if user.gift_last_day == key - timedelta(days=1) else 1
         amount = _payout_for(streak)
         res = s.execute(
@@ -140,7 +140,7 @@ def claim_daily_gift(telegram_id: int) -> dict:
         s.commit()
         if not res.rowcount:
             return {'ok': False, 'error': 'duplicate', 'amount': 0,
-                    'streak': _slot(user.gift_streak), 'balance': int(user.photo_credits or 0),
+                    'streak': _slot(user.gift_streak), 'balance': int((user.photo_credits or 0) + (user.bonus_peaches or 0)),
                     'capped': False}
     balance = grant_photo_credits(telegram_id, amount, reason=f'daily_gift_{key.isoformat()}')
     if balance < 0:
@@ -157,7 +157,7 @@ def claim_daily_gift(telegram_id: int) -> dict:
 def balance_amount(telegram_id: int) -> int:
     with SessionLocal() as s:
         user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
-        return int(user.photo_credits or 0) if user else 0
+        return int((user.photo_credits or 0) + (user.bonus_peaches or 0)) if user else 0
 
 
 def ensure_welcome_promo() -> None:

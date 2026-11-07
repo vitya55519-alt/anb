@@ -15,7 +15,8 @@ def _say(uid, texts, start):
 
 def _credits(tid):
     from services.user_service import get_user
-    return get_user(tid).photo_credits or 0
+    u = get_user(tid)
+    return (u.photo_credits or 0) + (u.bonus_peaches or 0)  # V3.123.0: bonus wallet
 
 
 def test_referral_pays_after_ten_real_messages():

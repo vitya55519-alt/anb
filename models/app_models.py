@@ -28,6 +28,8 @@ class User(Base):
     proactive_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     appearance_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     photo_credits: Mapped[int] = mapped_column(Integer, default=0)
+    # V3.123.0: free peaches (missions, channel, referrals) — wardrobe/dates only, never renders.
+    bonus_peaches: Mapped[int] = mapped_column(Integer, default=0)
     attention_points: Mapped[int] = mapped_column(Integer, default=0)
     streak_count: Mapped[int] = mapped_column(Integer, default=0)
     streak_last_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

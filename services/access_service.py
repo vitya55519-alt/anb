@@ -24,7 +24,16 @@ def free_limit_for(created_at, now=None)->int:
 
 
 def can_send_message(telegram_id:int)->bool:
-    if is_premium(telegram_id): return True
+    if is_premium(telegram_id):
+        # V3.124.0: the short trial/demo Premium has a message total.
+        try:
+            from services import trial_caps
+            with SessionLocal() as s:
+                uid=s.scalar(select(User.id).where(User.telegram_id==str(telegram_id)))
+            left=trial_caps.messages_left(uid) if uid else None
+            return left is None or left > 0
+        except Exception:
+            return True
     now=datetime.now(timezone.utc); start=now.replace(hour=0,minute=0,second=0,microsecond=0).replace(tzinfo=None)
     with SessionLocal() as s:
         user=s.scalar(select(User).where(User.telegram_id==str(telegram_id)))

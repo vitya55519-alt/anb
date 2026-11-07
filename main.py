@@ -76,7 +76,7 @@ from services.photo_idea_service import (
 )
 from config import PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIAL_PRICE_RUB  # V3.88.0
 from services.payments import trial_eligible  # V3.88.0
-from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, has_monthly_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
+from services.payments import record_payment, get_photo_credits, get_paid_peaches, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, has_monthly_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
 from services.bot_description import apply_bot_descriptions
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
@@ -1342,7 +1342,7 @@ def _sleep_block_markup(telegram_id: int) -> InlineKeyboardMarkup:
         if trial_eligible(telegram_id):
             trial_fiat = fiat_suffix(PREMIUM_TRIAL_STARS, rub=PLATEGA_PREMIUM_TRIAL_PRICE_RUB, rub_enabled=PLATEGA_ENABLED)
             rows.append([InlineKeyboardButton(
-                text=f'🔥 {PREMIUM_TRIAL_DAYS} дня без лимитов — {PREMIUM_TRIAL_STARS} Stars{trial_fiat}',
+                text=f'🔥 {PREMIUM_TRIAL_DAYS} дня Premium — {PREMIUM_TRIAL_STARS} Stars{trial_fiat}',
                 callback_data='buy:premium_trial')])
             if PLATEGA_ENABLED and is_button_enabled('platega_rub'):
                 rows.append([_platega_pay_button(
@@ -1365,6 +1365,18 @@ async def _sleep_block_reply(message: types.Message) -> None:
     spent, the one-time 24h discount window opens."""
     from services.retention_service import pick_text, has_used_demo, offer_discount
     uid = ensure_user(message.from_user.id, message.from_user.first_name)
+    if is_premium(message.from_user.id):
+        # V3.124.0: a trial man used his trial messages — offer the full plans.
+        track_event(uid, 'trial_cap_messages', metadata={'source': 'bot'})
+        from services import trial_caps
+        if user_lang(message.from_user.id) == EN:
+            text = (f'mm, the {trial_caps.TRIAL_MESSAGES} trial messages are over 🥺 '
+                    'stay with me on full Premium: unlimited chat, voice, calls every day')
+        else:
+            text = (f'ммм, {trial_caps.TRIAL_MESSAGES} сообщений пробного закончились 🥺 '
+                    'останься со мной в полном Premium: общение без лимита, голос и звонки каждый день')
+        await message.answer(text, reply_markup=premium_keyboard(telegram_id=message.from_user.id))
+        return
     if has_used_demo(message.from_user.id):
         offer_discount(message.from_user.id)
     track_event(uid, 'chat_sleep_block')
@@ -1780,7 +1792,7 @@ def _track_proactive_reply_if_any(telegram_id: int, uid: int):
 _EN_INVOICE = {
     # V3.111.0: the Stars invoice is what an EN user sees last before paying —
     # it was Russian («Premium на 3 дня — пробный»).
-    'premium_trial': lambda: ('Premium trial', f'{PREMIUM_TRIAL_DAYS} days of Premium: no limits, voice, photos'),
+    'premium_trial': lambda: ('Premium trial', f'{PREMIUM_TRIAL_DAYS} days of Premium: explicit chat, photos, voice, a call'),
     'premium_week': lambda: ('Premium', '7 days of Premium: no limits, voice, photos'),
     'premium_month': lambda: ('Premium', '30 days of Premium: no limits, voice, photos'),
     'premium_month_discount': lambda: ('Premium', '30 days of Premium at a one-time discount'),
@@ -2054,7 +2066,7 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
         await asyncio.to_thread(use_free_chat_photo, db_uid, character_id)
         await _start_photo_background(chat_id, telegram_id, request, 'free')
         return
-    credits = get_photo_credits(telegram_id)
+    credits = get_paid_peaches(telegram_id)
     if await asyncio.to_thread(free_chat_photos_left, db_uid, True) > 0:
         await asyncio.to_thread(use_free_chat_photo, db_uid, character_id)
         await _start_photo_background(chat_id, telegram_id, request, 'free')
@@ -5865,12 +5877,12 @@ async def circle_cb(cq: types.CallbackQuery):
     # it is the priciest render we make. Charged up front, refunded on failure.
     charge = None
     if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
-        if not spend_peaches(cq.from_user.id, CIRCLE_PEACH_COST):
+        if not spend_peaches(cq.from_user.id, CIRCLE_PEACH_COST, paid_only=True):
             track_event(uid, 'circle_paywall_view', metadata={'reason': 'peaches'})
             await cq.answer(f'Кружочек стоит {peach_num(CIRCLE_PEACH_COST)} 🍑 — персиков не хватает', show_alert=True)
             await cq.message.answer(
                 f'🎥 кружочек — короткое видео, как будто я записываю его тебе лично 😌\n'
-                f'стоит {peach_num(CIRCLE_PEACH_COST)} 🍑, а у тебя {peach_num(get_photo_credits(cq.from_user.id))} 🍑.',
+                f'стоит {peach_num(CIRCLE_PEACH_COST)} купленных 🍑, а у тебя {peach_num(get_paid_peaches(cq.from_user.id))} 🍑.' + _bonus_peach_note(cq.from_user.id),
                 reply_markup=peaches_keyboard(cq.from_user.id),
             )
             return
@@ -5885,6 +5897,22 @@ async def circle_cb(cq: types.CallbackQuery):
 
 # V3.71.0: charge_id marker of a circle paid in peaches (not a Stars charge).
 CIRCLE_PEACH_CHARGE = 'peaches'
+
+
+def _bonus_peach_note(telegram_id: int) -> str:
+    """V3.123.0: when a render is refused although he holds bonus peaches,
+    say why (bonus goes to outfits/dates/gifts, renders take bought ones)."""
+    try:
+        from services.payments import get_bonus_peaches
+        n = get_bonus_peaches(telegram_id)
+    except Exception:
+        return ''
+    if n <= 0:
+        return ''
+    if user_lang(telegram_id) == EN:
+        return f'\nYour {peach_num(n)} bonus 🍑 go to outfits, dates and gifts; photos and videos take bought peaches.'
+    return f'\nТвои {peach_num(n)} бонусных 🍑 идут на гардероб, свидания и подарки, а фото и видео за купленные.'
+
 
 
 async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None):
@@ -7090,8 +7118,8 @@ async def private_photo_generate(cq: types.CallbackQuery):
     is_free = consume_free_private_photo(cq.from_user.id, cat_id)
     if not is_free and not usage['hot_pass_active']:
         from services.payments import spend_peaches
-        if not spend_peaches(cq.from_user.id, PRIVATE_PHOTO_PEACH_COST):
-            await cq.answer(f'Нужно {PRIVATE_PHOTO_PEACH_COST} 🍑 — персиков не хватает', show_alert=True)
+        if not spend_peaches(cq.from_user.id, PRIVATE_PHOTO_PEACH_COST, paid_only=True):
+            await cq.answer(f'Нужно {PRIVATE_PHOTO_PEACH_COST} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True)
             return
     await cq.answer()
     type_name = get_type_name(cat_id, type_id, user_lang(cq.from_user.id))
@@ -7216,8 +7244,8 @@ async def private_cosplay_generate(cq: types.CallbackQuery):
     is_free = consume_free_private_photo(cq.from_user.id, 'cosplay')
     if not is_free and not usage['hot_pass_active']:
         from services.payments import spend_peaches
-        if not spend_peaches(cq.from_user.id, COSPLAY_PHOTO_PEACH_COST):
-            await cq.answer(f'Нужно {COSPLAY_PHOTO_PEACH_COST} 🍑 — персиков не хватает', show_alert=True)
+        if not spend_peaches(cq.from_user.id, COSPLAY_PHOTO_PEACH_COST, paid_only=True):
+            await cq.answer(f'Нужно {COSPLAY_PHOTO_PEACH_COST} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True)
             return
     await cq.answer()
     char_name = get_cosplay_name(cosplay_id)
@@ -7297,8 +7325,8 @@ async def private_photo_hotpass(cq: types.CallbackQuery):
         await cq.answer('неверный тариф', show_alert=True); return
     cost, days = durations[duration]
     from services.payments import spend_peaches
-    if not spend_peaches(cq.from_user.id, cost):
-        await cq.answer(f'Нужно {cost} 🍑 — персиков не хватает', show_alert=True); return
+    if not spend_peaches(cq.from_user.id, cost, paid_only=True):
+        await cq.answer(f'Нужно {cost} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True); return
     from services.private_photo_service import activate_hot_pass
     expires = activate_hot_pass(cq.from_user.id, days)
     await cq.answer()
@@ -7474,8 +7502,8 @@ async def private_voice_combo(cq: types.CallbackQuery):
         PrivatePhotoRequest, generate_voice_photo_combo, VOICE_PHOTO_PEACH_COST,
     )
     from services.payments import spend_peaches
-    if not spend_peaches(cq.from_user.id, VOICE_PHOTO_PEACH_COST):
-        await cq.answer(f'Нужно {VOICE_PHOTO_PEACH_COST} 🍑 — персиков не хватает', show_alert=True)
+    if not spend_peaches(cq.from_user.id, VOICE_PHOTO_PEACH_COST, paid_only=True):
+        await cq.answer(f'Нужно {VOICE_PHOTO_PEACH_COST} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True)
         return
     await cq.answer()
     request = PrivatePhotoRequest(
@@ -7689,9 +7717,9 @@ async def successful_payment(message: types.Message):
         record_payment(message.from_user.id, 'premium_month', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_month'})
         if user_lang(message.from_user.id) == EN:
-            await message.answer('done ✨ Premium is active for 30 days and I added 12 photo credits. Every photo of mine now has an «Animate» button — 2 free videos a day 🎬 plus my video circles 🎥')
+            await message.answer('done ✨ Premium is active for 30 days and I added 12 photo credits. Unlimited chat, voice, calls and my explicit photos are open now 🔥')
         else:
-            await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — 2 раза в день сделаю видео бесплатно 🎬 а ещё тебе открыты мои кружочки 🎥')
+            await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь тебе открыто общение без лимита, голос, звонки и мои откровенные фото 🔥')
         return
 
     if payload == 'premium_trial':
@@ -7699,9 +7727,9 @@ async def successful_payment(message: types.Message):
         record_payment(message.from_user.id, 'premium_trial', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_trial'})
         if user_lang(message.from_user.id) == EN:
-            await message.answer(f'done ✨ Premium is on for {PREMIUM_TRIAL_DAYS} days — everything is open now: my most private photos, «Undress», voice and unlimited chat 🔥')
+            await message.answer(f'done ✨ trial Premium is on for {PREMIUM_TRIAL_DAYS} days — my most private photos, «Undress», voice and a call with me 🔥')
         else:
-            await message.answer(f'готово ✨ Premium включён на {PREMIUM_TRIAL_DAYS} дня — теперь тебе открыто всё: мои самые откровенные фото, «Раздеть», голос и общение без лимита 🔥')
+            await message.answer(f'готово ✨ пробный Premium включён на {PREMIUM_TRIAL_DAYS} дня — мои самые откровенные фото, «Раздеть», голос и звонок со мной 🔥')
         return
 
     if payload == 'premium_week':
@@ -7718,9 +7746,9 @@ async def successful_payment(message: types.Message):
         record_payment(message.from_user.id, 'premium_quarter', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_quarter'})
         if user_lang(message.from_user.id) == EN:
-            await message.answer(f'done ✨ Premium is active for 90 days and I added {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 2 free photo animations a day 🎬 plus my video circles 🎥')
+            await message.answer(f'done ✨ Premium is active for 90 days and I added {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 1 free photo animation a day 🎬 plus my video circles 🎥')
         else:
-            await message.answer(f'готово ✨ Premium активирован на 90 дней, и я добавила {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 2 оживления фото в день бесплатно 🎬 и мои кружочки 🎥')
+            await message.answer(f'готово ✨ Premium активирован на 90 дней, и я добавила {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 1 оживление фото в день бесплатно 🎬 и мои кружочки 🎥')
         return
 
     if payload == 'premium_month_vip':
@@ -8655,12 +8683,44 @@ def _bubble_pause(part: str) -> float:
     return min(3.5, 0.9 + len(part) / 45)
 
 
+def _on_trial(telegram_id: int) -> bool:
+    if telegram_id in ADMIN_TELEGRAM_IDS:
+        return False
+    try:
+        from services import trial_caps
+        return trial_caps.window_start(telegram_id) is not None
+    except Exception:
+        return False
+
+
+def _plan_calls_out(uid: int, telegram_id: int) -> bool:
+    """V3.124.0: his plan's call-minute total is spent (not just today's)."""
+    if telegram_id in ADMIN_TELEGRAM_IDS:
+        return False
+    try:
+        from services import trial_caps, voice_call
+        left = trial_caps.call_seconds_left(uid, voice_call.EVENT_PREMIUM)
+        return left is not None and left <= 0
+    except Exception:
+        return False
+
+
+def _trial_voice_ok(telegram_id: int) -> bool:
+    """V3.124.0: on the trial her voice notes are counted (TRIAL_VOICE)."""
+    try:
+        from services import trial_caps
+        return trial_caps.take_voice(telegram_id)
+    except Exception:
+        return True
+
+
 async def send_answer(message: types.Message, text: str):
     user = get_user(message.from_user.id)
     # V3.55.1: voice replies are a Premium perk (owner decision — the shop
     # card line «голосовые ответы» becomes literally true). Non-premium keeps
     # the toggle, gets text, and the once-a-day nudge at the bottom.
-    if user and user.voice_enabled and (is_premium(message.from_user.id) or message.from_user.id in ADMIN_TELEGRAM_IDS):
+    if user and user.voice_enabled and (is_premium(message.from_user.id) or message.from_user.id in ADMIN_TELEGRAM_IDS) \
+            and (message.from_user.id in ADMIN_TELEGRAM_IDS or _trial_voice_ok(message.from_user.id)):
         try:
             character_id = get_user_character(message.from_user.id)
             audio = await synthesize_bytes(text, user.voice_style, character_id=character_id)
@@ -8813,15 +8873,18 @@ async def _send_peach_shop(message: types.Message, who: types.User | None = None
     who = who or message.from_user
     uid = ensure_user(who.id, who.first_name, language_code=who.language_code)
     lang = user_lang(who.id)
-    balance = peach_num(get_photo_credits(who.id))
+    from services.payments import peach_wallet
+    _w = peach_wallet(who.id)
+    balance = peach_num(_w['paid'])
+    bonus = peach_num(_w['bonus'])
     photo = peach_num(CHAT_PHOTO_PEACH_COST)
     if lang == EN:
-        text = (f'🍑 Peaches\n\nYour balance: {balance} 🍑\n\n'
+        text = (f'🍑 Peaches\n\nBought: {balance} 🍑\nBonus: {bonus} 🎁 (missions, channel, friends — for outfits, dates and gifts)\n\n'
                 f'A photo from her in chat costs {photo} 🍑, peaches also open circles and secret videos.\n'
                 'Pick a pack: the payment page opens right away, peaches land within a minute.')
     else:
-        text = (f'🍑 Персики\n\nТвой баланс: {balance} 🍑\n\n'
-                f'Фото от неё в чате — {photo} 🍑, ещё за персики кружочки и тайные видео.\n'
+        text = (f'🍑 Персики\n\nКупленные: {balance} 🍑\nБонусные: {bonus} 🎁 (задания, канал, друзья — на гардероб, свидания и подарки)\n\n'
+                f'Фото от неё в чате — {photo} купленных 🍑, ещё за них кружочки и тайные видео.\n'
                 'Выбери пак: сразу откроется оплата, персики придут в течение минуты.')
     track_event(uid, 'paywall_view', metadata={'product': 'peach_shop_bot'})
     await message.answer(text, reply_markup=peach_shop_keyboard(who.id, lang))
@@ -9503,7 +9566,7 @@ async def _constructor_draft_sweep() -> None:
                     if _source == 'peaches':
                         grant_photo_credits(
                             _telegram_id, CONSTRUCTOR_COST_PEACHES,
-                            reason=f'constructor_refund:{_telegram_id}:{int(_time.time() * 1000)}',
+                            reason=f'constructor_refund:{_telegram_id}:{int(_time.time() * 1000)}', bonus=False,
                         )
                         await bot.send_message(_telegram_id, f'не получилось создать {_name or "персонажа"} 😕 {CONSTRUCTOR_COST_PEACHES} 🍑 вернула на баланс — попробуй ещё раз, я уже починила причину.')
                     else:
@@ -9753,7 +9816,7 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             try:
                 grant_photo_credits(
                     telegram_id, CONSTRUCTOR_COST_PEACHES,
-                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}',
+                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}', bonus=False,
                 )
             except Exception:
                 logger.exception('constructor save-fail peach refund failed user=%s', telegram_id)
@@ -9875,7 +9938,7 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             try:
                 grant_photo_credits(
                     telegram_id, CONSTRUCTOR_COST_PEACHES,
-                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}',
+                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}', bonus=False,
                 )
                 await bot.send_message(chat_id, f'{CONSTRUCTOR_COST_PEACHES} 🍑 снова на балансе ✅ персонаж остался у тебя — аватар дорисую позже.')
             except Exception:
@@ -13258,6 +13321,11 @@ def _webapp_chat_gate(character_id: str, telegram_id: int):
     if not has_accepted(telegram_id):
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
     if telegram_id not in ADMIN_TELEGRAM_IDS and not can_send_message(telegram_id):
+        if is_premium(telegram_id):
+            # V3.124.0: the trial's message total is spent — the full plans, no demo.
+            track_event(ensure_user(telegram_id), 'trial_cap_messages', metadata={'source': 'webapp'})
+            return web.json_response({'ok': False, 'error': 'limit', 'demo': False, 'vip': False,
+                                      'trial': True}, status=429)
         # V3.62.10: the app limit used to be a bare toast — tell the sheet
         # whether the free demo is still there, like the bot's sleep block.
         from services.retention_service import has_used_demo, offer_discount
@@ -13298,7 +13366,11 @@ async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str
             if not user:
                 return None
             if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
-                return (user.voice_style or 'nova') if getattr(user, 'voice_enabled', False) else None
+                if not getattr(user, 'voice_enabled', False):
+                    return None
+                if telegram_id not in ADMIN_TELEGRAM_IDS and not _trial_voice_ok(telegram_id):
+                    return None
+                return user.voice_style or 'nova'
             # V3.106.0: without Premium — her first replies come as voice on
             # their own (services/voice_taste.py), then a quiet «слышать всегда».
             from services import voice_taste
@@ -13481,7 +13553,7 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | N
                 except Exception:
                     pass
                 return 'free_used'
-            if get_photo_credits(telegram_id) < CHAT_PHOTO_PEACH_COST:
+            if get_paid_peaches(telegram_id) < CHAT_PHOTO_PEACH_COST:
                 return 'peaches'
     return None
 
@@ -13616,7 +13688,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                         from services.chat_photo_allowance import POOL_EVENT, note_today
                         note_today(uid, POOL_EVENT, character_id)
                 else:
-                    spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST)
+                    spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST, paid_only=True)
             # V3.53.0: after this photo counts, tell the SPA if a gallery set
             # (50 photos of her) just completed so it can celebrate.
             from services.collection_service import gallery_set_progress, note_gallery_set
@@ -13976,8 +14048,11 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
         from config import SPEAK_FREE_PER_DAY
         user = get_user(telegram_id)
         style = (user.voice_style if user else None) or 'nova'
-        if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
+        if telegram_id in ADMIN_TELEGRAM_IDS:
             return style, None
+        if is_premium(telegram_id):
+            # V3.124.0: the trial's voice total covers «🔊 Озвучить» too.
+            return (style, None) if _trial_voice_ok(telegram_id) else (None, -1)
         uid = ensure_user(telegram_id)
         left = SPEAK_FREE_PER_DAY - chat_photo_allowance.count_today(uid, 'speak_free')
         if left > 0:
@@ -13985,6 +14060,9 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
         return None, 0
 
     voice_style, free_left = await asyncio.to_thread(_gate)
+    if not voice_style and free_left == -1:
+        # V3.124.0: he has Premium, its voice-note total is spent.
+        return web.json_response({'ok': False, 'error': 'plan_voice_out'}, status=403)
     if not voice_style:
         track_event(ensure_user(telegram_id), 'speak_premium_wall')
         return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
@@ -14107,6 +14185,9 @@ async def _webapp_api_call_info(request: web.Request) -> web.Response:
         'ok': True, 'mode': mode, 'seconds_left': left, 'admin': telegram_id in ADMIN_TELEGRAM_IDS,
         'premium_minutes': voice_call.PREMIUM_SECONDS_PER_DAY // 60,
         'free_minutes': round(voice_call.FREE_SECONDS_PER_DAY / 60, 1),
+        # V3.124.0: the trial's call minutes are a total, not daily.
+        'trial': mode == 'premium' and await asyncio.to_thread(_on_trial, telegram_id),
+        'plan_out': mode == 'premium' and await asyncio.to_thread(_plan_calls_out, uid, telegram_id),
     }, headers={'Cache-Control': 'no-store'})
 
 
@@ -14779,7 +14860,7 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'blocked'}, status=400)
     if not has_accepted(telegram_id):
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
-    if get_photo_credits(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS:
+    if get_paid_peaches(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS:
         return web.json_response({'ok': False, 'error': 'credits'}, status=402)
     style = str(body.get('style', 'anime'))[:16]
     fmt = str(body.get('format', 'square'))[:16]
@@ -14888,7 +14969,7 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     # V3.44.3 → V3.44.22: charge the real studio price (10 🍑 since the
     # economy rework), not a single credit. The balance guard above already
     # used WEBAPP_PICTURE_COST_CREDITS, so the deduction stays aligned.
-    if not spend_peaches(telegram_id, webapp_service.WEBAPP_PICTURE_COST_CREDITS):
+    if not spend_peaches(telegram_id, webapp_service.WEBAPP_PICTURE_COST_CREDITS, paid_only=True):
         logger.warning('webapp picture credit race user=%s', telegram_id)
     track_event(uid, 'webapp_picture_generated', metadata={'style': style, 'format': fmt})
     return web.json_response({
@@ -14920,7 +15001,7 @@ async def _webapp_api_studio_video(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'blocked'}, status=400)
     if not has_accepted(telegram_id):
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
-    if get_photo_credits(telegram_id) < webapp_service.WEBAPP_VIDEO_COST_CREDITS:
+    if get_paid_peaches(telegram_id) < webapp_service.WEBAPP_VIDEO_COST_CREDITS:
         return web.json_response({'ok': False, 'error': 'credits'}, status=402)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
 
@@ -14989,7 +15070,7 @@ async def _webapp_api_studio_video(request: web.Request) -> web.Response:
     except Exception:
         logger.exception('studio video save failed user=%s', telegram_id)
         return web.json_response({'ok': False, 'error': 'save'}, status=500)
-    if not spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS):
+    if not spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS, paid_only=True):
         logger.warning('studio video credit race user=%s', telegram_id)
     track_event(uid, 'webapp_studio_video_generated', metadata={'engine': used_engine, 'preset': preset})
     return web.json_response({
@@ -15060,7 +15141,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     # Check balance: free daily or peaches
     free_used = consume_free_private_photo(telegram_id, 'cosplay' if cosplay else cat_id)
     if not free_used:
-        if get_photo_credits(telegram_id) < peach_cost:
+        if get_paid_peaches(telegram_id) < peach_cost:
             raise PhotoGenerationError('hot', 'insufficient_peaches')
     # Build request
     dna_ctx = character_dna_context(character_id)
@@ -15087,7 +15168,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     cached = cache_get(prompt, character_id)
     if cached:
         if not free_used:
-            spend_peaches(telegram_id, peach_cost)
+            spend_peaches(telegram_id, peach_cost, paid_only=True)
         _HOT_MEDIA_HINT[telegram_id] = ('cache', 0.0)
         return cached, 'image/jpeg', 'jpg'
     # V3.51.3: pool reuse — once this character's shared cache has stockpiled
@@ -15100,7 +15181,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     pooled = None if telegram_id in ADMIN_TELEGRAM_IDS else pool_get(character_id, cat_id, req.type_id)
     if pooled:
         if not free_used:
-            spend_peaches(telegram_id, peach_cost)
+            spend_peaches(telegram_id, peach_cost, paid_only=True)
         gallery_save(telegram_id, character_id, cat_id, req.type_id, pooled)
         check_achievements(telegram_id)
         _HOT_MEDIA_HINT[telegram_id] = ('pool', 0.0)
@@ -15142,7 +15223,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         raise PhotoGenerationError('hot', provider_error or 'all_providers_failed')
     # Charge peaches if free limit was not used
     if not free_used:
-        spend_peaches(telegram_id, peach_cost)
+        spend_peaches(telegram_id, peach_cost, paid_only=True)
     # Save to cache + gallery
     type_id = req.type_id
     cache_save(prompt, character_id, cat_id, type_id, image_bytes)
@@ -15363,6 +15444,19 @@ def _undress_premium_free(telegram_id: int, character_id: str) -> int:
     return UNDRESS_PREMIUM_FREE_L3_6 if level >= 3 else UNDRESS_PREMIUM_FREE_L1_2
 
 
+def _undress_allowance(uid: int, telegram_id: int, character_id: str, used_today: int) -> int:
+    """V3.124.0: the daily Premium allowance, capped by the trial total."""
+    allow = _undress_premium_free(telegram_id, character_id)
+    try:
+        from services import trial_caps
+        trial = trial_caps.undress_allowance_today(uid, used_today)
+        if trial is not None:
+            allow = min(allow, trial)
+    except Exception:
+        pass
+    return allow
+
+
 # The gentlest reveal — the last try when the engine refused the first pick.
 UNDRESS_SAFE_VARIANT = UNDRESS_VARIANTS_LINGERIE[3]
 
@@ -15505,9 +15599,10 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         # peach route for non-Premium users: the button sells Premium.
         if not is_premium(telegram_id):
             return uid, ('premium_required', 403), None
-        if count_today(uid, 'undress_free') < _undress_premium_free(telegram_id, character_id):
+        _used_today = count_today(uid, 'undress_free')
+        if _used_today < _undress_allowance(uid, telegram_id, character_id, _used_today):
             return uid, None, 'free'
-        if get_photo_credits(telegram_id) < UNDRESS_PEACH_COST:
+        if get_paid_peaches(telegram_id) < UNDRESS_PEACH_COST:
             return uid, ('credits', 402), None
         return uid, None, 'peaches'
 
@@ -15564,7 +15659,7 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
             if pay in ('free', 'trial'):
                 note_today(uid, f'undress_{pay}', character_id)
             elif pay == 'peaches':
-                spend_peaches(telegram_id, UNDRESS_PEACH_COST)
+                spend_peaches(telegram_id, UNDRESS_PEACH_COST, paid_only=True)
         return {'ok': True, 'kind': kind, 'url': url, 'content': content,
                 'credits_left': get_photo_credits(telegram_id)}
 
@@ -15654,13 +15749,13 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             # peaches pile up and burned the render budget.
             return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
         if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS \
-                and get_photo_credits(telegram_id) < PEACH_SCALE:
+                and get_paid_peaches(telegram_id) < PEACH_SCALE:
             # V3.44.22: a chat photo costs ONE credit (consume_photo_credit below) —
             # the old guard demanded the studio's whole price and blocked users who
             # had plenty for the actual charge.
             return web.json_response({'ok': False, 'error': 'credits'}, status=402)
         if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS \
-                and get_photo_credits(telegram_id) < CIRCLE_PEACH_COST:
+                and get_paid_peaches(telegram_id) < CIRCLE_PEACH_COST:
             # V3.71.0: circles are paid in peaches for everyone (charged in
             # _finish only once the circle exists).
             return web.json_response({'ok': False, 'error': 'credits'}, status=402)
@@ -15671,7 +15766,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
                 return web.json_response({'ok': False, 'error': 'locked'}, status=403)
             if not is_adult_confirmed(telegram_id):
                 return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
-            if telegram_id not in ADMIN_TELEGRAM_IDS and get_photo_credits(telegram_id) < HOT_CIRCLE_PEACH_COST:
+            if telegram_id not in ADMIN_TELEGRAM_IDS and get_paid_peaches(telegram_id) < HOT_CIRCLE_PEACH_COST:
                 return web.json_response({'ok': False, 'error': 'credits'}, status=402)
         if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS:
             # V3.41.0: app video shares the Premium free-animation slots, exactly
@@ -15764,9 +15859,9 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         save_message(uid, character_id, 'assistant', content, media_kind=shown_kind, media_url=url)
         if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
             logger.warning('webapp chat photo credit race user=%s', telegram_id)
-        if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, CIRCLE_PEACH_COST):
+        if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, CIRCLE_PEACH_COST, paid_only=True):
             logger.warning('webapp chat circle peach race user=%s', telegram_id)
-        if kind == 'hotcircle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, HOT_CIRCLE_PEACH_COST):
+        if kind == 'hotcircle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, HOT_CIRCLE_PEACH_COST, paid_only=True):
             logger.warning('webapp chat hot circle peach race user=%s', telegram_id)
         # V3.44.6: record author revenue when someone spends on a custom character.
         if kind == 'photo' and is_custom_character(character_id):

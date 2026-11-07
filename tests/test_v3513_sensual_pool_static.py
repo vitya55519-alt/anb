@@ -80,5 +80,5 @@ def test_media_hot_wires_pool_reuse():
     # a pooled shot is saved into the user's gallery and still charged like any send
     pool_block = hot[hot.index('pool_get(character_id, cat_id'):hot.index('# Generate: adult')]
     assert 'gallery_save(telegram_id, character_id, cat_id, req.type_id, pooled)' in pool_block
-    assert 'spend_peaches(telegram_id, peach_cost)' in pool_block
+    assert 'spend_peaches(telegram_id, peach_cost, paid_only=True)' in pool_block
     assert 'return pooled' in pool_block

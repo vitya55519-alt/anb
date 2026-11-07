@@ -1028,7 +1028,7 @@ def record_author_revenue(
     try:
         author_tid = int(row.author_telegram_id)
         from services.payments import grant_photo_credits
-        grant_photo_credits(author_tid, int(round(earnings_peaches)))
+        grant_photo_credits(author_tid, int(round(earnings_peaches)), bonus=False)  # V3.123.0: earned from buyers' spends
     except Exception:
         pass  # fail-silent: revenue is still recorded
     return earnings_peaches
@@ -1051,7 +1051,7 @@ MIN_CONVERSION_PEACHES = 20 * _PEACH_SCALE
 
 def convert_peaches_to_rubles(telegram_id: int, peach_amount: float) -> dict:
     """V3.45: convert author's earned peaches to ruble balance for payout."""
-    from services.payments import get_photo_credits
+    from services.payments import get_paid_peaches as get_photo_credits
     from services import partner_service
     if peach_amount < MIN_CONVERSION_PEACHES:
         return {'ok': False, 'error': f'Minimum {MIN_CONVERSION_PEACHES} \U0001f351'}
@@ -1061,7 +1061,8 @@ def convert_peaches_to_rubles(telegram_id: int, peach_amount: float) -> dict:
     rub_amount = round(peach_amount * PEACH_TO_RUB_RATE, 2)
     # Deduct peaches
     from services.payments import spend_peaches
-    if not spend_peaches(telegram_id, peach_amount):
+    # V3.123.0: bonus peaches never turn into rubles.
+    if not spend_peaches(telegram_id, peach_amount, paid_only=True):
         return {'ok': False, 'error': 'spend_failed'}
     # Credit to partner balance (ruble)
     try:
