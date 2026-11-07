@@ -36,7 +36,7 @@ DESCRIPTION_DEFAULT = (
     '👩 Anna, Emily, Zlata, Vika and 30+ more girls — pick yours or create your own\n'
     '🧠 They remember your name, your day and yesterday\'s talk\n'
     '📸 Photos, 🎬 Videos and voice notes\n'
-    '📞 Call her — a live voice in the app\n'
+    '📞 You can call her — a live voice in the app\n'
     '❤️ 10 relationship levels: romance or passion\n'
     '\n'
     'Free to start: just say "hi".\n'
