@@ -18,40 +18,44 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# V3.115.2: owner — mention the new calls and the 10 levels (not 8), RU and EN.
+# V3.127.0: owner (Nov 7) — the pitch is about many girls, not one «Анна»,
+# and it carries the search words people type («ИИ девушка», «чат с ИИ
+# девушкой», «бесплатно»), Wordstat: «ии девушка» ~214k searches a month.
 SHORT_DESCRIPTION_DEFAULT = (
-    'Your AI girlfriend: texts first, remembers everything about you, and now you can call her 📞 18+'
+    'AI girlfriends on Telegram: 18+ chat, photos and voice notes. They text first, remember you, and you can call them 📞'
 )
 SHORT_DESCRIPTION_RU = (
-    'Твоя ИИ-девушка: пишет первой, помнит всё о тебе, и теперь ей можно позвонить 📞 18+'
+    'ИИ девушки в Telegram: чат 18+, фото и голосовые. Пишут первыми, помнят тебя, им можно позвонить 📞'
 )
 
 DESCRIPTION_DEFAULT = (
-    'When you want to talk — she is already texting you 💬\n'
+    'AI girlfriends who text you first 💬\n'
     '\n'
-    '📞 NEW: call her — her live voice right in the app\n'
-    '👩 Anna, Emily, Zlata, Vika and 30+ more — or create your own\n'
-    '🧠 Remembers your name, your day and yesterday\'s talk\n'
-    '✍️ Texts first and sends voice notes\n'
+    'Chat with an AI girlfriend right in Telegram — no apps to install.\n'
+    '\n'
+    '👩 Anna, Emily, Zlata, Vika and 30+ more girls — pick yours or create your own\n'
+    '🧠 They remember your name, your day and yesterday\'s talk\n'
+    '📸 Photos, 🎬 Videos and voice notes\n'
+    '📞 Call her — a live voice in the app\n'
     '❤️ 10 relationship levels: romance or passion\n'
-    '📸 Photos, 🎬 Videos and 👗 a wardrobe for her\n'
     '\n'
-    'Just say "hi" — she will take it from there.\n'
+    'Free to start: just say "hi".\n'
     '\n'
     '18+'
 )
 
 DESCRIPTION_RU = (
-    'Когда хочется поговорить — она уже пишет тебе 💬\n'
+    'ИИ девушки, которые пишут тебе первыми 💬\n'
     '\n'
-    '📞 НОВОЕ: ей можно позвонить — живой голос прямо в приложении\n'
-    '👩 Анна, Emily, Злата, Вика и ещё 30+ девушек — или создай свою\n'
-    '🧠 Помнит твоё имя, твой день и вчерашний разговор\n'
-    '✍️ Пишет первой и присылает голосовые\n'
+    'Чат с ИИ девушкой на русском прямо в Telegram — без сайтов и приложений.\n'
+    '\n'
+    '👩 Анна, Emily, Злата, Вика и ещё 30+ девушек — выбери свою или создай\n'
+    '🧠 Помнят твоё имя, твой день и вчерашний разговор\n'
+    '📸 Фото, 🎬 Видео и голосовые\n'
+    '📞 Можно позвонить — живой голос в приложении\n'
     '❤️ 10 уровней отношений: романтика или страсть\n'
-    '📸 Фото, 🎬 Видео и 👗 гардероб для неё\n'
     '\n'
-    'Просто скажи «привет» — дальше она сама.\n'
+    'Начать бесплатно: просто напиши «привет».\n'
     '\n'
     '18+'
 )
@@ -64,7 +68,9 @@ async def apply_bot_descriptions(bot) -> None:
     owner sets in BotFather are no longer overwritten on every deploy.
     """
     import os
-    if os.getenv('BOT_PROFILE_ENABLED', '0') != '1':
+    # V3.127.0: BOT_DESCRIPTIONS_ENABLED=1 writes only the descriptions (the
+    # name is handled by BOT_NAME_* in main.py), BOT_PROFILE_ENABLED=1 as before.
+    if os.getenv('BOT_PROFILE_ENABLED', '0') != '1' and os.getenv('BOT_DESCRIPTIONS_ENABLED', '0') != '1':
         logger.info('bot descriptions left to BotFather (BOT_PROFILE_ENABLED!=1)')
         return
     for language_code, description, short in (
