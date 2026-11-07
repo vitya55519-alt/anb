@@ -163,6 +163,7 @@ from services.webapp_service import peach_num
 VERSION = (Path(__file__).resolve().parent / 'VERSION').read_text(encoding='utf-8').strip()
 # V3.39.0: Come Closer-style /start — the welcome leads with a group photo.
 WELCOME_BANNER_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner.png'
+WELCOME_BANNER_EN_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner_en.png'
 
 # V3.30.1: Railway tags every stderr line as severity=error, and Python
 # logging writes to stderr by default — route the whole log to stdout so
@@ -552,8 +553,13 @@ def onboarding_character_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=_pair_rows(_character_pick_buttons('onboard')))
 
 
-def _welcome_banner_file():
-    """V3.39.0: the group banner photo for /start; None when the asset is absent."""
+def _welcome_banner_file(lang: str = RU):
+    """V3.39.0: the group banner photo for /start; None when the asset is absent.
+    V3.125.0: backup 7 Nov — 5 of 19 English-speaking newcomers left on the
+    very first screen (Russian: 0 of 19). The banner said «Они уже пишут
+    тебе» in Russian; English speakers now get the same picture in English."""
+    if lang == EN and WELCOME_BANNER_EN_PATH.exists():
+        return FSInputFile(WELCOME_BANNER_EN_PATH)
     if WELCOME_BANNER_PATH.exists():
         return FSInputFile(WELCOME_BANNER_PATH)
     return None
@@ -2182,7 +2188,7 @@ async def start(message: types.Message, command: CommandObject):
             if has_referral:
                 welcome += f'пришёл по приглашению друга — напиши ей {REFERRAL_QUALIFY_MESSAGES} сообщений, и вам обоим капнет по {REFERRAL_INVITEE_CREDITS} 🍑.\n'
             welcome += 'Подтверди, что тебе 18+, и прими условия использования и политику конфиденциальности.'
-        banner = _welcome_banner_file()
+        banner = _welcome_banner_file(lang)
         if banner is not None:
             await message.answer_photo(banner, caption=welcome, reply_markup=consent_keyboard(lang))
         else:
@@ -2210,7 +2216,7 @@ async def start(message: types.Message, command: CommandObject):
         )
     # V3.42.0: no character grid here anymore — a short button list instead.
     markup = InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang))
-    banner = _welcome_banner_file()
+    banner = _welcome_banner_file(lang)
     if banner is not None:
         menu_msg = await message.answer_photo(banner, caption=welcome_back, reply_markup=markup)
     else:
@@ -13406,8 +13412,11 @@ async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str
 
 
 CHAT_PHOTO_BLOCK_TEXT = {
-    'peaches': ('ой, хочу прислать тебе фото, но бесплатные фото на сегодня закончились 🙈 '
-                'ещё одно — {price} 🍑, или завтра будут новые бесплатные. пополни, и я сразу скину 😘'),
+    # V3.125.0: a Premium man past his photos — say plainly that only bought
+    # peaches pay for a photo, and the pack sheet opens right under it.
+    'peaches': ('ой, хочу прислать тебе фото, но фото, что входят в твой Premium, пока закончились 🙈 '
+                'ещё одно — {price} 🍑 (только купленные персики, бонусные на фото не идут). '
+                'пополни — и попроси ещё раз, я сразу скину 😘'),
     'stage': ('такое фото пока рано 😏 давай ещё пообщаемся — чем ближе мы, тем больше я тебе покажу. '
               'а обычное селфи могу прямо сейчас, попроси «пришли селфи»'),
     'adult': 'для такого фото подтверди, что тебе 18+, — и я покажу 🔥',
@@ -13680,6 +13689,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                 save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
             from services.chat_photo_allowance import free_chat_photos_left, use_free_chat_photo
             premium = is_premium(telegram_id)
+            paid_note = None
             if telegram_id not in ADMIN_TELEGRAM_IDS and not fallback:
                 # V3.61.5: a free photo of the day first, then peaches.
                 if free_chat_photos_left(uid, premium=premium) > 0:
@@ -13689,6 +13699,9 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                         note_today(uid, POOL_EVENT, character_id)
                 else:
                     spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST, paid_only=True)
+                    # V3.125.0: he sees what this photo cost and what is left,
+                    # so the moment he runs short is never a surprise.
+                    paid_note = {'price': CHAT_PHOTO_PEACH_COST, 'left': get_paid_peaches(telegram_id)}
             # V3.53.0: after this photo counts, tell the SPA if a gallery set
             # (50 photos of her) just completed so it can celebrate.
             from services.collection_service import gallery_set_progress, note_gallery_set
@@ -13697,6 +13710,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                     'free_photos_left': free_chat_photos_left(uid, premium=premium),
                     'set_completed': note_gallery_set(telegram_id, character_id),
                     'gallery': gallery_set_progress(telegram_id, character_id),
+                    **({'paid_photo': paid_note} if paid_note else {}),
                     **(extra or {})}
 
         return await asyncio.to_thread(_deliver)
