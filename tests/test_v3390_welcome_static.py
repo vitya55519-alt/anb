@@ -36,7 +36,7 @@ def test_welcome_banner_asset_exists():
 
 def test_start_sends_the_banner_photo():
     assert 'WELCOME_BANNER_PATH' in MAIN
-    assert 'def _welcome_banner_file()' in MAIN
+    assert 'def _welcome_banner_file(' in MAIN
     assert 'FSInputFile(WELCOME_BANNER_PATH)' in MAIN
     # both the new-user and the returning-user welcome go out as a photo
     assert 'await message.answer_photo(banner, caption=welcome, reply_markup=consent_keyboard(lang))' in MAIN

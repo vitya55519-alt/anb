@@ -646,6 +646,8 @@
   .mlbl { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .mprice { font-size: 12px; font-weight: 500; opacity: .6; white-space: nowrap; }
   .chat-offer { margin: 4px 0 10px; display: flex; }
+  /* V3.125.0: «это фото — 300 🍑 · осталось …» under a photo paid with peaches */
+  .chat-offer .paidnote { font-size: 12px; opacity: .7; align-self: center; margin-right: 8px; }
   /* V3.88.0: the early locked photo — blurred card + «open» button */
   .ltease { align-self: flex-start; max-width: 74%; margin: 4px 0 10px; border-radius: 16px; overflow: hidden;
     background: var(--card); border: 1px solid rgba(232,68,127,.45); cursor: pointer; box-shadow: 0 8px 22px rgba(232,68,127,.18); }
@@ -1755,6 +1757,9 @@ const L_EN = {
   limit_reached: 'Daily free-message limit reached. Premium lifts it ⭐',
   qb_limit: 'She is falling asleep till tomorrow 😴 wake her up',
   qb_peaches: 'Not enough peaches 🍑',
+  qb_photo: 'More photos of her 📸',
+  photo_topup: p => '🍑 Top up · a photo is ' + p + ' 🍑',
+  photo_paid: (p, left) => '📸 this photo: ' + p + ' 🍑 · ' + left + ' 🍑 left',
   bonus_word: 'bonus 🍑 · for outfits, dates, gifts',
   bonus_note: n => 'Your ' + n + ' bonus 🍑 go to outfits, dates and gifts. Photos and videos take bought peaches.',
   wallet_paid: 'Bought peaches', wallet_bonus: 'Bonus peaches', wallet_hint: 'Bonus 🍑 (missions, channel, friends) go to outfits, dates and gifts. Photos and videos take bought peaches.',
@@ -2026,6 +2031,9 @@ const L_RU = {
   limit_reached: 'Дневной лимит бесплатных сообщений. Premium снимает лимит ⭐',
   qb_limit: 'Она засыпает до завтра 😴 разбуди её',
   qb_peaches: 'Не хватает персиков 🍑',
+  qb_photo: 'Ещё её фото 📸',
+  photo_topup: p => '🍑 Пополнить · фото ' + p + ' 🍑',
+  photo_paid: (p, left) => '📸 это фото — ' + p + ' 🍑 · осталось ' + left + ' 🍑',
   bonus_word: 'бонусных 🍑 · на гардероб, свидания, подарки',
   bonus_note: n => 'Твои ' + n + ' бонусных 🍑 идут на гардероб, свидания и подарки. Фото и видео за купленные персики.',
   wallet_paid: 'Купленные персики', wallet_bonus: 'Бонусные персики', wallet_hint: 'Бонусные 🍑 (задания, канал, друзья) идут на гардероб, свидания и подарки. Фото и видео за купленные.',
@@ -3979,8 +3987,20 @@ function renderChatReply(j) {
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('spicy')">${esc(L.spicy_btn)}</button></div>`);
     setTimeout(() => quickBuy('spicy'), 900);
   }
+  // V3.125.0: out of bought peaches for the next photo — the pack sheet opens
+  // at once (3000 first), not the whole shop.
   if (j.photo_block === 'peaches') {
-    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="showTab('shop')">🍑 Пополнить персики · фото ${esc(String(Number(j.photo_price) || 200))} 🍑</button></div>`);
+    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('photo')">${esc(L.photo_topup(Number(j.photo_price) || 300))}</button></div>`);
+    setTimeout(() => quickBuy('photo'), 900);
+  }
+  // V3.125.0: a photo paid with peaches — what it cost and what is left; a
+  // top-up chip when the next one would not fit.
+  if (j.paid_photo) {
+    const pp = j.paid_photo;
+    const low = Number(pp.left) < Number(pp.price);
+    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><span class="paidnote">${esc(L.photo_paid(Number(pp.price) || 0, Number(pp.left) || 0))}</span>` +
+      (low ? `<button class="mchip on" onclick="quickBuy('photo')">${esc(L.photo_topup(Number(pp.price) || 300))}</button>` : '') + `</div>`);
+    if (ME) ME.paid_peaches = Number(pp.left) || 0;
   }
   // V3.72.0: in a flirty moment (or when asked) she offers a circle — the
   // render (and the charge) starts only on a tap.
@@ -6227,12 +6247,13 @@ async function quickBuy(kind, retry, opts) {
   const trialFirst = (ME && ME.trial_eligible && !ME.premium) ? ['premium_trial'] : [];
   // V3.97.0: his personal one-time −50% month (the limit answer says vip:true).
   const want = kind === 'month' ? ['premium', 'premium_quarter']
-    : ((kind === 'limit' || kind === 'voice' || kind === 'spicy') ? trialFirst.concat(['premium_week', 'premium']) : ['peach_pack_10', 'peach_pack_30', 'premium']);
+    : ((kind === 'limit' || kind === 'voice' || kind === 'spicy') ? trialFirst.concat(['premium_week', 'premium'])
+      : (kind === 'photo' ? ['peach_pack_30', 'peach_pack_100', 'peach_pack_10'] : ['peach_pack_10', 'peach_pack_30', 'premium']));
   if (kind === 'limit' && opts.vip) want.unshift('premium_vip');
   const items = want.map(id => (s.purchases || []).find(p => p.id === id)).filter(Boolean);
   if (!items.length) { showTab('shop'); return; }
   document.getElementById('payEmo').textContent = kind === 'month' ? '🎬' : kind === 'limit' ? '😴' : (kind === 'voice' ? '🎙' : (kind === 'spicy' ? '🔥' : '🍑'));
-  document.getElementById('payTitle').textContent = kind === 'month' ? (L.video_month || L.qb_limit) : kind === 'limit' ? L.qb_limit : (kind === 'voice' ? L.qb_voice : (kind === 'spicy' ? L.qb_spicy : L.qb_peaches));
+  document.getElementById('payTitle').textContent = kind === 'month' ? (L.video_month || L.qb_limit) : kind === 'limit' ? L.qb_limit : (kind === 'voice' ? L.qb_voice : (kind === 'spicy' ? L.qb_spicy : (kind === 'photo' ? L.qb_photo : L.qb_peaches)));
   const rows = [];
   if (kind === 'limit' && opts.demo) {
     rows.push(`<button class="mrow" data-q="__demo"><span class="ico">🎁</span><span class="nm">${esc(L.qb_demo)}</span><span class="pr">0 ₽</span></button>`);
