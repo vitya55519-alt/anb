@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # and it carries the search words people type («ИИ девушка», «чат с ИИ
 # девушкой», «бесплатно»), Wordstat: «ии девушка» ~214k searches a month.
 SHORT_DESCRIPTION_DEFAULT = (
-    'AI girlfriends on Telegram: 18+ chat, photos and voice notes. They text first, remember you, and you can call them 📞'
+    'AI girlfriends on Telegram: 18+ chat, photos, voice. Pick a girl: she texts first, remembers you, you can call her 📞'
 )
 SHORT_DESCRIPTION_RU = (
     'ИИ девушки в Telegram: чат 18+, фото и голосовые. Пишут первыми, помнят тебя, им можно позвонить 📞'
