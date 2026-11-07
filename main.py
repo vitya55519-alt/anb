@@ -8693,6 +8693,18 @@ def _on_trial(telegram_id: int) -> bool:
         return False
 
 
+def _plan_calls_out(uid: int, telegram_id: int) -> bool:
+    """V3.124.0: his plan's call-minute total is spent (not just today's)."""
+    if telegram_id in ADMIN_TELEGRAM_IDS:
+        return False
+    try:
+        from services import trial_caps, voice_call
+        left = trial_caps.call_seconds_left(uid, voice_call.EVENT_PREMIUM)
+        return left is not None and left <= 0
+    except Exception:
+        return False
+
+
 def _trial_voice_ok(telegram_id: int) -> bool:
     """V3.124.0: on the trial her voice notes are counted (TRIAL_VOICE)."""
     try:
@@ -14040,7 +14052,7 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
             return style, None
         if is_premium(telegram_id):
             # V3.124.0: the trial's voice total covers «🔊 Озвучить» too.
-            return (style, None) if _trial_voice_ok(telegram_id) else (None, 0)
+            return (style, None) if _trial_voice_ok(telegram_id) else (None, -1)
         uid = ensure_user(telegram_id)
         left = SPEAK_FREE_PER_DAY - chat_photo_allowance.count_today(uid, 'speak_free')
         if left > 0:
@@ -14048,6 +14060,9 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
         return None, 0
 
     voice_style, free_left = await asyncio.to_thread(_gate)
+    if not voice_style and free_left == -1:
+        # V3.124.0: he has Premium, its voice-note total is spent.
+        return web.json_response({'ok': False, 'error': 'plan_voice_out'}, status=403)
     if not voice_style:
         track_event(ensure_user(telegram_id), 'speak_premium_wall')
         return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
@@ -14172,6 +14187,7 @@ async def _webapp_api_call_info(request: web.Request) -> web.Response:
         'free_minutes': round(voice_call.FREE_SECONDS_PER_DAY / 60, 1),
         # V3.124.0: the trial's call minutes are a total, not daily.
         'trial': mode == 'premium' and await asyncio.to_thread(_on_trial, telegram_id),
+        'plan_out': mode == 'premium' and await asyncio.to_thread(_plan_calls_out, uid, telegram_id),
     }, headers={'Cache-Control': 'no-store'})
 
 

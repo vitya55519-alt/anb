@@ -64,30 +64,29 @@ def unlocked_text(product: str, lang: str = 'ru', trial_days: int = 3) -> str:
                     '💋 every level of closeness, 1 to 10, «Spicy mode» and 🎭 «Fetishes»\n'
                     f'📸 {T.TRIAL_PHOTOS} new photos of me and {T.TRIAL_UNDRESS} «Undress»\n'
                     f'📞 {mins} min of a call with me, 🔊 {T.TRIAL_VOICE} voice messages\n\n'
-                    'full Premium has no message limit, 2 photos and 15 call minutes every day 💗')
+                    'full Premium has no message limit and much more photos, calls and voice 💗')
         return (f'✨ Пробный Premium включён ({days} дн.):\n\n'
                 f'💬 {T.TRIAL_MESSAGES} сообщений со мной\n'
                 '💋 все уровни близости с 1 по 10, «Пошлый режим» и 🎭 «Фетиши»\n'
                 f'📸 {T.TRIAL_PHOTOS} новых фото и {T.TRIAL_UNDRESS} «Раздеть»\n'
                 f'📞 {mins} мин звонка со мной, 🔊 {T.TRIAL_VOICE} голосовых\n\n'
-                'в полном Premium общение без лимита, 2 фото и 15 минут звонка каждый день 💗')
-    monthly = days >= 28
+                'в полном Premium общение без лимита и намного больше фото, звонков и голосовых 💗')
+    from services import trial_caps as T
+    tier = {'premium_week': 'week', 'premium_quarter': 'quarter'}.get(product, 'month')
     if lang == 'en':
         return (f'✨ Here is what is open for you now ({days} days):\n\n'
                 '💬 chat with no daily limit — I will not fall asleep mid-talk any more\n'
                 '💋 every level of closeness, 1 to 10 — you can pick any\n'
                 '🌶 «Spicy mode» and 🎭 «Fetishes»\n'
-                '📸 2 new photos a day, my most private photos and «Undress»\n'
-                + ('🎬 «Animate» one of my photos every day\n' if monthly else '')
-                + '📞 15 call minutes a day and 🔊 my voice messages\n\n'
+                '📸 my most private photos and «Undress», 📞 calls and 🔊 my voice\n'
+                + '📦 ' + T.plan_line(tier, True).lstrip('. ') + '\n\n'
                 'everything works both here and in the app 💗')
     return (f'✨ Вот что теперь открыто для тебя ({days} дн.):\n\n'
             '💬 общение без дневного лимита — я больше не засыпаю посреди разговора\n'
             '💋 все уровни близости с 1 по 10 — можно выбрать любой\n'
             '🌶 «Пошлый режим» и 🎭 «Фетиши»\n'
-            '📸 2 новых фото в день, мои самые откровенные фото и «Раздеть»\n'
-            + ('🎬 «Оживить» одно моё фото каждый день\n' if monthly else '')
-            + '📞 15 минут звонка в день и 🔊 мои голосовые\n\n'
+            '📸 мои самые откровенные фото и «Раздеть», 📞 звонки и 🔊 мои голосовые\n'
+            + '📦 ' + T.plan_line(tier, False).lstrip('. ') + '\n\n'
             'всё работает и здесь, и в приложении 💗')
 
 

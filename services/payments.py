@@ -349,6 +349,11 @@ def consume_premium_video_free(telegram_id: int) -> bool:
         if int(user.video_free_used or 0) >= VIDEO_PREMIUM_FREE_DAILY:
             s.commit()
             return False
+        # V3.124.0: the plan's animation total (month 2, quarter 4 by default).
+        from services import trial_caps
+        if not trial_caps.take_animation(telegram_id):
+            s.commit()
+            return False
         user.video_free_used = int(user.video_free_used or 0) + 1
         s.commit()
         return True

@@ -772,7 +772,7 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
                 f'она больше не засыпает: общение без лимита, {PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 в подарок, голос и все девушки'
                 if not en else
                 f'she never falls asleep: unlimited chat, {PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 as a gift, voice and every girl'
-            ),
+            ) + _TC.plan_line('month', en),
             # V3.66.0: one short line for the shop card (the long description
             # stays for the quick-buy sheet).
             'tagline': (f'+{peach_num(PREMIUM_MONTHLY_PHOTO_CREDITS)} 🍑 в подарок' if not en
@@ -792,7 +792,7 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
                 f'попробовать неделю: общение без лимита, {PREMIUM_WEEKLY_PHOTO_CREDITS} 🍑 в подарок и её голос'
                 if not en else
                 f'try it for a week: unlimited chat, {PREMIUM_WEEKLY_PHOTO_CREDITS} 🍑 as a gift and her voice'
-            ),
+            ) + _TC.plan_line('week', en),
             'tagline': (f'+{peach_num(PREMIUM_WEEKLY_PHOTO_CREDITS)} 🍑 в подарок' if not en
                         else f'+{peach_num(PREMIUM_WEEKLY_PHOTO_CREDITS)} 🍑 as a gift'),
             'gift': PREMIUM_WEEKLY_PHOTO_CREDITS,
@@ -812,7 +812,7 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
                 f'три месяца без лимита, {peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 в подарок, голос и все девушки'
                 if not en else
                 f'three months unlimited, {peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 as a gift, voice and every girl'
-            ),
+            ) + _TC.plan_line('quarter', en),
             'tagline': (f'+{peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 в подарок' if not en
                         else f'+{peach_num(PREMIUM_QUARTERLY_PHOTO_CREDITS)} 🍑 as a gift'),
             'gift': PREMIUM_QUARTERLY_PHOTO_CREDITS,
@@ -910,10 +910,12 @@ def api_shop(lang: str = 'ru') -> dict:
         # V3.83.0: owner — «с Premium можно выбрать любой уровень общения».
         ('🎚', 'любой уровень общения 1–10 с каждой девушкой — выбери сам', 'any relationship level 1–10 with every girl — your pick'),
         # V3.93.0: without Premium — one ready photo a day; with it — two new ones + peaches.
-        ('📸', '2 новых фото в чате каждый день, дальше — за персики', '2 new chat photos every day, more for peaches'),
+        # V3.124.0: daily up to 2, the plan holds a total (see each plan's line).
+        ('📸', 'новые фото в чате, до 2 в день из запаса тарифа, дальше за персики', 'new chat photos, up to 2 a day from the plan, more for peaches'),
+        ('📞', 'звонки ей и голосовые из запаса тарифа', 'calls with her and voice notes from the plan'),
         ('🍑', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 каждый месяц в подарок', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 every month as a gift'),
         # V3.112.0: animation only on a month or longer plan, one a day.
-        ('🎬', '1 оживление фото в день — в Premium на месяц и дольше', '1 photo animation a day — on a month or longer plan'),
+        ('🎬', 'оживление фото в Premium на месяц и дольше', 'photo animation on a month or longer plan'),
         ('🎯', 'перезапуски историй и все персонажи', 'story replays and all characters'),
         ('💌', 'безлимитное общение — она не засыпает, и больше памяти', 'unlimited chat — she never falls asleep, more memory'),
         ('🎙', 'голосовые ответы', 'voice replies'),
