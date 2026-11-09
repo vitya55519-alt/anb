@@ -22,8 +22,10 @@ def test_strings_ru_en():
     assert "tune_title: '🎛 Настрой её сам'" in HTML and "tune_title: '🎛 Set her up yourself'" in HTML
 
 
-def test_hot18_tile_second_in_first_row_of_main_roster():
-    assert "items.splice(Math.min(1, items.length), 0, { hot18: true })" in HTML
+def test_girl_of_day_wide_with_18_bar_under_her():
+    assert "items.splice(items[0] && items[0].girl_of_day ? 1 : 0, 0, { hot18: true })" in HTML
+    assert ".card.wide { grid-column: 1 / -1; }" in HTML and '${wideCls(c)}' in HTML
+    assert 'class="hot18bar"' in HTML
     assert "CHAR_SEG === 'official' && !q" in HTML
     assert "openHot18(null)" in HTML
 
