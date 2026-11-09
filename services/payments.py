@@ -77,6 +77,9 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
                 unlock_achievement(telegram_id, 'premium_member')
             except Exception:
                 pass
+        elif product == "undress_one":
+            # V3.132.0: one «Раздеть» bought on its own (committed below with the ledger row).
+            pass
         elif product in {"photo","custom_photo"}:
             # V3.65.0: one photo credit is PEACH_SCALE peaches now.
             user.photo_credits=_credits_plus(PEACH_SCALE)
@@ -100,6 +103,9 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
             logger.info('duplicate payment ignored charge=%s', charge_id)
             return
         payer_user_id = user.id
+    if product == "undress_one":
+        from services import undress_credits
+        undress_credits.add(telegram_id, 1)
     # V3.37.0: after the purchase commits, credit the payer's referrer in the
     # partner ledger (money commission). Outside the payment transaction on
     # purpose — a ledger failure must never roll back the user's purchase.

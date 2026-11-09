@@ -607,10 +607,16 @@
     font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.4);
   }
   /* V3.61.7: actions under her photo */
-  .msg .phact { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-  .msg .phact .pa { flex: 1 1 0; min-width: 0; border: 1px solid rgba(255,120,180,.35); border-radius: 14px; padding: 8px 6px;
-    background: rgba(255,255,255,.06); color: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
-  .msg .phact .pa.hot { background: linear-gradient(90deg,#ff5fa2,#b44cff); border: 0; color: #fff; }
+  /* V3.132.0: owner — «кнопки под фото некрасивые»: three nowrap buttons did
+     not fit the 220px bubble and ran into each other. Now «Раздеть» is one wide
+     bright button and «Скачать» / «Оживить» sit under it as two quiet ones. */
+  .msg .phact { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; max-width: 220px; }
+  .msg .phact .pa { min-width: 0; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 8px 6px;
+    background: rgba(255,255,255,.06); color: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+  .msg .phact .pa.hot { grid-column: 1 / -1; order: -1; padding: 10px 8px; font-size: 14px; border: 0; color: #fff;
+    background: linear-gradient(90deg,#ff5fa2,#b44cff); box-shadow: 0 4px 14px rgba(255,95,162,.35); }
+  .msg .phact .pa.hot small { font-weight: 600; opacity: .85; margin-left: 4px; font-size: 12px; }
   .msg .phact .pa:disabled { opacity: .5; }
   .msg .dl { display: inline-block; margin-top: 6px; border: 0; border-radius: 14px; padding: 5px 12px;
     background: rgba(255,255,255,.1); color: inherit; font-size: 12.5px; cursor: pointer; }
@@ -1746,7 +1752,7 @@ const L_EN = {
   chan_check_fail: 'Could not check the subscription — try again later',
   buy: 'Buy', auth_short: 'Open this app from Telegram',
   selected_toast: 'selected', locked: 'This girl is locked for now', need_premium: 'Available with Premium ⭐',
-  pa_undress_prem: 'Undressing her is a Premium feature ⭐',
+  pa_undress_prem: 'Pick: one «Undress» or Premium 🔥',
   pic_spicy_prem: '18+ pictures are a Premium feature ⭐',
   hm_pick_style: 'Her room is empty for now. Pick a style, the first one is free', hm_restyle_sub: 'New style: {p} 🍑, the furniture stays', hm_free: 'free', hm_now: 'now', hm_back: '← Back to the room', hm_drawing: 'the room picture is being drawn… 🏠', hm_change: 'Change style', hm_placed: '✓ in the room', hm_pick_item: 'Tap a thing to put it in her room', hm_put: 'Put it back · {p} 🍑', hm_wait: 'drawing the room… 🏠',
   wd_cap: 'Wardrobe', wd_cap_ds: 'Give her clothes and things for her room: she wears them in photos', wd_h: '👗 {name}\'s wardrobe', wd_sub: 'Every gift stays hers forever. The price includes a try-on photo', wd_mood: '💗 Mood', wd_tab_wear: '👗 Clothes', wd_tab_room: '🏠 Home', wd_owned: '✓ she has it', wd_worn: '✓ wearing today', wd_buy: 'Give: {title} · {price} 🍑', wd_wear: '👗 Wear today', wd_unwear: 'Take it off', wd_have: 'She already has it', wd_locked: '18+ items open with Premium ⭐', wd_wait: 'she is trying it on… 📸', wd_pet_ph: 'Kitten name', wd_pet_go: 'Name the kitten', wd_pick: 'Tap a thing to see it', wd_worn_set: 'She is wearing it today 👗',
@@ -2020,7 +2026,7 @@ const L_RU = {
   chan_check_fail: 'Не удалось проверить подписку — попробуй позже',
   buy: 'Купить', auth_short: 'Открой приложение из Telegram',
   selected_toast: 'выбрана', locked: 'Эта девушка пока закрыта', need_premium: 'Доступна с Premium ⭐',
-  pa_undress_prem: 'Раздеть её можно только с Premium ⭐',
+  pa_undress_prem: 'Выбери: одно «Раздеть» или Premium 🔥',
   pic_spicy_prem: 'Откровенные картинки — только с Premium ⭐',
   hm_pick_style: 'Её комната пока пустая. Выбери стиль, первый бесплатно', hm_restyle_sub: 'Новый стиль: {p} 🍑, мебель остаётся', hm_free: 'бесплатно', hm_now: 'сейчас', hm_back: '← Назад к комнате', hm_drawing: 'картинка комнаты рисуется… 🏠', hm_change: 'Сменить стиль', hm_placed: '✓ стоит в комнате', hm_pick_item: 'Нажми на вещь, чтобы поставить её в комнату', hm_put: 'Поставить обратно · {p} 🍑', hm_wait: 'рисую комнату… 🏠',
   wd_cap: 'Гардероб', wd_cap_ds: 'Дари ей одежду и вещи для комнаты, она будет в них на фото', wd_h: '👗 Гардероб: {name}', wd_sub: 'Подарок остаётся у неё навсегда. В цену входит фото примерки', wd_mood: '💗 Настроение', wd_tab_wear: '👗 Одежда', wd_tab_room: '🏠 Дом', wd_owned: '✓ у неё есть', wd_worn: '✓ надето сегодня', wd_buy: 'Подарить: {title} · {price} 🍑', wd_wear: '👗 Надеть сегодня', wd_unwear: 'Снять', wd_have: 'Это у неё уже есть', wd_locked: 'Вещи 18+ открываются с Premium ⭐', wd_wait: 'примеряет… 📸', wd_pet_ph: 'Имя котёнка', wd_pet_go: 'Назвать котёнка', wd_pick: 'Нажми на вещь, чтобы выбрать', wd_worn_set: 'Сегодня она в этом 👗',
@@ -3458,7 +3464,9 @@ function chatBubble(roleOrM, content, ts) {
       body = '<img class="m" src="' + esc(src) + '" data-lb="1" alt="">'
         + '<div class="phact"><button class="pa" data-dl="' + esc(src) + '">' + esc(L.pa_save) + '</button>'
         + '<button class="pa" data-pact="animate" data-media="' + esc(m.media_url) + '">' + esc(L.pa_anim) + '</button>'
-        + '<button class="pa hot" data-pact="undress" data-media="' + esc(m.media_url) + '">' + esc(L.pa_undress + (ME && ME.premium ? '' : ' ⭐')) + '</button></div>';
+        + '<button class="pa hot" data-pact="undress" data-media="' + esc(m.media_url) + '">' + esc(L.pa_undress)
+        // V3.132.0: without Premium the button shows its own price (one «Раздеть» for 50 ₽)
+        + (ME && !ME.premium ? (ME.undress_one_rub ? '<small>· ' + esc(ME.undress_one_rub) + ' ₽</small>' : ' ⭐') : '') + '</button></div>';
     }
     else body = `<img class="m" src="${esc(src)}" data-lb="1" alt=""><br><button class="dl" data-dl="${esc(src)}">${esc(L.photo_save)}</button>`;
     if (m.content) body += `<div style="margin-top:4px">${esc(m.content)}</div>`;
@@ -4314,7 +4322,8 @@ async function photoAction(action, mediaUrl, btn) {
         // V3.86.0: «Раздеть» is Premium-only — leave the chat and open the shop.
         toast(action === 'undress' ? L.pa_undress_prem : L.need_premium);
         // V3.87.0: the Premium pay sheet right in the chat (no leaving her).
-        quickBuy('spicy', () => photoAction(action, mediaUrl, btn));
+        // V3.132.0: «Раздеть» sells one photo for 50 ₽ first, Premium below it.
+        quickBuy(action === 'undress' ? 'undress' : 'spicy', () => photoAction(action, mediaUrl, btn));
         return;
       }
       toast(j.error === 'adult_confirm' ? L.adult_confirm_needed : L.locked);
@@ -6291,13 +6300,14 @@ async function quickBuy(kind, retry, opts) {
   const trialFirst = (ME && ME.trial_eligible && !ME.premium) ? ['premium_trial'] : [];
   // V3.97.0: his personal one-time −50% month (the limit answer says vip:true).
   const want = kind === 'month' ? ['premium', 'premium_quarter']
+    : kind === 'undress' ? ['undress_one'].concat(trialFirst, ['premium_week'])
     : ((kind === 'limit' || kind === 'voice' || kind === 'spicy') ? trialFirst.concat(['premium_week', 'premium'])
       : (kind === 'photo' ? ['peach_pack_30', 'peach_pack_100', 'peach_pack_10'] : ['peach_pack_10', 'peach_pack_30', 'premium']));
   if (kind === 'limit' && opts.vip) want.unshift('premium_vip');
   const items = want.map(id => (s.purchases || []).find(p => p.id === id)).filter(Boolean);
   if (!items.length) { showTab('shop'); return; }
-  document.getElementById('payEmo').textContent = kind === 'month' ? '🎬' : kind === 'limit' ? '😴' : (kind === 'voice' ? '🎙' : (kind === 'spicy' ? '🔥' : '🍑'));
-  document.getElementById('payTitle').textContent = kind === 'month' ? (L.video_month || L.qb_limit) : kind === 'limit' ? L.qb_limit : (kind === 'voice' ? L.qb_voice : (kind === 'spicy' ? L.qb_spicy : (kind === 'photo' ? L.qb_photo : L.qb_peaches)));
+  document.getElementById('payEmo').textContent = kind === 'month' ? '🎬' : kind === 'limit' ? '😴' : (kind === 'voice' ? '🎙' : ((kind === 'spicy' || kind === 'undress') ? '🔥' : '🍑'));
+  document.getElementById('payTitle').textContent = kind === 'month' ? (L.video_month || L.qb_limit) : kind === 'limit' ? L.qb_limit : (kind === 'voice' ? L.qb_voice : ((kind === 'spicy' || kind === 'undress') ? L.qb_spicy : (kind === 'photo' ? L.qb_photo : L.qb_peaches)));
   const rows = [];
   if (kind === 'limit' && opts.demo) {
     rows.push(`<button class="mrow" data-q="__demo"><span class="ico">🎁</span><span class="nm">${esc(L.qb_demo)}</span><span class="pr">0 ₽</span></button>`);
@@ -6306,7 +6316,7 @@ async function quickBuy(kind, retry, opts) {
   rows.push(`<button class="mrow" data-q="__shop"><span class="ico">🛍</span><span class="nm">${esc(L.qb_more)}</span><span class="pr"></span></button>`);
   document.getElementById('payRows').innerHTML = rows.join('');
   // V3.123.0: bonus peaches never pay for renders — say so instead of a silent «не хватает».
-  const bonusNote = (kind !== 'month' && kind !== 'limit' && kind !== 'voice' && kind !== 'spicy'
+  const bonusNote = (kind !== 'month' && kind !== 'limit' && kind !== 'voice' && kind !== 'spicy' && kind !== 'undress'
     && ME && Number(ME.bonus_peaches || 0) > 0) ? L.bonus_note(ME.bonus_peaches) + ' ' : '';
   document.getElementById('payNote').textContent = bonusNote + (L.pay_once || '');
   document.querySelectorAll('#payRows [data-q]').forEach(b => b.addEventListener('click', async () => {

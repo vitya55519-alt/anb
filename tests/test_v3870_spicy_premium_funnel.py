@@ -37,7 +37,7 @@ def test_app_opens_the_premium_sheet():
     assert "(kind === 'limit' || kind === 'voice' || kind === 'spicy') ? trialFirst.concat(['premium_week', 'premium'])" in INDEX
     assert "if (j.photo_block === 'spicy') {" in INDEX
     assert "if (j.error === 'premium_required') { quickBuy('spicy', () => requestMedia(kind, scene)); return; }" in INDEX
-    assert "quickBuy('spicy', () => photoAction(action, mediaUrl, btn));" in INDEX
+    assert "quickBuy(action === 'undress' ? 'undress' : 'spicy', () => photoAction(action, mediaUrl, btn));" in INDEX
     assert INDEX.count('qb_spicy:') >= 2 and INDEX.count('sc_prem_only:') >= 2
 
 
