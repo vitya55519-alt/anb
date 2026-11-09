@@ -279,6 +279,18 @@
   .lvlsheet .box { width: 100%; max-height: 80vh; overflow: auto; background: #1d1424; border-radius: 20px 20px 0 0;
     padding: 18px 16px 24px; border-top: 1px solid rgba(255,120,180,.3); }
   .lvlsheet h3 { margin: 0 0 4px; font-size: 18px; }
+  /* V3.133.0: «🎛 Настрой её сам» — Premium picks level + bond on her page */
+  .tune .tl { font-size: 13px; opacity: .85; margin: 14px 0 8px; }
+  .tune .lv { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .tune .lv button, .tune .br button { padding: 10px 0; border-radius: 12px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); color: inherit; font-size: 15px; font-weight: 600; }
+  .tune .br { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tune .br button { font-size: 14px; }
+  .tune button.on { background: linear-gradient(135deg,#ff4f8b,#a24bff); border-color: transparent; }
+  .tune button:disabled { opacity: .35; }
+  .tune .lvt { font-size: 13px; margin-top: 8px; min-height: 18px; opacity: .9; }
+  .tune.locked .lv, .tune.locked .br { opacity: .45; pointer-events: none; }
+  .tunebtn { margin: 10px 16px 0; width: calc(100% - 32px); padding: 12px; border-radius: 14px; border: 1px solid rgba(255,79,139,.45); background: rgba(255,79,139,.10); color: inherit; font-size: 14px; font-weight: 600; text-align: left; }
+  .tunebtn small { float: right; opacity: .7; font-weight: 500; }
   .lvlsheet .bond { font-size: 13px; opacity: .8; margin-bottom: 12px; }
   .lvlsheet .row { margin: 10px 0; }
   .lvlsheet .row .t { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
@@ -1512,6 +1524,8 @@
       </div>
       <div class="path-ends"><span id="charPathEndL"></span><span id="charPathEndR"></span></div>
     </div>
+    <!-- V3.133.0: Premium sets level + bond right here, before the chat -->
+    <button class="tunebtn" id="charTune" style="display:none"></button>
     <!-- V3.51.0: story player entry, right under the path bar (choice -> result) -->
     <!-- V3.59.5: her relationship status for this user — bends how she chats -->
     <div class="charblock foldable fold" id="charMarital" style="display:none;white-space:normal"><div class="mlbl foldhead"><span id="charMaritalLbl" style="font-weight:600"></span><span class="mprice" id="charMaritalPrice"></span></div><div class="mchips" id="charMaritalChips"></div></div>
@@ -1860,7 +1874,7 @@ const L_EN = {
   ach_title: 'Achievements', gal_title: 'My gallery', gal_empty: 'No photos yet — generate one in “Alone”.', gal_count: n => n + ' photos',
   partner_row: '💰 Partner program', docs_row: '📜 Documents & prices', open_chat: 'chat',
   // V3.39.0: the Come Closer character page + in-app chat media.
-  start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', lb_title: '🏆 Top Popular',
+  start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', tune_btn: '🎛 Set her up: level and bond', tune_title: '🎛 Set her up yourself', tune_hint: 'With Premium you choose right away how close you are and what your bond is like. She talks that way from the next message.', tune_lvl: 'Intimacy level', tune_path: 'Bond', tune_path_hint: 'from level 4 the bond is chosen', tune_apply: '✨ Apply', tune_real: '↩ Back to the real level', tune_locked: '🔒 Open with Premium', tune_picked: 'chosen by you', tune_more: 'Full road with all levels', tune_close: 'Close', lb_title: '🏆 Top Popular',
     // V3.53.0: «Собери галерею» — every 50 photos of a character is one gallery set.
     collect_lbl: 'Gallery', collect_sets: n => n + ' sets', collect_done: '🖼 Gallery set complete! +1 🏆 — start the next 50',
     path_lbl: '💞 Relationship path', path_tender: 'Tender', path_balanced: 'Balanced', path_free: 'Uninhibited', path_end_l: 'Tenderness', path_end_r: 'Passion',
@@ -2134,7 +2148,7 @@ const L_RU = {
   ach_title: 'Достижения', gal_title: 'Моя галерея', gal_empty: 'Фото пока нет — создай его в «Наедине».', gal_count: n => n + ' фото',
   partner_row: '💰 Партнёрка', docs_row: '📜 Документы и цены', open_chat: 'чат',
   // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
-  start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', lb_title: ' Топ популярных',
+  start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', tune_btn: '🎛 Настроить: уровень и характер связи', tune_title: '🎛 Настрой её сам', tune_hint: 'С Premium ты сразу выбираешь, насколько вы близки и какая у вас связь. Она будет общаться так со следующего сообщения.', tune_lvl: 'Уровень близости', tune_path: 'Характер связи', tune_path_hint: 'с 4 уровня выбирается характер связи', tune_apply: '✨ Применить', tune_real: '↩ Вернуть настоящий уровень', tune_locked: '🔒 Открыть с Premium', tune_picked: 'выбран тобой', tune_more: 'Вся дорога по уровням', tune_close: 'Закрыть', lb_title: ' Топ популярных',
     // V3.53.0: «Собери галерею» — каждые 50 фото персонажа = один сет галереи.
     collect_lbl: 'Галерея', collect_sets: n => n + ' сетов', collect_done: '🖼 Сет галереи собран! +1 🏆 — собирай следующие 50',
     path_lbl: '💞 Характер связи', path_tender: 'Нежная', path_balanced: 'Сбалансированная', path_free: 'Раскрепощённая', path_end_l: 'Нежность', path_end_r: 'Страсть',
@@ -3726,6 +3740,72 @@ async function pickLevel(level, branch) {
   } catch (e) { toast(L.load_failed); }
 }
 
+// V3.133.0: «🎛 Настрой её сам» — on her page, before the chat. Premium (trial
+// too) picks the intimacy level 1–10 and, from level 4, the bond (romance or
+// passion) in one sheet; free users see the same sheet locked + Premium offer.
+async function openCharTune(c) {
+  if (!c || !c.id) return;
+  const prem = !!(ME && ME.premium);
+  let cur = { level: c.level || 1, branch: '', picked: false };
+  try {
+    const r = await fetch('/webapp/api/chat/level?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(c.id));
+    const j = await r.json();
+    if (j && j.ok) cur = { level: j.level || 1, branch: j.branch || '', picked: !!j.picked, map: j.map };
+  } catch (e) { /* the sheet still works with the card data */ }
+  let lv = cur.level, br = cur.branch || 'romance';
+  const titleOf = (n, b) => {
+    const mp = cur.map || {};
+    const list = n <= 3 ? (mp.common || []) : (mp[b] || []);
+    const x = list.find(y => +y.level === n);
+    return x ? x.title + (x.perks && x.perks[0] ? ' · ' + x.perks[0] : '') : '';
+  };
+  const sheet = document.getElementById('lvlSheet');
+  const box = document.getElementById('lvlBox');
+  const close = () => { sheet.style.display = 'none'; };
+  const draw = () => {
+    box.innerHTML = '<div class="tune' + (prem ? '' : ' locked') + '"><h3>' + esc(L.tune_title) + '</h3>'
+      + '<div class="bond">' + esc(c.name || '') + (cur.picked ? ' · ' + esc(L.tune_picked) : '') + '</div>'
+      + '<div style="font-size:13px;opacity:.85">' + esc(L.tune_hint) + '</div>'
+      + '<div class="tl">💕 ' + esc(L.tune_lvl) + '</div><div class="lv">'
+      + Array.from({ length: 10 }, (_, i) => '<button data-lv="' + (i + 1) + '" class="' + (lv === i + 1 ? 'on' : '') + '">' + (i + 1) + '</button>').join('')
+      + '</div><div class="lvt">' + esc(titleOf(lv, br)) + '</div>'
+      + '<div class="tl">💞 ' + esc(L.tune_path) + (lv < 4 ? ' · ' + esc(L.tune_path_hint) : '') + '</div><div class="br">'
+      + '<button data-br="romance" class="' + (lv >= 4 && br === 'romance' ? 'on' : '') + '"' + (lv < 4 ? ' disabled' : '') + '>❤️ ' + esc(L.path_romance) + '</button>'
+      + '<button data-br="passion" class="' + (lv >= 4 && br === 'passion' ? 'on' : '') + '"' + (lv < 4 ? ' disabled' : '') + '>🔥 ' + esc(L.path_passion) + '</button>'
+      + '</div></div>'
+      + (prem ? '<button class="close" id="tuneApply" style="margin-top:16px">' + esc(L.tune_apply) + '</button>'
+        + (cur.picked ? '<button class="close" id="tuneReal" style="margin-top:8px">' + esc(L.tune_real) + '</button>' : '')
+        : '<button class="close" id="tunePrem" style="margin-top:16px">' + esc(L.tune_locked) + '</button>')
+      + '<button class="close" id="tuneClose" style="margin-top:8px">' + esc(L.tune_close) + '</button>';
+    box.querySelectorAll('.lv button').forEach(b => b.onclick = () => { lv = +b.dataset.lv; draw(); });
+    box.querySelectorAll('.br button').forEach(b => b.onclick = () => { br = b.dataset.br; draw(); });
+    document.getElementById('tuneClose').onclick = close;
+    const pb = document.getElementById('tunePrem');
+    if (pb) pb.onclick = () => { close(); quickBuy('spicy'); };
+    const ap = document.getElementById('tuneApply');
+    if (ap) ap.onclick = () => sendTune(lv, lv >= 4 ? br : '');
+    const rl = document.getElementById('tuneReal');
+    if (rl) rl.onclick = () => sendTune(0, '');
+  };
+  const sendTune = async (level, branch) => {
+    try {
+      const r = await fetch('/webapp/api/chat/level/pick?init_data=' + encodeURIComponent(tg.initData || ''), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ character_id: c.id, level: level, branch: branch }),
+      });
+      const j = await r.json();
+      if (!j.ok) { toast(j.error === 'premium' ? L.lvl_pick_premium : L.load_failed); return; }
+      if (CHAT_LEVEL && CHAT_LEVEL.cid === c.id) CHAT_LEVEL = null;
+      if (typeof tg.HapticFeedback !== 'undefined') try { tg.HapticFeedback.notificationOccurred('success'); } catch (e) {}
+      close();
+      toast(level ? '✨ ' + L.lvl_pick_done + ' ' + level + (branch ? ' · ' + (branch === 'passion' ? '🔥 ' + L.path_passion : '❤️ ' + L.path_romance) : '') : L.tune_real);
+    } catch (e) { toast(L.load_failed); }
+  };
+  draw();
+  sheet.style.display = 'flex';
+  sheet.onclick = (e) => { if (e.target === sheet) close(); };
+}
+
 // V3.61.2: «позвать в чат» — invite another girl into this chat; both answer,
 // each line starting with her name. The bar above the chat sends her away.
 function renderGuest(characterId, guest, canInvite) {
@@ -5303,6 +5383,16 @@ function openCharPage(el) {
   const pathBar = document.getElementById('charPathBar');
   pathBar.style.display = '';
   renderPathBar(typeof c.path === 'number' ? c.path : 0);
+  // V3.133.0: «🎛 Настроить» — level + bond for Premium; bars open it too.
+  const tuneBtn = document.getElementById('charTune');
+  if (tuneBtn) {
+    const canTune = c.status === 'active' || c.custom || (ME && ME.premium);
+    tuneBtn.style.display = canTune ? '' : 'none';
+    tuneBtn.innerHTML = esc(L.tune_btn) + ' <small>' + (ME && ME.premium ? '›' : '💎 Premium') + '</small>';
+    tuneBtn.onclick = () => openCharTune(c);
+    relBar.onclick = canTune ? () => openCharTune(c) : null;
+    pathBar.onclick = canTune ? () => openCharTune(c) : null;
+  }
   renderMarital(c);
   // V3.51.0: story player entry — sits right under the path bar so the player
   // sees «this choice moves that scale». Show it for any openable character.
