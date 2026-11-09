@@ -290,14 +290,14 @@
   .tune .lvt { font-size: 13px; margin-top: 8px; min-height: 18px; opacity: .9; }
   .tune.locked .lv, .tune.locked .br { opacity: .45; pointer-events: none; }
   /* V3.133.0: «🔥 Только 18+» tile + showcase */
-  .card.hot18 { border: 1px solid rgba(255,61,113,.55); cursor: pointer; }
-  .card.hot18 { display: flex; flex-direction: column; }
-  .card.hot18 .photo { flex: 1; aspect-ratio: auto; min-height: 220px; overflow: hidden; background: linear-gradient(160deg,#3a0f22,#1a0b1f); }
-  .card.hot18 .photo img { filter: blur(10px) brightness(.55); transform: scale(1.15); }
-  .card.hot18 .hotin { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 10px; }
-  .card.hot18 .hotin b { font-size: 46px; line-height: 1; }
-  .card.hot18 .hotin span { margin-top: 10px; font-size: 18px; font-weight: 800; }
-  .card.hot18 .hotin small { margin-top: 6px; font-size: 12px; opacity: .85; line-height: 1.35; }
+  .card.wide { grid-column: 1 / -1; }
+  .card.wide .photo { aspect-ratio: 4/3; }
+  .card.wide .photo img, .card.wide .photo video { object-position: center 22%; }
+  .card.wide .gday { left: auto; right: 8px; bottom: 8px; font-size: 12px; }
+  .hot18bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; border-radius: 16px; border: 1px solid rgba(255,61,113,.6); background: linear-gradient(135deg, rgba(255,61,113,.28), rgba(162,75,255,.22)); color: #fff; text-align: left; cursor: pointer; }
+  .hot18bar b { font-size: 18px; font-weight: 800; white-space: nowrap; }
+  .hot18bar span { font-size: 13px; opacity: .9; line-height: 1.3; }
+  .hot18bar i { margin-left: auto; font-style: normal; font-size: 22px; opacity: .8; }
   .hotrow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; margin: 6px 0; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.05); color: inherit; text-align: left; font-size: 15px; font-weight: 600; }
   .hotrow .ds { display: block; font-size: 12px; font-weight: 400; opacity: .7; margin-top: 2px; }
   .hotrow .pr { margin-left: auto; white-space: nowrap; font-size: 13px; padding: 4px 9px; border-radius: 10px; background: rgba(255,61,113,.18); color: #ff8fb0; }
@@ -2795,14 +2795,15 @@ function renderCharacters(list) {
   // V3.133.0: «🔥 Только 18+» rides second in the first row of the main
   // roster, right next to «Девушка дня».
   const items = shown.slice();
-  if (CHAR_SEG === 'official' && !q) items.splice(Math.min(1, items.length), 0, { hot18: true });
+  // V3.133.1: «Девушка дня» spans both columns, the full-width «🔥 18+» bar right under her.
+  if (CHAR_SEG === 'official' && !q) items.splice(items[0] && items[0].girl_of_day ? 1 : 0, 0, { hot18: true });
   const pages = Math.max(1, Math.ceil(items.length / CHAR_PAGE_SIZE));
   if (CHAR_PAGE > pages - 1) CHAR_PAGE = pages - 1;
   if (CHAR_PAGE < 0) CHAR_PAGE = 0;
   const pageItems = items.slice(CHAR_PAGE * CHAR_PAGE_SIZE, CHAR_PAGE * CHAR_PAGE_SIZE + CHAR_PAGE_SIZE);
-  const hotBg = (shown[1] || shown[0] || {});
+  const wideCls = c => (c.girl_of_day && CHAR_SEG === 'official' && !q ? ' wide' : '');
   const cardHTML = c => {
-    if (c.hot18) return `<div class="card hot18" id="hot18Card"><div class="photo">${hotBg.card || hotBg.photo ? `<img src="${esc(hotBg.card || hotBg.photo)}" alt="" loading="lazy">` : ''}<div class="hotin"><b>🔥</b><span>${esc(L.hot_tile)}</span><small>${esc(L.hot_tile_sub)}</small></div></div></div>`;
+    if (c.hot18) return `<button class="hot18bar" id="hot18Card" type="button"><b>🔥 18+</b><span>${esc(L.hot_tile_sub)}</span><i>›</i></button>`;
     const badge = c.status === 'active'
       ? `<span class="badge active">✅ ${esc(L.active)}</span>`
       : c.status === 'premium'
@@ -2830,7 +2831,7 @@ function renderCharacters(list) {
     const cardMedia = c => c.live
       ? `<video src="${esc(c.live)}" muted loop autoplay playsinline preload="metadata" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"></video>`
       : `<img src="${esc(c.card || c.photo)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">`;
-    return `<div class="card${c.selected ? ' selected' : ''}" data-id="${esc(c.id)}" data-status="${esc(c.status)}" data-name="${esc(c.name)}" data-photo="${esc(c.photo)}" data-emoji="${esc(c.emoji)}" data-custom="${c.custom ? '1' : '0'}">
+    return `<div class="card${c.selected ? ' selected' : ''}${wideCls(c)}" data-id="${esc(c.id)}" data-status="${esc(c.status)}" data-name="${esc(c.name)}" data-photo="${esc(c.photo)}" data-emoji="${esc(c.emoji)}" data-custom="${c.custom ? '1' : '0'}">
       <div class="photo">
         ${cardMedia(c)}
         <div class="fallback">${esc(c.emoji)}</div>
