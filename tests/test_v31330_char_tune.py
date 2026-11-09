@@ -20,3 +20,19 @@ def test_tune_uses_premium_pick_endpoint_and_locks_for_free():
 
 def test_strings_ru_en():
     assert "tune_title: '🎛 Настрой её сам'" in HTML and "tune_title: '🎛 Set her up yourself'" in HTML
+
+
+def test_hot18_tile_second_in_first_row_of_main_roster():
+    assert "items.splice(Math.min(1, items.length), 0, { hot18: true })" in HTML
+    assert "CHAR_SEG === 'official' && !q" in HTML
+    assert "openHot18(null)" in HTML
+
+
+def test_hot18_showcase_on_her_page_and_honest():
+    assert 'id="charHot18"' in HTML
+    assert HTML.index('id="charHot18"') > HTML.index('id="charStart"')
+    body = HTML.split('function openHot18(c0) {', 1)[1].split('\nfunction ', 1)[0]
+    for k in ('undress', 'spicy', 'fet', 'plots', 'call', 'circle', 'video'):
+        assert "'" + k + "'" in body
+    assert "quickBuy('spicy')" in body and 'undress_one_rub' in body
+    assert 'Фото реальных людей не раздеваем' in HTML
