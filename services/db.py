@@ -78,6 +78,7 @@ def _migrate_existing_users():
         'proactive_enabled': f"BOOLEAN DEFAULT {bool_true}",
         'appearance_description': 'TEXT',
         'photo_credits': 'INTEGER DEFAULT 0',
+        'bonus_peaches': 'INTEGER DEFAULT 0',
         'adult_confirmed': f"BOOLEAN DEFAULT {bool_false}",
         'voice_anon_mode': f"BOOLEAN DEFAULT {bool_false}",
         'attention_points': 'INTEGER DEFAULT 0',
@@ -160,6 +161,29 @@ def _rescale_peaches() -> None:
         logger.exception('peach rescale x%s skipped (will retry on next boot)', PEACH_SCALE)
 
 
+def _split_bonus_peaches() -> None:
+    """V3.123.0: owner split peaches into a bought wallet (photo_credits) and a
+    bonus wallet (bonus_peaches). Old balances were one pile; a man who never
+    paid can only hold free peaches, so his whole balance moves to the bonus
+    wallet. Anyone with a purchase keeps his balance as bought (we cannot tell
+    the parts apart, and he must never lose what he paid for). Once per
+    database, marker inserted first in the same transaction."""
+    name = 'peach_wallet_split_v1'
+    try:
+        with engine.begin() as conn:
+            if conn.execute(text('SELECT 1 FROM app_migrations WHERE name = :n'), {'n': name}).first():
+                return
+            conn.execute(text('INSERT INTO app_migrations (name) VALUES (:n)'), {'n': name})
+            moved = conn.execute(text(
+                "UPDATE users SET bonus_peaches = COALESCE(bonus_peaches, 0) + photo_credits, photo_credits = 0 "
+                "WHERE photo_credits > 0 AND id NOT IN ("
+                "SELECT user_id FROM star_transactions WHERE transaction_type = 'purchase' "
+                "AND product NOT LIKE 'free_%')")).rowcount
+        logger.warning('peach wallet split applied: %s non-payer balances moved to bonus', moved)
+    except Exception:
+        logger.exception('peach wallet split skipped (will retry on next boot)')
+
+
 def init_db():
     Base.metadata.create_all(engine)
     # V3.44.21: the FreeKassa orders table retired with the kassa itself —
@@ -215,5 +239,7 @@ def init_db():
     _auto_migrate_all_tables()
     # V3.65.0: after every table exists, multiply stored peaches once.
     _rescale_peaches()
+    # V3.123.0: split the peach balance into bought + bonus, once.
+    _split_bonus_peaches()
 
 init_db()

@@ -58,7 +58,7 @@ def test_studio_video_route_exists_and_wired():
     assert "app.router.add_post('/webapp/api/studio/video', _webapp_api_studio_video)" in MAIN
     # consent + price gates mirror the picture studio
     assert 'if not has_accepted(telegram_id):' in VIDEO_FN
-    assert 'get_photo_credits(telegram_id) < webapp_service.WEBAPP_VIDEO_COST_CREDITS' in VIDEO_FN
+    assert 'get_paid_peaches(telegram_id) < webapp_service.WEBAPP_VIDEO_COST_CREDITS' in VIDEO_FN
 
 
 def test_studio_video_uses_shared_engine_chain_and_neutral_motion():
@@ -79,7 +79,7 @@ def test_studio_video_saves_then_charges_only_on_success():
     # and the charge happens strictly after both
     assert "save_chat_media(telegram_id, video_bytes, 'mp4', 'video/mp4')" in VIDEO_FN
     save_i = VIDEO_FN.index("save_chat_media(telegram_id, video_bytes, 'mp4'")
-    spend_i = VIDEO_FN.index('spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS)')
+    spend_i = VIDEO_FN.index('spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS, paid_only=True)')
     assert save_i < spend_i
     assert "record_generation(telegram_id, 'video', None, prompt, filename)" in VIDEO_FN
     # a failed render must return BEFORE any spend line exists in the flow

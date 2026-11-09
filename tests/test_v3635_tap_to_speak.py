@@ -9,7 +9,7 @@ SPA = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 def test_speak_endpoint_is_premium_gated_and_routed():
     i = MAIN.index('async def _webapp_api_chat_speak')
     body = MAIN[i:i + 2600]
-    assert "if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):" in body
+    assert "if telegram_id in ADMIN_TELEGRAM_IDS:" in body and "if is_premium(telegram_id):" in body  # V3.124.0
     assert "{'ok': False, 'error': 'premium_required'}, status=403" in body
     assert 'await synthesize_bytes(clean, voice_style, character_id=character_id)' in body
     assert "app.router.add_post('/webapp/api/chat/speak', _webapp_api_chat_speak)" in MAIN

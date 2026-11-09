@@ -1,4 +1,4 @@
-"""V3.120.0: she wrote in the Mini App — a short ping in the bot chat.
+"""V3.128.0: she wrote in the Mini App — a short ping in the bot chat.
 
 Pushes from the scheduler (rituals, «скучаю», life events, gifts) already go
 to Telegram AND into the shared dialog. What never reached Telegram is what

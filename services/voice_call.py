@@ -82,7 +82,16 @@ def seconds_left(uid: int, mode: str, admin: bool = False) -> int:
     if admin:
         return 3600
     if mode == 'premium':
-        return max(0, PREMIUM_SECONDS_PER_DAY - seconds_today(uid, EVENT_PREMIUM))
+        daily = max(0, PREMIUM_SECONDS_PER_DAY - seconds_today(uid, EVENT_PREMIUM))
+        # V3.124.0: a trial gets TRIAL_CALL_SECONDS for the whole trial.
+        try:
+            from services import trial_caps
+            total = trial_caps.call_seconds_left(uid, EVENT_PREMIUM)
+            if total is not None:
+                return min(daily, total)
+        except Exception:
+            pass
+        return daily
     return max(0, FREE_SECONDS_PER_DAY - seconds_today(uid, EVENT_LIVE))
 
 

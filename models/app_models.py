@@ -28,6 +28,8 @@ class User(Base):
     proactive_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     appearance_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     photo_credits: Mapped[int] = mapped_column(Integer, default=0)
+    # V3.123.0: free peaches (missions, channel, referrals) — wardrobe/dates only, never renders.
+    bonus_peaches: Mapped[int] = mapped_column(Integer, default=0)
     attention_points: Mapped[int] = mapped_column(Integer, default=0)
     streak_count: Mapped[int] = mapped_column(Integer, default=0)
     streak_last_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -519,6 +521,33 @@ class Reminder(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+class AutoRenewal(Base):
+    """V3.120.0: Premium auto-renewal the user switched on himself.
+
+    ``provider`` is ``stars`` (Telegram Stars subscription, 30 days, the
+    first ``telegram_payment_charge_id`` is the handle for cancelling) or
+    ``platega`` (SBP recurring subscription, ``external_id`` is the Platega
+    subscription / transaction UUID). Statuses: pending (link handed out,
+    not paid yet) / active / canceled / past_due / failed.
+    ``reminded_for`` is the next_charge_at the honest pre-charge reminder was
+    already sent for, so the scan never repeats it.
+    """
+    __tablename__ = "auto_renewals"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    plan: Mapped[str] = mapped_column(String(32), nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    external_id: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
+    next_charge_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reminded_for: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    charges: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    canceled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
 
 class Subscription(Base):
     __tablename__ = "subscriptions"

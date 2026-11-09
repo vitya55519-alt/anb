@@ -2,6 +2,7 @@ import asyncio
 import base64
 import datetime as dt
 import io
+import functools
 import json
 import os
 import logging
@@ -76,8 +77,9 @@ from services.photo_idea_service import (
 )
 from config import PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIAL_PRICE_RUB  # V3.88.0
 from services.payments import trial_eligible  # V3.88.0
-from services.payments import record_payment, get_photo_credits, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, has_monthly_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
+from services.payments import record_payment, get_photo_credits, get_paid_peaches, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, has_monthly_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
 from services.bot_description import apply_bot_descriptions
+from services import seo_landing
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
     referral_user_lock, pending_referral, remember_referral, referral_leaderboard, referral_rank,
@@ -163,6 +165,7 @@ from services.webapp_service import peach_num
 VERSION = (Path(__file__).resolve().parent / 'VERSION').read_text(encoding='utf-8').strip()
 # V3.39.0: Come Closer-style /start — the welcome leads with a group photo.
 WELCOME_BANNER_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner.png'
+WELCOME_BANNER_EN_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner_en.png'
 
 # V3.30.1: Railway tags every stderr line as severity=error, and Python
 # logging writes to stderr by default — route the whole log to stdout so
@@ -552,8 +555,13 @@ def onboarding_character_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=_pair_rows(_character_pick_buttons('onboard')))
 
 
-def _welcome_banner_file():
-    """V3.39.0: the group banner photo for /start; None when the asset is absent."""
+def _welcome_banner_file(lang: str = RU):
+    """V3.39.0: the group banner photo for /start; None when the asset is absent.
+    V3.125.0: backup 7 Nov — 5 of 19 English-speaking newcomers left on the
+    very first screen (Russian: 0 of 19). The banner said «Они уже пишут
+    тебе» in Russian; English speakers now get the same picture in English."""
+    if lang == EN and WELCOME_BANNER_EN_PATH.exists():
+        return FSInputFile(WELCOME_BANNER_EN_PATH)
     if WELCOME_BANNER_PATH.exists():
         return FSInputFile(WELCOME_BANNER_PATH)
     return None
@@ -1254,6 +1262,9 @@ def premium_pitch_text(telegram_id: int) -> str:
     lines.extend(_premium_tariff_lines(lang))
     lines.append('')
     lines.append('One-time payment, no auto-renewal.' if lang == EN else 'Разовый платёж, без автопродления.')
+    # V3.120.0: auto-renewal exists, but only as his own choice — say where.
+    lines.append('Want it to renew by itself? Only if you turn it on: /autopay' if lang == EN
+                 else 'Хочешь, чтобы продлевалось само? Только если включишь сам: /autopay')
     lines.append('')
     if lang == EN:
         lines += [
@@ -1339,7 +1350,7 @@ def _sleep_block_markup(telegram_id: int) -> InlineKeyboardMarkup:
         if trial_eligible(telegram_id):
             trial_fiat = fiat_suffix(PREMIUM_TRIAL_STARS, rub=PLATEGA_PREMIUM_TRIAL_PRICE_RUB, rub_enabled=PLATEGA_ENABLED)
             rows.append([InlineKeyboardButton(
-                text=f'🔥 {PREMIUM_TRIAL_DAYS} дня без лимитов — {PREMIUM_TRIAL_STARS} Stars{trial_fiat}',
+                text=f'🔥 {PREMIUM_TRIAL_DAYS} дня Premium — {PREMIUM_TRIAL_STARS} Stars{trial_fiat}',
                 callback_data='buy:premium_trial')])
             if PLATEGA_ENABLED and is_button_enabled('platega_rub'):
                 rows.append([_platega_pay_button(
@@ -1362,6 +1373,18 @@ async def _sleep_block_reply(message: types.Message) -> None:
     spent, the one-time 24h discount window opens."""
     from services.retention_service import pick_text, has_used_demo, offer_discount
     uid = ensure_user(message.from_user.id, message.from_user.first_name)
+    if is_premium(message.from_user.id):
+        # V3.124.0: a trial man used his trial messages — offer the full plans.
+        track_event(uid, 'trial_cap_messages', metadata={'source': 'bot'})
+        from services import trial_caps
+        if user_lang(message.from_user.id) == EN:
+            text = (f'mm, the {trial_caps.TRIAL_MESSAGES} trial messages are over 🥺 '
+                    'stay with me on full Premium: unlimited chat, voice, calls every day')
+        else:
+            text = (f'ммм, {trial_caps.TRIAL_MESSAGES} сообщений пробного закончились 🥺 '
+                    'останься со мной в полном Premium: общение без лимита, голос и звонки каждый день')
+        await message.answer(text, reply_markup=premium_keyboard(telegram_id=message.from_user.id))
+        return
     if has_used_demo(message.from_user.id):
         offer_discount(message.from_user.id)
     track_event(uid, 'chat_sleep_block')
@@ -1446,6 +1469,24 @@ def _platega_pay_button(product: str, amount: int, text: str):
     return InlineKeyboardButton(text=text, callback_data=f'platega:{product}')
 
 
+def _autopay_row(telegram_id: int | None, en: bool):
+    """V3.120.0: one row under the one-time plans — the opt-in auto-renewal
+    menu (terms first, then the pay link), or «manage» when it is on."""
+    from services import autopay
+    if not autopay.ENABLED or not telegram_id:
+        return None
+    try:
+        live = autopay.get_live(telegram_id)
+    except Exception:
+        logger.warning('autopay row lookup failed user=%s', telegram_id, exc_info=True)
+        live = None
+    if live:
+        text = '🔁 Auto-renewal is on · manage' if en else '🔁 Автопродление включено · управлять'
+    else:
+        text = '🔁 Premium with auto-renewal · terms' if en else '🔁 Premium с автопродлением · условия'
+    return [InlineKeyboardButton(text=text, callback_data='autopay:menu')]
+
+
 def _premium_keyboard_en(discount: dict | None, telegram_id: int):
     """V3.111.0: the Premium keyboard for English speakers. The Russian one
     hid every non-Stars row from them and spoke Russian («карта / СБП»), so
@@ -1466,6 +1507,9 @@ def _premium_keyboard_en(discount: dict | None, telegram_id: int):
         [InlineKeyboardButton(text=f'⭐ Premium for a week — {PREMIUM_WEEKLY_STARS} Stars', callback_data='buy:premium_week')],
         [InlineKeyboardButton(text=f'⭐ Premium for 3 months — {PREMIUM_QUARTERLY_STARS} Stars', callback_data='buy:premium_quarter')],
     ]
+    _ap_row = _autopay_row(telegram_id, True)
+    if _ap_row:
+        rows.append(_ap_row)
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text='💎 Premium — Wallet Pay (crypto)', callback_data='walletpay:premium')])
     if PLATEGA_ENABLED and is_button_enabled('platega_rub'):
@@ -1515,6 +1559,9 @@ def premium_keyboard(discount: dict | None = None, telegram_id: int | None = Non
         # V3.43.0: the 3-month plan from the benchmarked card — best per-week price.
         [InlineKeyboardButton(text=f'⭐ Premium на 3 месяца — {PREMIUM_QUARTERLY_STARS} Stars{quarter_fiat}', callback_data='buy:premium_quarter')],
     ]
+    _ap_row = _autopay_row(telegram_id, False)
+    if _ap_row:
+        rows.append(_ap_row)
     if WALLET_PAY_ENABLED:
         rows.append([InlineKeyboardButton(text=f'💎 Premium — Wallet Pay (крипта/карта)', callback_data='walletpay:premium')])
     # V3.31.0: owner-configured external methods switched to «active» in the
@@ -1753,7 +1800,7 @@ def _track_proactive_reply_if_any(telegram_id: int, uid: int):
 _EN_INVOICE = {
     # V3.111.0: the Stars invoice is what an EN user sees last before paying —
     # it was Russian («Premium на 3 дня — пробный»).
-    'premium_trial': lambda: ('Premium trial', f'{PREMIUM_TRIAL_DAYS} days of Premium: no limits, voice, photos'),
+    'premium_trial': lambda: ('Premium trial', f'{PREMIUM_TRIAL_DAYS} days of Premium: explicit chat, photos, voice, a call'),
     'premium_week': lambda: ('Premium', '7 days of Premium: no limits, voice, photos'),
     'premium_month': lambda: ('Premium', '30 days of Premium: no limits, voice, photos'),
     'premium_month_discount': lambda: ('Premium', '30 days of Premium at a one-time discount'),
@@ -2027,7 +2074,7 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
         await asyncio.to_thread(use_free_chat_photo, db_uid, character_id)
         await _start_photo_background(chat_id, telegram_id, request, 'free')
         return
-    credits = get_photo_credits(telegram_id)
+    credits = get_paid_peaches(telegram_id)
     if await asyncio.to_thread(free_chat_photos_left, db_uid, True) > 0:
         await asyncio.to_thread(use_free_chat_photo, db_uid, character_id)
         await _start_photo_background(chat_id, telegram_id, request, 'free')
@@ -2143,7 +2190,7 @@ async def start(message: types.Message, command: CommandObject):
             if has_referral:
                 welcome += f'пришёл по приглашению друга — напиши ей {REFERRAL_QUALIFY_MESSAGES} сообщений, и вам обоим капнет по {REFERRAL_INVITEE_CREDITS} 🍑.\n'
             welcome += 'Подтверди, что тебе 18+, и прими условия использования и политику конфиденциальности.'
-        banner = _welcome_banner_file()
+        banner = _welcome_banner_file(lang)
         if banner is not None:
             await message.answer_photo(banner, caption=welcome, reply_markup=consent_keyboard(lang))
         else:
@@ -2171,7 +2218,7 @@ async def start(message: types.Message, command: CommandObject):
         )
     # V3.42.0: no character grid here anymore — a short button list instead.
     markup = InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang))
-    banner = _welcome_banner_file()
+    banner = _welcome_banner_file(lang)
     if banner is not None:
         menu_msg = await message.answer_photo(banner, caption=welcome_back, reply_markup=markup)
     else:
@@ -5838,12 +5885,12 @@ async def circle_cb(cq: types.CallbackQuery):
     # it is the priciest render we make. Charged up front, refunded on failure.
     charge = None
     if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
-        if not spend_peaches(cq.from_user.id, CIRCLE_PEACH_COST):
+        if not spend_peaches(cq.from_user.id, CIRCLE_PEACH_COST, paid_only=True):
             track_event(uid, 'circle_paywall_view', metadata={'reason': 'peaches'})
             await cq.answer(f'Кружочек стоит {peach_num(CIRCLE_PEACH_COST)} 🍑 — персиков не хватает', show_alert=True)
             await cq.message.answer(
                 f'🎥 кружочек — короткое видео, как будто я записываю его тебе лично 😌\n'
-                f'стоит {peach_num(CIRCLE_PEACH_COST)} 🍑, а у тебя {peach_num(get_photo_credits(cq.from_user.id))} 🍑.',
+                f'стоит {peach_num(CIRCLE_PEACH_COST)} купленных 🍑, а у тебя {peach_num(get_paid_peaches(cq.from_user.id))} 🍑.' + _bonus_peach_note(cq.from_user.id),
                 reply_markup=peaches_keyboard(cq.from_user.id),
             )
             return
@@ -5858,6 +5905,22 @@ async def circle_cb(cq: types.CallbackQuery):
 
 # V3.71.0: charge_id marker of a circle paid in peaches (not a Stars charge).
 CIRCLE_PEACH_CHARGE = 'peaches'
+
+
+def _bonus_peach_note(telegram_id: int) -> str:
+    """V3.123.0: when a render is refused although he holds bonus peaches,
+    say why (bonus goes to outfits/dates/gifts, renders take bought ones)."""
+    try:
+        from services.payments import get_bonus_peaches
+        n = get_bonus_peaches(telegram_id)
+    except Exception:
+        return ''
+    if n <= 0:
+        return ''
+    if user_lang(telegram_id) == EN:
+        return f'\nYour {peach_num(n)} bonus 🍑 go to outfits, dates and gifts; photos and videos take bought peaches.'
+    return f'\nТвои {peach_num(n)} бонусных 🍑 идут на гардероб, свидания и подарки, а фото и видео за купленные.'
+
 
 
 async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None):
@@ -6033,7 +6096,7 @@ async def premium(message: types.Message):
         await message.answer('Сначала подтверди 18+ и условия через /start.', reply_markup=consent_keyboard()); return
     track_event(uid, 'paywall_view', metadata={'product': 'premium_month', 'stars': PREMIUM_MONTHLY_STARS})
     if is_premium(message.from_user.id):
-        await message.answer(f'Premium уже активен ✨\nФото-кредиты: {get_photo_credits(message.from_user.id)}\nQuest replay осталось в этом месяце: {premium_replays_left(message.from_user.id)}')
+        await message.answer(f'Premium уже активен ✨\nФото-кредиты: {get_photo_credits(message.from_user.id)}\nQuest replay осталось в этом месяце: {premium_replays_left(message.from_user.id)}\n\n🔁 Автопродление (по желанию): /autopay')
         return
     from services.retention_service import discount_info
     await message.answer(premium_pitch_text(message.from_user.id), reply_markup=premium_keyboard(discount_info(message.from_user.id), telegram_id=message.from_user.id))
@@ -6422,6 +6485,308 @@ def _platega_amount_for(product: str) -> int:
     return PLATEGA_PREMIUM_PRICE_RUB
 
 
+# ---------------------------------------------------------------- V3.120.0
+# Premium auto-renewal (services/autopay.py): opt-in only, terms before the
+# pay link, a reminder before every charge, «Отключить» in one tap.
+
+def _autopay_menu_keyboard(telegram_id: int, en: bool, live: dict | None) -> InlineKeyboardMarkup:
+    from services import autopay
+    rows = []
+    if live:
+        rows.append([InlineKeyboardButton(text='❌ Turn off auto-renewal' if en else '❌ Отключить автопродление',
+                                          callback_data='autopay:cancel_ask')])
+        return InlineKeyboardMarkup(inline_keyboard=rows)
+    if (not en and PLATEGA_ENABLED and autopay.PLATEGA_SUB_ENABLED and is_button_enabled('platega_rub')):
+        rows.append([InlineKeyboardButton(text=f'🔁 Месяц — {PLATEGA_PREMIUM_PRICE_RUB} ₽ раз в месяц · СБП',
+                                          callback_data='autopay:sbp:premium_month')])
+        rows.append([InlineKeyboardButton(text=f'🔁 Неделя — {PLATEGA_PREMIUM_WEEKLY_PRICE_RUB} ₽ раз в неделю · СБП',
+                                          callback_data='autopay:sbp:premium_week')])
+    if autopay.STARS_ENABLED:
+        rows.append([InlineKeyboardButton(
+            text=(f'🔁 A month — {PREMIUM_MONTHLY_STARS} Stars every 30 days' if en
+                  else f'🔁 Месяц — {PREMIUM_MONTHLY_STARS} Stars раз в 30 дней'),
+            callback_data='autopay:stars')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _autopay_show(chat_id: int, telegram_id: int) -> None:
+    from services import autopay
+    en = user_lang(telegram_id) == EN
+    if not autopay.ENABLED:
+        await bot.send_message(chat_id, 'Auto-renewal is not available right now — plans in /premium are one-time.' if en
+                               else 'Автопродление сейчас недоступно — тарифы в /premium разовые.')
+        return
+    live = await asyncio.to_thread(autopay.get_live, telegram_id)
+    text = autopay.status_text(live, en) if live else autopay.terms_text(en)
+    await bot.send_message(chat_id, text, parse_mode='HTML',
+                           reply_markup=_autopay_menu_keyboard(telegram_id, en, live))
+
+
+@dp.message(Command('autopay'))
+async def autopay_cmd(message: types.Message):
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    if not has_accepted(message.from_user.id):
+        await message.answer('Сначала подтверди 18+ и условия через /start.'); return
+    await _autopay_show(message.chat.id, message.from_user.id)
+
+
+@dp.callback_query(F.data == 'autopay:menu')
+async def autopay_menu(cq: types.CallbackQuery):
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    await cq.answer()
+    await _autopay_show(cq.message.chat.id, cq.from_user.id)
+
+
+@dp.callback_query(F.data == 'autopay:stars')
+async def autopay_stars(cq: types.CallbackQuery):
+    from services import autopay
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    en = user_lang(cq.from_user.id) == EN
+    if not (autopay.ENABLED and autopay.STARS_ENABLED):
+        await cq.answer('not available right now' if en else 'сейчас недоступно', show_alert=True); return
+    if await asyncio.to_thread(autopay.get_live, cq.from_user.id):
+        await cq.answer('auto-renewal is already on — /autopay' if en else 'автопродление уже включено — /autopay',
+                        show_alert=True); return
+    await cq.answer()
+    title = 'Premium · auto-renewal' if en else 'Premium · автопродление'
+    desc = (f'Premium for 30 days, renews every 30 days for {PREMIUM_MONTHLY_STARS} Stars. Cancel any time: /autopay'
+            if en else
+            f'Premium на 30 дней, продлевается каждые 30 дней за {PREMIUM_MONTHLY_STARS} Stars. Отключить в любой момент: /autopay')
+    try:
+        link = await bot.create_invoice_link(
+            title=title, description=desc, payload=autopay.STARS_PAYLOAD,
+            provider_token='', currency='XTR',
+            prices=[LabeledPrice(label=title, amount=PREMIUM_MONTHLY_STARS)],
+            subscription_period=autopay.STARS_PERIOD_SECONDS,
+        )
+    except Exception:
+        logger.exception('autopay stars invoice failed user=%s', cq.from_user.id)
+        await bot.send_message(cq.message.chat.id, "couldn't create the subscription 😔 one-time plans: /premium" if en
+                               else 'не получилось оформить подписку 😔 разовые тарифы — в /premium')
+        return
+    await asyncio.to_thread(autopay.create_pending, cq.from_user.id, 'stars', 'premium_month', PREMIUM_MONTHLY_STARS)
+    track_event(ensure_user(cq.from_user.id), 'autopay_link_created', metadata={'provider': 'stars', 'plan': 'premium_month'})
+    await bot.send_message(
+        cq.message.chat.id,
+        (f'⭐ Stars subscription: {PREMIUM_MONTHLY_STARS} Stars now and then every 30 days.\n'
+         'A reminder comes the day before each charge; turn it off any time in /autopay or in Telegram settings.')
+        if en else
+        (f'⭐ Подписка в Stars: {PREMIUM_MONTHLY_STARS} Stars сейчас и дальше раз в 30 дней.\n'
+         'Накануне каждого списания напомню; отключить можно в любой момент в /autopay или в настройках Telegram.'),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=(f'⭐ Subscribe — {PREMIUM_MONTHLY_STARS} Stars / 30 days' if en
+                  else f'⭐ Оформить — {PREMIUM_MONTHLY_STARS} Stars / 30 дней'), url=link)]]),
+    )
+
+
+@dp.callback_query(F.data.startswith('autopay:sbp:'))
+async def autopay_sbp(cq: types.CallbackQuery):
+    from services import autopay
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    if not has_accepted(cq.from_user.id):
+        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
+    plan = cq.data.split(':', 2)[2]
+    if plan not in autopay.PLATEGA_INTERVAL or not (autopay.ENABLED and autopay.PLATEGA_SUB_ENABLED and PLATEGA_ENABLED):
+        await cq.answer('сейчас недоступно', show_alert=True); return
+    if await asyncio.to_thread(autopay.get_live, cq.from_user.id):
+        await cq.answer('автопродление уже включено — /autopay', show_alert=True); return
+    amount = PLATEGA_PREMIUM_WEEKLY_PRICE_RUB if plan == 'premium_week' else PLATEGA_PREMIUM_PRICE_RUB
+    await cq.answer('создаю подписку…')
+    row_id = await asyncio.to_thread(autopay.create_pending, cq.from_user.id, 'platega', plan, amount)
+    link = await autopay.platega_create(row_id, cq.from_user.id, plan, amount, username=cq.from_user.username)
+    if not link:
+        await asyncio.to_thread(autopay.set_status, row_id, 'failed')
+        await bot.send_message(cq.message.chat.id,
+                               'не получилось оформить автопродление 😔 можно оплатить разово в /premium — '
+                               'ничего не будет списываться само. Если повторяется — /support')
+        return
+    track_event(ensure_user(cq.from_user.id), 'autopay_link_created', metadata={'provider': 'platega', 'plan': plan})
+    period = 'раз в неделю' if plan == 'premium_week' else 'раз в месяц'
+    await bot.send_message(
+        cq.message.chat.id,
+        f'🔁 Автопродление через СБП: {amount} ₽ {period}.\n\n'
+        'На странице подтверди привязку в своём банке — это одно согласие на регулярные списания. '
+        'Premium включится сразу после первого списания. Накануне каждого следующего я напомню; '
+        'отключить можно в любой момент в /autopay (или по ссылке отмены в письме от Platega).',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=f'🏦 Подключить — {amount} ₽ {period}', url=link)]]),
+    )
+
+
+@dp.callback_query(F.data == 'autopay:cancel_ask')
+async def autopay_cancel_ask(cq: types.CallbackQuery):
+    from services import autopay
+    en = user_lang(cq.from_user.id) == EN
+    live = await asyncio.to_thread(autopay.get_live, cq.from_user.id)
+    await cq.answer()
+    if not live:
+        await bot.send_message(cq.message.chat.id, 'Auto-renewal is already off 💗' if en else 'Автопродление уже выключено 💗')
+        return
+    await bot.send_message(
+        cq.message.chat.id,
+        'Turn off auto-renewal? Nothing more will be charged, your paid days stay.' if en
+        else 'Отключить автопродление? Больше ничего не спишется, оплаченные дни останутся.',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='❌ Yes, turn off' if en else '❌ Да, отключить',
+                                  callback_data=f'autopay:cancel:{live["id"]}')],
+            [InlineKeyboardButton(text='✅ Keep it' if en else '✅ Оставить', callback_data='autopay:keep')],
+        ]))
+
+
+@dp.callback_query(F.data == 'autopay:keep')
+async def autopay_keep(cq: types.CallbackQuery):
+    en = user_lang(cq.from_user.id) == EN
+    await cq.answer('ok, auto-renewal stays on 💗' if en else 'хорошо, автопродление остаётся 💗')
+
+
+@dp.callback_query(F.data.startswith('autopay:cancel:'))
+async def autopay_cancel(cq: types.CallbackQuery):
+    from services import autopay
+    en = user_lang(cq.from_user.id) == EN
+    try:
+        row_id = int(cq.data.rsplit(':', 1)[1])
+    except ValueError:
+        await cq.answer(); return
+    row = await asyncio.to_thread(autopay.get, row_id)
+    if not row or row['telegram_id'] != int(cq.from_user.id):
+        await cq.answer(); return
+    if row['status'] not in autopay.LIVE:
+        await cq.answer('already off 💗' if en else 'уже выключено 💗', show_alert=True); return
+    await cq.answer('turning off…' if en else 'отключаю…')
+    ok = False
+    if row['provider'] == 'stars':
+        try:
+            ok = bool(await bot.edit_user_star_subscription(
+                user_id=cq.from_user.id, telegram_payment_charge_id=row['external_id'], is_canceled=True))
+        except Exception:
+            logger.exception('stars subscription cancel failed user=%s row=%s', cq.from_user.id, row_id)
+    else:
+        ok = await autopay.platega_cancel(row['external_id'])
+    if not ok:
+        await bot.send_message(
+            cq.message.chat.id,
+            ("couldn't turn it off right now 😔 try again in a minute or write /support. "
+             'A Stars subscription can also be cancelled in Telegram settings → My Stars.') if en else
+            ('не получилось отключить прямо сейчас 😔 попробуй через минуту или напиши /support — отключим вручную.'
+             + (' Подписку в Stars можно отменить и в настройках Telegram → Мои звёзды.' if row['provider'] == 'stars' else '')))
+        try:
+            for admin_id in ADMIN_TELEGRAM_IDS:
+                await bot.send_message(admin_id, f'⚠️ autopay cancel failed user={cq.from_user.id} row={row_id} provider={row["provider"]}')
+        except Exception:
+            pass
+        return
+    await asyncio.to_thread(autopay.set_status, row_id, 'canceled')
+    track_event(ensure_user(cq.from_user.id), 'autopay_canceled', metadata={'provider': row['provider'], 'plan': row['plan'],
+                                                                             'charges': row['charges']})
+    until = await asyncio.to_thread(autopay.premium_until, cq.from_user.id)
+    await bot.send_message(cq.message.chat.id, autopay.canceled_text(until, en))
+
+
+def _autopay_stars_row(telegram_id: int, first: bool) -> int:
+    """The row a Stars subscription payment belongs to (created if missing)."""
+    from services import autopay
+    from models.app_models import AutoRenewal
+    from services.db import SessionLocal
+    with SessionLocal() as s:
+        q = s.query(AutoRenewal).filter(AutoRenewal.telegram_id == int(telegram_id), AutoRenewal.provider == 'stars')
+        statuses = ('pending',) if first else ('active', 'past_due', 'canceled', 'pending')
+        row = q.filter(AutoRenewal.status.in_(statuses)).order_by(AutoRenewal.id.desc()).first()
+        if row is not None:
+            return row.id
+    return autopay.create_pending(telegram_id, 'stars', 'premium_month', PREMIUM_MONTHLY_STARS)
+
+
+async def _autopay_stars_paid(message: types.Message) -> None:
+    from services import autopay
+    payment = message.successful_payment
+    tid = message.from_user.id
+    charge = payment.telegram_payment_charge_id
+    recurring = bool(getattr(payment, 'is_recurring', False))
+    first = bool(getattr(payment, 'is_first_recurring', False)) or not recurring
+    record_payment(tid, 'premium_month', payment.total_amount, charge, provider_payload='autopay=stars')
+    row_id = await asyncio.to_thread(_autopay_stars_row, tid, first)
+    if first:
+        # the first payment's charge id is the handle editUserStarSubscription needs
+        await asyncio.to_thread(autopay.set_external, row_id, charge)
+    nxt = autopay.parse_dt(getattr(payment, 'subscription_expiration_date', None))
+    await asyncio.to_thread(autopay.record_charge, row_id, nxt)
+    await asyncio.to_thread(autopay.extend_premium_to, tid, nxt)
+    track_event(ensure_user(tid), 'stars_purchase', value=payment.total_amount,
+                metadata={'product': 'premium_month', 'autopay': 'first' if first else 'renewal'})
+    row = await asyncio.to_thread(autopay.get, row_id)
+    en = user_lang(tid) == EN
+    await message.answer(autopay.renewed_text(row, (row or {}).get('next_charge_at'), first, en))
+    if first:
+        _spawn_background(_after_premium_paid(tid, 'premium_month'))
+
+
+async def _autopay_platega_callback(body: dict) -> None:
+    from services import autopay
+    status = str(body.get('status') or '').strip().upper()
+    row = await autopay.resolve_callback_row(body)
+    if row is None:
+        logger.warning('Platega subscription callback for unknown subscription id=%s sub=%s status=%s',
+                       body.get('id'), body.get('subscriptionId'), status)
+        return
+    tid = row['telegram_id']
+    en = user_lang(tid) == EN
+    if status == platega_service.STATUS_CONFIRMED:
+        payment_id = str(body.get('id') or '').strip()
+        charge = f'platega_sub:{payment_id}'
+        if not payment_id or await asyncio.to_thread(autopay.charge_seen, charge):
+            return
+        remote = await platega_service.get_transaction(payment_id)
+        if remote is not None and str(remote.get('status') or '').upper() != platega_service.STATUS_CONFIRMED:
+            logger.warning('Platega subscription debit status mismatch id=%s remote=%s', payment_id, remote.get('status'))
+            return
+        if not platega_service.amount_covers(body.get('amount'), str(row['amount'])):
+            logger.error('Platega subscription amount mismatch row=%s expected=%s paid=%s',
+                         row['id'], row['amount'], body.get('amount'))
+            return
+        record_payment(tid, row['plan'], 0, charge, provider='platega',
+                       provider_payload=f'autopay=platega;sub={row.get("external_id")};amount={row["amount"]}')
+        nxt = autopay.parse_dt(body.get('nextChargeAt'))
+        first = await asyncio.to_thread(autopay.record_charge, row['id'], nxt)
+        await asyncio.to_thread(autopay.extend_premium_to, tid, nxt)
+        track_event(ensure_user(tid), 'platega_paid', metadata={'product': row['plan'], 'amount': str(row['amount']),
+                                                                 'autopay': 'first' if first else 'renewal'})
+        fresh = await asyncio.to_thread(autopay.get, row['id'])
+        try:
+            await bot.send_message(tid, autopay.renewed_text(fresh, (fresh or {}).get('next_charge_at'), first, en))
+        except Exception:
+            logger.exception('autopay renewal message failed user=%s', tid)
+        if first:
+            _spawn_background(_after_premium_paid(int(tid), row['plan']))
+        return
+    mapped = autopay.SUB_STATUSES.get(status)
+    if mapped:
+        before = row['status']
+        if mapped == 'active' and before != 'pending':
+            return  # already active (a debit came first)
+        await asyncio.to_thread(autopay.set_status, row['id'], mapped)
+        try:
+            if mapped == 'canceled' and before in autopay.LIVE:
+                until = await asyncio.to_thread(autopay.premium_until, tid)
+                await bot.send_message(tid, autopay.canceled_text(until, en))
+            elif mapped == 'failed':
+                await bot.send_message(tid, 'не получилось подключить автопродление в банке 😔 '
+                                            'можно оплатить разово в /premium — ничего само списываться не будет.')
+            elif mapped == 'past_due' and before == 'active':
+                fresh = await asyncio.to_thread(autopay.get, row['id'])
+                await bot.send_message(tid, autopay.status_text(fresh, en))
+        except Exception:
+            logger.exception('autopay status message failed user=%s', tid)
+        return
+    if status == platega_service.STATUS_CANCELED and row['status'] == 'pending':
+        await asyncio.to_thread(autopay.set_status, row['id'], 'failed')
+        return
+    logger.warning('Platega subscription callback status=%s row=%s (no action)', status, row['id'])
+
+
 @dp.callback_query(F.data.startswith('platega:'))
 async def platega_pay(cq: types.CallbackQuery):
     """V3.44.21: Platega card/SBP order — create the row, call
@@ -6761,8 +7126,8 @@ async def private_photo_generate(cq: types.CallbackQuery):
     is_free = consume_free_private_photo(cq.from_user.id, cat_id)
     if not is_free and not usage['hot_pass_active']:
         from services.payments import spend_peaches
-        if not spend_peaches(cq.from_user.id, PRIVATE_PHOTO_PEACH_COST):
-            await cq.answer(f'Нужно {PRIVATE_PHOTO_PEACH_COST} 🍑 — персиков не хватает', show_alert=True)
+        if not spend_peaches(cq.from_user.id, PRIVATE_PHOTO_PEACH_COST, paid_only=True):
+            await cq.answer(f'Нужно {PRIVATE_PHOTO_PEACH_COST} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True)
             return
     await cq.answer()
     type_name = get_type_name(cat_id, type_id, user_lang(cq.from_user.id))
@@ -6887,8 +7252,8 @@ async def private_cosplay_generate(cq: types.CallbackQuery):
     is_free = consume_free_private_photo(cq.from_user.id, 'cosplay')
     if not is_free and not usage['hot_pass_active']:
         from services.payments import spend_peaches
-        if not spend_peaches(cq.from_user.id, COSPLAY_PHOTO_PEACH_COST):
-            await cq.answer(f'Нужно {COSPLAY_PHOTO_PEACH_COST} 🍑 — персиков не хватает', show_alert=True)
+        if not spend_peaches(cq.from_user.id, COSPLAY_PHOTO_PEACH_COST, paid_only=True):
+            await cq.answer(f'Нужно {COSPLAY_PHOTO_PEACH_COST} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True)
             return
     await cq.answer()
     char_name = get_cosplay_name(cosplay_id)
@@ -6968,8 +7333,8 @@ async def private_photo_hotpass(cq: types.CallbackQuery):
         await cq.answer('неверный тариф', show_alert=True); return
     cost, days = durations[duration]
     from services.payments import spend_peaches
-    if not spend_peaches(cq.from_user.id, cost):
-        await cq.answer(f'Нужно {cost} 🍑 — персиков не хватает', show_alert=True); return
+    if not spend_peaches(cq.from_user.id, cost, paid_only=True):
+        await cq.answer(f'Нужно {cost} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True); return
     from services.private_photo_service import activate_hot_pass
     expires = activate_hot_pass(cq.from_user.id, days)
     await cq.answer()
@@ -7145,8 +7510,8 @@ async def private_voice_combo(cq: types.CallbackQuery):
         PrivatePhotoRequest, generate_voice_photo_combo, VOICE_PHOTO_PEACH_COST,
     )
     from services.payments import spend_peaches
-    if not spend_peaches(cq.from_user.id, VOICE_PHOTO_PEACH_COST):
-        await cq.answer(f'Нужно {VOICE_PHOTO_PEACH_COST} 🍑 — персиков не хватает', show_alert=True)
+    if not spend_peaches(cq.from_user.id, VOICE_PHOTO_PEACH_COST, paid_only=True):
+        await cq.answer(f'Нужно {VOICE_PHOTO_PEACH_COST} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True)
         return
     await cq.answer()
     request = PrivatePhotoRequest(
@@ -7214,6 +7579,9 @@ async def pre_checkout(query: types.PreCheckoutQuery):
     if query.currency != 'XTR':
         ok=False
     elif payload=='premium_month':
+        ok=amount==PREMIUM_MONTHLY_STARS
+    elif payload=='premium_month_auto':
+        # V3.120.0: the opt-in Stars subscription (30 days, same month price).
         ok=amount==PREMIUM_MONTHLY_STARS
     elif payload=='premium_week':
         # V3.34.1: the weekly Premium option — chat and Mini App share it.
@@ -7312,6 +7680,10 @@ async def successful_payment(message: types.Message):
     charge = payment.telegram_payment_charge_id
     # V3.104.0: «что теперь открыто» + her own word a few seconds after the
     # grant below (the task starts at the first await, after record_payment).
+    if payload == 'premium_month_auto':
+        # V3.120.0: first payment or a renewal of his Stars subscription.
+        await _autopay_stars_paid(message)
+        return
     if payload in PAID_PREMIUM_PRODUCTS:
         _spawn_background(_after_premium_paid(message.from_user.id, payload))
     if payload in PEACH_PACK_STARS:
@@ -7353,9 +7725,9 @@ async def successful_payment(message: types.Message):
         record_payment(message.from_user.id, 'premium_month', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_month'})
         if user_lang(message.from_user.id) == EN:
-            await message.answer('done ✨ Premium is active for 30 days and I added 12 photo credits. Every photo of mine now has an «Animate» button — 2 free videos a day 🎬 plus my video circles 🎥')
+            await message.answer('done ✨ Premium is active for 30 days and I added 12 photo credits. Unlimited chat, voice, calls and my explicit photos are open now 🔥')
         else:
-            await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — 2 раза в день сделаю видео бесплатно 🎬 а ещё тебе открыты мои кружочки 🎥')
+            await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь тебе открыто общение без лимита, голос, звонки и мои откровенные фото 🔥')
         return
 
     if payload == 'premium_trial':
@@ -7363,9 +7735,9 @@ async def successful_payment(message: types.Message):
         record_payment(message.from_user.id, 'premium_trial', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_trial'})
         if user_lang(message.from_user.id) == EN:
-            await message.answer(f'done ✨ Premium is on for {PREMIUM_TRIAL_DAYS} days — everything is open now: my most private photos, «Undress», voice and unlimited chat 🔥')
+            await message.answer(f'done ✨ trial Premium is on for {PREMIUM_TRIAL_DAYS} days — my most private photos, «Undress», voice and a call with me 🔥')
         else:
-            await message.answer(f'готово ✨ Premium включён на {PREMIUM_TRIAL_DAYS} дня — теперь тебе открыто всё: мои самые откровенные фото, «Раздеть», голос и общение без лимита 🔥')
+            await message.answer(f'готово ✨ пробный Premium включён на {PREMIUM_TRIAL_DAYS} дня — мои самые откровенные фото, «Раздеть», голос и звонок со мной 🔥')
         return
 
     if payload == 'premium_week':
@@ -7382,9 +7754,9 @@ async def successful_payment(message: types.Message):
         record_payment(message.from_user.id, 'premium_quarter', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_quarter'})
         if user_lang(message.from_user.id) == EN:
-            await message.answer(f'done ✨ Premium is active for 90 days and I added {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 2 free photo animations a day 🎬 plus my video circles 🎥')
+            await message.answer(f'done ✨ Premium is active for 90 days and I added {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 1 free photo animation a day 🎬 plus my video circles 🎥')
         else:
-            await message.answer(f'готово ✨ Premium активирован на 90 дней, и я добавила {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 2 оживления фото в день бесплатно 🎬 и мои кружочки 🎥')
+            await message.answer(f'готово ✨ Premium активирован на 90 дней, и я добавила {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 1 оживление фото в день бесплатно 🎬 и мои кружочки 🎥')
         return
 
     if payload == 'premium_month_vip':
@@ -8319,12 +8691,44 @@ def _bubble_pause(part: str) -> float:
     return min(3.5, 0.9 + len(part) / 45)
 
 
+def _on_trial(telegram_id: int) -> bool:
+    if telegram_id in ADMIN_TELEGRAM_IDS:
+        return False
+    try:
+        from services import trial_caps
+        return trial_caps.window_start(telegram_id) is not None
+    except Exception:
+        return False
+
+
+def _plan_calls_out(uid: int, telegram_id: int) -> bool:
+    """V3.124.0: his plan's call-minute total is spent (not just today's)."""
+    if telegram_id in ADMIN_TELEGRAM_IDS:
+        return False
+    try:
+        from services import trial_caps, voice_call
+        left = trial_caps.call_seconds_left(uid, voice_call.EVENT_PREMIUM)
+        return left is not None and left <= 0
+    except Exception:
+        return False
+
+
+def _trial_voice_ok(telegram_id: int) -> bool:
+    """V3.124.0: on the trial her voice notes are counted (TRIAL_VOICE)."""
+    try:
+        from services import trial_caps
+        return trial_caps.take_voice(telegram_id)
+    except Exception:
+        return True
+
+
 async def send_answer(message: types.Message, text: str):
     user = get_user(message.from_user.id)
     # V3.55.1: voice replies are a Premium perk (owner decision — the shop
     # card line «голосовые ответы» becomes literally true). Non-premium keeps
     # the toggle, gets text, and the once-a-day nudge at the bottom.
-    if user and user.voice_enabled and (is_premium(message.from_user.id) or message.from_user.id in ADMIN_TELEGRAM_IDS):
+    if user and user.voice_enabled and (is_premium(message.from_user.id) or message.from_user.id in ADMIN_TELEGRAM_IDS) \
+            and (message.from_user.id in ADMIN_TELEGRAM_IDS or _trial_voice_ok(message.from_user.id)):
         try:
             character_id = get_user_character(message.from_user.id)
             audio = await synthesize_bytes(text, user.voice_style, character_id=character_id)
@@ -8477,15 +8881,18 @@ async def _send_peach_shop(message: types.Message, who: types.User | None = None
     who = who or message.from_user
     uid = ensure_user(who.id, who.first_name, language_code=who.language_code)
     lang = user_lang(who.id)
-    balance = peach_num(get_photo_credits(who.id))
+    from services.payments import peach_wallet
+    _w = peach_wallet(who.id)
+    balance = peach_num(_w['paid'])
+    bonus = peach_num(_w['bonus'])
     photo = peach_num(CHAT_PHOTO_PEACH_COST)
     if lang == EN:
-        text = (f'🍑 Peaches\n\nYour balance: {balance} 🍑\n\n'
+        text = (f'🍑 Peaches\n\nBought: {balance} 🍑\nBonus: {bonus} 🎁 (missions, channel, friends — for outfits, dates and gifts)\n\n'
                 f'A photo from her in chat costs {photo} 🍑, peaches also open circles and secret videos.\n'
                 'Pick a pack: the payment page opens right away, peaches land within a minute.')
     else:
-        text = (f'🍑 Персики\n\nТвой баланс: {balance} 🍑\n\n'
-                f'Фото от неё в чате — {photo} 🍑, ещё за персики кружочки и тайные видео.\n'
+        text = (f'🍑 Персики\n\nКупленные: {balance} 🍑\nБонусные: {bonus} 🎁 (задания, канал, друзья — на гардероб, свидания и подарки)\n\n'
+                f'Фото от неё в чате — {photo} купленных 🍑, ещё за них кружочки и тайные видео.\n'
                 'Выбери пак: сразу откроется оплата, персики придут в течение минуты.')
     track_event(uid, 'paywall_view', metadata={'product': 'peach_shop_bot'})
     await message.answer(text, reply_markup=peach_shop_keyboard(who.id, lang))
@@ -9167,7 +9574,7 @@ async def _constructor_draft_sweep() -> None:
                     if _source == 'peaches':
                         grant_photo_credits(
                             _telegram_id, CONSTRUCTOR_COST_PEACHES,
-                            reason=f'constructor_refund:{_telegram_id}:{int(_time.time() * 1000)}',
+                            reason=f'constructor_refund:{_telegram_id}:{int(_time.time() * 1000)}', bonus=False,
                         )
                         await bot.send_message(_telegram_id, f'не получилось создать {_name or "персонажа"} 😕 {CONSTRUCTOR_COST_PEACHES} 🍑 вернула на баланс — попробуй ещё раз, я уже починила причину.')
                     else:
@@ -9417,7 +9824,7 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             try:
                 grant_photo_credits(
                     telegram_id, CONSTRUCTOR_COST_PEACHES,
-                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}',
+                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}', bonus=False,
                 )
             except Exception:
                 logger.exception('constructor save-fail peach refund failed user=%s', telegram_id)
@@ -9539,7 +9946,7 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             try:
                 grant_photo_credits(
                     telegram_id, CONSTRUCTOR_COST_PEACHES,
-                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}',
+                    reason=f'constructor_refund:{telegram_id}:{int(_time.time() * 1000)}', bonus=False,
                 )
                 await bot.send_message(chat_id, f'{CONSTRUCTOR_COST_PEACHES} 🍑 снова на балансе ✅ персонаж остался у тебя — аватар дорисую позже.')
             except Exception:
@@ -11066,6 +11473,14 @@ async def _platega_callback(request: web.Request) -> web.Response:
     except Exception:
         return web.Response(text='NO|json', status=400)
     body = body or {}
+    from services import autopay
+    if autopay.is_subscription_callback(body):
+        # V3.120.0: an SBP auto-renewal debit or a subscription status change.
+        try:
+            await _autopay_platega_callback(body)
+        except Exception:
+            logger.exception('Platega subscription callback failed body=%s', str(body)[:300])
+        return web.Response(text='OK')
     status = str(body.get('status') or '').strip().upper()
     transaction_id = str(body.get('id') or '').strip()
     payload = str(body.get('payload') or '')
@@ -11275,13 +11690,35 @@ async def _platega_check(request: web.Request) -> web.Response:
 
 
 async def _root(request: web.Request) -> web.Response:
-    # V3.19.10: plain liveness page for the bare Railway domain. Without it the
-    # public URL showed aiohttp's default "404: Not Found" and looked like a
-    # broken deploy; only /healthz and the FreeKassa routes existed.
-    return web.Response(
-        text='AnnaBot web endpoint is alive. Health check: /healthz',
-        content_type='text/plain',
-    )
+    # V3.19.10: the bare Railway domain used to show aiohttp's 404.
+    # V3.126.0: it is now the search landing (services/seo_landing.py) so
+    # Yandex/Google can rank «ии девушка» pages; liveness stays on /healthz.
+    return await _seo_page(request)
+
+
+async def _seo_page(request: web.Request) -> web.Response:
+    page = seo_landing.PAGES_BY_PATH.get(request.path.rstrip('/') or '/')
+    if page is None:
+        raise web.HTTPNotFound()
+    from config import BOT_USERNAME
+    body = seo_landing.render_page(page, bot_username=BOT_USERNAME or 'Anna67901_bot',
+                                   base_url=PUBLIC_BASE_URL)
+    return web.Response(text=body, content_type='text/html', charset='utf-8',
+                        headers={'Cache-Control': 'public, max-age=3600'})
+
+
+async def _seo_robots(request: web.Request) -> web.Response:
+    return web.Response(text=seo_landing.robots_txt(PUBLIC_BASE_URL), content_type='text/plain')
+
+
+async def _seo_sitemap(request: web.Request) -> web.Response:
+    return web.Response(text=seo_landing.sitemap_xml(PUBLIC_BASE_URL), content_type='application/xml')
+
+
+async def _seo_banner(request: web.Request) -> web.StreamResponse:
+    if not WELCOME_BANNER_PATH.exists():
+        raise web.HTTPNotFound()
+    return web.FileResponse(WELCOME_BANNER_PATH, headers={'Cache-Control': 'public, max-age=86400'})
 
 
 # ---------------------------------------------------------------------------
@@ -12379,6 +12816,25 @@ async def _webapp_api_demo(request: web.Request) -> web.Response:
     return web.json_response({'ok': bool(ok), 'hours': DEMO_PREMIUM_HOURS} if ok else {'ok': False, 'error': 'used'})
 
 
+async def _webapp_api_autopay(request: web.Request) -> web.Response:
+    """V3.120.0: the shop card's «🔁 Автопродление» link — the bot sends the
+    terms / manage menu into his chat and the app opens that chat."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id or not await asyncio.to_thread(has_accepted, telegram_id):
+        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    try:
+        await _autopay_show(int(telegram_id), int(telegram_id))
+    except Exception:
+        logger.exception('webapp autopay menu failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'send'}, status=502)
+    from config import BOT_USERNAME as _bot_name
+    url = f'https://t.me/{_bot_name}' if _bot_name else ''
+    return web.json_response({'ok': True, 'url': url})
+
+
 async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     # V3.43.0: the Come Closer pay menu — tapping a shop square opens a modal
     # with Stars / card-SBP / crypto rows. Stars reuses /webapp/api/invoice;
@@ -12768,7 +13224,7 @@ async def _webapp_api_spicy(request: web.Request) -> web.Response:
 
 
 async def _webapp_api_presence(request: web.Request) -> web.Response:
-    """V3.120.0: the SPA's heartbeat (on screen) and away beacon (hidden or
+    """V3.128.0: the SPA's heartbeat (on screen) and away beacon (hidden or
     closed). In memory only, no DB: services/app_ping.py pings the bot chat
     only for messages that landed while he was away."""
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
@@ -12910,6 +13366,11 @@ def _webapp_chat_gate(character_id: str, telegram_id: int):
     if not has_accepted(telegram_id):
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
     if telegram_id not in ADMIN_TELEGRAM_IDS and not can_send_message(telegram_id):
+        if is_premium(telegram_id):
+            # V3.124.0: the trial's message total is spent — the full plans, no demo.
+            track_event(ensure_user(telegram_id), 'trial_cap_messages', metadata={'source': 'webapp'})
+            return web.json_response({'ok': False, 'error': 'limit', 'demo': False, 'vip': False,
+                                      'trial': True}, status=429)
         # V3.62.10: the app limit used to be a bare toast — tell the sheet
         # whether the free demo is still there, like the bot's sleep block.
         from services.retention_service import has_used_demo, offer_discount
@@ -12950,7 +13411,11 @@ async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str
             if not user:
                 return None
             if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
-                return (user.voice_style or 'nova') if getattr(user, 'voice_enabled', False) else None
+                if not getattr(user, 'voice_enabled', False):
+                    return None
+                if telegram_id not in ADMIN_TELEGRAM_IDS and not _trial_voice_ok(telegram_id):
+                    return None
+                return user.voice_style or 'nova'
             # V3.106.0: without Premium — her first replies come as voice on
             # their own (services/voice_taste.py), then a quiet «слышать всегда».
             from services import voice_taste
@@ -12986,8 +13451,11 @@ async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str
 
 
 CHAT_PHOTO_BLOCK_TEXT = {
-    'peaches': ('ой, хочу прислать тебе фото, но бесплатные фото на сегодня закончились 🙈 '
-                'ещё одно — {price} 🍑, или завтра будут новые бесплатные. пополни, и я сразу скину 😘'),
+    # V3.125.0: a Premium man past his photos — say plainly that only bought
+    # peaches pay for a photo, and the pack sheet opens right under it.
+    'peaches': ('ой, хочу прислать тебе фото, но фото, что входят в твой Premium, пока закончились 🙈 '
+                'ещё одно — {price} 🍑 (только купленные персики, бонусные на фото не идут). '
+                'пополни — и попроси ещё раз, я сразу скину 😘'),
     'stage': ('такое фото пока рано 😏 давай ещё пообщаемся — чем ближе мы, тем больше я тебе покажу. '
               'а обычное селфи могу прямо сейчас, попроси «пришли селфи»'),
     'adult': 'для такого фото подтверди, что тебе 18+, — и я покажу 🔥',
@@ -13133,7 +13601,7 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | N
                 except Exception:
                     pass
                 return 'free_used'
-            if get_photo_credits(telegram_id) < CHAT_PHOTO_PEACH_COST:
+            if get_paid_peaches(telegram_id) < CHAT_PHOTO_PEACH_COST:
                 return 'peaches'
     return None
 
@@ -13162,7 +13630,7 @@ def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | 
 
 
 def _app_ping(telegram_id: int, character_id: str, text: str, media: str | None = None) -> None:
-    """V3.120.0: her message landed in the app chat only — if he is not in the
+    """V3.128.0: her message landed in the app chat only — if he is not in the
     app, a short collapsed ping goes to the bot chat (services/app_ping.py)."""
     try:
         from services import app_ping
@@ -13171,23 +13639,27 @@ def _app_ping(telegram_id: int, character_id: str, text: str, media: str | None 
         logger.warning('app ping hook failed user=%s', telegram_id, exc_info=True)
 
 
+def _pings_app_reply(turn):
+    """V3.128.0: wraps one app chat turn; when he closed the app before her
+    answer came, the answer also pings the bot chat (services/app_ping.py)."""
+    @functools.wraps(turn)
+    async def wrapper(telegram_id: int, user_info: dict, character_id: str,
+                      text: str, extra: dict | None = None) -> web.Response:
+        resp = await turn(telegram_id, user_info, character_id, text, extra)
+        try:
+            body = json.loads(resp.body) if getattr(resp, 'body', None) else {}
+            if isinstance(body, dict) and body.get('ok') and body.get('reply'):
+                _app_ping(telegram_id, character_id, str(body.get('reply') or ''),
+                          'photo' if body.get('photo_url') else None)
+        except Exception:
+            logger.warning('app ping on chat turn failed user=%s', telegram_id, exc_info=True)
+        return resp
+    return wrapper
+
+
+@_pings_app_reply
 async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str,
                             text: str, extra: dict | None = None) -> web.Response:
-    """V3.120.0: one app chat turn; when he closed the app before her answer
-    came, the answer also pings the bot chat (services/app_ping.py)."""
-    resp = await _webapp_chat_turn_inner(telegram_id, user_info, character_id, text, extra)
-    try:
-        body = json.loads(resp.body) if getattr(resp, 'body', None) else {}
-        if isinstance(body, dict) and body.get('ok') and body.get('reply'):
-            _app_ping(telegram_id, character_id, str(body.get('reply') or ''),
-                      'photo' if body.get('photo_url') else None)
-    except Exception:
-        logger.warning('app ping on chat turn failed user=%s', telegram_id, exc_info=True)
-    return resp
-
-
-async def _webapp_chat_turn_inner(telegram_id: int, user_info: dict, character_id: str,
-                                  text: str, extra: dict | None = None) -> web.Response:
     # V3.35.0: a message typed in the app goes through the exact pipeline the
     # bot chat uses (memory, relationships, persona) — same gates too: 18+
     # consent and the daily free-message limit.
@@ -13285,6 +13757,7 @@ async def _webapp_chat_turn_inner(telegram_id: int, user_info: dict, character_i
                 save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
             from services.chat_photo_allowance import free_chat_photos_left, use_free_chat_photo
             premium = is_premium(telegram_id)
+            paid_note = None
             if telegram_id not in ADMIN_TELEGRAM_IDS and not fallback:
                 # V3.61.5: a free photo of the day first, then peaches.
                 if free_chat_photos_left(uid, premium=premium) > 0:
@@ -13293,7 +13766,10 @@ async def _webapp_chat_turn_inner(telegram_id: int, user_info: dict, character_i
                         from services.chat_photo_allowance import POOL_EVENT, note_today
                         note_today(uid, POOL_EVENT, character_id)
                 else:
-                    spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST)
+                    spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST, paid_only=True)
+                    # V3.125.0: he sees what this photo cost and what is left,
+                    # so the moment he runs short is never a surprise.
+                    paid_note = {'price': CHAT_PHOTO_PEACH_COST, 'left': get_paid_peaches(telegram_id)}
             # V3.53.0: after this photo counts, tell the SPA if a gallery set
             # (50 photos of her) just completed so it can celebrate.
             from services.collection_service import gallery_set_progress, note_gallery_set
@@ -13302,6 +13778,7 @@ async def _webapp_chat_turn_inner(telegram_id: int, user_info: dict, character_i
                     'free_photos_left': free_chat_photos_left(uid, premium=premium),
                     'set_completed': note_gallery_set(telegram_id, character_id),
                     'gallery': gallery_set_progress(telegram_id, character_id),
+                    **({'paid_photo': paid_note} if paid_note else {}),
                     **(extra or {})}
 
         return await asyncio.to_thread(_deliver)
@@ -13653,8 +14130,11 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
         from config import SPEAK_FREE_PER_DAY
         user = get_user(telegram_id)
         style = (user.voice_style if user else None) or 'nova'
-        if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
+        if telegram_id in ADMIN_TELEGRAM_IDS:
             return style, None
+        if is_premium(telegram_id):
+            # V3.124.0: the trial's voice total covers «🔊 Озвучить» too.
+            return (style, None) if _trial_voice_ok(telegram_id) else (None, -1)
         uid = ensure_user(telegram_id)
         left = SPEAK_FREE_PER_DAY - chat_photo_allowance.count_today(uid, 'speak_free')
         if left > 0:
@@ -13662,6 +14142,9 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
         return None, 0
 
     voice_style, free_left = await asyncio.to_thread(_gate)
+    if not voice_style and free_left == -1:
+        # V3.124.0: he has Premium, its voice-note total is spent.
+        return web.json_response({'ok': False, 'error': 'plan_voice_out'}, status=403)
     if not voice_style:
         track_event(ensure_user(telegram_id), 'speak_premium_wall')
         return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
@@ -13784,6 +14267,9 @@ async def _webapp_api_call_info(request: web.Request) -> web.Response:
         'ok': True, 'mode': mode, 'seconds_left': left, 'admin': telegram_id in ADMIN_TELEGRAM_IDS,
         'premium_minutes': voice_call.PREMIUM_SECONDS_PER_DAY // 60,
         'free_minutes': round(voice_call.FREE_SECONDS_PER_DAY / 60, 1),
+        # V3.124.0: the trial's call minutes are a total, not daily.
+        'trial': mode == 'premium' and await asyncio.to_thread(_on_trial, telegram_id),
+        'plan_out': mode == 'premium' and await asyncio.to_thread(_plan_calls_out, uid, telegram_id),
     }, headers={'Cache-Control': 'no-store'})
 
 
@@ -14456,7 +14942,7 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'blocked'}, status=400)
     if not has_accepted(telegram_id):
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
-    if get_photo_credits(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS:
+    if get_paid_peaches(telegram_id) < webapp_service.WEBAPP_PICTURE_COST_CREDITS:
         return web.json_response({'ok': False, 'error': 'credits'}, status=402)
     style = str(body.get('style', 'anime'))[:16]
     fmt = str(body.get('format', 'square'))[:16]
@@ -14565,7 +15051,7 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     # V3.44.3 → V3.44.22: charge the real studio price (10 🍑 since the
     # economy rework), not a single credit. The balance guard above already
     # used WEBAPP_PICTURE_COST_CREDITS, so the deduction stays aligned.
-    if not spend_peaches(telegram_id, webapp_service.WEBAPP_PICTURE_COST_CREDITS):
+    if not spend_peaches(telegram_id, webapp_service.WEBAPP_PICTURE_COST_CREDITS, paid_only=True):
         logger.warning('webapp picture credit race user=%s', telegram_id)
     track_event(uid, 'webapp_picture_generated', metadata={'style': style, 'format': fmt})
     return web.json_response({
@@ -14597,7 +15083,7 @@ async def _webapp_api_studio_video(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'blocked'}, status=400)
     if not has_accepted(telegram_id):
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
-    if get_photo_credits(telegram_id) < webapp_service.WEBAPP_VIDEO_COST_CREDITS:
+    if get_paid_peaches(telegram_id) < webapp_service.WEBAPP_VIDEO_COST_CREDITS:
         return web.json_response({'ok': False, 'error': 'credits'}, status=402)
     uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
 
@@ -14666,7 +15152,7 @@ async def _webapp_api_studio_video(request: web.Request) -> web.Response:
     except Exception:
         logger.exception('studio video save failed user=%s', telegram_id)
         return web.json_response({'ok': False, 'error': 'save'}, status=500)
-    if not spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS):
+    if not spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS, paid_only=True):
         logger.warning('studio video credit race user=%s', telegram_id)
     track_event(uid, 'webapp_studio_video_generated', metadata={'engine': used_engine, 'preset': preset})
     return web.json_response({
@@ -14737,7 +15223,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     # Check balance: free daily or peaches
     free_used = consume_free_private_photo(telegram_id, 'cosplay' if cosplay else cat_id)
     if not free_used:
-        if get_photo_credits(telegram_id) < peach_cost:
+        if get_paid_peaches(telegram_id) < peach_cost:
             raise PhotoGenerationError('hot', 'insufficient_peaches')
     # Build request
     dna_ctx = character_dna_context(character_id)
@@ -14764,7 +15250,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     cached = cache_get(prompt, character_id)
     if cached:
         if not free_used:
-            spend_peaches(telegram_id, peach_cost)
+            spend_peaches(telegram_id, peach_cost, paid_only=True)
         _HOT_MEDIA_HINT[telegram_id] = ('cache', 0.0)
         return cached, 'image/jpeg', 'jpg'
     # V3.51.3: pool reuse — once this character's shared cache has stockpiled
@@ -14777,7 +15263,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     pooled = None if telegram_id in ADMIN_TELEGRAM_IDS else pool_get(character_id, cat_id, req.type_id)
     if pooled:
         if not free_used:
-            spend_peaches(telegram_id, peach_cost)
+            spend_peaches(telegram_id, peach_cost, paid_only=True)
         gallery_save(telegram_id, character_id, cat_id, req.type_id, pooled)
         check_achievements(telegram_id)
         _HOT_MEDIA_HINT[telegram_id] = ('pool', 0.0)
@@ -14819,7 +15305,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
         raise PhotoGenerationError('hot', provider_error or 'all_providers_failed')
     # Charge peaches if free limit was not used
     if not free_used:
-        spend_peaches(telegram_id, peach_cost)
+        spend_peaches(telegram_id, peach_cost, paid_only=True)
     # Save to cache + gallery
     type_id = req.type_id
     cache_save(prompt, character_id, cat_id, type_id, image_bytes)
@@ -15040,6 +15526,19 @@ def _undress_premium_free(telegram_id: int, character_id: str) -> int:
     return UNDRESS_PREMIUM_FREE_L3_6 if level >= 3 else UNDRESS_PREMIUM_FREE_L1_2
 
 
+def _undress_allowance(uid: int, telegram_id: int, character_id: str, used_today: int) -> int:
+    """V3.124.0: the daily Premium allowance, capped by the trial total."""
+    allow = _undress_premium_free(telegram_id, character_id)
+    try:
+        from services import trial_caps
+        trial = trial_caps.undress_allowance_today(uid, used_today)
+        if trial is not None:
+            allow = min(allow, trial)
+    except Exception:
+        pass
+    return allow
+
+
 # The gentlest reveal — the last try when the engine refused the first pick.
 UNDRESS_SAFE_VARIANT = UNDRESS_VARIANTS_LINGERIE[3]
 
@@ -15182,9 +15681,10 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         # peach route for non-Premium users: the button sells Premium.
         if not is_premium(telegram_id):
             return uid, ('premium_required', 403), None
-        if count_today(uid, 'undress_free') < _undress_premium_free(telegram_id, character_id):
+        _used_today = count_today(uid, 'undress_free')
+        if _used_today < _undress_allowance(uid, telegram_id, character_id, _used_today):
             return uid, None, 'free'
-        if get_photo_credits(telegram_id) < UNDRESS_PEACH_COST:
+        if get_paid_peaches(telegram_id) < UNDRESS_PEACH_COST:
             return uid, ('credits', 402), None
         return uid, None, 'peaches'
 
@@ -15241,7 +15741,7 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
             if pay in ('free', 'trial'):
                 note_today(uid, f'undress_{pay}', character_id)
             elif pay == 'peaches':
-                spend_peaches(telegram_id, UNDRESS_PEACH_COST)
+                spend_peaches(telegram_id, UNDRESS_PEACH_COST, paid_only=True)
         return {'ok': True, 'kind': kind, 'url': url, 'content': content,
                 'credits_left': get_photo_credits(telegram_id)}
 
@@ -15333,13 +15833,13 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             # peaches pile up and burned the render budget.
             return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
         if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS \
-                and get_photo_credits(telegram_id) < PEACH_SCALE:
+                and get_paid_peaches(telegram_id) < PEACH_SCALE:
             # V3.44.22: a chat photo costs ONE credit (consume_photo_credit below) —
             # the old guard demanded the studio's whole price and blocked users who
             # had plenty for the actual charge.
             return web.json_response({'ok': False, 'error': 'credits'}, status=402)
         if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS \
-                and get_photo_credits(telegram_id) < CIRCLE_PEACH_COST:
+                and get_paid_peaches(telegram_id) < CIRCLE_PEACH_COST:
             # V3.71.0: circles are paid in peaches for everyone (charged in
             # _finish only once the circle exists).
             return web.json_response({'ok': False, 'error': 'credits'}, status=402)
@@ -15350,7 +15850,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
                 return web.json_response({'ok': False, 'error': 'locked'}, status=403)
             if not is_adult_confirmed(telegram_id):
                 return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
-            if telegram_id not in ADMIN_TELEGRAM_IDS and get_photo_credits(telegram_id) < HOT_CIRCLE_PEACH_COST:
+            if telegram_id not in ADMIN_TELEGRAM_IDS and get_paid_peaches(telegram_id) < HOT_CIRCLE_PEACH_COST:
                 return web.json_response({'ok': False, 'error': 'credits'}, status=402)
         if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS:
             # V3.41.0: app video shares the Premium free-animation slots, exactly
@@ -15443,9 +15943,9 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         save_message(uid, character_id, 'assistant', content, media_kind=shown_kind, media_url=url)
         if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
             logger.warning('webapp chat photo credit race user=%s', telegram_id)
-        if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, CIRCLE_PEACH_COST):
+        if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, CIRCLE_PEACH_COST, paid_only=True):
             logger.warning('webapp chat circle peach race user=%s', telegram_id)
-        if kind == 'hotcircle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, HOT_CIRCLE_PEACH_COST):
+        if kind == 'hotcircle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, HOT_CIRCLE_PEACH_COST, paid_only=True):
             logger.warning('webapp chat hot circle peach race user=%s', telegram_id)
         # V3.44.6: record author revenue when someone spends on a custom character.
         if kind == 'photo' and is_custom_character(character_id):
@@ -16720,6 +17220,12 @@ async def _start_web_server() -> None:
     # V3.56.6: gzip every JSON/text API response the app fetches on boot.
     app.middlewares.append(_webapp_gzip)
     app.router.add_get('/', _root)
+    for _seo in seo_landing.PAGES:
+        if _seo.path != '/':
+            app.router.add_get(_seo.path, _seo_page)
+    app.router.add_get('/robots.txt', _seo_robots)
+    app.router.add_get('/sitemap.xml', _seo_sitemap)
+    app.router.add_get(seo_landing.BANNER_PATH, _seo_banner)
     app.router.add_route('*', '/platega/callback', _platega_callback)
     # Success/fail are browser redirects off the payment page; keep '*' so
     # they answer whether the provider sends GET or POST.
@@ -16793,6 +17299,7 @@ async def _start_web_server() -> None:
     # V3.34.0: storefront actions — Stars purchases and character selection.
     app.router.add_post('/webapp/api/invoice', _webapp_api_invoice)
     app.router.add_post('/webapp/api/demo', _webapp_api_demo)
+    app.router.add_post('/webapp/api/autopay', _webapp_api_autopay)
     # V3.43.0: the pay-method modal — card/SBP and crypto payment links.
     app.router.add_post('/webapp/api/pay_link', _webapp_api_pay_link)
     app.router.add_post('/webapp/api/feedback', _webapp_api_feedback)  # V3.107.0
@@ -16813,7 +17320,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/spicy', _webapp_api_spicy)
     # V3.35.0: chat in the app and the character constructor wizard.
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
-    app.router.add_post('/webapp/api/presence', _webapp_api_presence)  # V3.120.0
+    app.router.add_post('/webapp/api/presence', _webapp_api_presence)  # V3.128.0
     app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)
     app.router.add_post('/webapp/api/lang', _webapp_api_lang)
     app.router.add_post('/webapp/api/chat/voice', _webapp_api_chat_voice)
@@ -17053,7 +17560,27 @@ BOT_PROFILE = {
 }
 
 
+async def _apply_bot_name_overrides() -> None:
+    # V3.126.0: BotFather /setname only edits the default name, while a name
+    # stored per language (ru/en) wins for users with that app language. Log
+    # what Telegram has for '', ru and en, and write BOT_NAME_DEFAULT /
+    # BOT_NAME_RU / BOT_NAME_EN when set (only if they differ: setMyName is
+    # rate-limited). An empty-string value is not written; unset vars do nothing.
+    for code, var in (('', 'BOT_NAME_DEFAULT'), ('ru', 'BOT_NAME_RU'), ('en', 'BOT_NAME_EN')):
+        try:
+            cur = (await bot.get_my_name(language_code=code)).name or ''
+            want = os.getenv(var, '').strip()[:64]
+            if want and want != cur:
+                await bot.set_my_name(name=want, language_code=code)
+                logger.info('bot name lang=%s set %r -> %r', code or 'default', cur, want)
+            else:
+                logger.info('bot name lang=%s is %r', code or 'default', cur)
+        except Exception:
+            logger.exception('bot name check failed lang=%s', code or 'default')
+
+
 async def _apply_bot_profile() -> None:
+    await _apply_bot_name_overrides()
     # V3.118.0: off by default — the owner edits name/description in BotFather
     # and every deploy used to overwrite them. BOT_PROFILE_ENABLED=1 turns it on.
     if os.getenv('BOT_PROFILE_ENABLED', '0') != '1':

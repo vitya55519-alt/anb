@@ -217,7 +217,7 @@ def apply_first_start_bonuses(telegram_id: int) -> dict:
         if not user:
             return {"credits": 0, "trial_days": 0, "already_granted": False}
         if FIRST_START_BONUS_CREDITS > 0:
-            user.photo_credits = (user.photo_credits or 0) + FIRST_START_BONUS_CREDITS
+            user.bonus_peaches = (user.bonus_peaches or 0) + FIRST_START_BONUS_CREDITS
             granted_credits = FIRST_START_BONUS_CREDITS
         # Idempotency marker is recorded in the SAME transaction as the credit
         # grant, so a crash between credit update and analytics event can't
@@ -361,9 +361,9 @@ def qualify_referral(invitee_telegram_id: int, extra_text: str | None = None) ->
         if not inv or not ref:
             return None
         if REFERRAL_INVITEE_CREDITS > 0:
-            inv.photo_credits = (inv.photo_credits or 0) + REFERRAL_INVITEE_CREDITS
+            inv.bonus_peaches = (inv.bonus_peaches or 0) + REFERRAL_INVITEE_CREDITS
         if REFERRAL_REFERRER_CREDITS > 0:
-            ref.photo_credits = (ref.photo_credits or 0) + REFERRAL_REFERRER_CREDITS
+            ref.bonus_peaches = (ref.bonus_peaches or 0) + REFERRAL_REFERRER_CREDITS
         s.add(ProductEvent(
             user_id=invitee.id,
             event_name="referral_qualified",
@@ -526,7 +526,7 @@ def maybe_grant_referral_tiers(telegram_id: int) -> list[dict]:
             if not user:
                 break
             if credits > 0:
-                user.photo_credits = (user.photo_credits or 0) + credits
+                user.bonus_peaches = (user.bonus_peaches or 0) + credits
             s.add(ProductEvent(
                 user_id=uid,
                 event_name=_tier_marker_event(idx),

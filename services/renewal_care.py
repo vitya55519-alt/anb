@@ -86,6 +86,11 @@ def candidates(now: datetime | None = None) -> list[tuple[int, int, str, str, st
                 tg = int(user.telegram_id)
             except (TypeError, ValueError):
                 continue
+            # V3.120.0: his Premium renews by itself — the honest pre-charge
+            # reminder (services/autopay.py) speaks instead of «останешься?».
+            from services import autopay
+            if autopay.has_active(tg):
+                continue
             out.append((uid, tg, (user.selected_character or '').strip(), stage, product))
     return out
 

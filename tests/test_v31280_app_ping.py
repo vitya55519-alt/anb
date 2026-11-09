@@ -1,4 +1,4 @@
-"""V3.120.0: she wrote in the app while he was away — a ping in the bot chat."""
+"""V3.128.0: she wrote in the app while he was away — a ping in the bot chat."""
 import asyncio
 from pathlib import Path
 
@@ -122,7 +122,7 @@ def test_back_in_app_before_the_wait_cancels(monkeypatch):
 
 def test_hooks_and_spa_wiring():
     assert "app.router.add_post('/webapp/api/presence', _webapp_api_presence)" in MAIN
-    assert 'async def _webapp_chat_turn_inner(' in MAIN
+    assert '@_pings_app_reply' in MAIN
     assert MAIN.count('_app_ping(telegram_id, character_id') >= 6
     assert '/webapp/api/presence?state=' in HTML and 'sendBeacon' in HTML
     assert "tg.onEvent('deactivated'" in HTML

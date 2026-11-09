@@ -36,7 +36,7 @@ def test_welcome_banner_asset_exists():
 
 def test_start_sends_the_banner_photo():
     assert 'WELCOME_BANNER_PATH' in MAIN
-    assert 'def _welcome_banner_file()' in MAIN
+    assert 'def _welcome_banner_file(' in MAIN
     assert 'FSInputFile(WELCOME_BANNER_PATH)' in MAIN
     # both the new-user and the returning-user welcome go out as a photo
     assert 'await message.answer_photo(banner, caption=welcome, reply_markup=consent_keyboard(lang))' in MAIN
@@ -162,8 +162,8 @@ def test_chat_media_endpoint_and_gates():
     # + daily free slot, consent gates all — the studio's
     # WEBAPP_PICTURE_COST_CREDITS price lives in its own generate endpoint
     # V3.65.0: one credit = PEACH_SCALE peaches
-    assert 'get_photo_credits(telegram_id) < PEACH_SCALE' in block
-    assert "kind == 'circle'" in block and 'get_photo_credits(telegram_id) < CIRCLE_PEACH_COST' in block
+    assert 'get_paid_peaches(telegram_id) < PEACH_SCALE' in block
+    assert "kind == 'circle'" in block and 'get_paid_peaches(telegram_id) < CIRCLE_PEACH_COST' in block
     assert 'has_accepted(telegram_id)' in block
     # the bot's own engine chains are reused
     assert 'async def _webapp_media_circle(' in MAIN

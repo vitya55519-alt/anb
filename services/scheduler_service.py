@@ -678,6 +678,73 @@ def _streak_line(streak, lang: str = 'ru') -> str:
     return f'\n\nкстати, мы уже {streak} дней подряд болтаем. мне это правда нравится 🙂'
 
 
+# ── V3.121.0: one ritual per girl, language and day (owner's budget rule) ──
+RITUAL_SHARED=_os.getenv('RITUAL_SHARED','true').strip().lower() not in ('0','false','no','off')
+_shared_bundles: dict = {}
+_shared_locks: dict = {}
+
+
+async def _shared_ritual(kind: str, day: str, char_id: str, lang: str):
+    """(text, voice bytes|None, photo|None) shared by every user of this girl
+    in this language today: one TTS call and one photo pick, not one per user.
+    The admin preview builds it first, so users get exactly what was approved."""
+    key=(kind, day, char_id, lang)
+    if key in _shared_bundles:
+        return _shared_bundles[key]
+    for k in [k for k in _shared_bundles if k[1]!=day]:
+        _shared_bundles.pop(k, None); _shared_locks.pop(k, None)
+    lock=_shared_locks.setdefault(key, asyncio.Lock())
+    async with lock:
+        if key in _shared_bundles:
+            return _shared_bundles[key]
+        from services import evening_voice as _ev
+        if lang=='en':
+            text=_ev.en_evening_line() if kind=='evening' else _ev.en_morning_line()
+        else:
+            text=retention_features_service.get_retention_text(kind, char_id)
+        voice=None
+        try:
+            voice=await _ev.voice_bytes(text, char_id, lang, mood=kind)
+        except Exception:
+            logger.exception('shared ritual voice failed char=%s lang=%s', char_id, lang)
+        shot=None
+        try:
+            # clean photo for everyone (no lingerie): the same picture reaches free users
+            shot=await _ev.evening_photo(char_id, None, False)
+        except Exception:
+            logger.exception('shared ritual photo failed char=%s', char_id)
+        _shared_bundles[key]=(text, voice, shot)
+        logger.info('shared ritual built kind=%s char=%s lang=%s voice=%s photo=%s',
+                    kind, char_id, lang, bool(voice), bool(shot))
+        return _shared_bundles[key]
+
+
+# V3.121.1: a redeploy wiped _ritual_sent mid-window, and with the approval
+# grace window still open everyone would get tonight's ritual twice. The
+# ritual_<kind>_sent events are the persisted truth; load today's once per boot/day.
+_ritual_hydrated: set = set()
+
+
+def _hydrate_ritual_sent(now) -> None:
+    day=now.date().isoformat()
+    if day in _ritual_hydrated:
+        return
+    try:
+        from models.app_models import ProductEvent
+        start=dt.datetime(now.year, now.month, now.day)
+        with SessionLocal() as s:
+            rows=s.execute(select(ProductEvent.user_id, ProductEvent.event_name).where(
+                ProductEvent.event_name.in_(('ritual_morning_sent','ritual_evening_sent')),
+                ProductEvent.created_at>=start)).all()
+        for uid, name in rows:
+            if uid:
+                _ritual_sent.add((uid, name.split('_')[1], day))
+        _ritual_hydrated.add(day)
+        logger.info('ritual sent-guard restored day=%s rows=%s', day, len(rows))
+    except Exception:
+        logger.exception('ritual sent-guard restore failed')
+
+
 async def _rituals(bot, only_tg=None, force_kind=None):
     """V3.20.0: morning/evening rituals — she writes first in the user's local
     time window. Only recent (RITUAL_MAX_INACTIVE_DAYS) opt-in users get them.
@@ -702,6 +769,8 @@ async def _rituals(bot, only_tg=None, force_kind=None):
             users=s.scalars(select(User).where(User.proactive_enabled==True,User.notify_rituals!=False,User.last_active_at>=fresh_cutoff)).all()
         snapshot=[(u.id,u.telegram_id,u.name or 'ты',u.streak_count or 0,u.timezone,u.selected_character or '') for u in users]
     today_key=now.date().isoformat()
+    if not preview:
+        _hydrate_ritual_sent(now)
     for uid,tg_id,name,streak,tz,sel_char in snapshot:
         try:
             with SessionLocal() as s:
@@ -746,84 +815,96 @@ async def _rituals(bot, only_tg=None, force_kind=None):
             # V3.47.3: the pool also holds GIFs and videos — send by kind.
             # the evening only checks the pool (its photo waits for the morning),
             # so only a shot that is really sent counts in his rotation
-            shot = retention_features_service.random_proactive_photo(char_id, user_id=uid if kind=='morning' else None)
-            evening_voice=None
-            morning_voice=None
-            if kind=='evening':
-                # V3.101.0: «как прошёл день» tied to what she knows about him
-                # (the template evening got replies from 10%).
-                _el='ru'
-                try:
-                    from services.chat_service import morning_callback
-                    from services.ui_lang import user_lang, EN
-                    _el='en' if user_lang(int(tg_id))==EN else 'ru'
-                    evening_text=await morning_callback(int(tg_id), name, _el, char_id, evening=True)
-                    if evening_text:
-                        text=evening_text
-                        track_event(uid,'evening_callback_sent',character_id=char_id)
-                    elif _el=='en':
-                        # V3.107.0: the template pool is Russian-only — English
-                        # users get an English evening (and hear it in English).
+            if RITUAL_SHARED:
+                # V3.121.0: owner — «всем одно голосовое, русским русское, англ
+                # английское, фото тоже всем одинаковое, либо я разорюсь».
+                # One line + one voice + one photo per girl, language and day,
+                # reused for every user of that girl (no per-user LLM/TTS).
+                from services.ui_lang import user_lang, EN
+                _el='en' if user_lang(int(tg_id))==EN else 'ru'
+                text, shared_voice, shot = await _shared_ritual(kind, msk_day, char_id, _el)
+                evening_shot=shot
+                evening_voice=shared_voice if kind=='evening' else None
+                morning_voice=shared_voice if kind=='morning' else None
+            else:
+                shot = retention_features_service.random_proactive_photo(char_id, user_id=uid if kind=='morning' else None)
+                evening_voice=None
+                morning_voice=None
+                if kind=='evening':
+                    # V3.101.0: «как прошёл день» tied to what she knows about him
+                    # (the template evening got replies from 10%).
+                    _el='ru'
+                    try:
+                        from services.chat_service import morning_callback
+                        from services.ui_lang import user_lang, EN
+                        _el='en' if user_lang(int(tg_id))==EN else 'ru'
+                        evening_text=await morning_callback(int(tg_id), name, _el, char_id, evening=True)
+                        if evening_text:
+                            text=evening_text
+                            track_event(uid,'evening_callback_sent',character_id=char_id)
+                        elif _el=='en':
+                            # V3.107.0: the template pool is Russian-only — English
+                            # users get an English evening (and hear it in English).
+                            from services import evening_voice as _ev
+                            text=_ev.en_evening_line()
+                    except Exception:
+                        logger.exception('evening callback failed user=%s',uid)
+                    # V3.107.0: owner — the evening comes as her voice note, for
+                    # everyone, in his language. Only her own line is spoken.
+                    try:
                         from services import evening_voice as _ev
-                        text=_ev.en_evening_line()
-                except Exception:
-                    logger.exception('evening callback failed user=%s',uid)
-                # V3.107.0: owner — the evening comes as her voice note, for
-                # everyone, in his language. Only her own line is spoken.
-                try:
-                    from services import evening_voice as _ev
-                    evening_voice=await _ev.voice_bytes(text, char_id, _el)
-                except Exception:
-                    logger.exception('evening voice failed user=%s',uid)
-            # V3.110.0: owner — a photo of her comes with the evening voice
-            # every evening. Only a ready photo (no new render), rotated per user.
-            # V3.110.0: owner — «утреннее голосовое тоже с фото»: the same pick
-            # (user generations → her pool) for the morning as well.
-            evening_shot=None
-            if kind in ('evening','morning'):
-                try:
-                    from services import evening_voice as _ev
-                    from services.user_service import is_adult_confirmed as _adult
-                    evening_shot=await _ev.evening_photo(char_id, uid, await asyncio.to_thread(_adult, int(tg_id)))
-                except Exception:
-                    logger.exception('evening photo failed user=%s',uid)
-                    evening_shot=None
-            # V3.59.2: the evening plants a reason to come back — a promise the
-            # morning ritual keeps with a photo. Only promised when her media
-            # pool can actually deliver one.
-            # V3.110.0: with the evening photo there, the promise is dropped —
-            # the photo is already in his hands tonight.
-            if evening_shot:
-                shot=evening_shot
-            elif kind=='evening' and shot:
-                text+='\n\n'+random.choice(_EVENING_PROMISE_EN if _el=='en' else _EVENING_PROMISE_RU)
-                _ritual_promised.add((uid,(now+dt.timedelta(days=1)).date().isoformat()))
-                shot=None  # the promise IS the hook; the photo waits for the morning
-            if kind=='morning' and shot and (uid,today_key) in _ritual_promised:
-                # one greeting, not «доброе утро» glued onto another «утро»
-                text=random.choice(_PROMISE_KEPT)
-                _ritual_promised.discard((uid,today_key))
-            if kind=='morning':
-                # V3.97.0: when he talked to her yesterday, the morning picks
-                # up THAT talk (his plans, their joke) instead of a template.
-                try:
-                    from services.chat_service import morning_callback
-                    from services.ui_lang import user_lang, EN
-                    _ml='en' if user_lang(int(tg_id))==EN else 'ru'
-                    callback=await morning_callback(int(tg_id), name, _ml, char_id)
-                    if callback:
-                        text=callback if not text.startswith(tuple(_PROMISE_KEPT)) else text+'\n\n'+callback
-                        track_event(uid,'morning_callback_sent',character_id=char_id)
-                except Exception:
-                    logger.exception('morning callback failed user=%s',uid)
-                # V3.110.0: owner — «один голос утром»: the morning line is her
-                # voice note too (the pool photo, if any, goes right before it).
-                try:
-                    from services import evening_voice as _ev
-                    from services.ui_lang import user_lang, EN
-                    morning_voice=await _ev.voice_bytes(text, char_id, 'en' if user_lang(int(tg_id))==EN else 'ru', mood='morning')
-                except Exception:
-                    logger.exception('morning voice failed user=%s',uid)
+                        evening_voice=await _ev.voice_bytes(text, char_id, _el)
+                    except Exception:
+                        logger.exception('evening voice failed user=%s',uid)
+                # V3.110.0: owner — a photo of her comes with the evening voice
+                # every evening. Only a ready photo (no new render), rotated per user.
+                # V3.110.0: owner — «утреннее голосовое тоже с фото»: the same pick
+                # (user generations → her pool) for the morning as well.
+                evening_shot=None
+                if kind in ('evening','morning'):
+                    try:
+                        from services import evening_voice as _ev
+                        from services.user_service import is_adult_confirmed as _adult
+                        evening_shot=await _ev.evening_photo(char_id, uid, await asyncio.to_thread(_adult, int(tg_id)))
+                    except Exception:
+                        logger.exception('evening photo failed user=%s',uid)
+                        evening_shot=None
+                # V3.59.2: the evening plants a reason to come back — a promise the
+                # morning ritual keeps with a photo. Only promised when her media
+                # pool can actually deliver one.
+                # V3.110.0: with the evening photo there, the promise is dropped —
+                # the photo is already in his hands tonight.
+                if evening_shot:
+                    shot=evening_shot
+                elif kind=='evening' and shot:
+                    text+='\n\n'+random.choice(_EVENING_PROMISE_EN if _el=='en' else _EVENING_PROMISE_RU)
+                    _ritual_promised.add((uid,(now+dt.timedelta(days=1)).date().isoformat()))
+                    shot=None  # the promise IS the hook; the photo waits for the morning
+                if kind=='morning' and shot and (uid,today_key) in _ritual_promised:
+                    # one greeting, not «доброе утро» glued onto another «утро»
+                    text=random.choice(_PROMISE_KEPT)
+                    _ritual_promised.discard((uid,today_key))
+                if kind=='morning':
+                    # V3.97.0: when he talked to her yesterday, the morning picks
+                    # up THAT talk (his plans, their joke) instead of a template.
+                    try:
+                        from services.chat_service import morning_callback
+                        from services.ui_lang import user_lang, EN
+                        _ml='en' if user_lang(int(tg_id))==EN else 'ru'
+                        callback=await morning_callback(int(tg_id), name, _ml, char_id)
+                        if callback:
+                            text=callback if not text.startswith(tuple(_PROMISE_KEPT)) else text+'\n\n'+callback
+                            track_event(uid,'morning_callback_sent',character_id=char_id)
+                    except Exception:
+                        logger.exception('morning callback failed user=%s',uid)
+                    # V3.110.0: owner — «один голос утром»: the morning line is her
+                    # voice note too (the pool photo, if any, goes right before it).
+                    try:
+                        from services import evening_voice as _ev
+                        from services.ui_lang import user_lang, EN
+                        morning_voice=await _ev.voice_bytes(text, char_id, 'en' if user_lang(int(tg_id))==EN else 'ru', mood='morning')
+                    except Exception:
+                        logger.exception('morning voice failed user=%s',uid)
             if streak and streak >= 3 and (not shot or evening_shot):
                 try:
                     from services.ui_lang import user_lang, EN
@@ -1181,7 +1262,8 @@ async def _channel_bonus_holds(bot):
             continue
         try:
             await bot.send_message(tid, f'🍑 Ты с нами уже {cbs.CHANNEL_BONUS_HOLD_DAYS} дня — спасибо, что остался в канале! '
-                                        f'+{CHANNEL_SUBSCRIBE_BONUS_CREDITS} персиков уже на балансе 😘')
+                                        f'+{CHANNEL_SUBSCRIBE_BONUS_CREDITS} бонусных персиков уже на балансе 😘 '
+                                        'Ими можно платить за гардероб, свидания и подарки.')
         except TelegramForbiddenError:
             _mark_blocked_tg(tid)
         except Exception:
@@ -1422,6 +1504,55 @@ async def _renewal_care(bot):
             logger.exception('renewal care failed user=%s', uid)
 
 
+async def _autopay_scan(bot):
+    """V3.120.0: the honest reminder before every auto-renewal charge (amount,
+    date, «Отключить»), and closing renewals that never came."""
+    from services import autopay
+    if not autopay.ENABLED:
+        return
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    from services.ui_lang import user_lang, EN
+    try:
+        lapsed = await asyncio.to_thread(autopay.lapse_overdue)
+    except Exception:
+        logger.exception('autopay lapse scan failed'); lapsed = []
+    for row in lapsed:
+        try:
+            en = user_lang(row['telegram_id']) == EN
+            if row['status'] == 'past_due':
+                text = autopay.status_text(row, en)
+            else:
+                text = ('Your Stars auto-renewal did not go through, so it is off now — nothing more will be charged. '
+                        'Premium can be renewed in /premium 💗' if en else
+                        'Продление через Stars не прошло, поэтому автопродление выключено — больше ничего не спишется. '
+                        'Продлить Premium можно в /premium 💗')
+            await bot.send_message(row['telegram_id'], text)
+        except TelegramForbiddenError:
+            pass
+        except Exception:
+            logger.exception('autopay lapse message failed row=%s', row.get('id'))
+    if not _msk_daytime():
+        return
+    try:
+        rows = await asyncio.to_thread(autopay.due_reminders)
+    except Exception:
+        logger.exception('autopay reminder scan failed'); return
+    for row in rows:
+        try:
+            await asyncio.to_thread(autopay.mark_reminded, row['id'], row['next_charge_at'])
+            en = user_lang(row['telegram_id']) == EN
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='❌ Turn off auto-renewal' if en else '❌ Отключить автопродление',
+                                      callback_data='autopay:cancel_ask')],
+                [InlineKeyboardButton(text='✅ Keep it' if en else '✅ Оставить', callback_data='autopay:keep')],
+            ])
+            await bot.send_message(row['telegram_id'], autopay.reminder_text(row, en), reply_markup=kb)
+        except TelegramForbiddenError:
+            pass
+        except Exception:
+            logger.exception('autopay reminder failed row=%s', row.get('id'))
+
+
 async def _girl_of_day(bot):
     """V3.92.0: «🔥 Девушка дня» (switches at 03:00 MSK) — at 09:00 MSK the admins get
     the ready channel post with a «📣 В канал» button."""
@@ -1477,6 +1608,7 @@ def start_scheduler(bot):
     # V3.104.0: next-day message after a payment, and «останешься?» before the end.
     scheduler.add_job(_paid_day1,'interval',minutes=15,args=[bot],id='paid_day1',replace_existing=True)
     scheduler.add_job(_renewal_care,'interval',minutes=15,args=[bot],id='renewal_care',replace_existing=True)
+    scheduler.add_job(_autopay_scan,'interval',minutes=15,args=[bot],id='autopay_scan',replace_existing=True)
     scheduler.add_job(_first_minutes,'interval',minutes=3,args=[bot],id='first_minutes',replace_existing=True)
     scheduler.add_job(_weekly_report,'cron',day_of_week='mon',hour=6,minute=0,args=[bot],id='weekly_report',replace_existing=True)
     # V3.75.0: scenario cards — scans often, one card a day per user at most.

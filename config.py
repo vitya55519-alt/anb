@@ -73,7 +73,10 @@ COSPLAY_PHOTO_FREE_DAILY = max(0, int(os.getenv("COSPLAY_PHOTO_FREE_DAILY", "1")
 # Цена после бесплатного лимита (в персиках)
 PRIVATE_PHOTO_PEACH_COST = _peach_env("PRIVATE_PHOTO_PEACH_COST", 2)
 # V3.60.3: a photo asked for in the app chat (owner: «2 персика это фото»).
-CHAT_PHOTO_PEACH_COST = _peach_env("CHAT_PHOTO_PEACH_COST", 2)
+# V3.123.0: owner — a chat photo past the Premium daily two costs 300 🍑 (was
+# 200). New env name on purpose: Railway may still hold the old
+# CHAT_PHOTO_PEACH_COST=2, which would silently keep the old price.
+CHAT_PHOTO_PEACH_COST = _peach_env("CHAT_PHOTO_PRICE_PEACHES", 3)
 # V3.61.5: chat photos free per day (all girls together) before peaches are spent.
 # V3.93.0: owner — «они бездарно сливают бюджет… нету према — всего одна фотка,
 # с премиумом две в день, остальное за персики». Without Premium: ONE free chat
