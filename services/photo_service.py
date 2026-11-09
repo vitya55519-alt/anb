@@ -1134,7 +1134,13 @@ HANDS_RULE = (
     'HANDS: she has exactly two arms and two hands, both naturally attached to her own shoulders — '
     'never a third hand, a third arm or a disembodied hand. In a mirror or phone selfie one hand holds the phone, '
     'so only the other hand is free: if the expression puts a hand at her lips or face, the posture must not also '
-    'place a hand on her hip, waist or in her hair.'
+    'place a hand on her hip, waist or in her hair. '
+    # V3.130.0: owner screenshot (embankment, «тсс» finger at the lips): a
+    # front selfie showed the phone in one hand AND the outstretched camera
+    # arm — three arms. In a front selfie the phone IS the camera.
+    'In a front (non-mirror) selfie the phone is the camera itself and is NEVER visible in the frame: '
+    'one arm reaches toward the viewer, cut off by the frame edge, and that is the phone arm; '
+    'the phone may appear in her hand only in a mirror reflection. Count the arms before finishing: exactly two.'
 )
 NEGATIVE_BLOCK = (
     'Avoid identity drift, generic doll-like face, plastic skin, asymmetrical eyes, warped hands, extra fingers, '
