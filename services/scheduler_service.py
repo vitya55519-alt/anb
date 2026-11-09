@@ -1374,6 +1374,41 @@ async def _heavy_offer(bot):
             logger.exception('heavy offer failed user=%s', uid)
 
 
+async def _whats_new(bot):
+    """V3.129.0: once per round, «что у нас нового» to the men silent for
+    11–120 days (services/whats_new.py) — daytime Moscow, small batches."""
+    from services import whats_new as wn
+    if not wn.ENABLED or not _msk_daytime():
+        return
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    from services.ui_lang import user_lang, EN
+    from config import ADMIN_TELEGRAM_IDS
+    try:
+        rows = await asyncio.to_thread(wn.candidates)
+    except Exception:
+        logger.exception('whats new scan failed'); return
+    for uid, telegram_id, char_id in rows:
+        try:
+            if telegram_id in ADMIN_TELEGRAM_IDS:
+                continue
+            cid = char_id or CHARACTER_ID
+            await asyncio.to_thread(wn.mark, uid, cid)
+            lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+            text = wn.text(_char_name(cid), lang)
+            kb = None
+            if PUBLIC_BASE_URL:
+                kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                    text=wn.button_text(lang), web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))]])
+            await bot.send_message(telegram_id, text, reply_markup=kb)
+            _to_app_chat(uid, telegram_id, cid, text)
+            track_event(uid, 'whats_new_sent_ok', metadata={'round': wn.ROUND}, character_id=cid)
+        except TelegramForbiddenError:
+            _mark_blocked(uid)
+        except Exception:
+            logger.exception('whats new failed user=%s', uid)
+        await asyncio.sleep(0.2)
+
+
 async def _trial_followup(bot):
     """V3.97.0: she writes before the 99 ₽ trial ends and once after it ran
     out (services/trial_followup.py) — with the week / month buttons."""
@@ -1605,6 +1640,8 @@ def start_scheduler(bot):
     scheduler.add_job(_trial_followup,'interval',minutes=15,args=[bot],id='trial_followup',replace_existing=True)
     # V3.111.0: one honest offer after 150+ messages without Premium.
     scheduler.add_job(_heavy_offer,'interval',minutes=30,args=[bot],id='heavy_offer',replace_existing=True)
+    # V3.129.0: «что у нас нового» for the men who left (once per round)
+    scheduler.add_job(_whats_new,'interval',minutes=30,args=[bot],id='whats_new',replace_existing=True)
     # V3.104.0: next-day message after a payment, and «останешься?» before the end.
     scheduler.add_job(_paid_day1,'interval',minutes=15,args=[bot],id='paid_day1',replace_existing=True)
     scheduler.add_job(_renewal_care,'interval',minutes=15,args=[bot],id='renewal_care',replace_existing=True)
