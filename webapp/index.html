@@ -2870,6 +2870,33 @@ async function loadCharacters() {
   }
 }
 
+// V3.128.0: presence — a heartbeat while the app is on screen and a beacon
+// when it is hidden or closed. A message that lands while he is away also
+// pings the bot chat («она написала тебе в приложении»); while he is here, no.
+(function presenceBeat() {
+  const url = state => '/webapp/api/presence?state=' + state + '&init_data=' + encodeURIComponent(tg.initData || '');
+  // Bot API 8.0: a minimized Mini App stays «visible» but is deactivated.
+  let active = true;
+  const beat = () => {
+    if (!active || document.visibilityState !== 'visible') return;
+    try { fetch(url('here'), { method: 'POST', cache: 'no-store', keepalive: true }).catch(() => {}); } catch (e) {}
+  };
+  const away = () => {
+    try {
+      if (navigator.sendBeacon) navigator.sendBeacon(url('away'));
+      else fetch(url('away'), { method: 'POST', keepalive: true }).catch(() => {});
+    } catch (e) {}
+  };
+  beat();
+  setInterval(beat, 20000);
+  document.addEventListener('visibilitychange', () => { document.visibilityState === 'visible' ? beat() : away(); });
+  window.addEventListener('pagehide', away);
+  try {
+    tg.onEvent('deactivated', () => { active = false; away(); });
+    tg.onEvent('activated', () => { active = true; beat(); });
+  } catch (e) {}
+})();
+
 // V3.63.2: the bot's «💬 ответить ей» buttons open /webapp?open=chat — the
 // app goes straight into the selected girl's dialog (once per launch), so
 // answering her first message is one tap instead of hunting for her card.
@@ -2886,7 +2913,10 @@ function maybeDeepOpenChat(chars) {
     if (sp.get('open') !== 'chat' && !wardrobe) return;
     // V3.75.0: a scenario card's button — straight into that scene with her.
     if (sp.get('scene')) { startScenario(sp.get('scene')); return; }
-    const c = (chars || []).find(x => x.selected) || (chars || []).find(x => x.status === 'active');
+    // V3.128.0: the bot's «she wrote in the app» ping names the girl (&char=id).
+    const want = sp.get('char');
+    const c = (want && (chars || []).find(x => x.id === want))
+      || (chars || []).find(x => x.selected) || (chars || []).find(x => x.status === 'active');
     if (!c || (c.status !== 'active' && !(c.status === 'premium' && ME && ME.premium))) return;
     openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: !!c.custom, selected: !!c.selected });
     if (wardrobe) openWardrobe();
