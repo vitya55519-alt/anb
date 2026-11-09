@@ -14859,7 +14859,9 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', ''))
     status = str(body.get('status', '')).strip()
     from services.custom_character_service import RELATIONSHIP_STORY
-    if not character_id or (status != 'default' and status not in RELATIONSHIP_STORY):
+    from services.marital_arcs import ARC_ONLY_STATUSES
+    # V3.134.0: «с тобой» / «твоя жена» are earned in her story, never bought here.
+    if not character_id or status in ARC_ONLY_STATUSES or (status != 'default' and status not in RELATIONSHIP_STORY):
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
 
     left_him: dict = {}
@@ -14904,7 +14906,8 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
             # V3.59.7: the switch becomes part of her story — a memory she can
             # bring up once («я ушла от мужа…») instead of silently flipping.
             _labels = {'mar_single': 'свободна', 'mar_boyfriend': 'есть парень', 'mar_married': 'замужем',
-                       'mar_divorced': 'в разводе', 'mar_open': 'в свободных отношениях'}
+                       'mar_divorced': 'в разводе', 'mar_open': 'в свободных отношениях',
+                       'mar_with_you': 'вместе с ним', 'mar_wife': 'его жена'}
             new_eff = new_value or webapp_service._default_marital(character_id, is_custom_character(character_id))
             from models.app_models import Memory as _Memory
             mem = session.scalar(select(_Memory).where(
@@ -14935,6 +14938,140 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
         asyncio.create_task(_left_him_scene(telegram_id, character_id, left_him['uid']))
     return web.json_response({'ok': True, 'status': None if status == 'default' else status,
                               'balance': get_photo_credits(telegram_id), 'left_him': bool(left_him)})
+
+
+async def _webapp_api_marital_arc(request: web.Request) -> web.Response:
+    """V3.134.0: her marital story for the status he picked — steps and locks."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    character_id = str(request.query.get('character_id', ''))[:64]
+    lang = 'en' if request.query.get('lang') == 'en' else 'ru'
+    if not telegram_id or not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    from services import marital_arcs
+
+    def _get():
+        status, level, premium, adult = _sync_marital_ctx(telegram_id, character_id)
+        return {'status': status, 'level': level,
+                **marital_arcs.public(telegram_id, character_id, status, level, premium, adult, lang)}
+
+    try:
+        data = await asyncio.to_thread(_get)
+    except Exception:
+        logger.exception('marital arc failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'arc'}, status=500)
+    return web.json_response({'ok': True, **data}, headers={'Cache-Control': 'no-store'})
+
+
+def _sync_marital_ctx(telegram_id: int, character_id: str):
+    from services.chat_guest_service import guest_marital
+    status = guest_marital(telegram_id, character_id)
+    level = int(webapp_service._batch_rel_levels(telegram_id, [character_id]).get(character_id, 1) or 1)
+    premium = telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id)
+    return status, level, premium, bool(is_adult_confirmed(telegram_id))
+
+
+async def _webapp_api_marital_arc_step(request: web.Request) -> web.Response:
+    """V3.134.0: he opens the next step of her story. Her line lands in the
+    chat at once, a key step's photo follows when it renders; a finale step
+    moves her status («с тобой» / «твоя жена»). The proposal costs a ring."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    lang = 'en' if body.get('lang') == 'en' else 'ru'
+    try:
+        idx = int(body.get('step', -1))
+    except (TypeError, ValueError):
+        idx = -1
+    if not telegram_id or not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    from services import marital_arcs
+
+    def _apply():
+        if is_custom_character(character_id):
+            if not get_custom_character_by_id(character_id):
+                return 'unknown_character'
+        else:
+            card = get_card(character_id)
+            if not card or card.status not in ('active', 'premium'):
+                return 'locked'
+            if card.status == 'premium' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+                return 'premium_required'
+        if not has_accepted(telegram_id):
+            return 'consent'
+        status, level, premium, adult = _sync_marital_ctx(telegram_id, character_id)
+        arc = marital_arcs.arc_for(status)
+        if not arc:
+            return 'no_arc'
+        item = marital_arcs.progress(telegram_id, character_id)
+        done = set(item['arcs'].get(arc.key, []))
+        why = marital_arcs.check_step(arc, idx, done, level, premium, adult,
+                                      wait=telegram_id not in ADMIN_TELEGRAM_IDS and marital_arcs.waiting(item, arc))
+        if why:
+            return why
+        step = arc.steps[idx]
+        if step.ring and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, marital_arcs.RING_PEACHES):
+            return 'peaches'
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        try:
+            from services import storylines as _sl
+            from services import scenario_cards as _sc
+            _sl.stop(telegram_id, character_id)
+            _sc.stop(telegram_id, character_id)
+        except Exception:
+            pass
+        marital_arcs.start(telegram_id, character_id, arc, idx)
+        save_message(uid, character_id, 'assistant', marital_arcs.opening(step, character_id, lang))
+        if step.finish and arc.finish_status:
+            from models.relationship_models import UserCharacterRelationship
+            with SessionLocal() as session:
+                row = session.scalar(select(UserCharacterRelationship).where(
+                    UserCharacterRelationship.user_id == uid, UserCharacterRelationship.character_id == character_id))
+                if row is None:
+                    row = UserCharacterRelationship(user_id=uid, character_id=character_id, path_axis=0.0)
+                    session.add(row)
+                row.marital_status = arc.finish_status
+                session.commit()
+        track_event(uid, 'marital_arc_step', character_id=character_id,
+                    metadata={'arc': arc.key, 'step': idx, 'ring': step.ring})
+        return {'uid': uid, 'photo': step.photo, 'arc': arc.key, 'status': arc.finish_status if step.finish else status}
+
+    try:
+        result = await asyncio.to_thread(_apply)
+    except Exception:
+        logger.exception('marital arc step failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'arc'}, status=500)
+    if result == 'peaches':
+        return web.json_response({'ok': False, 'error': 'peaches', 'price': marital_arcs.RING_PEACHES,
+                                  'balance': get_photo_credits(telegram_id)}, status=402)
+    if isinstance(result, str):
+        return web.json_response({'ok': False, 'error': result},
+                                 status=403 if result in ('premium_required', 'adult', 'consent', 'level') else 400)
+    if result.get('photo'):
+        asyncio.create_task(_marital_arc_photo(telegram_id, character_id, result['uid'], result['photo']))
+    return web.json_response({'ok': True, 'character_id': character_id, 'status': result['status'],
+                              'photo': bool(result.get('photo')), 'balance': get_photo_credits(telegram_id)},
+                             headers={'Cache-Control': 'no-store'})
+
+
+async def _marital_arc_photo(telegram_id: int, character_id: str, uid: int, spec: dict) -> None:
+    try:
+        data, mime, ext = await _webapp_pipeline_photo(telegram_id, character_id, PhotoRequest(customized=True, **spec))
+        filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', '📸',
+                                media_kind='photo', media_url=f'/webapp/media/{filename}')
+    except Exception:
+        logger.exception('marital arc photo failed user=%s character=%s', telegram_id, character_id)
 
 
 LEFT_HIM_TEXT = 'я ушла от него. совсем. собрала вещи и стою у твоей двери… можно к тебе? 🧳'
@@ -17489,6 +17626,8 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/chat/photo', _webapp_api_chat_photo)
     app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
     app.router.add_post('/webapp/api/chat/marital', _webapp_api_chat_marital)
+    app.router.add_get('/webapp/api/marital/arc', _webapp_api_marital_arc)
+    app.router.add_post('/webapp/api/marital/arc/step', _webapp_api_marital_arc_step)
     app.router.add_post('/webapp/api/chat/start', _webapp_api_chat_start)
     app.router.add_post('/webapp/api/chat/guest', _webapp_api_chat_guest)
     app.router.add_get('/webapp/api/chat/level', _webapp_api_chat_level)
