@@ -477,6 +477,12 @@ PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_QUAR
 # for pennies; whoever paid once pays again.
 PREMIUM_TRIAL_DAYS = max(1, int(os.getenv("PREMIUM_TRIAL_DAYS", "3")))
 PLATEGA_PREMIUM_TRIAL_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_TRIAL_PRICE_RUB", "99")))
+# V3.132.0: owner — «раздеть можно и за 50 руб»: one «Раздеть» bought on its
+# own, without Premium (an impulse buy for men not ready for a plan).
+# Cost per render ≈ 3.6 ₽, so 50 ₽ (≈ 45 ₽ after fees) never loses money.
+UNDRESS_ONE_ENABLED = os.getenv("UNDRESS_ONE_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
+UNDRESS_ONE_PRICE_RUB = max(1, int(os.getenv("UNDRESS_ONE_PRICE_RUB", "50")))
+UNDRESS_ONE_STARS = max(1, int(os.getenv("UNDRESS_ONE_STARS", "40")))
 PREMIUM_TRIAL_STARS = max(1, int(os.getenv("PREMIUM_TRIAL_STARS", "75")))
 PREMIUM_TRIAL_PRICE_USD = float(os.getenv("PREMIUM_TRIAL_PRICE_USD", "1"))
 # Display-only dollar equivalent of the monthly plan. V3.20.1 charged it for

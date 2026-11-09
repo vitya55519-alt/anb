@@ -19,7 +19,9 @@ def test_page_size_is_six_per_segment():
     # the slice drives the grid, not the full filtered list
     # V3.55.3: three segments now (official / community / premium) and each
     # paginates the whole visible `shown` list; the card builder is `cardHTML`.
-    assert 'const pageItems = shown.slice(CHAR_PAGE * CHAR_PAGE_SIZE, CHAR_PAGE * CHAR_PAGE_SIZE + CHAR_PAGE_SIZE);' in INDEX
+    # V3.133.0: `items` is `shown` plus the «🔥 Только 18+» tile on the main roster.
+    assert 'const pageItems = items.slice(CHAR_PAGE * CHAR_PAGE_SIZE, CHAR_PAGE * CHAR_PAGE_SIZE + CHAR_PAGE_SIZE);' in INDEX
+    assert 'const items = shown.slice();' in INDEX
     assert 'const cardHTML = c => {' in INDEX
     assert "const cards = pageItems.map(cardHTML).join('');" in INDEX
 

@@ -384,6 +384,8 @@ def api_me(telegram_id: int) -> dict:
         'premium': is_premium(telegram_id),
         # V3.88.0: the 99 ₽ / 3-day first-purchase trial is on offer
         'trial_eligible': _trial_eligible(telegram_id),
+        # V3.132.0: one «Раздеть» without Premium — the price on her photo button.
+        'undress_one_rub': UNDRESS_ONE_PRICE_RUB if UNDRESS_ONE_ENABLED else 0,
         # V3.51.1: the owner's Mini App sees the admin generation feed only
         # when this is true (the server re-checks on every admin API call).
         'admin': _is_admin(telegram_id),
@@ -704,6 +706,9 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     return out
 
 
+from config import UNDRESS_ONE_ENABLED, UNDRESS_ONE_PRICE_RUB, UNDRESS_ONE_STARS  # V3.132.0
+
+
 def api_invoice_products(lang: str = 'ru') -> list[dict]:
     """Products the Mini App sells directly with Stars (V3.34.0).
 
@@ -764,6 +769,20 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'usd': PREMIUM_TRIAL_PRICE_USD,
             'trial': True,
         },
+        # V3.132.0: one «Раздеть» without Premium (sold from the button under her
+        # photo; no ``credits`` key, so the shop grid never shows it).
+        *([{
+            'id': 'undress_one',
+            'emoji': '🔥',
+            'title': '«Раздеть» одно фото' if not en else 'Undress one photo',
+            'description': ('без подписки: нажми — и она снимет всё на этом фото' if not en
+                            else 'no subscription: tap and she takes it all off in this photo'),
+            'gift': 0,
+            'stars': UNDRESS_ONE_STARS,
+            'payload': 'undress_one',
+            'rub': UNDRESS_ONE_PRICE_RUB if PLATEGA_ENABLED else None,
+            'usd': None,
+        }] if UNDRESS_ONE_ENABLED else []),
         {
             'id': 'premium',
             'emoji': '⭐',

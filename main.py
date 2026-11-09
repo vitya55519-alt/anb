@@ -76,6 +76,7 @@ from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
 )
 from config import PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIAL_PRICE_RUB  # V3.88.0
+from config import UNDRESS_ONE_ENABLED, UNDRESS_ONE_PRICE_RUB, UNDRESS_ONE_STARS  # V3.132.0
 from services.payments import trial_eligible  # V3.88.0
 from services.payments import record_payment, get_photo_credits, get_paid_peaches, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, has_monthly_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
 from services.bot_description import apply_bot_descriptions
@@ -7596,6 +7597,9 @@ async def pre_checkout(query: types.PreCheckoutQuery):
         # V3.62.8: the 3-month plan was never validated or granted — Stars
         # were taken and Premium never switched on.
         ok=amount==PREMIUM_QUARTERLY_STARS
+    elif payload=='undress_one':
+        # V3.132.0: one «Раздеть» without Premium — adults only.
+        ok=UNDRESS_ONE_ENABLED and amount==UNDRESS_ONE_STARS and is_adult_confirmed(query.from_user.id)
     elif payload=='photo_pack':
         # V3.34.0: standalone +1 photo credit purchased from the Mini App shop.
         ok=amount==PHOTO_COST_STARS
@@ -7731,6 +7735,16 @@ async def successful_payment(message: types.Message):
             await message.answer('done ✨ Premium is active for 30 days and I added 12 photo credits. Unlimited chat, voice, calls and my explicit photos are open now 🔥')
         else:
             await message.answer('готово ✨ Premium активирован на 30 дней, и я добавила 12 photo credits. Теперь тебе открыто общение без лимита, голос, звонки и мои откровенные фото 🔥')
+        return
+
+    if payload == 'undress_one':
+        # V3.132.0: one «Раздеть» bought on its own.
+        record_payment(message.from_user.id, 'undress_one', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'undress_one'})
+        if user_lang(message.from_user.id) == EN:
+            await message.answer('done 🔥 one «Undress» is yours — tap it under my photo in the app')
+        else:
+            await message.answer('готово 🔥 одно «Раздеть» твоё — нажми его под моим фото в приложении')
         return
 
     if payload == 'premium_trial':
@@ -11654,6 +11668,9 @@ async def _platega_callback(request: web.Request) -> web.Response:
                 balance = add_tokens(order['telegram_id'], int(product.split('_')[1]))
                 confirm = (f'🪙 Токены зачислены! Баланс: {balance} 🪙 '
                            f'— оживление фото стоит {VIDEO_TOKEN_COST} 🪙.')
+            elif product == 'undress_one':
+                # V3.132.0: one «Раздеть» paid by card/SBP — record_payment below grants it.
+                confirm = '🔥 Оплата прошла! Одно «Раздеть» твоё — нажми его под её фото в приложении.'
             elif product == 'premium_trial':
                 # V3.88.0: ruble-paid first-purchase trial.
                 confirm = f'💖 Оплата прошла! Premium включён на {PREMIUM_TRIAL_DAYS} дня — тебе открыто всё 🔥'
@@ -13011,7 +13028,8 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
                      'premium_trial': 'premium_trial',
                      'premium_vip': 'premium_month_vip',
                      'premium_quarter': 'premium_quarter',
-                     'photo_credit': 'photo'}.get(product_id)
+                     'photo_credit': 'photo',
+                     'undress_one': 'undress_one'}.get(product_id)
     if not order_product and product_id in PEACH_PACK_STARS:
         # V3.43.1: peach packs — the order key is the payload itself, so the
         # Platega callback and the Wallet Pay webhook grant the pack size.
@@ -15808,11 +15826,17 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         from config import UNDRESS_PEACH_COST
         # V3.86.0: owner — «раздеть» only with Premium. No free trial and no
         # peach route for non-Premium users: the button sells Premium.
+        # V3.132.0: a «Раздеть» bought on its own (50 ₽) works without Premium.
+        from services import undress_credits
         if not is_premium(telegram_id):
+            if undress_credits.balance(telegram_id) > 0:
+                return uid, None, 'credit'
             return uid, ('premium_required', 403), None
         _used_today = count_today(uid, 'undress_free')
         if _used_today < _undress_allowance(uid, telegram_id, character_id, _used_today):
             return uid, None, 'free'
+        if undress_credits.balance(telegram_id) > 0:
+            return uid, None, 'credit'
         if get_paid_peaches(telegram_id) < UNDRESS_PEACH_COST:
             return uid, ('credits', 402), None
         return uid, None, 'peaches'
@@ -15871,6 +15895,9 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
                 note_today(uid, f'undress_{pay}', character_id)
             elif pay == 'peaches':
                 spend_peaches(telegram_id, UNDRESS_PEACH_COST, paid_only=True)
+            elif pay == 'credit':
+                from services import undress_credits
+                undress_credits.spend(telegram_id)
         return {'ok': True, 'kind': kind, 'url': url, 'content': content,
                 'credits_left': get_photo_credits(telegram_id)}
 
