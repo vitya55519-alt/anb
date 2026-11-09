@@ -1978,6 +1978,15 @@ MARITAL_PHOTO_DETAIL = {
         'always': '',
         'sometimes': "she wears her boyfriend's oversized hoodie or T-shirt, a little too big for her",
     },
+    # V3.134.0: she married the user / left her man for him.
+    'mar_wife': {
+        'always': 'a thin gold wedding ring next to a delicate engagement ring on her left ring finger',
+        'sometimes': '',
+    },
+    'mar_with_you': {
+        'always': '',
+        'sometimes': "she wears the user's oversized shirt, a little too big for her",
+    },
 }
 
 

@@ -699,7 +699,17 @@
   .charblock.foldable .foldhead { cursor: pointer; user-select: none; }
   .charblock.foldable .foldhead::after { content: '›'; float: right; opacity: .6; transition: transform .2s; display: inline-block; }
   .charblock.foldable:not(.fold) .foldhead::after { transform: rotate(90deg); }
-  .charblock.fold .mchips, .charblock.fold .plotlist, .charblock.fold .plothint { display: none; }
+  .charblock.fold .mchips, .charblock.fold .plotlist, .charblock.fold .plothint, .charblock.fold .marc { display: none; }
+  /* V3.134.0: her marital story under the status chips */
+  .marc:empty { display: none; }
+  .marc { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.08); white-space: normal; }
+  .marc .mh { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+  .marc .ms { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; }
+  .marc .ms.locked { opacity: .55; }
+  .marc .ms small { margin-left: auto; font-size: 12px; opacity: .75; white-space: nowrap; }
+  .marc .go { width: 100%; margin-top: 8px; padding: 11px; border: 0; border-radius: 12px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-size: 14px; font-weight: 700; }
+  .marc .go.ghost { background: rgba(255,255,255,.08); color: var(--text); }
+  .marc .hint { font-size: 12px; opacity: .65; margin-top: 6px; }
   .charblock.fold .lbl3 { margin-bottom: 0; }
   .charblock { margin: 10px 16px; padding: 12px 14px; background: var(--card); border-radius: 14px; line-height: 1.45; white-space: pre-wrap; }
   .charblock .lbl3 { color: var(--accent); font-size: 12px; letter-spacing: .08em; margin-bottom: 6px; }
@@ -1550,7 +1560,7 @@
     <button class="tunebtn" id="charTune" style="display:none"></button>
     <!-- V3.51.0: story player entry, right under the path bar (choice -> result) -->
     <!-- V3.59.5: her relationship status for this user — bends how she chats -->
-    <div class="charblock foldable fold" id="charMarital" style="display:none;white-space:normal"><div class="mlbl foldhead"><span id="charMaritalLbl" style="font-weight:600"></span><span class="mprice" id="charMaritalPrice"></span></div><div class="mchips" id="charMaritalChips"></div></div>
+    <div class="charblock foldable fold" id="charMarital" style="display:none;white-space:normal"><div class="mlbl foldhead"><span id="charMaritalLbl" style="font-weight:600"></span><span class="mprice" id="charMaritalPrice"></span></div><div class="mchips" id="charMaritalChips"></div><div class="marc" id="charArc"></div></div>
     <!-- V3.78.0: «🎬 Сюжеты» — Premium role-play storylines -->
     <div class="charblock plotblock foldable fold" id="charPlots" style="display:none;white-space:normal"><div class="lbl3 foldhead" id="charPlotsLbl"></div><div class="plotlist" id="charPlotList"></div></div>
     <div class="charblock" id="charBio"></div>
@@ -1905,7 +1915,7 @@ const L_EN = {
       story_locked_fork: 'Opens after you choose your path with her (level 3)', story_locked_romance: 'Only on the romance path', story_locked_passion: 'Only on the passion path',
       story_locked_level: lvl => '🔒 Opens at relationship level ' + lvl, story_locked_tasks: n => '🔒 ' + n + ' more daily tasks to unlock',
       story_done: 'Completed', story_canon: ' · your path', story_play: 'Play', story_choose: 'Choose how it goes',
-      story_result: 'What happened', story_reaction: 'Her reaction', story_axis_up: 'Path moved toward passion', story_pts_passion: 'passion', story_pts_tender: 'tenderness', marital_lbl: '💍 Relationship status', marital_default: 'As created', marital_single: 'Single', marital_boyfriend: 'Has a boyfriend', marital_married: 'Married', marital_divorced: 'Divorced', marital_open: 'Open relationship', marital_saved: 'Done, she will talk differently now', marital_change: 'change', marital_confirm: 'Change her status for', marital_no_peaches: 'Not enough peaches — top up in the shop', story_axis_down: 'Path moved toward tenderness', story_axis_same: 'The path stayed balanced',
+      story_result: 'What happened', story_reaction: 'Her reaction', story_axis_up: 'Path moved toward passion', story_pts_passion: 'passion', story_pts_tender: 'tenderness', marital_lbl: '💍 Relationship status', marital_default: 'As created', marital_single: 'Single', marital_boyfriend: 'Has a boyfriend', marital_married: 'Married', marital_divorced: 'Divorced', marital_open: 'Open relationship', marital_with_you: 'With you', marital_wife: 'Your wife', arc_start: '▶ Start', arc_wait: 'Talk with her about this first, the next step opens after a few messages', arc_ring: '💍 Propose', arc_lvl: 'from level', arc_done: 'Story complete 💞', arc_photo: 'her photo will arrive in a minute 📸', arc_level_hint: 'Talk more or set the level with Premium', arc_adult: 'only after the 18+ confirmation', arc_ring_ask: 'Buy a ring and propose for', arc_prem: 'This step comes with Premium', marital_saved: 'Done, she will talk differently now', marital_change: 'change', marital_confirm: 'Change her status for', marital_no_peaches: 'Not enough peaches — top up in the shop', story_axis_down: 'Path moved toward tenderness', story_axis_same: 'The path stayed balanced',
       story_thinking: 'She is thinking how it goes… 💭', story_photo_wait: '📸 the frame for this moment is on its way…',
       story_beat: 'A moment later…', story_photo: '📸 A frame for our story', story_empty: 'No stories yet', story_hint: 'Your choices here move the «Relationship path» on her card.',
       // V3.51.1: admin-only feed of what users generate in the Mini App.
@@ -2179,7 +2189,7 @@ const L_RU = {
       story_locked_fork: 'Откроется, когда вы выберете путь (3-й уровень)', story_locked_romance: 'Только на пути романтики', story_locked_passion: 'Только на пути страсти',
       story_locked_level: lvl => '🔒 Откроется на уровне близости ' + lvl, story_locked_tasks: n => '🔒 Ещё ' + n + ' заданий до открытия',
       story_done: 'Пройдено', story_canon: ' · твой путь', story_play: 'Играть', story_choose: 'Выбери, как будет',
-      story_result: 'Что произошло', story_reaction: 'Её реакция', story_axis_up: 'Путь сдвинулся к страсти', story_pts_passion: 'к страсти', story_pts_tender: 'к нежности', marital_lbl: '💍 Семейное положение', marital_default: 'Как задумано', marital_single: 'Свободна', marital_boyfriend: 'Есть парень', marital_married: 'Замужем', marital_divorced: 'В разводе', marital_open: 'Свободные отношения', marital_saved: 'Готово, теперь она будет общаться по-другому', marital_change: 'смена', marital_confirm: 'Поменять её семейное положение за', marital_no_peaches: 'Не хватает персиков — пополни в магазине', story_axis_down: 'Путь сдвинулся к нежности', story_axis_same: 'Путь остался равновесным',
+      story_result: 'Что произошло', story_reaction: 'Её реакция', story_axis_up: 'Путь сдвинулся к страсти', story_pts_passion: 'к страсти', story_pts_tender: 'к нежности', marital_lbl: '💍 Семейное положение', marital_default: 'Как задумано', marital_single: 'Свободна', marital_boyfriend: 'Есть парень', marital_married: 'Замужем', marital_divorced: 'В разводе', marital_open: 'Свободные отношения', marital_with_you: 'С тобой', marital_wife: 'Твоя жена', arc_start: '▶ Начать', arc_wait: 'Сначала поговорите об этом, следующий шаг откроется через пару сообщений', arc_ring: '💍 Сделать предложение', arc_lvl: 'с уровня', arc_done: 'История пройдена 💞', arc_photo: 'её фото придёт через минуту 📸', arc_level_hint: 'Общайтесь дальше или выбери уровень с Premium', arc_adult: 'только после подтверждения 18+', arc_ring_ask: 'Купить кольцо и сделать предложение за', arc_prem: 'Этот шаг открывается с Premium', marital_saved: 'Готово, теперь она будет общаться по-другому', marital_change: 'смена', marital_confirm: 'Поменять её семейное положение за', marital_no_peaches: 'Не хватает персиков — пополни в магазине', story_axis_down: 'Путь сдвинулся к нежности', story_axis_same: 'Путь остался равновесным',
       story_thinking: 'Она представляет, как всё будет… 💭', story_photo_wait: '📸 кадр к этому моменту уже в пути…',
       story_beat: 'Через миг…', story_photo: '📸 Кадр к нашей истории', story_empty: 'Пока нет историй', story_hint: 'Твой выбор здесь двигает шкалу «Характер связи» на её карточке.',
       // V3.51.1: админ-лента того, что генерируют пользователи в Mini App.
@@ -4040,6 +4050,7 @@ function renderMarital(c) {
   box.style.display = '';
   const cur = c.marital || 'mar_single';
   document.getElementById('charMaritalLbl').textContent = L.marital_lbl + ': ' + (L['marital_' + cur.slice(4)] || '');
+  loadMaritalArc(c);
   const price = Number(c.marital_price) || 0;
   document.getElementById('charMaritalPrice').textContent = price ? (L.marital_change + ' · ' + price + ' 🍑') : '';
   const chips = document.getElementById('charMaritalChips');
@@ -4054,6 +4065,63 @@ function renderMarital(c) {
     if (tg.showConfirm) tg.showConfirm(q, ok => { if (ok) go(); });
     else if (confirm(q)) go();
   }));
+}
+
+// V3.134.0: «💔 Уведи её», «💍 Предложение и свадьба», «🌱 После развода»,
+// «🔥 Третий лишний» — the story for her current status, step by step.
+async function loadMaritalArc(c) {
+  const box = document.getElementById('charArc');
+  if (!box || !c || !c.id || !tg.initData) { if (box) box.innerHTML = ''; return; }
+  let j = null;
+  try {
+    const r = await fetch('/webapp/api/marital/arc?init_data=' + encodeURIComponent(tg.initData) + '&character_id=' + encodeURIComponent(c.id) + '&lang=' + (LANG === 'ru' ? 'ru' : 'en'));
+    j = await r.json();
+  } catch (e) { j = null; }
+  if (!j || !j.ok || !j.arc || CHARPAGE !== c) { box.innerHTML = ''; return; }
+  const a = j.arc;
+  const icon = { done: '✅', next: '▶', locked: '🔒' };
+  let html = '<div class="mh">' + esc(a.emoji + ' ' + a.title) + '</div>';
+  a.steps.forEach(st => {
+    const tail = st.state === 'done' ? '' : (st.why === 'level' || st.state === 'locked' ? esc(L.arc_lvl) + ' ' + st.level : '') + (st.premium ? ' 💎' : '') + (st.photo ? ' 📸' : '');
+    html += '<div class="ms ' + st.state + '">' + icon[st.state] + ' ' + (st.i + 1) + ' · ' + esc(st.title) + '<small>' + tail + '</small></div>';
+  });
+  const nx = a.steps.find(st => st.state === 'next') || a.steps.find(st => st.state === 'locked' && st.why !== 'prev');
+  if (a.complete) html += '<div class="hint">' + esc(L.arc_done) + '</div>';
+  else if (nx && nx.state === 'next') html += '<button class="go" id="arcGo">' + esc(nx.ring ? L.arc_ring + ' · ' + a.ring_price + ' 🍑' : L.arc_start + ': ' + nx.title) + '</button>';
+  else if (nx && nx.why === 'premium') html += '<button class="go" id="arcPrem">💎 ' + esc(L.arc_prem) + '</button>';
+  else if (nx && nx.why === 'level') html += '<div class="hint">' + esc(L.arc_level_hint) + '</div>';
+  else if (nx && nx.why === 'wait') html += '<div class="hint">💬 ' + esc(L.arc_wait) + '</div>';
+  else if (nx && nx.why === 'adult') html += '<div class="hint">🔞 ' + esc(L.arc_adult) + '</div>';
+  box.innerHTML = html;
+  const pb = document.getElementById('arcPrem');
+  if (pb) pb.onclick = () => quickBuy('spicy');
+  const go = document.getElementById('arcGo');
+  if (go) go.onclick = () => {
+    const run = () => openMaritalStep(c, nx.i);
+    if (!nx.ring) { run(); return; }
+    const q = L.arc_ring_ask + ' ' + a.ring_price + ' 🍑?';
+    if (tg.showConfirm) tg.showConfirm(q, ok => { if (ok) run(); }); else if (confirm(q)) run();
+  };
+}
+
+async function openMaritalStep(c, step) {
+  try {
+    const r = await fetch('/webapp/api/marital/arc/step?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: c.id, step: step, lang: LANG === 'ru' ? 'ru' : 'en' }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 402) { toast(L.marital_no_peaches); showTab('shop'); return; }
+    if (!r.ok || !j.ok) {
+      toast(j.error === 'wait' ? L.arc_wait : j.error === 'premium_required' ? L.arc_prem : (j.error === 'adult' ? L.adult_confirm_needed : (j.error === 'consent' ? L.consent_needed : L.reply_err)));
+      return;
+    }
+    if (j.status) c.marital = j.status;
+    if (typeof j.balance === 'number' && ME) ME.photo_credits = j.balance;
+    document.getElementById('charview').classList.remove('open');
+    openChat(c);
+    if (j.photo) setTimeout(() => toast(L.arc_photo), 900);
+  } catch (e) { toast(L.reply_err); }
 }
 
 async function chooseMarital(c, status) {

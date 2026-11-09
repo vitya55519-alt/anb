@@ -122,6 +122,17 @@ def _to_app_chat(uid, tg_id, char_id, text, shot=None) -> None:
         logger.exception('proactive app-chat persist failed user=%s', uid)
 
 
+def _marital_push(telegram_id, char_id, lang):
+    """V3.134.0: a status-coloured push text, or '' (services/marital_arcs.py)."""
+    try:
+        from services.chat_guest_service import guest_marital
+        from services.marital_arcs import push_text
+        return push_text(guest_marital(telegram_id,char_id),char_id,lang)
+    except Exception:
+        logger.warning('marital push failed user=%s', telegram_id, exc_info=True)
+        return ''
+
+
 async def _proactive(bot):
     now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None); cutoff=now-dt.timedelta(hours=RETENTION_REMINDER_HOURS)
     # V3.55.9: ghost window — users silent longer than PROACTIVE_MAX_INACTIVE_DAYS
@@ -141,6 +152,7 @@ async def _proactive(bot):
                 # chatting with Alena got «скучаю» from a stranger.
                 char_id=(getattr(u,'selected_character','') or '').strip() or CHARACTER_ID
                 state=s.scalar(select(CharacterState).where(CharacterState.user_id==uid,CharacterState.character_id==char_id))
+                user_lang='ru' if (getattr(u,'chat_lang','') or getattr(u,'ui_lang','') or 'ru').lower().startswith('ru') else 'en'
                 telegram_id=int(u.telegram_id); name=u.name or 'ты'; hours=max(RETENTION_REMINDER_HOURS,int((now-u.last_active_at).total_seconds()/3600))
                 streak=int(u.streak_count or 0)
                 hook=bool(state and state.pending_hook)
@@ -181,6 +193,15 @@ async def _proactive(bot):
                     kind='jealousy'
                 else:
                     kind='miss'
+                # V3.134.0: «он уснул, пишу тихо» / «бывший опять написал…» —
+                # a push in the colour of her status (services/marital_arcs.py).
+                if kind in ('miss','jealousy'):
+                    mtxt=_marital_push(telegram_id,char_id,user_lang)
+                    if mtxt:
+                        await bot.send_message(telegram_id,mtxt)
+                        _to_app_chat(uid,telegram_id,char_id,mtxt)
+                        track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': 'marital', 'nudge': nudge_count + 1})
+                        continue
                 # V3.63.2: the plain «скучаю» became a story hook while the
                 # user still has unused stories; cliffhanger/jealousy stay.
                 if kind=='miss' and await _send_story(bot,uid,telegram_id,char_id):

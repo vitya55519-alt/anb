@@ -569,10 +569,23 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                 # V3.78.0: a Premium storyline he picked on her page
                 from services.storylines import direction_for as plot_direction_for
                 scene = plot_direction_for(user_id, character_id, str(character.get('name') or ''), tick=True)
+            if not scene:
+                # V3.134.0: a step of her marital story (services/marital_arcs.py)
+                from services.marital_arcs import direction_for as arc_direction_for
+                scene = arc_direction_for(user_id, character_id, str(character.get('name') or ''), tick=True)
         except Exception:
             scene = ''
         if scene:
             messages.append({"role": "system", "content": scene})
+        else:
+            # V3.134.0: «чуть не попались» — now and then he walks in or calls.
+            try:
+                from services.marital_arcs import caught_note
+                _caught = caught_note(marital_status or '', character_id)
+                if _caught:
+                    messages.append({"role": "system", "content": _caught})
+            except Exception:
+                pass
     behavior_kind = chosen.intent
     # V3.100.0: when he says it is hard, she listens first — no flirting, no cliffhanger.
     care_kind = ''
