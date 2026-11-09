@@ -768,6 +768,9 @@ def admin_keyboard():
         [InlineKeyboardButton(text='📸 Медиа для утра/вечера', callback_data='admin:prophoto')],
         # V3.94.0: a ready «🔥 Девушка дня» channel post in two taps.
         [InlineKeyboardButton(text='📣 Пост в канал', callback_data='gday:menu')],
+        # V3.129.0: channel rubrics «🗳 Выбираете вы» and «💬 Диалог дня».
+        [InlineKeyboardButton(text='🗳 Опрос в канал', callback_data='chpost:poll'),
+         InlineKeyboardButton(text='💬 Диалог дня', callback_data='chpost:dlg')],
         [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats'),
          InlineKeyboardButton(text='🩺 Отказы', callback_data='admin:providers')],
         [InlineKeyboardButton(text='🎁 Выдать премиум/токены', callback_data='admin:grant')],
@@ -10729,6 +10732,132 @@ async def admin_girlday_cb(cq: types.CallbackQuery):
         await cq.answer('опубликовано в канале ✅', show_alert=True)
         return
     await cq.answer()
+
+
+# ── V3.129.0: channel rubrics «🗳 Выбираете вы» + «💬 Диалог дня» ──
+# Owner brought a «как вести канал» template: polls where the audience picks
+# the next girl/look/story, and short example chats. Admin preview first;
+# poll results come only from Telegram's real vote counts (stop_poll).
+def _chpost_kb(rows):
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=c)] for t, c in rows])
+
+
+@dp.message(Command('rubric'))
+async def admin_rubric_cmd(message: types.Message):
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    await message.answer('Рубрики канала: выбери, что подготовить.', reply_markup=_chpost_kb(
+        [('🗳 Опрос «Выбираете вы»', 'chpost:poll'), ('💬 Диалог дня', 'chpost:dlg')]))
+
+
+@dp.callback_query(F.data.startswith('chpost:'))
+async def admin_chpost_cb(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    from services import channel_rubrics as cr
+    from services import girl_of_day
+    parts = (cq.data or '').split(':')
+    action = parts[1] if len(parts) > 1 else ''
+    channel = '@' + CHANNEL_SUBSCRIBE_USERNAME
+    no_rights = 'не получилось: бот должен быть админом канала с правом публикации'
+    if action == 'poll':
+        n = cr.random_poll()
+        await cq.answer()
+        await cq.message.answer(cr.poll_preview(n), reply_markup=_chpost_kb(
+            [('📣 Опубликовать опрос', f'chpost:pollpub:{n}'), ('🎲 Другой опрос', 'chpost:poll')]))
+        return
+    if action == 'pollpub' and len(parts) > 2 and parts[2].isdigit():
+        n = int(parts[2])
+        q, opts = cr.poll(n)
+        try:
+            sent = await bot.send_poll(channel, question=q, options=opts, is_anonymous=True)
+        except Exception as e:
+            logger.warning('channel poll publish failed: %s', e)
+            await cq.answer(no_rights, show_alert=True)
+            return
+        await asyncio.to_thread(cr.remember_poll, sent.message_id, n)
+        await cq.answer('опрос в канале ✅')
+        await cq.message.answer('🗳 Опрос опубликован. Когда наберутся голоса (обычно через 1–2 дня), '
+                                'нажми кнопку: опрос закроется, и я подготовлю пост с итогом.',
+                                reply_markup=_chpost_kb([('🛑 Закрыть и посчитать', f'chpost:pollstop:{sent.message_id}')]))
+        return
+    if action == 'pollstop' and len(parts) > 2 and parts[2].isdigit():
+        mid = int(parts[2])
+        try:
+            res = await bot.stop_poll(channel, mid)
+        except Exception as e:
+            logger.warning('channel poll stop failed: %s', e)
+            await cq.answer('не получилось закрыть опрос (уже закрыт или удалён?)', show_alert=True)
+            return
+        counts = [(o.text, int(o.voter_count or 0)) for o in res.options]
+        text = cr.results_text(res.question, counts)
+        if text:
+            await asyncio.to_thread(cr.save_poll_results, mid, text)
+        await cq.answer()
+        if not text:
+            await cq.message.answer('В опросе нет ни одного голоса, итог публиковать нечего.')
+            return
+        await cq.message.answer('👇 Пост с итогом (цифры из самого опроса):\n\n' + text,
+                                reply_markup=_chpost_kb([('📣 Опубликовать итог', f'chpost:respub:{mid}')]))
+        return
+    if action == 'respub' and len(parts) > 2 and parts[2].isdigit():
+        # the text was built at closing time from Telegram's own vote counts
+        text = await asyncio.to_thread(cr.poll_results, int(parts[2]))
+        if not text:
+            await cq.answer('итог этого опроса не найден, закрой опрос ещё раз', show_alert=True)
+            return
+        try:
+            await bot.send_message(channel, text, reply_markup=cr.results_markup())
+        except Exception as e:
+            logger.warning('channel poll results publish failed: %s', e)
+            await cq.answer(no_rights, show_alert=True)
+            return
+        await cq.answer('итог в канале ✅', show_alert=True)
+        return
+    if action == 'dlg':
+        girls = await asyncio.to_thread(girl_of_day.pool)
+        if not girls:
+            await cq.answer('в ротации нет девушек', show_alert=True)
+            return
+        cid = random.choice(girls)
+        n = cr.random_dialog()
+        await cq.answer()
+        await _chpost_dialog_preview(cq.message.chat.id, cid, n)
+        return
+    if action == 'dlgpub' and len(parts) > 3 and parts[3].isdigit():
+        cid, n = parts[2], int(parts[3])
+        name = girl_of_day.name_of(cid)
+        photo, _ = await asyncio.to_thread(girl_of_day.build_post, cid, 0)
+        caption = cr.dialog_caption(name, n)
+        try:
+            if photo:
+                await bot.send_photo(channel, BufferedInputFile(photo, filename=f'{cid}.jpg'),
+                                     caption=caption[:1024], reply_markup=cr.dialog_markup(cid, name))
+            else:
+                await bot.send_message(channel, caption, reply_markup=cr.dialog_markup(cid, name))
+        except Exception as e:
+            logger.warning('channel dialog publish failed: %s', e)
+            await cq.answer(no_rights, show_alert=True)
+            return
+        await cq.answer('опубликовано в канале ✅', show_alert=True)
+        return
+    await cq.answer()
+
+
+async def _chpost_dialog_preview(chat_id: int, cid: str, n: int) -> None:
+    from services import channel_rubrics as cr
+    from services import girl_of_day
+    name = girl_of_day.name_of(cid)
+    photo, _ = await asyncio.to_thread(girl_of_day.build_post, cid, 0)
+    head = '👇 «Диалог дня». Переписка постановочная, в посте так и написано:\n\n'
+    kb = _chpost_kb([('📣 Опубликовать в канал', f'chpost:dlgpub:{cid}:{n}'), ('🎲 Другой диалог / девушка', 'chpost:dlg')])
+    caption = cr.dialog_caption(name, n)
+    if photo:
+        await bot.send_photo(chat_id, BufferedInputFile(photo, filename=f'{cid}.jpg'),
+                             caption=(head + caption)[:1024], reply_markup=kb)
+    else:
+        await bot.send_message(chat_id, head + caption, reply_markup=kb)
 
 
 @dp.message(Command('week'))

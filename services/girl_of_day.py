@@ -85,10 +85,12 @@ def is_open(character_id: str | None) -> bool:
 
 def girl_from_payload(args: str | None) -> str | None:
     a = (args or '').strip().lower()
-    if not a.startswith(DEEP_LINK_PREFIX):
-        return None
-    cid = a[len(DEEP_LINK_PREFIX):]
-    return cid if cid in pool() else None
+    # V3.129.0: «💬 Диалог дня» channel posts open her chat the same way.
+    for prefix in (DEEP_LINK_PREFIX, 'src_dlg_'):
+        if a.startswith(prefix):
+            cid = a[len(prefix):]
+            return cid if cid in pool() else None
+    return None
 
 
 # V3.94.0: owner — «выбираю имя девушки и сразу рандомный текст с кнопками,
