@@ -1,5 +1,4 @@
-"""V3.124.0: every Premium plan holds a total for its term; messages are
-unlimited on paid plans and counted only on the trial / demo."""
+"""Every Premium plan holds a media total for its term; text is unlimited."""
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -36,15 +35,18 @@ def _msgs(uid, n):
         s.commit()
 
 
-def test_trial_messages_total():
+def test_trial_messages_unlimited_but_media_stays_capped():
     from services import trial_caps as T
     from services.access_service import can_send_message
     tid, uid = _user_with_plan(3, 'premium_trial')
     assert T.window_start_uid(uid) is not None
-    _msgs(uid, T.TRIAL_MESSAGES - 1)
+    assert T.CAPS['trial']['messages'] == -1
+    assert T.messages_left(uid) is None
+    _msgs(uid, 500)
     assert can_send_message(tid)
-    _msgs(uid, 1)
-    assert not can_send_message(tid)
+    assert T.photos_left(uid, 'chat_free_photo') == T.CAPS['trial']['photos']
+    assert T.CAPS['trial']['undress'] == 1
+    assert T.CAPS['trial']['voice'] == 10
 
 
 def test_paid_plans_unlimited_messages_but_capped_media():

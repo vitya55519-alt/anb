@@ -60,17 +60,17 @@ def unlocked_text(product: str, lang: str = 'ru', trial_days: int = 3) -> str:
         mins = max(1, T.TRIAL_CALL_SECONDS // 60)
         if lang == 'en':
             return (f'✨ Your trial Premium is on ({days} days):\n\n'
-                    f'💬 {T.TRIAL_MESSAGES} messages with me\n'
+                    '💬 unlimited messages with me\n'
                     '💋 every level of closeness, 1 to 10, «Spicy mode» and 🎭 «Fetishes»\n'
                     f'📸 {T.TRIAL_PHOTOS} new photos of me and {T.TRIAL_UNDRESS} «Undress»\n'
                     f'📞 {mins} min of a call with me, 🔊 {T.TRIAL_VOICE} voice messages\n\n'
-                    'full Premium has no message limit and much more photos, calls and voice 💗')
+                    'full Premium has much more photos, calls and voice 💗')
         return (f'✨ Пробный Premium включён ({days} дн.):\n\n'
-                f'💬 {T.TRIAL_MESSAGES} сообщений со мной\n'
+                '💬 сообщения со мной без лимита\n'
                 '💋 все уровни близости с 1 по 10, «Пошлый режим» и 🎭 «Фетиши»\n'
                 f'📸 {T.TRIAL_PHOTOS} новых фото и {T.TRIAL_UNDRESS} «Раздеть»\n'
                 f'📞 {mins} мин звонка со мной, 🔊 {T.TRIAL_VOICE} голосовых\n\n'
-                'в полном Premium общение без лимита и намного больше фото, звонков и голосовых 💗')
+                'в полном Premium намного больше фото, звонков и голосовых 💗')
     from services import trial_caps as T
     tier = {'premium_week': 'week', 'premium_quarter': 'quarter'}.get(product, 'month')
     if lang == 'en':

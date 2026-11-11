@@ -21,6 +21,6 @@ def test_pack_copy_names_what_peaches_buy():
 def test_quick_buy_shows_money_and_opens_method_choice():
     qb = WEB[WEB.index('async function quickBuy('):WEB.index('function openPayCustom(')]
     assert 'esc(money(x))' in qb and '${x.stars} ⭐' not in qb
-    assert 'openPay(id, retry)' in qb
-    op = WEB[WEB.index('function openPay(id, onPaid)'):WEB.index('async function quickBuy(')]
+    assert 'openPay(id, done,' in qb
+    op = WEB[WEB.index('function openPay(id, onPaid, waitReady)'):WEB.index('async function quickBuy(')]
     assert op.index('data-m="sbp"') < op.index('data-m="stars"')

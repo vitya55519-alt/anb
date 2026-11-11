@@ -28,13 +28,13 @@ logger = logging.getLogger(__name__)
 KEYS = ('messages', 'photos', 'undress', 'call_seconds', 'voice', 'animations')
 
 # tier → allowance for the whole term. Env override: CAP_<TIER>_<KEY>, e.g.
-# CAP_WEEK_PHOTOS=6. messages -1 = unlimited (owner: «безлимит на сообщения»
-# on the paid plans; only the trial and the free demo count them). Max cost
+# CAP_WEEK_PHOTOS=6. messages -1 = unlimited on every plan, including trial/demo.
+# Max cost
 # of everything except messages ≈ trial 44 ₽ / week 45 ₽ / month 164 ₽ /
 # quarter 394 ₽ against 89 / 179 / 629 / 1619 ₽ received.
 _DEFAULTS = {
-    'demo':    {'messages': 30,   'photos': 1,  'undress': 0,  'call_seconds': 0,    'voice': 3,   'animations': 0},
-    'trial':   {'messages': 100,  'photos': 2,  'undress': 1,  'call_seconds': 300,  'voice': 10,  'animations': 0},
+    'demo':    {'messages': -1,  'photos': 1,  'undress': 0,  'call_seconds': 0,    'voice': 3,   'animations': 0},
+    'trial':   {'messages': -1,  'photos': 2,  'undress': 1,  'call_seconds': 300,  'voice': 10,  'animations': 0},
     'week':    {'messages': -1,  'photos': 5,  'undress': 2,  'call_seconds': 600,  'voice': 20,  'animations': 0},
     'month':   {'messages': -1,  'photos': 15, 'undress': 6,  'call_seconds': 1500, 'voice': 50,  'animations': 0},
     'quarter': {'messages': -1, 'photos': 40, 'undress': 15, 'call_seconds': 3600, 'voice': 120, 'animations': 0},

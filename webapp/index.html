@@ -1277,12 +1277,6 @@
   </section>
   <section class="tab" id="tab-chats">
     <h2 id="l_chats_title2">Чаты</h2>
-    <!-- V3.47.2: new-user unlimited-text activation banner (live countdown) -->
-    <div id="unlimBanner" class="unlim" style="display:none">
-      <span class="uico">✨</span>
-      <div class="utxt"><div class="ut" id="unlimTitle"></div><div class="us" id="unlimSub"></div></div>
-      <div class="utime" id="unlimTime"></div>
-    </div>
     <div id="chatsbody"><div class="loading">…</div></div>
   </section>
   <!-- V3.38.0: the «Картинки» studio — freeform picture generation for 🍑 -->
@@ -1834,7 +1828,7 @@ const L_EN = {
   hn_can: 'What she can do',
   hn_list: ['Chats 24/7 and remembers your name and what matters to you', 'Writes first, misses you and waits for you', 'Voice notes in her own voice', 'Photos and video circles', 'Dates and stories with a plot', '«Girl of the day»: a new heroine every day', 'Openly 18+: adults only, with Premium'],
   hn_money: 'Free and Premium',
-  hn_free: (f) => '💬 Free: ' + f.free_messages + ' messages a day' + (f.free_messages_later < f.free_messages ? ' (from day ' + f.later_from_day + ': ' + f.free_messages_later + ')' : '') + ' and ' + f.free_photos + ' photo',
+  hn_free: (f) => f.free_messages >= 1000 ? '💬 Free: unlimited messages and ' + f.free_photos + ' photo' : '💬 Free: ' + f.free_messages + ' messages a day' + (f.free_messages_later < f.free_messages ? ' (from day ' + f.later_from_day + ': ' + f.free_messages_later + ')' : '') + ' and ' + f.free_photos + ' photo',
   hn_prem: (price) => '💎 Premium from ' + price + ': one-time payment, no auto-renewal',
   fb_title: 'We would love your ideas 💡', fb_sub: 'What should we improve in the bot? The team reads every message',
   fb_ph: 'Your idea or wish…', fb_send: 'Send', fb_done: 'Thank you! Your idea went to the team 💜', fb_err: 'Could not send, try again a bit later',
@@ -2109,7 +2103,7 @@ const L_RU = {
   hn_can: 'Что она умеет',
   hn_list: ['Переписка 24/7, помнит твоё имя и важное о тебе', 'Пишет первой, скучает и ждёт тебя', 'Голосовые своим голосом', 'Фото и видео-кружки', 'Свидания и сюжеты с продолжением', '«Девушка дня»: новая героиня каждый день', 'Откровенно 18+: только для взрослых, в Premium'],
   hn_money: 'Бесплатно и Premium',
-  hn_free: (f) => '💬 Бесплатно: ' + f.free_messages + ' сообщений в день' + (f.free_messages_later < f.free_messages ? ' (с ' + f.later_from_day + '-го дня — ' + f.free_messages_later + ')' : '') + ' и ' + f.free_photos + ' фото',
+  hn_free: (f) => f.free_messages >= 1000 ? '💬 Бесплатно: сообщения без лимита и ' + f.free_photos + ' фото' : '💬 Бесплатно: ' + f.free_messages + ' сообщений в день' + (f.free_messages_later < f.free_messages ? ' (с ' + f.later_from_day + '-го дня — ' + f.free_messages_later + ')' : '') + ' и ' + f.free_photos + ' фото',
   hn_prem: (price) => '💎 Premium от ' + price + ': разовый платёж, без автопродления',
   fb_title: 'Будем рады вашим пожеланиям 💡', fb_sub: 'Что улучшить в боте? Ждём ваших предложений, читаем каждое',
   fb_ph: 'Твоё предложение или пожелание…', fb_send: 'Отправить', fb_done: 'Спасибо! Предложение ушло команде 💜', fb_err: 'Не получилось отправить, попробуй чуть позже',
@@ -4180,14 +4174,14 @@ async function choosePersona(characterId, style) {
   }
 }
 
-async function sendChat() {
+async function sendChat(retryText) {
   if (!CHAT || chatBusy) return;
   const input = document.getElementById('chatText');
-  const text = input.value.trim();
+  const text = (typeof retryText === 'string' ? retryText : input.value).trim();
   if (!text) return;
   if (!tg.initData) { toast(L.auth_short); return; }
   chatBusy = true;
-  input.value = '';
+  if (typeof retryText !== 'string') input.value = '';
   syncSendBtn();
   const hints = document.getElementById('chatHints'); if (hints) hints.remove();
   const box = document.getElementById('chatMsgs');
@@ -4272,9 +4266,11 @@ function renderChatReply(j) {
   // opens the Premium pay sheet (the 3-day trial first while eligible).
   if (j.locked_tease && j.locked_tease.url) {
     const src = j.locked_tease.url;
+    const buy = j.undress_offer ? 'undress' : 'spicy';
+    const retry = j.undress_offer ? esc(j.retry_text || '') : '';
     setTimeout(() => {
       if (!CHAT) return;
-      box.insertAdjacentHTML('beforeend', '<div class="ltease" data-ltease="1"><img src="' + esc(src) + '" alt="" loading="lazy">' +
+      box.insertAdjacentHTML('beforeend', '<div class="ltease" data-ltease="1" data-buy="' + buy + '" data-retry="' + retry + '"><img src="' + esc(src) + '" alt="" loading="lazy">' +
         '<div class="lt-c">' + esc(L.lt_text) + '<button type="button" class="lt-b">' + esc(L.lt_btn) + '</button></div></div>');
       box.scrollTop = box.scrollHeight;
     }, 1400);
@@ -4294,9 +4290,17 @@ function renderChatReply(j) {
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('voice')">${esc(trialChip(L.voice_btn || L.qb_voice))}</button></div>`);
   }
   // V3.87.0: a nude / lingerie photo — Premium-only; the pay sheet opens at once.
+  // V3.137.0: a direct «разденься» sells one photo for 50 ₽ first, then Premium.
   if (j.photo_block === 'spicy') {
-    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('spicy')">${esc(L.spicy_btn)}</button></div>`);
-    setTimeout(() => quickBuy('spicy'), 900);
+    const undress = !!j.undress_offer;
+    const kind = undress ? 'undress' : 'spicy';
+    const cid = CHAT ? CHAT.id : '';
+    const retry = undress ? () => { if (CHAT && CHAT.id === cid) sendChat(j.retry_text || ''); } : null;
+    const label = undress ? ((L.hot_undress || L.undress_tease_btn || '🔥') + ' · ' + ((ME && ME.undress_one_rub) || 50) + ' ₽') : L.spicy_btn;
+    box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on">${esc(label)}</button></div>`);
+    const btn = box.lastElementChild.querySelector('button');
+    if (btn) btn.addEventListener('click', () => quickBuy(kind, retry));
+    setTimeout(() => quickBuy(kind, retry), 900);
   }
   // V3.125.0: out of bought peaches for the next photo — the pack sheet opens
   // at once (3000 first), not the whole shop.
@@ -4705,7 +4709,15 @@ document.addEventListener('click', e => {
 document.addEventListener('click', e => {
   // V3.88.0: the locked photo card → the Premium pay sheet.
   const lt = e.target && e.target.closest ? e.target.closest('[data-ltease]') : null;
-  if (lt) { e.stopPropagation(); quickBuy('spicy', () => { if (CHAT) requestMedia('photo', 'lingerie'); }); }
+  if (!lt) return;
+  e.stopPropagation();
+  const kind = lt.getAttribute('data-buy') === 'undress' ? 'undress' : 'spicy';
+  const retryText = lt.getAttribute('data-retry') || '';
+  const cid = CHAT ? CHAT.id : '';
+  const retry = retryText
+    ? () => { if (CHAT && CHAT.id === cid) sendChat(retryText); }
+    : () => { if (CHAT) requestMedia('photo', 'lingerie'); };
+  quickBuy(kind, retry);
 });
 document.addEventListener('click', e => {
   const b = e.target && e.target.closest ? e.target.closest('[data-pact]') : null;
@@ -6522,7 +6534,17 @@ function money(x) {
   if (rub) return rub + ' ₽';
   return x.stars + ' ⭐';
 }
-function openPay(id, onPaid) {
+function waitForUndressReady(done, tries) {
+  tries = tries || 0;
+  fetch('/webapp/api/undress-credit?init_data=' + encodeURIComponent(tg.initData || ''))
+    .then(r => r.json())
+    .then(j => {
+      if (j && j.ok && j.ready) { done(); return; }
+      if (tries < 100) setTimeout(() => waitForUndressReady(done, tries + 1), 3000);
+    })
+    .catch(() => { if (tries < 100) setTimeout(() => waitForUndressReady(done, tries + 1), 3000); });
+}
+function openPay(id, onPaid, waitReady) {
   const s = SHOP;
   if (!s) return;
   const x = (s.purchases || []).find(p => p.id === id);
@@ -6555,7 +6577,7 @@ function openPay(id, onPaid) {
   document.getElementById('payRows').innerHTML = rows.join('');
   document.getElementById('payNote').textContent = L.pay_once || '';
   document.querySelectorAll('#payRows [data-m]').forEach(b =>
-    b.addEventListener('click', () => payVia(x.id, b.dataset.m, b, {}, onPaid)));
+    b.addEventListener('click', () => payVia(x.id, b.dataset.m, b, {}, onPaid, waitReady)));
   document.getElementById('paymodal').classList.add('open');
 }
 // V3.62.10: sell at the moment of desire. A missing peach or the daily chat
@@ -6570,6 +6592,7 @@ function trialChip(fallback) {
 }
 async function quickBuy(kind, retry, opts) {
   opts = opts || {};
+  const done = (kind === 'undress' && typeof retry === 'function') ? () => waitForUndressReady(retry) : retry;
   if (!SHOP) { try { await loadShop(); } catch (e) {} }
   const s = SHOP;
   if (!s) { showTab('shop'); return; }
@@ -6611,7 +6634,7 @@ async function quickBuy(kind, retry, opts) {
       return;
     }
     // pick card/SBP or Stars next; a Stars payment still finishes his action
-    setTimeout(() => openPay(id, retry), 150);
+    setTimeout(() => openPay(id, done, kind === 'undress'), 150);
   }));
   document.getElementById('paymodal').classList.add('open');
 }
@@ -6638,7 +6661,7 @@ function openPayCustom(units, unit, item) {
   document.getElementById('payNote').textContent = L.pay_once || '';
   document.getElementById('paymodal').classList.add('open');
 }
-async function payVia(id, method, btn, extra, onPaid) {
+async function payVia(id, method, btn, extra, onPaid, waitReady) {
   if (method === 'stars') {
     document.getElementById('paymodal').classList.remove('open');
     buy(id, btn, extra, onPaid);
@@ -6659,6 +6682,7 @@ async function payVia(id, method, btn, extra, onPaid) {
     else if (typeof tg.openLink === 'function') tg.openLink(j.url);
     else window.open(j.url, '_blank');
     toast(L.pay_opened);
+    if (waitReady && typeof onPaid === 'function') onPaid();
   } catch (e) {
     toast(L.pay_link_err);
   } finally {
@@ -6911,7 +6935,6 @@ async function loadMe() {
     ME = j.me;
     chip.textContent = m_chipText(ME);
     chip.className = 'chip' + (ME.premium ? ' premium' : '');
-    renderUnlimitedBanner();
     renderSpicyBanner();
     maybeShowHonest();
     renderProfileBody();
@@ -6928,37 +6951,6 @@ function m_chipText(m) {
   // V3.44.3: premium must not hide the peaches balance — show both.
   return (m.premium ? '⭐ Premium' : (m.name || '')) + (m.photo_credits ? ' · 🍑' + m.photo_credits : '');
 }
-
-// ── V3.47.2: new-user unlimited-text banner — live HH:MM:SS countdown ─────
-// /webapp/api/me reports unlimited_remaining (seconds); the tick runs locally
-// so the number keeps moving without refetching, and the banner hides itself
-// the moment the grace window closes.
-let _unlimEndsAt = 0;
-function renderUnlimitedBanner() {
-  const el = document.getElementById('unlimBanner');
-  if (!el) return;
-  const left = (ME && ME.unlimited_remaining) || 0;
-  if (left <= 0) { el.style.display = 'none'; _unlimEndsAt = 0; return; }
-  _unlimEndsAt = Date.now() + left * 1000;
-  el.style.display = 'flex';
-  document.getElementById('unlimTitle').textContent = L.unlim_title;
-  document.getElementById('unlimSub').textContent = L.unlim_sub;
-  _unlimTick();
-}
-function _fmtHMS(sec) {
-  const h = String(Math.floor(sec / 3600)).padStart(2, '0');
-  const m = String(Math.floor(sec % 3600 / 60)).padStart(2, '0');
-  const s = String(Math.floor(sec % 60)).padStart(2, '0');
-  return h + ':' + m + ':' + s;
-}
-function _unlimTick() {
-  const el = document.getElementById('unlimBanner');
-  if (!el || el.style.display === 'none') return;
-  const left = Math.max(0, Math.round((_unlimEndsAt - Date.now()) / 1000));
-  if (left <= 0) { renderUnlimitedBanner(); return; }
-  document.getElementById('unlimTime').textContent = L.unlim_left + ' ' + _fmtHMS(left);
-}
-setInterval(_unlimTick, 1000);
 
 // V3.38.0: the Come Closer profile — user card, relationship stats, MY
 // CHARACTERS with a create button, and the partner/documents entries that

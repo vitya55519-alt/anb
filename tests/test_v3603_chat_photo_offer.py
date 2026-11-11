@@ -15,7 +15,7 @@ def test_chat_photo_costs_two_peaches():
 
 def test_blocked_or_failed_photo_never_reaches_the_model():
     turn = MAIN[MAIN.index('async def _webapp_chat_turn('):MAIN.index('async def _webapp_api_chat_send(')]
-    assert turn.index("_chat_photo_blocked, uid, character_id, photo_block, extra") < turn.index('answer = await anna_reply(')
+    assert turn.index("_chat_photo_blocked, uid, character_id, photo_block, blocked_extra") < turn.index('answer = await anna_reply(')
     assert "_chat_photo_blocked, uid, character_id, 'failed', extra" in turn
     for reason in ('peaches', 'stage', 'adult', 'failed'):
         assert f"'{reason}':" in MAIN[MAIN.index('CHAT_PHOTO_BLOCK_TEXT = {'):]

@@ -3,6 +3,8 @@ import json
 import random
 from pathlib import Path
 
+from services import live_talk
+from services.behavior_service import Behavior, behavior_context
 from services.character_service import build_system_prompt, get_character
 from services.hook_service import MOVES, SKIP_INTENTS, hook_note
 from services.voice_samples import MATURE_AGE, VOICE_SAMPLES, voice_samples_block
@@ -62,3 +64,15 @@ def test_hook_wired_before_his_message_and_minimax_dialogue_sampling():
     llm = (ROOT / 'services' / 'llm_provider_service.py').read_text(encoding='utf-8')
     assert "mm_kwargs['top_p'] = 0.95" in llm
     assert "MINIMAX_DIALOGUE_MODEL if purpose == 'dialogue' else MINIMAX_MODEL" in llm
+
+
+def test_replies_continue_the_topic_instead_of_waiting_for_him():
+    assert 'пусть собеседник сам продолжит' not in MOVES['reaction']
+    assert 'конкретный вопрос' in MOVES['question']
+    normal = behavior_context('мне сегодня было нелегко', behavior=Behavior('question', 2, 'normal', 'тепло'))
+    low = behavior_context('ага', behavior=Behavior('reaction', 2, 'low', 'живо'))
+    assert 'продолжи тему одним конкретным вопросом' in normal
+    assert 'не ограничивайся пустой реакцией' in low
+    assert 'маленький факт о себе или конкретный вопрос' in live_talk.SHORT_NOTE
+    prompt = build_system_prompt(get_character('anna_01'), 'rel', [], character_id='anna_01')
+    assert 'не жди, что следующую тему всегда придумает он' in prompt

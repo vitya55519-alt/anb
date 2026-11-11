@@ -243,7 +243,7 @@ def test_chat_frontend_flow():
     assert 'function openCharacter(el)' in INDEX
     assert 'function openChat(c)' in INDEX
     assert 'function loadChatHistory(characterId)' in INDEX
-    assert 'function sendChat()' in INDEX
+    assert 'function sendChat(retryText)' in INDEX
     assert "fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId))" in INDEX
     assert "body: JSON.stringify({ character_id: CHAT.id, text: text })," in INDEX
     # consent / limit toasts instead of silent failures

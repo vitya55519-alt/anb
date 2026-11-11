@@ -42,7 +42,8 @@ def test_locked_tease_fires_once_at_third_message():
     assert "payload['locked_tease'] = tease" in MAIN
     assert "app.router.add_get('/webapp/locked/{character_id}.jpg', _webapp_locked_card)" in MAIN
     assert "if (j.locked_tease && j.locked_tease.url) {" in INDEX
-    assert "quickBuy('spicy', () => { if (CHAT) requestMedia('photo', 'lingerie'); })" in INDEX
+    # V3.137.0: the locked card routes on data-buy — spicy still opens the lingerie photo
+    assert "quickBuy(kind, retry)" in INDEX and "requestMedia('photo', 'lingerie')" in INDEX
 
 
 def test_premium_not_level_opens_spicy_scenes():

@@ -152,8 +152,8 @@ def test_offer_cover_in_repo_is_pre_blurred_only():
     assert [f.name for f in files] == ['cover.jpg']
 
 
-def test_new_user_window_shrunk():
-    assert 'NEW_USER_UNLIMITED_HOURS = max(0, int(os.getenv("NEW_USER_UNLIMITED_HOURS", "3")))' in CONFIG
+def test_text_has_no_new_user_time_window():
+    assert 'NEW_USER_UNLIMITED_HOURS' not in CONFIG
     assert 'Первые 24 часа после регистрации' not in INDEX
 
 

@@ -70,26 +70,20 @@ def test_admin_pool_upload_accepts_all_media():
     assert "_PROPHOTO_KIND_EMOJI = {'photo': '📸', 'gif': '🎞', 'video': '🎬'}" in MAIN
 
 
-# ── 24h unlimited text for new users (text only — media stays gated) ───────
-def test_new_user_unlimited_text_window():
-    # V3.62.0: the window shrank 24h → 3h (first evening free, then the limit bites)
-    assert 'NEW_USER_UNLIMITED_HOURS = max(0, int(os.getenv("NEW_USER_UNLIMITED_HOURS", "3")))' in CONFIG
-    gate = ACCESS[ACCESS.index('def can_send_message'):ACCESS.index('def unlimited_text_remaining')]
-    assert 'if NEW_USER_UNLIMITED_HOURS and user.created_at:' in gate
-    assert 'def unlimited_text_remaining(telegram_id:int)->int:' in ACCESS
-    # api_me exposes the remaining seconds for the banner
-    assert "me['unlimited_remaining'] = unlimited_text_remaining(telegram_id)" in MAIN
+def test_text_is_unlimited_without_an_activation_window():
+    assert 'NEW_USER_UNLIMITED_HOURS' not in CONFIG
+    gate = ACCESS[ACCESS.index('def can_send_message'):]
+    assert 'return True' in gate
+    assert 'Message.created_at' not in gate
+    assert 'unlimited_text_remaining' not in MAIN
 
 
-# ── Mini App banner: markup, styles, live countdown, i18n ─────────────────
-def test_webapp_unlimited_banner():
-    assert 'id="unlimBanner" class="unlim"' in INDEX
-    assert '.unlim { display: flex;' in INDEX
-    assert 'function renderUnlimitedBanner()' in INDEX
-    assert 'function _fmtHMS(sec)' in INDEX
-    assert 'setInterval(_unlimTick, 1000);' in INDEX
-    assert 'renderUnlimitedBanner();' in INDEX[INDEX.index('async function loadMe()'):]
-    # both languages carry the labels
+def test_webapp_has_no_obsolete_unlimited_countdown():
+    assert 'id="unlimBanner"' not in INDEX
+    assert 'function renderUnlimitedBanner()' not in INDEX
+    assert 'unlimited_remaining' not in INDEX
+    assert 'setInterval(_unlimTick, 1000);' not in INDEX
+    assert 'renderUnlimitedBanner();' not in INDEX
+    assert "'💬 Free: unlimited messages and '" in INDEX
+    assert "'💬 Бесплатно: сообщения без лимита и '" in INDEX
     assert INDEX.count("unlim_title:") == 2
-    assert INDEX.count("unlim_sub:") == 2
-    assert INDEX.count("unlim_left:") == 2

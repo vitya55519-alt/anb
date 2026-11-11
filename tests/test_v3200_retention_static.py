@@ -23,10 +23,9 @@ def test_video_pricing_and_no_free_slots():
 
 
 def test_retention_config_flags():
-    # V3.52.1: raised 20 → 50; V3.55.1: owner tightened 50 → 30 so the
-    # Premium «безлимит» line actually bites; V3.57.6 opened it to 3000/day and
-    # V3.57.7 restored 30 — the owner wants the published tariff to stay true.
-    assert 'FREE_MESSAGES_PER_DAY", "20"' in CONFIG
+    # V3.137.0: text is unlimited on every tier — the gate is can_send_message
+    # (always True), so FREE_MESSAGES_PER_DAY is only the «unlimited» sentinel (1000).
+    assert 'FREE_MESSAGES_PER_DAY = 1000' in CONFIG
     assert 'DEMO_PREMIUM_HOURS", "3"' in CONFIG
     assert 'PREMIUM_DISCOUNT_PERCENT", "30"' in CONFIG
     assert 'PREMIUM_DISCOUNT_HOURS", "24"' in CONFIG

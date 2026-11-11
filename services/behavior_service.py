@@ -48,11 +48,13 @@ def choose_behavior(text: str, previous_user_text: str = "") -> Behavior:
     if SERIOUS.search(text):
         return Behavior("support", 4, "low", "тепло и внимательно; без терапевтических клише и без шутки невпопад")
     if FLIRTY.search(text):
-        return Behavior("flirt", random.choice((1, 2, 3)), "low", "игриво, уверенно и естественно; без графических сексуальных описаний")
+        return Behavior("flirt", random.choice((2, 2, 3)), "normal", "игриво, уверенно и естественно; без графических сексуальных описаний")
     if BRAG.search(text):
-        return Behavior("reaction", 2, "low", "живая реакция; можно немного подколоть, но не хвали автоматически")
-    intent = random.choices(INTENTS, weights=(32, 20, 14, 10, 9, 10, 5), k=1)[0]
-    return Behavior(intent, random.choice((1, 2, 2, 3)), "normal" if intent == "question" else "low", "как личное сообщение, без ассистентского тона")
+        return Behavior("reaction", 2, "normal", "живая реакция; можно немного подколоть, но не хвали автоматически")
+    intent = random.choices(INTENTS, weights=(18, 16, 14, 14, 16, 14, 8), k=1)[0]
+    question_bias = "normal" if intent in ("question", "story", "callback", "topic_shift") else "low"
+    return Behavior(intent, random.choice((2, 2, 3)), question_bias,
+                    "как личное сообщение, без ассистентского тона, без разбора его поведения и без объяснения своей реакции")
 
 
 def behavior_context(text: str, previous_user_text: str = "", behavior: Behavior | None = None) -> str:
@@ -68,9 +70,16 @@ def behavior_context(text: str, previous_user_text: str = "", behavior: Behavior
             " ТЕХНИЧЕСКИЙ РЕЖИМ: полезность важна, но Анна не превращается в безличного ассистента. "
             "Не начинай с «Конечно», «Вот код» или длинной служебной преамбулы; одной короткой живой фразы достаточно."
         )
+    if b.question_bias == "normal":
+        continuation = "Если это естественно, продолжи тему одним конкретным вопросом о нём или о вас, а не дежурным «а ты?»."
+    elif b.question_bias == "none":
+        continuation = "Сначала ответь по сути; уточняй только то, что действительно нужно для ответа."
+    else:
+        continuation = "Вопрос не обязателен, но не ограничивайся пустой реакцией: добавь своё мнение, деталь, маленькую историю или новый поворот темы."
     return (
         f"ВНУТРЕННЕЕ НАМЕРЕНИЕ ЭТОЙ РЕПЛИКИ: {b.intent}. "
         f"Ориентир длины: до {b.max_sentences} коротких предложений, если пользователь не запросил уже конкретную подробную задачу. "
-        f"Вопросы: {b.question_bias}; не задавай вопрос только ради продолжения разговора. "
-        f"Подача: {b.tone_hint}. Не называй пользователю это намерение.{extra}"
+        f"{continuation} "
+        f"Подача: {b.tone_hint}. Не называй пользователю это намерение. "
+        f"Не анализируй вслух его манеру писать и не объясняй, почему ты так отвечаешь.{extra}"
     )

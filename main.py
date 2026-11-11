@@ -298,6 +298,7 @@ MAX_RELATIONSHIP_LEVEL = len(RELATIONSHIP_LEVEL_NAMES)
 # redeploy no longer drops paid flows mid-conversation.
 _custom_drafts = dialog_store.DialogStore('custom_drafts')
 _pending_adult_photo = dialog_store.DialogStore('pending_adult_photo', codec='photo_request')
+_pending_undress_photo = dialog_store.DialogStore('pending_undress_photo', codec='photo_request')
 _pending_adult_custom: set[int] = set()
 
 # Background photo jobs: Telegram handlers return immediately, so normal chat remains responsive.
@@ -1898,7 +1899,7 @@ async def _mirror_delivery_to_chat_history(telegram_id: int, character_id: str) 
                      media_kind='photo', media_url=f'/webapp/media/{filename}')
 
 
-async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo'):
+async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False):
     uid = ensure_user(telegram_id)
     ping = asyncio.create_task(_photo_progress_ping(chat_id, telegram_id))
     try:
@@ -1917,10 +1918,14 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
             # ~30 minutes — she wrote «смотри на меня» and nothing arrived.
             # The timeout lands in the failure branch: refund + retry button.
             sent = await asyncio.wait_for(
-                deliver_photo(bot, chat_id, telegram_id, request, delivery_type, character_id=character_id),
+                deliver_photo(bot, chat_id, telegram_id, request, delivery_type, character_id=character_id,
+                              skip_stage=spend_undress_credit),
                 timeout=PHOTO_TOTAL_BUDGET_SECONDS,
             )
         track_event(uid, 'photo_job_completed', metadata={'scene': request.scene, 'count': len(sent), 'delivery_type': delivery_type})
+        if sent and spend_undress_credit:
+            from services import undress_credits
+            await asyncio.to_thread(undress_credits.spend, telegram_id)
         # V3.44.8: bot-delivered photos land in the Mini App chat history too.
         try:
             if sent:
@@ -1972,7 +1977,7 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
         _photo_jobs.pop(telegram_id, None)
 
 
-async def _start_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo'):
+async def _start_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False):
     active = _photo_jobs.get(telegram_id)
     if (active and not active.done()) or telegram_id in _photo_job_reservations:
         if await _maybe_refund_paid_photo(chat_id, telegram_id, charge, amount, product):
@@ -1999,7 +2004,7 @@ async def _start_photo_background(chat_id: int, telegram_id: int, request: Photo
             'погоди чуть-чуть 😌 хочу сделать красиво',
             'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
         )))
-        task = _spawn_job('photo', telegram_id, _run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, amount=amount, product=product), payload={'product': product or ''})
+        task = _spawn_job('photo', telegram_id, _run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, amount=amount, product=product, spend_undress_credit=spend_undress_credit), payload={'product': product or ''})
         _photo_jobs[telegram_id] = task
         return True
     finally:
@@ -2014,7 +2019,7 @@ def _to_jpeg(data: bytes) -> bytes:
     return buf.getvalue()
 
 
-async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoRequest):
+async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoRequest, *, undress_credit: bool = False):
     db_uid = ensure_user(telegram_id)
     if not has_accepted(telegram_id):
         await bot.send_message(chat_id, 'Сначала подтверди 18+ и условия через /start.', reply_markup=consent_keyboard())
@@ -2043,7 +2048,24 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
 
     if not is_premium(telegram_id) and spicy_needs_premium(request):
         # V3.87.0: nude / lingerie photos are Premium-only — sell Premium here.
+        # V3.137.0: a bought one-time «Раздеть» works without Premium.
+        if undress_credit:
+            from services import undress_credits
+            if undress_credits.balance(telegram_id) > 0:
+                await _start_photo_background(chat_id, telegram_id, request, 'paid',
+                                              product='undress_one', spend_undress_credit=True)
+                return
         track_event(db_uid, 'paywall_view', metadata={'product': 'spicy_photo', 'scene': request.scene, 'source': 'bot'})
+        if undress_credit and UNDRESS_ONE_ENABLED:
+            _pending_undress_photo[telegram_id] = request
+            await bot.send_message(
+                chat_id,
+                f'🔥 одно «Раздеть» — {UNDRESS_ONE_PRICE_RUB} ₽ в приложении или {UNDRESS_ONE_STARS} ⭐. '
+                'Premium тоже откроет все откровенные фото.',
+                reply_markup=premium_keyboard(telegram_id=telegram_id))
+            await send_stars_invoice(chat_id, f'Раздеть · {_character_display_name(get_user_character(telegram_id))}',
+                                     'Одно откровенное фото без Premium', 'undress_one', UNDRESS_ONE_STARS)
+            return
         await bot.send_message(chat_id, CHAT_PHOTO_BLOCK_TEXT['spicy'],
                                reply_markup=premium_keyboard(telegram_id=telegram_id))
         return
@@ -7799,6 +7821,10 @@ async def successful_payment(message: types.Message):
         # V3.132.0: one «Раздеть» bought on its own.
         record_payment(message.from_user.id, 'undress_one', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'undress_one'})
+        pending = _pending_undress_photo.pop(message.from_user.id, None)
+        if pending:
+            await handle_photo_request(message.chat.id, message.from_user.id, pending, undress_credit=True)
+            return
         if user_lang(message.from_user.id) == EN:
             await message.answer('done 🔥 one «Undress» is yours — tap it under my photo in the app')
         else:
@@ -10680,8 +10706,12 @@ async def voice_message(message: types.Message):
         data = await bot.download(message.voice)
         text = await transcribe(data)
         request = _contextualize_vague_photo(message.from_user.id, text, parse_photo_request(text))
+        direct_undress = _direct_undress_request(text)
+        if not request:
+            request = _show_me_request(text) or direct_undress
         if request:
-            await handle_photo_request(message.chat.id, message.from_user.id, request)
+            await handle_photo_request(message.chat.id, message.from_user.id, request,
+                                       undress_credit=direct_undress is not None)
             touch_user(message.from_user.id)
             return
         before_level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
@@ -11574,8 +11604,12 @@ async def text_message(message: types.Message):
         # Natural photo requests are routed before the chat model, so Anna does not
         # first refuse/chat about the photo and only then start generating.
         request = _contextualize_vague_photo(message.from_user.id, text, parse_photo_request(text))
+        direct_undress = _direct_undress_request(text)
+        if not request:
+            request = _show_me_request(text) or direct_undress
         if request:
-            await handle_photo_request(message.chat.id, message.from_user.id, request)
+            await handle_photo_request(message.chat.id, message.from_user.id, request,
+                                       undress_credit=direct_undress is not None)
             touch_user(message.from_user.id)
             return
         # V3.45.27: «чат только в Mini App». A plain conversational message in
@@ -11728,7 +11762,7 @@ async def _platega_callback(request: web.Request) -> web.Response:
                            f'— оживление фото стоит {VIDEO_TOKEN_COST} 🪙.')
             elif product == 'undress_one':
                 # V3.132.0: one «Раздеть» paid by card/SBP — record_payment below grants it.
-                confirm = '🔥 Оплата прошла! Одно «Раздеть» твоё — нажми его под её фото в приложении.'
+                confirm = '🔥 Оплата прошла! Одно «Раздеть» твоё — сейчас сделаю фото.'
             elif product == 'premium_trial':
                 # V3.88.0: ruble-paid first-purchase trial.
                 confirm = f'💖 Оплата прошла! Premium включён на {PREMIUM_TRIAL_DAYS} дня — тебе открыто всё 🔥'
@@ -11770,6 +11804,14 @@ async def _platega_callback(request: web.Request) -> web.Response:
                 await bot.send_message(order['telegram_id'], confirm)
             except Exception:
                 logger.exception('Platega confirmation message failed order=%s', order['id'])
+            if product == 'undress_one':
+                pending = _pending_undress_photo.pop(int(order['telegram_id']), None)
+                if pending:
+                    try:
+                        await handle_photo_request(int(order['telegram_id']), int(order['telegram_id']),
+                                                   pending, undress_credit=True)
+                    except Exception:
+                        logger.exception('Platega undress auto-photo failed order=%s', order['id'])
     elif status in (platega_service.STATUS_CANCELED, platega_service.STATUS_CHARGEBACKED):
         new_status = 'chargedback' if status == platega_service.STATUS_CHARGEBACKED else 'canceled'
         if platega_service.mark_canceled(order['id'], json.dumps(body, ensure_ascii=False), new_status):
@@ -12052,13 +12094,6 @@ async def _webapp_api_me(request: web.Request) -> web.Response:
         me['invite'] = share_link(_me_bot.username or 'bot', telegram_id)
     except Exception:
         logger.exception('invite link resolution failed user=%s', telegram_id)
-    # V3.47.2: seconds left in the new-user unlimited-text window (0 = no offer),
-    # so the Mini App can show the «осталось 23:58» activation banner.
-    try:
-        from services.access_service import unlimited_text_remaining
-        me['unlimited_remaining'] = unlimited_text_remaining(telegram_id)
-    except Exception:
-        me['unlimited_remaining'] = 0
     # V3.107.0: «Без сюрпризов» — live numbers for the one-time honest card.
     try:
         from services import honest_card
@@ -13768,6 +13803,27 @@ def _show_me_request(text: str) -> PhotoRequest | None:
     return None
 
 
+_UNDRESS_DIRECT = re.compile(
+    r'^\W*(?:разденься|раздевайся|раздень\s+себя|сними\s+(?:всё|все|одежду|с\s+себя\s+всё)|'
+    r'хочу\s+(?:увидеть\s+)?тебя\s+(?:голой|голую)|'
+    r'undress(?:\s+yourself)?|get\s+naked|take\s+(?:everything|it\s+all)\s+off|'
+    r'take\s+off\s+your\s+clothes|i\s+want\s+you\s+naked|strip(?:\s+for\s+me)?)\b',
+    re.IGNORECASE)
+_UNDRESS_NEG = re.compile(
+    r'(?:не|нет|нельзя|don\'t|do\s+not|dont|no)\s+'
+    r'(?:разденься|раздевайся|раздень|сними|хочу|undress|get|take|i\s+want|strip)',
+    re.IGNORECASE)
+
+
+def _direct_undress_request(text: str) -> PhotoRequest | None:
+    low = (text or '').strip()
+    if not low or _UNDRESS_NEG.search(low):
+        return None
+    if _UNDRESS_DIRECT.match(low):
+        return PhotoRequest(scene='lingerie')
+    return None
+
+
 def _free_photo_from_pool(telegram_id: int, uid: int, character_id: str):
     """V3.81.0: (bytes, mime, ext) of a ready photo instead of a new render;
     None means render as usual.
@@ -13792,7 +13848,7 @@ def _free_photo_from_pool(telegram_id: int, uid: int, character_id: str):
     return picked
 
 
-def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | None:
+def _chat_photo_gate(telegram_id: int, character_id: str, scene: str, *, undress_credit: bool = False) -> str | None:
     """The stage / 18+ / peaches gates of a chat photo; None = go."""
     if _card_girl_photo_locked(character_id, telegram_id):
         return 'premium'
@@ -13807,6 +13863,11 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str) -> str | N
     if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id) \
             and spicy_needs_premium(PhotoRequest(scene=scene)):
         # V3.87.0: nude / lingerie — Premium-only, no free or peach route.
+        # V3.137.0: a bought one-time «Раздеть» opens this exact request.
+        if undress_credit:
+            from services import undress_credits
+            if undress_credits.balance(telegram_id) > 0:
+                return None
         try:
             track_event(ensure_user(telegram_id), 'paywall_view',
                         metadata={'product': 'spicy_photo', 'scene': scene, 'source': 'chat'})
@@ -13913,32 +13974,44 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         photo_request = _contextualize_vague_photo(telegram_id, text, parse_photo_request(text))
         if not photo_request:
             photo_request = _show_me_request(text)
+        direct_undress = _direct_undress_request(text) is not None
+        if not photo_request and direct_undress:
+            photo_request = _direct_undress_request(text)
         # V3.60.9: «скинь конечно» right after she offered a photo is a request too.
         if not photo_request and _accepts_her_photo_offer(uid, character_id, text):
             photo_request = parse_photo_request('пришли селфи')
         if not photo_request:
-            return uid, None, None
+            return uid, None, None, None, False
         nonlocal photo_req
         photo_req = _selfie_from_dialog(uid, character_id, photo_request)
         # V3.61.2: «сфоткайтесь вдвоём» — the invited girl joins the frame.
         photo_req = attach_guest(photo_req, telegram_id, character_id, text)
         scene = photo_request.scene if photo_request.scene in PHOTO_MENU_ORDER else 'selfie'
-        return (uid, scene, _chat_photo_gate(telegram_id, character_id, scene))
+        block = _chat_photo_gate(telegram_id, character_id, scene, undress_credit=direct_undress)
+        pay = None
+        if direct_undress and block is None and telegram_id not in ADMIN_TELEGRAM_IDS \
+                and not is_premium(telegram_id):
+            pay = 'undress_credit'
+        return (uid, scene, block, pay, direct_undress)
 
-    uid, photo_scene, photo_block = await asyncio.to_thread(_prelude)
+    uid, photo_scene, photo_block, photo_pay, direct_undress = await asyncio.to_thread(_prelude)
     # V3.60.3: a blocked or failed photo request used to fall through to the
     # model, which happily wrote «лови 😏» with nothing attached. Now she says
     # plainly what is in the way and offers the way forward.
     if photo_block:
+        blocked_extra = dict(extra or {})
+        if direct_undress and photo_block == 'spicy':
+            blocked_extra.update({'undress_offer': True, 'retry_text': text})
         return web.json_response(await asyncio.to_thread(
-            _chat_photo_blocked, uid, character_id, photo_block, extra))
+            _chat_photo_blocked, uid, character_id, photo_block, blocked_extra))
 
-    async def _photo_turn(scene: str, req, said: str | None = None):
+    async def _photo_turn(scene: str, req, said: str | None = None, pay: str | None = None):
         """Render + deliver one chat photo. `said` is her own text when the
         photo backs a promise she just made («лови 📸»)."""
         # V3.81.0: past today's free-photo budget, a FREE photo comes from her
         # ready-made pool instead of a new render. Paid and Premium are untouched.
-        pooled = await asyncio.to_thread(_free_photo_from_pool, telegram_id, uid, character_id)
+        pooled = None if pay == 'undress_credit' else await asyncio.to_thread(
+            _free_photo_from_pool, telegram_id, uid, character_id)
         try:
             if pooled:
                 data, mime, ext = pooled
@@ -13985,8 +14058,11 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             premium = is_premium(telegram_id)
             paid_note = None
             if telegram_id not in ADMIN_TELEGRAM_IDS and not fallback:
+                if pay == 'undress_credit':
+                    from services import undress_credits
+                    undress_credits.spend(telegram_id)
                 # V3.61.5: a free photo of the day first, then peaches.
-                if free_chat_photos_left(uid, premium=premium) > 0:
+                elif free_chat_photos_left(uid, premium=premium) > 0:
                     use_free_chat_photo(uid, character_id)
                     if pooled:
                         from services.chat_photo_allowance import POOL_EVENT, note_today
@@ -14010,7 +14086,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         return await asyncio.to_thread(_deliver)
 
     if photo_scene:
-        payload = await _photo_turn(photo_scene, photo_req)
+        payload = await _photo_turn(photo_scene, photo_req, pay=photo_pay)
         if payload:
             return web.json_response(payload)
         return web.json_response(await asyncio.to_thread(
@@ -15985,6 +16061,23 @@ async def _animate_photo_bytes(telegram_id: int, image_bytes: bytes, mime: str) 
     raise last_error or PhotoGenerationError('video', 'no_video_result')
 
 
+async def _webapp_api_undress_credit(request: web.Request) -> web.Response:
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+
+    def _read():
+        from services import undress_credits
+        credits = undress_credits.balance(telegram_id)
+        premium = is_premium(telegram_id)
+        return {'ok': True, 'ready': bool(premium or credits > 0), 'credits': credits, 'premium': premium}
+
+    return web.json_response(await asyncio.to_thread(_read))
+
+
 async def _webapp_api_photo_action(request: web.Request) -> web.Response:
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
     if not pairs:
@@ -17719,6 +17812,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/smedia/{uid}/{filename}/{sig}', _webapp_signed_media)
     app.router.add_get('/webapp/vsrc/{token}', _webapp_video_frame)
     app.router.add_post('/webapp/api/chat/photo-action', _webapp_api_photo_action)
+    app.router.add_get('/webapp/api/undress-credit', _webapp_api_undress_credit)
     app.router.add_post('/webapp/api/picture', _webapp_api_picture_generate)
     # V3.54.0: «Собери видео» — image-to-video of the user's own photo / a
     # prompt-generated frame, priced at WEBAPP_VIDEO_COST_CREDITS 🍑.

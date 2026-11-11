@@ -636,18 +636,6 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                     messages.append({"role": "system", "content": memory_gift.directive(gift[1])})
         except Exception:
             gift = None
-    # V3.99.0: after a long session she cuts the talk on the juiciest spot and
-    # promises tomorrow morning (services/open_loop.py); until then she dodges.
-    loop_kind = ''
-    if not scene and not guest_reminder and not care_kind:
-        try:
-            from services import open_loop
-            loop_note, loop_kind = await asyncio.to_thread(
-                open_loop.directive_for, db_user_id, character_id, behavior_kind, not premium)
-            if loop_note:
-                messages.append({"role": "system", "content": loop_note})
-        except Exception:
-            loop_kind = ''
     # V3.98.0: he writes English → she answers English (14% of such replies
     # used to come back in Russian). The directive sits right before his text.
     # V3.117.0: not only English — Bengali, Spanish, Japanese… whatever he
@@ -728,14 +716,6 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             track_event(db_user_id, 'memory_gift_shown', character_id=character_id)
         except Exception:
             _logger.warning('memory gift mark failed user=%s', user_id, exc_info=True)
-    if loop_kind == 'plant' and (r.text or '').strip():
-        try:
-            from services import open_loop
-            from services.analytics_service import track_event
-            await asyncio.to_thread(open_loop.record_planted, db_user_id, character_id, answer)
-            track_event(db_user_id, 'open_loop_shown', character_id=character_id)
-        except Exception:
-            _logger.warning('open loop record failed user=%s', user_id, exc_info=True)
     # V3.57.8: memory extraction and style analysis are extra LLM round trips the
     # user never reads. They used to be awaited here, so every reply waited for
     # them; now they run in the background after the answer is returned.

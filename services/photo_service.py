@@ -3646,9 +3646,10 @@ async def deliver_photo(
     caption: str | None = None,
     *,
     character_id: str = CHARACTER_ID,
+    skip_stage: bool = False,
 ):
     stage = get_relationship_stage(telegram_id, character_id)
-    if not scene_allowed_for_stage(request.scene, stage):
+    if not skip_stage and not scene_allowed_for_stage(request.scene, stage):
         raise PermissionError('scene_locked')
     if requires_adult_confirmation(request) and not is_adult_confirmed(telegram_id):
         raise PermissionError('age_gate')

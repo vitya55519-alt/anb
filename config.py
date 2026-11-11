@@ -520,31 +520,11 @@ ADAPTATION_ENABLED = os.getenv("ADAPTATION_ENABLED", "true").strip().lower() not
 ADAPTATION_ANALYZE_EVERY = max(3, min(20, int(os.getenv("ADAPTATION_ANALYZE_EVERY", "5"))))
 ADAPTATION_MAX_EXPRESSIONS = max(3, min(20, int(os.getenv("ADAPTATION_MAX_EXPRESSIONS", "12"))))
 
-# V3.55.1: owner tightened the free tier 50 → 30 messages/day for non-premium
-# (Premium's «безлимит сообщений» must actually bite). The new-user 24h
-# unlimited window below stays the activation lever.
-# V3.60.9: the owner cut it to 20/day.
-# V3.57.7: the owner put the chat brake back for non-premium users after trying the
-# open gate — 30/day is the tariff we publish, so it stays 30. The legal text and the
-# shop note switch to «unlimited» automatically if this ever goes ≥ 1000 again.
-# NOTE: the gate is `count < FREE_MESSAGES_PER_DAY`, so 0 here means «nobody may
-# write», not «unlimited» — never set it to zero.
-FREE_MESSAGES_PER_DAY = int(os.getenv("FREE_MESSAGES_PER_DAY", "20"))
-# V3.106.0: the owner tightened the free tier for people who have been here a
-# while: from day FREE_LATE_FROM_DAY after sign-up (day 1 = the sign-up day) a
-# non-Premium man gets FREE_MESSAGES_PER_DAY_LATE a day instead. Backup 5 Nov:
-# heavy free users (200–500 msgs) never paid; every payment came in the first
-# session. Set FREE_MESSAGES_PER_DAY_LATE equal to FREE_MESSAGES_PER_DAY to switch
-# it off. Never 0 (see the note above).
-FREE_MESSAGES_PER_DAY_LATE = max(1, int(os.getenv("FREE_MESSAGES_PER_DAY_LATE", "10")))
-FREE_LATE_FROM_DAY = max(2, int(os.getenv("FREE_LATE_FROM_DAY", "4")))
-# V3.47.2: a brand-new user gets unlimited TEXT messages for this many hours
-# after registration (activation lever, mirrors the benchmark's «первые 24 часа
-# текст бесплатно»). Photo/video gates are untouched — text only.
-# V3.63.2: 24h → 3h. With ~5 messages a day nobody reached the 20/day limit
-# inside (or after) a 24h window, so the paywall never showed (9 views per
-# 185 starts in 30 days). Three hours keeps the free first evening.
-NEW_USER_UNLIMITED_HOURS = max(0, int(os.getenv("NEW_USER_UNLIMITED_HOURS", "3")))
+# Text is unlimited on every tier. The 1000 sentinel only selects the existing
+# «unlimited» wording in the shop and legal texts; can_send_message has no counter.
+FREE_MESSAGES_PER_DAY = 1000
+FREE_MESSAGES_PER_DAY_LATE = FREE_MESSAGES_PER_DAY
+FREE_LATE_FROM_DAY = 4
 FREE_PHOTOS_LEVEL_1_2 = int(os.getenv("FREE_PHOTOS_LEVEL_1_2", "1"))
 FREE_PHOTOS_LEVEL_3_6 = int(os.getenv("FREE_PHOTOS_LEVEL_3_6", "2"))
 PREMIUM_MONTHLY_STARS = int(os.getenv("PREMIUM_MONTHLY_STARS", "500"))

@@ -51,8 +51,7 @@ def test_old_session_serious_talk_and_premium_skip():
     assert open_loop.directive_for(uid, 'anna_01', 'flirt', plant_ok=False) == ('', '')
 
 
-def test_wired_into_chat_and_morning():
-    assert 'open_loop.directive_for' in CHAT
-    assert 'open_loop.record_planted' in CHAT
+def test_chat_never_cuts_a_long_session_but_old_morning_promises_are_kept():
+    assert 'open_loop.directive_for' not in CHAT
+    assert 'open_loop.record_planted' not in CHAT
     assert 'open_loop.pending' in CHAT and 'open_loop.mark_kept' in CHAT
-    assert CHAT.index('open_loop.directive_for') < CHAT.index('messages.append({"role": "user", "content": user_text})')
