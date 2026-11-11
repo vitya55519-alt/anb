@@ -101,7 +101,27 @@ def test_first_hello_carries_the_reply_button():
 
 def test_webapp_deep_opens_selected_chat():
     assert "get('open') !== 'chat'" in INDEX
-    assert 'maybeDeepOpenChat(j.characters);' in INDEX
+    assert 'Promise.all([loadMe(), loadCharacters()]).then(() => maybeDeepOpenChat(CHARS));' in INDEX
+    assert 'ME.first_webapp_open' in INDEX
+    assert "me['first_webapp_open'] = bool(first_open and has_accepted(telegram_id))" in MAIN
+
+
+def test_first_hello_is_shared_and_idempotent():
+    assert 'def _first_hello_was_sent(uid: int)' in MAIN
+    assert 'async def _ensure_webapp_first_hello(' in MAIN
+    assert "metadata={'source': 'mini_app'}" in MAIN
+    assert 'created = await _ensure_webapp_first_hello(' in MAIN
+    assert "_first_hello_locks.setdefault(telegram_id, asyncio.Lock())" in MAIN
+
+
+def test_day1_entry_has_continuation_hints():
+    assert "get('entry') === 'day1'" in INDEX
+    assert 'const hints = day1 ? L.day1_hints : L.chat_hints;' in INDEX
+    assert INDEX.count('day1_hints:') == 8
+    assert 'Давай продолжим наш разговор' in INDEX
+    assert 'Let’s continue our conversation' in INDEX
+    assert 'Continuons notre conversation' in INDEX
+    assert 'আমাদের আগের কথা এগিয়ে নিয়ে যাই' in INDEX
 
 
 # ── first-evening offer ─────────────────────────────────────────────────────
@@ -139,7 +159,7 @@ def test_new_user_window_shrunk():
 
 # ── story hooks ─────────────────────────────────────────────────────────────
 def test_story_hooks_wired_into_day1_and_miss_push():
-    assert 'if await _send_story(bot,uid,telegram_id,_char):' in SCHED
+    assert "if lang in ('ru', 'en') and await _send_story(bot,uid,telegram_id,_char):" in SCHED
     assert "if kind=='miss' and await _send_story(bot,uid,telegram_id,char_id):" in SCHED
     assert "@dp.callback_query(F.data.startswith('story:'))" in MAIN
 

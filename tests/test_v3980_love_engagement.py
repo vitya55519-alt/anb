@@ -51,8 +51,9 @@ def test_girl_picker_after_consent_with_fallback():
     assert 'await asyncio.sleep(120)' in MAIN
     assert "track_event(uid, 'girl_picker_shown')" in MAIN
     assert 'if telegram_id in _first_hello_done' in MAIN
-    # the hello itself lives in one place now
-    assert MAIN.count("track_event(uid, 'first_hello_sent'") == 1
+    # one shared event per entry point; the lock + history guard let only one fire
+    assert MAIN.count("track_event(uid, 'first_hello_sent'") == 2
+    assert "metadata={'source': 'mini_app'}" in MAIN
 
 
 def test_picker_girls_exist():
@@ -62,6 +63,25 @@ def test_picker_girls_exist():
     assert len(set(ids)) == len(ids)
     for cid in ids:
         assert get_character(cid)
+
+
+def test_first_flow_has_every_app_language():
+    import main
+    from services.ui_lang import APP_LANGS, FLOW_TEXT, flow_text
+
+    assert set(main._FIRST_HELLO) == APP_LANGS
+    assert set(main._GENERIC_FIRST_HELLO) == APP_LANGS
+    assert set(main.FIRST_REPLIES) == APP_LANGS
+    keys = set(FLOW_TEXT['en'])
+    for lang in APP_LANGS:
+        assert set(FLOW_TEXT[lang]) == keys
+        assert len(main._FIRST_HELLO[lang]) == 3
+        assert len(main.FIRST_REPLIES[lang]) == 3
+        assert '{' not in main._first_hello('anna_01', '', lang)
+        assert flow_text(lang, 'gift_text', amount=300)
+        assert flow_text(lang, 'girl_of_day', name='Anna').endswith('Anna')
+        kb = main._first_hello_keyboard(lang)
+        assert [row[0].text for row in kb.inline_keyboard] == list(main.FIRST_REPLIES[lang])
 
 
 def test_failed_photo_falls_back_to_pool_without_charge():

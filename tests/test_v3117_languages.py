@@ -70,6 +70,24 @@ def test_wiring():
     assert "_ru_or_en(request.query.get('lang', 'ru'))" in MAIN
 
 
+def test_retention_language_codes_and_copy():
+    from services import ui_lang
+
+    assert ui_lang.APP_LANGS == frozenset(('ru', 'en', 'es', 'it', 'fr', 'zh', 'ja', 'bn'))
+    assert ui_lang.app_lang('es-MX') == 'es'
+    assert ui_lang.app_lang('zh-hans') == 'zh'
+    assert ui_lang.app_lang('pt-br') == 'en'
+    assert ui_lang.app_lang('') == 'ru'
+    for lang in ui_lang.APP_LANGS:
+        assert ui_lang.flow_text(lang, 'open_chat')
+        assert ui_lang.flow_text(lang, 'reply_in_app')
+        assert ui_lang.flow_text(lang, 'selfie_caption')
+        assert ui_lang.flow_text(lang, 'welcome_bonus', amount=25)
+    assert HTML.count('chat_hints:') == 8
+    assert HTML.count('day1_hints:') == 8
+    assert "'&open=1' + '&lang=' + LANG" in HTML
+
+
 def test_webapp_bengali():
     assert "const APP_LANGS = ['ru', 'en', 'es', 'it', 'fr', 'zh', 'ja', 'bn'];" in HTML
     assert "bn: 'বাংলা'" in HTML

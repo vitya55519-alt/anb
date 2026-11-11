@@ -22,6 +22,7 @@ from services import donation_service
 from services import partner_service
 from services import retention_features_service
 from services import dialog_store
+from services.ui_lang import app_lang, flow_text
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 logger=logging.getLogger(__name__); scheduler=AsyncIOScheduler()
@@ -259,21 +260,47 @@ async def _day1_hook(bot):
             User.created_at>=young,
             User.last_active_at<=silent,
         )).all()
-        snapshot=[(u.id,int(u.telegram_id),u.last_active_at) for u in users]
+        snapshot=[(u.id,int(u.telegram_id),u.last_active_at,u.name or '',u.chat_lang or u.ui_lang or 'ru') for u in users]
     if snapshot:
         logger.info('day1 hook due count=%s', len(snapshot))
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
     from services.consent_service import has_accepted
-    for uid,telegram_id,last_active in snapshot:
+    for uid,telegram_id,last_active,name,lang in snapshot:
         try:
+            lang = app_lang(lang)
             if not has_accepted(telegram_id):
                 continue
-            # V3.63.2: a story hook first (Come Closer benchmark); the gift
-            # text below stays as the fallback once every story was used.
             with SessionLocal() as s:
                 _u=s.get(User,uid)
                 _char=((getattr(_u,'selected_character','') or '').strip() if _u else '') or CHARACTER_ID
-            if await _send_story(bot,uid,telegram_id,_char):
+            from services.chat_service import morning_callback
+            try:
+                continuation = await morning_callback(telegram_id, name, lang, _char)
+            except Exception:
+                logger.exception('day1 personal continuation failed user=%s', uid)
+                continuation = ''
+            if continuation:
+                from urllib.parse import quote
+                markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                    text=flow_text(lang, 'open_chat'),
+                    web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat&char={quote(_char, safe="")}&entry=day1'),
+                )]])
+                await bot.send_message(telegram_id, continuation, reply_markup=markup)
+                _to_app_chat(uid,telegram_id,_char,continuation)
+                with SessionLocal() as s:
+                    u=s.get(User,uid)
+                    if u:
+                        u.day1_hook_at=now
+                        s.commit()
+                track_event(uid, 'day1_hook_sent', metadata={
+                    'hours_inactive': int((now-last_active).total_seconds()/3600) if last_active else 0,
+                    'personalized': True,
+                })
+                continue
+            # V3.63.2: a story hook first (Come Closer benchmark); the gift
+            # text below stays as the fallback once every story was used.
+            # Story templates exist only in RU/EN; other languages get the translated gift.
+            if lang in ('ru', 'en') and await _send_story(bot,uid,telegram_id,_char):
                 with SessionLocal() as s:
                     u=s.get(User,uid)
                     if u:
@@ -283,15 +310,11 @@ async def _day1_hook(bot):
                 continue
             markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
                 # V3.55.5: the wheel is retired — day-1 now opens the streak gift
-                text='🎁 Забрать дневной подарок',
+                text=flow_text(lang, 'gift_button'),
                 web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'),
             )]])
-            await bot.send_message(telegram_id,(
-                'я тут сижу и скучаю по тебе 🥺 '
-                'а ещё — у тебя уже копится дневной подарок 🍑 заходи каждый день — '
-                f'на 7-й день дают {DAILY_GIFT_JACKPOT_AMOUNT} персиков, серия сгорает, если пропустить день\n'
-                'загляни в приложение (Магазин) и возвращайся ко мне 💋'
-            ),reply_markup=markup)
+            await bot.send_message(telegram_id, flow_text(
+                lang, 'gift_text', amount=DAILY_GIFT_JACKPOT_AMOUNT), reply_markup=markup)
             with SessionLocal() as s:
                 u=s.get(User,uid)
                 if u:

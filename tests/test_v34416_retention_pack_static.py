@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 CONFIG = (ROOT / 'config.py').read_text(encoding='utf-8')
 SCHEDULER = (ROOT / 'services' / 'scheduler_service.py').read_text(encoding='utf-8')
+UI_LANG = (ROOT / 'services' / 'ui_lang.py').read_text(encoding='utf-8')
 MODELS = (ROOT / 'models' / 'app_models.py').read_text(encoding='utf-8')
 
 
@@ -56,10 +57,19 @@ def test_day1_hook_job():
     assert 'User.day1_hook_at.is_(None)' in hook
     assert 'User.created_at>=young' in hook
     assert 'User.last_active_at<=silent' in hook
+    assert "u.chat_lang or u.ui_lang or 'ru'" in hook
+    assert 'lang = app_lang(lang)' in hook
     # the message promises the daily streak gift and opens the app
     # (V3.55.5: the bonus wheel was replaced by the streak gift rail)
-    assert 'копится дневной подарок' in hook
+    assert 'копится дневной подарок' in UI_LANG
+    assert "flow_text(lang, 'gift_button')" in hook
+    assert "lang, 'gift_text', amount=DAILY_GIFT_JACKPOT_AMOUNT" in hook
     assert 'WebAppInfo(url=f\'{PUBLIC_BASE_URL}/webapp\')' in hook
+    # an engaged user gets a personal continuation and a direct same-girl chat link
+    assert 'continuation = await morning_callback(telegram_id, name, lang, _char)' in hook
+    assert "quote(_char, safe=\"\")" in hook
+    assert "entry=day1" in hook
+    assert '_to_app_chat(uid,telegram_id,_char,continuation)' in hook
     # exactly once per user
     assert 'u.day1_hook_at=now' in hook
     assert 'has_accepted(telegram_id)' in hook

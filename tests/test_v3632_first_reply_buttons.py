@@ -40,4 +40,5 @@ def test_tap_sends_text_as_user(monkeypatch):
 
 def test_consent_hello_uses_keyboard():
     import inspect
-    assert 'reply_markup=_first_hello_keyboard(lang)' in inspect.getsource(main.consent_accept)
+    assert '_deliver_first_hello(' in inspect.getsource(main.consent_accept)
+    assert 'hello_kb = _first_hello_keyboard(lang)' in inspect.getsource(main._deliver_first_hello)

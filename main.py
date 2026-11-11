@@ -59,7 +59,7 @@ from services.user_service import (
     set_adult_confirmed, is_adult_confirmed,
 )
 # V3.22.0: RU/EN interface layer (reply keyboard + top-level menus).
-from services.ui_lang import EN, RU, MAIN_KB_ROWS, kb_label, kb_pair, user_lang
+from services.ui_lang import EN, RU, MAIN_KB_ROWS, app_lang, flow_text, full_user_lang, kb_label, kb_pair, user_lang
 from services.chat_service import reply as anna_reply
 from services.access_service import can_send_message, is_premium
 from services.photo_service import (
@@ -2250,8 +2250,9 @@ async def consent_accept(cq: types.CallbackQuery):
             if res.get('awarded'):
                 track_event(uid, 'referral_awarded_on_consent', metadata={'referrer_id': str(ref)})
         first_start = apply_first_start_bonuses(cq.from_user.id)
-    await cq.answer('готово')
+    await cq.answer('✅')
     lang = user_lang(cq.from_user.id)
+    flow_lang = full_user_lang(cq.from_user.id, cq.from_user.language_code)
     # V3.63.2: the consent banner has done its job — remove it so the chat
     # starts clean: pinned menu, then her hello and selfie.
     try:
@@ -2259,18 +2260,8 @@ async def consent_accept(cq: types.CallbackQuery):
     except Exception:
         pass
     await _send_pinned_menu(cq.message.chat.id, lang)
-    if lang == EN:
-        bonus_line = (
-            f'🎁 welcome! I gave you {first_start["credits"]} photo credits — '
-            'try your first photo for free.\n'
-            'All the heroines, chats, pictures and the shop live in the app 👇'
-        ) if first_start['credits'] else 'Welcome 🙂 the heroines, chats and the shop live in the app 👇'
-    else:
-        bonus_line = (
-            f'🎁 добро пожаловать! подарил тебе {first_start["credits"]} фото-кредитов — '
-            'попробуй первое фото бесплатно.\n'
-            'Все героини, чаты, картинки и магазин — в приложении 👇'
-        ) if first_start['credits'] else 'Добро пожаловать 🙂 все героини, чаты и магазин — в приложении 👇'
+    bonus_line = (flow_text(flow_lang, 'welcome_bonus', amount=first_start['credits'])
+                  if first_start['credits'] else flow_text(flow_lang, 'welcome_plain'))
     # V3.59.1: no referral link and no donation ask in the first minute — the
     # invite link lives on the partner screen, the donation note comes from the
     # weekly reminder from day 3 on. The first minute belongs to her.
@@ -2290,26 +2281,38 @@ async def consent_accept(cq: types.CallbackQuery):
     try:
         user_row = await asyncio.to_thread(get_user, cq.from_user.id)
         already_chosen = bool((getattr(user_row, 'selected_character', '') or '').strip())
-        if not already_chosen and await _send_girl_picker(cq.bot, cq.message.chat.id, cq.from_user.id, lang):
+        if not already_chosen and await _send_girl_picker(cq.bot, cq.message.chat.id, cq.from_user.id, flow_lang):
             track_event(uid, 'girl_picker_shown')
             _spawn_background(_first_hello_fallback(cq.bot, cq.message.chat.id, cq.from_user.id,
-                                                    uid, cq.from_user.first_name or '', lang))
+                                                    uid, cq.from_user.first_name or '', flow_lang))
             return
     except Exception:
         logger.exception('girl picker failed user=%s', cq.from_user.id)
     await _deliver_first_hello(cq.bot, cq.message.chat.id, cq.from_user.id, uid,
-                               cq.from_user.first_name or '', lang)
+                               cq.from_user.first_name or '', flow_lang)
 
 
 # V3.98.0: the first-minute choice of "his" girl.
 _PICKER_GIRLS = (
-    ('agata_01', '🥀 Агата — нежная готка, шепчет ASMR', '🥀 Agata — tender goth, whispers ASMR'),
-    ('anna_01', '👩🏻 Анна — нежность и страсть', '👩🏻 Anna — tenderness and passion'),
-    ('alisa_01', '📚 Алиса — застенчивая учительница', '📚 Alisa — shy young teacher'),
-    ('kamila_01', '🏎 Камила — горячая южанка', '🏎 Kamila — hot southern racer'),
-    ('rita_01', '🦊 Рита — рыжая хохотушка', '🦊 Rita — red-haired tease'),
+    ('agata_01', 'picker_agata_01'),
+    ('anna_01', 'picker_anna_01'),
+    ('alisa_01', 'picker_alisa_01'),
+    ('kamila_01', 'picker_kamila_01'),
+    ('rita_01', 'picker_rita_01'),
 )
 _first_hello_done: set[int] = set()
+_first_hello_locks: dict[int, asyncio.Lock] = {}
+
+
+def _first_hello_was_sent(uid: int) -> bool:
+    from models.app_models import Message, ProductEvent
+    with SessionLocal() as s:
+        hello = s.scalar(select(ProductEvent.id).where(
+            ProductEvent.user_id == uid,
+            ProductEvent.event_name == 'first_hello_sent',
+        ).limit(1))
+        any_message = s.scalar(select(Message.id).where(Message.user_id == uid).limit(1))
+    return bool(hello or any_message)
 
 
 def _picker_keyboard(lang: str) -> InlineKeyboardMarkup:
@@ -2323,13 +2326,13 @@ def _picker_keyboard(lang: str) -> InlineKeyboardMarkup:
     if gid and gid not in {g[0] for g in _PICKER_GIRLS}:
         name = _character_display_name(gid)
         rows.append([InlineKeyboardButton(
-            text=(f'🔥 Girl of the day — {name}' if lang == EN else f'🔥 Девушка дня — {name}'),
+            text=flow_text(lang, 'girl_of_day', name=name),
             callback_data=f'pickgirl:{gid}')])
         shown.add(gid)
-    for cid, ru, en in _PICKER_GIRLS:
+    for cid, label_key in _PICKER_GIRLS:
         if cid in shown or len(rows) >= 5:
             continue
-        label = en if lang == EN else ru
+        label = flow_text(lang, label_key)
         if gid == cid:
             label = '🔥 ' + label  # today's open girl
         rows.append([InlineKeyboardButton(text=label, callback_data=f'pickgirl:{cid}')])
@@ -2337,40 +2340,59 @@ def _picker_keyboard(lang: str) -> InlineKeyboardMarkup:
 
 
 async def _send_girl_picker(bot, chat_id: int, telegram_id: int, lang: str) -> bool:
-    text = ('who do you want to talk to first? pick the one you like — you can change her any time 👇'
-            if lang == EN else
-            'с кем хочешь познакомиться? выбери ту, что нравится, — потом можно сменить в любой момент 👇')
-    await bot.send_message(chat_id, text, reply_markup=_picker_keyboard(lang))
+    await bot.send_message(chat_id, flow_text(lang, 'picker_prompt'), reply_markup=_picker_keyboard(lang))
     return True
 
 
 async def _deliver_first_hello(bot, chat_id: int, telegram_id: int, uid: int, first_name: str, lang: str) -> None:
-    """Her first hello + the welcome selfie, once per user per process."""
+    """Her first hello + the welcome selfie, once across the bot and Mini App."""
     if telegram_id in _first_hello_done:
         return
-    _first_hello_done.add(telegram_id)
-    try:
-        character_id = get_user_character(telegram_id)
+    lock = _first_hello_locks.setdefault(telegram_id, asyncio.Lock())
+    async with lock:
+        if telegram_id in _first_hello_done:
+            return
+        if await asyncio.to_thread(_first_hello_was_sent, uid):
+            _first_hello_done.add(telegram_id)
+            return
+        _first_hello_done.add(telegram_id)
+        try:
+            character_id = get_user_character(telegram_id)
+            greeting = _first_hello(character_id, first_name, lang)
+            # V3.62.7: half of new users accepted 18+ and never wrote a word —
+            # they had to invent a first line. Three one-tap answers under her hello.
+            # V3.63.2: plus «💬 ответить ей» — with the chat living in the Mini App
+            # a typed answer in the bot got a «go to the app» hint back; this
+            # button opens her dialog directly (/webapp?open=chat).
+            hello_kb = _first_hello_keyboard(lang)
+            if BOT_CHAT_REDIRECT and PUBLIC_BASE_URL:
+                hello_kb.inline_keyboard.append([InlineKeyboardButton(
+                    text=flow_text(lang, 'reply_in_app'),
+                    web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
+            await bot.send_message(chat_id, greeting, reply_markup=hello_kb)
+            await asyncio.to_thread(save_message, uid, character_id, 'assistant', greeting)
+            track_event(uid, 'first_hello_sent', character_id=character_id)
+            # V3.59.2: and a free selfie right behind the hello — the «wow» of the
+            # first minute, rendered in the background so the hello is instant.
+            _spawn_background(_send_welcome_selfie(bot, chat_id, telegram_id, uid, character_id, lang))
+        except Exception:
+            _first_hello_done.discard(telegram_id)
+            logger.exception('first hello failed user=%s', telegram_id)
+
+
+async def _ensure_webapp_first_hello(telegram_id: int, uid: int, first_name: str, lang: str,
+                                     character_id: str) -> bool:
+    """Create the shared greeting for an app-first user; the bot fallback sees it too."""
+    lock = _first_hello_locks.setdefault(telegram_id, asyncio.Lock())
+    async with lock:
+        if await asyncio.to_thread(_first_hello_was_sent, uid):
+            _first_hello_done.add(telegram_id)
+            return False
         greeting = _first_hello(character_id, first_name, lang)
-        # V3.62.7: half of new users accepted 18+ and never wrote a word —
-        # they had to invent a first line. Three one-tap answers under her hello.
-        # V3.63.2: plus «💬 ответить ей» — with the chat living in the Mini App
-        # a typed answer in the bot got a «go to the app» hint back; this
-        # button opens her dialog directly (/webapp?open=chat).
-        hello_kb = _first_hello_keyboard(lang)
-        if BOT_CHAT_REDIRECT and PUBLIC_BASE_URL:
-            hello_kb.inline_keyboard.append([InlineKeyboardButton(
-                text='💬 reply to her in the app' if lang == EN else '💬 ответить ей в приложении',
-                web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
-        await bot.send_message(chat_id, greeting, reply_markup=hello_kb)
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', greeting)
-        track_event(uid, 'first_hello_sent', character_id=character_id)
-        # V3.59.2: and a free selfie right behind the hello — the «wow» of the
-        # first minute, rendered in the background so the hello is instant.
-        _spawn_background(_send_welcome_selfie(bot, chat_id, telegram_id, uid, character_id, lang))
-    except Exception:
-        _first_hello_done.discard(telegram_id)
-        logger.exception('first hello failed user=%s', telegram_id)
+        track_event(uid, 'first_hello_sent', character_id=character_id, metadata={'source': 'mini_app'})
+        _first_hello_done.add(telegram_id)
+        return True
 
 
 async def _first_hello_fallback(bot, chat_id: int, telegram_id: int, uid: int, first_name: str, lang: str) -> None:
@@ -2396,7 +2418,7 @@ async def pick_girl_cb(cq: types.CallbackQuery):
         await cq.answer()
         return
     await cq.answer()
-    lang = user_lang(cq.from_user.id)
+    lang = full_user_lang(cq.from_user.id, cq.from_user.language_code)
     set_user_character(cq.from_user.id, cid)
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     track_event(uid, 'girl_picked', character_id=cid)
@@ -2414,8 +2436,7 @@ async def _send_welcome_selfie(bot, chat_id: int, telegram_id: int, uid: int, ch
         if not data:
             logger.warning('welcome selfie empty user=%s', telegram_id)
             return
-        caption = ('this is me 🙈 just took it for you… do you like it?' if lang == EN
-                   else 'это я 🙈 только что сфоткалась для тебя… нравится?')
+        caption = flow_text(lang, 'selfie_caption')
         await bot.send_photo(chat_id, BufferedInputFile(data, filename=f'hello.{ext}'), caption=caption)
         filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', caption,
@@ -2425,20 +2446,74 @@ async def _send_welcome_selfie(bot, chat_id: int, telegram_id: int, uid: int, ch
         logger.exception('welcome selfie failed user=%s', telegram_id)
 
 
-_FIRST_HELLO_RU = (
-    'привет{n} 🙈 ты правда пришёл… я ждала. расскажи, как тебя зовут по-настоящему и какой у тебя сегодня был день?',
-    'ой, привет{n} 😊 я Аня. честно, немного волнуюсь… ты чем сейчас занят?',
-    'привет{n} 💕 наконец-то кто-то интересный. скажи, ты больше любишь болтать до ночи или сразу к делу? 😏',
-)
-_FIRST_HELLO_EN = (
-    'hi{n} 🙈 you actually came… I was waiting. tell me, how was your day?',
-    'oh, hi{n} 😊 I\'m Anna. honestly a little nervous… what are you up to right now?',
-    'hi{n} 💕 finally someone interesting. do you like long late-night talks or getting straight to the point? 😏',
-)
+_FIRST_HELLO = {
+    'ru': (
+        'привет{n} 🙈 ты правда пришёл… я ждала. расскажи, как тебя зовут по-настоящему и какой у тебя сегодня был день?',
+        'ой, привет{n} 😊 я Аня. честно, немного волнуюсь… ты чем сейчас занят?',
+        'привет{n} 💕 наконец-то кто-то интересный. скажи, ты больше любишь болтать до ночи или сразу к делу? 😏',
+    ),
+    'en': (
+        'hi{n} 🙈 you actually came… I was waiting. tell me, how was your day?',
+        'oh, hi{n} 😊 I\'m Anna. honestly a little nervous… what are you up to right now?',
+        'hi{n} 💕 finally someone interesting. do you like long late-night talks or getting straight to the point? 😏',
+    ),
+    'es': (
+        'hola{n} 🙈 de verdad viniste… te estaba esperando. cuéntame, ¿cómo fue tu día?',
+        'oh, hola{n} 😊 soy Anna. la verdad, estoy un poco nerviosa… ¿qué haces ahora?',
+        'hola{n} 💕 por fin alguien interesante. ¿te gustan las charlas hasta tarde o prefieres ir directo al grano? 😏',
+    ),
+    'it': (
+        'ciao{n} 🙈 sei venuto davvero… ti stavo aspettando. com’è andata la tua giornata?',
+        'oh, ciao{n} 😊 sono Anna. sinceramente sono un po’ nervosa… che stai facendo?',
+        'ciao{n} 💕 finalmente qualcuno di interessante. preferisci le chiacchiere fino a tardi o andare subito al punto? 😏',
+    ),
+    'fr': (
+        'salut{n} 🙈 tu es vraiment venu… je t’attendais. raconte-moi ta journée ?',
+        'oh, salut{n} 😊 je suis Anna. je suis un peu nerveuse, sincèrement… tu fais quoi en ce moment ?',
+        'salut{n} 💕 enfin quelqu’un d’intéressant. tu préfères discuter tard dans la nuit ou aller droit au but ? 😏',
+    ),
+    'zh': (
+        '你好{n} 🙈 你真的来了……我一直在等你。跟我说说，你今天过得怎么样？',
+        '哎呀，你好{n} 😊 我是安娜。说实话，我有点紧张……你现在在做什么？',
+        '你好{n} 💕 终于来了个有趣的人。你喜欢聊到深夜，还是喜欢直奔主题？😏',
+    ),
+    'ja': (
+        'こんにちは{n} 🙈 本当に来てくれたんだ…待ってたよ。今日はどんな一日だった？',
+        'あ、こんにちは{n} 😊 アンナだよ。実はちょっと緊張してる…今何してるの？',
+        'こんにちは{n} 💕 やっと素敵な人が来てくれた。夜遅くまでおしゃべりするのと、すぐに本題に入るの、どっちが好き？😏',
+    ),
+    'bn': (
+        'হাই{n} 🙈 তুমি সত্যিই এসেছ… আমি অপেক্ষা করছিলাম। বলো, আজ তোমার দিনটা কেমন গেল?',
+        'ওহ, হাই{n} 😊 আমি আন্না। সত্যি বলতে একটু নার্ভাস… এখন কী করছ?',
+        'হাই{n} 💕 অবশেষে একজন মজার মানুষ এল। গভীর রাত পর্যন্ত গল্প করতে ভালোবাসো, নাকি সরাসরি কাজের কথায় আসতে? 😏',
+    ),
+}
+_FIRST_HELLO_RU = _FIRST_HELLO['ru']
+_FIRST_HELLO_EN = _FIRST_HELLO['en']
 
+_GENERIC_FIRST_HELLO = {
+    'ru': 'привет{n} 😊 я {who}. рада, что ты зашёл… расскажи, как прошёл твой день?',
+    'en': 'hi{n} 😊 I\'m {who}. so glad you came… how was your day?',
+    'es': 'hola{n} 😊 soy {who}. me alegra que hayas venido… ¿cómo fue tu día?',
+    'it': 'ciao{n} 😊 sono {who}. sono felice che tu sia qui… com’è andata la tua giornata?',
+    'fr': 'salut{n} 😊 je suis {who}. je suis ravie que tu sois là… comment s’est passée ta journée ?',
+    'zh': '你好{n} 😊 我是{who}。很高兴你来了……今天过得怎么样？',
+    'ja': 'こんにちは{n} 😊 {who}だよ。来てくれてうれしいな…今日はどんな一日だった？',
+    'bn': 'হাই{n} 😊 আমি {who}। তুমি এসে খুব ভালো লাগল… আজ তোমার দিনটা কেমন গেল?',
+}
 
-FIRST_REPLIES_RU = ('привет 🙂', 'расскажи о себе', 'мне скучно 😏')
-FIRST_REPLIES_EN = ('hi 🙂', 'tell me about yourself', 'I\'m bored 😏')
+FIRST_REPLIES = {
+    'ru': ('привет 🙂', 'расскажи о себе', 'мне скучно 😏'),
+    'en': ('hi 🙂', 'tell me about yourself', 'I\'m bored 😏'),
+    'es': ('hola 🙂', 'cuéntame sobre ti', 'me aburro 😏'),
+    'it': ('ciao 🙂', 'parlami di te', 'mi annoio 😏'),
+    'fr': ('salut 🙂', 'parle-moi de toi', 'je m’ennuie 😏'),
+    'zh': ('你好 🙂', '介绍一下你自己', '我好无聊 😏'),
+    'ja': ('こんにちは 🙂', 'あなたのことを教えて', '退屈だよ 😏'),
+    'bn': ('হাই 🙂', 'তোমার কথা বলো', 'আমার একঘেঁয়ে লাগছে 😏'),
+}
+FIRST_REPLIES_RU = FIRST_REPLIES['ru']
+FIRST_REPLIES_EN = FIRST_REPLIES['en']
 
 
 # V3.63.2: users whose current message must reach her even with BOT_CHAT_REDIRECT.
@@ -2446,7 +2521,7 @@ _redirect_bypass: set[int] = set()
 
 
 def _first_hello_keyboard(lang: str) -> types.InlineKeyboardMarkup:
-    replies = FIRST_REPLIES_EN if lang == EN else FIRST_REPLIES_RU
+    replies = FIRST_REPLIES[app_lang(lang)]
     return types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text=t, callback_data=f'first_reply:{i}')] for i, t in enumerate(replies)
     ])
@@ -2455,7 +2530,7 @@ def _first_hello_keyboard(lang: str) -> types.InlineKeyboardMarkup:
 @dp.callback_query(F.data.startswith('first_reply:'))
 async def first_reply_cb(cq: types.CallbackQuery):
     """The tapped answer goes through the normal chat pipeline as his message."""
-    replies = FIRST_REPLIES_EN if user_lang(cq.from_user.id) == EN else FIRST_REPLIES_RU
+    replies = FIRST_REPLIES[full_user_lang(cq.from_user.id, cq.from_user.language_code)]
     try:
         text = replies[int(cq.data.split(':', 1)[1])]
     except (ValueError, IndexError):
@@ -2481,13 +2556,11 @@ def _first_hello(character_id: str, first_name: str, lang: str) -> str:
     # The default heroine has hand-written openers; any other character opens
     # with a neutral line under her own name so the persona never breaks.
     n = (', ' + first_name.strip()[:32]) if first_name and first_name.strip() else ''
+    lang = app_lang(lang)
     if character_id == 'anna_01':
-        pool = _FIRST_HELLO_EN if lang == EN else _FIRST_HELLO_RU
-        return random.choice(pool).format(n=n)
+        return random.choice(_FIRST_HELLO[lang]).format(n=n)
     who = _character_display_name(character_id)
-    if lang == EN:
-        return f'hi{n} 😊 I\'m {who}. so glad you came… how was your day?'
-    return f'привет{n} 😊 я {who}. рада, что ты зашёл… расскажи, как прошёл твой день?'
+    return _GENERIC_FIRST_HELLO[lang].format(n=n, who=who)
 
 
 @dp.callback_query(F.data == 'consent:terms')
@@ -11974,8 +12047,17 @@ async def _webapp_api_me(request: web.Request) -> web.Response:
                     _uus(telegram_id, timezone=browser_tz)
             except Exception:
                 pass
+        from models.app_models import ProductEvent
+        with SessionLocal() as s:
+            first_open = not s.scalar(select(ProductEvent.id).where(
+                ProductEvent.user_id == uid,
+                ProductEvent.event_name == 'webapp_opened',
+            ).limit(1))
         track_event(uid, 'webapp_opened')
-        return webapp_service.api_me(telegram_id)
+        me = webapp_service.api_me(telegram_id)
+        from services.consent_service import has_accepted
+        me['first_webapp_open'] = bool(first_open and has_accepted(telegram_id))
+        return me
 
     me = await asyncio.to_thread(_boot)
     # V3.47.0: the viral invite link (src_share attribution + credits this user
@@ -13441,9 +13523,21 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
                                 'style': rel_row.persona_style}
         except Exception:
             logger.exception('premium floor on chat open failed user=%s character=%s', telegram_id, character_id)
-        return webapp_service.api_chat_history(uid, character_id, limit), persona_info
+        return webapp_service.api_chat_history(uid, character_id, limit), persona_info, uid
 
-    history, persona_info = await asyncio.to_thread(_load)
+    history, persona_info, uid = await asyncio.to_thread(_load)
+    if opening and not history:
+        try:
+            from services.consent_service import has_accepted
+            if has_accepted(telegram_id):
+                hello_lang = app_lang(request.query.get('lang'), full_user_lang(
+                    telegram_id, user_info.get('language_code')))
+                created = await _ensure_webapp_first_hello(
+                    telegram_id, uid, user_info.get('first_name') or '', hello_lang, character_id)
+                if created:
+                    history = await asyncio.to_thread(webapp_service.api_chat_history, uid, character_id, limit)
+        except Exception:
+            logger.exception('webapp first hello failed user=%s character=%s', telegram_id, character_id)
 
     def _duo():
         # V3.61.0: a constructor duo — the SPA bolds each speaker's name.
