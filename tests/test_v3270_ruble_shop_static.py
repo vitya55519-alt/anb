@@ -91,12 +91,13 @@ def test_constructor_buy_consumes_ruble_credit_before_stars():
     assert '_finish_constructor(cq.message.chat.id, None, telegram_id)' in MAIN
 
 
-def test_video_gate_spends_tokens_before_stars_invoice():
-    # V3.112.0: animation is monthly-Premium only — no token or Stars route.
+def test_video_gate_sells_stars_invoice_without_tokens():
     assert 'def spend_tokens(telegram_id: int, amount: int) -> bool:' in MAIN
     assert 'def add_tokens(telegram_id: int, amount: int) -> int:' in MAIN
-    gate = MAIN.split('async def _video_gate(', 1)[1].split('def _video_month_wall_text(', 1)[0]
-    assert 'spend_tokens' not in gate and 'send_stars_invoice' not in gate
+    gate = MAIN.split('async def _video_gate(', 1)[1].split('\n@dp.', 1)[0]
+    assert 'spend_tokens' not in gate
+    assert 'send_stars_invoice' in gate
+    assert 'VIDEO_COST_STARS' in gate
 
 def test_platega_callback_grants_by_product():
     # V3.52.1: the constructor branch is an `elif` of the SAME if/elif/else chain

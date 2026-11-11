@@ -933,8 +933,6 @@ def api_shop(lang: str = 'ru') -> dict:
         ('📸', 'новые фото в чате, до 2 в день из запаса тарифа, дальше за персики', 'new chat photos, up to 2 a day from the plan, more for peaches'),
         ('📞', 'звонки ей и голосовые из запаса тарифа', 'calls with her and voice notes from the plan'),
         ('🍑', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 каждый месяц в подарок', f'{PREMIUM_MONTHLY_PHOTO_CREDITS} 🍑 every month as a gift'),
-        # V3.112.0: animation only on a month or longer plan, one a day.
-        ('🎬', 'оживление фото в Premium на месяц и дольше', 'photo animation on a month or longer plan'),
         ('🎯', 'перезапуски историй и все персонажи', 'story replays and all characters'),
         ('💌', 'безлимитное общение — она не засыпает, и больше памяти', 'unlimited chat — she never falls asleep, more memory'),
         ('🎙', 'голосовые ответы', 'voice replies'),
@@ -952,6 +950,7 @@ def api_shop(lang: str = 'ru') -> dict:
         ('🤫', 'Тайное видео (с Premium)' if not en else 'Secret video (Premium)', HOT_CIRCLE_PEACH_COST),
         ('🔥', 'Горячий кружок (с Premium)' if not en else 'Hot video circle (Premium)', HOT_CIRCLE_PEACH_COST),
         ('🎨', 'Картинка в студии' if not en else 'Studio picture', WEBAPP_PICTURE_COST_CREDITS),
+        ('🎬', 'Оживление фото' if not en else 'Photo animation', WEBAPP_VIDEO_COST_CREDITS),
         ('🎬', 'Видео в студии' if not en else 'Studio video', WEBAPP_VIDEO_COST_CREDITS),
         # V3.44.22: public personas are free, private ones cost peaches.
         ('👩', 'Создание персонажа' if not en else 'Character creation', 0),

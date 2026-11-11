@@ -42,3 +42,34 @@ def test_no_black_void_location():
     assert 'never a plain black or empty backdrop' in build_private_photo_prompt(req, 'x')
     studio = next(l for l in pp.LOCATIONS if l['id'] == 'studio')
     assert 'black background' not in studio['name_en']
+
+
+def test_hot_pass_shares_two_free_photos_then_requires_payment():
+    from sqlalchemy import select
+    from models.app_models import Base, User
+    from services.db import SessionLocal, engine
+    from services.user_service import ensure_user
+
+    Base.metadata.create_all(engine)
+    telegram_id = 360102
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as session:
+        user = session.scalar(select(User).where(User.id == uid))
+        user.achievements = ''
+        user.private_photo_used = 0
+        user.cosplay_photo_used = 0
+        user.private_photo_date = None
+        user.cosplay_photo_date = None
+        session.commit()
+
+    pp.activate_hot_pass(telegram_id, 1)
+    assert pp.consume_free_private_photo(telegram_id, 'lingerie')
+    assert pp.consume_free_private_photo(telegram_id, 'cosplay')
+    assert not pp.consume_free_private_photo(telegram_id, 'roleplay')
+    usage = pp.get_private_photo_usage(telegram_id)
+    assert usage['hot_pass_left'] == 0
+    assert usage['private_used'] == 1
+    assert usage['cosplay_used'] == 1
+
+    main = (ROOT / 'main.py').read_text(encoding='utf-8')
+    assert "if not is_free and not usage['hot_pass_active']" not in main

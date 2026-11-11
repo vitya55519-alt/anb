@@ -36,8 +36,8 @@ _DEFAULTS = {
     'demo':    {'messages': 30,   'photos': 1,  'undress': 0,  'call_seconds': 0,    'voice': 3,   'animations': 0},
     'trial':   {'messages': 100,  'photos': 2,  'undress': 1,  'call_seconds': 300,  'voice': 10,  'animations': 0},
     'week':    {'messages': -1,  'photos': 5,  'undress': 2,  'call_seconds': 600,  'voice': 20,  'animations': 0},
-    'month':   {'messages': -1,  'photos': 15, 'undress': 6,  'call_seconds': 1500, 'voice': 50,  'animations': 2},
-    'quarter': {'messages': -1, 'photos': 40, 'undress': 15, 'call_seconds': 3600, 'voice': 120, 'animations': 4},
+    'month':   {'messages': -1,  'photos': 15, 'undress': 6,  'call_seconds': 1500, 'voice': 50,  'animations': 0},
+    'quarter': {'messages': -1, 'photos': 40, 'undress': 15, 'call_seconds': 3600, 'voice': 120, 'animations': 0},
 }
 
 

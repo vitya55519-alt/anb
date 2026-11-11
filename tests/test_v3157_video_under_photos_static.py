@@ -30,16 +30,15 @@ def test_animate_photo_callback_guards():
     assert '_show_video_preset_menu(' in block
 
 
-def test_video_gate_free_premium_then_paid():
+def test_video_gate_paid_stars_except_admin():
     gate = MAIN[MAIN.index('async def _video_gate('):]
     gate = gate.split('\n@dp.', 1)[0]
-    # Admins animate photos for free without limits; Premium gets the daily slot.
     assert 'ADMIN_TELEGRAM_IDS' in gate
-    # V3.112.0: monthly Premium only, one a day, no Stars invoice any more.
-    assert 'has_monthly_premium(' in gate
-    assert 'consume_premium_video_free(' in gate
-    assert 'send_stars_invoice(' not in gate
-    # One unified job handles free (charge_id=None) runs with engine fallback.
+    assert 'has_monthly_premium(' not in gate
+    assert 'consume_premium_video_free(' not in gate
+    assert 'send_stars_invoice(' in gate
+    assert 'VIDEO_COST_STARS' in gate
+    # The admin job still uses the unified background renderer without a charge.
     assert "_run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset)" in gate
 
 
@@ -61,9 +60,11 @@ def test_premium_daily_free_limit_helpers():
     assert 'video_free_used' in USER_MODEL
     assert "'video_free_date'" in DB
     assert "'video_free_used'" in DB
-    # V3.112.0: one animation a day, monthly Premium only (owner).
-    assert '"VIDEO_PREMIUM_FREE_DAILY", "1"' in CONFIG
+    # Animations are paid separately; the legacy helper is disabled by default.
+    assert '"VIDEO_PREMIUM_FREE_DAILY", "0"' in CONFIG
 
 
-def test_premium_pitch_mentions_daily_free_video():
-    assert '1 оживление фото в день — в Premium на месяц и дольше' in MAIN
+def test_premium_pitch_does_not_promise_free_video():
+    pitch = MAIN[MAIN.index('def premium_pitch_text('):MAIN.index('def _sleep_block_markup(')]
+    assert 'оживление фото в день' not in pitch
+    assert 'photo animation a day' not in pitch

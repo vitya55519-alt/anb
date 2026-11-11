@@ -73,7 +73,6 @@ def test_tariffs_render_live_prices():
         'CHAT_PHOTO_OFFER_STARS',
         'CUSTOM_PHOTO_COST_STARS',
         'VIDEO_COST_STARS',
-        'VIDEO_PREMIUM_FREE_DAILY',
         'GALLERY_DOWNLOAD_STARS',
         'QUEST_REPLAY_STARS',
         'CONSTRUCTOR_COST_PEACHES',

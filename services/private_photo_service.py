@@ -11,7 +11,7 @@ V3.45.0 — Фото «наедине» и «Косплей» — монетиз
 Цены:
 - 2 бесплатных фото/день (1 наедине + 1 косплей)
 - После лимита: 2 персика за фото
-- Hot Pass: 5/25/80 персиков (день/неделя/месяц) — безлимит
+- Hot Pass: 5/25/80 персиков (день/неделя/месяц) — 2 бесплатных фото/день суммарно
 """
 
 import logging
@@ -38,6 +38,7 @@ from config import (
     HOT_PASS_DAY_PEACHES,
     HOT_PASS_WEEK_PEACHES,
     HOT_PASS_MONTH_PEACHES,
+    HOT_PASS_FREE_DAILY,
     SPICYAPI_KEY,
     SPICYAPI_BASE_URL,
     SPICYAPI_IMAGE_MODEL,
@@ -274,7 +275,7 @@ def get_private_photo_usage(telegram_id: int) -> Dict[str, Any]:
     """Получить использование бесплатных лимитов и статус Hot Pass."""
     uid = ensure_user(telegram_id)
     today = date.today()
-    
+
     with SessionLocal() as session:
         user = session.scalar(select(User).where(User.id == uid))
         if not user:
@@ -283,33 +284,34 @@ def get_private_photo_usage(telegram_id: int) -> Dict[str, Any]:
                 "cosplay_used": 0,
                 "private_left": PRIVATE_PHOTO_FREE_DAILY,
                 "cosplay_left": COSPLAY_PHOTO_FREE_DAILY,
+                "hot_pass_left": 0,
                 "hot_pass_active": False,
                 "hot_pass_expires": None,
             }
-        
-        # Проверяем Hot Pass
-        hot_pass_active = False
-        hot_pass_expires = None
-        if hasattr(user, 'hot_pass_expires') and user.hot_pass_expires:
-            if user.hot_pass_expires > datetime.utcnow():
-                hot_pass_active = True
-                hot_pass_expires = user.hot_pass_expires
-        
-        # Сбрасываем счётчики если новый день
-        private_used = 0
-        cosplay_used = 0
-        if hasattr(user, 'private_photo_date') and user.private_photo_date:
-            if user.private_photo_date == today:
-                private_used = getattr(user, 'private_photo_used', 0) or 0
-                cosplay_used = getattr(user, 'cosplay_photo_used', 0) or 0
-        
+
+        hot_pass_active = bool(
+            user.hot_pass_expires and user.hot_pass_expires > datetime.utcnow()
+        )
+        private_used = (
+            getattr(user, 'private_photo_used', 0) or 0
+            if user.private_photo_date == today else 0
+        )
+        cosplay_used = (
+            getattr(user, 'cosplay_photo_used', 0) or 0
+            if user.cosplay_photo_date == today else 0
+        )
+        hot_pass_left = (
+            max(0, HOT_PASS_FREE_DAILY - private_used - cosplay_used)
+            if hot_pass_active else 0
+        )
         return {
             "private_used": private_used,
             "cosplay_used": cosplay_used,
             "private_left": max(0, PRIVATE_PHOTO_FREE_DAILY - private_used),
             "cosplay_left": max(0, COSPLAY_PHOTO_FREE_DAILY - cosplay_used),
+            "hot_pass_left": hot_pass_left,
             "hot_pass_active": hot_pass_active,
-            "hot_pass_expires": hot_pass_expires,
+            "hot_pass_expires": user.hot_pass_expires if hot_pass_active else None,
         }
 
 
@@ -348,46 +350,52 @@ def consume_free_private_photo(telegram_id: int, category: str) -> bool:
     """
     uid = ensure_user(telegram_id)
     today = date.today()
-    
+
     with SessionLocal() as session:
-        user = session.scalar(select(User).where(User.id == uid))
+        user = session.scalar(select(User).where(User.id == uid).with_for_update())
         if not user:
             return False
-        
+
         # V3.46.0: a sealed category unlocked by an achievement is free forever
         # and never burns the daily limit.
         keys = set((user.achievements or "").split(",")) - {""}
         if any(ACHIEVEMENT_SCENE_UNLOCKS.get(k) == category for k in keys):
             return True
-        
-        # Проверяем Hot Pass
-        if hasattr(user, 'hot_pass_expires') and user.hot_pass_expires:
-            if user.hot_pass_expires > datetime.utcnow():
-                return True  # Hot Pass активен, не считаем
-        
-        # Определяем какой лимит проверять
+
         if category == "cosplay":
             limit = COSPLAY_PHOTO_FREE_DAILY
             used_attr = 'cosplay_photo_used'
             date_attr = 'cosplay_photo_date'
+            other_used_attr = 'private_photo_used'
+            other_date_attr = 'private_photo_date'
         else:
             limit = PRIVATE_PHOTO_FREE_DAILY
             used_attr = 'private_photo_used'
             date_attr = 'private_photo_date'
-        
-        # Сбрасываем если новый день
-        current_date = getattr(user, date_attr, None)
-        if current_date != today:
+            other_used_attr = 'cosplay_photo_used'
+            other_date_attr = 'cosplay_photo_date'
+
+        if getattr(user, date_attr, None) != today:
             setattr(user, used_attr, 0)
             setattr(user, date_attr, today)
-        
+        if getattr(user, other_date_attr, None) != today:
+            setattr(user, other_used_attr, 0)
+            setattr(user, other_date_attr, today)
+
         used = getattr(user, used_attr, 0) or 0
-        if used < limit:
-            setattr(user, used_attr, used + 1)
-            session.commit()
-            return True
-        
-        return False
+        other_used = getattr(user, other_used_attr, 0) or 0
+        hot_pass_active = bool(
+            user.hot_pass_expires and user.hot_pass_expires > datetime.utcnow()
+        )
+        # Hot Pass: два бесплатных фото в день суммарно, дальше за персики.
+        if hot_pass_active and used + other_used >= HOT_PASS_FREE_DAILY:
+            return False
+        if not hot_pass_active and used >= limit:
+            return False
+
+        setattr(user, used_attr, used + 1)
+        session.commit()
+        return True
 
 
 def activate_hot_pass(telegram_id: int, duration_days: int) -> datetime:

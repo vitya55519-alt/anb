@@ -107,6 +107,7 @@ COSPLAY_PHOTO_PEACH_COST = _peach_env("COSPLAY_PHOTO_PEACH_COST", 2)
 HOT_PASS_DAY_PEACHES = _peach_env("HOT_PASS_DAY_PEACHES", 5)
 HOT_PASS_WEEK_PEACHES = _peach_env("HOT_PASS_WEEK_PEACHES", 25)
 HOT_PASS_MONTH_PEACHES = _peach_env("HOT_PASS_MONTH_PEACHES", 80)
+HOT_PASS_FREE_DAILY = max(0, int(os.getenv("HOT_PASS_FREE_DAILY", "2")))
 # Видео за персики — ЕДИНАЯ цена видео-продукта на персиковом рельсе:
 # студия Mini App (webapp_service.WEBAPP_VIDEO_COST_CREDITS читает её).
 # V3.55.5: 5 -> 20 🍑 — клип сжигает картинковый рендер + видео-движок.
@@ -252,12 +253,8 @@ VIDEO_COST_STARS = max(1, int(os.getenv("VIDEO_COST_STARS", "50")))
 # Paid gallery download: the user re-sends their own uncompressed photo as a
 # Telegram document (full resolution). Kept low to encourage repeat use.
 GALLERY_DOWNLOAD_STARS = max(1, int(os.getenv("GALLERY_DOWNLOAD_STARS", "30")))
-# Premium perk: this many photo animations per day are free for Premium users;
-# any extra animation on the same day is sold for VIDEO_COST_STARS Stars.
-# V3.112.0: owner — photo animation is a monthly-Premium perk only (a month or
-# longer: month / quarter), one a day, nothing free and no Stars/token route.
-# Every animation is a paid SpicyAPI video; trial/week buyers could not cover it.
-VIDEO_PREMIUM_FREE_DAILY = max(0, int(os.getenv("VIDEO_PREMIUM_FREE_DAILY", "1")))
+# Photo animations are paid: Stars in the bot and peaches in the Mini App.
+VIDEO_PREMIUM_FREE_DAILY = max(0, int(os.getenv("VIDEO_PREMIUM_FREE_DAILY", "0")))
 VIDEO_MIN_PLAN_DAYS = max(1, int(os.getenv("VIDEO_MIN_PLAN_DAYS", "28")))
 # V3.53.0: «Собери галерею» — every GALLERY_SET_SIZE delivered photos of one
 # character (bot chat + Mini App chat/private/circle/video) completes a gallery

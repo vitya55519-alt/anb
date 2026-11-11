@@ -51,7 +51,7 @@ from config import (
 from config import (
     PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST, CHAT_PHOTO_PEACH_COST, CIRCLE_PEACH_COST,
     HOT_CIRCLE_PEACH_COST, HOT_CIRCLE_ENABLED,
-    HOT_PASS_DAY_PEACHES, HOT_PASS_WEEK_PEACHES, HOT_PASS_MONTH_PEACHES,
+    HOT_PASS_DAY_PEACHES, HOT_PASS_WEEK_PEACHES, HOT_PASS_MONTH_PEACHES, HOT_PASS_FREE_DAILY,
     VOICE_PHOTO_PEACH_COST,
 )
 from services.user_service import (
@@ -78,7 +78,7 @@ from services.photo_idea_service import (
 from config import PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIAL_PRICE_RUB  # V3.88.0
 from config import UNDRESS_ONE_ENABLED, UNDRESS_ONE_PRICE_RUB, UNDRESS_ONE_STARS  # V3.132.0
 from services.payments import trial_eligible  # V3.88.0
-from services.payments import record_payment, get_photo_credits, get_paid_peaches, record_refund, grant_premium, revoke_premium, consume_premium_video_free, premium_video_free_left, has_monthly_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
+from services.payments import record_payment, get_photo_credits, get_paid_peaches, record_refund, grant_premium, revoke_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
 from services.bot_description import apply_bot_descriptions
 from services import seo_landing
 from services.referral_service import (
@@ -601,7 +601,7 @@ def abilities_text(lang: str = RU) -> str:
             '❤️ the relationship grows through levels 1–10: each level gets closer and more open; at level 3 you choose the path of romance or passion (7–10 are a Premium plateau)\n'
             '🎯 interactive stories: your first choice becomes canon, and you can replay alternate branches later\n'
             '📸 photos right in the chat: type “send a photo” or “I want to see you” — I send a fresh shot for the moment; sometimes I offer one myself while flirting\n'
-            '🎬 an “Animate photo” button under every shot — a short AI video from any photo (Premium: 2 free per day)\n'
+            f'🎬 an “Animate photo” button under every shot — a short AI video from any photo ({VIDEO_COST_STARS} Stars)\n'
             '🎥 video circles — “from me” circles with my voice (paid in 🍑)\n'
             '🎯 daily quest — a small request from me every day, completing it earns attention points\n'
             '🏠 apartment: visit the rooms, spend time with me — new rooms open as the relationship grows\n'
@@ -619,7 +619,7 @@ def abilities_text(lang: str = RU) -> str:
         '❤️ отношения развиваются по уровням 1–10: с каждым уровнем общение и образы становятся ближе и откровеннее; на 3-м ты выбираешь путь романтики или страсти (7–10 — плато для Premium)\n'
         '🎯 интерактивные истории: твой первый выбор становится каноном, а альтернативные ветки можно посмотреть позже\n'
         '📸 фото прямо в чате: напиши «скинь фото» или «хочу тебя увидеть» — она пришлёт свежий кадр по ситуации; иногда предлагает сама во время флирта\n'
-        '🎬 кнопка «Оживить фото» под каждым снимком — короткое AI-видео из любого фото (Premium: 2 бесплатно в день)\n'
+        f'🎬 кнопка «Оживить фото» под каждым снимком — короткое AI-видео из любого фото ({VIDEO_COST_STARS} Stars)\n'
         '🎥 кружочки — видео-кружочки «от неё» с её голосом (за 🍑)\n'
         '🎯 задание дня — маленькая просьба от неё каждый день, выполнение даёт очки внимания\n'
         '🏠 квартира: заходи в комнаты, проводи с ней время — новые комнаты открываются с уровнями отношений\n'
@@ -1238,7 +1238,6 @@ def premium_pitch_text(telegram_id: int) -> str:
             'Premium:',
             '• unlimited messages — I never “fall asleep” mid-conversation 😴',
             '• 12 extra photo credits',
-            '• 🎬 1 photo animation a day — on a month or longer plan',
             '• 🎥 video circles from me — paid in 🍑',
             '• 🎙 voice replies — Premium only',
             '• 💋 relationship levels 7–10 — the top of the romance or passion path',
@@ -1251,7 +1250,6 @@ def premium_pitch_text(telegram_id: int) -> str:
             'Premium:',
             '• безлимит сообщений — я больше не «засыпаю» посреди разговора 😴',
             '• 12 дополнительных photo credits',
-            '• 🎬 1 оживление фото в день — в Premium на месяц и дольше',
             '• 🎥 видео-кружочки от меня — за 🍑',
             '• 🎙 голосовые ответы — только для Premium',
             '• 💋 уровни 7–10 отношений — вершина пути романтики или страсти',
@@ -1815,8 +1813,11 @@ _EN_INVOICE = {
 
 def _invoice_texts_en(chat_id: int, title: str, description: str, payload: str) -> tuple[str, str]:
     try:
-        if payload in _EN_INVOICE and user_lang(chat_id) == EN:
-            return _EN_INVOICE[payload]()
+        if user_lang(chat_id) == EN:
+            if payload in _EN_INVOICE:
+                return _EN_INVOICE[payload]()
+            if payload.startswith('video:'):
+                return 'Photo animation', 'A short video from this photo'
     except Exception:
         pass
     return title, description
@@ -2674,7 +2675,7 @@ async def onboarding_character_select(cq: types.CallbackQuery):
                 '🎯 Daily quest — her small request (+5 attention for completing it)\n'
                 '💕 Date and 🏠 Apartment — time together, new places open with the levels\n'
                 '👤 Profile — your intimacy level in hearts and progress\n'
-                '🚀 Premium — unlimited chatting, photo animations and levels 7–10'
+                '🚀 Premium — unlimited chatting and levels 7–10'
             ) if tour_lang == EN else (
                 'быстрый тур по кнопкам 👇\n\n'
                 '💬 просто пиши ей — отношения растут с каждым сообщением\n'
@@ -2683,7 +2684,7 @@ async def onboarding_character_select(cq: types.CallbackQuery):
                 '🎯 Задание дня — её маленькая просьба (+5 внимания за выполнение)\n'
                 '💕 Свидание и 🏠 Квартира — время вместе, новые места открываются с уровнями\n'
                 '👤 Профиль — твой уровень близости в сердечках и прогресс\n'
-                '🚀 Премиум — безлимит, оживления фото и уровни 7–10'
+                '🚀 Премиум — безлимит общения и уровни 7–10'
             )
             await cq.message.answer(tour_text)
             track_event(uid, 'onboarding_tour_sent')
@@ -5807,49 +5808,25 @@ async def video_preset_cb(cq: types.CallbackQuery):
 
 
 async def _video_gate(cq: types.CallbackQuery, delivery: dict, motion_preset: str | None = None) -> None:
-    """V3.112.0: photo animation is a monthly-Premium perk — one a day for a
-    month (or longer) plan, nothing free, no Stars or token route (owner:
-    every animation is a paid SpicyAPI video). Admins stay unlimited."""
+    """Платное оживление за Stars; генерация для администратора остаётся бесплатной."""
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     track_event(uid, 'video_animate_click', metadata={'delivery_id': delivery['id'], 'preset': motion_preset or 'auto'})
-    admin = cq.from_user.id in ADMIN_TELEGRAM_IDS
-    en = user_lang(cq.from_user.id) == EN
-    if not admin and not has_monthly_premium(cq.from_user.id):
-        track_event(uid, 'video_month_wall', metadata={'premium': is_premium(cq.from_user.id)})
-        await cq.message.answer(_video_month_wall_text(en), reply_markup=_video_month_wall_markup(en))
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        track_event(uid, 'video_invoice', metadata={'delivery_id': delivery['id'], 'stars': VIDEO_COST_STARS})
+        await send_stars_invoice(
+            cq.message.chat.id,
+            'Оживление фото',
+            'Короткое видео из этого фото',
+            f'video:{delivery["id"]}:{motion_preset or "auto"}',
+            VIDEO_COST_STARS,
+        )
         return
-    if not admin and not consume_premium_video_free(cq.from_user.id):
-        await cq.message.answer('you already animated a photo today 🎬 the next one tomorrow' if en
-                                else 'сегодня ты уже оживлял фото 🎬 следующее можно завтра')
-        return
-    track_event(uid, 'video_free_used', metadata={'delivery_id': delivery['id'], 'admin': admin})
+    track_event(uid, 'video_admin_used', metadata={'delivery_id': delivery['id']})
     _video_jobs[cq.from_user.id] = _spawn_job(
         'video', cq.from_user.id,
         _run_video_background(cq.message.chat.id, cq.from_user.id, delivery['id'], None, motion_preset=motion_preset),
         payload={'preset': motion_preset or 'auto'},
     )
-
-
-def _video_month_wall_text(en: bool) -> str:
-    if en:
-        return ('🎬 Photo animation comes with Premium for a month or longer: one animation every day.\n'
-                'The trial and the week do not include it.')
-    return ('🎬 Оживление фото входит в Premium на месяц и дольше: одно оживление каждый день.\n'
-            'В пробный период и неделю оно не входит.')
-
-
-def _video_month_wall_markup(en: bool) -> InlineKeyboardMarkup:
-    rows = []
-    if not en and PLATEGA_ENABLED and is_button_enabled('platega_rub'):
-        rows.append([_platega_pay_button('premium_month', PLATEGA_PREMIUM_PRICE_RUB,
-                                         f'💳 Premium на месяц — {PLATEGA_PREMIUM_PRICE_RUB} ₽ · карта / СБП')])
-    rows.append([InlineKeyboardButton(text=(f'⭐ Premium for a month — {PREMIUM_MONTHLY_STARS} Stars' if en
-                                            else f'⭐ Premium на месяц — {PREMIUM_MONTHLY_STARS} Stars'),
-                                      callback_data='buy:premium')])
-    if en and PLATEGA_ENABLED and is_button_enabled('platega_rub'):
-        rows.append([_platega_pay_button('premium_month', PLATEGA_PREMIUM_PRICE_RUB,
-                                         f'💎 a month — crypto / card · {PLATEGA_PREMIUM_PRICE_RUB} ₽')])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @dp.callback_query(F.data.startswith('video:animate:'))
@@ -6259,7 +6236,7 @@ async def retention_demo_cb(cq: types.CallbackQuery):
         await cq.answer()
         await cq.message.answer(
             f'🎁 Демо-Premium активен на {DEMO_PREMIUM_HOURS} часа!\n'
-            'безлимит сообщений и оживления фото — всё твоё 😏\n'
+            'безлимит сообщений — всё твоё 😏\n'
             'когда время выйдет, я буду скучать по нашему безлимиту… 💋'
         )
     else:
@@ -7070,7 +7047,9 @@ async def private_photo_start(cq: types.CallbackQuery):
         )])
     rows.append([InlineKeyboardButton(text='⬅️ Назад', callback_data='photo_menu:open')])
     if usage['hot_pass_active']:
-        limit_text = '🔥 Hot Pass активен — безлимит!'
+        limit_text = (f'🔥 Hot Pass: {usage["hot_pass_left"]} free photos left today, then 🍑'
+                      if user_lang(cq.from_user.id) == EN else
+                      f'🔥 Hot Pass: сегодня бесплатно ещё {usage["hot_pass_left"]}, дальше за 🍑')
     else:
         limit_text = f'Бесплатно сегодня: {usage["private_left"]} фото'
     await cq.message.answer(
@@ -7104,7 +7083,9 @@ async def private_cosplay_start(cq: types.CallbackQuery):
         )])
     rows.append([InlineKeyboardButton(text='⬅️ Назад', callback_data='photo_menu:open')])
     if usage['hot_pass_active']:
-        limit_text = '🔥 Hot Pass активен — безлимит!'
+        limit_text = (f'🔥 Hot Pass: {usage["hot_pass_left"]} free photos left today, then 🍑'
+                      if user_lang(cq.from_user.id) == EN else
+                      f'🔥 Hot Pass: сегодня бесплатно ещё {usage["hot_pass_left"]}, дальше за 🍑')
     else:
         limit_text = f'Бесплатно сегодня: {usage["cosplay_left"]} фото'
     await cq.message.answer(
@@ -7189,7 +7170,7 @@ async def private_photo_generate(cq: types.CallbackQuery):
     cat_id, type_id, loc_id, mood_id = parts[2], parts[3], parts[4], parts[5]
     from services.private_photo_service import (
         PrivatePhotoRequest, consume_free_private_photo,
-        get_private_photo_usage, get_type_name, generate_private_photo_real,
+        get_type_name, generate_private_photo_real,
     )
     if cq.from_user.id not in ADMIN_TELEGRAM_IDS and not is_premium(cq.from_user.id):
         # V3.87.0: «Наедине» shots are Premium-only — the button sells Premium.
@@ -7199,9 +7180,8 @@ async def private_photo_generate(cq: types.CallbackQuery):
         await cq.message.answer(CHAT_PHOTO_BLOCK_TEXT['spicy'],
                                 reply_markup=premium_keyboard(telegram_id=cq.from_user.id))
         return
-    usage = get_private_photo_usage(cq.from_user.id)
     is_free = consume_free_private_photo(cq.from_user.id, cat_id)
-    if not is_free and not usage['hot_pass_active']:
+    if not is_free:
         from services.payments import spend_peaches
         if not spend_peaches(cq.from_user.id, PRIVATE_PHOTO_PEACH_COST, paid_only=True):
             await cq.answer(f'Нужно {PRIVATE_PHOTO_PEACH_COST} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True)
@@ -7323,11 +7303,10 @@ async def private_cosplay_generate(cq: types.CallbackQuery):
     cosplay_id, loc_id, mood_id = parts[2], parts[3], parts[4]
     from services.private_photo_service import (
         PrivatePhotoRequest, consume_free_private_photo,
-        get_private_photo_usage, get_cosplay_name, generate_private_photo_real,
+        get_cosplay_name, generate_private_photo_real,
     )
-    usage = get_private_photo_usage(cq.from_user.id)
     is_free = consume_free_private_photo(cq.from_user.id, 'cosplay')
-    if not is_free and not usage['hot_pass_active']:
+    if not is_free:
         from services.payments import spend_peaches
         if not spend_peaches(cq.from_user.id, COSPLAY_PHOTO_PEACH_COST, paid_only=True):
             await cq.answer(f'Нужно {COSPLAY_PHOTO_PEACH_COST} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True)
@@ -7415,11 +7394,17 @@ async def private_photo_hotpass(cq: types.CallbackQuery):
     from services.private_photo_service import activate_hot_pass
     expires = activate_hot_pass(cq.from_user.id, days)
     await cq.answer()
-    await cq.message.answer(
-        f'🔥 Hot Pass активирован на {days} дн.!\n\n'
-        f'Безлимитные фото «наедине» и «косплей» до {expires.strftime("%d.%m.%Y %H:%M")}\n\n'
-        f'Списано {cost} 🍑',
-    )
+    if user_lang(cq.from_user.id) == EN:
+        text = (f'🔥 Hot Pass is active for {days} days!\n\n'
+                f'{HOT_PASS_FREE_DAILY} free private/cosplay photos per day in total, then peaches. '
+                f'Active until {expires.strftime("%d.%m.%Y %H:%M")}\n\n'
+                f'Charged {cost} 🍑')
+    else:
+        text = (f'🔥 Hot Pass активирован на {days} дн.!\n\n'
+                f'{HOT_PASS_FREE_DAILY} бесплатных фото «наедине» и «косплей» в день суммарно, дальше за персики. '
+                f'Действует до {expires.strftime("%d.%m.%Y %H:%M")}\n\n'
+                f'Списано {cost} 🍑')
+    await cq.message.answer(text)
 
 
 # ─── V3.45.0: Приватная галерея ─────────────────────────────────────────────
@@ -7710,9 +7695,9 @@ async def pre_checkout(query: types.PreCheckoutQuery):
         except (ValueError, IndexError):
             ok = False
         else:
-            # V3.112.0: animation is not sold for Stars any more (monthly
-            # Premium only) — an old invoice left in a chat is refused here.
-            ok = False
+            delivery = get_photo_delivery_for_user(query.from_user.id, delivery_id)
+            ok = (amount == VIDEO_COST_STARS and _any_video_engine()
+                  and bool(delivery and delivery.get('telegram_file_id')))
     elif payload.startswith('constructor:'):
         ok = amount == CONSTRUCTOR_COST_STARS
     elif payload.startswith('gallery_dl:'):
@@ -7835,18 +7820,18 @@ async def successful_payment(message: types.Message):
         record_payment(message.from_user.id, 'premium_week', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_week'})
         if user_lang(message.from_user.id) == EN:
-            await message.answer(f'done ✨ Premium is active for 7 days and I added {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits. Every photo of mine now has an «Animate» button — 2 free videos a day 🎬 plus my video circles 🎥')
+            await message.answer(f'done ✨ Premium is active for 7 days and I added {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits. Photo animations are available for Stars 🎬 plus my video circles 🎥')
         else:
-            await message.answer(f'готово ✨ Premium активирован на 7 дней, и я добавила {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits. Теперь под каждым моим фото есть кнопка «Оживить» — 2 раза в день сделаю видео бесплатно 🎬 а ещё тебе открыты мои кружочки 🎥')
+            await message.answer(f'готово ✨ Premium активирован на 7 дней, и я добавила {PREMIUM_WEEKLY_PHOTO_CREDITS} photo credits. Оживление фото доступно за Stars 🎬 а ещё тебе открыты мои кружочки 🎥')
         return
 
     if payload == 'premium_quarter':
         record_payment(message.from_user.id, 'premium_quarter', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_quarter'})
         if user_lang(message.from_user.id) == EN:
-            await message.answer(f'done ✨ Premium is active for 90 days and I added {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 1 free photo animation a day 🎬 plus my video circles 🎥')
+            await message.answer(f'done ✨ Premium is active for 90 days and I added {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. Photo animations are available for Stars 🎬 plus my video circles 🎥')
         else:
-            await message.answer(f'готово ✨ Premium активирован на 90 дней, и я добавила {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. 1 оживление фото в день бесплатно 🎬 и мои кружочки 🎥')
+            await message.answer(f'готово ✨ Premium активирован на 90 дней, и я добавила {PREMIUM_QUARTERLY_PHOTO_CREDITS} photo credits. Оживление фото доступно за Stars 🎬 и мои кружочки 🎥')
         return
 
     if payload == 'premium_month_vip':
@@ -7861,7 +7846,7 @@ async def successful_payment(message: types.Message):
     if payload == 'premium_month_discount':
         record_payment(message.from_user.id, 'premium_month_discount', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'premium_month_discount'})
-        await message.answer('готово ✨ Premium активирован на 30 дней со скидкой, и я добавила 12 photo credits. 2 оживления фото в день бесплатно + кружочки только для тебя 🎥💋')
+        await message.answer('готово ✨ Premium активирован на 30 дней со скидкой, и я добавила 12 photo credits. Общение без лимита, голос и мои откровенные фото — только для тебя 💋')
         return
 
     if payload.startswith('quest_replay:'):
@@ -16044,12 +16029,9 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         if action == 'animate':
             if admin:
                 return uid, None, 'admin'
-            if not has_monthly_premium(telegram_id):
-                # V3.112.0: a month (or longer) Premium only, one a day.
-                return uid, ('month_required', 403), None
-            if not consume_premium_video_free(telegram_id):
-                return uid, ('video_limit', 402), None
-            return uid, None, 'premium'
+            if get_paid_peaches(telegram_id) < webapp_service.WEBAPP_VIDEO_COST_CREDITS:
+                return uid, ('credits', 402), None
+            return uid, None, 'peaches'
         if not is_adult_confirmed(telegram_id):
             return uid, ('adult_confirm', 403), None
         if admin:
@@ -16109,8 +16091,6 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         logger.exception('photo action failed user=%s action=%s', telegram_id, action)
         await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, action,
                                 character_id, media_url, f'{type(exc).__name__}: {exc}')
-        if action == 'animate' and pay == 'premium':
-            logger.info('animate failed after the free slot was used user=%s', telegram_id)
         # The owner sees the real reason right in the toast; users get a calm line.
         return web.json_response({'ok': False, 'error': 'failed',
                                   'reason': f'{type(exc).__name__}: {exc}'[:160] if admin else ''})
@@ -16120,6 +16100,9 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         url = f'/webapp/media/{name}'
         webapp_service.record_generation(telegram_id, kind, character_id, f'{action}: {media_url}', name)
         save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
+        if action == 'animate' and pay == 'peaches':
+            if not spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS, paid_only=True):
+                logger.warning('webapp photo animation peach race user=%s', telegram_id)
         if action == 'undress':
             from config import UNDRESS_PEACH_COST
             if pay in ('free', 'trial'):
@@ -16239,15 +16222,9 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
                 return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
             if telegram_id not in ADMIN_TELEGRAM_IDS and get_paid_peaches(telegram_id) < HOT_CIRCLE_PEACH_COST:
                 return web.json_response({'ok': False, 'error': 'credits'}, status=402)
-        if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS:
-            # V3.41.0: app video shares the Premium free-animation slots, exactly
-            # like the bot's «🎬 Оживить фото»; a separate gate keeps the circle
-            # branch (and its static test) untouched.
-            if not has_monthly_premium(telegram_id):
-                # V3.112.0: a month (or longer) Premium only, one a day.
-                return web.json_response({'ok': False, 'error': 'month_required'}, status=403)
-            if not consume_premium_video_free(telegram_id):
-                return web.json_response({'ok': False, 'error': 'video_limit'}, status=402)
+        if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS \
+                and get_paid_peaches(telegram_id) < webapp_service.WEBAPP_VIDEO_COST_CREDITS:
+            return web.json_response({'ok': False, 'error': 'credits'}, status=402)
         if kind == 'voice' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
             # V3.55.1: voice is a Premium perk now (owner) — the SPA already maps
             # premium_required to the paywall toast and the shop tab.
@@ -16332,6 +16309,8 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             logger.warning('webapp chat photo credit race user=%s', telegram_id)
         if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, CIRCLE_PEACH_COST, paid_only=True):
             logger.warning('webapp chat circle peach race user=%s', telegram_id)
+        if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS, paid_only=True):
+            logger.warning('webapp chat video peach race user=%s', telegram_id)
         if kind == 'hotcircle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, HOT_CIRCLE_PEACH_COST, paid_only=True):
             logger.warning('webapp chat hot circle peach race user=%s', telegram_id)
         # V3.44.6: record author revenue when someone spends on a custom character.

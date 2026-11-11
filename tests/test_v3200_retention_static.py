@@ -1,6 +1,6 @@
 """Static pins for v3.20.0: retention & monetization pack.
 
-Owner request: animation for 50 Stars + 2 free daily animations on premium,
+Owner request: animation for 50 Stars with no free Premium animations,
 plus retention mechanics (streaks already existed) — emotional reminders,
 jealousy, unfinished-conversation cliffhangers, morning/evening rituals,
 3h demo premium, pleasure-blocking instead of feature-blocking, premium-only
@@ -17,9 +17,9 @@ SCHEDULER = (ROOT / 'services' / 'scheduler_service.py').read_text(encoding='utf
 MODELS = (ROOT / 'models' / 'app_models.py').read_text(encoding='utf-8')
 
 
-def test_video_pricing_and_free_slots():
+def test_video_pricing_and_no_free_slots():
     assert 'VIDEO_COST_STARS", "50"' in CONFIG
-    assert 'VIDEO_PREMIUM_FREE_DAILY", "1"' in CONFIG  # V3.112.0
+    assert 'VIDEO_PREMIUM_FREE_DAILY", "0"' in CONFIG
 
 
 def test_retention_config_flags():
@@ -106,14 +106,15 @@ def test_scheduler_retention_tiers_and_rituals():
     for kind in ("'cliffhanger'", "'jealousy'", "'miss'"):
         assert kind in SCHEDULER
     assert 'async def _rituals(' in SCHEDULER
-    assert 'retention_service.pick_text(kind)' in SCHEDULER
+    assert 'retention_features_service.get_retention_text(kind, char_id)' in SCHEDULER
     assert "scheduler.add_job(_rituals,'interval',minutes=30" in SCHEDULER
     assert '_streak_line(streak' in SCHEDULER  # V3.113.0: no «не прерывай серию» pressure
 
 
 def test_premium_pitch_mentions_new_perks_and_plateau():
     pitch = MAIN[MAIN.index('def premium_pitch_text('):MAIN.index('def _sleep_block_markup(')]
-    assert '1 оживление фото в день' in pitch  # V3.112.0
+    assert 'оживление фото в день' not in pitch
+    assert 'photo animation a day' not in pitch
     assert 'видео-кружочки' in pitch
     assert 'безлимит сообщений' in pitch
     # V3.21.0 renamed the plateau line to the two premium levels.
