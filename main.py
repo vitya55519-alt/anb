@@ -775,6 +775,8 @@ def admin_keyboard():
          InlineKeyboardButton(text='💬 Диалог дня', callback_data='chpost:dlg')],
         [InlineKeyboardButton(text='📊 Статистика', callback_data='admin:stats'),
          InlineKeyboardButton(text='🩺 Отказы', callback_data='admin:providers')],
+        # V3.141.0: owner ТЗ (Фаза 2, Задача 3) — net profit per traffic source.
+        [InlineKeyboardButton(text='📈 ROI источников', callback_data='admin:roi')],
         [InlineKeyboardButton(text='🎁 Выдать премиум/токены', callback_data='admin:grant')],
         # V3.55.5: promo codes — create / list / toggle off.
         [InlineKeyboardButton(text='🎟 Промокоды', callback_data='admin:promos')],
@@ -2047,6 +2049,8 @@ async def _send_duo_teaser(chat_id: int, telegram_id: int, character_id: str, gu
 
 async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoRequest, *,
                                undress_credit: bool = False, text: str = ''):
+    from services import spend_service
+    spend_service.set_spend_user(telegram_id)
     db_uid = ensure_user(telegram_id)
     if not has_accepted(telegram_id):
         await bot.send_message(chat_id, 'Сначала подтверди 18+ и условия через /start.', reply_markup=consent_keyboard())
@@ -4349,6 +4353,36 @@ async def admin_providers_button(cq: types.CallbackQuery):
         [InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')],
     ])
     await cq.message.answer(f'🩺 Отказы провайдеров\n\n{lines}', reply_markup=markup)
+
+
+@dp.callback_query(F.data == 'admin:roi')
+async def admin_roi_button(cq: types.CallbackQuery):
+    """V3.141.0: owner ТЗ (Фаза 2, Задача 3) — [оплаты юзеров с меткой X] минус
+    [их затраты на API: LLM + картинки] = чистая прибыль источника. Минусовый
+    трафик видно сразу, плюсовый можно масштабировать."""
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    await cq.answer()
+    from services import analytics_service
+    roi = await asyncio.to_thread(analytics_service.source_roi, 30)
+    lines = []
+    for r in roi['rows'][:15]:
+        sign = '🟢' if r['profit_rub'] >= 0 else '🔴'
+        lines.append(
+            f"{sign} {_source_label(r['tag'])}\n"
+            f"   доход {r['revenue_rub']:.0f} ₽ − API {r['cost_rub']:.0f} ₽ "
+            f"(LLM {r['llm_rub']:.0f} + фото {r['image_rub']:.0f}) = {r['profit_rub']:+.0f} ₽\n"
+            f"   платили {r['payers']} · тратили API {r['cost_users']}"
+        )
+    body = '\n'.join(lines) or '· пока нет данных — оплаты и затраты появятся после первых покупок'
+    note = f"\n\nкурс: 1 USD = {roi['usd_rub']:.0f} ₽ (env ROI_USD_RUB)"
+    if roi['unattributed_rub'] > 0:
+        note += (f"\n⚠️ не привязано к юзерам: {roi['unattributed_rub']:.0f} ₽ API "
+                 '(строки до V3.141.0 и фоновые задачи без метки)')
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')],
+    ])
+    await cq.message.answer(f'📈 ROI источников за 30д (доход − API):\n\n{body}{note}', reply_markup=markup)
 
 
 @dp.message(Command('cancel'))
@@ -8911,6 +8945,14 @@ async def send_answer(message: types.Message, text: str):
     guest_id = invite_funnel.take_pending(message.from_user.id, character_id)
     if guest_id:
         await _send_duo_teaser(message.chat.id, message.from_user.id, character_id, guest_id)
+    # V3.141.0: the scripted onboarding selfie lands right after her line —
+    # a pre-saved picture, no generation and no paid-photo flow.
+    from services import onboarding_demo
+    if onboarding_demo.take_pending(message.from_user.id, character_id):
+        try:
+            await onboarding_demo.send_bot_photo(bot, message.chat.id, message.from_user.id, character_id)
+        except Exception:
+            logger.exception('onboarding demo photo failed user=%s', message.from_user.id)
 
 
 async def _send_answer_body(message: types.Message, text: str):
@@ -14127,6 +14169,8 @@ def _pings_app_reply(turn):
 @_pings_app_reply
 async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str,
                             text: str, extra: dict | None = None) -> web.Response:
+    from services import spend_service
+    spend_service.set_spend_user(telegram_id)
     # V3.35.0: a message typed in the app goes through the exact pipeline the
     # bot chat uses (memory, relationships, persona) — same gates too: 18+
     # consent and the daily free-message limit.
@@ -14296,6 +14340,17 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     except Exception:
         logger.exception('webapp chat reply failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
+    # V3.141.0: the scripted onboarding selfie — the pre-saved picture rides
+    # with the prepared line. Consumed BEFORE the PHOTO_PROMISE branch: her
+    # «лови фото» is the demo, not a paid render, and nothing is charged.
+    from services import onboarding_demo
+    if onboarding_demo.take_pending(telegram_id, character_id):
+        def _demo_photo():
+            url = onboarding_demo.photo_url_for(character_id)
+            save_message(uid, character_id, 'assistant', '📸', media_kind='photo', media_url=url)
+            return url
+        demo_url = await asyncio.to_thread(_demo_photo)
+        return web.json_response({'ok': True, 'reply': answer, 'photo_url': demo_url, **(extra or {})})
     # V3.60.9: she wrote «лови фотку 📸» on her own — the photo must really come.
     # V3.113.0: also a bare «держи 😏» / «лови 💋» right after he asked to see her.
     if PHOTO_PROMISE.search(answer or '') or (
@@ -14845,6 +14900,8 @@ async def _webapp_api_call_turn(request: web.Request) -> web.Response:
     telegram_id, user_info = _call_auth(request)
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    from services import spend_service
+    spend_service.set_spend_user(telegram_id)
     try:
         body = await request.json()
     except Exception:
@@ -15634,6 +15691,8 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    from services import spend_service
+    spend_service.set_spend_user(telegram_id)
     try:
         body = await request.json()
     except Exception:
@@ -15777,6 +15836,8 @@ async def _webapp_api_studio_video(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    from services import spend_service
+    spend_service.set_spend_user(telegram_id)
     try:
         body = await request.json()
     except Exception:
@@ -16066,6 +16127,8 @@ async def _webapp_media_hot_circle(telegram_id: int, character_id: str, guest_id
     V3.139.2: with a guest the clip is «видео вдвоём» — it starts from a joint
     lingerie frame (generated here, not charged as a photo) and the duo prompt."""
     from services import hot_circle_service
+    from services import spend_service
+    spend_service.set_spend_user(telegram_id)
     if guest_id:
         # The joint source frame is a render, not a sold photo: the user pays
         # only the hot-circle price once, in _finish, after the clip exists.
@@ -16535,6 +16598,8 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    from services import spend_service
+    spend_service.set_spend_user(telegram_id)
     try:
         body = await request.json()
     except Exception:

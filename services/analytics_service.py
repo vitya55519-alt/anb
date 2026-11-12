@@ -212,6 +212,75 @@ def source_quality(days: int = 30, limit: int = 8) -> list[list]:
     return [[tag, *counts] for tag, counts in ranked]
 
 
+def source_roi(days: int = 30) -> dict:
+    """V3.141.0: owner ТЗ (Фаза 2, Задача 3) — net profit per traffic source:
+    [payments from users with tag X] − [LLM + image API costs of those users].
+    Revenue comes from the purchase ledger (Stars and card alike), costs from
+    the spend rows attributed to a telegram_id; USD converts at ROI_USD_RUB.
+    Rows written before attribution existed (telegram_id=0) are reported
+    separately so the owner sees the blind spot instead of a fake profit."""
+    from config import ROI_USD_RUB
+    from models.app_models import ImageSpend, LlmUsage
+    from services.partner_service import payment_rub_value
+    since = _now() - timedelta(days=days)
+    day_since = since.date()
+    with SessionLocal() as s:
+        users = s.execute(select(User.id, User.telegram_id, User.source_tag)).all()
+        purchases = s.scalars(select(StarTransaction).where(
+            StarTransaction.transaction_type == 'purchase',
+            StarTransaction.created_at >= since)).all()
+        llm = s.execute(select(LlmUsage.telegram_id, func.sum(LlmUsage.cost_usd))
+                        .where(LlmUsage.day >= day_since)
+                        .group_by(LlmUsage.telegram_id)).all()
+        img = s.execute(select(ImageSpend.telegram_id, func.sum(ImageSpend.cost_usd))
+                        .where(ImageSpend.day >= day_since)
+                        .group_by(ImageSpend.telegram_id)).all()
+    tag_of = {u.id: (u.source_tag or 'organic') for u in users}
+    uid_of = {}
+    for u in users:
+        try:
+            uid_of[int(u.telegram_id)] = u.id
+        except (TypeError, ValueError):
+            pass
+    rows: dict[str, dict] = {}
+
+    def bucket(tag: str) -> dict:
+        return rows.setdefault(tag, {'revenue': 0.0, 'llm_usd': 0.0, 'image_usd': 0.0,
+                                     'payers': set(), 'cost_users': set()})
+
+    for p in purchases:
+        b = bucket(tag_of.get(p.user_id, 'organic'))
+        b['revenue'] += payment_rub_value(p.product, p.stars, p.provider or 'stars', p.provider_payload)
+        b['payers'].add(p.user_id)
+    unattributed_usd = 0.0
+    for model_rows, key in ((llm, 'llm_usd'), (img, 'image_usd')):
+        for tid, cost in model_rows:
+            cost = float(cost or 0.0)
+            uid = uid_of.get(int(tid or 0))
+            if uid is None:
+                unattributed_usd += cost
+                continue
+            b = bucket(tag_of.get(uid, 'organic'))
+            b[key] += cost
+            b['cost_users'].add(uid)
+    out = []
+    for tag, b in rows.items():
+        cost_rub = (b['llm_usd'] + b['image_usd']) * ROI_USD_RUB
+        out.append({
+            'tag': tag,
+            'revenue_rub': round(b['revenue'], 2),
+            'llm_rub': round(b['llm_usd'] * ROI_USD_RUB, 2),
+            'image_rub': round(b['image_usd'] * ROI_USD_RUB, 2),
+            'cost_rub': round(cost_rub, 2),
+            'profit_rub': round(b['revenue'] - cost_rub, 2),
+            'payers': len(b['payers']),
+            'cost_users': len(b['cost_users']),
+        })
+    out.sort(key=lambda r: -r['profit_rub'])
+    return {'rows': out, 'unattributed_rub': round(unattributed_usd * ROI_USD_RUB, 2),
+            'usd_rub': ROI_USD_RUB}
+
+
 def pay_funnel(days: int = 30) -> dict:
     """V3.62.9: where money is lost — users who saw an offer, opened an
     invoice or a card link, and actually paid (Stars or card)."""

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from contextvars import ContextVar
 
 from sqlalchemy import func, select
 
@@ -44,6 +45,19 @@ AUX_PURPOSES = frozenset({
     'memory_extraction', 'adaptation_analysis', 'relationship_pulse',
     'photo_idea', 'photo_reaction', 'rewrite',
 })
+
+# V3.141.0: per-user cost attribution for the traffic-source ROI block. Every
+# request runs in its own asyncio task, and to_thread / create_task children
+# inherit a copy of the context — so one mark at the entry point attributes
+# the whole turn (reply, rewrites, memory extraction, renders) to that user.
+_spend_user: ContextVar[int] = ContextVar('spend_user', default=0)
+
+
+def set_spend_user(telegram_id: int | None) -> None:
+    try:
+        _spend_user.set(int(telegram_id or 0))
+    except (TypeError, ValueError):
+        _spend_user.set(0)
 
 
 def estimate_llm_cost_usd(provider: str, prompt_tokens: int, completion_tokens: int) -> float:
@@ -78,6 +92,7 @@ def record_llm_usage(purpose: str, provider: str, model: str, *,
                 reasoning_tokens=reasoning_tokens,
                 cost_usd=max(0.0, float(cost_usd or 0.0)),
                 billed_cost=billed,
+                telegram_id=_spend_user.get(),
             ))
             s.commit()
     except Exception:
@@ -97,6 +112,7 @@ def record_image_spend(engine: str, scene: str, cost_usd: float, *,
                 billed=bool(billed),
                 success=bool(success),
                 cost_usd=max(0.0, float(cost_usd or 0.0)),
+                telegram_id=_spend_user.get(),
             ))
             s.commit()
     except Exception:

@@ -718,6 +718,9 @@ class LlmUsage(Base):
     # True when the provider reported the real bill, False when we estimated it
     # from the configured per-million prices.
     billed_cost: Mapped[bool] = mapped_column(Boolean, default=False)
+    # V3.141.0: whose turn burned this money (0 = unattributed / legacy rows).
+    # The per-source ROI block sums costs by this column.
+    telegram_id: Mapped[int] = mapped_column(BigInteger, default=0, index=True)
 
 
 # V3.44.18: image spend ledger — one row per billed provider call, INCLUDING
@@ -738,6 +741,8 @@ class ImageSpend(Base):
     # and the frame actually reached the user
     success: Mapped[bool] = mapped_column(Boolean, default=True)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    # V3.141.0: whose render burned this money (0 = unattributed / legacy rows).
+    telegram_id: Mapped[int] = mapped_column(BigInteger, default=0, index=True)
 
 
 class ChatGuest(Base):

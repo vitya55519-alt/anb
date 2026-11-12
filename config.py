@@ -405,6 +405,11 @@ LLM_REPORT_USAGE = os.getenv("LLM_REPORT_USAGE", "true").strip().lower() in {"1"
 SPEND_LLM_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_LLM_DAILY_BUDGET_USD", "0")))
 SPEND_IMAGE_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_IMAGE_DAILY_BUDGET_USD", "0")))
 
+# V3.141.0: owner ТЗ (Фаза 2, Задача 3) — ROI per traffic source. Revenue is
+# counted in rubles, API costs in USD; this rate converts the cost side so the
+# admin block can show «доход − API = прибыль» per src_tag.
+ROI_USD_RUB = max(1.0, float(os.getenv("ROI_USD_RUB", "90")))
+
 # V3.19.9: Pollinations.ai was removed (repeated http_500 + wrong-subject
 # renders). Photo providers are now Gemini Image -> OpenAI -> fal/Seedream.
 

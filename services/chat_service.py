@@ -442,8 +442,21 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     except Exception:
         character = get_character(character_id)
     premium = is_premium(user_id)
+    # V3.141.0: every LLM row this turn writes is attributed to him (ROI per
+    # traffic source). Each request runs in its own task, so the mark is local.
+    from services import spend_service
+    spend_service.set_spend_user(user_id)
     memories = get_memories(db_user_id, character_id, 40 if premium else 14)
     history = get_recent_messages(db_user_id, character_id, 30 if premium else 16)
+    # V3.141.0: owner ТЗ (Фаза 2, Задача 1) — the 5th/7th message of a new
+    # non-Premium user's first dialog is scripted: a prepared line + one
+    # pre-saved selfie, no LLM call at all (zero credits). Once per user.
+    if not scene:
+        from services import onboarding_demo
+        demo = onboarding_demo.maybe_intercept(
+            user_id, db_user_id, character_id, user_text, history, premium, language_code)
+        if demo:
+            return demo
     stage_to_level = {'stranger':1,'acquaintance':2,'close':3,'intimate':4,'deeply_connected':5,'committed':6,
                       'devoted':7,'soulmate':8,'voyage':9,'eternal':10}
     # V3.57.8: build the adaptation context once (it used to be built twice per
@@ -836,6 +849,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
 async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, language_code: str | None = None, character_id: str = CHARACTER_ID,
                           topic: bool = False) -> str:
     db_user_id = ensure_user(user_id, user_name, language_code=language_code)
+    from services import spend_service
+    spend_service.set_spend_user(user_id)
     # V3.31.8: constructor personas keep their own identity in proactive replies too.
     try:
         from services.custom_character_service import custom_base_character
@@ -911,6 +926,8 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
     about him (the evening ritual got replies from 10% only); window 72 h, and
     no open-loop / care keeps (those belong to the morning)."""
     db_user_id = ensure_user(user_id, user_name, language_code=language_code)
+    from services import spend_service
+    spend_service.set_spend_user(user_id)
     history = get_recent_messages(db_user_id, character_id, 12)
     mine = [m for m in history if m.role == 'user']
     if len(mine) < 3:
@@ -1068,6 +1085,8 @@ async def paid_moment(user_id: int, user_name: str, moment: str, language_code: 
         return ''
     try:
         db_user_id = ensure_user(user_id, user_name, language_code=language_code)
+        from services import spend_service
+        spend_service.set_spend_user(user_id)
         try:
             from services.custom_character_service import custom_base_character
             persona = custom_base_character(character_id)
@@ -1111,6 +1130,8 @@ async def story_reaction(user_id: int, user_name: str, character_id: str, quest_
     fail-silent: any error or empty output returns '' so the caller falls back to
     the curated reaction and the story never blanks out."""
     try:
+        from services import spend_service
+        spend_service.set_spend_user(user_id)
         try:
             from services.custom_character_service import custom_base_character
             persona = custom_base_character(character_id)

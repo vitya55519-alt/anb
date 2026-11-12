@@ -3262,6 +3262,8 @@ async def _run_routed_photo_set(
 
 
 async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: Callable[[GeneratedPhoto, int], Awaitable[None]] | None = None, *, character_id: str = CHARACTER_ID, frames: int = PHOTO_SET_SIZE) -> tuple[list[GeneratedPhoto], PhotoRequest]:
+    from services import spend_service
+    spend_service.set_spend_user(telegram_id)
     character = resolve_character(character_id)
     # Pinterest-style variety: underspecified ordinary requests get a fresh
     # curated/LLM idea (location + camera). Explicit and private requests pass through.

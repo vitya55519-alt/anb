@@ -34,6 +34,16 @@ GROUP_RULE = (
     'to ask a question based on your banter.'
 )
 
+# V3.141.0: owner ТЗ (Фаза 2, Задача 2) — in the duo the girls also steer the
+# talk toward the paid joint photo now and then, in their own words.
+JOINT_PHOTO_RULE = (
+    'JOINT PHOTO UPSELL: Occasionally (roughly once every 10-15 messages, or when the mood is right), '
+    'the two of you playfully suggest taking a joint photo together — tease that the two of you in one '
+    'frame would be much hotter than any solo shot, and that joint photos are a special paid feature '
+    'for VIP. Suggest it in your own words, never mention exact prices or technical tags, and still '
+    'end with a hook.'
+)
+
 
 def upsell_rule(guest_name: str) -> str:
     return (

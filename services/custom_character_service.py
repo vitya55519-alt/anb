@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from models.app_models import CustomCharacter, ConstructorDraft, utcnow
 from services.db import SessionLocal
-from services.invite_funnel import GROUP_RULE
+from services.invite_funnel import GROUP_RULE, JOINT_PHOTO_RULE
 
 logger = logging.getLogger(__name__)
 
@@ -689,7 +689,7 @@ def build_persona_context(params: dict, display_name: str, backstory: str = '', 
             'Кроме имени в начале строки ничего оформлять не надо: никаких действий в *звёздочках* '
             'и без ремарок в скобках — только то, что они набрали бы на телефоне. '
             'Никогда не пиши за пользователя.\n'
-            + GROUP_RULE
+            + GROUP_RULE + '\n' + JOINT_PHOTO_RULE
         )
     lines.append(
         'Если пользователь прикладывал своё фото при создании — ты выглядишь именно так, '
