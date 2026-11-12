@@ -162,7 +162,8 @@ def test_both_buttons_flip_when_the_second_girl_is_in_the_chat():
 
 
 def test_the_duo_words_exist_in_every_language_the_app_ships():
-    for key in ('duo_call', 'duo_leave', 'duo_banner', 'duo_blur_btn', 'guest_sheet_hint', 'lvl_chip'):
+    for key in ('duo_call', 'duo_leave', 'duo_banner', 'duo_blur_btn', 'guest_sheet_hint', 'lvl_chip',
+                'duo_photo', 'duo_photo_sub', 'duo_undress', 'duo_undress_sub', 'duo_together'):
         assert HTML.count(f'{key}:') == len(APP_LANGS), (key, HTML.count(f'{key}:'))
 
 
@@ -183,3 +184,32 @@ def test_guest_notes_carry_her_name_in_his_language():
         assert 'Агата' in flow_text(lang, 'guest_in', name='Агата'), lang
         assert 'Агата' in flow_text(lang, 'guest_out', name='Агата'), lang
         assert flow_text(lang, 'guest_word'), lang
+
+
+# ── V3.139.1: «в чате их 2, а возможности как для одной» — fixed ─────────────
+
+def test_the_two_girl_rows_lead_the_menu_only_with_a_guest():
+    # the joint rows sit above the single photo row on «Чем займёмся?»
+    assert HTML.index('id="featDuoPhoto"') < HTML.index('id="mediaPhoto"')
+    assert HTML.index('id="featDuoUndress"') < HTML.index('id="mediaPhoto"')
+    guest = _body(HTML, 'function renderGuest(')
+    assert "duoPhoto.style.display = guest ? '' : 'none'" in guest
+    assert "duoUndress.style.display = guest ? '' : 'none'" in guest
+    # a tap asks the pair, not one girl: joint selfie and joint «Раздеть»
+    assert "requestMedia('photo', 'selfie', { joint: true })" in HTML
+    assert "requestMedia('photo', 'lingerie', { joint: true })" in HTML
+
+
+def test_the_photo_row_gains_a_together_button_in_a_duo_chat():
+    bubble = _body(HTML, 'function chatBubble(')
+    assert "CHAT && CHAT.guest ? '<button class=\"pa\" data-duojoint=\"1\">'" in bubble
+    assert 'data-duojoint' in HTML
+    # the delegated handler re-asks the joint frame from the picture he sees
+    assert "e.target.closest('[data-duojoint]')" in HTML
+
+
+def test_the_owner_blur_pool_is_on_disk_and_served():
+    for name in blur.POOL:
+        assert (ROOT / 'webapp' / 'art' / name).is_file(), name
+    assert blur.pool_url() in {f'/webapp/art/{n}' for n in blur.POOL}
+    assert blur.pool_bytes()

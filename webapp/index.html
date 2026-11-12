@@ -1461,6 +1461,12 @@
        alone» while the second girl is already in the chat. -->
   <button class="duobanner" id="featDuo" type="button" style="display:none"><span class="tx"><span id="lbFeatDuo"></span><small id="dsFeatDuo"></small></span></button>
   <div class="chat-media">
+    <!-- V3.139.1: owner — «в чате их 2, а возможности как для одной». While a
+         guest is in the chat these two rows lead the menu: a joint frame and a
+         joint «Раздеть». renderGuest() shows them only with a guest; a free tap
+         gets the blurred teaser + Premium button, Premium gets the real shot. -->
+    <button id="featDuoPhoto" class="hot" style="display:none"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbFeatDuoPhoto"></span><span class="ds" id="dsFeatDuoPhoto"></span></span></button>
+    <button id="featDuoUndress" class="hot" style="display:none"><span class="ic">🔥</span><span class="tx"><span class="lb" id="lbFeatDuoUndress"></span><span class="ds" id="dsFeatDuoUndress"></span></span></button>
     <button id="mediaPhoto"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbMediaPhoto"></span><span class="ds" id="dsMediaPhoto"></span></span></button>
     <button id="featPlots" class="hot"><span class="ic">🎬</span><span class="tx"><span class="lb" id="lbFeatPlots"></span><span class="ds" id="dsFeatPlots"></span></span></button>
     <button id="featWardrobe" class="hot"><span class="ic">👗</span><span class="tx"><span class="lb" id="lbFeatWardrobe"></span><span class="ds" id="dsFeatWardrobe"></span></span></button>
@@ -1955,6 +1961,9 @@ const L_EN = {
   duo_call: '👯‍♀️ Call a friend', duo_leave: '❌ Leave us alone',
   duo_banner: '🔥 A date for three', duo_banner_sub: 'two of them in this chat · Premium',
   duo_blur_btn: '💎 Unblur (Premium)',
+  duo_photo: '📸 Photo of the two', duo_photo_sub: 'both girls in one frame · Premium',
+  duo_undress: '🔥 Undress both', duo_undress_sub: 'the two of them, no clothes · Premium',
+  duo_together: '👯‍♀️ Together',
   guest_in_chat: n => n + ' is in the chat', guest_out_btn: '✕ let her go',
   lvl_chip: (ic, n) => ic + ' Lvl ' + n,
   guest_sheet_hint: 'She joins this chat, and from now on the two of them answer you.',
@@ -2238,6 +2247,9 @@ const L_RU = {
   duo_call: '👯‍♀️ Позвать подругу', duo_leave: '❌ Оставить наедине',
   duo_banner: '🔥 Свидание втроем', duo_banner_sub: 'они вдвоём в этом чате · Premium',
   duo_blur_btn: '💎 Снять блюр (Premium)',
+  duo_photo: '📸 Фото вдвоём', duo_photo_sub: 'обе в одном кадре · Premium',
+  duo_undress: '🔥 Раздеть вдвоём', duo_undress_sub: 'обе без одежды · Premium',
+  duo_together: '👯‍♀️ Вдвоём',
   guest_in_chat: n => n + ' в чате', guest_out_btn: '✕ отпустить',
   lvl_chip: (ic, n) => ic + ' ' + n + ' ур.',
   guest_sheet_hint: 'Она зайдёт в эту переписку, и дальше они будут отвечать вдвоём.',
@@ -2330,6 +2342,9 @@ const L_OV = {
     duo_call: '👯‍♀️ Llamar a una amiga', duo_leave: '❌ Dejadnos solos',
     duo_banner: '🔥 Cita a tres', duo_banner_sub: 'las dos en este chat · Premium',
     duo_blur_btn: '💎 Quitar el blur (Premium)',
+    duo_photo: '📸 Foto de las dos', duo_photo_sub: 'las dos en un cuadro · Premium',
+    duo_undress: '🔥 Desnudar a las dos', duo_undress_sub: 'las dos sin ropa · Premium',
+    duo_together: '👯‍♀️ Juntas',
     guest_in_chat: n => n + ' está en el chat', guest_out_btn: '✕ dejarla ir',
     lvl_chip: (ic, n) => ic + ' Nv ' + n,
     guest_sheet_hint: 'Entra en este chat y a partir de ahora os contestáis las dos.',
@@ -2394,6 +2409,9 @@ const L_OV = {
     duo_call: '👯‍♀️ Chiama un\'amica', duo_leave: '❌ Lasciateci soli',
     duo_banner: '🔥 Appuntamento a tre', duo_banner_sub: 'tutte e due in questa chat · Premium',
     duo_blur_btn: '💎 Togli la sfocatura (Premium)',
+    duo_photo: '📸 Foto di tutte e due', duo_photo_sub: 'entrambe in un quadro · Premium',
+    duo_undress: '🔥 Spoglia entrambe', duo_undress_sub: 'tutte e due senza vestiti · Premium',
+    duo_together: '👯‍♀️ Insieme',
     guest_in_chat: n => n + ' è in chat', guest_out_btn: '✕ lasciala andare',
     lvl_chip: (ic, n) => ic + ' Lv ' + n,
     guest_sheet_hint: 'Entra in questa chat e da adesso rispondono tutte e due.',
@@ -2458,6 +2476,9 @@ const L_OV = {
     duo_call: '👯‍♀️ Appeler une amie', duo_leave: '❌ Laissez-nous seuls',
     duo_banner: '🔥 Rendez-vous à trois', duo_banner_sub: 'elles deux dans ce chat · Premium',
     duo_blur_btn: '💎 Enlever le flou (Premium)',
+    duo_photo: '📸 Photo des deux', duo_photo_sub: 'elles deux dans un cadre · Premium',
+    duo_undress: '🔥 Déshabille-les deux', duo_undress_sub: 'elles deux sans vêtements · Premium',
+    duo_together: '👯‍♀️ À deux',
     guest_in_chat: n => n + ' est dans le chat', guest_out_btn: '✕ la laisser partir',
     lvl_chip: (ic, n) => ic + ' Niv ' + n,
     guest_sheet_hint: 'Elle rejoint ce chat, et désormais elles répondent à deux.',
@@ -2522,6 +2543,9 @@ const L_OV = {
     duo_call: '👯‍♀️ 叫闺蜜来', duo_leave: '❌ 让我们单独待着',
     duo_banner: '🔥 三人行约会', duo_banner_sub: '她们俩都在这个聊天里 · Premium',
     duo_blur_btn: '💎 去掉马赛克（Premium）',
+    duo_photo: '📸 双人合照', duo_photo_sub: '两人同框 · Premium',
+    duo_undress: '🔥 两人一起脱', duo_undress_sub: '两人都不穿 · Premium',
+    duo_together: '👯‍♀️ 双人',
     guest_in_chat: n => n + ' 在聊天里', guest_out_btn: '✕ 让她走',
     lvl_chip: (ic, n) => ic + ' ' + n + ' 级',
     guest_sheet_hint: '她会加入这个聊天，之后她们两个一起回复你。',
@@ -2586,6 +2610,9 @@ const L_OV = {
     duo_call: '👯‍♀️ 女友達を呼ぶ', duo_leave: '❌ 二人にさせて',
     duo_banner: '🔥 3人デート', duo_banner_sub: 'ふたりがこのチャットに · Premium',
     duo_blur_btn: '💎 ボカシを外す（Premium）',
+    duo_photo: '📸 2人の写真', duo_photo_sub: 'ふたりが1枚に · Premium',
+    duo_undress: '🔥 2人とも脱がせる', duo_undress_sub: 'ふたりとも裸 · Premium',
+    duo_together: '👯‍♀️ 2人',
     guest_in_chat: n => n + 'がチャットに参加中', guest_out_btn: '✕ 帰ってもらう',
     lvl_chip: (ic, n) => ic + ' Lv' + n,
     guest_sheet_hint: 'このチャットに参加して、これから二人で返信するよ。',
@@ -2649,6 +2676,9 @@ const L_OV = {
     duo_call: '👯‍♀️ বন্ধুকে ডাকো', duo_leave: '❌ আমাদের একা রাখো',
     duo_banner: '🔥 তিনজনের ডেট', duo_banner_sub: 'দুজনেই এই চ্যাটে · Premium',
     duo_blur_btn: '💎 ব্লার দূর করো (Premium)',
+    duo_photo: '📸 দুজনের ছবি', duo_photo_sub: 'দুজনেই এক ফ্রেমে · Premium',
+    duo_undress: '🔥 দুজনকেই খোলো', duo_undress_sub: 'দুজনেই পোশাক ছাড়া · Premium',
+    duo_together: '👯‍♀️ দুজনে',
     guest_in_chat: n => n + ' চ্যাটে আছে', guest_out_btn: '✕ যেতে দাও',
     lvl_chip: (ic, n) => ic + ' লেভেল ' + n,
     guest_sheet_hint: 'সে এই চ্যাটে আসবে, এরপর দুজনেই তোমাকে উত্তর দেবে।',
@@ -2713,6 +2743,11 @@ document.getElementById('charSearch').placeholder = L.char_search_ph;
 // V3.44.17: the «Видео»/«Кружок» label assignments are gone together with the
 // buttons themselves — only the pills still on screen get labels.
 document.getElementById('lbMediaPhoto').textContent = L.media_photo;
+// V3.139.1: the two-girl rows on «Чем займёмся?» (visible only with a guest).
+document.getElementById('lbFeatDuoPhoto').textContent = L.duo_photo;
+document.getElementById('dsFeatDuoPhoto').textContent = L.duo_photo_sub;
+document.getElementById('lbFeatDuoUndress').textContent = L.duo_undress;
+document.getElementById('dsFeatDuoUndress').textContent = L.duo_undress_sub;
 document.getElementById('lbFeatWardrobe').textContent = L.wd_cap;
 document.getElementById('dsFeatWardrobe').textContent = L.wd_cap_ds;
 document.getElementById('lbFeatFetish').textContent = L.fet_cap;
@@ -3615,6 +3650,9 @@ function chatBubble(roleOrM, content, ts) {
         // V3.138.0: owner — the price here is peaches, never rubles (250 🍑 ≈ 25 ₽).
         // A number + the peach reads the same in every language of the app.
         + (ME && !ME.premium ? '<small>· ' + esc(ME.undress_peaches || 250) + ' 🍑</small>' : '') + '</button>')
+        // V3.139.1: two girls in the chat — a «вдвоём» tap asks for the joint
+        // frame instead of only the one shown (free → teaser, Premium → real).
+        + (CHAT && CHAT.guest ? '<button class="pa" data-duojoint="1">' + esc(L.duo_together) + '</button>' : '')
         + '</div>';
     }
     else body = `<img class="m" src="${esc(src)}" data-lb="1" alt=""><br><button class="dl" data-dl="${esc(src)}">${esc(L.photo_save)}</button>`;
@@ -4058,6 +4096,11 @@ function renderGuest(characterId, guest, canInvite) {
       if (guest) setGuest(characterId, ''); else openGuestPicker(characterId);
     };
   }
+  // V3.139.1: with a guest in the chat the menu leads with the two-girl rows.
+  const duoPhoto = document.getElementById('featDuoPhoto');
+  const duoUndress = document.getElementById('featDuoUndress');
+  if (duoPhoto) duoPhoto.style.display = guest ? '' : 'none';
+  if (duoUndress) duoUndress.style.display = guest ? '' : 'none';
   if (!bar) return;
   if (!guest) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
   bar.innerHTML = '<img src="' + esc(guest.photo) + '" alt=""><span>' + esc(L.guest_in_chat(guest.name)) + '</span>'
@@ -4883,6 +4926,15 @@ document.addEventListener('click', e => {
   e.stopPropagation();
   const cid = CHAT ? CHAT.id : '';
   quickBuy('spicy', () => { if (CHAT && CHAT.id === cid) requestMedia('photo', 'selfie', { joint: true }); });
+});
+
+// V3.139.1: «👯‍♀️ Вдвоём» under her photo while a guest is in the chat — the
+// same joint request as the menu row, straight from the picture he is looking at.
+document.addEventListener('click', e => {
+  const b = e.target && e.target.closest ? e.target.closest('[data-duojoint]') : null;
+  if (!b) return;
+  e.stopPropagation();
+  requestMedia('photo', 'selfie', { joint: true });
 });
 
 // V3.72.0: the circle offer under her reply — one tap starts the paid render.
@@ -7471,6 +7523,10 @@ document.getElementById('chatSelect').addEventListener('click', () => { if (CHAT
 // V3.43.7: the photo button opens the scene menu first (the same picker the
 // bot's photo keyboard shows); the chosen scene rides the media request.
 document.getElementById('mediaPhoto').addEventListener('click', () => openFeature('photo'));
+// V3.139.1: the two-girl rows ask the pair, not one girl. Free → blurred teaser
+// + Premium button (no render, no spend); Premium → the real joint frame.
+document.getElementById('featDuoPhoto').addEventListener('click', () => { closeCapSheet(); requestMedia('photo', 'selfie', { joint: true }); });
+document.getElementById('featDuoUndress').addEventListener('click', () => { closeCapSheet(); requestMedia('photo', 'lingerie', { joint: true }); });
 // V3.41.0: the app-chat feature buttons open the feature sheet
 // (apartment / date / daily quest). V3.44.17: the direct video/circle media
 // buttons are hidden from the strip — the photo pipeline (and the bot chat)
