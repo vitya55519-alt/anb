@@ -27,7 +27,7 @@ def test_feature_endpoint_is_exception_guarded():
 
 
 def test_openfeature_retries_once_before_showing_the_error():
-    fn = INDEX[INDEX.index('async function openFeature(kind) {'):INDEX.index('async function featurePost(')]
+    fn = INDEX[INDEX.index('async function openFeature(kind, joint) {'):INDEX.index('async function featurePost(')]
     assert 'for (let attempt = 0; attempt < 2; attempt++)' in fn
     assert 'if (parsed && parsed.ok) { j = parsed; break; }' in fn
     # a silent backoff between the two attempts

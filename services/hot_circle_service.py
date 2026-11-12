@@ -46,6 +46,18 @@ HOT_CIRCLE_PROMPT = (
     'photorealistic, natural skin, sharp focus, no text.'
 )
 
+# V3.139.2: owner — «видео вдвоём, то же самое 4000». The joint clip starts from
+# a two-woman frame, so the prompt keeps BOTH faces and bodies and forbids a
+# third person. Same engine, same price, charged only on a delivered clip.
+HOT_CIRCLE_DUO_PROMPT = (
+    'Handheld front-camera selfie video two adult women record privately for their boyfriend on a bed, '
+    'soft warm bedroom light. They look into the lens with seductive, teasing smiles, kiss and caress '
+    'each other, slowly slide their lingerie down and run their hands over each other, breathing deeper, '
+    'eyes half closed with pleasure, erotic, intimate and confident, slow sensual movement. '
+    'Exactly the same two faces, hair and bodies as in the photo, two people only, never a third person, '
+    'photorealistic, natural skin, sharp focus, no text.'
+)
+
 # A flirty moment: either side of the turn talks about closeness or desire.
 _FLIRTY = re.compile(
     r'(хоч[уе]\s+тебя|поцел|обним|раздев|разде[нл]|голая|голенькая|сексу|секс|возбужд|ласк|постел|'
@@ -112,14 +124,14 @@ async def bedroom_frame(character_id: str) -> bytes | None:
         return None
 
 
-async def render(frame_jpeg: bytes, lang: str = 'ru') -> bytes:
+async def render(frame_jpeg: bytes, lang: str = 'ru', duo: bool = False) -> bytes:
     """Seedance 2.5 Spicy → silent square mp4 (640×640 at 480p). Raises on
     failure (the caller never charges). Failed jobs are not billed."""
     from services import spend_service, spicy_jobs
     frame_uri = await spicy_jobs.upload(frame_jpeg, 'image/jpeg')
     block = {
         'image_url': frame_uri,
-        'prompt': HOT_CIRCLE_PROMPT,
+        'prompt': HOT_CIRCLE_DUO_PROMPT if duo else HOT_CIRCLE_PROMPT,
         'resolution': SPICYAPI_HOT_CIRCLE_RESOLUTION,
         'duration_seconds': SPICYAPI_HOT_CIRCLE_SECONDS,
         'generate_audio': False,

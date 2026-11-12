@@ -120,8 +120,9 @@ def test_frontend_photo_button_opens_the_scene_menu():
     # the four groups mirror the bot keyboard's progression
     for key in ('everyday', 'fashion', 'evening', 'private'):
         assert f"key: '{key}'" in INDEX
-    # tapping a scene closes the sheet and requests that scene
-    assert "requestMedia('photo', el.dataset.scene)" in INDEX
+    # tapping a scene closes the sheet and requests that scene (joint when the
+    # two-girl picker is open — V3.139.2)
+    assert "requestMedia('photo', el.dataset.scene, { joint: featJoint })" in INDEX
     assert 'function requestMedia(kind, scene, opts)' in INDEX
     # V3.139.0 (Задача 5–6): the same request carries «joint» for the two girls
     assert "body: JSON.stringify({ character_id: CHAT.id, kind: kind, scene: scene || '', joint: !!opts.joint })" in INDEX

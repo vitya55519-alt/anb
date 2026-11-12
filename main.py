@@ -16028,10 +16028,31 @@ async def _webapp_media_circle(telegram_id: int, character_id: str):
     raise last_error or PhotoGenerationError('circle', 'no_video_result')
 
 
-async def _webapp_media_hot_circle(telegram_id: int, character_id: str):
+async def _webapp_media_hot_circle(telegram_id: int, character_id: str, guest_id: str = ''):
     """V3.72.0: «🔥 горячий кружок»; V3.73.0: «🤫 тайное видео» — her canonical
-    portrait animated by Seedance 2.5 Spicy, silent. Paid only on success."""
+    portrait animated by Seedance 2.5 Spicy, silent. Paid only on success.
+    V3.139.2: with a guest the clip is «видео вдвоём» — it starts from a joint
+    lingerie frame (generated here, not charged as a photo) and the duo prompt."""
     from services import hot_circle_service
+    if guest_id:
+        # The joint source frame is a render, not a sold photo: the user pays
+        # only the hot-circle price once, in _finish, after the clip exists.
+        frame = None
+        try:
+            shot = await _webapp_media_photo(telegram_id, character_id, 'lingerie', guest_id)
+            frame = shot[0] if shot else None
+        except Exception:
+            logger.warning('duo hot circle frame failed user=%s', telegram_id, exc_info=True)
+        if not frame:
+            raise PhotoGenerationError('hotcircle', 'no_source_photo')
+        lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+        try:
+            video = await hot_circle_service.render(square_frame(frame), lang, duo=True)
+        except Exception as exc:
+            record_provider('circle/hot', False, f'{type(exc).__name__}: {str(exc)[:120]}')
+            raise PhotoGenerationError('hotcircle', str(exc)[:120]) from exc
+        record_provider('circle/hot', True)
+        return video, 'video/mp4', 'mp4'
     # V3.73.0: start from her lingerie-in-bedroom shot (the storefront portrait
     # is a café in a sweater); the portrait is only the fallback.
     frame = await hot_circle_service.bedroom_frame(character_id)
@@ -16495,7 +16516,8 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     # V3.139.0: owner ТЗ (Задачи 5–6) — «Свидание втроем». A joint frame needs the
     # invited girl; without her this stays the ordinary photo request.
-    joint = kind == 'photo' and bool(body.get('joint'))
+    # V3.139.2: «видео вдвоём» rides the same joint flag on the hot-circle kind.
+    joint = kind in ('photo', 'hotcircle') and bool(body.get('joint'))
     guest_id = ''
     if joint:
         from services.chat_guest_service import get_guest
@@ -16600,7 +16622,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         elif kind == 'circle':
             data, mime, ext = await _webapp_media_circle(telegram_id, character_id)
         elif kind == 'hotcircle':
-            data, mime, ext = await _webapp_media_hot_circle(telegram_id, character_id)
+            data, mime, ext = await _webapp_media_hot_circle(telegram_id, character_id, guest_id)
         elif kind == 'video':
             data, mime, ext = await _webapp_media_video(telegram_id, character_id)
         elif kind == 'hot':

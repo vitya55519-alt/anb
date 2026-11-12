@@ -192,7 +192,7 @@ def test_frontend_wires_video_and_the_feature_sheet():
     # V3.44.17: the direct video button listener left with the button itself —
     # the app video pipeline (endpoints above) is untouched and renders history
     assert "document.getElementById('mediaVideo').addEventListener('click', () => requestMedia('video'))" not in INDEX
-    assert 'async function openFeature(kind)' in INDEX
+    assert 'async function openFeature(kind, joint)' in INDEX
     assert 'async function featurePost(payload)' in INDEX
     assert 'function renderFeature(j)' in INDEX
     assert 'function featItemHtml(kind, it)' in INDEX

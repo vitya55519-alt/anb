@@ -213,3 +213,33 @@ def test_the_owner_blur_pool_is_on_disk_and_served():
         assert (ROOT / 'webapp' / 'art' / name).is_file(), name
     assert blur.pool_url() in {f'/webapp/art/{n}' for n in blur.POOL}
     assert blur.pool_bytes()
+
+
+# ── V3.139.2: «фото вдвоём» = the same scene picker; «видео вдвоём» = 4000 ────
+
+def test_photo_together_opens_the_same_scene_picker_as_a_single_photo():
+    assert 'async function openFeature(kind, joint)' in HTML
+    assert 'featJoint = !!joint' in HTML
+    # the chosen scene becomes a joint request, exactly like the solo flow
+    assert "requestMedia('photo', el.dataset.scene, { joint: featJoint })" in HTML
+    assert "openFeature('photo', true)" in HTML
+    # in joint mode a free tap on a private row is the teaser funnel, not a wall
+    assert "&& !featJoint" in HTML
+
+
+def test_video_together_is_the_secret_video_at_the_same_price():
+    from services import hot_circle_service as hc
+    from config import HOT_CIRCLE_PEACH_COST
+    assert HOT_CIRCLE_PEACH_COST == 4000  # the owner's number, already in 🍑 (40 × 100)
+    assert 'two people only, never a third person' in hc.HOT_CIRCLE_DUO_PROMPT
+    assert 'async def render(frame_jpeg: bytes, lang: str = \'ru\', duo: bool = False)' in \
+        (ROOT / 'services' / 'hot_circle_service.py').read_text(encoding='utf-8')
+    # the endpoint accepts the joint flag on the hot-circle kind and passes the guest
+    assert "joint = kind in ('photo', 'hotcircle') and bool(body.get('joint'))" in MAIN
+    assert '_webapp_media_hot_circle(telegram_id, character_id, guest_id)' in MAIN
+    # the price rides on the me payload and on the menu row
+    assert "'duo_video_peaches': HOT_CIRCLE_PEACH_COST" in \
+        (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')
+    assert "requestMedia('hotcircle', '', { joint: true })" in HTML
+    for key in ('duo_video', 'duo_video_sub'):
+        assert HTML.count(f'{key}:') == len(APP_LANGS), key

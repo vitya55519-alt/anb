@@ -103,4 +103,5 @@ def test_bedroom_frame_prefers_the_pool(monkeypatch):
     monkeypatch.setattr(pps, 'generate_private_photo_real', never)
     assert asyncio.run(hc.bedroom_frame('anna_01')) == b'pooled'
     block = MAIN[MAIN.index('async def _webapp_media_hot_circle('):]
-    assert 'hot_circle_service.bedroom_frame(character_id)' in block[:1500]
+    # V3.139.2: the duo branch comes first; the solo path still starts pool-first.
+    assert 'hot_circle_service.bedroom_frame(character_id)' in block

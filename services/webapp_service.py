@@ -50,6 +50,7 @@ from config import (
     FREE_PHOTOS_LEVEL_1_2,
     FREE_PHOTOS_LEVEL_3_6,
     GALLERY_DOWNLOAD_STARS,
+    HOT_CIRCLE_PEACH_COST,
     PEACH_PACK_10_STARS,
     PEACH_PACK_30_STARS,
     PEACH_PACK_100_STARS,
@@ -388,6 +389,8 @@ def api_me(telegram_id: int) -> dict:
         'undress_one_rub': UNDRESS_ONE_PRICE_RUB if UNDRESS_ONE_ENABLED else 0,
         # V3.138.0: owner — «Раздеть» is priced in peaches only: 250 🍑 ≈ 25 ₽.
         'undress_peaches': UNDRESS_PEACH_COST,
+        # V3.139.2: «Видео вдвоём» carries the same price as the secret video.
+        'duo_video_peaches': HOT_CIRCLE_PEACH_COST,
         # V3.51.1: the owner's Mini App sees the admin generation feed only
         # when this is true (the server re-checks on every admin API call).
         'admin': _is_admin(telegram_id),
