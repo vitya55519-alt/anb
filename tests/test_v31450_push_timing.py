@@ -116,10 +116,11 @@ def test_no_push_rail_pins_anything():
     assert 'pin_chat_message' not in SCHED and 'unpin_all_chat_messages' not in SCHED
 
 
-def test_the_only_pin_left_is_the_muted_main_menu():
-    # the menu is what the owner pinned on purpose: one per chat, no sound,
-    # and the «бот закрепил сообщение» line is deleted right after it.
-    assert 'await bot.pin_chat_message(chat_id, message_id, disable_notification=True)' in HYGIENE
-    assert HYGIENE.count('pin_chat_message') == 1
-    assert HYGIENE.count('unpin_all_chat_messages') == 1
-    assert 'await chat_hygiene.pin_menu(bot, chat_id, message_id)' in MAIN
+def test_the_bot_pins_no_message_anywhere():
+    # V3.147.0: the pinned main menu is gone, so the «бот закрепил главное меню»
+    # service line has nothing left to do — no rail pins, unpins or sweeps pins.
+    assert 'pin_chat_message' not in HYGIENE
+    assert 'unpin_all_chat_messages' not in HYGIENE
+    assert 'pin_chat_message' not in MAIN
+    assert 'chat_hygiene.pin_menu' not in MAIN
+    assert 'chat_hygiene.forget_screen' not in MAIN

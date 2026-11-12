@@ -82,7 +82,8 @@ def test_retention_language_codes_and_copy():
         assert ui_lang.flow_text(lang, 'open_chat')
         assert ui_lang.flow_text(lang, 'reply_in_app')
         assert ui_lang.flow_text(lang, 'selfie_caption')
-        assert ui_lang.flow_text(lang, 'welcome_bonus', amount=25)
+        assert ui_lang.flow_text(lang, 'start_pick', amount=25)
+        assert ui_lang.flow_text(lang, 'start_pick_plain')
     assert HTML.count('chat_hints:') == 8
     assert HTML.count('day1_hints:') == 8
     assert "'&open=1' + '&lang=' + LANG" in HTML

@@ -64,20 +64,26 @@ def test_background_tasks_cannot_join_a_closed_screen():
     assert 'cap.closed = True' in HYG
 
 
-def test_main_menu_is_pinned_and_kept_out_of_the_sweep():
-    assert 'await _pin_main_menu(message.chat.id, menu_msg.message_id)' in MAIN
-    assert 'chat_hygiene.forget_screen(chat_id, message_id)' in MAIN
-    # the menu is pinned while /start's own capture is still open
-    assert 'if cap is not None and cap.chat_id == chat_id and message_id in cap.ids:' in HYG
-    assert 'await bot.unpin_all_chat_messages(chat_id)' in HYG
-    assert 'disable_notification=True' in HYG
+def test_the_bot_pins_nothing_and_the_sweep_stays():
+    # V3.147.0: the pinned main menu was the loudest thing on the first screen —
+    # Telegram answered every pin with «...закрепил(а) главное меню». The app,
+    # the balance and the partner program are on the native menu button and in
+    # the reply keyboard, so nothing is pinned and nothing needs unpinning.
+    assert '_pin_main_menu' not in MAIN
+    assert 'pin_chat_message' not in MAIN and 'unpin_all_chat_messages' not in MAIN
+    assert 'def pin_menu(' not in HYG
+    assert 'def forget_screen(' not in HYG
+    # the screen sweep itself stays: one tap replaces the previous screen
+    assert 'if cap is None or cap.closed:' in HYG
+    assert 'cap.closed = True' in HYG
 
 
-def test_consent_banner_removed_and_menu_pinned_after_18plus():
+def test_consent_banner_removed_and_one_start_message_left():
     i = MAIN.index('async def consent_accept(')
-    body = MAIN[i:i + 4000]
+    body = MAIN[i:MAIN.index('# V3.98.0: the first-minute choice')]
     assert 'await cq.message.delete()' in body
-    assert 'await _send_pinned_menu(cq.message.chat.id, lang)' in body
+    assert 'reply_markup=_start_keyboard(flow_lang)' in body
+    assert '_send_pinned_menu' not in body
 
 
 def test_app_redirect_hint_replaces_itself_and_opens_her_chat():

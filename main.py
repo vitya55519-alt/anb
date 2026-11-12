@@ -168,6 +168,9 @@ VERSION = (Path(__file__).resolve().parent / 'VERSION').read_text(encoding='utf-
 WELCOME_BANNER_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner.png'
 WELCOME_BANNER_EN_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner_en.png'
 WELCOME_BANNER_GIF_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner.gif'
+# V3.147.0: the start screen leads with ONE clean portrait — the animated promo
+# showed two girls and three arms, and it gave the whole bot away as fake.
+WELCOME_PORTRAIT_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_portrait.jpg'
 BOT_AVATAR_JPG_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'bot_avatar.jpg'
 BOT_AVATAR_MP4_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'bot_avatar.mp4'
 
@@ -566,7 +569,13 @@ def _welcome_banner_file(lang: str = RU):
     very first screen (Russian: 0 of 19). The banner said «Они уже пишут
     тебе» in Russian; English speakers now get the same picture in English.
     V3.142.0: the owner's animated promo leads the welcome in every language;
-    the static PNGs stay as fallback."""
+    the static PNGs stay as fallback.
+    V3.147.0: the animated promo is out of the start — two girls in one frame
+    rendered as three arms, and the first second of a new chat screamed
+    «neural junk». A single portrait of the girl he already knows from the
+    avatar leads now; the promo files stay as fallback."""
+    if WELCOME_PORTRAIT_PATH.exists():
+        return FSInputFile(WELCOME_PORTRAIT_PATH)
     if WELCOME_BANNER_GIF_PATH.exists():
         return FSInputFile(WELCOME_BANNER_GIF_PATH)
     if lang == EN and WELCOME_BANNER_EN_PATH.exists():
@@ -2186,35 +2195,6 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
     await send_stars_invoice(chat_id, f"Фото · {_character_display_name(get_user_character(telegram_id))}", f'Новый сет до 3 фото: {PHOTO_LABELS.get(request.scene, request.scene)}', f'photo:{offer_id}', PHOTO_COST_STARS)
 
 
-_pinned_menu: dict[int, int] = {}
-
-
-async def _pin_main_menu(chat_id: int, message_id: int) -> None:
-    """V3.63.2: exactly one main menu lives in the chat — the previous pinned
-    menu (if this process still remembers it) is deleted, the new one pinned."""
-    chat_hygiene.forget_screen(chat_id, message_id)
-    old = _pinned_menu.get(chat_id)
-    if old and old != message_id:
-        try:
-            await bot.delete_message(chat_id, old)
-        except Exception:
-            pass
-    _pinned_menu[chat_id] = message_id
-    await chat_hygiene.pin_menu(bot, chat_id, message_id)
-
-
-async def _send_pinned_menu(chat_id: int, lang: str) -> None:
-    """V3.63.2: the compact main menu (no banner) for chats that do not have
-    one yet — sent right after the 18+ consent."""
-    text = ('📌 main menu — the app, peaches, partner program and support 👇' if lang == EN
-            else '📌 главное меню — приложение, персики, партнёрка и поддержка 👇')
-    try:
-        msg = await bot.send_message(chat_id, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang)))
-        await _pin_main_menu(chat_id, msg.message_id)
-    except Exception:
-        logger.exception('pinned menu failed chat=%s', chat_id)
-
-
 @dp.message(CommandStart())
 @service_screen
 async def start(message: types.Message, command: CommandObject):
@@ -2311,10 +2291,12 @@ async def start(message: types.Message, command: CommandObject):
         )
     # V3.42.0: no character grid here anymore — a short button list instead.
     markup = InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang))
-    menu_msg = await _send_welcome_banner(message, lang, welcome_back, markup)
-    # V3.63.2: the welcome card IS the main menu — pinned like Come Closer's,
-    # and kept out of the screen sweep so the next button tap does not delete it.
-    await _pin_main_menu(message.chat.id, menu_msg.message_id)
+    # V3.147.0: nothing is pinned at /start any more. The pin cost a service
+    # line («...закрепил(а) главное меню») right under the welcome and read as
+    # bot noise; the app, the balance and the partner program live on the
+    # native Telegram menu button (set_chat_menu_button) and in the reply
+    # keyboard, so the pinned bubble carries nothing no tap can reach.
+    await _send_welcome_banner(message, lang, welcome_back, markup)
     # V3.43.0: the referral dump is gone from the welcome screen entirely —
     # the invite link lives on the partner screen (/referral) now.
 
@@ -2336,37 +2318,32 @@ async def consent_accept(cq: types.CallbackQuery):
                 track_event(uid, 'referral_awarded_on_consent', metadata={'referrer_id': str(ref)})
         first_start = apply_first_start_bonuses(cq.from_user.id)
     await cq.answer('✅')
-    lang = user_lang(cq.from_user.id)
     flow_lang = full_user_lang(cq.from_user.id, cq.from_user.language_code)
-    # V3.63.2: the consent banner has done its job — remove it so the chat
-    # starts clean: pinned menu, then her hello and selfie.
+    # V3.63.2: the consent banner has done its job — remove it so the chat starts clean.
     try:
         await cq.message.delete()
     except Exception:
         pass
-    await _send_pinned_menu(cq.message.chat.id, lang)
-    bonus_line = (flow_text(flow_lang, 'welcome_bonus', amount=first_start['credits'])
-                  if first_start['credits'] else flow_text(flow_lang, 'welcome_plain'))
-    # V3.59.1: no referral link and no donation ask in the first minute — the
-    # invite link lives on the partner screen, the donation note comes from the
-    # weekly reminder from day 3 on. The first minute belongs to her.
-    # V3.41.0: character selection moved into the Mini App — no inline picker
-    # here anymore; show the persistent main menu (reply keyboard) instead.
-    await cq.message.answer(
-        bonus_line,
-        reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS, cq.from_user.id),
-    )
+    # V3.147.0: ONE message where the old flow fired four (pinned menu, the
+    # «закрепил главное меню» service line, the bonus text, the picker). The
+    # bonus, the choice and the app live in this single bubble; nothing is
+    # pinned, and persistent access to the app, the balance and the partner
+    # program is the native Telegram menu button plus the reply keyboard that
+    # comes in behind her selfie.
+    start_line = (flow_text(flow_lang, 'start_pick', amount=first_start['credits'])
+                  if first_start['credits'] else flow_text(flow_lang, 'start_pick_plain'))
+    await cq.message.answer(start_line, reply_markup=_start_keyboard(flow_lang))
     # V3.59.0: she writes FIRST. Until now a new user got a bonus line, a
     # referral link and a donation ask — and then silence: no girl ever spoke,
     # so most people left before their first message (D1 ≈ 1%). Her greeting
     # is the last thing in the chat and ends with a question to answer.
     # V3.98.0: 64 of 92 newcomers stayed with the default Anna — nobody chose
-    # "their" girl. A new user without a saved choice now picks one in a tap;
-    # if he ignores the picker, the default hello still goes out after 2 minutes.
+    # "their" girl. A new user without a saved choice picks one in a tap; if he
+    # ignores the picker, the default hello still goes out after 2 minutes.
     try:
         user_row = await asyncio.to_thread(get_user, cq.from_user.id)
         already_chosen = bool((getattr(user_row, 'selected_character', '') or '').strip())
-        if not already_chosen and await _send_girl_picker(cq.bot, cq.message.chat.id, cq.from_user.id, flow_lang):
+        if not already_chosen:
             track_event(uid, 'girl_picker_shown')
             _spawn_background(_first_hello_fallback(cq.bot, cq.message.chat.id, cq.from_user.id,
                                                     uid, cq.from_user.first_name or '', flow_lang))
@@ -2400,7 +2377,7 @@ def _first_hello_was_sent(uid: int) -> bool:
     return bool(hello or any_message)
 
 
-def _picker_keyboard(lang: str) -> InlineKeyboardMarkup:
+def _picker_rows(lang: str):
     rows = []
     try:
         from services import girl_of_day
@@ -2421,12 +2398,20 @@ def _picker_keyboard(lang: str) -> InlineKeyboardMarkup:
         if gid == cid:
             label = '🔥 ' + label  # today's open girl
         rows.append([InlineKeyboardButton(text=label, callback_data=f'pickgirl:{cid}')])
+    return rows
+
+
+def _start_keyboard(lang: str) -> InlineKeyboardMarkup:
+    """V3.147.0: the whole start screen in one bubble — her names, then one
+    wide row into the Mini App. The pinned main menu and the separate picker
+    message are gone; the app row is the same web_app button the menu button
+    opens, so he can leave for the full interface without hunting for it."""
+    rows = _picker_rows(lang)
+    if PUBLIC_BASE_URL:
+        rows.append([InlineKeyboardButton(
+            text='📱 Открыть приложение' if lang != EN else '📱 Open the app',
+            web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-async def _send_girl_picker(bot, chat_id: int, telegram_id: int, lang: str) -> bool:
-    await bot.send_message(chat_id, flow_text(lang, 'picker_prompt'), reply_markup=_picker_keyboard(lang))
-    return True
 
 
 async def _deliver_first_hello(bot, chat_id: int, telegram_id: int, uid: int, first_name: str, lang: str) -> None:
@@ -2522,7 +2507,11 @@ async def _send_welcome_selfie(bot, chat_id: int, telegram_id: int, uid: int, ch
             logger.warning('welcome selfie empty user=%s', telegram_id)
             return
         caption = flow_text(lang, 'selfie_caption')
-        await bot.send_photo(chat_id, BufferedInputFile(data, filename=f'hello.{ext}'), caption=caption)
+        # V3.147.0: the reply keyboard comes in on her photo instead of its own
+        # «main menu» bubble — persistent access to the app, the balance and
+        # the partner program, without a fourth message on the start screen.
+        await bot.send_photo(chat_id, BufferedInputFile(data, filename=f'hello.{ext}'), caption=caption,
+                             reply_markup=main_keyboard(telegram_id in ADMIN_TELEGRAM_IDS, telegram_id))
         filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', caption,
                                 media_kind='photo', media_url=f'/webapp/media/{filename}')

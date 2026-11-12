@@ -76,11 +76,17 @@ def _handler(src: str, signature: str) -> str:
     return body[:end]
 
 
-def test_consent_accept_shows_the_main_menu_not_a_character_picker():
+def test_consent_accept_sends_one_merged_start_message():
     handler = _handler(MAIN, 'async def consent_accept(')
-    # character selection moved into the Mini App — the persistent reply
-    # keyboard replaces the old inline «теперь выбери персонажа» picker
-    assert 'reply_markup=main_keyboard(cq.from_user.id in ADMIN_TELEGRAM_IDS, cq.from_user.id)' in handler
+    # V3.147.0: the bonus line, the girl picker and the app button live in ONE
+    # bubble — the old flow fired four (pinned menu, pin service line, bonus,
+    # picker) and the newcomer lost the thread.
+    assert 'reply_markup=_start_keyboard(flow_lang)' in handler
+    assert "'start_pick'" in handler and "'start_pick_plain'" in handler
+    assert handler.count('cq.message.answer(') == 1
+    # no pinned menu bubble, no reply keyboard bubble at the start
+    assert '_send_pinned_menu' not in handler
+    assert 'reply_markup=main_keyboard(' not in handler
     assert 'onboarding_character_keyboard()' not in handler
     # V3.59.1: the donation appeal left the first minute (weekly reminder, day 3+)
     assert 'donation_service.donation_appeal(lang)' not in handler

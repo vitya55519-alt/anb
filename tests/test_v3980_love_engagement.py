@@ -45,7 +45,12 @@ def test_chat_service_wires_language_guard():
 
 
 def test_girl_picker_after_consent_with_fallback():
-    assert 'async def _send_girl_picker(' in MAIN
+    # V3.147.0: the picker is no longer a bubble of its own — her names ride in
+    # the single start message, so the fallback timer and the hello lock still
+    # guarantee exactly one first greeting.
+    assert 'def _start_keyboard(' in MAIN
+    assert 'def _picker_rows(' in MAIN
+    assert "reply_markup=_start_keyboard(flow_lang)" in MAIN
     assert "F.data.startswith('pickgirl:')" in MAIN
     assert 'async def _first_hello_fallback(' in MAIN
     assert 'await asyncio.sleep(120)' in MAIN

@@ -12,8 +12,11 @@ Mechanics:
   and the previous screen, then every message the bot sends while the handler
   runs is captured (via a request middleware on the bot session) as the new
   screen, to be swept on the next tap.
-- The main menu message is pinned (old pins are dropped first) and the
-  «бот закрепил сообщение» service line is deleted.
+
+V3.147.0: the pinned main menu is gone. Pinning cost a «...закрепил(а) главное
+меню» service line on the very first screen, which is exactly the noise this
+module exists to remove — the app, the balance and the partner program are
+reachable through Telegram's own menu button and the reply keyboard.
 
 Conversation messages (her texts, photos, invoices) are never captured: only
 code running inside a ``service_screen`` handler is. Message ids live in
@@ -113,27 +116,3 @@ def close_screen(token: contextvars.Token) -> None:
     cap.closed = True
     if cap.ids:
         _screens[cap.chat_id] = cap.ids[-_MAX_TRACKED:]
-
-
-async def pin_menu(bot, chat_id: int, message_id: int) -> None:
-    """Make ``message_id`` the single pinned message of the chat."""
-    try:
-        await bot.unpin_all_chat_messages(chat_id)
-    except Exception:
-        pass
-    try:
-        await bot.pin_chat_message(chat_id, message_id, disable_notification=True)
-    except Exception:
-        logger.warning('pin menu failed chat=%s', chat_id)
-
-
-def forget_screen(chat_id: int, message_id: int) -> None:
-    """Keep a message out of the next sweep (e.g. the pinned main menu) —
-    both from the stored screen and from the capture still being recorded
-    (the /start handler pins its menu while its own capture is open)."""
-    ids = _screens.get(chat_id)
-    if ids and message_id in ids:
-        ids.remove(message_id)
-    cap = _current.get()
-    if cap is not None and cap.chat_id == chat_id and message_id in cap.ids:
-        cap.ids.remove(message_id)
