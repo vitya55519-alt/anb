@@ -6,7 +6,7 @@ import re
 from zoneinfo import ZoneInfo
 from config import CHARACTER_ID
 from services.llm_provider_service import generate_text
-from services.character_service import get_character, build_system_prompt
+from services.character_service import get_character, build_system_prompt, stop_sequences
 from services.memory_service import get_recent_messages, get_memories, save_message, extract_memory
 from services.relationship_service import record_user_message
 from services.relationship_signals import infer_delta
@@ -640,10 +640,16 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     except Exception:
         style_line = ''
         marital_reminder = ''
+    # V3.143.0: owner ТЗ — who she is writing to and how many voices she owns
+    # now lead the system prompt. A duo chat keeps the «Имя:» signature rule,
+    # otherwise the [ROLEPLAY INSTRUCTIONS] block would forbid the very format
+    # the invited girl needs.
+    duo_chat = bool(guest_reminder)
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + (spicy_line + '\n' if spicy_line else '') + (style_line + '\n' if style_line else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id, character_id), adaptation,
         time_context=_time_context(user_id, character_id),
         character_id=character_id,
+        user_name=user_name, duo=duo_chat,
     )
     messages = [{"role": "system", "content": system}]
     messages += [{"role": m.role, "content": m.content} for m in history]
@@ -755,8 +761,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
     if scene:
         token_budget = 420
-    duo_chat = bool(guest_reminder)
-    r = await generate_text(messages, max_tokens=token_budget, temperature=1.0, purpose='dialogue')
+    # V3.143.0: owner ТЗ — the dialogue is sampled cooler than MiniMax's chat
+    # default (1.0 was where the dead ends and invented facts peaked), and the
+    # stop sequences cut her off the moment she starts typing his line.
+    stops = stop_sequences(user_name)
+    r = await generate_text(messages, max_tokens=token_budget, temperature=0.8, purpose='dialogue', stop=stops)
     if not (r.text or '').strip():
         _lang = 'en' if (foreign or (language_code or '').lower().startswith('en')) else 'ru'
         answer = stall_line(_lang, [m.content for m in history if m.role == 'assistant'][-6:])
@@ -768,7 +777,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         if live_talk.looks_leaked(answer) and not foreign:
             _logger.warning('dialogue reasoning leak user=%s provider=%s', user_id, r.provider)
             try:
-                retry = await generate_text(messages, max_tokens=token_budget, temperature=0.9, purpose='dialogue')
+                retry = await generate_text(messages, max_tokens=token_budget, temperature=0.75, purpose='dialogue', stop=stops)
                 fixed = _clean(retry.text or '', duo=duo_chat) if (retry.text or '').strip() else ''
                 if fixed and not live_talk.looks_leaked(fixed):
                     answer, r = fixed, retry
@@ -790,7 +799,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                 retry = await generate_text(
                     messages + [{"role": "assistant", "content": answer},
                                 {"role": "system", "content": lang_guard.strict_directive(lang)}],
-                    max_tokens=token_budget, temperature=0.9, purpose='dialogue')
+                    max_tokens=token_budget, temperature=0.75, purpose='dialogue', stop=stops)
                 fixed = _clean(retry.text or '')
                 if fixed and lang_guard.reply_ok(fixed, lang, user_text):
                     answer = fixed
@@ -873,6 +882,7 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
         state_context(user_id, character_id), adaptation,
         time_context=_time_context(user_id, character_id),
         character_id=character_id,
+        user_name=user_name,
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": f"Пользователь не писал около {hours_inactive} часов. Напиши естественно первой, не упоминая отслеживание активности."})
@@ -993,6 +1003,7 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
         state_context(user_id, character_id), adaptation,
         time_context=_time_context(user_id, character_id),
         character_id=character_id,
+        user_name=user_name,
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": ("Вечер. Напиши ему первой: как прошёл его день, с привязкой к тому, что ты о нём знаешь."
@@ -1110,6 +1121,7 @@ async def paid_moment(user_id: int, user_name: str, moment: str, language_code: 
             state_context(user_id, character_id), adaptation,
             time_context=_time_context(user_id, character_id),
             character_id=character_id,
+            user_name=user_name,
         )
         messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
         messages.append({"role": "user", "content": "Напиши ему первой."})
@@ -1155,7 +1167,8 @@ async def story_reaction(user_id: int, user_name: str, character_id: str, quest_
         )
         messages = [{'role': 'system', 'content': system},
                     {'role': 'user', 'content': (result_text or choice_label or 'продолжим')}]
-        r = await generate_text(messages, max_tokens=90, temperature=0.95, purpose='dialogue')
+        r = await generate_text(messages, max_tokens=90, temperature=0.8, purpose='dialogue',
+                                stop=stop_sequences(user_name))
         out = (r.text or '').strip()
         out = re.sub(r'\*\*(.+?)\*\*', r'\1', out)
         out = re.sub(r'\n{2,}', '\n', out).strip()

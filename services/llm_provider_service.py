@@ -84,6 +84,12 @@ _MINIMAX_HEADROOM_BY_PURPOSE = {'life_event': 1200, 'proactive': 1200}
 _MINIMAX_HEADROOM_BY_PURPOSE['dialogue'] = max(0, int(os.getenv('MINIMAX_DIALOGUE_HEADROOM', '1024')))
 MINIMAX_EMPTY_RETRY_HEADROOM = max(512, int(os.getenv('MINIMAX_EMPTY_RETRY_HEADROOM', '2400')))
 RETRY_EMPTY_PURPOSES = frozenset({'dialogue'})
+# V3.143.0: owner ТЗ — she sometimes kept writing after his turn («User: …») and
+# sent a dialogue where she answered for both. Every call that produces a chat
+# message is cut at these markers; the caller adds the client's own name.
+DEFAULT_STOP = ('User:', 'Пользователь:')
+STOP_PURPOSES = frozenset({'dialogue', 'proactive', 'rewrite'})
+STOP_MAX = 4
 # V3.64.8: Gemini 3.x counts its hidden thinking inside max_tokens too, so a
 # 90-token life moment came back as 2–4 words («Надела сегодня тот»).
 GEMINI_REASONING_HEADROOM = max(0, int(os.getenv('GEMINI_REASONING_HEADROOM', '512')))
@@ -160,12 +166,16 @@ async def generate_text(
     max_tokens: int,
     temperature: float = 0.9,
     purpose: str = 'dialogue',
+    stop: list[str] | None = None,
 ) -> LLMResult:
     """Simple provider chain: OpenRouter → Gemini fallback.
 
     Raises RuntimeError with full diagnostic if all providers fail.
     """
     errors: list[str] = []
+    if stop is None and purpose in STOP_PURPOSES:
+        stop = list(DEFAULT_STOP)
+    stop = [s for s in (str(x).strip() for x in (stop or [])) if s][:STOP_MAX]
 
     # V3.44.18: the daily money brake. Only the mechanical helper calls are
     # skipped — the reply the user actually reads always goes through, so the
@@ -184,7 +194,12 @@ async def generate_text(
         if purpose == 'dialogue':
             # V3.63.12: MiniMax's own guidance for chat is temperature 1.0 with
             # top_p 0.95; below that M3 drifts into the same safe phrasing.
+            # V3.143.0: the owner asked for 0.7–0.85 anyway — at 1.0 the dead
+            # ends and invented facts about his life peaked. top_p stays wide so
+            # the wording keeps varying at the lower temperature.
             mm_kwargs['top_p'] = 0.95
+        if stop:
+            mm_kwargs['stop'] = stop
         try:
             r = await _minimax.chat.completions.create(
                 model=mm_model,
@@ -237,7 +252,11 @@ async def generate_text(
             r = await _gemini.chat.completions.create(
                 model=GEMINI_CHAT_MODEL,
                 messages=messages,
+                # V3.143.0: the fallback used to ignore the caller's temperature,
+                # so the same reply came back hotter than the one asked for.
+                temperature=temperature,
                 max_tokens=max_tokens + GEMINI_REASONING_HEADROOM,
+                **({'stop': stop} if stop else {}),
             )
             text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'gemini', GEMINI_CHAT_MODEL, r)
@@ -262,6 +281,8 @@ async def generate_text(
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+            if stop:
+                kwargs['stop'] = stop
             if extra:
                 kwargs['extra_body'] = extra
             r = await _openrouter.chat.completions.create(**kwargs)

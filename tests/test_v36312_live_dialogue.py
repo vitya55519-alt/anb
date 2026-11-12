@@ -60,7 +60,9 @@ def test_hook_wired_before_his_message_and_minimax_dialogue_sampling():
     chat = (ROOT / 'services' / 'chat_service.py').read_text(encoding='utf-8')
     hook_at = chat.index('hook = next_hook(user_id, character_id, behavior_kind')
     assert hook_at < chat.index('messages.append({"role": "user", "content": user_text})', hook_at)
-    assert "temperature=1.0, purpose='dialogue'" in chat
+    # V3.143.0: owner ТЗ — dialogue is sampled at 0.8 (his 0.7–0.85 test range);
+    # 1.0 was where the dead ends and invented facts peaked.
+    assert "temperature=0.8, purpose='dialogue'" in chat
     llm = (ROOT / 'services' / 'llm_provider_service.py').read_text(encoding='utf-8')
     assert "mm_kwargs['top_p'] = 0.95" in llm
     assert "MINIMAX_DIALOGUE_MODEL if purpose == 'dialogue' else MINIMAX_MODEL" in llm

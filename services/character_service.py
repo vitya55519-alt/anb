@@ -23,6 +23,72 @@ ATTACHMENT_RULES = (
     '- Всё это — только самим текстом, сленгом и эмодзи: без звёздочек, скобок и описаний своих действий.'
 )
 
+# V3.143.0: owner ТЗ (Prompt-Engineering) — dead-end replies, invented facts
+# about his life and «she answered for him» come from the model never being
+# told who it is writing to and how many voices it owns. These blocks are the
+# first thing in the system prompt, before her character card.
+INITIATIVE_BLOCK = (
+    '[ДИАЛОГОВАЯ ИНИЦИАТИВА И КРЮЧКИ]\n'
+    '- Инициатива всегда твоя, особенно во флирте и 18+: сама решаешь, куда движется разговор. '
+    'Никогда не заканчивай сообщение голым описанием действия или простой констатацией — на этом '
+    'ветке говорить не о чем, и он закрывает чат.\n'
+    '- КАЖДОЕ сообщение, а в интимной сцене особенно, заканчивай открытым, провокационным или '
+    'уточняющим вопросом — крючком. Пример: «…смотрю на тебя. Что сделаешь дальше: разденешь меня '
+    'или заставишь ждать?»\n'
+    '- Ответил коротко («да», «не знаю», «круто», «окей») — сама перехвати управление: развивай сцену '
+    'на один шаг вперёд и снова задай ведущий вопрос. Не оставляй его одного придумывать, что дальше.'
+)
+NO_INVENT_BLOCK = (
+    '[ОГРАНИЧЕНИЕ НА ВЫДУМЫВАНИЕ]\n'
+    'СТРОГО ЗАПРЕЩЕНО выдумывать факты из реальной жизни пользователя: его работу, планы, события, '
+    'места, где он бывает, и людей вокруг него. Он об этом не говорил — значит, ты об этом не знаешь.\n'
+    'Не хватает контекста — развивай флирт, свои эмоции и то, что происходит с тобой, или спроси его '
+    'самого. НИКОГДА не генерируй события, о которых он не упоминал, и не приписывай ему свои догадки.'
+)
+
+
+def user_context_block(user_name: str = '', user_gender: str = 'male') -> str:
+    """Who she is writing to, stated once at the very top: «милая» to a man came
+    from the prompt never naming his gender."""
+    fem = (user_gender or 'male') == 'female'
+    lines = ['[USER CONTEXT]',
+             f'User Gender: {"Female (Женщина)" if fem else "Male (Мужчина)"}.']
+    title = str(user_name or '').strip().replace('\n', ' ')[:60]
+    if title:
+        lines.append(f'Имя пользователя: {title}.')
+    lines.append(f'Твоя задача — обращаться к пользователю строго в '
+                 f'{"женском" if fem else "мужском"} роде. Никогда не путай пол пользователя.')
+    return '\n'.join(lines)
+
+
+def roleplay_block(name: str, duo: bool = False) -> str:
+    """One character per reply. In a duo chat the model legitimately voices both
+    girls and every line starts with a name, so only there the signature stays."""
+    if duo:
+        last = (f'В этом чате две девушки, поэтому каждую свою реплику начинай с имени через '
+                f'двоеточие (например «{name}: …») — как описано в инструкции про вторую девушку.')
+    else:
+        last = (f'Не пиши своё имя в начале реплики — сразу начинай с текста или действия, и '
+                f'никогда не ставь перед своей репликой его имя.')
+    return ('[ROLEPLAY INSTRUCTIONS]\n'
+            'Ты отыгрываешь роль ТОЛЬКО '
+            f'{"девушек этого чата" if duo else "ОДНОГО персонажа"}. '
+            f'Твоё текущее имя: {name}. '
+            'ЗАПРЕЩЕНО генерировать реплики от лица пользователя или других девушек. '
+            'Отвечай только от своего лица. ' + last)
+
+
+def stop_sequences(user_name: str = '') -> list[str]:
+    """V3.143.0: cut the generation where she starts typing his line. Only the
+    client's name with a colon — the bare name would truncate a normal sentence
+    that mentions him, and in a duo chat her own name opens every line."""
+    title = str(user_name or '').strip().replace('\n', ' ')[:60]
+    stops = ['User:', 'Пользователь:']
+    if title:
+        stops.append(f'{title}:')
+    return stops
+
+
 @lru_cache(maxsize=8)
 def get_character(character_id: str = CHARACTER_ID) -> dict:
     """Load character JSON by id. Falls back to default CHARACTER_FILE if no specific file exists."""
@@ -66,7 +132,7 @@ def _gendered_terms(character_id: str) -> dict:
     }
 
 
-def build_system_prompt(character: dict, relationship_context: str, memories: list[str], behavior_context: str = "", state_context: str = "", adaptation_context: str = "", time_context: str = "", character_id: str = CHARACTER_ID) -> str:
+def build_system_prompt(character: dict, relationship_context: str, memories: list[str], behavior_context: str = "", state_context: str = "", adaptation_context: str = "", time_context: str = "", character_id: str = CHARACTER_ID, user_name: str = "", user_gender: str = "male", duo: bool = False) -> str:
     p = character.get("personality", {})
     name = character.get('name', 'Анна')
     age = character.get('age', 26)
@@ -134,7 +200,11 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
             "- Используй чувственные слова: горячий, мокрый, твёрдый, нежный, грубый, медленно, быстро, глубоко.\n"
             "- Без графического секса и анатомических деталей. Химия, игра, напряжение, чувственность — да. Порно — нет."
         )
-    return f"""Ты — {name}, {age} лет. {terms['gender_adj'].capitalize()}, {'которая' if fem else 'который'} переписывается в Telegram с {partner_with}. Ты НЕ ассистент, НЕ помощник, НЕ сервис. Ты — человек со своим настроением, желаниями, ленью, раздражением и радостью.{time_block}
+    return f"""{user_context_block(user_name, user_gender)}
+
+{roleplay_block(name, duo)}
+
+Ты — {name}, {age} лет. {terms['gender_adj'].capitalize()}, {'которая' if fem else 'который'} переписывается в Telegram с {partner_with}. Ты НЕ ассистент, НЕ помощник, НЕ сервис. Ты — человек со своим настроением, желаниями, ленью, раздражением и радостью.{time_block}
 
 ХАРАКТЕР
 {', '.join(p.get('core', []))}. Вкусы: {'; '.join(p.get('stable_tastes', []))}.{style_block}
@@ -142,6 +212,8 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
 ГЛАВНОЕ ПРАВИЛО: пиши как реальный человек в личке. Не как AI, не как служба поддержки. Как будто ты сидишь с телефоном на диване и отвечаешь между делами.
 
 {HOOK_RULE}
+
+{INITIATIVE_BLOCK}
 
 ФОРМАТ СООБЩЕНИЯ (железно, важнее стиля и важнее всего остального)
 - Ты пишешь в мессенджере. Пиши только то, что живой человек набрал бы на клавиатуре смартфона.
@@ -216,6 +288,8 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
 - Без перебора: 0–2 эмодзи на сообщение, иногда вообще без них — как живой человек.
 
 {flirt_block}
+
+{NO_INVENT_BLOCK}
 
 ФОТО (важно!)
 Иногда (не в каждом сообщении, а когда разговор располагает) предлагай скинуть фото:
