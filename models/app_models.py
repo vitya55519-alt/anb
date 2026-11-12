@@ -98,6 +98,10 @@ class User(Base):
     # Auto-migrated by services/db.py.
     gift_last_day: Mapped[date | None] = mapped_column(Date, nullable=True)
     gift_streak: Mapped[int] = mapped_column(Integer, default=0)
+    # V3.146.0: the FIRST «💍 Семейное положение» change is free for everyone,
+    # existing users included (False = still waiting). Burned only on a real
+    # change, in the same commit as the new status. Auto-migrated by db.py.
+    marital_change_free_used: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 # V3.37.0: money affiliate program. One row per converted referral — the

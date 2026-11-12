@@ -527,6 +527,24 @@ def _batch_marital(telegram_id: int | None, character_ids: list[str]) -> dict[st
         return {}
 
 
+def marital_price(user) -> int:
+    """V3.146.0: the price of the next «💍 Семейное положение» change for him.
+
+    The FIRST change is free for every user — existing accounts included, the
+    flag defaults to False — every later one costs MARITAL_CHANGE_PEACHES. Takes
+    the ``User`` row, a bare ``marital_change_free_used`` flag, or ``None`` (no
+    row yet = the free change is still waiting) and never touches the DB, so the
+    storefront payload and the charge handler read the very same price.
+    Admins are not handled here: the handler has always let them change the
+    status without paying, and still does."""
+    if user is None:
+        return 0
+    used = getattr(user, 'marital_change_free_used', None)
+    if used is None:
+        used = user
+    return MARITAL_CHANGE_PEACHES if used else 0
+
+
 def _batch_path_axis(telegram_id: int | None, character_ids: list[str]) -> dict[str, float]:
     """V3.50.0: the per-character relationship *path* (-100 romance .. +100
     bold) for the character-card indicator, in ONE query. Characters without
@@ -605,6 +623,7 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     relationship levels load in one batched query.
     """
     selected = None
+    user = None
     if telegram_id:
         user = _user_row(telegram_id)
         selected = (user.selected_character or CHARACTER_ID) if user else None
@@ -638,6 +657,9 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     # V3.50.0: batched read of the romance<->bold path for the card indicator.
     path_axes = _batch_path_axis(telegram_id, [c.character_id for c in cards])
     maritals = _batch_marital(telegram_id, [c.character_id for c in cards])
+    # V3.146.0: his own price for the next status change — 0 while the free
+    # first one is still waiting (one read, every card carries the same value).
+    price_marital = marital_price(user)
     # V3.92.0: «🔥 Девушка дня» — open to everyone today, pinned first.
     try:
         from services import girl_of_day
@@ -704,7 +726,7 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             # V3.59.5: her relationship status for this user. V3.59.6: falls back
             # to the constructor's pick for a custom girl, else «свободна».
             'marital': maritals.get(card.character_id) or _default_marital(card.character_id, custom),
-            'marital_price': MARITAL_CHANGE_PEACHES,
+            'marital_price': price_marital,
             # V3.45.28: sanitized tags for custom personas ([] for built-ins).
             'tags': parse_tags(tags_by_id.get(card.character_id)),
         })

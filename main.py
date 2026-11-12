@@ -15363,6 +15363,7 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
 
     left_him: dict = {}
+    next_price: dict = {}
 
     def _save():
         if is_custom_character(character_id):
@@ -15386,12 +15387,20 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
                 return None  # same pick again: free, nothing changes
             # V3.59.6: every change costs peaches (admin tests free) — a paid
             # tweak instead of endless tapping.
-            if MARITAL_CHANGE_PEACHES and telegram_id not in ADMIN_TELEGRAM_IDS:
+            # V3.146.0: the FIRST change is free for everyone (existing users
+            # included) — the flag burns only on a real change, in this very
+            # commit, never when the spend below refuses, and never while the
+            # change costs nothing at all (MARITAL_CHANGE_PEACHES=0).
+            owner = session.get(User, uid)
+            free_change = MARITAL_CHANGE_PEACHES > 0 and webapp_service.marital_price(owner) == 0
+            if MARITAL_CHANGE_PEACHES and not free_change and telegram_id not in ADMIN_TELEGRAM_IDS:
                 if not spend_peaches(telegram_id, MARITAL_CHANGE_PEACHES):
                     return 'peaches'
             if row is None:
                 row = UserCharacterRelationship(user_id=uid, character_id=character_id, path_axis=0.0)
                 session.add(row)
+            if free_change and owner is not None:
+                owner.marital_change_free_used = True
             row.marital_status = new_value
             # V3.61.9: on levels 7-8 «замужем → свободна» is a scene, not a
             # silent flip: she left him for the user and arrives with a suitcase.
@@ -15419,6 +15428,9 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
             else:
                 mem.content = text_mem
             session.commit()
+            # V3.146.0: the price of his NEXT change, so the app repaints the
+            # label from «free» to 500 🍑 right after the free one is burned.
+            next_price['value'] = webapp_service.marital_price(owner)
         track_event(uid, 'webapp_marital', metadata={'character_id': character_id, 'status': status})
         return None
 
@@ -15435,7 +15447,11 @@ async def _webapp_api_chat_marital(request: web.Request) -> web.Response:
     if left_him:
         asyncio.create_task(_left_him_scene(telegram_id, character_id, left_him['uid']))
     return web.json_response({'ok': True, 'status': None if status == 'default' else status,
-                              'balance': get_photo_credits(telegram_id), 'left_him': bool(left_him)})
+                              'balance': get_photo_credits(telegram_id), 'left_him': bool(left_him),
+                              # Nothing really changed (same pick, custom girl) →
+                              # no price back, or the app would repaint «free»
+                              # into 500 🍑 while his free change is still waiting.
+                              **({'marital_price': next_price['value']} if next_price else {})})
 
 
 async def _webapp_api_marital_arc(request: web.Request) -> web.Response:

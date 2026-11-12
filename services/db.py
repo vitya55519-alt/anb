@@ -86,6 +86,8 @@ def _migrate_existing_users():
         'streak_last_date': 'TIMESTAMP',
         'video_free_date': "VARCHAR(10) DEFAULT ''",
         'video_free_used': 'INTEGER DEFAULT 0',
+        # V3.146.0: the first marital-status change is free for everyone.
+        'marital_change_free_used': f"BOOLEAN DEFAULT {bool_false}",
     }
     _add_missing_columns('users', wanted)
 
