@@ -642,6 +642,11 @@ def _msk_now() -> dt.datetime:
     return dt.datetime.now(ZoneInfo('Europe/Moscow'))
 
 
+def ritual_day() -> str:
+    """V3.150.0: the Moscow day a ritual — and the owner's pinned photo — lives in."""
+    return _msk_now().date().isoformat()
+
+
 def ritual_kind_at(hour: int, grace: int = 0) -> str | None:
     if RITUAL_MORNING_START_HOUR <= hour < RITUAL_MORNING_END_HOUR + grace:
         return 'morning'
@@ -685,8 +690,11 @@ async def _ritual_preview(bot, kind: str, day: str) -> None:
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     await _rituals(bot, only_tg=set(ADMIN_TELEGRAM_IDS), force_kind=kind)
     label='утреннее' if kind=='morning' else 'вечернее'
-    kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-        text='✅ Отправить всем', callback_data=f'ritual_ok:{kind}:{day}')]])
+    # V3.150.0: «дай мне возможность выбирать фото под голосовое» — before he
+    # releases the ritual he can flip through her ready frames and pin one.
+    kb=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='✅ Отправить всем', callback_data=f'ritual_ok:{kind}:{day}')],
+        [InlineKeyboardButton(text='🖼 Фото под голосовое', callback_data=f'ritual_ph:open:{kind}')]])
     for admin in ADMIN_TELEGRAM_IDS:
         try:
             await bot.send_message(int(admin), f'🧪 Тест: выше {label} голосовое с фото, как его получит пользователь '
@@ -753,14 +761,25 @@ async def _shared_ritual(kind: str, day: str, char_id: str, lang: str):
             logger.exception('shared ritual voice failed char=%s lang=%s', char_id, lang)
         shot=None
         try:
+            # V3.150.0: a frame the owner pinned for today wins; otherwise the
             # clean photo for everyone (no lingerie): the same picture reaches free users
-            shot=await _ev.evening_photo(char_id, None, False)
+            shot=await _ev.chosen_photo(kind, day, char_id) or await _ev.evening_photo(char_id, None, False)
         except Exception:
             logger.exception('shared ritual photo failed char=%s', char_id)
         _shared_bundles[key]=(text, voice, shot)
         logger.info('shared ritual built kind=%s char=%s lang=%s voice=%s photo=%s',
                     kind, char_id, lang, bool(voice), bool(shot))
         return _shared_bundles[key]
+
+
+def invalidate_ritual_bundles(kind: str, day: str, char_id: str) -> None:
+    """V3.150.0: the preview already built today's bundle, so a photo the owner
+    pins afterwards would stay hidden behind that cache. Drop this girl's bundle
+    for today — both languages — and the next send rebuilds it with his frame."""
+    for k in [k for k in _shared_bundles
+              if k[0] == kind and k[1] == day and k[2] == char_id]:
+        _shared_bundles.pop(k, None)
+        _shared_locks.pop(k, None)
 
 
 # V3.121.1: a redeploy wiped _ritual_sent mid-window, and with the approval
@@ -943,7 +962,9 @@ async def _rituals(bot, only_tg=None, force_kind=None):
                     try:
                         from services import evening_voice as _ev
                         from services.user_service import is_adult_confirmed as _adult
-                        evening_shot=await _ev.evening_photo(char_id, uid, await asyncio.to_thread(_adult, int(tg_id)))
+                        # V3.150.0: the owner's pinned frame first, then the rotation
+                        evening_shot=await _ev.chosen_photo(kind, msk_day, char_id) or await _ev.evening_photo(
+                            char_id, uid, await asyncio.to_thread(_adult, int(tg_id)))
                     except Exception:
                         logger.exception('evening photo failed user=%s',uid)
                         evening_shot=None

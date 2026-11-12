@@ -68,7 +68,10 @@ def test_evening_photo_flag_off(monkeypatch):
 
 
 def test_scheduler_photo_then_voice_morning_and_evening():
-    assert "evening_shot=await _ev.evening_photo(char_id, uid, await asyncio.to_thread(_adult, int(tg_id)))" in SCHED
+    # V3.150.0: the frame the owner pinned for today goes first, the adult-aware
+    # rotation is the fallback — both picks still cost $0.
+    assert "evening_shot=await _ev.chosen_photo(kind, msk_day, char_id) or await _ev.evening_photo(" in SCHED
+    assert "char_id, uid, await asyncio.to_thread(_adult, int(tg_id)))" in SCHED
     assert "morning_voice=await _ev.voice_bytes(text, char_id" in SCHED and "mood='morning'" in SCHED
     block = SCHED[SCHED.index("ritual_voice=evening_voice if kind=='evening' else morning_voice"):SCHED.index("track_event(uid, f'{kind}_photo_sent'")]
     # V3.145.0: the voice left this branch (it now waits a beat behind the

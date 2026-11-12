@@ -316,6 +316,130 @@ async def evening_photo(character_id: str, uid: int | None, adult: bool = False)
     return None
 
 
+# ── V3.150.0: the owner pins the photo that goes under the voice note ─────
+# Owner: «дай мне возможность выбирать фото под голосовое». The automatic pick
+# above is a roulette he only sees once the bubble is already on his screen. In
+# test mode he now flips through her ready frames and pins one for today's
+# morning/evening ritual of THIS girl — one ProductEvent row, so a redeploy
+# keeps it and the next day the rotation takes over again. «🔄 Авто» releases it.
+CHOICE_EVENT = 'ritual_photo_pick'
+CANDIDATE_LIMIT = 24
+
+
+def _gen_candidates(character_id: str) -> list[dict]:
+    """Her ready bot renders, clean ones only: the owner's «🚫 Брак» and any
+    nudity never reach the list, an unchecked frame is offered with a warning."""
+    out = []
+    for gen_id, _filename, verdict in _candidates(character_id, None)[:CANDIDATE_LIMIT]:
+        if verdict and not verdict_allows(verdict, False):
+            continue
+        out.append({'source': 'gen', 'ref': int(gen_id), 'checked': verdict is not None})
+    return out
+
+
+def _pool_candidates(character_id: str) -> list[dict]:
+    from sqlalchemy import select
+    from models.app_models import ProactivePhoto
+    from services.db import SessionLocal
+    from services.retention_features_service import proactive_photo_retired
+    with SessionLocal() as s:
+        rows = s.execute(
+            select(ProactivePhoto.id, ProactivePhoto.kind, ProactivePhoto.created_at)
+            .where(ProactivePhoto.character_id == character_id, ProactivePhoto.kind == 'photo')
+            .order_by(ProactivePhoto.id.desc()).limit(CANDIDATE_LIMIT)
+        ).all()
+    return [{'source': 'pool', 'ref': int(r.id), 'checked': True}
+            for r in rows if not proactive_photo_retired(r.kind, r.created_at)]
+
+
+def owner_candidates(character_id: str) -> list[dict]:
+    """[{source, ref, checked}] — her generations first, then his own pool."""
+    out: list[dict] = []
+    try:
+        out += _gen_candidates(character_id)
+    except Exception:
+        logger.exception('ritual photo candidates (generations) failed character=%s', character_id)
+    try:
+        out += _pool_candidates(character_id)
+    except Exception:
+        logger.exception('ritual photo candidates (pool) failed character=%s', character_id)
+    return out[:CANDIDATE_LIMIT]
+
+
+def candidate_media(source: str, ref: int):
+    """(bytes, content_type, kind) of one candidate, or None when the file is
+    gone — an ephemeral render that never made it into ChatMedia."""
+    from sqlalchemy import select
+    from models.app_models import ProactivePhoto, UserGeneration
+    from services.db import SessionLocal
+    try:
+        with SessionLocal() as s:
+            if source == 'pool':
+                row = s.get(ProactivePhoto, int(ref))
+                if not row or not row.image_bytes:
+                    return None
+                return row.image_bytes, (row.content_type or 'image/jpeg'), (row.kind or 'photo')
+            filename = s.scalar(select(UserGeneration.filename).where(UserGeneration.id == int(ref)))
+    except Exception:
+        logger.exception('ritual photo candidate failed source=%s ref=%s', source, ref)
+        return None
+    return _media(filename) if filename else None
+
+
+def set_choice(kind: str, day: str, character_id: str, source: str | None, ref: int | None) -> None:
+    """Pin a frame for today's ritual — or release it back to the rotation."""
+    import json
+    from models.app_models import ProductEvent
+    from services.db import SessionLocal
+    with SessionLocal() as s:
+        s.add(ProductEvent(user_id=None, character_id=character_id or '', event_name=CHOICE_EVENT,
+                           value=float(ref or 0),
+                           metadata_json=json.dumps({'kind': kind, 'day': day,
+                                                     'source': source, 'ref': ref})))
+        s.commit()
+
+
+def get_choice(kind: str, day: str, character_id: str) -> dict | None:
+    """The newest pinned frame for this girl and day, None when auto."""
+    import json
+    from sqlalchemy import select
+    from models.app_models import ProductEvent
+    from services.db import SessionLocal
+    try:
+        with SessionLocal() as s:
+            rows = s.execute(
+                select(ProductEvent.metadata_json)
+                .where(ProductEvent.event_name == CHOICE_EVENT,
+                       ProductEvent.character_id == (character_id or ''))
+                .order_by(ProductEvent.id.desc()).limit(20)
+            ).all()
+        for (meta,) in rows:
+            try:
+                d = json.loads(meta or '{}')
+            except Exception:
+                continue
+            if d.get('kind') != kind or d.get('day') != day:
+                continue
+            return d if d.get('source') else None
+    except Exception:
+        logger.exception('ritual photo choice read failed character=%s', character_id)
+    return None
+
+
+async def chosen_photo(kind: str, day: str, character_id: str):
+    """The owner's pinned frame for this ritual, or None → pick automatically."""
+    import asyncio
+    if not character_id:
+        return None
+    choice = await asyncio.to_thread(get_choice, kind, day, character_id)
+    if not choice:
+        return None
+    media = await asyncio.to_thread(candidate_media, str(choice.get('source')), choice.get('ref'))
+    if not media or not media[0]:
+        return None
+    return media
+
+
 # ── V3.108.0: owner's one-off voice cast to everyone ─────────────────────
 # «всем одно и то же»: one line per language, voiced once per girl and
 # reused for every user of that girl (a handful of TTS calls, not hundreds).

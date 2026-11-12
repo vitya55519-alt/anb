@@ -3457,7 +3457,10 @@ def admin_prophoto_keyboard():
     names = _prophoto_char_names()
     rows = [[InlineKeyboardButton(text='➕ Добавить фото / GIF / видео', callback_data='admin:prophoto:add')],
             # V3.61.8: one tap renders fresh «я скучала» shots of every heroine.
-            [InlineKeyboardButton(text='✨ Сгенерировать 20 фото «я скучала»', callback_data='admin:prophoto:gen')]]
+            [InlineKeyboardButton(text='✨ Сгенерировать 20 фото «я скучала»', callback_data='admin:prophoto:gen')],
+            # V3.150.0: the frame under today's voice note, picked by hand.
+            [InlineKeyboardButton(text='🖼 Фото под утро', callback_data='ritual_ph:open:morning'),
+             InlineKeyboardButton(text='🖼 Фото под вечер', callback_data='ritual_ph:open:evening')]]
     if photos:
         rows.append([InlineKeyboardButton(text='🧹 Удалить старые фото пула', callback_data='admin:prophoto:clear')])
     del_row = []
@@ -11073,6 +11076,190 @@ async def admin_ritual_approve(cq: types.CallbackQuery):
     except Exception:
         pass
     asyncio.create_task(_ss._rituals(bot))
+
+
+# ── V3.150.0: the owner picks the photo that goes under the voice note ────
+# Owner: «дай мне возможность выбирать фото под голосовое». Under every ritual
+# preview he now flips through her READY frames (no new renders, $0) and pins
+# one for today's morning/evening ritual of that girl. The pin is a
+# ProductEvent row, so a redeploy keeps it and the next day the automatic
+# rotation takes over again; «🔄 Авто-подбор» hands it back sooner. Where the
+# carousel stands is an admin editor session — in memory, like the other
+# admin media screens.
+RITUAL_PH_WAIT: dict[int, dict] = {}
+
+
+def _ritual_ph_char(telegram_id: int) -> str:
+    user = get_user(telegram_id)
+    return (getattr(user, 'selected_character', '') or CHARACTER_ID) if user else CHARACTER_ID
+
+
+def _ritual_ph_name(character_id: str) -> str:
+    return _prophoto_char_names().get(character_id, character_id)
+
+
+def _ritual_ph_choose_keyboard() -> InlineKeyboardMarkup:
+    from services.character_card_service import list_cards
+    try:
+        cards = list_cards(visible_only=False)
+    except Exception:
+        cards = []
+    rows, line = [], []
+    for c in cards:
+        line.append(InlineKeyboardButton(text=(c.display_name or c.character_id)[:12],
+                                         callback_data=f'ritual_ph:char:{c.character_id}'))
+        if len(line) == 2:
+            rows.append(line)
+            line = []
+    if line:
+        rows.append(line)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _ritual_ph_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='◀️', callback_data='ritual_ph:prev'),
+         InlineKeyboardButton(text='✅ Это фото', callback_data='ritual_ph:set'),
+         InlineKeyboardButton(text='▶️', callback_data='ritual_ph:next')],
+        [InlineKeyboardButton(text='🔄 Авто-подбор', callback_data='ritual_ph:auto'),
+         InlineKeyboardButton(text='👩 Другая героиня', callback_data='ritual_ph:char')]])
+
+
+async def _ritual_ph_show(cq: types.CallbackQuery, state: dict, note: str = '') -> None:
+    """One bubble: her frame, «3/18» and the pin buttons."""
+    from services import evening_voice as _ev
+    from services import scheduler_service as _ss
+    cands = await asyncio.to_thread(_ev.owner_candidates, state['character_id'])
+    if not cands:
+        await cq.message.answer(
+            f'📭 У «{_ritual_ph_name(state["character_id"])}» готовых кадров нет — '
+            'загрузи их в «📸 Медиа для утра/вечера».',
+            reply_markup=_ritual_ph_choose_keyboard())
+        return
+    idx = int(state.get('idx') or 0) % len(cands)
+    picked = None
+    for step in range(len(cands)):          # a render can age out of storage
+        cur = (idx + step) % len(cands)
+        media = await asyncio.to_thread(_ev.candidate_media, cands[cur]['source'], cands[cur]['ref'])
+        if media and media[0]:
+            picked = (cur, media)
+            break
+    if not picked:
+        await cq.message.answer('📭 Кадры не читаются — проверь пул «📸 Медиа для утра/вечера».')
+        return
+    idx, media = picked
+    state = {**state, 'idx': idx}
+    RITUAL_PH_WAIT[cq.from_user.id] = state
+    label = '🌅 утреннее' if state['kind'] == 'morning' else '🌙 вечернее'
+    choice = await asyncio.to_thread(_ev.get_choice, state['kind'], _ss.ritual_day(), state['character_id'])
+    caption = (
+        (f'{note}\n\n' if note else '')
+        + f'🖼 {_ritual_ph_name(state["character_id"])} · {idx + 1}/{len(cands)} — фото под {label} голосовое\n'
+        + (f'📌 закреплен кадр #{choice["ref"]}' if choice else '🔄 сейчас играет авто-подбор')
+        + ('' if cands[idx].get('checked') else '\n⚠️ этот кадр ещё не проходил vision-проверку'))
+    try:
+        await cq.message.edit_media(
+            types.InputMediaPhoto(media=types.BufferedInputFile(media[0], filename='ritual_pick.jpg'),
+                                  caption=caption),
+            reply_markup=_ritual_ph_keyboard())
+    except Exception:
+        await cq.message.answer(caption, reply_markup=_ritual_ph_keyboard())
+
+
+def _ritual_ph_state(cq: types.CallbackQuery) -> dict | None:
+    state = RITUAL_PH_WAIT.get(cq.from_user.id)
+    if not state or state.get('kind') not in ('morning', 'evening') or not state.get('character_id'):
+        return None
+    return state
+
+
+@dp.callback_query(F.data.startswith('ritual_ph:open:'))
+async def ritual_ph_open(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    kind = 'morning' if (cq.data or '').endswith('morning') else 'evening'
+    await cq.answer()
+    await _ritual_ph_show(cq, {'kind': kind, 'character_id': _ritual_ph_char(cq.from_user.id), 'idx': 0})
+
+
+@dp.callback_query(F.data == 'ritual_ph:char')
+async def ritual_ph_choose_girl(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    await cq.answer()
+    await cq.message.answer('Чей кадр выбираем под голосовое?', reply_markup=_ritual_ph_choose_keyboard())
+
+
+@dp.callback_query(F.data.startswith('ritual_ph:char:'))
+async def ritual_ph_girl(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    state = _ritual_ph_state(cq) or {'kind': 'evening', 'character_id': '', 'idx': 0}
+    char_id = (cq.data or '').split(':', 2)[2]
+    await cq.answer()
+    await _ritual_ph_show(cq, {**state, 'character_id': char_id, 'idx': 0})
+
+
+@dp.callback_query(F.data.in_(('ritual_ph:prev', 'ritual_ph:next')))
+async def ritual_ph_move(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    state = _ritual_ph_state(cq)
+    if not state:
+        await cq.answer('выбор фото закрылся — открой его заново под превью', show_alert=True)
+        return
+    await cq.answer()
+    step = 1 if (cq.data or '').endswith('next') else -1
+    await _ritual_ph_show(cq, {**state, 'idx': int(state.get('idx') or 0) + step})
+
+
+@dp.callback_query(F.data == 'ritual_ph:set')
+async def ritual_ph_set(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    state = _ritual_ph_state(cq)
+    if not state:
+        await cq.answer('выбор фото закрылся — открой его заново под превью', show_alert=True)
+        return
+    from services import evening_voice as _ev
+    from services import scheduler_service as _ss
+    cands = await asyncio.to_thread(_ev.owner_candidates, state['character_id'])
+    if not cands:
+        await cq.answer('нечего закреплять', show_alert=True)
+        return
+    cand = cands[int(state.get('idx') or 0) % len(cands)]
+    day = _ss.ritual_day()
+    await asyncio.to_thread(_ev.set_choice, state['kind'], day, state['character_id'],
+                            cand['source'], cand['ref'])
+    _ss.invalidate_ritual_bundles(state['kind'], day, state['character_id'])
+    label = 'утреннее' if state['kind'] == 'morning' else 'вечернее'
+    await cq.answer('закрепил')
+    await _ritual_ph_show(cq, state, note=(
+        f'✅ Под {label} голосовое для «{_ritual_ph_name(state["character_id"])}» сегодня уйдёт этот кадр — '
+        'жми «✅ Отправить всем».'))
+
+
+@dp.callback_query(F.data == 'ritual_ph:auto')
+async def ritual_ph_auto(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await cq.answer()
+        return
+    state = _ritual_ph_state(cq)
+    if not state:
+        await cq.answer('выбор фото закрылся — открой его заново под превью', show_alert=True)
+        return
+    from services import evening_voice as _ev
+    from services import scheduler_service as _ss
+    day = _ss.ritual_day()
+    await asyncio.to_thread(_ev.set_choice, state['kind'], day, state['character_id'], None, None)
+    _ss.invalidate_ritual_bundles(state['kind'], day, state['character_id'])
+    await cq.answer('вернул авто-подбор')
+    await _ritual_ph_show(cq, state, note='🔄 Авто-подбор: кадр каждый раз выбирает ротация.')
 
 
 # V3.108.1: owner — «2 записи и всё»: one Russian and one English recording in
