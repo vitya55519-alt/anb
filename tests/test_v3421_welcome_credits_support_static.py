@@ -23,20 +23,18 @@ def test_version_bumped():
 
 # ── the two new rows live on the welcome keyboard ─────────────────────────
 
-def test_welcome_back_rows_include_credits_and_support():
-    assert 'def _welcome_back_rows(lang: str):' in MAIN
-    rows = MAIN[MAIN.index('def _welcome_back_rows(lang: str):'):]
+def test_credits_and_support_left_the_welcome_keyboard():
+    # V3.42.1 surfaced «Персики» and «Поддержка» on the welcome screen; the
+    # V3.148.0 ТЗ moved the whole shop back into the app, so the welcome
+    # keyboard is one button again. The labels stay alive for the legacy reply
+    # keyboard, /support and the app deep links.
+    assert 'def _welcome_back_rows(' not in MAIN
+    rows = MAIN[MAIN.index('def _app_row(lang: str):'):]
     rows = rows[:rows.index('\ndef ', 10)]
-    # full-width credits (peaches) + support rows, localized from KB_LABELS
-    assert "text=kb_label('credits', lang), callback_data='credits:open'" in rows
-    # V3.43.0: the support row deep-links to the dedicated support bot
-    assert "text=kb_label('support', lang), url=f'https://t.me/{SUPPORT_BOT_USERNAME}'" in rows
-    # the pre-existing rows stay
-    assert "text=kb_label('partner', lang), callback_data='partner:open'" in rows
-    assert "callback_data='legal:terms'" in rows
-    assert "callback_data='legal:privacy'" in rows
-    # still no character grid
-    assert '_character_pick_buttons' not in rows
+    assert "callback_data='credits:open'" not in rows
+    assert "text=kb_label('support', lang), url=f'https://t.me/{SUPPORT_BOT_USERNAME}'" not in MAIN
+    assert "@dp.callback_query(F.data == 'credits:open')" in MAIN
+    assert "url=f'https://t.me/{SUPPORT_BOT_USERNAME}'" in MAIN
 
 
 def test_credits_and_support_labels_are_the_localized_pairs():

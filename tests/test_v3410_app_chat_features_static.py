@@ -53,13 +53,15 @@ def test_system_prompt_uses_the_character_communication_profile():
 
 def test_consent_keyboard_offers_the_app_button():
     kb = MAIN[MAIN.index('def consent_keyboard('):MAIN.index('def legal_keyboard(')]
-    assert "app_url = f'{PUBLIC_BASE_URL}/webapp' if PUBLIC_BASE_URL else None" in kb
-    assert "text='📱 Открыть приложение', web_app=types.WebAppInfo(url=app_url)" in kb
-    assert "text='📱 Open the app', web_app=types.WebAppInfo(url=app_url)" in kb
-    # the 18+ gate + terms/privacy stay
+    # V3.148.0: the gate is two buttons — 18+ and the app. Terms/privacy are
+    # accepted by the 18+ label and stay reachable through /legal.
     assert "callback_data='consent:accept'" in kb
-    assert "callback_data='consent:terms'" in kb
-    assert "callback_data='consent:privacy'" in kb
+    assert 'rows.append(_app_row(lang))' in kb
+    assert "callback_data='consent:terms'" not in kb
+    assert "callback_data='consent:privacy'" not in kb
+    app = MAIN[MAIN.index('def _app_row(lang: str):'):MAIN.index('def _start_keyboard(')]
+    assert "web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp')" in app
+    assert "flow_text(lang, 'open_app')" in app
 
 
 # ── p3. leaner onboarding after consent + after character select ───────────
@@ -76,15 +78,17 @@ def _handler(src: str, signature: str) -> str:
     return body[:end]
 
 
-def test_consent_accept_sends_one_merged_start_message():
+def test_consent_accept_rewrites_the_start_bubble():
     handler = _handler(MAIN, 'async def consent_accept(')
-    # V3.147.0: the bonus line, the girl picker and the app button live in ONE
-    # bubble — the old flow fired four (pinned menu, pin service line, bonus,
-    # picker) and the newcomer lost the thread.
-    assert 'reply_markup=_start_keyboard(flow_lang)' in handler
-    assert "'start_pick'" in handler and "'start_pick_plain'" in handler
+    # V3.148.0: the 18+ tap rewrites the bubble that is already on screen —
+    # the start never grows a second message (menu, picker, bonus, service
+    # lines all used to stack up here).
+    assert 'await cq.message.edit_caption(caption=welcome_line, reply_markup=kb)' in handler
+    assert 'await cq.message.edit_text(text=welcome_line, reply_markup=kb)' in handler
+    assert "'welcome_edit'" in handler and "'welcome_edit_plain'" in handler
+    assert 'kb = _start_keyboard(flow_lang)' in handler
+    # nothing new is sent on the happy path — only the fallback if the edit fails
     assert handler.count('cq.message.answer(') == 1
-    # no pinned menu bubble, no reply keyboard bubble at the start
     assert '_send_pinned_menu' not in handler
     assert 'reply_markup=main_keyboard(' not in handler
     assert 'onboarding_character_keyboard()' not in handler

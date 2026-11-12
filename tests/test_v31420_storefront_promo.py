@@ -27,7 +27,7 @@ def test_avatar_applied_from_code():
 
 
 def test_gif_leads_the_welcome_in_every_language():
-    fn = MAIN[MAIN.index('def _welcome_banner_file('):MAIN.index('def _welcome_back_rows(')]
+    fn = MAIN[MAIN.index('def _welcome_banner_file('):MAIN.index('_welcome_gif_file_id = ')]
     assert fn.index('WELCOME_BANNER_GIF_PATH.exists()') < fn.index('WELCOME_BANNER_EN_PATH.exists()')
 
 

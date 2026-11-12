@@ -44,49 +44,35 @@ def test_chat_service_wires_language_guard():
     assert CHAT.index('lang_guard.directive(lang)') < CHAT.index('messages.append({"role": "user", "content": user_text})')
 
 
-def test_girl_picker_after_consent_with_fallback():
-    # V3.147.0: the picker is no longer a bubble of its own — her names ride in
-    # the single start message, so the fallback timer and the hello lock still
-    # guarantee exactly one first greeting.
+def test_the_start_picker_and_its_fallback_are_gone():
+    # V3.98.0 put a girl picker behind consent; the V3.148.0 ТЗ moved the whole
+    # choice into the Mini App, so the picker, its 2-minute hello fallback and
+    # the picker analytics event are out of the bot.
     assert 'def _start_keyboard(' in MAIN
-    assert 'def _picker_rows(' in MAIN
-    assert "reply_markup=_start_keyboard(flow_lang)" in MAIN
-    assert "F.data.startswith('pickgirl:')" in MAIN
-    assert 'async def _first_hello_fallback(' in MAIN
-    assert 'await asyncio.sleep(120)' in MAIN
-    assert "track_event(uid, 'girl_picker_shown')" in MAIN
-    assert 'if telegram_id in _first_hello_done' in MAIN
-    # one shared event per entry point; the lock + history guard let only one fire
-    assert MAIN.count("track_event(uid, 'first_hello_sent'") == 2
-    assert "metadata={'source': 'mini_app'}" in MAIN
+    assert 'def _picker_rows(' not in MAIN
+    assert "F.data.startswith('pickgirl:')" not in MAIN
+    assert 'async def _first_hello_fallback(' not in MAIN
+    assert 'girl_picker_shown' not in MAIN
+    assert MAIN.count('asyncio.sleep(120)') == 0
 
 
-def test_picker_girls_exist():
+def test_the_heroines_still_resolve():
     from services.character_registry import get_character
-    from main import _PICKER_GIRLS
-    ids = [g[0] for g in _PICKER_GIRLS]
-    assert len(set(ids)) == len(ids)
-    for cid in ids:
+    for cid in ('agata_01', 'anna_01', 'alisa_01', 'kamila_01', 'rita_01'):
         assert get_character(cid)
 
 
-def test_first_flow_has_every_app_language():
-    import main
+def test_flow_text_has_every_app_language():
     from services.ui_lang import APP_LANGS, FLOW_TEXT, flow_text
 
-    assert set(main._FIRST_HELLO) == APP_LANGS
-    assert set(main._GENERIC_FIRST_HELLO) == APP_LANGS
-    assert set(main.FIRST_REPLIES) == APP_LANGS
     keys = set(FLOW_TEXT['en'])
     for lang in APP_LANGS:
         assert set(FLOW_TEXT[lang]) == keys
-        assert len(main._FIRST_HELLO[lang]) == 3
-        assert len(main.FIRST_REPLIES[lang]) == 3
-        assert '{' not in main._first_hello('anna_01', '', lang)
+        assert '{' not in flow_text(lang, 'welcome_edit', amount=200)
+        assert flow_text(lang, 'welcome_edit_plain')
+        assert flow_text(lang, 'open_app')
         assert flow_text(lang, 'gift_text', amount=300)
         assert flow_text(lang, 'girl_of_day', name='Anna').endswith('Anna')
-        kb = main._first_hello_keyboard(lang)
-        assert [row[0].text for row in kb.inline_keyboard] == list(main.FIRST_REPLIES[lang])
 
 
 def test_failed_photo_falls_back_to_pool_without_charge():

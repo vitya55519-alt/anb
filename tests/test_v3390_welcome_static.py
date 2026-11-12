@@ -81,16 +81,16 @@ def test_character_picker_is_two_per_row():
     assert '· доступна' not in MAIN
 
 
-def test_welcome_back_rows_open_app_partner_and_legal():
-    # V3.42.0: the returning-user welcome is a short button list (app / partner
-    # program / terms+privacy) — the nine-button character grid is gone.
-    assert 'def _welcome_back_rows(lang: str)' in MAIN
-    assert "callback_data='partner:open'" in MAIN
-    assert '@dp.callback_query(F.data == \'partner:open\')' in MAIN
+def test_welcome_back_rows_open_app_and_nothing_else():
+    # V3.42.0 cut the nine-button character grid; V3.148.0 cut the rest of the
+    # wall too — the returning-user welcome is one wide button into the app.
+    assert 'def _start_keyboard(' in MAIN
+    assert 'def _welcome_back_rows(' not in MAIN
+    assert "@dp.callback_query(F.data == 'partner:open')" in MAIN
     assert 'async def partner_open(cq: types.CallbackQuery)' in MAIN
     # V3.95.0: the tapper is passed on — cq.message.from_user is the bot.
     assert 'await referral_cmd(cq.message, cq.from_user)' in MAIN
-    assert 'markup = InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang))' in MAIN
+    assert 'markup = _start_keyboard(lang)' in MAIN
     assert 'rows.extend(_pair_rows(_character_pick_buttons(\'onboard\')))' not in MAIN
 
 

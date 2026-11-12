@@ -57,23 +57,24 @@ def test_text_message_intercepts_admin_ticket_replies():
 
 # ── p2. welcome-back: a short button list, not a character wall ───────────
 
-def test_welcome_back_rows_are_app_partner_and_legal():
-    assert 'def _welcome_back_rows(lang: str):' in MAIN
-    rows = MAIN[MAIN.index('def _welcome_back_rows(lang: str):'):]
+def test_welcome_back_rows_are_the_app_button():
+    rows = MAIN[MAIN.index('def _app_row(lang: str):'):]
     rows = rows[:rows.index('\ndef ', 10)]
-    # the open-app web_app tile (only when PUBLIC_BASE_URL is set)
+    # the open-app web_app tile is the whole keyboard
     assert "web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp')" in rows
-    assert "'📱 Открыть приложение' if lang == RU else '📱 Open the app'" in rows
-    # the full-width partner button and the terms/privacy row
-    assert "text=kb_label('partner', lang), callback_data='partner:open'" in rows
+    assert "flow_text(lang, 'open_app')" in rows
+    # V3.148.0: peaches, the partner program and support left the chat menu —
+    # they live in the app; terms/privacy only show if the app URL is missing.
+    assert "callback_data='partner:open'" not in rows
+    assert "callback_data='credits:open'" not in rows
+    assert 'SUPPORT_BOT_USERNAME' not in rows
     assert "callback_data='legal:terms'" in rows
     assert "callback_data='legal:privacy'" in rows
-    # no character grid in this keyboard
     assert '_character_pick_buttons' not in rows
 
 
 def test_welcome_back_message_uses_the_new_rows_and_caption():
-    assert 'markup = InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang))' in MAIN
+    assert 'markup = _start_keyboard(lang)' in MAIN
     assert 'f\'с возвращением, {name} 🙂 девушки, чаты, картинки и магазин — в приложении 👇\'' in MAIN
     assert 'f\'welcome back, {name} 🙂 the girls, chats, pictures and the shop live in the app 👇\'' in MAIN
     # the nine-button character grid no longer feeds the welcome screen

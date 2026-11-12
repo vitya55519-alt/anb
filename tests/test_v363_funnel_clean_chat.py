@@ -78,16 +78,19 @@ def test_the_bot_pins_nothing_and_the_sweep_stays():
     assert 'cap.closed = True' in HYG
 
 
-def test_consent_banner_removed_and_one_start_message_left():
+def test_consent_leaves_one_rewritten_start_bubble():
     i = MAIN.index('async def consent_accept(')
-    body = MAIN[i:MAIN.index('# V3.98.0: the first-minute choice')]
-    assert 'await cq.message.delete()' in body
-    assert 'reply_markup=_start_keyboard(flow_lang)' in body
+    body = MAIN[i:MAIN.index("@dp.callback_query(F.data == 'consent:terms')")]
+    # V3.148.0: the bubble is rewritten, not deleted and re-sent.
+    assert 'await cq.message.delete()' not in body
+    assert 'kb = _start_keyboard(flow_lang)' in body
+    assert 'await cq.message.edit_caption(caption=welcome_line, reply_markup=kb)' in body
+    assert 'await cq.message.edit_text(text=welcome_line, reply_markup=kb)' in body
     assert '_send_pinned_menu' not in body
 
 
 def test_app_redirect_hint_replaces_itself_and_opens_her_chat():
-    i = MAIN.index('if BOT_CHAT_REDIRECT and PUBLIC_BASE_URL and message.from_user.id not in _redirect_bypass:')
+    i = MAIN.index('if BOT_CHAT_REDIRECT and PUBLIC_BASE_URL:')
     body = MAIN[i:i + 1800]
     assert 'chat_hygiene.open_screen(bot, message.chat.id)' in body
     assert "/webapp?open=chat" in body
@@ -95,14 +98,13 @@ def test_app_redirect_hint_replaces_itself_and_opens_her_chat():
     assert 'reply_markup=main_keyboard(' not in body
 
 
-def test_first_hello_carries_the_reply_button():
-    i = MAIN.index('greeting = _first_hello(')
-    body = MAIN[i:i + 1200]
-    assert '/webapp?open=chat' in body
-    assert 'reply_markup=hello_kb' in body
-    # the one-tap first answers (V3.62.7) stay and are answered by her in the bot
-    assert 'hello_kb = _first_hello_keyboard(lang)' in body
-    assert '_redirect_bypass.add(cq.from_user.id)' in MAIN
+def test_the_bot_never_greets_him_on_its_own():
+    # V3.148.0 ТЗ: no LLM message before he writes — the whole auto-hello
+    # machinery (greeting, picker, welcome selfie, one-tap answers) is out.
+    for name in ('_deliver_first_hello', '_first_hello_fallback', '_send_welcome_selfie',
+                 '_FIRST_HELLO', 'FIRST_REPLIES', 'first_reply_cb', 'pick_girl_cb',
+                 '_PICKER_GIRLS', '_redirect_bypass'):
+        assert name not in MAIN, name
 
 
 def test_webapp_deep_opens_selected_chat():
@@ -112,12 +114,12 @@ def test_webapp_deep_opens_selected_chat():
     assert "me['first_webapp_open'] = bool(first_open and has_accepted(telegram_id))" in MAIN
 
 
-def test_first_hello_is_shared_and_idempotent():
-    assert 'def _first_hello_was_sent(uid: int)' in MAIN
-    assert 'async def _ensure_webapp_first_hello(' in MAIN
-    assert "metadata={'source': 'mini_app'}" in MAIN
-    assert 'created = await _ensure_webapp_first_hello(' in MAIN
-    assert "_first_hello_locks.setdefault(telegram_id, asyncio.Lock())" in MAIN
+def test_the_app_leaves_the_first_line_to_him():
+    # V3.148.0: the Mini App no longer seeds a greeting either — an empty chat
+    # shows the «write first» placeholder and she answers his message.
+    assert '_ensure_webapp_first_hello' not in MAIN
+    assert "created = await _ensure_webapp_first_hello(" not in MAIN
+    assert "empty_chat: 'Напиши первое сообщение — она ответит прямо здесь'" in INDEX
 
 
 def test_day1_entry_has_continuation_hints():

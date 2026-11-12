@@ -16,13 +16,12 @@ def test_upload_body_cap_and_clear_errors():
     assert "c.toDataURL('image/jpeg', 0.88)" in up and '1600' in up
 
 
-def test_welcome_selfie_follows_the_hello():
-    h = MAIN[MAIN.index('async def consent_accept('):MAIN.index('async def _send_welcome_selfie(')]
-    assert '_spawn_background(_send_welcome_selfie(' in h
-    fn = MAIN[MAIN.index('async def _send_welcome_selfie('):]
-    fn = fn[:fn.index('\n\n\n')]
-    assert "_webapp_media_photo(telegram_id, character_id, 'selfie')" in fn
-    assert "media_kind='photo'" in fn
+def test_the_start_sends_no_welcome_selfie():
+    # V3.148.0: the free selfie behind the auto-hello went with the hello —
+    # the first screen ends at the app button, her photos start in the chat.
+    assert '_send_welcome_selfie' not in MAIN
+    assert 'welcome_selfie_sent' not in MAIN
+    assert "_webapp_media_photo(telegram_id, character_id, 'selfie')" in MAIN
 
 
 def test_chat_openers():

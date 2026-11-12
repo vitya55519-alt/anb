@@ -29,8 +29,8 @@ def test_version_bumped():
 
 def test_support_buttons_deep_link_the_support_bot():
     assert 'SUPPORT_BOT_USERNAME = os.getenv("SUPPORT_BOT_USERNAME", "Anna67901support_bot")' in CONFIG
-    # welcome row + reply-button handler both hand a t.me url button
-    assert "text=kb_label('support', lang), url=f'https://t.me/{SUPPORT_BOT_USERNAME}'" in MAIN
+    # V3.148.0: the welcome keyboard lost its support row — the t.me deep link
+    # now lives on the support screen itself.
     body = MAIN[MAIN.index('async def support_button(message: types.Message):'):]
     body = body[:body.index('async def _deliver_support_message(')]
     assert "url=f'https://t.me/{SUPPORT_BOT_USERNAME}'" in body

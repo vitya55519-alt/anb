@@ -26,18 +26,21 @@ def test_funnel_reaches_both_stats_screens():
     assert 'воронка 30д' in MAIN and 'Funnel 30d' in MAIN
 
 
-def test_she_writes_first_after_consent():
+def test_the_bot_stays_silent_after_consent():
     h = MAIN[MAIN.index('async def consent_accept('):MAIN.index("@dp.callback_query(F.data == 'consent:terms')")]
-    assert '_first_hello(character_id' in h
+    # V3.148.0: «she writes first» is off — the 18+ tap only rewrites the start
+    # bubble, and the LLM speaks after he opens her chat and writes to her.
+    assert '_first_hello' not in h
     assert 'donation_appeal' not in h and 'ref_link' not in h
-    assert "save_message, uid, character_id, 'assistant', greeting" in h
+    assert "save_message, uid, character_id, 'assistant', greeting" not in h
 
 
-def test_first_hello_text():
+def test_the_first_hello_machinery_is_gone():
     import main
-    ru = main._first_hello('anna_01', 'Петя', main.RU)
-    assert ', Петя' in ru and ru.rstrip().endswith(('?', '😏'))
-    assert '{' not in main._first_hello('anna_01', '', main.EN)
+    for name in ('_first_hello', '_FIRST_HELLO', '_GENERIC_FIRST_HELLO', 'FIRST_REPLIES',
+                 '_first_hello_keyboard', 'first_reply_cb', '_deliver_first_hello',
+                 '_first_hello_fallback', '_send_welcome_selfie', '_ensure_webapp_first_hello'):
+        assert not hasattr(main, name), name
 
 
 def test_pushes_use_the_selected_character():
