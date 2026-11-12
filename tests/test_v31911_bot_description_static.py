@@ -20,13 +20,15 @@ def test_descriptions_within_telegram_limits_and_marked_18plus():
         assert '18+' in text
 
 
-def test_descriptions_pitch_core_features_and_heroines():
+def test_descriptions_pitch_the_owner_promo():
     from services import bot_description as bd
-    # V3.63.3: «pick yours» — several heroines named, not the old trio
-    assert 'Anna' in bd.DESCRIPTION_DEFAULT and 'Emily' in bd.DESCRIPTION_DEFAULT
-    assert 'Анна' in bd.DESCRIPTION_RU and 'Emily' in bd.DESCRIPTION_RU
-    assert 'Фото' in bd.DESCRIPTION_RU and 'Видео' in bd.DESCRIPTION_RU
-    assert 'Photos' in bd.DESCRIPTION_DEFAULT and 'Videos' in bd.DESCRIPTION_DEFAULT
+    # V3.142.0: the owner's Nov 12 ad copy replaced the feature list
+    assert 'Горячие ИИ-девушки уже ждут тебя' in bd.DESCRIPTION_RU
+    assert 'без цензуры' in bd.DESCRIPTION_RU and 'выбирай свою' in bd.DESCRIPTION_RU
+    assert 'Hot AI girls are waiting for you' in bd.DESCRIPTION_DEFAULT
+    assert 'uncensored' in bd.DESCRIPTION_DEFAULT and 'pick yours' in bd.DESCRIPTION_DEFAULT
+    assert 'Фото' in bd.DESCRIPTION_RU and 'голосовые' in bd.DESCRIPTION_RU
+    assert 'Photos' in bd.DESCRIPTION_DEFAULT and 'voice' in bd.DESCRIPTION_DEFAULT
 
 
 def test_startup_applies_descriptions_before_polling():

@@ -16,7 +16,8 @@ def test_start_picks_banner_by_language():
     assert 'WELCOME_BANNER_EN_PATH' in MAIN
     assert 'def _welcome_banner_file(lang: str = RU):' in MAIN
     assert 'if lang == EN and WELCOME_BANNER_EN_PATH.exists():' in MAIN
-    assert MAIN.count('banner = _welcome_banner_file(lang)') == 2
+    # V3.142.0: the single send helper picks the banner (gif first, then PNGs)
+    assert MAIN.count('banner = _welcome_banner_file(lang)') == 1
 
 
 def test_paid_photo_reports_price_and_balance():

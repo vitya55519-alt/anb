@@ -9,8 +9,9 @@ description <= 512 chars, short description <= 120 chars.
 V3.63.3: the owner did not like the old pitch («three heroines: Anna, Emily &
 Maria» — the roster is ~20 girls now). The new copy follows the ad that won
 the October Telegram test («когда некому написать» — 2.9% click-through, ~16 ₽
-per user): she writes first and remembers you, and you pick your girl. The
-bot NAME is deliberately left to the owner (BotFather) — not set from code.
+per user): she writes first and remembers you, and you pick your girl.
+V3.142.0: the owner's Nov 12 promo replaced that pitch; the display NAME is
+applied by _apply_bot_name_overrides() in main.py.
 """
 from __future__ import annotations
 
@@ -18,44 +19,24 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# V3.127.0: owner (Nov 7) — the pitch is about many girls, not one «Анна»,
-# and it carries the search words people type («ИИ девушка», «чат с ИИ
-# девушкой», «бесплатно»), Wordstat: «ии девушка» ~214k searches a month.
+# V3.142.0: owner (Nov 12) handed over the storefront copy — the ad-style
+# promo replaces the feature list. Applied on every deploy by default;
+# BOT_DESCRIPTIONS_ENABLED=0 hands the texts back to BotFather.
 SHORT_DESCRIPTION_DEFAULT = (
-    'AI girlfriends on Telegram: 18+ chat, photos, voice. Pick a girl: she texts first, remembers you, you can call her 📞'
+    'Hot AI girls are waiting for you. Photos, voice notes and uncensored chats. Come in and pick yours! 👇 18+'
 )
 SHORT_DESCRIPTION_RU = (
-    'ИИ девушки в Telegram: чат 18+, фото и голосовые. Пишут первыми, помнят тебя, им можно позвонить 📞'
+    'Горячие ИИ-девушки уже ждут тебя. Фото, голосовые и откровенные чаты без цензуры. Заходи и выбирай свою! 👇 18+'
 )
 
 DESCRIPTION_DEFAULT = (
-    'AI girlfriends who text you first 💬\n'
-    '\n'
-    'Chat with an AI girlfriend right in Telegram — no apps to install.\n'
-    '\n'
-    '👩 Anna, Emily, Zlata, Vika and 30+ more girls — pick yours or create your own\n'
-    '🧠 They remember your name, your day and yesterday\'s talk\n'
-    '📸 Photos, 🎬 Videos and voice notes\n'
-    '📞 You can call her — a live voice in the app\n'
-    '❤️ 10 relationship levels: romance or passion\n'
-    '\n'
-    'Free to start: just say "hi".\n'
+    'Hot AI girls are waiting for you. Photos, voice notes and uncensored chats. Come in and pick yours! 👇\n'
     '\n'
     '18+'
 )
 
 DESCRIPTION_RU = (
-    'ИИ девушки, которые пишут тебе первыми 💬\n'
-    '\n'
-    'Чат с ИИ девушкой на русском прямо в Telegram — без сайтов и приложений.\n'
-    '\n'
-    '👩 Анна, Emily, Злата, Вика и ещё 30+ девушек — выбери свою или создай\n'
-    '🧠 Помнят твоё имя, твой день и вчерашний разговор\n'
-    '📸 Фото, 🎬 Видео и голосовые\n'
-    '📞 Можно позвонить — живой голос в приложении\n'
-    '❤️ 10 уровней отношений: романтика или страсть\n'
-    '\n'
-    'Начать бесплатно: просто напиши «привет».\n'
+    'Горячие ИИ-девушки уже ждут тебя. Фото, голосовые и откровенные чаты без цензуры. Заходи и выбирай свою! 👇\n'
     '\n'
     '18+'
 )
@@ -64,14 +45,13 @@ DESCRIPTION_RU = (
 async def apply_bot_descriptions(bot) -> None:
     """Set profile + short descriptions for the default (EN) and RU locales.
 
-    V3.118.0: only when BOT_PROFILE_ENABLED=1. Off by default so the texts the
-    owner sets in BotFather are no longer overwritten on every deploy.
+    V3.142.0: on by default — the owner's promo is the canonical copy now.
+    BOT_DESCRIPTIONS_ENABLED=0 (with BOT_PROFILE_ENABLED unset/0) leaves the
+    texts to BotFather, as before V3.118.0.
     """
     import os
-    # V3.127.0: BOT_DESCRIPTIONS_ENABLED=1 writes only the descriptions (the
-    # name is handled by BOT_NAME_* in main.py), BOT_PROFILE_ENABLED=1 as before.
-    if os.getenv('BOT_PROFILE_ENABLED', '0') != '1' and os.getenv('BOT_DESCRIPTIONS_ENABLED', '0') != '1':
-        logger.info('bot descriptions left to BotFather (BOT_PROFILE_ENABLED!=1)')
+    if os.getenv('BOT_DESCRIPTIONS_ENABLED', '1') != '1' and os.getenv('BOT_PROFILE_ENABLED', '0') != '1':
+        logger.info('bot descriptions left to BotFather (disabled by env)')
         return
     for language_code, description, short in (
         (None, DESCRIPTION_DEFAULT, SHORT_DESCRIPTION_DEFAULT),

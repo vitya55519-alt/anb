@@ -38,11 +38,13 @@ def test_start_sends_the_banner_photo():
     assert 'WELCOME_BANNER_PATH' in MAIN
     assert 'def _welcome_banner_file(' in MAIN
     assert 'FSInputFile(WELCOME_BANNER_PATH)' in MAIN
-    # both the new-user and the returning-user welcome go out as a photo
-    assert 'await message.answer_photo(banner, caption=welcome, reply_markup=consent_keyboard(lang))' in MAIN
-    assert 'await message.answer_photo(banner, caption=welcome_back, reply_markup=markup)' in MAIN
-    # text fallback when the asset is missing
-    assert 'await message.answer(welcome, reply_markup=consent_keyboard(lang))' in MAIN
+    # V3.142.0: the animated promo goes out as an animation (file_id cached),
+    # the static PNG fallback as a photo, a missing asset as plain text.
+    assert 'async def _send_welcome_banner(message, lang, caption, markup):' in MAIN
+    assert 'await message.answer_animation(banner, caption=caption, reply_markup=markup)' in MAIN
+    assert 'await message.answer_photo(banner, caption=caption, reply_markup=markup)' in MAIN
+    assert 'await message.answer(caption, reply_markup=markup)' in MAIN
+    assert MAIN.count('await _send_welcome_banner(message, lang,') == 2
 
 
 def test_welcome_caption_is_short_and_punchy():

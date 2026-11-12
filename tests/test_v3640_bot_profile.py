@@ -14,16 +14,19 @@ def test_profile_sets_only_the_name_when_changed():
     assert "BOT_PROFILE_ENABLED" in fn
 
 
-def test_descriptions_mention_calls_and_ten_levels():
+def test_descriptions_match_owner_promo():
     from services import bot_description as bd
-    assert '10 уровней' in bd.DESCRIPTION_RU and '10 relationship levels' in bd.DESCRIPTION_DEFAULT
-    assert 'позвонить' in bd.DESCRIPTION_RU and 'позвонить' in bd.SHORT_DESCRIPTION_RU
-    assert 'call her' in bd.DESCRIPTION_DEFAULT and 'call her' in bd.SHORT_DESCRIPTION_DEFAULT
+    assert bd.DESCRIPTION_RU.startswith('Горячие ИИ-девушки уже ждут тебя.')
+    assert bd.SHORT_DESCRIPTION_RU.startswith('Горячие ИИ-девушки уже ждут тебя.')
+    assert bd.DESCRIPTION_DEFAULT.startswith('Hot AI girls are waiting for you.')
+    assert bd.SHORT_DESCRIPTION_DEFAULT.startswith('Hot AI girls are waiting for you.')
 
 
-def test_profile_and_descriptions_off_by_default():
-    """V3.118.0: the owner edits name/description in BotFather; deploys must not overwrite them."""
+def test_descriptions_on_by_default_name_profile_off():
+    """V3.142.0: the owner handed the storefront copy to code — descriptions
+    apply on every deploy unless BOT_DESCRIPTIONS_ENABLED=0; the legacy
+    BOT_PROFILE name writer stays off by default."""
     fn = MAIN[MAIN.index('async def _apply_bot_profile('):]
     assert "os.getenv('BOT_PROFILE_ENABLED', '0') != '1'" in fn[:fn.index('\n\n')]
     src = (Path(__file__).resolve().parents[1] / 'services' / 'bot_description.py').read_text(encoding='utf-8')
-    assert "os.getenv('BOT_PROFILE_ENABLED', '0') != '1'" in src
+    assert "os.getenv('BOT_DESCRIPTIONS_ENABLED', '1') != '1'" in src

@@ -167,6 +167,9 @@ VERSION = (Path(__file__).resolve().parent / 'VERSION').read_text(encoding='utf-
 # V3.39.0: Come Closer-style /start — the welcome leads with a group photo.
 WELCOME_BANNER_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner.png'
 WELCOME_BANNER_EN_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner_en.png'
+WELCOME_BANNER_GIF_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'welcome_banner.gif'
+BOT_AVATAR_JPG_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'bot_avatar.jpg'
+BOT_AVATAR_MP4_PATH = Path(__file__).resolve().parent / 'data' / 'media' / 'bot_avatar.mp4'
 
 # V3.30.1: Railway tags every stderr line as severity=error, and Python
 # logging writes to stderr by default — route the whole log to stdout so
@@ -561,12 +564,38 @@ def _welcome_banner_file(lang: str = RU):
     """V3.39.0: the group banner photo for /start; None when the asset is absent.
     V3.125.0: backup 7 Nov — 5 of 19 English-speaking newcomers left on the
     very first screen (Russian: 0 of 19). The banner said «Они уже пишут
-    тебе» in Russian; English speakers now get the same picture in English."""
+    тебе» in Russian; English speakers now get the same picture in English.
+    V3.142.0: the owner's animated promo leads the welcome in every language;
+    the static PNGs stay as fallback."""
+    if WELCOME_BANNER_GIF_PATH.exists():
+        return FSInputFile(WELCOME_BANNER_GIF_PATH)
     if lang == EN and WELCOME_BANNER_EN_PATH.exists():
         return FSInputFile(WELCOME_BANNER_EN_PATH)
     if WELCOME_BANNER_PATH.exists():
         return FSInputFile(WELCOME_BANNER_PATH)
     return None
+
+
+_welcome_gif_file_id = dialog_store.DialogStore('welcome_gif_file_id')
+
+
+async def _send_welcome_banner(message, lang, caption, markup):
+    banner = _welcome_banner_file(lang)
+    if banner is None:
+        return await message.answer(caption, reply_markup=markup)
+    if not str(banner.path).endswith('.gif'):
+        return await message.answer_photo(banner, caption=caption, reply_markup=markup)
+    # the 6 MB promo uploads once; every later /start reuses Telegram's file_id
+    cached = _welcome_gif_file_id.get(0)
+    if cached:
+        try:
+            return await message.answer_animation(cached, caption=caption, reply_markup=markup)
+        except Exception:
+            _welcome_gif_file_id.pop(0, None)
+    msg = await message.answer_animation(banner, caption=caption, reply_markup=markup)
+    if msg.animation:
+        _welcome_gif_file_id[0] = msg.animation.file_id
+    return msg
 
 
 def _welcome_back_rows(lang: str):
@@ -2258,11 +2287,7 @@ async def start(message: types.Message, command: CommandObject):
             if has_referral:
                 welcome += f'пришёл по приглашению друга — напиши ей {REFERRAL_QUALIFY_MESSAGES} сообщений, и вам обоим капнет по {REFERRAL_INVITEE_CREDITS} 🍑.\n'
             welcome += 'Подтверди, что тебе 18+, и прими условия использования и политику конфиденциальности.'
-        banner = _welcome_banner_file(lang)
-        if banner is not None:
-            await message.answer_photo(banner, caption=welcome, reply_markup=consent_keyboard(lang))
-        else:
-            await message.answer(welcome, reply_markup=consent_keyboard(lang))
+        await _send_welcome_banner(message, lang, welcome, consent_keyboard(lang))
         return
 
     # Returning user who already accepted: apply any pending referral/bonus now
@@ -2286,11 +2311,7 @@ async def start(message: types.Message, command: CommandObject):
         )
     # V3.42.0: no character grid here anymore — a short button list instead.
     markup = InlineKeyboardMarkup(inline_keyboard=_welcome_back_rows(lang))
-    banner = _welcome_banner_file(lang)
-    if banner is not None:
-        menu_msg = await message.answer_photo(banner, caption=welcome_back, reply_markup=markup)
-    else:
-        menu_msg = await message.answer(welcome_back, reply_markup=markup)
+    menu_msg = await _send_welcome_banner(message, lang, welcome_back, markup)
     # V3.63.2: the welcome card IS the main menu — pinned like Come Closer's,
     # and kept out of the screen sweep so the next button tap does not delete it.
     await _pin_main_menu(message.chat.id, menu_msg.message_id)
@@ -18405,6 +18426,11 @@ BOT_PROFILE = {
     'ru': {'name': os.getenv('BOT_DISPLAY_NAME', 'Анна · AI-девушка')},
     'en': {'name': os.getenv('BOT_DISPLAY_NAME_EN', 'Anna · AI girlfriend')},
 }
+_BOT_NAME_FALLBACK = {
+    '': 'ИИ Анна | Чат 18+ 🔞',
+    'ru': 'ИИ Анна | Чат 18+ 🔞',
+    'en': 'AI Anna | 18+ Chat 🔞',
+}
 
 
 async def _apply_bot_name_overrides() -> None:
@@ -18412,11 +18438,13 @@ async def _apply_bot_name_overrides() -> None:
     # stored per language (ru/en) wins for users with that app language. Log
     # what Telegram has for '', ru and en, and write BOT_NAME_DEFAULT /
     # BOT_NAME_RU / BOT_NAME_EN when set (only if they differ: setMyName is
-    # rate-limited). An empty-string value is not written; unset vars do nothing.
+    # rate-limited). An empty-string value is not written.
+    # V3.142.0: the owner's Nov 12 name is the code default, so a deploy
+    # applies it without env vars; the env vars still override it.
     for code, var in (('', 'BOT_NAME_DEFAULT'), ('ru', 'BOT_NAME_RU'), ('en', 'BOT_NAME_EN')):
         try:
             cur = (await bot.get_my_name(language_code=code)).name or ''
-            want = os.getenv(var, '').strip()[:64]
+            want = os.getenv(var, _BOT_NAME_FALLBACK[code]).strip()[:64]
             if want and want != cur:
                 await bot.set_my_name(name=want, language_code=code)
                 logger.info('bot name lang=%s set %r -> %r', code or 'default', cur, want)
@@ -18441,6 +18469,38 @@ async def _apply_bot_profile() -> None:
             logger.info('bot profile ok lang=%s', lang)
         except Exception:
             logger.exception('bot profile update failed lang=%s', lang)
+
+async def _apply_bot_avatar() -> None:
+    # V3.142.0: the owner's avatar from code. setMyProfilePhoto takes an
+    # animated MPEG4 (<=5 s, 640x640) or a static JPG — never a GIF or file_id.
+    # aiogram 3.20 predates the method, so a raw multipart call with attach://.
+    import aiohttp
+    path = BOT_AVATAR_MP4_PATH if BOT_AVATAR_MP4_PATH.exists() else BOT_AVATAR_JPG_PATH
+    if not path.exists():
+        return
+    if path.suffix == '.mp4':
+        photo = {'type': 'animated', 'animation': 'attach://avatar', 'main_frame_timestamp': 0}
+        ctype = 'video/mp4'
+    else:
+        photo = {'type': 'static', 'photo': 'attach://avatar'}
+        ctype = 'image/jpeg'
+    form = aiohttp.FormData()
+    form.add_field('photo', json.dumps(photo))
+    form.add_field('avatar', path.read_bytes(), filename=path.name, content_type=ctype)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/setMyProfilePhoto',
+                data=form, timeout=aiohttp.ClientTimeout(total=60),
+            ) as resp:
+                body = await resp.json()
+        if body.get('ok'):
+            logger.info('bot avatar applied from %s', path.name)
+        else:
+            logger.warning('bot avatar apply failed: %s', body.get('description'))
+    except Exception:
+        logger.exception('bot avatar apply failed')
+
 
 async def main():
     public_commands = [
@@ -18472,6 +18532,7 @@ async def main():
     ]
     await bot.set_my_commands(public_commands)
     _spawn_background(_apply_bot_profile())
+    _spawn_background(_apply_bot_avatar())
     # V3.33.0: Mini App — the blue «Открыть приложение» button in the bot's
     # profile plus the «AnnaBot» menu button. Requires PUBLIC_BASE_URL (the
     # same Railway domain the payment routes use); skipped silently otherwise.
