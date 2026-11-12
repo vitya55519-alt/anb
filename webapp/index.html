@@ -257,6 +257,23 @@
     background: rgba(255,90,160,.12); border-bottom: 1px solid rgba(255,120,180,.25); }
   .guestbar img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
   .guestbar .x { margin-left: auto; background: none; border: 0; color: inherit; font-size: 13px; opacity: .8; cursor: pointer; }
+  /* V3.139.0: owner ТЗ (Задача 4) — the duo is called from two places: an
+     accent pill in the header, right of the (now compact) level badge, and the
+     first banner on «Чем займёмся?». While the second girl is in the chat both
+     flip to «leave us alone». */
+  .chat-head .duopill { flex-shrink: 0; max-width: 34vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    background: linear-gradient(135deg, #ff4f8b, #a24bff); border: 0; color: #fff; font-size: 12px; font-weight: 700;
+    border-radius: 999px; padding: 8px 12px; cursor: pointer; }
+  .chat-head .duopill.leave { background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 120, 180, .45); }
+  .duobanner { display: flex; align-items: center; gap: 12px; width: 100%; margin: 0 0 12px; padding: 14px 16px;
+    border-radius: 18px; border: 1px solid rgba(255, 61, 113, .55); color: #fff; text-align: left; cursor: pointer;
+    background: linear-gradient(135deg, rgba(255, 61, 113, .35), rgba(162, 75, 255, .28)); font-size: 15px; font-weight: 700; }
+  .duobanner .tx { display: block; }
+  .duobanner small { display: block; font-size: 12px; font-weight: 500; opacity: .82; margin-top: 3px; min-height: 0; }
+  .duobanner.leave { background: rgba(255, 255, 255, .06); border-color: rgba(255, 120, 180, .35); }
+  /* V3.139.0: Задача 5 — the blurred joint photo is the paywall: one button under it. */
+  .msg .duobuy { display: block; width: 100%; margin-top: 8px; border: 0; border-radius: 12px; padding: 10px;
+    color: #fff; font-size: 13.5px; font-weight: 700; cursor: pointer; background: linear-gradient(90deg, #ff5fa2, #b44cff); }
   .gsheet { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; }
   .gsheet .box { width: 100%; max-height: 75vh; overflow: auto; background: #1d1424; border-radius: 20px 20px 0 0;
     padding: 18px 16px 24px; border-top: 1px solid rgba(255,120,180,.3); }
@@ -1383,7 +1400,7 @@
       <div class="sub" id="chatSub"></div>
       <span class="lvlchip" id="chatLvl" style="display:none"></span>
     </div>
-    <button class="iconbtn" id="chatInvite" style="font-size:15px;display:none" title="Позвать в чат">👭</button>
+    <button class="duopill" id="chatInvite" type="button" style="display:none"></button>
     <button class="iconbtn hd-heart" id="chatSelect">❤️</button>
     <button class="callbtn" id="chatCall" type="button" title="Позвонить" aria-label="Позвонить"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg></button>
   </div>
@@ -1439,6 +1456,10 @@
 <div class="capsheet" id="capSheet" style="display:none"><div class="box">
   <div class="cap-h" id="capTitle"></div>
   <div class="cap-sub" id="capSub"></div>
+  <!-- V3.139.0: owner ТЗ (Задача 4) — «Свидание втроем» is the first thing on
+       this screen, above the photo row. renderGuest() flips it to «leave us
+       alone» while the second girl is already in the chat. -->
+  <button class="duobanner" id="featDuo" type="button" style="display:none"><span class="tx"><span id="lbFeatDuo"></span><small id="dsFeatDuo"></small></span></button>
   <div class="chat-media">
     <button id="mediaPhoto"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbMediaPhoto"></span><span class="ds" id="dsMediaPhoto"></span></span></button>
     <button id="featPlots" class="hot"><span class="ic">🎬</span><span class="tx"><span class="lb" id="lbFeatPlots"></span><span class="ds" id="dsFeatPlots"></span></span></button>
@@ -1929,6 +1950,14 @@ const L_EN = {
   // V3.42.2: readable labels for the chat action pills (the voice button is gone).
   media_photo: 'Photo', media_video: 'Video', media_circle: 'Circle',
   feat_quest: 'Quest', feat_date: 'Date', feat_apt: 'Apartment',
+  // V3.139.0: owner ТЗ (Задача 4) — the duo pill in the header, the threesome
+  // banner above the photo row and the blurred joint teaser (Задача 5).
+  duo_call: '👯‍♀️ Call a friend', duo_leave: '❌ Leave us alone',
+  duo_banner: '🔥 A date for three', duo_banner_sub: 'two of them in this chat · Premium',
+  duo_blur_btn: '💎 Unblur (Premium)',
+  guest_in_chat: n => n + ' is in the chat', guest_out_btn: '✕ let her go',
+  lvl_chip: (ic, n) => ic + ' Lvl ' + n,
+  guest_sheet_hint: 'She joins this chat, and from now on the two of them answer you.',
   // V3.45.0: new chat buttons
   feat_video: 'Video', feat_cosplay: 'Cosplay', feat_hot: 'Private',
   // V3.64.0: the «✨ Features» button and a line explaining each chat feature.
@@ -2204,6 +2233,14 @@ const L_RU = {
   // V3.42.2: читаемые подписи к кнопкам чата (голосовая кнопка убрана).
   media_photo: 'Фото', media_video: 'Видео', media_circle: 'Кружок',
   feat_quest: 'Задание', feat_date: 'Свидание', feat_apt: 'Квартира',
+  // V3.139.0: ТЗ владельца — пилюля дуэта в шапке, баннер «втроем» над рядом
+  // «Фото» и заблюренный тизер совместного фото для бесплатных (Задача 5).
+  duo_call: '👯‍♀️ Позвать подругу', duo_leave: '❌ Оставить наедине',
+  duo_banner: '🔥 Свидание втроем', duo_banner_sub: 'они вдвоём в этом чате · Premium',
+  duo_blur_btn: '💎 Снять блюр (Premium)',
+  guest_in_chat: n => n + ' в чате', guest_out_btn: '✕ отпустить',
+  lvl_chip: (ic, n) => ic + ' ' + n + ' ур.',
+  guest_sheet_hint: 'Она зайдёт в эту переписку, и дальше они будут отвечать вдвоём.',
   // V3.45.0: новые кнопки в чате
   feat_video: 'Видео', feat_cosplay: 'Косплей', feat_hot: 'Наедине',
   // V3.64.0: кнопка «✨ Возможности» и пояснения к каждой функции чата.
@@ -2290,6 +2327,12 @@ const L_OV = {
     preset_auto: 'Auto', preset_kiss: 'Beso', preset_wink: 'Guiño', preset_turn: 'Giro',
     preset_whisper: 'Susurro', preset_touch: 'Tacto', preset_caress: 'Caricia',
     media_photo: 'Foto', media_video: 'Vídeo', media_circle: 'Círculo', buy: 'Comprar',
+    duo_call: '👯‍♀️ Llamar a una amiga', duo_leave: '❌ Dejadnos solos',
+    duo_banner: '🔥 Cita a tres', duo_banner_sub: 'las dos en este chat · Premium',
+    duo_blur_btn: '💎 Quitar el blur (Premium)',
+    guest_in_chat: n => n + ' está en el chat', guest_out_btn: '✕ dejarla ir',
+    lvl_chip: (ic, n) => ic + ' Nv ' + n,
+    guest_sheet_hint: 'Entra en este chat y a partir de ahora os contestáis las dos.',
     need_premium: 'Disponible con Premium ⭐', locked: 'Esta chica aún está cerrada',
     settings_title: 'Ajustes', spicy_title: '🌶 Modo atrevido', spicy_on: 'activado', spicy_off: 'desactivado',
     spicy_prem: 'El modo atrevido es una ventaja Premium ⭐',
@@ -2348,6 +2391,12 @@ const L_OV = {
     preset_auto: 'Auto', preset_kiss: 'Bacio', preset_wink: 'Ammicca', preset_turn: 'Svolta',
     preset_whisper: 'Sussurro', preset_touch: 'Tocco', preset_caress: 'Carezza',
     media_photo: 'Foto', media_video: 'Video', media_circle: 'Cerchio', buy: 'Acquista',
+    duo_call: '👯‍♀️ Chiama un\'amica', duo_leave: '❌ Lasciateci soli',
+    duo_banner: '🔥 Appuntamento a tre', duo_banner_sub: 'tutte e due in questa chat · Premium',
+    duo_blur_btn: '💎 Togli la sfocatura (Premium)',
+    guest_in_chat: n => n + ' è in chat', guest_out_btn: '✕ lasciala andare',
+    lvl_chip: (ic, n) => ic + ' Lv ' + n,
+    guest_sheet_hint: 'Entra in questa chat e da adesso rispondono tutte e due.',
     need_premium: 'Disponibile con Premium ⭐', locked: 'Questa ragazza è ancora chiusa',
     settings_title: 'Impostazioni', spicy_title: '🌶 Modalità audace', spicy_on: 'attiva', spicy_off: 'disattivata',
     spicy_prem: 'La modalità audace è un vantaggio Premium ⭐',
@@ -2406,6 +2455,12 @@ const L_OV = {
     preset_auto: 'Auto', preset_kiss: 'Baiser', preset_wink: 'Clin d\'œil', preset_turn: 'Tour',
     preset_whisper: 'Murmure', preset_touch: 'Toucher', preset_caress: 'Caresse',
     media_photo: 'Photo', media_video: 'Vidéo', media_circle: 'Cercle', buy: 'Acheter',
+    duo_call: '👯‍♀️ Appeler une amie', duo_leave: '❌ Laissez-nous seuls',
+    duo_banner: '🔥 Rendez-vous à trois', duo_banner_sub: 'elles deux dans ce chat · Premium',
+    duo_blur_btn: '💎 Enlever le flou (Premium)',
+    guest_in_chat: n => n + ' est dans le chat', guest_out_btn: '✕ la laisser partir',
+    lvl_chip: (ic, n) => ic + ' Niv ' + n,
+    guest_sheet_hint: 'Elle rejoint ce chat, et désormais elles répondent à deux.',
     need_premium: 'Disponible avec Premium ⭐', locked: 'Cette fille est encore fermée',
     settings_title: 'Réglages', spicy_title: '🌶 Mode coquin', spicy_on: 'activé', spicy_off: 'désactivé',
     spicy_prem: 'Le mode coquin est un avantage Premium ⭐',
@@ -2464,6 +2519,12 @@ const L_OV = {
     preset_auto: '自动', preset_kiss: '亲吻', preset_wink: '眨眼', preset_turn: '转身',
     preset_whisper: '耳语', preset_touch: '触摸', preset_caress: '爱抚',
     media_photo: '照片', media_video: '视频', media_circle: '视频圈', buy: '购买',
+    duo_call: '👯‍♀️ 叫闺蜜来', duo_leave: '❌ 让我们单独待着',
+    duo_banner: '🔥 三人行约会', duo_banner_sub: '她们俩都在这个聊天里 · Premium',
+    duo_blur_btn: '💎 去掉马赛克（Premium）',
+    guest_in_chat: n => n + ' 在聊天里', guest_out_btn: '✕ 让她走',
+    lvl_chip: (ic, n) => ic + ' ' + n + ' 级',
+    guest_sheet_hint: '她会加入这个聊天，之后她们两个一起回复你。',
     need_premium: '需要 Premium ⭐', locked: '这位女孩暂时未解锁',
     settings_title: '设置', spicy_title: '🌶 火辣模式', spicy_on: '已开启', spicy_off: '已关闭',
     spicy_prem: '火辣模式是 Premium 专属 ⭐',
@@ -2522,6 +2583,12 @@ const L_OV = {
     preset_auto: 'オート', preset_kiss: 'キス', preset_wink: 'ウインク', preset_turn: '振り向き',
     preset_whisper: 'ささやき', preset_touch: 'タッチ', preset_caress: 'なでしお',
     media_photo: '写真', media_video: '動画', media_circle: 'ビデオサークル', buy: '購入',
+    duo_call: '👯‍♀️ 女友達を呼ぶ', duo_leave: '❌ 二人にさせて',
+    duo_banner: '🔥 3人デート', duo_banner_sub: 'ふたりがこのチャットに · Premium',
+    duo_blur_btn: '💎 ボカシを外す（Premium）',
+    guest_in_chat: n => n + 'がチャットに参加中', guest_out_btn: '✕ 帰ってもらう',
+    lvl_chip: (ic, n) => ic + ' Lv' + n,
+    guest_sheet_hint: 'このチャットに参加して、これから二人で返信するよ。',
     need_premium: 'Premium で利用可能 ⭐', locked: 'この女の子はまだロック中',
     settings_title: '設定', spicy_title: '🌶 セクシーモード', spicy_on: 'オン', spicy_off: 'オフ',
     spicy_prem: 'セクシーモードは Premium 特典 ⭐',
@@ -2579,6 +2646,12 @@ const L_OV = {
     preset_auto: 'অটো', preset_kiss: 'চুমু', preset_wink: 'চোখ টিপ', preset_turn: 'ঘুরে দাঁড়ানো',
     preset_whisper: 'ফিসফিস', preset_touch: 'ছোঁয়া', preset_caress: 'আদর',
     media_photo: 'ছবি', media_video: 'ভিডিও', media_circle: 'ভিডিও সার্কেল', buy: 'কিনুন',
+    duo_call: '👯‍♀️ বন্ধুকে ডাকো', duo_leave: '❌ আমাদের একা রাখো',
+    duo_banner: '🔥 তিনজনের ডেট', duo_banner_sub: 'দুজনেই এই চ্যাটে · Premium',
+    duo_blur_btn: '💎 ব্লার দূর করো (Premium)',
+    guest_in_chat: n => n + ' চ্যাটে আছে', guest_out_btn: '✕ যেতে দাও',
+    lvl_chip: (ic, n) => ic + ' লেভেল ' + n,
+    guest_sheet_hint: 'সে এই চ্যাটে আসবে, এরপর দুজনেই তোমাকে উত্তর দেবে।',
     need_premium: 'Premium-এ পাওয়া যায় ⭐', locked: 'এই মেয়েটি এখনও লক করা',
     settings_title: 'সেটিংস', spicy_title: '🌶 হট মোড', spicy_on: 'চালু', spicy_off: 'বন্ধ',
     spicy_prem: 'হট মোড Premium-এর সুবিধা ⭐',
@@ -3518,32 +3591,34 @@ function chatBubble(roleOrM, content, ts) {
     body += forkButtons();
   }
   // V3.61.0: a duo persona answers as «Имя: …» lines — the speaker's name in bold.
-  if (cls === 'bot' && !m.media_url && CHAT && CHAT.duo) {
-    // V3.61.2: plus a small avatar of who is speaking (the chat's girl or the invited guest).
-    const avatars = {};
-    if (CHAT.guest) avatars[CHAT.guest.name] = CHAT.guest.photo;
-    if (CHAT.name) avatars[CHAT.name] = CHAT.photo || ('/webapp/photo/' + CHAT.id);
-    body = body.split('\n').map(line => line.replace(/^([A-Za-zА-Яа-яЁё]{2,20}):\s/, (all, nm) => {
-      const av = avatars[nm] ? '<img class="duo-av" src="' + esc(avatars[nm]) + '" alt="">' : '';
-      return av + '<b class="duo-nm">' + nm + ':</b> ';
-    })).join('\n');
-  }
+  if (cls === 'bot' && !m.media_url && CHAT && CHAT.duo) body = duoNames(body);
   if (m.media_url) {
     const src = m.media_url + '?init_data=' + encodeURIComponent(tg.initData || '');
     if (m.media_kind === 'circle') body = `<video class="circle" src="${esc(src)}" loop autoplay muted playsinline></video>`;
     else if (m.media_kind === 'video') body = `<video class="m" src="${esc(src)}" controls playsinline></video>`;
     else if (m.media_kind === 'voice') body = voicePlayer(src);
+    else if (m.media_kind === 'duo_teaser') {
+      // V3.139.0: owner ТЗ (Задача 5) — the blurred joint picture IS the
+      // paywall: nothing to save or animate under it, only the Premium button.
+      body = '<img class="m" src="' + esc(src) + '" alt="">'
+        + '<button class="duobuy" type="button" data-duobuy="1">' + esc(L.duo_blur_btn) + '</button>';
+    }
     else if (cls === 'bot') {
       // V3.61.7: three clear actions under her photo — save, animate, undress.
+      // V3.138.0: her room picture («🏠 Дом») is an interior — there is nobody
+      // to undress in it, so that button only goes under a photo of her.
+      const room = m.media_kind === 'room';
       body = '<img class="m" src="' + esc(src) + '" data-lb="1" alt="">'
         + '<div class="phact"><button class="pa" data-dl="' + esc(src) + '">' + esc(L.pa_save) + '</button>'
         + '<button class="pa" data-pact="animate" data-media="' + esc(m.media_url) + '">' + esc(L.pa_anim) + '</button>'
-        + '<button class="pa hot" data-pact="undress" data-media="' + esc(m.media_url) + '">' + esc(L.pa_undress)
-        // V3.132.0: without Premium the button shows its own price (one «Раздеть» for 50 ₽)
-        + (ME && !ME.premium ? (ME.undress_one_rub ? '<small>· ' + esc(ME.undress_one_rub) + ' ₽</small>' : ' ⭐') : '') + '</button></div>';
+        + (room ? '' : '<button class="pa hot" data-pact="undress" data-media="' + esc(m.media_url) + '">' + esc(L.pa_undress)
+        // V3.138.0: owner — the price here is peaches, never rubles (250 🍑 ≈ 25 ₽).
+        // A number + the peach reads the same in every language of the app.
+        + (ME && !ME.premium ? '<small>· ' + esc(ME.undress_peaches || 250) + ' 🍑</small>' : '') + '</button>')
+        + '</div>';
     }
     else body = `<img class="m" src="${esc(src)}" data-lb="1" alt=""><br><button class="dl" data-dl="${esc(src)}">${esc(L.photo_save)}</button>`;
-    if (m.content) body += `<div style="margin-top:4px">${esc(m.content)}</div>`;
+    if (m.content) body += `<div style="margin-top:4px">${duoNames(esc(m.content))}</div>`;
   }
   // V3.63.5: her plain text can be voiced on tap (Premium perk).
   const say = (cls === 'bot' && !m.media_url && m.content) ? ` data-say="${esc(m.content)}"` : '';
@@ -3559,6 +3634,19 @@ function splitBubbles(text) {
   return (parts.length > 1 && parts.length <= 3) ? parts : [text];
 }
 
+// V3.139.0: «Имя: …» of a duo — the speaker's name in bold plus her avatar, so
+// two women in one thread read as two people. Works on escaped html only.
+function duoNames(html) {
+  if (!CHAT || !CHAT.duo) return html;
+  const avatars = {};
+  if (CHAT.guest) avatars[CHAT.guest.name] = CHAT.guest.photo;
+  if (CHAT.name) avatars[CHAT.name] = CHAT.photo || ('/webapp/photo/' + CHAT.id);
+  return html.split('\n').map(line => line.replace(/^([A-Za-zА-Яа-яЁё]{2,20}):\s/, (all, nm) => {
+    const av = avatars[nm] ? '<img class="duo-av" src="' + esc(avatars[nm]) + '" alt="">' : '';
+    return av + '<b class="duo-nm">' + nm + ':</b> ';
+  })).join('\n');
+}
+
 // V3.63.13: the next bubble arrives after a «печатает…» pause sized to its length.
 async function playFollowups(parts) {
   const box = document.getElementById('chatMsgs');
@@ -3569,6 +3657,26 @@ async function playFollowups(parts) {
     const t = document.getElementById('chatTypingMore');
     if (t) t.remove();
     box.insertAdjacentHTML('beforeend', chatBubble('bot', p, null));
+    box.scrollTop = box.scrollHeight;
+  }
+}
+
+// V3.139.0: owner ТЗ (Задача 3) — in a duo chat the two lines are two messages,
+// each in her own voice. The server splits «Амира: …» / «Агата: …» into
+// reply_parts; they land one after another, with who-is-typing named.
+async function playDuo(parts) {
+  const box = document.getElementById('chatMsgs');
+  for (const p of parts) {
+    const text = (p.name ? p.name + ': ' : '') + (p.text || '');
+    box.insertAdjacentHTML('beforeend', '<div class="typing" id="chatTypingMore">' + esc(p.name || (CHAT ? CHAT.name : '')) + ' ' + esc(L.typing_now) + '</div>');
+    box.scrollTop = box.scrollHeight;
+    await new Promise(res => setTimeout(res, Math.min(3500, 900 + text.length * 22)));
+    const t = document.getElementById('chatTypingMore');
+    if (t) t.remove();
+    box.insertAdjacentHTML('beforeend', chatBubble({
+      role: 'bot', content: text, ts: null,
+      media_url: p.voice_url || null, media_kind: p.voice_url ? 'voice' : null,
+    }));
     box.scrollTop = box.scrollHeight;
   }
 }
@@ -3694,7 +3802,11 @@ async function loadChatLevel(characterId) {
     CHAT_LEVEL = Object.assign({ cid: characterId }, j);
     if (j.branch) document.querySelectorAll('.forkrow').forEach(x => x.remove());
     const lvlIcon = j.branch === 'passion' ? '🔥' : (j.branch === 'romance' ? '❤️' : '💕');
-    chip.textContent = lvlIcon + ' ур. ' + j.level + ' · ' + j.title + ' ›';
+    // V3.139.0: owner ТЗ (Задача 4) — the badge is icon + number only now; the
+    // room to its right is for the duo pill. Her stage name stays in the sheet
+    // the chip opens (and in the level-up toast).
+    chip.textContent = L.lvl_chip(lvlIcon, j.level);
+    chip.title = j.level + ' · ' + j.title;
     chip.style.display = '';
     chip.onclick = openLevelSheet;
     if (prev && j.level > prev) toast('🎉 новый уровень: ' + j.level + ' · ' + j.title);
@@ -3814,10 +3926,10 @@ function openHot18(c0) {
   const sheet = document.getElementById('lvlSheet');
   const box = document.getElementById('lvlBox');
   const close = () => { sheet.style.display = 'none'; };
-  const undressRub = (ME && ME.undress_one_rub) || 50;
+  const undressPeaches = (ME && ME.undress_peaches) || 250;
   const P = '<span class="pr prem">⭐ ' + esc(L.hot_prem) + '</span>';
   const rows = [
-    ['undress', L.hot_undress, L.hot_undress_ds, prem ? '<span class="pr">' + esc(L.hot_prem) + '</span>' : '<span class="pr">' + esc(undressRub) + ' ₽</span>'],
+    ['undress', L.hot_undress, L.hot_undress_ds, prem ? '<span class="pr">' + esc(L.hot_prem) + '</span>' : '<span class="pr">' + esc(undressPeaches) + ' 🍑</span>'],
     ['spicy', L.hot_spicy, L.hot_spicy_ds, P],
     ['fet', L.hot_fet, L.hot_fet_ds, P],
     ['plots', L.hot_plots, L.hot_plots_ds, P],
@@ -3927,14 +4039,29 @@ async function openCharTune(c) {
 function renderGuest(characterId, guest, canInvite) {
   const btn = document.getElementById('chatInvite');
   const bar = document.getElementById('guestBar');
+  const banner = document.getElementById('featDuo');
   if (btn) {
     btn.style.display = canInvite ? '' : 'none';
-    btn.onclick = () => openGuestPicker(characterId);
+    btn.textContent = guest ? L.duo_leave : L.duo_call;
+    if (guest) btn.classList.add('leave'); else btn.classList.remove('leave');
+    btn.onclick = () => (guest ? setGuest(characterId, '') : openGuestPicker(characterId));
+  }
+  if (banner) {
+    // V3.139.0: the same state on «Чем займёмся?» — the banner is the first
+    // thing he sees there, so it flips with the pill instead of duplicating it.
+    banner.style.display = canInvite ? '' : 'none';
+    document.getElementById('lbFeatDuo').textContent = guest ? L.duo_leave : L.duo_banner;
+    document.getElementById('dsFeatDuo').textContent = guest ? '' : L.duo_banner_sub;
+    if (guest) banner.classList.add('leave'); else banner.classList.remove('leave');
+    banner.onclick = () => {
+      closeCapSheet();
+      if (guest) setGuest(characterId, ''); else openGuestPicker(characterId);
+    };
   }
   if (!bar) return;
   if (!guest) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
-  bar.innerHTML = '<img src="' + esc(guest.photo) + '" alt=""><span>' + esc(guest.name) + ' в чате</span>'
-    + '<button class="x" id="guestOut">✕ отпустить</button>';
+  bar.innerHTML = '<img src="' + esc(guest.photo) + '" alt=""><span>' + esc(L.guest_in_chat(guest.name)) + '</span>'
+    + '<button class="x" id="guestOut">' + esc(L.duo_leave) + '</button>';
   bar.style.display = 'flex';
   document.getElementById('guestOut').onclick = () => setGuest(characterId, '');
 }
@@ -3948,7 +4075,7 @@ async function openGuestPicker(characterId) {
     } catch (e) { list = []; }
   }
   const girls = list.filter(c => c.id !== characterId && c.status === 'active');
-  let html = '<h3>👭 Позвать в чат</h3><div class="hint">Она зайдёт в эту переписку, и дальше они будут отвечать вдвоём.</div><div class="grid">';
+  let html = '<h3>' + esc(L.duo_call) + '</h3><div class="hint">' + esc(L.guest_sheet_hint) + '</div><div class="grid">';
   girls.forEach(c => {
     html += '<button class="g" data-guest="' + esc(c.id) + '"><img src="' + esc(c.photo) + '" alt="" loading="lazy">' + esc(c.name) + '</button>';
   });
@@ -3984,6 +4111,9 @@ async function setGuest(characterId, guestId) {
       box.insertAdjacentHTML('beforeend', chatBubble({ role: 'assistant', content: j.reply, ts: new Date().toISOString() }));
       box.scrollTop = box.scrollHeight;
     }
+    // V3.139.0: owner ТЗ (Задача 5) — the second girl crossed the door and the
+    // two of them immediately send a free man the blurred joint picture.
+    if (j.duo && j.duo.ok) renderChatReply(j.duo);
   } catch (e) {
     const typing = document.getElementById('guestTyping');
     if (typing) typing.remove();
@@ -4240,7 +4370,7 @@ function undressTease(mediaUrl) {
     if (!CHAT) return;
     box.insertAdjacentHTML('beforeend', chatBubble('bot', L.undress_tease, null));
     box.insertAdjacentHTML('beforeend', '<div class="chat-offer"><button class="mchip on" data-pact="undress" data-media="' +
-      esc(mediaUrl) + '">' + esc(L.undress_tease_btn + (ME && ME.premium ? '' : ' ⭐')) + '</button></div>');
+      esc(mediaUrl) + '">' + esc(L.undress_tease_btn + (ME && ME.premium ? '' : ' · ' + ((ME && ME.undress_peaches) || 250) + ' 🍑')) + '</button></div>');
     box.scrollTop = box.scrollHeight;
   }, 1600);
 }
@@ -4252,11 +4382,16 @@ function renderChatReply(j) {
   // V3.51.0: a photo request comes back with a real photo attached;
   // V3.57.0: a text reply may carry her voice note (voice_url).
   const box = document.getElementById('chatMsgs');
+  let duoPlayed = Promise.resolve();
   if (j.photo_url) {
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
     undressTease(j.photo_url);
   } else if (j.voice_url) {
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'voice', media_url: j.voice_url, ts: null }));
+  } else if (j.reply_parts && j.reply_parts.length) {
+    // V3.139.0: owner ТЗ (Задача 3) — two girls are two messages, each with her
+    // own voice note, arriving one after the other.
+    duoPlayed = playDuo(j.reply_parts);
   } else {
     const parts = (CHAT && CHAT.duo) ? [j.reply] : splitBubbles(j.reply || '');
     box.insertAdjacentHTML('beforeend', chatBubble('bot', parts[0], null));
@@ -4274,6 +4409,21 @@ function renderChatReply(j) {
         '<div class="lt-c">' + esc(L.lt_text) + '<button type="button" class="lt-b">' + esc(L.lt_btn) + '</button></div></div>');
       box.scrollTop = box.scrollHeight;
     }, 1400);
+  }
+  // V3.139.0: owner ТЗ (Задача 5) — a man without Premium asked for the two of
+  // them: the hook he gets is a heavily blurred joint picture out of the ready
+  // pool, with the Premium button under it (nothing is rendered, nothing is
+  // charged). It lands after the two lines the girls just spoke.
+  if (j.duo_tease && j.duo_tease.url) {
+    duoPlayed.then(() => {
+      box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: '', media_kind: 'duo_teaser', media_url: j.duo_tease.url, ts: null }));
+      box.scrollTop = box.scrollHeight;
+    });
+  } else if (j.duo_offer) {
+    duoPlayed.then(() => {
+      box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" data-duobuy="1">${esc(L.duo_blur_btn)}</button></div>`);
+      box.scrollTop = box.scrollHeight;
+    });
   }
   // V3.60.3: no peaches for the photo she promised — one tap to the shop.
   // V3.76.0: a card girl's photos are Premium-only — one tap to the shop.
@@ -4296,7 +4446,7 @@ function renderChatReply(j) {
     const kind = undress ? 'undress' : 'spicy';
     const cid = CHAT ? CHAT.id : '';
     const retry = undress ? () => { if (CHAT && CHAT.id === cid) sendChat(j.retry_text || ''); } : null;
-    const label = undress ? ((L.hot_undress || L.undress_tease_btn || '🔥') + ' · ' + ((ME && ME.undress_one_rub) || 50) + ' ₽') : L.spicy_btn;
+    const label = undress ? ((L.hot_undress || L.undress_tease_btn || '🔥') + ' · ' + ((ME && ME.undress_peaches) || 250) + ' 🍑') : L.spicy_btn;
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on">${esc(label)}</button></div>`);
     const btn = box.lastElementChild.querySelector('button');
     if (btn) btn.addEventListener('click', () => quickBuy(kind, retry));
@@ -4724,6 +4874,17 @@ document.addEventListener('click', e => {
   if (b) { e.stopPropagation(); photoAction(b.getAttribute('data-pact'), b.getAttribute('data-media'), b); }
 });
 
+// V3.139.0: owner ТЗ (Задача 5) — «💎 Снять блюр (Premium)» under the blurred
+// joint picture is the paywall: the payment sheet opens, and once he is
+// Premium the same tap asks the two girls for the real photo (Задача 6).
+document.addEventListener('click', e => {
+  const b = e.target && e.target.closest ? e.target.closest('[data-duobuy]') : null;
+  if (!b) return;
+  e.stopPropagation();
+  const cid = CHAT ? CHAT.id : '';
+  quickBuy('spicy', () => { if (CHAT && CHAT.id === cid) requestMedia('photo', 'selfie', { joint: true }); });
+});
+
 // V3.72.0: the circle offer under her reply — one tap starts the paid render.
 document.addEventListener('click', e => {
   const b = e.target && e.target.closest ? e.target.closest('[data-cmedia]') : null;
@@ -4733,7 +4894,8 @@ document.addEventListener('click', e => {
   requestMedia(kind);
 });
 
-async function requestMedia(kind, scene) {
+async function requestMedia(kind, scene, opts) {
+  opts = opts || {};
   if (!CHAT) return;
   // V3.62.3: a tap while «Раздеть» / the previous photo is still rendering used
   // to do nothing at all — say why instead.
@@ -4751,20 +4913,20 @@ async function requestMedia(kind, scene) {
     const r = await fetch('/webapp/api/chat/media?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: CHAT.id, kind: kind, scene: scene || '' }),
+      body: JSON.stringify({ character_id: CHAT.id, kind: kind, scene: scene || '', joint: !!opts.joint }),
     });
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 402) {
       const j = await r.json().catch(() => ({}));
       if (j.error === 'circle_limit') { toast(L.circle_limit); return; }
       if (j.error === 'video_limit') { toast(L.video_limit_day || L.video_limit); return; }
-      quickBuy('peaches', () => requestMedia(kind, scene));
+      quickBuy('peaches', () => requestMedia(kind, scene, opts));
       return;
     }
     if (r.status === 403) {
       const j = await r.json().catch(() => ({}));
       // V3.87.0: spicy photos / «Наедине» / hot circle — the Premium pay sheet in place.
-      if (j.error === 'premium_required') { quickBuy('spicy', () => requestMedia(kind, scene)); return; }
+      if (j.error === 'premium_required') { quickBuy('spicy', () => requestMedia(kind, scene, opts)); return; }
       if (j.error === 'month_required') { toast(L.video_month || L.need_premium); quickBuy('month'); return; }
       toast(j.error === 'consent' ? L.consent_needed : (j.error === 'adult_confirm' ? L.adult_confirm_needed : L.locked));
       return;
@@ -4775,6 +4937,13 @@ async function requestMedia(kind, scene) {
     // key / transport error) while a normal user still gets the generic text.
     // V3.64.0: a failed photo said «Не получилось ответить» — it is a photo.
     if (!j.ok) { toast(j.reason || L.pic_gen_fail || L.reply_err); return; }
+    if (j.photo_block === 'duo') {
+      // V3.139.0: owner ТЗ (Задача 5) — he asked the two of them for a joint
+      // photo without Premium. Nothing was rendered and nothing charged; the
+      // server answered with the blurred teaser and both girls' hook lines.
+      renderChatReply(j);
+      return;
+    }
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
     if (kind === 'photo') undressTease(j.url);
     // V3.47.0: referral CTA right after a delivered media (not voice) — the
@@ -6601,7 +6770,7 @@ async function quickBuy(kind, retry, opts) {
   const trialFirst = (ME && ME.trial_eligible && !ME.premium) ? ['premium_trial'] : [];
   // V3.97.0: his personal one-time −50% month (the limit answer says vip:true).
   const want = kind === 'month' ? ['premium', 'premium_quarter']
-    : kind === 'undress' ? ['undress_one'].concat(trialFirst, ['premium_week'])
+    : kind === 'undress' ? ['peach_pack_30', 'peach_pack_100'].concat(trialFirst, ['premium_week'])
     : ((kind === 'limit' || kind === 'voice' || kind === 'spicy') ? trialFirst.concat(['premium_week', 'premium'])
       : (kind === 'photo' ? ['peach_pack_30', 'peach_pack_100', 'peach_pack_10'] : ['peach_pack_10', 'peach_pack_30', 'premium']));
   if (kind === 'limit' && opts.vip) want.unshift('premium_vip');
@@ -6617,7 +6786,8 @@ async function quickBuy(kind, retry, opts) {
   rows.push(`<button class="mrow" data-q="__shop"><span class="ico">🛍</span><span class="nm">${esc(L.qb_more)}</span><span class="pr"></span></button>`);
   document.getElementById('payRows').innerHTML = rows.join('');
   // V3.123.0: bonus peaches never pay for renders — say so instead of a silent «не хватает».
-  const bonusNote = (kind !== 'month' && kind !== 'limit' && kind !== 'voice' && kind !== 'spicy' && kind !== 'undress'
+  // V3.138.0: «undress» pays with peaches now, so it gets the same honest note.
+  const bonusNote = (kind !== 'month' && kind !== 'limit' && kind !== 'voice' && kind !== 'spicy'
     && ME && Number(ME.bonus_peaches || 0) > 0) ? L.bonus_note(ME.bonus_peaches) + ' ' : '';
   document.getElementById('payNote').textContent = bonusNote + (L.pay_once || '');
   document.querySelectorAll('#payRows [data-q]').forEach(b => b.addEventListener('click', async () => {

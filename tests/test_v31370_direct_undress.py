@@ -1,6 +1,7 @@
 """V3.137.0: a direct «разденься» / «undress» leads to a paid single «Раздеть»,
 not to ordinary text. A bought credit opens the spicy gate, is spent only after
 a successful render, and survives a failed one."""
+import re
 import uuid
 from pathlib import Path
 
@@ -12,6 +13,14 @@ PPS = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 
 def _tid():
     return 9_300_000 + uuid.uuid4().int % 999_999
+
+
+def _turn():
+    """Body of _webapp_chat_turn only — sliced to the next top-level def, so
+    the neighbours added in V3.139.0 can never leak into these pins."""
+    start = MAIN.index('async def _webapp_chat_turn(')
+    nxt = re.search(r'\n(?:async )?def ', MAIN[start + 1:])
+    return MAIN[start:start + 1 + nxt.start()]
 
 
 def test_direct_undress_detector_ru_en():
@@ -80,21 +89,29 @@ def test_credit_spend_only_when_available():
 
 
 def test_prelude_marks_direct_undress_and_blocked_offer():
-    turn = MAIN[MAIN.index('async def _webapp_chat_turn('):MAIN.index('async def _webapp_api_chat_send(')]
+    turn = _turn()
     assert 'direct_undress = _direct_undress_request(text) is not None' in turn
     assert "pay = 'undress_credit'" in turn
-    assert 'return (uid, scene, block, pay, direct_undress)' in turn
+    # V3.139.0: the prelude also carries the joint flag and his own language,
+    # so the blocked offer can be the duo teaser written in his tongue.
+    assert 'return (uid, scene, block, pay, direct_undress, joint,' in turn
+    assert "full_user_lang(telegram_id, user_info.get('language_code')))" in turn
     assert "blocked_extra.update({'undress_offer': True, 'retry_text': text})" in turn
     assert '_chat_photo_blocked, uid, character_id, photo_block, blocked_extra' in turn
 
 
 def test_single_credit_skips_pool_free_allowance_and_peaches():
-    turn = MAIN[MAIN.index('async def _webapp_chat_turn('):MAIN.index('async def _webapp_api_chat_send(')]
-    # no ready-made pool for a paid single «Раздеть»
-    assert "pooled = None if pay == 'undress_credit' else" in turn
+    turn = _turn()
+    # no ready-made pool for a paid «Раздеть» — neither the credit nor the peach route
+    # V3.139.0: and none for a joint photo either, a single girl is not what he asked for
+    assert "pooled = None if (pay in ('undress_credit', 'undress_peaches') or guest_id) else" in turn
     # the credit is spent, not the free photo of the day and not peaches
     assert "if pay == 'undress_credit':" in turn
     assert 'undress_credits.spend(telegram_id)' in turn
+    # V3.138.0: without Premium and without a credit the direct «разденься» costs peaches
+    assert "pay = 'undress_credit' if undress_credits.balance(telegram_id) > 0 else 'undress_peaches'" in turn
+    assert "elif pay == 'undress_peaches':" in turn
+    assert 'spend_peaches(telegram_id, UNDRESS_PEACH_COST, paid_only=True)' in turn
 
 
 def test_background_job_spends_credit_only_on_success():

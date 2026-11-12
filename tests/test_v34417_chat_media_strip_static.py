@@ -52,7 +52,7 @@ def test_remaining_pills_stay_wired():
 def test_photo_media_pipeline_untouched():
     # requestMedia keeps its signature; the only live caller is the photo
     # scene picker, the chosen scene rides the media request (V3.43.7)
-    assert 'async function requestMedia(kind, scene)' in INDEX
+    assert 'async function requestMedia(kind, scene, opts)' in INDEX
     assert "requestMedia('photo', el.dataset.scene)" in INDEX
 
 

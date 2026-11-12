@@ -193,7 +193,9 @@ def test_turn_hello_skips_the_llm_and_rest_goes_to_say():
 def test_header_call_button_and_admin_picker():
     assert 'class="callbtn" id="chatCall"' in HTML
     assert "sel.textContent = '❤️';" in HTML
-    assert "' ур. ' + j.level + ' · ' + j.title + ' ›'" in HTML
+    # V3.139.0 (Задача 4): the badge is icon + number only now, in his language,
+    # so the duo pill has room to its right; her stage name moved into the sheet.
+    assert 'L.lvl_chip(lvlIcon, j.level)' in HTML
     assert 'id="callPick"' in HTML and "openCall('live')" in HTML
     assert "'admin': telegram_id in ADMIN_TELEGRAM_IDS" in MAIN
 

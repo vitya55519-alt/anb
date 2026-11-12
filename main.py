@@ -2019,7 +2019,34 @@ def _to_jpeg(data: bytes) -> bytes:
     return buf.getvalue()
 
 
-async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoRequest, *, undress_credit: bool = False):
+async def _send_duo_teaser(chat_id: int, telegram_id: int, character_id: str, guest_id: str) -> None:
+    """V3.139.0: Задача 5 in the bot — the blurred joint picture, both girls'
+    hook in his language, and the Premium button under it."""
+    from services import duo_teaser
+    from services.chat_guest_service import character_name, host_name
+    from services.ui_lang import duo_teaser as hook_text
+    host_nm = host_name(character_id)
+    guest_nm = character_name(guest_id)
+    text = hook_text(full_user_lang(telegram_id), host_nm, guest_nm)
+    body = None
+    try:
+        body = await asyncio.to_thread(duo_teaser.photo_for, character_id, guest_id)
+    except Exception:
+        logger.warning('duo teaser picture failed user=%s', telegram_id)
+    try:
+        track_event(ensure_user(telegram_id), 'paywall_view',
+                    metadata={'product': 'duo_photo', 'source': 'bot'})
+    except Exception:
+        pass
+    if body:
+        await bot.send_photo(chat_id, BufferedInputFile(body, filename='duo.jpg'),
+                             caption=text, reply_markup=premium_keyboard(telegram_id=telegram_id))
+        return
+    await bot.send_message(chat_id, text, reply_markup=premium_keyboard(telegram_id=telegram_id))
+
+
+async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoRequest, *,
+                               undress_credit: bool = False, text: str = ''):
     db_uid = ensure_user(telegram_id)
     if not has_accepted(telegram_id):
         await bot.send_message(chat_id, 'Сначала подтверди 18+ и условия через /start.', reply_markup=consent_keyboard())
@@ -2044,6 +2071,16 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
 
     if telegram_id in ADMIN_TELEGRAM_IDS:
         await _start_photo_background(chat_id, telegram_id, request, 'admin')
+        return
+
+    # V3.139.0: owner ТЗ (Задачи 5–6) — «сфоткайтесь вдвоём» is a duo thing.
+    # A man with Premium gets the real joint frame (the second girl rides into
+    # the prompt as reference images 3–4); a man without Premium gets a heavily
+    # blurred teaser from the ready pool — the provider is never called, so the
+    # tease costs nothing.
+    request = attach_guest(request, telegram_id, get_user_character(telegram_id), text)
+    if getattr(request, 'with_guest', '') and not is_premium(telegram_id):
+        await _send_duo_teaser(chat_id, telegram_id, get_user_character(telegram_id), request.with_guest)
         return
 
     if not is_premium(telegram_id) and spicy_needs_premium(request):
@@ -8823,8 +8860,57 @@ def _trial_voice_ok(telegram_id: int) -> bool:
         return True
 
 
+def _duo_speakers(telegram_id: int) -> dict[str, str]:
+    """V3.139.0: {name: character_id} of the two girls in this chat; {} if she
+    writes alone. Used to send each line as its own message in its own voice."""
+    try:
+        from services import chat_guest_service as cgs
+        return cgs.speakers(telegram_id, get_user_character(telegram_id) or '')
+    except Exception:
+        logger.warning('duo speakers read failed user=%s', telegram_id)
+        return {}
+
+
+async def _send_duo_answer(message: types.Message, lines: list[tuple[str, str]],
+                           duo: dict[str, str], user) -> None:
+    """V3.139.0: owner ТЗ — «это две разные девушки, каждое сообщение отдельно».
+    Her friend's line is not a paragraph of one script: it arrives as its own
+    message after a «печатает…» pause, and for a Premium man it is spoken by
+    that girl's own voice, not by one voice reading both parts."""
+    tid = message.from_user.id
+    character_id = get_user_character(tid) or ''
+    voice = bool(user and getattr(user, 'voice_enabled', False)
+                 and (is_premium(tid) or tid in ADMIN_TELEGRAM_IDS))
+    for i, (who, line) in enumerate(lines[:3]):
+        if i:
+            try:
+                await bot.send_chat_action(message.chat.id, 'typing')
+            except Exception:
+                pass
+            await asyncio.sleep(_bubble_pause(line))
+        if voice and (tid in ADMIN_TELEGRAM_IDS or _trial_voice_ok(tid)):
+            try:
+                audio = await synthesize_bytes(
+                    line, getattr(user, 'voice_style', None),
+                    character_id=duo.get(who) or character_id)
+                filename = 'voice.ogg' if getattr(user, 'voice_anon_mode', False) else f'{duo.get(who) or character_id}.ogg'
+                await message.answer_voice(BufferedInputFile(audio, filename=filename))
+                continue
+            except Exception:
+                logger.exception('duo tts failed user=%s', tid)
+        # one Telegram account speaks for both, so the text keeps her name
+        await message.answer(f'{who}: {line}')
+
+
 async def send_answer(message: types.Message, text: str):
     user = get_user(message.from_user.id)
+    # V3.139.0: a duo answer is two messages, not one script.
+    duo = await asyncio.to_thread(_duo_speakers, message.from_user.id)
+    from services.chat_service import duo_lines
+    lines = duo_lines(text) if duo else []
+    if len(lines) > 1:
+        await _send_duo_answer(message, lines, duo, user)
+        return
     # V3.55.1: voice replies are a Premium perk (owner decision — the shop
     # card line «голосовые ответы» becomes literally true). Non-premium keeps
     # the toggle, gets text, and the once-a-day nudge at the bottom.
@@ -10711,7 +10797,7 @@ async def voice_message(message: types.Message):
             request = _show_me_request(text) or direct_undress
         if request:
             await handle_photo_request(message.chat.id, message.from_user.id, request,
-                                       undress_credit=direct_undress is not None)
+                                       undress_credit=direct_undress is not None, text=text)
             touch_user(message.from_user.id)
             return
         before_level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
@@ -11609,7 +11695,7 @@ async def text_message(message: types.Message):
             request = _show_me_request(text) or direct_undress
         if request:
             await handle_photo_request(message.chat.id, message.from_user.id, request,
-                                       undress_credit=direct_undress is not None)
+                                       undress_credit=direct_undress is not None, text=text)
             touch_user(message.from_user.id)
             return
         # V3.45.27: «чат только в Mini App». A plain conversational message in
@@ -12482,6 +12568,23 @@ async def _webapp_art(request: web.Request) -> web.Response:
     ctype = {'jpg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp'}[name.rsplit('.', 1)[1]]
     return web.Response(body=await asyncio.to_thread(path.read_bytes), content_type=ctype,
                         headers={'Cache-Control': 'public, max-age=86400'})
+
+
+async def _webapp_duo_teaser(request: web.Request) -> web.Response:
+    """V3.139.0: owner ТЗ (Задача 5) — the heavily blurred joint picture a man
+    without Premium sees when he asks for the two girls together. The provider
+    is never called: the owner's own ready blur from webapp/art wins, otherwise
+    the two girls' existing photos are composited and blurred here."""
+    host_id = (request.match_info.get('host_id') or '').strip()
+    guest_id = (request.match_info.get('guest_id') or '').strip()
+    if not re.match(r'^[A-Za-z0-9_\-]{1,64}$', host_id) or not re.match(r'^[A-Za-z0-9_\-]{1,64}$', guest_id):
+        return web.Response(status=404)
+    from services import duo_teaser
+    body = await asyncio.to_thread(duo_teaser.render, host_id, guest_id)
+    if not body:
+        return web.Response(status=404)
+    return web.Response(body=body, content_type='image/jpeg',
+                        headers={'Cache-Control': 'public, max-age=3600'})
 
 
 async def _webapp_gallery_save(request: web.Request) -> web.Response:
@@ -13848,12 +13951,23 @@ def _free_photo_from_pool(telegram_id: int, uid: int, character_id: str):
     return picked
 
 
-def _chat_photo_gate(telegram_id: int, character_id: str, scene: str, *, undress_credit: bool = False) -> str | None:
+def _chat_photo_gate(telegram_id: int, character_id: str, scene: str, *, undress_credit: bool = False,
+                     joint: bool = False) -> str | None:
     """The stage / 18+ / peaches gates of a chat photo; None = go."""
     if _card_girl_photo_locked(character_id, telegram_id):
         return 'premium'
     if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
         return 'adult'
+    if joint and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+        # V3.139.0: owner ТЗ (Фогель, Задача 5) — a joint photo of the two girls
+        # is a Premium thing. A free man is not charged and nothing is rendered:
+        # he gets the blurred teaser from the ready pool instead.
+        try:
+            track_event(ensure_user(telegram_id), 'paywall_view',
+                        metadata={'product': 'duo_photo', 'scene': scene, 'source': 'chat'})
+        except Exception:
+            pass
+        return 'duo'
     # V3.88.0: spicy scenes skip the level gate — Premium is the gate («с
     # Premium открыто всё откровенное»); a fresh buyer at level 1 must get
     # the photo he paid for, not «пока рано».
@@ -13862,11 +13976,14 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str, *, undress
         return 'stage'
     if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id) \
             and spicy_needs_premium(PhotoRequest(scene=scene)):
-        # V3.87.0: nude / lingerie — Premium-only, no free or peach route.
+        # V3.87.0: nude / lingerie — Premium-only, no free route.
         # V3.137.0: a bought one-time «Раздеть» opens this exact request.
+        # V3.138.0: owner — without Premium it is peaches now: 250 🍑 ≈ 25 ₽.
         if undress_credit:
             from services import undress_credits
-            if undress_credits.balance(telegram_id) > 0:
+            from config import UNDRESS_PEACH_COST
+            if undress_credits.balance(telegram_id) > 0 \
+                    or get_paid_peaches(telegram_id) >= UNDRESS_PEACH_COST:
                 return None
         try:
             track_event(ensure_user(telegram_id), 'paywall_view',
@@ -13899,7 +14016,10 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str, *, undress
 _LOCKED_CARD_REASONS = frozenset({'free_used', 'premium', 'spicy'})
 
 
-def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | None) -> dict:
+def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | None,
+                        *, telegram_id: int | None = None, lang: str = '') -> dict:
+    if reason == 'duo':
+        return _chat_duo_blocked(uid, telegram_id or 0, character_id, lang, extra or {})
     text = CHAT_PHOTO_BLOCK_TEXT[reason].format(price=CHAT_PHOTO_PEACH_COST)
     try:
         save_message(uid, character_id, 'assistant', text)
@@ -13913,6 +14033,55 @@ def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | 
         except Exception:
             pass
     payload.update(extra or {})
+    return payload
+
+
+def _chat_duo_blocked(uid: int, telegram_id: int, character_id: str, lang: str, extra: dict) -> dict:
+    """V3.139.0: owner ТЗ (Фогель, Задача 5) — a man without Premium asked for
+    the two of them together. Nothing is rendered (no provider call, no money):
+    he gets one heavily blurred joint picture out of the ready pool, both girls
+    speak in their own bubbles in his language, and the Premium button sits
+    under the picture. A tap there opens the payment sheet; buying and asking
+    again runs the real generation (Задача 6)."""
+    from services import duo_teaser
+    from services import ui_lang as _ui
+    from services.chat_guest_service import host_name, speakers
+    from services.chat_service import duo_lines
+    names = {}
+    try:
+        names = speakers(telegram_id, character_id) or {}
+    except Exception:
+        logger.warning('duo speakers read failed uid=%s', uid)
+    guest_id = next((cid for cid in names.values() if cid != character_id), '')
+    guest_nm = next((nm for nm, cid in names.items() if cid != character_id), '')
+    host_nm = host_name(character_id) or next(
+        (nm for nm, cid in names.items() if cid == character_id), '')
+    url = duo_teaser.url_for(character_id, guest_id) if guest_id else None
+    text = _ui.duo_teaser(lang, host_nm, guest_nm)
+    parts = duo_lines(text)
+    try:
+        if parts:
+            for i, (nm, line) in enumerate(parts):
+                last = i == len(parts) - 1
+                save_message(uid, character_id, 'assistant', f'{nm}: {line}',
+                             media_kind='duo_teaser' if (last and url) else None,
+                             media_url=url if (last and url) else None)
+        else:
+            save_message(uid, character_id, 'assistant', text,
+                         media_kind='duo_teaser' if url else None, media_url=url)
+    except Exception:
+        logger.warning('duo teaser message not saved uid=%s', uid)
+    try:
+        track_event(uid, 'duo_teaser_view', character_id=character_id,
+                    metadata={'has_picture': bool(url)})
+    except Exception:
+        pass
+    payload = {'ok': True, 'reply': text, 'photo_block': 'duo', 'duo_offer': True}
+    if url:
+        payload['duo_tease'] = {'url': url}
+    if parts:
+        payload['reply_parts'] = [{'name': nm, 'text': line} for nm, line in parts]
+    payload.update(extra)
     return payload
 
 
@@ -13981,20 +14150,26 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         if not photo_request and _accepts_her_photo_offer(uid, character_id, text):
             photo_request = parse_photo_request('пришли селфи')
         if not photo_request:
-            return uid, None, None, None, False
+            return uid, None, None, None, False, False, RU
         nonlocal photo_req
         photo_req = _selfie_from_dialog(uid, character_id, photo_request)
         # V3.61.2: «сфоткайтесь вдвоём» — the invited girl joins the frame.
         photo_req = attach_guest(photo_req, telegram_id, character_id, text)
         scene = photo_request.scene if photo_request.scene in PHOTO_MENU_ORDER else 'selfie'
-        block = _chat_photo_gate(telegram_id, character_id, scene, undress_credit=direct_undress)
+        # V3.139.0: owner ТЗ — a joint request from a free man is the blurred
+        # teaser route, and his own language is what the two girls say in.
+        joint = bool(getattr(photo_req, 'with_guest', ''))
+        block = _chat_photo_gate(telegram_id, character_id, scene, undress_credit=direct_undress, joint=joint)
         pay = None
         if direct_undress and block is None and telegram_id not in ADMIN_TELEGRAM_IDS \
                 and not is_premium(telegram_id):
-            pay = 'undress_credit'
-        return (uid, scene, block, pay, direct_undress)
+            from services import undress_credits
+            pay = 'undress_credit' if undress_credits.balance(telegram_id) > 0 else 'undress_peaches'
+        return (uid, scene, block, pay, direct_undress, joint,
+                full_user_lang(telegram_id, user_info.get('language_code')))
 
-    uid, photo_scene, photo_block, photo_pay, direct_undress = await asyncio.to_thread(_prelude)
+    uid, photo_scene, photo_block, photo_pay, direct_undress, photo_joint, user_language = \
+        await asyncio.to_thread(_prelude)
     # V3.60.3: a blocked or failed photo request used to fall through to the
     # model, which happily wrote «лови 😏» with nothing attached. Now she says
     # plainly what is in the way and offers the way forward.
@@ -14002,15 +14177,21 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         blocked_extra = dict(extra or {})
         if direct_undress and photo_block == 'spicy':
             blocked_extra.update({'undress_offer': True, 'retry_text': text})
+        if photo_block == 'duo':
+            blocked_extra['retry_text'] = text
         return web.json_response(await asyncio.to_thread(
-            _chat_photo_blocked, uid, character_id, photo_block, blocked_extra))
+            _chat_photo_blocked, uid, character_id, photo_block, blocked_extra,
+            telegram_id=telegram_id, lang=user_language))
 
     async def _photo_turn(scene: str, req, said: str | None = None, pay: str | None = None):
         """Render + deliver one chat photo. `said` is her own text when the
         photo backs a promise she just made («лови 📸»)."""
         # V3.81.0: past today's free-photo budget, a FREE photo comes from her
         # ready-made pool instead of a new render. Paid and Premium are untouched.
-        pooled = None if pay == 'undress_credit' else await asyncio.to_thread(
+        # V3.139.0: a joint request never takes from the pool — a single girl
+        # is not what he asked for.
+        guest_id = getattr(req, 'with_guest', '') if req is not None else ''
+        pooled = None if (pay in ('undress_credit', 'undress_peaches') or guest_id) else await asyncio.to_thread(
             _free_photo_from_pool, telegram_id, uid, character_id)
         try:
             if pooled:
@@ -14018,7 +14199,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             elif req is not None and req.location and scene == 'selfie':
                 data, mime, ext = await _webapp_pipeline_photo(telegram_id, character_id, req)
             else:
-                data, mime, ext = await _webapp_media_photo(telegram_id, character_id, scene)
+                data, mime, ext = await _webapp_media_photo(telegram_id, character_id, scene, guest_id)
         except Exception as exc:
             logger.exception('webapp chat photo-on-request failed user=%s scene=%s', telegram_id, scene)
             await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo',
@@ -14061,6 +14242,11 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                 if pay == 'undress_credit':
                     from services import undress_credits
                     undress_credits.spend(telegram_id)
+                elif pay == 'undress_peaches':
+                    # V3.138.0: «Раздеть» for peaches — 250 🍑, not the photo price.
+                    from config import UNDRESS_PEACH_COST
+                    spend_peaches(telegram_id, UNDRESS_PEACH_COST, paid_only=True)
+                    paid_note = {'price': UNDRESS_PEACH_COST, 'left': get_paid_peaches(telegram_id)}
                 # V3.61.5: a free photo of the day first, then peaches.
                 elif free_chat_photos_left(uid, premium=premium) > 0:
                     use_free_chat_photo(uid, character_id)
@@ -14163,7 +14349,30 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             payload['circle_offer'] = offer
     except Exception:
         logger.warning('circle offer failed user=%s', telegram_id, exc_info=True)
-    voice_url = await _webapp_reply_voice_url(telegram_id, character_id, answer)
+    voice_url = None
+    # V3.139.0: owner ТЗ — in a duo chat the two lines are two messages, each
+    # in her own voice. Without Premium the free taste stays ONE note a turn
+    # (no new spend), so only Premium men hear both girls speak.
+    from services.chat_service import duo_lines
+    from services import chat_guest_service as cgs
+    duo_map = await asyncio.to_thread(cgs.speakers, telegram_id, character_id)
+    parts = duo_lines(answer) if duo_map else []
+    if len(parts) > 1:
+        multi = telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id)
+        bubbles = []
+        for idx, (who, line) in enumerate(parts[:3]):
+            entry = {'name': who, 'text': line}
+            if idx == 0 or multi:
+                cid = duo_map.get(who) or character_id
+                url = await _webapp_reply_voice_url(telegram_id, cid, line)
+                if url and url != 'offer':
+                    entry['voice_url'] = url
+                elif url == 'offer' and not bubbles:
+                    voice_url = 'offer'
+            bubbles.append(entry)
+        payload['reply_parts'] = bubbles
+    else:
+        voice_url = await _webapp_reply_voice_url(telegram_id, character_id, answer)
     if voice_url == 'offer':
         if not any(k in payload for k in ('locked_tease', 'sext_offer')):
             payload['voice_offer'] = True  # V3.106.0: «🎙 слышать её голос всегда»
@@ -14240,11 +14449,13 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
             r = await generate_text([
                 {'role': 'system', 'content': persona},
                 {'role': 'user', 'content': (
-                    'Напиши первое сообщение этого чата как начало сцены: в звёздочках — что ты сейчас делаешь и где '
-                    '(1 предложение), потом твоя первая реплика пользователю (1–2 предложения), живо и с интригой. '
-                    'Без приветствия «привет», без описания внешности.')},
+                    'Напиши первое сообщение этого чата как живую строку в мессенджере: одной фразой скажи, что ты '
+                    'сейчас делаешь и где (своими словами, без действий в *звёздочках* и без ремарок в скобках), '
+                    'потом твоя первая реплика пользователю (1–2 предложения), живо и с интригой. '
+                    'Без приветствия «привет», без описания внешности, без своего имени перед текстом.')},
             ], max_tokens=220, temperature=0.95, purpose='opening')
-            scene = (r.text or '').strip() or None
+            from services.chat_service import plain_message
+            scene = plain_message((r.text or '').strip()) or None
         except Exception:
             logger.warning('opening scene generation failed char=%s', character_id)
     # V3.117.0: the opening scenes are written in Russian — a Bengali or
@@ -14259,7 +14470,8 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
                 r = await generate_text([
                     {'role': 'system', 'content': (
                         f'Переведи первое сообщение девушки из чата на {_ru_name} язык ({_own}): живо и '
-                        'разговорно, как написал бы носитель. Сохрани *звёздочки*, эмодзи и смысл. '
+                        'разговорно, как написал бы носитель. Сохрани смысл и эмодзи, формат оставь '
+                        'мессенджерным: без действий в *звёздочках* и без имени перед текстом. '
                         'Верни только перевод.')},
                     {'role': 'user', 'content': scene},
                 ], max_tokens=320, temperature=0.4, purpose='opening')
@@ -14300,34 +14512,55 @@ async def _webapp_api_chat_guest(request: web.Request) -> web.Response:
             return web.json_response({'ok': False, 'error': 'unknown_guest'}, status=400)
     previous = await asyncio.to_thread(cgs.get_guest, telegram_id, character_id)
     await asyncio.to_thread(cgs.set_guest, telegram_id, character_id, guest_id or None)
+    # V3.139.0: owner ТЗ (Задача 1) — this whole moment is his language, not
+    # only ours: the entrance line, the note under it and the two girls' voices.
+    lang = full_user_lang(telegram_id, user_info.get('language_code'))
+    from services.lang_guard import name_line as _name_line
+    from services.ui_lang import flow_text as _flow
     host_name = cgs.character_name(character_id) or 'Она'
     note = None
     if guest_id:
-        guest_name = cgs.character_name(guest_id) or 'Подруга'
-        note = f'*{guest_name} заходит в чат*'
+        guest_name = cgs.character_name(guest_id) or _flow(lang, 'guest_word')
+        note = _flow(lang, 'guest_in', name=guest_name)
         try:
             from services.llm_provider_service import generate_text
+            from services.chat_service import plain_message
             r = await generate_text([
                 {'role': 'system', 'content': cgs.guest_prompt(host_name, guest_id, telegram_id)},
                 {'role': 'user', 'content': (
-                    f'Напиши сцену появления: {guest_name} заходит в чат. Первая строка в звёздочках — как она '
-                    f'появляется. Потом одна реплика «{host_name}: …» и одна «{guest_name}: …» пользователю, '
-                    f'живо, с характером каждой. Коротко.')},
+                    f'Напиши, как {guest_name} заходит в чат. Сначала одна короткая реплика «{host_name}: …», '
+                    f'потом одна «{guest_name}: …» пользователю, живо, с характером каждой. Коротко. '
+                    f'Никаких действий в *звёздочках* и без ремарок в скобках — только текст реплик.'
+                    + _name_line(lang))},
             ], max_tokens=220, temperature=0.95, purpose='guest_enter')
-            text = (r.text or '').strip()
+            text = plain_message((r.text or '').strip(), duo=True)
             if text and guest_name in text:
                 note = text
         except Exception:
             logger.warning('guest entrance generation failed host=%s guest=%s', character_id, guest_id)
     elif previous:
-        note = f'*{cgs.character_name(previous) or "Подруга"} уходит, и вы снова вдвоём*'
+        note = _flow(lang, 'guest_out', name=cgs.character_name(previous) or _flow(lang, 'guest_word'))
     if note:
         uid = await asyncio.to_thread(ensure_user, telegram_id, user_info.get('first_name') or '',
                                       language_code=user_info.get('language_code'))
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
     guest = ({'id': guest_id, 'name': cgs.character_name(guest_id) or guest_id,
               'photo': f'/webapp/photo/{guest_id}'} if guest_id else None)
-    return web.json_response({'ok': True, 'guest': guest, 'reply': note})
+    # V3.139.0: owner ТЗ (Фогель, Задача 5) — the duo is the hook. The moment a
+    # man without Premium brings the second girl in, the two of him send him a
+    # heavily blurred joint picture with the Premium button under it. Nothing
+    # is rendered here: the picture comes from the ready blur pool.
+    tease = None
+    if guest_id and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+        try:
+            uid = await asyncio.to_thread(ensure_user, telegram_id, user_info.get('first_name') or '',
+                                          language_code=user_info.get('language_code'))
+            tease = await asyncio.to_thread(
+                _chat_duo_blocked, uid, telegram_id, character_id,
+                full_user_lang(telegram_id, user_info.get('language_code')), {})
+        except Exception:
+            logger.warning('duo teaser on invite failed user=%s', telegram_id)
+    return web.json_response({'ok': True, 'guest': guest, 'reply': note, 'duo': tease})
 
 
 async def _webapp_api_chat_send(request: web.Request) -> web.Response:
@@ -15620,7 +15853,8 @@ async def _webapp_pipeline_photo(telegram_id: int, character_id: str, request: P
     return data, ('image/png' if ext == 'png' else 'image/jpeg'), ext
 
 
-async def _webapp_media_photo(telegram_id: int, character_id: str, scene: str = 'selfie'):
+async def _webapp_media_photo(telegram_id: int, character_id: str, scene: str = 'selfie',
+                              guest_id: str = ''):
     """V3.39.0: a personal in-character photo. V3.43.7: now through the real
     photo pipeline with the scene the app's picker chose — the figure follows
     the declared BODY IDENTITY instead of an improvised face-swap body."""
@@ -15631,7 +15865,12 @@ async def _webapp_media_photo(telegram_id: int, character_id: str, scene: str = 
     private = scene in ('personal', 'lingerie', 'private_fashion', 'nude', 'tease')
     variants = None if private else SHOT_VARIANTS.get(scene)
     angle = _random.choice(variants) if variants else ''
-    return await _webapp_pipeline_photo(telegram_id, character_id, PhotoRequest(scene=scene, angle=angle))
+    # V3.139.0: owner ТЗ (Задача 6) — «Свидание втроем» passes the second girl
+    # into the same frame; without her id this is the ordinary single photo.
+    return await _webapp_pipeline_photo(
+        telegram_id, character_id,
+        PhotoRequest(scene=scene, angle=angle, with_guest=guest_id or ''),
+    )
 
 
 # V3.56.0: _webapp_media_hot knows the real engine (cache/pool/fal/spicyapi) and
@@ -16071,9 +16310,12 @@ async def _webapp_api_undress_credit(request: web.Request) -> web.Response:
 
     def _read():
         from services import undress_credits
+        from config import UNDRESS_PEACH_COST
         credits = undress_credits.balance(telegram_id)
         premium = is_premium(telegram_id)
-        return {'ok': True, 'ready': bool(premium or credits > 0), 'credits': credits, 'premium': premium}
+        peaches = get_paid_peaches(telegram_id)
+        return {'ok': True, 'ready': bool(premium or credits > 0 or peaches >= UNDRESS_PEACH_COST),
+                'credits': credits, 'premium': premium, 'peaches': peaches, 'price': UNDRESS_PEACH_COST}
 
     return web.json_response(await asyncio.to_thread(_read))
 
@@ -16103,7 +16345,7 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
     admin = telegram_id in ADMIN_TELEGRAM_IDS
     from services.chat_photo_allowance import count_ever, count_today, note_today
 
-    def _her_photo(uid: int) -> bool:
+    def _her_photo(uid: int, kinds: tuple[str, ...]) -> bool:
         # Only HER generated photo in this chat — never a picture the user
         # uploaded (those must never reach the uncensored engine).
         from sqlalchemy import select as _select
@@ -16111,13 +16353,15 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         with SessionLocal() as session:
             return session.scalar(_select(Message.id).where(
                 Message.user_id == uid, Message.character_id == character_id,
-                Message.role == 'assistant', Message.media_kind == 'photo',
+                Message.role == 'assistant', Message.media_kind.in_(kinds),
                 Message.media_url == f'/webapp/media/{filename}',
             ).limit(1)) is not None
 
     def _gate():
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
-        if not _her_photo(uid):
+        # V3.138.0: «🏠 Дом» pictures her room — you can bring the room to life,
+        # but there is nobody to undress in it, so that action stays for her photos.
+        if not _her_photo(uid, ('photo', 'room') if action == 'animate' else ('photo',)):
             return uid, ('not_found', 404), None
         if action == 'animate':
             if admin:
@@ -16130,14 +16374,17 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         if admin:
             return uid, None, 'admin'
         from config import UNDRESS_PEACH_COST
-        # V3.86.0: owner — «раздеть» only with Premium. No free trial and no
-        # peach route for non-Premium users: the button sells Premium.
+        # V3.86.0: owner — «раздеть» only with Premium, the button sold Premium.
         # V3.132.0: a «Раздеть» bought on its own (50 ₽) works without Premium.
+        # V3.138.0: owner — «не за 50 руб, а за 25, только цену в персиках»: without
+        # Premium the button now costs 250 🍑; a credit he already bought still spends first.
         from services import undress_credits
         if not is_premium(telegram_id):
             if undress_credits.balance(telegram_id) > 0:
                 return uid, None, 'credit'
-            return uid, ('premium_required', 403), None
+            if get_paid_peaches(telegram_id) < UNDRESS_PEACH_COST:
+                return uid, ('credits', 402), None
+            return uid, None, 'peaches'
         _used_today = count_today(uid, 'undress_free')
         if _used_today < _undress_allowance(uid, telegram_id, character_id, _used_today):
             return uid, None, 'free'
@@ -16246,6 +16493,14 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     if kind not in ('photo', 'circle', 'hotcircle', 'voice', 'video', 'hot', 'cosplay') or not character_id:
         logger.warning('webapp chat media bad_request user=%s kind=%r character=%r', telegram_id, kind, character_id)
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    # V3.139.0: owner ТЗ (Задачи 5–6) — «Свидание втроем». A joint frame needs the
+    # invited girl; without her this stays the ordinary photo request.
+    joint = kind == 'photo' and bool(body.get('joint'))
+    guest_id = ''
+    if joint:
+        from services.chat_guest_service import get_guest
+        guest_id = await asyncio.to_thread(get_guest, telegram_id, character_id) or ''
+        joint = bool(guest_id)
     # V3.57.2: the whole access chain is PostgreSQL reads/writes (card, consent,
     # stage, credits, premium slots) — one worker thread, never the loop.
     def _gate():
@@ -16280,6 +16535,15 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
                 return web.json_response({'ok': False, 'error': 'locked'}, status=403)
             if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
                 return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
+            if joint and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+                # V3.139.0: Задача 5 — no render call, no spend. He sees the
+                # blurred joint teaser and both girls' hook, with the Premium
+                # button under it.
+                uid = ensure_user(telegram_id, user_info.get('first_name') or '',
+                                  language_code=user_info.get('language_code'))
+                return web.json_response(_chat_duo_blocked(
+                    uid, telegram_id, character_id,
+                    full_user_lang(telegram_id, user_info.get('language_code')), {}))
         # V3.87.0: nude / lingerie photos, the private «Наедине» shots and the
         # hot circle are Premium-only — free peaches must never buy them.
         if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id) and (
@@ -16332,7 +16596,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     uid = gated
     try:
         if kind == 'photo':
-            data, mime, ext = await _webapp_media_photo(telegram_id, character_id, scene)
+            data, mime, ext = await _webapp_media_photo(telegram_id, character_id, scene, guest_id)
         elif kind == 'circle':
             data, mime, ext = await _webapp_media_circle(telegram_id, character_id)
         elif kind == 'hotcircle':
@@ -17125,7 +17389,7 @@ async def _render_home(telegram_id: int, character_id: str, uid: int, *, item_id
             filename = webapp_service.save_chat_media(telegram_id, data, ext, 'image/png' if ext == 'png' else 'image/jpeg')
             wardrobe_service.set_room_image(telegram_id, character_id, filename)
             cap = '📸 смотри, как теперь у меня 🏠' if item_id else '📸 вот моя новая комната 🏠 обставим вместе?'
-            save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=f'/webapp/media/{filename}')
+            save_message(uid, character_id, 'assistant', cap, media_kind='room', media_url=f'/webapp/media/{filename}')
             track_event(uid, 'home_render', character_id=character_id, metadata={'item': item_id or 'style', 'edit': bool(prev)})
             return cap
         if refund:
@@ -17720,6 +17984,8 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/badge/{key}', _webapp_badge)
     app.router.add_get('/webapp/art/{name}', _webapp_art)  # V3.85.0: partner tab art
     app.router.add_get('/webapp/locked/{character_id}.jpg', _webapp_locked_card)  # V3.88.0
+    # V3.139.0: the blurred joint teaser for men without Premium (Задача 5).
+    app.router.add_get('/webapp/duo-teaser/{host_id}/{guest_id}.jpg', _webapp_duo_teaser)
     app.router.add_post('/webapp/api/gallery/save', _webapp_gallery_save)
     app.router.add_post('/webapp/api/gallery/prepare-share', _webapp_api_gallery_prepare_share)
     app.router.add_get('/webapp/shared/{uid}/{image_id}/{sig}.jpg', _webapp_shared_image)

@@ -10,7 +10,8 @@ def test_routes_and_limits():
     assert "'/webapp/api/chat/photo-action'" in MAIN
     assert "'/webapp/smedia/{uid}/{filename}/{sig}'" in MAIN
     from config import UNDRESS_FREE_PER_DAY, UNDRESS_PEACH_COST
-    assert UNDRESS_FREE_PER_DAY == 1 and UNDRESS_PEACH_COST == 300
+    # V3.138.0: owner — «не за 50 руб, а за 25, только цену в персиках»
+    assert UNDRESS_FREE_PER_DAY == 1 and UNDRESS_PEACH_COST == 250
     assert "_used_today < _undress_allowance(uid, telegram_id, character_id, _used_today)" in MAIN  # V3.124.0
     assert "allow = _undress_premium_free(telegram_id, character_id)" in MAIN
     assert "if not is_adult_confirmed(telegram_id):" in MAIN
@@ -18,8 +19,9 @@ def test_routes_and_limits():
 
 def test_only_her_generated_photos_can_be_edited():
     # a user-uploaded picture must never reach the uncensored engine
-    assert "Message.role == 'assistant', Message.media_kind == 'photo'" in MAIN
-    assert 'if not _her_photo(uid):' in MAIN
+    assert "Message.role == 'assistant', Message.media_kind.in_(kinds)" in MAIN
+    # V3.138.0: her room can be brought to life, but there is nobody in it to undress
+    assert "if not _her_photo(uid, ('photo', 'room') if action == 'animate' else ('photo',)):" in MAIN
 
 
 def test_undress_prompt_covers_and_adds_the_husband_when_married(monkeypatch):

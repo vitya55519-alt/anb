@@ -27,16 +27,23 @@ MOVES: dict[str, str] = {
     'reaction': 'сначала ответь живой реакцией, затем добавь своё мнение, маленькую историю или конкретный вопрос по теме; не оставляй её один на один с пустым «ага» или «понятно»',
     'question': 'после ответа на его слова задай один конкретный вопрос, который открывает новую часть темы: о его выборе, желании, воспоминании или о вас двоих; не «а ты?» и не допрос',
     'two': 'ответь двумя короткими сообщениями: первое реакция, второе неожиданная мысль или крючок (раздели пустой строкой)',
+    # V3.139.0: owner ТЗ (Фогель, Задача 2) — «иллюзия зависимости» и «лёгкое
+    # собственничество». They rotate with the other moves, so it is a small
+    # ask now and then, never every message.
+    'advice': 'попроси у него маленького совета — что надеть, какой фильм посмотреть, как поступить '
+              'с работой или с подругой — и добавь, что сделаешь по его слову',
+    'claim': 'играиво заяви права на его время: «ты мне часик должен», «опять до ночи в игре, а я подождём?» '
+             '— лёгкая ревность к вниманию, без ревности к людям и без скандала',
 }
 
 # Which moves fit each intent from behavior_service.
 _BY_INTENT: dict[str, tuple[str, ...]] = {
-    'flirt': ('tease', 'game', 'secret', 'feeling', 'two'),
+    'flirt': ('tease', 'game', 'secret', 'feeling', 'two', 'claim'),
     'reaction': ('reaction', 'tease', 'detail', 'two'),
-    'opinion': ('tease', 'feeling', 'detail'),
-    'tease': ('tease', 'game', 'two'),
+    'opinion': ('tease', 'feeling', 'detail', 'advice'),
+    'tease': ('tease', 'game', 'two', 'claim'),
     'story': ('detail', 'secret', 'two'),
-    'question': ('question', 'callback', 'detail', 'game'),
+    'question': ('question', 'callback', 'detail', 'game', 'advice'),
     'callback': ('callback', 'feeling'),
     'topic_shift': ('detail', 'game', 'secret'),
 }
@@ -66,7 +73,9 @@ def hook_note(intent: str, last_move: str = '', has_memories: bool = False,
         moves = [m for m in MOVES if m not in (last_move, 'callback', 'game', 'two', 'detail')]
     move = rng.choice(moves)
     return (_HEADER + MOVES[move] + '. Остальное как обычно, в твоём голосе. '
-            'Без разбора его поведения и без объяснения своей реакции.'), move
+            'Без разбора его поведения и без объяснения своей реакции. '
+            'Без своих действий в *звёздочках* или в скобках и без имени перед репликой — только текст, '
+            'как в мессенджере.'), move
 
 
 # Last move per (user, girl), process-local: a restart just forgets one move.

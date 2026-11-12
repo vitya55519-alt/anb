@@ -386,6 +386,8 @@ def api_me(telegram_id: int) -> dict:
         'trial_eligible': _trial_eligible(telegram_id),
         # V3.132.0: one «Раздеть» without Premium — the price on her photo button.
         'undress_one_rub': UNDRESS_ONE_PRICE_RUB if UNDRESS_ONE_ENABLED else 0,
+        # V3.138.0: owner — «Раздеть» is priced in peaches only: 250 🍑 ≈ 25 ₽.
+        'undress_peaches': UNDRESS_PEACH_COST,
         # V3.51.1: the owner's Mini App sees the admin generation feed only
         # when this is true (the server re-checks on every admin API call).
         'admin': _is_admin(telegram_id),

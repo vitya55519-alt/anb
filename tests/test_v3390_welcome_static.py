@@ -187,7 +187,7 @@ def test_chat_media_persistence_and_rendering():
     assert 'media_kind=media_kind, media_url=media_url' in MEMORY
     assert "'media_kind': getattr(m, 'media_kind', None)" in WEBAPP_SVC
     # the frontend renders all three kinds and offers the action buttons
-    assert 'function requestMedia(kind, scene)' in INDEX
+    assert 'function requestMedia(kind, scene, opts)' in INDEX
     assert 'id="mediaPhoto"' in INDEX
     # V3.44.17: the «Кружок» media pill was hidden from the chat strip
     assert 'id="mediaCircle"' not in INDEX

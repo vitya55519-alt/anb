@@ -46,5 +46,6 @@ def test_gate_uses_credit_and_spends_only_on_success():
 
 def test_buttons_layout_and_quickbuy():
     assert 'grid-template-columns: 1fr 1fr' in HTML and 'grid-column: 1 / -1' in HTML
-    assert "kind === 'undress' ? ['undress_one']" in HTML
+    # V3.138.0: the undress sheet sells peaches now, not the 50 ₽ one-off
+    assert "kind === 'undress' ? ['peach_pack_30', 'peach_pack_100']" in HTML
     assert "quickBuy(action === 'undress' ? 'undress' : 'spicy'" in HTML

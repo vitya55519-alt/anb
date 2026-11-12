@@ -36,5 +36,5 @@ def test_hot18_showcase_on_her_page_and_honest():
     body = HTML.split('function openHot18(c0) {', 1)[1].split('\nfunction ', 1)[0]
     for k in ('undress', 'spicy', 'fet', 'plots', 'call', 'circle', 'video'):
         assert "'" + k + "'" in body
-    assert "quickBuy('spicy')" in body and 'undress_one_rub' in body
+    assert "quickBuy('spicy')" in body and "esc(undressPeaches) + ' \U0001F351</span>'" in body
     assert 'Фото реальных людей не раздеваем' in HTML

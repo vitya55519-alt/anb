@@ -11,7 +11,12 @@ def test_trial_and_premium_gate():
     # V3.86.0: Premium-only — the free trial for non-Premium users is gone
     assert "elif count_ever(uid, 'undress_trial') < UNDRESS_TRIAL_FREE:" not in MAIN
     # V3.132.0: without Premium only a bought single «Раздеть» (credit) passes
-    assert "            return uid, ('premium_required', 403), None" in MAIN
+    # V3.138.0: owner — «не за 50 руб, а за 25, только цену в персиках»: the
+    # credit still spends first, then 250 🍑; nobody is pushed at a Premium wall
+    assert "return uid, ('premium_required', 403), None" not in MAIN
+    gate = MAIN[MAIN.index('async def _webapp_api_photo_action('):]
+    gate = gate[:gate.index('    uid, err, pay = await')]
+    assert gate.index("if undress_credits.balance(telegram_id) > 0:") < gate.index('get_paid_peaches(telegram_id) < UNDRESS_PEACH_COST')
     assert "note_today(uid, f'undress_{pay}', character_id)" in MAIN
 
 

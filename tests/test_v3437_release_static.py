@@ -122,8 +122,9 @@ def test_frontend_photo_button_opens_the_scene_menu():
         assert f"key: '{key}'" in INDEX
     # tapping a scene closes the sheet and requests that scene
     assert "requestMedia('photo', el.dataset.scene)" in INDEX
-    assert 'function requestMedia(kind, scene)' in INDEX
-    assert "body: JSON.stringify({ character_id: CHAT.id, kind: kind, scene: scene || '' })" in INDEX
+    assert 'function requestMedia(kind, scene, opts)' in INDEX
+    # V3.139.0 (Задача 5–6): the same request carries «joint» for the two girls
+    assert "body: JSON.stringify({ character_id: CHAT.id, kind: kind, scene: scene || '', joint: !!opts.joint })" in INDEX
     # the 18+ gate is explained in the user's language
     assert "j.error === 'adult_confirm' ? L.adult_confirm_needed" in INDEX
     assert '.featgroup {' in INDEX

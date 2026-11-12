@@ -54,6 +54,48 @@ def character_name(character_id: str) -> str:
     return ''
 
 
+def host_name(host_id: str) -> str:
+    """What the host girl is called in this chat — cards and constructions both."""
+    name = character_name(host_id)
+    if name:
+        return name
+    try:
+        from services.custom_character_service import is_custom_character, custom_character_params
+        if is_custom_character(host_id):
+            return custom_character_params(host_id)[1] or ''
+    except Exception:
+        pass
+    return ''
+
+
+def speakers(telegram_id: int, host_id: str) -> dict[str, str]:
+    """V3.139.0: {name: character_id} of BOTH girls when this chat is a duo,
+    {} when she writes alone. The chat model answers for both, each line with
+    her name; every delivery layer reads this map to split the answer and to
+    give each line her own voice. A constructor partner has no card of her own,
+    so she is keyed by a synthetic id — voice_service picks a stable pooled
+    voice from it, which is what keeps the two voices apart."""
+    guest_id = get_guest(telegram_id, host_id)
+    if guest_id:
+        guest, host = character_name(guest_id), host_name(host_id)
+        if not guest:
+            return {}
+        return {guest: guest_id, **({host: host_id} if host else {})}
+    try:
+        from services.custom_character_service import (
+            is_custom_character, custom_character_params, duo_partner,
+        )
+        if is_custom_character(host_id):
+            params, name = custom_character_params(host_id)
+            partner = duo_partner(params)[0]
+            if partner:
+                duo_id = f'{host_id}-duo'
+                return {name: host_id, partner: duo_id} if name else {partner: duo_id}
+    except Exception:
+        logger.exception('duo speakers read failed user=%s', telegram_id)
+    return {}
+
+
 def can_invite(telegram_id: int, host_id: str, guest_id: str) -> bool:
     """Any active storefront girl, or the caller's own private creation."""
     if not guest_id or guest_id == host_id:
@@ -181,5 +223,6 @@ def guest_prompt(host_name: str, guest_id: str, telegram_id: int | None = None) 
         f'с новой строки и начинается с имени, например «{host}: …» и «{name}: …». Обычно говорят обе, '
         f'у каждой свой характер, манера и отношение к нему; они могут подкалывать друг друга, '
         f'ревновать или объединяться против него. Не сливай их в одну и не забывай про вторую. '
-        f'Обе — взрослые женщины.'
+        f'Обе — взрослые женщины. Кроме имени в начале строки — ничего оформлять не надо: никаких '
+        f'действий в *звёздочках* и без ремарок в скобках, только то, что они набрали бы на телефоне.'
     )

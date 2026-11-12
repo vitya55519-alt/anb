@@ -3004,8 +3004,13 @@ async def _run_seedream_set(
     return out
 
 
-def _guest_photo_block(host_id: str, guest_id: str) -> str:
-    """V3.61.2: the second woman of a joint photo, kept apart from the host."""
+def _guest_photo_block(host_id: str, guest_id: str, location_en: str = '') -> str:
+    """V3.61.2: the second woman of a joint photo, kept apart from the host.
+
+    V3.139.0: owner ТЗ (Задача 6) — the joint frame is always described in
+    English, whatever language he chats in, and the two women are placed in
+    fixed halves of the picture: «Photo of two distinct women. Left side: …
+    Right side: … Location: … High detail, realistic.»"""
     host_name = _character_display_name_safe(host_id)
     guest_name = _character_display_name_safe(guest_id)
     try:
@@ -3013,12 +3018,14 @@ def _guest_photo_block(host_id: str, guest_id: str) -> str:
     except Exception:
         guest_identity = ''
     return (
-        f'JOINT PHOTO OF TWO ADULT WOMEN: {host_name} and her friend {guest_name} are together in this one photo, '
-        f'side by side or close, like a real selfie or mirror photo of two friends. '
+        'JOINT PHOTO OF TWO ADULT WOMEN — Photo of two distinct women, one real photo of two friends. '
+        f'Left side: {host_name}, exactly the woman described above. '
+        f'Right side: {guest_name}. {guest_identity}'
+        f'Location: {location_en.strip() or "the same place as described above"}. High detail, realistic. '
+        f'They stand side by side or close, like a real selfie or mirror photo of two friends. '
         f'{host_name}\'s face and hair come ONLY from reference images 1–2; {guest_name}\'s face and hair come ONLY from '
         f'reference images 3–4. They are two clearly different women: never merge their faces, never swap hair or skin tone, '
         f'never draw a third person. Both are adults. '
-        f'SECOND WOMAN — {guest_name}: {guest_identity}'
     )
 
 
@@ -3060,7 +3067,9 @@ async def _run_spicy_set(
         # references ride as images 3–4 and her identity text is declared apart.
         refs += [f'{PUBLIC_BASE_URL}/webapp/photo/{request.with_guest}?i=0',
                  f'{PUBLIC_BASE_URL}/webapp/photo/{request.with_guest}?i=1']
-        guest_block = _guest_photo_block(character_id, request.with_guest)
+        guest_block = _guest_photo_block(
+            character_id, request.with_guest,
+            request.location or SCENES.get(request.scene, SCENES['selfie']))
     # V3.56.3: figure chaining. The canonical references are face crops, so the
     # BODY IDENTITY text is the only body anchor — and Seedream re-improvises the
     # figure every frame (the owner watched bust and hips «jump» inside one set).

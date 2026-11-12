@@ -1,5 +1,8 @@
 """V3.86.0: «Раздеть» is Premium-only (owner: no free trial, no peach route).
-V3.132.0: owner added one «Раздеть» bought on its own for 50 ₽ (credit)."""
+V3.132.0: owner added one «Раздеть» bought on its own for 50 ₽ (credit).
+V3.138.0: owner — «не за 50 руб, а за 25, только цену в персиках»: without
+Premium the button costs peaches (250 🍑 ≈ 25 ₽), a credit he already bought
+still spends first."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -7,20 +10,21 @@ MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 
 
-def test_gate_refuses_non_premium_before_any_paid_route():
-    i = MAIN.index("from config import UNDRESS_PEACH_COST\n")
-    body = MAIN[i:i + 1500]
-    gate = body.index("return uid, ('premium_required', 403), None")
-    assert body.index("if not is_premium(telegram_id):") < gate < body.index("'free'") < body.index("'peaches'")
-    # the only route without Premium is a bought single credit
-    assert body.index("undress_credits.balance(telegram_id) > 0") < gate
+def test_gate_without_premium_goes_through_credit_then_peaches():
+    body = MAIN[MAIN.index('async def _webapp_api_photo_action('):]
+    body = body[:body.index('    uid, err, pay = await')]
+    assert body.index("if not is_premium(telegram_id):") < body.index("undress_credits.balance(telegram_id) > 0")
+    # no money paywall any more: short of peaches is a 402, the peach sheet
+    assert "return uid, ('credits', 402), None" in body
+    assert "return uid, ('premium_required', 403), None" not in body
     assert "'trial'" not in body
 
 
-def test_app_sends_non_premium_to_the_shop():
-    assert "toast(action === 'undress' ? L.pa_undress_prem : L.need_premium);" in INDEX
-    assert INDEX.count('pa_undress_prem:') >= 2
-    assert "ME.undress_one_rub ? '<small>· ' + esc(ME.undress_one_rub) + ' ₽</small>'" in INDEX
+def test_app_prices_undress_in_peaches():
+    assert "esc(ME.undress_peaches || 250) + ' 🍑</small>'" in INDEX
+    assert "((ME && ME.undress_peaches) || 250) + ' 🍑'" in INDEX
+    assert "ME.undress_one_rub ? '<small>· " not in INDEX
+    assert "const undressPeaches = (ME && ME.undress_peaches) || 250;" in INDEX
 
 
 WEB = (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')

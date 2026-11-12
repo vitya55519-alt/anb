@@ -114,13 +114,82 @@ def stall_line(lang: str = 'ru', recent: list[str] | None = None) -> str:
     return random.choice(fresh)
 
 
-def _clean(answer: str) -> str:
+def _clean(answer: str, *, duo: bool = False) -> str:
     answer = (answer or stall_line()).strip()
     answer = re.sub(r"^(Конечно|Разумеется|Понимаю тебя|Хорошо,? |Да,? (?:конечно|разумеется))[,!:。.\.\s]+", "", answer, flags=re.I)
     answer = re.sub(r"\n[-*•]\s", "\n", answer)  # strip markdown lists
     answer = re.sub(r"\*\*(.+?)\*\*", r"\1", answer)  # strip bold
+    answer = plain_message(answer, duo=duo)
     answer = re.sub(r"\n{3,}", "\n\n", answer)
     return answer.strip() or stall_line()
+
+
+# V3.138.0: owner — «это не переписка, это театральная пьеса». MiniMax keeps
+# slipping into the RP format: *тихо, с ленивой улыбкой в голосе*, *шёпотом,
+# ещё тише*, and «Амира:» in front of every line. The prompt bans it; this is
+# the hard guarantee that what reaches the chat is only what a person would
+# type on a phone. Duo chats keep the names — they are the only marker of who
+# is speaking, and the app draws the speaker's avatar from them.
+_STAGE_STAR = re.compile(r"\*([^*\n]{1,140}?)\*")
+_STAGE_PAREN = re.compile(r"\(([A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё\s,!.…;:-]{0,80})\)")
+_SPEAKER_PREFIX = re.compile(r"(?m)^[«\"'“]?([^\W\d_]{1,24})[»\"'”]?:\s+")
+
+
+def _strip_remarks(line: str) -> str:
+    """Cut the stage directions out of one line. A remark opening the line or a
+    whole phrase inside the markers is theatre — it goes. One word in the middle
+    of a sentence is emphasis a person really types («я *никогда* так не делаю»)
+    — only the markers go."""
+    def repl(m):
+        inner = m.group(1).strip()
+        if m.start() == 0 or ' ' in inner:
+            return ''
+        return inner
+
+    return _STAGE_PAREN.sub(repl, _STAGE_STAR.sub(repl, line)).strip()
+
+
+def plain_message(text: str, *, duo: bool = False) -> str:
+    t = text or ''
+    if not duo:
+        t = _SPEAKER_PREFIX.sub('', t)
+    cut = [(line, _strip_remarks(line)) for line in t.split('\n')]
+    if not ''.join(c for _, c in cut).strip():
+        return ''
+    out = []
+    for original, cleaned in cut:
+        if not cleaned and original.strip():
+            continue  # the line was nothing but a remark
+        out.append(cleaned if cleaned else original)
+    return re.sub(r"[ \t]{2,}", ' ', '\n'.join(out))
+
+
+# V3.139.0: owner ТЗ — in a duo chat every girl's line is its own message, with
+# her own voice. The model writes both lines in one answer («Амира: …\nАгата: …»),
+# so this is where the script is read back apart.
+_SPEAKER_LINE = re.compile(r"^[«\"'“]?([^\W\d_]{1,24})[»\"'”]?:\s+(.*)$")
+# The owner's ТЗ writes the duo script on one line — «Амира: … | Агата: …». A
+# pipe in front of another name is a new speaker, so it becomes a new line.
+_SPEAKER_PIPE = re.compile(r"\s*\|\s*(?=[^\W\d_]{1,24}[»\"'”]?:)")
+
+
+def duo_lines(answer: str) -> list[tuple[str, str]]:
+    """«Амира: привет\nи мне привет\nАгата: обе ждём» →
+    [('Амира', 'привет\nи мне привет'), ('Агата', 'обе ждём')].
+    A line with no name continues whoever spoke last; fewer than two speakers
+    means it is not a duo script and the caller keeps one message."""
+    parts: list[tuple[str, str]] = []
+    for line in _SPEAKER_PIPE.sub('\n', answer or '').split('\n'):
+        m = _SPEAKER_LINE.match(line.strip())
+        if m:
+            parts.append((m.group(1), m.group(2).strip()))
+        elif parts and line.strip():
+            name, prev = parts[-1]
+            parts[-1] = (name, (prev + '\n' + line.strip()).strip())
+    named = {n for n, _ in parts}
+    if len(parts) < 2 or len(named) < 2 or any(not t for _, t in parts):
+        return []
+    return parts
 
 
 # V3.60.6: the chat model's own safety refusal reads like a help desk
@@ -281,7 +350,8 @@ def _editor_instructions() -> str:
     )
 
 
-async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str, character: dict | None = None) -> str:
+async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str, character: dict | None = None,
+                             *, duo: bool = False) -> str:
     if not _needs_rewrite(user_text, answer):
         return answer
     # V3.44.18: the editor pass used to re-upload the WHOLE dialogue prompt —
@@ -300,30 +370,30 @@ async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str, 
         # The daily budget brake (or a dead provider) must never blank out the
         # message she actually sends — keep the original wording instead.
         return answer
-    return _clean(r.text)
+    return _clean(r.text, duo=duo)
 
 
-async def _recover_from_refusal(answer: str, character: dict | None) -> str:
+async def _recover_from_refusal(answer: str, character: dict | None, *, duo: bool = False) -> str:
     """V3.60.6: the model's help-desk refusal is reworded in her own voice — she
     still declines what the model declined, but as herself, not as a service."""
     name = (character or {}).get('name', 'Анна')
     r = await generate_text(
         [{"role": "system", "content": _refusal_rewrite_instructions(name)}, {"role": "user", "content": answer}],
         max_tokens=200, temperature=0.9, purpose='rewrite')
-    text = _clean(r.text) if r.text.strip() else ''
+    text = _clean(r.text, duo=duo) if r.text.strip() else ''
     if not text or REFUSAL.search(text):
         return 'ммм, вот тут я притормозлю 🙈 давай лучше расскажи, что ты сейчас делаешь 😏'
     return text
 
 
-async def _stay_in_chat(answer: str, character: dict | None) -> str:
+async def _stay_in_chat(answer: str, character: dict | None, *, duo: bool = False) -> str:
     """V3.60.9: keep her refusal, drop the «never write me again» ending."""
     name = (character or {}).get('name', 'Анна')
     try:
         r = await generate_text(
             [{"role": "system", "content": _breakup_rewrite_instructions(name)}, {"role": "user", "content": answer}],
             max_tokens=220, temperature=0.9, purpose='rewrite')
-        text = _clean(r.text) if r.text.strip() else ''
+        text = _clean(r.text, duo=duo) if r.text.strip() else ''
     except Exception:
         text = ''
     if not text or BREAKUP.search(text) or REFUSAL.search(text):
@@ -657,20 +727,21 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
     if scene:
         token_budget = 420
+    duo_chat = bool(guest_reminder)
     r = await generate_text(messages, max_tokens=token_budget, temperature=1.0, purpose='dialogue')
     if not (r.text or '').strip():
         _lang = 'en' if (foreign or (language_code or '').lower().startswith('en')) else 'ru'
         answer = stall_line(_lang, [m.content for m in history if m.role == 'assistant'][-6:])
         _logger.warning('dialogue empty from all providers user=%s character=%s', user_id, character_id)
     else:
-        answer = _clean(r.text)
+        answer = _clean(r.text, duo=duo_chat)
         # V3.113.0: her planning notes in English («*   Is it in character»)
         # and a reply cut mid-word on the token cap were sent as they were.
         if live_talk.looks_leaked(answer) and not foreign:
             _logger.warning('dialogue reasoning leak user=%s provider=%s', user_id, r.provider)
             try:
                 retry = await generate_text(messages, max_tokens=token_budget, temperature=0.9, purpose='dialogue')
-                fixed = _clean(retry.text or '') if (retry.text or '').strip() else ''
+                fixed = _clean(retry.text or '', duo=duo_chat) if (retry.text or '').strip() else ''
                 if fixed and not live_talk.looks_leaked(fixed):
                     answer, r = fixed, retry
                 else:
@@ -680,10 +751,10 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         elif not getattr(r, 'complete', True):
             answer = finish_or_drop(answer, False, lang) or answer
         if REFUSAL.search(answer):
-            answer = await _recover_from_refusal(answer, character)
+            answer = await _recover_from_refusal(answer, character, duo=duo_chat)
         elif BREAKUP.search(answer):
-            answer = await _stay_in_chat(answer, character)
-        answer = await _rewrite_if_needed(messages, user_text, answer, character)
+            answer = await _stay_in_chat(answer, character, duo=duo_chat)
+        answer = await _rewrite_if_needed(messages, user_text, answer, character, duo=duo_chat)
         if foreign and not lang_guard.reply_ok(answer, lang, user_text):
             # still Russian (or plain Latin to a Bengali line): one firm
             # regeneration, keep the old line if it fails too
@@ -707,7 +778,15 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     if not behavior_kind.startswith('task'):
         answer = casual_punctuation(answer)
     save_message(db_user_id, character_id, "user", user_text)
-    save_message(db_user_id, character_id, "assistant", answer)
+    parts = duo_lines(answer) if duo_chat else []
+    if parts:
+        # V3.139.0: two girls answer as two messages, the way they would in a
+        # real group chat — the name stays on the line, it is the only marker
+        # of who speaks (the app draws her avatar from it).
+        for name, line in parts:
+            save_message(db_user_id, character_id, "assistant", f'{name}: {line}')
+    else:
+        save_message(db_user_id, character_id, "assistant", answer)
     if gift and (r.text or '').strip():
         try:
             from services import memory_gift

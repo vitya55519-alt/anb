@@ -98,12 +98,14 @@ def test_rewrite_no_longer_reuploads_the_whole_prompt():
     # V3.44.18 saving: the editor pass used to re-send the full fat dialogue
     # prompt (card + memories + 30 history msgs) just to reword one reply
     assert 'def _editor_instructions(' in CHAT
-    assert 'async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str, character: dict | None = None)' in CHAT
+    assert ('async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str, '
+            'character: dict | None = None,') in CHAT
+    assert '*, duo: bool = False' in CHAT
     # the new prompt is a two-message editor pass, not `messages + [...]`
     assert 'rewrite_messages = messages +' not in CHAT
     # a braked/dead rewrite must never blank the message she sends
     assert 'if not r.text.strip():' in CHAT
-    assert 'answer = await _rewrite_if_needed(messages, user_text, answer, character)' in CHAT
+    assert 'answer = await _rewrite_if_needed(messages, user_text, answer, character, duo=duo_chat)' in CHAT
 
 
 def test_image_spend_recorded_for_every_engine_leg():
