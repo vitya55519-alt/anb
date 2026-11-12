@@ -789,6 +789,40 @@ def _hydrate_ritual_sent(now) -> None:
         logger.exception('ritual sent-guard restore failed')
 
 
+# ── V3.145.0: owner ТЗ — a daily push must read as her, not as a broadcast ──
+# Photo (with her words under it) and the voice note used to land in the same
+# second as three bubbles. Now the voice follows the photo a few seconds later
+# and, while it is being "recorded", he sees «Анна записывает голосовое…».
+# The hold is a plain sleep — 0 ₽, no video network. It runs as a background
+# task, otherwise a 4 s pause per user would stretch the whole scan.
+RITUAL_VOICE_HOLD_SECONDS=max(0.0, float(_os.getenv('RITUAL_VOICE_HOLD_SECONDS', '4')))
+_pending_voices: set = set()
+
+
+def _send_later(coro) -> None:
+    # asyncio keeps only a weak reference to a bare task, so a fire-and-forget
+    # voice note could be collected before it is sent.
+    task=asyncio.create_task(coro)
+    _pending_voices.add(task)
+    task.add_done_callback(_pending_voices.discard)
+
+
+async def _ritual_voice(bot, tg_id, char_id, ritual_voice, *, caption=None, markup=None) -> None:
+    """Her voice note, a beat after the photo: record_voice status → hold → send."""
+    from aiogram.types import BufferedInputFile
+    try:
+        await bot.send_chat_action(int(tg_id), action='record_voice')
+        await asyncio.sleep(RITUAL_VOICE_HOLD_SECONDS)
+    except Exception:
+        # the status is only theatre — without it the note must still arrive
+        logger.warning('ritual record_voice status failed user=%s', tg_id)
+    try:
+        await bot.send_voice(int(tg_id), BufferedInputFile(ritual_voice, filename=f'{char_id}.ogg'),
+                             caption=caption, reply_markup=markup)
+    except Exception:
+        logger.exception('ritual voice failed user=%s', tg_id)
+
+
 async def _rituals(bot, only_tg=None, force_kind=None):
     """V3.20.0: morning/evening rituals — she writes first in the user's local
     time window. Only recent (RITUAL_MAX_INACTIVE_DAYS) opt-in users get them.
@@ -966,20 +1000,27 @@ async def _rituals(bot, only_tg=None, force_kind=None):
                     text+='\n\n'+gift_label.replace('Забрать подарок','дневной подарок ждёт в приложении,')
             ritual_voice=evening_voice if kind=='evening' else morning_voice
             if ritual_voice:
-                # V3.110.0: her photo first (quiet, no caption), then her voice
-                # with the words — evening (photo from user generations) and
-                # morning (pool photo) alike.
+                # V3.110.0: her photo first, then her voice — evening (photo from
+                # user generations) and morning (pool photo) alike.
+                # V3.145.0: owner ТЗ — her words are the caption UNDER the photo
+                # (one bubble, not two), and the voice note follows a few seconds
+                # later, with «записывает голосовое…» on screen while it is made.
+                # Only when there is no photo at all do the words ride the voice.
                 from aiogram.types import BufferedInputFile
                 from services import evening_voice as _ev
+                voice_caption=voice_markup=None
                 if shot:
                     data, ctype, media_kind = shot
                     if media_kind == 'gif':
-                        await bot.send_animation(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'))
+                        await bot.send_animation(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=_ev.caption(text), reply_markup=markup)
                     elif media_kind == 'video':
-                        await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'))
+                        await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=_ev.caption(text), reply_markup=markup)
                     else:
-                        await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'))
-                await bot.send_voice(int(tg_id), BufferedInputFile(ritual_voice, filename=f'{char_id}.ogg'), caption=_ev.caption(text), reply_markup=markup)
+                        await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=_ev.caption(text), reply_markup=markup)
+                else:
+                    voice_caption, voice_markup = _ev.caption(text), markup
+                _send_later(_ritual_voice(bot, tg_id, char_id, ritual_voice,
+                                          caption=voice_caption, markup=voice_markup))
                 track_event(uid, f'{kind}_voice_sent', character_id=char_id)
                 if evening_shot:
                     track_event(uid, f'{kind}_photo_sent', character_id=char_id)
