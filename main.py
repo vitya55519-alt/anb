@@ -8903,6 +8903,17 @@ async def _send_duo_answer(message: types.Message, lines: list[tuple[str, str]],
 
 
 async def send_answer(message: types.Message, text: str):
+    await _send_answer_body(message, text)
+    # V3.140.0: he agreed to invite the friend — her cleaned line just went
+    # out, now the blurred joint teaser with the Premium button lands after it.
+    from services import invite_funnel
+    character_id = get_user_character(message.from_user.id)
+    guest_id = invite_funnel.take_pending(message.from_user.id, character_id)
+    if guest_id:
+        await _send_duo_teaser(message.chat.id, message.from_user.id, character_id, guest_id)
+
+
+async def _send_answer_body(message: types.Message, text: str):
     user = get_user(message.from_user.id)
     # V3.139.0: a duo answer is two messages, not one script.
     duo = await asyncio.to_thread(_duo_speakers, message.from_user.id)
@@ -14314,6 +14325,25 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
             return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, **(extra or {})})
     payload = {'ok': True, 'reply': answer}
+    # V3.140.0: the model sold the duo herself — reply() already flipped the
+    # state; the app gets the guest pill and, without Premium, the blur teaser.
+    from services import invite_funnel
+    funnel_guest = invite_funnel.take_pending(telegram_id, character_id)
+    if funnel_guest:
+        from services import chat_guest_service as _funnel_cgs
+        payload['guest'] = {'id': funnel_guest,
+                            'name': _funnel_cgs.character_name(funnel_guest) or funnel_guest,
+                            'photo': f'/webapp/photo/{funnel_guest}'}
+        if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+            try:
+                tease = await asyncio.to_thread(
+                    _chat_duo_blocked, uid, telegram_id, character_id,
+                    full_user_lang(telegram_id, user_info.get('language_code')), {})
+                payload['duo_offer'] = True
+                if tease.get('duo_tease'):
+                    payload['duo_tease'] = tease['duo_tease']
+            except Exception:
+                logger.warning('duo teaser on funnel failed user=%s', telegram_id)
     # V3.88.0: the early locked photo — on his 3rd message to her (non-Premium)
     # her reply carries a blurred «только для тебя» card; a tap = Premium sheet.
     try:
@@ -14880,7 +14910,9 @@ async def _webapp_api_call_turn(request: web.Request) -> web.Response:
     except Exception:
         logger.exception('call reply failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
-    said = voice_call.spoken(answer) or '…'
+    from services import invite_funnel
+    said = voice_call.spoken(invite_funnel.strip_tag(answer)) or '…'
+    invite_funnel.take_pending(telegram_id, character_id)
     # V3.115.1: the first phrase is voiced alone so she starts speaking sooner;
     # the app asks /call/say for the rest while the first part plays.
     parts = voice_call.split_for_speech(said) or [said]

@@ -483,6 +483,21 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                                   f'{character_name(guest_id)}; каждая реплика с новой строки и с имени.')
     except Exception:
         pass
+    # V3.140.0: owner ТЗ (Retention) — in a solo chat she occasionally sells the
+    # duo herself: the friend's name rides in the prompt, and his «давай» makes
+    # the model end the reply with [INVITE_FRIEND] (handled after generation).
+    if not guest_reminder and not scene:
+        try:
+            from services import invite_funnel
+            from services.chat_guest_service import character_name as _friend_name
+            _n_user = sum(1 for m in history if m.role == 'user')
+            _friend = invite_funnel.pick_guest(user_id, character_id)
+            if _friend and invite_funnel.upsell_due(user_id, character_id, _n_user):
+                _fn = _friend_name(_friend)
+                if _fn:
+                    persona = (persona + '\n' if persona else '') + invite_funnel.upsell_rule(_fn)
+        except Exception:
+            pass
     # V3.37.0: premium-gated «пошлый режим» — the user's own toggle lifts the
     # flirt ceiling in every chat (bot and Mini App share this pipeline).
     # premium is already computed above; the flag itself survives a lapsed
@@ -777,6 +792,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     answer = diversify_emoji(answer, [m.content for m in history if m.role == 'assistant'][-4:])
     if not behavior_kind.startswith('task'):
         answer = casual_punctuation(answer)
+    # V3.140.0: the [INVITE_FRIEND] tag never reaches history or the user — it
+    # is stripped here, and when he agreed the chat flips to duo right now.
+    from services import invite_funnel
+    answer = invite_funnel.apply(answer, user_id, character_id, duo=duo_chat,
+                                 user_count=sum(1 for m in history if m.role == 'user'))
     save_message(db_user_id, character_id, "user", user_text)
     parts = duo_lines(answer) if duo_chat else []
     if parts:

@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from models.app_models import CustomCharacter, ConstructorDraft, utcnow
 from services.db import SessionLocal
+from services.invite_funnel import GROUP_RULE
 
 logger = logging.getLogger(__name__)
 
@@ -687,7 +688,8 @@ def build_persona_context(params: dict, display_name: str, backstory: str = '', 
             'ревнуют и соревнуются за его внимание; у каждой свой голос и характер. '
             'Кроме имени в начале строки ничего оформлять не надо: никаких действий в *звёздочках* '
             'и без ремарок в скобках — только то, что они набрали бы на телефоне. '
-            'Никогда не пиши за пользователя.'
+            'Никогда не пиши за пользователя.\n'
+            + GROUP_RULE
         )
     lines.append(
         'Если пользователь прикладывал своё фото при создании — ты выглядишь именно так, '

@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from models.app_models import ChatGuest
 from services.db import SessionLocal
+from services.invite_funnel import GROUP_RULE
 
 logger = logging.getLogger(__name__)
 
@@ -224,5 +225,6 @@ def guest_prompt(host_name: str, guest_id: str, telegram_id: int | None = None) 
         f'у каждой свой характер, манера и отношение к нему; они могут подкалывать друг друга, '
         f'ревновать или объединяться против него. Не сливай их в одну и не забывай про вторую. '
         f'Обе — взрослые женщины. Кроме имени в начале строки — ничего оформлять не надо: никаких '
-        f'действий в *звёздочках* и без ремарок в скобках, только то, что они набрали бы на телефоне.'
+        f'действий в *звёздочках* и без ремарок в скобках, только то, что они набрали бы на телефоне.\n'
+        + GROUP_RULE
     )

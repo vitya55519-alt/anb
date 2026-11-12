@@ -4439,6 +4439,9 @@ function undressTease(mediaUrl) {
 // ── V3.57.0: voice messages and user photos in the app chat ──────────────
 function renderChatReply(j) {
   if (CHAT) loadChatLevel(CHAT.id);
+  // V3.140.0: she invited the friend herself ([INVITE_FRIEND] funnel) — the
+  // pill, the banner and the two-girl rows flip right now, not on reload.
+  if (j.guest && CHAT) { CHAT.duo = j.guest.name; CHAT.guest = j.guest; renderGuest(CHAT.id, j.guest, true); }
   if (CHAT && !CHAT.custom && !CHAT.duo) refreshPlotBar(CHAT.id, true);
   // V3.51.0: a photo request comes back with a real photo attached;
   // V3.57.0: a text reply may carry her voice note (voice_url).
