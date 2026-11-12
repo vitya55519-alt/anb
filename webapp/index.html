@@ -3119,6 +3119,8 @@ function maybeDeepOpenChat(chars) {
     // V3.71.0: «🍑 пополнить» from the bot's circle paywall lands on the shop.
     if (sp.get('open') === 'shop') { showTab('shop'); return; }
     if (sp.get('open') === 'partner') { showTab('partner'); return; }  // V3.85.0
+    // V3.149.0: the bot's «👯‍♀️ Галерея персонажей» row — the character tab, not chat.
+    if (sp.get('open') === 'characters') { showTab('characters'); return; }
     const wardrobe = sp.get('open') === 'wardrobe';  // V3.114.0: the bot's «👗 Гардероб» button
     const firstChat = !sp.get('open') && ME && ME.first_webapp_open;
     if (sp.get('open') !== 'chat' && !wardrobe && !firstChat) return;

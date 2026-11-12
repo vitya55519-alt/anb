@@ -17,7 +17,8 @@ def test_scheduler_wakes_with_her_voice_and_stop_button():
 def test_alarm_gates_go_through_trial_helper():
     assert MAIN.count("await _maybe_set_alarm(message, text,") == 3
     assert 'trial = (not premium) and wake and wake_trial_available(tid)' in MAIN
-    assert 'if not premium and wake_trial_available(message.from_user.id):' in MAIN
+    # V3.149.0: the ⏰ button and /wake share the same gate inside _alarm_screen
+    assert 'if not is_premium(tid) and not wake_trial_available(tid):' in MAIN
 
 
 def test_wake_request_detection():

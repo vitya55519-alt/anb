@@ -83,7 +83,7 @@ def test_consent_leaves_one_rewritten_start_bubble():
     body = MAIN[i:MAIN.index("@dp.callback_query(F.data == 'consent:terms')")]
     # V3.148.0: the bubble is rewritten, not deleted and re-sent.
     assert 'await cq.message.delete()' not in body
-    assert 'kb = _start_keyboard(flow_lang)' in body
+    assert 'kb = menu_markup(cq.from_user.id, flow_lang)' in body
     assert 'await cq.message.edit_caption(caption=welcome_line, reply_markup=kb)' in body
     assert 'await cq.message.edit_text(text=welcome_line, reply_markup=kb)' in body
     assert '_send_pinned_menu' not in body

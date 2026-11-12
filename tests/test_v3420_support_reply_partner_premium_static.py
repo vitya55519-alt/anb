@@ -74,7 +74,7 @@ def test_welcome_back_rows_are_the_app_button():
 
 
 def test_welcome_back_message_uses_the_new_rows_and_caption():
-    assert 'markup = _start_keyboard(lang)' in MAIN
+    assert 'markup = menu_markup(message.from_user.id, lang)' in MAIN
     assert 'f\'с возвращением, {name} 🙂 девушки, чаты, картинки и магазин — в приложении 👇\'' in MAIN
     assert 'f\'welcome back, {name} 🙂 the girls, chats, pictures and the shop live in the app 👇\'' in MAIN
     # the nine-button character grid no longer feeds the welcome screen
@@ -86,7 +86,7 @@ def test_welcome_back_message_uses_the_new_rows_and_caption():
 def test_partner_is_renamed_and_gets_its_own_row():
     assert "'partner': ('💰 Партнёрская программа', '💰 Partner program')," in UI_LANG
     assert "'💰 Партнёрка'" not in UI_LANG
-    rows = UI_LANG[UI_LANG.index('MAIN_KB_ROWS = ['):UI_LANG.index('LEVEL_NAMES_EN')]
+    rows = UI_LANG[UI_LANG.index('ADMIN_MENU_ROWS = ['):UI_LANG.index('def menu_rows')]
     assert "['partner']," in rows
     assert "['support', 'legal']," in rows
     assert "['partner', 'support']," not in rows

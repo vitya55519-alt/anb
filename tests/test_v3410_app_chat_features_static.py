@@ -59,7 +59,7 @@ def test_consent_keyboard_offers_the_app_button():
     assert 'rows.append(_app_row(lang))' in kb
     assert "callback_data='consent:terms'" not in kb
     assert "callback_data='consent:privacy'" not in kb
-    app = MAIN[MAIN.index('def _app_row(lang: str):'):MAIN.index('def _start_keyboard(')]
+    app = MAIN[MAIN.index('def _app_row(lang: str):'):MAIN.index('def _menu_button(')]
     assert "web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp')" in app
     assert "flow_text(lang, 'open_app')" in app
 
@@ -86,7 +86,7 @@ def test_consent_accept_rewrites_the_start_bubble():
     assert 'await cq.message.edit_caption(caption=welcome_line, reply_markup=kb)' in handler
     assert 'await cq.message.edit_text(text=welcome_line, reply_markup=kb)' in handler
     assert "'welcome_edit'" in handler and "'welcome_edit_plain'" in handler
-    assert 'kb = _start_keyboard(flow_lang)' in handler
+    assert 'kb = menu_markup(cq.from_user.id, flow_lang)' in handler
     # nothing new is sent on the happy path — only the fallback if the edit fails
     assert handler.count('cq.message.answer(') == 1
     assert '_send_pinned_menu' not in handler
@@ -109,15 +109,17 @@ def test_character_select_drops_the_abilities_wall():
 # ── p4. the main menu keeps legal + funnels into the app ───────────────────
 
 def test_main_keyboard_rows_pin_the_legal_row():
-    rows = UI_LANG[UI_LANG.index('MAIN_KB_ROWS = ['):]
-    rows = rows[:rows.index('\n]')]
-    assert "['app']" in rows
-    assert "['credits']" in rows
-    assert "['paint']" in rows
-    assert "['partner']" in rows
-    assert "['support', 'legal']" in rows
+    # V3.149.0: menu_rows(True) is the full layout — the user block on top of
+    # the owner's kitchen block.
+    from services.ui_lang import menu_rows
+    rows = menu_rows(True)
+    assert ['app'] in rows
+    assert ['credits'] in rows
+    assert ['paint'] in rows
+    assert ['partner'] in rows
+    assert ['support', 'legal'] in rows
     # character selection is gone from the chat funnel
-    assert "['characters']" not in rows
+    assert ['characters'] not in rows
     assert "'legal': ('📜 Документы', '📜 Documents')" in UI_LANG
 
 

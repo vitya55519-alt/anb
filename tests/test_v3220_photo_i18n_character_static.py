@@ -82,12 +82,12 @@ def test_every_card_shows_own_level():
 # --- RU/EN interface layer ---------------------------------------------------
 
 def test_ui_lang_pairs_and_helpers():
-    from services.ui_lang import EN, RU, KB_LABELS, MAIN_KB_ROWS, LEVEL_NAMES_EN
+    from services.ui_lang import EN, RU, KB_LABELS, menu_rows, LEVEL_NAMES_EN
     from services.ui_lang import detect_lang, kb_label, kb_pair
     assert len(KB_LABELS) >= 19
     for key, (ru, en) in KB_LABELS.items():
         assert ru and en and ru != en, key
-    assert {key for row in MAIN_KB_ROWS for key in row} <= set(KB_LABELS)
+    assert {key for row in menu_rows(True) for key in row} <= set(KB_LABELS)
     assert set(LEVEL_NAMES_EN) == set(range(1, 11))  # V3.62.0
     assert detect_lang('en') == EN and detect_lang('de') == EN
     assert detect_lang('ru') == RU and detect_lang('ru-RU') == RU and detect_lang(None) == RU
@@ -107,7 +107,7 @@ def test_all_keyboard_handlers_match_both_languages():
         assert f"F.text.in_(kb_pair('{key}'))" in MAIN, f'handler missing dual-language match: {key}'
     assert 'from services.ui_lang import' in MAIN
     kb = MAIN[MAIN.index('def main_keyboard('):MAIN.index('def onboarding_character_keyboard()')]
-    assert 'MAIN_KB_ROWS' in kb and 'kb_label(' in kb and 'user_lang(' in kb
+    assert 'menu_rows(' in kb and 'kb_label(' in kb and 'user_lang(' in kb
 
 
 def test_language_detected_once_on_first_contact():

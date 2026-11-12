@@ -51,20 +51,19 @@ def test_premium_checker_registered_with_internal_uid_translation():
 
 def test_main_menu_has_discovery_buttons():
     # V3.22.0: labels live in services/ui_lang.py as (ru, en) pairs and the
-    # keyboard is built from MAIN_KB_ROWS via kb_label(user_lang(telegram_id)).
-    # V3.38.0: the menu funnels into the Mini App (Come Closer layout) —
-    # ['app'] / ['credits','paint'] / ['partner','support']. The legacy
-    # discovery keys stay in KB_LABELS so cached reply keyboards from older
-    # versions keep resolving to their handlers.
-    from services.ui_lang import KB_LABELS, MAIN_KB_ROWS
-    row_keys = {key for row in MAIN_KB_ROWS for key in row}
+    # keyboard is built from the row layout via kb_label(user_lang(telegram_id)).
+    # V3.149.0: that layout is menu_rows(is_admin) — the money/content rows live
+    # in the admin block now. The legacy discovery keys stay in KB_LABELS so
+    # cached reply keyboards from older versions keep resolving to their handlers.
+    from services.ui_lang import KB_LABELS, menu_rows
+    row_keys = {key for row in menu_rows(True) for key in row}
     for key in ('app', 'credits', 'paint', 'partner', 'support'):
         assert key in KB_LABELS and key in row_keys
     for key in ('video', 'circle', 'quest', 'date',
                 'apartment', 'gift', 'profile', 'premium'):
         assert key in KB_LABELS
     kb = MAIN[MAIN.index('def main_keyboard('):MAIN.index('def onboarding_character_keyboard()')]
-    assert 'MAIN_KB_ROWS' in kb and 'kb_label(' in kb
+    assert 'menu_rows(' in kb and 'kb_label(' in kb
     # Discovery buttons register before the generic text catch-all.
     assert MAIN.index("kb_pair('circle')") < MAIN.index('@dp.message(F.text)\n')
     assert MAIN.index("kb_pair('quest')") < MAIN.index('@dp.message(F.text)\n')

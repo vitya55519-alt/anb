@@ -50,15 +50,84 @@ def parse_time_request(text:str):
 def create_from_text(telegram_id:int,text:str):
     parsed=parse_time_request(text)
     if not parsed: return None
-    uid=ensure_user(telegram_id); user=get_user(telegram_id)
+    h,m,days=parsed
+    return create_at(telegram_id, 'wake' if is_wake_request(text) else 'reminder', text, h, m, days)
+
+
+_CLOCK_RE = re.compile(r'\b(\d{1,2})[:.]\s*(\d{1,2})\b')
+
+_BARE_HOUR_RE = re.compile(r'\b(\d{1,2})\b')
+_PM_WORDS = ('вечера', 'вечером', 'вечер', 'pm', 'после полудня')
+_NIGHT_WORDS = ('ночи', 'ночь', 'полночь', 'midnight')
+_NOON_WORDS = ('полдень', 'полдня', 'noon', 'дня')
+_DAYS_WORDS = ('завтра', 'tomorrow', 'послезавтра')
+
+
+def parse_clock_text(text: str):
+    """V3.149.0: the FSM answer to «на какое время?» — nobody should type a
+    command for a button press, so «08:00», «8:30», «8 утра», «12 ночи»,
+    «20:15 pm» and «завтра в 9» all count. Returns (hour, minute, days) or None."""
+    t = (text or '').lower().strip()
+    if not t:
+        return None
+    m = _CLOCK_RE.search(t)
+    if m:
+        h, mi = int(m.group(1)), int(m.group(2))
+        ap = ''
+    else:
+        m2 = _BARE_HOUR_RE.search(t)
+        if not m2:
+            # «полдень» and «полночь» without a single digit still mean a time.
+            if any(w in t for w in ('полдень', 'noon')):
+                return 12, 0, 1 if any(w in t for w in _DAYS_WORDS) else 0
+            if any(w in t for w in ('полночь', 'midnight')):
+                return 0, 0, 1 if any(w in t for w in _DAYS_WORDS) else 0
+            return None
+        h, mi = int(m2.group(1)), 0
+        ap = 'pm' if 'pm' in t else ('am' if 'am' in t else '')
+    if ap == 'pm' and h < 12:
+        h += 12
+    if ap == 'am' and h == 12:
+        h = 0
+    if h > 23 or mi > 59:
+        return None
+    if any(w in t for w in _PM_WORDS) and h < 12:
+        h += 12
+    if any(w in t for w in _NIGHT_WORDS) and h in (12, 0):
+        h = 0
+    if any(w in t for w in _NOON_WORDS) and h == 12:
+        h = 12
+    days = 2 if 'послезавтра' in t else (1 if any(w in t for w in _DAYS_WORDS) else 0)
+    return h, mi, days
+
+
+def reminder_body(text: str) -> str:
+    """The words the user wants remembered — everything except the time itself."""
+    t = _CLOCK_RE.sub(' ', (text or '').strip())
+    t = re.sub(r'\s+', ' ', t).strip(' .,!?-')
+    for word in ('напомни мне', 'напомни', 'напомнить', 'напоминание', 'напоминание о', 'мне', 'про',
+                 'about', 'please', 'remind', 'me', 'завтра', 'послезавтра', 'tomorrow',
+                 'в', 'у', 'к', 'на', 'at', 'around'):
+        t = re.sub(r'^(' + re.escape(word) + r')\s+', '', t, count=1, flags=re.I)
+    return (t or (text or '').strip())[:200]
+
+
+def create_at(telegram_id:int, kind:str, text:str, hour:int, minute:int, days:int=0):
+    """V3.149.0: one row-building path for both entries — the free-text parser
+    and the button FSM schedule through here, so the timezone resolution and
+    the «already passed → tomorrow» roll-over can never drift apart."""
+    uid = ensure_user(telegram_id); user = get_user(telegram_id)
     resolved_tz = _resolve_timezone(telegram_id, user, hint_text=text)
-    try: tz=ZoneInfo(resolved_tz)
-    except Exception: tz=ZoneInfo('UTC')
-    h,m,days=parsed; now=dt.datetime.now(tz); target=now.replace(hour=h,minute=m,second=0,microsecond=0)+dt.timedelta(days=days)
-    if target<=now: target+=dt.timedelta(days=1)
-    kind='wake' if any(x in text.lower() for x in ('разбуди','буди','wake')) else 'reminder'
+    try: tz = ZoneInfo(resolved_tz)
+    except Exception: tz = ZoneInfo('UTC')
+    now = dt.datetime.now(tz)
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + dt.timedelta(days=days)
+    if target <= now: target += dt.timedelta(days=1)
+    body = 'Пора вставать' if kind == 'wake' else ((text or '').strip()[:200] or 'Напоминание')
     with SessionLocal() as s:
-        row=Reminder(user_id=uid,reminder_type=kind,text='Пора вставать' if kind=='wake' else text.strip(),due_at_utc=target.astimezone(dt.timezone.utc).replace(tzinfo=None),timezone=resolved_tz,max_attempts=6 if kind=='wake' else 1)
+        row = Reminder(user_id=uid, reminder_type=kind, text=body[:200],
+                       due_at_utc=target.astimezone(dt.timezone.utc).replace(tzinfo=None),
+                       timezone=resolved_tz, max_attempts=6 if kind == 'wake' else 1)
         s.add(row); s.commit(); return row.id
 
 def cancel_active_wake(telegram_id:int):

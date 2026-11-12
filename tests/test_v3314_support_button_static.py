@@ -30,7 +30,7 @@ def test_support_key_added_to_reply_menu():
     # V3.38.0: «Поддержка» is a real ticket flow to the owner (the donation
     # appeal moved to /legal). RU/EN label pair + bottom row next to Партнёрка.
     assert "'support': ('👥 Поддержка', '👥 Support')," in UI_LANG
-    rows = UI_LANG[UI_LANG.index('MAIN_KB_ROWS = ['):UI_LANG.index('LEVEL_NAMES_EN')]
+    rows = UI_LANG[UI_LANG.index('ADMIN_MENU_ROWS = ['):UI_LANG.index('LEVEL_NAMES_EN')]
     assert "'support'" in rows
     # V3.42.0: support shares the bottom row with the legal documents.
     assert "['support', 'legal']" in rows

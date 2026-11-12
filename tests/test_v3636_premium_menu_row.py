@@ -7,9 +7,11 @@ MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 
 
 def test_premium_row_in_main_menu():
-    from services.ui_lang import MAIN_KB_ROWS
-    assert ['premium'] in MAIN_KB_ROWS
-    assert MAIN_KB_ROWS.index(['premium']) == MAIN_KB_ROWS.index(['credits']) + 1
+    # V3.149.0: the peaches/Premium rows moved to the admin block of the menu.
+    from services.ui_lang import menu_rows
+    rows = menu_rows(True)
+    assert ['premium'] in rows
+    assert rows.index(['premium']) == rows.index(['credits']) + 1
 
 
 def test_premium_button_has_handler():

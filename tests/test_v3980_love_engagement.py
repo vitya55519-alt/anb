@@ -48,7 +48,7 @@ def test_the_start_picker_and_its_fallback_are_gone():
     # V3.98.0 put a girl picker behind consent; the V3.148.0 ТЗ moved the whole
     # choice into the Mini App, so the picker, its 2-minute hello fallback and
     # the picker analytics event are out of the bot.
-    assert 'def _start_keyboard(' in MAIN
+    assert 'def menu_markup(' in MAIN
     assert 'def _picker_rows(' not in MAIN
     assert "F.data.startswith('pickgirl:')" not in MAIN
     assert 'async def _first_hello_fallback(' not in MAIN

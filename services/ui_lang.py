@@ -23,7 +23,7 @@ RU = 'ru'
 EN = 'en'
 APP_LANGS = frozenset((RU, EN, 'es', 'it', 'fr', 'zh', 'ja', 'bn'))
 
-# Main reply keyboard labels: key -> (ru, en). Row layout lives in MAIN_KB_ROWS.
+# Main reply keyboard labels: key -> (ru, en). Row layout lives in menu_rows().
 KB_LABELS = {
     'chat': ('💬 Общение', '💬 Chat'),
     'photo': ('📸 Фото', '📸 Photos'),
@@ -44,7 +44,7 @@ KB_LABELS = {
     'invite': ('🔗 Пригласить', '🔗 Invite'),
     # V3.37.0: the money affiliate program — the «пригласить» button grew up
     # into a full partner screen (stats, payouts, FAQ). Kept as its own key so
-    # old keyboards still resolve; MAIN_KB_ROWS shows partner instead of invite.
+    # old keyboards still resolve; the menu shows partner instead of invite.
     'partner': ('💰 Партнёрская программа', '💰 Partner program'),
     'custom': ('🎨 Мой персонаж', '🎨 My character'),
     # V3.38.0: the main menu funnels users into the Mini App (Come Closer
@@ -62,29 +62,46 @@ KB_LABELS = {
     # at all times from the main keyboard, not only via commands.
     'legal': ('📜 Документы', '📜 Documents'),
     'admin': ('🛠 Админка', '🛠 Admin'),
+    # V3.149.0: the four rows a plain user is allowed to see, plus the owner's
+    # own kitchen that only ever renders for ADMIN_TELEGRAM_IDS.
+    'gallery': ('👯‍♀️ Галерея персонажей', '👯‍♀️ Character gallery'),
+    'reminder': ('📝 Напоминание', '📝 Reminder'),
+    'recipe': ('🍳 Рецепт', '🍳 Recipe'),
+    'concert': ('🎫 Концерт', '🎫 Concert'),
+    'promo': ('🎟 Промо', '🎟 Promo'),
 }
 
-# V3.38.0: the Come Closer funnel layout — the Mini App is the product, the
-# chat keyboard is its launcher. Old keys stay in KB_LABELS so cached reply
-# keyboards from earlier versions keep resolving to their handlers.
-# V3.40.0: owner benchmarked the Come Closer main menu (screenshot) — the two
-# app actions each get their OWN full-width row instead of sharing one.
-# V3.41.0: owner asked to keep terms/privacy reachable from the main menu, so
-# the «📜 Документы» (Условия + Privacy) row is pinned at the bottom. Character
-# selection is gone from the chat funnel — it lives in the Mini App now.
-# V3.42.0: the owner wants the partner program to be a BIG full-width button
-# («Партнёрская программа», not «Партнёрка»); support shares the bottom row
-# with the legal documents so compliance stays one tap away.
-MAIN_KB_ROWS = [
+# V3.149.0: owner ТЗ «Динамическое меню (Admin/User)» replaces the old
+# Come Closer layout (MAIN_KB_ROWS) — the Mini App stays the product and the
+# chat keyboard is its launcher. A plain user gets EXACTLY four rows: two doors
+# into the Mini App and the two chat utilities. The whole kitchen (peaches,
+# Premium, the picture studio, partner program, promo codes, profile, admin
+# panel) only renders when the id sits in ADMIN_TELEGRAM_IDS. Old keys stay in
+# KB_LABELS so cached reply keyboards from earlier versions keep resolving.
+USER_MENU_ROWS = [
     ['app'],
+    ['gallery'],
+    ['alarm'],
+    ['reminder'],
+]
+ADMIN_MENU_ROWS = [
+    ['partner'],
+    ['recipe'],
+    ['concert'],
+    ['promo'],
+    ['profile'],
     ['credits'],
-    # V3.62.11: zero purchases in 30 days — Premium was not reachable from
-    # the bot menu at all, so it gets its own row again under the peaches.
     ['premium'],
     ['paint'],
-    ['partner'],
     ['support', 'legal'],
+    ['admin'],
 ]
+
+
+def menu_rows(is_admin: bool) -> list[list[str]]:
+    """One source of truth for both keyboards: the inline menu and the reply rows."""
+    return USER_MENU_ROWS + (ADMIN_MENU_ROWS if is_admin else [])
+
 
 # English names for the 8-level relationship ladder (RU lives in main.py).
 LEVEL_NAMES_EN = {

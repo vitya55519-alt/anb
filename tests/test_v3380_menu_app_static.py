@@ -41,7 +41,9 @@ def test_main_menu_rows_funnel_into_miniapp():
         ('support', "'support': ('👥 Поддержка', '👥 Support'),"),
     ):
         assert label in UI_LANG, f'missing label: {key}'
-    rows = UI_LANG[UI_LANG.index('MAIN_KB_ROWS = ['):UI_LANG.index('LEVEL_NAMES_EN')]
+    # V3.149.0: the money/content rows live in the admin block, the app door
+    # stays in the user block.
+    rows = UI_LANG[UI_LANG.index('USER_MENU_ROWS = ['):UI_LANG.index('LEVEL_NAMES_EN')]
     assert "['app']," in rows
     # V3.40.0: the Come Closer menu gives each app action its own full row.
     assert "['credits']," in rows

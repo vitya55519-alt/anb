@@ -32,7 +32,9 @@ def test_version_bumped():
 # ── 1. main reply keyboard like the Come Closer menu ───────────────────────
 
 def test_main_menu_is_the_come_closer_layout():
-    rows = UI_LANG[UI_LANG.index('MAIN_KB_ROWS = ['):UI_LANG.index('LEVEL_NAMES_EN')]
+    # V3.149.0: the layout grew a role split — the app door is the user block,
+    # the peaches/Premium/paint/partner/legal rows are the admin block.
+    rows = UI_LANG[UI_LANG.index('USER_MENU_ROWS = ['):UI_LANG.index('def menu_rows')]
     assert "['app']," in rows
     assert "['credits']," in rows
     assert "['paint']," in rows
@@ -41,7 +43,7 @@ def test_main_menu_is_the_come_closer_layout():
     assert "['support', 'legal']," in rows
     # the «open app» row is a real web_app tile — the teal direct launch
     kb = MAIN[MAIN.index('def main_keyboard('):MAIN.index('def _character_pick_buttons(')]
-    assert "web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp')" in kb
+    assert "web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp{MENU_APP_ROUTES[key]}')" in kb
 
 
 # ── 2. provider failure counters ───────────────────────────────────────────

@@ -59,7 +59,7 @@ from services.user_service import (
     set_adult_confirmed, is_adult_confirmed,
 )
 # V3.22.0: RU/EN interface layer (reply keyboard + top-level menus).
-from services.ui_lang import EN, RU, MAIN_KB_ROWS, app_lang, flow_text, full_user_lang, kb_label, kb_pair, user_lang
+from services.ui_lang import EN, RU, menu_rows, app_lang, flow_text, full_user_lang, kb_label, kb_pair, user_lang
 from services.chat_service import reply as anna_reply
 from services.access_service import can_send_message, is_premium
 from services.photo_service import (
@@ -114,7 +114,9 @@ def _video_unavailable_text(telegram_id: int) -> str:
                 '(SpicyAPI забирает кадр по ссылке). Проверь переменные окружения на Railway.')
     return 'Видео пока недоступно.'
 from services.llm_provider_service import provider_status
-from services.reminder_service import set_timezone, create_from_text, cancel_active_wake, due_reminders, is_wake_request, wake_trial_available
+from services.reminder_service import (set_timezone, create_from_text, cancel_active_wake, due_reminders,
+                                       is_wake_request, wake_trial_available, parse_clock_text, create_at,
+                                       reminder_body)
 from services.scheduler_service import start_scheduler
 from services.memory_service import reset_conversation as reset_memory, save_message
 from services.paid_welcome import PREMIUM_PRODUCTS as PAID_PREMIUM_PRODUCTS  # V3.104.0
@@ -514,19 +516,22 @@ def main_keyboard(is_admin: bool = False, telegram_id: int | None = None):
     # V3.22.0: labels are localized per user (RU/EN).
     # V3.40.0: the «open app» row is a real web_app button — the teal
     # direct-launch tile from the Come Closer menu the owner benchmarked.
+    # V3.149.0: the same role split as the inline menu — a plain user's reply
+    # keyboard is the four clean rows, the owner keeps the whole kombayn. The
+    # keyboard is persistent, so the next screen that sends it also replaces the
+    # old cluttered one sitting on a returning user's account.
     lang = user_lang(telegram_id) if telegram_id else RU
+    admin = bool(is_admin or (telegram_id and telegram_id in ADMIN_TELEGRAM_IDS))
     rows = []
-    for row in MAIN_KB_ROWS:
+    for row in menu_rows(admin):
         rows.append([
             KeyboardButton(
                 text=kb_label(key, lang),
-                web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp')
-                if key == 'app' and PUBLIC_BASE_URL else None,
+                web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp{MENU_APP_ROUTES[key]}')
+                if key in MENU_APP_ROUTES and PUBLIC_BASE_URL else None,
             )
             for key in row
         ])
-    if is_admin:
-        rows.append([KeyboardButton(text=kb_label('admin', lang))])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
 
 
@@ -616,9 +621,50 @@ def _app_row(lang: str):
     ]
 
 
-def _start_keyboard(lang: str) -> InlineKeyboardMarkup:
-    """V3.148.0: the only keyboard the start screen ever shows."""
-    return InlineKeyboardMarkup(inline_keyboard=[_app_row(lang)])
+# V3.149.0: where each menu row goes. The two app rows are Mini App deep links
+# (the gallery lands on the character tab, not the chat tab), ⏰ and 📝 are the
+# two utilities that arm the FSM below, and the money/content rows only ever
+# render for an id in ADMIN_TELEGRAM_IDS — the kitchen stays the owner's.
+MENU_APP_ROUTES = {'app': '', 'gallery': '?open=characters'}
+MENU_CALLBACK_ROUTES = {
+    'alarm': 'menu:alarm',
+    'reminder': 'menu:reminder',
+    'gallery': 'menu:gallery',
+    'profile': 'menu:profile',
+    'partner': 'partner:open',
+    'recipe': 'photo:kitchen',
+    'concert': 'photo:concert',
+    'promo': 'admin:promos',
+    'credits': 'credits:open',
+    'premium': 'premium:view',
+    'paint': 'photo_menu:open',
+    'support': 'legal:support',
+    'legal': 'legal:terms',
+    'admin': 'admin:home',
+}
+
+
+def _menu_button(key: str, lang: str) -> InlineKeyboardButton:
+    if key in MENU_APP_ROUTES and PUBLIC_BASE_URL:
+        return InlineKeyboardButton(
+            text=kb_label(key, lang),
+            web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp{MENU_APP_ROUTES[key]}'),
+        )
+    if key == 'app':
+        return InlineKeyboardButton(text=flow_text(lang, 'open_app'), callback_data='legal:terms')
+    return InlineKeyboardButton(text=kb_label(key, lang), callback_data=MENU_CALLBACK_ROUTES[key])
+
+
+def menu_markup(telegram_id: int | None = None, lang: str | None = None) -> InlineKeyboardMarkup:
+    """V3.149.0: the main menu, drawn per role. A plain user gets exactly four
+    rows — two doors into the app and the two chat utilities; an admin gets the
+    whole kombayn below them, visually split off in its own rows."""
+    menu_lang = lang or (user_lang(telegram_id) if telegram_id else RU)
+    is_admin = bool(telegram_id and telegram_id in ADMIN_TELEGRAM_IDS)
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [_menu_button(key, menu_lang) for key in row]
+        for row in menu_rows(is_admin)
+    ])
 
 
 def abilities_text(lang: str = RU) -> str:
@@ -2273,7 +2319,8 @@ async def start(message: types.Message, command: CommandObject):
             f'с возвращением, {name} 🙂 девушки, чаты, картинки и магазин — в приложении 👇'
         )
     # V3.42.0: no character grid here anymore — a short button list instead.
-    markup = _start_keyboard(lang)
+    # V3.149.0: and that list is now the role menu — four rows for a user.
+    markup = menu_markup(message.from_user.id, lang)
     # V3.147.0: nothing is pinned at /start any more. The pin cost a service
     # line («...закрепил(а) главное меню») right under the welcome and read as
     # bot noise; the app, the balance and the partner program live on the
@@ -2304,11 +2351,11 @@ async def consent_accept(cq: types.CallbackQuery):
     flow_lang = full_user_lang(cq.from_user.id, cq.from_user.language_code)
     # V3.148.0: the start bubble is rewritten in place instead of answering with
     # a new one — no menu message, no girl picker, no service lines. The bonus
-    # and one wide button into the Mini App are all the chat ever shows, and she
-    # stays silent until he writes to her first inside the app.
+    # line and the menu rows all live inside that one bubble.
+    # V3.149.0: and the rows are the role menu — a plain user gets exactly four.
     welcome_line = (flow_text(flow_lang, 'welcome_edit', amount=first_start['credits'])
                     if first_start['credits'] else flow_text(flow_lang, 'welcome_edit_plain'))
-    kb = _start_keyboard(flow_lang)
+    kb = menu_markup(cq.from_user.id, flow_lang)
     try:
         if cq.message.animation or cq.message.photo or cq.message.video:
             await cq.message.edit_caption(caption=welcome_line, reply_markup=kb)
@@ -4079,6 +4126,12 @@ async def admin_roi_button(cq: types.CallbackQuery):
 
 @dp.message(Command('cancel'))
 async def cancel_admin_edit(message: types.Message):
+    # V3.149.0: /cancel also steps out of the ⏰/📝 wait — the answer would
+    # otherwise be swallowed by the utility state.
+    if _utility_wait_of(message.from_user.id):
+        _drop_utility_wait(message.from_user.id)
+        await message.answer('отменил, возвращаюсь в обычный чат')
+        return
     if message.from_user.id in PGAL_MEDIA_WAIT:
         character_id = PGAL_MEDIA_WAIT.pop(message.from_user.id)
         kb, _n = admin_pgal_keyboard(character_id)
@@ -8760,6 +8813,21 @@ async def _send_app_entry(message: types.Message, intro_ru: str, intro_en: str):
     await message.answer(intro_en if lang == EN else intro_ru, reply_markup=markup)
 
 
+async def _send_gallery_entry(message: types.Message, telegram_id: int):
+    """V3.149.0: «👯‍♀️ Галерея персонажей» — the same Mini App, but landed on the
+    character tab instead of the chat tab, so a tap opens her directly."""
+    lang = user_lang(telegram_id)
+    if not PUBLIC_BASE_URL:
+        await message.answer('👯‍♀️ приложение ещё не подключено — задай PUBLIC_BASE_URL (домен Railway).'
+                           if lang != EN else '👯‍♀️ the app is not connected on the server yet.')
+        return
+    await message.answer(
+        '👯‍♀️ Все девушки, их фото и характеры — в галерее приложения 👇' if lang != EN
+        else '👯‍♀️ Every girl, her photos and personality — in the app gallery 👇',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[_menu_button('gallery', lang)]])
+    )
+
+
 @dp.message(F.text.in_(kb_pair('app')))
 @service_screen
 async def app_button(message: types.Message):
@@ -8957,63 +9025,236 @@ async def profile_button(message: types.Message):
     )
 
 
+# ── V3.149.0: the two chat utilities are a state machine, not a command ────
+# Tapping ⏰ or 📝 arms a state; the NEXT text message belongs to that state and
+# never reaches her roleplay brain. The state lives in dialog_sessions (the
+# V3.29.0 foundation), so a redeploy can't drop a user mid-sentence, and a
+# fifteen-minute silence expires it back to the ordinary chat.
+ALARM_WAIT = 'waiting_for_alarm_time'
+REMINDER_WAIT = 'waiting_for_reminder_text_and_time'
+_UTILITY_WAIT = dialog_store.DialogStore('utility_wait')
+_UTILITY_TTL_SECONDS = 900
+_UTILITY_ASKS = {
+    ALARM_WAIT: (
+        '⏰ На какое время поставить будильник?\n\nПросто напиши время — например, 08:00 или 8 утра.',
+        '⏰ What time should the alarm go off?\n\nJust write the time — for example, 08:00 or 8 am.',
+    ),
+    REMINDER_WAIT: (
+        '📝 О чём напомнить и когда?\n\nНапиши одним сообщением — например, «в 14:30 позвонить маме».',
+        '📝 What should I remind you about, and when?\n\nOne message is enough — for example, «at 14:30 call mum».',
+    ),
+}
+
+
+def _utility_wait_of(telegram_id: int) -> str:
+    entry = _UTILITY_WAIT.get(telegram_id) or {}
+    state = str(entry.get('state') or '')
+    if not state:
+        return ''
+    try:
+        age = (dt.datetime.now(dt.timezone.utc)
+               - dt.datetime.fromisoformat(str(entry.get('asked_at')))).total_seconds()
+    except Exception:
+        age = 0
+    if age > _UTILITY_TTL_SECONDS:
+        _UTILITY_WAIT.pop(telegram_id, None)
+        return ''
+    return state
+
+
+def _arm_utility_wait(telegram_id: int, state: str) -> None:
+    _UTILITY_WAIT[telegram_id] = {
+        'state': state,
+        'asked_at': dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+
+
+def _drop_utility_wait(telegram_id: int) -> None:
+    _UTILITY_WAIT.pop(telegram_id, None)
+
+
+def _active_utility_lines(telegram_id: int) -> str:
+    """What is already scheduled — times only, his own words stay in the DB."""
+    user = get_user(telegram_id)
+    if not user:
+        return ''
+    with SessionLocal() as s:
+        active = s.scalars(select(Reminder).where(
+            Reminder.user_id == user.id, Reminder.active == True).order_by(Reminder.due_at_utc)
+        ).all()
+    if not active:
+        return ''
+    lang = user_lang(telegram_id)
+    head = '\n\n⏰ Already set:' if lang == EN else '\n\n⏰ Уже стоит:'
+    rows = [f'{"🔔" if r.reminder_type == "wake" else "📝"} {r.due_at_utc.strftime("%d.%m %H:%M")} UTC'
+            for r in active[:5]]
+    return head + '\n'.join(rows)
+
+
+async def _utility_paywall(message: types.Message, lang: str) -> None:
+    # A blocked utility must not leave a stale wait armed: the next line then
+    # belongs to her chat again, not to a tap the user can no longer answer.
+    _drop_utility_wait(message.from_user.id)
+    if lang == EN:
+        await message.answer(
+            '⏰ Alarm and reminders — a Premium feature\n\n'
+            'With Premium, she will wake you up in the morning, remind you about things and always remember your timezone.\n\n'
+            '/premium — subscribe',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='⭐ Get Premium', callback_data='premium:view')]
+            ]),
+        )
+    else:
+        await message.answer(
+            '⏰ Будильник и напоминания — Premium-функция\n\n'
+            'С Premium Анна будет будить тебя утром, напоминать о делах и всегда помнить твой часовой пояс.\n\n'
+            '/premium — подключить',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='⭐ Получить Premium', callback_data='premium:view')]
+            ]),
+        )
+
+
+async def _ask_utility(message: types.Message, state: str, extra: str = '') -> None:
+    lang = user_lang(message.from_user.id)
+    ru, en = _UTILITY_ASKS[state]
+    _arm_utility_wait(message.from_user.id, state)
+    await message.answer((en if lang == EN else ru) + extra)
+
+
+async def _alarm_screen(message: types.Message, who: types.User) -> None:
+    """⏰ — the first alarm stays a free try, the rest is Premium; either way the
+    bot now waits for a plain time message instead of a /wake command."""
+    tid = who.id
+    ensure_user(tid, who.first_name, language_code=who.language_code)
+    lang = user_lang(tid)
+    if not is_premium(tid) and not wake_trial_available(tid):
+        await _utility_paywall(message, lang)
+        return
+    extra = _active_utility_lines(tid)
+    if not is_premium(tid):
+        extra += ('\n\n🎁 Your first alarm is free — she wakes you with her voice.'
+                  if lang == EN else '\n\n🎁 Первый будильник бесплатно — разбужу голосом.')
+    await _ask_utility(message, ALARM_WAIT, extra)
+
+
+async def _reminder_screen(message: types.Message, who: types.User) -> None:
+    tid = who.id
+    ensure_user(tid, who.first_name, language_code=who.language_code)
+    lang = user_lang(tid)
+    if not is_premium(tid):
+        await _utility_paywall(message, lang)
+        return
+    await _ask_utility(message, REMINDER_WAIT, _active_utility_lines(tid))
+
+
 @dp.message(F.text.in_(kb_pair('alarm')))
 async def alarm_button(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
-    premium = is_premium(message.from_user.id)
-    lang = user_lang(message.from_user.id)
-    if not premium and wake_trial_available(message.from_user.id):
-        # V3.63.2: the first alarm is free — let him hear her wake him.
+    await _alarm_screen(message, message.from_user)
+
+
+@dp.callback_query(F.data == 'menu:alarm')
+async def menu_alarm_cb(cq: types.CallbackQuery):
+    await cq.answer()
+    await _alarm_screen(cq.message, cq.from_user)
+
+
+@dp.message(F.text.in_(kb_pair('reminder')))
+async def reminder_button(message: types.Message):
+    await _reminder_screen(message, message.from_user)
+
+
+@dp.callback_query(F.data == 'menu:reminder')
+async def menu_reminder_cb(cq: types.CallbackQuery):
+    await cq.answer()
+    await _reminder_screen(cq.message, cq.from_user)
+
+
+@dp.message(F.text, lambda m: m.from_user is not None and bool(_utility_wait_of(m.from_user.id)))
+async def utility_wait_answer(message: types.Message):
+    """The FSM edge: this text is an answer to the utility question, not a line
+    for her. Slash commands still work — they are registered earlier."""
+    tid = message.from_user.id
+    state = _utility_wait_of(tid)
+    lang = user_lang(tid)
+    text = (message.text or '').strip()
+    parsed = parse_clock_text(text)
+    if not parsed:
         await message.answer(
-            '⏰ The first alarm is free 🎁\n\nWrite me the time, e.g. «wake me at 7:30» — I\'ll wake you with my voice.'
-            if lang == EN else
-            '⏰ Первый будильник — бесплатно 🎁\n\nНапиши мне время, например «разбуди в 7:30» — разбужу тебя голосом.'
-        )
+            "I can't read the time. Write it like 08:00 or 8 am ⏰" if lang == EN
+            else 'не узнаю время. Напиши как 08:00 или 8 утра ⏰')
         return
-    if not premium:
-        if lang == EN:
-            await message.answer(
-                '⏰ Alarm and reminders — a Premium feature\n\n'
-                'With Premium, she will wake you up in the morning, remind you about things and always remember your timezone.\n\n'
-                '/premium — subscribe',
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text='⭐ Get Premium', callback_data='premium:view')]
-                ]),
-            )
-        else:
-            await message.answer(
-                '⏰ Будильник и напоминания — Premium-функция\n\n'
-                'С Premium Анна будет будить тебя утром, напоминать о делах и всегда помнить твой часовой пояс.\n\n'
-                '/premium — подключить',
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text='⭐ Получить Premium', callback_data='premium:view')]
-                ]),
-            )
+    hour, minute, days = parsed
+    uid = ensure_user(tid, message.from_user.first_name, language_code=message.from_user.language_code)
+    _drop_utility_wait(tid)
+    if state == ALARM_WAIT:
+        create_at(tid, 'wake', 'Пора вставать', hour, minute, days)
+        track_event(uid, 'alarm_set_fsm', metadata={'hour': hour, 'minute': minute})
+        await message.answer(
+            f'🔔 Done! I will wake you at {hour:02d}:{minute:02d}.' if lang == EN
+            else f'🔔 Готово! Разбужу в {hour:02d}:{minute:02d}.')
         return
-    user = get_user(message.from_user.id)
-    tz = user.timezone or 'UTC'
-    # Fetch active reminders
-    with SessionLocal() as s:
-        active = s.scalars(
-            select(Reminder).where(
-                Reminder.user_id == user.id,
-                Reminder.active == True,
-            )
-        ).all()
-    lines = ['⏰ Будильник и напоминания\n']
-    lines.append(f'Часовой пояс: {tz}')
-    if active:
-        lines.append('\nАктивные:')
-        for r in active:
-            kind_label = '🔔 Будильник' if r.reminder_type == 'wake' else '📝 Напоминание'
-            lines.append(f'  {kind_label}: {r.text} · {r.due_at_utc.strftime("%d.%m %H:%M")} UTC')
-    else:
-        lines.append('\nПока нет активных напоминаний.')
-    lines.append('\nКак установить:')
-    lines.append('• Напиши: «разбуди в 08:00» или «напомни в 14:30»')
-    lines.append('• Или команда: /wake 08:00')
-    lines.append(f'• Сменить пояс: /timezone Europe/Moscow')
-    await message.answer('\n'.join(lines))
+    body = reminder_body(text)
+    create_at(tid, 'reminder', body, hour, minute, days)
+    track_event(uid, 'reminder_set_fsm', metadata={'hour': hour, 'minute': minute})
+    await message.answer(
+        f'📝 Done! I will remind you at {hour:02d}:{minute:02d}: {body}' if lang == EN
+        else f'📝 Готово! Напомню в {hour:02d}:{minute:02d}: {body}')
+
+
+@dp.callback_query(F.data == 'menu:gallery')
+async def menu_gallery_cb(cq: types.CallbackQuery):
+    await cq.answer()
+    await _send_gallery_entry(cq.message, cq.from_user.id)
+
+
+@dp.callback_query(F.data == 'menu:profile')
+async def menu_profile_cb(cq: types.CallbackQuery):
+    await cq.answer()
+    await profile_button(cq.message)
+
+
+@dp.message(Command('menu'))
+async def menu_cmd(message: types.Message):
+    """V3.149.0: the menu on demand — the same role keyboard /start leaves under
+    the welcome, four rows for him and the full kombayn for the owner."""
+    lang = user_lang(message.from_user.id)
+    if not has_accepted(message.from_user.id):
+        await message.answer('сначала подтверди 18+ через /start' if lang != EN
+                             else 'confirm 18+ first, then /start',
+                             reply_markup=consent_keyboard(lang))
+        return
+    await message.answer('🧭 меню 👇' if lang != EN else '🧭 menu 👇',
+                         reply_markup=menu_markup(message.from_user.id, lang))
+
+
+@dp.message(F.text.in_(kb_pair('gallery')))
+async def gallery_button(message: types.Message):
+    await _send_gallery_entry(message, message.from_user.id)
+
+
+@dp.message(F.text.in_(kb_pair('recipe')))
+async def recipe_button(message: types.Message):
+    await _owner_photo_scene(message, 'kitchen')
+
+
+@dp.message(F.text.in_(kb_pair('concert')))
+async def concert_button(message: types.Message):
+    await _owner_photo_scene(message, 'concert')
+
+
+@dp.message(F.text.in_(kb_pair('promo')))
+async def promo_button(message: types.Message):
+    await promo_cmd(message, CommandObject(command='promo', args=''))
+
+
+async def _owner_photo_scene(message: types.Message, scene: str):
+    """🍳 and 🎫 are the owner's test rows: the same scene render the app offers,
+    reached in one tap instead of a command. Anyone else gets the app door."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        await _send_app_entry(message, 'всё это — в приложении 👇', 'all of this lives in the app 👇')
+        return
+    await handle_photo_request(message.chat.id, message.from_user.id, PhotoRequest(scene=scene))
 
 
 @dp.message(F.text.in_(kb_pair('settings')))
@@ -18206,6 +18447,9 @@ async def main():
         types.BotCommand(command='contest', description='🏆 Гонка пригласивших'),
         types.BotCommand(command='notifications', description='Инициативные сообщения'),
         types.BotCommand(command='wake', description='Будильник: /wake 08:00'),
+        # V3.149.0: the menu on demand — the buttons are the primary path, this
+        # is the fallback for anyone whose keyboard never got replaced.
+        types.BotCommand(command='menu', description='🧭 Меню'),
         types.BotCommand(command='reset', description='Очистить память и историю'),
     ]
     await bot.set_my_commands(public_commands)

@@ -126,7 +126,11 @@ def test_the_tap_rewrites_the_media_bubble(funnel):
     assert kind == 'edit_caption'
     assert kw['caption'] == '🎁 Добро пожаловать! Тебе начислено 200 фото-кредитов 👇'
     rows = kw['reply_markup'].inline_keyboard
-    assert len(rows) == 1 and rows[0][0].web_app.url == APP_URL
+    # V3.149.0: the rewritten bubble carries the role menu — four rows for a
+    # plain user, the app door still first.
+    assert [r[0].text for r in rows] == ['📱 Открыть приложение', '👯‍♀️ Галерея персонажей',
+                                     '⏰ Будильник', '📝 Напоминание']
+    assert rows[0][0].web_app.url == APP_URL
 
 
 def test_the_tap_rewrites_a_plain_text_bubble(funnel):
@@ -158,9 +162,10 @@ def test_no_auto_greeting_survives_anywhere():
 
 
 def test_the_picker_buttons_left_the_chat():
-    assert "callback_data='credits:open'" not in MAIN[MAIN.index('def _app_row('):MAIN.index('def _start_keyboard(')]
-    assert "callback_data='partner:open'" not in MAIN[MAIN.index('def _app_row('):MAIN.index('def _start_keyboard(')]
-    assert 'kb_label' not in MAIN[MAIN.index('def _app_row('):MAIN.index('def _start_keyboard(')]
+    block = MAIN[MAIN.index('def _app_row('):MAIN.index('MENU_APP_ROUTES =')]
+    assert "callback_data='credits:open'" not in block
+    assert "callback_data='partner:open'" not in block
+    assert 'kb_label' not in block
 
 
 def test_the_start_copy_no_longer_asks_for_a_girl():
