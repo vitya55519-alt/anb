@@ -76,7 +76,7 @@ def test_admin_stats_screen_is_user_statistics():
     assert '📊 Статистика пользователей' in MAIN
     assert '🏆 топ персонажей (7д):' in MAIN
     assert '⭐ Premium активен:' in MAIN
-    assert '🎨 студия: ✅' in MAIN
+    assert '🎨 студия за 7д: ✅' in MAIN  # V3.82.1: last 7 days, not all time
 
 
 # ── 4. storefront view counter ─────────────────────────────────────────────
