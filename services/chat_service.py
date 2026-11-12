@@ -878,7 +878,8 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories],
         (TOPIC_PUSH_LINE if topic and sum(1 for m in history if m.role == 'user') >= 2 else
-         "Напиши одну короткую спонтанную реплику первой. Не объясняй, зачем пишешь, и не обязательно задавай вопрос."),
+         "Напиши одну короткую спонтанную реплику первой. Не объясняй, зачем пишешь, и закончи её "
+         "вопросом или чётким выбором — так ему проще ответить."),
         state_context(user_id, character_id), adaptation,
         time_context=_time_context(user_id, character_id),
         character_id=character_id,

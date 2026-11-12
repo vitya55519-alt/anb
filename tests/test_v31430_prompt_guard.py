@@ -1,14 +1,14 @@
-"""V3.143.0: owner ТЗ (Prompt-Engineering) — no dead ends, no invented facts
-about his life, exactly one voice per reply, his gender stated before her
-character card, and the generation cut where she starts typing his line."""
+"""V3.143.0 + V3.144.0: owner ТЗ (Prompt-Engineering) — the model is the one who
+leads: his gender and name in the header of every prompt, one voice per reply,
+the mandatory hook at the end of every message, nothing invented about his
+life, and the generation cut where she starts typing his line."""
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-from services.character_service import (INITIATIVE_BLOCK, NO_INVENT_BLOCK,
-                                        build_system_prompt, get_character,
-                                        roleplay_block, stop_sequences,
-                                        user_context_block)
+from services.character_service import (DIRECTIVE_BLOCK, build_system_prompt,
+                                        get_character, roleplay_block,
+                                        stop_sequences, user_context_block)
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAT = (ROOT / 'services' / 'chat_service.py').read_text(encoding='utf-8')
@@ -46,9 +46,9 @@ def test_solo_she_is_one_person_and_never_him():
     t = _prompt()
     assert t.index('[ROLEPLAY INSTRUCTIONS]') < t.index(f'Ты — {NAME}')
     assert 'Ты отыгрываешь роль ТОЛЬКО ОДНОГО персонажа' in t
-    assert f'Твоё текущее имя: {NAME}' in t
-    assert 'ЗАПРЕЩЕНО генерировать реплики от лица пользователя или других девушек' in t
-    assert 'Отвечай только от своего лица' in t
+    assert f'Твоя текущая роль: {NAME}.' in t
+    assert 'Отвечай ТОЛЬКО от своего лица' in t
+    assert 'Запрещено генерировать реплики за пользователя и за других персонажей' in t
     assert 'Не пиши своё имя в начале реплики' in t
 
 
@@ -58,32 +58,48 @@ def test_duo_mode_keeps_the_names_it_needs():
     t = _prompt(duo=True)
     assert 'ТОЛЬКО ОДНОГО персонажа' not in t
     assert 'Не пиши своё имя в начале реплики' not in t
+    assert 'Твоя текущая роль: %s,' % NAME in t
     assert 'В этом чате две девушки' in t
     assert f'«{NAME}: …»' in t
-    assert 'ЗАПРЕЩЕНО генерировать реплики от лица пользователя' in roleplay_block(NAME, duo=True)
+    assert 'Запрещено генерировать реплики за пользователя' in roleplay_block(NAME, duo=True)
 
 
-# ── 3. initiative and hooks ─────────────────────────────────────────────────
+# ── 3. БЛОК 1: the owner's directive, verbatim, in every character ───────────
 
-def test_every_reply_leaves_a_hook_and_never_a_dead_end():
+def test_she_leads_and_every_message_ends_with_a_hook():
     t = _prompt()
-    assert INITIATIVE_BLOCK in t
-    assert '[ДИАЛОГОВАЯ ИНИЦИАТИВА И КРЮЧКИ]' in t
-    assert 'Никогда не заканчивай сообщение голым описанием действия' in t
-    assert 'разденешь меня или заставишь ждать?' in t
-    assert 'развивай сцену на один шаг вперёд' in t
-    for short in ('«да»', '«не знаю»', '«круто»', '«окей»'):
-        assert short in t
+    assert DIRECTIVE_BLOCK in t
+    assert '[DIRECTIVE: ПРОАКТИВНОСТЬ И УПРАВЛЕНИЕ ДИАЛОГОМ]' in t
+    assert '1. ТЫ — ВЕДУЩАЯ' in t
+    assert 'Категорически запрещено пассивно ждать действий от пользователя' in t
+    assert '2. ПРАВИЛО КРЮЧКА (MANDATORY HOOKS)' in t
+    assert 'Никогда не заканчивай реплику просто описанием действия' in t
+    assert 'Разденешь меня сам, или мне сделать это для тебя?' in t
+    # the same rule reaches the messages she writes first
+    assert 'закончи её ' in CHAT and 'не обязательно задавай вопрос' not in CHAT
+
+
+def test_one_word_answers_are_her_green_light():
+    t = _prompt()
+    assert '3. АНТИ-ПАССИВНОСТЬ' in t
+    for short in ('«да»', '«не знаю»', '«ага»', '«делай»'):
+        assert short in t, short
+    assert 'Опиши своё активное действие' in t
+    assert 'снова задай вопрос-крючок' in t
+    assert 'Заставь его реагировать' in t
+    # and she does it the way a person texts, not as a play script
+    assert 'без звёздочек и скобок' in t
 
 
 # ── 4. nothing invented about his life ───────────────────────────────────────
 
 def test_she_never_invents_his_life():
     t = _prompt()
-    assert NO_INVENT_BLOCK in t
-    assert 'СТРОГО ЗАПРЕЩЕНО выдумывать факты из реальной жизни пользователя' in t
-    assert 'НИКОГДА не генерируй события, о которых он не упоминал' in t
-    assert 'спроси его самого' in t
+    assert '4. ЗАПРЕТ НА ГАЛЛЮЦИНАЦИИ' in t
+    assert 'никогда не выдумывай факты из реальной жизни пользователя' in t
+    assert 'переводи тему на свои эмоции' in t
+    # initiative never means going further than the stage allows
+    assert 'решает этап ваших отношений' in t
 
 
 # ── 5. stop sequences + sampling ─────────────────────────────────────────────
@@ -145,3 +161,12 @@ def test_dialogue_sampling_wired_in_the_chat_pipeline():
     assert "kwargs['stop'] = stop" in LLM
     assert "**({'stop': stop} if stop else {})" in LLM
     assert "temperature=temperature," in LLM[LLM.index('# ── 2. Gemini'):LLM.index('# ── 3. OpenRouter')]
+
+
+def test_dialogue_temperature_is_inside_the_owner_band():
+    # БЛОК 3: 0.75–0.85 for a sane ERP; the hot 1.0 was where the invented
+    # «автосалоны» came from. Proactive first lines keep their own tuning.
+    assert "temperature=0.8, purpose='dialogue'" in CHAT
+    assert "temperature=0.75, purpose='dialogue'" in CHAT
+    assert "temperature=1.0, purpose='dialogue'" not in CHAT
+    assert "temperature=0.95, purpose='dialogue'" not in CHAT
