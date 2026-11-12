@@ -1203,7 +1203,6 @@
   .chat-head .hd-who .nm, .chat-head .hd-who .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-head .lvlchip { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
   .chat-head .iconbtn { flex-shrink: 0; }
-  .chat-head .hd-heart { font-size: 17px; padding: 8px 10px; }
   .callbtn { flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer; color: #fff;
     display: flex; align-items: center; justify-content: center;
     background: linear-gradient(135deg, #2fd17a, #14a85b); box-shadow: 0 0 0 0 rgba(47,209,122,.6); animation: callglow 2.4s ease-out infinite; }
@@ -1401,7 +1400,6 @@
       <span class="lvlchip" id="chatLvl" style="display:none"></span>
     </div>
     <button class="duopill" id="chatInvite" type="button" style="display:none"></button>
-    <button class="iconbtn hd-heart" id="chatSelect">❤️</button>
     <button class="callbtn" id="chatCall" type="button" title="Позвонить" aria-label="Позвонить"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg></button>
   </div>
   <!-- V3.78.0: the running storyline: act, level and «Без ролей» -->
@@ -1873,7 +1871,7 @@ const L_EN = {
   qb_demo: 'Demo Premium for 3 hours — free',
   qb_demo_on: 'Demo Premium is on ✨',
   consent_needed: 'Confirm 18+ first — open the bot and press /start',
-  set_main: 'Set as your girl', reply_err: 'Could not reply — try again',
+  reply_err: 'Could not reply — try again',
   create_own: 'Create your own', create_sub: 'Looks, figure and personality — she chats the way you pick',
   wiz_templates: '✨ Ready templates — tap to fill everything',
   wiz_groups: { appearance: 'Appearance', character: 'Character', story: 'Story & tags', duo: '👯 Second girl in the same chat', reference: 'Look-alike photo', share: 'Publishing' },
@@ -2160,7 +2158,7 @@ const L_RU = {
   qb_demo: 'Демо-Premium на 3 часа — бесплатно',
   qb_demo_on: 'Демо-Premium включён ✨',
   consent_needed: 'Сначала подтверди 18+ — открой бота и нажми /start',
-  set_main: 'Сделать твоей девушкой', reply_err: 'Не получилось ответить — попробуй ещё раз',
+  reply_err: 'Не получилось ответить — попробуй ещё раз',
   create_own: 'Создать свою', create_sub: 'Внешность, фигура и характер — она будет общаться так, как ты выберешь',
     wiz_templates: '✨ Готовые шаблоны — нажми, и всё заполнится',
     wiz_groups: { appearance: 'Внешность', character: 'Характер', story: 'История и теги', duo: '👯 Вторая девушка в этом же чате', reference: 'Фото-референс', share: 'Публикация' },
@@ -3547,7 +3545,6 @@ async function doSelect(c) {
       loadMe();
       if (CHAT && CHAT.id === c.id) {
         CHAT.selected = true;
-        document.getElementById('chatSelect').style.display = 'none';
       }
     }
   } catch (e) {
@@ -3747,10 +3744,6 @@ function openChat(c) {
   ph.onload = () => { ph.style.display = 'block'; em.style.display = 'none'; };
   ph.onerror = () => { ph.style.display = 'none'; em.style.display = 'flex'; };
   ph.src = c.photo;
-  const sel = document.getElementById('chatSelect');
-  sel.textContent = '❤️';
-  sel.title = L.set_main; sel.setAttribute('aria-label', L.set_main);
-  sel.style.display = c.selected ? 'none' : '';
   document.getElementById('chatText').placeholder = L.input_ph;
   document.getElementById('recHint').textContent = L.rec_hint;
   document.getElementById('recCancel').textContent = L.rec_cancel;
@@ -7546,7 +7539,6 @@ document.getElementById('chatFileIn').addEventListener('change', (e) => {
   e.target.value = '';
   if (f) sendChatPhoto(f);
 });
-document.getElementById('chatSelect').addEventListener('click', () => { if (CHAT) doSelect(CHAT); });
 // V3.43.7: the photo button opens the scene menu first (the same picker the
 // bot's photo keyboard shows); the chosen scene rides the media request.
 document.getElementById('mediaPhoto').addEventListener('click', () => openFeature('photo'));

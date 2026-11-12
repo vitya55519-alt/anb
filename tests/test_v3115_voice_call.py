@@ -192,7 +192,9 @@ def test_turn_hello_skips_the_llm_and_rest_goes_to_say():
 
 def test_header_call_button_and_admin_picker():
     assert 'class="callbtn" id="chatCall"' in HTML
-    assert "sel.textContent = '❤️';" in HTML
+    # «убери сердечко из шапки»: the select-heart is gone from the chat header;
+    # «сделать девушкой» lives on the character page (charSelect) only.
+    assert 'id="chatSelect"' not in HTML
     # V3.139.0 (Задача 4): the badge is icon + number only now, in his language,
     # so the duo pill has room to its right; her stage name moved into the sheet.
     assert 'L.lvl_chip(lvlIcon, j.level)' in HTML
