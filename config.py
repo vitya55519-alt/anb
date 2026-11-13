@@ -155,6 +155,18 @@ INTERRUPT_MAX_PER_DAY = max(0, min(5, int(os.getenv("INTERRUPT_MAX_PER_DAY", "1"
 # как спам от скрипта.
 INTERRUPT_MIN_LEVEL = max(1, min(10, int(os.getenv("INTERRUPT_MIN_LEVEL", "3"))))
 INTERRUPT_PEACH_COST = max(0, int(float(os.getenv("INTERRUPT_PEACH_COST", "0.3")) * PEACH_SCALE))
+# V3.155.0: owner ТЗ (Фогель, Модуль 3) — «Эмоциональные якоря». Каждые
+# ANCHOR_EVERY_MESSAGES его сообщений фоновый промпт выжимает из диалога ОДИН
+# яркий общий момент и кладёт его в user_character_anchors; на пару хранится не
+# больше ANCHOR_MAX последних. В системный промпт блок вставляется всегда,
+# а вслух она вспоминает якорь раз в ANCHOR_ECHO_MIN..MAX реплик — иначе это
+# выглядит как зачитывание базы, а не как живой человек, которого что-то цепануло.
+ANCHORS_ENABLED = os.getenv("ANCHORS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+ANCHOR_EVERY_MESSAGES = max(5, int(os.getenv("ANCHOR_EVERY_MESSAGES", "15")))
+ANCHOR_MAX = max(1, min(10, int(os.getenv("ANCHOR_MAX", "5"))))
+ANCHOR_ECHO_MIN = max(2, int(os.getenv("ANCHOR_ECHO_MIN", "4")))
+ANCHOR_ECHO_MAX = max(ANCHOR_ECHO_MIN, int(os.getenv("ANCHOR_ECHO_MAX", "5")))
+ANCHOR_WINDOW_MESSAGES = max(10, int(os.getenv("ANCHOR_WINDOW_MESSAGES", "30")))
 # Hot Pass — безлимитная подписка на фото «наедине» и «косплей»
 HOT_PASS_DAY_PEACHES = _peach_env("HOT_PASS_DAY_PEACHES", 5)
 HOT_PASS_WEEK_PEACHES = _peach_env("HOT_PASS_WEEK_PEACHES", 25)

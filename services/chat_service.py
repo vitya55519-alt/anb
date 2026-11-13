@@ -16,6 +16,7 @@ from services.dialogue_guard_service import build_repetition_guard, casual_punct
 from services.hook_service import next_hook
 from services.daily_life import her_moment
 from services import biorhythm
+from services import anchor_service
 from services.character_dna_service import competency_context, character_dna_context
 from services.state_service import state_context, softly_evolve_state
 from services.user_service import ensure_user, get_user
@@ -896,12 +897,22 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     if novel_layers:
         behavior = (behavior + '\n' if behavior else '') + novel_engine_context(
             adaptation_level, novel_marital)
+    # V3.155.0 (Фогель, Модуль 3): «ЯКОРЯ ВАШЕЙ ИСТОРИИ» — the moments the two of
+    # them actually lived through. Only a live reply spends the recollection
+    # counter, so a push or a directed scene never breaks the «раз в 4–5» rhythm.
+    try:
+        anchors = await asyncio.to_thread(
+            anchor_service.anchors_block, db_user_id, character_id, tick=not scene)
+    except Exception:
+        _logger.warning('anchors block failed user=%s', user_id, exc_info=True)
+        anchors = ''
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + (spicy_line + '\n' if spicy_line else '') + (style_line + '\n' if style_line else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id, character_id), adaptation,
         time_context=_time_context(user_id, character_id, level=adaptation_level,
                                    marital_status=novel_marital, spicy_open=bool(spicy_line)),
         character_id=character_id,
         user_name=user_name, duo=duo_chat,
+        anchors=anchors,
     )
     messages = [{"role": "system", "content": system}]
     messages += [{"role": m.role, "content": m.content} for m in history]
@@ -1160,6 +1171,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # user never reads. They used to be awaited here, so every reply waited for
     # them; now they run in the background after the answer is returned.
     _spawn_background(extract_memory(db_user_id, character_id, user_text), 'extract_memory')
+    # V3.155.0 (Фогель, Модуль 3): every ANCHOR_EVERY_MESSAGES of his lines the
+    # background pulls ONE bright moment the two of them lived through out of the
+    # dialog. He never reads this round trip, so it runs after the answer, the
+    # same way the memory extraction does.
+    _spawn_background(anchor_service.maybe_extract_anchor(db_user_id, character_id), 'extract_anchor')
     _spawn_background(maybe_analyze_profile(db_user_id, character_id), 'maybe_analyze_profile')
     softly_evolve_state(user_id, user_text)
     # V3.52.0: a conversational reply is "read" the instant it is produced (the
@@ -1203,6 +1219,9 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
         time_context=_time_context(user_id, character_id),
         character_id=character_id,
         user_name=user_name,
+        # V3.155.0 (Фогель, Модуль 3): a push is exactly the moment she gets
+        # nostalgic. The recollection counter still only ticks on his messages.
+        anchors=await asyncio.to_thread(anchor_service.anchors_block, db_user_id, character_id),
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": f"Пользователь не писал около {hours_inactive} часов. Напиши естественно первой, не упоминая отслеживание активности."})
@@ -1324,6 +1343,9 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
         time_context=_time_context(user_id, character_id),
         character_id=character_id,
         user_name=user_name,
+        # V3.155.0 (Фогель, Модуль 3): a push is exactly the moment she gets
+        # nostalgic. The recollection counter still only ticks on his messages.
+        anchors=await asyncio.to_thread(anchor_service.anchors_block, db_user_id, character_id),
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": ("Вечер. Напиши ему первой: как прошёл его день, с привязкой к тому, что ты о нём знаешь."

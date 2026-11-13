@@ -826,3 +826,18 @@ class GiftState(Base):
     wine_left: Mapped[int] = mapped_column(Integer, default=0)
     passion_left: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class UserCharacterAnchor(Base):
+    """V3.155.0: owner ТЗ (Фогель, Модуль 3) — «Эмоциональные якоря». One row per
+    bright shared moment of a pair: the first confession, the night she almost
+    got caught, his joke only the two of them get. Deliberately NOT the
+    `memories` table — that one stores stable facts about HIM and its prompt
+    forbids the intimate history; an anchor is about the two of them and is
+    exactly that moment. Table is auto-created by create_all."""
+    __tablename__ = "user_character_anchors"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

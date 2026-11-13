@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # polished (no memory extraction, no auto-rewording, no LLM photo ideas).
 AUX_PURPOSES = frozenset({
     'memory_extraction', 'adaptation_analysis', 'relationship_pulse',
-    'photo_idea', 'photo_reaction', 'rewrite',
+    'photo_idea', 'photo_reaction', 'rewrite', 'anchor_extraction',
 })
 
 # V3.141.0: per-user cost attribution for the traffic-source ROI block. Every

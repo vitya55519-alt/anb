@@ -132,13 +132,17 @@ def _gendered_terms(character_id: str) -> dict:
     }
 
 
-def build_system_prompt(character: dict, relationship_context: str, memories: list[str], behavior_context: str = "", state_context: str = "", adaptation_context: str = "", time_context: str = "", character_id: str = CHARACTER_ID, user_name: str = "", user_gender: str = "male", duo: bool = False) -> str:
+def build_system_prompt(character: dict, relationship_context: str, memories: list[str], behavior_context: str = "", state_context: str = "", adaptation_context: str = "", time_context: str = "", character_id: str = CHARACTER_ID, user_name: str = "", user_gender: str = "male", duo: bool = False, anchors: str = "") -> str:
     p = character.get("personality", {})
     name = character.get('name', 'Анна')
     age = character.get('age', 26)
     terms = _gendered_terms(character_id)
     memory_text = "\n".join(f"- {m}" for m in memories) if memories else "Пока нет важных сохранённых воспоминаний."
     time_block = f"\n\nВРЕМЯ ПОЛЬЗОВАТЕЛЯ\n{time_context}" if time_context else ""
+    # V3.155.0 (Фогель, Модуль 3): the anchors of the pair's own story get their
+    # own block right under ПАМЯТЬ — and only ever reach the system prompt. The
+    # voice (TTS) reads her message text, never this instruction.
+    anchors_block_text = f"\n{anchors}\n" if anchors else ""
     # V3.41.0: every character must speak in THEIR OWN voice. The per-character
     # «personality.communication» profile (tone / length / humor / flirting /
     # initiative) used to be ignored, so one hardcoded flirty block made every
@@ -307,7 +311,7 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
 
 ПАМЯТЬ
 {memory_text}
-
+{anchors_block_text}
 {behavior_context}
 
 {adaptation_context or ''}
