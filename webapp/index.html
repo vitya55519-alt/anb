@@ -750,6 +750,7 @@
   .charblock.foldable .foldhead::after { content: '›'; float: right; opacity: .6; transition: transform .2s; display: inline-block; }
   .charblock.foldable:not(.fold) .foldhead::after { transform: rotate(90deg); }
   .charblock.fold .mchips, .charblock.fold .plotlist, .charblock.fold .plothint, .charblock.fold .marc { display: none; }
+  .charblock.fold .tbody { display: none; }
   /* V3.134.0: her marital story under the status chips */
   .marc:empty { display: none; }
   .marc { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.08); white-space: normal; }
@@ -1651,7 +1652,7 @@
     <!-- V3.78.0: «🎬 Сюжеты» — Premium role-play storylines -->
     <div class="charblock plotblock foldable fold" id="charPlots" style="display:none;white-space:normal"><div class="lbl3 foldhead" id="charPlotsLbl"></div><div class="plotlist" id="charPlotList"></div></div>
     <!-- V3.157.0: «🏆 Трофеи Страсти» — the six fantasies this pair lived through -->
-    <div class="charblock foldable" id="charTrophies" style="display:none;white-space:normal"><div class="lbl3" id="charTrophiesLbl"></div><div class="trow" id="charTrophyRow"></div><div class="tnote" id="charTrophyNote"></div></div>
+    <div class="charblock foldable fold" id="charTrophies" style="display:none;white-space:normal"><div class="lbl3 foldhead" id="charTrophiesLbl"></div><div class="tbody"><div class="trow" id="charTrophyRow"></div><div class="tnote" id="charTrophyNote"></div></div></div>
     <div class="charblock" id="charBio"></div>
     <!-- V3.44.8: author link — opens the author's public page (author funnel) -->
     <button class="charcta" id="charAuthor" style="display:none;background:var(--card);color:var(--accent)"></button>
@@ -4738,7 +4739,7 @@ function renderPersonaBanner(characterId) {
 }
 
 // V3.131.0: tap the row title to open/close the fold
-document.querySelectorAll('#charMarital .foldhead, #charPlots .foldhead').forEach(h =>
+document.querySelectorAll('#charMarital .foldhead, #charPlots .foldhead, #charTrophies .foldhead').forEach(h =>
   h.addEventListener('click', () => h.closest('.charblock').classList.toggle('fold')));
 // V3.59.5: «💍 Её семейное положение» on the character page.
 const MARITAL_KEYS = ['mar_single', 'mar_boyfriend', 'mar_married', 'mar_divorced', 'mar_open'];
@@ -6422,6 +6423,8 @@ function openCharPage(el) {
   // V3.131.0: both rows start folded on every page open
   plotsBox.classList.add('fold');
   document.getElementById('charMarital').classList.add('fold');
+  // V3.157.1: her fantasy album folds the same way — the counter stays on the card.
+  document.getElementById('charTrophies').classList.add('fold');
   if (!c.custom) {
     document.getElementById('charPlotsLbl').textContent = L.plots_h;
     renderPlots(document.getElementById('charPlotList'), c.id).then(j => {

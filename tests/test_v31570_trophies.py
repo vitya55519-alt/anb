@@ -599,6 +599,16 @@ def test_the_mini_app_draws_the_blurred_row_and_replays_the_voice():
         assert SPA.count(key + ':') >= 2, key                  # en + ru
 
 
+def test_the_fantasy_row_folds_behind_its_title_like_the_storyline_button():
+    line = [l for l in SPA.splitlines() if 'id="charTrophies"' in l][0]
+    assert 'foldable fold' in line                          # свёрнута по умолчанию
+    assert 'class="lbl3 foldhead" id="charTrophiesLbl"' in line
+    assert '<div class="tbody">' in line and 'id="charTrophyRow"' in line
+    assert '.charblock.fold .tbody { display: none; }' in SPA
+    wiring = _slice(SPA, '// V3.131.0: tap the row title', 'const MARITAL_KEYS')
+    assert '#charTrophies .foldhead' in wiring              # тот же тап, что у «Сюжетов»
+
+
 def test_the_slot_row_is_a_carousel_of_seven_cards():
     js = _slice(SPA, 'function renderTrophies(j)', 'async function fetchTrophies')
     assert "key: 'album'" in js and "j.album_ready" in js
