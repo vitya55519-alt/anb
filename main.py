@@ -8687,6 +8687,13 @@ async def _send_duo_answer(message: types.Message, lines: list[tuple[str, str]],
 
 async def send_answer(message: types.Message, text: str):
     await _send_answer_body(message, text)
+    # V3.152.0: owner ТЗ (Фогель, Модуль 1) — «✍️ …долго печатала и стёрла…»
+    # lands right under her message, with the button that pays for it.
+    from services import draft_service
+    draft_offer = draft_service.take_pending(message.from_user.id,
+                                             get_user_character(message.from_user.id) or '')
+    if draft_offer:
+        await _send_draft_plate(message, draft_offer)
     # V3.140.0: he agreed to invite the friend — her cleaned line just went
     # out, now the blurred joint teaser with the Premium button lands after it.
     from services import invite_funnel
@@ -8709,6 +8716,55 @@ async def send_answer(message: types.Message, text: str):
 # never spoken by the voice. «записывает голосовое…» is shown for at least this
 # many seconds before the note lands, so it does not look like a file dump.
 VOICE_RECORD_MIN_SECONDS = 3.0
+
+
+async def _send_draft_plate(message: types.Message, offer: dict) -> None:
+    """V3.152.0 (Фогель, Модуль 1): the grey plate of the message she erased.
+    Only the id of that row and the price go out — the text itself leaves the
+    server after the peaches are spent."""
+    tid = message.from_user.id
+    lang = user_lang(tid)
+    name = _character_display_name(get_user_character(tid) or '')
+    price = int(offer.get('price') or 0)
+    markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        flow_text(lang, 'draft_button', price=price),
+        callback_data=f"draft:unlock:{offer.get('id')}")]])
+    try:
+        await message.answer(flow_text(lang, 'draft_plate', name=name), reply_markup=markup)
+    except Exception:
+        logger.warning('draft plate failed user=%s', tid)
+
+
+@dp.callback_query(F.data.startswith('draft:unlock:'))
+async def draft_unlock(cq: types.CallbackQuery):
+    """His tap on the plate: charge, then let the plate turn into the draft."""
+    try:
+        message_id = int(cq.data.rsplit(':', 1)[-1])
+    except (TypeError, ValueError):
+        message_id = 0
+    tid = cq.from_user.id
+    character_id = get_user_character(tid) or ''
+    from services import draft_service
+    res = await asyncio.to_thread(draft_service.unlock, tid, character_id, message_id)
+    lang = user_lang(tid)
+    if not res.get('ok'):
+        try:
+            await cq.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        if res.get('error') == 'insufficient_peaches':
+            await cq.answer(f'Нужно {draft_service.price()} купленных 🍑 — не хватает'
+                            + _bonus_peach_note(tid), show_alert=True)
+        else:
+            await cq.answer(flow_text(lang, 'draft_gone'), show_alert=True)
+        return
+    text = flow_text(lang, 'draft_unlocked',
+                     name=_character_display_name(character_id), text=res.get('text') or '')
+    try:
+        await cq.message.edit_text(text, reply_markup=None)
+    except Exception:
+        await cq.message.answer(text)
+    await cq.answer()
 
 
 def _thought_card(name: str, thought: str) -> str:
@@ -14520,6 +14576,11 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     # which draws the card from it.
     said = message_block(answer or '')
     thought_said = thought_block(answer or '')
+    # V3.152.0: owner ТЗ (Фогель, Модуль 1) — «Стертый черновик». reply() saved
+    # the hidden text on the message row; the app gets only its id and price,
+    # so an unpaid draft cannot ride in this payload or in the chat history.
+    from services import draft_service
+    draft_offer = draft_service.take_pending(telegram_id, character_id)
     # V3.141.0: the scripted onboarding selfie — the pre-saved picture rides
     # with the prepared line. Consumed BEFORE the PHOTO_PROMISE branch: her
     # «лови фото» is the demo, not a paid render, and nothing is charged.
@@ -14530,7 +14591,8 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             save_message(uid, character_id, 'assistant', '📸', media_kind='photo', media_url=url)
             return url
         demo_url = await asyncio.to_thread(_demo_photo)
-        return web.json_response({'ok': True, 'reply': answer, 'photo_url': demo_url, **(extra or {})})
+        return web.json_response({'ok': True, 'reply': answer, 'photo_url': demo_url,
+                                  **({'draft': draft_offer} if draft_offer else {}), **(extra or {})})
     # V3.60.9: she wrote «лови фотку 📸» on her own — the photo must really come.
     # V3.113.0: also a bare «держи 😏» / «лови 💋» right after he asked to see her.
     if PHOTO_PROMISE.search(said) or (_HANDS_OVER.match(said) and _ASKED_TO_SEE.search(text or '')):
@@ -14541,6 +14603,8 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         if not block:
             payload = await _photo_turn('selfie', req, said=said)
             if payload:
+                if draft_offer:
+                    payload['draft'] = draft_offer
                 return web.json_response(payload)
             block = 'failed'
         if block in ('peaches', 'premium', 'spicy', 'free_used', 'stage', 'adult'):
@@ -14561,6 +14625,8 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                                       'reply': join_thought_message(thought_said, said + '\n\n' + note),
                                       **(extra or {})})
     payload = {'ok': True, 'reply': answer}
+    if draft_offer:
+        payload['draft'] = draft_offer
     # V3.140.0: the model sold the duo herself — reply() already flipped the
     # state; the app gets the guest pill and, without Premium, the blur teaser.
     from services import invite_funnel
@@ -15418,6 +15484,45 @@ async def _webapp_api_chat_branch(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'already_chosen'}, status=409)
     from services.branch_service import FORK_OPTIONS
     return web.json_response({'ok': True, 'branch': branch, 'reply': reply, 'answer': FORK_OPTIONS[branch]})
+
+
+async def _webapp_api_chat_draft(request: web.Request) -> web.Response:
+    """V3.152.0: owner ТЗ (Фогель, Модуль 1) — «👀 Прочитать стёртое сообщение».
+    The plate under her answer carries only the message id; what she typed and
+    erased leaves the server once the peaches are really spent."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    try:
+        message_id = int(body.get('message_id') or 0)
+    except (TypeError, ValueError):
+        message_id = 0
+    if not character_id or message_id <= 0:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+
+    def _unlock():
+        from services import draft_service
+        return draft_service.unlock(telegram_id, character_id, message_id)
+
+    res = await asyncio.to_thread(_unlock)
+    if not res.get('ok'):
+        error = res.get('error')
+        status = 402 if error == 'insufficient_peaches' else 404 if error == 'not_found' else 400
+        return web.json_response({'ok': False, 'error': error or 'bad_request',
+                                  'cost': res.get('cost', 0)}, status=status)
+    return web.json_response({'ok': True, 'text': res.get('text', ''),
+                              'price': res.get('price', 0), 'free': bool(res.get('free')),
+                              'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
 
 
 async def _webapp_api_chat_level(request: web.Request) -> web.Response:
@@ -18383,6 +18488,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/chat/level', _webapp_api_chat_level)
     app.router.add_post('/webapp/api/chat/level/pick', _webapp_api_chat_level_pick)
     app.router.add_post('/webapp/api/chat/branch', _webapp_api_chat_branch)
+    app.router.add_post('/webapp/api/chat/draft', _webapp_api_chat_draft)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)
     app.router.add_post('/webapp/api/chat/media', _webapp_api_chat_media)

@@ -15,6 +15,7 @@ from services.behavior_service import behavior_context, choose_behavior
 from services.dialogue_guard_service import build_repetition_guard, casual_punctuation, diversify_emoji, finish_or_drop, polish_first_message
 from services.hook_service import next_hook
 from services.daily_life import her_moment
+from services import biorhythm
 from services.character_dna_service import competency_context, character_dna_context
 from services.state_service import state_context, softly_evolve_state
 from services.user_service import ensure_user, get_user
@@ -45,7 +46,8 @@ def _spawn_background(coro, label: str) -> None:
     task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
-def _time_context(telegram_id: int, character_id: str = '') -> str:
+def _time_context(telegram_id: int, character_id: str = '', level: int = 0,
+                  marital_status: str = '', spicy_open: bool = False) -> str:
     user = get_user(telegram_id)
     if not user or not user.timezone:
         return ""
@@ -54,18 +56,19 @@ def _time_context(telegram_id: int, character_id: str = '') -> str:
         # V3.63.13: her own day at his hour, so she isn't «только из душа» at noon and midnight alike.
         moment = her_moment(character_id, now_local)
         hour = now_local.hour
-        if 5 <= hour < 12:
-            tod = "утро"
-        elif 12 <= hour < 18:
-            tod = "день"
-        elif 18 <= hour < 23:
-            tod = "вечер"
-        else:
-            tod = "ночь"
+        # V3.152.0: the label and the tone block come from one place, so she
+        # never says «день» at 23:30 while writing in a whisper.
+        tod = {biorhythm.MORNING: 'утро', biorhythm.DAY: 'день',
+               biorhythm.EVENING: 'вечер', biorhythm.NIGHT: 'ночь'}[biorhythm.phase(hour)]
         return (
             f"Сейчас у пользователя {now_local.strftime('%H:%M')} ({user.timezone}), "
             f"время суток: {tod}. Используй это для уместных приветствий и реплик."
-        ) + ('\n' + moment if moment else '')
+        ) + ('\n' + moment if moment else '') + (
+            # V3.152.0: owner ТЗ (Фогель, Модуль 5) — the hour also sets her
+            # tone and how far she dares to whisper. Only the live dialog asks
+            # for it (level > 0); pushes keep their own day-part wording.
+            '\n' + biorhythm.phase_directive(hour, level, marital_status, spicy_open)
+            if level else '')
     except Exception:
         return ""
 
@@ -171,24 +174,28 @@ def plain_message(text: str, *, duo: bool = False) -> str:
 #
 # The markers are read BEFORE _clean(): plain_message() strips a leading
 # «Имя:» as a theatre signature, which would silently eat «THOUGHT:».
-_NOVEL_MARK = re.compile(r"(?i)(THOUGHT|МЫСЛИ|MESSAGE|СООБЩЕНИЕ)\s*:\s*")
+# V3.152.0 (Фогель, Модуль 1) adds the third block: DRAFT — what she typed and
+# erased. It never becomes a message and never reaches TTS.
+_NOVEL_MARK = re.compile(r"(?i)(THOUGHT|МЫСЛИ|DRAFT|ЧЕРНОВИК|MESSAGE|СООБЩЕНИЕ)\s*:\s*")
 
 
 def _is_thought_key(key: str) -> bool:
     return key.startswith(('thought', 'мысл'))
 
 
-def split_thought_message(raw: str) -> tuple[str, str]:
-    """«THOUGHT: …\\nMESSAGE: …» → (thought, message). Unmarked text is not the
-    novel format: it comes back as ('', text), so every older caller and test
-    that mocks a plain model answer keeps working exactly as before. A model
-    that opened the block but left MESSAGE empty keeps her line as the
-    message — losing his reply is worse than losing the card."""
+def _is_draft_key(key: str) -> bool:
+    return key.startswith(('draft', 'чернов'))
+
+
+def _blocks(raw: str) -> tuple[str, str, str]:
+    """(thought, draft, message) from one raw model answer. Unmarked text is not
+    the novel format: it comes back as ('', '', text), so every older caller and
+    test that mocks a plain model answer keeps working exactly as before."""
     t = raw or ''
     marks = [{'key': m.group(1).lower(), 'a': m.start(), 'b': m.end()} for m in _NOVEL_MARK.finditer(t)]
-    if not marks or not any(not _is_thought_key(x['key']) for x in marks):
-        return '', t
-    thought = message = ''
+    if not marks or not any(not _is_thought_key(x['key']) and not _is_draft_key(x['key']) for x in marks):
+        return '', '', t
+    thought = draft = message = ''
     if marks[0]['a'] > 0:
         message = t[:marks[0]['a']].strip()
     for i, x in enumerate(marks):
@@ -198,9 +205,23 @@ def split_thought_message(raw: str) -> tuple[str, str]:
             continue
         if _is_thought_key(x['key']):
             thought = (thought + ' ' + body).strip()
+        elif _is_draft_key(x['key']):
+            draft = (draft + ' ' + body).strip()
         else:
             message = (message + '\n' + body).strip() if message else body
-    return (thought, message) if message else ('', thought)
+    if message:
+        return thought, draft, message
+    # She opened the blocks and left MESSAGE empty. Losing his reply is worse
+    # than losing the card, so what she wrote becomes the message — and the
+    # erased draft stays erased: a broken format never hands out paid text.
+    return '', '', (thought or draft or t).strip()
+
+
+def split_thought_message(raw: str) -> tuple[str, str]:
+    """«THOUGHT: …\nMESSAGE: …» → (thought, message). A model that opened the
+    block but left MESSAGE empty keeps her line as the message."""
+    th, _dr, md = _blocks(raw)
+    return th, md
 
 
 def join_thought_message(thought: str, message: str) -> str:
@@ -221,7 +242,13 @@ def thought_block(text: str) -> str:
 def message_block(text: str) -> str:
     """What he reads as her message — and the ONLY text that may reach TTS:
     «В TTS (озвучку) этот блок НЕ передавать»."""
-    return split_thought_message(text or '')[1]
+    return _blocks(text or '')[2]
+
+
+def draft_block(text: str) -> str:
+    """The draft she erased — paid text. It is read out of the raw model answer
+    only, never out of the stored message, and never spoken."""
+    return _blocks(text or '')[1]
 
 
 def _clean_thought(raw: str) -> str:
@@ -259,7 +286,12 @@ NOVEL_FORMAT_SUFFIX_DUO = (
 )
 
 
-def novel_format_suffix(duo: bool = False) -> str:
+def novel_format_suffix(duo: bool = False, draft: bool = False) -> str:
+    if draft:
+        # V3.152.0 (Фогель, Модуль 1): THOUGHT / DRAFT / MESSAGE — the third
+        # block is what she erased, and it is the paid one.
+        from services import draft_service
+        return draft_service.DRAFT_FORMAT_SUFFIX
     return NOVEL_FORMAT_SUFFIX_DUO if duo else NOVEL_FORMAT_SUFFIX
 
 
@@ -315,8 +347,8 @@ def novel_engine_context(level: int, marital_status: str = '') -> str:
         'И ОДНО ДЕЙСТВИЕ. За одно его сообщение — один физический шаг вперёд '
         '(встала, закрыла ноутбук, включила свет в коридоре, приоткрыла дверь), '
         'не десять.\n'
-        'МЕТКИ: пиши ровно «THOUGHT:» и «MESSAGE:» — карточку мыслей приложение '
-        'рисует по ним и никогда не озвучивает.'
+        'МЕТКИ: пиши ровно те метки, что заданы правилом формата в конце, — '
+        'карточку мыслей приложение рисует по ним и никогда не озвучивает.'
     )
 
 
@@ -326,6 +358,14 @@ def novel_pair(raw: str, *, duo: bool = False) -> tuple[str, str]:
     — keeps working on her MESSAGE only; the card is joined back at the end."""
     th, md = split_thought_message(raw or '')
     return (_clean_thought(th) if th else ''), _clean(md, duo=duo)
+
+
+def novel_draft(raw: str) -> str:
+    """V3.152.0 (Фогель, Модуль 1): the draft she erased, cleaned like the card.
+    It is read out of the raw model answer only — the stored message and the
+    voice never carry it."""
+    dr = draft_block(raw or '')
+    return _clean_thought(dr) if dr else ''
 
 
 # V3.139.0: owner ТЗ — in a duo chat every girl's line is its own message, with
@@ -822,7 +862,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             adaptation_level, novel_marital)
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + (spicy_line + '\n' if spicy_line else '') + (style_line + '\n' if style_line else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id, character_id), adaptation,
-        time_context=_time_context(user_id, character_id),
+        time_context=_time_context(user_id, character_id, level=adaptation_level,
+                                   marital_status=novel_marital, spicy_open=bool(spicy_line)),
         character_id=character_id,
         user_name=user_name, duo=duo_chat,
     )
@@ -875,6 +916,15 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             messages.append({"role": "system", "content": care_note})
     except Exception:
         care_kind = ''
+    # V3.152.0: owner ТЗ (Фогель, Модуль 1) — now and then she types a whole
+    # message, reads it back and erases it. The dice are rolled once, here, so
+    # the prompt that asks for the third block and the plate under her answer
+    # can never disagree. A scene he directed herself into, and a day where he
+    # is down, are not the moment for a paid curiosity.
+    from services import draft_service
+    draft_due = bool(novel_layers and not scene and not care_kind and
+                     draft_service.will_trigger(db_user_id, character_id,
+                                                adaptation_level, user_text))
     # V3.113.0: her own small story for these days (services/her_story.py) —
     # something happens in her life, she tells it and asks what he thinks.
     if not scene and not guest_reminder and not care_kind and not _is_card_girl(character_id):
@@ -936,25 +986,37 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # V3.151.0: owner ТЗ — the format rule goes AFTER his message: whatever is
     # last before the generation is what the model obeys.
     if not chosen.intent.startswith('task'):
-        messages.append({"role": "system", "content": novel_format_suffix(duo=duo_chat)})
+        # The hidden switch first, the format rule last: what sits closest to
+        # the generation is what the model obeys.
+        if draft_due:
+            messages.append({"role": "system", "content": draft_service.trigger_directive()})
+        messages.append({"role": "system", "content": novel_format_suffix(duo=duo_chat, draft=draft_due)})
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
     if scene:
         token_budget = 420
     if novel_layers:
         # two layers instead of one line — 320 tokens cut the MESSAGE off
         token_budget = max(token_budget, 640)
+    if draft_due:
+        # a third block (40–60 words) on top of the two layers
+        token_budget = max(token_budget, 760)
     # V3.143.0: owner ТЗ — the dialogue is sampled cooler than MiniMax's chat
     # default (1.0 was where the dead ends and invented facts peaked), and the
     # stop sequences cut her off the moment she starts typing his line.
     stops = stop_sequences(user_name)
     r = await generate_text(messages, max_tokens=token_budget, temperature=0.8, purpose='dialogue', stop=stops)
     thought = ''
+    draft = ''
     if not (r.text or '').strip():
         _lang = 'en' if (foreign or (language_code or '').lower().startswith('en')) else 'ru'
         answer = stall_line(_lang, [m.content for m in history if m.role == 'assistant'][-6:])
         _logger.warning('dialogue empty from all providers user=%s character=%s', user_id, character_id)
     else:
         thought, answer = novel_pair(r.text, duo=duo_chat)
+        # V3.152.0 (Фогель, Модуль 1): the erased draft is born in this same
+        # generation and leaves it right here — it never joins `answer`, never
+        # reaches the stored message text and is never spoken by the voice.
+        draft = novel_draft(r.text) if draft_due else ''
         # V3.113.0: her planning notes in English («*   Is it in character»)
         # and a reply cut mid-word on the token cap were sent as they were.
         if live_talk.looks_leaked(answer) and not foreign:
@@ -964,16 +1026,21 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                 t2, fixed = novel_pair(retry.text or '', duo=duo_chat) if (retry.text or '').strip() else ('', '')
                 if fixed and not live_talk.looks_leaked(fixed):
                     answer, r, thought = fixed, retry, t2
+                    draft = novel_draft(retry.text or '') if draft_due else ''
                 else:
                     answer = stall_line('ru', _her_recent[-6:])
+                    draft = ''
             except Exception:
                 answer = stall_line('ru', _her_recent[-6:])
+                draft = ''
         elif not getattr(r, 'complete', True):
             answer = finish_or_drop(answer, False, lang) or answer
         if REFUSAL.search(answer):
             answer = await _recover_from_refusal(answer, character, duo=duo_chat)
+            draft = ''
         elif BREAKUP.search(answer):
             answer = await _stay_in_chat(answer, character, duo=duo_chat)
+            draft = ''
         answer = await _rewrite_if_needed(messages, user_text, answer, character, duo=duo_chat)
         if foreign and not lang_guard.reply_ok(answer, lang, user_text):
             # still Russian (or plain Latin to a Bengali line): one firm
@@ -986,6 +1053,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                 t2, fixed = novel_pair(retry.text or '', duo=duo_chat)
                 if fixed and lang_guard.reply_ok(fixed, lang, user_text):
                     answer, thought = fixed, t2
+                    draft = novel_draft(retry.text or '') if draft_due else ''
                 else:
                     _logger.warning('%s reply stayed in another language user=%s', lang, user_id)
             except Exception:
@@ -1007,6 +1075,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # notes or a task answer is dropped instead of shown.
     if thought and (not novel_layers or live_talk.looks_leaked(thought)):
         thought = ''
+    if draft and (not draft_due or live_talk.looks_leaked(draft)):
+        draft = ''
     answer = join_thought_message(thought, answer)
     save_message(db_user_id, character_id, "user", user_text)
     parts = duo_lines(answer) if duo_chat else []
@@ -1017,7 +1087,12 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         for name, line in parts:
             save_message(db_user_id, character_id, "assistant", f'{name}: {line}')
     else:
-        save_message(db_user_id, character_id, "assistant", answer)
+        mid = save_message(db_user_id, character_id, "assistant", answer,
+                           draft_text=draft or None)
+        if draft and mid:
+            # The plate itself is drawn by the delivery layer (Mini App payload
+            # / Telegram handler) — it gets the id, never the text.
+            draft_service.note_pending(user_id, character_id, mid)
     if gift and (r.text or '').strip():
         try:
             from services import memory_gift

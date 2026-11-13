@@ -341,6 +341,12 @@ class Message(Base):
     # messages table so the Mini App history renders it like the bot dialog.
     media_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     media_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # V3.152.0: owner ТЗ (Фогель, Модуль 1) — «Стертый черновик». What she typed
+    # and erased lives on its own column, NEVER inside `content`: the history
+    # endpoint and the prompt both read `content`, so an unpaid draft cannot leak
+    # to the client or back into the model. `_auto_migrate_all_tables` adds it.
+    draft_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    draft_unlocked: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 class Memory(Base):

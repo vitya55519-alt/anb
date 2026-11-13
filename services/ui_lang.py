@@ -187,6 +187,10 @@ FLOW_TEXT = {
         'welcome_edit': '🎁 Добро пожаловать! Тебе начислено {amount} фото-кредитов 👇',
         'welcome_edit_plain': '🎁 Добро пожаловать! 👇',
         'open_app': '📱 Открыть приложение',
+        'draft_plate': '✍️ {name} долго печатала сообщение и стёрла его…',
+        'draft_button': '👀 Прочитать стёртое · {price} 🍑',
+        'draft_unlocked': '🔓 Стертый черновик {name}: {text}',
+        'draft_gone': '😅 то сообщение она уже потеряла',
     },
     'en': {
         'girl_of_day': '🔥 Girl of the day — {name}',
@@ -201,6 +205,10 @@ FLOW_TEXT = {
         'welcome_edit': '🎁 Welcome! {amount} photo credits are on your account 👇',
         'welcome_edit_plain': '🎁 Welcome! 👇',
         'open_app': '📱 Open the app',
+        'draft_plate': '✍️ {name} typed a long message and erased it…',
+        'draft_button': '👀 Read what she erased · {price} 🍑',
+        'draft_unlocked': '🔓 Her erased draft, {name}: {text}',
+        'draft_gone': '😅 that draft is gone',
     },
     'es': {
         'girl_of_day': '🔥 Chica del día — {name}',
@@ -215,6 +223,10 @@ FLOW_TEXT = {
         'welcome_edit': '🎁 ¡Bienvenido! Tienes {amount} créditos de fotos 👇',
         'welcome_edit_plain': '🎁 ¡Bienvenido! 👇',
         'open_app': '📱 Abrir la app',
+        'draft_plate': '✍️ {name} escribió un mensaje largo y lo borró…',
+        'draft_button': '👀 Leer lo que borró · {price} 🍑',
+        'draft_unlocked': '🔓 El borrador borrado de {name}: {text}',
+        'draft_gone': '😅 ese borrador ya no está',
     },
     'it': {
         'girl_of_day': '🔥 Ragazza del giorno — {name}',
@@ -229,6 +241,10 @@ FLOW_TEXT = {
         'welcome_edit': '🎁 Benvenuto! Hai {amount} crediti foto 👇',
         'welcome_edit_plain': '🎁 Benvenuto! 👇',
         'open_app': '📱 Apri l’app',
+        'draft_plate': '✍️ {name} ha scritto a lungo e ha cancellato tutto…',
+        'draft_button': '👀 Leggi cosa ha cancellato · {price} 🍑',
+        'draft_unlocked': '🔓 La bozza cancellata di {name}: {text}',
+        'draft_gone': '😅 quella bozza non c’è più',
     },
     'fr': {
         'girl_of_day': '🔥 Fille du jour — {name}',
@@ -243,6 +259,10 @@ FLOW_TEXT = {
         'welcome_edit': '🎁 Bienvenue ! Tu as {amount} crédits photo 👇',
         'welcome_edit_plain': '🎁 Bienvenue ! 👇',
         'open_app': '📱 Ouvrir l’app',
+        'draft_plate': '✍️ {name} a écrit un long message puis l’a effacé…',
+        'draft_button': '👀 Lire ce qu’elle a effacé · {price} 🍑',
+        'draft_unlocked': '🔓 Le brouillon effacé de {name} : {text}',
+        'draft_gone': '😅 ce brouillon a disparu',
     },
     'zh': {
         'girl_of_day': '🔥 今日女孩 — {name}',
@@ -257,6 +277,10 @@ FLOW_TEXT = {
         'welcome_edit': '🎁 欢迎！已为你加上 {amount} 个照片积分 👇',
         'welcome_edit_plain': '🎁 欢迎！👇',
         'open_app': '📱 打开应用',
+        'draft_plate': '✍️ {name} 打了一大段话，又删掉了……',
+        'draft_button': '👀 看她删掉的话 · {price} 🍑',
+        'draft_unlocked': '🔓 {name} 删掉的草稿：{text}',
+        'draft_gone': '😅 那段草稿已经不在了',
     },
     'ja': {
         'girl_of_day': '🔥 今日の女の子 — {name}',
@@ -271,6 +295,10 @@ FLOW_TEXT = {
         'welcome_edit': '🎁 ようこそ！{amount}枚分のフォトクレジットを贈ったよ 👇',
         'welcome_edit_plain': '🎁 ようこそ！👇',
         'open_app': '📱 アプリを開く',
+        'draft_plate': '✍️ {name} はずっと打って、消しちゃった…',
+        'draft_button': '👀 消した文章を読む · {price} 🍑',
+        'draft_unlocked': '🔓 {name} が消した下書き：{text}',
+        'draft_gone': '😅 あの下書きはもうないよ',
     },
     'bn': {
         'girl_of_day': '🔥 আজকের মেয়ে — {name}',
@@ -285,6 +313,10 @@ FLOW_TEXT = {
         'welcome_edit': '🎁 স্বাগতম! তোমাকে {amount}টি ফটো ক্রেডিট দেওয়া হয়েছে 👇',
         'welcome_edit_plain': '🎁 স্বাগতম! 👇',
         'open_app': '📱 অ্যাপ খুলুন',
+        'draft_plate': '✍️ {name} অনেক লিখে মুছে ফেলেছে…',
+        'draft_button': '👀 মুছে দেওয়া লেখা পড়ো · {price} 🍑',
+        'draft_unlocked': '🔓 {name}-এর মুছে ফেলা ড্রাফট: {text}',
+        'draft_gone': '😅 ওই ড্রাফটটা আর নেই',
     },
 }
 

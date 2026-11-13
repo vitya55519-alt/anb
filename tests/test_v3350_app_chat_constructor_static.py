@@ -98,7 +98,9 @@ def test_api_chat_history_payload():
     assert 'get_recent_messages(db_user_id, character_id, limit)' in fn
     # V3.39.0: the row now also carries media_kind/media_url, so the dict opens
     # with the same role/content/ts triple and continues onto the media fields.
-    assert "{'role': m.role, 'content': m.content, 'ts': ts," in fn
+    # V3.152.0: the triple gains «id» in front — a tap on «прочитать стёртое»
+    # must point at exactly this message row.
+    assert "{'id': m.id, 'role': m.role, 'content': m.content, 'ts': ts," in fn
 
 
 def test_characters_grid_marks_custom_and_mine():

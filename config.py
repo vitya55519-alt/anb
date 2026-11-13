@@ -106,6 +106,16 @@ UNDRESS_PREMIUM_FREE_L7_8 = max(0, int(os.getenv("UNDRESS_PREMIUM_FREE_L7_8", "3
 # so UNDRESS_PEACH_COST=2.5 means 250 🍑.
 UNDRESS_PEACH_COST = max(1, int(float(os.getenv("UNDRESS_PEACH_COST", "2.5")) * PEACH_SCALE))
 COSPLAY_PHOTO_PEACH_COST = _peach_env("COSPLAY_PHOTO_PEACH_COST", 2)
+# V3.152.0: owner ТЗ (Фогель, Модуль 1) — «Стертый черновик». Sometimes she
+# writes something bolder than she dares to send, deletes it and answers
+# shortly; reading what she erased costs peaches. Pure text, no render, so the
+# price is a curiosity price: 50 🍑 ≈ 5 ₽ (env keeps the old unit: 0.5).
+DRAFT_PEACH_COST = max(1, int(float(os.getenv("DRAFT_PRICE_PEACHES", "0.5")) * PEACH_SCALE))
+# How often the erased draft appears, from which level of closeness, and how
+# many times a day per pair — the plate must stay an event, not wallpaper.
+DRAFT_TRIGGER_PCT = max(0, min(60, int(os.getenv("DRAFT_TRIGGER_PCT", "18"))))
+DRAFT_MIN_LEVEL = max(1, min(10, int(os.getenv("DRAFT_MIN_LEVEL", "2"))))
+DRAFT_MAX_PER_DAY = max(0, min(10, int(os.getenv("DRAFT_MAX_PER_DAY", "4"))))
 # Hot Pass — безлимитная подписка на фото «наедине» и «косплей»
 HOT_PASS_DAY_PEACHES = _peach_env("HOT_PASS_DAY_PEACHES", 5)
 HOT_PASS_WEEK_PEACHES = _peach_env("HOT_PASS_WEEK_PEACHES", 25)

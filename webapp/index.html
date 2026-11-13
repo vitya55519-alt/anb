@@ -373,6 +373,16 @@
     background: rgba(255, 77, 141, .08); font-size: 13px; line-height: 1.45; }
   .thcard .th-h { color: #FF4D8D; font-weight: 700; font-size: 12px; }
   .thcard .th-b { font-style: italic; opacity: .9; margin-top: 3px; white-space: pre-wrap; word-break: break-word; }
+  /* V3.152.0: owner ТЗ (Фогель, Модуль 1) — «Стертый черновик»: a grey italic
+     plate where her erased message used to be, and the paid text in its place. */
+  .dplate { align-self: flex-start; max-width: calc(82% - 36px); margin: 4px 0 10px 36px;
+    display: flex; flex-direction: column; gap: 6px; box-sizing: border-box; }
+  .dplate .dplate-t { color: var(--muted, #9aa0ae); font-style: italic; font-size: 13px; line-height: 1.4;
+    padding: 8px 12px; border-radius: 14px; border: 1px dashed rgba(255,255,255,.18);
+    background: rgba(255,255,255,.04); overflow-wrap: anywhere; }
+  .dplate.done .dplate-t { color: var(--text); font-style: normal; border-style: solid;
+    border-color: rgba(255,77,141,.45); background: rgba(255,77,141,.07); }
+  .dplate .mchip { width: auto; align-self: flex-start; }
   /* V3.63.7: her small photo next to each of her messages, like in WhatsApp */
   .msg.bot.hav { position: relative; margin-left: 36px; max-width: calc(82% - 36px); }
   .msg .bav { position: absolute; left: -36px; bottom: 0; width: 30px; height: 30px; border-radius: 50%;
@@ -1745,6 +1755,10 @@ const L_EN = {
   typing_now: 'typing…',
   // V3.151.0: the novel engine — her thought card and the recording pause
   thoughts: n => '💭 ' + n + '\'s thoughts:', rec_voice: 'recording a voice note…',
+  // V3.152.0: the «Стертый черновик» plate (Фогель, Модуль 1)
+  draft_plate: n => '✍️ ' + n + ' typed a long message and erased it…',
+  draft_btn: p => '👀 Read what she erased · ' + p + ' 🍑',
+  draft_open: (n, t) => '🔓 Her erased draft, ' + n + ': ' + t,
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.', girl_of_day: 'Girl of the day · free',
   // V3.55.2: the premium-characters section under the grid
   prem_chars_title: 'Premium characters', prem_chars_hint: 'Unlocked with a Premium subscription', prem_chars_owned: 'Open with your subscription',
@@ -2034,6 +2048,10 @@ const L_RU = {
   typing_now: 'печатает…',
   // V3.151.0: движок новеллы — карточка мыслей и пауза записи голосового
   thoughts: n => '💭 Мысли ' + n + ':', rec_voice: 'записывает голосовое…',
+  // V3.152.0: тарелка «Стертый черновик» (Фогель, Модуль 1)
+  draft_plate: n => '✍️ ' + n + ' долго печатала сообщение и стёрла его…',
+  draft_btn: p => '👀 Прочитать стёртое · ' + p + ' 🍑',
+  draft_open: (n, t) => '🔓 Стертый черновик ' + n + ': ' + t,
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет', girl_of_day: 'Девушка дня · без Premium',
   // V3.55.2: секция премиум-персонажей под сеткой
   prem_chars_title: 'Премиум-персонажи', prem_chars_hint: 'Открываются подпиской Premium', prem_chars_owned: 'Открыты твоей подпиской',
@@ -2731,6 +2749,9 @@ const L_OV = {
     // the chat and the shop — the parts he sees most
     chat_hints: ['হাই 😊', 'তোমার কথা বলো', 'নিজেকে দেখাও 📸'], typing_now: 'লিখছে…',
     thoughts: n => '💭 ' + n + '-এর ভাবনা:', rec_voice: 'ভয়েস নোট লিখছে…',
+    draft_plate: n => '✍️ ' + n + ' অনেক লিখে মুছে ফেলেছে…',
+    draft_btn: p => '👀 মুছে দেওয়া লেখা পড়ো · ' + p + ' 🍑',
+    draft_open: (n, t) => '🔓 ' + n + '-এর মুছে ফেলা ড্রাফট: ' + t,
     day1_hints: ['আজ আমার দিনটা কেমন গেল বলি', 'আমাদের আগের কথা এগিয়ে নিয়ে যাই', 'তুমি আজ কী করেছ?'],
     marital_free: 'ফ্রি',
     years: 'বছর', soon: 'শীঘ্রই', prem: 'Premium', girl_of_day: 'আজকের মেয়ে · ফ্রি',
@@ -3667,17 +3688,101 @@ function thoughtCard(text) {
 }
 
 // «записывает голосовое…» — never shorter than three seconds (owner ТЗ).
-function showRecording(done, ms) {
+// V3.152.0: the same pause now also plays «печатает…» over an erased draft, so
+// the line is a parameter (already escaped HTML) and the floor is 4 s there.
+function showRecording(done, ms, line) {
   const box = document.getElementById('chatMsgs');
   const nm = (CHAT && CHAT.name) || '';
   box.insertAdjacentHTML('beforeend',
-    '<div class="typing" id="chatTypingRec">' + esc(nm) + ' ' + esc(L.rec_voice) + '</div>');
+    '<div class="typing" id="chatTypingRec">' + (line || esc(nm) + ' ' + esc(L.rec_voice)) + '</div>');
   box.scrollTop = box.scrollHeight;
   setTimeout(() => {
     const el = document.getElementById('chatTypingRec');
     if (el) el.remove();
     done();
   }, Math.max(3000, ms || 3200));
+}
+
+// V3.152.0: owner ТЗ (Фогель, Модуль 1) — the plate she erased her message
+// under. `d` is {'id', 'price'} from her answer or {'paid', 'text'} from the
+// history; an unpaid draft text never reaches this file at all.
+const peachNum = n => String(Number(n) || 0).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+
+function draftPlate(d) {
+  if (!d) return '';
+  const nm = (CHAT && CHAT.name) || '';
+  const id = Number(d.id) || 0;
+  if (!id) return '';
+  if (d.paid) {
+    return '<div class="dplate done" data-dplate="' + id + '"><div class="dplate-t">' +
+      esc(typeof L.draft_open === 'function' ? L.draft_open(nm, d.text) : String(d.text || '')) +
+      '</div></div>';
+  }
+  const title = typeof L.draft_plate === 'function' ? L.draft_plate(nm) : '✍️ ' + nm;
+  const btn = typeof L.draft_btn === 'function' ? L.draft_btn(peachNum(d.price)) : '👀 ' + peachNum(d.price);
+  return '<div class="dplate" data-dplate="' + id + '"><div class="dplate-t">' + esc(title) +
+    '</div><button class="mchip on" data-draft="' + id + '">' + esc(btn) + '</button></div>';
+}
+
+// Her answer carries only the id + price; the price of the plate redrawn from
+// the history comes from the server too, so both look the same.
+function historyLine(m) {
+  if (!m || m.role === 'user' || !m.id || !m.draft || m.media_kind) return chatBubble(m);
+  const d = Object.assign({ id: m.id }, m.draft);
+  const nv = parseThought(m.content || '');
+  if (!nv.thought) return draftPlate(d) + chatBubble(m);
+  // same order as a live answer: card → plate → the message she did send
+  return thoughtCard(nv.thought) + draftPlate(d) +
+    chatBubble(Object.assign({}, m, { content: nv.message, novel: true }));
+}
+
+function afterDraft(d, done) {
+  if (!d || !d.id) { done(); return; }
+  const box = document.getElementById('chatMsgs');
+  const nm = (CHAT && CHAT.name) || '';
+  showRecording(() => {
+    box.insertAdjacentHTML('beforeend', draftPlate(d));
+    box.scrollTop = box.scrollHeight;
+    done();
+  }, 4000, esc(nm) + ' ' + esc(L.typing_now));
+}
+
+async function unlockDraft(id, btn) {
+  if (!CHAT) return;
+  if (!tg.initData) { toast(L.auth_short); return; }
+  const characterId = CHAT.id;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/webapp/api/chat/draft?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: characterId, message_id: id }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 402) {
+      if (btn) btn.disabled = false;
+      quickBuy('peaches', () => unlockDraft(id, btn));
+      return;
+    }
+    if (!j.ok) {
+      if (btn) btn.disabled = false;
+      toast(r.status === 401 ? L.auth_short : (j.error === 'not_found' ? (L.pa_not_found || L.reply_err) : L.reply_err));
+      return;
+    }
+    if (!CHAT || CHAT.id !== characterId) return;
+    const plate = document.querySelector('[data-dplate="' + id + '"]');
+    const html = draftPlate({ id: id, paid: true, text: j.text || '' });
+    if (plate) plate.outerHTML = html;
+    else {
+      const box = document.getElementById('chatMsgs');
+      box.insertAdjacentHTML('beforeend', html);
+      box.scrollTop = box.scrollHeight;
+    }
+    if (ME && j.credits != null) ME.photo_credits = j.credits;
+    loadMe();
+  } catch (e) {
+    if (btn) btn.disabled = false;
+    toast(L.reply_err);
+  }
 }
 
 function chatBubble(roleOrM, content, ts) {
@@ -4263,7 +4368,11 @@ async function loadChatHistory(characterId) {
       box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
       openStartSheet(characterId);
     }
-    else { box.innerHTML = j.history.map(m => chatBubble(m)).join(''); }
+    else {
+      // V3.152.0: an erased draft survives a reload — a paid one comes back
+      // open, an unpaid one still offers the plate (the text never does).
+      box.innerHTML = j.history.map(historyLine).join('');
+    }
     // V3.55.6: the server says this premium pair has no manner chosen yet —
     // show the one-time tender/passionate picker above the input.
     if (j.persona && j.persona.needed) renderPersonaBanner(characterId);
@@ -4516,13 +4625,16 @@ function renderChatReply(j) {
   // seconds, then the single MESSAGE bubble. The card is text only and is never
   // handed to TTS.
   const nv = parseThought(String(j.reply || ''));
+  // V3.152.0: owner ТЗ (Фогель, Модуль 1) — under her card comes «печатает…»
+  // for four seconds and the grey plate of the message she erased; only then
+  // her real reply. The erased text itself is not in this payload.
   if (!nv.thought) {
-    return insertChatReply(nv.message === j.reply ? j : Object.assign({}, j, { reply: nv.message }));
+    return afterDraft(j.draft, () => insertChatReply(nv.message === j.reply ? j : Object.assign({}, j, { reply: nv.message })));
   }
   const box = document.getElementById('chatMsgs');
   box.insertAdjacentHTML('beforeend', thoughtCard(nv.thought));
   box.scrollTop = box.scrollHeight;
-  showRecording(() => insertChatReply(Object.assign({}, j, { reply: nv.message, novel: 1 })));
+  afterDraft(j.draft, () => showRecording(() => insertChatReply(Object.assign({}, j, { reply: nv.message, novel: 1 }))));
 }
 
 function insertChatReply(j) {
@@ -5050,6 +5162,14 @@ document.addEventListener('click', e => {
   const kind = b.getAttribute('data-cmedia');
   if (b.parentNode) b.parentNode.remove();
   requestMedia(kind);
+});
+
+// V3.152.0: «👀 Прочитать стёртое» — the plate pays itself in place.
+document.addEventListener('click', e => {
+  const b = e.target && e.target.closest ? e.target.closest('[data-draft]') : null;
+  if (!b) return;
+  e.stopPropagation();
+  unlockDraft(Number(b.getAttribute('data-draft')) || 0, b);
 });
 
 async function requestMedia(kind, scene, opts) {

@@ -43,6 +43,7 @@ from config import (
     CONSTRUCTOR_COST_PEACHES,
     CONSTRUCTOR_COST_RUB,
     CONSTRUCTOR_PRICE_USD,
+    DRAFT_PEACH_COST,  # V3.152.0: the «Стертый черновик» price tag on a locked plate
     CUSTOM_PHOTO_COST_STARS,
     FREE_LATE_FROM_DAY,
     FREE_MESSAGES_PER_DAY,
@@ -1067,11 +1068,21 @@ def api_chat_history(db_user_id: int, character_id: str, limit: int = 30) -> lis
             ts = m.created_at.isoformat() if m.created_at else None
         except Exception:
             ts = None
-        out.append({'role': m.role, 'content': m.content, 'ts': ts,
-                    # V3.39.0: media messages (photo / circle / voice) travel
-                    # with the history so the app renders them like the bot.
-                    'media_kind': getattr(m, 'media_kind', None),
-                    'media_url': getattr(m, 'media_url', None)})
+        # V3.152.0 (Фогель, Модуль 1): the message id lets a tap on «прочитать
+        # стёртое» point at exactly this row. The draft text itself leaves the
+        # server only once he has paid for it — a locked plate carries the
+        # price, nothing more.
+        draft = (getattr(m, 'draft_text', None) or '').strip()
+        paid = bool(getattr(m, 'draft_unlocked', False))
+        entry = {'id': m.id, 'role': m.role, 'content': m.content, 'ts': ts,
+                 # V3.39.0: media messages (photo / circle / voice) travel
+                 # with the history so the app renders them like the bot.
+                 'media_kind': getattr(m, 'media_kind', None),
+                 'media_url': getattr(m, 'media_url', None)}
+        if draft:
+            entry['draft'] = {'paid': paid, 'price': DRAFT_PEACH_COST,
+                              'text': draft if paid else ''}
+        out.append(entry)
     return out
 
 
