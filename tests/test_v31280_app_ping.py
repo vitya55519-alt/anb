@@ -18,8 +18,11 @@ class FakeBot:
 
 
 def _reset():
-    for d in (app_ping._presence, app_ping._pending, app_ping._last_ping, app_ping._day_count):
+    for d in (app_ping._presence, app_ping._pending, app_ping._last_ping, app_ping._day_count,
+              app_ping._seen):
         d.clear()
+    app_ping._armed.clear()
+    app_ping._sending.clear()
 
 
 def _patch(monkeypatch, lang='ru'):

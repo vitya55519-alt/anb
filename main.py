@@ -14126,7 +14126,11 @@ async def _webapp_api_spicy(request: web.Request) -> web.Response:
 async def _webapp_api_presence(request: web.Request) -> web.Response:
     """V3.128.0: the SPA's heartbeat (on screen) and away beacon (hidden or
     closed). In memory only, no DB: services/app_ping.py pings the bot chat
-    only for messages that landed while he was away."""
+    only for messages that landed while he was away.
+
+    V3.164.0: the beacon also releases the pings that waited for him to leave
+    (flush), and a third state — «seen» — is the SPA saying «I drew her answer
+    while he looked at this dialog», which is what really cancels a ping."""
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
     if not pairs:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
@@ -14134,7 +14138,14 @@ async def _webapp_api_presence(request: web.Request) -> web.Response:
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
     from services import app_ping
-    app_ping.touch(int(telegram_id), away=request.query.get('state') == 'away')
+    state = request.query.get('state', '')
+    if state == 'seen':
+        app_ping.seen(int(telegram_id), str(request.query.get('char', ''))[:64])
+        return web.json_response({'ok': True})
+    away = state == 'away'
+    app_ping.touch(int(telegram_id), away=away)
+    if away:
+        app_ping.flush(bot, int(telegram_id))
     return web.json_response({'ok': True})
 
 

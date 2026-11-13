@@ -76,8 +76,11 @@ def test_webapp_share_and_cta():
     assert "async function inviteFriends() {" in INDEX
     assert "me['invite'] = share_link(_me_bot.username or 'bot', telegram_id)" in MAIN
     assert "data['invite'] = share_link(me.username or 'bot', telegram_id)" in MAIN
-    # the post-generation referral CTA lives on the delivered media
-    assert 'class="gencta"' in INDEX
-    assert "_gc[_gc.length - 1].addEventListener('click', inviteFriends)" in INDEX
+    # V3.164.0: owner — «кнопка скачет, убери из чата кнопку позвать друга». The
+    # post-generation referral CTA is gone from the dialog; the invite stays on
+    # the gallery tile, so nothing appears and disappears between her bubbles.
+    assert 'class="gencta"' not in INDEX
+    assert "querySelectorAll('.gencta button')" not in INDEX
+    assert "gi.addEventListener('click', inviteFriends)" in INDEX
     # gallery share tiles
     assert "class=\"galshare\"" in INDEX

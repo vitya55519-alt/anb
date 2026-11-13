@@ -1237,10 +1237,9 @@
     padding: 5px 8px; font-size: 12px; font-weight: 600; cursor: pointer;
     background: rgba(0,0,0,.55); color: #fff; backdrop-filter: blur(2px); }
   .galcta { margin: 2px 0 10px; }
-  .galcta button, .gencta button { border: 0; border-radius: 12px; padding: 10px 14px;
+  .galcta button { border: 0; border-radius: 12px; padding: 10px 14px;
     font-size: 14px; font-weight: 600; cursor: pointer; width: 100%;
     background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
-  .gencta { margin: 8px 0 4px; }
   /* V3.47.1: gallery save-to-chat tile + achievement art thumbnails */
   .galsave { position: absolute; left: 5px; bottom: 5px; border: 0; border-radius: 8px;
     padding: 5px 8px; font-size: 12px; font-weight: 600; cursor: pointer;
@@ -3244,6 +3243,35 @@ async function loadCharacters() {
     tg.onEvent('deactivated', () => { active = false; away(); });
     tg.onEvent('activated', () => { active = true; beat(); });
   } catch (e) {}
+})();
+
+// V3.164.0: «he saw it». This ack — not the heartbeat — is what cancels the
+// bot's «она написала тебе в приложении» note: a minimized webview keeps
+// beating, so presence alone claimed «he is here» for messages he never read.
+function pingSeen() {
+  try {
+    if (!CHAT || document.visibilityState !== 'visible') return;
+    fetch('/webapp/api/presence?state=seen&char=' + encodeURIComponent(CHAT.id) +
+      '&init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST', cache: 'no-store' })
+      .catch(() => {});
+  } catch (e) {}
+}
+
+// V3.164.0: one observer over the dialog covers every route that draws her —
+// text, photo, circle, feature scenes, live frames. A bubble added while he
+// looks is a message he read; a ping about it would be noise.
+(function seenObserver() {
+  const box = document.getElementById('chatMsgs');
+  if (!box || !window.MutationObserver) return;
+  let last = 0;
+  new MutationObserver(muts => {
+    if (!CHAT || document.visibilityState !== 'visible') return;
+    if (!muts.some(m => m.addedNodes && m.addedNodes.length)) return;
+    const now = Date.now();
+    if (now - last < 1500) return;
+    last = now;
+    pingSeen();
+  }).observe(box, { childList: true });
 })();
 
 // V3.63.2: the bot's «💬 ответить ей» buttons open /webapp?open=chat — the
@@ -5578,13 +5606,10 @@ async function requestMedia(kind, scene, opts) {
     }
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
     if (kind === 'photo') undressTease(j.url);
-    // V3.47.0: referral CTA right after a delivered media (not voice) — the
-    // peak-emotion moment to share the invite link and earn a friend a 🍑.
-    if (j.url && j.kind !== 'voice') {
-      box.insertAdjacentHTML('beforeend', `<div class="gencta"><button type="button">${esc(L.invite_cta)}</button></div>`);
-      const _gc = box.querySelectorAll('.gencta button');
-      if (_gc.length) _gc[_gc.length - 1].addEventListener('click', inviteFriends);
-    }
+    // V3.164.0: owner — «кнопка скачет, убери из чата кнопку позвать друга».
+    // This CTA used to be appended after every delivered photo/video/circle and
+    // never after voice, so it appeared and disappeared between her bubbles.
+    // Inviting a friend stays on the gallery tile and the partner screen.
     box.scrollTop = box.scrollHeight;
     if (ME && j.credits_left != null) ME.photo_credits = j.credits_left;
     // V3.53.0: a delivered photo/circle/video can complete a 50-photo gallery set.
