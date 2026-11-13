@@ -91,7 +91,7 @@ def test_choice_lookup_refuses_nonsense():
 
 
 def test_the_paid_price_is_configured_and_peaches_are_bought_only():
-    assert qz.price() == INTERRUPT_PEACH_COST == 50
+    assert qz.price() == INTERRUPT_PEACH_COST == 30  # the ТЗ names this figure
     # main.py charges bought peaches only, like every other peach product
     assert 'spend_peaches, tid, interrupt_service.price(), paid_only=True' in MAIN
     assert 'spend_peaches(telegram_id, interrupt_service.price(), paid_only=True)' in MAIN

@@ -145,8 +145,8 @@ GIFT_AUTO_PHOTO_MIN_PEACHES = max(0, int(os.getenv("GIFT_AUTO_PHOTO_MIN_PEACHES"
 # отец), и у него есть секунды, чтобы выбрать, что делать. Это чистый
 # адреналин, поэтому редкое: раз в INTERRUPT_EVERY_MIN..MAX его сообщений и не
 # чаще INTERRUPT_MAX_PER_DAY раз в сутки на пару. Третий вариант ответа —
-# смелый: он для Premium или за персики (env в старых единицах: 0.5 = 50 🍑,
-# одна цена со «Стертым черновиком»).
+# смелый: он для Premium или за персики — в ТЗ это ровно 30 🍑 (env в старых
+# единицах: 0.3 = 30 🍑).
 INTERRUPTS_ENABLED = os.getenv("INTERRUPTS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 INTERRUPT_EVERY_MIN = max(2, int(os.getenv("INTERRUPT_EVERY_MIN", "10")))
 INTERRUPT_EVERY_MAX = max(INTERRUPT_EVERY_MIN, int(os.getenv("INTERRUPT_EVERY_MAX", "15")))
@@ -154,7 +154,7 @@ INTERRUPT_MAX_PER_DAY = max(0, min(5, int(os.getenv("INTERRUPT_MAX_PER_DAY", "1"
 # До третьего уровня «секрет» ещё нет: вас никто не ждёт, и событие выглядело бы
 # как спам от скрипта.
 INTERRUPT_MIN_LEVEL = max(1, min(10, int(os.getenv("INTERRUPT_MIN_LEVEL", "3"))))
-INTERRUPT_PEACH_COST = max(0, int(float(os.getenv("INTERRUPT_PEACH_COST", "0.5")) * PEACH_SCALE))
+INTERRUPT_PEACH_COST = max(0, int(float(os.getenv("INTERRUPT_PEACH_COST", "0.3")) * PEACH_SCALE))
 # Hot Pass — безлимитная подписка на фото «наедине» и «косплей»
 HOT_PASS_DAY_PEACHES = _peach_env("HOT_PASS_DAY_PEACHES", 5)
 HOT_PASS_WEEK_PEACHES = _peach_env("HOT_PASS_WEEK_PEACHES", 25)
