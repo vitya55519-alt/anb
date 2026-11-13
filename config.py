@@ -706,6 +706,12 @@ LIFE_EVENTS_QUIET_END_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_END
 # Probability of attaching a pool photo to a life moment (0 disables).
 LIFE_EVENTS_PHOTO_CHANCE = max(0.0, min(1.0, float(os.getenv("LIFE_EVENTS_PHOTO_CHANCE", "0.25"))))
 
+# V3.159.0: диета пушей (дамп 13.11). Ночное окно берём то же, что и у «жизни
+# без тебя», — PUSH не плодим константами; считается только пауза между
+# первыми сообщениями: сколько их влезло в одно окно и сколько всего в сутки.
+PUSH_SPACING_WINDOW_MINUTES = max(0, min(360, int(os.getenv("PUSH_SPACING_WINDOW_MINUTES", "120"))))
+PUSH_MAX_IN_WINDOW = max(0, min(5, int(os.getenv("PUSH_MAX_IN_WINDOW", "2"))))
+
 # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации» + спон-фото. Her day keeps the
 # life-event rail, but now and then the moment ends on a photo she is about to
 # send from where she actually is. The picture is rendered ONLY after he pays:

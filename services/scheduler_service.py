@@ -23,10 +23,24 @@ from services import donation_service
 from services import partner_service
 from services import retention_features_service
 from services import dialog_store
+from services import push_governor
 from services.ui_lang import app_lang, flow_text
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 logger=logging.getLogger(__name__); scheduler=AsyncIOScheduler()
+
+
+def _push_ok(uid: int, tz_name=None) -> bool:
+    """V3.159.0: one gate for every rail that writes first (services/push_governor)."""
+    try:
+        if tz_name is None:
+            with SessionLocal() as s:
+                tz_name = s.scalar(select(User.timezone).where(User.id == uid))
+        ok, _reason = push_governor.allow_push(uid, tz_name)
+        return ok
+    except Exception:
+        logger.exception('push gate failed user=%s', uid)
+        return True
 
 
 def _mark_blocked(uid: int) -> None:
@@ -149,6 +163,13 @@ async def _proactive(bot):
             with SessionLocal() as s:
                 u=s.get(User,uid)
                 if not u: continue
+                # V3.159.0: this rail ran on a UTC cron and wrote to sleeping
+                # men — 24% of its messages landed at night, and another pile
+                # arrived in the same two hours as a ritual. The gate runs
+                # before any state is spent, so a skipped night keeps the
+                # nudge ladder for the morning instead of burning a slot.
+                if not await asyncio.to_thread(_push_ok, uid, getattr(u, 'timezone', None)):
+                    continue
                 # V3.59.0: the push comes from the girl this user actually talks
                 # to — it used to always be the default heroine, so someone
                 # chatting with Alena got «скучаю» from a stranger.
@@ -270,6 +291,10 @@ async def _day1_hook(bot):
         try:
             lang = app_lang(lang)
             if not has_accepted(telegram_id):
+                continue
+            # V3.159.0: the gate runs before the LLM call — a hook that would
+            # land at 04:00 stays unspent and goes out on the next day scan.
+            if not await asyncio.to_thread(_push_ok, uid):
                 continue
             with SessionLocal() as s:
                 _u=s.get(User,uid)
@@ -1096,6 +1121,10 @@ async def _donation_reminder(bot):
         logger.info('donation reminder due count=%s', len(rows))
     for uid,tg_id,lang in rows:
         try:
+            # V3.159.0: 40% of the donation pings arrived at night. The ping is
+            # only stamped after a real send, so a skipped night moves it into
+            # the next daytime scan instead of losing it.
+            if not await asyncio.to_thread(_push_ok, uid): continue
             await bot.send_message(int(tg_id), donation_service.donation_appeal(lang), reply_markup=donation_service.donation_keyboard(lang))
             await asyncio.to_thread(donation_service.mark_donation_ping_sent, uid, now)
             track_event(uid, 'donation_reminder_sent', metadata={'lang': lang})
@@ -1119,6 +1148,9 @@ async def _partner_nudge(bot):
         logger.exception('partner nudge: get_me failed'); return
     for uid,tg_id,lang in rows[:200]:
         try:
+            # V3.159.0: the coarse 8–19 UTC window is a Moscow window; for a man
+            # in Manila it is the middle of the night. His own clock decides.
+            if not await asyncio.to_thread(_push_ok, uid): continue
             link=referral_link(me.username or 'bot', tg_id)
             kb=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text='📤 Share the link' if lang=='en' else '📤 Поделиться ссылкой', url=partner_service.partner_share_url(lang, link))],
@@ -1138,10 +1170,11 @@ async def _random_gifts(bot):
     fresh_cutoff=now-dt.timedelta(days=RITUAL_MAX_INACTIVE_DAYS)
     with SessionLocal() as s:
         users=s.scalars(select(User).where(User.proactive_enabled==True,User.notify_rituals!=False,User.last_active_at>=fresh_cutoff)).all()
-        snapshot=[(u.id,u.telegram_id,u.selected_character or CHARACTER_ID) for u in users]
+        snapshot=[(u.id,u.telegram_id,u.selected_character or CHARACTER_ID,u.timezone) for u in users]
     # Random 10% of users get a gift each run
-    for uid,tg_id,char_id in snapshot:
+    for uid,tg_id,char_id,tz in snapshot:
         if random.random() > 0.1: continue  # 10% chance
+        if not await asyncio.to_thread(_push_ok, uid, tz): continue
         try:
             msg=retention_features_service.get_character_gift(char_id)
             await bot.send_message(int(tg_id), msg)
@@ -1155,12 +1188,15 @@ async def _daily_compatibility(bot):
     fresh_cutoff=now-dt.timedelta(days=RITUAL_MAX_INACTIVE_DAYS)
     with SessionLocal() as s:
         users=s.scalars(select(User).where(User.proactive_enabled==True,User.notify_rituals!=False,User.last_active_at>=fresh_cutoff)).all()
-        snapshot=[(u.id,u.telegram_id,u.selected_character or CHARACTER_ID) for u in users]
+        snapshot=[(u.id,u.telegram_id,u.selected_character or CHARACTER_ID,u.timezone) for u in users]
     today_key=now.date().isoformat()
-    for uid,tg_id,char_id in snapshot:
+    for uid,tg_id,char_id,tz in snapshot:
         try:
             guard=(uid,'compatibility',today_key)
             if guard in _ritual_sent: continue
+            # V3.159.0: 42% of the forecasts used to wake men up. The docstring
+            # always promised a morning window; now the clock actually checks it.
+            if not await asyncio.to_thread(_push_ok, uid, tz): continue
             forecast=retention_features_service.get_daily_compatibility()
             await bot.send_message(int(tg_id), forecast)
             _ritual_sent.add(guard)
@@ -1536,6 +1572,9 @@ async def _whats_new(bot):
             if telegram_id in ADMIN_TELEGRAM_IDS:
                 continue
             cid = char_id or CHARACTER_ID
+            # V3.159.0: the gate comes before wn.mark — a round marked at
+            # night and never sent would be lost for good.
+            if not await asyncio.to_thread(_push_ok, uid): continue
             await asyncio.to_thread(wn.mark, uid, cid)
             lang = 'en' if user_lang(telegram_id) == EN else 'ru'
             text = wn.text(_char_name(cid), lang)
