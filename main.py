@@ -71,7 +71,7 @@ from services.photo_service import (
     get_gallery_page, get_gallery_item_bytes, GALLERY_PAGE_SIZE, generate_custom_avatar,
     generate_photo_set, photo_frame_bytes, AUTO_CAPTIONS,
     admin_pool_count, admin_pool_get, admin_pool_latest_id, admin_pool_neighbor, admin_pool_set_shared,
-    ensure_custom_avatar_cached, attach_guest, spicy_needs_premium,
+    ensure_custom_avatar_cached, attach_guest, spicy_needs_premium, AMATEUR_HOT_FRAME_LOCK,
 )
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
@@ -16968,6 +16968,18 @@ UNDRESS_TAIL = (
     'reveal uses only her other hand; if the reveal needs both hands, the phone is gone from the photo. '
     'Never a third hand or arm.'
 )
+# V3.152.1: owner ТЗ (Задачи 4 и 5) — снятый кадр остаётся её собственным
+# фото с телефона, а не съёмкой в студии, и в общественном месте он не живёт:
+# «то же место» из UNDRESS_PROMPT проигрывает, если на оригинале видно бар,
+# клуб, улицу или офис. Исключение — только его прямая просьба показать её
+# на людях (её обрабатывает enforce_private_location в общем конвейере).
+UNDRESS_AMATEUR_TAIL = (
+    ' ' + AMATEUR_HOT_FRAME_LOCK + ' PLACE: keep the room of image 1 when it is already private '
+    '(her home, bedroom, bathroom, hotel room). If image 1 was taken where other people can see her — a bar, '
+    'club, restaurant, street, office, mall, gym or transport — this reveal does NOT happen there: move her into '
+    'her bedroom or a hotel room and keep her face, hair, body and the rest of her outfit exactly as in image 1. '
+    'This place rule beats «the same place» above.'
+)
 # V3.61.10: «Раздеть» is not one pose — she shows a little of what is under
 # her clothes, picked to fit what she wears. Levels 1-3 stay in lingerie;
 # the topless hand-bra opens from level 4; partial reveal from 6.
@@ -17071,7 +17083,7 @@ def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) 
     except Exception:
         level = 1
     variant, reveal = UNDRESS_SAFE_VARIANT if safe else _undress_variant(level)
-    prompt, secret = UNDRESS_PROMPT + reveal + UNDRESS_TAIL, False
+    prompt, secret = UNDRESS_PROMPT + reveal + UNDRESS_TAIL + UNDRESS_AMATEUR_TAIL, False
     try:
         from services.webapp_service import _batch_marital, _default_marital
         status = _batch_marital(telegram_id, [character_id]).get(character_id) \

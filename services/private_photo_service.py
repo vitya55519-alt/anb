@@ -446,6 +446,11 @@ def _build_visual_identity_lock(character_id: str) -> str:
 # location never fights the type (a shower on the beach, a bed in the closet).
 PLACE_TYPED_CATEGORIES = frozenset({'fully_nude', 'nude_art', 'roleplay'})
 
+# V3.152.1: owner ТЗ (Задача 4) — «откровенность = lingerie / underwear / nude».
+# These are the frames the amateur-selfie lock belongs to; the clothed
+# apparel/roleplay sets stay the way they are.
+HOT_PRIVATE_CATEGORIES = frozenset({'lingerie', 'fully_nude', 'nude_art', 'suggestive'})
+
 # Places where a bed is actually in the frame — bed poses are drawn only there.
 _BED_PLACES = frozenset({'bedroom', 'hotel', 'candles', 'bed', 'silk_sheets', 'lazy_sunday', 'massage'})
 
@@ -527,6 +532,14 @@ def build_private_photo_prompt(
         parts.append(visual_lock)
     else:
         parts.append(f"Subject: {character_description}")
+    # V3.152.1: owner ТЗ (Задача 4) — «фото выглядят слишком студийно». The
+    # hot categories are her phone pictures, not a shoot, so the amateur
+    # modifiers go right under the identity: that is the one place the 4900
+    # character cap of SpicyAPI never trims. «Фотостудия» stays studio-lit
+    # because he picked that set with his own hands.
+    if request.category in HOT_PRIVATE_CATEGORIES and request.location_id != 'studio':
+        from services.photo_service import AMATEUR_HOT_FRAME_LOCK
+        parts.append(AMATEUR_HOT_FRAME_LOCK)
     
     # Обстановка
     location = next((loc for loc in LOCATIONS if loc["id"] == request.location_id), None)
@@ -634,8 +647,12 @@ def build_private_photo_prompt(
     elif request.category == "suggestive":
         parts.append("Clothed and non-explicit: her bra may show as described, no nudity")
     
-    from services.photo_service import apply_art_style
-    return apply_art_style("\n".join(parts), request.character_id)
+    from services.photo_service import apply_art_style, enforce_private_location
+    text = apply_art_style("\n".join(parts), request.character_id)
+    # V3.152.1: owner ТЗ (Задача 5) — an intimate look is never staged where
+    # other people can see her: a type that names a public place («в офисе»,
+    # «в кафе») is moved into a closed room by the override.
+    return enforce_private_location(text, intimate=request.category in HOT_PRIVATE_CATEGORIES)
 
 
 # ─── SpicyAPI интеграция ───────────────────────────────────────────────────────
@@ -709,12 +726,16 @@ _SPICY_DROP_ORDER = (
     'STYLING DETAILS:', 'MOOD:', 'UNDER-CLOTHING REALISM:',
     'RELATIONSHIP VISUAL PROGRESSION:', 'TIME OF DAY:', 'MAKEUP:',
 )
-# Trim tiers: 0 = everything else, 1 = what the shot is, 2 = who she is.
+# Trim tiers: 0 = everything else, 1 = what the shot is, 2 = who she is,
+# 3 = V3.152.1 — the three ТЗ locks (two women in the frame, the amateur hot
+# frame, the private-place override). They are cut last and are written as the
+# first lines of the prompt, so even the hard tail cut cannot reach them.
 _SPICY_TIERS = (
     ('SCENE:', 'WARDROBE:', 'CAMERA/POSE:', 'Create exactly ONE', 'Mainstream general-audience',
      'OUTFIT:', 'FACE LOCK:', 'BUST LOCK:', 'REFERENCE IMAGE 1', 'HANDS:', 'POSE NOTE:',
      'Photorealistic smartphone', 'Avoid identity drift', 'REFERENCE IMAGE 3'),
     ('PHOTO IDENTITY:', 'HARD SUBJECT LOCK:'),
+    ('TWO WOMEN IN FRAME:', 'AMATEUR HOT FRAME:', 'PRIVATE PLACE OVERRIDE:'),
 )
 
 

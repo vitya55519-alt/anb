@@ -25,13 +25,43 @@ def get_guest(telegram_id: int, character_id: str) -> str | None:
                 select(ChatGuest.guest_id).where(
                     ChatGuest.user_id == int(telegram_id), ChatGuest.character_id == character_id)
             ).first()
-        return row[0] if row else None
+        guest_id = row[0] if row else None
     except Exception:
         logger.exception('chat guest read failed user=%s', telegram_id)
         return None
+    # V3.152.1: owner ТЗ (Задача 2) — в пару к героине чата встаёт только
+    # официальная девушка «Персикового сада». Строка, оставшаяся от старой
+    # пользовательской сборки, читается как «никого не звали»: иначе чужая
+    # сборка продолжала бы попадать в duo-промпты и в совместные фото.
+    if guest_id and not is_official_guest(guest_id):
+        return None
+    return guest_id
+
+
+def is_official_guest(guest_id: str) -> bool:
+    """Only a storefront girl of the garden can be invited as the second one.
+
+    V3.152.1: the constructor personas (``custom_…`` ids) are excluded by id,
+    before any card read — a user build is never an official heroine, whatever
+    its card says."""
+    if not guest_id:
+        return False
+    from services.custom_character_service import is_custom_character
+    if is_custom_character(guest_id):
+        return False
+    try:
+        from services.character_card_service import get_card
+        card = get_card(guest_id)
+    except Exception:
+        return False
+    return bool(card and card.status == 'active' and card.is_visible)
 
 
 def set_guest(telegram_id: int, character_id: str, guest_id: str | None) -> None:
+    # V3.152.1: the write path is gated the same way the read path is, so a
+    # hand-crafted request cannot park a custom build in a chat either.
+    if guest_id and not is_official_guest(guest_id):
+        guest_id = None
     with SessionLocal() as session:
         row = session.get(ChatGuest, (int(telegram_id), character_id))
         if guest_id:
@@ -98,23 +128,13 @@ def speakers(telegram_id: int, host_id: str) -> dict[str, str]:
 
 
 def can_invite(telegram_id: int, host_id: str, guest_id: str) -> bool:
-    """Any active storefront girl, or the caller's own private creation."""
+    """V3.152.1: owner ТЗ (Задача 2) — the guest pool is the official garden
+    only. A storefront heroine, active and visible; the caller's own
+    constructor build is no longer an option («пользовательские сборки должны
+    быть полностью исключены из этого пула»)."""
     if not guest_id or guest_id == host_id:
         return False
-    try:
-        from services.character_card_service import get_card
-        card = get_card(guest_id)
-    except Exception:
-        return False
-    if not card or card.status != 'active':
-        return False
-    if card.is_visible:
-        return True
-    try:
-        from services.custom_character_service import get_all_custom_characters
-        return guest_id in {c.character_id for c in get_all_custom_characters(telegram_id)}
-    except Exception:
-        return False
+    return is_official_guest(guest_id)
 
 
 def host_has_duo(character_id: str) -> bool:

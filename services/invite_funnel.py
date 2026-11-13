@@ -71,14 +71,17 @@ def has_tag(text: str) -> bool:
 
 def pick_guest(telegram_id: int, host_id: str) -> str:
     """The friend she would invite: the first active storefront girl other
-    than the host — the same list the app's «Позвать подругу» sheet shows."""
+    than the host — the same list the app's «Позвать подругу» sheet shows.
+
+    V3.152.1: owner ТЗ (Задача 2) — only official heroines of the peach garden.
+    A constructor build (``custom_…``) is never suggested as the second one."""
     try:
-        from services.chat_guest_service import get_guest, host_has_duo
+        from services.chat_guest_service import get_guest, host_has_duo, is_official_guest
         if get_guest(telegram_id, host_id) or host_has_duo(host_id):
             return ''
         from services.character_card_service import list_cards
         for card in list_cards(visible_only=True):
-            if card.character_id != host_id and card.status == 'active':
+            if card.character_id != host_id and card.status == 'active' and is_official_guest(card.character_id):
                 return card.character_id
     except Exception:
         logger.exception('invite funnel pick failed user=%s', telegram_id)

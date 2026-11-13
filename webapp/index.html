@@ -689,16 +689,18 @@
     font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.4);
   }
   /* V3.61.7: actions under her photo */
-  /* V3.132.0: owner — «кнопки под фото некрасивые»: three nowrap buttons did
-     not fit the 220px bubble and ran into each other. Now «Раздеть» is one wide
-     bright button and «Скачать» / «Оживить» sit under it as two quiet ones. */
+  /* V3.152.1: owner ТЗ (Задача 1) — ровно два ряда: «🔥 Раздеть» на всю
+     ширину, ниже «🎬 Оживить» и «👯‍♀️ Вдвоём» пополам. «Скачать» здесь больше
+     нет — в Telegram кадр и так ложится в галерею в два тапа. */
   .msg .phact { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; max-width: 220px; }
   .msg .phact .pa { min-width: 0; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 8px 6px;
     background: rgba(255,255,255,.06); color: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
-  .msg .phact .pa.hot { grid-column: 1 / -1; order: -1; padding: 10px 8px; font-size: 14px; border: 0; color: #fff;
+  .msg .phact .pa.hot { grid-column: 1 / -1; padding: 10px 8px; font-size: 14px; border: 0; color: #fff;
     background: linear-gradient(90deg,#ff5fa2,#b44cff); box-shadow: 0 4px 14px rgba(255,95,162,.35); }
   .msg .phact .pa.hot small { font-weight: 600; opacity: .85; margin-left: 4px; font-size: 12px; }
+  /* no second girl in the chat — «Оживить» takes the whole second row */
+  .msg .phact .pa.wide { grid-column: 1 / -1; }
   .msg .phact .pa:disabled { opacity: .5; }
   .msg .dl { display: inline-block; margin-top: 6px; border: 0; border-radius: 14px; padding: 5px 12px;
     background: rgba(255,255,255,.1); color: inherit; font-size: 12.5px; cursor: pointer; }
@@ -4146,17 +4148,20 @@ function chatBubble(roleOrM, content, ts) {
         + '<button class="duobuy" type="button" data-duobuy="1">' + esc(L.duo_blur_btn) + '</button>';
     }
     else if (cls === 'bot') {
-      // V3.61.7: three clear actions under her photo — save, animate, undress.
+      // V3.152.1: owner ТЗ (Задача 1) — «Скачать» под её фото убрана: в
+      // Telegram любой кадр ложится в галерею в два тапа, а лишняя кнопка лишь
+      // крадёт внимание у платных действий. Строгих ряда два: «Раздеть» на всю
+      // ширину, под ним «Оживить» и «Вдвоём» пополам.
       // V3.138.0: her room picture («🏠 Дом») is an interior — there is nobody
       // to undress in it, so that button only goes under a photo of her.
       const room = m.media_kind === 'room';
       body = '<img class="m" src="' + esc(src) + '" data-lb="1" alt="">'
-        + '<div class="phact"><button class="pa" data-dl="' + esc(src) + '">' + esc(L.pa_save) + '</button>'
-        + '<button class="pa" data-pact="animate" data-media="' + esc(m.media_url) + '">' + esc(L.pa_anim) + '</button>'
+        + '<div class="phact">'
         + (room ? '' : '<button class="pa hot" data-pact="undress" data-media="' + esc(m.media_url) + '">' + esc(L.pa_undress)
         // V3.138.0: owner — the price here is peaches, never rubles (400 🍑 ≈ 40 ₽).
         // A number + the peach reads the same in every language of the app.
         + (ME && !ME.premium ? '<small>· ' + esc(ME.undress_peaches || 400) + ' 🍑</small>' : '') + '</button>')
+        + '<button class="pa' + (CHAT && CHAT.guest ? '' : ' wide') + '" data-pact="animate" data-media="' + esc(m.media_url) + '">' + esc(L.pa_anim) + '</button>'
         // V3.139.1: two girls in the chat — a «вдвоём» tap asks for the joint
         // frame instead of only the one shown (free → teaser, Premium → real).
         + (CHAT && CHAT.guest ? '<button class="pa" data-duojoint="1">' + esc(L.duo_together) + '</button>' : '')
@@ -4627,7 +4632,10 @@ async function openGuestPicker(characterId) {
       list = (await r.json()).characters || [];
     } catch (e) { list = []; }
   }
-  const girls = list.filter(c => c.id !== characterId && c.status === 'active');
+  // V3.152.1: owner ТЗ (Задача 2) — в паре участвуют только официальные
+  // героини «Персикового сада»: пользовательские сборки из конструктора
+  // (c.custom) из этого списка убраны совсем.
+  const girls = list.filter(c => c.id !== characterId && c.status === 'active' && !c.custom);
   let html = '<h3>' + esc(L.duo_call) + '</h3><div class="hint">' + esc(L.guest_sheet_hint) + '</div><div class="grid">';
   girls.forEach(c => {
     html += '<button class="g" data-guest="' + esc(c.id) + '"><img src="' + esc(c.photo) + '" alt="" loading="lazy">' + esc(c.name) + '</button>';

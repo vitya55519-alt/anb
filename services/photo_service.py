@@ -1150,6 +1150,155 @@ NEGATIVE_BLOCK = (
     'and underwear worn over the outfit: bra over the top, panties over jeans or any lingerie as outerwear.'
 )
 
+# ── V3.152.1: owner ТЗ (Задачи 3, 4, 5) — три жёстких замка промпта ────────
+#
+# All three sit at the START of the IMAGE_PROMPT on purpose. SpicyAPI takes
+# SPICYAPI_PROMPT_MAX characters and _fit_spicy_prompt eats the tail first, so
+# a rule that rides at the end is a rule the provider may never read — that is
+# exactly how «Вдвоём» kept rendering one girl (the guest block was the last
+# line) and why lingerie kept landing in bars. Their prefixes are registered as
+# the last-trimmed tier in _SPICY_TIERS (private_photo_service).
+
+AMATEUR_HOT_FRAME_LOCK = (
+    'AMATEUR HOT FRAME: this is a real candid photo she took herself on her phone, not a photoshoot. '
+    'Amateur mirror or handheld selfie: her own arm and the phone are in the frame, the framing is slightly off, '
+    'one corner of the room cut off. The room behind her is lived-in and a little messy — clothes on the chair, '
+    'an unmade bed, a towel on the floor. Intimate low warm light from a lamp or a window, real skin with pores '
+    'and soft shadows, nothing retouched. '
+    'Never: a professional photoshoot, studio lighting, a posed editorial frame, an artificial or symmetrical '
+    'portrait, high-fashion styling, a photographer\u2019s camera or a clean seamless backdrop. '
+    'Her face stays recognizable from the references even when the phone hides part of it.'
+)
+
+DUO_TRAITS_MAX = 6
+DUO_TRAITS_CHARS = 240
+# Traits that talk about the references instead of her face — useless in a
+# description of the second woman, who is not the subject of those references.
+_TRAITS_META = ('canonical', 'reference', 'approved', 'same person', 'identity')
+
+
+def _appearance_traits_en(character_id: str) -> str:
+    """Her look in plain English, for a two-women frame.
+
+    V3.152.1: profiles are read from disk and a heroine without a JSON file
+    used to raise FileNotFoundError — a missing file must never kill a paid
+    photo, so every failure here collapses to a generic descriptor."""
+    traits: list[str] = []
+    try:
+        visual = (resolve_character(character_id) or {}).get('visual_identity') or {}
+        traits = [str(t).strip() for t in (visual.get('preserve_identity') or []) if str(t).strip()]
+    except Exception:
+        traits = []
+    readable = [t for t in traits if not any(w in t.lower() for w in _TRAITS_META)][:DUO_TRAITS_MAX]
+    text = '; '.join(readable)
+    if len(text) > DUO_TRAITS_CHARS:
+        cut = text[:DUO_TRAITS_CHARS]
+        text = cut[:cut.rfind(',')] if ',' in cut else cut
+    return text or 'an adult woman with her own face, hair and figure'
+
+
+def duo_head_lock(character_id: str, guest_id: str) -> str:
+    """V3.152.1 (Задача 3): the first line of a duo IMAGE_PROMPT declares TWO
+    women and names both looks. The identity lock below it is singular by
+    nature («the SAME fictional adult woman»), so without this head the engine
+    drew only the host however carefully the guest was described further down."""
+    host_name = _character_display_name_safe(character_id)
+    guest_name = _character_display_name_safe(guest_id)
+    return (
+        'TWO WOMEN IN FRAME: two girls together, interacting, two women in frame. '
+        f'Two girls together. Girl 1: {host_name}, {_appearance_traits_en(character_id)}. '
+        f'Girl 2: {guest_name}, {_appearance_traits_en(guest_id)}. '
+        'Both of them are inside this one photo, close together and interacting: a shoulder touch, one leaning on '
+        'the other, a shared laugh, both faces visible. Never one woman alone in the frame, never a merged face, '
+        'never a third person; each keeps her own face, hair and figure.'
+    )
+
+# Задача 5: the intimate look and a public venue do not belong in one photo.
+PRIVATE_PLACES = ('her bedroom', 'her bathroom', 'her apartment', 'a hotel room')
+
+INTIMATE_LOOK = re.compile(
+    r'\b(lingerie|bra|bras|bralette|panties|underwear|thong|garter belt|garters|nude|naked|topless|'
+    r'breasts|nipples|areola\w*|genitals?|buttocks|ass|bare skin|bare shoulders|no bra|braless|'
+    r'without (any )?clothes|no clothing|undressed|boudoir|see[- ]through|sheer|robe falling open)\b', re.I
+)
+# Warnings about lingerie she does NOT show (the dress code, the layering
+# lock, the negative list) — they name lingerie while the frame stays clothed.
+_UNDERLAYER_NOISE = re.compile(
+    r'as outerwear|worn over|over (her|the) (outfit|clothing|jeans|top)|under[- ]layer|beneath (her|the) '
+    r'(outfit|clothing|fabric)|no lingerie|stays under|never draw a bra|public dress code|'
+    r'lingerie layering lock|clothed|fully dressed|general[- ]audience|styling is for|never for public|'
+    r'at[- ]home scenes only|is fine where her level allows', re.I
+)
+# His own words, and only his own: an explicit wish to be shown where other
+# people can see her is exhibition, and exhibition is what he asked for.
+EXHIBITION_WISH = re.compile(
+    r'(публично|эксгибицион\w*|на\s+людях|в\s+людн\w*|при\s+людях|в\s+(окне|туалете|уборной)'
+    r'|пока[зж]\w*.{0,40}(улиц|людн|публичн|офис|бар|клуб|транспорт|маршрутк|автобус|такс|машин|парк|магазин'
+    r'|примерочн|раздевал|ресторан|каф|пляж|бассейн|спортзал|метро|лестниц|подъезд|окно|балкон)'
+    r'|сним\w*.{0,30}(улиц|людн|публичн|в\s+(баре|клубе|офисе|такс|машин))'
+    r'|exhibit\w*|exhibition\w*|in public|people (can|could) see|on the street|somewhere public)', re.I
+)
+# Public venues named in the prompt text — the English scene words plus the
+# Russian day-context leaks («location=офис»). Detection only: cutting a venue
+# out of a finished sentence wrecks the grammar, so the place is overridden by
+# PRIVATE_PLACE_OVERRIDE instead of being rewritten in place. Fitting/changing
+# rooms are deliberately NOT listed — a mall fitting room is still caught
+# through «mall», and the private «changing_room» scene keeps its own name.
+PUBLIC_VENUE = re.compile(
+    r'\b(night ?club|club|bar|pub|bistro|caf[eé]|coffee shop|restaurant|canteen|mall|shopping cent(er|re)'
+    r'|boutique|store|shop|street|sidewalk|avenue|park|town square|embankment|beach|seaside|swimming pool|pool'
+    r'|yacht|bridge|festival|concert|cinema|theater|theatre|rooftop|terrace|balcony|staircase|stairwell|elevator'
+    r'|lobby|subway|metro|bus|trolleybus|tram|train|taxi|car park|gym|fitness club|locker room|sauna|airport'
+    r'|station|platform|classroom|office|workplace|conference room|boardroom|meeting room|open space|university'
+    r'|campus|library|market|queue|night street|dance floor|bar counter)\b'
+    r'|\b(клуб[аеыу]?|бар[аеыу]?|баре|паб[аеыу]?|кафе|кафешк\w*|кафетери\w*|ресторан\w*|офис\w*|\bработ[аыеуе]\w*'
+    r'|совещани\w*|коридор\w*|переговорк\w*|улиц\w*|парк[ауе]?|парке|сквер\w*|площадк\w*|набережн\w*|торговый центр'
+    r'|тц|магазин\w*|бутик\w*|маршрутк\w*|автобус\w*|троллейбус\w*|трамва\w*|метро|поезд\w*|вагон\w*|такс[ииуя]\w*'
+    r'|машин[аыеу]\b|спортзал\w*|фитнес\w*|бассейн\w*|пляж\w*|берег[ауе]|берега|берегу|береге|кинотеатр\w*|концерт\w*'
+    r'|фестивал\w*|вечеринк\w*|подъезд\w*|лестниц\w*|лифт\w*|аэропорт\w*|вокзал\w*|балкон\w*|террас\w*|аудитор\w*'
+    r'|лектори\w*|университет\w*|универ\w*|кафедра|библиотек\w*|рынк\w*|банкетн\w* зал|танцпол)\b', re.I)
+
+PRIVATE_PLACE_OVERRIDE = (
+    'PRIVATE PLACE OVERRIDE: she wears only lingerie (or nothing) in this frame, so this photo is NOT taken '
+    'in a public venue. The real setting is {place}; the time of day, the light and the mood stay as described. '
+    'Nobody but her is in the room and no bystanders are visible. Treat any public venue word below as a mistake: '
+    '{place} wins over any bar, club, restaurant, street, office, mall, gym or transport. '
+    'Never depict a lingerie or undressed look where other people can see her.'
+)
+
+
+def _intimate_prompt_text(prompt: str) -> bool:
+    """Is she showing skin in this prompt? Boilerplate that only forbids
+    lingerie (dress codes, layering locks, negative lists) is skipped, so a
+    fully clothed photo of a bar never counts as an intimate frame."""
+    for sentence in re.split(r'(?<=[.!?])\s+', prompt or ''):
+        if not sentence or _UNDERLAYER_NOISE.search(sentence):
+            continue
+        if INTIMATE_LOOK.search(sentence):
+            return True
+    return False
+
+
+def wants_public_exposure(text: str) -> bool:
+    return bool(EXHIBITION_WISH.search(text or ''))
+
+
+def enforce_private_location(prompt: str, user_text: str = '', *, intimate: bool | None = None) -> str:
+    """V3.152.1 (Задача 5): lingerie or nudity and a public venue cannot share
+    one photo — unless he himself asked for the exhibition. An intimate frame
+    gets its venue moved into a closed room, and the rule is put in front of
+    the prompt so the SpicyAPI tail trimming can never reach it."""
+    if not prompt:
+        return prompt
+    if intimate is None:
+        intimate = _intimate_prompt_text(prompt)
+    if not intimate or wants_public_exposure(user_text):
+        return prompt
+    if not PUBLIC_VENUE.search(prompt):
+        return prompt
+    place = random.choice(PRIVATE_PLACES)
+    return f'{PRIVATE_PLACE_OVERRIDE.format(place=place)}\n{prompt}'
+
 
 @dataclass(frozen=True)
 class GeneratedPhoto:
@@ -2235,7 +2384,7 @@ def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
     return variants[index % len(variants)]
 
 
-def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False, relationship_level: int = 1, character_id: str = CHARACTER_ID, *, force_safe: bool = False) -> str:
+def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False, relationship_level: int = 1, character_id: str = CHARACTER_ID, *, force_safe: bool = False, duo_block: str = '') -> str:
     scene = SCENES.get(request.scene, SCENES['selfie'])
     angle = _shot_variant(request.scene, shot_index, request.angle)
     outfits = tuple(request.pack_outfits) if request.pack_outfits else (request.clothing,)
@@ -2332,9 +2481,17 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     bust_lock_tail = f'\n{bust_lock}' if bust_lock else ''
     if not private_look and level_key >= 3:
         public_dress_rule += LEVEL_HEMLINE_RULE + '\n'
-    return apply_art_style(
+    # V3.152.1 (Задача 4): hot frames stop looking like a studio shoot. The
+    # amateur lock rides just under the identity, where the trimming of
+    # SpicyAPI cannot reach it; the general-audience OpenAI route never gets
+    # it, because there the safe wording is what keeps the generation alive.
+    amateur_lock = f'{AMATEUR_HOT_FRAME_LOCK}\n' if (private_look and seedream and not force_safe) else ''
+    duo_head = f'{duo_head_lock(character_id, request.with_guest)}\n' if request.with_guest else ''
+    body = apply_art_style(
         f'{identity}\n'
-        f'{adult_lock}\n'
+        + (f'{duo_block}\n' if duo_block else '')
+        + f'{amateur_lock}'
+        + f'{adult_lock}\n'
         f'SCENE: {scene}. {request.location}.\n'
         f'SEASON/WEATHER: {season}. {season_rule}\n'
         f'RELATIONSHIP VISUAL PROGRESSION: {visual_rule}\n'
@@ -2369,6 +2526,17 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         f'{NEGATIVE_BLOCK}'
         + bust_lock_tail,
         character_id,
+    )
+    # V3.152.1 (Задача 5): lingerie/nude and a public venue never share a
+    # photo. His own request is the only thing that keeps a public place, and
+    # the words he typed are what we check — not the venue she ended up in.
+    # Only the Seedream-flavoured legs (SpicyAPI and fal) ever render an
+    # intimate look; the general-audience OpenAI/Gemini routes stay clothed, so
+    # they must never be told she is in lingerie.
+    return duo_head + enforce_private_location(
+        body,
+        f'{request.story_detail} {request.clothing} {request.location} {request.angle}',
+        intimate=private_look and seedream,
     )
 
 
@@ -3101,7 +3269,8 @@ async def _run_spicy_set(
     logger.info('SpicyAPI set request user=%s scene=%s target_count=%s', telegram_id, request.scene, frames)
     for i in range(frames):
         frame_refs = refs + ([prev_url] if prev_url else [])
-        prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id, character_id), character_id=character_id) + (
+        prompt = _build_prompt(request, i, seedream=True, relationship_level=get_relationship_level(telegram_id, character_id),
+                               character_id=character_id, duo_block=guest_block) + (
             '\nCreate exactly ONE photo for this shot. Keep the same hairstyle, location and face identity '
             'as the other photos in this set; her body always follows the declared BODY IDENTITY — never the reference silhouette. '
             'Her figure is locked for this entire shoot: exactly the silhouette, bust size, waist and hips '
@@ -3109,8 +3278,6 @@ async def _run_spicy_set(
             'never draw her bigger, slimmer, flatter or smaller-chested than declared. '
             'Make this framing clearly different from the previous shot while staying in the same photo session.'
         )
-        if guest_block:
-            prompt += '\n' + guest_block
         if prev_url:
             prompt += (
                 '\nREFERENCE IMAGE 3 is the PREVIOUS photo of this same shoot: reproduce her exact body from image 3 — '

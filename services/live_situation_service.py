@@ -192,6 +192,17 @@ IMAGE_LOCATION_LOCK = (
     'bathroom, do not change the outfit, keep exactly one phone in her own hand.'
 )
 
+# V3.152.1: owner ТЗ (Задача 5) — откровенный кадр в общественном месте не
+# живёт: локация такой сцены уже принудительно перенесена в закрытую комнату,
+# и обычный лок «не уводи её в спальню» был бы прямым противоречием.
+IMAGE_PRIVATE_LOCATION_LOCK = (
+    'LOCATION LOCK: the photo is set in the private room named above — her '
+    'bedroom, bathroom, home or hotel room. Keep its light and its mood, do not '
+    'put her back into a bar, club, office, street, mall or any place where '
+    'other people could see her, do not add bystanders, keep exactly one phone '
+    'in her own hand.'
+)
+
 
 def _friend_name(telegram_id: int, character_id: str) -> str:
     """Имя настоящей второй героини бота — кроссовер из ТЗ."""
@@ -232,6 +243,11 @@ FORMAT_RULES = (
     'selfie, ровно то место, свет и одежда из MESSAGE, взрослая женщина, '
     'дерзкий взгляд. Никакого текста на кадре, никакого «AI», без детей. Это '
     'никому не отправляется, это только картинка.\n'
+    'V3.152.1 (Задача 5): если ты отправляешь откровенное фото (в белье или '
+    'без), ты НЕ МОЖЕШЬ находиться в общественном месте. Измени локацию в '
+    'IMAGE_PROMPT на закрытую комнату, ванную или туалет — свет, время суток '
+    'и настроение оставь те же. Общественное место живёт только в одетом '
+    'кадре, и только если ОН сам словами попросил показать её на людях.\n'
     'ГРАНИЦА ТА ЖЕ, ЧТО У ВСЕГО РАЗГОВОРА: если ему ещё не открыты откровенные '
     'подробности, в MESSAGE и в IMAGE_PROMPT их тоже нет — бери ожиданием и '
     'деталью, а не анатомией.\n'
@@ -535,6 +551,17 @@ async def unlock_photo(telegram_id: int, character_id: str, message_id: int,
                                 int(res.get('price') or 0), bool(res.get('free')))
         return {'ok': False, 'error': 'not_found'}
     full = f'{prompt}. {IMAGE_LOCATION_LOCK}'
+    try:
+        # V3.152.1 (Задача 5): if her own IMAGE_PROMPT put lingerie or nudity
+        # into a public place, the place moves behind a closed door before the
+        # provider ever sees the text — and the location lock switches to the
+        # private wording so the two instructions do not fight.
+        from services.photo_service import enforce_private_location
+        moved = enforce_private_location(prompt)
+        if moved != prompt:
+            full = f'{moved}. {IMAGE_PRIVATE_LOCATION_LOCK}'
+    except Exception:
+        logger.debug('live situation place fix failed user=%s', telegram_id)
     from services.private_photo_service import generate_live_situation_photo
     data = await generate_live_situation_photo(character_id, full)
     cost = int(res.get('price') or 0)
