@@ -285,6 +285,25 @@ def revoke_premium(telegram_id:int)->bool:
         s.commit(); return True
 
 
+def expire_stale_subscriptions() -> int:
+    """V3.159.1: in the 13.11 dump every one of the 31 subscription rows said
+    'active', 29 of them expired months ago. Nothing grants Premium from them
+    (all readers compare expires_at), so the state was only ever lying — to the
+    owner reading a dump and to any query that forgets the date. Stamp the
+    truth once a day instead of filtering around it forever."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    with SessionLocal() as s:
+        rows = s.scalars(select(Subscription).where(
+            Subscription.status == "active",
+            Subscription.expires_at.is_not(None),
+            Subscription.expires_at <= now,
+        )).all()
+        for sub in rows:
+            sub.status = 'expired'
+        s.commit()
+        return len(rows)
+
+
 def revoke_all_premium()->int:
     """V3.56.0 admin tool: cancel every currently-active Premium subscription in
     one shot (the test/admin grants). History rows are kept and photo credits

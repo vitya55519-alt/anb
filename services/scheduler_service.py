@@ -1783,6 +1783,21 @@ async def _girl_of_day(bot):
             logger.exception('girl of day preview failed admin=%s', admin_id)
 
 
+async def _ledger_housekeeping(bot):
+    """V3.159.1: в дампе 13.11 все 31 строка subscriptions значились 'active',
+    хотя 29 из них истекли ещё в сентябре. Право на Premium они не дают —
+    каждая читалка сверяется с expires_at, — так что чиним не деньги, а ложь в
+    учёте. Раз в сутки, за пять минут до ночного бэкапа: дампы владельца
+    перестают врать сами себе."""
+    try:
+        from services import payments
+        fixed = await asyncio.to_thread(payments.expire_stale_subscriptions)
+        if fixed:
+            logger.info('subscription housekeeping expired=%s', fixed)
+    except Exception:
+        logger.exception('subscription housekeeping failed')
+
+
 async def _db_backup(bot):
     """V3.82.0: Railway Hobby has no Postgres backups — dump the DB daily and
     send it to the admins as a Telegram document."""
@@ -1845,6 +1860,8 @@ def start_scheduler(bot):
     scheduler.add_job(_mood_update,'interval',hours=1,args=[bot],id='mood_update',replace_existing=True)
     # V3.68.0: channel bonus after the hold.
     scheduler.add_job(_channel_bonus_holds,'interval',hours=1,args=[bot],id='channel_bonus_holds',replace_existing=True)
+    # V3.159.1: просроченные подписки получают честный статус перед бэкапом.
+    scheduler.add_job(_ledger_housekeeping,'cron',hour=0,minute=25,args=[bot],id='ledger_housekeeping',replace_existing=True)
     # V3.82.0: daily DB backup to the admins (00:30 UTC = 03:30 MSK, quiet hours).
     scheduler.add_job(_db_backup,'cron',hour=0,minute=30,args=[bot],id='db_backup',replace_existing=True)
     # V3.92.0: «🔥 Девушка дня» channel post for the admins at 09:00 MSK.
