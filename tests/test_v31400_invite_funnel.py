@@ -157,4 +157,6 @@ def test_app_delivery_flips_the_pill_and_shows_the_blur_teaser():
 
 
 def test_call_never_speaks_the_tag_aloud():
-    assert 'voice_call.spoken(invite_funnel.strip_tag(answer))' in MAIN
+    # V3.151.0: the spoken text is her MESSAGE block only (never «THOUGHT:»),
+    # and the funnel tag is stripped out of it before the call reads it aloud.
+    assert 'voice_call.spoken(invite_funnel.strip_tag(message_block(answer)))' in MAIN

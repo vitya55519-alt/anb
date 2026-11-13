@@ -634,6 +634,11 @@ LIFE_EVENTS_SCAN_MINUTES = max(10, min(120, int(os.getenv("LIFE_EVENTS_SCAN_MINU
 # Only users active within this window get life events (reward showing up, not
 # chasing the churned — that path is _proactive/retention).
 LIFE_EVENTS_ACTIVE_WINDOW_DAYS = max(1, int(os.getenv("LIFE_EVENTS_ACTIVE_WINDOW_DAYS", "7")))
+# V3.151.0: owner ТЗ (Часть 1, п.1) — «жёлтый цветок» must never cut into a live
+# dialog. A life event is a return push, so it waits for this many hours of HIS
+# own silence first (the ТЗ asks for 4–12; the upper bound stays
+# LIFE_EVENTS_ACTIVE_WINDOW_DAYS).
+LIFE_EVENTS_SILENCE_HOURS = max(1, min(24, int(os.getenv("LIFE_EVENTS_SILENCE_HOURS", "4"))))
 # Never write during the user's local quiet hours [start, end) (wrap-aware).
 LIFE_EVENTS_QUIET_START_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_START_HOUR", "23"))))
 LIFE_EVENTS_QUIET_END_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_END_HOUR", "7"))))

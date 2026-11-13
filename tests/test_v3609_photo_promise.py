@@ -30,7 +30,9 @@ def test_agree_after_offer():
 
 
 def test_promise_and_failures_wired():
-    assert 'if PHOTO_PROMISE.search(answer or' in MAIN
+    # V3.151.0: the promise is matched on her MESSAGE block, so a «лови фото»
+    # hidden inside a thought card can never trigger a paid render.
+    assert 'if PHOTO_PROMISE.search(said) or' in MAIN
     assert '_accepts_her_photo_offer(uid, character_id, text)' in MAIN
     assert MAIN.count('webapp_service.record_generation_failure') >= 6
     html = Path('webapp/index.html').read_text(encoding='utf-8')

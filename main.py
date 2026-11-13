@@ -60,7 +60,8 @@ from services.user_service import (
 )
 # V3.22.0: RU/EN interface layer (reply keyboard + top-level menus).
 from services.ui_lang import EN, RU, menu_rows, app_lang, flow_text, full_user_lang, kb_label, kb_pair, user_lang
-from services.chat_service import reply as anna_reply
+from services.chat_service import (
+    join_thought_message, message_block, reply as anna_reply, thought_block)
 from services.access_service import can_send_message, is_premium
 from services.photo_service import (
     PhotoRequest, parse_photo_request, deliver_photo, has_free_photo, build_photo_menu,
@@ -8703,6 +8704,67 @@ async def send_answer(message: types.Message, text: str):
             logger.exception('onboarding demo photo failed user=%s', message.from_user.id)
 
 
+# V3.151.0: owner ТЗ (Фогель, Часть 1, п.2-3) — one turn of the novel is ONE
+# thought card and ONE message, never two or three bubbles, and the card is
+# never spoken by the voice. «записывает голосовое…» is shown for at least this
+# many seconds before the note lands, so it does not look like a file dump.
+VOICE_RECORD_MIN_SECONDS = 3.0
+
+
+def _thought_card(name: str, thought: str) -> str:
+    import html as _html
+    return f'💭 <b>Мысли {_html.escape(name)}:</b> <i>{_html.escape(thought)}</i>'
+
+
+async def _send_novel_answer(message: types.Message, thought: str, said: str,
+                             user, *, voice: bool = True) -> None:
+    """The card goes instantly, then her single message — in her voice for a
+    Premium man, after a real recording pause."""
+    name = _character_display_name(get_user_character(message.from_user.id) or '')
+    try:
+        await message.answer(_thought_card(name, thought), parse_mode='HTML')
+    except Exception:
+        logger.warning('thought card failed user=%s', message.from_user.id)
+        await message.answer(f'💭 {thought}')
+    if not said:
+        return
+    tid = message.from_user.id
+    if voice and user and getattr(user, 'voice_enabled', False) \
+            and (is_premium(tid) or tid in ADMIN_TELEGRAM_IDS) \
+            and (tid in ADMIN_TELEGRAM_IDS or _trial_voice_ok(tid)):
+        started = _time.time()
+        try:
+            await bot.send_chat_action(message.chat.id, 'record_voice')
+            character_id = get_user_character(tid)
+            audio = await synthesize_bytes(said, getattr(user, 'voice_style', None), character_id=character_id)
+            left = VOICE_RECORD_MIN_SECONDS - (_time.time() - started)
+            if left > 0:
+                await asyncio.sleep(left)
+            filename = 'voice.ogg' if getattr(user, 'voice_anon_mode', False) else f'{character_id}.ogg'
+            await message.answer_voice(BufferedInputFile(audio, filename=filename))
+            return
+        except Exception:
+            logger.exception('novel tts failed user=%s', tid)
+    await message.answer(said)
+    await _voice_premium_nudge(message, user)
+
+
+async def _voice_premium_nudge(message: types.Message, user) -> None:
+    """V3.55.1: once per day, a voice user without Premium hears how to unlock it."""
+    try:
+        if user and user.voice_enabled and not is_premium(message.from_user.id) \
+                and message.from_user.id not in ADMIN_TELEGRAM_IDS:
+            today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+            if _voice_premium_hint.get(message.from_user.id) != today:
+                _voice_premium_hint[message.from_user.id] = today
+                hint = ('🎙 Voice replies are a Premium perk — subscribe and I\'ll speak to you in my real voice 😉'
+                        if user_lang(message.from_user.id) == EN else
+                        '🎙 Голосовые ответы — привилегия Premium: оформи подписку, и я заговорю с тобой настоящим голосом 😉')
+                await message.answer(hint)
+    except Exception:
+        logger.warning('voice premium hint failed user=%s', message.from_user.id)
+
+
 async def _send_answer_body(message: types.Message, text: str):
     user = get_user(message.from_user.id)
     # V3.139.0: a duo answer is two messages, not one script.
@@ -8711,6 +8773,12 @@ async def _send_answer_body(message: types.Message, text: str):
     lines = duo_lines(text) if duo else []
     if len(lines) > 1:
         await _send_duo_answer(message, lines, duo, user)
+        return
+    thought = thought_block(text)
+    if thought:
+        # V3.151.0: card + one message — the paragraph split below would put
+        # her inner voice into a bubble of its own.
+        await _send_novel_answer(message, thought, message_block(text), user)
         return
     # V3.55.1: voice replies are a Premium perk (owner decision — the shop
     # card line «голосовые ответы» becomes literally true). Non-premium keeps
@@ -8742,19 +8810,7 @@ async def _send_answer_body(message: types.Message, text: str):
                 await message.answer(part)
             return
     await message.answer(text)
-    # V3.55.1: once per day, a voice user without Premium hears how to unlock it.
-    try:
-        if user and user.voice_enabled and not is_premium(message.from_user.id) \
-                and message.from_user.id not in ADMIN_TELEGRAM_IDS:
-            today = dt.datetime.now(dt.timezone.utc).date().isoformat()
-            if _voice_premium_hint.get(message.from_user.id) != today:
-                _voice_premium_hint[message.from_user.id] = today
-                hint = ('🎙 Voice replies are a Premium perk — subscribe and I\'ll speak to you in my real voice 😉'
-                        if user_lang(message.from_user.id) == EN else
-                        '🎙 Голосовые ответы — привилегия Premium: оформи подписку, и я заговорю с тобой настоящим голосом 😉')
-                await message.answer(hint)
-    except Exception:
-        logger.warning('voice premium hint failed user=%s', message.from_user.id)
+    await _voice_premium_nudge(message, user)
 
 
 @dp.message(F.text.in_(kb_pair('chat')))
@@ -9569,7 +9625,14 @@ async def on_life_reply_tap(cq: types.CallbackQuery):
             )
         answer, _ = _strip_fake_photo(answer)
         if answer:
-            await cq.message.answer(answer)
+            # V3.151.0: a tap-back is a normal turn — the card of her thoughts
+            # goes first, her line stays one message.
+            _th = thought_block(answer)
+            if _th:
+                await _send_novel_answer(cq.message, _th, message_block(answer),
+                                         get_user(cq.from_user.id), voice=False)
+            else:
+                await cq.message.answer(answer)
     except Exception:
         logger.exception('life_reply tap failed user=%s', cq.from_user.id)
 
@@ -10804,7 +10867,7 @@ async def voice_message(message: types.Message):
         except Exception:
             pass
         # Detect if Anna offered a photo in her voice response
-        if _PHOTO_OFFER_DETECT.search(answer):
+        if _PHOTO_OFFER_DETECT.search(message_block(answer)):
             _photo_offer_pending[message.from_user.id] = _time.time()
             try:
                 from services.photo_expression_service import detect_expression_key
@@ -11925,7 +11988,7 @@ async def text_message(message: types.Message):
         except Exception:
             logger.warning('sext offer failed user=%s', message.from_user.id, exc_info=True)
         # Detect if Anna offered a photo in her response
-        if _PHOTO_OFFER_DETECT.search(answer):
+        if _PHOTO_OFFER_DETECT.search(message_block(answer)):
             _photo_offer_pending[message.from_user.id] = _time.time()
             try:
                 from services.photo_expression_service import detect_expression_key
@@ -14451,6 +14514,12 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     except Exception:
         logger.exception('webapp chat reply failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
+    # V3.151.0: owner ТЗ — her thoughts are a card, not her line. Everything
+    # that decides what happens next (a photo promise, a circle, the voice)
+    # reads the MESSAGE block only; the marked text still goes to the app,
+    # which draws the card from it.
+    said = message_block(answer or '')
+    thought_said = thought_block(answer or '')
     # V3.141.0: the scripted onboarding selfie — the pre-saved picture rides
     # with the prepared line. Consumed BEFORE the PHOTO_PROMISE branch: her
     # «лови фото» is the demo, not a paid render, and nothing is charged.
@@ -14464,14 +14533,13 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         return web.json_response({'ok': True, 'reply': answer, 'photo_url': demo_url, **(extra or {})})
     # V3.60.9: she wrote «лови фотку 📸» on her own — the photo must really come.
     # V3.113.0: also a bare «держи 😏» / «лови 💋» right after he asked to see her.
-    if PHOTO_PROMISE.search(answer or '') or (
-            _HANDS_OVER.match(answer or '') and _ASKED_TO_SEE.search(text or '')):
+    if PHOTO_PROMISE.search(said) or (_HANDS_OVER.match(said) and _ASKED_TO_SEE.search(text or '')):
         def _promise_gate():
             req = _selfie_from_dialog(uid, character_id, parse_photo_request('пришли селфи'))
             return req, _chat_photo_gate(telegram_id, character_id, 'selfie')
         req, block = await asyncio.to_thread(_promise_gate)
         if not block:
-            payload = await _photo_turn('selfie', req, said=answer)
+            payload = await _photo_turn('selfie', req, said=said)
             if payload:
                 return web.json_response(payload)
             block = 'failed'
@@ -14481,15 +14549,17 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             # nothing attached — now the honest note and her blurred card come too.
             note = CHAT_PHOTO_BLOCK_TEXT[block].format(price=CHAT_PHOTO_PEACH_COST)
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
-            out = {'ok': True, 'reply': answer + '\n\n' + note, 'photo_block': block,
-                   'photo_price': CHAT_PHOTO_PEACH_COST, **(extra or {})}
+            out = {'ok': True, 'reply': join_thought_message(thought_said, said + '\n\n' + note),
+                   'photo_block': block, 'photo_price': CHAT_PHOTO_PEACH_COST, **(extra or {})}
             if block in _LOCKED_CARD_REASONS:
                 out['locked_tease'] = {'url': f'/webapp/locked/{character_id}.jpg'}
             return web.json_response(out)
         if block == 'failed':
             note = CHAT_PHOTO_BLOCK_TEXT['failed']
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
-            return web.json_response({'ok': True, 'reply': answer + '\n\n' + note, **(extra or {})})
+            return web.json_response({'ok': True,
+                                      'reply': join_thought_message(thought_said, said + '\n\n' + note),
+                                      **(extra or {})})
     payload = {'ok': True, 'reply': answer}
     # V3.140.0: the model sold the duo herself — reply() already flipped the
     # state; the app gets the guest pill and, without Premium, the blur teaser.
@@ -14540,7 +14610,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     # V3.72.0: the circle hook — in a flirty moment (or when asked) she offers
     # a circle under her reply. Free to show; the render starts on a paid tap.
     try:
-        offer = await asyncio.to_thread(_circle_offer, telegram_id, character_id, text, answer)
+        offer = await asyncio.to_thread(_circle_offer, telegram_id, character_id, text, said)
         if offer:
             payload['circle_offer'] = offer
     except Exception:
@@ -14552,7 +14622,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     from services.chat_service import duo_lines
     from services import chat_guest_service as cgs
     duo_map = await asyncio.to_thread(cgs.speakers, telegram_id, character_id)
-    parts = duo_lines(answer) if duo_map else []
+    parts = duo_lines(said) if duo_map else []
     if len(parts) > 1:
         multi = telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id)
         bubbles = []
@@ -14568,7 +14638,9 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             bubbles.append(entry)
         payload['reply_parts'] = bubbles
     else:
-        voice_url = await _webapp_reply_voice_url(telegram_id, character_id, answer)
+        # V3.151.0: only what she typed is ever spoken — her thoughts stay a
+        # card on the screen.
+        voice_url = await _webapp_reply_voice_url(telegram_id, character_id, said)
     if voice_url == 'offer':
         if not any(k in payload for k in ('locked_tease', 'sext_offer')):
             payload['voice_offer'] = True  # V3.106.0: «🎙 слышать её голос всегда»
@@ -15079,7 +15151,7 @@ async def _webapp_api_call_turn(request: web.Request) -> web.Response:
         logger.exception('call reply failed user=%s character=%s', telegram_id, character_id)
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
     from services import invite_funnel
-    said = voice_call.spoken(invite_funnel.strip_tag(answer)) or '…'
+    said = voice_call.spoken(invite_funnel.strip_tag(message_block(answer))) or '…'
     invite_funnel.take_pending(telegram_id, character_id)
     # V3.115.1: the first phrase is voiced alone so she starts speaking sooner;
     # the app asks /call/say for the rest while the first part plays.

@@ -366,6 +366,13 @@
   .msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border-bottom-right-radius: 4px; }
   .msg.bot { align-self: flex-start; background: var(--card); border-bottom-left-radius: 4px; }
   .msg .t { display: block; font-size: 10px; opacity: .6; margin-top: 4px; }
+  /* V3.151.0: owner ТЗ (Часть 1, п.3) — «💭 Мысли {Имя}:» bold pink (#FF4D8D),
+     the thought itself italic, and the block never goes into the voice. */
+  .thcard { align-self: flex-start; max-width: calc(82% - 36px); margin: 0 0 0 36px;
+    padding: 8px 12px; border-radius: 14px; border-left: 3px solid #FF4D8D;
+    background: rgba(255, 77, 141, .08); font-size: 13px; line-height: 1.45; }
+  .thcard .th-h { color: #FF4D8D; font-weight: 700; font-size: 12px; }
+  .thcard .th-b { font-style: italic; opacity: .9; margin-top: 3px; white-space: pre-wrap; word-break: break-word; }
   /* V3.63.7: her small photo next to each of her messages, like in WhatsApp */
   .msg.bot.hav { position: relative; margin-left: 36px; max-width: calc(82% - 36px); }
   .msg .bav { position: absolute; left: -36px; bottom: 0; width: 30px; height: 30px; border-radius: 50%;
@@ -1736,6 +1743,8 @@ const L_EN = {
   day1_hints: ['Let me tell you about my day', 'Let’s continue our conversation', 'What did you do today?'],
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   typing_now: 'typing…',
+  // V3.151.0: the novel engine — her thought card and the recording pause
+  thoughts: n => '💭 ' + n + '\'s thoughts:', rec_voice: 'recording a voice note…',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.', girl_of_day: 'Girl of the day · free',
   // V3.55.2: the premium-characters section under the grid
   prem_chars_title: 'Premium characters', prem_chars_hint: 'Unlocked with a Premium subscription', prem_chars_owned: 'Open with your subscription',
@@ -2023,6 +2032,8 @@ const L_RU = {
   day1_hints: ['Расскажу, как прошёл день', 'Давай продолжим наш разговор', 'Что ты сегодня делала?'],
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   typing_now: 'печатает…',
+  // V3.151.0: движок новеллы — карточка мыслей и пауза записи голосового
+  thoughts: n => '💭 Мысли ' + n + ':', rec_voice: 'записывает голосовое…',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет', girl_of_day: 'Девушка дня · без Premium',
   // V3.55.2: секция премиум-персонажей под сеткой
   prem_chars_title: 'Премиум-персонажи', prem_chars_hint: 'Открываются подпиской Premium', prem_chars_owned: 'Открыты твоей подпиской',
@@ -2719,6 +2730,7 @@ const L_OV = {
     promo_err_inactive: 'এই কোড বন্ধ', promo_err_duplicate: 'তুমি এই কোড আগেই ব্যবহার করেছ', promo_err_consent: 'আগে বটে শর্তাবলি মেনে নাও', promo_err_auth: 'আগে বট খোলো',
     // the chat and the shop — the parts he sees most
     chat_hints: ['হাই 😊', 'তোমার কথা বলো', 'নিজেকে দেখাও 📸'], typing_now: 'লিখছে…',
+    thoughts: n => '💭 ' + n + '-এর ভাবনা:', rec_voice: 'ভয়েস নোট লিখছে…',
     day1_hints: ['আজ আমার দিনটা কেমন গেল বলি', 'আমাদের আগের কথা এগিয়ে নিয়ে যাই', 'তুমি আজ কী করেছ?'],
     marital_free: 'ফ্রি',
     years: 'বছর', soon: 'শীঘ্রই', prem: 'Premium', girl_of_day: 'আজকের মেয়ে · ফ্রি',
@@ -3623,12 +3635,64 @@ function fmtK(n) {
   return String(n);
 }
 
+// V3.151.0: owner ТЗ (Фогель, Часть 1, п.3) — the model answers in two layers,
+// «THOUGHT: …» (what she thinks) and «MESSAGE: …» (what she types). The first
+// becomes a pink card, the second one bubble, and the card never goes to TTS.
+function parseThought(raw) {
+  const t = String(raw || '');
+  const re = /(?:^|\s)(THOUGHT|МЫСЛИ|MESSAGE|СООБЩЕНИЕ)\s*:\s*/gi;
+  const marks = [];
+  let mm;
+  while ((mm = re.exec(t)) !== null) {
+    marks.push({ key: mm[1].toLowerCase(), a: mm.index, b: mm.index + mm[0].length });
+  }
+  const isMsg = k => k.indexOf('message') === 0 || k.indexOf('сообщен') === 0;
+  if (!marks.length || !marks.some(x => isMsg(x.key))) return { thought: '', message: t };
+  let th = '', ms = marks[0].a > 0 ? t.slice(0, marks[0].a).trim() : '';
+  for (let i = 0; i < marks.length; i++) {
+    const end = i + 1 < marks.length ? marks[i + 1].a : t.length;
+    const body = t.slice(marks[i].b, end).trim();
+    if (!body) continue;
+    if (isMsg(marks[i].key)) ms = ms ? ms + '\n' + body : body;
+    else th = th ? th + ' ' + body : body;
+  }
+  return ms ? { thought: th, message: ms } : { thought: '', message: th };
+}
+
+function thoughtCard(text) {
+  const nm = (CHAT && CHAT.name) || '';
+  const label = typeof L.thoughts === 'function' ? L.thoughts(nm) : '💭 ' + nm;
+  return '<div class="thcard"><div class="th-h">' + esc(label) + '</div>' +
+    '<div class="th-b">' + esc(text) + '</div></div>';
+}
+
+// «записывает голосовое…» — never shorter than three seconds (owner ТЗ).
+function showRecording(done, ms) {
+  const box = document.getElementById('chatMsgs');
+  const nm = (CHAT && CHAT.name) || '';
+  box.insertAdjacentHTML('beforeend',
+    '<div class="typing" id="chatTypingRec">' + esc(nm) + ' ' + esc(L.rec_voice) + '</div>');
+  box.scrollTop = box.scrollHeight;
+  setTimeout(() => {
+    const el = document.getElementById('chatTypingRec');
+    if (el) el.remove();
+    done();
+  }, Math.max(3000, ms || 3200));
+}
+
 function chatBubble(roleOrM, content, ts) {
   // V3.39.0: media messages (photo / circle / voice) render like in the bot
   // dialog — round video for circles, a player for voice, a photo otherwise.
   const m = (roleOrM && typeof roleOrM === 'object') ? roleOrM : { role: roleOrM, content: content, ts: ts };
+  // V3.151.0: her thought card first, then her message as ONE bubble.
+  if (m.role !== 'user' && !m.novel && m.content && !m.media_kind) {
+    const nv = parseThought(m.content);
+    if (nv.thought) {
+      return thoughtCard(nv.thought) + chatBubble(Object.assign({}, m, { content: nv.message, novel: true }));
+    }
+  }
   // V3.63.13: her «мысль + дополнение» after a blank line are separate bubbles, like in Telegram.
-  if (m.role !== 'user' && !m.media_url && !m.media_kind && m.content && !(CHAT && CHAT.duo)) {
+  if (m.role !== 'user' && !m.novel && !m.media_url && !m.media_kind && m.content && !(CHAT && CHAT.duo)) {
     const parts = splitBubbles(m.content);
     if (parts.length > 1) {
       return parts.map((p, i) => chatBubble(Object.assign({}, m, { content: p, ts: i === parts.length - 1 ? m.ts : null }))).join('');
@@ -4447,6 +4511,21 @@ function renderChatReply(j) {
   // pill, the banner and the two-girl rows flip right now, not on reload.
   if (j.guest && CHAT) { CHAT.duo = j.guest.name; CHAT.guest = j.guest; renderGuest(CHAT.id, j.guest, true); }
   if (CHAT && !CHAT.custom && !CHAT.duo) refreshPlotBar(CHAT.id, true);
+  // V3.151.0: owner ТЗ (Фогель, Часть 1, п.3) — the thought card is on screen
+  // the moment the reply lands, then «записывает голосовое…» for at least three
+  // seconds, then the single MESSAGE bubble. The card is text only and is never
+  // handed to TTS.
+  const nv = parseThought(String(j.reply || ''));
+  if (!nv.thought) {
+    return insertChatReply(nv.message === j.reply ? j : Object.assign({}, j, { reply: nv.message }));
+  }
+  const box = document.getElementById('chatMsgs');
+  box.insertAdjacentHTML('beforeend', thoughtCard(nv.thought));
+  box.scrollTop = box.scrollHeight;
+  showRecording(() => insertChatReply(Object.assign({}, j, { reply: nv.message, novel: 1 })));
+}
+
+function insertChatReply(j) {
   // V3.51.0: a photo request comes back with a real photo attached;
   // V3.57.0: a text reply may carry her voice note (voice_url).
   const box = document.getElementById('chatMsgs');
@@ -4461,7 +4540,9 @@ function renderChatReply(j) {
     // own voice note, arriving one after the other.
     duoPlayed = playDuo(j.reply_parts);
   } else {
-    const parts = (CHAT && CHAT.duo) ? [j.reply] : splitBubbles(j.reply || '');
+    // V3.151.0: one turn is one bubble — when a thought card already went up,
+    // the MESSAGE stays a single reply, no follow-up bubbles.
+    const parts = ((CHAT && CHAT.duo) || j.novel) ? [j.reply] : splitBubbles(j.reply || '');
     box.insertAdjacentHTML('beforeend', chatBubble('bot', parts[0], null));
     if (parts.length > 1) playFollowups(parts.slice(1));
   }

@@ -39,7 +39,10 @@ def test_grown_women_lose_teen_slang_young_ones_keep_it():
         assert slang not in mature
         assert slang in young
     assert 'как взрослая женщина' in mature
-    assert 'Второе сообщение отделяй пустой строкой' in young
+    # V3.151.0: owner ТЗ (Фогель, Часть 1, п.2) — one turn is one bubble, the
+    # «write two messages in a row» move is gone from the prompt for everyone.
+    assert 'На его сообщение — ОДНА твоя реплика' in young
+    assert 'Второе сообщение отделяй пустой строкой' not in young
 
 
 def test_hook_note_rotates_and_skips_serious_turns():

@@ -26,7 +26,8 @@ MOVES: dict[str, str] = {
     'feeling': 'скажи честно одну свою эмоцию о нём или о разговоре, коротко и по-живому, без пафоса и без объяснения, почему ты это чувствуешь',
     'reaction': 'сначала ответь живой реакцией, затем добавь своё мнение, маленькую историю или конкретный вопрос по теме; не оставляй её один на один с пустым «ага» или «понятно»',
     'question': 'после ответа на его слова задай один конкретный вопрос, который открывает новую часть темы: о его выборе, желании, воспоминании или о вас двоих; не «а ты?» и не допрос',
-    'two': 'ответь двумя короткими сообщениями: первое реакция, второе неожиданная мысль или крючок (раздели пустой строкой)',
+    # V3.151.0: owner ТЗ (Часть 1, п.2) — the «two» move existed only to make
+    # her split one answer into two bubbles. One message per his message now.
     # V3.139.0: owner ТЗ (Фогель, Задача 2) — «иллюзия зависимости» и «лёгкое
     # собственничество». They rotate with the other moves, so it is a small
     # ask now and then, never every message.
@@ -38,11 +39,11 @@ MOVES: dict[str, str] = {
 
 # Which moves fit each intent from behavior_service.
 _BY_INTENT: dict[str, tuple[str, ...]] = {
-    'flirt': ('tease', 'game', 'secret', 'feeling', 'two', 'claim'),
-    'reaction': ('reaction', 'tease', 'detail', 'two'),
+    'flirt': ('tease', 'game', 'secret', 'feeling', 'claim'),
+    'reaction': ('reaction', 'tease', 'detail'),
     'opinion': ('tease', 'feeling', 'detail', 'advice'),
-    'tease': ('tease', 'game', 'two', 'claim'),
-    'story': ('detail', 'secret', 'two'),
+    'tease': ('tease', 'game', 'claim'),
+    'story': ('detail', 'secret'),
     'question': ('question', 'callback', 'detail', 'game', 'advice'),
     'callback': ('callback', 'feeling'),
     'topic_shift': ('detail', 'game', 'secret'),
@@ -70,7 +71,7 @@ def hook_note(intent: str, last_move: str = '', has_memories: bool = False,
     if not has_memories:
         moves = [m for m in moves if m != 'callback']
     if not moves:
-        moves = [m for m in MOVES if m not in (last_move, 'callback', 'game', 'two', 'detail')]
+        moves = [m for m in MOVES if m not in (last_move, 'callback', 'game', 'detail')]
     move = rng.choice(moves)
     return (_HEADER + MOVES[move] + '. Остальное как обычно, в твоём голосе. '
             'Без разбора его поведения и без объяснения своей реакции. '

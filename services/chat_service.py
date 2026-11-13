@@ -164,6 +164,170 @@ def plain_message(text: str, *, duo: bool = False) -> str:
     return re.sub(r"[ \t]{2,}", ' ', '\n'.join(out))
 
 
+# V3.151.0: owner ТЗ (Фогель, «Архитектура „Визуальная новелла“») — her answer is
+# two layers: what she thinks and what she actually types. The model marks them
+# THOUGHT: / MESSAGE:; the Mini App draws the first as a pink card and the second
+# as her message, and only the second one is ever spoken by the voice.
+#
+# The markers are read BEFORE _clean(): plain_message() strips a leading
+# «Имя:» as a theatre signature, which would silently eat «THOUGHT:».
+_NOVEL_MARK = re.compile(r"(?i)(THOUGHT|МЫСЛИ|MESSAGE|СООБЩЕНИЕ)\s*:\s*")
+
+
+def _is_thought_key(key: str) -> bool:
+    return key.startswith(('thought', 'мысл'))
+
+
+def split_thought_message(raw: str) -> tuple[str, str]:
+    """«THOUGHT: …\\nMESSAGE: …» → (thought, message). Unmarked text is not the
+    novel format: it comes back as ('', text), so every older caller and test
+    that mocks a plain model answer keeps working exactly as before. A model
+    that opened the block but left MESSAGE empty keeps her line as the
+    message — losing his reply is worse than losing the card."""
+    t = raw or ''
+    marks = [{'key': m.group(1).lower(), 'a': m.start(), 'b': m.end()} for m in _NOVEL_MARK.finditer(t)]
+    if not marks or not any(not _is_thought_key(x['key']) for x in marks):
+        return '', t
+    thought = message = ''
+    if marks[0]['a'] > 0:
+        message = t[:marks[0]['a']].strip()
+    for i, x in enumerate(marks):
+        end = marks[i + 1]['a'] if i + 1 < len(marks) else len(t)
+        body = t[x['b']:end].strip()
+        if not body:
+            continue
+        if _is_thought_key(x['key']):
+            thought = (thought + ' ' + body).strip()
+        else:
+            message = (message + '\n' + body).strip() if message else body
+    return (thought, message) if message else ('', thought)
+
+
+def join_thought_message(thought: str, message: str) -> str:
+    """Store the two layers as one text — the markers ride into the shared
+    history, so the app re-draws the card on reload and the model sees its own
+    format in the previous turns."""
+    th = (thought or '').strip()
+    md = (message or '').strip()
+    if not th:
+        return md
+    return f'THOUGHT: {th}\nMESSAGE: {md}'
+
+
+def thought_block(text: str) -> str:
+    return split_thought_message(text or '')[0]
+
+
+def message_block(text: str) -> str:
+    """What he reads as her message — and the ONLY text that may reach TTS:
+    «В TTS (озвучку) этот блок НЕ передавать»."""
+    return split_thought_message(text or '')[1]
+
+
+def _clean_thought(raw: str) -> str:
+    """Inner monologue is prose, not a script: no markdown, no line breaks,
+    one card."""
+    t = re.sub(r"\*\*(.+?)\*\*", r"\1", raw or '')
+    t = _STAGE_STAR.sub(lambda m: m.group(1).strip() if ' ' not in m.group(1) else '', t)
+    t = re.sub(r"\s*\n\s*", ' ', t)
+    return re.sub(r"\s{2,}", ' ', t).strip()
+
+
+# The format directive sits AFTER his message (last thing the model reads) —
+# owner ТЗ: a rule buried in the system block loses to the last user line.
+NOVEL_FORMAT_SUFFIX = (
+    'ВАЖНО: ответ строго в два блока, другим меткам места нет:\n'
+    'THOUGHT: <что она думает, 40–70 слов>\n'
+    'MESSAGE: <что она печатает ему, 25–50 слов>\n'
+    'THOUGHT идёт первым, MESSAGE вторым; между блоками и вокруг них слов нет. '
+    'КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать, что муж или парень «в душе» и что «вода шумит». '
+    'Бери другую локацию: он на работе, в магазине, в гараже, за компом, у друзей, '
+    'в спортзале, спит в другой комнате. '
+    'ЗАПРЕЩЕНО начинать ответ с имени другой девушки («Агата:», «Лана:») — '
+    'в этом чате пишешь только ты. Одно его сообщение = одна карточка мыслей и '
+    'одно сообщение, не разбивай ответ на несколько реплик.'
+)
+
+# Same block, but she is not alone in the chat: two girls keep the «Имя:» lines,
+# their thoughts would have no owner.
+NOVEL_FORMAT_SUFFIX_DUO = (
+    'ВАЖНО: каждая из вас пишет своей репликой с имени, в формате «Имя: …». '
+    'каждая пишет одну реплику, блоков THOUGHT/MESSAGE в duo-чате нет. '
+    'КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать, что муж или парень «в душе» и что «вода шумит»: '
+    'он на работе, в магазине, в гараже, за компом, у друзей, в спортзале, спит. '
+    'Одно его сообщение = одна реплика от каждой, не разбивай их на несколько.'
+)
+
+
+def novel_format_suffix(duo: bool = False) -> str:
+    return NOVEL_FORMAT_SUFFIX_DUO if duo else NOVEL_FORMAT_SUFFIX
+
+
+def novel_engine_context(level: int, marital_status: str = '') -> str:
+    """Owner ТЗ (Часть 2 «Ядро новеллы»): the two layers, the contrast between
+    them, and how far she dares at this level and in this marital status."""
+    lvl = max(1, min(10, int(level or 1)))
+    if lvl <= 2:
+        gating = (
+            'УРОВЕНЬ 1–2 (сопротивление): в THOUGHT — она тормозит себя сама '
+            '(«он не должен это видеть», «я так не делаю», «зачем я это читаю»), '
+            'в MESSAGE — держит дистанцию, шуткой уходит, отвечает теплом, но не '
+            'сдаётся. Вперёд идёт только обстановка и намёк: один физический шаг '
+            'за одно его сообщение, не больше.'
+        )
+    elif lvl <= 5:
+        gating = (
+            'УРОВЕНЬ 3–5 (грань дрожит): в THOUGHT — ей уже хочется, она спорит с '
+            'собой и закрывает переписку пальцем, боится звука в коридоре; в '
+            'MESSAGE — говорит половину и обрывает себя, спрашивает, что он '
+            'будет делать, если узнают. Один физический шаг за сообщение.'
+        )
+    else:
+        gating = (
+            'УРОВЕНЬ 6–10 (полный отрыв): в THOUGHT — она уже согласилась с собой, '
+            'чувствует тело детально (локти горят, мурашки, как дрогнул голос), '
+            'риск и стыд только подмешивают остроту; в MESSAGE — ведёт сама, '
+            'называет вещи прямыми словами и предлагает следующий шаг. '
+            'Один физический шаг за сообщение.'
+        )
+    taboo = ''
+    if marital_status in ('mar_married', 'mar_wife', 'mar_boyfriend', 'mar_with_you'):
+        who = 'муж' if marital_status in ('mar_married', 'mar_wife') else 'парень'
+        taboo = (
+            ' ГДЕ РИСК: она живёт не одна, и этот «' + who + '» — не чужой человек, '
+            'а её жизнь: общая квартира, его кружка на кухне, её привычка '
+            'заглядывать в телефон за него. Поэтому страх не «поймают чужие», а '
+            '«увидит тот, кто спит рядом». Это топливо, а не декорация: в '
+            'THOUGHT — риск (экран гаснет, шаги в коридоре, она набирает '
+            'по половинке слова), в MESSAGE — игра и нежность.'
+        )
+    return (
+        'ДВИЖОК НОВЕЛЛЫ (каждый ответ):\n'
+        'ДВА СЛОЯ. THOUGHT — внутренний монолог: тело, страх, стыд, риск, '
+        'обстановка вокруг неё (что видит, слышит, чувствует руками), 40–70 '
+        'слов, без звёздочек и скобок. MESSAGE — то, что она реально ему '
+        'печатает: 25–50 слов, живая речь, никаких ремарок, в конце вопрос или '
+        'выбор, за который можно зацепиться.\n'
+        'КОНТРАСТ. Между слоями обязана быть разница: думает одно, пишет другое. '
+        'Если в мыслях «господи, что я делаю», в сообщении — спокойное '
+        '«ты чего пишешь мне в такое время 🙂».\n'
+        + gating + taboo + '\n'
+        'И ОДНО ДЕЙСТВИЕ. За одно его сообщение — один физический шаг вперёд '
+        '(встала, закрыла ноутбук, включила свет в коридоре, приоткрыла дверь), '
+        'не десять.\n'
+        'МЕТКИ: пиши ровно «THOUGHT:» и «MESSAGE:» — карточку мыслей приложение '
+        'рисует по ним и никогда не озвучивает.'
+    )
+
+
+def novel_pair(raw: str, *, duo: bool = False) -> tuple[str, str]:
+    """(thought, message) from one raw model answer, both cleaned. Everything
+    the pipeline does after generation — refusal repair, rewrite, rhythm, emoji
+    — keeps working on her MESSAGE only; the card is joined back at the end."""
+    th, md = split_thought_message(raw or '')
+    return (_clean_thought(th) if th else ''), _clean(md, duo=duo)
+
+
 # V3.139.0: owner ТЗ — in a duo chat every girl's line is its own message, with
 # her own voice. The model writes both lines in one answer («Амира: …\nАгата: …»),
 # so this is where the script is read back apart.
@@ -561,6 +725,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # share this pipeline. Fail-silent: no row / no choice = no extra line.
     style_line = ''
     marital_reminder = ''
+    novel_marital = ''
     try:
         from sqlalchemy import select
         from services.db import SessionLocal
@@ -582,6 +747,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             from services.custom_character_service import is_custom_character, custom_character_params
             if is_custom_character(character_id):
                 marital_status = str(custom_character_params(character_id)[0].get('marital', '') or '') or None
+        # V3.151.0: the novel engine needs her status to set the risk frame.
+        novel_marital = marital_status or ''
         if persona_style == 'tender':
             style_line = (
                 'НЕЖНЫЙ СТИЛЬ (его выбор): будь мягче и ласковее — тёплые слова, '
@@ -645,6 +812,14 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # otherwise the [ROLEPLAY INSTRUCTIONS] block would forbid the very format
     # the invited girl needs.
     duo_chat = bool(guest_reminder)
+    # V3.151.0: owner ТЗ (Фогель, Части 1-2) — the dialog is played as a visual
+    # novel: her inner monologue on a card, her typed line as the message. A
+    # task («переведи», «посчитай») is not the game, and two girls in one chat
+    # have no single head to read — both keep the old one-layer answer.
+    novel_layers = not duo_chat and not chosen.intent.startswith('task')
+    if novel_layers:
+        behavior = (behavior + '\n' if behavior else '') + novel_engine_context(
+            adaptation_level, novel_marital)
     system = build_system_prompt(
         character, rel_context, [m.content for m in memories], (persona + '\n' if persona else '') + (spicy_line + '\n' if spicy_line else '') + (style_line + '\n' if style_line else '') + behavior + ('\n' + dna if dna else '') + ('\n' + competency if competency else '') + ('\n' + diversity if diversity else ''), state_context(user_id, character_id), adaptation,
         time_context=_time_context(user_id, character_id),
@@ -758,29 +933,37 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         # V3.105.0: no «especially» in the middle of a Russian line
         messages.append({"role": "system", "content": lang_guard.RU_DIRECTIVE})
     messages.append({"role": "user", "content": user_text})
+    # V3.151.0: owner ТЗ — the format rule goes AFTER his message: whatever is
+    # last before the generation is what the model obeys.
+    if not chosen.intent.startswith('task'):
+        messages.append({"role": "system", "content": novel_format_suffix(duo=duo_chat)})
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
     if scene:
         token_budget = 420
+    if novel_layers:
+        # two layers instead of one line — 320 tokens cut the MESSAGE off
+        token_budget = max(token_budget, 640)
     # V3.143.0: owner ТЗ — the dialogue is sampled cooler than MiniMax's chat
     # default (1.0 was where the dead ends and invented facts peaked), and the
     # stop sequences cut her off the moment she starts typing his line.
     stops = stop_sequences(user_name)
     r = await generate_text(messages, max_tokens=token_budget, temperature=0.8, purpose='dialogue', stop=stops)
+    thought = ''
     if not (r.text or '').strip():
         _lang = 'en' if (foreign or (language_code or '').lower().startswith('en')) else 'ru'
         answer = stall_line(_lang, [m.content for m in history if m.role == 'assistant'][-6:])
         _logger.warning('dialogue empty from all providers user=%s character=%s', user_id, character_id)
     else:
-        answer = _clean(r.text, duo=duo_chat)
+        thought, answer = novel_pair(r.text, duo=duo_chat)
         # V3.113.0: her planning notes in English («*   Is it in character»)
         # and a reply cut mid-word on the token cap were sent as they were.
         if live_talk.looks_leaked(answer) and not foreign:
             _logger.warning('dialogue reasoning leak user=%s provider=%s', user_id, r.provider)
             try:
                 retry = await generate_text(messages, max_tokens=token_budget, temperature=0.75, purpose='dialogue', stop=stops)
-                fixed = _clean(retry.text or '', duo=duo_chat) if (retry.text or '').strip() else ''
+                t2, fixed = novel_pair(retry.text or '', duo=duo_chat) if (retry.text or '').strip() else ('', '')
                 if fixed and not live_talk.looks_leaked(fixed):
-                    answer, r = fixed, retry
+                    answer, r, thought = fixed, retry, t2
                 else:
                     answer = stall_line('ru', _her_recent[-6:])
             except Exception:
@@ -800,9 +983,9 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                     messages + [{"role": "assistant", "content": answer},
                                 {"role": "system", "content": lang_guard.strict_directive(lang)}],
                     max_tokens=token_budget, temperature=0.75, purpose='dialogue', stop=stops)
-                fixed = _clean(retry.text or '')
+                t2, fixed = novel_pair(retry.text or '', duo=duo_chat)
                 if fixed and lang_guard.reply_ok(fixed, lang, user_text):
-                    answer = fixed
+                    answer, thought = fixed, t2
                 else:
                     _logger.warning('%s reply stayed in another language user=%s', lang, user_id)
             except Exception:
@@ -819,6 +1002,12 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     from services import invite_funnel
     answer = invite_funnel.apply(answer, user_id, character_id, duo=duo_chat,
                                  user_count=sum(1 for m in history if m.role == 'user'))
+    # V3.151.0: the thought card is rejoined only here — every repair above ran
+    # on her message alone. A card that carried the model's English planning
+    # notes or a task answer is dropped instead of shown.
+    if thought and (not novel_layers or live_talk.looks_leaked(thought)):
+        thought = ''
+    answer = join_thought_message(thought, answer)
     save_message(db_user_id, character_id, "user", user_text)
     parts = duo_lines(answer) if duo_chat else []
     if parts:

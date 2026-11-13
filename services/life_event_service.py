@@ -43,6 +43,24 @@ def tap_reply_text(key: str) -> str:
     return _TAP_AS_USER_TEXT.get(str(key or ''), 'расскажи подробнее')
 
 
+def silence_hours(uid: int, character_id: str) -> float:
+    """Hours since HE last wrote to her in this dialog (math.inf when they have
+    never talked). V3.151.0, owner ТЗ: a slice of her day may only reach him
+    when he is the one who went quiet — never as background noise inside a
+    dialog that is still alive."""
+    import datetime as dt
+    import math
+    from sqlalchemy import func, select
+    from services.db import SessionLocal
+    from models.app_models import Message
+    with SessionLocal() as s:
+        last = s.scalar(select(func.max(Message.created_at)).where(
+            Message.user_id == uid, Message.character_id == character_id, Message.role == 'user'))
+    if not last:
+        return math.inf
+    return (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - last).total_seconds() / 3600.0
+
+
 def _character_ingredients(character_id: str) -> tuple[str, list[str], str]:
     """Return (name, hobby/taste pool, temperament line) for grounding."""
     name = ''

@@ -76,7 +76,10 @@ def test_the_cut_works_in_every_language_of_the_app():
 def test_clean_wires_the_cut_into_every_reply():
     assert 'answer = plain_message(answer, duo=duo)' in CHAT
     assert 'duo_chat = bool(guest_reminder)' in CHAT
-    assert 'answer = _clean(r.text, duo=duo_chat)' in CHAT
+    # V3.151.0: the novel engine splits «THOUGHT: / MESSAGE:» before cleaning,
+    # so the stage-direction cut now runs inside novel_pair on the MESSAGE only.
+    assert 'thought, answer = novel_pair(r.text, duo=duo_chat)' in CHAT
+    assert 'def novel_pair(' in CHAT and '_clean(md, duo=duo)' in CHAT
     # the opening scene is where the format is learned — cleaned there too
     assert "scene = plain_message((r.text or '').strip()) or None" in MAIN
     assert 'text = plain_message((r.text or "").strip(), duo=True)'.replace('"', "'") in MAIN

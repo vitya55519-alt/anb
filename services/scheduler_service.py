@@ -11,6 +11,7 @@ from config import (
     DAY1_HOOK_MAX_ACCOUNT_HOURS, DAY1_HOOK_MIN_INACTIVE_HOURS, PUBLIC_BASE_URL,
     LIFE_EVENTS_ENABLED, LIFE_EVENTS_MAX_PER_DAY, LIFE_EVENTS_SCAN_MINUTES,
     LIFE_EVENTS_ACTIVE_WINDOW_DAYS, LIFE_EVENTS_QUIET_START_HOUR, LIFE_EVENTS_QUIET_END_HOUR,
+    LIFE_EVENTS_SILENCE_HOURS,
 )
 from services.db import SessionLocal
 from models.app_models import User, CharacterState
@@ -1272,7 +1273,7 @@ async def _life_events(bot):
     if not LIFE_EVENTS_ENABLED or LIFE_EVENTS_MAX_PER_DAY <= 0:
         return
     from services.consent_service import has_accepted
-    from services.life_event_service import build_life_moment
+    from services.life_event_service import build_life_moment, silence_hours
     from services.memory_service import save_message
     from services import webapp_service
     from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
@@ -1298,6 +1299,11 @@ async def _life_events(bot):
             prior = _life_events_store.get(tg_id) or {}
             slots = list(prior.get('slots') or []) if prior.get('date') == today_key else []
             if part in slots or len(slots) >= LIFE_EVENTS_MAX_PER_DAY:
+                continue
+            # V3.151.0: owner ТЗ (Часть 1, п.1) — «подмес» is banned. Her day is
+            # a return push, not a third voice in a live dialog: while he is
+            # still writing, nothing from scheduler_service enters the chat.
+            if silence_hours(uid, char_id) < LIFE_EVENTS_SILENCE_HOURS:
                 continue
             # Sprinkle sends across the scan window instead of firing at the
             # boundary for everyone at once (also keeps the LLM load flat).
