@@ -1119,7 +1119,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             except Exception:
                 _logger.warning('%s regeneration failed user=%s', lang, user_id, exc_info=True)
         elif not foreign:
-            answer = await _fix_stray_english(answer, [user_text] + [m.content for m in history if m.role == 'user'], user_id)
+            answer = await _fix_stray_english(
+                answer, [user_text] + [m.content for m in history if m.role == 'user'], user_id, db_user_id)
     if not behavior_kind.startswith('task') and not scene and not care_kind:
         answer = live_talk.fit_rhythm(answer, user_text)
     answer = diversify_emoji(answer, [m.content for m in history if m.role == 'assistant'][-4:])
@@ -1389,7 +1390,7 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
     return out
 
 
-async def _fix_stray_english(answer: str, user_texts, user_id=None) -> str:
+async def _fix_stray_english(answer: str, user_texts, user_id=None, db_user_id=None) -> str:
     """V3.105.0: English words that slipped into a Russian reply are replaced
     by one short corrector call. The original stays when the fix fails, comes
     back changed too much, or still has the words."""
@@ -1404,7 +1405,9 @@ async def _fix_stray_english(answer: str, user_texts, user_id=None) -> str:
         if (fixed and 0.6 * len(answer) <= len(fixed) <= 1.6 * len(answer)
                 and not lang_guard.stray_english(fixed, user_texts)):
             from services.analytics_service import track_event
-            track_event(None, 'lang_repair', metadata={'words': len(words)})
+            # V3.158.2: раньше событие рождалось без хозяина — в дампе такие
+            # строки висят с user_id=NULL и не попадают ни в одну воронку.
+            track_event(db_user_id, 'lang_repair', metadata={'words': len(words)})
             return fixed
         _logger.info('stray english kept user=%s words=%s', user_id, words)
     except Exception:

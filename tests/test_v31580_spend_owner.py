@@ -193,6 +193,17 @@ def test_the_pulse_reads_the_real_dialog_and_reaches_the_model(monkeypatch):
         assert row.trust_score > 0 and row.intimacy_score > 0
 
 
+def test_the_repair_ticket_names_the_man_it_was_fixed_for():
+    # V3.158.2: в дампе 13.11 строки lang_repair висели без пользователя —
+    # событие чистки английского рождалось с track_event(None, ...).
+    src = (ROOT / 'services' / 'chat_service.py').read_text(encoding='utf-8')
+    body = src[src.index('async def _fix_stray_english'):src.index('PAID_MOMENT_LINES')]
+    assert 'db_user_id' in body.splitlines()[0]
+    assert "track_event(db_user_id, 'lang_repair'" in body
+    call = src[src.index('await _fix_stray_english('):src.index('await _fix_stray_english(') + 300]
+    assert 'db_user_id)' in call
+
+
 def test_the_pulse_is_billed_to_the_man_whose_turn_it_is():
     src = (ROOT / 'services' / 'chat_service.py').read_text(encoding='utf-8')
     body = src[src.index('async def reply('):src.index('async def proactive_reply')]
