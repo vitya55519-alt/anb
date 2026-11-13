@@ -115,13 +115,87 @@ def restore_dump(data: bytes) -> dict:
     return counts
 
 
+def human_bytes(n: float) -> str:
+    n = float(n or 0)
+    for unit in ('Б', 'КБ', 'МБ', 'ГБ'):
+        if abs(n) < 1024:
+            return f'{n:.0f} {unit}' if unit == 'Б' else f'{n:.1f} {unit}'
+        n /= 1024
+    return f'{n:.1f} ТБ'
+
+
+def storage_report(limit: int = 6) -> dict:
+    """V3.160.0: сколько весит база и где именно лежат байты.
+
+    Railway Hobby — это один том ~1 ГБ, а бэкап (см. докстринг модуля) умышленно
+    без картинок: значит рост базы скрыт от владельца до того дня, когда запись
+    упадёт. Тут только чтение: размер базы, самые тяжёлые таблицы и сколько
+    именно байтов сидит в LargeBinary-колонках — то, что в Telegram-дампа нет.
+    """
+    from sqlalchemy import func as _func, text
+    from sqlalchemy import LargeBinary as _LB
+
+    out = {'engine': engine.dialect.name, 'db_bytes': 0, 'blob_bytes': 0,
+           'blob_columns': [], 'top': []}
+    fn = 'OCTET_LENGTH' if out['engine'] == 'postgresql' else 'LENGTH'
+    with engine.connect() as conn:
+        if out['engine'] == 'postgresql':
+            try:
+                out['db_bytes'] = int(conn.execute(
+                    text('SELECT pg_database_size(current_database())')).scalar() or 0)
+            except Exception:
+                logger.debug('pg_database_size failed', exc_info=True)
+        meta = MetaData()
+        meta.reflect(bind=engine)
+        for t in meta.sorted_tables:
+            try:
+                n = int(conn.execute(select(_func.count()).select_from(t)).scalar() or 0)
+            except Exception:
+                n = 0
+            b = 0
+            for c in t.columns:
+                if not isinstance(c.type, _LB):
+                    continue
+                out['blob_columns'].append(f'{t.name}.{c.name}')
+                try:
+                    b += int(conn.execute(text(
+                        f'SELECT COALESCE(SUM({fn}("{c.name}")),0) FROM "{t.name}"'
+                    )).scalar() or 0)
+                except Exception:
+                    logger.debug('blob size probe failed for %s.%s', t.name, c.name, exc_info=True)
+            out['blob_bytes'] += b
+            out['top'].append((t.name, n, b))
+        if out['engine'] == 'postgresql':
+            # полный размер таблицы (данные + индексы) — честнее, чем сумма колонок
+            try:
+                sizes = dict(conn.execute(text(
+                    'SELECT relname, pg_total_relation_size(relid) FROM pg_stat_user_tables'
+                )).all())
+                out['top'] = [(name, n, sizes.get(name, b)) for name, n, b in out['top']]
+            except Exception:
+                logger.debug('pg table sizes failed', exc_info=True)
+    out['top'].sort(key=lambda r: -(r[2] or r[1]))
+    out['top'] = out['top'][:limit]
+    return out
+
+
 def backup_filename(now: dt.datetime | None = None) -> str:
     now = now or dt.datetime.now(dt.timezone.utc)
     return f'anb-db-{now.strftime("%Y-%m-%d_%H%M")}.jsonl.gz'
 
 
-def summary_line(counts: dict, size: int) -> str:
+def summary_line(counts: dict, size: int, storage: dict | None = None) -> str:
     top = sorted(counts.items(), key=lambda kv: -kv[1])[:5]
     parts = ', '.join(f'{name} {n}' for name, n in top)
-    return (f'🗄 бэкап базы: {len(counts)} таблиц, {sum(counts.values())} строк, '
+    line = (f'🗄 бэкап базы: {len(counts)} таблиц, {sum(counts.values())} строк, '
             f'{size / 1024 / 1024:.1f} МБ. Больше всего: {parts}. Фото и видео в бэкап не входят.')
+    if storage:
+        # V3.160.0: рост тома Railway Hobby скрыт, пока не упёрся в лимит —
+        # поэтому каждая ночная сводка показывает, сколько байтов осталось за
+        # спиной дампа и какие таблицы его съедают.
+        heavy = ', '.join(f'{name} {human_bytes(b)}' for name, _n, b in storage['top'][:3] if b)
+        line += (f'\n💾 база целиком: {human_bytes(storage["db_bytes"])} · без дампа живёт '
+                 f'{human_bytes(storage["blob_bytes"])} картинок и голосов '
+                 f'({len(storage["blob_columns"])} колонок)'
+                 + (f': {heavy}' if heavy else ''))
+    return line

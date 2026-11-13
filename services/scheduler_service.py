@@ -1816,7 +1816,16 @@ async def _db_backup(bot):
             except Exception:
                 pass
         return
-    caption = backup_service.summary_line(counts, len(data))
+    # V3.160.0: размер базы к сводке — том Railway не резиновый, а байты
+    # картинок в дамп не кладутся. Диагностика только читает; падение не отменяет бэкап.
+    storage = None
+    try:
+        storage = await asyncio.to_thread(backup_service.storage_report)
+    except Exception:
+        logger.exception('storage report failed')
+    caption = backup_service.summary_line(counts, len(data), storage)
+    if storage:
+        logger.info('db storage bytes=%s blob_bytes=%s', storage.get('db_bytes'), storage.get('blob_bytes'))
     logger.info('db backup ready bytes=%s tables=%s', len(data), len(counts))
     for admin_id in ADMIN_TELEGRAM_IDS:
         try:
