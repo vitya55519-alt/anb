@@ -855,8 +855,8 @@ class CharacterTrophy(Base):
     fantasy this pair has actually lived through, so the album on her card is
     history and not a counter: `unlocked_at` is when the moment really happened
     and never moves back. The confession is spoken once and the audio file is
-    kept (voice_url) precisely so it stays replayable from her profile; the
-    photo of the finished album rides the same rule. Table is auto-created."""
+    kept (voice_url) precisely so it stays replayable from her profile.
+    Table is auto-created."""
     __tablename__ = "character_trophies"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
@@ -865,7 +865,6 @@ class CharacterTrophy(Base):
     unlocked_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     confession: Mapped[str | None] = mapped_column(Text, nullable=True)
     voice_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    photo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     __table_args__ = (UniqueConstraint("user_id", "character_id", "key"),)
 
 

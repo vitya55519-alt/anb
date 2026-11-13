@@ -178,7 +178,8 @@ def test_the_trophy_tables_are_autocreated():
     assert 'trophy_album' in Base.metadata.tables
     cols = Base.metadata.tables['character_trophies'].columns.keys()
     assert {'user_id', 'character_id', 'key', 'unlocked_at', 'confession',
-            'voice_url', 'photo_url'} <= set(cols)
+            'voice_url'} <= set(cols)
+    assert 'photo_url' not in cols            # картинка живёт в trophy_album, не в слоте
     uniq = [sorted(c.name for c in uc.columns)
             for uc in Base.metadata.tables['character_trophies'].constraints
             if uc.__class__.__name__ == 'UniqueConstraint']
