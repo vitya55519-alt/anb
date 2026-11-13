@@ -52,7 +52,12 @@ def test_instant_feedback_reaction():
 
 def test_relationship_pulse_service():
     assert 'RELATIONSHIP_PULSE_ENABLED' in CONFIG
-    assert 'PULSE_EVERY = 8' in PULSE
+    # V3.161.0: шесть сообщений вместо восьми и явный вес оценки — пульс должен
+    # доставать и медианного пользователя, и оставаться под тормозом бюджета.
+    assert 'PULSE_EVERY = 6' in PULSE
+    assert 'PULSE_WEIGHT = 0.6' in PULSE
+    from services import spend_service
+    assert 'relationship_pulse' in spend_service.AUX_PURPOSES   # под тормозом дневного бюджета
     assert "purpose='relationship_pulse'" in PULSE
     assert "'inside_joke'" in PULSE and "'meaningful_share'" in PULSE
     assert "reason='llm_pulse'" in PULSE
@@ -95,8 +100,9 @@ def test_next_stage_progress_targets():
     prog = next_stage_progress(_row(stage='stranger', relationship_score=0, trust_score=0, intimacy_score=0))
     labels = [p[0] for p in prog]
     assert labels == ['❤️ отношения', '🤝 доверие', '🔥 страсть']
-    # Next stage after stranger is acquaintance: 15/10/0.
-    assert [p[2] for p in prog] == [15, 10, 0]
+    # V3.161.0: следующий после «незнакомца» — acquaintance, и цель полоски
+    # берётся из тех же STAGE_RULES: 5/4/0, а не старые 15/10/0.
+    assert [p[2] for p in prog] == [5, 4, 0]
     # V3.21.0: the plateau extended to soulmate — only the true final stage
     # has nothing left to chase.
     assert next_stage_progress(_row(stage='eternal')) == []  # V3.62.0: level 10

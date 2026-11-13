@@ -21,7 +21,14 @@ from services.user_service import ensure_user
 
 logger = logging.getLogger(__name__)
 
-PULSE_EVERY = 8
+# V3.161.0: шесть сообщений вместо восьми и вес 0,6 вместо 0,4. Пульс — единственный
+# сигнал качества, который не зависит от того, попал ли человек в пару словесных
+# шаблонов; по дампу 96% реплик шаблон не содержат. Оценивать стало и кого:
+# медианный пользователь пишет 5 сообщений и раньше не видел ни одной оценки.
+# Вызов — один короткий JSON (120 токенов, служебная цель), он уже под тормозом
+# суточного бюджета LLM (spend_service.AUX_PURPOSES), так что цена ограничена.
+PULSE_EVERY = 6
+PULSE_WEIGHT = 0.6
 _PULSE_EVENTS = {'callback', 'inside_joke', 'meaningful_share', 'care', 'warm_flirt'}
 
 _PULSE_PROMPT = (
@@ -102,9 +109,9 @@ async def maybe_pulse(telegram_id: int, user_name: str, character_id: str = CHAR
         event_type = pulse['events'][0] if pulse['events'] else 'interaction'
         await record_user_message(
             telegram_id, user_name,
-            relationship=pulse['warmth'] * 0.4,
-            trust=pulse['trust'] * 0.4,
-            intimacy=pulse['intimacy'] * 0.4,
+            relationship=pulse['warmth'] * PULSE_WEIGHT,
+            trust=pulse['trust'] * PULSE_WEIGHT,
+            intimacy=pulse['intimacy'] * PULSE_WEIGHT,
             event_type=event_type,
             reason='llm_pulse',
             character_id=character_id,

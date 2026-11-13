@@ -19,9 +19,13 @@ def make_session():
 
 
 def test_stage_requires_multiple_dimensions():
-    assert calculate_stage(90, 90, 20) == "close"
-    assert calculate_stage(70, 60, 40) == "intimate"
-    assert calculate_stage(90, 90, 70) == "deeply_connected"
+    # V3.161.0: нижние ступени опущены по живым данным (см. STAGE_RULES), но
+    # инвариант прежний — уровень берётся по самой слабой из трёх осей, и
+    # одна раскачанная ось сама по себе уровень не покупает.
+    assert calculate_stage(90, 90, 19) == "close"
+    assert calculate_stage(38, 34, 20) == "intimate"
+    assert calculate_stage(90, 90, 38) == "deeply_connected"
+    assert calculate_stage(100, 0, 100) == "stranger"
 
 
 def test_deltas_are_bounded_and_audited():

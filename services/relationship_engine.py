@@ -24,11 +24,17 @@ STAGE_RULES = (
     ("voyage", 98, 96, 92),
     ("soulmate", 98, 96, 92),
     ("devoted", 95, 90, 85),
+    # V3.161.0: уровень 6 — платная стена — остался ровно таким же (90/85/80 и
+    # DIMENSION_GATES 65/35/35): он служит и Premium-полом, и потолком
+    # бесплатного. Ниже ступени опущены: по дампу 13.11 467 строк из 474
+    # застряли в «незнакомцах», медианный пользователь пишет 5 сообщений, а
+    # старый вход в уровень 2 стоил 15 очков отношений и 10 доверия при +0,2 за
+    # сообщение и доверии, которое давало только слово «спасибо» (2,25% реплик).
     ("committed", 90, 85, 80),
-    ("deeply_connected", 80, 75, 65),
-    ("intimate", 65, 55, 40),
-    ("close", 40, 35, 0),
-    ("acquaintance", 15, 10, 0),
+    ("deeply_connected", 58, 55, 38),
+    ("intimate", 38, 34, 20),
+    ("close", 16, 14, 6),
+    ("acquaintance", 5, 4, 0),
     ("stranger", 0, 0, 0),
 )
 
@@ -71,10 +77,14 @@ STAGE_ORDER = ["stranger", "acquaintance", "close", "intimate", "deeply_connecte
 # New-user gates. Existing users are never pushed backwards by the migration.
 DIMENSION_GATES = {
     "stranger": (0, 0, 0),
-    "acquaintance": (6, 0, 1),       # familiarity, continuity, connection
-    "close": (18, 5, 5),
-    "intimate": (32, 12, 12),
-    "deeply_connected": (48, 22, 22),
+    # V3.161.0: узнавание и связь опущены вместе с порогами STAGE_RULES — иначе
+    # лесенка упиралась бы в них. Средний столбец (возвращения) не тронут:
+    # 1,7 очка за новый день — 3 дня до уровня 3, неделя до уровня 4, три
+    # недели до платной стены. Темп задаёт не счётчик сообщений, а возврат.
+    "acquaintance": (4, 0, 1),       # familiarity, continuity, connection
+    "close": (14, 5, 5),
+    "intimate": (26, 12, 12),
+    "deeply_connected": (42, 22, 22),
     "committed": (65, 35, 35),
     # V3.21.0: levels 7-8 are premium-only; apply_delta clamps free users at 6.
     "devoted": (75, 45, 45),
@@ -422,7 +432,7 @@ def bond_character(row: UserCharacterRelationship | None) -> tuple[str, str]:
         return ('зарождающаяся симпатия', 'лёгкий интерес и осторожное узнавание друг друга')
     r, t, i = row.relationship_score, row.trust_score, row.intimacy_score
     top = max(r, t, i)
-    if top < 25:
+    if top < 15:   # V3.161.0: порог сдвинут вместе с уровнями 2-3
         return ('зарождающаяся симпатия', 'лёгкий интерес и осторожное узнавание друг друга')
     margin = 10.0
     if i >= r + margin and i >= t + margin:

@@ -156,7 +156,7 @@ def test_the_pulse_reads_the_real_dialog_and_reaches_the_model(monkeypatch):
     from models.relationship_models import UserCharacterRelationship
     from services.db import SessionLocal
     from services.memory_service import save_message
-    from services.relationship_pulse import maybe_pulse
+    from services.relationship_pulse import PULSE_EVERY, maybe_pulse
     from services.user_service import ensure_user
 
     tg = 777010
@@ -165,7 +165,10 @@ def test_the_pulse_reads_the_real_dialog_and_reaches_the_model(monkeypatch):
         save_message(uid, 'anna_01', 'user', f'устал, но зашёл к тебе, {i}')
         save_message(uid, 'anna_01', 'assistant', f'расскажи, как день, {i}')
     with SessionLocal() as s:
-        s.add(UserCharacterRelationship(user_id=uid, character_id='anna_01', total_messages=8))
+        # V3.161.0: интервал стал 6 — счётчик берём из константы, чтобы тест
+        # переживал следующую настройку темпа
+        s.add(UserCharacterRelationship(user_id=uid, character_id='anna_01',
+                                        total_messages=PULSE_EVERY))
         s.commit()
 
     called = {}

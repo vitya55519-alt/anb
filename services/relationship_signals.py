@@ -24,4 +24,8 @@ def infer_delta(text: str) -> SignalDelta:
         return SignalDelta(relationship=1, trust=2, event_type="care", reason="внимательный или поддерживающий контекст")
     if flirt:
         return SignalDelta(relationship=1, intimacy=1, event_type="flirt", reason="взаимный взрослый флирт")
-    return SignalDelta(relationship=0.2, event_type="interaction", reason="обычное общение")
+    # V3.161.0: сам факт, что человек пишет и продолжает разговор, — не ноль.
+    # До этого обычное сообщение давало +0.2 и только к «отношениям»: медианный
+    # пользователь (5 сообщений) не двигал ни доверие, ни страсть, а уровень 2
+    # требовал слова «спасибо/расскажи» — такое бывает в 2,25% реплик.
+    return SignalDelta(relationship=0.35, trust=0.15, event_type="interaction", reason="обычное общение")
