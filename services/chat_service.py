@@ -621,6 +621,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         return secret_response
     
     db_user_id = ensure_user(user_id, user_name, language_code=language_code)
+    # V3.141.0: every LLM row this turn writes is attributed to him (ROI per
+    # traffic source). V3.158.1: the mark moves to the very top — the pulse
+    # task below is born here, and a task copies the context at creation.
+    from services import spend_service
+    spend_service.set_spend_user(user_id)
     observe_message(db_user_id, user_text, character_id)
     delta = infer_delta(user_text)
     test_stage = get_test_stage(user_id, character_id)  # V3.83.0: or his Premium pick
@@ -653,10 +658,6 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     except Exception:
         character = get_character(character_id)
     premium = is_premium(user_id)
-    # V3.141.0: every LLM row this turn writes is attributed to him (ROI per
-    # traffic source). Each request runs in its own task, so the mark is local.
-    from services import spend_service
-    spend_service.set_spend_user(user_id)
     memories = get_memories(db_user_id, character_id, 40 if premium else 14)
     history = get_recent_messages(db_user_id, character_id, 30 if premium else 16)
     # V3.141.0: owner ТЗ (Фаза 2, Задача 1) — the 5th/7th message of a new

@@ -76,9 +76,13 @@ async def maybe_pulse(telegram_id: int, user_name: str, character_id: str = CHAR
 
         from services.memory_service import get_recent_messages
         history = get_recent_messages(uid, character_id, 12)
+        # V3.158.1: get_recent_messages отдаёт строки Message, а не словари.
+        # Пока здесь читали m.get('role'), фрагмент выходил пустым, пульс
+        # молча возвращался до первого обращения к модели — и единственный
+        # механизм, который поднимает доверие и близость, не работал никогда.
         excerpt = '\n'.join(
-            f"{'Пользователь' if m.get('role') == 'user' else 'Она'}: {m.get('content', '')[:200]}"
-            for m in history if isinstance(m, dict) and m.get('content')
+            f"{'Пользователь' if m.role == 'user' else 'Она'}: {(m.content or '')[:200]}"
+            for m in history if getattr(m, 'content', None)
         )
         if not excerpt.strip():
             return

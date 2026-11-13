@@ -146,3 +146,57 @@ def test_the_spend_ledgers_still_carry_the_user():
         imgs = s.query(ImageSpend).filter(ImageSpend.telegram_id == 777005).count()
         orphan = s.query(LlmUsage).filter(LlmUsage.telegram_id == 0).count()
     assert rows >= 1 and imgs >= 1 and orphan >= 1
+
+
+# ── V3.158.1: пульс отношений снова дышит ───────────────────────────────────
+
+def test_the_pulse_reads_the_real_dialog_and_reaches_the_model(monkeypatch):
+    from sqlalchemy import select
+
+    from models.relationship_models import UserCharacterRelationship
+    from services.db import SessionLocal
+    from services.memory_service import save_message
+    from services.relationship_pulse import maybe_pulse
+    from services.user_service import ensure_user
+
+    tg = 777010
+    uid = ensure_user(tg, 'Витя')
+    for i in range(6):
+        save_message(uid, 'anna_01', 'user', f'устал, но зашёл к тебе, {i}')
+        save_message(uid, 'anna_01', 'assistant', f'расскажи, как день, {i}')
+    with SessionLocal() as s:
+        s.add(UserCharacterRelationship(user_id=uid, character_id='anna_01', total_messages=8))
+        s.commit()
+
+    called = {}
+
+    async def fake_generate(messages, **kw):
+        called['purpose'] = kw.get('purpose')
+        called['excerpt'] = messages[0]['content']
+
+        class R:
+            text = '{"warmth":3,"trust":3,"intimacy":2,"events":["care"]}'
+            complete = True
+        return R()
+
+    monkeypatch.setattr('services.llm_provider_service.generate_text', fake_generate)
+    asyncio.run(maybe_pulse(tg, 'Витя', 'anna_01'))
+
+    assert called.get('purpose') == 'relationship_pulse'
+    # раньше сюда попадали строки Message, а читали как словари → фрагмент был
+    # пустой, и модель не вызывалась никогда
+    assert 'Пользователь:' in called['excerpt'] and 'Она:' in called['excerpt']
+    with SessionLocal() as s:
+        row = s.scalar(select(UserCharacterRelationship).where(
+            UserCharacterRelationship.user_id == uid,
+            UserCharacterRelationship.character_id == 'anna_01'))
+        assert row.trust_score > 0 and row.intimacy_score > 0
+
+
+def test_the_pulse_is_billed_to_the_man_whose_turn_it_is():
+    src = (ROOT / 'services' / 'chat_service.py').read_text(encoding='utf-8')
+    body = src[src.index('async def reply('):src.index('async def proactive_reply')]
+    mark = body.index('spend_service.set_spend_user(user_id)')
+    pulse = body.index('create_task(maybe_pulse(')
+    assert mark < pulse            # задача наследует контекст в момент создания
+
