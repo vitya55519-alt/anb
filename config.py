@@ -104,7 +104,8 @@ UNDRESS_PREMIUM_FREE_L7_8 = max(0, int(os.getenv("UNDRESS_PREMIUM_FREE_L7_8", "3
 # V3.138.0: owner — «Раздеть» only ever costs peaches, and cheaper: 250 🍑 ≈ 25 ₽
 # (a render is ~$0.04, so it still pays for itself). The env keeps the old unit,
 # so UNDRESS_PEACH_COST=2.5 means 250 🍑.
-UNDRESS_PEACH_COST = max(1, int(float(os.getenv("UNDRESS_PEACH_COST", "2.5")) * PEACH_SCALE))
+# V3.154.0: owner — «не 250 а 400 персиков» (40 ₽). Env unit unchanged: 4 = 400 🍑.
+UNDRESS_PEACH_COST = max(1, int(float(os.getenv("UNDRESS_PEACH_COST", "4")) * PEACH_SCALE))
 COSPLAY_PHOTO_PEACH_COST = _peach_env("COSPLAY_PHOTO_PEACH_COST", 2)
 # V3.152.0: owner ТЗ (Фогель, Модуль 1) — «Стертый черновик». Sometimes she
 # writes something bolder than she dares to send, deletes it and answers

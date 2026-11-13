@@ -14280,7 +14280,7 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str, *, undress
             and spicy_needs_premium(PhotoRequest(scene=scene)):
         # V3.87.0: nude / lingerie — Premium-only, no free route.
         # V3.137.0: a bought one-time «Раздеть» opens this exact request.
-        # V3.138.0: owner — without Premium it is peaches now: 250 🍑 ≈ 25 ₽.
+        # V3.138.0: owner — without Premium it is peaches now: 400 🍑 ≈ 40 ₽.
         if undress_credit:
             from services import undress_credits
             from config import UNDRESS_PEACH_COST
@@ -14547,7 +14547,7 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                     from services import undress_credits
                     undress_credits.spend(telegram_id)
                 elif pay == 'undress_peaches':
-                    # V3.138.0: «Раздеть» for peaches — 250 🍑, not the photo price.
+                    # V3.138.0: «Раздеть» for peaches — 400 🍑, not the photo price.
                     from config import UNDRESS_PEACH_COST
                     spend_peaches(telegram_id, UNDRESS_PEACH_COST, paid_only=True)
                     paid_note = {'price': UNDRESS_PEACH_COST, 'left': get_paid_peaches(telegram_id)}
@@ -16816,7 +16816,7 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         # V3.86.0: owner — «раздеть» only with Premium, the button sold Premium.
         # V3.132.0: a «Раздеть» bought on its own (50 ₽) works without Premium.
         # V3.138.0: owner — «не за 50 руб, а за 25, только цену в персиках»: without
-        # Premium the button now costs 250 🍑; a credit he already bought still spends first.
+        # Premium the button now costs 400 🍑; a credit he already bought still spends first.
         from services import undress_credits
         if not is_premium(telegram_id):
             if undress_credits.balance(telegram_id) > 0:

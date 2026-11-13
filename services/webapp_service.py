@@ -388,7 +388,7 @@ def api_me(telegram_id: int) -> dict:
         'trial_eligible': _trial_eligible(telegram_id),
         # V3.132.0: one «Раздеть» without Premium — the price on her photo button.
         'undress_one_rub': UNDRESS_ONE_PRICE_RUB if UNDRESS_ONE_ENABLED else 0,
-        # V3.138.0: owner — «Раздеть» is priced in peaches only: 250 🍑 ≈ 25 ₽.
+        # V3.138.0: owner — «Раздеть» is priced in peaches only. V3.154.0: 400 🍑 ≈ 40 ₽.
         'undress_peaches': UNDRESS_PEACH_COST,
         # V3.139.2: «Видео вдвоём» carries the same price as the secret video.
         'duo_video_peaches': HOT_CIRCLE_PEACH_COST,

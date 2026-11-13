@@ -100,13 +100,13 @@ def test_name_line_bans_it_for_the_messages_she_writes_first():
         assert 'без действий в *звёздочках*' in lang_guard.name_line(lang), lang
 
 
-# ── 4. «Раздеть»: peaches only, 250 🍑 ≈ 25 ₽ ────────────────────────────────
+# ── 4. «Раздеть»: peaches only, 400 🍑 ≈ 40 ₽ (V3.154.0: owner — «не 250 а 400») ─
 
-def test_undress_price_is_peaches_worth_25_rubles():
+def test_undress_price_is_peaches_worth_40_rubles():
     from config import UNDRESS_PEACH_COST, PEACH_SCALE, PEACH_PACK_10_RUB
-    assert UNDRESS_PEACH_COST == 250
+    assert UNDRESS_PEACH_COST == 400
     rubles = UNDRESS_PEACH_COST / PEACH_SCALE * (PEACH_PACK_10_RUB / 10)
-    assert 20 <= rubles <= 30, rubles
+    assert 35 <= rubles <= 45, rubles
 
 
 def test_the_app_prices_undress_in_peaches_everywhere_it_offers_it():
