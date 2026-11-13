@@ -106,12 +106,16 @@ def _clean_state():
 
 
 # ── 1. the role split ──────────────────────────────────────────────────────
-def test_a_plain_user_gets_exactly_four_rows(monkeypatch):
+def test_a_plain_user_gets_the_doors_and_the_command_rows(monkeypatch):
+    # V3.163.0: the four doors, then what the hidden slash commands used to
+    # open — stories, collection, features, support and the donation post.
     main = _main(monkeypatch)
     rows = main.menu_markup(USER_ID).inline_keyboard
     assert [r[0].text for r in rows] == ['📱 Открыть приложение', '👯‍♀️ Галерея персонажей',
-                                       '⏰ Будильник', '📝 Напоминание']
-    assert all(len(r) == 1 for r in rows)
+                                       '⏰ Будильник', '📝 Напоминание',
+                                       '🎯 Истории', '✨ Возможности', '💖 Поддержать проект']
+    assert [b.text for r in rows for b in r].count('🖼 Коллекция') == 1
+    assert [b.text for r in rows for b in r].count('👥 Поддержка') == 1
 
 
 def test_the_two_app_rows_are_mini_app_deep_links(monkeypatch):
@@ -132,22 +136,26 @@ def test_the_utilities_are_callback_rows(monkeypatch):
 
 def test_the_owner_kitchen_appears_only_for_his_id(monkeypatch):
     main = _main(monkeypatch)
-    user_keys = {r[0].text for r in main.menu_markup(USER_ID).inline_keyboard}
+    from services.ui_lang import menu_rows
+    user = main.menu_markup(USER_ID).inline_keyboard
+    user_keys = {b.text for r in user for b in r}
     admin_rows = main.menu_markup(ADMIN_ID).inline_keyboard
     admin_keys = [r[0].text for r in admin_rows]
     for kitchen in ('💰 Партнёрская программа', '🍳 Рецепт', '🎫 Концерт', '🎟 Промо', '👤 Профиль'):
         assert kitchen in admin_keys, kitchen
         assert kitchen not in user_keys, kitchen
     # the kitchen is split off below the block, in its own rows
-    assert admin_rows[:4] == main.menu_markup(USER_ID).inline_keyboard
-    assert len(admin_rows) > 4
+    n = len(menu_rows(False))
+    assert admin_rows[:n] == user
+    assert len(admin_rows) > n
 
 
 def test_the_reply_keyboard_uses_the_same_role_split(monkeypatch):
     main = _main(monkeypatch)
     user_rows = main.main_keyboard(False, USER_ID).keyboard
     assert [r[0].text for r in user_rows] == ['📱 Открыть приложение', '👯‍♀️ Галерея персонажей',
-                                        '⏰ Будильник', '📝 Напоминание']
+                                        '⏰ Будильник', '📝 Напоминание',
+                                        '🎯 Истории', '✨ Возможности', '💖 Поддержать проект']
     admin_rows = main.main_keyboard(True, ADMIN_ID).keyboard
     assert len(admin_rows) > len(user_rows)
 

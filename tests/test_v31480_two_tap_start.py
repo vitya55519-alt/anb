@@ -126,10 +126,12 @@ def test_the_tap_rewrites_the_media_bubble(funnel):
     assert kind == 'edit_caption'
     assert kw['caption'] == '🎁 Добро пожаловать! Тебе начислено 200 фото-кредитов 👇'
     rows = kw['reply_markup'].inline_keyboard
-    # V3.149.0: the rewritten bubble carries the role menu — four rows for a
-    # plain user, the app door still first.
+    # V3.149.0: the rewritten bubble carries the role menu — the app door
+    # still first. V3.163.0: under the four doors sit the rows that replaced
+    # the slash commands a plain user can no longer see.
     assert [r[0].text for r in rows] == ['📱 Открыть приложение', '👯‍♀️ Галерея персонажей',
-                                     '⏰ Будильник', '📝 Напоминание']
+                                     '⏰ Будильник', '📝 Напоминание',
+                                     '🎯 Истории', '✨ Возможности', '💖 Поддержать проект']
     assert rows[0][0].web_app.url == APP_URL
 
 

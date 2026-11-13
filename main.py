@@ -626,6 +626,8 @@ def _app_row(lang: str):
 # (the gallery lands on the character tab, not the chat tab), ⏰ and 📝 are the
 # two utilities that arm the FSM below, and the money/content rows only ever
 # render for an id in ADMIN_TELEGRAM_IDS — the kitchen stays the owner's.
+# V3.163.0: the last four are what the slash commands used to open — the owner
+# took the command list away from users, so the menu carries them now.
 MENU_APP_ROUTES = {'app': '', 'gallery': '?open=characters'}
 MENU_CALLBACK_ROUTES = {
     'alarm': 'menu:alarm',
@@ -639,9 +641,13 @@ MENU_CALLBACK_ROUTES = {
     'credits': 'credits:open',
     'premium': 'premium:view',
     'paint': 'photo_menu:open',
-    'support': 'legal:support',
+    'support': 'menu:support',
     'legal': 'legal:terms',
     'admin': 'admin:home',
+    'stories': 'quest:list',
+    'collection': 'menu:collection',
+    'features': 'onboard:abilities',
+    'donate': 'donate:open',
 }
 
 
@@ -5151,7 +5157,8 @@ async def handle_card_photo(message: types.Message):
 async def support_cmd(message: types.Message):
     parts=(message.text or '').split(maxsplit=1)
     if len(parts)<2 or not parts[1].strip():
-        await message.answer('Напиши: /support что произошло — сообщение уйдёт владельцу.')
+        await message.answer('Напиши: /support что произошло — сообщение уйдёт владельцу.\n'
+                             'Проще кнопкой: «👥 Поддержка» в меню 👇')
         return
     delivered = await _deliver_support_message(message, parts[1])
     await message.answer('Передала владельцу 🙂' if delivered else 'Запрос записан, но сейчас не удалось доставить сообщение.')
@@ -5177,7 +5184,8 @@ async def pay_support(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     parts = (message.text or '').split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
-        await message.answer('Напиши одним сообщением: /paysupport что случилось с оплатой. Я передам это владельцу.')
+        await message.answer('Напиши одним сообщением: /paysupport что случилось с оплатой. Я передам это владельцу.\n'
+                             'Или кнопкой «👥 Поддержка» в меню — там отвечает команда 👇')
         return
     text_value = parts[1].strip()[:1500]
     delivered = False
@@ -5194,19 +5202,23 @@ async def pay_support(message: types.Message):
     await message.answer('Сообщение по оплате передано владельцу.' if delivered else 'Запрос записан, но сейчас не удалось доставить его владельцу.')
 
 
-@dp.message(Command('collection'))
-async def collection_cmd(message: types.Message):
-    if not has_accepted(message.from_user.id):
-        await message.answer('Сначала /start и подтверждение 18+.'); return
-    level=get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
-    snap=collection_progress(message.from_user.id, get_user_character(message.from_user.id), level)
-    lines=[f'📸 Коллекция Анны: {snap["seen"]}/{snap["total"]} открыто']
+def _collection_lines(telegram_id: int) -> str:
+    level = get_relationship_level(telegram_id, get_user_character(telegram_id))
+    snap = collection_progress(telegram_id, get_user_character(telegram_id), level)
+    lines = [f'📸 Коллекция Анны: {snap["seen"]}/{snap["total"]} открыто']
     for row in snap['per_level']:
         if row['unlocked']:
             lines.append(f'L{row["level"]} · {row["seen"]}/{row["total"]}' + (' ✅' if row['total'] and row['seen']>=row['total'] else ''))
         else:
             lines.append(f'L{row["level"]} · 🔒')
-    await message.answer('\n'.join(lines))
+    return '\n'.join(lines)
+
+
+@dp.message(Command('collection'))
+async def collection_cmd(message: types.Message):
+    if not has_accepted(message.from_user.id):
+        await message.answer('Сначала /start и подтверждение 18+.'); return
+    await message.answer(_collection_lines(message.from_user.id))
 
 
 def _gallery_caption(item: dict, index: int, total_on_page: int) -> str:
@@ -6807,6 +6819,18 @@ async def platega_pay(cq: types.CallbackQuery):
     )
 
 
+def _donation_post(lang: str) -> tuple[str, InlineKeyboardMarkup]:
+    """V3.163.0: the owner's donation post — one text and one amount chooser
+    for both the menu row callback and the reply-keyboard button."""
+    if lang == EN:
+        text = ('💖 Support the project\n\nPick an amount — the payment page opens with card / SBP / crypto. '
+                'Every donation keeps new characters, photos and videos coming ❤️')
+    else:
+        text = ('💖 Поддержать проект\n\nВыбери сумму — откроется страница оплаты: карта / СБП / крипта. '
+                'Каждый донат — это новые персонажи, фото и видео ❤️')
+    return text, donation_service.donation_amounts_keyboard(lang)
+
+
 @dp.callback_query(F.data == 'donate:open')
 async def donate_open_cb(cq: types.CallbackQuery):
     """V3.44.22: «Поддержать проект» — the owner's 50/100/500 ₽ chooser.
@@ -6824,14 +6848,20 @@ async def donate_open_cb(cq: types.CallbackQuery):
         # is off — kept for crafted callback data.
         await cq.answer('Оплата картой сейчас выключена 🙂', show_alert=True); return
     await cq.answer()
-    lang = user_lang(cq.from_user.id)
-    if lang == EN:
-        text = ('💖 Support the project\n\nPick an amount — the payment page opens with card / SBP / crypto. '
-                'Every donation keeps new characters, photos and videos coming ❤️')
-    else:
-        text = ('💖 Поддержать проект\n\nВыбери сумму — откроется страница оплаты: карта / СБП / крипта. '
-                'Каждый донат — это новые персонажи, фото и видео ❤️')
-    await cq.message.answer(text, reply_markup=donation_service.donation_amounts_keyboard(lang))
+    text, markup = _donation_post(user_lang(cq.from_user.id))
+    await cq.message.answer(text, reply_markup=markup)
+
+
+@dp.message(F.text.in_(kb_pair('donate')))
+async def donate_button(message: types.Message):
+    """V3.163.0: «💖 Поддержать проект» as a menu row — the same post the
+    weekly reminder button opens."""
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    if not has_accepted(message.from_user.id):
+        await message.answer('Сначала /start и подтверждение 18+.')
+        return
+    text, markup = _donation_post(user_lang(message.from_user.id))
+    await message.answer(text, reply_markup=markup)
 
 
 @dp.callback_query(F.data.startswith('paymethod:'))
@@ -9507,6 +9537,33 @@ async def menu_gallery_cb(cq: types.CallbackQuery):
 async def menu_profile_cb(cq: types.CallbackQuery):
     await cq.answer()
     await profile_button(cq.message)
+
+
+@dp.callback_query(F.data == 'menu:collection')
+async def menu_collection_cb(cq: types.CallbackQuery):
+    """V3.163.0: owner took the slash list away from users, so «🖼 Коллекция»
+    opens from the menu. cq.message is the BOT's bubble — the report must be
+    built for cq.from_user, not for the message author."""
+    await cq.answer()
+    if not has_accepted(cq.from_user.id):
+        await cq.message.answer('Сначала /start и подтверждение 18+.')
+        return
+    await cq.message.answer(_collection_lines(cq.from_user.id))
+
+
+@dp.callback_query(F.data == 'menu:support')
+async def menu_support_cb(cq: types.CallbackQuery):
+    """V3.163.0: the inline twin of the «👥 Поддержка» reply-keyboard row — the
+    dedicated support bot, not the legal text wall full of commands."""
+    await cq.answer()
+    ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    lang = user_lang(cq.from_user.id)
+    await cq.message.answer(
+        '👥 поддержка\n\nнапиши нашему боту поддержки — команда ответит прямо там 👇' if lang != EN
+        else '👥 support\n\nwrite to our support bot — the team answers there directly 👇',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text='👥 написать в поддержку' if lang != EN else '👥 contact support',
+            url=f'https://t.me/{SUPPORT_BOT_USERNAME}')]]))
 
 
 @dp.message(Command('menu'))
@@ -19409,7 +19466,18 @@ async def main():
         types.BotCommand(command='menu', description='🧭 Меню'),
         types.BotCommand(command='reset', description='Очистить память и историю'),
     ]
-    await bot.set_my_commands(public_commands)
+    # V3.163.0: owner — «зашёл в другой аккаунт, и там через палочку видно все
+    # команды, которые есть в боте. Сделай так, чтобы их видел только я». The
+    # list is no longer global: the default scope and the all-private-chats
+    # scope are cleared, and the full list goes only into each admin's own
+    # chat below. Handlers stay registered, so a command typed by hand still
+    # works — it is simply not offered, and everything a user needed from it
+    # is a button in the menu now.
+    for _scope in (types.BotCommandScopeDefault(), types.BotCommandScopeAllPrivateChats()):
+        try:
+            await bot.delete_my_commands(scope=_scope)
+        except Exception:
+            logger.exception('failed to clear the command list scope=%s', type(_scope).__name__)
     _spawn_background(_apply_bot_profile())
     _spawn_background(_apply_bot_avatar())
     # V3.33.0: Mini App — the blue «Открыть приложение» button in the bot's
@@ -19445,6 +19513,8 @@ async def main():
     if not ADMIN_TELEGRAM_IDS:
         logger.warning('ADMIN_TELEGRAM_IDS is empty; /admin will be inaccessible')
     for admin_id in ADMIN_TELEGRAM_IDS:
+        # V3.163.0: this per-chat scope is the only place the command list is
+        # installed now — for everyone else «/» opens an empty list.
         try:
             await bot.set_my_commands(
                 public_commands + [types.BotCommand(command='admin', description='🛠 Админка'), types.BotCommand(command='week', description='📈 Отчёт за неделю'), types.BotCommand(command='refundstars', description='↩️ Возврат Stars'), types.BotCommand(command='geministatus', description='🧠 Gemini status'), types.BotCommand(command='grant', description='🎁 Выдать premium/токены по @username'), types.BotCommand(command='setmenubutton', description='🔵 Установить кнопку «Открыть приложение»')],
