@@ -801,3 +801,28 @@ class WardrobeState(Base):
     room_image: Mapped[str | None] = mapped_column(String(128), nullable=True)
     room_slots_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class GiftOwned(Base):
+    """V3.153.0: owner ТЗ (Фогель, Модуль 4) — «🎁 Подарки». One row per gift he
+    bought this girl. Like the wardrobe she keeps it forever, but the four gift
+    positions are the cheap impulse tier whose point is the effect, not the look."""
+    __tablename__ = "gift_owned"
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    character_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    gift_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class GiftState(Base):
+    """V3.153.0: the gift she wears right now (current_outfit) and how many of
+    her replies the temporary gifts still last, per (user, girl). Auto-created.
+    Unlike wardrobe_state this outfit never expires by day: he paid once and it
+    stays in her photos until the next gift replaces it."""
+    __tablename__ = "gift_state"
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    character_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    current_gift: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    wine_left: Mapped[int] = mapped_column(Integer, default=0)
+    passion_left: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

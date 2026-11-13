@@ -116,6 +116,29 @@ DRAFT_PEACH_COST = max(1, int(float(os.getenv("DRAFT_PRICE_PEACHES", "0.5")) * P
 DRAFT_TRIGGER_PCT = max(0, min(60, int(os.getenv("DRAFT_TRIGGER_PCT", "18"))))
 DRAFT_MIN_LEVEL = max(1, min(10, int(os.getenv("DRAFT_MIN_LEVEL", "2"))))
 DRAFT_MAX_PER_DAY = max(0, min(10, int(os.getenv("DRAFT_MAX_PER_DAY", "4"))))
+# V3.153.0: owner ТЗ (Фогель, Модуль 4) — «🎁 Подарки». Four cheap gifts whose
+# whole point is that they stay visible: the last one she was given rides into
+# every later photo prompt until the next gift replaces it. Env keeps the old
+# peach unit (GIFT_LACE_PEACHES=1.5 means 150 🍑).
+GIFT_LACE_PEACHES = max(1, int(float(os.getenv("GIFT_LACE_PEACHES", "1.5")) * PEACH_SCALE))
+GIFT_LATEX_PEACHES = max(1, int(float(os.getenv("GIFT_LATEX_PEACHES", "2.5")) * PEACH_SCALE))
+GIFT_COLLAR_PEACHES = max(1, int(float(os.getenv("GIFT_COLLAR_PEACHES", "4")) * PEACH_SCALE))
+GIFT_WINE_PEACHES = max(1, int(float(os.getenv("GIFT_WINE_PEACHES", "1")) * PEACH_SCALE))
+# The ТЗ pays «+20/+35/+60 очков к прогрессу уровня» for these gifts. Our levels
+# run on five axes 0..100 and level 5+ is exactly what opens explicit content,
+# so raw +20 for 150 🍑 would let a player buy a level outright. The scale turns
+# the ТЗ numbers into a nudge: 20 → +1.0 relationship, 60 → +3.0.
+GIFT_POINTS_SCALE = max(0.0, float(os.getenv("GIFT_POINTS_SCALE", "0.05")))
+# How many of her replies the wine «снимает стеснение» and the БДСМ-сет держит
+# ползунок связи на «Страсть»; below GIFT_WINE_MIN_LEVEL even the wine stays shy.
+GIFT_WINE_TURNS = max(0, min(50, int(os.getenv("GIFT_WINE_TURNS", "10"))))
+GIFT_WINE_MIN_LEVEL = max(1, min(10, int(os.getenv("GIFT_WINE_MIN_LEVEL", "3"))))
+GIFT_PASSION_TURNS = max(0, min(50, int(os.getenv("GIFT_PASSION_TURNS", "10"))))
+# Фогель: photo «автоматически при покупке дорогого подарка». A render is
+# ~$0.04 ≈ 250 🍑, so only a gift at or above this price ships with its own
+# picture; cheaper ones show up on the next photo he asks for. Set it to 150 to
+# give every gift a photo.
+GIFT_AUTO_PHOTO_MIN_PEACHES = max(0, int(os.getenv("GIFT_AUTO_PHOTO_MIN_PEACHES", "400")))
 # Hot Pass — безлимитная подписка на фото «наедине» и «косплей»
 HOT_PASS_DAY_PEACHES = _peach_env("HOT_PASS_DAY_PEACHES", 5)
 HOT_PASS_WEEK_PEACHES = _peach_env("HOT_PASS_WEEK_PEACHES", 25)

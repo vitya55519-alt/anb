@@ -2106,7 +2106,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     state = ensure_life_state(telegram_id)
     season = request.season or _default_season()
     # V3.114.0: «👗 Гардероб» — what he gave her: today's garment, jewellery, room things.
-    wd = {}
+    wd, gf = {}, {}
     if not request.with_guest:
         try:
             from services.wardrobe_service import photo_overrides
@@ -2117,6 +2117,27 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         request = replace(request, clothing=wd['clothing'], gift_outfit=True)
     if wd.get('accessory') and not request.accessory:
         request = replace(request, accessory=wd['accessory'])
+    if not request.with_guest and not request.pack_outfits:
+        try:
+            from services.gift_shop_service import photo_overrides as gift_photo_overrides
+            gf = gift_photo_overrides(telegram_id, character_id, request.scene,
+                                      SCENE_GROUP.get(request.scene, 'day_casual'))
+        except Exception:
+            gf = {}
+    # V3.153.0: owner ТЗ (Фогель, Модуль 4) — «платный подарок меняет картинку»:
+    # the gift he bought once stays on her, so its clause has to reach the
+    # prompt on every later photo. The wardrobe keeps the slot it was put on
+    # for today («Надеть сегодня» is a deliberate action, a gift is a state),
+    # the gift fills what is left and always says what she wears underneath —
+    # that is how a lingerie gift shows up in bed and what she took off in a
+    # nude frame.
+    if gf.get('clothing') and not request.clothing:
+        request = replace(request, clothing=gf['clothing'], gift_outfit=True)
+    if gf.get('accessory'):
+        request = replace(request, accessory=f'{request.accessory}; {gf["accessory"]}'
+                          if request.accessory else gf['accessory'])
+    if gf.get('underwear') and not wd.get('underwear'):
+        wd = dict(wd, underwear=gf['underwear'])
     pack_outfits = tuple(request.pack_outfits) if request.pack_outfits else _choose_progression_outfits(telegram_id, request, season, character_id=character_id)
     clothing = pack_outfits[-1] if pack_outfits else request.clothing
     # V3.43.8: character-specific styling. Each built-in heroine has her own
@@ -3688,6 +3709,16 @@ async def deliver_photo(
         _gift_worn = False
     # same pool rules as the at-home lingerie sets: not served from, not fed into the pool
     home_lingerie_mode = home_lingerie_mode or _gift_worn
+    # V3.153.0: «🎁 Подарки» stays on her for good, so the pool is skipped only in
+    # the scenes where his gift actually shows — on top of her clothes or on her
+    # neck. On the street it is under them, and a shared frame costs nothing.
+    try:
+        from services import gift_shop_service
+        _gs = gift_shop_service.photo_overrides(
+            telegram_id, character_id, request.scene, SCENE_GROUP.get(request.scene, 'day_casual'))
+    except Exception:
+        _gs = {}
+    home_lingerie_mode = home_lingerie_mode or bool(_gs.get('clothing') or _gs.get('accessory'))
 
     # Community pool first for free/story sets: when other users' AI
     # generations already cover this character+scene, serve the shared photos

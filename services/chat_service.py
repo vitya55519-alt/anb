@@ -466,7 +466,7 @@ def _adult_ok(telegram_id: int) -> bool:
 
 def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool = False,
                        card_girl: bool = False, wild: bool = False, premium: bool = False,
-                       dirty_start: bool = False) -> str:
+                       dirty_start: bool = False, wine: bool = False) -> str:
     """Explicit sexting needs the 18+ confirmation AND level 5+ (or the
     premium spicy toggle at level 4+); everyone else keeps the non-graphic rule.
     V3.76.0: the scenario-card girls are dirty by design, so for them it
@@ -474,7 +474,11 @@ def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool 
     V3.90.0: owner — «весь интим только с премиумом»: none of it without Premium.
     V3.91.0: a DIRTY_FROM_START girl opens it from the very first level for
     every confirmed adult, Premium or not.
-    V3.92.0: ``premium`` is also true for «🔥 Девушка дня» (girl_of_day)."""
+    V3.92.0: ``premium`` is also true for «🔥 Девушка дня» (girl_of_day).
+    V3.153.0 (Фогель, Модуль 4): ``wine`` — his bottle of wine bought in the gift
+    shop takes her shyness off, so the STAGE no longer holds the line back.
+    Premium and the 18+ confirmation still do: the wine moves a level gate, not
+    the owner's paywall."""
     if not adult_confirmed:
         return ''
     if dirty_start:  # owner: «доступно для всех» — no Premium needed for her
@@ -484,6 +488,8 @@ def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool 
     if not stage:
         return ''
     if wild:  # V3.78.0: he picked «😈 Без тормозов» for a Premium storyline
+        return EXPLICIT_CHAT_RULE
+    if wine:  # V3.153.0: «снимает стеснение у скромных персонажей»
         return EXPLICIT_CHAT_RULE
     if stage in EXPLICIT_STAGES or (spicy and stage == 'intimate'):
         return EXPLICIT_CHAT_RULE
@@ -782,6 +788,22 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         persona_style = style_row[0] if style_row else None
         marital_status = style_row[1] if style_row else None
         rel_stage = style_row[2] if style_row else None
+        # V3.153.0: owner ТЗ (Фогель, Модуль 4) — «🎁 Подарки». His gifts stay on
+        # her, and two of them also change how she behaves for a stretch of her
+        # replies: the БДСМ-сет pushes the manner he chose to the «Страсть» end,
+        # the wine takes her shyness off. Read once per turn, spent by tick()
+        # when the reply is saved. Fail-silent, like everything here.
+        gift_boosts = {'passion': 0, 'wine': 0}
+        gift_wine_open = False
+        try:
+            from services import gift_shop_service
+            gift_boosts = gift_shop_service.boosts(user_id, character_id)
+            if gift_boosts.get('passion'):
+                persona_style = 'passionate'
+            gift_wine_open = bool(gift_boosts.get('wine')) and gift_shop_service.wine_opens_level(adaptation_level)
+        except Exception:
+            gift_boosts = {'passion': 0, 'wine': 0}
+            gift_wine_open = False
         if not marital_status:
             # V3.59.8: a custom girl's constructor choice gets the same reminder.
             from services.custom_character_service import is_custom_character, custom_character_params
@@ -819,6 +841,19 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                 style_line = (style_line + '\n' if style_line else '') + _wd
         except Exception:
             pass
+        # V3.153.0 (Фогель, Модуль 4): what he gave her in the gift shop is what
+        # she is wearing now, plus the two temporary states the gifts carry.
+        try:
+            from services import gift_shop_service as _gshop
+            if gift_boosts.get('passion'):
+                style_line = (style_line + '\n' if style_line else '') + _gshop.passion_line()
+            if gift_boosts.get('wine'):
+                style_line = (style_line + '\n' if style_line else '') + _gshop.wine_line(adaptation_level)
+            _gs = _gshop.chat_line(user_id, character_id)
+            if _gs:
+                style_line = (style_line + '\n' if style_line else '') + _gs
+        except Exception:
+            pass
         # V3.60.0: a confirmed adult deep enough into the story gets explicit
         # sexting instead of «детальные сцены — это не моё»: the old blanket
         # «без графического секса» now holds only below that line.
@@ -834,7 +869,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         explicit_line = explicit_chat_line(test_stage or rel_stage, adult_confirmed=_adult_ok(user_id),
                                            spicy=bool(spicy_line) and not card_girl, card_girl=card_girl,
                                            wild=plot_heat == 'wild' or bool(fetish_line), premium=intim_ok,
-                                           dirty_start=dirty_start)
+                                           dirty_start=dirty_start,
+                                           wine=gift_wine_open)
         if plot_heat == 'soft' and not fetish_line:
             explicit_line = ''
         if fetish_line:
@@ -1093,6 +1129,16 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             # The plate itself is drawn by the delivery layer (Mini App payload
             # / Telegram handler) — it gets the id, never the text.
             draft_service.note_pending(user_id, character_id, mid)
+    # V3.153.0 (Фогель, Модуль 4): a gift that lasts «N сообщений» spends one of
+    # them on her live replies only. A proactive push, a ritual message or the
+    # purchase reaction itself (it always comes with a scene note) must not eat
+    # what he just paid for.
+    if not scene and (r.text or '').strip():
+        try:
+            from services import gift_shop_service
+            gift_shop_service.tick(user_id, character_id)
+        except Exception:
+            pass
     if gift and (r.text or '').strip():
         try:
             from services import memory_gift

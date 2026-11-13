@@ -5000,6 +5000,23 @@ async def wardrobe_cmd(message: types.Message):
             web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=wardrobe'))]]))
 
 
+@dp.message(Command('gifts'))
+async def gift_shop_cmd(message: types.Message):
+    """V3.153.0 (Фогель, Модуль 4): «🎁 Подарки» lives in the app — the button
+    opens her chat with the gift sheet."""
+    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
+    en = user_lang(message.from_user.id) == EN
+    if not PUBLIC_BASE_URL:
+        await message.answer('🎁 …')
+        return
+    await message.answer(
+        '🎁 Give her a gift: she keeps it on in her photos and it changes how she behaves with you.' if en else
+        '🎁 Подари ей что-нибудь: она будет в этом на фото и подарок меняет то, как она с тобой ведёт себя.',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text='🎁 Choose a gift' if en else '🎁 Выбрать подарок',
+            web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=gifts'))]]))
+
+
 @dp.message(Command('app'))
 async def app_cmd(message: types.Message):
     # V3.33.1: guaranteed Mini App entry point. The profile «Открыть
@@ -8985,6 +9002,8 @@ def peach_shop_keyboard(telegram_id: int, lang: str = 'ru') -> InlineKeyboardMar
     if PUBLIC_BASE_URL:
         rows.append([InlineKeyboardButton(text='👗 Her wardrobe' if en else '👗 Гардероб: одежда и комната для неё',
                                           web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=wardrobe'))])
+        rows.append([InlineKeyboardButton(text='🎁 Gifts for her' if en else '🎁 Подарки: 100–400 🍑',
+                                          web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=gifts'))])
         rows.append([InlineKeyboardButton(text='🛍 Open the app shop' if en else '🛍 Магазин в приложении',
                                           web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -17952,6 +17971,141 @@ async def _webapp_api_wardrobe_pet(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'name': name})
 
 
+# ── V3.153.0: «🎁 Подарки» (Фогель, Модуль 4) — the cheap gifts that stay on her ──
+async def _webapp_api_gifts(request: web.Request) -> web.Response:
+    """The gift shop: four positions, what she is wearing from them now, and
+    which of the two temporary effects (wine, БДСМ-сет) still runs."""
+    user_info = _wardrobe_auth(request)
+    if not user_info:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = int(user_info['id'])
+
+    def _load():
+        from services import gift_shop_service
+        cid = str(request.query.get('character_id', '')) or get_user_character(telegram_id)
+        lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+        data = gift_shop_service.catalog(telegram_id, cid, lang, adult_open=_wardrobe_adult_open(telegram_id))
+        return dict(data, ok=True, character_id=cid, peaches=get_paid_peaches(telegram_id))
+    try:
+        return web.json_response(await asyncio.to_thread(_load))
+    except Exception:
+        logger.exception('webapp gifts load failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'temporarily_unavailable'})
+
+
+async def _webapp_api_gifts_buy(request: web.Request) -> web.Response:
+    try:
+        return await _webapp_api_gifts_buy_impl(request)
+    except Exception:
+        logger.exception('webapp gift buy failed')
+        return web.json_response({'ok': False, 'error': 'temporarily_unavailable'})
+
+
+async def _webapp_api_gifts_buy_impl(request: web.Request) -> web.Response:
+    """Money first, then the gift: she puts it on for good (photo_service rides
+    it into every later picture), the ТЗ «очки к прогрессу уровня» land in the
+    relationship row, and only a gift at GIFT_AUTO_PHOTO_MIN_PEACHES and above
+    pays for its own photo. A failed write gives the peaches straight back."""
+    from services import gift_shop_service
+    user_info = _wardrobe_auth(request)
+    if not user_info:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = int(user_info['id'])
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    gift = gift_shop_service.get(str(body.get('gift_id', '')))
+    if not gift:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    admin = telegram_id in ADMIN_TELEGRAM_IDS
+
+    def _charge():
+        if not has_accepted(telegram_id):
+            return {'error': 'consent', 'status': 403}
+        cid = str(body.get('character_id', '')) or get_user_character(telegram_id)
+        uid_ = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
+        if gift.adult and not _wardrobe_adult_open(telegram_id):
+            return {'error': 'adult' if is_premium(telegram_id) else 'premium_required', 'status': 403}
+        if gift.id in gift_shop_service.owned_ids(telegram_id, cid) and not gift_shop_service.repeatable(gift):
+            return {'error': 'owned', 'status': 409}
+        if not admin and not spend_peaches(telegram_id, gift.price):
+            return {'error': 'insufficient_peaches', 'cost': gift.price, 'status': 402}
+        if not gift_shop_service.grant(telegram_id, cid, gift.id):
+            if not admin:
+                add_peaches(telegram_id, gift.price)
+            return {'error': 'owned', 'status': 409}
+        track_event(uid_, 'gift_buy', character_id=cid,
+                    metadata={'gift': gift.id, 'price': 0 if admin else gift.price})
+        return {'cid': cid, 'uid': uid_, 'worn': gift_shop_service.current_outfit(telegram_id, cid)}
+    res = await asyncio.to_thread(_charge)
+    if res.get('error'):
+        status = res.pop('status', 400)
+        return web.json_response(dict(res, ok=False), status=status)
+    character_id, uid = res['cid'], res['uid']
+    user_name = user_info.get('first_name') or ''
+    rel, intimacy = gift_shop_service.points_delta(gift.points)
+    if rel or gift.turns:
+        # The ТЗ prices gifts in level progress; the wine buys no clothes, so
+        # without its own points it still has to move something for him.
+        await record_user_message(telegram_id, user_name, relationship=rel, trust=0.3,
+                                  intimacy=intimacy or 0.3, event_type='gift',
+                                  reason=f'gift:{gift.id}', character_id=character_id)
+    lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+    action = gift_shop_service.gift_action(gift, lang)
+    try:
+        from services.character_registry import get_character as _gc
+        name = (_gc(character_id) or {}).get('name') or ''
+    except Exception:
+        name = ''
+    answer = await _feature_scene_turn(telegram_id, user_info, character_id, action,
+                                       gift_shop_service.gift_scene(gift, name))
+    if not answer:
+        answer = ('You got this for me? 😍 Okay… give me a second' if lang == 'en'
+                  else 'Это мне?! 😍 Спасибо… дай мне минутку')
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', answer)
+    photo = gift_shop_service.auto_photo(gift)
+    if photo:
+        _spawn_background(_deliver_gift_photo(telegram_id, character_id, uid, gift.id))
+    return web.json_response({'ok': True, 'text': answer, 'user_text': action if answer else '',
+                              'worn': res['worn'],
+                              'photo_pending': photo,
+                              'peaches': await asyncio.to_thread(get_paid_peaches, telegram_id)})
+
+
+async def _deliver_gift_photo(telegram_id: int, character_id: str, uid: int, gift_id: str) -> None:
+    """The try-on picture that comes with an expensive gift. The gift is already
+    his, so a failed render costs him nothing: she says so, and the outfit
+    arrives on the next photo he asks for anyway."""
+    from services import gift_shop_service
+    gift = gift_shop_service.get(gift_id)
+    if not gift:
+        return
+    try:
+        data, mime, ext = await _webapp_pipeline_photo(telegram_id, character_id, PhotoRequest(scene=gift.tryon))
+    except Exception as exc:
+        logger.exception('gift try-on photo failed user=%s gift=%s', telegram_id, gift_id)
+        await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo', character_id,
+                                gift_id, f'gift: {type(exc).__name__}: {exc}')
+        data = None
+    if data:
+        def _save():
+            filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+            cap = f'📸 вот я в твоём подарке — {gift.say}'
+            save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=f'/webapp/media/{filename}')
+            return cap
+        _app_ping(telegram_id, character_id, await asyncio.to_thread(_save), 'photo')
+        return
+    def _sorry():
+        en = user_lang(telegram_id) == EN
+        text = ('the photo did not come out 🙈 but I kept your gift on — you will see it in the next photo'
+                if en else 'фото с этим не получается 🙈 но подарок я не сняла — он на мне, и на следующем фото будет видно')
+        save_message(uid, character_id, 'assistant', text)
+        track_event(uid, 'gift_photo_failed', character_id=character_id, metadata={'gift': gift_id})
+    await asyncio.to_thread(_sorry)
+
+
 async def _webapp_api_story(request: web.Request) -> web.Response:
     # V3.57.2: the story list reads the ladder, the quests and the relationship
     # row — all synchronous PostgreSQL work, off the event loop.
@@ -18463,6 +18617,8 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/wardrobe/pet', _webapp_api_wardrobe_pet)
     app.router.add_post('/webapp/api/home/style', _webapp_api_home_style)  # V3.116.0
     app.router.add_post('/webapp/api/home/place', _webapp_api_home_place)
+    app.router.add_get('/webapp/api/gifts', _webapp_api_gifts)  # V3.153.0
+    app.router.add_post('/webapp/api/gifts/buy', _webapp_api_gifts_buy)
     app.router.add_post('/webapp/api/fetish/set', _webapp_api_fetish_set)
     app.router.add_post('/webapp/api/fetish/stop', _webapp_api_fetish_stop)
     app.router.add_post('/webapp/api/spicy', _webapp_api_spicy)
