@@ -835,6 +835,28 @@
   .wd-act { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
   .wd-act button { font: inherit; font-weight: 700; font-size: 14px; color: #fff; background: linear-gradient(90deg, var(--accent), var(--accent2)); border: 0; border-radius: 14px; padding: 12px; }
   .wd-act button.sec { background: var(--card2); }
+  /* V3.157.0: owner ТЗ (Фогель, Модуль 6) — «Трофеи Страсти»: the horizontal
+     album of six fantasies on her card. A locked slot is a blurred plate with
+     a padlock and what it still waits for; an open one keeps its voice note
+     replayable forever. */
+  .trow { display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 2px 0 6px; }
+  .tro { flex: 0 0 auto; width: 96px; background: var(--card); border: 0; color: var(--text);
+    font: inherit; text-align: left; border-radius: 14px; padding: 8px; display: flex;
+    flex-direction: column; gap: 4px; }
+  .tro-pic { aspect-ratio: 3/4; border-radius: 10px; background: var(--card2); display: grid;
+    place-items: center; font-size: 30px; overflow: hidden; position: relative; }
+  .tro-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tro b { font-size: 12px; line-height: 1.2; }
+  .tro i { font-size: 11px; line-height: 1.25; font-style: normal; color: var(--muted); }
+  .tro.lock .tro-pic { filter: blur(6px) grayscale(.5); opacity: .55; }
+  .tro.lock .tro-pic::after { content: '🔒'; position: absolute; inset: 0; display: grid;
+    place-items: center; font-size: 22px; filter: none; opacity: 1; }
+  .tro.on { outline: 2px solid rgba(255, 77, 141, .5); }
+  .tro.on .tro-pic { background: linear-gradient(160deg, rgba(255, 77, 141, .22), rgba(255, 176, 32, .18)); }
+  .tro.done .tro-pic::after { content: '▶'; position: absolute; right: 6px; bottom: 4px; font-size: 14px; }
+  .tnote { display: none; flex-direction: column; gap: 8px; margin-top: 6px; }
+  .tnote img { width: 100%; border-radius: 14px; display: block; }
+  .tnote .ttext { font-size: 14px; line-height: 1.45; white-space: pre-wrap; }
   .hm-img { width: 100%; aspect-ratio: 4/3; border-radius: 14px; background: var(--card2); overflow: hidden; display: grid; place-items: center; color: var(--muted); font-size: 13px; text-align: center; padding: 0; }
   .hm-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .hm-style { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 2px; font-size: 13px; }
@@ -1628,6 +1650,8 @@
     <div class="charblock foldable fold" id="charMarital" style="display:none;white-space:normal"><div class="mlbl foldhead"><span id="charMaritalLbl" style="font-weight:600"></span><span class="mprice" id="charMaritalPrice"></span></div><div class="mchips" id="charMaritalChips"></div><div class="marc" id="charArc"></div></div>
     <!-- V3.78.0: «🎬 Сюжеты» — Premium role-play storylines -->
     <div class="charblock plotblock foldable fold" id="charPlots" style="display:none;white-space:normal"><div class="lbl3 foldhead" id="charPlotsLbl"></div><div class="plotlist" id="charPlotList"></div></div>
+    <!-- V3.157.0: «🏆 Трофеи Страсти» — the six fantasies this pair lived through -->
+    <div class="charblock foldable" id="charTrophies" style="display:none;white-space:normal"><div class="lbl3" id="charTrophiesLbl"></div><div class="trow" id="charTrophyRow"></div><div class="tnote" id="charTrophyNote"></div></div>
     <div class="charblock" id="charBio"></div>
     <!-- V3.44.8: author link — opens the author's public page (author funnel) -->
     <button class="charcta" id="charAuthor" style="display:none;background:var(--card);color:var(--accent)"></button>
@@ -1893,6 +1917,12 @@ const L_EN = {
   gs_passion: n => `For ${n} of her replies she leads instead of holding back`,
   gs_photo: 'a try-on photo comes with it 📸', gs_progress: ' · and moves you a step closer',
   fet_cap: 'Fetishes', fet_cap_ds: 'Pick a theme and she leads it, at any level', fet_h: '🎭 Fetishes', fet_sub: 'Adults only, mutual play. Pick a theme, or write your own', fet_locked: '🎭 Fetish mode unlocks with Premium ⭐', fet_ph: 'Your own theme (up to 80 characters)', fet_go: 'Start', fet_off: '✖ Turn off the theme', fet_refused: 'This theme is not possible', fet_on: 'on', fet_set: 'Theme is on',
+  // V3.157.0: owner ТЗ (Фогель, Модуль 6) — «Трофеи Страсти»: her album of six
+  // lived-through fantasies on the character page.
+  tr_head: '🏆 Open fantasies', tr_open: 'tap to hear what she admits', tr_replay: '▶ hear it again',
+  tr_locked: '🔒 still locked', tr_busy: 'she is remembering…', tr_failed: 'her voice did not come through — tap again',
+  tr_album: '🏆 Album photo', tr_album_hint: 'open all six and she shoots one frame just for this',
+  tr_album_open: 'tap — she shows the frame that lives only here',
   plots_h: '🎬 Storylines', plots_sub: 'Role-play scenes: she writes first and stays in role all day', plots_locked: '🎬 Storylines unlock with Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'on', plots_hint: 'All storylines come with Premium', plots_cap: 'Storylines', plots_cap_ds: 'Role-play scenes with her, from light flirting to the hottest', heat_sub: 'How explicit should it be?', heat_soft: 'Tender', heat_soft_ds: 'Romance, flirting and kisses', heat_hot: 'Hot', heat_hot_ds: 'Passionate and bold', heat_wild: 'No limits', heat_wild_ds: 'As explicit as it gets', plot_exit: '✖ No roles', plot_act: 'act', plot_done: '🎬 Storyline complete!', plot_next: '▶ Next', plot_all_done: 'You have played all her storylines 🔥', plot_left: 'You left the role',
   paid_prem: 'Premium activated ✨', paid_credit: 'Photo credit added 📸',
   pay_failed: 'Payment failed', pay_cancelled: 'Payment cancelled',
@@ -2202,6 +2232,10 @@ const L_RU = {
   gs_passion: n => `${n} её сообщений она ведёт сама, а не сдерживается`,
   gs_photo: 'с фото примерки 📸', gs_progress: ' · и шаг ближе к новому уровню',
   fet_cap: 'Фетиши', fet_cap_ds: 'Выбери тему, и она поведёт её сама, на любом уровне', fet_h: '🎭 Фетиши', fet_sub: 'Только для взрослых и по взаимной игре. Выбери тему или напиши свою', fet_locked: '🎭 Режим фетишей открывается с Premium ⭐', fet_ph: 'Своя тема (до 80 символов)', fet_go: 'Начать', fet_off: '✖ Выключить тему', fet_refused: 'Такая тема невозможна', fet_on: 'идёт', fet_set: 'Тема включена',
+  tr_head: '🏆 Открытые фантазии', tr_open: 'нажми — и она признается', tr_replay: '▶ переслушать',
+  tr_locked: '🔒 ещё закрыто', tr_busy: 'она вспоминает…', tr_failed: 'её голос не собрался — нажми ещё раз',
+  tr_album: '🏆 Фото альбома', tr_album_hint: 'открой все шесть — и она снимет кадр только для этого',
+  tr_album_open: 'нажми — и она покажет кадр, который живёт только здесь',
   plots_h: '🎬 Сюжеты', plots_sub: 'Ролевые сцены: она пишет первой и держит роль весь день', plots_locked: '🎬 Сюжеты открываются с Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'идёт', plots_hint: 'Все сюжеты доступны с Premium', plots_cap: 'Сюжеты', plots_cap_ds: 'Ролевые сцены с ней: от лёгкого флирта до самого горячего', heat_sub: 'Насколько откровенно будет?', heat_soft: 'Нежно', heat_soft_ds: 'Романтика, флирт и поцелуи', heat_hot: 'Горячо', heat_hot_ds: 'Страстно и смело, откровенные намёки', heat_wild: 'Без тормозов', heat_wild_ds: 'Максимально откровенно и пошло', plot_exit: '✖ Без ролей', plot_act: 'акт', plot_done: '🎬 Сюжет пройден!', plot_next: '▶ Дальше', plot_all_done: 'Ты прошёл все её сюжеты 🔥', plot_left: 'Вы вышли из роли',
   paid_prem: 'Premium активирован ✨', paid_credit: 'Фото-кредит начислен 📸',
   pay_failed: 'Оплата не прошла', pay_cancelled: 'Оплата отменена',
@@ -6243,6 +6277,88 @@ function renderGenFeed(rows, reset, spentToday) {
 
 // ── V3.39.0: the Come Closer character page (strip → CTA → bio → СЮЖЕТ) ────
 let CHARPAGE = null;
+// V3.157.0: owner ТЗ (Фогель, Модуль 6) — «Трофеи Страсти». Six fantasies she
+// only admits once the two of them have really lived them. A locked slot keeps
+// its blur and says what it waits for; an open one is a memory — its voice
+// confession is synthesized once and stays replayable on her card.
+function trophySlot(it) {
+  const pic = it.photo_url ? '<img src="' + esc(it.photo_url) + '" alt="" loading="lazy">'
+    : esc(it.emoji || '🏆');
+  const sub = it.key === 'album'
+    ? (it.opened ? (L.tr_replay || '') : (it.unlocked ? (L.tr_album_open || '') : (L.tr_album_hint || '')))
+    : (it.unlocked ? (it.opened ? (L.tr_replay || '') : (L.tr_open || '')) : (it.hint || ''));
+  return '<button type="button" class="tro ' + (it.unlocked ? (it.opened ? 'on done' : 'on') : 'lock')
+    + '" data-trophy="' + esc(it.key) + '"><span class="tro-pic">' + pic + '</span><b>'
+    + esc(it.title || '') + '</b><i>' + esc(sub) + '</i></button>';
+}
+
+// The album slot is the seventh card of the row: it stays blurred until all six
+// fantasies are open, and then holds the one photo she keeps only here.
+function renderTrophies(j) {
+  const box = document.getElementById('charTrophies');
+  const row = document.getElementById('charTrophyRow');
+  if (!box || !row) return;
+  const items = (j.items || []).concat([{
+    key: 'album', emoji: '🏆', title: L.tr_album || '', unlocked: !!j.album_ready,
+    opened: !!(j.album && j.album.photo_url), photo_url: (j.album && j.album.photo_url) || '',
+  }]);
+  document.getElementById('charTrophiesLbl').textContent =
+    (L.tr_head || '') + ' (' + (j.unlocked || 0) + '/' + (j.total || 6) + ')';
+  row.innerHTML = items.map(trophySlot).join('');
+  row.querySelectorAll('[data-trophy]').forEach(el => { el.onclick = () => openTrophy(el); });
+  box.style.display = '';
+}
+
+async function fetchTrophies(cid) {
+  try {
+    const r = await fetch('/webapp/api/trophies?init_data=' + encodeURIComponent(tg.initData || '')
+      + '&character_id=' + encodeURIComponent(cid));
+    const j = await r.json();
+    return (j && j.ok && j.enabled && j.items) ? j : null;
+  } catch (err) { return null; }
+}
+
+async function loadTrophies(cid) {
+  const box = document.getElementById('charTrophies');
+  const note = document.getElementById('charTrophyNote');
+  if (box) box.style.display = 'none';
+  if (note) { note.style.display = 'none'; note.innerHTML = ''; }
+  const j = await fetchTrophies(cid);
+  if (!j || !CHARPAGE || CHARPAGE.id !== cid) return;
+  renderTrophies(j);
+}
+
+async function openTrophy(el) {
+  const key = el.getAttribute('data-trophy') || '';
+  const cid = CHARPAGE && CHARPAGE.id;
+  const note = document.getElementById('charTrophyNote');
+  if (!key || !cid) return;
+  if (key === 'album' && el.classList.contains('lock')) {
+    if (note) { note.style.display = 'flex'; note.innerHTML = '<div class="ttext">' + esc(L.tr_album_hint || '') + '</div>'; }
+    return;
+  }
+  if (note) { note.style.display = 'flex'; note.innerHTML = '<div class="ttext">' + esc(L.tr_busy || '') + '</div>'; }
+  let j = null;
+  try {
+    const r = await fetch('/webapp/api/trophies/open?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: cid, key: key }),
+    });
+    j = await r.json();
+  } catch (err) { j = null; }
+  if (!j || !j.ok) {
+    if (note) note.innerHTML = '<div class="ttext">' + esc(L.tr_failed || '') + '</div>';
+    return;
+  }
+  const q = '?init_data=' + encodeURIComponent(tg.initData || '');
+  const say = (j.voice_url ? voicePlayer(j.voice_url + q, j.text) : '')
+    + (j.photo_url ? '<img src="' + esc(j.photo_url) + q + '" alt="">' : '');
+  if (note) note.innerHTML = '<div class="ttext">' + esc(j.text || '') + '</div>' + say;
+  const again = await fetchTrophies(cid);
+  if (again && CHARPAGE && CHARPAGE.id === cid) renderTrophies(again);
+  if (note && say) note.innerHTML = '<div class="ttext">' + esc(j.text || '') + '</div>' + say;
+}
+
 function openCharPage(el) {
   const c = CHARS.find(x => x.id === el.dataset.id);
   if (!c) { openCharacter(el); return; }
@@ -6316,6 +6432,9 @@ function openCharPage(el) {
       if (!j.unlocked) plotsBox.insertAdjacentHTML('beforeend', '<div class="plothint">' + esc(L.plots_hint) + '</div>');
     });
   }
+  // V3.157.0: «Трофеи Страсти» — her album of lived-through fantasies, under the
+  // storylines. Silent when the module is off, so the card never shows an empty row.
+  loadTrophies(c.id);
   const plot = document.getElementById('charPlot');
   if (c.hook) {
     plot.style.display = '';

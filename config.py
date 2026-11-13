@@ -718,6 +718,12 @@ LIVE_SITUATIONS_ENABLED = os.getenv("LIVE_SITUATIONS_ENABLED", "true").strip().l
 LIVE_SITUATION_MAX_PER_DAY = max(0, min(4, int(os.getenv("LIVE_SITUATION_MAX_PER_DAY", "2"))))
 LIVE_SITUATION_MIN_LEVEL = max(1, min(10, int(os.getenv("LIVE_SITUATION_MIN_LEVEL", "4"))))
 
+# V3.157.0: owner ТЗ (Фогель, Модуль 6) — «Трофеи Страсти». Six fantasies the
+# two of them have actually lived through, shown as a row of open/locked slots
+# on her card. Nothing here costs a token until he taps an open slot, so the
+# whole album rides on one switch.
+TROPHIES_ENABLED = os.getenv("TROPHIES_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+
 # V3.19.0: personal character constructor — one-time Stars payment that builds
 # a private chat persona (appearance + personality + relationship role) with a
 # generated avatar. Optional user face photo enables face-swap identity.

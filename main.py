@@ -1052,6 +1052,15 @@ def _character_card_text(card, viewer_id: int | None = None) -> str:
             lines.append(f'❤️ {RELATIONSHIP_LEVEL_NAMES.get(level, "Знакомство")}')
         except Exception:
             pass
+        # V3.157.0: owner ТЗ (Фогель, Модуль 6) — «Трофеи Страсти»: the bot card
+        # only counts what the app's album already knows, it never renders it.
+        try:
+            from services import trophy_service
+            line = trophy_service.summary_line(viewer_id, card.character_id)
+            if line:
+                lines.append(line)
+        except Exception:
+            logger.debug('trophy line failed user=%s', viewer_id)
     if viewer_id and card.character_id == CHARACTER_ID:
         lines.extend([
             ('🎬 Оживить фото: ✅ доступно' if _any_video_engine() else '🎬 Оживить фото: 🔒 скоро'),
@@ -15759,6 +15768,65 @@ async def _webapp_api_chat_draft(request: web.Request) -> web.Response:
                               'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
 
 
+async def _webapp_api_trophies(request: web.Request) -> web.Response:
+    """V3.157.0: owner ТЗ (Фогель, Модуль 6) — «🏆 Трофеи Страсти» на её карточке.
+    Лента из шести фантазий, которые пара действительно прожила: закрытый слот
+    несёт только название с подсказкой, текст её признания уезжает наружу лишь
+    вместе с уже озвученным и сохранённым файлом."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    character_id = str(request.query.get('character_id', ''))[:64] \
+        or (get_user_character(telegram_id) or '')
+    if not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    from services import trophy_service
+    lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+    try:
+        data = await asyncio.to_thread(trophy_service.board, int(telegram_id), character_id, lang)
+    except Exception:
+        logger.exception('webapp trophies load failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'temporarily_unavailable'})
+    return web.json_response(data)
+
+
+async def _webapp_api_trophy_open(request: web.Request) -> web.Response:
+    """Его тап по слоту: признание озвучивается один раз и остаётся в профиле,
+    а тап по седьмому слоту отдаёт единственную картинку альбома."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64] or (get_user_character(telegram_id) or '')
+    key = str(body.get('key') or '')[:48]
+    if not character_id or not key:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    from services import trophy_service
+    lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+    try:
+        res = await trophy_service.open_trophy(int(telegram_id), character_id, key, lang)
+    except Exception:
+        logger.exception('webapp trophy open failed user=%s', telegram_id)
+        res = {'ok': False, 'error': 'temporarily_unavailable'}
+    if not res.get('ok'):
+        error = res.get('error')
+        status = 403 if error == 'locked' else 502 if error in ('voice_failed', 'render_failed') else 400
+        return web.json_response({'ok': False, 'error': error or 'bad_request'}, status=status)
+    return web.json_response(res)
+
+
 async def _webapp_api_chat_live(request: web.Request) -> web.Response:
     """V3.156.0: owner ТЗ (Фогель) — «📸 Открыть живое фото · 400 🍑». Тарелка
     из истории или из свежего тизера несёт только id строки; промпт кадра живёт
@@ -18868,6 +18936,9 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/achievements', _webapp_api_achievements)
     # V3.53.0: «Собери галерею» rolling photo-set bar on the character page.
     app.router.add_get('/webapp/api/collection', _webapp_api_collection)
+    # V3.157.0: «🏆 Трофеи Страсти» — the six-fantasy album on her card.
+    app.router.add_get('/webapp/api/trophies', _webapp_api_trophies)
+    app.router.add_post('/webapp/api/trophies/open', _webapp_api_trophy_open)
     # V3.46.0: missions funnel tab (roadmap + in-app CTAs).
     app.router.add_get('/webapp/api/missions', _webapp_api_missions)
     app.router.add_post('/webapp/api/missions/claim', _webapp_api_missions_claim)

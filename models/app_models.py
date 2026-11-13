@@ -848,3 +848,34 @@ class UserCharacterAnchor(Base):
     character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class CharacterTrophy(Base):
+    """V3.157.0: owner ТЗ (Фогель, Модуль 6) — «Трофеи Страсти». One row per
+    fantasy this pair has actually lived through, so the album on her card is
+    history and not a counter: `unlocked_at` is when the moment really happened
+    and never moves back. The confession is spoken once and the audio file is
+    kept (voice_url) precisely so it stays replayable from her profile; the
+    photo of the finished album rides the same rule. Table is auto-created."""
+    __tablename__ = "character_trophies"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    key: Mapped[str] = mapped_column(String(48), nullable=False)
+    unlocked_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    confession: Mapped[str | None] = mapped_column(Text, nullable=True)
+    voice_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    photo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    __table_args__ = (UniqueConstraint("user_id", "character_id", "key"),)
+
+
+class TrophyAlbum(Base):
+    """The one photo the album gives when all six fantasies are open. A separate
+    row, not a column of the last trophy: the sixth slot can be opened before
+    the fifth was ever seen, and a re-render after a failed one must not have to
+    hunt for which row held the picture."""
+    __tablename__ = "trophy_album"
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    character_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    photo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
