@@ -10,11 +10,12 @@ Now such a message leaves a short note in the bot chat — her name, a preview
 and «💬 Ответить» that opens exactly her dialog in the app. Rules, so it never
 becomes spam:
 
-- only when he is NOT in the app: the SPA sends a heartbeat every ~20 s while
-  it is on screen and an «away» beacon when it is hidden or closed. A user we
-  never got a heartbeat from (an old cached app, a restart) is never pinged;
-- he must be away both when the message lands and after a short wait
-  (APP_PING_DELAY_SECONDS); opening that chat in between cancels the ping;
+- only when he is NOT in the app — and that is decided AFTER the wait, not the
+  moment her message lands: the SPA sends a heartbeat every ~20 s while it is on
+  screen and an «away» beacon when it is hidden or closed, and a webview that is
+  simply killed never gets the beacon out;
+- he must still be away after a short wait (APP_PING_DELAY_SECONDS); opening
+  her chat in between — in the app or by the «read» stamp in the DB — cancels it;
 - several messages in a row collapse into ONE ping («и ещё 2»);
 - at most one ping per APP_PING_COOLDOWN_MINUTES and APP_PING_MAX_PER_DAY a
   day; the app's «новые сообщения» notification switch and the bot's
@@ -70,11 +71,6 @@ def touch(telegram_id: int, away: bool = False, now: float | None = None) -> Non
         _presence[int(telegram_id)] = (time.monotonic() if now is None else now, bool(away))
     except Exception:
         pass
-
-
-def tracked(telegram_id: int) -> bool:
-    """We have heard from this user's app at least once since the start."""
-    return int(telegram_id) in _presence
 
 
 def in_app(telegram_id: int, now: float | None = None) -> bool:
@@ -210,8 +206,13 @@ def note(bot, telegram_id: int, character_id: str, text: str, media: str | None 
         if not APP_PING_ENABLED or bot is None or not telegram_id or not character_id:
             return False
         tg = int(telegram_id)
-        if not tracked(tg) or in_app(tg):
-            return False
+        # V3.162.0: owner — «она пишет. я выхожу, мне ничего не приходит». The
+        # old guard read the presence at the moment her answer landed, and that
+        # moment is a second or two after he closed the app: the heartbeat was
+        # still fresh, the beacon often never left the webview, and the ping was
+        # thrown away before it ever existed (7 pings in 30 days against
+        # thousands of app turns). Presence is decided in _deliver, after the
+        # wait — there the heartbeat has really stopped.
         pend = _pending.get(tg)
         noted_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         if pend:

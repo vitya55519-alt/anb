@@ -45,7 +45,9 @@ def test_trial_messages_unlimited_but_media_stays_capped():
     _msgs(uid, 500)
     assert can_send_message(tid)
     assert T.photos_left(uid, 'chat_free_photo') == T.CAPS['trial']['photos']
-    assert T.CAPS['trial']['undress'] == 1
+    # V3.162.0: owner — «раздеть только за платные персики»: the trial gives none away.
+    assert T.CAPS['trial']['undress'] == 0
+    assert T.CAPS['month']['undress'] == 6
     assert T.CAPS['trial']['voice'] == 10
 
 

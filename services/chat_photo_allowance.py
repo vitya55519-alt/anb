@@ -1,9 +1,13 @@
 """V3.61.5: the daily free chat photos («2 фото в сутки бесплатно»).
 
-Every photo she sends inside a chat — asked for or promised by her («лови»,
-«шлю ещё фотку») — first uses today's free allowance (all girls together),
-and only then costs CHAT_PHOTO_PEACH_COST peaches. Counted from product events,
-so no new table is needed.
+Every RENDERED photo she sends inside a chat — asked for or promised by her
+(«лови», «шлю ещё фотку») — first uses today's free allowance (all girls
+together), and only then costs CHAT_PHOTO_PEACH_COST peaches. Counted from
+product events, so no new table is needed.
+
+V3.162.0: a picture taken from her ready pool is a different thing — $0 for us
+and one he may already have seen — so it spends its own small daily quota
+(CHAT_POOL_PHOTOS_PER_DAY) and leaves the free render of the day intact.
 """
 from __future__ import annotations
 
@@ -12,8 +16,8 @@ from datetime import datetime, time, timezone
 
 from sqlalchemy import func, select
 
-from config import (CHAT_FREE_PHOTOS_PER_DAY, CHAT_PREMIUM_PHOTOS_PER_DAY, FREE_PHOTO_COST_USD,
-                    FREE_PHOTO_DAILY_BUDGET_USD)
+from config import (CHAT_FREE_PHOTOS_PER_DAY, CHAT_POOL_PHOTOS_PER_DAY, CHAT_PREMIUM_PHOTOS_PER_DAY,
+                    FREE_PHOTO_COST_USD, FREE_PHOTO_DAILY_BUDGET_USD)
 from models.app_models import ProductEvent
 from services.db import SessionLocal
 
@@ -107,6 +111,21 @@ def use_free_chat_photo(uid: int, character_id: str) -> None:
         session.commit()
 
 
+def pool_photos_left(uid: int) -> int:
+    """V3.162.0: owner — «приветственное фото не должно сжирать лимит одного
+    бесплатного фото в сутки». A frame already in her pool costs us nothing, so
+    it no longer spends his one free photo of the day; it is capped on its own
+    instead, or a free man farms stock pictures all day and never meets the wall."""
+    try:
+        return max(0, CHAT_POOL_PHOTOS_PER_DAY - count_today(uid, POOL_EVENT))
+    except Exception:
+        return 0
+
+
+def use_pool_photo(uid: int, character_id: str) -> None:
+    note_today(uid, POOL_EVENT, character_id)
+
+
 def count_today(uid: int, event: str) -> int:
     """V3.61.7: how many times today `event` happened (e.g. 'undress_free')."""
     with SessionLocal() as session:
@@ -134,8 +153,9 @@ def note_today(uid: int, event: str, character_id: str) -> None:
 
 
 def free_photo_spend_today() -> float:
-    """V3.81.0: what today's RENDERED free chat photos cost, all users together
-    (pool-served ones are logged as POOL_EVENT and cost nothing)."""
+    """V3.81.0: what today's RENDERED free chat photos cost, all users together.
+    V3.162.0: a pool-served photo writes only POOL_EVENT now, so the bill is
+    simply what was rendered."""
     try:
         with SessionLocal() as session:
             rendered = int(session.scalar(
@@ -143,14 +163,9 @@ def free_photo_spend_today() -> float:
                     ProductEvent.event_name == EVENT,
                     ProductEvent.created_at >= _day_start())
             ) or 0)
-            pooled = int(session.scalar(
-                select(func.count(ProductEvent.id)).where(
-                    ProductEvent.event_name == POOL_EVENT,
-                    ProductEvent.created_at >= _day_start())
-            ) or 0)
     except Exception:
         return 0.0
-    return max(0, rendered - pooled) * FREE_PHOTO_COST_USD
+    return max(0, rendered) * FREE_PHOTO_COST_USD
 
 
 def free_photo_budget_spent() -> bool:

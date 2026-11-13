@@ -83,6 +83,12 @@ CHAT_PHOTO_PEACH_COST = _peach_env("CHAT_PHOTO_PRICE_PEACHES", 3)
 # photo a day, always a ready-made one (her pool or a photo already rendered of
 # her), never a new render, and no peach route; Premium: two rendered, then 🍑.
 CHAT_FREE_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_FREE_PHOTOS_PER_DAY_FREE", "1")))
+# V3.162.0: owner — «приветственное фото не должно сжирать лимит одного
+# бесплатного фото в сутки». A picture already in her pool costs us $0, so it no
+# longer spends his one free photo of the day; it gets a cap of its own instead,
+# and it stays at one, otherwise a free user farms stock frames all day and
+# never sees the wall (V3.93.0: без према — всего одна фотка).
+CHAT_POOL_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_POOL_PHOTOS_PER_DAY", "1")))
 # V3.97.0: free «🔊 Озвучить» listens a day without Premium (then the wall).
 SPEAK_FREE_PER_DAY = max(0, int(os.getenv("SPEAK_FREE_PER_DAY", "3")))
 CHAT_PREMIUM_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_PREMIUM_PHOTOS_PER_DAY", "2")))
@@ -711,6 +717,16 @@ LIFE_EVENTS_PHOTO_CHANCE = max(0.0, min(1.0, float(os.getenv("LIFE_EVENTS_PHOTO_
 # первыми сообщениями: сколько их влезло в одно окно и сколько всего в сутки.
 PUSH_SPACING_WINDOW_MINUTES = max(0, min(360, int(os.getenv("PUSH_SPACING_WINDOW_MINUTES", "120"))))
 PUSH_MAX_IN_WINDOW = max(0, min(5, int(os.getenv("PUSH_MAX_IN_WINDOW", "2"))))
+# V3.162.0: owner — «два пуша всего в день, не надо вот эти остальные херачить».
+# His own calendar day on his own clock: she writes first twice — morning and
+# evening — and nothing else ever starts a conversation.
+PUSH_MAX_PER_DAY = max(0, min(5, int(os.getenv("PUSH_MAX_PER_DAY", "2"))))
+# V3.162.0: the marketing rails go dark (owner review of the 13.11 dump; over
+# the last week alone: 2149 «жизнь без тебя», 1250 прогноз совместимости —
+# «это бред», 1174 «что нового», 847 случайный подарок, 822 «останешься?»,
+# 694 хук истории, 398 день-1). Her two lines stay. true brings them back
+# without touching the code.
+MARKETING_PUSH_ENABLED = os.getenv("MARKETING_PUSH_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 
 # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации» + спон-фото. Her day keeps the
 # life-event rail, but now and then the moment ends on a photo she is about to

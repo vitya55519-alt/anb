@@ -2,6 +2,8 @@
 pool; paid and Premium photos are untouched."""
 import inspect
 
+import config
+
 
 def test_budget_trips_after_rendered_free_photos(monkeypatch):
     from services.db import init_db
@@ -18,11 +20,14 @@ def test_budget_trips_after_rendered_free_photos(monkeypatch):
     A.use_free_chat_photo(uid, 'anna_01')
     A.use_free_chat_photo(uid, 'anna_01')
     assert A.free_photo_budget_spent()
-    # a pool-served free photo does not add to the bill
+    # V3.162.0: a pool-served photo writes only its own event — no render bill
+    # and no free photo of the day spent.
     before = A.free_photo_spend_today()
-    A.use_free_chat_photo(uid, 'anna_01')
-    A.note_today(uid, A.POOL_EVENT, 'anna_01')
+    left_before = A.free_chat_photos_left(uid, False)
+    A.use_pool_photo(uid, 'anna_01')
     assert abs(A.free_photo_spend_today() - before) < 1e-9
+    assert A.free_chat_photos_left(uid, False) == left_before
+    assert A.pool_photos_left(uid) == config.CHAT_POOL_PHOTOS_PER_DAY - 1
 
 
 def test_budget_off_never_trips(monkeypatch):

@@ -33,8 +33,12 @@ KEYS = ('messages', 'photos', 'undress', 'call_seconds', 'voice', 'animations')
 # of everything except messages ≈ trial 44 ₽ / week 45 ₽ / month 164 ₽ /
 # quarter 394 ₽ against 89 / 179 / 629 / 1619 ₽ received.
 _DEFAULTS = {
+    # V3.162.0: owner — «раздели только за платные персики, купил — сделал». The
+    # cheap 99 ₽ / 75 ⭐ trial used to carry one «Раздеть»: they ate it and left
+    # (17 trial undressings in the 13 Nov dump, zero repeat buyers). A real plan
+    # keeps its own allowance — he paid for it.
     'demo':    {'messages': -1,  'photos': 1,  'undress': 0,  'call_seconds': 0,    'voice': 3,   'animations': 0},
-    'trial':   {'messages': -1,  'photos': 2,  'undress': 1,  'call_seconds': 300,  'voice': 10,  'animations': 0},
+    'trial':   {'messages': -1,  'photos': 2,  'undress': 0,  'call_seconds': 300,  'voice': 10,  'animations': 0},
     'week':    {'messages': -1,  'photos': 5,  'undress': 2,  'call_seconds': 600,  'voice': 20,  'animations': 0},
     'month':   {'messages': -1,  'photos': 15, 'undress': 6,  'call_seconds': 1500, 'voice': 50,  'animations': 0},
     'quarter': {'messages': -1, 'photos': 40, 'undress': 15, 'call_seconds': 3600, 'voice': 120, 'animations': 0},
@@ -54,7 +58,6 @@ CAPS = {tier: {k: _env_int(f'CAP_{tier.upper()}_{k.upper()}', v) for k, v in cap
 # Kept for the texts that name the trial's numbers.
 TRIAL_MESSAGES = CAPS['trial']['messages']
 TRIAL_PHOTOS = CAPS['trial']['photos']
-TRIAL_UNDRESS = CAPS['trial']['undress']
 TRIAL_CALL_SECONDS = CAPS['trial']['call_seconds']
 TRIAL_VOICE = CAPS['trial']['voice']
 

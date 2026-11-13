@@ -12,6 +12,7 @@ from config import (
     LIFE_EVENTS_ENABLED, LIFE_EVENTS_MAX_PER_DAY, LIFE_EVENTS_SCAN_MINUTES,
     LIFE_EVENTS_ACTIVE_WINDOW_DAYS, LIFE_EVENTS_QUIET_START_HOUR, LIFE_EVENTS_QUIET_END_HOUR,
     LIFE_EVENTS_SILENCE_HOURS,
+    MARKETING_PUSH_ENABLED,
 )
 from services.db import SessionLocal
 from models.app_models import User, CharacterState
@@ -662,6 +663,9 @@ _PROMISE_KEPT = (
 # RITUAL_APPROVAL_MODE=false on Railway = fully automatic, nothing else changes.
 import os as _os
 RITUAL_APPROVAL_MODE=_os.getenv('RITUAL_APPROVAL_MODE','true').strip().lower() not in ('0','false','no','off')
+# V3.162.0: owner chose the plain text line for real users («сделай текст»).
+# true sends them the photo + voice note version again, approval included.
+RITUAL_MEDIA_TO_USERS=_os.getenv('RITUAL_MEDIA_TO_USERS','false').strip().lower() in ('1','true','yes','on')
 RITUAL_APPROVAL_GRACE_HOURS=max(0,int(_os.getenv('RITUAL_APPROVAL_GRACE_HOURS','3')))
 _ritual_approved: set = set()
 _ritual_previewed: set = set()
@@ -872,10 +876,42 @@ async def _ritual_voice(bot, tg_id, char_id, ritual_voice, *, caption=None, mark
         logger.exception('ritual voice failed user=%s', tg_id)
 
 
+def _chat_open_markup(char_id: str, lang: str):
+    """V3.162.0: owner — «человек нажимает эту кнопку, и он переходит в диалог
+    со своим персонажем». One button, straight into THIS girl's dialog."""
+    if not PUBLIC_BASE_URL:
+        return None
+    from urllib.parse import quote
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    url = f'{PUBLIC_BASE_URL}/webapp?open=chat&char={quote(char_id)}'
+    button = InlineKeyboardButton(text=flow_text(lang, 'open_chat'), web_app=WebAppInfo(url=url))
+    return InlineKeyboardMarkup(inline_keyboard=[[button]])
+
+
+async def _ritual_line_push(bot, uid: int, tg_id: int, char_id: str, kind: str, tz) -> bool:
+    """V3.162.0: the two pushes a day the owner asked for — her plain morning /
+    evening line in his own language and the button into her dialog. False =
+    the gate held it back (night, burst, or his two are already out), and no
+    slot is burned: the next scan retries inside the window."""
+    from services.push_governor import allow_push
+    ok, reason = await asyncio.to_thread(allow_push, uid, tz)
+    if not ok:
+        logger.info('ritual line held user=%s kind=%s reason=%s', tg_id, kind, reason)
+        return False
+    from services.ui_lang import full_user_lang, ritual_line
+    lang = await asyncio.to_thread(full_user_lang, tg_id)
+    text = ritual_line(kind, lang)
+    await bot.send_message(tg_id, text, reply_markup=_chat_open_markup(char_id, lang))
+    _to_app_chat(uid, tg_id, char_id, text)
+    return True
+
+
 async def _rituals(bot, only_tg=None, force_kind=None):
     """V3.20.0: morning/evening rituals — she writes first in the user's local
     time window. Only recent (RITUAL_MAX_INACTIVE_DAYS) opt-in users get them.
-    V3.110.0: only_tg + force_kind = the owner's preview (test mode)."""
+    V3.110.0: only_tg + force_kind = the owner's preview (test mode).
+    V3.162.0: a real user now gets her TEXT line (two a day, no media); the
+    photo + voice ritual is what the owner previews in his own chat."""
     now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     fresh_cutoff=now-dt.timedelta(days=RITUAL_MAX_INACTIVE_DAYS)
     preview=bool(only_tg)
@@ -904,6 +940,24 @@ async def _rituals(bot, only_tg=None, force_kind=None):
                 u=s.get(User,uid)
                 if not u: continue
                 local_hour=_user_local_hour(u)
+            if not preview and not RITUAL_MEDIA_TO_USERS:
+                # V3.162.0: owner — «два пуша всего в день, не надо вот эти
+                # остальные херачить» и «короче, сделай текст, как я тебе вначале
+                # сказал». A live man gets one of her human lines in his own
+                # language plus the way into her dialog, on her own schedule:
+                # no approval press, no photo, no voice note — nothing that
+                # costs money. The paid media ritual stays in his kitchen, and
+                # comes back for users with RITUAL_MEDIA_TO_USERS=true.
+                text_kind = ritual_kind_at(local_hour)
+                if not text_kind:
+                    continue
+                if (uid, text_kind, today_key) in _ritual_sent:
+                    continue
+                if await _ritual_line_push(bot, uid, int(tg_id),
+                                           sel_char or CHARACTER_ID or 'anna_01', text_kind, tz):
+                    _ritual_sent.add((uid, text_kind, today_key))
+                    track_event(uid, f'ritual_{text_kind}_sent', metadata={'streak': streak, 'tz': tz})
+                continue
             if preview:
                 kind=force_kind
             elif RITUAL_APPROVAL_MODE:
@@ -921,6 +975,17 @@ async def _rituals(bot, only_tg=None, force_kind=None):
             # and so does the attached pool photo — the global CHARACTER_ID
             # used to dress every girl's morning ping in Anna's media.
             char_id = sel_char or CHARACTER_ID or 'anna_01'
+            if not preview:
+                # V3.162.0: owner — «два пуша всего в день, не надо вот эти
+                # остальные херачить» и «короче, сделай текст». A live man gets
+                # one of her human lines plus the way into her dialog; the paid
+                # media ritual (photo + voice + gift button) stays in his
+                # kitchen. Text costs nothing, so it does not wait for the
+                # daily approval either.
+                if await _ritual_line_push(bot, uid, int(tg_id), char_id, kind, tz):
+                    _ritual_sent.add(guard)
+                    track_event(uid, f'ritual_{kind}_sent', metadata={'streak': streak, 'tz': tz})
+                continue
             text=retention_features_service.get_retention_text(kind, char_id)
             # V3.64.8: her words and the service promo no longer share one
             # caption («...составишь компанию?\n🎁 забирай дневной подарок»):
@@ -1839,46 +1904,55 @@ async def _db_backup(bot):
 
 
 def start_scheduler(bot):
+    # V3.162.0: owner — «два пуша всего в день, не надо вот эти остальные
+    # херачить». The 13 Nov dump named what he could not: over the last week
+    # 2149 «жизнь без тебя», 1250 compatibility forecasts («это бред»), 1174
+    # «что нового», 847 random gifts, 822 «останешься?», 694 story hooks, 398
+    # day-1 pings. From now on only two things may start a conversation: her
+    # morning/evening text line and the alarm the man set himself.
+    # MARKETING_PUSH_ENABLED=true brings every other rail back, no code change.
     scheduler.add_job(_reminders,'interval',seconds=30,args=[bot],id='reminders',replace_existing=True)
-    scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
-    # V3.44.16: the day-1 hook scans often but sends at most once per user.
-    scheduler.add_job(_day1_hook,'interval',minutes=15,args=[bot],id='day1_hook',replace_existing=True)
-    scheduler.add_job(_first_offer,'interval',minutes=10,args=[bot],id='first_offer',replace_existing=True)
-    scheduler.add_job(_trial_followup,'interval',minutes=15,args=[bot],id='trial_followup',replace_existing=True)
-    # V3.111.0: one honest offer after 150+ messages without Premium.
-    scheduler.add_job(_heavy_offer,'interval',minutes=30,args=[bot],id='heavy_offer',replace_existing=True)
-    # V3.129.0: «что у нас нового» for the men who left (once per round)
-    scheduler.add_job(_whats_new,'interval',minutes=30,args=[bot],id='whats_new',replace_existing=True)
-    # V3.104.0: next-day message after a payment, and «останешься?» before the end.
-    scheduler.add_job(_paid_day1,'interval',minutes=15,args=[bot],id='paid_day1',replace_existing=True)
-    scheduler.add_job(_renewal_care,'interval',minutes=15,args=[bot],id='renewal_care',replace_existing=True)
-    scheduler.add_job(_autopay_scan,'interval',minutes=15,args=[bot],id='autopay_scan',replace_existing=True)
-    scheduler.add_job(_first_minutes,'interval',minutes=3,args=[bot],id='first_minutes',replace_existing=True)
-    scheduler.add_job(_weekly_report,'cron',day_of_week='mon',hour=6,minute=0,args=[bot],id='weekly_report',replace_existing=True)
-    # V3.75.0: scenario cards — scans often, one card a day per user at most.
-    scheduler.add_job(_scenario_cards,'interval',minutes=20,args=[bot],id='scenario_cards',replace_existing=True)
     if RITUALS_ENABLED:
         scheduler.add_job(_rituals,'interval',minutes=30,args=[bot],id='rituals',replace_existing=True)
-    if DONATION_REMINDER_ENABLED and DONATION_LINK:
-        scheduler.add_job(_donation_reminder,'interval',hours=12,args=[bot],id='donation_reminder',replace_existing=True)
-    # V3.62.13: partner-program reminder (real-money referral payouts).
-    scheduler.add_job(_partner_nudge,'interval',hours=2,args=[bot],id='partner_nudge',replace_existing=True)
-    # V3.44.2: new retention jobs
-    scheduler.add_job(_random_gifts,'interval',hours=6,args=[bot],id='random_gifts',replace_existing=True)
-    scheduler.add_job(_daily_compatibility,'interval',hours=12,args=[bot],id='daily_compatibility',replace_existing=True)
+    # books, moods, bonuses he asked for and the admin screens — not first writes
+    scheduler.add_job(_autopay_scan,'interval',minutes=15,args=[bot],id='autopay_scan',replace_existing=True)
     scheduler.add_job(_mood_update,'interval',hours=1,args=[bot],id='mood_update',replace_existing=True)
     # V3.68.0: channel bonus after the hold.
     scheduler.add_job(_channel_bonus_holds,'interval',hours=1,args=[bot],id='channel_bonus_holds',replace_existing=True)
+    scheduler.add_job(_weekly_report,'cron',day_of_week='mon',hour=6,minute=0,args=[bot],id='weekly_report',replace_existing=True)
     # V3.159.1: просроченные подписки получают честный статус перед бэкапом.
     scheduler.add_job(_ledger_housekeeping,'cron',hour=0,minute=25,args=[bot],id='ledger_housekeeping',replace_existing=True)
     # V3.82.0: daily DB backup to the admins (00:30 UTC = 03:30 MSK, quiet hours).
     scheduler.add_job(_db_backup,'cron',hour=0,minute=30,args=[bot],id='db_backup',replace_existing=True)
     # V3.92.0: «🔥 Девушка дня» channel post for the admins at 09:00 MSK.
     scheduler.add_job(_girl_of_day,'cron',hour=6,minute=0,args=[bot],id='girl_of_day',replace_existing=True)
-    # V3.45.0: ежедневный подарок — раз в день в 12:00
-    scheduler.add_job(_daily_gift,'cron',hour=12,minute=0,args=[bot],id='daily_gift',replace_existing=True)
-    # V3.52.0: «Жизнь без тебя» — scans often, but the persisted slot log caps each
-    # user to LIFE_EVENTS_MAX_PER_DAY spontaneous messages per day.
-    if LIFE_EVENTS_ENABLED:
-        scheduler.add_job(_life_events,'interval',minutes=LIFE_EVENTS_SCAN_MINUTES,args=[bot],id='life_events',replace_existing=True)
+    if MARKETING_PUSH_ENABLED:
+        scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
+        # V3.44.16: the day-1 hook scans often but sends at most once per user.
+        scheduler.add_job(_day1_hook,'interval',minutes=15,args=[bot],id='day1_hook',replace_existing=True)
+        scheduler.add_job(_first_offer,'interval',minutes=10,args=[bot],id='first_offer',replace_existing=True)
+        scheduler.add_job(_trial_followup,'interval',minutes=15,args=[bot],id='trial_followup',replace_existing=True)
+        # V3.111.0: one honest offer after 150+ messages without Premium.
+        scheduler.add_job(_heavy_offer,'interval',minutes=30,args=[bot],id='heavy_offer',replace_existing=True)
+        # V3.129.0: «что у нас нового» for the men who left (once per round)
+        scheduler.add_job(_whats_new,'interval',minutes=30,args=[bot],id='whats_new',replace_existing=True)
+        # V3.104.0: next-day message after a payment, and «останешься?» before the end.
+        scheduler.add_job(_paid_day1,'interval',minutes=15,args=[bot],id='paid_day1',replace_existing=True)
+        scheduler.add_job(_renewal_care,'interval',minutes=15,args=[bot],id='renewal_care',replace_existing=True)
+        scheduler.add_job(_first_minutes,'interval',minutes=3,args=[bot],id='first_minutes',replace_existing=True)
+        # V3.75.0: scenario cards — scans often, one card a day per user at most.
+        scheduler.add_job(_scenario_cards,'interval',minutes=20,args=[bot],id='scenario_cards',replace_existing=True)
+        if DONATION_REMINDER_ENABLED and DONATION_LINK:
+            scheduler.add_job(_donation_reminder,'interval',hours=12,args=[bot],id='donation_reminder',replace_existing=True)
+        # V3.62.13: partner-program reminder (real-money referral payouts).
+        scheduler.add_job(_partner_nudge,'interval',hours=2,args=[bot],id='partner_nudge',replace_existing=True)
+        # V3.44.2: new retention jobs
+        scheduler.add_job(_random_gifts,'interval',hours=6,args=[bot],id='random_gifts',replace_existing=True)
+        scheduler.add_job(_daily_compatibility,'interval',hours=12,args=[bot],id='daily_compatibility',replace_existing=True)
+        # V3.45.0: ежедневный подарок — раз в день в 12:00
+        scheduler.add_job(_daily_gift,'cron',hour=12,minute=0,args=[bot],id='daily_gift',replace_existing=True)
+        # V3.52.0: «Жизнь без тебя» — scans often, but the persisted slot log caps each
+        # user to LIFE_EVENTS_MAX_PER_DAY spontaneous messages per day.
+        if LIFE_EVENTS_ENABLED:
+            scheduler.add_job(_life_events,'interval',minutes=LIFE_EVENTS_SCAN_MINUTES,args=[bot],id='life_events',replace_existing=True)
     if not scheduler.running: scheduler.start()

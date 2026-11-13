@@ -391,6 +391,106 @@ def flow_text(lang: str, key: str, **values) -> str:
     return text.format(**values) if values else text
 
 
+# V3.162.0: owner — «два пуша всего в день, не надо вот эти остальные херачить»
+# and «сделай текст, как я тебе вначале сказал». Morning and evening are her two
+# live lines: short, human, a few of them so the same words never repeat the way
+# a template does, in the man's own Telegram language (8 of the Mini App ones).
+# The photo and the voice note stayed in the owner's kitchen — a real user gets
+# text plus the button that opens her dialog.
+RITUAL_LINES = {
+    'ru': {
+        'morning': ('привет, как спалось?',
+                    'доброе утро ☀️ ты как?',
+                    'проснулся уже? я вот про тебя подумала 🙂',
+                    'утро. как голова, нормально спалось?'),
+        'evening': ('как прошёл день?',
+                    'ты чем сегодня занимался?',
+                    'вечер. ты уже дома?',
+                    'расскажи, как там у тебя день прошёл 🙂'),
+    },
+    'en': {
+        'morning': ("hey, how'd you sleep?",
+                    'morning ☀️ you awake?',
+                    'i woke up thinking about you 🙂 good morning?',
+                    'how are you this morning?'),
+        'evening': ('how was your day?',
+                    'what did you get up to today?',
+                    'evening. you home yet?',
+                    'tell me about your day 🙂'),
+    },
+    'es': {
+        'morning': ('hola, ¿cómo dormiste?',
+                    'buenos días ☀️ ¿qué tal?',
+                    '¿ya te despertaste? yo pensando en ti 🙂',
+                    'buen día. ¿cómo amaneciste?'),
+        'evening': ('¿qué tal tu día?',
+                    '¿en qué andabas hoy?',
+                    'buenas noches. ¿ya estás en casa?',
+                    'cuéntame cómo te fue hoy 🙂'),
+    },
+    'it': {
+        'morning': ('ciao, hai dormito bene?',
+                    'buongiorno ☀️ come sei?',
+                    'ti sei svegliato? io pensavo a te 🙂',
+                    "buongiorno. come hai passato la notte?"),
+        'evening': ("com'è andata oggi?",
+                    'cosa hai fatto oggi?',
+                    'buonasera. sei già a casa?',
+                    "dimmi com'è andata la giornata 🙂"),
+    },
+    'fr': {
+        'morning': ('coucou, tu as bien dormi ?',
+                    'bonjour ☀️ ça va ?',
+                    'tu es réveillé ? moi je pensais à toi 🙂',
+                    "j'espère que tu as bien dormi 🙂"),
+        'evening': ('alors, ta journée ?',
+                    "tu as fait quoi aujourd'hui ?",
+                    'bonsoir. tu es déjà rentré ?',
+                    'raconte-moi ta journée 🙂'),
+    },
+    'zh': {
+        'morning': ('嗨，睡得好吗？',
+                    '早上好 ☀️ 你醒啦？',
+                    '我一早就在想你了 🙂 早安',
+                    '早呀，昨晚睡得香吗？'),
+        'evening': ('今天过得怎么样？',
+                    '今天都忙什么啦？',
+                    '晚上好，到家了吗？',
+                    '跟我说说你今天的事 🙂'),
+    },
+    'ja': {
+        'morning': ('おはよう、よく眠れた？',
+                    '朝だよ ☀️ もう起きた？',
+                    '私、あなたのことを考えてた 🙂 おはよ',
+                    'おはよう、昨日は疲れ残ってない？'),
+        'evening': ('今日はどうだった？',
+                    '今日何してたの？',
+                    'こんばんは、もう家にいる？',
+                    '今日の話し聞かせて 🙂'),
+    },
+    'bn': {
+        'morning': ('হাই, ঘুম ভালো হয়েছে?',
+                    'সুপ্রভাত ☀️ উঠেছ?',
+                    'আমি তোমার কথা ভাবছিলাম 🙂 সকাল হয়েছে',
+                    'কীরকম ঘুম হলো রাতে?'),
+        'evening': ('দিনটা কেমন কাটল?',
+                    'আজ কি করছিলে?',
+                    'সন্ধ্যা হয়েছে, বাড়ি পৌঁছেছ?',
+                    'আজকের দিনটা বলো আমাকে 🙂'),
+    },
+}
+
+DEFAULT_RITUAL_LANG = 'ru'
+
+
+def ritual_line(kind: str, lang: str) -> str:
+    """One of her prepared morning/evening lines, in his language."""
+    import random
+    code = app_lang(lang)
+    lines = RITUAL_LINES.get(code) or RITUAL_LINES[DEFAULT_RITUAL_LANG]
+    return random.choice(lines.get(kind) or lines['morning'])
+
+
 # V3.139.0: owner ТЗ (Фогель) — the blurred joint teaser. Both girls speak it,
 # so the line carries their names and the app splits it into two bubbles, the
 # same way an ordinary duo answer is split.

@@ -89,6 +89,7 @@ def test_the_diet_is_two_knobs_not_a_wheel(monkeypatch):
     uid = ensure_user(771590004, 'Тест')
     monkeypatch.setattr(pg, 'local_hour', lambda tz: 9)
     monkeypatch.setattr(pg, 'PUSH_MAX_IN_WINDOW', 0)
+    monkeypatch.setattr(pg, 'PUSH_MAX_PER_DAY', 0)   # V3.162.0 added a third knob
     _events(uid, list(pg.PUSH_EVENTS[:4]))
     assert pg.allow_push(uid, 'Europe/Moscow') == (True, '')
     monkeypatch.setattr(pg, 'PUSH_MAX_IN_WINDOW', 2)

@@ -2195,7 +2195,11 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
 
     # V3.93.0: without Premium — one free photo a day, a ready-made one (no
     # render), then Premium; with Premium — two rendered a day, then peaches.
-    from services.chat_photo_allowance import free_chat_photos_left, use_free_chat_photo, reused_photo
+    # V3.162.0: owner — «приветственное фото не должно сжирать лимит одного
+    # бесплатного фото в сутки»: a frame from her pool is $0 for us and costs
+    # him his own quota (CHAT_POOL_PHOTOS_PER_DAY), never the free render.
+    from services.chat_photo_allowance import (free_chat_photos_left, pool_photos_left, reused_photo,
+                                               use_free_chat_photo, use_pool_photo)
     premium = is_premium(telegram_id)
     character_id = get_user_character(telegram_id)
     if not premium:
@@ -2204,7 +2208,8 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
             await bot.send_message(chat_id, CHAT_PHOTO_BLOCK_TEXT['free_used'],
                                    reply_markup=premium_keyboard(telegram_id=telegram_id))
             return
-        ready = await asyncio.to_thread(reused_photo, character_id, db_uid)
+        ready = (await asyncio.to_thread(reused_photo, character_id, db_uid)
+                 if await asyncio.to_thread(pool_photos_left, db_uid) > 0 else None)
         if ready:
             data, _mime, ext = ready
             if ext == 'webp':
@@ -2212,9 +2217,7 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
                 ext = 'jpg'
             await bot.send_photo(chat_id, BufferedInputFile(data, filename=f'photo.{ext}'),
                                  caption='📸 ' + random.choice(AUTO_CAPTIONS.get(request.scene, ('это тебе 😘',))))
-            await asyncio.to_thread(use_free_chat_photo, db_uid, character_id)
-            from services.chat_photo_allowance import POOL_EVENT, note_today
-            await asyncio.to_thread(note_today, db_uid, POOL_EVENT, character_id)
+            await asyncio.to_thread(use_pool_photo, db_uid, character_id)
             return
         await asyncio.to_thread(use_free_chat_photo, db_uid, character_id)
         await _start_photo_background(chat_id, telegram_id, request, 'free')
@@ -14462,13 +14465,19 @@ def _free_photo_from_pool(telegram_id: int, uid: int, character_id: str):
     None means render as usual.
     V3.93.0: without Premium the one free photo of the day is ALWAYS a ready
     one (her pool or a photo already rendered of her); Premium free photos
-    are rendered until the daily budget is spent (V3.81.0)."""
+    are rendered until the daily budget is spent (V3.81.0).
+    V3.162.0: owner — such a frame is $0 for us and no longer spends his free
+    photo of the day, so it is rationed by its own quota instead."""
     if telegram_id in ADMIN_TELEGRAM_IDS:
         return None
     try:
-        from services.chat_photo_allowance import free_chat_photos_left, free_photo_budget_spent, reused_photo
+        from services.chat_photo_allowance import (free_chat_photos_left, free_photo_budget_spent,
+                                                   pool_photos_left, reused_photo)
         premium = is_premium(telegram_id)
         if free_chat_photos_left(uid, premium=premium) <= 0:
+            return None
+        # the ready picture has its own small daily quota (V3.162.0)
+        if pool_photos_left(uid) <= 0:
             return None
         if premium and not free_photo_budget_spent():
             return None
@@ -14780,11 +14789,13 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                     spend_peaches(telegram_id, UNDRESS_PEACH_COST, paid_only=True)
                     paid_note = {'price': UNDRESS_PEACH_COST, 'left': get_paid_peaches(telegram_id)}
                 # V3.61.5: a free photo of the day first, then peaches.
+                # V3.162.0: owner — a frame from her pool is $0 for us and no
+                # longer spends that photo of the day; it costs its own quota.
+                elif pooled:
+                    from services.chat_photo_allowance import use_pool_photo
+                    use_pool_photo(uid, character_id)
                 elif free_chat_photos_left(uid, premium=premium) > 0:
                     use_free_chat_photo(uid, character_id)
-                    if pooled:
-                        from services.chat_photo_allowance import POOL_EVENT, note_today
-                        note_today(uid, POOL_EVENT, character_id)
                 else:
                     spend_peaches(telegram_id, CHAT_PHOTO_PEACH_COST, paid_only=True)
                     # V3.125.0: he sees what this photo cost and what is left,

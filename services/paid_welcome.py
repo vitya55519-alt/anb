@@ -57,18 +57,21 @@ def unlocked_text(product: str, lang: str = 'ru', trial_days: int = 3) -> str:
     days = _DAYS.get(product, 30) or trial_days
     if product == 'premium_trial':
         from services import trial_caps as T
+        # V3.162.0: owner — the trial no longer carries a free «Раздеть»:
+        # «они просто раздевали и уходили». It costs bought peaches now.
+        from config import UNDRESS_PEACH_COST
         mins = max(1, T.TRIAL_CALL_SECONDS // 60)
         if lang == 'en':
             return (f'✨ Your trial Premium is on ({days} days):\n\n'
                     '💬 unlimited messages with me\n'
                     '💋 every level of closeness, 1 to 10, «Spicy mode» and 🎭 «Fetishes»\n'
-                    f'📸 {T.TRIAL_PHOTOS} new photos of me and {T.TRIAL_UNDRESS} «Undress»\n'
+                    f'📸 {T.TRIAL_PHOTOS} new photos of me, 🔥 «Undress» for {UNDRESS_PEACH_COST} 🍑\n'
                     f'📞 {mins} min of a call with me, 🔊 {T.TRIAL_VOICE} voice messages\n\n'
                     'full Premium has much more photos, calls and voice 💗')
         return (f'✨ Пробный Premium включён ({days} дн.):\n\n'
                 '💬 сообщения со мной без лимита\n'
                 '💋 все уровни близости с 1 по 10, «Пошлый режим» и 🎭 «Фетиши»\n'
-                f'📸 {T.TRIAL_PHOTOS} новых фото и {T.TRIAL_UNDRESS} «Раздеть»\n'
+                f'📸 {T.TRIAL_PHOTOS} новых фото, «Раздеть» за {UNDRESS_PEACH_COST} 🍑\n'
                 f'📞 {mins} мин звонка со мной, 🔊 {T.TRIAL_VOICE} голосовых\n\n'
                 'в полном Premium намного больше фото, звонков и голосовых 💗')
     from services import trial_caps as T

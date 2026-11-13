@@ -55,26 +55,29 @@ def test_ping_text_ru_en_photo_and_collapse():
 
 def test_presence_heartbeat_and_away():
     _reset()
-    assert not app_ping.tracked(5)
+    assert not app_ping.in_app(5)                                  # never heard from
     app_ping.touch(5, now=100.0)
     assert app_ping.in_app(5, now=110.0)
     assert not app_ping.in_app(5, now=100.0 + app_ping.APP_PRESENCE_SECONDS + 1)
     app_ping.touch(5, away=True, now=120.0)
-    assert app_ping.tracked(5) and not app_ping.in_app(5, now=121.0)
+    assert not app_ping.in_app(5, now=121.0)
 
 
-def test_no_ping_for_untracked_or_present_user(monkeypatch):
+def test_the_wait_decides_not_the_moment_her_answer_lands(monkeypatch):
+    """V3.162.0: owner — «она пишет. я выхожу, мне ничего не приходит». He
+    closes the app a second after his own message, so presence read at that
+    moment was always «still in the app» and the ping died before it began."""
     _reset()
     _patch(monkeypatch)
     bot = FakeBot()
 
     async def run():
-        assert not app_ping.note(bot, 7, 'anna_01', 'привет')      # never heard from his app
-        app_ping.touch(7)                                           # in the app right now
-        assert not app_ping.note(bot, 7, 'anna_01', 'привет')
+        assert app_ping.note(bot, 7, 'anna_01', 'привет')          # no heartbeat at all: pinged
+        app_ping.touch(11)                                         # heartbeat alive: he is reading
+        assert app_ping.note(bot, 11, 'anna_01', 'привет')
         await _drain()
     asyncio.run(run())
-    assert bot.sent == []
+    assert [c for c, *_ in bot.sent] == [7]
 
 
 def test_away_user_gets_one_collapsed_ping_with_deep_link(monkeypatch):

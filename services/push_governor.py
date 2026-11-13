@@ -1,7 +1,8 @@
 """V3.159.0: push diet (owner review of the 13.11 dump).
 
 One rule, checked at every unsolicited send: she never writes a man while he
-is asleep, and she never drops three messages into the same two hours.
+is asleep, she never drops three messages into the same two hours, and — V3.162.0,
+owner — never more than two first-writes in his calendar day.
 
 The dump: 15.7% of all first-writes landed between 23:00 and 07:00 local time
 (compatibility forecast 42%, donation ping 40%, random gift 34%), and 23% of
@@ -19,6 +20,7 @@ from config import (
     LIFE_EVENTS_QUIET_END_HOUR,
     LIFE_EVENTS_QUIET_START_HOUR,
     PUSH_MAX_IN_WINDOW,
+    PUSH_MAX_PER_DAY,
     PUSH_SPACING_WINDOW_MINUTES,
 )
 from models.app_models import ProductEvent
@@ -71,11 +73,44 @@ def pushes_in_window(db_user_id: int) -> int:
         return 0
 
 
+def _local_day_start(tz_name) -> dt.datetime:
+    """Midnight of HIS calendar day, as the naive UTC the events are stored in."""
+    utc = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    try:
+        from zoneinfo import ZoneInfo
+        local = utc.replace(tzinfo=dt.timezone.utc).astimezone(ZoneInfo(tz_name or 'UTC'))
+        return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(
+            dt.timezone.utc).replace(tzinfo=None)
+    except Exception:
+        return utc.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def pushes_today(db_user_id: int, tz_name=None) -> int:
+    """V3.162.0: owner — «два пуша всего в день». Counts on his clock, so a man
+    in Manila is not cut off by the server's UTC midnight."""
+    if not db_user_id or PUSH_MAX_PER_DAY <= 0:
+        return 0
+    since = _local_day_start(tz_name)
+    try:
+        with SessionLocal() as s:
+            return int(s.scalar(
+                select(func.count(ProductEvent.id)).where(
+                    ProductEvent.user_id == int(db_user_id),
+                    ProductEvent.event_name.in_(PUSH_EVENTS),
+                    ProductEvent.created_at >= since,
+                )
+            ) or 0)
+    except Exception:
+        return 0
+
+
 def allow_push(db_user_id: int, tz_name=None) -> tuple[bool, str]:
-    """(ok, reason). reason is 'night' | 'burst' | '' — callers only log it."""
+    """(ok, reason). reason is 'night' | 'burst' | 'daily' | '' — callers only log it."""
     hour = local_hour(tz_name)
     if in_quiet_hours(hour):
         return False, 'night'
     if PUSH_MAX_IN_WINDOW > 0 and pushes_in_window(int(db_user_id or 0)) >= PUSH_MAX_IN_WINDOW:
         return False, 'burst'
+    if PUSH_MAX_PER_DAY > 0 and pushes_today(int(db_user_id or 0), tz_name) >= PUSH_MAX_PER_DAY:
+        return False, 'daily'
     return True, ''
