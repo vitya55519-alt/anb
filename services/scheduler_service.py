@@ -1286,9 +1286,10 @@ async def _life_events(bot):
             User.last_active_at >= fresh_cutoff,
         )).all()
         snapshot = [(u.id, int(u.telegram_id), u.name or 'ты',
-                     (u.selected_character or CHARACTER_ID), u.timezone) for u in users]
+                     (u.selected_character or CHARACTER_ID), u.timezone,
+                     getattr(u, 'language_code', None)) for u in users]
     today_key = now.date().isoformat()
-    for uid, tg_id, _name, char_id, tz in snapshot:
+    for uid, tg_id, _name, char_id, tz, lang in snapshot:
         try:
             if not has_accepted(tg_id):
                 continue
@@ -1308,6 +1309,33 @@ async def _life_events(bot):
             # Sprinkle sends across the scan window instead of firing at the
             # boundary for everyone at once (also keeps the LLM load flat).
             if random.random() > 0.35:
+                continue
+            # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации». Sometimes the slice
+            # of her day is a place with a photo she is about to take: that one
+            # lands with the paid plate under it (the row and its price are the
+            # server's, the picture only exists after he taps). A life moment
+            # without a tease stays on the old rail below.
+            live = None
+            try:
+                from services.live_situation_service import push as live_push
+                live = await live_push(tg_id, char_id, part, uid=uid)
+            except Exception:
+                logger.exception('live situation push failed user=%s', uid)
+            if live and live.get('id'):
+                slots.append(part)
+                _life_events_store[tg_id] = {'date': today_key, 'slots': slots}
+                try:
+                    from services.ui_lang import flow_text
+                    btn = flow_text(lang or 'ru', 'live_button', price=int(live['price']))
+                    markup = InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text=btn[:64], callback_data=f"live:unlock:{live['id']}")]])
+                    await bot.send_message(tg_id, live['text'], reply_markup=markup)
+                    track_event(uid, 'life_event_sent',
+                                metadata={'character_id': char_id, 'when': part, 'live': 1})
+                except TelegramForbiddenError:
+                    _mark_blocked(uid)
+                except Exception:
+                    logger.exception('live situation delivery failed user=%s', uid)
                 continue
             moment = await build_life_moment(tg_id, char_id, when=part)
             # Consume the slot whether or not text came back, so an empty/no-LLM

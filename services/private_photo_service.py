@@ -959,6 +959,25 @@ async def generate_private_photo_nude(request: PrivatePhotoRequest, prompt: str)
     return await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, [ref_face_url], scene=str(request.category or 'nude'))
 
 
+LIVE_IDENTITY_LOCK = (
+    'IDENTITY: the woman in the reference photo is her — keep her face, hair and '
+    'body exactly as in the reference. Real phone selfie taken by herself, one '
+    'head, two arms, no duplicated limbs, no text and no watermark on the frame.'
+)
+
+
+async def generate_live_situation_photo(character_id: str, prompt: str) -> Optional[bytes]:
+    """V3.156.0: owner ТЗ (Фогель) — «Живые ситуации», спон-фото за 400 🍑.
+
+    Рисуется только после списания персиков, из промпта, который она сама
+    написала в тизере. Референс — её лицо (i=0): локация, свет и одежда берутся
+    из текста, поэтому силует-референс i=1 сюда не отдаём — иначе генератор
+    вернёт ей то же домашнее платье, из которого она «только что вышла»."""
+    ref_face_url = f"{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0"
+    full = f'{prompt.strip()} {LIVE_IDENTITY_LOCK}'
+    return await _spicyapi_render(SPICYAPI_IMAGE_MODEL, full, [ref_face_url], scene='live_situation')
+
+
 async def generate_private_photo_t2i(prompt: str) -> Optional[bytes]:
     """V3.46.1: uncensored text-to-image for the nude «Наедине» categories.
 

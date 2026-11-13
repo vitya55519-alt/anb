@@ -52,6 +52,7 @@ from config import (
     FREE_PHOTOS_LEVEL_3_6,
     GALLERY_DOWNLOAD_STARS,
     HOT_CIRCLE_PEACH_COST,
+    LIVE_SITUATION_PEACH_COST,  # V3.156.0: the «живая ситуация» sponsor photo plate
     PEACH_PACK_10_STARS,
     PEACH_PACK_30_STARS,
     PEACH_PACK_100_STARS,
@@ -1082,6 +1083,12 @@ def api_chat_history(db_user_id: int, character_id: str, limit: int = 30) -> lis
         if draft:
             entry['draft'] = {'paid': paid, 'price': DRAFT_PEACH_COST,
                               'text': draft if paid else ''}
+        # V3.156.0 (Фогель, «Живые ситуации»): the plate of the photo she is
+        # about to send. The English scene stays on the server — the app gets
+        # the id and the price, and only the paid tap makes it draw the picture.
+        if (getattr(m, 'image_prompt', None) or '').strip():
+            entry['live'] = {'paid': bool(getattr(m, 'image_unlocked', False)),
+                             'price': LIVE_SITUATION_PEACH_COST}
         out.append(entry)
     return out
 

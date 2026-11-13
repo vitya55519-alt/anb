@@ -963,6 +963,18 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             messages.append({"role": "system", "content": care_note})
     except Exception:
         care_kind = ''
+    # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации». Пока её свежий тизер не
+    # остыл, она не имеет права телепортироваться домой: фото, обещанное из
+    # маршрутки, рисуется из маршрутки, а иначе она выруливает одним из двух
+    # приёмов («скрытый архив» / «быстрый переезд»).
+    try:
+        from services import live_situation_service
+        live_note = await asyncio.to_thread(
+            live_situation_service.directive_for, user_id, character_id)
+        if live_note:
+            messages.append({"role": "system", "content": live_note})
+    except Exception:
+        _logger.warning('live situation directive failed user=%s', user_id, exc_info=True)
     # V3.152.0: owner ТЗ (Фогель, Модуль 1) — now and then she types a whole
     # message, reads it back and erases it. The dice are rolled once, here, so
     # the prompt that asks for the third block and the plate under her answer

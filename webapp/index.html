@@ -388,6 +388,17 @@
   .dplate.qte .dplate-t { color: var(--text); font-style: normal; border-style: solid;
     border-color: rgba(255,120,60,.55); background: rgba(255,120,60,.10); font-weight: 600; }
   .dplate.qte .mchip { font-size: 13px; text-align: left; }
+  /* V3.156.0: owner ТЗ (Фогель) — «Живые ситуации»: the blurred frame of the
+     photo she is about to take. The picture itself only exists after he pays,
+     so until then it is a locked frame and one priced button. */
+  .lplate { align-self: flex-start; max-width: calc(82% - 36px); margin: 4px 0 10px 36px;
+    display: flex; flex-direction: column; gap: 6px; box-sizing: border-box; }
+  .lplate .lplate-img { width: 200px; height: 266px; border-radius: 16px; position: relative;
+    border: 1px dashed rgba(255,255,255,.22); overflow: hidden;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 12px, rgba(255,255,255,.03) 12px 24px);
+    display: flex; align-items: center; justify-content: center; }
+  .lplate .lplate-img::after { content: '🔒'; font-size: 30px; opacity: .75; }
+  .lplate .mchip { width: auto; align-self: flex-start; }
   /* V3.63.7: her small photo next to each of her messages, like in WhatsApp */
   .msg.bot.hav { position: relative; margin-left: 36px; max-width: calc(82% - 36px); }
   .msg .bav { position: absolute; left: -36px; bottom: 0; width: 30px; height: 30px; border-radius: 50%;
@@ -1776,6 +1787,11 @@ const L_EN = {
   draft_plate: n => '✍️ ' + n + ' typed a long message and erased it…',
   draft_btn: p => '👀 Read what she erased · ' + p + ' 🍑',
   draft_open: (n, t) => '🔓 Her erased draft, ' + n + ': ' + t,
+  // V3.156.0: «Живые ситуации» — the paid live photo she promised from where she is
+  live_btn: p => '📸 Open the live photo · ' + p + ' 🍑',
+  live_busy: '⏳ Taking the shot, one sec…',
+  live_failed: '🙈 the shot failed, your peaches are back',
+  live_gone: '😅 she already deleted that shot',
   qte_price: p => ' · ' + p + ' 🍑',
   qte_gone: '😅 that moment is already gone',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.', girl_of_day: 'Girl of the day · free',
@@ -2082,6 +2098,11 @@ const L_RU = {
   draft_plate: n => '✍️ ' + n + ' долго печатала сообщение и стёрла его…',
   draft_btn: p => '👀 Прочитать стёртое · ' + p + ' 🍑',
   draft_open: (n, t) => '🔓 Стертый черновик ' + n + ': ' + t,
+  // V3.156.0: «Живые ситуации» — платный кадр из того места, где она сейчас
+  live_btn: p => '📸 Открыть живое фото · ' + p + ' 🍑',
+  live_busy: '⏳ Делаю кадр, секунду…',
+  live_failed: '🙈 кадр не вышел, персики вернула',
+  live_gone: '😅 тот кадр она уже стёрла',
   qte_price: p => ' · ' + p + ' 🍑',
   qte_gone: '😅 этот момент уже упущен',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет', girl_of_day: 'Девушка дня · без Premium',
@@ -2793,6 +2814,11 @@ const L_OV = {
     draft_plate: n => '✍️ ' + n + ' অনেক লিখে মুছে ফেলেছে…',
     draft_btn: p => '👀 মুছে দেওয়া লেখা পড়ো · ' + p + ' 🍑',
     draft_open: (n, t) => '🔓 ' + n + '-এর মুছে ফেলা ড্রাফট: ' + t,
+    // V3.156.0: «Живые ситуации» — পছন্দমতো লাইভ ছবি
+    live_btn: p => '📸 লাইভ ছবিটা খোলো · ' + p + ' 🍑',
+    live_busy: '⏳ ছবি তুলছি, এক সেকেন্ড…',
+    live_failed: '🙈 ছবিটা আসেনি, পিচ ফিরিয়ে দিয়েছি',
+    live_gone: '😅 ওই ছবিটা সে মুছে ফেলেছে',
     day1_hints: ['আজ আমার দিনটা কেমন গেল বলি', 'আমাদের আগের কথা এগিয়ে নিয়ে যাই', 'তুমি আজ কী করেছ?'],
     marital_free: 'ফ্রি',
     years: 'বছর', soon: 'শীঘ্রই', prem: 'Premium', girl_of_day: 'আজকের মেয়ে · ফ্রি',
@@ -3860,14 +3886,26 @@ function draftPlate(d) {
 
 // Her answer carries only the id + price; the price of the plate redrawn from
 // the history comes from the server too, so both look the same.
+// V3.156.0: «Живые ситуации» — the locked frame of the live photo she promised
+// from where she stands. `l` is {'id','paid','price'}; a paid plate is not
+// drawn at all, because the picture itself arrived as the next message.
+function livePlate(l) {
+  if (!l || !l.id || l.paid) return '';
+  const btn = typeof L.live_btn === 'function' ? L.live_btn(peachNum(l.price)) : '📸 ' + peachNum(l.price);
+  return '<div class="lplate" data-lplate="' + l.id + '"><div class="lplate-img"></div>' +
+    '<button class="mchip on" data-live="' + l.id + '">' + esc(btn) + '</button></div>';
+}
+
 function historyLine(m) {
-  if (!m || m.role === 'user' || !m.id || !m.draft || m.media_kind) return chatBubble(m);
-  const d = Object.assign({ id: m.id }, m.draft);
+  if (!m || m.role === 'user' || !m.id || m.media_kind) return chatBubble(m);
+  if (!m.draft && !m.live) return chatBubble(m);
   const nv = parseThought(m.content || '');
-  if (!nv.thought) return draftPlate(d) + chatBubble(m);
+  const head = (nv.thought ? thoughtCard(nv.thought) : '') + livePlate(m.live) +
+    (m.draft ? draftPlate(Object.assign({ id: m.id }, m.draft)) : '');
   // same order as a live answer: card → plate → the message she did send
-  return thoughtCard(nv.thought) + draftPlate(d) +
-    chatBubble(Object.assign({}, m, { content: nv.message, novel: true }));
+  return head + (nv.thought
+    ? chatBubble(Object.assign({}, m, { content: nv.message, novel: true }))
+    : chatBubble(m));
 }
 
 function afterDraft(d, done) {
@@ -3917,6 +3955,67 @@ async function unlockDraft(id, btn) {
     if (btn) btn.disabled = false;
     toast(L.reply_err);
   }
+}
+
+// V3.156.0: «📸 Открыть живое фото» — 400 🍑 и её кадр из той же локации.
+// Генерация идёт десятки секунд: тарелка ждёт, disabled-кнопка не даёт нажать
+// дважды, 402 открывает покупку персиков и повторяет тап.
+async function unlockLive(id, btn) {
+  if (!CHAT) return;
+  if (!tg.initData) { toast(L.auth_short); return; }
+  const characterId = CHAT.id;
+  const plate = () => document.querySelector('[data-lplate="' + id + '"]');
+  if (btn) btn.disabled = true;
+  toast(L.live_busy || '⏳');
+  try {
+    const r = await fetch('/webapp/api/chat/live?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: characterId, message_id: id }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 402) {
+      if (btn) btn.disabled = false;
+      quickBuy('peaches', () => unlockLive(id, btn));
+      return;
+    }
+    if (r.status === 404) {
+      const p = plate(); if (p) p.remove();
+      // уже купленный или потерянный кадр — просто убираем тарелку
+      if (j.error !== 'already_unlocked') toast(L.live_gone || L.reply_err);
+      return;
+    }
+    if (!j.ok || !j.photo_url) {
+      if (btn) btn.disabled = false;
+      toast(r.status === 401 ? L.auth_short : (j.error === 'render_failed' ? (L.live_failed || L.reply_err) : L.reply_err));
+      return;
+    }
+    if (!CHAT || CHAT.id !== characterId) return;
+    const html = chatBubble({ role: 'bot', content: j.caption || '📸', media_kind: 'photo', media_url: j.photo_url, ts: null });
+    const p = plate();
+    if (p) p.outerHTML = html;
+    else {
+      const box = document.getElementById('chatMsgs');
+      box.insertAdjacentHTML('beforeend', html);
+      box.scrollTop = box.scrollHeight;
+    }
+    if (ME && j.credits != null) ME.photo_credits = j.credits;
+    loadMe();
+  } catch (e) {
+    if (btn) btn.disabled = false;
+    toast(L.reply_err);
+  }
+}
+
+// Её живой тизер, приехавший вместе с открытием чата: строка появилась уже
+// после истории, поэтому карточка мысли, её сообщение и тарелка дописываются.
+function appendLiveTeaser(l) {
+  const box = document.getElementById('chatMsgs');
+  if (!box || !l || !l.id) return;
+  const content = l.thought ? ('THOUGHT: ' + l.thought + '\nMESSAGE: ' + (l.text || '')) : (l.text || '');
+  if (!content) return;
+  box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: content, ts: null }));
+  box.insertAdjacentHTML('beforeend', livePlate({ id: l.id, price: l.price }));
+  box.scrollTop = box.scrollHeight;
 }
 
 // V3.154.0: owner ТЗ (Фогель, Модуль 2) — «Перебивки». The event line plus his
@@ -4564,6 +4663,9 @@ async function loadChatHistory(characterId) {
     // V3.55.6: the server says this premium pair has no manner chosen yet —
     // show the one-time tender/passionate picker above the input.
     if (j.persona && j.persona.needed) renderPersonaBanner(characterId);
+    // V3.156.0: новая фаза дня на пороге — её живой тизер приехал вместе с
+    // этим открытием (строка появилась уже после истории).
+    if (j.live && j.live.id) appendLiveTeaser(j.live);
     // V3.59.2: a new dialog gets tap-to-send openers — most newcomers froze
     // on an empty input not knowing what to write to her.
     const mine = j.history.filter(m => m.role === 'user').length;
@@ -5363,6 +5465,14 @@ document.addEventListener('click', e => {
   if (!b) return;
   e.stopPropagation();
   unlockDraft(Number(b.getAttribute('data-draft')) || 0, b);
+});
+
+// V3.156.0: «📸 Открыть живое фото» — платит и превращает тарелку в кадр.
+document.addEventListener('click', e => {
+  const b = e.target && e.target.closest ? e.target.closest('[data-live]') : null;
+  if (!b) return;
+  e.stopPropagation();
+  unlockLive(Number(b.getAttribute('data-live')) || 0, b);
 });
 
 // V3.154.0: «Перебивка» — one tap answers the event, the plate disappears.

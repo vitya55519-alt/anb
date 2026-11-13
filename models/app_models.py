@@ -347,6 +347,13 @@ class Message(Base):
     # to the client or back into the model. `_auto_migrate_all_tables` adds it.
     draft_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     draft_unlocked: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации». Her line about where she is
+    # right now rides in `content` as usual; the ENGLISH picture prompt of the
+    # photo she is about to send lives here, so the app can offer the plate
+    # without ever shipping the scene, and the picture is drawn only after the
+    # peaches are spent. `_auto_migrate_all_tables` adds both columns.
+    image_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_unlocked: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 class Memory(Base):

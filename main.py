@@ -8794,6 +8794,56 @@ async def draft_unlock(cq: types.CallbackQuery):
     await cq.answer()
 
 
+@dp.callback_query(F.data.startswith('live:unlock:'))
+async def live_photo_unlock(cq: types.CallbackQuery):
+    """V3.156.0: owner ТЗ (Фогель) — «Живые ситуации». Его тап по тарелке:
+    персики списываются, и только теперь провайдер рисует кадр из её локации.
+    Ответ провайдера — не мгновенный, поэтому сначала честное «⏳ делаю кадр»,
+    потом фото её же словами. Не вышло — деньги возвращает сервис."""
+    try:
+        message_id = int(cq.data.rsplit(':', 1)[-1])
+    except (TypeError, ValueError):
+        message_id = 0
+    tid = cq.from_user.id
+    character_id = get_user_character(tid) or ''
+    lang = user_lang(tid)
+    from services import live_situation_service as live
+    try:
+        await cq.answer(flow_text(lang, 'live_busy'))
+    except Exception:
+        pass
+    res = await live.unlock_photo(tid, character_id, message_id)
+    if not res.get('ok'):
+        error = res.get('error')
+        try:
+            await cq.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        if error == 'insufficient_peaches':
+            await cq.message.answer(flow_text(lang, 'live_no_peach', price=live.price())
+                                    + _bonus_peach_note(tid))
+        elif error not in ('not_found', 'already_unlocked'):
+            await cq.message.answer(flow_text(lang, 'live_failed'))
+        return
+    try:
+        await cq.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    caption = res.get('caption') or '📸'
+    filename = str(res.get('photo_url') or '').rsplit('/', 1)[-1]
+    try:
+        path = await asyncio.to_thread(webapp_service.chat_media_file_path, tid, filename)
+        data = await asyncio.to_thread(path.read_bytes) if path else None
+    except Exception:
+        logger.exception('live photo file read failed user=%s', tid)
+        data = None
+    if data:
+        await bot.send_photo(cq.message.chat.id, BufferedInputFile(data, filename='live.jpg'),
+                             caption=caption)
+    else:
+        await cq.message.answer(caption)
+
+
 async def _send_interrupt_card(message: types.Message, card: dict) -> None:
     """V3.154.0 (Фогель, Модуль 2): the перебивка plate — what just happened and
     the three ways out. The boldest one is priced; for Premium it comes free, so
@@ -14000,6 +14050,44 @@ async def _webapp_api_presence(request: web.Request) -> web.Response:
     return web.json_response({'ok': True})
 
 
+# V3.156.0: сколько он готов смотреть на «печатает…» при открытии чата, пока она
+# собирает живую ситуацию. Дальше — пусть дописывает в фоне.
+LIVE_SITUATION_WAIT_SECONDS = 6.0
+
+
+def _live_task_done(task: "asyncio.Task") -> None:
+    """Фоновая генерация, которую уже не ждут: достать исключение, чтобы
+    asyncio не ругалось «exception was never retrieved»."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        logger.warning('live situation background push failed: %s', exc)
+
+
+async def _live_situation_on_open(telegram_id: int, character_id: str, uid: int) -> dict | None:
+    """Второй триггер ТЗ «Живые ситуации»: он зашёл в чат, а фаза дня сменилась."""
+    from services import live_situation_service as live
+    when = live.daypart(await asyncio.to_thread(live.local_hour, int(telegram_id)))
+    if not live.phase_changed(int(telegram_id), when):
+        return None
+    if not await asyncio.to_thread(live.can_fire, int(telegram_id), character_id, when):
+        return None
+    task = asyncio.ensure_future(live.push(int(telegram_id), character_id, when, uid=uid))
+    task.add_done_callback(_live_task_done)
+    try:
+        res = await asyncio.wait_for(asyncio.shield(task), timeout=LIVE_SITUATION_WAIT_SECONDS)
+    except asyncio.TimeoutError:
+        return None
+    except Exception:
+        logger.warning('live situation on chat open failed user=%s', telegram_id, exc_info=True)
+        return None
+    if not res or not res.get('id'):
+        return None
+    return {'id': res['id'], 'price': res['price'], 'text': res.get('text') or '',
+            'thought': res.get('thought') or ''}
+
+
 async def _webapp_api_chat_history(request: web.Request) -> web.Response:
     # V3.35.0: chat in the app — the dialog the bot and the app share.
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
@@ -14085,8 +14173,21 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
             duo = guest['name']
     except Exception:
         logger.exception('chat guest load failed user=%s', telegram_id)
+    # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации», второй триггер: он зашёл в
+    # чат, а фаза дня сменилась. Строка появилась уже после чтения истории,
+    # поэтому её тарелка едет отдельным ключом. Ждём ровно столько, сколько она
+    # «печатает»: не успела — дописывает в фоне и придёт при следующем
+    # открытии, мгновенным открытием чата жертвуем редко (не больше
+    # LIVE_SITUATION_MAX_PER_DAY раз в сутки).
+    live_offer = None
+    if opening:
+        try:
+            live_offer = await _live_situation_on_open(telegram_id, character_id, uid)
+        except Exception:
+            logger.exception('live situation on chat open failed user=%s', telegram_id)
     return web.json_response({'ok': True, 'history': history, 'persona': persona_info, 'duo': duo,
-                              'guest': guest, 'can_invite': not (duo and not guest)})
+                              'guest': guest, 'can_invite': not (duo and not guest),
+                              **({'live': live_offer} if live_offer else {})})
 
 
 def _custom_premium_gate_block(character_id: str, telegram_id: int) -> bool:
@@ -15655,6 +15756,44 @@ async def _webapp_api_chat_draft(request: web.Request) -> web.Response:
                                   'cost': res.get('cost', 0)}, status=status)
     return web.json_response({'ok': True, 'text': res.get('text', ''),
                               'price': res.get('price', 0), 'free': bool(res.get('free')),
+                              'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
+
+
+async def _webapp_api_chat_live(request: web.Request) -> web.Response:
+    """V3.156.0: owner ТЗ (Фогель) — «📸 Открыть живое фото · 400 🍑». Тарелка
+    из истории или из свежего тизера несёт только id строки; промпт кадра живёт
+    на сервере и превращается в картинку после списания персиков."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64]
+    try:
+        message_id = int(body.get('message_id') or 0)
+    except (TypeError, ValueError):
+        message_id = 0
+    if not character_id or message_id <= 0:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    from services import live_situation_service as live
+    res = await live.unlock_photo(telegram_id, character_id, message_id)
+    if not res.get('ok'):
+        error = res.get('error')
+        status = 402 if error == 'insufficient_peaches' else \
+            404 if error in ('not_found', 'already_unlocked') else \
+            502 if error == 'render_failed' else 400
+        return web.json_response({'ok': False, 'error': error or 'bad_request',
+                                  'cost': res.get('cost') or live.price()}, status=status)
+    return web.json_response({'ok': True, 'photo_url': res.get('photo_url'),
+                              'caption': res.get('caption'), 'price': res.get('price', 0),
+                              'free': bool(res.get('free')), 'left': res.get('left', 0),
                               'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
 
 
@@ -18824,6 +18963,8 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/chat/level/pick', _webapp_api_chat_level_pick)
     app.router.add_post('/webapp/api/chat/branch', _webapp_api_chat_branch)
     app.router.add_post('/webapp/api/chat/draft', _webapp_api_chat_draft)
+    # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации»: платный спон-фото кадр
+    app.router.add_post('/webapp/api/chat/live', _webapp_api_chat_live)
     # V3.154.0: owner ТЗ (Фогель, Модуль 2) — «Перебивки» (QTE)
     app.router.add_post('/webapp/api/chat/interrupt', _webapp_api_chat_interrupt)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.

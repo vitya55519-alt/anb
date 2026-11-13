@@ -706,6 +706,18 @@ LIFE_EVENTS_QUIET_END_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_END
 # Probability of attaching a pool photo to a life moment (0 disables).
 LIFE_EVENTS_PHOTO_CHANCE = max(0.0, min(1.0, float(os.getenv("LIFE_EVENTS_PHOTO_CHANCE", "0.25"))))
 
+# V3.156.0: owner ТЗ (Фогель) — «Живые ситуации» + спон-фото. Her day keeps the
+# life-event rail, but now and then the moment ends on a photo she is about to
+# send from where she actually is. The picture is rendered ONLY after he pays:
+# 400 🍑 ≈ 40 ₽, the same unit as everywhere else (4 = 400 🍑). Owner override
+# of the ТЗ figure (the paper said 100 🍑): «спон фото за 400 персиков».
+LIVE_SITUATION_PEACH_COST = max(1, int(float(os.getenv("LIVE_SITUATION_PEACH_COST", "4")) * PEACH_SCALE))
+LIVE_SITUATIONS_ENABLED = os.getenv("LIVE_SITUATIONS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+# Teasers per pair per day, and the closeness from which she dares to offer a
+# live photo at all (below that he would get a striptease from a stranger).
+LIVE_SITUATION_MAX_PER_DAY = max(0, min(4, int(os.getenv("LIVE_SITUATION_MAX_PER_DAY", "2"))))
+LIVE_SITUATION_MIN_LEVEL = max(1, min(10, int(os.getenv("LIVE_SITUATION_MIN_LEVEL", "4"))))
+
 # V3.19.0: personal character constructor — one-time Stars payment that builds
 # a private chat persona (appearance + personality + relationship role) with a
 # generated avatar. Optional user face photo enables face-swap identity.

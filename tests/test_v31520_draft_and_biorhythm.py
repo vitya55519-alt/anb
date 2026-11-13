@@ -511,9 +511,10 @@ def test_the_mini_app_draws_the_plate_and_buys_it():
 
 
 def test_the_paid_plate_order_is_card_then_plate_then_message():
-    # в истории: карточка → тарелка → её сообщение
-    line = [ln for ln in WEBAPP.splitlines() if 'thoughtCard(nv.thought) + draftPlate(d)' in ln][0]
-    assert line.index('thoughtCard(nv.thought)') < line.index('draftPlate(d)')
+    # в истории: карточка → тарелка → её сообщение (V3.156.0: между ними
+    # встала тарелка живого фото — порядок карточка → всё остальное тот же)
+    hist = _slice(WEBAPP, 'function historyLine(m)', 'function afterDraft')
+    assert hist.index('thoughtCard(nv.thought)') < hist.index('livePlate(m.live)') < hist.index('draftPlate(')
     # вживу: «печатает…» 4 секунды → тарелка → MESSAGE
     after = _slice(WEBAPP, 'function afterDraft(d, done)', 'async function unlockDraft')
     assert after.index('showRecording(') < after.index('draftPlate(d)')
