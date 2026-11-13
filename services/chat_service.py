@@ -1139,6 +1139,15 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             gift_shop_service.tick(user_id, character_id)
         except Exception:
             pass
+    # V3.154.0 (Фогель, Модуль 2): «Перебивки» — раз в 10–15 его сообщений кто-то
+    # возвращается домой. Счётчик идёт только по живым репликам: сцена покупки и
+    # пуш не должны тратить событие. Карточку рисует слой доставки.
+    if not scene and (r.text or '').strip():
+        try:
+            from services import interrupt_service
+            await asyncio.to_thread(interrupt_service.note_turn, user_id, character_id, adaptation_level)
+        except Exception:
+            _logger.warning('interrupt note failed user=%s', user_id, exc_info=True)
     if gift and (r.text or '').strip():
         try:
             from services import memory_gift

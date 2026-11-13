@@ -383,6 +383,11 @@
   .dplate.done .dplate-t { color: var(--text); font-style: normal; border-style: solid;
     border-color: rgba(255,77,141,.45); background: rgba(255,77,141,.07); }
   .dplate .mchip { width: auto; align-self: flex-start; }
+  /* V3.154.0: owner ТЗ (Фогель, Модуль 2) — «Перебивки»: the event line in red
+     and his three ways out under it, the bold one highlighted. */
+  .dplate.qte .dplate-t { color: var(--text); font-style: normal; border-style: solid;
+    border-color: rgba(255,120,60,.55); background: rgba(255,120,60,.10); font-weight: 600; }
+  .dplate.qte .mchip { font-size: 13px; text-align: left; }
   /* V3.63.7: her small photo next to each of her messages, like in WhatsApp */
   .msg.bot.hav { position: relative; margin-left: 36px; max-width: calc(82% - 36px); }
   .msg .bav { position: absolute; left: -36px; bottom: 0; width: 30px; height: 30px; border-radius: 50%;
@@ -1771,6 +1776,8 @@ const L_EN = {
   draft_plate: n => '✍️ ' + n + ' typed a long message and erased it…',
   draft_btn: p => '👀 Read what she erased · ' + p + ' 🍑',
   draft_open: (n, t) => '🔓 Her erased draft, ' + n + ': ' + t,
+  qte_price: p => ' · ' + p + ' 🍑',
+  qte_gone: '😅 that moment is already gone',
   active: 'available', prem: 'Premium', soon: 'soon', selected: 'your girl', years: 'y.o.', girl_of_day: 'Girl of the day · free',
   // V3.55.2: the premium-characters section under the grid
   prem_chars_title: 'Premium characters', prem_chars_hint: 'Unlocked with a Premium subscription', prem_chars_owned: 'Open with your subscription',
@@ -2075,6 +2082,8 @@ const L_RU = {
   draft_plate: n => '✍️ ' + n + ' долго печатала сообщение и стёрла его…',
   draft_btn: p => '👀 Прочитать стёртое · ' + p + ' 🍑',
   draft_open: (n, t) => '🔓 Стертый черновик ' + n + ': ' + t,
+  qte_price: p => ' · ' + p + ' 🍑',
+  qte_gone: '😅 этот момент уже упущен',
   active: 'доступна', prem: 'Premium', soon: 'скоро', selected: 'твоя девушка', years: 'лет', girl_of_day: 'Девушка дня · без Premium',
   // V3.55.2: секция премиум-персонажей под сеткой
   prem_chars_title: 'Премиум-персонажи', prem_chars_hint: 'Открываются подпиской Premium', prem_chars_owned: 'Открыты твоей подпиской',
@@ -3910,6 +3919,60 @@ async function unlockDraft(id, btn) {
   }
 }
 
+// V3.154.0: owner ТЗ (Фогель, Модуль 2) — «Перебивки». The event line plus his
+// three ways out; `q` comes from the chat answer payload with only canned text,
+// and the bold third choice carries its price unless he holds Premium.
+function interruptPlate(q) {
+  if (!q || !q.id) return '';
+  const btns = (q.choices || []).map(c => {
+    const paid = !!c.paid && !q.free && Number(c.price) > 0;
+    const label = String(c.label || '') +
+      (paid ? (typeof L.qte_price === 'function' ? L.qte_price(peachNum(c.price)) : ' · ' + peachNum(c.price) + ' 🍑') : '');
+    return '<button type="button" class="mchip' + (paid ? ' on' : '') +
+      '" data-qte="' + esc(q.id) + '" data-qn="' + (Number(c.n) || 0) + '">' + esc(label) + '</button>';
+  }).join('');
+  if (!btns) return '';
+  return '<div class="dplate qte"><div class="dplate-t">' +
+    esc((q.emoji || '⚡') + ' ' + String(q.text || '')) + '</div>' + btns + '</div>';
+}
+
+async function pickInterrupt(id, n, btn) {
+  if (!CHAT) return;
+  if (!tg.initData) { toast(L.auth_short); return; }
+  const characterId = CHAT.id;
+  const plate = btn && btn.closest ? btn.closest('.qte') : null;
+  const stop = () => { if (plate) plate.querySelectorAll('button').forEach(b => b.disabled = false); };
+  if (plate) plate.querySelectorAll('button').forEach(b => b.disabled = true);
+  try {
+    const r = await fetch('/webapp/api/chat/interrupt?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: characterId, id: id, n: n }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 402) {
+      stop();
+      quickBuy('peaches', () => pickInterrupt(id, n, btn));
+      return;
+    }
+    if (!j.ok) {
+      if (plate) plate.remove();
+      toast(r.status === 401 ? L.auth_short : (L.qte_gone || L.reply_err));
+      return;
+    }
+    if (!CHAT || CHAT.id !== characterId) return;
+    const box = document.getElementById('chatMsgs');
+    if (plate) plate.remove();
+    const empty = box.querySelector('.chat-empty'); if (empty) empty.remove();
+    if (j.user_text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'user', content: j.user_text, ts: null }));
+    if (j.text) box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.text, ts: null }));
+    box.scrollTop = box.scrollHeight;
+    loadMe();
+  } catch (e) {
+    stop();
+    toast(L.reply_err);
+  }
+}
+
 function chatBubble(roleOrM, content, ts) {
   // V3.39.0: media messages (photo / circle / voice) render like in the bot
   // dialog — round video for circles, a player for voice, a photo otherwise.
@@ -3957,9 +4020,9 @@ function chatBubble(roleOrM, content, ts) {
         + '<div class="phact"><button class="pa" data-dl="' + esc(src) + '">' + esc(L.pa_save) + '</button>'
         + '<button class="pa" data-pact="animate" data-media="' + esc(m.media_url) + '">' + esc(L.pa_anim) + '</button>'
         + (room ? '' : '<button class="pa hot" data-pact="undress" data-media="' + esc(m.media_url) + '">' + esc(L.pa_undress)
-        // V3.138.0: owner — the price here is peaches, never rubles (250 🍑 ≈ 25 ₽).
+        // V3.138.0: owner — the price here is peaches, never rubles (400 🍑 ≈ 40 ₽).
         // A number + the peach reads the same in every language of the app.
-        + (ME && !ME.premium ? '<small>· ' + esc(ME.undress_peaches || 250) + ' 🍑</small>' : '') + '</button>')
+        + (ME && !ME.premium ? '<small>· ' + esc(ME.undress_peaches || 400) + ' 🍑</small>' : '') + '</button>')
         // V3.139.1: two girls in the chat — a «вдвоём» tap asks for the joint
         // frame instead of only the one shown (free → teaser, Premium → real).
         + (CHAT && CHAT.guest ? '<button class="pa" data-duojoint="1">' + esc(L.duo_together) + '</button>' : '')
@@ -4270,7 +4333,7 @@ function openHot18(c0) {
   const sheet = document.getElementById('lvlSheet');
   const box = document.getElementById('lvlBox');
   const close = () => { sheet.style.display = 'none'; };
-  const undressPeaches = (ME && ME.undress_peaches) || 250;
+  const undressPeaches = (ME && ME.undress_peaches) || 400;
   const P = '<span class="pr prem">⭐ ' + esc(L.hot_prem) + '</span>';
   const rows = [
     ['undress', L.hot_undress, L.hot_undress_ds, prem ? '<span class="pr">' + esc(L.hot_prem) + '</span>' : '<span class="pr">' + esc(undressPeaches) + ' 🍑</span>'],
@@ -4733,7 +4796,7 @@ function undressTease(mediaUrl) {
     if (!CHAT) return;
     box.insertAdjacentHTML('beforeend', chatBubble('bot', L.undress_tease, null));
     box.insertAdjacentHTML('beforeend', '<div class="chat-offer"><button class="mchip on" data-pact="undress" data-media="' +
-      esc(mediaUrl) + '">' + esc(L.undress_tease_btn + (ME && ME.premium ? '' : ' · ' + ((ME && ME.undress_peaches) || 250) + ' 🍑')) + '</button></div>');
+      esc(mediaUrl) + '">' + esc(L.undress_tease_btn + (ME && ME.premium ? '' : ' · ' + ((ME && ME.undress_peaches) || 400) + ' 🍑')) + '</button></div>');
     box.scrollTop = box.scrollHeight;
   }, 1600);
 }
@@ -4832,7 +4895,7 @@ function insertChatReply(j) {
     const kind = undress ? 'undress' : 'spicy';
     const cid = CHAT ? CHAT.id : '';
     const retry = undress ? () => { if (CHAT && CHAT.id === cid) sendChat(j.retry_text || ''); } : null;
-    const label = undress ? ((L.hot_undress || L.undress_tease_btn || '🔥') + ' · ' + ((ME && ME.undress_peaches) || 250) + ' 🍑') : L.spicy_btn;
+    const label = undress ? ((L.hot_undress || L.undress_tease_btn || '🔥') + ' · ' + ((ME && ME.undress_peaches) || 400) + ' 🍑') : L.spicy_btn;
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on">${esc(label)}</button></div>`);
     const btn = box.lastElementChild.querySelector('button');
     if (btn) btn.addEventListener('click', () => quickBuy(kind, retry));
@@ -4860,6 +4923,11 @@ function insertChatReply(j) {
     const pn = n => String(Number(n) || 0).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip" data-cmedia="circle">${esc(L.co_circle || '🎥')} · ${esc(pn(co.circle_price))} 🍑</button></div>`);
     if (co.hot) box.lastElementChild.insertAdjacentHTML('beforeend', `<button class="mchip on" data-cmedia="hotcircle">${esc(L.co_hot || '🔥')} · ${esc(pn(co.hot_price))} 🍑</button>`);
+  }
+  // V3.154.0: owner ТЗ (Фогель, Модуль 2) — «Перебивки»: the event plate rides
+  // under her answer and waits for his tap; nobody decides the QTE for him.
+  if (j.interrupt && j.interrupt.id) {
+    box.insertAdjacentHTML('beforeend', interruptPlate(j.interrupt));
   }
   box.scrollTop = box.scrollHeight;
   // V3.53.0: a photo-on-request can complete a 50-photo gallery set.
@@ -5295,6 +5363,14 @@ document.addEventListener('click', e => {
   if (!b) return;
   e.stopPropagation();
   unlockDraft(Number(b.getAttribute('data-draft')) || 0, b);
+});
+
+// V3.154.0: «Перебивка» — one tap answers the event, the plate disappears.
+document.addEventListener('click', e => {
+  const b = e.target && e.target.closest ? e.target.closest('[data-qte]') : null;
+  if (!b) return;
+  e.stopPropagation();
+  pickInterrupt(b.getAttribute('data-qte'), Number(b.getAttribute('data-qn')) || 0, b);
 });
 
 async function requestMedia(kind, scene, opts) {

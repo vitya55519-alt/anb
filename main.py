@@ -8711,6 +8711,16 @@ async def send_answer(message: types.Message, text: str):
                                              get_user_character(message.from_user.id) or '')
     if draft_offer:
         await _send_draft_plate(message, draft_offer)
+    # V3.154.0: owner ТЗ (Фогель, Модуль 2) — «Перебивки». Under her answer the
+    # event card goes out with the three ways out; the tap is handled below.
+    from services import interrupt_service
+    event_id = interrupt_service.take_pending(message.from_user.id,
+                                              get_user_character(message.from_user.id) or '')
+    if event_id:
+        qte = interrupt_service.card(message.from_user.id, get_user_character(message.from_user.id) or '',
+                                     event_id, user_lang(message.from_user.id))
+        if qte:
+            await _send_interrupt_card(message, qte)
     # V3.140.0: he agreed to invite the friend — her cleaned line just went
     # out, now the blurred joint teaser with the Premium button lands after it.
     from services import invite_funnel
@@ -8782,6 +8792,95 @@ async def draft_unlock(cq: types.CallbackQuery):
     except Exception:
         await cq.message.answer(text)
     await cq.answer()
+
+
+async def _send_interrupt_card(message: types.Message, card: dict) -> None:
+    """V3.154.0 (Фогель, Модуль 2): the перебивка plate — what just happened and
+    the three ways out. The boldest one is priced; for Premium it comes free, so
+    his own answer never carries a price tag he does not have to pay."""
+    tid = message.from_user.id
+    import html as _html
+    free = tid in ADMIN_TELEGRAM_IDS or is_premium(tid)
+    rows = []
+    for choice in card.get('choices') or []:
+        label = str(choice.get('label') or '')
+        if choice.get('paid') and not free and int(card.get('cost') or 0) > 0:
+            label = f'{label} · {peach_num(int(card["cost"]))} 🍑'
+        if label:
+            rows.append([InlineKeyboardButton(
+                label, callback_data=f"qte:pick:{card.get('id')}:{choice.get('n')}")])
+    if not rows:
+        return
+    try:
+        await message.answer(f"{card.get('emoji')} <b>{_html.escape(str(card.get('text') or ''))}</b>",
+                             parse_mode='HTML', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    except Exception:
+        logger.warning('interrupt card failed user=%s', tid)
+
+
+@dp.callback_query(F.data.startswith('qte:pick:'))
+async def qte_pick(cq: types.CallbackQuery):
+    """His tap on a перебивка: the bold answer is charged, the choice goes into
+    the dialog as his action and she plays the fear of being caught right here."""
+    parts = (cq.data or '').split(':')
+    try:
+        n = int(parts[-1])
+    except (TypeError, ValueError):
+        n = -1
+    event_id = ':'.join(parts[1:-1])
+    tid = cq.from_user.id
+    character_id = get_user_character(tid) or ''
+    from services import interrupt_service
+    lang = user_lang(tid)
+    action = interrupt_service.action_text(event_id, n, lang)
+    if not action or not has_accepted(tid):
+        await cq.answer()
+        return
+    if not await asyncio.to_thread(interrupt_service.can_pick, tid, character_id, event_id):
+        try:
+            await cq.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await cq.answer(flow_text(lang, 'qte_gone'), show_alert=True)
+        return
+    uid = ensure_user(tid, cq.from_user.first_name, language_code=cq.from_user.language_code)
+    free = tid in ADMIN_TELEGRAM_IDS or is_premium(tid)
+    paid = interrupt_service.is_paid(event_id, n) and not free
+    if paid:
+        if not await asyncio.to_thread(spend_peaches, tid, interrupt_service.price(), paid_only=True):
+            await asyncio.to_thread(track_event, uid, 'paywall_view',
+                                    metadata={'product': 'interrupt', 'character_id': character_id})
+            await cq.answer(flow_text(lang, 'qte_no_peach', price=peach_num(interrupt_service.price()))
+                            + _bonus_peach_note(tid), show_alert=True)
+            return
+    await asyncio.to_thread(interrupt_service.mark_resolved, tid, character_id, event_id)
+    # the buttons are gone: one event answers once
+    try:
+        await cq.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await cq.answer()
+    await asyncio.to_thread(track_event, uid, 'interrupt_pick',
+                            metadata={'event': event_id, 'choice': n, 'paid': paid,
+                                      'character_id': character_id})
+    answer = await _feature_scene_turn(
+        tid, {'first_name': cq.from_user.first_name or 'ты',
+              'language_code': cq.from_user.language_code},
+        character_id, action, interrupt_service.scene_note(event_id, n, character_id, lang))
+    if not answer:
+        # she did not answer — the scene never happened, so the peaches come back
+        if paid:
+            try:
+                await asyncio.to_thread(add_peaches, tid, interrupt_service.price())
+            except Exception:
+                logger.exception('interrupt refund failed user=%s', tid)
+        return
+    text = flow_text(lang, 'qte_echo', action=action)
+    try:
+        await cq.message.answer(text)
+    except Exception:
+        logger.warning('interrupt echo failed user=%s', tid)
+    await send_answer(cq.message, answer)
 
 
 def _thought_card(name: str, thought: str) -> str:
@@ -14646,6 +14745,21 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     payload = {'ok': True, 'reply': answer}
     if draft_offer:
         payload['draft'] = draft_offer
+    # V3.154.0: owner ТЗ (Фогель, Модуль 2) — «Перебивки». The event plate rides
+    # under her answer; Premium pays nothing for the bold choice, so the price
+    # tag only ever shows a free man.
+    try:
+        from services import interrupt_service
+        qte_id = interrupt_service.take_pending(telegram_id, character_id)
+        if qte_id:
+            qte = interrupt_service.card(
+                telegram_id, character_id, qte_id,
+                full_user_lang(telegram_id, user_info.get('language_code')))
+            if qte:
+                qte['free'] = telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id)
+                payload['interrupt'] = qte
+    except Exception:
+        logger.warning('interrupt card failed user=%s', telegram_id)
     # V3.140.0: the model sold the duo herself — reply() already flipped the
     # state; the app gets the guest pill and, without Premium, the blur teaser.
     from services import invite_funnel
@@ -15542,6 +15656,71 @@ async def _webapp_api_chat_draft(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'text': res.get('text', ''),
                               'price': res.get('price', 0), 'free': bool(res.get('free')),
                               'credits': await asyncio.to_thread(get_photo_credits, telegram_id)})
+
+
+async def _webapp_api_chat_interrupt(request: web.Request) -> web.Response:
+    """V3.154.0: owner ТЗ (Фогель, Модуль 2) — his tap on a «перебивка». The
+    boldest of the three answers is charged (Premium pays nothing), the choice
+    goes into the dialog as his action and she plays the fear of being caught."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))[:64] or (get_user_character(telegram_id) or '')
+    event_id = str(body.get('id') or '')[:16]
+    try:
+        n = int(body.get('n'))
+    except (TypeError, ValueError):
+        n = -1
+    from services import interrupt_service
+    lang = 'en' if user_lang(telegram_id) == EN else 'ru'
+    action = interrupt_service.action_text(event_id, n, lang)
+    if not character_id or not action or not has_accepted(telegram_id):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    uid = ensure_user(telegram_id, user_info.get('first_name') or '',
+                      language_code=user_info.get('language_code'))
+    paid = interrupt_service.is_paid(event_id, n) \
+        and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id)
+
+    def _take():
+        # one event answers once: a plate left on screen must not be paid twice
+        if not interrupt_service.can_pick(telegram_id, character_id, event_id):
+            return 'gone'
+        if paid and not spend_peaches(telegram_id, interrupt_service.price(), paid_only=True):
+            track_event(uid, 'paywall_view', metadata={'product': 'interrupt',
+                                                       'character_id': character_id})
+            return 'peaches'
+        interrupt_service.mark_resolved(telegram_id, character_id, event_id)
+        return 'ok'
+
+    res = await asyncio.to_thread(_take)
+    if res == 'gone':
+        return web.json_response({'ok': False, 'error': 'gone'}, status=409)
+    if res == 'peaches':
+        return web.json_response({'ok': False, 'error': 'insufficient_peaches',
+                                  'cost': interrupt_service.price()}, status=402)
+    await asyncio.to_thread(track_event, uid, 'interrupt_pick',
+                            metadata={'event': event_id, 'choice': n, 'paid': paid,
+                                      'character_id': character_id})
+    answer = await _feature_scene_turn(telegram_id, user_info, character_id, action,
+                                       interrupt_service.scene_note(event_id, n, character_id, lang))
+    if not answer:
+        # she did not play the scene — nothing happened, so nothing is charged
+        if paid:
+            try:
+                await asyncio.to_thread(add_peaches, telegram_id, interrupt_service.price())
+            except Exception:
+                logger.exception('interrupt refund failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'temporarily_unavailable'}, status=503)
+    return web.json_response({'ok': True, 'text': answer, 'user_text': action})
 
 
 async def _webapp_api_chat_level(request: web.Request) -> web.Response:
@@ -18645,6 +18824,8 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/chat/level/pick', _webapp_api_chat_level_pick)
     app.router.add_post('/webapp/api/chat/branch', _webapp_api_chat_branch)
     app.router.add_post('/webapp/api/chat/draft', _webapp_api_chat_draft)
+    # V3.154.0: owner ТЗ (Фогель, Модуль 2) — «Перебивки» (QTE)
+    app.router.add_post('/webapp/api/chat/interrupt', _webapp_api_chat_interrupt)
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)
     app.router.add_post('/webapp/api/chat/media', _webapp_api_chat_media)

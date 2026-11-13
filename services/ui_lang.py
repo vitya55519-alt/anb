@@ -191,6 +191,9 @@ FLOW_TEXT = {
         'draft_button': '👀 Прочитать стёртое · {price} 🍑',
         'draft_unlocked': '🔓 Стертый черновик {name}: {text}',
         'draft_gone': '😅 то сообщение она уже потеряла',
+        'qte_echo': '👉 {action}',
+        'qte_no_peach': '🔥 этот ход стоит {price} 🍑 — персиков не хватает',
+        'qte_gone': '😅 момент уже упущен',
     },
     'en': {
         'girl_of_day': '🔥 Girl of the day — {name}',
@@ -209,6 +212,9 @@ FLOW_TEXT = {
         'draft_button': '👀 Read what she erased · {price} 🍑',
         'draft_unlocked': '🔓 Her erased draft, {name}: {text}',
         'draft_gone': '😅 that draft is gone',
+        'qte_echo': '👉 {action}',
+        'qte_no_peach': '🔥 that move costs {price} 🍑 — not enough peaches',
+        'qte_gone': '😅 the moment is already gone',
     },
     'es': {
         'girl_of_day': '🔥 Chica del día — {name}',
@@ -227,6 +233,9 @@ FLOW_TEXT = {
         'draft_button': '👀 Leer lo que borró · {price} 🍑',
         'draft_unlocked': '🔓 El borrador borrado de {name}: {text}',
         'draft_gone': '😅 ese borrador ya no está',
+        'qte_echo': '👉 {action}',
+        'qte_no_peach': '🔥 ese movimiento cuesta {price} 🍑 — no te alcanzan',
+        'qte_gone': '😅 ese momento ya pasó',
     },
     'it': {
         'girl_of_day': '🔥 Ragazza del giorno — {name}',
@@ -245,6 +254,9 @@ FLOW_TEXT = {
         'draft_button': '👀 Leggi cosa ha cancellato · {price} 🍑',
         'draft_unlocked': '🔓 La bozza cancellata di {name}: {text}',
         'draft_gone': '😅 quella bozza non c’è più',
+        'qte_echo': '👉 {action}',
+        'qte_no_peach': '🔥 quella mossa costa {price} 🍑 — non bastano',
+        'qte_gone': '😅 quel momento è già passato',
     },
     'fr': {
         'girl_of_day': '🔥 Fille du jour — {name}',
@@ -263,6 +275,9 @@ FLOW_TEXT = {
         'draft_button': '👀 Lire ce qu’elle a effacé · {price} 🍑',
         'draft_unlocked': '🔓 Le brouillon effacé de {name} : {text}',
         'draft_gone': '😅 ce brouillon a disparu',
+        'qte_echo': '👉 {action}',
+        'qte_no_peach': '🔥 cette option coûte {price} 🍑 — pas assez de pêches',
+        'qte_gone': '😅 ce moment est déjà passé',
     },
     'zh': {
         'girl_of_day': '🔥 今日女孩 — {name}',
@@ -281,6 +296,9 @@ FLOW_TEXT = {
         'draft_button': '👀 看她删掉的话 · {price} 🍑',
         'draft_unlocked': '🔓 {name} 删掉的草稿：{text}',
         'draft_gone': '😅 那段草稿已经不在了',
+        'qte_echo': '👉 {action}',
+        'qte_no_peach': '🔥 这一招要 {price} 🍑 — 桃子不够',
+        'qte_gone': '😅 那个瞬间已经过去了',
     },
     'ja': {
         'girl_of_day': '🔥 今日の女の子 — {name}',
@@ -299,6 +317,9 @@ FLOW_TEXT = {
         'draft_button': '👀 消した文章を読む · {price} 🍑',
         'draft_unlocked': '🔓 {name} が消した下書き：{text}',
         'draft_gone': '😅 あの下書きはもうないよ',
+        'qte_echo': '👉 {action}',
+        'qte_no_peach': '🔥 この手は {price} 🍑 かかるよ — ピーチが足りない',
+        'qte_gone': '😅 あの瞬間はもう過ぎちゃった',
     },
     'bn': {
         'girl_of_day': '🔥 আজকের মেয়ে — {name}',
@@ -317,6 +338,9 @@ FLOW_TEXT = {
         'draft_button': '👀 মুছে দেওয়া লেখা পড়ো · {price} 🍑',
         'draft_unlocked': '🔓 {name}-এর মুছে ফেলা ড্রাফট: {text}',
         'draft_gone': '😅 ওই ড্রাফটটা আর নেই',
+        'qte_echo': '👉 {action}',
+        'qte_no_peach': '🔥 এই চালের দাম {price} 🍑 — পিচ কম পড়ছে',
+        'qte_gone': '😅 এই মুহূর্তটা আর নেই',
     },
 }
 
