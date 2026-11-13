@@ -12590,6 +12590,25 @@ async def _webapp_gzip(request: web.Request, handler) -> web.StreamResponse:
         return response
 
 
+@web.middleware
+async def _webapp_spend_owner(request: web.Request, handler) -> web.StreamResponse:
+    # V3.158.0: чей тап — тот платит. initData подписан Telegram, так что id за
+    # нами настоящий: одна метка на входе покрывает весь ход (чат, фото, голос,
+    # трофеи, подарки), потому что обработчик и его to_thread/create_task дети
+    # живут в контексте этого запроса.
+    if request.path.startswith('/webapp/api/'):
+        try:
+            from services import spend_service
+            pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+            if pairs:
+                uid = webapp_service.init_data_user(pairs).get('id')
+                if uid:
+                    spend_service.set_spend_user(int(uid))
+        except Exception:
+            logger.debug('spend owner mark failed for %s', request.path, exc_info=True)
+    return await handler(request)
+
+
 async def _webapp_api_me(request: web.Request) -> web.Response:
     # initData is signed by Telegram with the bot token — the official HMAC
     # check in webapp_service validates it before any user data is returned.
@@ -18905,6 +18924,7 @@ async def _start_web_server() -> None:
     app = web.Application(client_max_size=12 * 1024 * 1024)
     # V3.56.6: gzip every JSON/text API response the app fetches on boot.
     app.middlewares.append(_webapp_gzip)
+    app.middlewares.append(_webapp_spend_owner)
     app.router.add_get('/', _root)
     for _seo in seo_landing.PAGES:
         if _seo.path != '/':

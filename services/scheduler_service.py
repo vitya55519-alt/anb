@@ -590,6 +590,10 @@ async def _showcase_voice(bot,telegram_id:int,char_id:str,lang:str)->None:
     from services import first_offer_service as fos
     try:
         from services.voice_service import synthesize_bytes
+        # V3.158.0: этот голос — её подарок именно ему, и платить за него должен
+        # его кошелёк в отчёте, а не общая свалка telegram_id=0.
+        from services import spend_service
+        spend_service.set_spend_user(int(telegram_id))
         line=fos.voice_line(lang)
         audio=await synthesize_bytes(line,None,character_id=char_id)
         if audio:

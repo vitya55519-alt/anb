@@ -160,6 +160,11 @@ def _system_prompt(name: str, when: str, tastes: list[str], temperament: str,
 async def build_life_moment(telegram_id: int, character_id: str, when: str = 'day') -> dict:
     """Compose one spontaneous life message. Returns {} on any failure/empty."""
     try:
+        # V3.158.0: the push runs in the scheduler's task, where nobody marked
+        # the user — without this her life moment costs land in the ownerless
+        # pile and the ROI of the source that brought him stays invisible.
+        from services import spend_service
+        spend_service.set_spend_user(int(telegram_id))
         name, tastes, temperament = _character_ingredients(character_id)
         mem = _memory_callback(telegram_id, character_id)
         hook = _pending_hook(telegram_id)
