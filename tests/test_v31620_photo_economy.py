@@ -33,8 +33,9 @@ def _sub(days: float, product: str):
 def test_trial_has_no_free_undress_but_paid_plans_keep_theirs():
     assert T.CAPS['demo']['undress'] == 0 and T.CAPS['trial']['undress'] == 0
     assert T.CAPS['week']['undress'] == 2 and T.CAPS['month']['undress'] == 6
-    # the price he does pay is untouched — owner: «персики покупать не лезь в это»
-    assert config.UNDRESS_PEACH_COST == 400
+    # the price he does pay is the one frame price of V3.165.0 (owner moved it
+    # 400 → 300; buying peaches itself stayed untouched — «персики покупать не лезь»)
+    assert config.UNDRESS_PEACH_COST == 300
     assert '«Раздеть»' not in T.plan_line('trial')
 
 

@@ -100,13 +100,14 @@ def test_name_line_bans_it_for_the_messages_she_writes_first():
         assert 'без действий в *звёздочках*' in lang_guard.name_line(lang), lang
 
 
-# ── 4. «Раздеть»: peaches only, 400 🍑 ≈ 40 ₽ (V3.154.0: owner — «не 250 а 400») ─
+# ── 4. «Раздеть»: peaches only (V3.154.0: 400 🍑; V3.165.0: owner — «одна цена
+#    300 для обоих режимов», so the frame price moved down to 300 🍑 ≈ 30 ₽) ─
 
-def test_undress_price_is_peaches_worth_40_rubles():
-    from config import UNDRESS_PEACH_COST, PEACH_SCALE, PEACH_PACK_10_RUB
-    assert UNDRESS_PEACH_COST == 400
+def test_undress_price_is_peaches_worth_30_rubles():
+    from config import EXPLICIT_PHOTO_PEACH_COST, PEACH_SCALE, PEACH_PACK_10_RUB, UNDRESS_PEACH_COST
+    assert UNDRESS_PEACH_COST == 300 == EXPLICIT_PHOTO_PEACH_COST
     rubles = UNDRESS_PEACH_COST / PEACH_SCALE * (PEACH_PACK_10_RUB / 10)
-    assert 35 <= rubles <= 45, rubles
+    assert 25 <= rubles <= 35, rubles
 
 
 def test_the_app_prices_undress_in_peaches_everywhere_it_offers_it():
@@ -136,5 +137,8 @@ def test_room_picture_is_marked_and_never_offered_for_undress():
     home = MAIN[MAIN.index('async def _render_home('):MAIN.index('async def _webapp_api_home_style(')]
     assert "media_kind='room'" in home
     assert "const room = m.media_kind === 'room';" in HTML
-    assert HTML.index("room ? '' : '<button class=\"pa hot\" data-pact=\"undress\"") < HTML.index("'</button>')")
+    # V3.165.0: the old pin compared two file-wide indexes and a new '</button>')
+    # elsewhere in the SPA moved it; check the feed bubble itself instead.
+    feed = HTML[HTML.index("const room = m.media_kind === 'room';"):]
+    assert "room ? '' : '<button class=\"pa hot\" data-pact=\"undress\"" in feed[:1500]
     assert "_her_photo(uid, ('photo', 'room') if action == 'animate' else ('photo',))" in MAIN

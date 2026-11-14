@@ -263,6 +263,9 @@ def test_no_unescaped_backend_strings_in_templates():
             "plans.map(planRow).join('')", 'tiles',
             # V3.80.0: the «Пригласи друга» card — every backend field esc()'d inside.
             'inviteCard',
+            # V3.165.0: the price caption — peachNum() is String(Number(n) || 0)
+            # plus thousand separators, so no backend markup can survive it.
+            'peachNum(n)',
         ) or expr.startswith('`') or 'esc(' in expr or expr == "c.selected ? ' selected' : ''"):
             continue
         violations.append(expr)

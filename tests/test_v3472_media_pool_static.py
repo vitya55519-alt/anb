@@ -84,6 +84,8 @@ def test_webapp_has_no_obsolete_unlimited_countdown():
     assert 'unlimited_remaining' not in INDEX
     assert 'setInterval(_unlimTick, 1000);' not in INDEX
     assert 'renderUnlimitedBanner();' not in INDEX
-    assert "'💬 Free: unlimited messages and '" in INDEX
-    assert "'💬 Бесплатно: сообщения без лимита и '" in INDEX
+    # V3.107.0 the copy moved into the «Честно о нас» row; V3.165.0 the owner
+    # deleted that sheet, so only the plain «Unlimited messages» caption is left
+    # and the old counted-down sentence must not come back.
     assert INDEX.count("unlim_title:") == 2
+    assert 'free_messages' not in INDEX

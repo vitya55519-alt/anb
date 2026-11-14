@@ -230,7 +230,8 @@ def test_photo_together_opens_the_same_scene_picker_as_a_single_photo():
 def test_video_together_is_the_secret_video_at_the_same_price():
     from services import hot_circle_service as hc
     from config import HOT_CIRCLE_PEACH_COST
-    assert HOT_CIRCLE_PEACH_COST == 4000  # the owner's number, already in 🍑 (40 × 100)
+    # V3.165.0: owner — «цену кружка не 4000, сделай 2000». Still his number in 🍑.
+    assert HOT_CIRCLE_PEACH_COST == 2000
     assert 'two people only, never a third person' in hc.HOT_CIRCLE_DUO_PROMPT
     assert 'async def render(frame_jpeg: bytes, lang: str = \'ru\', duo: bool = False)' in \
         (ROOT / 'services' / 'hot_circle_service.py').read_text(encoding='utf-8')

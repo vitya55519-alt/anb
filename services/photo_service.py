@@ -475,8 +475,17 @@ _TWO_HAND_MARKERS = ('both hands', 'both arms', 'arms ', 'hands ', 'the other', 
 
 
 def _is_handheld_selfie(angle: str) -> bool:
+    """A frame where she holds the phone herself, so one hand is never free.
+
+    V3.165.0: lingerie and boudoir angles say «mirror», not «selfie», so the
+    old substring check missed them, the pose pool kept offering two-handed
+    poses inside a phone-in-frame shot and the engine drew a third arm
+    (owner screenshot: «Лана» in red lingerie with three hands after he bought
+    her the outfit). A mirror shot is a handheld shot — count both."""
     low = (angle or '').lower()
-    return 'selfie' in low and 'tripod' not in low
+    if 'tripod' in low or 'self-timer' in low:
+        return False
+    return 'selfie' in low or 'mirror' in low
 
 
 def _one_hand_pose(pose: str, shot_index: int) -> str:
@@ -2487,10 +2496,16 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # it, because there the safe wording is what keeps the generation alive.
     amateur_lock = f'{AMATEUR_HOT_FRAME_LOCK}\n' if (private_look and seedream and not force_safe) else ''
     duo_head = f'{duo_head_lock(character_id, request.with_guest)}\n' if request.with_guest else ''
+    # V3.165.0: the limb lock belongs at the head. It used to ride above the
+    # quality block, where _fit_spicy_prompt cuts it first, so a long lingerie
+    # prompt reached SpicyAPI with «exactly two arms» already trimmed off —
+    # that is the third arm in the owner's screenshot.
+    hands_lock = f'{HANDS_RULE}\n'
     body = apply_art_style(
         f'{identity}\n'
         + (f'{duo_block}\n' if duo_block else '')
         + f'{amateur_lock}'
+        + f'{hands_lock}'
         + f'{adult_lock}\n'
         f'SCENE: {scene}. {request.location}.\n'
         f'SEASON/WEATHER: {season}. {season_rule}\n'
@@ -2511,14 +2526,13 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         + 
         f'TIME OF DAY: {request.time_of_day}. The light must match this time of day.\n'
         f'CAMERA/POSE: {angle}.\n'
-        + (f'POSE NOTE: {_pose_note(request, angle, shot_index)}. '
+        + (f'POSE NOTE: {_pose_note(request, angle, shot_index, bool(amateur_lock))}. '
            'Use exactly this posture for this frame and keep it clearly different from the other frames of the set.\n'
            if request.pose_rotation else '')
         + (f'HAIR COLOR: {request.hair_color}. This is the character\'s current hair color; it overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n' if request.hair_color else '')
         + f'{body_reinforcement}\n'
         f'MOOD: {request.mood}.\n'
         f'{expression_identity}\n'
-        f'{HANDS_RULE}\n'
         f'{personal}\n'
         'LIGHTING: use lighting that naturally belongs to the location and time of day; realistic shadows, cinematic but believable contrast.\n'
         f'{safety}\n'
@@ -2540,9 +2554,15 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     )
 
 
-def _pose_note(request: 'PhotoRequest', angle: str, shot_index: int) -> str:
+def _pose_note(request: 'PhotoRequest', angle: str, shot_index: int, phone_in_frame: bool = False) -> str:
+    """One pose sentence, and never two hands when the phone is one of them.
+
+    V3.165.0: every private Seedream frame carries AMATEUR_HOT_FRAME_LOCK,
+    which puts her own arm and the phone in the shot whether or not the angle
+    says «selfie» — the lingerie angles do not. Counting the frame, not the
+    wording, is what stops the third arm."""
     pose = request.pose_rotation[shot_index % len(request.pose_rotation)]
-    if _is_handheld_selfie(angle):
+    if phone_in_frame or _is_handheld_selfie(angle):
         return _one_hand_pose(pose, shot_index) + ' (her other hand holds the phone)'
     return pose
 

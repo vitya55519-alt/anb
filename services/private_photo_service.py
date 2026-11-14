@@ -33,7 +33,8 @@ from services.user_service import ensure_user
 from config import (
     PRIVATE_PHOTO_FREE_DAILY,
     COSPLAY_PHOTO_FREE_DAILY,
-    PRIVATE_PHOTO_PEACH_COST, PEACH_SCALE,
+    PRIVATE_PHOTO_PEACH_COST,
+    EXPLICIT_PHOTO_PEACH_COST,
     COSPLAY_PHOTO_PEACH_COST,
     HOT_PASS_DAY_PEACHES,
     HOT_PASS_WEEK_PEACHES,
@@ -57,7 +58,24 @@ logger = logging.getLogger(__name__)
 
 # ─── Категории и типы фото ─────────────────────────────────────────────────────
 
-# Фото «наедине» — 4 категории
+def _fetish_types() -> list:
+    """V3.165.0 (#104): the types of «фото по фетишу» ARE the themes he picks in
+    «🎭 Фетиши», so the gallery can name the frame it saved. The theme emoji leads
+    the label, like every other type button."""
+    try:
+        from services import fetish_mode
+        return [{'id': k, 'name_ru': f'{emoji} {ru}', 'name_en': f'{emoji} {en}'}
+                for k, emoji, ru, en, _d, _o in fetish_mode.FETISHES]
+    except Exception:
+        return []
+
+
+# V3.165.0 (#104): a frame whose prompt carries his fetish theme goes to the
+# UNCENSORED engine, exactly like the nude categories — the owner's rule for
+# this product is «движок не должен фильтровать промпт».
+ADULT_RENDER_CATEGORIES = frozenset({'fully_nude', 'nude_art', 'fetish'})
+
+# Фото «наедине» — категории
 PRIVATE_PHOTO_CATEGORIES = {
     "lingerie": {
         "name_ru": "👙 В белье",
@@ -144,7 +162,9 @@ PRIVATE_PHOTO_CATEGORIES = {
     "fully_nude": {
         "name_ru": "🔥 Полностью обнажённая",
         "name_en": "Fully nude",
-        "peach_cost": 4 * PEACH_SCALE,  # V3.65.0: ×100 peaches
+        # V3.165.0: the last frame price that still lived in this table (the old
+        # 400 🍑) folds into the one number the owner set for every 18+ frame.
+        "peach_cost": EXPLICIT_PHOTO_PEACH_COST,
         "types": [
             {"id": "bed", "name_ru": "🛏️ На кровати", "name_en": "On bed"},
             {"id": "shower", "name_ru": "🚿 В душе", "name_en": "In shower"},
@@ -155,6 +175,17 @@ PRIVATE_PHOTO_CATEGORIES = {
             {"id": "candles", "name_ru": "🕯️ При свечах", "name_en": "By candlelight"},
             {"id": "silk_sheets", "name_ru": "🤍 На шёлковых простынях", "name_en": "On silk sheets"},
         ]
+    },
+    # V3.165.0 (#104): «Фото по фетишу» — the theme he picked in «🎭 Фетиши» (or his
+    # own words) drives her wardrobe and the scene. Not a «Наедине» category: the
+    # wizard never lists it, the fetish sheet is its only door, so the price is the
+    # one explicit frame price and the render goes to the uncensored engine.
+    "fetish": {
+        "name_ru": "🎭 По фетишу",
+        "name_en": "🎭 Fetish frame",
+        "peach_cost": EXPLICIT_PHOTO_PEACH_COST,
+        "hidden": True,
+        "types": _fetish_types(),
     },
 }
 
@@ -257,6 +288,9 @@ class PrivatePhotoRequest:
     color: Optional[str] = None
     # Для косплея
     cosplay_id: Optional[str] = None
+    # V3.165.0 (#104): «фото по фетишу» — the English visual line of the theme he
+    # picked in «🎭 Фетиши». Empty for every other frame.
+    theme: str = ''
 
 
 @dataclass
@@ -300,10 +334,12 @@ def get_private_photo_usage(telegram_id: int) -> Dict[str, Any]:
             getattr(user, 'cosplay_photo_used', 0) or 0
             if user.cosplay_photo_date == today else 0
         )
-        hot_pass_left = (
-            max(0, HOT_PASS_FREE_DAILY - private_used - cosplay_used)
-            if hot_pass_active else 0
-        )
+        # V3.165.0 (#104): a pass bought now reports the frames it sold; a pass
+        # from the old model (no counter) still reports its daily quota.
+        hot_pass_left = 0
+        if hot_pass_active:
+            hot_pass_left = (max(0, user.hot_pass_frames or 0) if user.hot_pass_frames is not None
+                             else max(0, HOT_PASS_FREE_DAILY - private_used - cosplay_used))
         return {
             "private_used": private_used,
             "cosplay_used": cosplay_used,
@@ -387,10 +423,20 @@ def consume_free_private_photo(telegram_id: int, category: str) -> bool:
         hot_pass_active = bool(
             user.hot_pass_expires and user.hot_pass_expires > datetime.utcnow()
         )
-        # Hot Pass: два бесплатных фото в день суммарно, дальше за персики.
-        if hot_pass_active and used + other_used >= HOT_PASS_FREE_DAILY:
-            return False
-        if not hot_pass_active and used >= limit:
+        # Hot Pass: V3.165.0 (#104) the pass spends the bundle of frames it sold
+        # (сутки 3, неделя 24, месяц 100). ``hot_pass_frames`` is NULL for a pass
+        # bought before this release, and those keep the old 2-a-day quota until
+        # they expire.
+        frames = user.hot_pass_frames if hot_pass_active else None
+        if hot_pass_active:
+            if frames is None:
+                if used + other_used >= HOT_PASS_FREE_DAILY:
+                    return False
+            elif frames <= 0:
+                return False
+            else:
+                user.hot_pass_frames = frames - 1
+        elif used >= limit:
             return False
 
         setattr(user, used_attr, used + 1)
@@ -398,17 +444,26 @@ def consume_free_private_photo(telegram_id: int, category: str) -> bool:
         return True
 
 
-def activate_hot_pass(telegram_id: int, duration_days: int) -> datetime:
-    """Активировать Hot Pass на N дней."""
+def activate_hot_pass(telegram_id: int, duration_days: int, frames: int = 0) -> datetime:
+    """Активировать Hot Pass на N дней и выдать ему кадров.
+
+    V3.165.0 (#104): the product stopped being «2 бесплатных фото в сутки» and
+    became a bundle of explicit frames — 3 / 24 / 100 for the day, week and
+    month. A tap on a pass that is still running adds its frames to what is
+    left instead of restarting the clock from zero.
+    """
     uid = ensure_user(telegram_id)
     expires = datetime.utcnow() + timedelta(days=duration_days)
-    
+
     with SessionLocal() as session:
-        user = session.scalar(select(User).where(User.id == uid))
+        user = session.scalar(select(User).where(User.id == uid).with_for_update())
         if user:
-            user.hot_pass_expires = expires
+            running = bool(user.hot_pass_expires and user.hot_pass_expires > datetime.utcnow())
+            left = (user.hot_pass_frames or 0) if running and user.hot_pass_frames is not None else 0
+            user.hot_pass_expires = max(expires, user.hot_pass_expires or expires)
+            user.hot_pass_frames = left + max(0, int(frames))
             session.commit()
-    
+
     return expires
 
 
@@ -501,6 +556,15 @@ PRIVATE_CAMERA_POOL = [
 ]
 
 
+# V3.165.0 (#104): a fetish frame is about what her body DOES — the hips-up crops
+# above would cut the feet out of the feet theme and the ribbon out of bondage.
+FETISH_CAMERA_POOL = [
+    'full-body framing with her head and both bare feet inside the picture, eye level, her face sharp',
+    'a slightly low angle from the bed, her whole body in the frame, her face lit',
+    'mirror selfie framing of her whole body, her face clearly visible in the mirror',
+]
+
+
 def _plain(label: str) -> str:
     """Menu labels carry an emoji prefix («🛏️ Bedroom»); the model gets words only."""
     return re.sub(r'^[^\w]+', '', label or '').strip()
@@ -540,11 +604,20 @@ def build_private_photo_prompt(
     if request.category in HOT_PRIVATE_CATEGORIES and request.location_id != 'studio':
         from services.photo_service import AMATEUR_HOT_FRAME_LOCK
         parts.append(AMATEUR_HOT_FRAME_LOCK)
+        amateur_hot = True
+    else:
+        amateur_hot = False
     
     # Обстановка
     location = next((loc for loc in LOCATIONS if loc["id"] == request.location_id), None)
     place_typed = request.category in PLACE_TYPED_CATEGORIES
-    if place_typed:
+    if request.theme:
+        # V3.165.0 (#104): his theme line names the room and the wardrobe itself,
+        # so the wizard's Location must not fight it — but she never stands in the
+        # old black void either (V3.60.1).
+        parts.append('PLACE: a closed, private room that fits what she is doing — her own home or a hotel room, '
+                     'a lived-in real setting with depth and detail, never a plain black or empty backdrop')
+    elif place_typed:
         # V3.64.3: the type is the place — no second, conflicting location.
         location = None
         place_type = next((t for t in PRIVATE_PHOTO_CATEGORIES.get(request.category, {}).get("types", [])
@@ -594,6 +667,15 @@ def build_private_photo_prompt(
             )
         elif request.category == "nude_art":
             parts.append('OUTFIT: artistic nude, bare skin, elegant and tasteful composition.')
+        # V3.165.0 (#104): «фото по фетишу» — the theme he picked in «🎭 Фетиши» (or
+        # his own words) decides her wardrobe and what she does. It comes after the
+        # wardrobe lines so it outvotes them. One woman is in the frame: a second
+        # body written into a prompt is what produced the owner's «третья рука» (#99).
+        if request.theme:
+            parts.append(
+                f"THEME (he chose it himself, 18+ confirmed): {request.theme}. "
+                "She is the only person in this picture — no second body, no extra limbs."
+            )
         # V3.62.5: nude shots now edit from her face reference (text-to-image
         # drew a stranger with another figure). The reference shows her dressed,
         # so say plainly that only the face and hair come from it.
@@ -603,6 +685,12 @@ def build_private_photo_prompt(
                 'this photo: this is a new photo of the same woman, nude as described, her body exactly as declared '
                 'in BODY IDENTITY.'
             )
+        elif request.theme and use_reference:
+            parts.append(
+                'REFERENCE IMAGE 1 gives ONLY her face, hair and skin tone. Whatever she wears in that photo is not '
+                'part of this picture: dress her and pose her exactly as the THEME line says, her body exactly as '
+                'declared in BODY IDENTITY.'
+            )
         # V3.45.26: player-picked colour for lingerie / apparel categories.
         if request.color and request.category in ("lingerie", "suggestive", "roleplay"):
             color_data = next((c for c in LINGERIE_COLORS if c["id"] == request.color), None)
@@ -611,9 +699,20 @@ def build_private_photo_prompt(
     
     # V3.45.23: random pose + camera so consecutive photos never repeat.
     pose_place = request.type_id if place_typed else (request.location_id if location else '')
-    parts.append(f"POSE: {random.choice(_pose_pool_for(pose_place))}, natural for this place — "
-                 "every object in the frame belongs to the same place.")
-    parts.append(f"CAMERA: {random.choice(PRIVATE_CAMERA_POOL)}.")
+    pose = random.choice(_pose_pool_for(pose_place))
+    if amateur_hot:
+        # V3.165.0: the amateur lock already puts her phone in the frame, and
+        # half of PRIVATE_POSE_POOL spends both hands there («both hands free
+        # — tripod or mirror framing», «hands in hair»). Phone + those two
+        # hands = the third arm of the owner's screenshot. One hand is taken.
+        from services.photo_service import _one_hand_pose
+        pose = f'{_one_hand_pose(pose, random.randrange(1000))} (her other hand holds the phone)'
+    # V3.165.0 (#104): a fetish theme says what she wears AND what her hands do;
+    # a second random pose on top of it is how a frame grows a third arm.
+    if not request.theme:
+        parts.append(f"POSE: {pose}, natural for this place — "
+                     "every object in the frame belongs to the same place.")
+    parts.append(f"CAMERA: {random.choice(FETISH_CAMERA_POOL if request.theme else PRIVATE_CAMERA_POOL)}.")
     
     # V3.60.8: «Наедине» never had an EXPRESSION line — only a weak «Mood: …»
     # (none at all for a random mood), so the girl came out stone-faced.
@@ -642,7 +741,9 @@ def build_private_photo_prompt(
     # clothed/suggestive shot that phrase trips fal.ai's safety checker when the
     # SpicyAPI i2i leg fails and we fall back with allow_adult=False — the whole
     # generation came back empty («одетая полностью не генерируется»).
-    if request.category in ("fully_nude", "nude_art"):
+    # V3.165.0 (#104): his fetish theme rides the same uncensored engine — the
+    # owner's rule for «фото по фетишу» is that nothing filters the prompt.
+    if request.category in ADULT_RENDER_CATEGORIES or request.theme:
         parts.append("NSFW content allowed, uncensored generation")
     elif request.category == "suggestive":
         parts.append("Clothed and non-explicit: her bra may show as described, no nudity")
@@ -728,14 +829,15 @@ _SPICY_DROP_ORDER = (
 )
 # Trim tiers: 0 = everything else, 1 = what the shot is, 2 = who she is,
 # 3 = V3.152.1 — the three ТЗ locks (two women in the frame, the amateur hot
-# frame, the private-place override). They are cut last and are written as the
-# first lines of the prompt, so even the hard tail cut cannot reach them.
+# frame, the private-place override) plus the V3.165.0 limb lock. They are cut
+# last and are written as the first lines of the prompt, so even the hard tail
+# cut cannot reach them.
 _SPICY_TIERS = (
     ('SCENE:', 'WARDROBE:', 'CAMERA/POSE:', 'Create exactly ONE', 'Mainstream general-audience',
-     'OUTFIT:', 'FACE LOCK:', 'BUST LOCK:', 'REFERENCE IMAGE 1', 'HANDS:', 'POSE NOTE:',
+     'OUTFIT:', 'FACE LOCK:', 'BUST LOCK:', 'REFERENCE IMAGE 1', 'POSE NOTE:',
      'Photorealistic smartphone', 'Avoid identity drift', 'REFERENCE IMAGE 3'),
     ('PHOTO IDENTITY:', 'HARD SUBJECT LOCK:'),
-    ('TWO WOMEN IN FRAME:', 'AMATEUR HOT FRAME:', 'PRIVATE PLACE OVERRIDE:'),
+    ('TWO WOMEN IN FRAME:', 'AMATEUR HOT FRAME:', 'PRIVATE PLACE OVERRIDE:', 'HANDS:'),
 )
 
 

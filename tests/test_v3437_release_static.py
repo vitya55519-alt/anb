@@ -125,7 +125,9 @@ def test_frontend_photo_button_opens_the_scene_menu():
     assert "requestMedia('photo', el.dataset.scene, { joint: featJoint })" in INDEX
     assert 'function requestMedia(kind, scene, opts)' in INDEX
     # V3.139.0 (Задача 5–6): the same request carries «joint» for the two girls
-    assert "body: JSON.stringify({ character_id: CHAT.id, kind: kind, scene: scene || '', joint: !!opts.joint })" in INDEX
+    # V3.165.0 (#104): and his own fetish theme text for «фото по фетишу»
+    assert "body: JSON.stringify({ character_id: CHAT.id, kind: kind, scene: scene || '', joint: !!opts.joint," in INDEX
+    assert "theme_text: opts.theme_text || '' })" in INDEX
     # the 18+ gate is explained in the user's language
     assert "j.error === 'adult_confirm' ? L.adult_confirm_needed" in INDEX
     assert '.featgroup {' in INDEX

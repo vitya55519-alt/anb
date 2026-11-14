@@ -1,4 +1,5 @@
-"""V3.61.1: ready constructor templates + «С сюжетом / Без сюжета» chat start."""
+"""V3.61.1: ready constructor templates + the opening scene she starts a chat
+with (since V3.165.0 #106 the «С сюжетом / Без сюжета» picker is gone)."""
 from pathlib import Path
 
 from services.character_card_service import OPENING_SCENES, SCENARIO_HOOKS, get_opening_scene
@@ -45,5 +46,9 @@ def test_chat_start_endpoint_and_spa_wiring():
     assert "'/webapp/api/chat/start'" in main
     assert "'templates'" in main
     html = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
-    assert 'openStartSheet' in html and 'data-tpl' in html
-    assert 'startStory' in html and 'startPlain' in html
+    assert 'data-tpl' in html
+    # V3.165.0 (#106): the «С сюжетом / Без сюжета» sheet is gone — the app asks
+    # for her opening scene by itself, so the endpoint is the only wiring left.
+    assert 'requestChatOpener' in html
+    assert 'openStartSheet' not in html
+    assert 'startStory' not in html and 'startPlain' not in html

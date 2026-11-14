@@ -602,11 +602,13 @@ def test_the_mini_app_draws_the_blurred_row_and_replays_the_voice():
 def test_the_fantasy_row_folds_behind_its_title_like_the_storyline_button():
     line = [l for l in SPA.splitlines() if 'id="charTrophies"' in l][0]
     assert 'foldable fold' in line                          # свёрнута по умолчанию
-    assert 'class="lbl3 foldhead" id="charTrophiesLbl"' in line
-    assert '<div class="tbody">' in line and 'id="charTrophyRow"' in line
-    assert '.charblock.fold .tbody { display: none; }' in SPA
+    # V3.165.0 (#105): та же строка, что у всех панелей — «метка · значение».
+    assert 'class="pl" id="charTrophiesLbl"' in line and 'class="pv" id="charTrophiesVal"' in line
+    assert '<div class="pbody">' in line and 'id="charTrophyRow"' in line
+    assert '.charblock.fold .pbody { display: none; }' in SPA
     wiring = _slice(SPA, '// V3.131.0: tap the row title', 'const MARITAL_KEYS')
-    assert '#charTrophies .foldhead' in wiring              # тот же тап, что у «Сюжетов»
+    assert '#charview .charblock.foldable > .foldhead' in wiring   # один тап на все строки
+    assert "classList.toggle('fold')" in wiring
 
 
 def test_the_slot_row_is_a_carousel_of_seven_cards():

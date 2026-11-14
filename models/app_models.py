@@ -81,12 +81,27 @@ class User(Base):
     # Stays True when Premium lapses — the chat gate re-checks is_premium per
     # message, so the flag simply waits for the next subscription.
     spicy_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    # V3.165.0: «После полуночи» — the daily ceiling of explicit messages sits on
+    # the ACCOUNT, not on the dialog (the owner ruled the per-girl counter out on
+    # 13 ноя). The day key is Moscow, so it rolls at midnight MSK like the gift
+    # streak. Premium never reads it: his cap is off. Auto-migrated by db.py.
+    explicit_day: Mapped[date | None] = mapped_column(Date, nullable=True)
+    explicit_used: Mapped[int] = mapped_column(Integer, default=0)
+    # V3.165.0: when the entry screen last rewrote the mode. A dialog with no
+    # message newer than this shows one thin «режим изменён» line, and only until
+    # he writes again. The history itself is never touched or reset.
+    mode_set_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # V3.45.0: фото «наедине» и «косплей» — лимиты и Hot Pass. Auto-migrated.
     private_photo_used: Mapped[int] = mapped_column(Integer, default=0)
     private_photo_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     cosplay_photo_used: Mapped[int] = mapped_column(Integer, default=0)
     cosplay_photo_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     hot_pass_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # V3.165.0 (#104): the pass is sold as a bundle of explicit frames (сутки 3,
+    # неделя 24, месяц 100), not as «2 free shots a day». NULL is a pass bought
+    # before this release — it keeps the old daily quota until it expires.
+    # Auto-migrated by services/db.py.
+    hot_pass_frames: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # V3.45.0: достижения и ежедневный подарок. Auto-migrated.
     achievements: Mapped[str] = mapped_column(String(512), default="")
     last_daily_gift_date: Mapped[date | None] = mapped_column(Date, nullable=True)

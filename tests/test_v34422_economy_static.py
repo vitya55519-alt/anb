@@ -73,7 +73,9 @@ def test_chat_photo_guard_matches_its_one_credit_charge():
     # a chat photo costs ONE credit (consume_photo_credit) — the guard used to
     # demand the studio's whole price and block users who could pay the charge
     start = MAIN.index("if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS")
-    media = MAIN[start:start + 700]
+    # V3.165.0 (#104): the block grew an «explicit_frame» branch ahead of it, so
+    # the window has to reach the credit guard of a clothed photo.
+    media = MAIN[start:start + 1500]
     assert 'get_paid_peaches(telegram_id) < PEACH_SCALE:' in media
     assert 'WEBAPP_PICTURE_COST_CREDITS' not in media
     # the STUDIO guard keeps charging the full studio price

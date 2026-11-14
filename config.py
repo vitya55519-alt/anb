@@ -66,12 +66,36 @@ def _peach_env(name: str, default: int, floor: int = 1) -> int:
     return max(floor, int(os.getenv(name, str(default)))) * PEACH_SCALE
 
 
+def _peaches(name: str, default: int) -> int:
+    """A new-unit peach amount (300 means 300 🍑), env override optional.
+
+    V3.165.0: prices that moved with the mode split read NEW env names on
+    purpose — Railway still holds the old PRIVATE_PHOTO_PEACH_COST=2 and
+    COSPLAY_PHOTO_PEACH_COST=2, and reusing those names would silently put the
+    old prices back. An unset name simply means the default."""
+    raw = (os.getenv(name) or '').strip()
+    amount = int(float(raw)) if raw else int(default)
+    return max(PEACH_SCALE, amount)
+
+
 # ── V3.45: Фото «наедине» и «Косплей» — монетизация через персики ──────────
 # Бесплатные лимиты (1 наедине + 1 косплей = 2 всего в день)
 PRIVATE_PHOTO_FREE_DAILY = max(0, int(os.getenv("PRIVATE_PHOTO_FREE_DAILY", "1")))
 COSPLAY_PHOTO_FREE_DAILY = max(0, int(os.getenv("COSPLAY_PHOTO_FREE_DAILY", "1")))
 # Цена после бесплатного лимита (в персиках)
-PRIVATE_PHOTO_PEACH_COST = _peach_env("PRIVATE_PHOTO_PEACH_COST", 2)
+# V3.165.0: owner — одна цена на любой откровенный кадр в обоих режимах:
+# 300 🍑 (было 200 у «Наедине» и косплея, 400 у «Раздеть»). Он правил её трижды
+# за день (200 → 400 → 300), поэтому все три цены берутся из одной константы.
+# Имена env — новые нарочно: на Railway могут лежать старые
+# PRIVATE_PHOTO_PEACH_COST=2 / COSPLAY_PHOTO_PEACH_COST=2, и они бы молча
+# вернули прежние ценники (так же поступили с CHAT_PHOTO_PRICE_PEACHES).
+EXPLICIT_PHOTO_PEACH_COST = _peaches("EXPLICIT_PHOTO_PEACH_COST", 300)
+PRIVATE_PHOTO_PEACH_COST = _peaches("PRIVATE_PHOTO_PEACHES_V165", EXPLICIT_PHOTO_PEACH_COST)
+# V3.165.0: owner — «в обычном режиме лимита нет, в „После полуночи“ — 30
+# откровенных сообщений в сутки, с премиумом безлимит». Считаются только
+# откровенные реплики (обычная болтовня кап не жжёт), счётчик — на аккаунт
+# целиком и обнуляется в полночь МСК. 0 = кап выключен у всех.
+EXPLICIT_MSGS_PER_DAY = max(0, int(os.getenv("EXPLICIT_MSGS_PER_DAY_V165", "30")))
 # V3.60.3: a photo asked for in the app chat (owner: «2 персика это фото»).
 # V3.123.0: owner — a chat photo past the Premium daily two costs 300 🍑 (was
 # 200). New env name on purpose: Railway may still hold the old
@@ -111,8 +135,11 @@ UNDRESS_PREMIUM_FREE_L7_8 = max(0, int(os.getenv("UNDRESS_PREMIUM_FREE_L7_8", "3
 # (a render is ~$0.04, so it still pays for itself). The env keeps the old unit,
 # so UNDRESS_PEACH_COST=2.5 means 250 🍑.
 # V3.154.0: owner — «не 250 а 400 персиков» (40 ₽). Env unit unchanged: 4 = 400 🍑.
-UNDRESS_PEACH_COST = max(1, int(float(os.getenv("UNDRESS_PEACH_COST", "4")) * PEACH_SCALE))
-COSPLAY_PHOTO_PEACH_COST = _peach_env("COSPLAY_PHOTO_PEACH_COST", 2)
+# V3.165.0: owner — «сделай одну цену 300 для обоих режимов»: раздевание,
+# «Наедине», косплей и фото по фетишу стоят одного и того же, одна константа.
+# Новое имя env (UNDRESS_PEACH_COST=4 на Railway вернул бы 400 🍑).
+UNDRESS_PEACH_COST = _peaches("UNDRESS_PEACHES_V165", EXPLICIT_PHOTO_PEACH_COST)
+COSPLAY_PHOTO_PEACH_COST = _peaches("COSPLAY_PHOTO_PEACHES_V165", EXPLICIT_PHOTO_PEACH_COST)
 # V3.152.0: owner ТЗ (Фогель, Модуль 1) — «Стертый черновик». Sometimes she
 # writes something bolder than she dares to send, deletes it and answers
 # shortly; reading what she erased costs peaches. Pure text, no render, so the
@@ -178,6 +205,20 @@ HOT_PASS_DAY_PEACHES = _peach_env("HOT_PASS_DAY_PEACHES", 5)
 HOT_PASS_WEEK_PEACHES = _peach_env("HOT_PASS_WEEK_PEACHES", 25)
 HOT_PASS_MONTH_PEACHES = _peach_env("HOT_PASS_MONTH_PEACHES", 80)
 HOT_PASS_FREE_DAILY = max(0, int(os.getenv("HOT_PASS_FREE_DAILY", "2")))
+# V3.165.0 (#104): the pass is sold as a bundle of explicit frames, not as a
+# daily quota — 3 за сутки, 24 за неделю, 100 за месяц. The owner's numbers, so
+# each one is env-overridable under its own new name.
+HOT_PASS_DAY_FRAMES = max(1, int(os.getenv("HOT_PASS_DAY_FRAMES_V165", "3")))
+HOT_PASS_WEEK_FRAMES = max(1, int(os.getenv("HOT_PASS_WEEK_FRAMES_V165", "24")))
+HOT_PASS_MONTH_FRAMES = max(1, int(os.getenv("HOT_PASS_MONTH_FRAMES_V165", "100")))
+# V3.165.0 (#104): one table for the pass — the bot's keyboard, the app's shop
+# card and /webapp/api/me all read these three rows, so a price never drifts
+# between the two surfaces.
+HOT_PASS_PRODUCTS = {
+    "day": {"peaches": HOT_PASS_DAY_PEACHES, "days": 1, "frames": HOT_PASS_DAY_FRAMES},
+    "week": {"peaches": HOT_PASS_WEEK_PEACHES, "days": 7, "frames": HOT_PASS_WEEK_FRAMES},
+    "month": {"peaches": HOT_PASS_MONTH_PEACHES, "days": 30, "frames": HOT_PASS_MONTH_FRAMES},
+}
 # Видео за персики — ЕДИНАЯ цена видео-продукта на персиковом рельсе:
 # студия Mini App (webapp_service.WEBAPP_VIDEO_COST_CREDITS читает её).
 # V3.55.5: 5 -> 20 🍑 — клип сжигает картинковый рендер + видео-движок.
@@ -188,9 +229,11 @@ VIDEO_PEACH_COST = _peach_env("VIDEO_PEACH_COST", 20)
 CIRCLE_PEACH_COST = _peach_env("CIRCLE_PEACH_COST", 7)
 # V3.73.0: «🤫 тайное видео» (hot circle) — Seedance 2.5 Spicy, 5 s 480p,
 # silent (owner: lip-sync looks crooked), ~$1.08 a render. Wan 2.6 was dropped
-# after the owner's live test (face drift, plastic body). 4000 🍑 ≈ 280–400 ₽,
-# 3×+ the cost; charged only for a delivered clip.
-HOT_CIRCLE_PEACH_COST = _peach_env("HOT_CIRCLE_PEACH_COST", 40)
+# after the owner's live test (face drift, plastic body).
+# V3.165.0: owner — «цену кружка не 4000, сделай 2000». Рендер 1,08 $ ≈ 97 ₽
+# по курсу 90 ₽/$, 2000 🍑 = 198 ₽ → плюс ≈ 101 ₽ с доставленного клипа.
+# Новое имя env: HOT_CIRCLE_PEACH_COST=40 на Railway вернул бы 4000 🍑.
+HOT_CIRCLE_PEACH_COST = _peaches("HOT_CIRCLE_PEACHES_V165", 2000)
 HOT_CIRCLE_ENABLED = os.getenv("HOT_CIRCLE_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off")
 SPICYAPI_HOT_CIRCLE_MODEL = os.getenv("SPICYAPI_HOT_CIRCLE_MODEL", "bytedance/seedance-2.5-spicy/image-to-video").strip()
 SPICYAPI_HOT_CIRCLE_RESOLUTION = os.getenv("SPICYAPI_HOT_CIRCLE_RESOLUTION", "480p").strip()
@@ -226,8 +269,13 @@ SCENARIO_COVER_SECONDS = max(4, min(10, int(os.getenv("SCENARIO_COVER_SECONDS", 
 SCENARIO_COVER_COST_USD = SPICYAPI_HOT_CIRCLE_COST_PER_SECOND_USD * SCENARIO_COVER_SECONDS
 # Голос + фото комбо
 VOICE_PHOTO_PEACH_COST = _peach_env("VOICE_PHOTO_PEACH_COST", 3)
-# Серия фото (3-5 штук в одном образе)
-PHOTO_SERIES_PEACH_COST = _peach_env("PHOTO_SERIES_PEACH_COST", 5)
+# Серия фото (несколько кадров одним тапом)
+# V3.165.0: owner — «серия 4 кадра за 700». По одному откровенному кадру стоит
+# 300 🍑, значит четыре = 1200 🍑; серия за 700 = экономия 500 🍑, и это та
+# выгода, которую надо показывать в подписи. Рендер: 4 × 2,52 ₽ = 10 ₽ против
+# 700 🍑 = 69 ₽.
+PHOTO_SERIES_PEACH_COST = _peaches("PHOTO_SERIES_PEACHES_V165", 700)
+PHOTO_SERIES_FRAMES = max(2, min(6, int(os.getenv("PHOTO_SERIES_FRAMES", "4"))))
 # SpicyAPI модель для uncensored генерации
 # V3.58.2: «seedream-5.0-lite» is gone from the SpicyAPI catalog — every job
 # with the old id was refused (spicyapi 0 ✅ / 39 ❌ in «Отказы»). Pro ids are

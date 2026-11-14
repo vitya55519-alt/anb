@@ -79,7 +79,7 @@ def test_render_sends_seedance_input(monkeypatch):
 
 def test_endpoint_gates_and_charges_after_success():
     from config import HOT_CIRCLE_PEACH_COST
-    assert HOT_CIRCLE_PEACH_COST == 4000
+    assert HOT_CIRCLE_PEACH_COST == 2000  # V3.165.0: owner — «не 4000, а 2000 🍑»
     block = MAIN[MAIN.index('async def _webapp_api_chat_media('):MAIN.index('async def _webapp_media(')]
     assert "if kind == 'hotcircle':" in block
     assert 'is_custom_character(character_id)' in block

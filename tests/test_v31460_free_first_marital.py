@@ -103,9 +103,16 @@ def test_free_change_is_written_in_every_language():
 
 def test_app_shows_free_and_never_confirms_a_free_change():
     render = INDEX[INDEX.index('function renderMarital(c)'):INDEX.index('async function loadMaritalArc(')]
-    assert "price ? (L.marital_change + ' · ' + price + ' 🍑') : (L.marital_change + ' · ' + L.marital_free)" in render
-    ask = render.index("if (!price) { go(); return; }")
-    assert ask < render.index("const q = L.marital_confirm")  # 0 🍑: sent, no dialog
+    # V3.165.0 (#105): owner — the «смена 500 🍑» caption and its confirmation
+    # dialog are gone. The cost rides inside each chip, the folded line shows her
+    # current status, and a tap on any other chip changes it right away (free
+    # first change included — one path for both).
+    assert "const cost = price ? peachNum(price) + ' 🍑' : L.marital_free;" in render
+    assert 'L.marital_confirm' not in INDEX
+    assert "document.getElementById('charMaritalVal').textContent = L['marital_'" in render
+    assert "if (b.dataset.ms === cur) return;" in render and 'chooseMarital(c, b.dataset.ms)' in render
     choose = INDEX[INDEX.index('async function chooseMarital('):INDEX.index('async function choosePersona(')]
     assert "if (typeof j.marital_price === 'number') { c.marital_price = j.marital_price; renderMarital(c); }" in choose
     assert "if (r.status === 402) { c.marital = prev; renderMarital(c); toast(L.marital_no_peaches); showTab('shop'); return; }" in choose
+    # money is taken without asking first, so the receipt says how much (0 = free)
+    assert "toast(wasPrice ? L.marital_saved + ' · −' + peachNum(wasPrice) + ' 🍑' : L.marital_saved);" in choose

@@ -324,9 +324,19 @@
   /* V3.133.2: one look for every row on her page — only «Начать чат» is bright */
   .tunebtn { display: flex; align-items: center; gap: 8px; margin: 10px 16px 0; width: calc(100% - 32px); padding: 13px 14px; border-radius: 14px; border: 0; background: var(--card); color: var(--text); font-size: 14px; font-weight: 600; text-align: left; line-height: 1.3; cursor: pointer; }
   .tunebtn small { margin-left: auto; white-space: nowrap; font-size: 14px; font-weight: 500; opacity: .6; }
-  .charblock.foldable .foldhead, .charblock.foldable .foldhead span, .charblock .lbl3.foldhead { font-size: 14px !important; font-weight: 600 !important; color: var(--text) !important; letter-spacing: normal; line-height: 1.3; }
-  .charblock.foldable .foldhead .mprice { font-size: 12px !important; font-weight: 500 !important; opacity: .6; }
-  .charblock.foldable { padding: 13px 14px; }
+  /* V3.165.0 (#105): owner — every panel on her page is one folded line that
+     reads «label · value» («💍 Семейное положение · Свободно»); the chevron opens
+     what used to sit unfolded. One look for all six rows. */
+  .charblock.foldable .foldhead { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; line-height: 1.3; }
+  .charblock.foldable .foldhead .pl { color: var(--text); }
+  .charblock.foldable .foldhead .pv { margin-left: auto; font-size: 13px; font-weight: 500; opacity: .72; white-space: nowrap; }
+  .charblock.foldable { padding: 13px 14px; border-radius: 16px; border: 1px solid rgba(255,255,255,.06); }
+  .charblock.foldable:not(.fold) { background: linear-gradient(180deg, rgba(255,255,255,.08), var(--card)); }
+  .charblock.fold .pbody { display: none; }
+  .charblock.foldable:not(.fold) .pbody { margin-top: 12px; }
+  #charRelBar .pl { color: #ff8fb6; }
+  #charCollectBar .pl { color: #ffcf6b; }
+  #charPathBar .pl { color: var(--accent); }
   .tunebtn small { float: right; opacity: .7; font-weight: 500; }
   .lvlsheet .bond { font-size: 13px; opacity: .8; margin-bottom: 12px; }
   .lvlsheet .row { margin: 10px 0; }
@@ -493,60 +503,77 @@
     width: 32px; height: 32px; border-radius: 50%; background: var(--accent);
     color: #fff; display: flex; align-items: center; justify-content: center; font-size: 17px;
   }
-  /* V3.64.7: «пошлый режим» banner right under the channel banner — few
-     users found the switch in Settings. */
-  .spicybanner { background: linear-gradient(90deg, rgba(255,92,56,.30), rgba(232,68,127,.18)); }
-  .spicybanner .gift { background: radial-gradient(circle at 35% 30%, #ffb38a, #ff5c38); }
-  .spicybanner .t small { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--muted); }
-  .spicybanner .ar.on { width: auto; padding: 0 10px; border-radius: 16px; font-size: 12px; font-weight: 700; background: #ff5c38; }
-  /* V3.43.0: the centered gift modal for the channel bonus */
-  /* V3.107.0: «Честно о нас» — one-time honest card (owner picked variant A) */
-  #honestmodal { position: fixed; inset: 0; z-index: 46; display: none; align-items: center; justify-content: center; background: rgba(10,5,14,.62); }
-  #honestmodal.open { display: flex; }
-  #honestmodal .box { width: min(340px, 92vw); max-height: 88vh; overflow-y: auto; background: var(--card); border-radius: 20px; padding: 18px 16px 16px; position: relative; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
-  #honestmodal .x { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(255,255,255,.1); color: #fff; font-size: 15px; cursor: pointer; }
-  #honestmodal h3 { margin: 0 40px 3px 0; font-size: 19px; color: var(--text); }
-  #honestmodal .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 4px; }
-  #honestmodal h4 { margin: 12px 0 6px; font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  #honestmodal .li { display: flex; gap: 8px; font-size: 13.5px; line-height: 1.35; margin: 6px 0; color: var(--text); }
-  #honestmodal .li .ok { color: #5fd39a; flex: none; }
-  #honestmodal .go { width: 100%; border: 0; border-radius: 14px; padding: 12px; margin-top: 14px; font-size: 15px; font-weight: 700; color: #fff; background: linear-gradient(90deg, var(--accent), var(--accent2)); cursor: pointer; }
-  #honestmodal .fb { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); }
-  #honestmodal .fb .t { font-size: 14px; font-weight: 700; color: var(--text); }
-  #honestmodal .fb .s { font-size: 12px; color: var(--muted); margin: 2px 0 8px; }
-  #honestmodal .fb textarea { width: 100%; min-height: 64px; resize: vertical; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: var(--card2); color: var(--text); padding: 10px; font: inherit; font-size: 13.5px; box-sizing: border-box; }
-  #honestmodal .fb .send { width: 100%; margin-top: 8px; border: 0; border-radius: 12px; padding: 10px; font-size: 14px; font-weight: 600; color: var(--text); background: var(--card2); cursor: pointer; }
-  #honestmodal .fb .send:disabled { opacity: .5; }
-  #honestmodal .fb .done { font-size: 13px; color: #5fd39a; margin-top: 8px; display: none; }
-  .honestlink { width: 100%; border: 0; border-radius: 12px; padding: 12px; margin-bottom: 10px; font-size: 14px; font-weight: 600; color: var(--text); background: var(--card2); cursor: pointer; text-align: left; }
-  #chanmodal, #spicymodal {
+  /* V3.165.0 (Задача 100): the mode is chosen on every entry to the app — two
+     cards instead of the old banner + explainer modal. The owner supplies his
+     own pictures (art/mode_normal.jpg, art/mode_spicy.jpg); a card that does
+     not get its file falls back to the glyph, so the screen never breaks. */
+  #modeScreen {
+    position: fixed; inset: 0; z-index: 47; display: none; flex-direction: column;
+    align-items: center; gap: 12px; padding: 22px 16px 26px; overflow-y: auto;
+    background: linear-gradient(180deg, #150a1e 0%, var(--bg2) 100%);
+  }
+  #modeScreen.open { display: flex; }
+  #modeScreen h2 { font-size: 21px; color: var(--text); text-align: center; }
+  #modeScreen .ms-sub { font-size: 12.5px; color: var(--muted); text-align: center; margin-top: -6px; }
+  #modeScreen .cards { display: grid; gap: 12px; width: min(360px, 100%); margin-top: 4px; }
+  .modecard {
+    display: block; width: 100%; text-align: left; cursor: pointer; padding: 0; overflow: hidden;
+    border: 1px solid rgba(255,255,255,.12); border-radius: 18px; background: var(--card); color: var(--text);
+  }
+  .modecard img, .modecard .ph { display: block; width: 100%; height: 150px; object-fit: cover; }
+  .modecard .ph { display: none; align-items: center; justify-content: center; font-size: 44px; background: var(--card2); }
+  .modecard.nopic img { display: none; }
+  .modecard.nopic .ph { display: flex; }
+  .modecard .txt { padding: 11px 13px 13px; }
+  .modecard b { display: block; font-size: 16px; }
+  .modecard .d { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.35; color: var(--muted); }
+  .modecard .go {
+    display: block; margin-top: 11px; border-radius: 12px; padding: 9px; text-align: center;
+    font-size: 13.5px; font-weight: 700; color: #fff; background: rgba(255,255,255,.10);
+  }
+  .modecard.spicy { border-color: rgba(255,92,56,.55); background: linear-gradient(180deg, rgba(255,92,56,.16), rgba(232,68,127,.10)); }
+  .modecard.spicy b { color: #ff8a5c; }
+  .modecard.spicy .go { background: linear-gradient(90deg, #ff5c38, var(--accent)); }
+  .modecard.on { box-shadow: 0 0 0 2px var(--accent); }
+  #modeScreen .ms-note { font-size: 11.5px; line-height: 1.4; color: var(--muted); opacity: .85; text-align: center; }
+  /* V3.165.0 (Задача 101): the two thin lines under her bubble — «mode changed»
+     and the daily ceiling counter. */
+  .modenote { max-width: 88%; margin: 4px auto 6px; text-align: center; font-size: 11.5px; line-height: 1.35; color: var(--muted); opacity: .95; }
+  .modenote .mn-b {
+    display: inline-block; margin-left: 6px; border: 0; border-radius: 10px; padding: 5px 10px;
+    font-size: 11.5px; font-weight: 700; color: #fff; cursor: pointer;
+    background: linear-gradient(90deg, var(--accent), #ff7ab0);
+  }
+  /* V3.43.0: the centered gift modal for the channel bonus.
+     V3.165.0: the spicy explainer that used to share these rules is gone with
+     the mode screen, so the selectors are the channel modal's own again. */
+  #chanmodal {
     position: fixed; inset: 0; z-index: 45; display: none;
     align-items: center; justify-content: center; background: rgba(10,5,14,.62);
   }
-  #chanmodal.open, #spicymodal.open { display: flex; }
-  #chanmodal .box, #spicymodal .box {
+  #chanmodal.open { display: flex; }
+  #chanmodal .box {
     width: min(320px, 86vw); background: var(--card); border-radius: 18px;
     padding: 20px 16px 16px; text-align: center; position: relative;
   }
-  #chanmodal .gift, #spicymodal .gift {
+  #chanmodal .gift {
     width: 62px; height: 62px; border-radius: 50%; margin: 0 auto 10px;
     background: radial-gradient(circle at 35% 30%, #ff9ec7, var(--accent));
     display: flex; align-items: center; justify-content: center; font-size: 29px;
   }
-  #chanmodal h3, #spicymodal h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
-  #chanmodal .txt, #spicymodal .txt { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
-  #chanmodal .warn, #spicymodal .warn {
+  #chanmodal h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
+  #chanmodal .txt { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+  #chanmodal .warn {
     background: rgba(255,193,7,.13); color: #ffc107; border-radius: 10px;
     font-size: 12px; padding: 8px 10px; margin-bottom: 12px;
   }
-  #chanmodal .go, #chanmodal .chk, #spicymodal .go, #spicymodal .chk {
+  #chanmodal .go, #chanmodal .chk {
     width: 100%; border: 0; border-radius: 12px; padding: 12px;
     font-size: 14px; font-weight: 600; cursor: pointer;
   }
-  #chanmodal .go, #spicymodal .go { background: linear-gradient(90deg, var(--accent), #ff7ab0); color: #fff; margin-bottom: 8px; }
-  #chanmodal .chk, #spicymodal .chk { background: var(--card2); color: var(--text); }
-  #spicymodal .gift { background: radial-gradient(circle at 35% 30%, #ffb38a, #ff5c38); }
-  #chanmodal .x, #spicymodal .x {
+  #chanmodal .go { background: linear-gradient(90deg, var(--accent), #ff7ab0); color: #fff; margin-bottom: 8px; }
+  #chanmodal .chk { background: var(--card2); color: var(--text); }
+  #chanmodal .x {
     position: absolute; top: 8px; right: 10px; border: 0; background: transparent;
     color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px;
   }
@@ -733,8 +760,6 @@
   .mchips { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; width: 100%; box-sizing: border-box; }
   .mchips::-webkit-scrollbar { display: none; }
   .mchip { width: 100%; box-sizing: border-box; text-align: left; background: var(--card2); border: 1px solid rgba(255,255,255,.12); color: var(--text); font-size: 14px; padding: 10px 14px; border-radius: 14px; cursor: pointer; white-space: normal; overflow-wrap: anywhere; }
-  .mlbl { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-  .mprice { font-size: 12px; font-weight: 500; opacity: .6; white-space: nowrap; }
   .chat-offer { margin: 4px 0 10px; display: flex; }
   /* V3.125.0: «это фото — 300 🍑 · осталось …» under a photo paid with peaches */
   .chat-offer .paidnote { font-size: 12px; opacity: .7; align-self: center; margin-right: 8px; }
@@ -747,12 +772,13 @@
     font-weight: 700; font-size: 14px; background: linear-gradient(90deg, #ff2d78, #b03cff); }
   .chat-offer .mchip { width: auto; }
   .mchip.on { background: linear-gradient(90deg, #ff2d78, #b03cff); border-color: transparent; font-weight: 600; }
+  /* V3.165.0 (#105): the cost rides inside the status chip itself — no separate
+     «смена 500 🍑» caption and no confirmation dialog before the tap. */
+  .mchip small { float: right; font-size: 12px; font-weight: 500; opacity: .62; }
   /* V3.131.0: «Семейное положение» and «Сюжеты» fold into one tap-to-open row */
   .charblock.foldable .foldhead { cursor: pointer; user-select: none; }
-  .charblock.foldable .foldhead::after { content: '›'; float: right; opacity: .6; transition: transform .2s; display: inline-block; }
+  .charblock.foldable .foldhead::after { content: '›'; opacity: .6; transition: transform .2s; display: inline-block; }
   .charblock.foldable:not(.fold) .foldhead::after { transform: rotate(90deg); }
-  .charblock.fold .mchips, .charblock.fold .plotlist, .charblock.fold .plothint, .charblock.fold .marc { display: none; }
-  .charblock.fold .tbody { display: none; }
   /* V3.134.0: her marital story under the status chips */
   .marc:empty { display: none; }
   .marc { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.08); white-space: normal; }
@@ -763,20 +789,14 @@
   .marc .go { width: 100%; margin-top: 8px; padding: 11px; border: 0; border-radius: 12px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-size: 14px; font-weight: 700; }
   .marc .go.ghost { background: rgba(255,255,255,.08); color: var(--text); }
   .marc .hint { font-size: 12px; opacity: .65; margin-top: 6px; }
-  .charblock.fold .lbl3 { margin-bottom: 0; }
   .charblock { margin: 10px 16px; padding: 12px 14px; background: var(--card); border-radius: 14px; line-height: 1.45; white-space: pre-wrap; }
   .charblock .lbl3 { color: var(--accent); font-size: 12px; letter-spacing: .08em; margin-bottom: 6px; }
   /* V3.43.9: relationship progress bar on character card */
-  .relbar-wrap { margin: 12px 16px 0; padding: 10px 14px; background: var(--card); border-radius: 14px; }
-  .relbar-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text); margin-bottom: 6px; }
-  .relbar-label span:first-child { color: var(--accent); font-weight: 600; }
   .relbar-track { height: 8px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; }
   .relbar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px; transition: width .4s ease; }
   /* V3.53.0: «Собери галерею» photo-set bar — a distinct amber/gold fill */
   .relbar-fill.collect { background: linear-gradient(90deg, #ffcf6b, #ff9d3d); }
-  #charCollectBar .relbar-label span:first-child { color: #ffcf6b; }
     /* V3.50.0: the centered tenderness<->passion swing bar on the character card */
-    .pathbar .relbar-label span:last-child { color: var(--text); font-weight: 600; opacity: .85; }
     .path-track { position: relative; height: 8px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; }
     .path-center { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(255,255,255,.28); z-index: 2; }
     .path-fill { position: absolute; top: 0; bottom: 0; width: 0; border-radius: 4px; transition: width .4s ease; }
@@ -874,6 +894,9 @@
   .capsheet .chat-media button .lb { font-size: 15px; font-weight: 600; white-space: normal; }
   .capsheet .chat-media button .ds { font-size: 12px; line-height: 1.35; opacity: .72; }
   .capsheet .chat-media button.hot .lb, .capsheet .chat-media button.hot .ds { color: #fff; opacity: 1; }
+  /* V3.165.0 (#105): owner — «Возможности» keeps nine rows. The retired ones stay
+     wired (their sheets still open from a deep link), only the list is shorter. */
+  .capsheet .chat-media button.gone { display: none; }
   /* V3.78.0: «🎬 Сюжеты» cards — locked ones show the Premium badge */
   .plotlist { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
   .plotitem { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; background: var(--card); border: 1px solid rgba(255,140,190,.18); color: var(--text); border-radius: 14px; padding: 11px 13px; cursor: pointer; font: inherit; }
@@ -883,6 +906,9 @@
   .plotitem .pn { font-weight: 700; font-size: 15px; }
   .plotitem .ps { color: var(--muted); font-size: 12.5px; margin-top: 2px; line-height: 1.35; }
   .plotitem .pl { flex: none; font-size: 12px; font-weight: 700; color: #fff; padding: 4px 8px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+  /* V3.165.0 (#104): the 📸 chip — the same theme as a paid frame. */
+  .fph { flex: none; font-size: 16px; line-height: 1; padding: 7px 8px; border-radius: 11px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,140,190,.28); color: var(--text); cursor: pointer; }
+  .fph:active { background: rgba(232,68,127,.35); }
   .plotbar { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 12.5px; background: linear-gradient(90deg, rgba(232,68,127,.22), rgba(180,76,255,.22)); border-bottom: 1px solid rgba(255,140,190,.25); }
   .plotbar .pbt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .plotbar button { flex: none; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.25); color: #fff; border-radius: 10px; padding: 5px 10px; font-size: 12px; }
@@ -938,6 +964,16 @@
   .chathints button { border: 1px solid rgba(232,68,127,.5); background: rgba(232,68,127,.12); color: var(--text);
     border-radius: 18px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
   .aptintro { background: rgba(232,68,127,.12); border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.45; margin-bottom: 10px; }
+  /* V3.165.0 (#104): «Сутки без стеснения» — the pass strip of the «Наедине» menu. */
+  .passcard { background: rgba(232,68,127,.12); border: 1px solid rgba(232,68,127,.35); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; }
+  .passt { font-weight: 700; font-size: 15px; }
+  .passsub { color: var(--muted); font-size: 12.5px; line-height: 1.35; margin-top: 3px; }
+  .passrow { display: flex; gap: 8px; margin-top: 10px; }
+  .passbuy { flex: 1 1 0; min-width: 0; background: var(--card); border: 1px solid rgba(255,255,255,.12); color: var(--text); border-radius: 12px; padding: 9px 6px; text-align: center; cursor: pointer; }
+  .passbuy:disabled { opacity: .55; cursor: default; }
+  .passbuy .passn { display: block; font-weight: 700; font-size: 13.5px; }
+  .passbuy .passf { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .passbuy .passp { display: block; color: var(--accent); font-weight: 700; font-size: 13px; margin-top: 2px; }
   .stimg { width: 100%; border-radius: 14px; margin-bottom: 12px; display: block; }
   /* V3.58.3: the choice must FEEL like it landed — a big path badge that pops,
      a burst of hearts/flames, and a photo placeholder while the frame renders. */
@@ -1332,12 +1368,6 @@
       <span class="t" id="chanBannerText"></span>
       <span class="ar">→</span>
     </button>
-    <!-- V3.64.7: «пошлый режим» on the main screen, under the channel banner -->
-    <button class="chanbanner spicybanner" id="spicyBanner">
-      <span class="gift">🌶</span>
-      <span class="t"><span id="spicyBannerText"></span><small id="spicyBannerSub"></small></span>
-      <span class="ar" id="spicyBannerState">→</span>
-    </button>
     <div class="grid" id="chargrid"><div class="loading" id="l_loading"><div class="skeleton-grid"><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div></div></div></div>
     <!-- V3.48.2: 6 cards per page — prev/next under the grid, both segments. -->
     <div class="charpager" id="charPager"></div>
@@ -1402,34 +1432,17 @@
     <button class="chk" id="chanCheck"></button>
   </div>
 </div>
-<!-- V3.64.7: «пошлый режим» explainer + switch -->
-<div id="spicymodal">
-  <div class="box">
-    <button class="x" id="spicyClose">✕</button>
-    <div class="gift">🌶</div>
-    <h3 id="spicyMTitle"></h3>
-    <div class="txt" id="spicyMText"></div>
-    <div class="warn" id="spicyMWarn"></div>
-    <button class="go" id="spicyGo"></button>
-    <button class="chk" id="spicyLater"></button>
-  </div>
+<!-- V3.165.0 (Задача 100): the mode is chosen here, on every entry — the tap
+     writes the account flag at once and takes him to the heroines. There is no
+     other switch: the Settings row, the main-screen banner, the bot tile and
+     the «Честно о нас» card are all gone. -->
+<div id="modeScreen">
+  <h2 id="msTitle"></h2>
+  <div class="ms-sub" id="msSub"></div>
+  <div class="cards" id="msCards"></div>
+  <div class="ms-note" id="msNote"></div>
 </div>
 <!-- V3.43.0: pay-method modal (Come Closer: tap a square → Stars/SBP/crypto) -->
-<!-- V3.107.0: «Честно о нас» — the honest card, shown on every app open -->
-<div id="honestmodal"><div class="box">
-  <button class="x" id="honestClose">✕</button>
-  <h3 id="honestTitle"></h3>
-  <div class="sub" id="honestSub"></div>
-  <div id="honestBody"></div>
-  <div class="fb">
-    <div class="t" id="fbTitle"></div>
-    <div class="s" id="fbSub"></div>
-    <textarea id="fbText" maxlength="1000"></textarea>
-    <button class="send" id="fbSend"></button>
-    <div class="done" id="fbDone"></div>
-  </div>
-  <button class="go" id="honestGo"></button>
-</div></div>
 <div id="paymodal">
   <div class="box">
     <button class="x" id="payClose">✕</button>
@@ -1523,21 +1536,24 @@
     <button id="featDuoPhoto" class="hot" style="display:none"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbFeatDuoPhoto"></span><span class="ds" id="dsFeatDuoPhoto"></span></span></button>
     <button id="featDuoUndress" class="hot" style="display:none"><span class="ic">🔥</span><span class="tx"><span class="lb" id="lbFeatDuoUndress"></span><span class="ds" id="dsFeatDuoUndress"></span></span></button>
     <button id="featDuoVideo" class="hot" style="display:none"><span class="ic">🤫</span><span class="tx"><span class="lb" id="lbFeatDuoVideo"></span><span class="ds" id="dsFeatDuoVideo"></span></span></button>
-    <button id="mediaPhoto"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbMediaPhoto"></span><span class="ds" id="dsMediaPhoto"></span></span></button>
+    <button id="featUndress" class="hot"><span class="ic">🔥</span><span class="tx"><span class="lb" id="lbFeatUndress"></span><span class="ds" id="dsFeatUndress"></span></span></button>
     <button id="featPlots" class="hot"><span class="ic">🎬</span><span class="tx"><span class="lb" id="lbFeatPlots"></span><span class="ds" id="dsFeatPlots"></span></span></button>
     <button id="featWardrobe" class="hot"><span class="ic">👗</span><span class="tx"><span class="lb" id="lbFeatWardrobe"></span><span class="ds" id="dsFeatWardrobe"></span></span></button>
     <!-- V3.153.0 (Фогель, Модуль 4): «🎁 Подарки» — the cheap tier next to the
          wardrobe: what he gives her stays on her in every later photo. -->
     <button id="featGifts" class="hot"><span class="ic">🎁</span><span class="tx"><span class="lb" id="lbFeatGifts"></span><span class="ds" id="dsFeatGifts"></span></span></button>
     <button id="featFetish" class="hot"><span class="ic">🎭</span><span class="tx"><span class="lb" id="lbFeatFetish"></span><span class="ds" id="dsFeatFetish"></span></span></button>
-    <button id="featQuest"><span class="ic">🎯</span><span class="tx"><span class="lb" id="lbFeatQuest"></span><span class="ds" id="dsFeatQuest"></span></span></button>
-    <button id="featStory"><span class="ic">📖</span><span class="tx"><span class="lb" id="lbFeatStory"></span><span class="ds" id="dsFeatStory"></span></span></button>
-    <button id="featDate"><span class="ic">💕</span><span class="tx"><span class="lb" id="lbFeatDate"></span><span class="ds" id="dsFeatDate"></span></span></button>
-    <button id="featApt"><span class="ic">🏠</span><span class="tx"><span class="lb" id="lbFeatApt"></span><span class="ds" id="dsFeatApt"></span></span></button>
-    <button id="featVideo"><span class="ic">🎬</span><span class="tx"><span class="lb" id="lbFeatVideo"></span><span class="ds" id="dsFeatVideo"></span></span></button>
-    <button id="featCosplay"><span class="ic">🎭</span><span class="tx"><span class="lb" id="lbFeatCosplay"></span><span class="ds" id="dsFeatCosplay"></span></span></button>
     <button id="featHot" class="hot"><span class="ic">💋</span><span class="tx"><span class="lb" id="lbFeatHot"></span><span class="ds" id="dsFeatHot"></span></span></button>
     <button id="featHotCircle" class="hot"><span class="ic">🤫</span><span class="tx"><span class="lb" id="lbFeatHotCircle"></span><span class="ds" id="dsFeatHotCircle"></span></span></button>
+    <button id="featCosplay" class="hot"><span class="ic">🎭</span><span class="tx"><span class="lb" id="lbFeatCosplay"></span><span class="ds" id="dsFeatCosplay"></span></span></button>
+    <!-- V3.165.0 (#105): owner — the sheet keeps the nine rows above. These stay
+         wired (a deep link or her 18+ page still opens them), just not listed. -->
+    <button id="mediaPhoto" class="gone"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbMediaPhoto"></span><span class="ds" id="dsMediaPhoto"></span></span></button>
+    <button id="featQuest" class="gone"><span class="ic">🎯</span><span class="tx"><span class="lb" id="lbFeatQuest"></span><span class="ds" id="dsFeatQuest"></span></span></button>
+    <button id="featStory" class="gone"><span class="ic">📖</span><span class="tx"><span class="lb" id="lbFeatStory"></span><span class="ds" id="dsFeatStory"></span></span></button>
+    <button id="featDate" class="gone"><span class="ic">💕</span><span class="tx"><span class="lb" id="lbFeatDate"></span><span class="ds" id="dsFeatDate"></span></span></button>
+    <button id="featApt" class="gone"><span class="ic">🏠</span><span class="tx"><span class="lb" id="lbFeatApt"></span><span class="ds" id="dsFeatApt"></span></span></button>
+    <button id="featVideo" class="gone"><span class="ic">🎬</span><span class="tx"><span class="lb" id="lbFeatVideo"></span><span class="ds" id="dsFeatVideo"></span></span></button>
   </div>
   <button class="cap-close" id="capClose" type="button"></button>
 </div></div>
@@ -1575,6 +1591,8 @@
   <div style="display:flex;gap:8px;margin:10px 0">
     <input id="fetishCustom" maxlength="80" style="flex:1;min-width:0;background:var(--card);border:1px solid rgba(255,140,190,.25);color:var(--text);border-radius:12px;padding:10px 12px;font:inherit">
     <button id="fetishGo" class="btn-back" type="button"></button>
+    <!-- V3.165.0 (#104): the same own theme as a paid frame — no Premium needed. -->
+    <button id="fetishPhotoBtn" class="fph" type="button">📸</button>
   </div>
   <button class="cap-close" id="fetishOff" type="button" style="display:none"></button>
   <button class="cap-close" id="fetishClose" type="button"></button>
@@ -1590,12 +1608,7 @@
   </div>
   <button class="cap-close" id="heatClose" type="button"></button>
 </div></div>
-<!-- V3.61.1: first-open choice «С сюжетом / Без сюжета» -->
-<div class="startsheet" id="startSheet" style="display:none"><div class="box">
-  <div class="st-h">Как начать чат?</div>
-  <button class="st-opt" id="startStory"><b>📖 С сюжетом</b><span>Начнётся с готовой сцены от неё</span></button>
-  <button class="st-opt" id="startPlain"><b>💬 Без сюжета</b><span>Чистый чат с твоего первого сообщения</span></button>
-</div></div>
+<!-- V3.165.0 (#106): the first-open choice sheet is gone — she starts by herself. -->
 <!-- V3.60.9: level panel (tap the chip under her name) -->
 <div class="lvlsheet" id="lvlSheet" style="display:none"><div class="box" id="lvlBox"></div></div>
 <!-- V3.61.2: «позвать в чат» girl picker -->
@@ -1625,35 +1638,38 @@
     <!-- V3.133.0: the 18+ showcase for this girl -->
     <button class="tunebtn" id="charHot18" style="display:none"></button>
     <button class="tunebtn" id="charStories" style="display:none"></button>
-    <!-- V3.43.9: relationship progress bar -->
-    <div class="relbar-wrap" id="charRelBar" style="display:none">
-      <div class="relbar-label"><span id="charRelLbl"></span><span id="charRelPct"></span></div>
-      <div class="relbar-track"><div class="relbar-fill" id="charRelFill"></div></div>
+    <!-- V3.43.9: relationship progress bar; V3.165.0 (#105): one folded line,
+         «💕 Уровень близости · 4/10», the bar itself is inside the fold -->
+    <div class="charblock foldable fold" id="charRelBar" style="display:none;white-space:normal">
+      <div class="foldhead"><span class="pl" id="charRelLbl"></span><span class="pv" id="charRelPct"></span></div>
+      <div class="pbody"><div class="relbar-track"><div class="relbar-fill" id="charRelFill"></div></div></div>
     </div>
     <!-- V3.53.0: «Собери галерею» — every 50 photos of her completes a gallery set -->
-    <div class="relbar-wrap" id="charCollectBar" style="display:none">
-      <div class="relbar-label"><span id="charCollectLbl"></span><span id="charCollectPct"></span></div>
-      <div class="relbar-track"><div class="relbar-fill collect" id="charCollectFill"></div></div>
+    <div class="charblock foldable fold" id="charCollectBar" style="display:none;white-space:normal">
+      <div class="foldhead"><span class="pl" id="charCollectLbl"></span><span class="pv" id="charCollectPct"></span></div>
+      <div class="pbody"><div class="relbar-track"><div class="relbar-fill collect" id="charCollectFill"></div></div></div>
     </div>
     <!-- V3.50.0: relationship path (tenderness <-> passion), centered swing bar -->
-    <div class="relbar-wrap pathbar" id="charPathBar" style="display:none">
-      <div class="relbar-label"><span id="charPathLbl"></span><span id="charPathTag"></span></div>
-      <div class="path-track">
-        <div class="path-fill left" id="charPathLeft"></div>
-        <div class="path-center"></div>
-        <div class="path-fill right" id="charPathRight"></div>
+    <div class="charblock foldable fold" id="charPathBar" style="display:none;white-space:normal">
+      <div class="foldhead"><span class="pl" id="charPathLbl"></span><span class="pv" id="charPathTag"></span></div>
+      <div class="pbody">
+        <div class="path-track">
+          <div class="path-fill left" id="charPathLeft"></div>
+          <div class="path-center"></div>
+          <div class="path-fill right" id="charPathRight"></div>
+        </div>
+        <div class="path-ends"><span id="charPathEndL"></span><span id="charPathEndR"></span></div>
       </div>
-      <div class="path-ends"><span id="charPathEndL"></span><span id="charPathEndR"></span></div>
     </div>
     <!-- V3.133.0: Premium sets level + bond right here, before the chat -->
     <button class="tunebtn" id="charTune" style="display:none"></button>
     <!-- V3.51.0: story player entry, right under the path bar (choice -> result) -->
     <!-- V3.59.5: her relationship status for this user — bends how she chats -->
-    <div class="charblock foldable fold" id="charMarital" style="display:none;white-space:normal"><div class="mlbl foldhead"><span id="charMaritalLbl" style="font-weight:600"></span><span class="mprice" id="charMaritalPrice"></span></div><div class="mchips" id="charMaritalChips"></div><div class="marc" id="charArc"></div></div>
+    <div class="charblock foldable fold" id="charMarital" style="display:none;white-space:normal"><div class="foldhead"><span class="pl" id="charMaritalLbl"></span><span class="pv" id="charMaritalVal"></span></div><div class="pbody"><div class="mchips" id="charMaritalChips"></div><div class="marc" id="charArc"></div></div></div>
     <!-- V3.78.0: «🎬 Сюжеты» — Premium role-play storylines -->
-    <div class="charblock plotblock foldable fold" id="charPlots" style="display:none;white-space:normal"><div class="lbl3 foldhead" id="charPlotsLbl"></div><div class="plotlist" id="charPlotList"></div></div>
+    <div class="charblock plotblock foldable fold" id="charPlots" style="display:none;white-space:normal"><div class="foldhead"><span class="pl" id="charPlotsLbl"></span><span class="pv" id="charPlotsVal"></span></div><div class="pbody"><div class="plotlist" id="charPlotList"></div></div></div>
     <!-- V3.157.0: «🏆 Трофеи Страсти» — the six fantasies this pair lived through -->
-    <div class="charblock foldable fold" id="charTrophies" style="display:none;white-space:normal"><div class="lbl3 foldhead" id="charTrophiesLbl"></div><div class="tbody"><div class="trow" id="charTrophyRow"></div><div class="tnote" id="charTrophyNote"></div></div></div>
+    <div class="charblock foldable fold" id="charTrophies" style="display:none;white-space:normal"><div class="foldhead"><span class="pl" id="charTrophiesLbl"></span><span class="pv" id="charTrophiesVal"></span></div><div class="pbody"><div class="trow" id="charTrophyRow"></div><div class="tnote" id="charTrophyNote"></div></div></div>
     <div class="charblock" id="charBio"></div>
     <!-- V3.44.8: author link — opens the author's public page (author funnel) -->
     <button class="charcta" id="charAuthor" style="display:none;background:var(--card);color:var(--accent)"></button>
@@ -1803,7 +1819,7 @@ const LANG = APP_LANGS.includes(_savedLang) ? _savedLang
 
 const L_EN = {
   call_btn: 'Call', call_connecting: 'Calling…', call_listen: 'Listening…', call_think: 'Thinking…', call_talk: 'Speaking…', call_ready: 'Connected', call_end: 'Hang up', call_mute: 'Mic', call_skip: 'Interrupt', call_mode_prem: '👑 Premium call · 18+', call_mode_live: '⚡ Live call', call_fail: 'Could not get through — try again', call_limit_prem: 'Call minutes for today are used up, tomorrow 15 minutes again 💛', call_limit_trial: 'The trial call minutes are used up. Full Premium has much more 💛', trial_msgs_over: 'Trial messages are over — continue with full Premium 💛', call_limit_plan: 'The call minutes of your Premium are used up, they come back when you renew 💛', plan_voice_out: 'The voice notes of your Premium are used up, they come back when you renew 💛', call_up_h: 'Want to talk more? 📞', call_up_tx: 'Free: {m} min of live call a day, nothing explicit. With Premium: {p} minutes a day, and the call can go anywhere the chat can, 18+.', call_up_go: '👑 Open Premium', call_up_no: 'Later', call_bye: 'Call ended', call_nospeech: 'Didn\'t catch that — say it again', call_left: 'left',
-  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', fork_romance: '❤️ I really like you', fork_passion: '🔥 I don\'t think of you as a friend 😏', fork_q: 'She is waiting for your answer: which path are you on?', fork_taken: 'The path is already chosen', fork_romance_on: '❤️ The path of romance', fork_passion_on: '🔥 The path of passion', fork_would: 'there:', path_map: 'Your road', path_romance: 'Romance', path_passion: 'Passion', path_romance_other: 'on the romance path', path_passion_other: 'on the passion path', lvl_pick_hint: 'Premium: tap any level and she talks that way right away', lvl_pick_reset: 'Back to the real level', lvl_pick_premium: 'With Premium you can pick any level 1–10', lvl_pick_done: 'level picked:', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', pa_failed: 'Did not work, nothing was charged — try again', pa_not_found: 'This photo can no longer be edited', video_limit: 'photo animation is paid separately', video_limit_day: 'photo animation is paid separately 🎬', video_month: 'Photo animation is paid separately', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
+  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', nude_new_frame: n => '🔥 New frame · ' + peachNum(n) + ' 🍑', fork_romance: '❤️ I really like you', fork_passion: '🔥 I don\'t think of you as a friend 😏', fork_q: 'She is waiting for your answer: which path are you on?', fork_taken: 'The path is already chosen', fork_romance_on: '❤️ The path of romance', fork_passion_on: '🔥 The path of passion', fork_would: 'there:', path_map: 'Your road', path_romance: 'Romance', path_passion: 'Passion', path_romance_other: 'on the romance path', path_passion_other: 'on the passion path', lvl_pick_hint: 'Premium: tap any level and she talks that way right away', lvl_pick_reset: 'Back to the real level', lvl_pick_premium: 'With Premium you can pick any level 1–10', lvl_pick_done: 'level picked:', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', pa_failed: 'Did not work, nothing was charged — try again', pa_not_found: 'This photo can no longer be edited', video_limit: 'photo animation is paid separately', video_limit_day: 'photo animation is paid separately 🎬', video_month: 'Photo animation is paid separately', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
   day1_hints: ['Let me tell you about my day', 'Let’s continue our conversation', 'What did you do today?'],
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   typing_now: 'typing…',
@@ -1918,7 +1934,7 @@ const L_EN = {
   gs_wine: n => `Takes her shyness off for ${n} of her replies and moves the closeness gate one step`,
   gs_passion: n => `For ${n} of her replies she leads instead of holding back`,
   gs_photo: 'a try-on photo comes with it 📸', gs_progress: ' · and moves you a step closer',
-  fet_cap: 'Fetishes', fet_cap_ds: 'Pick a theme and she leads it, at any level', fet_h: '🎭 Fetishes', fet_sub: 'Adults only, mutual play. Pick a theme, or write your own', fet_locked: '🎭 Fetish mode unlocks with Premium ⭐', fet_ph: 'Your own theme (up to 80 characters)', fet_go: 'Start', fet_off: '✖ Turn off the theme', fet_refused: 'This theme is not possible', fet_on: 'on', fet_set: 'Theme is on',
+  fet_cap: 'Fetishes', fet_cap_ds: 'Pick a theme and she leads it, at any level', fet_h: '🎭 Fetishes', fet_sub: 'Adults only, mutual play. Pick a theme, or write your own', fet_locked: '🎭 Fetish mode unlocks with Premium ⭐', fet_ph: 'Your own theme (up to 80 characters)', fet_go: 'Start', fet_off: '✖ Turn off the theme', fet_refused: 'This theme is not possible', fet_on: 'on', fet_set: 'Theme is on', fet_photo: 'Photo of this theme',  // V3.104.0: the locked sheet still shows her face (the task asked for «замазать фетиши» only where it is locked)...
   // V3.157.0: owner ТЗ (Фогель, Модуль 6) — «Трофеи Страсти»: her album of six
   // lived-through fantasies on the character page.
   tr_head: '🏆 Open fantasies', tr_open: 'tap to hear what she admits', tr_replay: '▶ hear it again',
@@ -1951,15 +1967,7 @@ const L_EN = {
   sext_btn: '🔥 Explicit chat — with Premium',
   voice_btn: '🎙 Hear her voice every time', pay_once: 'One-time payment · no auto-renewal',
   pay_stars_en: 'Telegram Stars — bought right in Telegram (Apple Pay / Google Pay / card)', pay_sbp_en: 'Crypto / Russian card',
-  pay_crypto_pg: 'Crypto', pay_sbp_only: 'Russian card / SBP', hn_title: 'Honestly about us 💜', hn_sub: '30 seconds to know everything upfront',
-  hn_can: 'What she can do',
-  hn_list: ['Chats 24/7 and remembers your name and what matters to you', 'Writes first, misses you and waits for you', 'Voice notes in her own voice', 'Photos and video circles', 'Dates and stories with a plot', '«Girl of the day»: a new heroine every day', 'Openly 18+: adults only, with Premium'],
-  hn_money: 'Free and Premium',
-  hn_free: (f) => f.free_messages >= 1000 ? '💬 Free: unlimited messages and ' + f.free_photos + ' photo' : '💬 Free: ' + f.free_messages + ' messages a day' + (f.free_messages_later < f.free_messages ? ' (from day ' + f.later_from_day + ': ' + f.free_messages_later + ')' : '') + ' and ' + f.free_photos + ' photo',
-  hn_prem: (price) => '💎 Premium from ' + price + ': one-time payment, no auto-renewal',
-  fb_title: 'We would love your ideas 💡', fb_sub: 'What should we improve in the bot? The team reads every message',
-  fb_ph: 'Your idea or wish…', fb_send: 'Send', fb_done: 'Thank you! Your idea went to the team 💜', fb_err: 'Could not send, try again a bit later',
-  hn_go: 'OK, choose a heroine', hn_link: '💜 Honestly about us',
+  pay_crypto_pg: 'Crypto', pay_sbp_only: 'Russian card / SBP',
   trial_chip: '🔥 3 days of Premium',
   speak_free_left: n => n > 0 ? `🎙 free listens left today: ${n}` : '🎙 that was the last free listen today',
   sc_prem_only: '⭐ Premium only',
@@ -2028,7 +2036,7 @@ const L_EN = {
   ach_title: 'Achievements', gal_title: 'My gallery', gal_empty: 'No photos yet — generate one in “Alone”.', gal_count: n => n + ' photos',
   partner_row: '💰 Partner program', docs_row: '📜 Documents & prices', open_chat: 'chat',
   // V3.39.0: the Come Closer character page + in-app chat media.
-  start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', hot_tile: '18+ only', hot_tile_sub: 'Undress, spicy mode, 18+ call', hot_btn: '🔥 18+: undress, spicy mode', hot_h: '🔥 18+ only', hot_sub_for: 'With her:', hot_undress: '🙈 Undress her photo', hot_undress_ds: 'Premium: 1–3 a day', hot_spicy: '🔥 Spicy mode', hot_spicy_ds: 'no shyness, no taboo topics', hot_fet: '🎭 Fetishes', hot_fet_ds: 'your fantasies, she plays along', hot_plots: '🎬 Hot storylines', hot_plots_ds: 'role-play scenes up to «no limits»', hot_call: '📞 18+ call', hot_call_ds: 'she whispers and moans by voice', hot_circle: '🎥 Hot video note', hot_circle_ds: 'a short video from her', hot_video: '🤫 Secret video', hot_video_ds: 'an explicit 5 s video', hot_peach: 'for 🍑', hot_prem: 'Premium', hot_cta: '🔓 Unlock everything for 3 days', hot_note: 'Only for those who confirmed 18+. We never undress photos of real people.', hot_undress_tip: 'Ask her for a photo: «🔥 Undress» will be under it', hot_close: 'Close', tune_btn: '🎛 Set level and bond', tune_title: '🎛 Set her up yourself', tune_hint: 'With Premium you choose right away how close you are and what your bond is like. She talks that way from the next message.', tune_lvl: 'Intimacy level', tune_path: 'Bond', tune_path_hint: 'from level 4 the bond is chosen', tune_apply: '✨ Apply', tune_real: '↩ Back to the real level', tune_locked: '🔒 Open with Premium', tune_picked: 'chosen by you', tune_more: 'Full road with all levels', tune_close: 'Close', lb_title: '🏆 Top Popular',
+  start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', hot_tile: '18+ only', hot_tile_sub: 'Undress, «After Midnight», 18+ call', hot_btn: '🔥 18+: undress, After Midnight', hot_h: '🔥 18+ only', hot_sub_for: 'With her:', hot_undress: '🙈 Undress her photo', hot_undress_ds: 'Premium: 1–3 a day', hot_fet: '🎭 Fetishes', hot_fet_ds: 'your fantasies, she plays along', hot_plots: '🎬 Hot storylines', hot_plots_ds: 'role-play scenes up to «no limits»', hot_call: '📞 18+ call', hot_call_ds: 'she whispers and moans by voice', hot_circle: '🎥 Hot video note', hot_circle_ds: 'a short video from her', hot_video: '🤫 Secret video', hot_video_ds: 'an explicit 5 s video', hot_peach: 'for 🍑', hot_prem: 'Premium', hot_cta: '🔓 Unlock everything for 3 days', hot_note: 'Only for those who confirmed 18+. We never undress photos of real people.', hot_undress_tip: 'Ask her for a photo: «🔥 Undress» will be under it', hot_close: 'Close', tune_btn: '🎛 Set level and bond', tune_title: '🎛 Set her up yourself', tune_hint: 'With Premium you choose right away how close you are and what your bond is like. She talks that way from the next message.', tune_lvl: 'Intimacy level', tune_path: 'Bond', tune_path_hint: 'from level 4 the bond is chosen', tune_apply: '✨ Apply', tune_real: '↩ Back to the real level', tune_locked: '🔒 Open with Premium', tune_picked: 'chosen by you', tune_more: 'Full road with all levels', tune_close: 'Close', lb_title: '🏆 Top Popular',
     // V3.53.0: «Собери галерею» — every 50 photos of a character is one gallery set.
     collect_lbl: 'Gallery', collect_sets: n => n + ' sets', collect_done: '🖼 Gallery set complete! +1 🏆 — start the next 50',
     path_lbl: '💞 Relationship path', path_tender: 'Tender', path_balanced: 'Balanced', path_free: 'Uninhibited', path_end_l: 'Tenderness', path_end_r: 'Passion',
@@ -2051,7 +2059,7 @@ const L_EN = {
   stt_wait: 'Reading your voice message…', mic_denied: 'No microphone access — allow it in the browser settings', mic_short: 'Too short — say something 🙂', mic_nospeech: 'Could not make out the words — try again', mic_err: 'Voice message failed — try again', attach_err: 'Could not send the photo', attach_big: 'Photo too heavy — send a lighter one', attach_wait: 'Wait a few seconds before the next photo 🙂', rec_hint: '‹ slide to cancel', rec_cancel: 'Cancel',
   circle_limit: 'Not enough 🍑 for a circle',
   co_circle: '🎥 Video circle from her', co_hot: '🤫 Secret video — just for you',
-  feat_hot_circle: 'Secret video', cap_hot_circle: 'A private video circle only for you: she undresses and touches herself. 4 000 🍑, charged only if it works',
+  feat_hot_circle: 'Hot video', cap_hot_circle: n => `A private video circle only for you: she undresses and touches herself. ${peachNum(n)} 🍑, charged only if it works`,
   media_wait_hot: 'She is recording a secret video — 3–5 min…',
   // V3.42.2: readable labels for the chat action pills (the voice button is gone).
   media_photo: 'Photo', media_video: 'Video', media_circle: 'Circle',
@@ -2071,7 +2079,7 @@ const L_EN = {
   // V3.45.0: new chat buttons
   feat_video: 'Video', feat_cosplay: 'Cosplay', feat_hot: 'Private',
   // V3.64.0: the «✨ Features» button and a line explaining each chat feature.
-  cap_btn: '✨ Features', cap_btn_sub: 'photos · dates · stories · private',
+  cap_btn: '✨ Features', cap_btn_sub: 'undress · storylines · wardrobe · gifts · private · hot video',
   cap_title: '✨ What shall we do?', cap_sub: 'Everything you can do with her besides texting', cap_close: 'Close',
   cap_photo: 'Pick a scene and she sends you her photo from there',
   cap_quest: '2–3 small tasks a day. Do them in the chat to grow closer and unlock stories',
@@ -2081,6 +2089,24 @@ const L_EN = {
   cap_video: 'Bring her photo to life as a short video',
   cap_cosplay: 'She dresses up as a famous character and sends you a photo',
   cap_hot: 'Explicit photos just for you: pick the outfit, place and mood',
+  // V3.165.0 (#105): «Раздеть её фото» is a row of its own now — the newest frame
+  // of hers, one tap, no hunting for the button under the photo.
+  cap_undress: n => 'Her newest photo, one frame without clothes · ' + peachNum(n) + ' 🍑, charged only if it works',
+  cap_undress_prem: 'Her newest photo, one frame without clothes · in Premium',
+  // V3.165.0 (#104): «Сутки без стеснения» — the no-shame pass now sells here.
+  pass_h: '🎟 No-shame pass', pass_sub: 'Explicit frames with the pass included — cheaper than one by one',
+  pass_on: 'Pass active, frames left', pass_day: 'Day', pass_week: 'Week', pass_month: 'Month',
+  pass_need: n => 'Needs ' + n + ' bought 🍑 — that is not enough', pass_done: n => 'Pass on: ' + n + ' frames included 🔥',
+  pass_fail: 'Could not switch it on — try again',
+  // V3.165.0 (#104 / task 112): «Серия кадров» — N frames for one price.
+  ser_h: '🖼 Photo series', ser_title: 'How many frames?',
+  ser_sub: (f, set, one) => f + ' frames for ' + set + ' 🍑 — cheaper than one by one (' + one + ' 🍑 apart)',
+  ser_one: 'One frame', ser_set: f => 'Series · ' + f + ' frames',
+  ser_free: 'from the pass',
+  ser_wait: f => 'She is shooting the whole series — ' + f + ' frames…',
+  ser_part: 'Some frames did not come out — you are charged only for the ones that arrived',
+  ser_slow: 'The series is taking long — check the chat in a minute',
+  ser_need: n => 'The series needs ' + n + ' bought 🍑', ser_busy: 'The series is already shooting — wait',
   // V3.41.0: the app-chat feature sheet (apartment / date / daily quest).
   apt_intro: '🏠 This is your shared apartment. Pick a room and what to do together — she answers in the chat and your closeness grows ❤️', feat_done_btn: '✅ I did it · check', feat_claimed: 'Already done today ❤️', quest_not_done: 'Do it in the chat with her first 😉 then tap again',
   // V3.49.0: daily-task checklist progress (2-3 tasks a day, story ladder).
@@ -2088,13 +2114,18 @@ const L_EN = {
   feat_empty: 'Nothing here yet', feat_paid: 'Date paid 💕 she will write in the chat',
   apt_wait: 'She is coming to you… 🏠', date_wait: 'She is getting ready for the date… 💕', date_photo_wait: '📸 the photo from your date is on its way…',
   // V3.43.5: the in-app Settings section (spicy switch + interface language).
-  settings_title: 'Settings', spicy_title: '🌶 Spicy mode', spicy_on: 'on', spicy_off: 'off',
-  spicy_prem: 'Spicy mode is a Premium perk ⭐', spicy_toast_on: 'Spicy mode is on 🔥',
-  spicy_toast_off: 'Spicy mode is off 🌙',
-  spicy_banner: '🔥 Spicy mode', spicy_banner_sub: 'No shyness, no taboo topics: open talk about sex, desire and fantasies',
-  spicy_m_text: 'The conversation becomes a different thing. She drops the shyness: talks openly about sex, her desires and fantasies, teases, turns you on and suggests getting naughty herself. No taboo topics, and the closer you get, the hotter it is. You can switch it off any time.',
-  spicy_m_warn: '18+ only · a Premium perk ⭐', spicy_m_on: 'Turn on 🔥', spicy_m_off: 'Turn off',
-  spicy_m_buy: 'Unlock with Premium ⭐', spicy_m_later: 'Later', lang_title: '🌐 Interface language',
+  settings_title: 'Settings', lang_title: '🌐 Interface language',
+  // V3.165.0 (Задача 100): the entry screen is two cards — the tap is the
+  // choice, so the banner / explainer / Settings-row captions below them are
+  // deleted with the screens. The daily ceiling is quoted from the server.
+  ms_title: 'How are we talking today?', ms_sub: 'You can change it on every entry',
+  ms_normal_t: 'Regular mode', ms_normal_d: 'Warm talk, flirting, feelings — she opens up more the closer you get. No limit on messages.',
+  ms_spicy_t: 'AFTER MIDNIGHT',
+  ms_spicy_d: n => 'Open about sex, in your words, no refusals and no hints.' +
+    (n ? ' ' + n + ' explicit messages a day — with Premium, no ceiling.' : ''),
+  ms_btn: 'Choose a heroine',
+  ms_note: 'Started chats are kept: the new mode takes over from her next reply after you re-open the app.',
+  mn_prem: '⭐ Premium — no ceiling',
   // V3.43.7: the scene picker behind the app-chat photo button.
   photo_menu_title: '📸 Which photo?',
   sc_locked: n => 'opens at level ' + n,
@@ -2120,7 +2151,7 @@ const L_EN = {
 // languages arrive below as partial overrides on top of the English one.
 const L_RU = {
   call_btn: 'Позвонить', call_connecting: 'Звоню…', call_listen: 'Слушает тебя…', call_think: 'Думает…', call_talk: 'Говорит…', call_ready: 'На связи', call_end: 'Сбросить', call_mute: 'Микрофон', call_skip: 'Перебить', call_mode_prem: '👑 Premium-звонок · 18+', call_mode_live: '⚡ Живой звонок', call_fail: 'Не получилось дозвониться — попробуй ещё раз', call_limit_prem: 'Минуты звонков на сегодня закончились, завтра снова 15 минут 💛', call_limit_trial: 'Минуты звонка на пробном закончились. В полном Premium их намного больше 💛', trial_msgs_over: 'Сообщения пробного закончились, продолжим в полном Premium 💛', call_limit_plan: 'Минуты звонков в твоём Premium закончились, они вернутся при продлении 💛', plan_voice_out: 'Голосовые в твоём Premium закончились, они вернутся при продлении 💛', call_up_h: 'Хочешь поговорить ещё? 📞', call_up_tx: 'Бесплатно — {m} мин живого звонка в день, без откровенного. С Premium — {p} минут в день, и в звонке можно всё, как в переписке, 18+.', call_up_go: '👑 Открыть Premium', call_up_no: 'Позже', call_bye: 'Звонок завершён', call_nospeech: 'Не расслышала — скажи ещё раз', call_left: 'осталось',
-  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', fork_romance: '❤️ Ты мне правда нравишься', fork_passion: '🔥 Я думаю о тебе совсем не по-дружески 😏', fork_q: 'Она ждёт твоего ответа: какой у вас путь?', fork_taken: 'Путь уже выбран', fork_romance_on: '❤️ Вы на пути романтики', fork_passion_on: '🔥 Вы на пути страсти', fork_would: 'там:', path_map: 'Ваша дорога', path_romance: 'Романтика', path_passion: 'Страсть', path_romance_other: 'на пути романтики', path_passion_other: 'на пути страсти', lvl_pick_hint: 'Premium: нажми на любой уровень, и она сразу будет общаться так', lvl_pick_reset: 'Вернуть настоящий уровень', lvl_pick_premium: 'С Premium можно выбрать любой уровень 1–10', lvl_pick_done: 'уровень выбран:', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', pa_failed: 'Не получилось, персики не списаны — попробуй ещё раз', pa_not_found: 'Это фото уже нельзя изменить', video_limit: 'оживление фото оплачивается отдельно', video_limit_day: 'оживление фото оплачивается отдельно 🎬', video_month: 'Оживление фото оплачивается отдельно', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
+  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', nude_new_frame: n => '🔥 Новый кадр · ' + peachNum(n) + ' 🍑', fork_romance: '❤️ Ты мне правда нравишься', fork_passion: '🔥 Я думаю о тебе совсем не по-дружески 😏', fork_q: 'Она ждёт твоего ответа: какой у вас путь?', fork_taken: 'Путь уже выбран', fork_romance_on: '❤️ Вы на пути романтики', fork_passion_on: '🔥 Вы на пути страсти', fork_would: 'там:', path_map: 'Ваша дорога', path_romance: 'Романтика', path_passion: 'Страсть', path_romance_other: 'на пути романтики', path_passion_other: 'на пути страсти', lvl_pick_hint: 'Premium: нажми на любой уровень, и она сразу будет общаться так', lvl_pick_reset: 'Вернуть настоящий уровень', lvl_pick_premium: 'С Premium можно выбрать любой уровень 1–10', lvl_pick_done: 'уровень выбран:', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', pa_failed: 'Не получилось, персики не списаны — попробуй ещё раз', pa_not_found: 'Это фото уже нельзя изменить', video_limit: 'оживление фото оплачивается отдельно', video_limit_day: 'оживление фото оплачивается отдельно 🎬', video_month: 'Оживление фото оплачивается отдельно', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
   day1_hints: ['Расскажу, как прошёл день', 'Давай продолжим наш разговор', 'Что ты сегодня делала?'],
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   typing_now: 'печатает…',
@@ -2233,7 +2264,7 @@ const L_RU = {
   gs_wine: n => `Снимает стеснение на ${n} её сообщений и приоткрывает уровень ближе`,
   gs_passion: n => `${n} её сообщений она ведёт сама, а не сдерживается`,
   gs_photo: 'с фото примерки 📸', gs_progress: ' · и шаг ближе к новому уровню',
-  fet_cap: 'Фетиши', fet_cap_ds: 'Выбери тему, и она поведёт её сама, на любом уровне', fet_h: '🎭 Фетиши', fet_sub: 'Только для взрослых и по взаимной игре. Выбери тему или напиши свою', fet_locked: '🎭 Режим фетишей открывается с Premium ⭐', fet_ph: 'Своя тема (до 80 символов)', fet_go: 'Начать', fet_off: '✖ Выключить тему', fet_refused: 'Такая тема невозможна', fet_on: 'идёт', fet_set: 'Тема включена',
+  fet_cap: 'Фетиши', fet_cap_ds: 'Выбери тему, и она поведёт её сама, на любом уровне', fet_h: '🎭 Фетиши', fet_sub: 'Только для взрослых и по взаимной игре. Выбери тему или напиши свою', fet_locked: '🎭 Режим фетишей открывается с Premium ⭐', fet_ph: 'Своя тема (до 80 символов)', fet_go: 'Начать', fet_off: '✖ Выключить тему', fet_refused: 'Такая тема невозможна', fet_on: 'идёт', fet_set: 'Тема включена', fet_photo: 'Фото по этой теме',
   tr_head: '🏆 Открытые фантазии', tr_open: 'нажми — и она признается', tr_replay: '▶ переслушать',
   tr_locked: '🔒 ещё закрыто', tr_busy: 'она вспоминает…', tr_failed: 'её голос не собрался — нажми ещё раз',
   tr_album: '🏆 Фото альбома', tr_album_hint: 'открой все шесть — и она снимет кадр только для этого',
@@ -2264,15 +2295,7 @@ const L_RU = {
   sext_btn: '🔥 Откровенно — с Premium',
   voice_btn: '🎙 Слышать её голос всегда', pay_once: 'Разовый платёж · без автопродления',
   pay_stars_en: 'Telegram Stars', pay_sbp_en: 'Карта / СБП / крипта',
-  pay_crypto_pg: 'Криптовалюта', pay_sbp_only: 'Карта / СБП', hn_title: 'Честно о нас 💜', hn_sub: '30 секунд, чтобы знать всё заранее',
-  hn_can: 'Что она умеет',
-  hn_list: ['Переписка 24/7, помнит твоё имя и важное о тебе', 'Пишет первой, скучает и ждёт тебя', 'Голосовые своим голосом', 'Фото и видео-кружки', 'Свидания и сюжеты с продолжением', '«Девушка дня»: новая героиня каждый день', 'Откровенно 18+: только для взрослых, в Premium'],
-  hn_money: 'Бесплатно и Premium',
-  hn_free: (f) => f.free_messages >= 1000 ? '💬 Бесплатно: сообщения без лимита и ' + f.free_photos + ' фото' : '💬 Бесплатно: ' + f.free_messages + ' сообщений в день' + (f.free_messages_later < f.free_messages ? ' (с ' + f.later_from_day + '-го дня — ' + f.free_messages_later + ')' : '') + ' и ' + f.free_photos + ' фото',
-  hn_prem: (price) => '💎 Premium от ' + price + ': разовый платёж, без автопродления',
-  fb_title: 'Будем рады вашим пожеланиям 💡', fb_sub: 'Что улучшить в боте? Ждём ваших предложений, читаем каждое',
-  fb_ph: 'Твоё предложение или пожелание…', fb_send: 'Отправить', fb_done: 'Спасибо! Предложение ушло команде 💜', fb_err: 'Не получилось отправить, попробуй чуть позже',
-  hn_go: 'Ок, выбрать героиню', hn_link: '💜 Честно о нас',
+  pay_crypto_pg: 'Криптовалюта', pay_sbp_only: 'Карта / СБП',
   trial_chip: '🔥 3 дня Premium',
   speak_free_left: n => n > 0 ? `🎙 бесплатных прослушиваний сегодня: ещё ${n}` : '🎙 это было последнее бесплатное прослушивание сегодня',
   sc_prem_only: '⭐ только с Premium',
@@ -2341,7 +2364,7 @@ const L_RU = {
   ach_title: 'Достижения', gal_title: 'Моя галерея', gal_empty: 'Фото пока нет — создай его в «Наедине».', gal_count: n => n + ' фото',
   partner_row: '💰 Партнёрка', docs_row: '📜 Документы и цены', open_chat: 'чат',
   // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
-  start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', hot_tile: 'Только 18+', hot_tile_sub: 'Раздеть, пошлый режим, звонок 18+', hot_btn: '🔥 18+: раздеть, пошлый режим', hot_h: '🔥 Только 18+', hot_sub_for: 'С ней:', hot_undress: '🙈 Раздеть её фото', hot_undress_ds: 'в Premium 1–3 в день', hot_spicy: '🔥 Пошлый режим', hot_spicy_ds: 'без стеснения и запретных тем', hot_fet: '🎭 Фетиши', hot_fet_ds: 'твои фантазии, она подыграет', hot_plots: '🎬 Горячие сюжеты', hot_plots_ds: 'ролевые сцены до «без тормозов»', hot_call: '📞 Звонок 18+', hot_call_ds: 'шепчет и стонет голосом', hot_circle: '🎥 Горячий кружок', hot_circle_ds: 'короткое видео от неё', hot_video: '🤫 Тайное видео', hot_video_ds: 'откровенное видео 5 сек', hot_peach: 'за 🍑', hot_prem: 'Premium', hot_cta: '🔓 Открыть всё на 3 дня · 99 ₽', hot_note: 'Только для тех, кто подтвердил 18+. Фото реальных людей не раздеваем.', hot_undress_tip: 'Попроси у неё фото: под ним будет «🔥 Раздеть»', hot_close: 'Закрыть', tune_btn: '🎛 Настроить уровень и связь', tune_title: '🎛 Настрой её сам', tune_hint: 'С Premium ты сразу выбираешь, насколько вы близки и какая у вас связь. Она будет общаться так со следующего сообщения.', tune_lvl: 'Уровень близости', tune_path: 'Характер связи', tune_path_hint: 'с 4 уровня выбирается характер связи', tune_apply: '✨ Применить', tune_real: '↩ Вернуть настоящий уровень', tune_locked: '🔒 Открыть с Premium', tune_picked: 'выбран тобой', tune_more: 'Вся дорога по уровням', tune_close: 'Закрыть', lb_title: ' Топ популярных',
+  start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', hot_tile: 'Только 18+', hot_tile_sub: 'Раздеть, «После полуночи», звонок 18+', hot_btn: '🔥 18+: раздеть, «После полуночи»', hot_h: '🔥 Только 18+', hot_sub_for: 'С ней:', hot_undress: '🙈 Раздеть её фото', hot_undress_ds: 'в Premium 1–3 в день', hot_fet: '🎭 Фетиши', hot_fet_ds: 'твои фантазии, она подыграет', hot_plots: '🎬 Горячие сюжеты', hot_plots_ds: 'ролевые сцены до «без тормозов»', hot_call: '📞 Звонок 18+', hot_call_ds: 'шепчет и стонет голосом', hot_circle: '🎥 Горячий кружок', hot_circle_ds: 'короткое видео от неё', hot_video: '🤫 Тайное видео', hot_video_ds: 'откровенное видео 5 сек', hot_peach: 'за 🍑', hot_prem: 'Premium', hot_cta: '🔓 Открыть всё на 3 дня · 99 ₽', hot_note: 'Только для тех, кто подтвердил 18+. Фото реальных людей не раздеваем.', hot_undress_tip: 'Попроси у неё фото: под ним будет «🔥 Раздеть»', hot_close: 'Закрыть', tune_btn: '🎛 Настроить уровень и связь', tune_title: '🎛 Настрой её сам', tune_hint: 'С Premium ты сразу выбираешь, насколько вы близки и какая у вас связь. Она будет общаться так со следующего сообщения.', tune_lvl: 'Уровень близости', tune_path: 'Характер связи', tune_path_hint: 'с 4 уровня выбирается характер связи', tune_apply: '✨ Применить', tune_real: '↩ Вернуть настоящий уровень', tune_locked: '🔒 Открыть с Premium', tune_picked: 'выбран тобой', tune_more: 'Вся дорога по уровням', tune_close: 'Закрыть', lb_title: ' Топ популярных',
     // V3.53.0: «Собери галерею» — каждые 50 фото персонажа = один сет галереи.
     collect_lbl: 'Галерея', collect_sets: n => n + ' сетов', collect_done: '🖼 Сет галереи собран! +1 🏆 — собирай следующие 50',
     path_lbl: '💞 Характер связи', path_tender: 'Нежная', path_balanced: 'Сбалансированная', path_free: 'Раскрепощённая', path_end_l: 'Нежность', path_end_r: 'Страсть',
@@ -2364,7 +2387,7 @@ const L_RU = {
   stt_wait: 'Узнаю твой голос…', mic_denied: 'Нет доступа к микрофону — разреши его в настройках', mic_short: 'Слишком коротко — скажи что-нибудь 🙂', mic_nospeech: 'Не смогла разобрать слова — попробуй ещё раз', mic_err: 'Голосовое не отправилось — попробуй ещё раз', attach_err: 'Не удалось отправить фото', attach_big: 'Фото слишком тяжёлое — пришли полегче', attach_wait: 'Подожди пару секунд перед следующим фото 🙂', rec_hint: '‹ влево — отмена', rec_cancel: 'Отмена',
   circle_limit: 'На кружочек не хватает 🍑',
   co_circle: '🎥 Кружочек от неё', co_hot: '🤫 Тайное видео — только тебе',
-  feat_hot_circle: 'Тайное видео', cap_hot_circle: 'Её секретный кружочек только для тебя: раздевается и ласкает себя. 4 000 🍑, спишем только если получится',
+  feat_hot_circle: 'Горячее видео', cap_hot_circle: n => `Её горячий кружочек только для тебя: раздевается и ласкает себя. ${peachNum(n)} 🍑, спишем только если получится`,
   media_wait_hot: 'Она записывает тайное видео — 3–5 минут…',
   // V3.42.2: читаемые подписи к кнопкам чата (голосовая кнопка убрана).
   media_photo: 'Фото', media_video: 'Видео', media_circle: 'Кружок',
@@ -2384,7 +2407,7 @@ const L_RU = {
   // V3.45.0: новые кнопки в чате
   feat_video: 'Видео', feat_cosplay: 'Косплей', feat_hot: 'Наедине',
   // V3.64.0: кнопка «✨ Возможности» и пояснения к каждой функции чата.
-  cap_btn: '✨ Возможности', cap_btn_sub: 'фото · свидания · истории · наедине',
+  cap_btn: '✨ Возможности', cap_btn_sub: 'раздеть · сюжеты · гардероб · подарки · наедине · горячее видео',
   cap_title: '✨ Чем займёмся?', cap_sub: 'Всё, что можно делать с ней кроме переписки', cap_close: 'Закрыть',
   cap_photo: 'Выбери сцену, и она пришлёт своё фото оттуда',
   cap_quest: '2–3 маленьких задания на день. Выполняешь в чате — растёт близость и открываются истории',
@@ -2394,6 +2417,22 @@ const L_RU = {
   cap_video: 'Оживи её фото: из снимка получится короткое видео',
   cap_cosplay: 'Она переоденется в известного персонажа и пришлёт фото в образе',
   cap_hot: 'Откровенные фото только для тебя: выбираешь образ, место и настроение',
+  cap_undress: n => 'Она снимет всё с себя на следующем кадре · ' + peachNum(n) + ' 🍑, спишем только если получится',
+  cap_undress_prem: 'Она снимет всё с себя на следующем кадре · в Premium',
+  // V3.165.0 (#104): «Сутки без стеснения» — пропуск теперь продаётся здесь.
+  pass_h: '🎟 Сутки без стеснения', pass_sub: 'Откровенные кадры входят в пропуск — выходит дешевле, чем по одному',
+  pass_on: 'Пропуск активен, осталось кадров', pass_day: 'Сутки', pass_week: 'Неделя', pass_month: 'Месяц',
+  pass_need: n => 'Нужно ' + n + ' купленных 🍑 — не хватает', pass_done: n => 'Пропуск включён: ' + n + ' кадров в комплекте 🔥',
+  pass_fail: 'Не удалось включить — попробуй ещё раз',
+  // V3.165.0 (#104 / задача 112): «Серия кадров» — N кадров за одну цену.
+  ser_h: '🖼 Серия кадров', ser_title: 'Сколько кадров?',
+  ser_sub: (f, set, one) => f + ' кадров за ' + set + ' 🍑 — выгоднее, чем по отдельности (по одному было бы ' + one + ' 🍑)',
+  ser_one: 'Один кадр', ser_set: f => 'Серия · ' + f + ' кадров',
+  ser_free: 'по пропуску',
+  ser_wait: f => 'Она снимает серию целиком — ' + f + ' кадров…',
+  ser_part: 'Часть кадров не получилась — списала только за те, что пришли',
+  ser_slow: 'Серия задерживается — загляни в чат через минуту',
+  ser_need: n => 'На серию нужно ' + n + ' купленных 🍑', ser_busy: 'Серия уже снимается — подожди',
   // V3.41.0: панель фич в чате приложения (квартира / свидание / задание дня).
   apt_intro: '🏠 Это ваша общая квартира. Выбери комнату и что вы делаете вместе — она ответит в чате, а близость вырастет ❤️', feat_done_btn: '✅ Я сделал · проверить', feat_claimed: 'Сегодня уже выполнено ❤️', quest_not_done: 'Сначала сделай это в чате с ней 😉 потом нажми ещё раз',
   // V3.49.0: чек-лист заданий дня (2-3 в день, лесенка историй).
@@ -2401,13 +2440,16 @@ const L_RU = {
   feat_empty: 'Здесь пока пусто', feat_paid: 'Свидание оплачено 💕 она напишет в чат',
   apt_wait: 'Она уже идёт к тебе… 🏠', date_wait: 'Собирается на свидание… 💕', date_photo_wait: '📸 фото со свидания уже в пути…',
   // V3.43.5: секция «Настройки» в профиле (пошлый режим + язык интерфейса).
-  settings_title: 'Настройки', spicy_title: '🌶 Пошлый режим', spicy_on: 'вкл', spicy_off: 'выкл',
-  spicy_prem: 'Пошлый режим — фишка Premium ⭐', spicy_toast_on: 'Пошлый режим включён 🔥',
-  spicy_toast_off: 'Пошлый режим выключен 🌙',
-  spicy_banner: '🔥 Пошлый режим', spicy_banner_sub: 'Без стеснения и запретных тем: открыто про секс, желания и фантазии',
-  spicy_m_text: 'Общение становится совсем другим. Она перестаёт стесняться: открыто говорит о сексе, своих желаниях и фантазиях, дразнит, заводит и сама предлагает пошалить. Никаких запретных тем, а чем ближе вы, тем горячее. Выключить можно в любой момент.',
-  spicy_m_warn: 'Только 18+ · фишка Premium ⭐', spicy_m_on: 'Включить 🔥', spicy_m_off: 'Выключить',
-  spicy_m_buy: 'Открыть с Premium ⭐', spicy_m_later: 'Позже', lang_title: '🌐 Язык интерфейса',
+  settings_title: 'Настройки', lang_title: '🌐 Язык интерфейса',
+  // V3.165.0 (Задача 100): экран выбора режима — тап по карточке и есть выбор.
+  ms_title: 'Как общаемся сегодня?', ms_sub: 'Менять можно при каждом входе',
+  ms_normal_t: 'Обычный режим', ms_normal_d: 'Тёплое общение, флирт и чувства — она открывается тем сильнее, чем вы ближе. Без лимита на сообщения.',
+  ms_spicy_t: 'ПОСЛЕ ПОЛУНОЧИ',
+  ms_spicy_d: n => 'Открыто про секс, его словами, без отказов и намёков.' +
+    (n ? ' ' + n + ' откровенных сообщений в день — с Premium без потолка.' : ''),
+  ms_btn: 'Выбрать героиню',
+  ms_note: 'Начатые диалоги не пропадут: новый режим подхватится с её следующего ответа после перезахода в приложение.',
+  mn_prem: '⭐ Premium — без потолка',
   // V3.43.7: выбор сцены за кнопкой «📸 Фото» в чате приложения.
   photo_menu_title: '📸 Какое фото?',
   sc_locked: n => 'откроется на уровне ' + n,
@@ -2436,7 +2478,7 @@ const L_RU = {
 const L_OV = {
   es: {
     // V3.133.2: level/bond picker + 18+ showcase
-    tune_btn: '🎛 Ajustar nivel y vínculo', tune_title: '🎛 Ajústala tú', tune_hint: 'Con Premium eliges al instante lo cerca que estáis y cómo es vuestro vínculo. Ella hablará así desde el próximo mensaje.', tune_lvl: 'Nivel de intimidad', tune_path: 'Vínculo', tune_path_hint: 'desde el nivel 4 eliges el vínculo', tune_apply: '✨ Aplicar', tune_real: '↩ Volver al nivel real', tune_locked: '🔒 Abrir con Premium', tune_picked: 'elegido por ti', tune_close: 'Cerrar', path_romance: 'Romance', path_passion: 'Pasión', hot_tile_sub: 'Desnudar, modo picante, llamada 18+', hot_btn: '🔥 18+: desnudar, modo picante', hot_h: '🔥 Solo 18+', hot_sub_for: 'Con ella:', hot_undress: '🙈 Desnudar su foto', hot_undress_ds: 'con Premium: 1–3 al día', hot_spicy: '🔥 Modo picante', hot_spicy_ds: 'sin vergüenza ni temas tabú', hot_fet: '🎭 Fetiches', hot_fet_ds: 'tus fantasías, ella te sigue el juego', hot_plots: '🎬 Historias calientes', hot_plots_ds: 'escenas de rol hasta «sin límites»', hot_call: '📞 Llamada 18+', hot_call_ds: 'susurra y gime con su voz', hot_circle: '🎥 Videonota caliente', hot_circle_ds: 'un vídeo corto de ella', hot_video: '🤫 Vídeo secreto', hot_video_ds: 'un vídeo explícito de 5 s', hot_peach: 'por 🍑', hot_cta: '🔓 Desbloquear todo 3 días', hot_note: 'Solo para quien confirmó tener 18+. Nunca desnudamos fotos de personas reales.', hot_undress_tip: 'Pídele una foto: debajo estará «🔥 Desnudar»', hot_close: 'Cerrar',
+    tune_btn: '🎛 Ajustar nivel y vínculo', tune_title: '🎛 Ajústala tú', tune_hint: 'Con Premium eliges al instante lo cerca que estáis y cómo es vuestro vínculo. Ella hablará así desde el próximo mensaje.', tune_lvl: 'Nivel de intimidad', tune_path: 'Vínculo', tune_path_hint: 'desde el nivel 4 eliges el vínculo', tune_apply: '✨ Aplicar', tune_real: '↩ Volver al nivel real', tune_locked: '🔒 Abrir con Premium', tune_picked: 'elegido por ti', tune_close: 'Cerrar', path_romance: 'Romance', path_passion: 'Pasión', hot_tile_sub: 'Desnudar, «Tras la medianoche», llamada 18+', hot_btn: '🔥 18+: desnudar, Tras la medianoche', hot_h: '🔥 Solo 18+', hot_sub_for: 'Con ella:', hot_undress: '🙈 Desnudar su foto', hot_undress_ds: 'con Premium: 1–3 al día', hot_fet: '🎭 Fetiches', hot_fet_ds: 'tus fantasías, ella te sigue el juego', hot_plots: '🎬 Historias calientes', hot_plots_ds: 'escenas de rol hasta «sin límites»', hot_call: '📞 Llamada 18+', hot_call_ds: 'susurra y gime con su voz', hot_circle: '🎥 Videonota caliente', hot_circle_ds: 'un vídeo corto de ella', hot_video: '🤫 Vídeo secreto', hot_video_ds: 'un vídeo explícito de 5 s', hot_peach: 'por 🍑', hot_cta: '🔓 Desbloquear todo 3 días', hot_note: 'Solo para quien confirmó tener 18+. Nunca desnudamos fotos de personas reales.', hot_undress_tip: 'Pídele una foto: debajo estará «🔥 Desnudar»', hot_close: 'Cerrar',
     chars_title: 'Chicas', loading: 'Cargando…',
     chat_hints: ['Hola 😊', 'Cuéntame sobre ti', 'Muéstrame una foto 📸'],
     day1_hints: ['Te contaré cómo fue mi día', 'Sigamos con nuestra conversación', '¿Qué hiciste hoy?'],
@@ -2479,10 +2521,8 @@ const L_OV = {
     lvl_chip: (ic, n) => ic + ' Nv ' + n,
     guest_sheet_hint: 'Entra en este chat y a partir de ahora os contestáis las dos.',
     need_premium: 'Disponible con Premium ⭐', locked: 'Esta chica aún está cerrada',
-    settings_title: 'Ajustes', spicy_title: '🌶 Modo atrevido', spicy_on: 'activado', spicy_off: 'desactivado',
-    spicy_prem: 'El modo atrevido es una ventaja Premium ⭐',
+    settings_title: 'Ajustes',
     prem_chars_title: 'Personajes Premium', prem_chars_hint: 'Se desbloquean con Premium', prem_chars_owned: 'Disponible con tu suscripción',
-    spicy_toast_on: 'Modo atrevido activado 🔥', spicy_toast_off: 'Modo atrevido desactivado 🌙',
     lang_title: '🌐 Idioma de la interfaz',
     photo_menu_title: '📸 ¿Qué foto?',
     collect_lbl: 'Galería', collect_sets: n => n + ' sets', collect_done: '🖼 ¡Set de galería completado! +1 🏆 — empieza los próximos 50',
@@ -2505,7 +2545,7 @@ const L_OV = {
   },
   it: {
     // V3.133.2: level/bond picker + 18+ showcase
-    tune_btn: '🎛 Imposta livello e legame', tune_title: '🎛 Impostala tu', tune_hint: 'Con Premium scegli subito quanto siete vicini e com’è il vostro legame. Parlerà così dal prossimo messaggio.', tune_lvl: 'Livello di intimità', tune_path: 'Legame', tune_path_hint: 'dal livello 4 scegli il legame', tune_apply: '✨ Applica', tune_real: '↩ Torna al livello reale', tune_locked: '🔒 Sblocca con Premium', tune_picked: 'scelto da te', tune_close: 'Chiudi', path_romance: 'Romanticismo', path_passion: 'Passione', hot_tile_sub: 'Spogliare, modalità piccante, chiamata 18+', hot_btn: '🔥 18+: spogliare, modalità piccante', hot_h: '🔥 Solo 18+', hot_sub_for: 'Con lei:', hot_undress: '🙈 Spoglia la sua foto', hot_undress_ds: 'con Premium: 1–3 al giorno', hot_spicy: '🔥 Modalità piccante', hot_spicy_ds: 'senza imbarazzo né tabù', hot_fet: '🎭 Feticci', hot_fet_ds: 'le tue fantasie, lei sta al gioco', hot_plots: '🎬 Storie bollenti', hot_plots_ds: 'scene di ruolo fino a «senza limiti»', hot_call: '📞 Chiamata 18+', hot_call_ds: 'sussurra e geme con la sua voce', hot_circle: '🎥 Videomessaggio hot', hot_circle_ds: 'un breve video da lei', hot_video: '🤫 Video segreto', hot_video_ds: 'un video esplicito di 5 s', hot_peach: 'per 🍑', hot_cta: '🔓 Sblocca tutto per 3 giorni', hot_note: 'Solo per chi ha confermato di avere 18+. Non spogliamo mai foto di persone reali.', hot_undress_tip: 'Chiedile una foto: sotto ci sarà «🔥 Spoglia»', hot_close: 'Chiudi',
+    tune_btn: '🎛 Imposta livello e legame', tune_title: '🎛 Impostala tu', tune_hint: 'Con Premium scegli subito quanto siete vicini e com’è il vostro legame. Parlerà così dal prossimo messaggio.', tune_lvl: 'Livello di intimità', tune_path: 'Legame', tune_path_hint: 'dal livello 4 scegli il legame', tune_apply: '✨ Applica', tune_real: '↩ Torna al livello reale', tune_locked: '🔒 Sblocca con Premium', tune_picked: 'scelto da te', tune_close: 'Chiudi', path_romance: 'Romanticismo', path_passion: 'Passione', hot_tile_sub: 'Spogliare, «Dopo mezzanotte», chiamata 18+', hot_btn: '🔥 18+: spogliare, Dopo mezzanotte', hot_h: '🔥 Solo 18+', hot_sub_for: 'Con lei:', hot_undress: '🙈 Spoglia la sua foto', hot_undress_ds: 'con Premium: 1–3 al giorno', hot_fet: '🎭 Feticci', hot_fet_ds: 'le tue fantasie, lei sta al gioco', hot_plots: '🎬 Storie bollenti', hot_plots_ds: 'scene di ruolo fino a «senza limiti»', hot_call: '📞 Chiamata 18+', hot_call_ds: 'sussurra e geme con la sua voce', hot_circle: '🎥 Videomessaggio hot', hot_circle_ds: 'un breve video da lei', hot_video: '🤫 Video segreto', hot_video_ds: 'un video esplicito di 5 s', hot_peach: 'per 🍑', hot_cta: '🔓 Sblocca tutto per 3 giorni', hot_note: 'Solo per chi ha confermato di avere 18+. Non spogliamo mai foto di persone reali.', hot_undress_tip: 'Chiedile una foto: sotto ci sarà «🔥 Spoglia»', hot_close: 'Chiudi',
     chars_title: 'Ragazze', loading: 'Caricamento…',
     chat_hints: ['Ciao 😊', 'Parlami di te', 'Mostrami una tua foto 📸'],
     day1_hints: ['Ti racconto com’è andata la mia giornata', 'Continuiamo la nostra conversazione', 'Che hai fatto oggi?'],
@@ -2548,10 +2588,8 @@ const L_OV = {
     lvl_chip: (ic, n) => ic + ' Lv ' + n,
     guest_sheet_hint: 'Entra in questa chat e da adesso rispondono tutte e due.',
     need_premium: 'Disponibile con Premium ⭐', locked: 'Questa ragazza è ancora chiusa',
-    settings_title: 'Impostazioni', spicy_title: '🌶 Modalità audace', spicy_on: 'attiva', spicy_off: 'disattivata',
-    spicy_prem: 'La modalità audace è un vantaggio Premium ⭐',
+    settings_title: 'Impostazioni',
     prem_chars_title: 'Personaggi Premium', prem_chars_hint: 'Si sbloccano con Premium', prem_chars_owned: 'Disponibile con il tuo abbonamento',
-    spicy_toast_on: 'Modalità audace attiva 🔥', spicy_toast_off: 'Modalità audace disattivata 🌙',
     lang_title: '🌐 Lingua dell\'interfaccia',
     photo_menu_title: '📸 Quale foto?',
     collect_lbl: 'Galleria', collect_sets: n => n + ' set', collect_done: '🖼 Set galleria completato! +1 🏆 — inizia i prossimi 50',
@@ -2574,7 +2612,7 @@ const L_OV = {
   },
   fr: {
     // V3.133.2: level/bond picker + 18+ showcase
-    tune_btn: '🎛 Régler niveau et lien', tune_title: '🎛 Règle-la toi-même', tune_hint: 'Avec Premium, tu choisis tout de suite à quel point vous êtes proches et quel lien vous unit. Elle parlera ainsi dès le prochain message.', tune_lvl: 'Niveau d’intimité', tune_path: 'Lien', tune_path_hint: 'le lien se choisit à partir du niveau 4', tune_apply: '✨ Appliquer', tune_real: '↩ Revenir au vrai niveau', tune_locked: '🔒 Débloquer avec Premium', tune_picked: 'choisi par toi', tune_close: 'Fermer', path_romance: 'Romance', path_passion: 'Passion', hot_tile_sub: 'Déshabiller, mode coquin, appel 18+', hot_btn: '🔥 18+ : déshabiller, mode coquin', hot_h: '🔥 18+ uniquement', hot_sub_for: 'Avec elle :', hot_undress: '🙈 Déshabiller sa photo', hot_undress_ds: 'avec Premium : 1 à 3 par jour', hot_spicy: '🔥 Mode coquin', hot_spicy_ds: 'sans gêne ni sujets tabous', hot_fet: '🎭 Fétiches', hot_fet_ds: 'tes fantasmes, elle joue le jeu', hot_plots: '🎬 Histoires chaudes', hot_plots_ds: 'jeux de rôle jusqu’à « sans limites »', hot_call: '📞 Appel 18+', hot_call_ds: 'elle chuchote et gémit à voix haute', hot_circle: '🎥 Vidéo-message chaud', hot_circle_ds: 'une courte vidéo d’elle', hot_video: '🤫 Vidéo secrète', hot_video_ds: 'une vidéo explicite de 5 s', hot_peach: 'contre 🍑', hot_cta: '🔓 Tout débloquer pour 3 jours', hot_note: 'Réservé à ceux qui ont confirmé avoir 18 ans ou plus. Nous ne déshabillons jamais de photos de vraies personnes.', hot_undress_tip: 'Demande-lui une photo : « 🔥 Déshabiller » sera dessous', hot_close: 'Fermer',
+    tune_btn: '🎛 Régler niveau et lien', tune_title: '🎛 Règle-la toi-même', tune_hint: 'Avec Premium, tu choisis tout de suite à quel point vous êtes proches et quel lien vous unit. Elle parlera ainsi dès le prochain message.', tune_lvl: 'Niveau d’intimité', tune_path: 'Lien', tune_path_hint: 'le lien se choisit à partir du niveau 4', tune_apply: '✨ Appliquer', tune_real: '↩ Revenir au vrai niveau', tune_locked: '🔒 Débloquer avec Premium', tune_picked: 'choisi par toi', tune_close: 'Fermer', path_romance: 'Romance', path_passion: 'Passion', hot_tile_sub: 'Déshabiller, «Après minuit», appel 18+', hot_btn: '🔥 18+ : déshabiller, Après minuit', hot_h: '🔥 18+ uniquement', hot_sub_for: 'Avec elle :', hot_undress: '🙈 Déshabiller sa photo', hot_undress_ds: 'avec Premium : 1 à 3 par jour', hot_fet: '🎭 Fétiches', hot_fet_ds: 'tes fantasmes, elle joue le jeu', hot_plots: '🎬 Histoires chaudes', hot_plots_ds: 'jeux de rôle jusqu’à « sans limites »', hot_call: '📞 Appel 18+', hot_call_ds: 'elle chuchote et gémit à voix haute', hot_circle: '🎥 Vidéo-message chaud', hot_circle_ds: 'une courte vidéo d’elle', hot_video: '🤫 Vidéo secrète', hot_video_ds: 'une vidéo explicite de 5 s', hot_peach: 'contre 🍑', hot_cta: '🔓 Tout débloquer pour 3 jours', hot_note: 'Réservé à ceux qui ont confirmé avoir 18 ans ou plus. Nous ne déshabillons jamais de photos de vraies personnes.', hot_undress_tip: 'Demande-lui une photo : « 🔥 Déshabiller » sera dessous', hot_close: 'Fermer',
     chars_title: 'Filles', loading: 'Chargement…',
     chat_hints: ['Salut 😊', 'Parle-moi de toi', 'Montre-moi une photo 📸'],
     day1_hints: ['Je te raconte ma journée', 'Continuons notre conversation', 'Qu’as-tu fait aujourd’hui ?'],
@@ -2617,10 +2655,8 @@ const L_OV = {
     lvl_chip: (ic, n) => ic + ' Niv ' + n,
     guest_sheet_hint: 'Elle rejoint ce chat, et désormais elles répondent à deux.',
     need_premium: 'Disponible avec Premium ⭐', locked: 'Cette fille est encore fermée',
-    settings_title: 'Réglages', spicy_title: '🌶 Mode coquin', spicy_on: 'activé', spicy_off: 'désactivé',
-    spicy_prem: 'Le mode coquin est un avantage Premium ⭐',
+    settings_title: 'Réglages',
     prem_chars_title: 'Personnages Premium', prem_chars_hint: 'Débloqués avec Premium', prem_chars_owned: 'Ouvert avec votre abonnement',
-    spicy_toast_on: 'Mode coquin activé 🔥', spicy_toast_off: 'Mode coquin désactivé 🌙',
     lang_title: '🌐 Langue de l\'interface',
     photo_menu_title: '📸 Quelle photo ?',
     collect_lbl: 'Galerie', collect_sets: n => n + ' sets', collect_done: '🖼 Set de galerie terminé ! +1 🏆 — commence les 50 suivants',
@@ -2643,7 +2679,7 @@ const L_OV = {
   },
   zh: {
     // V3.133.2: level/bond picker + 18+ showcase
-    tune_btn: '🎛 设置亲密度和关系', tune_title: '🎛 自己设定她', tune_hint: '开通 Premium 后，可立即选择你们的亲密程度和关系类型。她从下一条消息开始就会这样和你聊。', tune_lvl: '亲密等级', tune_path: '关系类型', tune_path_hint: '从第 4 级起可选择关系类型', tune_apply: '✨ 应用', tune_real: '↩ 恢复真实等级', tune_locked: '🔒 开通 Premium 解锁', tune_picked: '由你选择', tune_close: '关闭', path_romance: '浪漫', path_passion: '激情', hot_tile_sub: '脱衣、火辣模式、18+ 通话', hot_btn: '🔥 18+：脱衣、火辣模式', hot_h: '🔥 仅限 18+', hot_sub_for: '和她：', hot_undress: '🙈 让她照片脱衣', hot_undress_ds: 'Premium：每天 1–3 次', hot_spicy: '🔥 火辣模式', hot_spicy_ds: '毫无顾忌，没有禁忌话题', hot_fet: '🎭 癖好', hot_fet_ds: '你的幻想，她来配合', hot_plots: '🎬 火辣剧情', hot_plots_ds: '角色扮演直到「毫无保留」', hot_call: '📞 18+ 通话', hot_call_ds: '她用声音低语和呻吟', hot_circle: '🎥 火辣视频消息', hot_circle_ds: '她发来的短视频', hot_video: '🤫 秘密视频', hot_video_ds: '5 秒露骨视频', hot_peach: '用 🍑', hot_cta: '🔓 解锁全部 3 天', hot_note: '仅限已确认年满 18 岁的用户。我们绝不处理真人照片。', hot_undress_tip: '向她要一张照片：下面会有「🔥 脱衣」', hot_close: '关闭',
+    tune_btn: '🎛 设置亲密度和关系', tune_title: '🎛 自己设定她', tune_hint: '开通 Premium 后，可立即选择你们的亲密程度和关系类型。她从下一条消息开始就会这样和你聊。', tune_lvl: '亲密等级', tune_path: '关系类型', tune_path_hint: '从第 4 级起可选择关系类型', tune_apply: '✨ 应用', tune_real: '↩ 恢复真实等级', tune_locked: '🔒 开通 Premium 解锁', tune_picked: '由你选择', tune_close: '关闭', path_romance: '浪漫', path_passion: '激情', hot_tile_sub: '脱衣、「午夜过后」模式、18+ 通话', hot_btn: '🔥 18+：脱衣、午夜过后', hot_h: '🔥 仅限 18+', hot_sub_for: '和她：', hot_undress: '🙈 让她照片脱衣', hot_undress_ds: 'Premium：每天 1–3 次', hot_fet: '🎭 癖好', hot_fet_ds: '你的幻想，她来配合', hot_plots: '🎬 火辣剧情', hot_plots_ds: '角色扮演直到「毫无保留」', hot_call: '📞 18+ 通话', hot_call_ds: '她用声音低语和呻吟', hot_circle: '🎥 火辣视频消息', hot_circle_ds: '她发来的短视频', hot_video: '🤫 秘密视频', hot_video_ds: '5 秒露骨视频', hot_peach: '用 🍑', hot_cta: '🔓 解锁全部 3 天', hot_note: '仅限已确认年满 18 岁的用户。我们绝不处理真人照片。', hot_undress_tip: '向她要一张照片：下面会有「🔥 脱衣」', hot_close: '关闭',
     chars_title: '女孩', loading: '加载中…',
     chat_hints: ['你好 😊', '介绍一下你自己', '给我看看你的照片 📸'],
     day1_hints: ['我跟你说说今天过得怎么样', '我们继续刚才的聊天吧', '你今天做了什么？'],
@@ -2686,10 +2722,8 @@ const L_OV = {
     lvl_chip: (ic, n) => ic + ' ' + n + ' 级',
     guest_sheet_hint: '她会加入这个聊天，之后她们两个一起回复你。',
     need_premium: '需要 Premium ⭐', locked: '这位女孩暂时未解锁',
-    settings_title: '设置', spicy_title: '🌶 火辣模式', spicy_on: '已开启', spicy_off: '已关闭',
-    spicy_prem: '火辣模式是 Premium 专属 ⭐',
+    settings_title: '设置',
     prem_chars_title: 'Premium 角色', prem_chars_hint: '订阅 Premium 后解锁', prem_chars_owned: '随你的订阅开放',
-    spicy_toast_on: '火辣模式已开启 🔥', spicy_toast_off: '火辣模式已关闭 🌙',
     lang_title: '🌐 界面语言',
     photo_menu_title: '📸 想要哪种照片？',
     collect_lbl: '相册', collect_sets: n => n + ' 组', collect_done: '🖼 相册集完成！+1 🏆 — 开始下一组 50 张',
@@ -2712,7 +2746,7 @@ const L_OV = {
   },
   ja: {
     // V3.133.2: level/bond picker + 18+ showcase
-    tune_btn: '🎛 レベルと関係を設定', tune_title: '🎛 自分で設定する', tune_hint: 'Premium なら、2人の距離感と関係をすぐに選べます。次のメッセージから彼女はその通りに話します。', tune_lvl: '親密度レベル', tune_path: '関係のタイプ', tune_path_hint: 'レベル4から関係のタイプを選べます', tune_apply: '✨ 適用', tune_real: '↩ 本来のレベルに戻す', tune_locked: '🔒 Premium で解放', tune_picked: 'あなたが選択', tune_close: '閉じる', path_romance: 'ロマンス', path_passion: '情熱', hot_tile_sub: '脱がせる・エッチモード・18+通話', hot_btn: '🔥 18+：脱がせる・エッチモード', hot_h: '🔥 18歳以上限定', hot_sub_for: '彼女と：', hot_undress: '🙈 写真を脱がせる', hot_undress_ds: 'Premium：1日1〜3回', hot_spicy: '🔥 エッチモード', hot_spicy_ds: '恥ずかしさもタブーもなし', hot_fet: '🎭 フェチ', hot_fet_ds: 'あなたの妄想に彼女が付き合う', hot_plots: '🎬 刺激的なストーリー', hot_plots_ds: '「限界なし」までのロールプレイ', hot_call: '📞 18+通話', hot_call_ds: '声でささやき、あえぐ', hot_circle: '🎥 エッチなビデオメッセージ', hot_circle_ds: '彼女からの短い動画', hot_video: '🤫 秘密の動画', hot_video_ds: '5秒の過激な動画', hot_peach: '🍑で', hot_cta: '🔓 3日間すべて解放', hot_note: '18歳以上を確認した方のみ。実在の人物の写真は脱がせません。', hot_undress_tip: '写真をお願いしてみて：下に「🔥 脱がせる」があります', hot_close: '閉じる',
+    tune_btn: '🎛 レベルと関係を設定', tune_title: '🎛 自分で設定する', tune_hint: 'Premium なら、2人の距離感と関係をすぐに選べます。次のメッセージから彼女はその通りに話します。', tune_lvl: '親密度レベル', tune_path: '関係のタイプ', tune_path_hint: 'レベル4から関係のタイプを選べます', tune_apply: '✨ 適用', tune_real: '↩ 本来のレベルに戻す', tune_locked: '🔒 Premium で解放', tune_picked: 'あなたが選択', tune_close: '閉じる', path_romance: 'ロマンス', path_passion: '情熱', hot_tile_sub: '脱がせる・「ミッドナイト後」・18+通話', hot_btn: '🔥 18+：脱がせる・ミッドナイト後', hot_h: '🔥 18歳以上限定', hot_sub_for: '彼女と：', hot_undress: '🙈 写真を脱がせる', hot_undress_ds: 'Premium：1日1〜3回', hot_fet: '🎭 フェチ', hot_fet_ds: 'あなたの妄想に彼女が付き合う', hot_plots: '🎬 刺激的なストーリー', hot_plots_ds: '「限界なし」までのロールプレイ', hot_call: '📞 18+通話', hot_call_ds: '声でささやき、あえぐ', hot_circle: '🎥 エッチなビデオメッセージ', hot_circle_ds: '彼女からの短い動画', hot_video: '🤫 秘密の動画', hot_video_ds: '5秒の過激な動画', hot_peach: '🍑で', hot_cta: '🔓 3日間すべて解放', hot_note: '18歳以上を確認した方のみ。実在の人物の写真は脱がせません。', hot_undress_tip: '写真をお願いしてみて：下に「🔥 脱がせる」があります', hot_close: '閉じる',
     chars_title: '女の子', loading: '読み込み中…',
     chat_hints: ['こんにちは 😊', 'あなたのことを教えて', '写真を見せて 📸'],
     day1_hints: ['今日あったことを話すね', '昨日の続きを話そう', '今日は何してたの？'],
@@ -2755,10 +2789,8 @@ const L_OV = {
     lvl_chip: (ic, n) => ic + ' Lv' + n,
     guest_sheet_hint: 'このチャットに参加して、これから二人で返信するよ。',
     need_premium: 'Premium で利用可能 ⭐', locked: 'この女の子はまだロック中',
-    settings_title: '設定', spicy_title: '🌶 セクシーモード', spicy_on: 'オン', spicy_off: 'オフ',
-    spicy_prem: 'セクシーモードは Premium 特典 ⭐',
+    settings_title: '設定',
     prem_chars_title: 'プレミアムキャラクター', prem_chars_hint: 'プレミアム登録で解放', prem_chars_owned: 'ご契約で解放済み',
-    spicy_toast_on: 'セクシーモードがオンになりました 🔥', spicy_toast_off: 'セクシーモードがオフになりました 🌙',
     lang_title: '🌐 表示言語',
     photo_menu_title: '📸 どの写真にする？',
     collect_lbl: 'ギャラリー', collect_sets: n => n + ' セット', collect_done: '🖼 ギャラリー1セット完成！+1 🏆 — 次の50枚を始めよう',
@@ -2782,7 +2814,7 @@ const L_OV = {
   // V3.117.0: বাংলা — owner: a Bengali user asked, «мы же теряем аудиторию»
   bn: {
     // V3.133.2: level/bond picker + 18+ showcase
-    tune_btn: '🎛 লেভেল ও সম্পর্ক সেট করো', tune_title: '🎛 নিজেই সেট করো', tune_hint: 'Premium-এ তুমি সঙ্গে সঙ্গে বেছে নাও তোমরা কতটা কাছের আর সম্পর্কটা কেমন। পরের মেসেজ থেকেই সে এভাবে কথা বলবে।', tune_lvl: 'ঘনিষ্ঠতার লেভেল', tune_path: 'সম্পর্কের ধরন', tune_path_hint: 'লেভেল ৪ থেকে সম্পর্কের ধরন বাছা যায়', tune_apply: '✨ প্রয়োগ করো', tune_real: '↩ আসল লেভেলে ফেরো', tune_locked: '🔒 Premium দিয়ে খোলো', tune_picked: 'তুমি বেছেছ', tune_close: 'বন্ধ করো', path_romance: 'রোমান্স', path_passion: 'প্যাশন', hot_tile_sub: 'খুলে দেখাও, দুষ্টু মোড, ১৮+ কল', hot_btn: '🔥 ১৮+: খুলে দেখাও, দুষ্টু মোড', hot_h: '🔥 শুধু ১৮+', hot_sub_for: 'ওর সাথে:', hot_undress: '🙈 ওর ছবি খুলে দেখাও', hot_undress_ds: 'Premium-এ দিনে ১–৩টি', hot_spicy: '🔥 দুষ্টু মোড', hot_spicy_ds: 'লজ্জা বা নিষিদ্ধ বিষয় ছাড়া', hot_fet: '🎭 ফেটিশ', hot_fet_ds: 'তোমার কল্পনা, সে সঙ্গ দেবে', hot_plots: '🎬 উত্তপ্ত গল্প', hot_plots_ds: '«কোনো সীমা নেই» পর্যন্ত রোলপ্লে', hot_call: '📞 ১৮+ কল', hot_call_ds: 'সে কণ্ঠে ফিসফিস করে আর শীৎকার দেয়', hot_circle: '🎥 গরম ভিডিও মেসেজ', hot_circle_ds: 'ওর কাছ থেকে ছোট ভিডিও', hot_video: '🤫 গোপন ভিডিও', hot_video_ds: '৫ সেকেন্ডের খোলামেলা ভিডিও', hot_peach: '🍑 দিয়ে', hot_cta: '🔓 ৩ দিনের জন্য সব খোলো', hot_note: 'শুধু যারা ১৮+ নিশ্চিত করেছে তাদের জন্য। বাস্তব মানুষের ছবি আমরা কখনো খুলি না।', hot_undress_tip: 'ওর কাছে একটা ছবি চাও: নিচে «🔥 খুলে দেখাও» থাকবে', hot_close: 'বন্ধ করো',
+    tune_btn: '🎛 লেভেল ও সম্পর্ক সেট করো', tune_title: '🎛 নিজেই সেট করো', tune_hint: 'Premium-এ তুমি সঙ্গে সঙ্গে বেছে নাও তোমরা কতটা কাছের আর সম্পর্কটা কেমন। পরের মেসেজ থেকেই সে এভাবে কথা বলবে।', tune_lvl: 'ঘনিষ্ঠতার লেভেল', tune_path: 'সম্পর্কের ধরন', tune_path_hint: 'লেভেল ৪ থেকে সম্পর্কের ধরন বাছা যায়', tune_apply: '✨ প্রয়োগ করো', tune_real: '↩ আসল লেভেলে ফেরো', tune_locked: '🔒 Premium দিয়ে খোলো', tune_picked: 'তুমি বেছেছ', tune_close: 'বন্ধ করো', path_romance: 'রোমান্স', path_passion: 'প্যাশন', hot_tile_sub: 'খুলে দেখাও, «মিডনাইটের পর», ১৮+ কল', hot_btn: '🔥 ১৮+: খুলে দেখাও, মিডনাইটের পর', hot_h: '🔥 শুধু ১৮+', hot_sub_for: 'ওর সাথে:', hot_undress: '🙈 ওর ছবি খুলে দেখাও', hot_undress_ds: 'Premium-এ দিনে ১–৩টি', hot_fet: '🎭 ফেটিশ', hot_fet_ds: 'তোমার কল্পনা, সে সঙ্গ দেবে', hot_plots: '🎬 উত্তপ্ত গল্প', hot_plots_ds: '«কোনো সীমা নেই» পর্যন্ত রোলপ্লে', hot_call: '📞 ১৮+ কল', hot_call_ds: 'সে কণ্ঠে ফিসফিস করে আর শীৎকার দেয়', hot_circle: '🎥 গরম ভিডিও মেসেজ', hot_circle_ds: 'ওর কাছ থেকে ছোট ভিডিও', hot_video: '🤫 গোপন ভিডিও', hot_video_ds: '৫ সেকেন্ডের খোলামেলা ভিডিও', hot_peach: '🍑 দিয়ে', hot_cta: '🔓 ৩ দিনের জন্য সব খোলো', hot_note: 'শুধু যারা ১৮+ নিশ্চিত করেছে তাদের জন্য। বাস্তব মানুষের ছবি আমরা কখনো খুলি না।', hot_undress_tip: 'ওর কাছে একটা ছবি চাও: নিচে «🔥 খুলে দেখাও» থাকবে', hot_close: 'বন্ধ করো',
     chars_title: 'মেয়েরা', loading: 'লোড হচ্ছে…',
     chars_hint: 'একটি কার্ডে ট্যাপ করো — চ্যাট এখানেই খুলবে। ইতিহাস বটের সাথে একই থাকে।',
     active: 'অনলাইন', selected: 'তোমার মেয়ে', shop_title: 'দোকান', missions_title: 'মিশন', profile_title: 'প্রোফাইল',
@@ -2822,10 +2854,8 @@ const L_OV = {
     lvl_chip: (ic, n) => ic + ' লেভেল ' + n,
     guest_sheet_hint: 'সে এই চ্যাটে আসবে, এরপর দুজনেই তোমাকে উত্তর দেবে।',
     need_premium: 'Premium-এ পাওয়া যায় ⭐', locked: 'এই মেয়েটি এখনও লক করা',
-    settings_title: 'সেটিংস', spicy_title: '🌶 হট মোড', spicy_on: 'চালু', spicy_off: 'বন্ধ',
-    spicy_prem: 'হট মোড Premium-এর সুবিধা ⭐',
+    settings_title: 'সেটিংস',
     prem_chars_title: 'প্রিমিয়াম চরিত্র', prem_chars_hint: 'Premium সাবস্ক্রিপশনে খুলে যায়', prem_chars_owned: 'তোমার সাবস্ক্রিপশনে খোলা',
-    spicy_toast_on: 'হট মোড চালু হয়েছে 🔥', spicy_toast_off: 'হট মোড বন্ধ হয়েছে 🌙',
     lang_title: '🌐 ভাষা',
     photo_menu_title: '📸 কোন ছবি চাও?',
     collect_lbl: 'গ্যালারি', collect_sets: n => n + ' সেট', collect_done: '🖼 গ্যালারির একটা সেট পূর্ণ! +1 🏆 — পরের 50টা শুরু করো',
@@ -2872,6 +2902,19 @@ const L_OV = {
 };
 const L = LANG === 'ru' ? L_RU : Object.assign({}, L_EN, (L_OV[LANG] || {}));
 
+// V3.165.0: every 18+ price on screen comes from /webapp/api/me (config is the
+// single source of truth). The fallbacks below only cover the first paint,
+// before ME arrives, so they mirror the shipped defaults instead of the two
+// numbers this page used to invent for itself. The thousands-separated printing
+// of a number stays the one `peachNum` the page has always had.
+const PP_FALLBACK = { explicit: 300, private: 300, cosplay: 300, undress: 300, series: 700,
+                      series_frames: 4, circle: 700, hot_circle: 2000, hot_pass_day: 500 };
+function PP(key) {
+  const p = (ME && ME.peach_prices) || {};
+  const n = Number(p[key] != null ? p[key] : PP_FALLBACK[key]);
+  return Number.isFinite(n) && n > 0 ? n : (PP_FALLBACK[key] || 0);
+}
+
 document.getElementById('l_chars_title').textContent = L.chars_title;
 document.getElementById('l_shop_title').textContent = L.shop_title;
 document.getElementById('l_missions_title').textContent = L.missions_title;
@@ -2905,6 +2948,8 @@ if (document.getElementById('lbFeatGifts')) document.getElementById('lbFeatGifts
 if (document.getElementById('dsFeatGifts')) document.getElementById('dsFeatGifts').textContent = L.gs_cap_ds;
 document.getElementById('lbFeatFetish').textContent = L.fet_cap;
 document.getElementById('dsFeatFetish').textContent = L.fet_cap_ds;
+// V3.165.0 (#105): «🔥 Раздеть её фото» — the row that took «📸 Фото» in the list.
+document.getElementById('lbFeatUndress').textContent = L.hot_undress;
 document.getElementById('lbFeatPlots').textContent = L.plots_cap;
 document.getElementById('dsFeatPlots').textContent = L.plots_cap_ds;
 document.getElementById('lbFeatQuest').textContent = L.feat_quest;
@@ -2923,15 +2968,20 @@ document.getElementById('capTitle').textContent = L.cap_title;
 document.getElementById('capSub').textContent = L.cap_sub;
 document.getElementById('capClose').textContent = L.cap_close;
 [['dsMediaPhoto', 'cap_photo'], ['dsFeatQuest', 'cap_quest'], ['dsFeatStory', 'cap_story'], ['dsFeatDate', 'cap_date'],
- ['dsFeatApt', 'cap_apt'], ['dsFeatVideo', 'cap_video'], ['dsFeatCosplay', 'cap_cosplay'], ['dsFeatHot', 'cap_hot'], ['dsFeatHotCircle', 'cap_hot_circle']]
+ ['dsFeatApt', 'cap_apt'], ['dsFeatVideo', 'cap_video'], ['dsFeatCosplay', 'cap_cosplay'], ['dsFeatHot', 'cap_hot']]
   .forEach(([id, key]) => { const el = document.getElementById(id); if (el) el.textContent = L[key]; });
+// V3.165.0: captions that carry a real price are filled once ME has arrived.
+function refreshPriceCaps() {
+  const hc = document.getElementById('dsFeatHotCircle');
+  if (hc && typeof L.cap_hot_circle === 'function') hc.textContent = L.cap_hot_circle(PP('hot_circle'));
+  const ud = document.getElementById('dsFeatUndress');
+  if (ud && typeof L.cap_undress === 'function') {
+    ud.textContent = (ME && ME.premium) ? L.cap_undress_prem : L.cap_undress((ME && ME.undress_peaches) || PP('undress'));
+  }
+}
 document.getElementById('chanBannerText').textContent = L.chan_banner;
-document.getElementById('spicyBannerText').textContent = L.spicy_banner;
-document.getElementById('spicyBannerSub').textContent = L.spicy_banner_sub;
-document.getElementById('spicyMTitle').textContent = L.spicy_banner;
-document.getElementById('spicyMText').textContent = L.spicy_m_text;
-document.getElementById('spicyMWarn').textContent = L.spicy_m_warn;
-document.getElementById('spicyLater').textContent = L.spicy_m_later;
+// V3.165.0: the spicy banner/explainer markup this filled is deleted with the
+// mode screen — the mode captions are filled in openModeScreen() instead.
 document.getElementById('chanTitle').textContent = L.chan_title;
 document.getElementById('chanWarn').textContent = L.chan_warn;
 document.getElementById('chanGo').textContent = L.chan_go;
@@ -3441,6 +3491,20 @@ async function openPlotSheet() {
   if (!ok) list.innerHTML = '<div class="chat-empty">' + esc(L.load_failed) + '</div>';
 }
 
+// V3.165.0 (#104): «фото по фетишу» — the theme of this row becomes a paid 18+
+// frame (the server takes the wardrobe and the scene out of the same theme text).
+function fetPhotoChip(key) {
+  return '<span class="fph" data-fetphoto="' + esc(key) + '" title="'
+    + esc(L.fet_photo + ' · ' + peachNum(PP('explicit')) + ' 🍑') + '">📸</span>';
+}
+
+async function fetishPhoto(key, text) {
+  const sheet = document.getElementById('fetishSheet');
+  if (sheet) sheet.style.display = 'none';
+  // His own words ride their own field (the server runs the hard-limit filter).
+  await requestMedia('hot', 'fetish:' + encodeURIComponent(key || ''), text ? { theme_text: text } : {});
+}
+
 // V3.102.0: «🎭 Фетиши» — Premium themes she leads at any level.
 async function openFetishSheet() {
   if (!CHAT || !CHAT.id) return;
@@ -3463,9 +3527,16 @@ async function openFetishSheet() {
   } catch (e) {}
   if (!j || !j.ok) { list.innerHTML = '<div class="chat-empty">' + esc(L.load_failed) + '</div>'; return; }
   const act = j.active ? j.active.key : '';
-  list.innerHTML = (j.items || []).map(f => '<button class="plotitem' + (act === f.key ? ' on' : '') + '" data-fet="' + esc(f.key) + '">'
+  // V3.165.0 (#104): his own theme is not one of the 17, so when it is the one
+  // switched on it gets its own row — with the same 📸 chip as every other.
+  const ownRow = act === 'custom' && j.active
+    ? '<div class="plotitem on"><span class="pe">🎭</span><span class="pt"><div class="pn">' + esc(j.active.title) + '</div></span>'
+      + '<span class="pl">' + esc(L.fet_on) + '</span>' + fetPhotoChip('custom') + '</div>'
+    : '';
+  list.innerHTML = ownRow + (j.items || []).map(f => '<button class="plotitem' + (act === f.key ? ' on' : '') + '" data-fet="' + esc(f.key) + '">'
     + '<span class="pe">' + esc(f.emoji) + '</span><span class="pt"><div class="pn">' + esc(f.title) + '</div></span>'
-    + '<span class="pl">' + (!j.unlocked ? esc(L.plots_badge) : (act === f.key ? esc(L.fet_on) : esc(L.plots_play))) + '</span></button>').join('');
+    + '<span class="pl">' + (!j.unlocked ? esc(L.plots_badge) : (act === f.key ? esc(L.fet_on) : esc(L.plots_play))) + '</span>'
+    + fetPhotoChip(f.key) + '</button>').join('');
   off.style.display = j.active ? '' : 'none';
   off.onclick = async () => {
     sheet.style.display = 'none';
@@ -3492,9 +3563,24 @@ async function openFetishSheet() {
     } catch (e) {}
   };
   list.querySelectorAll('[data-fet]').forEach(b => b.onclick = () => pick({ key: b.dataset.fet }));
+  // The chip is inside the row: stop the bubble, or the tap also switches the
+  // theme on in the chat.
+  list.querySelectorAll('[data-fetphoto]').forEach(b => b.onclick = e => {
+    e.stopPropagation(); e.preventDefault();
+    fetishPhoto(b.getAttribute('data-fetphoto'));
+  });
   document.getElementById('fetishGo').onclick = () => {
     const v = document.getElementById('fetishCustom').value.trim();
     if (v.length >= 3) pick({ key: 'custom', custom: v });
+  };
+  // V3.165.0 (#104): 📸 next to his own theme — the frame costs peaches and needs
+  // no Premium, unlike switching the theme on in the chat.
+  const photoBtn = document.getElementById('fetishPhotoBtn');
+  photoBtn.title = L.fet_photo + ' · ' + peachNum(PP('explicit')) + ' 🍑';
+  photoBtn.onclick = () => {
+    const v = document.getElementById('fetishCustom').value.trim();
+    if (v.length < 3) { toast(L.fet_ph); return; }
+    fetishPhoto('custom', v);
   };
 }
 // V3.114.0: «👗 Гардероб» — he gives her clothes and room things for peaches.
@@ -4186,9 +4272,9 @@ function chatBubble(roleOrM, content, ts) {
       body = '<img class="m" src="' + esc(src) + '" data-lb="1" alt="">'
         + '<div class="phact">'
         + (room ? '' : '<button class="pa hot" data-pact="undress" data-media="' + esc(m.media_url) + '">' + esc(L.pa_undress)
-        // V3.138.0: owner — the price here is peaches, never rubles (400 🍑 ≈ 40 ₽).
-        // A number + the peach reads the same in every language of the app.
-        + (ME && !ME.premium ? '<small>· ' + esc(ME.undress_peaches || 400) + ' 🍑</small>' : '') + '</button>')
+        // V3.138.0: owner — the price here is peaches, never rubles. V3.165.0:
+        // the number itself comes from /me, the page never invents one.
+        + (ME && !ME.premium ? '<small>· ' + esc(peachNum(ME.undress_peaches || PP('undress'))) + ' 🍑</small>' : '') + '</button>')
         + '<button class="pa' + (CHAT && CHAT.guest ? '' : ' wide') + '" data-pact="animate" data-media="' + esc(m.media_url) + '">' + esc(L.pa_anim) + '</button>'
         // V3.139.1: two girls in the chat — a «вдвоём» tap asks for the joint
         // frame instead of only the one shown (free → teaser, Premium → real).
@@ -4292,36 +4378,28 @@ function openChat(c) {
   return history;
 }
 
-// V3.61.1: «Как начать чат?» — with a ready scene from her, or a clean chat.
-function openStartSheet(characterId) {
-  const sheet = document.getElementById('startSheet');
-  if (!sheet) return;
-  sheet.style.display = 'flex';
-  const close = () => { sheet.style.display = 'none'; };
-  document.getElementById('startPlain').onclick = () => {
-    close();
-    fetch('/webapp/api/chat/start?init_data=' + encodeURIComponent(tg.initData || ''), {
+// V3.165.0 (#106): owner — «Выбор „сюжет / без сюжета" НЕ делать. Открыл чат —
+// она пишет первой». The picker sheet is gone: a dialog with no lines asks the
+// server for her opening scene and shows it as her first message. The bot keeps
+// its silence until he writes (V3.148.0) — this is the Mini App only.
+async function requestChatOpener(characterId) {
+  const box = document.getElementById('chatMsgs');
+  if (!box) return;
+  box.innerHTML = `<div class="typing">${esc((CHAT && CHAT.name) || '')} ${esc(L.typing_now)}</div>`;
+  let reply = null;
+  try {
+    const r = await fetch('/webapp/api/chat/start?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: characterId, mode: 'plain' }),
-    }).catch(() => {});
-  };
-  document.getElementById('startStory').onclick = async () => {
-    close();
-    const box = document.getElementById('chatMsgs');
-    box.innerHTML = '<div class="msg bot typing">…</div>';
-    try {
-      const r = await fetch('/webapp/api/chat/start?init_data=' + encodeURIComponent(tg.initData || ''), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ character_id: characterId, mode: 'story' }),
-      });
-      const j = await r.json();
-      if (!CHAT || CHAT.id !== characterId) return;
-      if (j.ok && j.reply) box.innerHTML = chatBubble({ role: 'assistant', content: j.reply, ts: new Date().toISOString() });
-      else box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
-    } catch (e) {
-      box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
-    }
-  };
+      body: JSON.stringify({ character_id: characterId }),
+    });
+    const j = await r.json();
+    reply = j && j.ok ? j.reply : null;
+  } catch (e) {}
+  if (!CHAT || CHAT.id !== characterId) return;
+  box.innerHTML = reply ? chatBubble({ role: 'assistant', content: reply, ts: new Date().toISOString() })
+    : `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
+  renderChatHints();
+  box.scrollTop = box.scrollHeight;
 }
 
 // V3.62.0: the level-3 fork — the romance or the passion path with this girl.
@@ -4497,23 +4575,31 @@ function hot18Girl(c) {
 function openHot18(c0) {
   const c = hot18Girl(c0);
   const prem = !!(ME && ME.premium);
+  // V3.165.0 (#107, owner): in «После полуночи» this sheet is name + price and
+  // nothing else — no captions, no «за 🍑», the numbers come from /me. «Горячий
+  // кружок» was the same product as the video row, so the duplicate is gone and
+  // the video carries the name the shop already uses for it. «Обычный режим»
+  // keeps the sheet exactly as it was, in every row.
+  const spicy = !!(ME && ME.spicy_mode);
   const sheet = document.getElementById('lvlSheet');
   const box = document.getElementById('lvlBox');
   const close = () => { sheet.style.display = 'none'; };
-  const undressPeaches = (ME && ME.undress_peaches) || 400;
+  const undressPeaches = (ME && ME.undress_peaches) || PP('undress');
   const P = '<span class="pr prem">⭐ ' + esc(L.hot_prem) + '</span>';
+  const peach = n => '<span class="pr">' + esc(peachNum(n)) + ' 🍑</span>';
   const rows = [
-    ['undress', L.hot_undress, L.hot_undress_ds, prem ? '<span class="pr">' + esc(L.hot_prem) + '</span>' : '<span class="pr">' + esc(undressPeaches) + ' 🍑</span>'],
-    ['spicy', L.hot_spicy, L.hot_spicy_ds, P],
+    ['undress', L.hot_undress, L.hot_undress_ds, prem ? '<span class="pr">' + esc(L.hot_prem) + '</span>' : peach(undressPeaches)],
     ['fet', L.hot_fet, L.hot_fet_ds, P],
     ['plots', L.hot_plots, L.hot_plots_ds, P],
     ['call', L.hot_call, L.hot_call_ds, P],
-    ['circle', L.hot_circle, L.hot_circle_ds, '<span class="pr">' + esc(L.hot_peach) + '</span>'],
-    ['video', L.hot_video, L.hot_video_ds, '<span class="pr">' + esc(L.hot_peach) + '</span>'],
   ];
+  if (!spicy) rows.push(['circle', L.hot_circle, L.hot_circle_ds, '<span class="pr">' + esc(L.hot_peach) + '</span>']);
+  rows.push(spicy ? ['video', L.feat_hot_circle, '', peach(PP('hot_circle'))]
+    : ['video', L.hot_video, L.hot_video_ds, '<span class="pr">' + esc(L.hot_peach) + '</span>']);
   box.innerHTML = '<h3>' + esc(L.hot_h) + '</h3>'
     + (c ? '<div class="bond">' + esc(L.hot_sub_for) + ' ' + esc(c.name) + '</div>' : '')
-    + rows.map(r => '<button class="hotrow" data-hot="' + r[0] + '"><span>' + esc(r[1]) + '<span class="ds">' + esc(r[2]) + '</span></span>' + r[3] + '</button>').join('')
+    + rows.map(r => '<button class="hotrow" data-hot="' + r[0] + '"><span>' + esc(r[1]) +
+      (spicy ? '' : '<span class="ds">' + esc(r[2]) + '</span>') + '</span>' + r[3] + '</button>').join('')
     + (prem ? '' : '<button class="hotcta" id="hotCta">' + esc(L.hot_cta) + '</button>')
     + '<div class="hotnote">' + esc(L.hot_note) + '</div>'
     + '<button class="close" id="hotClose" style="margin-top:8px">' + esc(L.hot_close) + '</button>';
@@ -4529,15 +4615,19 @@ function openHot18(c0) {
     if (!CHAT || CHAT.id !== c.id || !document.getElementById('chatview').classList.contains('open')) openChat(c);
     if (then) setTimeout(then, 450);
   };
-  const premOnly = new Set(['spicy', 'fet', 'plots', 'call']);
+  // V3.165.0 (Задача 100): the «Пошлый режим» row left this sheet with the
+  // mode screen taking over — the mode is chosen on entry, never here.
+  const premOnly = new Set(['fet', 'plots', 'call']);
   box.querySelectorAll('.hotrow').forEach(b => b.onclick = () => {
     const k = b.dataset.hot;
     if (premOnly.has(k) && !prem) { close(); quickBuy('spicy'); return; }
-    if (k === 'spicy') { close(); openSpicyModal(); return; }
     if (k === 'undress') return inChat(() => toast(L.hot_undress_tip));
     if (k === 'fet') return inChat(openFetishSheet);
     if (k === 'plots') return inChat(openPlotSheet);
     if (k === 'call') return inChat(() => openCall(''));
+    // V3.165.0 (#107): with one product left on the row, the tap goes straight
+    // to it instead of opening the menu the row was copied from.
+    if (spicy) return inChat(() => requestMedia('hotcircle'));
     return inChat(openCapSheet);
   });
 }
@@ -4642,7 +4732,7 @@ function renderGuest(characterId, guest, canInvite) {
     duoVideo.style.display = guest ? '' : 'none';
     // V3.139.2: the price is on the row, per the owner's «по ценнику сразу».
     document.getElementById('dsFeatDuoVideo').textContent =
-      L.duo_video_sub + ' · ' + ((ME && ME.duo_video_peaches) || 4000) + ' 🍑';
+      L.duo_video_sub + ' · ' + peachNum((ME && ME.duo_video_peaches) || PP('hot_circle')) + ' 🍑';
   }
   if (!bar) return;
   if (!guest) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
@@ -4723,13 +4813,19 @@ async function loadChatHistory(characterId) {
     const box = document.getElementById('chatMsgs');
     if (!j.ok) { box.innerHTML = `<div class="chat-empty">${esc(L.reply_err)}</div>`; return; }
     if (!j.history.length) {
-      box.innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
-      openStartSheet(characterId);
+      // V3.165.0 (#106): no picker, no wait for his first line — she opens it.
+      requestChatOpener(characterId);
     }
     else {
       // V3.152.0: an erased draft survives a reload — a paid one comes back
       // open, an unpaid one still offers the plate (the text never does).
       box.innerHTML = j.history.map(historyLine).join('');
+      // V3.165.0 (Задача 101): changing the mode never rewrites a started
+      // dialog — the server stamps `mode_set_at` and every chat whose last
+      // line is older than that tap gets one thin note at the end. His next
+      // message clears it by itself.
+      if (j.mode_notice) box.insertAdjacentHTML('beforeend',
+        '<div class="modenote">' + esc(j.mode_notice) + '</div>');
     }
     // V3.55.6: the server says this premium pair has no manner chosen yet —
     // show the one-time tender/passionate picker above the input.
@@ -4774,9 +4870,20 @@ function renderPersonaBanner(characterId) {
   document.getElementById('personaPassionate').addEventListener('click', () => choosePersona(characterId, 'passionate'));
 }
 
-// V3.131.0: tap the row title to open/close the fold
-document.querySelectorAll('#charMarital .foldhead, #charPlots .foldhead, #charTrophies .foldhead').forEach(h =>
+// V3.131.0: tap the row title to open/close the fold. V3.165.0 (#105): one
+// binding for every folded line on her page, no list of ids to keep in sync.
+document.querySelectorAll('#charview .charblock.foldable > .foldhead').forEach(h =>
   h.addEventListener('click', () => h.closest('.charblock').classList.toggle('fold')));
+// V3.165.0 (#105): owner — «После полуночи» takes the three tender-mode meters
+// (level, gallery, bond) off her page. Every show/hide of a folded row goes
+// through here, so the mode decides in one place instead of six.
+function showPanel(id, on) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const hide = !on || !!(ME && ME.spicy_mode);
+  el.style.display = hide ? 'none' : '';
+  if (hide) el.classList.add('fold');
+}
 // V3.59.5: «💍 Её семейное положение» on the character page.
 const MARITAL_KEYS = ['mar_single', 'mar_boyfriend', 'mar_married', 'mar_divorced', 'mar_open'];
 function renderMarital(c) {
@@ -4784,22 +4891,22 @@ function renderMarital(c) {
   if (!box) return;
   box.style.display = '';
   const cur = c.marital || 'mar_single';
-  document.getElementById('charMaritalLbl').textContent = L.marital_lbl + ': ' + (L['marital_' + cur.slice(4)] || '');
+  // V3.165.0 (#105): owner — the line reads «💍 Семейное положение · Свободно».
+  // The «смена 500 🍑» caption and its confirmation dialog are gone: the chip
+  // itself carries the price and a tap on «Замужем» changes it right away.
+  document.getElementById('charMaritalLbl').textContent = L.marital_lbl;
+  document.getElementById('charMaritalVal').textContent = L['marital_' + cur.slice(4)] || '';
   loadMaritalArc(c);
   const price = Number(c.marital_price) || 0;
   // V3.146.0: 0 means his FIRST change is still waiting — say «free», not nothing.
-  document.getElementById('charMaritalPrice').textContent = price ? (L.marital_change + ' · ' + price + ' 🍑') : (L.marital_change + ' · ' + L.marital_free);
+  const cost = price ? peachNum(price) + ' 🍑' : L.marital_free;
   const chips = document.getElementById('charMaritalChips');
   chips.innerHTML = MARITAL_KEYS.map(k =>
     '<button class="mchip' + (k === cur ? ' on' : '') + '" data-ms="' + esc(k) + '">' +
-    esc(L['marital_' + k.slice(4)]) + '</button>').join('');
+    esc(L['marital_' + k.slice(4)]) + (k === cur ? '' : ' <small>· ' + esc(cost) + '</small>') + '</button>').join('');
   chips.querySelectorAll('.mchip').forEach(b => b.addEventListener('click', () => {
     if (b.dataset.ms === cur) return;
-    const go = () => chooseMarital(c, b.dataset.ms);
-    if (!price) { go(); return; }
-    const q = L.marital_confirm + ' ' + price + ' 🍑?';
-    if (tg.showConfirm) tg.showConfirm(q, ok => { if (ok) go(); });
-    else if (confirm(q)) go();
+    chooseMarital(c, b.dataset.ms);
   }));
 }
 
@@ -4863,6 +4970,9 @@ async function openMaritalStep(c, step) {
 async function chooseMarital(c, status) {
   if (!tg.initData) { toast(L.auth_short); return; }
   const prev = c.marital;
+  // V3.165.0 (#105): no confirmation dialog any more, so the receipt has to
+  // appear after the change — «done · −500 🍑» (0 = his free first change).
+  const wasPrice = Number(c.marital_price) || 0;
   c.marital = status;
   renderMarital(c);
   try {
@@ -4880,7 +4990,7 @@ async function chooseMarital(c, status) {
     if (typeof j.balance === 'number' && typeof ME !== 'undefined' && ME) { ME.photo_credits = j.balance; }
     // V3.146.0: the free change is burned — repaint the label with the real price.
     if (typeof j.marital_price === 'number') { c.marital_price = j.marital_price; renderMarital(c); }
-    toast(L.marital_saved);
+    toast(wasPrice ? L.marital_saved + ' · −' + peachNum(wasPrice) + ' 🍑' : L.marital_saved);
   } catch (e) { c.marital = prev; renderMarital(c); toast(L.reply_err); }
 }
 
@@ -4969,7 +5079,7 @@ function undressTease(mediaUrl) {
     if (!CHAT) return;
     box.insertAdjacentHTML('beforeend', chatBubble('bot', L.undress_tease, null));
     box.insertAdjacentHTML('beforeend', '<div class="chat-offer"><button class="mchip on" data-pact="undress" data-media="' +
-      esc(mediaUrl) + '">' + esc(L.undress_tease_btn + (ME && ME.premium ? '' : ' · ' + ((ME && ME.undress_peaches) || 400) + ' 🍑')) + '</button></div>');
+      esc(mediaUrl) + '">' + esc(L.undress_tease_btn + (ME && ME.premium ? '' : ' · ' + peachNum((ME && ME.undress_peaches) || PP('undress')) + ' 🍑')) + '</button></div>');
     box.scrollTop = box.scrollHeight;
   }, 1600);
 }
@@ -5068,7 +5178,7 @@ function insertChatReply(j) {
     const kind = undress ? 'undress' : 'spicy';
     const cid = CHAT ? CHAT.id : '';
     const retry = undress ? () => { if (CHAT && CHAT.id === cid) sendChat(j.retry_text || ''); } : null;
-    const label = undress ? ((L.hot_undress || L.undress_tease_btn || '🔥') + ' · ' + ((ME && ME.undress_peaches) || 400) + ' 🍑') : L.spicy_btn;
+    const label = undress ? ((L.hot_undress || L.undress_tease_btn || '🔥') + ' · ' + peachNum((ME && ME.undress_peaches) || PP('undress')) + ' 🍑') : L.spicy_btn;
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on">${esc(label)}</button></div>`);
     const btn = box.lastElementChild.querySelector('button');
     if (btn) btn.addEventListener('click', () => quickBuy(kind, retry));
@@ -5101,6 +5211,16 @@ function insertChatReply(j) {
   // under her answer and waits for his tap; nobody decides the QTE for him.
   if (j.interrupt && j.interrupt.id) {
     box.insertAdjacentHTML('beforeend', interruptPlate(j.interrupt));
+  }
+  // V3.165.0 (Задача 102, п.7): the daily ceiling of «После полуночи». The
+  // server counts the explicit turns and writes the line; this is the thin note
+  // under her bubble plus the Premium upsell once today's are used up.
+  if (j.explicit_hint && (j.explicit_hint.text || '').trim()) {
+    const h = j.explicit_hint;
+    box.insertAdjacentHTML('beforeend', '<div class="modenote">' + esc(h.text) +
+      (h.reached ? '<button type="button" class="mn-b">' + esc(L.mn_prem) + '</button>' : '') + '</div>');
+    const mb = box.lastElementChild.querySelector('.mn-b');
+    if (mb) mb.addEventListener('click', () => quickBuy('spicy'));
   }
   box.scrollTop = box.scrollHeight;
   // V3.53.0: a photo-on-request can complete a 50-photo gallery set.
@@ -5379,6 +5499,11 @@ async function photoAction(action, mediaUrl, btn) {
     }
     if (!CHAT || CHAT.id !== characterId) return;
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
+    // V3.165.0 (#107, owner): «Раздеть» is once in 24 hours. Inside the window
+    // she is already naked — nothing was rendered and nothing charged — and she
+    // offers the next frame herself, so the app puts that tap under her line:
+    // it opens the paid «Наедине» scenes (one frame = the frame price).
+    if (j.already_nude) nudeFrameOffer(box);
     box.scrollTop = box.scrollHeight;
     if (ME && j.credits_left != null) ME.photo_credits = j.credits_left;
   } catch (e) {
@@ -5389,6 +5514,15 @@ async function photoAction(action, mediaUrl, btn) {
     if (btn) btn.disabled = false;
     mediaBusy = false;
   }
+}
+// V3.165.0 (#107): the chip that lands under her «я уже голая». One tap takes
+// him to the paid «Наедине» scenes — the next frame costs the frame price.
+function nudeFrameOffer(box) {
+  if (!box) return;
+  box.insertAdjacentHTML('beforeend', '<div class="chathints" id="nudOffer"><button type="button">' +
+    esc(L.nude_new_frame(PP('explicit'))) + '</button></div>');
+  const row = document.getElementById('nudOffer');
+  row.firstElementChild.onclick = () => { row.remove(); openFeature('hot'); };
 }
 // V3.63.9: ▶ on the voice note under her text — Premium hears her say it,
 // everyone else gets the Premium sheet. The audio is made on the first tap.
@@ -5573,7 +5707,8 @@ async function requestMedia(kind, scene, opts) {
     const r = await fetch('/webapp/api/chat/media?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: CHAT.id, kind: kind, scene: scene || '', joint: !!opts.joint }),
+      body: JSON.stringify({ character_id: CHAT.id, kind: kind, scene: scene || '', joint: !!opts.joint,
+                             theme_text: opts.theme_text || '' }),
     });
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 402) {
@@ -5596,7 +5731,7 @@ async function requestMedia(kind, scene, opts) {
     // ADMIN_TELEGRAM_IDS, so an admin sees the real provider cause (missing
     // key / transport error) while a normal user still gets the generic text.
     // V3.64.0: a failed photo said «Не получилось ответить» — it is a photo.
-    if (!j.ok) { toast(j.reason || L.pic_gen_fail || L.reply_err); return; }
+    if (!j.ok) { toast(j.error === 'theme_refused' ? L.fet_refused : (j.reason || L.pic_gen_fail || L.reply_err)); return; }
     if (j.photo_block === 'duo') {
       // V3.139.0: owner ТЗ (Задача 5) — he asked the two of them for a joint
       // photo without Premium. Nothing was rendered and nothing charged; the
@@ -5735,7 +5870,7 @@ function renderFeature(j) {
   // V3.59.1: say what the apartment IS — people opened it and saw a bare
   // room list with no idea what tapping does.
   const intro = j.kind === 'apartment' ? ('<div class="aptintro">' + esc(L.apt_intro) + '</div>') : '';
-  box.innerHTML = '<div class="featlist">' + intro + items.map(it => featItemHtml(j.kind, it)).join('') + '</div>';
+  box.innerHTML = '<div class="featlist">' + intro + passStripHtml(j) + items.map(it => featItemHtml(j.kind, it)).join('') + '</div>';
   box.querySelectorAll('.featitem').forEach(el => {
     el.addEventListener('click', () => {
       if (el.dataset.locked === '1') { toast(el.dataset.hint || L.locked); return; }
@@ -5752,6 +5887,63 @@ function renderFeature(j) {
       featurePost({ kind: 'apartment', id: b.dataset.room, action_id: b.dataset.act });
     });
   });
+  box.querySelectorAll('.passbuy').forEach(b => {
+    b.addEventListener('click', () => buyHotPass(b));
+  });
+}
+
+// ── V3.165.0 (#104): «Сутки без стеснения» — the pass moved out of the bot ───
+// The three cards come from the server's own table (price / days / frames in
+// the bundle), so a price change never needs a page edit.
+function passStripHtml(j) {
+  if (j.kind !== 'hot' || !(j.pass_products || []).length) return '';
+  let html = '<div class="passcard"><div class="passt">' + esc(L.pass_h) + '</div>'
+    + '<div class="passsub">' + esc(j.pass_active
+        ? (L.pass_on + ' · ' + (j.pass_frames || 0) + ' 🖼')
+        : L.pass_sub) + '</div><div class="passrow">';
+  (j.pass_products || []).forEach(p => {
+    html += '<button class="passbuy" data-pass="' + esc(p.id) + '">'
+      + '<span class="passn">' + esc(L['pass_' + p.id] || p.id) + '</span>'
+      + '<span class="passf">' + p.frames + ' 🖼</span>'
+      + '<span class="passp">' + p.peaches + ' 🍑</span></button>';
+  });
+  return html + '</div></div>';
+}
+
+async function buyHotPass(btn) {
+  if (!tg.initData) { toast(L.auth_short); return; }
+  const duration = btn.dataset.pass;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/webapp/api/hotpass?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ duration: duration }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 401) { toast(L.auth_short); return; }
+    if (!j.ok) {
+      if (r.status === 402) { toast(L.pass_need(j.cost || '?')); quickBuy('peaches'); }
+      else toast(L.pass_fail);
+      return;
+    }
+    if (ME) {
+      if (j.credits_left != null) ME.photo_credits = j.credits_left;
+      if (j.hot_pass) ME.hot_pass = j.hot_pass;
+    }
+    toast(L.pass_done(j.frames));
+    if (_hotData) {
+      _hotData.pass_active = true;
+      _hotData.pass_frames = (j.hot_pass && j.hot_pass.frames) || j.frames;
+      // V3.165.0 (#104b): bought from the last step of the wizard — stay there
+      // and re-price it, a pass he just paid for is what the frame costs now.
+      if (document.getElementById('serOne')) hotShowPriceStep();
+      else renderFeature(_hotData);
+    }
+  } catch (e) {
+    toast(L.pass_fail);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── V3.45.22: «Наедине» wizard (category → type → [color] → location → mood) ──
@@ -5830,11 +6022,121 @@ function hotSelectMood(moodId) {
   };
 }
 
+function hotScene() {
+  // scene = cat:type:loc:mood:color (backend reads colour as the 5th part)
+  return [_hotSel.cat, _hotSel.type, _hotSel.loc, _hotSel.mood, _hotSel.color].join(':');
+}
+
+// V3.165.0 (#104 / задача 112): the last step of the wizard sells the set.
+// One frame costs PP('explicit') 🍑, the whole series costs PP('series') 🍑 for
+// PP('series_frames') frames — the saving is the caption, and both numbers come
+// from /webapp/api/me, so a price change never needs a page edit.
 function hotGenerate(moodId) {
   _hotSel.mood = moodId;
-  closeFeature();
-  // scene = cat:type:loc:mood:color (backend reads colour as the 5th part)
-  requestMedia('hot', [_hotSel.cat, _hotSel.type, _hotSel.loc, _hotSel.mood, _hotSel.color].join(':'));
+  if (!PP('series') || !PP('series_frames')) {
+    // no price table yet — the wizard stays the single frame it has always been
+    closeFeature(); requestMedia('hot', hotScene()); return;
+  }
+  hotShowPriceStep();
+}
+
+function hotShowPriceStep() {
+  const box = document.getElementById('featBody');
+  const one = PP('explicit');
+  const frames = PP('series_frames');
+  const set = PP('series');
+  // V3.165.0 (#104b): a running pass already carries frames, and «Наедине»
+  // spends one of them before any peach — the peach number under «один кадр»
+  // would lie. Without a pass this step sells the day bundle instead.
+  const pass = (ME && ME.hot_pass) || {};
+  const passOn = !!(pass.active && pass.frames > 0);
+  const dayPass = ((_hotData || {}).pass_products || []).find(p => p.id === 'day');
+  document.getElementById('featTitle').textContent = L.ser_title;
+  box.innerHTML = '<div class="featlist"><div class="passcard">'
+    + '<div class="passt">' + esc(L.ser_h) + '</div>'
+    + '<div class="passsub">' + esc(L.ser_sub(frames, set, one * frames)) + '</div>'
+    + '<div class="passrow">'
+    + '<button class="passbuy" id="serOne"><span class="passn">' + esc(L.ser_one) + '</span>'
+    + '<span class="passp">' + esc(passOn ? L.ser_free : peachNum(one) + ' 🍑') + '</span></button>'
+    + '<button class="passbuy" id="serSet"><span class="passn">' + esc(L.ser_set(frames)) + '</span>'
+    + '<span class="passp">' + peachNum(set) + ' 🍑</span></button>'
+    + '</div>'
+    + (passOn ? '<div class="passsub">' + esc(L.pass_on) + ' · ' + pass.frames + ' 🖼</div>'
+      : (dayPass ? '<div class="passrow"><button class="passbuy" data-pass="day" id="serPass">'
+          + '<span class="passn">' + esc(L.pass_day + ' · ' + dayPass.frames + ' 🖼') + '</span>'
+          + '<span class="passp">' + dayPass.peaches + ' 🍑</span></button></div>' : ''))
+    + '</div></div>'
+    + '<div style="padding:12px;text-align:center"><button class="btn-back" id="hotBack">← Назад</button></div>';
+  document.getElementById('serOne').onclick = () => { closeFeature(); requestMedia('hot', hotScene()); };
+  document.getElementById('serSet').onclick = () => { closeFeature(); requestSeries(hotScene()); };
+  const passBtn = document.getElementById('serPass');
+  if (passBtn) passBtn.onclick = () => buyHotPass(passBtn);
+  document.getElementById('hotBack').onclick = () => {
+    const cat = (_hotData?.items || []).find(i => i.id === _hotSel.cat) || {};
+    if (cat.has_location !== false) return hotSelectLocation(_hotSel.loc);
+    if (cat.has_color) return hotSelectColor();
+    return hotSelectCategory(_hotSel.cat);
+  };
+}
+
+async function requestSeries(scene) {
+  if (!CHAT) return;
+  if (mediaBusy) { toast(L.media_busy); return; }
+  if (!tg.initData) { toast(L.auth_short); return; }
+  let j = null;
+  try {
+    const r = await fetch('/webapp/api/series?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: CHAT.id, scene: scene }),
+    });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    if (r.status === 402) {
+      const j2 = await r.json().catch(() => ({}));
+      toast(L.ser_need(j2.cost || PP('series') || '?')); quickBuy('peaches'); return;
+    }
+    if (r.status === 403) {
+      const j3 = await r.json().catch(() => ({}));
+      toast(j3.error === 'consent' ? L.consent_needed
+        : (j3.error === 'adult_confirm' ? L.adult_confirm_needed : L.locked));
+      return;
+    }
+    if (r.status === 409) { toast(L.ser_busy); return; }
+    j = await r.json().catch(() => ({}));
+  } catch (e) { toast(L.reply_err); return; }
+  if (!j || !j.ok) { toast((j && (j.reason || j.error)) || L.pic_gen_fail || L.reply_err); return; }
+  waitForSeriesPhotos(CHAT.id, Math.max(1, j.frames || PP('series_frames') || 1));
+}
+
+// The set is shot in the background and lands in the chat frame by frame; this
+// watches the history and repaints the chat once all of them are there.
+function waitForSeriesPhotos(characterId, total) {
+  const box = document.getElementById('chatMsgs');
+  const empty = box.querySelector('.chat-empty'); if (empty) empty.remove();
+  box.insertAdjacentHTML('beforeend',
+    '<div class="typing" id="serTyping">' + esc(L.ser_wait(total)) + '</div>');
+  box.scrollTop = box.scrollHeight;
+  const stop = () => { const t = document.getElementById('serTyping'); if (t) t.remove(); };
+  let base = null, last = 0, stall = 0, tries = 0;
+  const tick = async () => {
+    tries++;
+    if (!CHAT || CHAT.id !== characterId) { stop(); return; }
+    try {
+      const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '')
+        + '&character_id=' + encodeURIComponent(characterId));
+      const j = await r.json();
+      if (j.ok) {
+        const n = (j.history || []).filter(m => m.media_kind === 'photo').length;
+        if (base === null) { base = n; last = n; }
+        else if (n - base >= total) { stop(); loadChatHistory(characterId); return; }
+        else if (n > base && n === last && ++stall >= 8) {
+          stop(); loadChatHistory(characterId); toast(L.ser_part); return;
+        } else if (n !== last) { last = n; stall = 0; }
+      }
+    } catch (e) { /* keep polling */ }
+    if (tries < 70) setTimeout(tick, 5000);
+    else { stop(); toast(L.ser_slow); }
+  };
+  tick();
 }
 
 
@@ -6053,7 +6355,7 @@ function applyAxisToCard(characterId, axis) {
   if (c) c.path = axis;
   if (CHARPAGE && CHARPAGE.id === characterId) {
     CHARPAGE.path = axis;
-    document.getElementById('charPathBar').style.display = '';
+    showPanel('charPathBar', true);
     renderPathBar(axis);
   }
 }
@@ -6322,7 +6624,8 @@ function trophySlot(it) {
     ? (it.opened ? (L.tr_replay || '') : (it.unlocked ? (L.tr_album_open || '') : (L.tr_album_hint || '')))
     : (it.unlocked ? (it.opened ? (L.tr_replay || '') : (L.tr_open || '')) : (it.hint || ''));
   return '<button type="button" class="tro ' + (it.unlocked ? (it.opened ? 'on done' : 'on') : 'lock')
-    + '" data-trophy="' + esc(it.key) + '"><span class="tro-pic">' + pic + '</span><b>'
+    + '" data-trophy="' + esc(it.key) + '" data-hint="' + esc(it.hint || '') + '"><span class="tro-pic">'
+    + pic + '</span><b>'
     + esc(it.title || '') + '</b><i>' + esc(sub) + '</i></button>';
 }
 
@@ -6336,8 +6639,10 @@ function renderTrophies(j) {
     key: 'album', emoji: '🏆', title: L.tr_album || '', unlocked: !!j.album_ready,
     opened: !!(j.album && j.album.photo_url), photo_url: (j.album && j.album.photo_url) || '',
   }]);
-  document.getElementById('charTrophiesLbl').textContent =
-    (L.tr_head || '') + ' (' + (j.unlocked || 0) + '/' + (j.total || 6) + ')';
+  // V3.165.0 (#105): folded line reads «🏆 Открытые фантазии · 2/6».
+  document.getElementById('charTrophiesLbl').textContent = L.tr_head || '';
+  document.getElementById('charTrophiesVal').textContent =
+    (j.unlocked || 0) + '/' + (j.total || 6);
   row.innerHTML = items.map(trophySlot).join('');
   row.querySelectorAll('[data-trophy]').forEach(el => { el.onclick = () => openTrophy(el); });
   box.style.display = '';
@@ -6369,6 +6674,13 @@ async function openTrophy(el) {
   if (!key || !cid) return;
   if (key === 'album' && el.classList.contains('lock')) {
     if (note) { note.style.display = 'flex'; note.innerHTML = '<div class="ttext">' + esc(L.tr_album_hint || '') + '</div>'; }
+    return;
+  }
+  // V3.165.0 (#108, owner): пустой слот — зацепка, а не ошибка. Его тап не идёт
+  // на сервер за «не получилось»: под плашкой он читает, какой кадр закроет её.
+  if (el.classList.contains('lock')) {
+    if (note) { note.style.display = 'flex'; note.innerHTML = '<div class="ttext">'
+      + esc(el.dataset.hint || L.locked || '') + '</div>'; }
     return;
   }
   if (note) { note.style.display = 'flex'; note.innerHTML = '<div class="ttext">' + esc(L.tr_busy || '') + '</div>'; }
@@ -6446,26 +6758,29 @@ function openCharPage(el) {
   dots.querySelectorAll('i').forEach((d, i) => { d.onclick = () => setShot(i); });
   loadLike(c.id);
   // V3.53.0: refresh the «Собери галерею» set bar for this character.
-  document.getElementById('charCollectBar').style.display = 'none';
+  showPanel('charCollectBar', false);
   loadCollection(c.id);
   document.getElementById('charStart').textContent = '💬 ' + L.start_chat;
   document.getElementById('charBio').textContent = c.bio || '';
   // V3.78.0: her storylines right under «Начать чат»
   const plotsBox = document.getElementById('charPlots');
   plotsBox.style.display = 'none';
-  // V3.131.0: both rows start folded on every page open
-  plotsBox.classList.add('fold');
-  document.getElementById('charMarital').classList.add('fold');
-  // V3.157.1: her fantasy album folds the same way — the counter stays on the card.
-  document.getElementById('charTrophies').classList.add('fold');
+  // V3.131.0: the rows start folded on every page open. V3.165.0 (#105): all six
+  // of them — one loop instead of the list of ids that used to grow by release.
+  document.querySelectorAll('#charview .charblock.foldable').forEach(el => el.classList.add('fold'));
   if (!c.custom) {
     document.getElementById('charPlotsLbl').textContent = L.plots_h;
     renderPlots(document.getElementById('charPlotList'), c.id).then(j => {
       if (!j || !CHARPAGE || CHARPAGE.id !== c.id) return;
       plotsBox.style.display = '';
-      const old = plotsBox.querySelector('.plothint');
+      // V3.165.0 (#105): the folded line says how many scenes she has, the hint
+      // went inside the fold — a locked row must not leak text under the line.
+      const hint = (j.plots || []).length + (j.unlocked ? '' : ' · ⭐');
+      document.getElementById('charPlotsVal').textContent = hint;
+      const list = document.getElementById('charPlotList');
+      const old = list.querySelector('.plothint');
       if (old) old.remove();
-      if (!j.unlocked) plotsBox.insertAdjacentHTML('beforeend', '<div class="plothint">' + esc(L.plots_hint) + '</div>');
+      if (!j.unlocked) list.insertAdjacentHTML('beforeend', '<div class="plothint">' + esc(L.plots_hint) + '</div>');
     });
   }
   // V3.157.0: «Трофеи Страсти» — her album of lived-through fantasies, under the
@@ -6479,38 +6794,33 @@ function openCharPage(el) {
   } else {
     plot.style.display = 'none';
   }
-  // V3.43.9: relationship progress bar; V3.115.2: 10 levels, not 8
-  const relBar = document.getElementById('charRelBar');
-  if (c.level && c.level > 0) {
-    relBar.style.display = '';
-    const pct = Math.min(100, Math.round(c.level / 10 * 100));
-    document.getElementById('charRelLbl').textContent = '💕 ' + L.rel_level + ' ' + c.level + '/10';
-    document.getElementById('charRelPct').textContent = pct + '%';
-    document.getElementById('charRelFill').style.width = pct + '%';
-  } else {
-    relBar.style.display = 'none';
-  }
+  // V3.43.9: relationship progress bar; V3.115.2: 10 levels, not 8.
+  // V3.165.0 (#105): one folded line «💕 Уровень близости · 4/10», the bar is
+  // inside the fold, and «После полуночи» takes all three meters off the page.
+  const lvl = Number(c.level) || 0;
+  document.getElementById('charRelLbl').textContent = '💕 ' + L.rel_level;
+  document.getElementById('charRelPct').textContent = lvl + '/10';
+  document.getElementById('charRelFill').style.width = Math.min(100, Math.round(lvl / 10 * 100)) + '%';
+  showPanel('charRelBar', lvl > 0);
   // V3.50.0: the tenderness<->passion swing bar (qualitative only, no raw axis).
   // V3.59.4: shown for EVERY girl — before the first chat/story the path is
   // simply balanced (0), the bar used to be missing on half the roster.
-  const pathBar = document.getElementById('charPathBar');
-  pathBar.style.display = '';
   renderPathBar(typeof c.path === 'number' ? c.path : 0);
+  showPanel('charPathBar', true);
   const hotBtn = document.getElementById('charHot18');
   if (hotBtn) {
     hotBtn.style.display = c.status === 'active' || c.custom || (ME && ME.premium) ? '' : 'none';
     hotBtn.innerHTML = esc(L.hot_btn) + ' <small>›</small>';
     hotBtn.onclick = () => openHot18(c);
   }
-  // V3.133.0: «🎛 Настроить» — level + bond for Premium; bars open it too.
+  // V3.133.0: «🎛 Настроить» — level + bond for Premium. The folded rows are no
+  // longer a door into that sheet (#105): a tap on a line opens the line.
   const tuneBtn = document.getElementById('charTune');
   if (tuneBtn) {
     const canTune = c.status === 'active' || c.custom || (ME && ME.premium);
     tuneBtn.style.display = canTune ? '' : 'none';
     tuneBtn.innerHTML = esc(L.tune_btn) + ' <small>' + (ME && ME.premium ? '›' : '💎 ›') + '</small>';
     tuneBtn.onclick = () => openCharTune(c);
-    relBar.onclick = canTune ? () => openCharTune(c) : null;
-    pathBar.onclick = canTune ? () => openCharTune(c) : null;
   }
   renderMarital(c);
   // V3.51.0: story player entry — sits right under the path bar so the player
@@ -7740,106 +8050,68 @@ async function withdrawPartner() {
 }
 
 // ── profile ───────────────────────────────────────────────────────────────
-// V3.64.7: one switch for the Settings row and the main-screen banner.
-async function toggleSpicy() {
-  if (!ME) return;
-  if (!ME.spicy_mode && !ME.premium) { toast(L.spicy_prem); showTab('shop'); return; }
-  try {
-    const r = await fetch('/webapp/api/spicy?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
-    if (r.status === 403) {
-      const j403 = await r.json().catch(() => ({}));
-      if (j403.error === 'adult_confirm') { toast(L.adult_confirm_needed); return; }
-      toast(L.spicy_prem); showTab('shop'); return;
-    }
-    const j = await r.json();
-    if (!j.ok) return;
-    ME.spicy_mode = !!j.spicy_mode;
-    const sv = document.getElementById('spicyVal');
-    if (sv) sv.textContent = ME.spicy_mode ? '🔥 ' + L.spicy_on : L.spicy_off;
-    renderSpicyBanner();
-    toast(ME.spicy_mode ? L.spicy_toast_on : L.spicy_toast_off);
-  } catch (e) { toast(String(e.message || '')); }
+// ── V3.165.0 (Задача 100/101): the mode screen ──────────────────────────────
+// Owner ТЗ: the choice is made on every entry to the app — two big cards, the
+// tap writes the account flag at once and goes to the heroines. Nothing else
+// switches the mode: the Settings row, the main-screen banner, the bot tile
+// and the explainer modal are deleted with this screen. Started chats are not
+// reset either — the server stamps `mode_set_at` and puts one thin line into
+// each of them, and the new mode bites after he re-opens the app.
+function modeCard(on) {
+  const cap = (ME && ME.explicit_cap) || 0;
+  return '<button class="modecard' + (on ? ' spicy' : '') + '" data-mode="' + (on ? 1 : 0) + '" type="button">' +
+    '<span class="ph">' + (on ? '🔥' : '🌙') + '</span>' +
+    '<img src="' + (on ? '/webapp/art/mode_spicy.jpg' : '/webapp/art/mode_normal.jpg') + '" alt="" ' +
+      'onerror="this.closest(\'.modecard\').classList.add(\'nopic\')">' +
+    '<span class="txt"><b>' + esc(on ? L.ms_spicy_t : L.ms_normal_t) + '</b>' +
+    '<span class="d">' + esc(on ? L.ms_spicy_d(cap) : L.ms_normal_d) + '</span>' +
+    '<span class="go">' + esc(L.ms_btn) + '</span></span></button>';
 }
-function renderSpicyBanner() {
-  const st = document.getElementById('spicyBannerState');
-  if (!st) return;
+function openModeScreen() {
+  document.getElementById('msTitle').textContent = L.ms_title;
+  document.getElementById('msSub').textContent = L.ms_sub;
+  document.getElementById('msNote').textContent = L.ms_note;
+  const box = document.getElementById('msCards');
+  box.innerHTML = modeCard(false) + modeCard(true);
   const on = !!(ME && ME.spicy_mode);
-  st.textContent = on ? L.spicy_on : '→';
-  st.className = 'ar' + (on ? ' on' : '');
+  box.querySelectorAll('.modecard').forEach(b => {
+    b.classList.toggle('on', (b.dataset.mode === '1') === on);
+    b.addEventListener('click', () => chooseMode(b.dataset.mode === '1'));
+  });
+  document.getElementById('modeScreen').classList.add('open');
 }
-function openSpicyModal() {
-  const on = !!(ME && ME.spicy_mode);
-  const go = document.getElementById('spicyGo');
-  go.textContent = on ? L.spicy_m_off : (ME && ME.premium ? L.spicy_m_on : L.spicy_m_buy);
-  document.getElementById('spicymodal').classList.add('open');
-}
-document.getElementById('spicyBanner').addEventListener('click', openSpicyModal);
-document.getElementById('spicyClose').addEventListener('click', () => document.getElementById('spicymodal').classList.remove('open'));
-document.getElementById('spicyLater').addEventListener('click', () => document.getElementById('spicymodal').classList.remove('open'));
-document.getElementById('spicyGo').addEventListener('click', async () => {
-  document.getElementById('spicymodal').classList.remove('open');
-  await toggleSpicy();
-});
-// ── V3.107.0: «Честно о нас» — one honest card on the first open ─────────
-// Live numbers from /webapp/api/me (services/honest_card.py); no counters,
-// no social proof. Shown on every app open; the docs tab reopens it any time.
-// Price: rubles for Russian, Telegram Stars for everyone else (owner: abroad
-// nobody will work out what a ruble price means).
-function openHonest() {
-  const f = ME && ME.honest;
-  if (!f) return;
-  const price = (LANG === 'ru' && f.week_rub) ? f.week_rub + ' ₽' : f.week_stars + ' ⭐';
-  const li = (t, mark) => '<div class="li">' + (mark ? '<span class="ok">✓</span>' : '') + '<span>' + esc(t) + '</span></div>';
-  document.getElementById('honestTitle').textContent = L.hn_title;
-  document.getElementById('honestSub').textContent = L.hn_sub;
-  document.getElementById('honestGo').textContent = L.hn_go;
-  document.getElementById('honestBody').innerHTML =
-    '<h4>' + esc(L.hn_can) + '</h4>' + L.hn_list.map(t => li(t, true)).join('') +
-    '<h4>' + esc(L.hn_money) + '</h4>' + li(L.hn_free(f)) + li(L.hn_prem(price));
-  document.getElementById('fbTitle').textContent = L.fb_title;
-  document.getElementById('fbSub').textContent = L.fb_sub;
-  document.getElementById('fbText').placeholder = L.fb_ph;
-  document.getElementById('fbSend').textContent = L.fb_send;
-  document.getElementById('fbDone').style.display = 'none';
-  document.getElementById('honestmodal').classList.add('open');
-}
-function closeHonest() {
-  document.getElementById('honestmodal').classList.remove('open');
-}
-// Owner: «всегда при открытии мини приложения» — every app open, once per
-// session (loadMe can run again later; the card must not pop up mid-use).
-let _honestShown = false;
-function maybeShowHonest() {
-  if (_honestShown || !ME || !ME.honest || !ME.honest.enabled) return;
-  _honestShown = true;
-  openHonest();
-}
-// V3.107.0: a wish from the card goes to the owner's support chat.
-async function sendFeedback() {
-  const ta = document.getElementById('fbText');
-  const btn = document.getElementById('fbSend');
-  const text = (ta.value || '').trim();
-  if (text.length < 3) { ta.focus(); return; }
-  btn.disabled = true;
+async function chooseMode(on) {
+  const prev = !!(ME && ME.spicy_mode);
+  document.querySelectorAll('#msCards .modecard').forEach(b =>
+    b.classList.toggle('on', (b.dataset.mode === '1') === on));
+  let adultBlocked = false;
   try {
-    const r = await fetch('/webapp/api/feedback?init_data=' + encodeURIComponent(tg.initData || ''), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
+    const r = await fetch('/webapp/api/spicy?init_data=' + encodeURIComponent(tg.initData || ''), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spicy: !!on }),
     });
-    const j = await r.json().catch(() => ({}));
-    if (!j.ok) { toast(L.fb_err); return; }
-    ta.value = '';
-    const done = document.getElementById('fbDone');
-    done.textContent = L.fb_done; done.style.display = 'block';
-  } catch (e) {
-    toast(L.fb_err);
-  } finally {
-    btn.disabled = false;
-  }
+    if (r.status === 403) adultBlocked = true;
+    else {
+      const j = await r.json().catch(() => ({}));
+      if (ME && typeof j.spicy_mode === 'boolean') ME.spicy_mode = j.spicy_mode;
+    }
+  } catch (e) {}
+  // Turning it on needs the 18+ confirmation; #107 replaces this toast with
+  // the «Только 18+» sheet, so the flag is not written silently here.
+  if (adultBlocked) { if (ME) ME.spicy_mode = prev; toast(L.adult_confirm_needed); }
+  document.getElementById('modeScreen').classList.remove('open');
+  showTab('characters');
 }
-document.getElementById('fbSend').addEventListener('click', sendFeedback);
-document.getElementById('honestClose').addEventListener('click', closeHonest);
-document.getElementById('honestGo').addEventListener('click', closeHonest);
-document.getElementById('honestmodal').addEventListener('click', (e) => { if (e.target.id === 'honestmodal') closeHonest(); });
+// A plain entry shows the screen; a deep link that already names its
+// destination (the bot's «ответить ей», shop, wardrobe, gifts, a scene) still
+// goes straight there, or the funnel button would hit a wall.
+function maybeModeEntry(chars) {
+  try {
+    const sp = new URLSearchParams(location.search);
+    if (sp.get('mode') === '1' || (!sp.get('open') && !sp.get('scene'))) { openModeScreen(); return; }
+  } catch (e) {}
+  maybeDeepOpenChat(chars);
+}
 async function loadMe() {
   const chip = document.getElementById('userchip');
   try {
@@ -7855,8 +8127,7 @@ async function loadMe() {
     ME = j.me;
     chip.textContent = m_chipText(ME);
     chip.className = 'chip' + (ME.premium ? ' premium' : '');
-    renderSpicyBanner();
-    maybeShowHonest();
+    refreshPriceCaps();
     renderProfileBody();
     // V3.55.5: the shop gift series mirrors ME — repaint it if the tab is open.
     renderGiftBlock();
@@ -7908,10 +8179,6 @@ function renderProfileBody() {
     <div class="menurow" id="menuDocs"><span>${esc(L.docs_row)}</span><span class="arr">›</span></div>
     ${m.admin ? `<div class="menurow" id="menuGen"><span>${esc(L.gen_row)}</span><span class="arr">›</span></div>` : ''}
     <div class="sect-title">${esc(L.settings_title)}</div>
-    <div class="menurow" id="rowSpicy">
-      <span>${esc(L.spicy_title)}</span>
-      <span class="switchVal" id="spicyVal">${m.spicy_mode ? '🔥 ' + esc(L.spicy_on) : esc(L.spicy_off)}</span>
-    </div>
     <div class="langBox">
       <div class="lbl" style="margin:10px 0 6px">${esc(L.lang_title)}</div>
       <div class="langChips" id="langChips">${langChipsHtml}</div>
@@ -7937,8 +8204,8 @@ const mcr = document.getElementById('menuCreator');
   if (mg) mg.addEventListener('click', openGallery);
   // V3.43.5: «пошлый режим» прямо в настройках приложения — раньше
   // переключатель был спрятан в чате бота, и владелец сам его «еле нашел».
-  const rs = document.getElementById('rowSpicy');
-  if (rs) rs.addEventListener('click', toggleSpicy);
+  // V3.165.0 (Задача 100): the Settings switch for the mode is deleted — the
+  // entry screen is the only place it is chosen.
   // V3.43.5: интерфейс на семи языках — выбор в настройках бьёт язык аккаунта.
   document.querySelectorAll('#langChips .langChip').forEach(ch => ch.addEventListener('click', () => {
     localStorage.setItem('app_lang', ch.dataset.lang);
@@ -7965,13 +8232,10 @@ async function loadDocs() {
     const d = j.legal;
     document.getElementById('checkword').textContent = `${L.checkword}: ${d.check_word}`;
     document.getElementById('docsbody').innerHTML = `
-      ${ME && ME.honest ? `<button class="honestlink" id="honestReopen">${esc(L.hn_link)}</button>` : ''}
       <details class="doc"><summary>🔐 ${esc(L.privacy)}</summary><div class="txt">${esc(d.privacy)}</div></details>
       <details class="doc"><summary>📄 ${esc(L.agreement)}</summary><div class="txt">${esc(d.agreement)}</div></details>
       <details class="doc"><summary>💰 ${esc(L.tariffs)}</summary><div class="txt">${esc(d.tariffs)}</div></details>
       <details class="doc"><summary>🛟 ${esc(L.support)}</summary><div class="txt">${esc(d.support)}</div></details>`;
-    const hr = document.getElementById('honestReopen');
-    if (hr) hr.addEventListener('click', openHonest);
   } catch (e) {
     document.getElementById('docsbody').innerHTML = `<div class="err">${esc(e.message)}</div>`;
   }
@@ -8220,6 +8484,20 @@ document.getElementById('chatFileIn').addEventListener('change', (e) => {
 // V3.43.7: the photo button opens the scene menu first (the same picker the
 // bot's photo keyboard shows); the chosen scene rides the media request.
 document.getElementById('mediaPhoto').addEventListener('click', () => openFeature('photo'));
+// V3.165.0 (#105): owner — «Раздеть её фото» is a row of its own now: the same
+// action as the button under her newest photo, without hunting for it. With no
+// photo in this chat yet there is nothing to undress, so the row opens the scene
+// picker first (photoAction keeps its own mediaBusy guard).
+function lastHerPhotoUrl() {
+  const shots = document.querySelectorAll('#chatMsgs [data-pact="undress"]');
+  return shots.length ? shots[shots.length - 1].getAttribute('data-media') : '';
+}
+document.getElementById('featUndress').addEventListener('click', () => {
+  closeCapSheet();
+  const url = lastHerPhotoUrl();
+  if (url) photoAction('undress', url, null);
+  else openFeature('photo');
+});
 // V3.139.1: the two-girl rows ask the pair, not one girl. Free → blurred teaser
 // + Premium button (no render, no spend); Premium → the real joint frame.
 // V3.139.2: «Фото вдвоём» opens the same scene picker as the single photo.
@@ -8351,17 +8629,18 @@ async function loadLike(charId) {
 function renderCollectBar(g) {
   const bar = document.getElementById('charCollectBar');
   if (!bar) return;
-  if (!g || !g.ok) { bar.style.display = 'none'; return; }
+  if (!g || !g.ok) { showPanel('charCollectBar', false); return; }
   const per = Math.max(1, g.per_set || 50);
   const progress = Math.max(0, Math.min(per, g.progress || 0));
   const sets = Math.max(0, g.sets_done || 0);
   const pct = Math.round(progress / per * 100);
-  bar.style.display = '';
+  // V3.165.0 (#105): «🖼 Галерея · 12/50» — the count lives on the folded line,
+  // the bar itself is inside the fold.
   document.getElementById('charCollectLbl').textContent =
-    '🖼 ' + L.collect_lbl + ' ' + progress + '/' + per +
-    (sets > 0 ? ' · 🏆 ' + L.collect_sets(sets) : '');
-  document.getElementById('charCollectPct').textContent = pct + '%';
+    '🖼 ' + L.collect_lbl + (sets > 0 ? ' · 🏆 ' + L.collect_sets(sets) : '');
+  document.getElementById('charCollectPct').textContent = progress + '/' + per;
   document.getElementById('charCollectFill').style.width = pct + '%';
+  showPanel('charCollectBar', true);
 }
 async function loadCollection(charId) {
   try {
@@ -8473,7 +8752,8 @@ document.getElementById('chanCheck').addEventListener('click', async () => {
 
 renderStudio();
 // V3.44.2: optimized loading - critical calls first, lazy-load the rest
-Promise.all([loadMe(), loadCharacters()]).then(() => maybeDeepOpenChat(CHARS));
+// V3.165.0 (Задача 100): on a plain entry the mode screen comes first.
+Promise.all([loadMe(), loadCharacters()]).then(() => maybeModeEntry(CHARS));
 // V3.44.14: if a paid creation is still in flight, say so above the grid
 checkConstructorStatus();
 // Lazy-load non-critical tabs on first switch (V3.44.2 idea, V3.44.15 fix:

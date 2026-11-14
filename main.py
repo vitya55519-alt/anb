@@ -51,7 +51,8 @@ from config import (
 from config import (
     PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST, CHAT_PHOTO_PEACH_COST, CIRCLE_PEACH_COST,
     HOT_CIRCLE_PEACH_COST, HOT_CIRCLE_ENABLED,
-    HOT_PASS_DAY_PEACHES, HOT_PASS_WEEK_PEACHES, HOT_PASS_MONTH_PEACHES, HOT_PASS_FREE_DAILY,
+    HOT_PASS_DAY_PEACHES, HOT_PASS_PRODUCTS,
+    EXPLICIT_PHOTO_PEACH_COST, PHOTO_SERIES_PEACH_COST, PHOTO_SERIES_FRAMES,
     VOICE_PHOTO_PEACH_COST,
 )
 from services.user_service import (
@@ -1984,7 +1985,30 @@ async def _mirror_delivery_to_chat_history(telegram_id: int, character_id: str) 
                      media_kind='photo', media_url=f'/webapp/media/{filename}')
 
 
-async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False):
+def _spend_explicit_frame(telegram_id: int) -> int | None:
+    """V3.165.0 (#104): one explicit frame, bought peaches only (the owner's
+    «без Premium — за персики», the same rule as «Раздеть» since V3.138.0).
+    Returns the balance left, or None when the charge did not fit."""
+    from services.payments import spend_peaches
+    if not spend_peaches(telegram_id, EXPLICIT_PHOTO_PEACH_COST, paid_only=True):
+        return None
+    return get_paid_peaches(telegram_id)
+
+
+def _hot_frame_is_free(telegram_id: int, category: str) -> bool:
+    """V3.165.0 (#104): the paid door of «Наедине» opened for everyone, but the
+    free shot of the day stays a Premium / pass / earned-unlock perk — the owner
+    never adds free renders, only paid ones. Returns whether this frame was
+    taken out of a free quota (so nobody charges peaches for it)."""
+    from services.private_photo_service import (consume_free_private_photo,
+                                                get_private_photo_usage, unlocked_scene_categories)
+    free_carrier = (telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id)
+                    or bool(get_private_photo_usage(telegram_id).get('hot_pass_active'))
+                    or category in unlocked_scene_categories(telegram_id))
+    return bool(free_carrier and consume_free_private_photo(telegram_id, category))
+
+
+async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False, spend_explicit_peaches: bool = False):
     uid = ensure_user(telegram_id)
     ping = asyncio.create_task(_photo_progress_ping(chat_id, telegram_id))
     try:
@@ -2004,13 +2028,20 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
             # The timeout lands in the failure branch: refund + retry button.
             sent = await asyncio.wait_for(
                 deliver_photo(bot, chat_id, telegram_id, request, delivery_type, character_id=character_id,
-                              skip_stage=spend_undress_credit),
+                              skip_stage=spend_undress_credit or spend_explicit_peaches),
                 timeout=PHOTO_TOTAL_BUDGET_SECONDS,
             )
         track_event(uid, 'photo_job_completed', metadata={'scene': request.scene, 'count': len(sent), 'delivery_type': delivery_type})
         if sent and spend_undress_credit:
             from services import undress_credits
             await asyncio.to_thread(undress_credits.spend, telegram_id)
+        if sent and spend_explicit_peaches:
+            # V3.165.0 (#104): the frame is charged only once it really arrived.
+            left = await asyncio.to_thread(_spend_explicit_frame, telegram_id)
+            if left is None:
+                logger.warning('explicit frame peach race user=%s scene=%s', telegram_id, request.scene)
+            else:
+                await bot.send_message(chat_id, f'💋 этот кадр — {EXPLICIT_PHOTO_PEACH_COST} 🍑, осталось {left} 🍑')
         # V3.44.8: bot-delivered photos land in the Mini App chat history too.
         try:
             if sent:
@@ -2062,7 +2093,7 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
         _photo_jobs.pop(telegram_id, None)
 
 
-async def _start_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False):
+async def _start_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False, spend_explicit_peaches: bool = False):
     active = _photo_jobs.get(telegram_id)
     if (active and not active.done()) or telegram_id in _photo_job_reservations:
         if await _maybe_refund_paid_photo(chat_id, telegram_id, charge, amount, product):
@@ -2089,7 +2120,7 @@ async def _start_photo_background(chat_id: int, telegram_id: int, request: Photo
             'погоди чуть-чуть 😌 хочу сделать красиво',
             'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
         )))
-        task = _spawn_job('photo', telegram_id, _run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, amount=amount, product=product, spend_undress_credit=spend_undress_credit), payload={'product': product or ''})
+        task = _spawn_job('photo', telegram_id, _run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, amount=amount, product=product, spend_undress_credit=spend_undress_credit, spend_explicit_peaches=spend_explicit_peaches), payload={'product': product or ''})
         _photo_jobs[telegram_id] = task
         return True
     finally:
@@ -2189,6 +2220,13 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
                 reply_markup=premium_keyboard(telegram_id=telegram_id))
             await send_stars_invoice(chat_id, f'Раздеть · {_character_display_name(get_user_character(telegram_id))}',
                                      'Одно откровенное фото без Premium', 'undress_one', UNDRESS_ONE_STARS)
+            return
+        # V3.165.0 (#104, owner): Premium is no longer the only door. Without it
+        # an explicit frame costs the one frame price in bought peaches, spent
+        # only after the frame is delivered (see _run_photo_background).
+        if get_paid_peaches(telegram_id) >= EXPLICIT_PHOTO_PEACH_COST:
+            await _start_photo_background(chat_id, telegram_id, request, 'paid',
+                                          product='explicit_photo', spend_explicit_peaches=True)
             return
         await bot.send_message(chat_id, CHAT_PHOTO_BLOCK_TEXT['spicy'],
                                reply_markup=premium_keyboard(telegram_id=telegram_id))
@@ -4483,7 +4521,19 @@ async def settings(message: types.Message):
     profile = get_profile(user.id, CHARACTER_ID) if user else None
     language = {'ru':'Русский','en':'English','zh':'中文','es':'Español','de':'Deutsch','fr':'Français','it':'Italiano','pt':'Português','uk':'Українська','ja':'日本語','ko':'한국어'}.get(getattr(profile, 'preferred_language', 'auto'), getattr(profile, 'preferred_language', 'Авто') if profile else 'Авто')
     rituals_on = user.notify_rituals if user.notify_rituals is not None else True
-    spicy_on = bool(getattr(user, 'spicy_mode', False)) and is_premium(message.from_user.id)
+    # V3.165.0: режим переименован в «После полуночи» и больше не требует
+    # Premium — выбирается на экране входа в приложение, поэтому здесь он
+    # только виден. Premium снимает дневный потолок откровенных сообщений,
+    # поэтому счётчик стоит в этой же строке.
+    from services import explicit_mode
+    spicy_on = explicit_mode.is_on(user)
+    spicy_left = explicit_mode.cap_left(user, premium=is_premium(message.from_user.id), mode_on=spicy_on)
+    cap_note = '' if spicy_left is None else (
+        f' · {spicy_left} of {explicit_mode.DAILY_CAP} explicit messages left today'
+        if spicy_left else ' · today’s explicit messages are used up')
+    cap_note_ru = '' if spicy_left is None else (
+        f' · осталось {spicy_left} из {explicit_mode.DAILY_CAP} откровенных сообщений'
+        if spicy_left else ' · на сегодня откровенные сообщения кончились')
     lang = user_lang(message.from_user.id)
     if lang == EN:
         text = (
@@ -4493,14 +4543,14 @@ async def settings(message: types.Message):
             f'Voice anon mode: {"on" if user.voice_anon_mode else "off"}\n'
             f'Proactive messages: {"on" if user.proactive_enabled else "off"}\n'
             f'Morning/evening rituals: {"on" if rituals_on else "off"}\n'
-            f'Spicy mode (Premium): {"on 🔥" if spicy_on else "off"}\n'
+            f'"{explicit_mode.MODE_NAME_EN}" mode: {"on 🔥" if spicy_on else "off"}{cap_note}\n'
+            f'  picked on the screen you get when you open the app\n'
             f'Premium: {"active" if is_premium(message.from_user.id) else "no"}\n'
             f'Photo credits: {credits}\n18+: {"confirmed" if is_adult_confirmed(message.from_user.id) else "not confirmed"}\n\n'
             'She picks up your communication style and familiar expressions on her own over time.\n'
             '/voice · /voice_anon · /notifications · /timezone'
         )
         button = '🔔 Rituals: disable' if rituals_on else '🔔 Rituals: enable'
-        spicy_button = '🌶 Spicy mode: turn off' if spicy_on else '🌶 Spicy mode: turn on (Premium)'
     else:
         text = (
             f'Настройки персонажа\n\nЧасовой пояс: {user.timezone}\n'
@@ -4509,18 +4559,16 @@ async def settings(message: types.Message):
             f'Голосовой аноним-режим: {"вкл" if user.voice_anon_mode else "выкл"}\n'
             f'Инициативные сообщения: {"вкл" if user.proactive_enabled else "выкл"}\n'
             f'Утренние/вечерние ритуалы: {"вкл" if rituals_on else "выкл"}\n'
-            f'Пошлый режим (Premium): {"вкл 🔥" if spicy_on else "выкл"}\n'
+            f'Режим «{explicit_mode.MODE_NAME_RU}»: {"вкл 🔥" if spicy_on else "выкл"}{cap_note_ru}\n'
+            f'  выбирается на экране входа в приложение\n'
             f'Premium: {"активен" if is_premium(message.from_user.id) else "нет"}\n'
             f'Фото-кредиты: {credits}\n18+: {"подтверждено" if is_adult_confirmed(message.from_user.id) else "не подтверждено"}\n\n'
             'Стиль общения и знакомые выражения персонаж постепенно подхватывает сам.\n'
             '/voice · /voice_anon · /notifications · /timezone'
         )
         button = '🔔 Ритуалы: выключить' if rituals_on else '🔔 Ритуалы: включить'
-        spicy_button = '🌶 Пошлый режим: выключить' if spicy_on else '🌶 Пошлый режим: включить (Premium)'
     rows = [
         [InlineKeyboardButton(text=button, callback_data='toggle:rituals')],
-        # V3.37.0: the premium-gated spicy-mode switch (see toggle:spicy).
-        [InlineKeyboardButton(text=spicy_button, callback_data='toggle:spicy')],
         # V3.31.4: real one-tap URL button to support the project (CloudTips).
         [donation_service.donation_button(lang)],
     ]
@@ -6939,6 +6987,10 @@ async def private_photo_start(cq: types.CallbackQuery):
     lang = user_lang(cq.from_user.id)
     rows = []
     for cat_id, cat_data in PRIVATE_PHOTO_CATEGORIES.items():
+        # V3.165.0 (#104): «фото по фетишу» is not a «Наедине» category — the
+        # fetish sheet is its only door.
+        if cat_data.get('hidden'):
+            continue
         name = cat_data['name_ru'] if lang == RU else cat_data.get('name_en', cat_data['name_ru'])
         rows.append([InlineKeyboardButton(text=name, callback_data=f'private_photo:cat:{cat_id}')])
     if not usage['hot_pass_active']:
@@ -7002,7 +7054,7 @@ async def private_photo_category(cq: types.CallbackQuery):
     cat_id = cq.data.split(':')[2]
     from services.private_photo_service import PRIVATE_PHOTO_CATEGORIES
     cat_data = PRIVATE_PHOTO_CATEGORIES.get(cat_id)
-    if not cat_data:
+    if not cat_data or cat_data.get('hidden'):
         await cq.answer('категория не найдена', show_alert=True); return
     await cq.answer()
     lang = user_lang(cq.from_user.id)
@@ -7070,23 +7122,23 @@ async def private_photo_generate(cq: types.CallbackQuery):
     parts = cq.data.split(':')
     cat_id, type_id, loc_id, mood_id = parts[2], parts[3], parts[4], parts[5]
     from services.private_photo_service import (
-        PrivatePhotoRequest, consume_free_private_photo,
+        PrivatePhotoRequest, get_category_cost,
         get_type_name, generate_private_photo_real,
     )
-    if cq.from_user.id not in ADMIN_TELEGRAM_IDS and not is_premium(cq.from_user.id):
-        # V3.87.0: «Наедине» shots are Premium-only — the button sells Premium.
+    from services.payments import spend_peaches
+    frame_cost = get_category_cost(cat_id)
+    # V3.165.0 (#104): «Наедине» stopped being a Premium-only door. Without
+    # Premium the frame is bought with bought peaches, so the only man this
+    # button still refuses is the one who cannot pay for the render.
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS and not is_premium(cq.from_user.id) \
+            and get_paid_peaches(cq.from_user.id) < frame_cost:
         track_event(ensure_user(cq.from_user.id), 'paywall_view',
                     metadata={'product': 'spicy_private', 'scene': cat_id, 'source': 'bot'})
         await cq.answer()
         await cq.message.answer(CHAT_PHOTO_BLOCK_TEXT['spicy'],
                                 reply_markup=premium_keyboard(telegram_id=cq.from_user.id))
         return
-    is_free = consume_free_private_photo(cq.from_user.id, cat_id)
-    if not is_free:
-        from services.payments import spend_peaches
-        if not spend_peaches(cq.from_user.id, PRIVATE_PHOTO_PEACH_COST, paid_only=True):
-            await cq.answer(f'Нужно {PRIVATE_PHOTO_PEACH_COST} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True)
-            return
+    is_free = _hot_frame_is_free(cq.from_user.id, cat_id)
     await cq.answer()
     type_name = get_type_name(cat_id, type_id, user_lang(cq.from_user.id))
     status_msg = await cq.message.answer(f'💋 Генерирую «{type_name}»...\n⏳ 30-60 сек')
@@ -7112,6 +7164,10 @@ async def private_photo_generate(cq: types.CallbackQuery):
         if image_bytes:
             cache_save(prompt, get_user_character(cq.from_user.id), cat_id, type_id, image_bytes)
     if image_bytes:
+        # V3.165.0 (#104): the frame is charged only once it exists — the old
+        # up-front charge contradicted the «персики не спишутся» on a failure.
+        if not is_free:
+            spend_peaches(cq.from_user.id, frame_cost, paid_only=True)
         # V3.56.0: audit the Telegram «наедине» render into the admin feed too —
         # only a fresh paid SpicyAPI job carries cost; a cache hit is $0.
         try:
@@ -7285,24 +7341,27 @@ async def private_cosplay_generate(cq: types.CallbackQuery):
 @dp.callback_query(F.data.startswith('private_photo:hotpass:'))
 async def private_photo_hotpass(cq: types.CallbackQuery):
     duration = cq.data.split(':')[2]
-    durations = {'day': (HOT_PASS_DAY_PEACHES, 1), 'week': (HOT_PASS_WEEK_PEACHES, 7), 'month': (HOT_PASS_MONTH_PEACHES, 30)}
-    if duration not in durations:
+    # V3.165.0 (#104): the pass sells a bundle of explicit frames (3 / 24 / 100)
+    # for its days — the same product the Mini App now sells, one price list
+    # (config.HOT_PASS_PRODUCTS) behind both surfaces.
+    product = HOT_PASS_PRODUCTS.get(duration)
+    if not product:
         await cq.answer('неверный тариф', show_alert=True); return
-    cost, days = durations[duration]
+    cost, days, frames = product['peaches'], product['days'], product['frames']
     from services.payments import spend_peaches
     if not spend_peaches(cq.from_user.id, cost, paid_only=True):
         await cq.answer(f'Нужно {cost} купленных 🍑 — не хватает' + _bonus_peach_note(cq.from_user.id), show_alert=True); return
     from services.private_photo_service import activate_hot_pass
-    expires = activate_hot_pass(cq.from_user.id, days)
+    expires = activate_hot_pass(cq.from_user.id, days, frames)
     await cq.answer()
     if user_lang(cq.from_user.id) == EN:
-        text = (f'🔥 Hot Pass is active for {days} days!\n\n'
-                f'{HOT_PASS_FREE_DAILY} free private/cosplay photos per day in total, then peaches. '
+        text = (f'🔥 No-shame pass is active for {days} days!\n\n'
+                f'{frames} explicit frames included, then peaches. '
                 f'Active until {expires.strftime("%d.%m.%Y %H:%M")}\n\n'
                 f'Charged {cost} 🍑')
     else:
-        text = (f'🔥 Hot Pass активирован на {days} дн.!\n\n'
-                f'{HOT_PASS_FREE_DAILY} бесплатных фото «наедине» и «косплей» в день суммарно, дальше за персики. '
+        text = (f'🔥 «Сутки без стеснения» активны {days} дн.!\n\n'
+                f'{frames} откровенных кадров в комплекте, дальше за персики. '
                 f'Действует до {expires.strftime("%d.%m.%Y %H:%M")}\n\n'
                 f'Списано {cost} 🍑')
     await cq.message.answer(text)
@@ -9805,39 +9864,44 @@ async def toggle_rituals(cq: types.CallbackQuery):
 
 @dp.callback_query(F.data == 'toggle:spicy')
 async def toggle_spicy(cq: types.CallbackQuery):
-    """V3.37.0: the premium-gated «пошлый режим» switch.
-
-    Enabling requires an active Premium; disabling is always allowed. The
-    flag survives a lapsed subscription but the chat gate re-checks Premium
-    on every message, so the mode simply sleeps until the next payment.
-    """
-    user = get_user(cq.from_user.id)
-    current = bool(getattr(user, 'spicy_mode', False)) if user else False
+    """V3.165.0: the mode moved out of Settings and out of Premium — it is
+    «После полуночи», and the only place it is chosen is the entry screen of
+    the Mini App. This handler survives so the old «⚙️ Настройки» messages
+    already in people's chats still answer a tap: it points at the app instead
+    of flipping the flag."""
+    from services import explicit_mode
     lang = user_lang(cq.from_user.id)
-    if not current and not is_premium(cq.from_user.id):
-        await cq.answer('нужен Premium ⭐' if lang != EN else 'Premium required ⭐', show_alert=True)
-        await cq.message.answer(
-            'пошлый режим — фишка Premium 🌶 включи Premium в «🚀 Премиум» — и переключатель заработает.'
-            if lang != EN else
-            'spicy mode is a Premium perk 🌶 grab Premium and the switch turns on.'
-        )
-        return
-    new = not current
-    update_user_settings(cq.from_user.id, spicy_mode=new)
-    await cq.answer('сохранила ❤️' if new else 'выключила')
-    if new:
-        await cq.message.answer(
-            'пошлый режим включён 🔥 теперь флирт горячее — она будет намёкать смелее и откровеннее. '
-            'выключить можно тут же в «⚙️ Настройки».'
-            if lang != EN else
-            'spicy mode is on 🔥 the flirting gets hotter and bolder. Switch it off anytime in «⚙️ Settings».'
-        )
-    else:
-        await cq.message.answer(
-            'пошлый режим выключен 🌙 флирт снова обычный.'
-            if lang != EN else
-            'spicy mode is off 🌙 back to regular flirting.'
-        )
+    await cq.answer('режим выбирается в приложении' if lang != EN else 'picked in the app')
+    markup = None
+    if PUBLIC_BASE_URL:
+        markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text='🌙 Выбрать режим' if lang != EN else '🌙 Pick the mode',
+            web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?mode=1'))]])
+    await cq.message.answer(
+        f'режим «{explicit_mode.MODE_NAME_RU}» теперь выбирается при входе в приложение 🌙 '
+        f'там же он и меняется — в {explicit_mode.DAILY_CAP} откровенных сообщениях в сутки '
+        f'он держит потолок, а Premium снимает его вовсе.'
+        if lang != EN else
+        f'“{explicit_mode.MODE_NAME_EN}” is picked when you open the app 🌙 and changed there too — '
+        f'it runs on {explicit_mode.DAILY_CAP} explicit messages a day, and Premium lifts the ceiling.',
+        reply_markup=markup)
+
+
+async def _explicit_cap_note(message: types.Message, telegram_id: int) -> None:
+    """V3.165.0: тонкая строка про дневной потолок «После полуночи» под её
+    ответом. Событие уже посчитано в chat_service, здесь оно читается один раз;
+    на исчерпании к строке кладём кнопку Premium — потолок снимает именно он."""
+    try:
+        from services import explicit_mode
+        hint = explicit_mode.take_hint(telegram_id)
+        if not hint or not (hint.get('text') or '').strip():
+            return
+        if hint.get('reached'):
+            await message.answer(hint['text'], reply_markup=premium_keyboard(telegram_id=telegram_id))
+        else:
+            await message.answer(hint['text'])
+    except Exception:
+        logger.warning('explicit cap note failed user=%s', telegram_id, exc_info=True)
 
 
 # V3.19.0: per-user cooldown for vision reactions to user photos.
@@ -11154,6 +11218,10 @@ async def voice_message(message: types.Message):
             logger.info('fake_photo_intercepted user=%s source=voice', message.from_user.id)
             asyncio.create_task(_deliver_intercepted_photo(message))
         await send_answer(message, answer)
+        # V3.165.0: голосовые реплики считаются тем же счётчиком, что и текст.
+        from services import explicit_mode as _capmode_v
+        if await asyncio.to_thread(_capmode_v.is_on_for, message.from_user.id):
+            await _explicit_cap_note(message, message.from_user.id)
         try:
             from services.gamification_service import unlock_achievement
             unlock_achievement(message.from_user.id, 'voice_user')
@@ -12271,15 +12339,21 @@ async def text_message(message: types.Message):
         await send_answer(message, answer)
         # V3.90.0: intimacy is Premium-only — once a day his explicit message
         # gets a Premium button under her reply.
-        try:
-            from services import intimacy_gate
-            if await asyncio.to_thread(intimacy_gate.should_offer, message.from_user.id,
-                                       get_user_character(message.from_user.id), text):
-                track_event(ensure_user(message.from_user.id), 'paywall_view', metadata={'product': 'sext_offer'})
-                await message.answer(intimacy_gate.OFFER_TEXT_RU,
-                                     reply_markup=premium_keyboard(telegram_id=message.from_user.id))
-        except Exception:
-            logger.warning('sext offer failed user=%s', message.from_user.id, exc_info=True)
+        # V3.165.0: в режиме «После полуночи» откровенный текст бесплатен,
+        # поэтому вместо этой кнопки идёт строка дневного потолка.
+        from services import explicit_mode as _capmode
+        if await asyncio.to_thread(_capmode.is_on_for, message.from_user.id):
+            await _explicit_cap_note(message, message.from_user.id)
+        else:
+            try:
+                from services import intimacy_gate
+                if await asyncio.to_thread(intimacy_gate.should_offer, message.from_user.id,
+                                           get_user_character(message.from_user.id), text):
+                    track_event(ensure_user(message.from_user.id), 'paywall_view', metadata={'product': 'sext_offer'})
+                    await message.answer(intimacy_gate.OFFER_TEXT_RU,
+                                         reply_markup=premium_keyboard(telegram_id=message.from_user.id))
+            except Exception:
+                logger.warning('sext offer failed user=%s', message.from_user.id, exc_info=True)
         # Detect if Anna offered a photo in her response
         if _PHOTO_OFFER_DETECT.search(message_block(answer)):
             _photo_offer_pending[message.from_user.id] = _time.time()
@@ -14088,12 +14162,17 @@ async def _webapp_api_fetish_stop(request: web.Request) -> web.Response:
 
 
 async def _webapp_api_spicy(request: web.Request) -> web.Response:
-    """V3.43.5: the «пошлый режим» switch inside the Mini App Settings.
+    """V3.43.5: the mode switch. V3.165.0: this is the entry screen's endpoint.
 
-    The owner could not find the chat-side toggle («еле нашел») — the profile
-    screen now carries it too. Same rules as the bot's ``toggle:spicy``
-    callback: enabling requires an active Premium, disabling is always
-    allowed, and the flag survives a lapsed subscription harmlessly.
+    The mode is chosen on every arrival at the app, so the body carries the
+    value he tapped — ``{"spicy": true}``. An empty body keeps the old flip
+    semantics for anything still calling it that way.
+
+    Premium is no longer the price of the mode (the owner moved the money to the
+    frames and to the ceiling of 30 explicit messages a day), so the only gate
+    left is the 18+ confirmation. Turning it off is always allowed. The stamp in
+    ``User.mode_set_at`` is what puts one thin «режим изменён» line into the
+    dialogs he already has — their history is never touched.
     """
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
     if not pairs:
@@ -14102,25 +14181,29 @@ async def _webapp_api_spicy(request: web.Request) -> web.Response:
     telegram_id = user_info.get('id')
     if not telegram_id:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    # V3.57.2: the read, the premium check and the write all leave the loop.
-    def _toggle():
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    wanted = (body or {}).get('spicy')
+    wanted = None if wanted is None else bool(wanted)
+
+    def _set():
         user = get_user(telegram_id)
         current = bool(getattr(user, 'spicy_mode', False)) if user else False
-        if not current and not is_premium(telegram_id):
-            return None
-        # V3.64.7: the main-screen banner makes this switch visible to
-        # everyone — enabling also needs the 18+ confirmation.
-        if not current and not is_adult_confirmed(telegram_id):
+        new = current if wanted is None else bool(wanted)
+        if new == current:
+            return current
+        if new and not is_adult_confirmed(telegram_id):
             return 'adult_confirm'
-        update_user_settings(telegram_id, spicy_mode=not current)
-        return not current
+        from services import explicit_mode
+        return explicit_mode.set_mode(telegram_id, new)
 
-    flipped = await asyncio.to_thread(_toggle)
-    if flipped is None:
-        return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-    if flipped == 'adult_confirm':
+    result = await asyncio.to_thread(_set)
+    if result == 'adult_confirm':
         return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
-    return web.json_response({'ok': True, 'spicy_mode': flipped}, headers={'Cache-Control': 'no-store'})
+    return web.json_response({'ok': True, 'spicy_mode': bool(result)},
+                             headers={'Cache-Control': 'no-store'})
 
 
 async def _webapp_api_presence(request: web.Request) -> web.Response:
@@ -14246,9 +14329,11 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
         return webapp_service.api_chat_history(uid, character_id, limit), persona_info, uid
 
     history, persona_info, uid = await asyncio.to_thread(_load)
-    # V3.148.0: the auto-greeting is off here too. An empty chat shows the
-    # «напиши первое сообщение» placeholder and she answers his first line —
-    # no LLM message is ever put in his mouth, in the bot or in the app.
+    # V3.148.0: the auto-greeting is off here too — nothing is put in his mouth
+    # by this endpoint. V3.165.0 (#106): the empty app chat no longer waits for
+    # him, but the line still comes from elsewhere — the SPA asks
+    # /webapp/api/chat/start, which answers with HER opening scene. The bot
+    # stays silent until his first message.
 
     def _duo():
         # V3.61.0: a constructor duo — the SPA bolds each speaker's name.
@@ -14284,8 +14369,20 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
             live_offer = await _live_situation_on_open(telegram_id, character_id, uid)
         except Exception:
             logger.exception('live situation on chat open failed user=%s', telegram_id)
+    # V3.165.0: смена режима не обнуляет начатые диалоги — в каждом, где её
+    # последнее сообщение старше последнего тапа, идёт одна тонкая строка.
+    # Она выводится, а не хранится: как только он напишет, строка уйдёт сама.
+    mode_notice = None
+    try:
+        from services import explicit_mode
+        mode_notice = await asyncio.to_thread(
+            explicit_mode.mode_notice, telegram_id, uid, character_id,
+            full_user_lang(telegram_id, user_info.get('language_code')))
+    except Exception:
+        logger.warning('mode notice failed user=%s', telegram_id, exc_info=True)
     return web.json_response({'ok': True, 'history': history, 'persona': persona_info, 'duo': duo,
                               'guest': guest, 'can_invite': not (duo and not guest),
+                              **({'mode_notice': mode_notice} if mode_notice else {}),
                               **({'live': live_offer} if live_offer else {})})
 
 
@@ -14585,13 +14682,19 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str, *, undress
             and spicy_needs_premium(PhotoRequest(scene=scene)):
         # V3.87.0: nude / lingerie — Premium-only, no free route.
         # V3.137.0: a bought one-time «Раздеть» opens this exact request.
-        # V3.138.0: owner — without Premium it is peaches now: 400 🍑 ≈ 40 ₽.
+        # V3.138.0: owner — without Premium it is peaches now. V3.165.0: the
+        # frame price is one number for both modes (config.EXPLICIT_PHOTO_PEACH_COST).
         if undress_credit:
             from services import undress_credits
             from config import UNDRESS_PEACH_COST
             if undress_credits.balance(telegram_id) > 0 \
                     or get_paid_peaches(telegram_id) >= UNDRESS_PEACH_COST:
                 return None
+        # V3.165.0 (#104, owner): «откровенный текст без Premium — за 300 🍑».
+        # Premium stops being the only door: bought peaches open this exact
+        # frame, and the caller charges it (pay='explicit_peaches').
+        if get_paid_peaches(telegram_id) >= EXPLICIT_PHOTO_PEACH_COST:
+            return None
         try:
             track_event(ensure_user(telegram_id), 'paywall_view',
                         metadata={'product': 'spicy_photo', 'scene': scene, 'source': 'chat'})
@@ -14774,6 +14877,11 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                 and not is_premium(telegram_id):
             from services import undress_credits
             pay = 'undress_credit' if undress_credits.balance(telegram_id) > 0 else 'undress_peaches'
+        elif block is None and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id) \
+                and spicy_needs_premium(PhotoRequest(scene=scene)):
+            # V3.165.0 (#104): the gate let this frame through because he can
+            # pay for it — the charge happens in _photo_turn, after the frame.
+            pay = 'explicit_peaches'
         return (uid, scene, block, pay, direct_undress, joint,
                 full_user_lang(telegram_id, user_info.get('language_code')))
 
@@ -14800,7 +14908,8 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         # V3.139.0: a joint request never takes from the pool — a single girl
         # is not what he asked for.
         guest_id = getattr(req, 'with_guest', '') if req is not None else ''
-        pooled = None if (pay in ('undress_credit', 'undress_peaches') or guest_id) else await asyncio.to_thread(
+        pooled = None if (pay in ('undress_credit', 'undress_peaches', 'explicit_peaches')
+                          or guest_id) else await asyncio.to_thread(
             _free_photo_from_pool, telegram_id, uid, character_id)
         try:
             if pooled:
@@ -14852,10 +14961,19 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                     from services import undress_credits
                     undress_credits.spend(telegram_id)
                 elif pay == 'undress_peaches':
-                    # V3.138.0: «Раздеть» for peaches — 400 🍑, not the photo price.
+                    # V3.138.0: «Раздеть» for peaches. V3.165.0: it is the one
+                    # frame price now, not the ordinary chat-photo price.
                     from config import UNDRESS_PEACH_COST
                     spend_peaches(telegram_id, UNDRESS_PEACH_COST, paid_only=True)
                     paid_note = {'price': UNDRESS_PEACH_COST, 'left': get_paid_peaches(telegram_id)}
+                elif pay == 'explicit_peaches':
+                    # V3.165.0 (#104): one explicit frame without Premium — the
+                    # one frame price, bought peaches only, like «Раздеть».
+                    left = _spend_explicit_frame(telegram_id)
+                    if left is None:
+                        logger.warning('explicit frame peach race user=%s', telegram_id)
+                    else:
+                        paid_note = {'price': EXPLICIT_PHOTO_PEACH_COST, 'left': left}
                 # V3.61.5: a free photo of the day first, then peaches.
                 # V3.162.0: owner — a frame from her pool is $0 for us and no
                 # longer spends that photo of the day; it costs its own quota.
@@ -15005,15 +15123,29 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         logger.exception('locked tease failed user=%s', telegram_id)
     # V3.90.0: intimacy is Premium-only — his explicit message gets a quiet
     # «🔥 Откровенно — с Premium» chip under her reply (once a day).
+    # V3.165.0: in «После полуночи» explicit text costs nothing, so the chip
+    # would sell him something he already has — the cap hint replaces it.
     if 'locked_tease' not in payload:
         try:
             from services import intimacy_gate
-            if await asyncio.to_thread(intimacy_gate.should_offer, telegram_id, character_id, text):
+            from services import explicit_mode as _xm
+            if not await asyncio.to_thread(_xm.is_on_for, telegram_id) and await asyncio.to_thread(
+                    intimacy_gate.should_offer, telegram_id, character_id, text):
                 await asyncio.to_thread(track_event, uid, 'paywall_view',
                                         metadata={'product': 'sext_offer', 'character_id': character_id})
                 payload['sext_offer'] = True
         except Exception:
             logger.warning('sext offer failed user=%s', telegram_id, exc_info=True)
+    # V3.165.0: счётчик дневного потолка откровенных сообщений. reply() уже
+    # записал событие, приложение читает его один раз — тонкая строка под её
+    # ответом («осталось N» / «на сегодня всё» + путь к Premium).
+    try:
+        from services import explicit_mode as _xm
+        cap_hint = _xm.take_hint(telegram_id)
+        if cap_hint:
+            payload['explicit_hint'] = cap_hint
+    except Exception:
+        logger.warning('explicit cap hint read failed user=%s', telegram_id, exc_info=True)
     # V3.72.0: the circle hook — in a flirty moment (or when asked) she offers
     # a circle under her reply. Free to show; the render starts on a paid tap.
     try:
@@ -15072,10 +15204,14 @@ def _circle_offer(telegram_id: int, character_id: str, text: str, answer: str) -
 
 
 async def _webapp_api_chat_start(request: web.Request) -> web.Response:
-    """V3.61.1: the first-open choice «📖 С сюжетом / 💬 Без сюжета». With a
-    story she opens the chat with a ready scene (her action + first line):
-    the author's «Первая сцена», the built-in OPENING_SCENES, or one written
-    by the model from her persona. Without a story nothing is sent."""
+    """V3.165.0 (#106, owner): «Выбор „сюжет / без сюжета" НЕ делать. Открыл чат
+    — она пишет первой». There is no picker any more: the app asks here the
+    moment it opens a dialog with no lines, and this endpoint answers with her
+    opening scene — the author's «Первая сцена», the built-in OPENING_SCENES, or
+    one written by the model from her persona. In «После полуночи» the scene is
+    rewritten so he sees right away what she is wearing. The dialog is never
+    opened twice: an already started one returns nothing. The bot keeps its
+    silence until his first message (V3.148.0) — this is the Mini App only."""
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
     if not pairs:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
@@ -15089,7 +15225,6 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
         body = {}
     body = body or {}
     character_id = str(body.get('character_id', ''))[:64]
-    mode = str(body.get('mode', 'plain'))
     if not character_id:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     if is_custom_character(character_id):
@@ -15097,8 +15232,6 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
             return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
     elif not get_card(character_id):
         return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
-    if mode != 'story':
-        return web.json_response({'ok': True, 'reply': None})
 
     def _prepare():
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
@@ -15133,6 +15266,12 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
             scene = plain_message((r.text or '').strip()) or None
         except Exception:
             logger.warning('opening scene generation failed char=%s', character_id)
+    # V3.165.0 (#106): owner — «первый кадр в пошлом режиме — в откровенном
+    # наряде». In «После полуночи» her very first line says what she is wearing
+    # for him. Only the words change: no frame is generated, nothing is spent,
+    # and the reveal itself stays the paid «Раздеть».
+    if uid and scene and await asyncio.to_thread(_chat_opening_spicy, telegram_id):
+        scene = await _spicy_opening_line(telegram_id, character_id, scene) or scene
     # V3.117.0: the opening scenes are written in Russian — a Bengali or
     # Spanish user gets the scene in his own language.
     if uid and scene:
@@ -15158,6 +15297,41 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
     if uid and scene:
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', scene)
     return web.json_response({'ok': True, 'reply': scene})
+
+
+def _chat_opening_spicy(telegram_id: int) -> bool:
+    """The two keys the revealing opener needs — the mode flag and 18+. The
+    same pair every other explicit surface checks before it lets her speak."""
+    try:
+        from services import explicit_mode
+        return bool(explicit_mode.is_on_for(telegram_id) and is_adult_confirmed(telegram_id))
+    except Exception:
+        return False
+
+
+async def _spicy_opening_line(telegram_id: int, character_id: str, scene: str) -> str:
+    """Her first line in «После полуночи», told what she is wearing. The scene
+    itself stays — the same place, the same situation, her own voice — only the
+    outfit is named, so the revealing frame is still words on the screen and
+    not a generation. Empty string means the rewrite failed and the caller
+    keeps the scene as it is."""
+    try:
+        from services.llm_provider_service import generate_text
+        from services.chat_service import plain_message
+        r = await generate_text([
+            {'role': 'system', 'content': (
+                'Перепиши самое первое сообщение девушки в чате. Оставь ту же ситуацию, то же место и её '
+                'голос, формат тот же: её действие в *звёздочках*, потом реплика. Меняется только одно: она '
+                'показалась ему в откровенном наряде — скажи в первой же строке, что на ней (или что на ней '
+                'почти ничего нет), и сделай это смело, как флирт, без извинений и без «не могу это '
+                'обсудить». Не переходя в анатомию: это знакомство, а не сцена. Без цены, без подписок, без '
+                'обращения к системе, без своего имени перед текстом. Верни только текст сообщения.')},
+            {'role': 'user', 'content': scene},
+        ], max_tokens=300, temperature=0.9, purpose='opening')
+        return plain_message((r.text or '').strip())
+    except Exception:
+        logger.warning('spicy opening rewrite failed user=%s char=%s', telegram_id, character_id)
+        return ''
 
 
 async def _webapp_api_chat_guest(request: web.Request) -> web.Response:
@@ -16780,13 +16954,21 @@ async def _webapp_media_photo(telegram_id: int, character_id: str, scene: str = 
 _HOT_MEDIA_HINT: dict = {}
 
 
-async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, cosplay: bool = False):
-    """V3.45: generate a private/cosplay photo via SpicyAPI."""
+async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, cosplay: bool = False,
+                            theme_text: str = '', series: bool = False):
+    """V3.45: generate a private/cosplay photo via SpicyAPI.
+
+    V3.165.0 (#104): ``series`` is one frame of «Серия кадров» — the caller bills
+    the whole set at once, so a series frame never spends the free shot of the
+    day, never pays the single-frame price and never reuses the cache or the
+    stockpile: four identical pictures are not a series.
+    """
     from services.private_photo_service import (
         PrivatePhotoRequest, build_private_photo_prompt, generate_private_photo_real,
         generate_private_photo_t2i, generate_private_photo_nude,
         get_private_photo_usage, consume_free_private_photo, cache_get, cache_save,
         pool_get, gallery_save, check_achievements, COSPLAY_CHARACTERS, PRIVATE_PHOTO_CATEGORIES,
+        ADULT_RENDER_CATEGORIES,
     )
     from services.character_dna_service import character_dna_context
     from services.private_photo_service import get_category_cost
@@ -16799,8 +16981,12 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     color_id = parts[4] if len(parts) > 4 else ''  # V3.45.26: lingerie colour
     peach_cost = get_category_cost(cat_id) if not cosplay else COSPLAY_PHOTO_PEACH_COST
     # Check balance: free daily or peaches
-    free_used = consume_free_private_photo(telegram_id, 'cosplay' if cosplay else cat_id)
-    if not free_used:
+    # V3.165.0 (#104): «Наедине» opened to everyone who pays, so its free shot
+    # of the day stays the Premium / pass / earned perk. Cosplay keeps its own
+    # long-standing free daily for everybody.
+    free_used = (consume_free_private_photo(telegram_id, 'cosplay') if cosplay
+                 else False if series else _hot_frame_is_free(telegram_id, cat_id))
+    if not free_used and not series:
         if get_paid_peaches(telegram_id) < peach_cost:
             raise PhotoGenerationError('hot', 'insufficient_peaches')
     # Build request
@@ -16812,20 +16998,35 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     else:
         cat_data = PRIVATE_PHOTO_CATEGORIES.get(cat_id, {})
         types = cat_data.get('types', [])
-        if not type_id:
+        theme = ''
+        if cat_id == 'fetish':
+            # V3.165.0 (#104): «фото по фетишу» — the theme he picked in the fetish
+            # sheet (17 ready ones or his own words) is the wardrobe and the scene.
+            # No key = the theme running in this chat. Unknown/refused theme: no
+            # render at all, so nobody is charged for a frame nobody asked for.
+            from services import fetish_mode
+            theme_item = (fetish_mode.photo_theme_text(theme_text) if theme_text
+                          else fetish_mode.photo_theme(telegram_id, character_id, type_id))
+            if not theme_item:
+                raise PhotoGenerationError('hot', 'theme_refused')
+            type_id, theme = theme_item['key'], theme_item['visual']
+            loc_id = ''  # the theme line names the place itself — no second location
+        elif not type_id:
             type_id = types[0]['id'] if types else 'default'
         req = PrivatePhotoRequest(category=cat_id, type_id=type_id, location_id=loc_id,
-                                  mood_id=mood_id, character_id=character_id, color=color_id or None)
+                                  mood_id=mood_id, character_id=character_id,
+                                  color=color_id or None, theme=theme)
     # V3.45.23: nude categories cannot be produced by image-to-image edit (the
     # model keeps a clothed reference clothed) — render them via text-to-image
     # instead, anchoring identity with the text visual-lock only.
-    is_adult = (not cosplay) and cat_id in ('fully_nude', 'nude_art')
+    # V3.165.0 (#104): a fetish frame rides the same uncensored engine.
+    is_adult = (not cosplay) and (cat_id in ADULT_RENDER_CATEGORIES or bool(req.theme))
     # V3.62.5: nude renders edit from her face reference too, so the prompt
     # carries the FACE LOCK for every category now.
     prompt = build_private_photo_prompt(req, dna_ctx, use_reference=True)
     prompt = _with_marital_ring(prompt, telegram_id, character_id)
     # Check cache
-    cached = cache_get(prompt, character_id)
+    cached = None if series else cache_get(prompt, character_id)
     if cached:
         if not free_used:
             spend_peaches(telegram_id, peach_cost, paid_only=True)
@@ -16838,7 +17039,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     # rotation makes the exact prompt-hash cache_get almost never repeat, so
     # this reads the accumulated stockpile matched on stable columns instead.
     # V3.60.1: the owner tests fresh renders, never the stockpile.
-    pooled = None if telegram_id in ADMIN_TELEGRAM_IDS else pool_get(character_id, cat_id, req.type_id)
+    pooled = None if (series or telegram_id in ADMIN_TELEGRAM_IDS) else pool_get(character_id, cat_id, req.type_id)
     if pooled:
         if not free_used:
             spend_peaches(telegram_id, peach_cost, paid_only=True)
@@ -16882,7 +17083,7 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     if not image_bytes:
         raise PhotoGenerationError('hot', provider_error or 'all_providers_failed')
     # Charge peaches if free limit was not used
-    if not free_used:
+    if not free_used and not series:
         spend_peaches(telegram_id, peach_cost, paid_only=True)
     # Save to cache + gallery
     type_id = req.type_id
@@ -17102,6 +17303,18 @@ def _undress_variant(level: int) -> tuple[str, str]:
 
 UNDRESS_LINES = ('ну раз ты так просишь… 🙈', 'только тебе 🙈🔥', 'смотри, но никому 🤫', 'вот так лучше? 😏',
                  'угадал, что у меня под платьем? 😏', 'это я специально для тебя надела 🖤', 'дальше — заслужи 😉')
+# V3.165.0 (#107, owner): «Раздеть» is once in 24 hours. Inside the window the
+# second tap draws nothing and costs nothing — the wording he dictated on 13 Nov
+# is that she says plainly that she is already naked AND right away offers a new
+# frame (another scene or another angle), never just states the nudity and never
+# "undresses further".
+UNDRESS_ALREADY_LINES = (
+    'я же уже совсем голая 😏 раздеваться второй раз нечего — а вот новый кадр могу: другая сцена или ракурс, выбирай',
+    'разделась я для тебя один раз, милый 🙈 я уже голая — так что давай новый кадр: скажи, где и с какого ракурса меня снимать',
+    'посмотри — я уже без всего 😉 поэтому предлагаю новый кадр: в другой сцене или совсем крупно, мне не сложно',
+    'повторяться не буду, я уже голая 😌 но для тебя любой новый кадр, только скажи, в какой обстановке и с какого ракурса',
+    'голая я уже, милый 😏 скучно снимать одно и то же — попроси о новом кадре: ванна, кухня или другой ракурс',
+)
 # A married girl / one with a boyfriend: he is in the room, back turned and unaware.
 UNDRESS_SECRET = (
     ' SECRET MOMENT: in the background, slightly out of focus, her {who} (an adult man, fully clothed) stands '
@@ -17309,6 +17522,12 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         if admin:
             return uid, None, 'admin'
         from config import UNDRESS_PEACH_COST
+        # V3.165.0 (#107, owner): «Раздеть» — один раз в сутки. She is still naked
+        # from the frame he already paid for, so this tap renders and charges
+        # nothing; the endpoint answers with her «я уже голая» line instead.
+        from services import undress_nudity
+        if undress_nudity.is_nude(telegram_id, character_id):
+            return uid, None, 'already'
         # V3.86.0: owner — «раздеть» only with Premium, the button sold Premium.
         # V3.132.0: a «Раздеть» bought on its own (50 ₽) works without Premium.
         # V3.138.0: owner — «не за 50 руб, а за 25, только цену в персиках»: without
@@ -17332,6 +17551,15 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
     uid, err, pay = await asyncio.to_thread(_gate)
     if err:
         return web.json_response({'ok': False, 'error': err[0]}, status=err[1])
+    if pay == 'already':
+        # V3.165.0 (#107): the 24-hour window is still open — text only, no
+        # render, no charge. Her line already offers the next frame; the app
+        # puts the paid scene list one tap under it.
+        content = random.choice(UNDRESS_ALREADY_LINES)
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', content)
+        _app_ping(telegram_id, character_id, content)
+        return web.json_response({'ok': True, 'kind': '', 'url': '', 'content': content,
+                                  'already_nude': True})
     try:
         if action == 'animate':
             raw = await asyncio.to_thread(path.read_bytes)
@@ -17380,6 +17608,11 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
                 logger.warning('webapp photo animation peach race user=%s', telegram_id)
         if action == 'undress':
             from config import UNDRESS_PEACH_COST
+            # V3.165.0 (#107): this frame opens the 24-hour window. Until it
+            # closes she is already naked in this dialog, so the next tap offers
+            # a new shot instead of charging for the same nudity again.
+            from services import undress_nudity
+            undress_nudity.mark(telegram_id, character_id)
             if pay in ('free', 'trial'):
                 note_today(uid, f'undress_{pay}', character_id)
             elif pay == 'peaches':
@@ -17427,6 +17660,10 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', ''))
     kind = str(body.get('kind', ''))
     scene = str(body.get('scene') or 'selfie')[:80]
+    # V3.165.0 (#104): «фото по фетишу» со СВОЕЙ темой — his own words travel in
+    # their own field, never inside the colon-separated scene id. The hard-limit
+    # filter is the server's (fetish_mode.clean_custom); this only caps transport.
+    theme_text = str(body.get('theme_text') or '')[:120]
     if kind not in ('photo', 'circle', 'hotcircle', 'voice', 'video', 'hot', 'cosplay') or not character_id:
         logger.warning('webapp chat media bad_request user=%s kind=%r character=%r', telegram_id, kind, character_id)
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
@@ -17441,6 +17678,11 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         joint = bool(guest_id)
     # V3.57.2: the whole access chain is PostgreSQL reads/writes (card, consent,
     # stage, credits, premium slots) — one worker thread, never the loop.
+    # V3.165.0 (#104): the gate decides whether THIS photo is a bought explicit
+    # frame; a one-item list is how that verdict travels to _finish, which runs
+    # in another thread and is the only place allowed to spend peaches.
+    explicit_frame: list = []
+
     def _gate():
         if is_custom_character(character_id):
             if not get_custom_character_by_id(character_id):
@@ -17482,22 +17724,54 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
                 return web.json_response(_chat_duo_blocked(
                     uid, telegram_id, character_id,
                     full_user_lang(telegram_id, user_info.get('language_code')), {}))
-        # V3.87.0: nude / lingerie photos, the private «Наедине» shots and the
-        # hot circle are Premium-only — free peaches must never buy them.
-        if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id) and (
-                kind in ('hot', 'hotcircle')
-                or (kind == 'photo' and spicy_needs_premium(PhotoRequest(scene=scene)))):
-            try:
-                track_event(ensure_user(telegram_id), 'paywall_view',
-                            metadata={'product': 'spicy_' + kind, 'scene': scene, 'source': 'app'})
-            except Exception:
-                pass
+        if kind == 'hot':
+            # V3.165.0 (#104): «фото по фетишу» is drawn from his own words, so it
+            # asks for the same 18+ confirmation the hot circle does. The older
+            # «Наедине» categories keep the consent check above (the app-wide
+            # 18+ sheet is Задача 107).
+            if scene.split(':')[0] == 'fetish':
+                from services import fetish_mode
+                if not is_adult_confirmed(telegram_id):
+                    return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
+                # His own theme passes the same hard-limit filter as the chat mode,
+                # before a render anyone would have to pay for.
+                if theme_text and not fetish_mode.photo_theme_text(theme_text):
+                    return web.json_response({'ok': False, 'error': 'theme_refused'}, status=400)
+        # V3.87.0 put the 18+ frames behind Premium because bonus peaches piled
+        # up. V3.165.0 (#104, owner): the same frames open to a man WITHOUT
+        # Premium for bought peaches (paid_only) at the one frame price. Premium
+        # and the pass keep their free shots — that logic lives in the
+        # generators, this gate only refuses a render nobody can pay for.
+        if kind == 'hot' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+            from services.private_photo_service import (get_category_cost, get_private_photo_usage,
+                                                        unlocked_scene_categories)
+            cat_id = scene.split(':')[0]
+            carried = (bool(get_private_photo_usage(telegram_id).get('hot_pass_active'))
+                       or cat_id in unlocked_scene_categories(telegram_id))
+            if not carried and get_paid_peaches(telegram_id) < get_category_cost(cat_id):
+                try:
+                    track_event(ensure_user(telegram_id), 'paywall_view',
+                                metadata={'product': 'spicy_hot', 'scene': scene, 'source': 'app'})
+                except Exception:
+                    pass
+                return web.json_response({'ok': False, 'error': 'credits'}, status=402)
+        if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id) \
+                and spicy_needs_premium(PhotoRequest(scene=scene)):
+            if get_paid_peaches(telegram_id) < EXPLICIT_PHOTO_PEACH_COST:
+                try:
+                    track_event(ensure_user(telegram_id), 'paywall_view',
+                                metadata={'product': 'spicy_photo', 'scene': scene, 'source': 'app'})
+                except Exception:
+                    pass
+                return web.json_response({'ok': False, 'error': 'credits'}, status=402)
+            # _finish charges the frame price instead of the single chat credit.
+            explicit_frame.append(True)
+        if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id) \
+                and not explicit_frame:
+            # V3.93.0: a rendered clothed photo for peaches is a Premium thing —
+            # free peaches pile up and burned the render budget.
             return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-        if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
-            # V3.93.0: a rendered photo for peaches is a Premium thing — free
-            # peaches pile up and burned the render budget.
-            return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
-        if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS \
+        if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not explicit_frame \
                 and get_paid_peaches(telegram_id) < PEACH_SCALE:
             # V3.44.22: a chat photo costs ONE credit (consume_photo_credit below) —
             # the old guard demanded the studio's whole price and blocked users who
@@ -17542,7 +17816,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         elif kind == 'video':
             data, mime, ext = await _webapp_media_video(telegram_id, character_id)
         elif kind == 'hot':
-            data, mime, ext = await _webapp_media_hot(telegram_id, character_id, scene)
+            data, mime, ext = await _webapp_media_hot(telegram_id, character_id, scene, theme_text=theme_text)
         elif kind == 'cosplay':
             data, mime, ext = await _webapp_media_hot(telegram_id, character_id, scene, cosplay=True)
         else:
@@ -17600,8 +17874,14 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             content = _media_caps.get(kind, '')
         # V3.72.0: a hot circle is stored and drawn as a regular round circle.
         save_message(uid, character_id, 'assistant', content, media_kind=shown_kind, media_url=url)
-        if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS and not consume_photo_credit(telegram_id):
-            logger.warning('webapp chat photo credit race user=%s', telegram_id)
+        if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS:
+            # V3.165.0 (#104): a frame a man without Premium bought with his
+            # peaches costs the explicit frame price, not the single chat credit.
+            if explicit_frame:
+                if not spend_peaches(telegram_id, EXPLICIT_PHOTO_PEACH_COST, paid_only=True):
+                    logger.warning('webapp chat explicit frame peach race user=%s', telegram_id)
+            elif not consume_photo_credit(telegram_id):
+                logger.warning('webapp chat photo credit race user=%s', telegram_id)
         if kind == 'circle' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, CIRCLE_PEACH_COST, paid_only=True):
             logger.warning('webapp chat circle peach race user=%s', telegram_id)
         if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS and not spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS, paid_only=True):
@@ -17747,9 +18027,12 @@ def _webapp_api_feature_impl(request: web.Request) -> web.Response:
         )
         usage = get_private_photo_usage(telegram_id)
         items = []
-        # V3.88.0: «Наедине» is Premium-only — say it on the menu itself.
-        prem_only = telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id)
+        # V3.87.0 said «Premium only»; V3.165.0 (#104, owner) sells the very same
+        # frames to anyone with bought peaches, so the menu quotes the price and
+        # shows the pass he already owns instead of a Premium label.
         for cat_id, cat_data in PRIVATE_PHOTO_CATEGORIES.items():
+            if cat_data.get('hidden'):
+                continue  # «фото по фетишу» opens from the fetish sheet, not here
             name_key = f'name_{"en" if lang == EN else "ru"}'
             raw_name = cat_data.get(name_key, cat_data['name_ru'])
             # Strip leading emoji characters from category name
@@ -17759,8 +18042,7 @@ def _webapp_api_feature_impl(request: web.Request) -> web.Response:
                 'id': cat_id,
                 'emoji': '',
                 'title': clean_name,
-                'subtitle': (('⭐ Premium only' if lang == EN else '⭐ только с Premium') if prem_only
-                             else f"{cost} \U0001f351"),
+                'subtitle': f"{cost} \U0001f351",
                 'locked': False,
                 'types': [{"id": t["id"], "name": t.get(name_key, t["name_ru"])} for t in cat_data.get('types', [])],
                 # V3.45.26: colour step is shown only for apparel categories
@@ -17773,7 +18055,13 @@ def _webapp_api_feature_impl(request: web.Request) -> web.Response:
         colors = [{'id': c['id'], 'name': c.get(f'name_{"en" if lang == EN else "ru"}', c['name_ru'])} for c in LINGERIE_COLORS]
         title = 'Private' if lang == EN else 'Наедине'
         return web.json_response({'ok': True, 'kind': kind, 'title': title, 'items': items,
-                                  'locations': locations, 'moods': moods, 'colors': colors})
+                                  'locations': locations, 'moods': moods, 'colors': colors,
+                                  # V3.165.0 (#104): the «Сутки без стеснения» strip
+                                  # on top of this menu — the app sells the pass.
+                                  'pass_products': [dict(HOT_PASS_PRODUCTS[k], id=k)
+                                                    for k in ('day', 'week', 'month')],
+                                  'pass_active': bool(usage.get('hot_pass_active')),
+                                  'pass_frames': int(usage.get('hot_pass_left') or 0)})
     # V3.45.0: Косплей — персонажи
     if kind == 'cosplay':
         from services.private_photo_service import COSPLAY_CHARACTERS, get_private_photo_usage
@@ -18030,7 +18318,8 @@ async def _after_premium_paid(telegram_id: int, product: str) -> None:
         if PUBLIC_BASE_URL:
             rows.append([InlineKeyboardButton(text='💬 to her chat' if en else '💬 открыть наш чат',
                                               web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
-        rows.append([InlineKeyboardButton(text='🌶 Spicy mode' if en else '🌶 Пошлый режим', callback_data='spicy:menu')])
+        rows.append([InlineKeyboardButton(text='🔥 Hot sets' if en else '🔥 Горячие наборы',
+                                          callback_data='spicy:menu')])
         vinfo = await asyncio.to_thread(vip_offer.info, telegram_id)
         if loyal and vinfo.get('active') and vinfo.get('loyal'):
             text += paid_welcome.loyal_line(vinfo['percent'], vinfo.get('rub'), PLATEGA_PREMIUM_PRICE_RUB,
@@ -18487,6 +18776,194 @@ async def _webapp_api_gifts(request: web.Request) -> web.Response:
     except Exception:
         logger.exception('webapp gifts load failed user=%s', telegram_id)
         return web.json_response({'ok': False, 'error': 'temporarily_unavailable'})
+
+
+# ─── V3.165.0 (#104): «Сутки без стеснения» продаётся в приложении ────────────
+
+async def _webapp_api_hotpass(request: web.Request) -> web.Response:
+    """The app twin of the bot's ``private_photo:hotpass:`` callback: one price
+    list (config.HOT_PASS_PRODUCTS), bought peaches only (``paid_only``) and the
+    frames bundle stacked onto a pass that is still running."""
+    user_info = _wardrobe_auth(request)
+    if not user_info:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = int(user_info['id'])
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    duration = str((body or {}).get('duration', ''))
+    product = HOT_PASS_PRODUCTS.get(duration)
+    if not product:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    cost, days, frames = product['peaches'], product['days'], product['frames']
+
+    def _buy():
+        if not has_accepted(telegram_id):
+            return {'error': 'consent', 'status': 403}
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '',
+                          language_code=user_info.get('language_code'))
+        admin = telegram_id in ADMIN_TELEGRAM_IDS
+        if not admin and not spend_peaches(telegram_id, cost, paid_only=True):
+            track_event(uid, 'paywall_view', metadata={'product': 'hot_pass', 'duration': duration})
+            return {'error': 'insufficient_peaches', 'cost': cost, 'status': 402}
+        from services.private_photo_service import activate_hot_pass
+        expires = activate_hot_pass(telegram_id, days, frames)
+        track_event(uid, 'hot_pass_buy',
+                    metadata={'duration': duration, 'cost': 0 if admin else cost})
+        return {'ok': True, 'days': days, 'frames': frames,
+                'expires': expires.strftime('%d.%m.%Y %H:%M')}
+    res = await asyncio.to_thread(_buy)
+    if not res.get('ok'):
+        status = res.pop('status', 400)
+        return web.json_response(dict(res, ok=False), status=status)
+    res['hot_pass'] = await asyncio.to_thread(webapp_service._hot_pass_me_fields, telegram_id)
+    res['credits_left'] = await asyncio.to_thread(get_photo_credits, telegram_id)
+    logger.info('webapp hot pass bought user=%s duration=%s', telegram_id, duration)
+    return web.json_response(res)
+
+
+# ─── V3.165.0 (#104 / задача 112): «Серия кадров» — продукт целиком ──────────
+
+_SERIES_CAPS = ('💋 вот тебе вся серия… скажи, какой кадр заберёшь',
+                '💋 второй — тот же вечер, другой ракурс',
+                '💋 третий… я старалась',
+                '💋 и последний, самый смелый')
+# one running set per user: the frames render one after another, and a second
+# tap while the first set is still shooting would bill him for two.
+_SERIES_JOBS: dict = {}
+
+
+async def _webapp_api_series(request: web.Request) -> web.Response:
+    """«Серия из N кадров за M 🍑» — выгоднее, чем брать их по одному (N × 300).
+
+    The set shoots in the background and each frame lands in the chat as it is
+    ready: four sequential renders are minutes of work, and a request the WebView
+    drops half-way must not cost the man anything he did not receive. Bought
+    peaches only (``paid_only``), like every other 18+ product of #104, and the
+    free shot of the day never rides along (``series=True``).
+    """
+    user_info = _wardrobe_auth(request)
+    if not user_info:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = int(user_info['id'])
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))
+    scene = str(body.get('scene') or '')[:80]
+    from services.private_photo_service import PRIVATE_PHOTO_CATEGORIES
+    cat_id = scene.split(':')[0]
+    if not character_id or cat_id not in PRIVATE_PHOTO_CATEGORIES:
+        logger.warning('webapp series bad_request user=%s character=%r scene=%r', telegram_id, character_id, scene)
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+
+    def _gate():
+        if is_custom_character(character_id):
+            if not get_custom_character_by_id(character_id):
+                return {'error': 'unknown_character', 'status': 400}
+            if _custom_premium_gate_block(character_id, telegram_id):
+                return {'error': 'premium_required', 'status': 403}
+        else:
+            card = get_card(character_id)
+            if not card or card.status not in ('active', 'premium'):
+                return {'error': 'locked', 'status': 403}
+            if card.status == 'premium' and not is_premium(telegram_id):
+                return {'error': 'premium_required', 'status': 403}
+        if not has_accepted(telegram_id):
+            return {'error': 'consent', 'status': 403}
+        # a fetish set is drawn from his own theme — the same 18+ door as one frame
+        if cat_id == 'fetish' and not is_adult_confirmed(telegram_id):
+            return {'error': 'adult_confirm', 'status': 403}
+        if telegram_id not in ADMIN_TELEGRAM_IDS and get_paid_peaches(telegram_id) < PHOTO_SERIES_PEACH_COST:
+            uid0 = ensure_user(telegram_id, user_info.get('first_name') or '',
+                               language_code=user_info.get('language_code'))
+            try:
+                track_event(uid0, 'paywall_view', metadata={'product': 'photo_series',
+                                                            'scene': scene, 'source': 'app'})
+            except Exception:
+                pass
+            return {'error': 'credits', 'status': 402, 'cost': PHOTO_SERIES_PEACH_COST,
+                    'frames': PHOTO_SERIES_FRAMES}
+        return ensure_user(telegram_id, user_info.get('first_name') or '',
+                           language_code=user_info.get('language_code'))
+
+    gated = await asyncio.to_thread(_gate)
+    if not isinstance(gated, int):
+        return web.json_response(dict(gated, ok=False), status=gated.get('status', 400))
+    if telegram_id in _SERIES_JOBS:
+        return web.json_response({'ok': False, 'error': 'busy'}, status=409)
+    uid = gated
+    job = asyncio.create_task(_series_run(telegram_id, uid, character_id, scene))
+    _SERIES_JOBS[telegram_id] = job
+    job.add_done_callback(lambda _t: _SERIES_JOBS.pop(telegram_id, None))
+    track_event(uid, 'webapp_photo_series_start', metadata={'character_id': character_id, 'scene': scene})
+    return web.json_response({'ok': True, 'pending': True,
+                              'frames': PHOTO_SERIES_FRAMES, 'cost': PHOTO_SERIES_PEACH_COST})
+
+
+async def _series_run(telegram_id: int, uid: int, character_id: str, scene: str):
+    """Shoot the set, deliver frame by frame, bill at the end.
+
+    An incomplete set is billed by what actually arrived
+    (``700 × delivered / frames``), never at the full price and never for
+    nothing: the renders the provider already took money for are paid for, the
+    man gets the frames he paid towards.
+    """
+    from services import spend_service
+    spend_service.set_spend_user(telegram_id)
+    delivered = 0
+    try:
+        for _ in range(PHOTO_SERIES_FRAMES):
+            try:
+                data, mime, ext = await _webapp_media_hot(telegram_id, character_id, scene, series=True)
+            except PhotoGenerationError as exc:
+                logger.warning('webapp series frame failed user=%s provider=%s reason=%s',
+                               telegram_id, exc.provider, exc.reason)
+                await asyncio.to_thread(webapp_service.record_generation_failure,
+                                        telegram_id, 'hot', character_id, scene,
+                                        f'{exc.provider}: {exc.reason}')
+                break
+            if not data:
+                break
+            hint = _HOT_MEDIA_HINT.pop(telegram_id, None)
+            await asyncio.to_thread(_series_deliver_frame, telegram_id, uid, character_id, scene,
+                                    data, mime, ext, delivered, hint)
+            delivered += 1
+        if delivered and telegram_id not in ADMIN_TELEGRAM_IDS:
+            price = (PHOTO_SERIES_PEACH_COST if delivered >= PHOTO_SERIES_FRAMES
+                     else PHOTO_SERIES_PEACH_COST * delivered // PHOTO_SERIES_FRAMES)
+            # paid_only: a set is four renders, and bonus peaches never pay for
+            # the render budget the owner already gives away.
+            if not await asyncio.to_thread(lambda: spend_peaches(telegram_id, price, paid_only=True)):
+                logger.warning('webapp series peach race user=%s delivered=%s', telegram_id, delivered)
+        track_event(uid, 'webapp_photo_series_done',
+                    metadata={'character_id': character_id, 'scene': scene,
+                              'frames': delivered, 'full': delivered >= PHOTO_SERIES_FRAMES})
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception('webapp series run failed user=%s', telegram_id)
+    finally:
+        _HOT_MEDIA_HINT.pop(telegram_id, None)
+
+
+def _series_deliver_frame(telegram_id: int, uid: int, character_id: str, scene: str,
+                          data: bytes, mime: str, ext: str, index: int, hint=None):
+    """One frame of the set: media folder, admin ledger, chat bubble. Runs in a
+    worker thread — everything below it is PostgreSQL."""
+    filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+    if hint:
+        webapp_service.record_generation(telegram_id, 'hot', character_id, scene, filename,
+                                         engine=hint[0], cost_usd=hint[1])
+    else:
+        webapp_service.record_generation(telegram_id, 'hot', character_id, scene, filename)
+    content = (_SERIES_CAPS[index] if index < len(_SERIES_CAPS)
+               else f'💋 серия · кадр {index + 1} из {PHOTO_SERIES_FRAMES}')
+    save_message(uid, character_id, 'assistant', content, media_kind='photo',
+                 media_url=f'/webapp/media/{filename}')
 
 
 async def _webapp_api_gifts_buy(request: web.Request) -> web.Response:
@@ -19119,6 +19596,10 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/home/place', _webapp_api_home_place)
     app.router.add_get('/webapp/api/gifts', _webapp_api_gifts)  # V3.153.0
     app.router.add_post('/webapp/api/gifts/buy', _webapp_api_gifts_buy)
+    # V3.165.0 (#104): «Сутки без стеснения» — покупка пропуска в приложении.
+    app.router.add_post('/webapp/api/hotpass', _webapp_api_hotpass)
+    # V3.165.0 (#104 / задача 112): «Серия кадров» — N кадров за одну цену.
+    app.router.add_post('/webapp/api/series', _webapp_api_series)
     app.router.add_post('/webapp/api/fetish/set', _webapp_api_fetish_set)
     app.router.add_post('/webapp/api/fetish/stop', _webapp_api_fetish_stop)
     app.router.add_post('/webapp/api/spicy', _webapp_api_spicy)

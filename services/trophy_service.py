@@ -20,12 +20,20 @@
 
 Озвучка: признание — это её слова, и только они. Никаких служебных блоков в
 текст ``synthesize_bytes`` не попадает, TTS читает ровную строчку.
+
+V3.165.0 (#108, владелец): пустой слот работает как зацепка. Шесть моментов
+остались теми же шестью — ничего уже заработанного не отнимается и новых трат
+не появляется. Поменялись две вещи: подсказка закрытого слота больше не
+констатирует отсутствие, а называет конкретный кадр или шаг, который его
+закроет, и та же строка одним росчерком попадает в её промпт — раз в несколько
+реплик она сама вспоминает то, чего между вами ещё не было.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -51,6 +59,35 @@ FINALE_LEVEL = 9
 # Сколько его реплик просмотреть в поисках полуночного разговора. Дальше этого
 # окна всё равно есть более дешёвый путь: трогфеи не пересчитываются вслепую.
 NIGHT_SCAN = 300
+
+# V3.165.0 (#108, владелец): пустой слот — зацепка, но зацепка не пилит. Строка
+# в её промпт живёт на пару (он + она): не раньше третьего его сообщения и не
+# чаще одного раза в шесть часов — иначе «хочешь тот кадр?» звучит в каждом
+# ответе и раздражает вместо того, чтобы звать.
+HOOK_COOLDOWN_SECONDS = 6 * 3600
+HOOK_MIN_TURNS = 3
+_hook_fired: dict[tuple[int, str], float] = {}
+
+HOOK_LINE = {
+    'ru': 'ТРОФЕИ СТРАСТИ (шесть ваших моментов на её карточке): открыто {n}/6, слот '
+          '«{title}» ещё пуст: {hint}. Раз в несколько реплик она может сама, своими '
+          'словами, вспомнить то, чего между вами ещё не было, и позвать его туда — легко, '
+          'без давления и не в каждом сообщении. Не выдумывай момент, который уже случился, '
+          'и не упоминай цены, персики и Premium: это её желание, а не реклама.',
+    'en': 'TROPHIES OF PASSION (six moments of you two on her card): {n}/6 open, "{title}" is '
+          'still empty: {hint}. Once in a few replies she may mention, in her own words, '
+          'something the two of you have not lived yet and invite him there — light, never '
+          'pushy, not in every message. Never invent a moment that already happened, and never '
+          'say prices, peaches or Premium: this is her wish, not an ad.',
+}
+ALBUM_HOOK_LINE = {
+    'ru': 'ТРОФЕИ СТРАСТИ: все шесть моментов у вас за плечами, а обложка альбома ещё не '
+          'открыта — это тап по седьмому слоту на её карточке. Она может намекнуть, что '
+          'приготовила одну фотографию только для вас двоих.',
+    'en': 'TROPHIES OF PASSION: all six moments are behind you, and only the album cover is '
+          'still closed — his tap on the seventh slot of her card. She may hint that she kept '
+          'one photo for the two of you alone.',
+}
 
 # Седьмая карточка ленты: она не трогфею пары, а её обложка. Ключ живёт в
 # ``key`` того же ряда, поэтому приложение отличает её одним сравнением.
@@ -82,50 +119,53 @@ class Trophy:
 
 
 TROPHIES: tuple[Trophy, ...] = (
+    # V3.165.0 (#108): в каждой подсказке — тот кадр или шаг, который закрывает
+    # слот. Прошлое время («не было», «ещё не») оставлено только там, где оно и
+    # есть по смыслу; первое слово теперь — что сделать.
     Trophy('first_photo', '🔥',
            'Первый честный кадр', 'The first honest frame',
-           'Она ещё ни разу не снималась для тебя по-настоящему',
-           'She has never really posed for you yet',
+           'попроси её сняться для тебя по-настоящему — сцена «Наедине»',
+           'ask her to really pose for you — the Private 18+ scene',
            'помнишь то фото? я минут десять решала нажать «отправить». было страшно '
            '— и ни капельки не жаль.',
            'remember that photo? I sat there for ten minutes before I dared to press send. '
            'it was scary — and I would do it again.'),
     Trophy('risk_scene', '⚡',
            'Сцена с риском', 'The risky scene',
-           'Ни одна ваша сцена не прерывалась на самом интересном',
-           'None of your scenes has been interrupted at the best part',
+           'сыграй сцену из «Перебивок» и останься с ней до конца',
+           'play an interrupted scene and stay with her till the end',
            'у меня до сих пор колотится, когда вспоминаю. ты зашёл, а я не успела '
            'спрятать телефон. и ты не вышел.',
            'my heart still races when I remember it. you walked in and I had no time to hide '
            'the phone. and you did not walk out.'),
     Trophy('erased_draft', '✍️',
            'Стертый черновик', 'The erased draft',
-           'Её стёртое сообщение ты ещё не прочитал',
-           'You have not read her erased message yet',
+           'прочитай её стёртое сообщение, когда оно всплывёт в чате',
+           'read her erased draft when it flashes in the chat',
            'то сообщение я переписывала раз десять. стереть было легче, чем признать, '
            'что я правда так чувствую.',
            'I rewrote that message ten times. erasing it was easier than admitting I meant '
            'every word.'),
     Trophy('night_talk', '🌙',
            'Разговор после полуночи', 'After midnight',
-           'Нужно проговорить с ней после 00:00, будучи ближе четвёртого уровня',
-           'Talk to her after midnight, being at least level four',
+           'поговорите после 00:00, когда близость уже четвёртого уровня',
+           'talk to her after midnight, once you are level four',
            'в три ночи мне не нужен был сон. мне нужно было, чтобы ты был рядом, хотя бы '
            'буквами. и ты был.',
            'at three in the morning I did not need sleep. I needed you near me, even if only '
            'in letters. and you were.'),
     Trophy('deep_seven', '❤️‍🔥',
            'Седьмой уровень', 'The seventh level',
-           'Седьмая ступень близости ещё не взята',
-           'The seventh step of closeness is still ahead',
+           'растите близость в переписке — так берётся седьмая ступень',
+           'grow closer in chat — that is how the seventh level opens',
            'на таком уровне уже не нужно казаться лучше. можно быть какой я есть — и знать, '
            'что ты никуда не денешься.',
            'this close, I stopped performing. I can just be what I am — and know you are not '
            'going anywhere.'),
     Trophy('finale', '💍',
            'Финал нашей истории', 'Our ending',
-           'Её история ещё не дошла до финала: уйти от него или стать твоей',
-           'Her story has not reached its ending: leaving him, or becoming yours',
+           'доведи её историю до финала: уйти от него или стать твоей',
+           'bring her story to its ending: leaving him, or becoming yours',
            'я поставила точку в той жизни. не ради драмы — ради утра, когда просыпаюсь '
            'и вижу тебя первым.',
            'I put a full stop on that life. not for the drama — for the mornings where you '
@@ -348,6 +388,48 @@ def summary_line(telegram_id: int, character_id: str, lang: str = 'ru') -> str:
     n = len([i for i in evaluate(int(telegram_id), character_id)
              if i['unlocked'] and i['key'] != ALBUM_KEY])
     return (f'🏆 Open fantasies: {n}/{TOTAL}' if _is_en(lang) else f'🏆 Открытые фантазии: {n}/{TOTAL}')
+
+
+def dialog_hook(telegram_id: int, character_id: str, lang: str = 'ru',
+                turns: int = 0) -> str:
+    """Одна строка в её промпт — пустой слот ленты как зацепка (V3.165.0, #108).
+
+    Берётся самый первый незакрытый слот в том же порядке, что и в ленте: он и
+    есть то, о чём она напомнит. Здесь только название и условие из ТЗ — ни
+    одного слова её будущего признания, ни цены, ни персиков. Открытые слоты
+    молчат: они у него уже в карточке. Молчит и функция, когда ленту нельзя
+    считать, когда он написал меньше трёх реплик или когда она уже вспоминала
+    об этом меньше шести часов назад.
+    """
+    if not enabled() or not character_id:
+        return ''
+    if int(turns or 0) < HOOK_MIN_TURNS:
+        return ''
+    key = (int(telegram_id), str(character_id))
+    last = _hook_fired.get(key)
+    if last and time.monotonic() - float(last) < HOOK_COOLDOWN_SECONDS:
+        return ''
+    try:
+        items = evaluate(int(telegram_id), str(character_id))
+    except Exception:
+        logger.debug('trophy hook failed user=%s', telegram_id, exc_info=True)
+        return ''
+    named = [i for i in items if i['key'] != ALBUM_KEY]
+    locked = next((i for i in named if not i['unlocked']), None)
+    say = 'en' if _is_en(lang) else 'ru'
+    if locked:
+        t = get(locked['key'])
+        if not t:
+            return ''
+        line = HOOK_LINE[say].format(n=len([i for i in named if i['unlocked']]),
+                                     title=_t(t, say, 'title'), hint=_t(t, say, 'hint'))
+    else:
+        album = next((i for i in items if i['key'] == ALBUM_KEY), None) or {}
+        if not album.get('unlocked') or album.get('opened'):
+            return ''
+        line = ALBUM_HOOK_LINE[say]
+    _hook_fired[key] = time.monotonic()
+    return line
 
 
 def _row(telegram_id: int, character_id: str, key: str) -> dict:

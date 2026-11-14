@@ -12,7 +12,8 @@ def test_routes_and_limits():
     from config import UNDRESS_FREE_PER_DAY, UNDRESS_PEACH_COST
     # V3.138.0: owner — «не за 50 руб, а за 25, только цену в персиках»
     # V3.154.0: owner — «не 250, а 400 персиков»
-    assert UNDRESS_FREE_PER_DAY == 1 and UNDRESS_PEACH_COST == 400
+    # V3.165.0: owner — «одна цена 300 для обоих режимов», 1 free per day stands
+    assert UNDRESS_FREE_PER_DAY == 1 and UNDRESS_PEACH_COST == 300
     assert "_used_today < _undress_allowance(uid, telegram_id, character_id, _used_today)" in MAIN  # V3.124.0
     assert "allow = _undress_premium_free(telegram_id, character_id)" in MAIN
     assert "if not is_adult_confirmed(telegram_id):" in MAIN

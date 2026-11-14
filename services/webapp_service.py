@@ -43,7 +43,10 @@ from config import (
     CONSTRUCTOR_COST_PEACHES,
     CONSTRUCTOR_COST_RUB,
     CONSTRUCTOR_PRICE_USD,
+    CIRCLE_PEACH_COST,
+    COSPLAY_PHOTO_PEACH_COST,
     DRAFT_PEACH_COST,  # V3.152.0: the «Стертый черновик» price tag on a locked plate
+    EXPLICIT_PHOTO_PEACH_COST,  # V3.165.0: one price for every 18+ frame
     CUSTOM_PHOTO_COST_STARS,
     FREE_LATE_FROM_DAY,
     FREE_MESSAGES_PER_DAY,
@@ -52,6 +55,8 @@ from config import (
     FREE_PHOTOS_LEVEL_3_6,
     GALLERY_DOWNLOAD_STARS,
     HOT_CIRCLE_PEACH_COST,
+    HOT_PASS_DAY_PEACHES,  # V3.165.0: the day pass moved into the app
+    HOT_PASS_PRODUCTS,  # V3.165.0 (#104): one pass price list for bot + app
     LIVE_SITUATION_PEACH_COST,  # V3.156.0: the «живая ситуация» sponsor photo plate
     PEACH_PACK_10_STARS,
     PEACH_PACK_30_STARS,
@@ -66,9 +71,12 @@ from config import (
     PEACH_PACK_CREDITS,
     PEACH_SCALE,
     PHOTO_COST_STARS,
+    PHOTO_SERIES_FRAMES,  # V3.165.0: «серия из 4 кадров за 700»
+    PHOTO_SERIES_PEACH_COST,
     PLATEGA_ENABLED,
     PLATEGA_PREMIUM_PRICE_RUB,
     PLATEGA_PREMIUM_WEEKLY_PRICE_RUB,
+    PRIVATE_PHOTO_PEACH_COST,  # V3.165.0: «Наедине» стоит как любой откровенный кадр
     PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIAL_PRICE_RUB, PREMIUM_TRIAL_PRICE_USD,
     PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB,
     PREMIUM_QUARTERLY_STARS,
@@ -380,17 +388,52 @@ def api_me(telegram_id: int) -> dict:
     except Exception:
         pass
     card = get_card(selected_character)
+    # V3.165.0: режим «После полуночи» — флаг аккаунта, поэтому экран входа,
+    # чат и витрина читают его отсюда же, откуда бот. ``explicit_left`` = None
+    # значит «потолка нет» (Premium, режим выключен или кап 0).
+    premium = is_premium(telegram_id)
+    explicit_cap = 0
+    try:
+        from services import explicit_mode
+        mode_on = explicit_mode.is_on(user)
+        explicit_left = explicit_mode.cap_left(user, premium=premium, mode_on=mode_on)
+        # The entry cards quote the ceiling, so they quote the server's number
+        # — never a second hard-coded 30 in the SPA.
+        explicit_cap = int(explicit_mode.DAILY_CAP or 0)
+    except Exception:
+        mode_on = bool(getattr(user, 'spicy_mode', False)) if user else False
+        explicit_left = None
     return {
         'id': telegram_id,
         'name': (user.name or '') if user else '',
         'lang': lang,
-        'premium': is_premium(telegram_id),
+        'premium': premium,
         # V3.88.0: the 99 ₽ / 3-day first-purchase trial is on offer
         'trial_eligible': _trial_eligible(telegram_id),
         # V3.132.0: one «Раздеть» without Premium — the price on her photo button.
         'undress_one_rub': UNDRESS_ONE_PRICE_RUB if UNDRESS_ONE_ENABLED else 0,
         # V3.138.0: owner — «Раздеть» is priced in peaches only. V3.154.0: 400 🍑 ≈ 40 ₽.
+        # V3.165.0: one price for every 18+ frame in both modes — 300 🍑.
         'undress_peaches': UNDRESS_PEACH_COST,
+        # V3.165.0: the «Только 18+» sheet and the mode screen read real prices
+        # here instead of the numbers that used to be hard-coded in the page.
+        'peach_prices': {
+            'explicit': EXPLICIT_PHOTO_PEACH_COST,
+            'private': PRIVATE_PHOTO_PEACH_COST,
+            'cosplay': COSPLAY_PHOTO_PEACH_COST,
+            'undress': UNDRESS_PEACH_COST,
+            'series': PHOTO_SERIES_PEACH_COST,
+            'series_frames': PHOTO_SERIES_FRAMES,
+            'circle': CIRCLE_PEACH_COST,
+            'hot_circle': HOT_CIRCLE_PEACH_COST,
+            'hot_pass_day': HOT_PASS_DAY_PEACHES,
+        },
+        # V3.165.0 (#104): «Сутки без стеснения» moved from the bot into the app.
+        # The three cards are built from the server's own table (price, days and
+        # the bundle of explicit frames it sells), and the shop shows what the
+        # running pass still owes him.
+        'hot_pass_products': [dict(HOT_PASS_PRODUCTS[k], id=k) for k in ('day', 'week', 'month')],
+        'hot_pass': _hot_pass_me_fields(telegram_id),
         # V3.139.2: «Видео вдвоём» carries the same price as the secret video.
         'duo_video_peaches': HOT_CIRCLE_PEACH_COST,
         # V3.51.1: the owner's Mini App sees the admin generation feed only
@@ -401,9 +444,11 @@ def api_me(telegram_id: int) -> dict:
         'photo_credits': ((user.photo_credits or 0) + (user.bonus_peaches or 0)) if user else 0,
         'paid_peaches': (user.photo_credits or 0) if user else 0,
         'bonus_peaches': (user.bonus_peaches or 0) if user else 0,
-        # V3.43.5: the in-app Settings toggle shows the live flag (Premium is
-        # already in this payload — enabling re-checks it server-side).
-        'spicy_mode': bool(getattr(user, 'spicy_mode', False)) if user else False,
+        # V3.43.5 → V3.165.0: the flag the entry screen writes. It no longer
+        # needs Premium — the ceiling (``explicit_left``) is what pays.
+        'spicy_mode': bool(mode_on),
+        'explicit_left': explicit_left,
+        'explicit_cap': explicit_cap,
         # V3.55.5: daily streak gift state for the shop block (replaces the
         # V3.44.0 bonus wheel). Read-only — claiming is a POST.
         **_gift_me_fields(telegram_id),
@@ -414,6 +459,23 @@ def api_me(telegram_id: int) -> dict:
         },
         # V3.44.6: author earnings from custom characters.
         'author_earnings': _get_author_earnings(telegram_id),
+    }
+
+
+def _hot_pass_me_fields(telegram_id: int) -> dict:
+    """V3.165.0 (#104): the live state of «Сутки без стеснения» for the shop tab
+    — the bot read it straight from the user row, the SPA had nothing until the
+    pass moved here too. ``frames`` is what the pass still owes him."""
+    try:
+        from services.private_photo_service import get_private_photo_usage
+        usage = get_private_photo_usage(telegram_id)
+    except Exception:
+        return {'active': False, 'frames': 0, 'expires': None}
+    expires = usage.get('hot_pass_expires')
+    return {
+        'active': bool(usage.get('hot_pass_active')),
+        'frames': int(usage.get('hot_pass_left') or 0),
+        'expires': expires.strftime('%d.%m.%Y %H:%M') if expires else None,
     }
 
 
@@ -953,9 +1015,13 @@ def api_shop(lang: str = 'ru') -> dict:
     """Structured prices for the shop tab (same constants the bot charges)."""
     en = lang == EN
     features = [
-        # V3.87.0: the 18+ content is Premium-only — lead with it.
-        ('🔥', 'откровенные фото: в белье, обнажённые, «Раздеть», «Наедине», 18+ картинки',
-         'explicit photos: lingerie, nude, «Undress», private shots, 18+ pictures'),
+        # V3.87.0 put the 18+ frames behind Premium. V3.165.0 (#104, owner) sells
+        # them to anyone for peaches, so the honest Premium line is what it still
+        # buys: the free frame of the day and no cap on the talk.
+        ('🔥', 'откровенные фото: «Наедине», «Раздеть», косплей — один кадр даром каждый день',
+         'explicit photos: private, «Undress», cosplay — one frame free every day'),
+        ('🌙', 'режим «После полуночи» без дневного лимита на откровенные сообщения',
+         '“After midnight” mode with no daily cap on explicit messages'),
         # V3.83.0: owner — «с Premium можно выбрать любой уровень общения».
         ('🎚', 'любой уровень общения 1–10 с каждой девушкой — выбери сам', 'any relationship level 1–10 with every girl — your pick'),
         # V3.93.0: without Premium — one ready photo a day; with it — two new ones + peaches.
@@ -969,16 +1035,37 @@ def api_shop(lang: str = 'ru') -> dict:
     ]
     # V3.70.0: owner — «сделай всё в персиках»: the price list shows what the
     # app really charges in peaches (×100 economy), not the bot's Stars ladder.
+    # V3.165.0 (#104): the «(с Premium)» tags are gone — every 18+ product below
+    # is bought with peaches by anyone; Premium only changes what is free.
     from config import (PRIVATE_PHOTO_PEACH_COST, COSPLAY_PHOTO_PEACH_COST,
-                        UNDRESS_PEACH_COST, CIRCLE_PEACH_COST, HOT_CIRCLE_PEACH_COST)
+                        UNDRESS_PEACH_COST, CIRCLE_PEACH_COST, HOT_CIRCLE_PEACH_COST,
+                        EXPLICIT_PHOTO_PEACH_COST, PHOTO_SERIES_PEACH_COST,
+                        PHOTO_SERIES_FRAMES)
     items = [
         ('📸', 'Фото в чате' if not en else 'Chat photo', CHAT_PHOTO_PEACH_COST),
-        ('🔒', 'Фото «Наедине» (с Premium)' if not en else 'Private photo (Premium)', PRIVATE_PHOTO_PEACH_COST),
+        ('🔒', 'Фото «Наедине»' if not en else 'Private photo', PRIVATE_PHOTO_PEACH_COST),
         ('🎭', 'Косплей' if not en else 'Cosplay photo', COSPLAY_PHOTO_PEACH_COST),
-        ('🔥', 'Раздеть фото (с Premium)' if not en else 'Undress a photo (Premium)', UNDRESS_PEACH_COST),
+        ('🔥', 'Раздеть фото' if not en else 'Undress a photo', UNDRESS_PEACH_COST),
+        # V3.165.0: три новых откровенных продукта — одна цена кадра, серия
+        # выгоднее поштучно, и суточный пропуск вместо «только в боте».
+        ('🎭', 'Фото по фетишу' if not en else 'Fetish photo', EXPLICIT_PHOTO_PEACH_COST),
+        ('🖼', (f'Серия {PHOTO_SERIES_FRAMES} кадров' if not en
+                else f'Series of {PHOTO_SERIES_FRAMES} frames'), PHOTO_SERIES_PEACH_COST),
+        # V3.165.0 (#104): «Сутки без стеснения» переехали из бота сюда — три
+        # ряда из одной таблицы цен, каждый говорит, сколько кадров в связке.
+        ('🎟', f'Сутки без стеснения · {HOT_PASS_PRODUCTS["day"]["frames"]} кадров' if not en
+               else f'No-shame day · {HOT_PASS_PRODUCTS["day"]["frames"]} frames',
+         HOT_PASS_PRODUCTS['day']['peaches']),
+        ('🎟', f'Неделя без стеснения · {HOT_PASS_PRODUCTS["week"]["frames"]} кадров' if not en
+               else f'No-shame week · {HOT_PASS_PRODUCTS["week"]["frames"]} frames',
+         HOT_PASS_PRODUCTS['week']['peaches']),
+        ('🎟', f'Месяц без стеснения · {HOT_PASS_PRODUCTS["month"]["frames"]} кадров' if not en
+               else f'No-shame month · {HOT_PASS_PRODUCTS["month"]["frames"]} frames',
+         HOT_PASS_PRODUCTS['month']['peaches']),
         ('🎥', 'Кружочек' if not en else 'Video circle', CIRCLE_PEACH_COST),
-        ('🤫', 'Тайное видео (с Premium)' if not en else 'Secret video (Premium)', HOT_CIRCLE_PEACH_COST),
-        ('🔥', 'Горячий кружок (с Premium)' if not en else 'Hot video circle (Premium)', HOT_CIRCLE_PEACH_COST),
+        # V3.165.0: «Горячий кружок» и «Тайное видео» — один и тот же продукт за
+        # одну цену, в листе осталась одна строка (владелец: убрать дубль).
+        ('🤫', 'Горячее видео' if not en else 'Hot video', HOT_CIRCLE_PEACH_COST),
         ('🎨', 'Картинка в студии' if not en else 'Studio picture', WEBAPP_PICTURE_COST_CREDITS),
         ('🎬', 'Оживление фото' if not en else 'Photo animation', WEBAPP_VIDEO_COST_CREDITS),
         ('🎬', 'Видео в студии' if not en else 'Studio video', WEBAPP_VIDEO_COST_CREDITS),

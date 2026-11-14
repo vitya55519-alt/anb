@@ -25,7 +25,9 @@ def test_pool_only_reuses_fresh_renders_and_admin_skips_it():
     src = (ROOT / 'services' / 'private_photo_service.py').read_text(encoding='utf-8')
     assert 'PrivateGallery.created_at >= datetime.fromisoformat(PRIVATE_POOL_SINCE)' in src
     main = (ROOT / 'main.py').read_text(encoding='utf-8')
-    assert 'pooled = None if telegram_id in ADMIN_TELEGRAM_IDS else pool_get(' in main
+    # V3.165.0 (#104): a «Серия кадров» frame skips the stockpile too — four
+    # pictures pulled from the pool would be the same photo four times.
+    assert 'pooled = None if (series or telegram_id in ADMIN_TELEGRAM_IDS) else pool_get(' in main
 
 
 def test_lifted_top_types_and_bra_variety():
@@ -44,7 +46,7 @@ def test_no_black_void_location():
     assert 'black background' not in studio['name_en']
 
 
-def test_hot_pass_shares_two_free_photos_then_requires_payment():
+def test_hot_pass_spends_the_frames_it_sold_then_requires_payment():
     from sqlalchemy import select
     from models.app_models import Base, User
     from services.db import SessionLocal, engine
@@ -58,18 +60,23 @@ def test_hot_pass_shares_two_free_photos_then_requires_payment():
         user.achievements = ''
         user.private_photo_used = 0
         user.cosplay_photo_used = 0
+        user.hot_pass_frames = None
         user.private_photo_date = None
         user.cosplay_photo_date = None
         session.commit()
 
-    pp.activate_hot_pass(telegram_id, 1)
-    assert pp.consume_free_private_photo(telegram_id, 'lingerie')
-    assert pp.consume_free_private_photo(telegram_id, 'cosplay')
-    assert not pp.consume_free_private_photo(telegram_id, 'roleplay')
+    # V3.165.0 (#110): the pass is no longer «2 фото в сутки» — it sells a bundle
+    # of frames (config.HOT_PASS_PRODUCTS) drawn from one counter, whatever the
+    # category. The day bundle is free, the frame after it is paid.
+    from config import HOT_PASS_PRODUCTS
+    day = HOT_PASS_PRODUCTS['day']
+    pp.activate_hot_pass(telegram_id, day['days'], day['frames'])
+    for category in ('lingerie', 'cosplay', 'roleplay', 'fully_nude')[:day['frames']]:
+        assert pp.consume_free_private_photo(telegram_id, category), category
+    assert not pp.consume_free_private_photo(telegram_id, 'lingerie')
     usage = pp.get_private_photo_usage(telegram_id)
     assert usage['hot_pass_left'] == 0
-    assert usage['private_used'] == 1
-    assert usage['cosplay_used'] == 1
+    assert usage['private_used'] + usage['cosplay_used'] == day['frames']
 
     main = (ROOT / 'main.py').read_text(encoding='utf-8')
     assert "if not is_free and not usage['hot_pass_active']" not in main

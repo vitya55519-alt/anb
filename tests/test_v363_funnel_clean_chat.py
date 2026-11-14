@@ -109,7 +109,10 @@ def test_the_bot_never_greets_him_on_its_own():
 
 def test_webapp_deep_opens_selected_chat():
     assert "get('open') !== 'chat'" in INDEX
-    assert 'Promise.all([loadMe(), loadCharacters()]).then(() => maybeDeepOpenChat(CHARS));' in INDEX
+    # V3.165.0: the boot chain goes through the mode screen, which only opens on
+    # a plain entry — a deep link still hands over to the deep opener.
+    assert 'Promise.all([loadMe(), loadCharacters()]).then(() => maybeModeEntry(CHARS));' in INDEX
+    assert 'maybeDeepOpenChat(chars);' in INDEX
     assert 'ME.first_webapp_open' in INDEX
     assert "me['first_webapp_open'] = bool(first_open and has_accepted(telegram_id))" in MAIN
 

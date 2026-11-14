@@ -82,6 +82,90 @@ FETISHES: tuple[tuple[str, str, str, str, str, str], ...] = (
 
 _BY_KEY = {f[0]: f for f in FETISHES}
 
+# V3.165.0 (#104): the same themes as a PHOTO — «фото по фетишу». The render
+# engine works in English, and every line names ONE woman: her wardrobe, her
+# pose, what her hands do. A second person written into a prompt is what put
+# the third arm into the owner's screenshot (#99), so the risky themes are
+# framed as her playing to someone off camera.
+PHOTO_THEMES: dict[str, str] = {
+    'feet': "she sits back on the bed with her bare legs toward the lens, toes painted, "
+            "sheer thigh-high stockings with a lace band, one foot pointed up at the camera — the frame is about her feet",
+    'dom_her': "a black latex harness over a lace bra set and high heels, one heel planted on the mattress, "
+               "she looks down the lens with her chin up, in charge",
+    'sub_her': "she kneels on the rug, back straight, head tilted up past the camera, hands open on her thighs, "
+               "plain nude-tone bra and panties, blushing and obedient",
+    'bondage': "her wrists loosely bound above her head with a wide silk ribbon, a soft blindfold over her eyes, "
+               "wearing only black panties, calm and trusting",
+    'spank': "she bends over the edge of the bed, a pleated skirt lifted a hand's width, her flushed bare skin "
+             "toward the camera, looking back over her shoulder with a bitten lip",
+    'lingerie': "she fastens a stocking onto a lace garter belt, matching bra set on, a silk robe slipping off "
+                "one shoulder — getting dressed for him",
+    'uniform': "an adult role-play costume — a cropped nurse dress, a maid apron, a stewardess blazer or a blouse "
+               "with a pencil skirt — heels on, name badge, a playful wink",
+    'voyeur': "she thinks nobody sees her: by the mirror her robe slides off one shoulder and her hand rests on "
+              "her own thigh, lips parted, eyes on her reflection",
+    'public': "the thrill is the story, not the place — a locked hotel room, chain on the door, curtains lit from "
+              "the corridor, her skirt already gathered on her thigh and a finger to her lips",
+    'watched': "she performs for someone off camera, knees on the bed, robe open, looking past the lens over her "
+               "shoulder with a slow smile",
+    'threesome': "she plays both parts herself on the bed, hands tracing her own waist and thigh, robe dropped on "
+                 "the floor, skin flushed, eyes shut",
+    'tease': "she kneels on the bed in stockings and heels, arms crossed low over her chest, leaning in to the lens "
+             "— the picture of almost, lips pressed together, eyes laughing",
+    'sensory': "an ice cube melting in the hollow of her collarbone, glossy skin, head thrown back, a feather in "
+               "her hand and a warm oil bottle on the sheet beside her",
+    'massage': "she straddles the massage table, oil-slicked shoulders, a towel slipped off one hip, hair tied up, "
+               "eyes half closed and patient",
+    'latex': "a glossy black latex catsuit zipped to the sternum, long gloves, patent heels, the material mirroring "
+             "the lamp, a hard confident stare",
+    'dirty': "close on her face and bare shoulder, lips near the lens as she whispers, one hand cupping her mouth "
+             "mid-sentence, bedhead hair, warm lamp light",
+    'humiliation': "she kneels on the rug in plain cotton underwear, cheeks flushed, chin up with a teasing smirk "
+                   "at the camera, hair messy",
+}
+
+# His own theme goes into the picture in his words — the text already passed the
+# hard-limit filter when he set it, and passes again here.
+CUSTOM_PHOTO_NOTE = ("his own fantasy, in his words: «{text}» — two adults, their own game, "
+                     "photographed with only her in the frame")
+
+
+def photo_theme(telegram_id: int, character_id: str, key: str = '') -> dict | None:
+    """V3.165.0 (#104): the visual line for a fetish frame. ``key`` wins; with no
+    key it is the theme active in this chat. None = unknown key, no theme on, or
+    his own words touching a hard limit."""
+    try:
+        if key and key != 'custom':
+            f = _BY_KEY.get(key)
+            line = PHOTO_THEMES.get(key)
+            if not f or not line:
+                return None
+            return {'key': key, 'title': f[2], 'visual': line}
+        item = _item(int(telegram_id), character_id) or {}
+        text = str(item.get('custom') or '').strip()
+        if key == 'custom' or item.get('key') == 'custom':
+            if not text or _BLOCKED.search(text):
+                return None
+            return {'key': 'custom', 'title': text, 'visual': CUSTOM_PHOTO_NOTE.format(text=text)}
+        f = _BY_KEY.get(item.get('key', ''))
+        if not f:
+            return None
+        return {'key': f[0], 'title': f[2], 'visual': PHOTO_THEMES.get(f[0]) or f[4]}
+    except Exception:
+        logger.exception('fetish photo theme failed user=%s', telegram_id)
+        return None
+
+
+def photo_theme_text(text: str) -> dict | None:
+    """V3.165.0 (#104): his own words as a PHOTO theme, straight from the sheet —
+    the same hard-limit filter as the chat mode, without switching the mode on (a
+    man without Premium buys the frame, not the theme). None = refused."""
+    c = clean_custom(text)
+    if not c:
+        return None
+    return {'key': 'custom', 'title': c, 'visual': CUSTOM_PHOTO_NOTE.format(text=c)}
+
+
 # the custom text must never touch these: minors (or anything that reads as one),
 # coercion and violence, animals, the dead, blood
 _BLOCKED = re.compile(

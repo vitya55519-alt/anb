@@ -19,23 +19,21 @@ def test_facts_come_from_live_config():
     assert set(f) >= {'enabled', 'free_voice', 'week_rub', 'later_from_day'}
 
 
-def test_no_fake_social_proof_on_the_card():
+def test_no_fake_social_proof_in_the_facts():
+    # V3.165.0: the sheet itself is gone (the owner deleted «Честно о нас»), but
+    # the numbers it used to print are still on the payload, so the rule that
+    # they are live config — never an invented rating — keeps the service file.
     src = (ROOT / 'services' / 'honest_card.py').read_text(encoding='utf-8')
     for bad in ('купили', 'покупают', 'users bought', 'из 5'):
         assert bad not in src
-    block = HTML[HTML.index('function openHonest'):HTML.index('async function loadMe')]
-    assert 'из 5' not in block and 'count' not in block
 
 
-def test_me_payload_and_sheet_wiring():
+def test_me_payload_survives_the_deleted_sheet():
     assert "me['honest'] = honest_card.facts()" in MAIN
-    assert 'id="honestmodal"' in HTML and 'id="honestClose"' in HTML
-    assert 'anbHonestSeen' not in HTML and '_honestShown = true;' in HTML
-    assert 'maybeShowHonest();' in HTML and 'id="honestReopen"' in HTML
-    assert "hn_title: 'Честно о нас 💜'" in HTML and "hn_title: 'Honestly about us 💜'" in HTML
-    assert "hn_go: 'Ок, выбрать героиню'" in HTML and 'без автопродления' in HTML
-    # owner: stars abroad, rubles at home
-    assert "(LANG === 'ru' && f.week_rub) ? f.week_rub + ' ₽' : f.week_stars + ' ⭐'" in HTML
+    # V3.165.0 ТЗ: the screen, its captions and its wiring are all out of the app
+    for dead in ('id="honestmodal"', 'id="honestClose"', 'id="honestReopen"',
+                 'maybeShowHonest();', '_honestShown = true;', 'hn_title:', 'hn_free:'):
+        assert dead not in HTML, dead
 
 
 def test_crypto_row_goes_to_platega_page():
@@ -106,11 +104,14 @@ def test_feedback_card_title_and_reply_routing():
     assert support_desk.user_id_from_card(card) == 424242
 
 
-def test_feedback_endpoint_and_ui():
+def test_feedback_endpoint_still_routes_to_support():
+    # the wishes block was deleted with the «Честно о нас» sheet (V3.165.0), but
+    # the endpoint stays: it is the channel the support desk reads, and the
+    # product event 'app_feedback' feeds the weekly numbers.
     assert "app.router.add_post('/webapp/api/feedback', _webapp_api_feedback)" in MAIN
     assert 'sender = _SUPPORT_BOT or bot' in MAIN and '_SUPPORT_BOT = support_bot' in MAIN
-    assert 'id="fbText"' in HTML and "'/webapp/api/feedback?init_data='" in HTML
-    assert "fb_title: 'Будем рады вашим пожеланиям 💡'" in HTML
+    for dead in ('id="fbText"', "fetch('/webapp/api/feedback", 'fb_title:'):
+        assert dead not in HTML, dead
 
 
 def test_support_answer_falls_back_to_main_bot():

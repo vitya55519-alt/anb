@@ -1,5 +1,7 @@
-"""V3.87.0: nude / lingerie / private / hot-circle media are Premium-only, so
-free peaches never buy them — every such tap opens the Premium pay sheet."""
+"""V3.87.0: nude / lingerie / private / hot-circle media are gated so free
+peaches never buy them. V3.165.0 (#104) moved the door from Premium to money:
+every 18+ frame is sold to anyone for bought peaches (paid_only), Premium only
+decides what is free — and these pins keep both surfaces honest."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,12 +21,18 @@ def test_spicy_scene_set_covers_lingerie_and_nude():
 def test_every_spicy_route_is_gated():
     # app chat text requests
     i = MAIN.index('def _chat_photo_gate(')
-    gate = MAIN[i:i + 3200]  # V3.93.0: the free-photo tiers made the gate longer
+    # V3.165.0: a character window used to be the slice (3200 grew twice) — take
+    # the function itself, so the gate can gain lines without breaking the pin.
+    gate = MAIN[i:MAIN.index('\ndef ', i + 10)]
     assert "return 'spicy'" in gate
     assert gate.index("return 'spicy'") < gate.index("return 'peaches'")
     assert "'spicy': (" in MAIN
-    # app media picker / «Наедине» / hot circle
-    assert "kind in ('hot', 'hotcircle')" in MAIN
+    # V3.87.0 put «Наедине» and the hot circle behind Premium. V3.165.0 (#104,
+    # owner) opened both to a man without Premium: what still has to stop a
+    # render is money — the bought peaches must cover the price before a pixel.
+    assert "if kind == 'hot' and telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):" in MAIN
+    assert 'get_paid_peaches(telegram_id) < get_category_cost(cat_id)' in MAIN
+    assert 'if telegram_id not in ADMIN_TELEGRAM_IDS and get_paid_peaches(telegram_id) < HOT_CIRCLE_PEACH_COST:' in MAIN
     # bot photo keyboard and bot «Наедине»
     assert "if not is_premium(telegram_id) and spicy_needs_premium(request):" in MAIN
     i = MAIN.index('async def private_photo_generate(')
@@ -42,7 +50,11 @@ def test_app_opens_the_premium_sheet():
 
 
 def test_shop_sells_it():
-    assert "'откровенные фото: в белье, обнажённые, «Раздеть», «Наедине», 18+ картинки'" in WEB
+    # V3.165.0 (#104): the old line promised «18+ картинки» as a Premium feature.
+    # The honest one says what Premium still buys — the free frame of the day.
+    start = WEB.index('def api_shop(')
+    block = WEB[start:WEB.index('    return {', start)]
+    assert "'откровенные фото: «Наедине», «Раздеть», косплей — один кадр даром каждый день'" in block
 
 
 def test_free_selfie_then_undress_tease():

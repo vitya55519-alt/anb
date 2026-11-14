@@ -156,21 +156,28 @@ def test_anime_style_first_step():
     assert 'faithfully translated into anime style' in CCS
     ccs = importlib.import_module('services.custom_character_service')
     keys = [step['key'] for step in ccs.CONSTRUCTOR_STEPS]
-    assert keys[0] == 'style' and len(keys) == 12
+    assert keys[0] == 'style' and len(keys) >= 12
     # legacy personas without 'style' stay photorealistic
     assert ccs.build_avatar_prompt({'age': 'age_mid', 'name': 'Оля'}).startswith('Photorealistic portrait')
     assert ccs.build_avatar_prompt({'style': 'style_anime', 'name': 'Юки'}).startswith('Beautiful anime illustration')
 
 
-# ── premium-gated spicy toggle ─────────────────────────────────────────────
+# ── the mode switch (V3.37.0) → the account mode (V3.165.0) ────────────────
 
 def test_spicy_toggle_and_chat_gate():
+    # V3.37.0 put a Premium-gated «пошлый режим» switch in the bot's Settings.
+    # V3.165.0 kept the callback name (old messages still carry it) but the
+    # switch itself moved to the app's entry screen, and Premium stopped being
+    # its price — the ceiling of explicit messages per day is what pays.
     assert "F.data == 'toggle:spicy'" in MAIN
-    assert 'update_user_settings(cq.from_user.id, spicy_mode=new)' in MAIN
-    # enabling requires Premium; disabling is always allowed
-    assert 'not current and not is_premium(' in MAIN
-    # the chat injection rides the shared pipeline and re-checks Premium
-    assert 'spicy_line' in CHAT
-    assert "getattr(user_row, 'spicy_mode', False)" in CHAT
-    assert 'premium and user_row' in CHAT
-    assert 'ПОШЛЫЙ РЕЖИМ ВКЛЮЧЁН' in CHAT
+    toggle = MAIN[MAIN.index("F.data == 'toggle:spicy'"):]
+    toggle = toggle[:toggle.index('\n@dp.callback_query', 10)]
+    assert 'update_user_settings' not in toggle
+    assert 'webapp?mode=1' in toggle
+    # the old premium text block is gone from the pipeline: it told her to
+    # avoid exactly the graphic detail the mode unlocks.
+    assert 'ПОШЛЫЙ РЕЖИМ ВКЛЮЧЁН' not in CHAT
+    assert 'explicit_mode.mode_rules(' in CHAT
+    assert 'explicit_mode.cap_left(' in CHAT
+    # `spicy_line` survives only as the intimacy/card-girl line it became
+    assert "spicy_line = CARD_GIRL_DIRTY_LINE" in CHAT

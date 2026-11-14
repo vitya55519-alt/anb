@@ -21,12 +21,15 @@ def test_gate_without_premium_goes_through_credit_then_peaches():
 
 
 def test_app_prices_undress_in_peaches():
-    # V3.154.0: owner — «не 250 а 400 персиков». The literal is only the first
-    # paint fallback; the number he sees comes from /me (undress_peaches).
-    assert "esc(ME.undress_peaches || 400) + ' 🍑</small>'" in INDEX
-    assert "((ME && ME.undress_peaches) || 400) + ' 🍑'" in INDEX
+    # V3.154.0: owner — «не 250 а 400 персиков». V3.165.0: the owner moved the
+    # frame to 300 🍑, and the page stopped carrying a literal at all — the
+    # number comes from /me (undress_peaches), PP('undress') is only the
+    # first-paint fallback out of ME.peach_prices.
+    assert "esc(peachNum(ME.undress_peaches || PP('undress'))) + ' 🍑</small>'" in INDEX
+    assert "const undressPeaches = (ME && ME.undress_peaches) || PP('undress');" in INDEX
     assert "ME.undress_one_rub ? '<small>· " not in INDEX
-    assert "const undressPeaches = (ME && ME.undress_peaches) || 400;" in INDEX
+    for stale in ('|| 400', '|| 4000'):
+        assert stale not in INDEX, stale
 
 
 WEB = (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')

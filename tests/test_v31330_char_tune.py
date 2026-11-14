@@ -36,5 +36,7 @@ def test_hot18_showcase_on_her_page_and_honest():
     body = HTML.split('function openHot18(c0) {', 1)[1].split('\nfunction ', 1)[0]
     for k in ('undress', 'spicy', 'fet', 'plots', 'call', 'circle', 'video'):
         assert "'" + k + "'" in body
-    assert "quickBuy('spicy')" in body and "esc(undressPeaches) + ' \U0001F351</span>'" in body
+    # V3.165.0 (#107): цену листа больше не печатают в строке — её несёт peach(),
+    # которой число приходит из /webapp/api/me.
+    assert "quickBuy('spicy')" in body and 'peach(undressPeaches)' in body
     assert 'Фото реальных людей не раздеваем' in HTML

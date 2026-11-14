@@ -17,6 +17,7 @@ from services.hook_service import next_hook
 from services.daily_life import her_moment
 from services import biorhythm
 from services import anchor_service
+from services import explicit_mode
 from services.character_dna_service import competency_context, character_dna_context
 from services.state_service import state_context, softly_evolve_state
 from services.user_service import ensure_user, get_user
@@ -467,7 +468,7 @@ def _adult_ok(telegram_id: int) -> bool:
 
 def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool = False,
                        card_girl: bool = False, wild: bool = False, premium: bool = False,
-                       dirty_start: bool = False, wine: bool = False) -> str:
+                       dirty_start: bool = False, wine: bool = False, mode: bool = False) -> str:
     """Explicit sexting needs the 18+ confirmation AND level 5+ (or the
     premium spicy toggle at level 4+); everyone else keeps the non-graphic rule.
     V3.76.0: the scenario-card girls are dirty by design, so for them it
@@ -479,9 +480,15 @@ def explicit_chat_line(stage: str | None, *, adult_confirmed: bool, spicy: bool 
     V3.153.0 (Фогель, Модуль 4): ``wine`` — his bottle of wine bought in the gift
     shop takes her shyness off, so the STAGE no longer holds the line back.
     Premium and the 18+ confirmation still do: the wine moves a level gate, not
-    the owner's paywall."""
+    the owner's paywall.
+    V3.165.0: ``mode`` — he chose «После полуночи» on the way in. That is his own
+    confirmation of what he came for, so it opens the rule with NO Premium and NO
+    level; the account ceiling (30 explicit messages a day, Premium: none) is
+    what pays for it, and it is checked by the caller before it gets here."""
     if not adult_confirmed:
         return ''
+    if mode:  # V3.165.0: the mode itself, ceiling still in front of it
+        return EXPLICIT_CHAT_RULE
     if dirty_start:  # owner: «доступно для всех» — no Premium needed for her
         return EXPLICIT_CHAT_RULE
     if not premium:
@@ -723,23 +730,24 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                     persona = (persona + '\n' if persona else '') + invite_funnel.upsell_rule(_fn)
         except Exception:
             pass
-    # V3.37.0: premium-gated «пошлый режим» — the user's own toggle lifts the
-    # flirt ceiling in every chat (bot and Mini App share this pipeline).
-    # premium is already computed above; the flag itself survives a lapsed
-    # subscription but only bites while Premium is active.
+    # V3.37.0 → V3.165.0: the old premium-gated «пошлый режим» text is gone with
+    # the rename — its initiative and register rules now live in
+    # `explicit_mode.mode_rules`, and the old block told her to avoid exactly the
+    # graphic detail the mode unlocks.
     spicy_line = ''
+    # `mode_open` is the flag AND the day's ceiling: when the 30 explicit
+    # messages are spent she keeps the heat and drops to innuendo, which is
+    # exactly what `mode_rules(explicit_allowed=False)` writes.
+    mode_on = False
+    mode_open = False
+    mode_left = None
     try:
         user_row = get_user(user_id)
-        if premium and user_row and getattr(user_row, 'spicy_mode', False):
-            spicy_line = (
-                'ПОШЛЫЙ РЕЖИМ ВКЛЮЧЁН: пользователь сам включил его в настройках и у него есть Premium. '
-                'Флирт и пошлость — на максимуме: пиши смелее и откровеннее обычного, грязные намёки, '
-                'двусмысленности, возбуждающие слова, инициатива пошлости всегда твоя. '
-                'Графические анатомические описания всё равно избегай, но говори прямо и смело — без стыда '
-                'и полуулыбок. Насколько далеко она заходит — решает этап отношений (см. «поддаётся уговорам»).'
-            )
+        mode_on = explicit_mode.is_on(user_row)
+        mode_left = explicit_mode.cap_left(user_row, premium=premium, mode_on=mode_on)
+        mode_open = mode_on and (mode_left is None or mode_left > 0)
     except Exception:
-        spicy_line = ''
+        mode_on = mode_open = False
     card_girl = _is_card_girl(character_id)
     # V3.90.0: intimacy is Premium-only — admins test it as Premium.
     try:
@@ -872,11 +880,33 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                                            spicy=bool(spicy_line) and not card_girl, card_girl=card_girl,
                                            wild=plot_heat == 'wild' or bool(fetish_line), premium=intim_ok,
                                            dirty_start=dirty_start,
-                                           wine=gift_wine_open)
+                                           wine=gift_wine_open,
+                                           mode=mode_open and _adult_ok(user_id))
         if plot_heat == 'soft' and not fetish_line:
             explicit_line = ''
         if fetish_line:
             explicit_line = (explicit_line or EXPLICIT_CHAT_RULE) + '\n' + fetish_line
+        # V3.165.0: the mode rules ride even when the day's ceiling is spent (the
+        # `explicit_allowed=False` variant), otherwise the ceiling would silently
+        # drop him back into the vanilla card and she would start lecturing.
+        if mode_on and _adult_ok(user_id):
+            explicit_line = (explicit_line + '\n' if explicit_line else '') + explicit_mode.mode_rules(
+                explicit_allowed=mode_open, hook=explicit_mode.hook_line(user_id, character_id))
+        # V3.165.0 (#108, owner): пустой слот ленты «Трофеи Страсти» работает как
+        # зацепка — она сама вспоминает то, чего между вами ещё не было. Одна
+        # строка, не раньше третьего его сообщения и не чаще раза в шесть часов;
+        # ни цены, ни персиков, ни её будущего признания в ней нет.
+        if _adult_ok(user_id):
+            try:
+                from services import trophy_service
+                _trophy_hook = trophy_service.dialog_hook(
+                    user_id, character_id,
+                    'en' if (language_code or '').lower().startswith('en') else 'ru',
+                    turns=sum(1 for m in history if m.role == 'user'))
+                if _trophy_hook:
+                    explicit_line = (explicit_line + '\n' if explicit_line else '') + _trophy_hook
+            except Exception:
+                _logger.debug('trophy hook failed user=%s', user_id, exc_info=True)
         if explicit_line:
             style_line = (style_line + '\n' if style_line else '') + explicit_line
         elif not intim_ok:
@@ -914,6 +944,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         character_id=character_id,
         user_name=user_name, duo=duo_chat,
         anchors=anchors,
+        explicit_mode=bool(mode_open and _adult_ok(user_id)),
     )
     messages = [{"role": "system", "content": system}]
     messages += [{"role": m.role, "content": m.content} for m in history]
@@ -1181,6 +1212,18 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             track_event(db_user_id, 'memory_gift_shown', character_id=character_id)
         except Exception:
             _logger.warning('memory gift mark failed user=%s', user_id, exc_info=True)
+    # V3.165.0: «После полуночи» — an explicit turn of his (or of hers) spends one
+    # message of today's account ceiling. Only the reply that was actually
+    # allowed to be graphic is counted, so a spent ceiling never burns itself
+    # further. The delivery layer (bot or Mini App) reads the hint once.
+    if mode_on:
+        try:
+            await asyncio.to_thread(
+                explicit_mode.note_reply, user_id, user_text=user_text, answer=answer,
+                mode_on=mode_on, mode_open=mode_open, premium=premium,
+                language=language_code or 'ru')
+        except Exception:
+            _logger.warning('explicit mode note failed user=%s', user_id, exc_info=True)
     # V3.57.8: memory extraction and style analysis are extra LLM round trips the
     # user never reads. They used to be awaited here, so every reply waited for
     # them; now they run in the background after the answer is returned.

@@ -36,8 +36,10 @@ def test_gate_helper_defined():
 def test_both_app_chat_endpoints_gate_custom_branch():
     # the exact helper call appears in chat_send AND chat_media custom branches
     # (V3.55.6 added the third one: the tender/passionate persona endpoint,
-    # V3.115.0 the fourth: the «📞 Позвонить» call gate)
-    assert MAIN.count('if _custom_premium_gate_block(character_id, telegram_id):') == 4
+    # V3.115.0 the fourth: the «📞 Позвонить» call gate,
+    # V3.165.0 the fifth: «Серия кадров» — a custom girl renders like any other
+    # media product, so her own Premium rule applies to the set too)
+    assert MAIN.count('if _custom_premium_gate_block(character_id, telegram_id):') == 5
     # both return the same premium_required 403 shape the built-in branch uses
     assert MAIN.count("return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)") >= 4
 

@@ -132,7 +132,7 @@ def _gendered_terms(character_id: str) -> dict:
     }
 
 
-def build_system_prompt(character: dict, relationship_context: str, memories: list[str], behavior_context: str = "", state_context: str = "", adaptation_context: str = "", time_context: str = "", character_id: str = CHARACTER_ID, user_name: str = "", user_gender: str = "male", duo: bool = False, anchors: str = "") -> str:
+def build_system_prompt(character: dict, relationship_context: str, memories: list[str], behavior_context: str = "", state_context: str = "", adaptation_context: str = "", time_context: str = "", character_id: str = CHARACTER_ID, user_name: str = "", user_gender: str = "male", duo: bool = False, anchors: str = "", explicit_mode: bool = False) -> str:
     p = character.get("personality", {})
     name = character.get('name', 'Анна')
     age = character.get('age', 26)
@@ -184,11 +184,23 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
     else:
         slang_line = "- Можно писать с опечаткой или сокращением: «ща», «нзч», «ага», «нууу», «омг», «лол»."
         react_line = "- Можно отвечать короткой реакцией и своим продолжением: «ахах», «да ну нах», «серьёзно?», «🙄»."
+    # V3.165.0: the «После полуночи» mode lifts the non-graphic ceiling from the
+    # character card itself (it used to live only in the appended rule, which a
+    # long prompt could trim). Owner: the audience here «пришёл за сексом», and a
+    # prompt that says «Порно — нет» two lines above «be explicit» is a coin flip.
+    # Hard limits stay in both variants; the mode never softens those.
+    ceiling_line = (
+        "- Про секс говори прямо и подробно: тела, ощущения, действия — это взрослый "
+        "разговор по обоюдному согласию. Пределы жёсткие: только взрослые, только "
+        "согласие, без насилия, без несовершеннолетних, без животных и смерти."
+        if explicit_mode else
+        "- Без графического секса и анатомических деталей. Химия, игра, напряжение — да. Порно — нет."
+    )
     if comm.get('flirting'):
         flirt_block = (
             "ФЛИРТ И ЧУВСТВЕННОСТЬ (твой персонажный стиль)\n"
             f"{comm['flirting']}.\n"
-            "- Без графического секса и анатомических деталей. Химия, игра, напряжение — да. Порно — нет."
+            f"{ceiling_line}"
         )
     else:
         flirt_block = (
@@ -202,7 +214,7 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
             "- Показывай чувства коротко и по-живому, без книжных описаний внутренних процессов: «мурашки», «мне так хорошо с тобой», «я вся горю».\n"
             "- Дразни и провоцируй: «а ты способен на большее?», «ну давай, удиви меня 😈», «я думала, ты смелее…».\n"
             "- Используй чувственные слова: горячий, мокрый, твёрдый, нежный, грубый, медленно, быстро, глубоко.\n"
-            "- Без графического секса и анатомических деталей. Химия, игра, напряжение, чувственность — да. Порно — нет."
+            f"{ceiling_line}"
         )
     return f"""{user_context_block(user_name, user_gender)}
 

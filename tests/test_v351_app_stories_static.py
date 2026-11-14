@@ -68,6 +68,8 @@ def test_webapp_story_i18n_and_photo_render_present():
                 'story_beat', 'story_done'):
         assert key in WEBAPP
     # a photo returned by the chat send is rendered, not dropped
-    send = WEBAPP[WEBAPP.index('async function sendChat('):WEBAPP.index('requestMedia')]
+    # V3.165.0: «requestMedia» is now called from the fetish sheet above sendChat,
+    # so the slice ends at the function definition, not at its first mention.
+    send = WEBAPP[WEBAPP.index('async function sendChat('):WEBAPP.index('async function requestMedia(')]
     assert 'j.photo_url' in send
     assert "media_kind: 'photo'" in send

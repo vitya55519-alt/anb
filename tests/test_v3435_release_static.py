@@ -76,32 +76,41 @@ def test_spicy_endpoint_lives_in_the_webapp_api():
     # Telegram-authenticated only
     assert 'validate_init_data(request.query.get(\'init_data\', \'\'))' in handler
     assert "return web.json_response({'ok': False, 'error': 'auth'}, status=401)" in handler
-    # same rule as the bot-side toggle:spicy — enabling needs Premium
-    assert 'if not current and not is_premium(telegram_id):' in handler
-    assert "return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)" in handler
-    # the flag actually flips
-    assert 'update_user_settings(telegram_id, spicy_mode=not current)' in handler
-    assert "return web.json_response({'ok': True, 'spicy_mode': flipped}" in handler
+    # V3.37.0 → V3.165.0: the endpoint used to flip the flag and demanded
+    # Premium. It now takes the value the entry card was tapped with, and the
+    # only gate left is the 18+ confirmation — the money moved to the frames
+    # and to the daily ceiling.
+    assert "explicit_mode.set_mode(telegram_id, new)" in handler
+    assert "is_adult_confirmed(telegram_id)" in handler
+    assert "return web.json_response({'ok': True, 'spicy_mode': bool(result)}" in handler
+    assert 'is_premium(telegram_id)' not in handler
+    assert 'update_user_settings(telegram_id, spicy_mode=not current)' not in handler
 
 
 def test_api_me_exposes_spicy_mode():
-    assert "'spicy_mode': bool(getattr(user, 'spicy_mode', False)) if user else False," in WEBAPP_SVC
+    # V3.165.0: the flag is read through explicit_mode (the account flag the
+    # entry screen writes), and the app gets the ceiling with it.
+    assert "'spicy_mode': bool(mode_on)," in WEBAPP_SVC
+    assert "'explicit_left': explicit_left," in WEBAPP_SVC
+    assert "'explicit_cap': explicit_cap," in WEBAPP_SVC
 
 
 def test_profile_screen_carries_the_settings_section():
-    assert 'id="rowSpicy"' in INDEX
-    assert 'id="spicyVal"' in INDEX
     assert "${esc(L.settings_title)}" in INDEX
-    assert "${esc(L.spicy_title)}" in INDEX
-    # the row posts to the new endpoint and reacts to its verdicts
-    assert "fetch('/webapp/api/spicy?init_data='" in INDEX
-    # V3.64.7: the 403 branch also tells «confirm 18+» apart from «need Premium».
-    assert "if (r.status === 403) {" in INDEX
-    assert "toast(L.spicy_prem); showTab('shop'); return;" in INDEX
-    assert 'ME.spicy_mode = !!j.spicy_mode;' in INDEX
-    assert "toast(ME.spicy_mode ? L.spicy_toast_on : L.spicy_toast_off);" in INDEX
-    # the client Premium gate matches the server rule
-    assert 'if (!ME.spicy_mode && !ME.premium) { toast(L.spicy_prem); showTab(\'shop\'); return; }' in INDEX
+    assert '<div class="langBox">' in INDEX
+    # V3.165.0 (Задача 100): the mode row left Settings — the entry screen is
+    # the only place the mode is chosen, so a second switch must not come back.
+    assert 'id="rowSpicy"' not in INDEX
+    assert 'id="spicyVal"' not in INDEX
+    assert '${esc(L.spicy_title)}' not in INDEX
+    # the entry cards post the tapped value to the endpoint and honour its
+    # verdicts: the 18+ answer stays separate from a network failure.
+    assert "body: JSON.stringify({ spicy: !!on })," in INDEX
+    assert "if (r.status === 403) adultBlocked = true;" in INDEX
+    assert "toast(L.adult_confirm_needed);" in INDEX
+    assert "ME.spicy_mode = j.spicy_mode;" in INDEX
+    # Premium is no longer the price of the mode
+    assert "if (!ME.spicy_mode && !ME.premium) { toast(L.spicy_prem); showTab('shop'); return; }" not in INDEX
 
 
 # ── 4. interface language picker: seven languages ────────────────────────────
@@ -138,13 +147,18 @@ def test_language_chips_switch_the_whole_interface():
     assert "localStorage.setItem('app_lang', ch.dataset.lang);" in INDEX
     assert 'location.reload()' in INDEX
     # every dictionary carries the Settings vocabulary
-    assert "settings_title: 'Settings', spicy_title: '🌶 Spicy mode'" in INDEX
-    assert "settings_title: 'Настройки', spicy_title: '🌶 Пошлый режим'" in INDEX
-    assert "spicy_title: '🌶 Modo atrevido'" in INDEX
-    assert "spicy_title: '🌶 Modalità audace'" in INDEX
-    assert "spicy_title: '🌶 Mode coquin'" in INDEX
-    assert "spicy_title: '🌶 火辣模式'" in INDEX
-    assert "spicy_title: '🌶 セクシーモード'" in INDEX
+    # V3.165.0: the mode captions that used to sit here moved to the entry
+    # screen, which speaks every interface language too.
+    for lang in ("settings_title: 'Settings'", "settings_title: 'Настройки'",
+                 "settings_title: 'Ajustes'", "settings_title: 'Impostazioni'",
+                 "settings_title: 'Réglages'", "settings_title: '设置'",
+                 "settings_title: '設定'", "settings_title: 'সেটিংস'"):
+        assert lang in INDEX, lang
+    assert "spicy_title:" not in INDEX
+    assert "ms_title: 'Как общаемся сегодня?'" in INDEX
+    assert "ms_btn: 'Выбрать героиню'" in INDEX
+    assert "ms_title: 'How are we talking today?'" in INDEX
+    assert "ms_btn: 'Choose a heroine'" in INDEX
 
 
 # ── 5. the figure no longer drifts (Emily) ──────────────────────────────────

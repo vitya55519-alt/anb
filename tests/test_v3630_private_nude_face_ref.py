@@ -36,6 +36,10 @@ def test_hot_nude_uses_face_reference_edit(monkeypatch):
         return JPG
 
     monkeypatch.setattr(pps, '_spicyapi_render', fake)
+    # V3.165.0 (#104): «Наедине» opened to everybody who pays, and the owner never
+    # gives away free renders — the free shot of the day stays the Premium / pass /
+    # earned-unlock perk it was when this kind was Premium-only. This user takes it.
+    monkeypatch.setattr(main, 'is_premium', lambda *a: True)
     monkeypatch.setattr(main, 'consume_free_private_photo', lambda *a: True, raising=False)
     import services.private_photo_service as svc
     monkeypatch.setattr(svc, 'consume_free_private_photo', lambda *a: True)
