@@ -521,6 +521,9 @@
     border: 1px solid rgba(255,255,255,.12); border-radius: 18px; background: var(--card); color: var(--text);
   }
   .modecard img, .modecard .ph { display: block; width: 100%; height: 150px; object-fit: cover; }
+  /* his pictures are vertical selfies: centred on the strip they cut the faces
+     off, so the crop sits high and keeps heads (and the «shush» finger) in. */
+  .modecard img { object-position: 50% 20%; }
   .modecard .ph { display: none; align-items: center; justify-content: center; font-size: 44px; background: var(--card2); }
   .modecard.nopic img { display: none; }
   .modecard.nopic .ph { display: flex; }
