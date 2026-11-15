@@ -924,6 +924,10 @@ class CharacterGreeting(Base):
     # card text is what he reads; this is what the generator gets when he taps
     # «Покажи» — never shown to him, never sent anywhere else.
     image_prompt: Mapped[str] = mapped_column(Text, nullable=False, default='')
+    # V3.166.5 (owner, «немота»): the words she sends right before the frame his
+    # chip promised — «Смотри... как тебе?». Empty means she speaks with the LLM
+    # only, and the LLM is fed this line as what she wanted to say.
+    reply_text: Mapped[str] = mapped_column(Text, nullable=False, default='')
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

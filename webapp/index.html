@@ -5169,7 +5169,11 @@ async function sendChat(retryText) {
 const _undressTeased = {};
 function undressTease(mediaUrl) {
   if (!CHAT || !mediaUrl || CHAT.duo || _undressTeased[CHAT.id]) return;
-  if (String(mediaUrl).indexOf('/webapp/media/') !== 0) return;
+  // V3.166.5: the starter frame lives in the shared cache (/webapp/starter/…),
+  // and since this release the paid «Раздеть» accepts it as a source image too —
+  // so the owner's ТЗ («снизу кнопка 🔥 Раздеться») holds on her first photo.
+  if (String(mediaUrl).indexOf('/webapp/media/') !== 0 &&
+      String(mediaUrl).indexOf('/webapp/starter/') !== 0) return;
   _undressTeased[CHAT.id] = 1;
   const box = document.getElementById('chatMsgs');
   setTimeout(() => {
@@ -5211,7 +5215,15 @@ function insertChatReply(j) {
   const box = document.getElementById('chatMsgs');
   let duoPlayed = Promise.resolve();
   if (j.photo_url) {
-    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
+    if (j.starter) {
+      // V3.166.5 (owner ТЗ «немота»): his tap on the chip brings her words as
+      // her own message, and ONLY then the frame — two bubbles, like a real
+      // chat, with «🔥 Раздеться» under the picture.
+      if (j.reply) box.insertAdjacentHTML('beforeend', chatBubble('bot', j.reply, null));
+      box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
+    } else {
+      box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'photo', media_url: j.photo_url, ts: null }));
+    }
     undressTease(j.photo_url);
   } else if (j.voice_url) {
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'voice', media_url: j.voice_url, ts: null }));

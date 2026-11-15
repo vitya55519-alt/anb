@@ -90,12 +90,16 @@ def test_greeting_endpoint_saves_only_her_line_and_registers_the_tap():
 
 
 def test_translation_is_paid_once_then_read_from_cache(monkeypatch):
-    greeting_service.create('anna_01', 'spicy', 'Иди сюда', ['Подойти', 'Обнять'])
+    # V3.166.5 (владелец: «немота»): её слова перед кадром переводятся этим же
+    # одним вызовом и лежат в том же кэше — без них тап по чипу ответил бы ему
+    # по-русски.
+    greeting_service.create('anna_01', 'spicy', 'Иди сюда', ['Подойти', 'Обнять'],
+                            reply_text='Я тебя жду')
     calls = []
 
-    async def translate(text, buttons, lang):
-        calls.append((text, buttons, lang))
-        return 'Come here', ['Come closer', 'Hug her']
+    async def translate(text, buttons, lang, reply=''):
+        calls.append((text, buttons, lang, reply))
+        return 'Come here', ['Come closer', 'Hug her'], 'I am waiting for you'
 
     monkeypatch.setattr(greeting_service, '_translate', translate)
     first = asyncio.run(greeting_service.opening('anna_01', spicy=True, lang='en'))
@@ -103,22 +107,26 @@ def test_translation_is_paid_once_then_read_from_cache(monkeypatch):
     assert len(calls) == 1
     assert first['text'] == second['text'] == 'Come here'
     assert second['buttons'] == ['Come closer', 'Hug her']
+    assert second['reply'] == 'I am waiting for you'
     with SessionLocal() as s:
         cached = json.loads(s.scalar(select(CharacterGreeting.translations_json)))
     assert cached['en']['text'] == 'Come here'
+    assert cached['en']['reply'] == 'I am waiting for you'
 
 
-def test_owner_kitchen_has_the_three_step_card_flow():
+def test_owner_kitchen_has_the_four_step_card_flow():
     wizard = MAIN[MAIN.index('GREETING_WAIT: dict[int, dict] = {}'):MAIN.index('def admin_badges_keyboard')]
     assert "text='💌 Стартовые сообщения" in MAIN
     # V3.166.4: her line → chips → the hidden English frame. The photo step is
     # gone with the card pictures, and so is the bot's photo download.
+    # V3.166.5 added the fourth: what she writes right before that frame.
     assert "'step': 'text'" in wizard
     assert "state['step'] = 'buttons'" in wizard
     assert "state['step'] = 'prompt'" in wizard
+    assert "state['step'] = 'reply'" in wizard
     assert "'step': 'photo'" not in wizard
     assert "state['photo_bytes'] = buf.getvalue()" not in wizard
-    assert "image_prompt=prompt)" in wizard
+    assert "image_prompt=prompt, reply_text=reply)" in wizard
     assert "if cq.from_user.id not in ADMIN_TELEGRAM_IDS" in MAIN
 
 

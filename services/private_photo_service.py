@@ -831,13 +831,15 @@ _SPICY_DROP_ORDER = (
 # 3 = V3.152.1 — the three ТЗ locks (two women in the frame, the amateur hot
 # frame, the private-place override) plus the V3.165.0 limb lock. They are cut
 # last and are written as the first lines of the prompt, so even the hard tail
-# cut cannot reach them.
+# cut cannot reach them. V3.166.5: the starter frame lock joins tier 3 — it is
+# the only thing that keeps the bathtub scenario out of a default bedroom, and
+# the long lingerie prompts hit exactly the cap where it used to be trimmed.
 _SPICY_TIERS = (
     ('SCENE:', 'WARDROBE:', 'CAMERA/POSE:', 'Create exactly ONE', 'Mainstream general-audience',
      'OUTFIT:', 'FACE LOCK:', 'BUST LOCK:', 'REFERENCE IMAGE 1', 'POSE NOTE:',
      'Photorealistic smartphone', 'Avoid identity drift', 'REFERENCE IMAGE 3'),
     ('PHOTO IDENTITY:', 'HARD SUBJECT LOCK:'),
-    ('TWO WOMEN IN FRAME:', 'AMATEUR HOT FRAME:', 'PRIVATE PLACE OVERRIDE:', 'HANDS:'),
+    ('TWO WOMEN IN FRAME:', 'AMATEUR HOT FRAME:', 'PRIVATE PLACE OVERRIDE:', 'HANDS:', 'STARTER FRAME:'),
 )
 
 

@@ -18,7 +18,9 @@ from services.db import SessionLocal, engine
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 MODELS = (ROOT / 'models' / 'app_models.py').read_text(encoding='utf-8')
+WEBAPP = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 SYNC_STORE_KEY = 'greeting_seed_v31664'
+REPLY_STORE_KEY = 'greeting_reply_v31665'
 
 
 def _wipe():
@@ -28,9 +30,11 @@ def _wipe():
             s.execute(delete(cls))
             s.commit()
     with SessionLocal() as s:
-        s.execute(delete(DialogSession).where(DialogSession.session_key == SYNC_STORE_KEY))
+        s.execute(delete(DialogSession).where(
+            DialogSession.session_key.in_([SYNC_STORE_KEY, REPLY_STORE_KEY])))
         s.commit()
     greeting_service._sync_done = None
+    greeting_service._replies_done = None
     greeting_service._offers.clear()
 
 
@@ -41,9 +45,10 @@ def clean_tables():
     _wipe()
 
 
-def _scenario(character_id: str = 'all', prompt: str = 'bedroom, lace lingerie') -> int:
+def _scenario(character_id: str = 'all', prompt: str = 'bedroom, lace lingerie',
+              reply: str = '') -> int:
     return greeting_service.create(character_id, 'spicy', 'Показать тебе, как я выгляжу?',
-                                   ['Покажи', 'Скинь фото'], image_prompt=prompt)
+                                   ['Покажи', 'Скинь фото'], image_prompt=prompt, reply_text=reply)
 
 
 # ── Блок 1: таблица и потолок в четыре кадра ────────────────────────────────
@@ -105,7 +110,7 @@ def test_chip_tap_matches_the_button_they_actually_sent():
     gid = _scenario()
     greeting_service.remember_offer(111, 'anna_01', gid, ['Покажи', 'Скинь фото'])
     assert greeting_service.take_offer(111, 'anna_01', 'Покажи') == {
-        'greeting_id': gid, 'image_prompt': 'bedroom, lace lingerie'}
+        'greeting_id': gid, 'image_prompt': 'bedroom, lace lingerie', 'reply_text': ''}
     assert greeting_service.take_offer(111, 'anna_01', '  покажи ')  # регистр и пробелы — те же слова
     assert greeting_service.take_offer(111, 'anna_01', 'Привет, как ты?') is None
     assert greeting_service.take_offer(222, 'anna_01', 'Покажи') is None      # другой аккаунт
@@ -131,6 +136,57 @@ def test_hidden_prompt_never_leaves_the_server():
     assert 'bedroom' not in str(greeting_service.scenarios_for('anna_01'))
     assert greeting_service.image_prompt_for(gid) == 'bedroom, lace lingerie'
     assert greeting_service.image_prompt_for(0) == ''
+
+
+# ── Блок 2 V3.166.5 («немота»): перед кадром у неё есть слова ───────────────
+
+def test_the_card_remembers_the_words_she_sends_before_the_frame():
+    gid = _scenario(reply='Смотри... как тебе?')
+    greeting_service.remember_offer(111, 'anna_01', gid, ['Покажи'], 'Смотри... как тебе?')
+    assert greeting_service.take_offer(111, 'anna_01', 'Покажи')['reply_text'] == 'Смотри... как тебе?'
+    # перевод карточки кладётся в предложение — тап отвечает ему на его языке
+    assert greeting_service.reply_for(gid) == 'Смотри... как тебе?'
+    assert greeting_service.reply_for(0) == ''
+    # предложение без своих слов (перезапуск процесса) — берём их из строки БД
+    greeting_service.remember_offer(222, 'anna_01', gid, ['Покажи'])
+    assert greeting_service.take_offer(222, 'anna_01', 'Покажи')['reply_text'] == 'Смотри... как тебе?'
+
+
+def test_a_card_without_words_stays_silent_instead_of_inventing_them():
+    gid = _scenario()
+    greeting_service.remember_offer(111, 'anna_01', gid, ['Покажи'])
+    assert greeting_service.take_offer(111, 'anna_01', 'Покажи')['reply_text'] == ''
+    assert greeting_service.reply_for(gid) == ''
+
+
+def test_every_seeded_scenario_promises_a_frame_and_words():
+    # универсальные 15 он заполнил сам; его личные карточки — на его совести
+    greeting_service.sync_universal_seed()
+    greeting_service.sync_universal_replies()
+    with SessionLocal() as s:
+        rows = list(s.scalars(select(CharacterGreeting).where(
+            CharacterGreeting.character_id == 'all')))
+    assert len(rows) == 15
+    assert all(r.image_prompt and r.reply_text.strip() for r in rows)
+    # одна и та же фраза на весь набор — скучно, владелец просил разные
+    assert len({r.reply_text for r in rows}) == 15
+
+
+def test_the_frame_turn_sends_her_words_then_the_picture():
+    branch = MAIN[MAIN.index('async def _starter_frame_turn'):MAIN.index('def _pings_app_reply(turn):')]
+    assert "offer.get('reply_text')" in branch
+    assert branch.count("save_message(uid, character_id, 'assistant'") == 3  # слова + кадр + заглушка
+    assert "'starter': 1" in branch                       # клиент разложит это в два пузыря
+    assert "save_message(uid, character_id, 'assistant', words)" in branch
+
+
+def test_the_app_shows_her_words_as_a_message_and_offers_undressing():
+    flow = WEBAPP[WEBAPP.index('function insertChatReply(j)'):WEBAPP.index('// V3.88.0: the early locked photo')]
+    assert 'if (j.starter)' in flow
+    assert "chatBubble('bot', j.reply, null)" in flow     # сначала её строка
+    assert "media_kind: 'photo', media_url: j.photo_url" in flow
+    tease = WEBAPP[WEBAPP.index('function undressTease(mediaUrl)'):WEBAPP.index('function renderChatReply(j)')]
+    assert "indexOf('/webapp/starter/') !== 0" in tease    # «🔥 Раздеться» и под стартовым кадром
 
 
 def test_scenarios_screen_lists_her_own_and_universal_cards_with_frames():
@@ -167,15 +223,23 @@ def test_sync_forcibly_replaces_universal_rows_and_strips_card_photos():
 
 # ── статика: промпт, маршрут, кухня, экономия ───────────────────────────────
 
-def test_starter_scene_outranks_the_generic_wardrobe_line():
+def test_a_starter_frame_draws_the_place_of_its_own_scenario():
+    # Владелец V3.166.5: «если сценарий про ванну, генератор всё равно рисует
+    # кровать — базовый промпт „спальня" перебивает ситуативный». Запрос теперь
+    # = её внешность + строка сценария, а дефолтная комната, комплект белья по
+    # уровню доверия и студийная эстетика из него вынуты.
     import services.photo_service as ps
     note = 'kitchen background, wearing only a cooking apron, leaning on counter'
     with_note = ps._build_prompt(ps.PhotoRequest(scene='lingerie', starter_note=note), 0,
                                  seedream=True, relationship_level=2, character_id='anna_01')
     without = ps._build_prompt(ps.PhotoRequest(scene='lingerie'), 0,
                                seedream=True, relationship_level=2, character_id='anna_01')
-    assert f'STARTER SCENE: {note}' in with_note
-    assert 'STARTER SCENE' not in without
+    assert f'SCENE: {note}.\n{ps.STARTER_FRAME_LOCK}' in with_note
+    assert ps.SCENES['lingerie'][:60] not in with_note      # «спальня» больше не фон
+    assert ps.STARTER_WARDROBE in with_note                 # наряд — то, что назван в сцене
+    assert ps.STARTER_AMATEUR_LOCK in with_note
+    assert 'PRIVATE SCENE FRAMING' not in with_note
+    assert 'STARTER' not in without                         # обычное фото — как было
 
 
 def test_starter_turn_is_free_but_still_burns_one_of_thirty():

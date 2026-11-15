@@ -1179,6 +1179,46 @@ AMATEUR_HOT_FRAME_LOCK = (
     'Her face stays recognizable from the references even when the phone hides part of it.'
 )
 
+# V3.166.5 (владелец, багфикс стартовых кадров): его скрин — сценарий про ванну,
+# а в кадре ванна посреди спальни с неразобранной кроватью и разбросанными
+# вещами. Три источника перебивали её обещанный кадр: база сцены «lingerie»
+# (будуар, кружевное бельё, атласный халат), суточный контекст в строке локации
+# и эта аматорская блокировка с «an unmade bed». Для стартового кадра все три
+# выключены: место, одежда и поза берутся ТОЛЬКО из image_prompt сценария.
+# Префиксы зарегистрированы в последнем снимаемом слое _SPICY_TIERS.
+STARTER_FRAME_LOCK = (
+    'STARTER FRAME: this is the exact frame she promised him in her very first message, so the scene line '
+    'above IS the setting and nothing else describes the room. No bed, no bedroom, no wardrobe, no furniture '
+    'and no mess appears in the picture unless the scene line names it; her usual day context, her usual room '
+    'and the generic boudoir look do not apply to this frame. Her face, hair, bust and body stay exactly as '
+    'locked above.'
+)
+STARTER_AMATEUR_LOCK = (
+    'AMATEUR HOT FRAME: this is a real candid photo she took herself on her phone, not a photoshoot. Amateur '
+    'framing, slightly off center, one corner of the room cut off, intimate low warm light from a lamp or a '
+    'window, real skin with pores and soft shadows, nothing retouched. The room behind her is exactly the '
+    'place the scene line names and nothing more. Never: a professional photoshoot, studio lighting, a posed '
+    'editorial frame, an artificial or symmetrical portrait, high-fashion styling, a photographer\u2019s camera '
+    'or a clean seamless backdrop. Her face stays recognizable from the references even when the phone hides '
+    'part of it.'
+)
+# Офис и машина из её сценариев не могут остаться публичными местами — на этом
+# стоп-кадре модерация отказывает, и раньше сервер выкидывал случайную комнату
+# из PRIVATE_PLACES, то есть снова спальню. Теперь предмет её фразы сохраняется,
+# а приватной становится сама обстановка.
+STARTER_PRIVATE_PLACE = (
+    'PRIVATE PLACE OVERRIDE: she is undressed or in lingerie, so nobody but her can see her in this frame. '
+    'Keep the place and the object she named in the scene line, but make them private: an office desk becomes '
+    'her own home desk in her apartment at night, a car becomes her own car, parked, doors closed, nobody '
+    'outside. Never move her into a bedroom with a bed unless her own scene line already named a bed. No '
+    'colleagues, passers-by, windows of other offices or public interiors in the picture.'
+)
+STARTER_WARDROBE = (
+    'exactly what her own scene line above describes and nothing else — where it names water, foam, sheets or '
+    'a blanket, that is the garment of the frame; no boudoir lace set, no garter belt, no stockings, no satin '
+    'robe unless her scene line names them'
+)
+
 DUO_TRAITS_MAX = 6
 DUO_TRAITS_CHARS = 240
 # Traits that talk about the references instead of her face — useless in a
@@ -1292,17 +1332,25 @@ def wants_public_exposure(text: str) -> bool:
     return bool(EXHIBITION_WISH.search(text or ''))
 
 
-def enforce_private_location(prompt: str, user_text: str = '', *, intimate: bool | None = None) -> str:
+def enforce_private_location(prompt: str, user_text: str = '', *, intimate: bool | None = None,
+                             starter: bool = False) -> str:
     """V3.152.1 (Задача 5): lingerie or nudity and a public venue cannot share
     one photo — unless he himself asked for the exhibition. An intimate frame
     gets its venue moved into a closed room, and the rule is put in front of
-    the prompt so the SpicyAPI tail trimming can never reach it."""
+    the prompt so the SpicyAPI tail trimming can never reach it.
+
+    V3.166.5 (владелец): a starter frame never gets a random room — the place
+    she promised in her own first line wins, and only a genuinely public venue
+    in it is pulled inside her apartment (STARTER_PRIVATE_PLACE keeps the desk
+    or the car, so a bathtub scenario stops landing in a bedroom)."""
     if not prompt:
         return prompt
     if intimate is None:
         intimate = _intimate_prompt_text(prompt)
     if not intimate or wants_public_exposure(user_text):
         return prompt
+    if starter:
+        return f'{STARTER_PRIVATE_PLACE}\n{prompt}'
     if not PUBLIC_VENUE.search(prompt):
         return prompt
     place = random.choice(PRIVATE_PLACES)
@@ -2400,6 +2448,10 @@ def _shot_variant(scene: str, index: int, requested_angle: str = '') -> str:
 
 def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False, relationship_level: int = 1, character_id: str = CHARACTER_ID, *, force_safe: bool = False, duo_block: str = '') -> str:
     scene = SCENES.get(request.scene, SCENES['selfie'])
+    # V3.166.5: a starter frame is described by the scenario itself — her first
+    # line is the place, the garment and the pose, so the generic boudoir scene
+    # text, her day context and the messy-bedroom amateur clause all step out.
+    starter = bool(request.starter_note)
     angle = _shot_variant(request.scene, shot_index, request.angle)
     outfits = tuple(request.pack_outfits) if request.pack_outfits else (request.clothing,)
     wardrobe = outfits[min(shot_index, len(outfits) - 1)] if outfits else request.clothing
@@ -2443,9 +2495,15 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
             f'The lingerie she wears beneath her outfit is {request.underwear_color}{style_note} — always the under-layer, never outerwear. '
         ) + underlay_rule
     # Private scenes escalate with the relationship level (standard/suggestive/revealing).
+    if starter:
+        # Her promised frame carries its own garment; the level-based boudoir
+        # set and the under-clothing line would only re-draw lace over a bath
+        # or a blanket.
+        wardrobe = STARTER_WARDROBE
+        underlay_rule = ''
     tier_framing = ''
     scene_tiers = PRIVATE_SCENE_TIERS.get(request.scene)
-    if scene_tiers and not force_safe:
+    if scene_tiers and not force_safe and not starter:
         tier_key = 'revealing' if level_key >= 6 else ('suggestive' if level_key >= 5 else 'standard')
         tier_framing = f'PRIVATE SCENE FRAMING: {scene_tiers[tier_key]}.\n'
     if home_lingerie:
@@ -2459,7 +2517,12 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
     identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key or (request.expression_rotation[shot_index % len(request.expression_rotation)] if request.expression_rotation else None))
-    if adult_scene:
+    if adult_scene or starter:
+        # V3.166.5 (владелец: «полная нагота всегда, и стартовые кадры тоже»):
+        # the teaser frame is shown only in the «Без цензуры 18+» mode, so the
+        # censorship envelope of the romantic route must not sit under it — the
+        # bath and the bedroom prompts read as ordinary lingerie and got dressed
+        # back up. What she actually shows stays written in her own scene line.
         safety = ADULT_SAFETY
     # V3.43.8: inject the character's actual age into the subject lock so
     # the provider sees the real age instead of a universal "twenties" label.
@@ -2499,7 +2562,9 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # amateur lock rides just under the identity, where the trimming of
     # SpicyAPI cannot reach it; the general-audience OpenAI route never gets
     # it, because there the safe wording is what keeps the generation alive.
-    amateur_lock = f'{AMATEUR_HOT_FRAME_LOCK}\n' if (private_look and seedream and not force_safe) else ''
+    amateur_lock = ''
+    if private_look and seedream and not force_safe:
+        amateur_lock = f'{STARTER_AMATEUR_LOCK if starter else AMATEUR_HOT_FRAME_LOCK}\n'
     duo_head = f'{duo_head_lock(character_id, request.with_guest)}\n' if request.with_guest else ''
     # V3.165.0: the limb lock belongs at the head. It used to ride above the
     # quality block, where _fit_spicy_prompt cuts it first, so a long lingerie
@@ -2512,18 +2577,15 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         + f'{amateur_lock}'
         + f'{hands_lock}'
         + f'{adult_lock}\n'
-        f'SCENE: {scene}. {request.location}.\n'
-        + (f'STARTER SCENE: {request.starter_note}. This is the frame she promised him in her first message: '
-           'where these words name a place, a garment or a pose they outrank the generic wardrobe line '
-           'below, and she is home and alone. Her face, hair and body stay exactly as locked above.\n'
-           if request.starter_note else '')
+        + (f'SCENE: {request.starter_note}.\n{STARTER_FRAME_LOCK}\n' if starter
+           else f'SCENE: {scene}. {request.location}.\n')
         + f'SEASON/WEATHER: {season}. {season_rule}\n'
         f'RELATIONSHIP VISUAL PROGRESSION: {visual_rule}\n'
         f'PROGRESSION PACK FRAME {shot_index + 1}/{PHOTO_SET_SIZE}: {tier_rule}\n'
         f'WARDROBE: {wardrobe}. {figure_note}'
         'The outfit must be believable for this exact venue, weather and time of day. Do not reuse a heavy sweater or hoodie in a visibly warm summer scene.\n'
         f'{public_dress_rule}'
-        f'UNDER-CLOTHING REALISM: {underlay_rule}{"" if (adult_scene or home_lingerie) else LINGERIE_LAYERING_LOCK}\n'
+        f'UNDER-CLOTHING REALISM: {underlay_rule}{"" if (adult_scene or home_lingerie or starter) else LINGERIE_LAYERING_LOCK}\n'
         f'{tier_framing}'
         f'{BUST_CONSISTENCY_RULE}\n'
         f'HAIRSTYLE: {request.hairstyle}. This is her one and only hairstyle in the frame — '
@@ -2560,6 +2622,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         body,
         f'{request.story_detail} {request.clothing} {request.location} {request.angle}',
         intimate=private_look and seedream,
+        starter=starter,
     )
 
 

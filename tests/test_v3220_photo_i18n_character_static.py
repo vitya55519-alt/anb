@@ -56,7 +56,9 @@ def test_safe_retry_forces_clothed_prompt():
     # retry prompt cannot be re-detected as adult and overwritten.
     assert 'force_safe: bool = False' in PHOTO
     assert 'request.scene in ADULT_SCENES and not force_safe' in PHOTO
-    assert 'if scene_tiers and not force_safe:' in PHOTO
+    # V3.166.5: starter frames carry their own scene line, so they sit out the
+    # level-based tier framing too — force_safe is still what blanks it here.
+    assert 'if scene_tiers and not force_safe and not starter:' in PHOTO
     retry = PHOTO[PHOTO.index("exc.reason.startswith(('HTTP 400'"):PHOTO.index("exc.reason.startswith(('HTTP 400'") + 800]
     assert 'force_safe=True' in retry
 

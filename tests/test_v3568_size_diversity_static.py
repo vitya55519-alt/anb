@@ -46,5 +46,6 @@ def test_lingerie_layering_lock_rides_every_clothed_scene():
     assert 'LINGERIE_LAYERING_LOCK = (' in PHOTO
     assert 'never draw a bra, lace cups, straps, garters or' in PHOTO
     # wired into the prompt template, skipped for nude/home-lingerie frames
-    assert '{"" if (adult_scene or home_lingerie) else LINGERIE_LAYERING_LOCK}' in BUILD
+    # (V3.166.5: a starter teaser is promised bare, so it joins them)
+    assert '{"" if (adult_scene or home_lingerie or starter) else LINGERIE_LAYERING_LOCK}' in BUILD
     assert 'UNDER-CLOTHING REALISM' in BUILD

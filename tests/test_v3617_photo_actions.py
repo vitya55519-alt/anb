@@ -26,9 +26,12 @@ def test_only_her_generated_photos_can_be_edited():
     assert "if not _her_photo(uid, ('photo', 'room') if action == 'animate' else ('photo',)):" in MAIN
 
 
-def test_undress_prompt_covers_and_adds_the_husband_when_married(monkeypatch):
+def test_undress_prompt_strips_her_and_adds_the_husband_when_married(monkeypatch):
     import main
-    assert 'nipples fully hidden' in main.UNDRESS_VARIANT_TOPLESS[1]
+    # V3.166.5 (владелец): «полная нагота всегда» — the old hand-bra variant that
+    # hid her nipples is gone, the nudity directive took its place.
+    assert 'COMPLETELY NAKED' in main.UNDRESS_NUDE_LOCK
+    assert 'nipples fully hidden' not in str(main.UNDRESS_VARIANTS_NUDE)
     monkeypatch.setattr(main, 'get_relationship_level', lambda *a: 2)
     import services.webapp_service as ws
     monkeypatch.setattr(ws, '_batch_marital', lambda tid, ids: {ids[0]: 'mar_married'})

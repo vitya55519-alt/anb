@@ -3365,7 +3365,9 @@ def admin_greet_keyboard():
 def admin_greet_char_keyboard(character_id: str):
     rows = []
     for item in greeting_service.list_for(character_id):
-        label = f"🗑 #{item['id']} · {item['mode']} · {'🔞' if item['has_prompt'] else 'текст'} · {item['text'][:34]}"
+        # V3.166.5: 🔇 под карточкой с кадром — это её «немота»: фото придёт молча.
+        mark = f"🔞{'💬' if item['reply'] else '🔇'}" if item['has_prompt'] else 'текст'
+        label = f"🗑 #{item['id']} · {item['mode']} · {mark} · {item['text'][:34]}"
         rows.append([InlineKeyboardButton(text=label, callback_data=f'admin:greetdel:{character_id}:{item["id"]}')])
     rows.append([InlineKeyboardButton(text=GREETING_MODE_LABEL[m], callback_data=f'admin:greetadd:{character_id}:{m}')
                  for m in ('normal', 'spicy')])
@@ -3383,6 +3385,8 @@ async def _greet_char_screen(chat_id: int, character_id: str):
         'если у девушки своих нет — работает универсальная.\n'
         '➕ Добавить: выбери режим, пришли ТЕКСТ, кнопки и СКРЫТЫЙ АНГЛИЙСКИЙ ПРОМПТ кадра '
         '(что рисовать, когда он тапнет чип; «-» — карточка без кадра, тогда тап остаётся словами).\n'
+        'Реплика перед кадром (шаг 4): то, что она напишет сразу перед этим фото — без неё кадр '
+        'выглядел молчаливым файлом из архива. «-» — пусть пишет сама по ситуации.\n'
         'Фото в карточке больше нет — кадр приходит только по тапу чипа и только в режиме '
         '«Без цензуры 18+», из кэша «📸 Стартовые фото».\n'
         'До 4 карточек за один заход, /done — закончить, /cancel — отмена.\n'
@@ -3421,11 +3425,11 @@ async def admin_greet_add(cq: types.CallbackQuery):
         return
     _, _, character_id, mode = cq.data.split(':', 3)
     GREETING_WAIT[cq.from_user.id] = {'character_id': character_id, 'mode': mode,
-                                      'step': 'text', 'text': '', 'buttons': [], 'added': 0}
+                                      'step': 'text', 'text': '', 'buttons': [], 'reply': '', 'added': 0}
     await cq.answer()
     await cq.message.answer(
         f'➕ Новая заготовка: {_greet_name(character_id)} · {GREETING_MODE_LABEL.get(mode, mode)}\n\n'
-        'Шаг 1 из 3 — ТЕКСТ её первого сообщения. Можно {name} — подставится имя девушки.')
+        'Шаг 1 из 4 — ТЕКСТ её первого сообщения. Можно {name} — подставится имя девушки.')
 
 
 @dp.callback_query(F.data.startswith('admin:greetdel:'))
@@ -3443,12 +3447,35 @@ def _greet_buttons(raw: str) -> list[str]:
     return [p[:60] for p in parts if p][:4]
 
 
+async def _greet_save(state: dict, message: types.Message) -> None:
+    """Запись карточки и счётчик захода: 4 штуки за раз, дальше кухня закрывается."""
+    buttons = state.get('buttons') or []
+    prompt = state.get('prompt') or ''
+    reply = state.get('reply') or ''
+    greeting_id = greeting_service.create(
+        state['character_id'], state['mode'], state['text'], buttons,
+        image_prompt=prompt, reply_text=reply)
+    state['added'] = state.get('added', 0) + 1
+    state.update(step='text', text='', buttons=[], prompt='', reply='')
+    left = 4 - state['added']
+    if left <= 0:
+        GREETING_WAIT.pop(message.from_user.id, None)
+    await message.answer(
+        f'✅ Карточка #{greeting_id} сохранена (чипов: {len(buttons)}, '
+        f'кадр по тапу: {"есть" if prompt else "нет"}, '
+        f'реплика перед кадром: {reply[:48] or "нет"}).\n' +
+        (f'Ещё можно {left}: пришли следующий текст. /done — закончить.' if left > 0
+         else 'Добавлены 4 карточки — заход завершён.'),
+        reply_markup=None if left > 0 else admin_greet_keyboard())
+
+
 @dp.message(lambda m: m.from_user is not None and m.from_user.id in GREETING_WAIT, F.text)
 async def admin_greet_upload(message: types.Message):
-    """The three steps of one teaser card: her line → the chips → the frame
-    those chips promise. V3.166.4 took the photo out of the card: the picture
-    is what the generator draws when he taps, so the owner writes its prompt
-    in English instead of uploading a shot."""
+    """The four steps of one teaser card: her line → the chips → the frame those
+    chips promise → the words she sends right before it. V3.166.4 took the photo
+    out of the card: the picture is what the generator draws when he taps, so the
+    owner writes its prompt in English instead of uploading a shot. V3.166.5
+    added the last step — without her line the frame arrives mute."""
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
     state = GREETING_WAIT.get(message.from_user.id)
@@ -3467,33 +3494,31 @@ async def admin_greet_upload(message: types.Message):
     if step == 'text':
         state['text'] = text
         state['step'] = 'buttons'
-        await message.answer('Шаг 2 из 3 — кнопки-чипы через «|», например:\n'
+        await message.answer('Шаг 2 из 4 — кнопки-чипы через «|», например:\n'
                              'Покажи | Скинь фото\n\nИли «-» — без кнопок.')
         return
     if step == 'buttons':
         state['buttons'] = [] if text == '-' else _greet_buttons(text)
         state['step'] = 'prompt'
-        await message.answer('Шаг 3 из 3 — СКРЫТЫЙ АНГЛИЙСКИЙ ПРОМПТ кадра, который придёт по тапу '
+        await message.answer('Шаг 3 из 4 — СКРЫТЫЙ АНГЛИЙСКИЙ ПРОМПТ кадра, который придёт по тапу '
                              'чипа в режиме «Без цензуры 18+». Где и в чём она, поза, свет — по-английски, '
                              'например:\nbedroom, dim lighting, wearing sheer lace lingerie, seductive pose\n\n'
                              'Или «-» — заготовка остаётся только текстом.')
         return
     if step == 'prompt':
         prompt = '' if text == '-' else text[:600]
-        buttons = state.get('buttons') or []
-        greeting_id = greeting_service.create(
-            state['character_id'], state['mode'], state['text'], buttons, image_prompt=prompt)
-        state['added'] = state.get('added', 0) + 1
-        state.update(step='text', text='', buttons=[])
-        left = 4 - state['added']
-        if left <= 0:
-            GREETING_WAIT.pop(message.from_user.id, None)
-        await message.answer(
-            f'✅ Карточка #{greeting_id} сохранена (чипов: {len(buttons)}, '
-            f'кадр по тапу: {"есть" if prompt else "нет"}).\n' +
-            (f'Ещё можно {left}: пришли следующий текст. /done — закончить.' if left > 0
-             else 'Добавлены 4 карточки — заход завершён.'),
-            reply_markup=None if left > 0 else admin_greet_keyboard())
+        state['prompt'] = prompt
+        state['step'] = 'reply'
+        if not prompt:
+            await _greet_save(state, message)
+            return
+        # V3.166.5 (владелец: «немота»): кадр никогда не приходит молча.
+        await message.answer('Шаг 4 из 4 — ЧТО она напишет СРАЗУ ПЕРЕД этим кадром, когда он тапнет чип, '
+                             'например:\nСмотри... как тебе?\n\nИли «-» — пусть пишет сама по ситуации.')
+        return
+    if step == 'reply':
+        state['reply'] = '' if text == '-' else text[:300]
+        await _greet_save(state, message)
         return
 
 
@@ -15001,7 +15026,11 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
     английскому промпту сценария и оставляем его следующим. Ему это стоит нуля
     персиков и не трогает дневное бесплатное фото: кадр — воронка, а не товар.
     Тап по чипу при этом остаётся настоящим ходом: его текст и её фото ложатся
-    в диалог, и один ход сгорает из 30 сообщений на аккаунт."""
+    в диалог, и один ход сгорает из 30 сообщений на аккаунт.
+
+    V3.166.5 (владелец: «немота»): перед кадром идёт ``reply_text`` сценария —
+    её собственные слова, сохранённые в том языке, в котором он читал карточку.
+    Молчаливая картинка была единственной претензией на этот релиз."""
     if not text or is_custom_character(character_id):
         return None
     try:
@@ -15040,10 +15069,19 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
         def _deliver():
             uid = ensure_user(telegram_id, user_info.get('first_name') or '',
                               language_code=user_info.get('language_code'))
-            cap = '📸 ' + random.choice(AUTO_CAPTIONS.get('lingerie', ('отправила фото',)))
+            # V3.166.5 (владелец: «немота»): «Покажи» -> её слова -> сразу кадр ->
+            # под ним «🔥 Раздеться». Две отдельные реплики, как в живом чате, а
+            # не подпись под картинкой. Пустая строка в кухне = молчаливый кадр,
+            # тогда остаётся прежняя подпись.
+            words = str(offer.get('reply_text') or '').strip()
+            cap = words or '📸 ' + random.choice(AUTO_CAPTIONS.get('lingerie', ('отправила фото',)))
             save_message(uid, character_id, 'user', text)
             url = f'/webapp/starter/{cache_id}'
-            save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
+            if words:
+                save_message(uid, character_id, 'assistant', words)
+                save_message(uid, character_id, 'assistant', '', media_kind='photo', media_url=url)
+            else:
+                save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
             from services import daily_limit
             from services.analytics_service import track_event
             track_event(uid, 'starter_photo_served', character_id=character_id,
@@ -15054,6 +15092,7 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
                     telegram_id, user_info.get('language_code')))
                 hint = daily_limit.take_hint(telegram_id)
             return {'ok': True, 'reply': cap, 'photo_url': url,
+                    **({'starter': 1} if words else {}),
                     **({'chat_hint': hint} if hint else {})}
 
         return web.json_response(await asyncio.to_thread(_deliver))
@@ -15548,7 +15587,8 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
             # offer is remembered for the tap that follows.
             if _greeting.get('starter'):
                 await asyncio.to_thread(greeting_service.remember_offer, int(telegram_id), character_id,
-                                        int(_greeting.get('id') or 0), _greeting.get('buttons') or [])
+                                        int(_greeting.get('id') or 0), _greeting.get('buttons') or [],
+                                        _greeting.get('reply') or '')
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', _greeting['text'])
             return web.json_response({'ok': True, 'reply': _greeting['text'],
                                       'chips': _greeting.get('buttons') or [],
@@ -17539,7 +17579,19 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
 UNDRESS_PROMPT = (
     'Edit this exact photo. Keep the SAME adult woman: identical face, hair, makeup, body proportions, '
     'the same place, background, lighting and camera angle as image 1 (her face also matches image 2). '
-    'Keep her outfit recognisable; change only what the reveal below describes. '
+    # V3.166.5: it used to read «keep her outfit recognisable», which fought every
+    # reveal below and is what left her dressed after he paid.
+    'Change only what the reveal below describes: where it says a garment is off, that garment is gone and her '
+    'skin is bare there. Her face, hair and the room stay exactly as in image 1. '
+)
+# V3.166.5 (владелец, 16:40): «чтобы она могла показать ему жопу, закрыть ладонью
+# грудь, сжать грудь… показать, что у неё между ног». Гейт эндпоинта —
+# подтверждённые 18+ и уплаченные персики, поэтому уровень близости больше не
+# решает, что в кадре: он решает только то, как она это скажет.
+UNDRESS_NUDE_LOCK = (
+    ' SHE IS COMPLETELY NAKED in the new photo: no clothing, no lingerie, nothing worn anywhere on her body, '
+    'no blur and no mosaic. Uncensored adult photo, NSFW allowed. Only what the reveal puts over her — a hand, '
+    'an arm — covers her; everything the reveal leaves open is shown bare.'
 )
 UNDRESS_TAIL = (
     ' Playful, confident, slightly shy expression, as if she does it just for the person she is chatting with. '
@@ -17563,8 +17615,8 @@ UNDRESS_AMATEUR_TAIL = (
     'This place rule beats «the same place» above.'
 )
 # V3.61.10: «Раздеть» is not one pose — she shows a little of what is under
-# her clothes, picked to fit what she wears. Levels 1-3 stay in lingerie;
-# the topless hand-bra opens from level 4; partial reveal from 6.
+# her clothes, picked to fit what she wears. Since V3.166.5 this whole set is
+# only the last, gentlest try: what the engine gets first is the nude pool below.
 UNDRESS_VARIANTS_LINGERIE = (
     ('lift', 'REVEAL: if she wears a dress or skirt, she lifts the hem with one hand to show her lace panties '
              'underneath; if she wears jeans or trousers, she pulls the waistband down a little on her hips '
@@ -17584,23 +17636,39 @@ UNDRESS_VARIANTS_LINGERIE = (
               'stockings and a glimpse of her panties; if she wears jeans, she unbuttons them and opens the fly '
               'a little to show the lace of her panties.'),
 )
-UNDRESS_VARIANTS_TOPLESS = (
-    ('shirt', 'REVEAL: she has taken her top and bra off and holds her clothing pressed against her bare chest '
-              'with both hands, covering her breasts, bare shoulders and sides visible.'),
-    ('crossed', 'REVEAL: she is topless from the waist up and covers her breasts with both arms crossed over '
-                'her chest, nipples fully hidden; everything below the waist stays as it was.'),
+# V3.166.5 (владелец): the paid «Раздеть» frame. Every pose here is fully naked,
+# the four he named first — bare buttocks to him, a palm over her breast, her
+# breasts squeezed together, and what she has between her legs.
+UNDRESS_VARIANTS_NUDE = (
+    ('ass', 'REVEAL: she is on her hands and knees on the bed, back arched, and looks back at the camera over her '
+            'shoulder; her bare buttocks face him and she pulls one cheek apart with her hand so what is between '
+            'them is visible too.'),
+    ('palm', 'REVEAL: she stands close to the camera, completely naked, and covers one bare breast with her open '
+             'palm, fingers spread across it, while the other breast hangs bare with the nipple in view. She '
+             'bites her lip and looks straight into the lens.'),
+    ('squeeze', 'REVEAL: she is naked and leans toward the camera; she presses her bare breasts together and upward '
+                'with both hands from below, squeezing them into deep cleavage, her nipples peeking between '
+                'her fingers.'),
+    ('spread', 'REVEAL: she lies back on the bed, completely naked, propped on one elbow with her knees bent and '
+               'parted, and she holds one thigh open with her other hand so what is between her legs is clearly '
+               'visible — her bare sex in focus, softly lit, nothing hidden. Her face stays exactly as in image 1.'),
+    ('fingers', 'REVEAL: she kneels on the bed facing the camera, sitting back on her heels, naked, her bare '
+                'breasts natural and unrestrained; one hand slides down her stomach and her two fingers rest '
+                'right on her sex, her thighs apart around them.'),
+    ('reach', 'REVEAL: she is naked and stands with both arms lifted over her head, hands loosely joined, her '
+              'chest pushed forward: her bare breasts are fully visible, nipples hard, her waist lifted and '
+              'her smooth pubic mound showing between her thighs.'),
+    ('side', 'REVEAL: she is naked and turned sideways, glancing back at the camera over her shoulder; one hand '
+             'holds her breast from below and the other reaches back and spreads her buttocks, so her bare back, '
+             'breast and sex all show in one frame.'),
+    ('squat', 'REVEAL: she squats with her knees wide apart, completely naked, one hand resting on her inner thigh '
+              'to keep it open, the other braced behind her; she leans forward toward the camera and what is '
+              'between her legs is shown plainly.'),
 )
-UNDRESS_VARIANT_TOPLESS = (
-    'topless', 'REVEAL: she has pulled her top or the upper part of her dress down to the waist and taken off '
-               'her bra, so she is topless, and she covers her bare breasts with her hand and forearm '
-               '(a natural hand-bra), nipples fully hidden behind her arm. Everything below the waist stays as it was.')
 
 
-def _undress_variant(level: int) -> tuple[str, str]:
-    pool = list(UNDRESS_VARIANTS_LINGERIE)
-    if level >= 4:
-        pool += [UNDRESS_VARIANT_TOPLESS, *UNDRESS_VARIANTS_TOPLESS]
-    return random.choice(pool)
+def _undress_variant() -> tuple[str, str]:
+    return random.choice(UNDRESS_VARIANTS_NUDE)
 
 
 UNDRESS_LINES = ('ну раз ты так просишь… 🙈', 'только тебе 🙈🔥', 'смотри, но никому 🤫', 'вот так лучше? 😏',
@@ -17632,13 +17700,10 @@ UNDRESS_SECRET_NO_FINGER = (
     'the secret shows only in her naughty sideways glance and bitten lip. Both her hands stay exactly where '
     'the reveal puts them, no hand near her face, exactly two arms and two hands in the photo.'
 )
-UNDRESS_BOTH_HANDS = frozenset({'shirt', 'crossed'})
+# V3.166.5: which of the nude poses leave her no free hand — with those the
+# secret stays only in her eyes (V3.81.1, «3 руки»).
+UNDRESS_BOTH_HANDS = frozenset({'ass', 'squeeze', 'spread', 'reach', 'side', 'squat'})
 UNDRESS_SECRET_LINES = ('тсс… он прямо за спиной 🤫🔥', 'пока он не видит… только тебе 🙈', 'если он обернётся, мне конец 😳🔥')
-# Level 6+ (where her nude photos open): she shows a little more instead of covering fully.
-UNDRESS_REVEAL = (
-    ' At this closeness she is bolder: one arm covers her chest only partly and she lets one breast '
-    'be gently, tastefully visible, artistic and natural.'
-)
 
 
 def _undress_premium_free(telegram_id: int, character_id: str) -> int:
@@ -17672,12 +17737,12 @@ UNDRESS_SAFE_VARIANT = UNDRESS_VARIANTS_LINGERIE[3]
 
 
 def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) -> tuple[str, bool]:
-    try:
-        level = get_relationship_level(telegram_id, character_id)
-    except Exception:
-        level = 1
-    variant, reveal = UNDRESS_SAFE_VARIANT if safe else _undress_variant(level)
-    prompt, secret = UNDRESS_PROMPT + reveal + UNDRESS_TAIL + UNDRESS_AMATEUR_TAIL, False
+    """V3.166.5: the paid frame is always fully naked — his relationship level no
+    longer picks the pool, only the engine's refusal does (``safe`` is the last,
+    gentlest try before the tap is refunded)."""
+    variant, reveal = UNDRESS_SAFE_VARIANT if safe else _undress_variant()
+    prompt, secret = (UNDRESS_PROMPT + reveal + ('' if safe else UNDRESS_NUDE_LOCK)
+                      + UNDRESS_TAIL + UNDRESS_AMATEUR_TAIL), False
     try:
         from services.webapp_service import _batch_marital, _default_marital
         status = _batch_marital(telegram_id, [character_id]).get(character_id) \
@@ -17689,8 +17754,6 @@ def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) 
             secret = True
     except Exception:
         logger.warning('undress marital lookup failed user=%s', telegram_id)
-    if variant in ('topless', 'crossed') and level >= 6:
-        prompt += UNDRESS_REVEAL
     return prompt, secret
 
 
@@ -17718,6 +17781,36 @@ async def _webapp_signed_media(request: web.Request) -> web.Response:
         return web.Response(status=404)
     body = await asyncio.to_thread(path.read_bytes)
     ctype = 'image/png' if path.suffix == '.png' else 'image/jpeg'
+    return web.Response(body=body, content_type=ctype, headers={'Cache-Control': 'private, max-age=3600'})
+
+
+def _starter_sig(cache_id: int) -> str:
+    """V3.166.5: the same HMAC trick as _media_sig, for a frame that lives in
+    the shared starter cache instead of his own media folder."""
+    import hashlib
+    import hmac
+    from config import TELEGRAM_TOKEN
+    return hmac.new(TELEGRAM_TOKEN.encode(), f'starter:{int(cache_id)}'.encode(),
+                    hashlib.sha256).hexdigest()[:20]
+
+
+async def _webapp_signed_starter(request: web.Request) -> web.Response:
+    """V3.166.5 (владелец: «любой стартовый кадр должен быть валидным Source
+    Image для API раздевания»): the image engine has no init_data, so a cached
+    starter frame reaches it through this signed URL. Raw bytes, no WebP —
+    the engine is fed the same file she sent him."""
+    import hmac
+    try:
+        cache_id = int(request.match_info['cache_id'])
+    except (TypeError, ValueError):
+        return web.Response(status=404)
+    if not hmac.compare_digest(request.match_info.get('sig', ''), _starter_sig(cache_id)):
+        return web.Response(status=404)
+    from services import starter_photo_service
+    body = await asyncio.to_thread(starter_photo_service.body_for, cache_id)
+    if not body:
+        return web.Response(status=404)
+    ctype = 'image/png' if body[:8] == b'\x89PNG\r\n\x1a\n' else 'image/jpeg'
     return web.Response(body=body, content_type=ctype, headers={'Cache-Control': 'private, max-age=3600'})
 
 
@@ -17786,14 +17879,29 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', ''))[:64]
     action = str(body.get('action', ''))
     media_url = str(body.get('media_url', ''))
-    filename = media_url.split('?', 1)[0].rsplit('/', 1)[-1]
-    if action not in ('animate', 'undress') or not character_id or not media_url.startswith('/webapp/media/'):
+    # V3.166.5 (владелец, 16:40): под стартовым кадром из общего кэша кнопка
+    # «Раздеть» отвечала «Это фото уже нельзя изменить» — эндпоинт знал только
+    # личные файлы /webapp/media/…, а такой кадр лежит в БД по
+    # /webapp/starter/{id}. Оба вида теперь настоящие Source Image.
+    src_url = media_url.split('?', 1)[0]
+    filename = src_url.rsplit('/', 1)[-1]
+    starter_id = int(filename) if src_url.startswith('/webapp/starter/') and filename.isdigit() else 0
+    is_own_media = src_url.startswith('/webapp/media/') and bool(filename)
+    if action not in ('animate', 'undress') or not character_id or not (is_own_media or starter_id):
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-    path = await asyncio.to_thread(webapp_service.chat_media_file_path, telegram_id, filename)
-    if not path or path.suffix.lower() not in ('.jpg', '.jpeg', '.png'):
-        return web.json_response({'ok': False, 'error': 'not_found'}, status=404)
+    path = None
+    if not starter_id:
+        path = await asyncio.to_thread(webapp_service.chat_media_file_path, telegram_id, filename)
+        if not path or path.suffix.lower() not in ('.jpg', '.jpeg', '.png'):
+            return web.json_response({'ok': False, 'error': 'not_found'}, status=404)
     admin = telegram_id in ADMIN_TELEGRAM_IDS
     from services.chat_photo_allowance import count_ever, count_today, note_today
+
+    def _source_bytes():
+        if starter_id:
+            from services import starter_photo_service
+            return starter_photo_service.body_for(starter_id)
+        return path.read_bytes()
 
     def _her_photo(uid: int, kinds: tuple[str, ...]) -> bool:
         # Only HER generated photo in this chat — never a picture the user
@@ -17804,7 +17912,7 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
             return session.scalar(_select(Message.id).where(
                 Message.user_id == uid, Message.character_id == character_id,
                 Message.role == 'assistant', Message.media_kind.in_(kinds),
-                Message.media_url == f'/webapp/media/{filename}',
+                Message.media_url == src_url,
             ).limit(1)) is not None
 
     def _gate():
@@ -17864,14 +17972,18 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
                                   'already_nude': True})
     try:
         if action == 'animate':
-            raw = await asyncio.to_thread(path.read_bytes)
-            data = await _animate_photo_bytes(telegram_id, raw, 'image/png' if path.suffix == '.png' else 'image/jpeg')
+            raw = await asyncio.to_thread(_source_bytes)
+            if not raw:
+                raise PhotoGenerationError('starter', 'empty_source')
+            source_mime = 'image/png' if raw[:8] == b'\x89PNG\r\n\x1a\n' else 'image/jpeg'
+            data = await _animate_photo_bytes(telegram_id, raw, source_mime)
             ext, mime, kind = 'mp4', 'video/mp4', 'video'
             content = '🎬 ожила для тебя'
         else:
             from services.private_photo_service import _spicyapi_render, spicyapi_last_error
             from config import SPICYAPI_IMAGE_MODEL
-            src = f'{PUBLIC_BASE_URL}/webapp/smedia/{int(telegram_id)}/{filename}/{_media_sig(telegram_id, filename)}'
+            src = (f'{PUBLIC_BASE_URL}/webapp/sstarter/{starter_id}/{_starter_sig(starter_id)}' if starter_id
+                   else f'{PUBLIC_BASE_URL}/webapp/smedia/{int(telegram_id)}/{filename}/{_media_sig(telegram_id, filename)}')
             refs = [src, f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0']
             prompt, secret = await asyncio.to_thread(_undress_prompt, telegram_id, character_id)
             data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs, scene='undress', breaker=False)
@@ -19943,6 +20055,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/story/action', _webapp_api_story_action)
     app.router.add_get('/webapp/media/{filename}', _webapp_media)
     app.router.add_get('/webapp/smedia/{uid}/{filename}/{sig}', _webapp_signed_media)
+    app.router.add_get('/webapp/sstarter/{cache_id}/{sig}', _webapp_signed_starter)
     app.router.add_get('/webapp/vsrc/{token}', _webapp_video_frame)
     app.router.add_post('/webapp/api/chat/photo-action', _webapp_api_photo_action)
     app.router.add_get('/webapp/api/undress-credit', _webapp_api_undress_credit)
@@ -20337,6 +20450,16 @@ async def main():
                         res['replaced'], res['added'], res['photos_stripped'])
     except Exception:
         logger.exception('greeting seed sync failed')
+    # V3.166.5 (владелец: «немота»): the same one-time trick for the new
+    # ``reply_text`` column — the cards deployed under V3.166.4 already exist,
+    # so their «Смотри... как тебе?» lines are filled in once, only where he has
+    # not written his own.
+    try:
+        filled = await asyncio.to_thread(greeting_service.sync_universal_replies)
+        if filled:
+            logger.info('greeting reply_text filled=%s', filled)
+    except Exception:
+        logger.exception('greeting reply sync failed')
     # V3.55.5: seed the welcome promo shelf (ANNA5 · +5 🍑) — idempotent,
     # fail-silent; the owner manages/toggles it later in «🎟 Промокоды».
     from services import gift_service
