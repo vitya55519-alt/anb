@@ -899,15 +899,18 @@ class TrophyAlbum(Base):
 
 
 class CharacterGreeting(Base):
-    """V3.166.0 (Блок 2, owner): the opening line of a chat is a written-once
+    """V3.166.4 (Блоки 1 и 4, owner): the opening line of a chat is a written-once
     card, not a generation. One row = one heroine (or ``all`` for the universal
-    scenarios), one mode (``normal`` / ``spicy`` / ``both``), one photo and her
-    own first line with the chips under it. ``photo_file_id`` is what Telegram
-    reuses, ``photo_bytes`` is what the Mini App serves from
-    ``/webapp/greeting/<id>`` — the bytes live in PostgreSQL so Railway's
-    ephemeral disk never eats the owner's uploads. ``translations_json`` caches
-    each language after a single paid translation, so a non-Russian newcomer
-    costs that call only once per scenario. Table is auto-created."""
+    scenarios), one mode (``normal`` / ``spicy`` / ``both``), her own first line
+    and the chips under it, plus the hidden English frame those chips promise.
+    The two photo columns are what V3.166.0 used to hand the Mini App a picture
+    straight from the card; the teaser mechanic retired them — the first startup
+    after this release nulls them (``greeting_service.sync_universal_seed``) and
+    nothing writes them again. They stay in the schema because auto-migrate never
+    drops a column, and dropping one would take the owner's uploads with it.
+    ``translations_json`` caches each language after a single paid translation, so
+    a non-Russian newcomer costs that call only once per scenario. Table is
+    auto-created."""
     __tablename__ = "character_greetings"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False, default='all')
@@ -917,4 +920,29 @@ class CharacterGreeting(Base):
     message_text: Mapped[str] = mapped_column(Text, nullable=False, default='')
     buttons_json: Mapped[str] = mapped_column(Text, nullable=False, default='[]')
     translations_json: Mapped[str] = mapped_column(Text, nullable=False, default='{}')
+    # V3.166.4 (Блок 1, owner): the hidden English frame behind the chips. The
+    # card text is what he reads; this is what the generator gets when he taps
+    # «Покажи» — never shown to him, never sent anywhere else.
+    image_prompt: Mapped[str] = mapped_column(Text, nullable=False, default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class StarterPhotoCache(Base):
+    """V3.166.4 (Блок 1, owner): the four frames one scenario is allowed.
+
+    Keyed by the pair ``character_id`` + ``greeting_id``: every heroine gets her
+    own four pictures of every universal scenario, so a newcomer never waits for
+    a render that someone two chats ago already paid for with his attention.
+    Under the cap the tap renders a new frame and stores it here; at the cap the
+    row is drawn at random and costs nothing — no provider call at all. The
+    bytes ride in the row because Railway's disk is ephemeral and the frame must
+    load for the next stranger, not only for the user whose chat made it;
+    ``file_id`` is Telegram's copy of the same shot, empty until a frame is ever
+    uploaded there. Table is auto-created, ``image_prompt`` is auto-added."""
+    __tablename__ = "starter_photo_cache"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    greeting_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    file_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    photo_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

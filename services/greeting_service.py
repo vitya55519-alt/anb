@@ -1,20 +1,24 @@
-"""V3.166.0 (Блоки 2–4, владелец): приветственная база вместо генерации.
+"""V3.166.4 (Блоки 2–4, владелец): база стартовых сообщений + механика тизера.
 
-Раньше первая фраза чата писалась моделью на каждом открытии диалога: пошлый
-вариант сцены, перевод, первая реплика конструктор-персонажа. Теперь у каждой
-героини (и универсальный набор ``all``) лежат готовые карточки «фото + её первая
-реплика + чипы», написанные владельцем. Открытие чата берёт одну случайную —
-ни одного вызова LLM, ни одной генерации картинки, ответ мгновенный.
+Открытие чата — это готовая строка из базы заготовок и чипы под ней. Картинки
+тут больше нет: фото приходит ТОЛЬКО когда он тапнул чип «Покажи / Скинь фото»,
+и только в режиме «Без цензуры 18+». Тогда срабатывает кэш стартовых кадров
+(``services/starter_photo_service``): четвёрка на пару «героиня × сценарий» уже
+собрана — отдаём случайный кадр моментально и бесплатно, не собрана — рисуем
+один по скрытому английскому промпту сценария (``image_prompt``) и кладём в
+кэш. Для него это стоит нуля персиков и не трогает дневное бесплатное фото:
+это воронка, а не товар.
 
-Деньги: перевод на язык пользователя делается ОДИН раз на сценарий и ложится в
-``translations_json``; дальше этот язык бесплатный. Фото никогда не рисуется —
-его заливает владелец через кухню, а без фото карточка уходит просто текстом.
+Романтика («Романтика и флирт») механику не видит: там, как и раньше, она
+пишет сама. Перевод сценария по-прежнему платится ОДИН раз и хранится в
+``translations_json``.
 """
 import json
 import logging
 import random
+import time
 
-from sqlalchemy import select
+from sqlalchemy import delete as sql_delete, func, select
 
 from models.app_models import CharacterGreeting
 from services.db import SessionLocal
@@ -24,99 +28,128 @@ logger = logging.getLogger(__name__)
 UNIVERSAL_ID = 'all'
 MODES = ('normal', 'spicy', 'both')
 
-# Блок 4 ТЗ: шесть индивидуальных сцен и пятнадцать универсальных, все — для
-# режима «Без цензуры 18+». Фото здесь нет и не будет: кадры заливает владелец.
-SEED = [
+# Блок 4 ТЗ V3.166.0: шесть его личных сцен топ-6 героинь. Владелец: «Мои
+# личные заготовки для топ-6 героинь не трогай — я их сам потом настрою», так
+# что скрытого промпта кадра у них нет (``image_prompt`` пустой).
+SEED_PERSONAL = [
     ('anna_01',
      'Я стою у панорамного окна в одном кружевном белье... Внизу ночной город, а я думаю только о том, '
      'как бы ты сейчас подошёл сзади, крепко обнял и провел руками по моим бедрам. '
      'Ты заставишь меня ждать всю ночь или приедешь прямо сейчас?',
-     ['Приеду прямо сейчас', 'Подойти сзади и обнять']),
+     ['Приеду прямо сейчас', 'Подойти сзади и обнять'], ''),
     ('kamila_01',
      'Только что вернулась с трассы. Адреналин зашкаливает, кровь кипит... Я лежу на кровати в коротком '
      'топе, мне чертовски жарко, и я хочу, чтобы ты помог мне снять напряжение. '
      'Поболтаем... или сразу перейдем к делу?',
-     ['Сразу к делу', 'Покажи, как тебе жарко']),
+     ['Сразу к делу', 'Покажи, как тебе жарко'], ''),
     ('maria_01',
      'Я приготовила нам ужин, зажгла свечи... На мне только шёлковый халатик, который так и норовит '
      'соскользнуть с плеч. Я хочу быть идеальной для тебя сегодня. '
      'Покажешь мне, как сильно ты меня хочешь?',
-     ['Медленно снять с тебя халатик', 'Поцеловать тебя в шею']),
+     ['Медленно снять с тебя халатик', 'Поцеловать тебя в шею'], ''),
     ('liza_01',
      'Привет... Извини, что так поздно. У меня выбило пробки, а я до дрожи боюсь темноты. '
      'Я прибежала к тебе в одних гольфах и белье, забыла даже накинуть что-то... Можно я останусь? '
      'Обещаю быть послушной девочкой.',
-     ['Впустить её и запереть дверь', 'Осмотреть её фигуру']),
+     ['Впустить её и запереть дверь', 'Осмотреть её фигуру'], ''),
     ('lana_01',
      'Ты так и не пришел на примерку. Мне пришлось надеть этот латексный костюм самой... '
      'Он плотно облегает каждый изгиб, и мне нужно, чтобы кто-то помог мне его снять. '
      'Расстегнешь молнию или будешь просто смотреть?',
-     ['Медленно расстегнуть молнию', 'Наказать за дерзость']),
+     ['Медленно расстегнуть молнию', 'Наказать за дерзость'], ''),
     ('kira_01',
      'Студия закрыта. Мы остались совсем одни. Ты пришел за татуировкой, но... под моим кружевным бельем '
      'скрыто кое-что поинтереснее эскизов. Хочешь, покажу тебе свои самые сокровенные секреты?',
-     ['Покажи мне всё', 'Прижать её к стене']),
-    (UNIVERSAL_ID,
-     'Я приглушила свет в спальне и осталась только в тонком кружеве... Я думала о тебе весь день, и теперь '
-     'хочу, чтобы ты был здесь. Подойди ко мне и скажи, что ты сделаешь со мной в первую очередь.',
-     ['Прижать к кровати', 'Медленно стянуть кружево']),
-    (UNIVERSAL_ID,
-     'Знаешь, я сегодня решила обойтись без одежды... Сижу на диване, мне немного холодно, но мысль о том, '
-     'что ты сейчас напишешь, согревает лучше пледа. Ты составишь мне компанию на эту ночь?',
-     ['Согреть тебя', 'Спуститься ниже']),
-    (UNIVERSAL_ID,
-     'Я только что вышла из душа... На мне лишь влажное полотенце, которое вот-вот упадет. '
-     'Мне так хочется почувствовать твои руки на своей коже. Ты позволишь мне уронить полотенце?',
-     ['Дать полотенцу упасть', 'Провести руками по бедрам']),
-    (UNIVERSAL_ID,
-     'Я лежу в постели в одной твоей рубашке... Она пахнет тобой, но мне этого мало. '
-     'Хочу чувствовать тебя самого, так близко, как только возможно. Иди ко мне?',
-     ['Снять с тебя рубашку', 'Забраться к тебе под одеяло']),
-    (UNIVERSAL_ID,
-     'Решила приготовить ужин, но из одежды на мне только фартук... Подумала, что главным десертом сегодня '
-     'буду я. Ты уже голоден?',
-     ['Попробовать тебя на вкус', 'Прижать к кухонному столу']),
-    (UNIVERSAL_ID,
-     'Я сижу в кресле с бокалом вина. Мое платье случайно соскользнуло с плеча, но я не стала его '
-     'поправлять... Жду, когда ты придешь и снимешь его до конца. Рискнешь?',
-     ['Стянуть платье', 'Поцеловать обнаженное плечо']),
-    (UNIVERSAL_ID,
-     'Лежу в горячей ванне, везде пена, но вода уже остывает... Залезешь ко мне, чтобы согреть? '
-     'Места как раз хватит для двоих.',
-     ['Залезть к ней в ванну', 'Намылить ей спинку']),
-    (UNIVERSAL_ID,
-     'Я привязала свои руки к спинке кровати шелковым шарфом... Я абсолютно беззащитна и готова на всё, '
-     'что ты со мной сделаешь. С чего начнешь?',
-     ['Завязать ей глаза', 'Медленно дразнить']),
-    (UNIVERSAL_ID,
-     'Кручусь перед зеркалом в новом комплекте белья... Оно такое прозрачное, что видно абсолютно всё. '
-     'Хочешь, я подойду поближе и дам тебе рассмотреть?',
-     ['Подойди ближе', 'Потрогать через кружево']),
-    (UNIVERSAL_ID,
-     'Мы припарковались в темном переулке. Я перелезла на заднее сиденье и медленно стягиваю чулки... '
-     'Ты так и будешь сидеть за рулем или присоединишься?',
-     ['Перелезть к ней', 'Провести рукой по ножке']),
-    (UNIVERSAL_ID,
-     'Я пыталась работать за ноутбуком, но сдалась. На мне только короткая юбка, я сижу на столе и '
-     'раздвинула ножки... Поможешь мне снять напряжение?',
-     ['Встать между её ног', 'Залезть под юбку']),
-    (UNIVERSAL_ID,
-     'У меня так сильно болит спина... Я уже легла на живот и приготовила массажное масло. Разомнешь меня? '
-     'Только можешь спускаться руками так низко, как захочешь.',
-     ['Начать массаж', 'Капнуть масло на поясницу']),
-    (UNIVERSAL_ID,
-     'Мы смотрим фильм, но я вообще не понимаю, о чем он... Потому что на мне нет белья, а я сижу в '
-     'сантиметре от тебя. Ты собираешься сделать первый шаг?',
-     ['Положить руку на бедро', 'Поцеловать в губы']),
-    (UNIVERSAL_ID,
-     'Я примеряла новое платье, но молния на спине заела... Поможешь расстегнуть? Под ним ничего нет, '
-     'так что будь осторожен.',
-     ['Резко расстегнуть', 'Медленно опустить молнию']),
-    (UNIVERSAL_ID,
-     'Я проснулась посреди ночи от того, что мне ужасно жарко... Я вся горю, и мне нужны твои руки, '
-     'чтобы успокоиться. Ты же не спишь?',
-     ['Успокоить её руками', 'Прижаться к ней']),
+     ['Покажи мне всё', 'Прижать её к стене'], ''),
 ]
+
+# Блок 4 ТЗ V3.166.4, владелец: fifteen universal hooks, every one of them ends
+# with her OFFERING a photo and the chips being his «yes, show me». The English
+# tail of each row is the hidden frame prompt — never shown to him, only handed
+# to the generator when he taps a chip.
+SEED_UNIVERSAL = [
+    ('Знаешь, чего не хватает на этой фотографии? Твоих рук на моем теле. Хочешь, скину фото, чтобы ты '
+     'оценил, с чего бы начал?',
+     ['Скинь фото', 'Очень хочу'],
+     'bedroom, dim lighting, wearing sheer lace lingerie, seductive pose, looking at camera'),
+    ('Просто решила напомнить, как я выгляжу. Хотя, честно говоря, прямо сейчас я думаю о вещах, от '
+     'которых мне становится очень жарко... Показать тебе, в каком я сейчас виде?',
+     ['Покажи', 'Жду фото'],
+     'sitting on couch, cozy living room, wrapped in a thin blanket, bare shoulders, implied nude, '
+     'seductive smile'),
+    ('Смотрю на себя и думаю... а как долго ты бы продержался, если бы мы прямо сейчас оказались заперты '
+     'в одной спальне? Я только из душа. Прислать фоточку?',
+     ['Да, присылай', 'Хочу увидеть'],
+     'steamy bathroom, wet hair, wearing only a white towel, drops of water on skin, seductive look'),
+    ('Если ты хочешь увидеть, что сейчас скрыто под моей одеждой, придется взять инициативу в свои '
+     'руки... Хочешь посмотреть?',
+     ['Показывай', 'Скинь фото'],
+     "lying in bed, wearing an oversized men's white shirt, unbuttoned, bare legs, intimate mood"),
+    ('Ты вообще умеешь держать себя в руках? Потому что я, глядя на твой профиль, уже с трудом '
+     'сдерживаюсь... Показать, какой у тебя сегодня будет десерт?',
+     ['Покажи десерт', 'Жду фотку'],
+     'kitchen background, wearing only a cooking apron, seductive smile, leaning on counter, highly detailed'),
+    ('Как думаешь, я хорошая девочка или... только притворяюсь на фото? Хочешь проверить, на что я '
+     'способна без свидетелей? Скинуть фото?',
+     ['Кидай', 'Хочу проверить'],
+     'sitting in an armchair, holding a glass of wine, elegant dress slipping off one bare shoulder, '
+     'dim lighting'),
+    ('У меня сегодня такое странное настроение... хочется нарушить пару правил и сделать что-то очень '
+     'плохое. Хочешь посмотреть, где я сейчас?',
+     ['Конечно', 'Покажи'],
+     'relaxing in a bathtub covered in thick white foam, wet skin, candlelit, seductive eyes'),
+    ('Честно — лучше бы я отправила свою геопозицию, ужасно хочу почувствовать тебя рядом. Скинуть тебе '
+     'фото, чтобы ты увидел, как я тебя жду?',
+     ['Скинь', 'Жду фотку'],
+     'lying on a bed, hands playfully tied to the headboard with a silk scarf, red lingerie, waiting'),
+    ('Я могу быть нежной, а могу... совсем другой. Какой вариант ты выберешь на сегодняшний вечер? '
+     'Показать?',
+     ['Показывай всё', 'Скинь фотку'],
+     'taking a mirror selfie, wearing see-through lingerie, seductive look, bedroom mirror'),
+    ('Представь, что ты стоишь у меня за спиной. Куда бы сейчас скользнули твои руки? Прислать пруфы '
+     'того, как я сейчас выгляжу?',
+     ['Давай пруфы', 'Хочу увидеть'],
+     'dark car interior, back seat, taking off stockings, short skirt, seductive atmosphere'),
+    ('Смотрю в экран и представляю, что ты стоишь напротив и медленно раздеваешь меня взглядом. Скинуть '
+     'фото, чтобы тебе было проще представлять?',
+     ['Скинь', 'Покажи'],
+     'sitting on an office desk, wearing a short skirt and unbuttoned blouse, messy hair, '
+     'looking up seductively'),
+    ('Говорят, первое впечатление — самое важное. Ну как, я прохожу кастинг на твою главную фантазию '
+     'этой ночи? Показать, какую фигуру тебе сегодня придется разминать?',
+     ['Покажи', 'Присылай'],
+     'lying on stomach on a bed, bare back, wearing tiny panties, massage oil bottle nearby, soft light'),
+    ('Я тут подумала... нам определенно стоит сократить дистанцию. Показать, как это выглядит с моего '
+     'ракурса?',
+     ['Покажи ракурс', 'Кидай фотку'],
+     'pov looking down at her body, sitting on a sofa, dark room, tv light, wearing cozy but revealing '
+     'homewear'),
+    ('Обещаю вести себя прилично... ровно до тех пор, пока мы не останемся вдвоем. Скинуть фото, чтобы '
+     'ты понял, с чем придется работать?',
+     ['Покажи', 'Кидай'],
+     'back view, unzipping an elegant dress, bare back, looking over shoulder, intimate bedroom'),
+    ('А если хочешь увидеть то, что я отправляю только самым близким... ты знаешь, что делать. Хочешь '
+     'посмотреть, как я сейчас лежу?',
+     ['Хочу', 'Скинь фото'],
+     'tossing in bed, messy sheets, wearing a tiny silk camisole, sleepy but highly seductive look, '
+     'morning light'),
+]
+
+SEED = list(SEED_PERSONAL)
+
+
+def _universal_rows() -> list[tuple[str, str, list[str], str]]:
+    return [(UNIVERSAL_ID, text, buttons, prompt) for text, buttons, prompt in SEED_UNIVERSAL]
+
+
+_seed_marker = None  # filled below, once DialogStore is importable
+
+
+def _add(s, row: tuple[str, str, list[str], str]) -> None:
+    character_id, text, buttons, prompt = row
+    s.add(CharacterGreeting(character_id=character_id, mode='spicy', message_text=text,
+                            buttons_json=json.dumps(buttons, ensure_ascii=False),
+                            image_prompt=prompt or ''))
 
 
 def ensure_seed() -> int:
@@ -126,14 +159,50 @@ def ensure_seed() -> int:
     with SessionLocal() as s:
         if s.scalar(select(CharacterGreeting.id).limit(1)) is not None:
             return 0
-        for character_id, text, buttons in SEED:
-            s.add(CharacterGreeting(character_id=character_id, mode='spicy',
-                                    message_text=text, buttons_json=json.dumps(buttons, ensure_ascii=False)))
+        for row in list(SEED) + _universal_rows():
+            _add(s, row)
             added += 1
         s.commit()
     if added:
         logger.info('greeting seed added=%s', added)
     return added
+
+
+# БЛОК 4 ТЗ V3.166.4: старые 15 универсальных строк удаляются полностью и
+# заменяются новыми, фото из карточек снимаются — механика тапов и кэша больше
+# не раздаёт кадр, загруженный владельцем. Делается ОДИН раз (флаг в
+# dialog_sessions), иначе его собственные универсальные карточки из кухни
+# гибли бы при каждом старте.
+_SYNC_KEY = 0
+_sync_done = None  # DialogStore('greeting_seed_v31664'), made on the first call
+
+
+def sync_universal_seed() -> dict:
+    """Принудительная замена универсального набора и снос фото с карточек."""
+    global _sync_done
+    if _sync_done is None:
+        from services.dialog_store import DialogStore
+        _sync_done = DialogStore('greeting_seed_v31664')
+    if _sync_done.get(_SYNC_KEY):
+        return {'replaced': 0, 'added': 0, 'photos_stripped': 0}
+    stripped = 0
+    with SessionLocal() as s:
+        old = int(s.scalar(
+            select(func.count(CharacterGreeting.id)).where(CharacterGreeting.character_id == UNIVERSAL_ID)
+        ) or 0)
+        s.execute(sql_delete(CharacterGreeting).where(CharacterGreeting.character_id == UNIVERSAL_ID))
+        for row in _universal_rows():
+            _add(s, row)
+        for row in list(s.scalars(select(CharacterGreeting))):
+            if row.photo_bytes is not None or row.photo_file_id:
+                row.photo_bytes = None
+                row.photo_file_id = None
+                stripped += 1
+        s.commit()
+    _sync_done[_SYNC_KEY] = True
+    logger.info('greeting universal seed synced removed=%s added=%s photos_stripped=%s',
+                old, len(SEED_UNIVERSAL), stripped)
+    return {'replaced': old, 'added': len(SEED_UNIVERSAL), 'photos_stripped': stripped}
 
 
 def _buttons(row: CharacterGreeting) -> list[str]:
@@ -165,11 +234,13 @@ def _choose(character_id: str, mode: str) -> CharacterGreeting | None:
         if not rows:
             return None
         picked = random.choice(rows)
-        # detach: the row is read after the session closes
+        # detach: the row is read after the session closes. The photo columns
+        # are not copied — V3.166.4 never serves a card picture, only the frame
+        # behind a tapped chip, which lives in starter_photo_cache.
         return CharacterGreeting(id=picked.id, character_id=picked.character_id, mode=picked.mode,
-                                 photo_file_id=picked.photo_file_id, photo_bytes=picked.photo_bytes,
                                  message_text=picked.message_text, buttons_json=picked.buttons_json,
-                                 translations_json=picked.translations_json)
+                                 translations_json=picked.translations_json,
+                                 image_prompt=picked.image_prompt)
 
 
 def _payload(row: CharacterGreeting, text: str, buttons: list[str], name: str) -> dict:
@@ -177,8 +248,9 @@ def _payload(row: CharacterGreeting, text: str, buttons: list[str], name: str) -
         text = text.replace('{name}', name)
         buttons = [b.replace('{name}', name) for b in buttons]
     return {'id': row.id, 'text': text, 'buttons': buttons,
-            'photo_url': f'/webapp/greeting/{row.id}' if row.photo_bytes else '',
-            'photo_file_id': row.photo_file_id or ''}
+            # Пусто, когда у сценария нет скрытого промпта кадра: тап по чипу
+            # тогда обычное сообщение. Сам промпт наружу не отдаётся никогда.
+            'starter': bool(row.image_prompt)}
 
 
 async def opening(character_id: str, *, spicy: bool, lang: str = 'ru', name: str = '') -> dict | None:
@@ -250,17 +322,41 @@ def list_for(character_id: str | None = None) -> list[dict]:
         if character_id:
             q = q.where(CharacterGreeting.character_id == character_id)
         return [{'id': r.id, 'character_id': r.character_id, 'mode': r.mode,
-                 'has_photo': bool(r.photo_bytes), 'text': r.message_text or '',
+                 'has_prompt': bool(r.image_prompt), 'text': r.message_text or '',
                  'buttons': _buttons(r)} for r in s.scalars(q)]
 
 
-def create(character_id: str, mode: str, text: str, buttons: list[str],
-           photo_file_id: str = '', photo_bytes: bytes | None = None) -> int:
+def scenarios_for(character_id: str) -> list[dict]:
+    """Экран «Стартовые фото»: сценарии, у которых есть скрытый промпт кадра —
+    его собственные и все универсальные. Без промпта тап чипа остаётся словами."""
+    with SessionLocal() as s:
+        rows = list(s.scalars(
+            select(CharacterGreeting)
+            .where(CharacterGreeting.character_id.in_([character_id, UNIVERSAL_ID]),
+                   CharacterGreeting.image_prompt != '')
+            .order_by(CharacterGreeting.character_id, CharacterGreeting.id)
+        ))
+    return [{'id': int(r.id), 'character_id': r.character_id, 'text': r.message_text or '',
+             'buttons': _buttons(r)} for r in rows]
+
+
+def image_prompt_for(greeting_id: int) -> str:
+    try:
+        with SessionLocal() as s:
+            row = s.get(CharacterGreeting, int(greeting_id))
+            return (row.image_prompt or '') if row else ''
+    except Exception:
+        logger.warning('greeting prompt read failed id=%s', greeting_id)
+        return ''
+
+
+def create(character_id: str, mode: str, text: str, buttons: list[str], image_prompt: str = '') -> int:
     mode = mode if mode in MODES else 'both'
     with SessionLocal() as s:
         row = CharacterGreeting(character_id=character_id or UNIVERSAL_ID, mode=mode,
-                                message_text=text or '', buttons_json=json.dumps(buttons or [], ensure_ascii=False),
-                                photo_file_id=photo_file_id or None, photo_bytes=photo_bytes)
+                                message_text=text or '',
+                                buttons_json=json.dumps(buttons or [], ensure_ascii=False),
+                                image_prompt=(image_prompt or '').strip())
         s.add(row)
         s.commit()
         return int(row.id)
@@ -276,18 +372,38 @@ def delete(greeting_id: int) -> bool:
         return True
 
 
-def set_photo(greeting_id: int, photo_file_id: str, photo_bytes: bytes) -> bool:
-    with SessionLocal() as s:
-        row = s.get(CharacterGreeting, int(greeting_id))
-        if not row:
-            return False
-        row.photo_file_id = photo_file_id or None
-        row.photo_bytes = photo_bytes
-        s.commit()
-        return True
+# ── БЛОК 2 ТЗ V3.166.4: кто предложил кадр и чем это «да» ──────────────────
+# Открытие чата запоминает карточку, которую он только что прочитал, а тап по
+# чипу сверяется с её кнопками. Регулярки «похоже на просьбу фото» тут не
+# работают: его «Показывай» и «Скинь фото» — те же слова, что и в обычных
+# репликах, а решают сейчас деньги и генерация. Живёт в памяти процесса, как
+# метка демо-селфи (services/onboarding_demo) и подсказка дневного лимита.
+_OFFER_TTL = 1800.0
+_offers: dict[tuple[int, str], dict] = {}
 
 
-def photo_for(greeting_id: int) -> bytes | None:
-    with SessionLocal() as s:
-        row = s.get(CharacterGreeting, int(greeting_id))
-        return bytes(row.photo_bytes) if row and row.photo_bytes else None
+def remember_offer(telegram_id: int, character_id: str, greeting_id: int, buttons: list[str]) -> None:
+    _offers[(int(telegram_id), character_id)] = {
+        'greeting_id': int(greeting_id),
+        'buttons': [str(b).strip().casefold() for b in buttons if str(b).strip()],
+        'at': time.monotonic()}
+
+
+def take_offer(telegram_id: int, character_id: str, text: str) -> dict | None:
+    """Его реплика ровно совпала с кнопкой только что открытой карточки — значит
+    он согласился посмотреть кадр. None — ничего не предложено или это другой
+    текст: ход уходит обычным путём."""
+    offer = _offers.get((int(telegram_id), character_id))
+    if not offer:
+        return None
+    if time.monotonic() - float(offer.get('at') or 0) > _OFFER_TTL:
+        _offers.pop((int(telegram_id), character_id), None)
+        return None
+    wanted = (text or '').strip().casefold()
+    if not wanted or wanted not in (offer.get('buttons') or []):
+        return None
+    prompt = image_prompt_for(int(offer['greeting_id']))
+    if not prompt:
+        return None
+    return {'greeting_id': int(offer['greeting_id']), 'image_prompt': prompt}
+

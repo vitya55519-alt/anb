@@ -843,9 +843,12 @@ def admin_keyboard():
         [InlineKeyboardButton(text='💡 Идеи для фото', callback_data='admin:ideas')],
         [InlineKeyboardButton(text='🏆 Арт достижений/миссий', callback_data='admin:badges')],
         [InlineKeyboardButton(text='📸 Медиа для утра/вечера', callback_data='admin:prophoto')],
-        # V3.166.0 (Блок 2): his base of ready opening cards — photo + her first
+        # V3.166.0 (Блок 2): his base of ready opening cards — her first
         # line + chips, so a new chat starts instantly without a generation.
         [InlineKeyboardButton(text='💌 Стартовые сообщения', callback_data='admin:greet')],
+        # V3.166.4 (Блок 3 ТЗ, owner): «И ДА, обязательно делай экран „Стартовые
+        # фото" в админке!» — the four teaser frames a scenario already holds.
+        [InlineKeyboardButton(text='📸 Стартовые фото', callback_data='admin:starter')],
         # V3.94.0: a ready «🔥 Девушка дня» channel post in two taps.
         [InlineKeyboardButton(text='📣 Пост в канал', callback_data='gday:menu')],
         # V3.129.0: channel rubrics «🗳 Выбираете вы» and «💬 Диалог дня».
@@ -3330,10 +3333,11 @@ async def admin_card_media_upload(message: types.Message):
         reply_markup=admin_card_keyboard(character_id))
 
 
-# ── V3.166.0 (Блок 2): «Стартовые сообщения» — the owner's greeting base ──────
-# One card = heroine + mode + photo + her first line + the chips under it. The
-# bot takes Telegram's file_id AND the bytes (PostgreSQL), so the same shot goes
-# out instantly in Telegram and is served to the Mini App after any redeploy.
+# ── V3.166.4 (Блоки 2–4): «Стартовые сообщения» — the owner's greeting base ───
+# One card = heroine + mode + her first line + the chips under it + the hidden
+# English frame behind those chips. The picture is no longer part of the card:
+# V3.166.4 gives him text and chips on open, and the frame arrives only when he
+# taps «Покажи» — from the starter cache, or drawn once and cached for the rest.
 GREETING_WAIT: dict[int, dict] = {}
 GREETING_MODE_LABEL = {'normal': '🌙 Романтика и флирт', 'spicy': '🔥 Без цензуры 18+', 'both': '🌙🔥 Оба режима'}
 
@@ -3361,7 +3365,7 @@ def admin_greet_keyboard():
 def admin_greet_char_keyboard(character_id: str):
     rows = []
     for item in greeting_service.list_for(character_id):
-        label = f"🗑 #{item['id']} · {item['mode']} · {'📸' if item['has_photo'] else 'текст'} · {item['text'][:34]}"
+        label = f"🗑 #{item['id']} · {item['mode']} · {'🔞' if item['has_prompt'] else 'текст'} · {item['text'][:34]}"
         rows.append([InlineKeyboardButton(text=label, callback_data=f'admin:greetdel:{character_id}:{item["id"]}')])
     rows.append([InlineKeyboardButton(text=GREETING_MODE_LABEL[m], callback_data=f'admin:greetadd:{character_id}:{m}')
                  for m in ('normal', 'spicy')])
@@ -3377,7 +3381,10 @@ async def _greet_char_screen(chat_id: int, character_id: str):
         f'💌 Стартовые сообщения — {_greet_name(character_id)}\n\n'
         f'Заготовок: {len(items)}. Открытие чата берёт одну случайную подходящую под режим; '
         'если у девушки своих нет — работает универсальная.\n'
-        '➕ Добавить: выбери режим, пришли фото (или «-» без фото), текст и кнопки. '
+        '➕ Добавить: выбери режим, пришли ТЕКСТ, кнопки и СКРЫТЫЙ АНГЛИЙСКИЙ ПРОМПТ кадра '
+        '(что рисовать, когда он тапнет чип; «-» — карточка без кадра, тогда тап остаётся словами).\n'
+        'Фото в карточке больше нет — кадр приходит только по тапу чипа и только в режиме '
+        '«Без цензуры 18+», из кэша «📸 Стартовые фото».\n'
         'До 4 карточек за один заход, /done — закончить, /cancel — отмена.\n'
         'Кнопка 🗑 удаляет заготовку.',
         reply_markup=admin_greet_char_keyboard(character_id))
@@ -3391,8 +3398,10 @@ async def admin_greet_home(cq: types.CallbackQuery):
     await cq.answer()
     await cq.message.answer(
         '💌 Стартовые сообщения\n\n'
-        'Это база первых реплик: при открытии чата в приложении девушка мгновенно '
-        'присылает готовое фото и текст — без генерации и без ожидания. '
+        'Это база первых реплик: при открытии чата в приложении девушка сразу пишет '
+        'готовую строку и кладёт под неё кнопки-чипы — без генерации и без ожидания.\n'
+        'Картинка за текстом: тап по чипу в режиме «Без цензуры 18+» берёт кадр из '
+        'кэша «📸 Стартовые фото» — а нет его, дорисовывает один и оставляет следующим.\n'
         'Выбери девушку или универсальный набор.',
         reply_markup=admin_greet_keyboard())
 
@@ -3412,12 +3421,11 @@ async def admin_greet_add(cq: types.CallbackQuery):
         return
     _, _, character_id, mode = cq.data.split(':', 3)
     GREETING_WAIT[cq.from_user.id] = {'character_id': character_id, 'mode': mode,
-                                      'step': 'photo', 'photo_file_id': '', 'photo_bytes': None,
-                                      'text': '', 'added': 0}
+                                      'step': 'text', 'text': '', 'buttons': [], 'added': 0}
     await cq.answer()
     await cq.message.answer(
         f'➕ Новая заготовка: {_greet_name(character_id)} · {GREETING_MODE_LABEL.get(mode, mode)}\n\n'
-        'Шаг 1 из 3 — пришли ФОТО этой карточки (или «-», если она будет только текстом).')
+        'Шаг 1 из 3 — ТЕКСТ её первого сообщения. Можно {name} — подставится имя девушки.')
 
 
 @dp.callback_query(F.data.startswith('admin:greetdel:'))
@@ -3435,9 +3443,12 @@ def _greet_buttons(raw: str) -> list[str]:
     return [p[:60] for p in parts if p][:4]
 
 
-@dp.message(lambda m: m.from_user is not None and m.from_user.id in GREETING_WAIT, F.photo | F.text)
+@dp.message(lambda m: m.from_user is not None and m.from_user.id in GREETING_WAIT, F.text)
 async def admin_greet_upload(message: types.Message):
-    """The three steps of one greeting card: photo → her line → chips."""
+    """The three steps of one teaser card: her line → the chips → the frame
+    those chips promise. V3.166.4 took the photo out of the card: the picture
+    is what the generator draws when he taps, so the owner writes its prompt
+    in English instead of uploading a shot."""
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
     state = GREETING_WAIT.get(message.from_user.id)
@@ -3450,47 +3461,165 @@ async def admin_greet_upload(message: types.Message):
         await message.answer(f'Готово, добавлено карточек: {added}.',
                              reply_markup=admin_greet_keyboard())
         return
-    step = state.get('step')
-    if step == 'photo':
-        if message.photo:
-            buf = io.BytesIO()
-            await bot.download(message.photo[-1].file_id, destination=buf)
-            state['photo_file_id'] = message.photo[-1].file_id
-            state['photo_bytes'] = buf.getvalue()
-        elif text == '-':
-            state['photo_file_id'], state['photo_bytes'] = '', None
-        else:
-            await message.answer('Пришли фото или «-» без фото.')
-            return
-        state['step'] = 'text'
-        await message.answer('Шаг 2 из 3 — ТЕКСТ её первого сообщения. Можно {name} — подставится имя девушки.')
+    if not text:
         return
+    step = state.get('step')
     if step == 'text':
-        if not text:
-            await message.answer('Нужен текст сообщения — одним сообщением.')
-            return
         state['text'] = text
         state['step'] = 'buttons'
-        await message.answer('Шаг 3 из 3 — кнопки-чипы через «|», например:\n'
-                             'Подойти сзади | Обнять её\n\nИли «-» — без кнопок.')
+        await message.answer('Шаг 2 из 3 — кнопки-чипы через «|», например:\n'
+                             'Покажи | Скинь фото\n\nИли «-» — без кнопок.')
         return
     if step == 'buttons':
-        buttons = [] if text == '-' else _greet_buttons(text)
+        state['buttons'] = [] if text == '-' else _greet_buttons(text)
+        state['step'] = 'prompt'
+        await message.answer('Шаг 3 из 3 — СКРЫТЫЙ АНГЛИЙСКИЙ ПРОМПТ кадра, который придёт по тапу '
+                             'чипа в режиме «Без цензуры 18+». Где и в чём она, поза, свет — по-английски, '
+                             'например:\nbedroom, dim lighting, wearing sheer lace lingerie, seductive pose\n\n'
+                             'Или «-» — заготовка остаётся только текстом.')
+        return
+    if step == 'prompt':
+        prompt = '' if text == '-' else text[:600]
+        buttons = state.get('buttons') or []
         greeting_id = greeting_service.create(
-            state['character_id'], state['mode'], state['text'], buttons,
-            photo_file_id=state.get('photo_file_id') or '', photo_bytes=state.get('photo_bytes'))
+            state['character_id'], state['mode'], state['text'], buttons, image_prompt=prompt)
         state['added'] = state.get('added', 0) + 1
-        state.update(step='photo', photo_file_id='', photo_bytes=None, text='')
+        state.update(step='text', text='', buttons=[])
         left = 4 - state['added']
         if left <= 0:
             GREETING_WAIT.pop(message.from_user.id, None)
         await message.answer(
-            f'✅ Карточка #{greeting_id} сохранена (фото: {"есть" if greeting_service.photo_for(greeting_id) else "нет"}, '
-            f'кнопок: {len(buttons)}).\n' +
-            (f'Ещё можно {left}: пришли следующее фото или «-». /done — закончить.' if left > 0
+            f'✅ Карточка #{greeting_id} сохранена (чипов: {len(buttons)}, '
+            f'кадр по тапу: {"есть" if prompt else "нет"}).\n' +
+            (f'Ещё можно {left}: пришли следующий текст. /done — закончить.' if left > 0
              else 'Добавлены 4 карточки — заход завершён.'),
             reply_markup=None if left > 0 else admin_greet_keyboard())
         return
+
+
+# ── V3.166.4 (Блок 3 ТЗ, владелец): «📸 Стартовые фото» ──────────────────────
+# Девушка → сценарий → не больше четырёх кадров, у каждого своя 🗑. Удалил один —
+# в паре осталось три, и следующий тап чипа дорисует четвёртый сам. Экран только
+# показывает то, что уже отдаёт новичкам: рисовать отсюда ничего не нужно.
+
+def admin_starter_keyboard():
+    from services import starter_photo_service
+    rows = []
+    try:
+        cards = list_cards(visible_only=False)
+    except Exception:
+        cards = []
+    for card in cards:
+        try:
+            n = sum(starter_photo_service.counts_for(card.character_id).values())
+        except Exception:
+            n = 0
+        rows.append([InlineKeyboardButton(
+            text=f'{card.display_name} ({n})', callback_data=f'admin:starter:{card.character_id}')])
+    rows.append([InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_starter_scenarios_keyboard(character_id: str):
+    from services import starter_photo_service
+    rows = []
+    for sc in greeting_service.scenarios_for(character_id):
+        try:
+            n = starter_photo_service.count(character_id, sc['id'])
+        except Exception:
+            n = 0
+        rows.append([InlineKeyboardButton(
+            text=f"🖼 {n}/{starter_photo_service.LIMIT} · {sc['text'][:38]}",
+            callback_data=f'admin:startersc:{character_id}:{sc["id"]}')])
+    if not rows:
+        return None
+    rows.append([InlineKeyboardButton(text='⬅️ Стартовые фото', callback_data='admin:starter')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _starter_scenarios_screen(chat_id: int, character_id: str):
+    kb = admin_starter_scenarios_keyboard(character_id)
+    text = (f'📸 Стартовые фото — {_greet_name(character_id)}\n\n'
+            'Сценарии, у которых есть скрытый кадр. Внутри — до четырёх рисунков, '
+            'которые уже отдаются новичкам по тапу чипа; сколько кадра нет, следующий '
+            'тап дорисует сам и оставит его всем дальше.\n'
+            'Тапни сценарий, чтобы посмотреть кадры и удалить нужный.')
+    if kb is None:
+        await bot.send_message(chat_id, text + '\n\nУ этой девушки пока нет сценариев со скрытым кадром.')
+        return
+    await bot.send_message(chat_id, text, reply_markup=kb)
+
+
+@dp.callback_query(F.data == 'admin:starter')
+async def admin_starter_home(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    await cq.answer()
+    await cq.message.answer(
+        '📸 Стартовые фото\n\n'
+        'Кэш кадров «механики тизера»: он тапает чип под её первой репликой, и кадр '
+        'берётся отсюда — бесплатно для него и без обращения к генератору, если '
+        'четвёрка уже собрана. Выбери девушку.',
+        reply_markup=admin_starter_keyboard())
+
+
+@dp.callback_query(F.data.startswith('admin:starter:'))
+async def admin_starter_char(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    character_id = cq.data.split(':', 2)[2]
+    await cq.answer()
+    await _starter_scenarios_screen(cq.message.chat.id, character_id)
+
+
+@dp.callback_query(F.data.startswith('admin:startersc:'))
+async def admin_starter_scenario(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _, _, character_id, raw_gid = cq.data.split(':', 3)
+    await cq.answer()
+    await _starter_frames_screen(cq.message.chat.id, character_id, int(raw_gid))
+
+
+async def _starter_frames_screen(chat_id: int, character_id: str, greeting_id: int):
+    from services import starter_photo_service
+    prompt = await asyncio.to_thread(greeting_service.image_prompt_for, greeting_id)
+    frames = await asyncio.to_thread(starter_photo_service.list_for, character_id, greeting_id)
+    await bot.send_message(
+        chat_id,
+        f'🖼 Кадры сценария #{greeting_id} — {_greet_name(character_id)}\n\n'
+        f'Собрано: {len(frames)} из {starter_photo_service.LIMIT}.\n'
+        f'Скрытый промпт: {prompt or "—"}\n\n'
+        + ('' if len(frames) < starter_photo_service.LIMIT
+           else 'Четвёрка полна — тапы берут кадры отсюда и генератора не трогают.')
+        + ('' if frames else 'Пусто: кадр появится, когда первый новичок тапнет чип этого сценария.'))
+    for frame in frames:
+        body = await asyncio.to_thread(starter_photo_service.body_for, int(frame['id']))
+        stamp = frame['created_at'].strftime('%d.%m %H:%M') if frame['created_at'] else ''
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text='🗑 Удалить этот кадр',
+            callback_data=f'admin:starterdel:{character_id}:{greeting_id}:{frame["id"]}')]])
+        if body:
+            await bot.send_photo(chat_id, types.BufferedInputFile(body, filename='starter.jpg'),
+                                 caption=f'#{frame["id"]} · {stamp}', reply_markup=kb)
+        else:
+            await bot.send_message(chat_id, f'#{frame["id"]} · {stamp} · байтов нет в базе', reply_markup=kb)
+    await bot.send_message(
+        chat_id, 'Удалил кадр — в паре осталось меньше четырёх, и следующий тап чипа дорисует новый.',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='⬅️ Сценарии', callback_data=f'admin:starter:{character_id}')],
+            [InlineKeyboardButton(text='⬆️ Стартовые фото', callback_data='admin:starter')]]))
+
+
+@dp.callback_query(F.data.startswith('admin:starterdel:'))
+async def admin_starter_delete(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _, _, character_id, raw_gid, raw_cid = cq.data.split(':', 4)
+    from services import starter_photo_service
+    ok = await asyncio.to_thread(starter_photo_service.delete, int(raw_cid))
+    await cq.answer('кадр удалён' if ok else 'такого кадра нет')
+    await _starter_frames_screen(cq.message.chat.id, character_id, int(raw_gid))
 
 
 # ── V3.47.1: admin achievement/mission art (badges) ──────────────────────────
@@ -13604,22 +13733,34 @@ async def _webapp_live(request: web.Request) -> web.Response:
                         'Cache-Control': 'public, max-age=604800'})
 
 
-async def _webapp_greeting_photo(request: web.Request) -> web.Response:
-    """V3.166.0 (Блок 2): his greeting photo, straight from PostgreSQL — the
-    same public immutable caching as the storefront card media, so a redeploy
-    never asks him to upload the welcome shots again."""
-    from services import greeting_service
+async def _webapp_starter_photo(request: web.Request) -> web.Response:
+    """V3.166.4 (Блок 2, owner): one frame from the starter cache.
+
+    The picture belongs to a scenario, not to the account that happened to ask
+    for it first — everyone who taps the same chip is shown the same shot — so
+    the gate here is the legal one, not the owner id: a signed-in Telegram
+    account that has never confirmed 18+ gets nothing, whatever the row id.
+    The bytes live in PostgreSQL, so a redeploy does not blank his history."""
+    from services import starter_photo_service
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.Response(status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id:
+        return web.Response(status=401)
+    if not is_adult_confirmed(telegram_id):
+        return web.Response(status=403)
     try:
-        greeting_id = int(request.match_info['greeting_id'])
+        cache_id = int(request.match_info['cache_id'])
     except (TypeError, ValueError):
         return web.Response(status=404)
-    body = await asyncio.to_thread(greeting_service.photo_for, greeting_id)
+    body = await asyncio.to_thread(starter_photo_service.body_for, cache_id)
     if not body:
         return web.Response(status=404)
     body, content_type = await asyncio.to_thread(
-        webapp_service.web_image, body, 'image/jpeg', f'greeting:{greeting_id}')
+        webapp_service.web_image, body, 'image/jpeg', f'starter:{cache_id}')
     return web.Response(body=body, content_type=content_type,
-                        headers={'Cache-Control': 'public, max-age=604800'})
+                        headers={'Cache-Control': 'private, max-age=86400, immutable'})
 
 
 async def _webapp_card(request: web.Request) -> web.Response:
@@ -14849,6 +14990,78 @@ def _app_ping(telegram_id: int, character_id: str, text: str, media: str | None 
         logger.warning('app ping hook failed user=%s', telegram_id, exc_info=True)
 
 
+async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: str,
+                              text: str) -> web.Response | None:
+    """V3.166.4 (Блок 2 ТЗ, владелец): он тапнул чип под её первой репликой —
+    приходит тот самый кадр, и только в режиме «Без цензуры 18+».
+
+    На каждую героиню и каждый сценарий держится четыре кадра
+    (``services/starter_photo_service``). Лежит хоть один — отдаём случайный
+    моментально, провайдера не трогаем; четвёрки нет — рисуем один по скрытому
+    английскому промпту сценария и оставляем его следующим. Ему это стоит нуля
+    персиков и не трогает дневное бесплатное фото: кадр — воронка, а не товар.
+    Тап по чипу при этом остаётся настоящим ходом: его текст и её фото ложатся
+    в диалог, и один ход сгорает из 30 сообщений на аккаунт."""
+    if not text or is_custom_character(character_id):
+        return None
+    try:
+        from services import greeting_service, starter_photo_service
+
+        def _match():
+            # Romantika never sees this mechanic — there she writes herself.
+            if not _chat_opening_spicy(telegram_id):
+                return None
+            return greeting_service.take_offer(telegram_id, character_id, text)
+
+        offer = await asyncio.to_thread(_match)
+        if not offer:
+            return None
+        greeting_id = int(offer['greeting_id'])
+        cache_id = await asyncio.to_thread(starter_photo_service.pick, character_id, greeting_id)
+        if not cache_id:
+            try:
+                data, _mime, _ext = await _webapp_pipeline_photo(
+                    telegram_id, character_id,
+                    PhotoRequest(scene='lingerie', starter_note=offer['image_prompt']))
+            except Exception:
+                logger.exception('starter frame render failed user=%s greeting=%s', telegram_id, greeting_id)
+                await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'photo',
+                                        character_id, offer['image_prompt'], 'starter_render')
+                return None
+            cache_id = await asyncio.to_thread(starter_photo_service.save, character_id, greeting_id, data)
+            await asyncio.to_thread(webapp_service.record_generation, telegram_id, 'photo', character_id,
+                                    f'стартовый кадр: {offer["image_prompt"][:200]}', None, engine='starter')
+            if not cache_id:
+                # кто-то успел занял четвёрку параллельно — берём его кадр
+                cache_id = await asyncio.to_thread(starter_photo_service.pick, character_id, greeting_id)
+            if not cache_id:
+                return None
+
+        def _deliver():
+            uid = ensure_user(telegram_id, user_info.get('first_name') or '',
+                              language_code=user_info.get('language_code'))
+            cap = '📸 ' + random.choice(AUTO_CAPTIONS.get('lingerie', ('отправила фото',)))
+            save_message(uid, character_id, 'user', text)
+            url = f'/webapp/starter/{cache_id}'
+            save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
+            from services import daily_limit
+            from services.analytics_service import track_event
+            track_event(uid, 'starter_photo_served', character_id=character_id,
+                        metadata={'greeting_id': greeting_id})
+            hint = None
+            if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
+                daily_limit.note_message(telegram_id, language=full_user_lang(
+                    telegram_id, user_info.get('language_code')))
+                hint = daily_limit.take_hint(telegram_id)
+            return {'ok': True, 'reply': cap, 'photo_url': url,
+                    **({'chat_hint': hint} if hint else {})}
+
+        return web.json_response(await asyncio.to_thread(_deliver))
+    except Exception:
+        logger.exception('starter frame turn failed user=%s', telegram_id)
+        return None
+
+
 def _pings_app_reply(turn):
     """V3.128.0: wraps one app chat turn; when he closed the app before her
     answer came, the answer also pings the bot chat (services/app_ping.py)."""
@@ -14872,6 +15085,14 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                             text: str, extra: dict | None = None) -> web.Response:
     from services import spend_service
     spend_service.set_spend_user(telegram_id)
+    # V3.166.4 (Блок 2, owner): «механика тизера» — opening line, then his tap
+    # on the chip under it is what brings the frame. It runs before any photo
+    # parsing and before the model: the words he pressed are known to us, so
+    # guessing them from a regex («похоже, он просит фото») is not needed, and
+    # the scene she promised must not be rewritten into a generic selfie.
+    starter = await _starter_frame_turn(telegram_id, user_info, character_id, text)
+    if starter is not None:
+        return starter
     # V3.35.0: a message typed in the app goes through the exact pipeline the
     # bot chat uses (memory, relationships, persona) — same gates too: 18+
     # consent and the daily free-message limit.
@@ -15321,12 +15542,15 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
             logger.warning('greeting opening failed char=%s', character_id)
             _greeting = None
         if _greeting and _greeting.get('text'):
-            if _greeting.get('photo_url'):
-                await asyncio.to_thread(save_message, uid, character_id, 'assistant', '📸 отправила фото',
-                                        media_kind='photo', media_url=_greeting['photo_url'])
+            # V3.166.4 (Блок 2, owner): the opening is her line and the chips
+            # under it — nothing else. The frame comes ONLY after he taps a
+            # chip, so the kitchen photos are gone from this path and the
+            # offer is remembered for the tap that follows.
+            if _greeting.get('starter'):
+                await asyncio.to_thread(greeting_service.remember_offer, int(telegram_id), character_id,
+                                        int(_greeting.get('id') or 0), _greeting.get('buttons') or [])
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', _greeting['text'])
             return web.json_response({'ok': True, 'reply': _greeting['text'],
-                                      'photo_url': _greeting.get('photo_url') or '',
                                       'chips': _greeting.get('buttons') or [],
                                       'undress_price': EXPLICIT_PHOTO_PEACH_COST})
     if uid and scene is None and persona:
@@ -19648,7 +19872,7 @@ async def _start_web_server() -> None:
     # V3.43.1: the living tiles — i2v mp4 loops next to the Ken-Burns webp.
     app.router.add_get('/webapp/live/{character_id}', _webapp_live)
     app.router.add_get('/webapp/card/{character_id}', _webapp_card)
-    app.router.add_get('/webapp/greeting/{greeting_id}', _webapp_greeting_photo)
+    app.router.add_get('/webapp/starter/{cache_id}', _webapp_starter_photo)
     app.router.add_post('/webapp/api/char_view', _webapp_api_char_view)
     # V3.43.0: the channel-subscribe peach bonus — GET status, POST check+grant.
     app.router.add_route('*', '/webapp/api/channel_bonus', _webapp_api_channel_bonus)
@@ -20095,12 +20319,24 @@ async def main():
     ensure_default_cards()
     ensure_default_payment_methods()
     # V3.166.0 (Блок 4): his written-once opening scenarios — seeded once,
-    # idempotent; he adds the photos and more scenarios in «Стартовые сообщения».
+    # idempotent; he adds more scenarios in «Стартовые сообщения».
     from services import greeting_service
     try:
         greeting_service.ensure_seed()
     except Exception:
         logger.exception('greeting seed failed')
+    # V3.166.4 (Блок 4, owner): the teaser mechanic replaces the old base — the
+    # 15 universal cards are rewritten to text + chips + a hidden frame, and the
+    # pictures that used to sit inside cards are stripped for good. Runs once
+    # per database, the marker lives in the dialog store, so his own top-6 cards
+    # survive every later deploy untouched.
+    try:
+        res = await asyncio.to_thread(greeting_service.sync_universal_seed)
+        if res.get('added'):
+            logger.info('greeting seed v3.166.4 replaced=%s added=%s photos_stripped=%s',
+                        res['replaced'], res['added'], res['photos_stripped'])
+    except Exception:
+        logger.exception('greeting seed sync failed')
     # V3.55.5: seed the welcome promo shelf (ANNA5 · +5 🍑) — idempotent,
     # fail-silent; the owner manages/toggles it later in «🎟 Промокоды».
     from services import gift_service

@@ -116,6 +116,12 @@ CHAT_FREE_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_FREE_PHOTOS_PER_DAY_FREE",
 # and it stays at one, otherwise a free user farms stock frames all day and
 # never sees the wall (V3.93.0: без према — всего одна фотка).
 CHAT_POOL_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_POOL_PHOTOS_PER_DAY", "1")))
+# V3.166.4 (Блок 1, owner): how many frames one scenario may hold per heroine.
+# Under the cap her tap renders a new picture and it is kept for everyone after
+# her; at the cap the server draws one of the stored four at random — no
+# provider call, no cost, instant. Owner: «на связку character_id + greeting_id
+# может храниться максимум 4 фотографии».
+STARTER_PHOTOS_PER_SCENARIO = max(1, int(os.getenv("STARTER_PHOTOS_PER_SCENARIO", "4")))
 # V3.97.0: free «🔊 Озвучить» listens a day without Premium (then the wall).
 SPEAK_FREE_PER_DAY = max(0, int(os.getenv("SPEAK_FREE_PER_DAY", "3")))
 CHAT_PREMIUM_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_PREMIUM_PHOTOS_PER_DAY", "2")))

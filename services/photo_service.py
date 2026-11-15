@@ -1348,6 +1348,11 @@ class PhotoRequest:
     # V3.116.0: today's garment he gave her («👗 Надеть сегодня») — wins over the
     # level-5+ at-home lingerie rule and the community pool.
     gift_outfit: bool = False
+    # V3.166.4 (Блок 2, owner): the hidden English frame of a greeting scenario.
+    # He never reads it — it is what the generator is told when he taps the chip
+    # under her opening line, and it outranks the improvised wardrobe of that
+    # one frame while her identity locks stay on top.
+    starter_note: str = ''
 
 
 class PhotoGenerationError(RuntimeError):
@@ -2508,7 +2513,11 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         + f'{hands_lock}'
         + f'{adult_lock}\n'
         f'SCENE: {scene}. {request.location}.\n'
-        f'SEASON/WEATHER: {season}. {season_rule}\n'
+        + (f'STARTER SCENE: {request.starter_note}. This is the frame she promised him in her first message: '
+           'where these words name a place, a garment or a pose they outrank the generic wardrobe line '
+           'below, and she is home and alone. Her face, hair and body stay exactly as locked above.\n'
+           if request.starter_note else '')
+        + f'SEASON/WEATHER: {season}. {season_rule}\n'
         f'RELATIONSHIP VISUAL PROGRESSION: {visual_rule}\n'
         f'PROGRESSION PACK FRAME {shot_index + 1}/{PHOTO_SET_SIZE}: {tier_rule}\n'
         f'WARDROBE: {wardrobe}. {figure_note}'
