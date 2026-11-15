@@ -1,5 +1,6 @@
-"""V3.62.6: a handheld selfie keeps one free hand; the fitter keeps the HANDS,
-quality and frame-chaining lines; «Раздеть» keeps the phone hand."""
+"""V3.62.6 → V3.166.12: the phone left the frame, so the pose is only the pose;
+the fitter keeps the HANDS, quality and frame-chaining lines; «Раздеть» keeps
+both hands free for the reveal."""
 import services.photo_service as ps
 import services.private_photo_service as pps
 
@@ -8,19 +9,10 @@ class _Req:
     pose_rotation = ('arms loosely crossed with a relaxed confident stance',)
 
 
-def test_selfie_replaces_two_hand_pose():
-    note = ps._pose_note(_Req(), 'front-camera selfie at arm’s length', 0)
-    assert 'crossed' not in note and 'her other hand holds the phone' in note
-
-
-def test_non_selfie_keeps_pose():
-    assert ps._pose_note(_Req(), 'full-body framing', 0) == _Req.pose_rotation[0]
-
-
-def test_one_hand_pose_kept_in_selfie():
-    class R:
-        pose_rotation = ('a soft glance back over her shoulder',)
-    assert ps._pose_note(R(), 'mirror selfie', 0).startswith('a soft glance back')
+def test_pose_note_no_longer_borrow_a_hand_for_the_camera():
+    note = ps._pose_note(_Req(), 0)
+    assert note == _Req.pose_rotation[0]
+    assert 'phone' not in note.lower() and 'selfie' not in note.lower()
 
 
 def test_fitter_keeps_hands_quality_and_chain():
@@ -35,9 +27,11 @@ def test_fitter_keeps_hands_quality_and_chain():
     assert 'REFERENCE IMAGE 3 is the previous photo.' in fitted
 
 
-def test_undress_tail_keeps_phone_hand():
+def test_undress_tail_keeps_both_hands_free():
     import main
-    assert 'keeps holding it and the reveal uses only her other hand' in main.UNDRESS_TAIL
+    assert 'exactly two arms and two hands' in main.UNDRESS_TAIL
+    assert 'no device and no arm reaching toward the camera' in main.UNDRESS_TAIL
+    assert 'holds' not in main.UNDRESS_TAIL.lower()
 
 
 def test_stats_show_sources():

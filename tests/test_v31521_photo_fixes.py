@@ -129,7 +129,11 @@ def test_hot_frames_get_the_amateur_lock():
     lingerie = ps._build_prompt(ps.PhotoRequest(scene='lingerie'), 0, seedream=True,
                                  relationship_level=5, character_id='anna_01')
     assert 'AMATEUR HOT FRAME:' in lingerie
-    assert 'amateur mirror or handheld selfie' in lingerie.lower()
+    # V3.166.12 (владелец): the amateur look stayed, the camera in her hand did
+    # not — no handheld wording reaches the engine any more («smartphone» как
+    # эстетика кадра остаётся, устройство в руке — нет).
+    body = lingerie.replace(ps.NO_PHONE_LOCK, '').lower().replace('smartphone', '')
+    assert 'selfie' not in body and 'handheld' not in body and 'phone' not in body
     assert 'professional photoshoot' in lingerie and 'studio lighting' in lingerie
     dressed = ps._build_prompt(ps.PhotoRequest(scene='cafe'), 0, seedream=True,
                                relationship_level=2, character_id='anna_01')

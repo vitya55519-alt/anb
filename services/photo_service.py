@@ -91,13 +91,13 @@ logger.info(
 SCENES = {
     'selfie': 'a believable personal smartphone selfie made specifically to send to the person she is chatting with',
     'home': 'a spontaneous smartphone photo she takes at home on a lazy day: sitting on the sofa or the kitchen counter in cozy home clothes, soft throw pillows, a mug or a book nearby, real lived-in apartment details',
-    'park': 'a smartphone photo during her walk in a green city park: tree-lined path, benches, sunlight through leaves, she holds the phone herself or uses a quick self-timer on a bench',
+    'park': 'a smartphone photo during her walk in a green city park: tree-lined path, benches, sunlight through leaves, her camera propped on a park bench or set by a countdown timer',
     'cafe': 'a smartphone photo she takes sitting at a window table in a cozy modern cafe: a latte with foam art and a dessert on the table, warm wooden interior, soft daylight from the window',
     'street': 'a candid street-style smartphone photo while she walks through a lively city neighborhood: shop windows, crosswalk, city buildings, she glances into the camera mid-step',
     'shop': 'a shopping-day photo she takes in a boutique fitting-room mirror or between clothing racks, shopping bags in hand, trying on something new to show you',
     'car': 'a selfie she takes in the driver seat of her parked car: seatbelt off, sunglasses pushed up into her hair, soft daylight through the windshield, steering wheel and dashboard visible',
     'gym': 'a gym mirror selfie during a workout break: fitted sports top and leggings, water bottle, training equipment behind her, slight healthy glow on her skin',
-    'mirror': 'a full-body mirror selfie in her bedroom or hallway, phone visible in her hand, showing her whole figure and outfit from head to toe',
+    'mirror': 'a full-body mirror photo in her bedroom or hallway, the camera stood on a chair below the mirror edge and not visible in the reflection, showing her whole figure and outfit from head to toe',
     'outfit': 'a full-body photo showing what she is wearing today before going out — standing at the hallway mirror, shoes on, bag in hand',
     'restaurant': 'an evening photo she takes at a dinner table in a stylish restaurant: candlelight, wine glass, elegant plates, warm low light, she is dressed up for dinner',
     'cinema': 'a casual photo in a modern cinema lobby before the movie: popcorn and a drink in her hands, movie posters and neon signage behind her',
@@ -419,7 +419,7 @@ POSE_POOL = [
     'a mid-step walking pose with a natural stride',
     'seated with legs crossed and a relaxed open posture',
     'leaning lightly against a wall or railing',
-    'both hands holding a phone or a cup in front of her',
+    'both hands holding a cup in front of her',
     'fingers lightly touching her chin or cheek',
     'arms loosely crossed with a relaxed confident stance',
 ]
@@ -437,12 +437,12 @@ PRIVATE_POSE_POOL = [
     'leaning close to the camera with a playful smolder',
     'sitting cross-legged on the bed, leaning slightly forward',
     # V3.59.3: self-touch poses the owner asked for (hands on her own body).
-    'cupping her own breasts over her lingerie with both hands, chest pushed forward, looking into the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
-    'body turned three-quarters away, face turned back to the camera over her shoulder, one hand squeezing her own bottom — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
-    'kneeling on the bed, arms pressing her breasts together as she leans toward the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
-    'standing with her hands sliding down her hips, thumbs hooked into the waistband of her panties, teasing — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
-    'reclining propped on one elbow facing the camera, one hand on her breast and the other resting on her inner thigh — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
-    'kneeling upright on the bed facing the camera, one hand on her hip and the other cupping her breast, looking into the lens — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'cupping her own breasts over her lingerie with both hands, chest pushed forward, looking into the camera — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'body turned three-quarters away, face turned back to the camera over her shoulder, one hand squeezing her own bottom — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'kneeling on the bed, arms pressing her breasts together as she leans toward the camera — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'standing with her hands sliding down her hips, thumbs hooked into the waistband of her panties, teasing — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'reclining propped on one elbow facing the camera, one hand on her breast and the other resting on her inner thigh — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'kneeling upright on the bed facing the camera, one hand on her hip and the other cupping her breast, looking into the lens — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
 ]
 
 # V3.59.3: passion-path poses for the everyday/public scenes — flirtatious and
@@ -456,43 +456,10 @@ PASSION_PUBLIC_POSE_POOL = [
     'one hand pulling the strap of her top off her shoulder, teasing look — natural slender female hands with five correct fingers each; her face stays clearly visible, exactly the same face as reference image 1',
 ]
 
-# V3.62.6: a handheld selfie has ONE free hand — the other holds the phone.
-# Two-hand poses («arms crossed», «both hands in her hair», the private pool's
-# «both hands free») next to «front-camera selfie at arm's length» made the
-# engine draw a third arm (owner screenshots, 2026-10-16).
-SELFIE_POSE_POOL = [
-    'her free hand brushing her hair back from her face',
-    'her free hand resting lightly on her collarbone',
-    'her free hand tucking a strand of hair behind her ear',
-    'her free arm relaxed at her side, a natural weight shift onto one leg',
-    'her free hand resting on her hip',
-    'fingertips of her free hand lightly touching her chin',
-    'her free hand holding a cup near her chest',
-    'her free hand playing with the neckline of her top',
-]
-_TWO_HAND_MARKERS = ('both hands', 'both arms', 'arms ', 'hands ', 'the other', 'crossed', 'pressing',
-                     'cupping', 'holding a phone', 'tripod')
-
-
-def _is_handheld_selfie(angle: str) -> bool:
-    """A frame where she holds the phone herself, so one hand is never free.
-
-    V3.165.0: lingerie and boudoir angles say «mirror», not «selfie», so the
-    old substring check missed them, the pose pool kept offering two-handed
-    poses inside a phone-in-frame shot and the engine drew a third arm
-    (owner screenshot: «Лана» in red lingerie with three hands after he bought
-    her the outfit). A mirror shot is a handheld shot — count both."""
-    low = (angle or '').lower()
-    if 'tripod' in low or 'self-timer' in low:
-        return False
-    return 'selfie' in low or 'mirror' in low
-
-
-def _one_hand_pose(pose: str, shot_index: int) -> str:
-    low = (pose or '').lower()
-    if any(m in low for m in _TWO_HAND_MARKERS):
-        return SELFIE_POSE_POOL[shot_index % len(SELFIE_POSE_POOL)]
-    return pose
+# V3.166.12 (владелец: «убери телефон, всё селфи-рамки»): here used to live the
+# «one free hand» logic — a handheld frame spent one hand on the camera, so a
+# two-handed pose grew a third arm. With no camera in her hand the pose pool is
+# used as written and both hands are free.
 
 
 # V3.61.4: the tenderness path's mirror of the passion poses — soft, cozy,
@@ -571,7 +538,7 @@ DAYLIGHT_POOL = [
 
 
 SHOT_VARIANTS = {
-    'selfie': ['front-camera selfie at arm’s length, natural eye contact', 'slightly high-angle front-camera selfie, spontaneous smartphone perspective', 'best polished personal selfie with flattering natural phone-camera framing'],
+    'selfie': ['photo from a camera propped at eye level, natural eye contact', 'slightly high-angle photo from a camera on a shelf, spontaneous amateur perspective', 'best polished personal photo with flattering natural framing from a propped camera'],
     'home': ['front-camera selfie on the sofa, relaxed and smiling', 'self-timer photo sitting on the kitchen counter with a mug', 'full-body home photo in the living room with cozy evening lamps'],
     'park': ['front-camera selfie on the park path with trees behind her', 'self-timer photo sitting on a park bench, three-quarter framing', 'full-body photo from behind on the path in golden-hour light, she looks back over her shoulder with a smile; her face stays clearly visible over her shoulder, exactly the same face as reference image 1, and her hips and the back of her outfit show her curvy figure'],
     'cafe': ['front-camera selfie at the cafe table with her coffee in frame', 'three-quarter photo by the window, cup in her hands', 'over-the-table photo with latte art and dessert in the foreground'],
@@ -593,7 +560,7 @@ SHOT_VARIANTS = {
     'personal': ['tasteful seated lingerie portrait with natural eye contact, non-explicit', 'polished mirror or self-timer lingerie fashion portrait, non-explicit', 'premium private lingerie-fashion portrait with elegant opaque coverage, non-explicit'],
     'lingerie': ['tasteful adult glamour portrait, non-explicit', 'more polished mirror-style lingerie fashion portrait, non-explicit', 'premium tasteful boudoir-fashion portrait with opaque garment coverage'],
     'private_fashion': ['tasteful private fashion portrait with opaque coverage', 'more polished private fashion portrait with confident styling', 'premium personalized private fashion portrait, non-explicit and opaque'],
-    'nude': ['at-home mirror selfie: standing at her bedroom or bathroom mirror, phone in one hand, she pulls her thin tank top up with the other hand so her bare breasts are visible, playful confident look into the mirror, real home interior', 'confident seated nude with soft shadows and relaxed posture', 'premium artistic nude with elegant composition and warm tones'],
+    'nude': ['at-home mirror photo, the camera stood on the sink below the mirror edge: she stands at her bedroom or bathroom mirror and pulls her thin tank top up with one hand so her bare breasts are visible, playful confident look into the mirror, real home interior', 'confident seated nude with soft shadows and relaxed posture', 'premium artistic nude with elegant composition and warm tones'],
     'tease': ['playful rear-view teasing photo with a glance over the shoulder', 'confident from-behind pose with relaxed posture and soft light', 'premium sensual back-view portrait with warm tones'],
     # V3.44.2: new adult scene angles
     'shower': ['natural shower selfie with steam', 'stylish three-quarter shower portrait with water droplets', 'premium artistic shower photo with warm bathroom light'],
@@ -601,7 +568,7 @@ SHOT_VARIANTS = {
     'bedroom_intimate': ['sexy bedroom selfie in lace lingerie on the bed', 'seductive three-quarter portrait in expensive lingerie with garter belt, candlelight', 'premium erotic bedroom photo in beautiful black or red lace lingerie, stockings, confident pose'],
     'morning_nude': ['natural morning nude with window light', 'stylish three-quarter morning portrait', 'premium artistic morning nude with soft daylight'],
     'changing_room': ['natural changing room selfie', 'stylish three-quarter changing portrait', 'premium candid changing room photo'],
-    'topless': ['at-home mirror selfie: standing at her bedroom or bathroom mirror, phone in one hand, she pulls her thin tank top up with the other hand so her bare breasts are visible, playful confident look into the mirror, real home interior', 'stylish three-quarter topless portrait', 'premium artistic topless photo with elegant composition'],
+    'topless': ['at-home mirror photo, the camera stood on the sink below the mirror edge: she stands at her bedroom or bathroom mirror and pulls her thin tank top up with one hand so her bare breasts are visible, playful confident look into the mirror, real home interior', 'stylish three-quarter topless portrait', 'premium artistic topless photo with elegant composition'],
     'explicit': ['natural explicit selfie', 'stylish three-quarter explicit portrait', 'premium explicit photo with intimate composition'],
     # V3.44.1: new trending scene angles
     'beach': ['natural beach selfie with ocean behind', 'stylish three-quarter beach portrait with waves', 'premium full-body beach photo with golden-hour light'],
@@ -1028,7 +995,7 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
             return (
                 SEEDREAM_IDENTITY_LOCK,
                 'This is a tasteful adult fashion/glamour photo made specifically to send to someone she is chatting with. '
-                'The photo must plausibly be made by Anna herself using a front camera, a mirror, or a smartphone self-timer; no invisible photographer. '
+                'The photo must plausibly be made by Anna herself with the camera propped on a shelf, fixed on a small tripod or set by a countdown timer; no invisible photographer and nothing held in her hands. '
                 'Keep the styling polished and personal while remaining non-explicit.',
                 'Tasteful adult fashion/editorial styling only. No nudity, no exposed nipples or genitals. '
                 'For personal or lingerie scenes, use elegant adult lingerie with opaque garment coverage; preserve identity above styling.',
@@ -1037,7 +1004,7 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
         return (
             OPENAI_IDENTITY_LOCK,
             'This should feel like a normal personal photo Anna has just taken herself to send to someone she is chatting with. '
-            'Every frame must plausibly be made by Anna herself using a front camera, a mirror, or a smartphone self-timer; no invisible photographer. '
+            'Every frame must plausibly be made by Anna herself with the camera propped on a shelf, fixed on a small tripod or set by a countdown timer; no invisible photographer and nothing held in her hands. '
             'Use believable smartphone framing and a natural expression. The result should feel Pinterest-like and intentionally styled, '
             'but still like a real personal lifestyle photo rather than a studio glamour shoot.',
             OPENAI_GENERAL_AUDIENCE_BLOCK,
@@ -1105,7 +1072,7 @@ def _character_identity_lock(character_id: str, seedream: bool = False, expressi
     identity += _duo_identity_line(character_id, name)
     personal = (
         f'This should feel like a normal personal photo {name} has just taken to send to someone {pronoun} is chatting with. '
-        f'Every frame must plausibly be made by {pronoun} using a front camera, a mirror, or a smartphone self-timer; no invisible photographer. '
+        f'Every frame must plausibly be made by {pronoun} with the camera propped on a shelf, fixed on a small tripod or set by a countdown timer; no invisible photographer, and both hands stay free. '
         f'Use believable smartphone framing and a natural expression. Keep it natural and lifestyle-like.'
     )
     safety = (
@@ -1139,17 +1106,16 @@ OPENAI_GENERAL_AUDIENCE_BLOCK = (
     'Preserve the same person, slim proportions and fit figure from the references. Do not add weight or change her body type. '
     'The image should read as an everyday social-media or personal travel/lifestyle photo, not boudoir photography.'
 )
+# V3.166.12 (владелец: «просто убери телефон… всё, селфи-рамки»): the third arm
+# was the selfie arm. A frame that says «she holds the phone» makes the engine
+# draw a shoulder reaching to the viewer ON TOP OF the two posed hands, so the
+# handheld framing is gone everywhere: the camera always sits outside her body
+# and both hands stay free.
 HANDS_RULE = (
     'HANDS: she has exactly two arms and two hands, both naturally attached to her own shoulders — '
-    'never a third hand, a third arm or a disembodied hand. In a mirror or phone selfie one hand holds the phone, '
-    'so only the other hand is free: if the expression puts a hand at her lips or face, the posture must not also '
-    'place a hand on her hip, waist or in her hair. '
-    # V3.130.0: owner screenshot (embankment, «тсс» finger at the lips): a
-    # front selfie showed the phone in one hand AND the outstretched camera
-    # arm — three arms. In a front selfie the phone IS the camera.
-    'In a front (non-mirror) selfie the phone is the camera itself and is NEVER visible in the frame: '
-    'one arm reaches toward the viewer, cut off by the frame edge, and that is the phone arm; '
-    'the phone may appear in her hand only in a mirror reflection. Count the arms before finishing: exactly two.'
+    'never a third hand, a third arm or a disembodied hand. Both hands do only what the pose says: if one '
+    'hand is at her lips or in her hair, the other rests on her lap, her hip or the bed — it never adds a '
+    'second gesture and never reaches toward the viewer. Count the arms before finishing: exactly two.'
 )
 NEGATIVE_BLOCK = (
     'Avoid identity drift, generic doll-like face, plastic skin, asymmetrical eyes, warped hands, extra fingers, '
@@ -1158,6 +1124,75 @@ NEGATIVE_BLOCK = (
     'a long fully protruding or extra tongue, fake plastic-looking tongue, deformed mouth interior, teeth clipping through lips, '
     'and underwear worn over the outfit: bra over the top, panties over jeans or any lingerie as outerwear.'
 )
+# V3.166.12: the head line of every frame — the camera is never in her hand.
+# Written without the words the rewriter below replaces, so it survives its own
+# pass, and registered as a last-trimmed tier in private_photo_service._SPICY_TIERS.
+NO_PHONE_LOCK = (
+    'NO HANDHELD CAMERA: this photo was not taken by her hand. No device and no camera appear anywhere in the '
+    'picture, neither in a hand nor in a mirror, and no hand or arm reaches toward the viewer. The shot comes '
+    'from outside her body: the camera was leaned on a shelf, propped on a stack of books, fixed on a small '
+    'tripod or set by a countdown timer. Her two arms end at her own shoulders and both hands are free to pose.'
+)
+# Every bank that still describes a handheld shot — scene lines, the angle
+# pools, her own live-situation sentences, gift and story frames, and the text
+# the LLM writes for a paid frame — is rewritten here instead of in a hundred
+# string literals, so a phrase nobody remembered cannot grow a third arm.
+_NO_PHONE_PHRASES = (
+    (r'first[- ]person phone selfie', 'photo from a camera propped nearby'),
+    (r'phone POV selfie angle', 'camera propped at eye level'),
+    (r'front[- ]camera selfie at arm[’\']s length', 'photo from a camera propped at eye level'),
+    (r'selfie at arm[’\']s length', 'photo from a camera propped at eye level'),
+    (r'phone held at arm[’\']s length in one hand', 'both hands free'),
+    (r'both hands holding a phone or a cup', 'both hands holding a cup'),
+    (r'(?:one hand|her other hand|a hand) holds (?:the|her) phone(?: low at [^.]{1,30}height)?(?: at (?:eye level|arm[’\']s length))?',
+     'one hand rests at her side'),
+    (r'(?:holding|holds) the phone above her face(?: with one hand)?', 'her head turned to the camera'),
+    (r'she holds the phone herself or ', ''),
+    (r'keep exactly one phone in her own hand', 'keep both her hands empty'),
+    (r'phone visible in her hand', 'both hands visible and empty'),
+    (r'phone in (?:one|her) hand', 'both hands free'),
+    (r'phone in hand', 'both hands free'),
+    (r'\(if she is holding a phone, it is the other hand[^)]*\)', ''),
+    (r'front[- ]camera selfie', 'photo from a propped camera'),
+    (r'\bhandheld\b', 'propped'),
+    (r'\bselfies\b', 'photos'),
+    (r'\bselfie\b', 'photo'),
+    # leftovers of the rewrites above: no adjective of a device may survive.
+    (r'\bher free hand\b', 'one hand'),
+    (r'\bphone\s+(?=photo\b|snap\b|portrait\b|picture\b|shot\b)', ''),
+    (r'(?<![a-z])phone\s+(?=[a-z]+\s+(?:photo|shot|picture)\b)', ''),
+    # the same wording arrives in Russian from the SPA scene request: the engine
+    # only reads English, but a stray «селфи» still grows the arm it describes.
+    (r'телефон(?:ом)?\s+в\s+(?:её|ее)?\s*рук[а-я]*', 'both hands free'),
+    (r'селфи', 'фото'),
+)
+_NO_PHONE_LEFTOVER = re.compile(
+    r'[^,;.]*(?:\bselfie\b|POV|arm[’\']s length|holds? (?:the|her) phone|holding (?:the|her) phone'
+    r'|\bphone\b|селфи|телефон[^,;]*рук[а-я]*|держит[^,;]*телефон)[^,;.]*[,;.]*',
+    re.IGNORECASE)
+# Two head lines may not be pushed down by the lock: without the duo line the
+# engine draws one girl, without the private-place line lingerie lands in the
+# office. The lock sits behind them and in front of everything else.
+_NO_PHONE_HEAD_KEEP = ('TWO WOMEN IN FRAME:', 'PRIVATE PLACE OVERRIDE:')
+
+
+def no_phone_frame(prompt: str) -> str:
+    """Selfie-free prompt: rewrite the handheld wording, then put the lock first."""
+    text = (prompt or '').strip()
+    if not text or NO_PHONE_LOCK in text:
+        return text
+    for pattern, replacement in _NO_PHONE_PHRASES:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    # a phrase the table missed never reaches the engine as an instruction —
+    # the clause carrying it is dropped, the lock already says how the frame
+    # is shot.
+    text = _NO_PHONE_LEFTOVER.sub('', text)
+    lines = text.split('\n')
+    keep = 0
+    while keep < len(lines) and lines[keep].startswith(_NO_PHONE_HEAD_KEEP):
+        keep += 1
+    return '\n'.join(lines[:keep] + [NO_PHONE_LOCK] + lines[keep:])
+
 
 # ── V3.152.1: owner ТЗ (Задачи 3, 4, 5) — три жёстких замка промпта ────────
 #
@@ -1169,14 +1204,15 @@ NEGATIVE_BLOCK = (
 # the last-trimmed tier in _SPICY_TIERS (private_photo_service).
 
 AMATEUR_HOT_FRAME_LOCK = (
-    'AMATEUR HOT FRAME: this is a real candid photo she took herself on her phone, not a photoshoot. '
-    'Amateur mirror or handheld selfie: her own arm and the phone are in the frame, the framing is slightly off, '
+    'AMATEUR HOT FRAME: this is a real candid photo of herself, not a photoshoot. '
+    'Her camera was leaned against the wall, propped on a shelf or set by a countdown timer, so it sits outside '
+    'the frame and both her hands are free. The framing is slightly off, '
     'one corner of the room cut off. The room behind her is lived-in and a little messy — clothes on the chair, '
     'an unmade bed, a towel on the floor. Intimate low warm light from a lamp or a window, real skin with pores '
     'and soft shadows, nothing retouched. '
     'Never: a professional photoshoot, studio lighting, a posed editorial frame, an artificial or symmetrical '
     'portrait, high-fashion styling, a photographer\u2019s camera or a clean seamless backdrop. '
-    'Her face stays recognizable from the references even when the phone hides part of it.'
+    'Her face stays fully visible and recognizable from the references.'
 )
 
 # V3.166.5 (владелец, багфикс стартовых кадров): его скрин — сценарий про ванну,
@@ -1194,13 +1230,13 @@ STARTER_FRAME_LOCK = (
     'locked above.'
 )
 STARTER_AMATEUR_LOCK = (
-    'AMATEUR HOT FRAME: this is a real candid photo she took herself on her phone, not a photoshoot. Amateur '
-    'framing, slightly off center, one corner of the room cut off, intimate low warm light from a lamp or a '
+    'AMATEUR HOT FRAME: this is a real candid photo of herself, not a photoshoot. Amateur '
+    'framing from a camera propped on a shelf or a countdown timer, slightly off center, one corner of the room '
+    'cut off, intimate low warm light from a lamp or a '
     'window, real skin with pores and soft shadows, nothing retouched. The room behind her is exactly the '
     'place the scene line names and nothing more. Never: a professional photoshoot, studio lighting, a posed '
     'editorial frame, an artificial or symmetrical portrait, high-fashion styling, a photographer\u2019s camera '
-    'or a clean seamless backdrop. Her face stays recognizable from the references even when the phone hides '
-    'part of it.'
+    'or a clean seamless backdrop. Her face stays fully visible and recognizable from the references.'
 )
 # Офис и машина из её сценариев не могут остаться публичными местами — на этом
 # стоп-кадре модерация отказывает, и раньше сервер выкидывал случайную комнату
@@ -2658,7 +2694,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         + 
         f'TIME OF DAY: {request.time_of_day}. The light must match this time of day.\n'
         f'CAMERA/POSE: {angle}.\n'
-        + (f'POSE NOTE: {_pose_note(request, angle, shot_index, bool(amateur_lock))}. '
+        + (f'POSE NOTE: {_pose_note(request, shot_index)}. '
            'Use exactly this posture for this frame and keep it clearly different from the other frames of the set.\n'
            if request.pose_rotation else '')
         + (f'HAIR COLOR: {request.hair_color}. This is the character\'s current hair color; it overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n' if request.hair_color else '')
@@ -2679,25 +2715,18 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # Only the Seedream-flavoured legs (SpicyAPI and fal) ever render an
     # intimate look; the general-audience OpenAI/Gemini routes stay clothed, so
     # they must never be told she is in lingerie.
-    return duo_head + enforce_private_location(
+    return no_phone_frame(duo_head + enforce_private_location(
         body,
         f'{request.story_detail} {request.clothing} {request.location} {request.angle}',
         intimate=private_look and seedream,
         starter=starter,
-    )
+    ))
 
 
-def _pose_note(request: 'PhotoRequest', angle: str, shot_index: int, phone_in_frame: bool = False) -> str:
-    """One pose sentence, and never two hands when the phone is one of them.
-
-    V3.165.0: every private Seedream frame carries AMATEUR_HOT_FRAME_LOCK,
-    which puts her own arm and the phone in the shot whether or not the angle
-    says «selfie» — the lingerie angles do not. Counting the frame, not the
-    wording, is what stops the third arm."""
-    pose = request.pose_rotation[shot_index % len(request.pose_rotation)]
-    if phone_in_frame or _is_handheld_selfie(angle):
-        return _one_hand_pose(pose, shot_index) + ' (her other hand holds the phone)'
-    return pose
+def _pose_note(request: 'PhotoRequest', shot_index: int) -> str:
+    """One pose sentence. V3.166.12: it used to append «(her other hand holds
+    the phone)» — the phone is no longer in the frame, so the pose is the pose."""
+    return request.pose_rotation[shot_index % len(request.pose_rotation)]
 
 
 def _extract_openai_many(result) -> list[GeneratedPhoto]:

@@ -51,10 +51,13 @@ def test_llm_clients_have_timeouts():
 
 
 def test_hand_gesture_expressions_use_the_free_hand():
+    # V3.166.12: «free hand» meant «the hand the phone did not take» — with no
+    # phone in the frame the gesture simply names both hands.
     for key in ("'shush'", "'blow_kiss'"):
         start = EXPR.index(key + ': (')
         block = EXPR[start:EXPR.index('),', start)]
-        assert 'free hand' in block and 'exactly two hands' in block
+        assert 'the other hand' in block and 'exactly two hands' in block
+        assert 'phone' not in block.lower()
 
 
 def test_prompt_carries_two_hands_rule():

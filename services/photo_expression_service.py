@@ -153,8 +153,8 @@ EXPRESSIONS: dict[str, str] = {
     ),
     'blow_kiss': (
         'a playful affectionate moment leaning toward the camera to blow a kiss with '
-        'her one free hand near her lips (if she is holding a phone, it is the OTHER '
-        'hand; she still has exactly two hands in total), warm bright eyes and a soft '
+        'one hand near her lips and the other hand resting on her lap (she still has '
+        'exactly two hands in total), warm bright eyes and a soft '
         'smile. Flirty and endearing.'
     ),
     'licking_lips': (
@@ -187,9 +187,9 @@ EXPRESSIONS: dict[str, str] = {
         'distorted eye. Light, cheeky and photogenic.'
     ),
     'shush': (
-        'a conspirative playful look: the index finger of her one free hand gently '
-        'pressed to her lips in a mute gesture (if she is holding a phone, it is the '
-        'OTHER hand; she still has exactly two hands in total), bright eyes with a '
+        'a conspirative playful look: the index finger of one hand gently '
+        'pressed to her lips in a mute gesture, the other hand resting on her lap '
+        '(she still has exactly two hands in total), bright eyes with a '
         'hint of a smile, head slightly tilted. The hand is a natural slender female '
         'hand with five correct fingers.'
     ),

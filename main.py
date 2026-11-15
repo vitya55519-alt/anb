@@ -17747,9 +17747,12 @@ UNDRESS_ANATOMY_LOCK = (
     'HANDS: she is ONE person with exactly two arms and two hands, five correct fingers on each hand, '
     'both hands attached to her own shoulders. Never a third hand or arm, never a detached hand, never an '
     'extra or merged finger — count the hands before finishing. A hand already in her hair or on her body in '
-    'image 1 is one of those two hands: the reveal does not get a free third one. If the reveal needs both '
-    'her hands, the phone is not in the frame; if one hand holds the phone in image 1, it keeps holding it '
-    'and the reveal uses only her other hand.'
+    'image 1 is one of those two hands: the reveal does not get a free third one. '
+    # V3.166.12 (владелец: «убери телефон, всё селфи-рамки»): it used to order
+    # «if one hand holds the phone in image 1, it keeps holding it» — that kept
+    # the phone and the arm reaching to the camera alive in every paid frame.
+    'No device and no camera appear in the new photo: if image 1 shows one in her hand, that hand is empty now '
+    'and does the reveal, and nothing reaches toward the viewer.'
 )
 UNDRESS_PROMPT = (
     'Edit this exact photo. Keep the SAME adult woman: identical face, hair, makeup, body proportions, '
@@ -17777,9 +17780,10 @@ UNDRESS_TAIL = (
     'Natural slender female hands with five correct fingers. Photorealistic, same smartphone-photo look. '
     # V3.166.10: «ровно две руки» переехало в UNDRESS_ANATOMY_LOCK — первой
     # строкой промпта; здесь остаётся только то, как она выглядит.
-    'She has exactly two arms and two hands. If one hand holds the phone in image 1, it keeps holding it and the '
-    'reveal uses only her other hand; if the reveal needs both hands, the phone is gone from the photo. '
-    'Never a third hand or arm.'
+    # V3.166.12 (владелец): телефон из кадра убран и здесь — раньше хвост
+    # разрешал ему остаться, если он был в руке на исходном фото.
+    'She has exactly two arms and two hands, both free for the reveal; no device and no arm reaching toward '
+    'the camera appear in the photo. Never a third hand or arm.'
 )
 # V3.152.1: owner ТЗ (Задачи 4 и 5) — снятый кадр остаётся её собственным
 # фото с телефона, а не съёмкой в студии, и в общественном месте он не живёт:

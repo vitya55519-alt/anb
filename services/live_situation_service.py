@@ -75,53 +75,53 @@ class Situation(dict):
 MORNING_SITUATIONS = (
     Situation(key='bed', place='кровати',
               seed='проспала на целый час, лежу под одеялом совершенно без белья, простыня сбилась и одна нога торчит наружу',
-              image='morning bedroom, soft daylight through thin curtains, first-person phone selfie lying in bed, white duvet slipped low, bare shoulder and collarbone, messy sleep hair, sleepy smile, no underwear visible under the sheet'),
+              image='morning bedroom, soft daylight through thin curtains, candid photo of her, the camera propped nearby, lying in bed, white duvet slipped low, bare shoulder and collarbone, messy sleep hair, sleepy smile, no underwear visible under the sheet'),
     Situation(key='shower', place='душа',
               seed='еле стою в душе, вода уже почти холодная, заперлась изнутри, телефон лежит на полочке',
-              image='bathroom with steam and wet tiles, first-person phone selfie held above a towel wrapped loosely around her, wet hair, droplets on skin, warm mirror fog, one shoulder bare'),
+              image='bathroom with steam and wet tiles, candid photo of her standing in a towel wrapped loosely around her, the camera propped nearby, wet hair, droplets on skin, warm mirror fog, one shoulder bare'),
     Situation(key='blouse', place='перед зеркалом в спальне',
               seed='выбираю блузку на работу и надеваю её без лифчика, не могу решить какую',
-              image='bedroom mirror, first-person phone selfie, sheer white blouse with one button undone and no bra, morning light, hips turned, biting her lip'),
+              image='bedroom mirror, candid photo of her, the camera propped nearby, sheer white blouse with one button undone and no bra, morning light, hips turned, biting her lip'),
 )
 
 DAY_SITUATIONS = (
     Situation(key='bus', place='в душной маршрутке в пробке',
               seed='стою в пробке в битком набитой маршрутке, расстегнула верхнюю пуговицу, кто-то прижался сзади',
-              image='crowded city bus in a traffic jam, daytime, first-person phone selfie, blouse with the top button undone, hand on the metal rail, flushed cheeks, strangers blurred in the background'),
+              image='crowded city bus in a traffic jam, daytime, candid photo of her, the camera propped nearby, blouse with the top button undone, hand on the metal rail, flushed cheeks, strangers blurred in the background'),
     Situation(key='office', place='в женском туалете офиса',
               seed='сбежала с планёрки в женский туалет, закрылась в крайней кабинке, сижу на корточках',
-              image="office women's restroom, closed stall, first-person phone selfie sitting low, pencil skirt pulled tight, blouse untucked, heels off, nervous glance at the door"),
+              image="office women's restroom, closed stall, candid photo of her, the camera propped nearby, sitting low, pencil skirt pulled tight, blouse untucked, heels off, nervous glance at the door"),
     Situation(key='fitting', place='в примерочной ТЦ',
               seed='примерочная в торговом центре, юбка получилась слишком короткой, продавец спрашивает идёт ли',
-              image='shopping mall fitting room, mirror and bright spots, first-person phone selfie in a very short skirt that barely covers her, top still in her hand, embarrassed smile'),
+              image='shopping mall fitting room, mirror and bright spots, candid photo of her, the camera propped nearby, in a very short skirt that barely covers her, top still in her hand, embarrassed smile'),
 )
 
 EVENING_SITUATIONS = (
     Situation(key='lounge', place='в кальянной с подругой',
               seed='сижу в кальянной, полумрак, дым, подруга ушла к бару и оставила меня одну в нашем диване',
-              image='dim hookah lounge at night, warm lamp light and smoke, first-person phone selfie reclining on a velvet sofa, tight dress, lips near the mouthpiece'),
+              image='dim hookah lounge at night, warm lamp light and smoke, candid photo of her, the camera propped nearby, reclining on a velvet sofa, tight dress, lips near the mouthpiece'),
     Situation(key='after', place='у лифта после смены',
               seed='закончила смену, иду к лифту на каблуках, юбка задралась, в коридоре никого',
-              image='office corridor by the elevator at night, cold ceiling light, first-person phone selfie walking, work skirt riding up, tired but pleased smile'),
+              image='office corridor by the elevator at night, cold ceiling light, candid photo of her, the camera propped nearby, walking, work skirt riding up, tired but pleased smile'),
 )
 
 # Вечер пятницы и выходных — клуб и кроссовер с другой героиней бота (ТЗ).
 CLUB_SITUATIONS = (
     Situation(key='club', place='в VIP-кабинке клуба', friend=True,
               seed='мы с подругой в клубе, VIP-кабинка, музыка орёт, танцпол внизу, все нас видят, а нам всё равно',
-              image='luxury nightclub VIP booth at night, neon lights, two gorgeous women taking a mirror selfie, tight mini dresses, seductive looks, drinks on the table, crowded dance floor behind them'),
+              image='luxury nightclub VIP booth at night, neon lights, two gorgeous women side by side in front of the mirror, the camera propped on the table between them, tight mini dresses, seductive looks, drinks on the table, crowded dance floor behind them'),
     Situation(key='club_bath', place='в женской уборной клуба у большого зеркала', friend=True,
               seed='спряталась в женской уборной клуба от жары, большое зеркало, подруга поправляет мне платье сзади',
-              image="nightclub women's restroom, big lit mirror, first-person phone selfie, tight mini dress, neon lighting, her friend fixing the dress behind her in the reflection, red lipstick"),
+              image="nightclub women's restroom, big lit mirror, candid photo of her, the camera propped nearby, tight mini dress, neon lighting, her friend fixing the dress behind her in the reflection, red lipstick"),
 )
 
 NIGHT_SITUATIONS = (
     Situation(key='hallway', place='в прихожей, только что из дома',
               seed='наконец дома, ноги гудят, стянула платье прямо в прихожей и осталась в одном белье, завтра рано',
-              image='dark apartment hallway at night, single lamp, first-person phone selfie just home, dress pooled around her ankles in her hand, lace underwear, tired legs, hair down'),
+              image='dark apartment hallway at night, single lamp, candid photo of her, the camera propped nearby, just home, dress pooled around her ankles in her hand, lace underwear, tired legs, hair down'),
     Situation(key='bath', place='в ванне',
               seed='ванна, бокал рядом, вода уже остывает, завтра выходной и мне никуда не надо',
-              image='bathroom at night, candle and warm lamp light, first-person phone selfie over the edge of a bubble bath, wet arms on the porcelain, wine glass beside her, half-closed eyes'),
+              image='bathroom at night, candle and warm lamp light, candid photo of her, the camera propped nearby, over the edge of a bubble bath, wet arms on the porcelain, wine glass beside her, half-closed eyes'),
 )
 
 
@@ -189,7 +189,8 @@ LOCATION_CONSISTENCY = (
 IMAGE_LOCATION_LOCK = (
     'LOCATION LOCK: the place, the light and the clothes of this photo are the '
     'ones she just described in the chat. Do not move her to a bedroom or a '
-    'bathroom, do not change the outfit, keep exactly one phone in her own hand.'
+    'bathroom, do not change the outfit, keep both her hands free — the camera '
+    'is propped somewhere, never held.'
 )
 
 # V3.152.1: owner ТЗ (Задача 5) — откровенный кадр в общественном месте не
@@ -199,8 +200,8 @@ IMAGE_PRIVATE_LOCATION_LOCK = (
     'LOCATION LOCK: the photo is set in the private room named above — her '
     'bedroom, bathroom, home or hotel room. Keep its light and its mood, do not '
     'put her back into a bar, club, office, street, mall or any place where '
-    'other people could see her, do not add bystanders, keep exactly one phone '
-    'in her own hand.'
+    'other people could see her, do not add bystanders, keep both her hands '
+    'free — the camera is propped somewhere, never held.'
 )
 
 
@@ -239,8 +240,11 @@ FORMAT_RULES = (
     'MESSAGE обязана кончаться вопросом про фото — своими словами, но смысл '
     'ровно такой: «{peek}». Тарелку с ценой рисует приложение, в тексте ценник '
     'не ставь.\n'
-    'IMAGE_PROMPT — английская инструкция для генератора: first-person phone '
-    'selfie, ровно то место, свет и одежда из MESSAGE, взрослая женщина, '
+    'IMAGE_PROMPT — английская инструкция для генератора: кадр начинается со '
+    'слов "candid photo of her, the camera propped on a shelf, fixed on a small '
+    'tripod or set by a countdown timer" — в её руках ничего нет, ни одна рука '
+    'не тянется к камере, телефона в кадре и в отражении нет; '
+    'ровно то место, свет и одежда из MESSAGE, взрослая женщина, '
     'дерзкий взгляд. Никакого текста на кадре, никакого «AI», без детей. Это '
     'никому не отправляется, это только картинка.\n'
     'V3.152.1 (Задача 5): если ты отправляешь откровенное фото (в белье или '

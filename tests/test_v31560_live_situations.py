@@ -143,8 +143,10 @@ def test_every_phase_of_the_day_has_its_own_situations():
         assert len(pool) >= 2, when
         for sit in pool:
             assert sit['seed'] and sit['place']
-            # кадр всегда first-person selfie и всегда английский
-            assert 'selfie' in sit['image'], sit['key']
+            # V3.166.12 (владелец): кадр больше не селфи — камера стоит рядом,
+            # руки свободны. Кадр по-прежнему английский.
+            assert 'candid photo of her' in sit['image'] or 'in front of the mirror' in sit['image'], sit['key']
+            assert 'selfie' not in sit['image'] and 'phone' not in sit['image'].replace('smartphone', ''), sit['key']
             assert sit['image'].isascii(), sit['key']
 
 

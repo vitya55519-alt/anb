@@ -528,7 +528,7 @@ PRIVATE_POSE_POOL = [
     'standing with her back half-turned, over-the-shoulder glance back at camera',
     'reclining against pillows, arms stretched above head',
     'sitting on the floor leaning against the wall, knees up',
-    'standing in front of a mirror, phone POV selfie angle',
+    'standing in front of a mirror, the camera propped at eye level',
     'kneeling on the bed facing the camera, leaning slightly forward',
     'sitting in a chair, legs draped over one armrest',
     'lying on her back, shot from above at a slight angle',
@@ -536,12 +536,12 @@ PRIVATE_POSE_POOL = [
     'leaning against the wall, one knee bent, hands behind her back',
     'kneeling on the bed, turning to face the camera',
     # V3.59.3: self-touch poses (owner request) — hands on her own body.
-    'gently cupping her breasts with both hands without pressing them, lips parted, eyes on the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
-    'body turned three-quarters away, face turned back to the camera over her shoulder, one hand gripping her own bottom — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
-    'reclining propped on one elbow facing the camera, one hand on her breast, the other sliding down her stomach — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
-    'kneeling with her arms pushing her breasts together, leaning toward the camera — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
-    'standing side-on to a mirror, face to the camera, one hand resting on her own bottom — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
-    'sitting with legs apart on the bed, hands running up her inner thighs — natural slender female hands with five correct fingers each, both hands free (no phone in hand — tripod or mirror framing); her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'gently cupping her breasts with both hands without pressing them, lips parted, eyes on the camera — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'body turned three-quarters away, face turned back to the camera over her shoulder, one hand gripping her own bottom — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'reclining propped on one elbow facing the camera, one hand on her breast, the other sliding down her stomach — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'kneeling with her arms pushing her breasts together, leaning toward the camera — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'standing side-on to a mirror, face to the camera, one hand resting on her own bottom — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
+    'sitting with legs apart on the bed, hands running up her inner thighs — natural slender female hands with five correct fingers each, both hands free for the pose; her face stays clearly visible and turned to the camera, exactly the same face as reference image 1',
 ]
 
 # V3.60.1: full-body and whole-room shots left her face a few dozen pixels
@@ -551,7 +551,7 @@ PRIVATE_CAMERA_POOL = [
     'three-quarter framing from the knees up, eye level, her face large and sharp',
     'waist-up framing at eye level, her face sharp and well lit',
     'slightly high angle from the thighs up, face turned to the camera',
-    'mirror selfie framing from the thighs up, her face clearly visible in the mirror',
+    'mirror framing from the thighs up, her face clearly visible in the mirror',
     'close medium shot from the hips up, soft light on her face',
 ]
 
@@ -561,7 +561,7 @@ PRIVATE_CAMERA_POOL = [
 FETISH_CAMERA_POOL = [
     'full-body framing with her head and both bare feet inside the picture, eye level, her face sharp',
     'a slightly low angle from the bed, her whole body in the frame, her face lit',
-    'mirror selfie framing of her whole body, her face clearly visible in the mirror',
+    'mirror framing of her whole body, her face clearly visible in the mirror',
 ]
 
 
@@ -597,16 +597,13 @@ def build_private_photo_prompt(
     else:
         parts.append(f"Subject: {character_description}")
     # V3.152.1: owner ТЗ (Задача 4) — «фото выглядят слишком студийно». The
-    # hot categories are her phone pictures, not a shoot, so the amateur
+    # hot categories are her own candid pictures, not a shoot, so the amateur
     # modifiers go right under the identity: that is the one place the 4900
     # character cap of SpicyAPI never trims. «Фотостудия» stays studio-lit
     # because he picked that set with his own hands.
     if request.category in HOT_PRIVATE_CATEGORIES and request.location_id != 'studio':
         from services.photo_service import AMATEUR_HOT_FRAME_LOCK
         parts.append(AMATEUR_HOT_FRAME_LOCK)
-        amateur_hot = True
-    else:
-        amateur_hot = False
     
     # Обстановка
     location = next((loc for loc in LOCATIONS if loc["id"] == request.location_id), None)
@@ -700,13 +697,8 @@ def build_private_photo_prompt(
     # V3.45.23: random pose + camera so consecutive photos never repeat.
     pose_place = request.type_id if place_typed else (request.location_id if location else '')
     pose = random.choice(_pose_pool_for(pose_place))
-    if amateur_hot:
-        # V3.165.0: the amateur lock already puts her phone in the frame, and
-        # half of PRIVATE_POSE_POOL spends both hands there («both hands free
-        # — tripod or mirror framing», «hands in hair»). Phone + those two
-        # hands = the third arm of the owner's screenshot. One hand is taken.
-        from services.photo_service import _one_hand_pose
-        pose = f'{_one_hand_pose(pose, random.randrange(1000))} (her other hand holds the phone)'
+    # V3.166.12: the «take one hand for the phone» branch is gone with the
+    # phone itself — PRIVATE_POSE_POOL spends both hands as it says.
     # V3.165.0 (#104): a fetish theme says what she wears AND what her hands do;
     # a second random pose on top of it is how a frame grows a third arm.
     if not request.theme:
@@ -839,7 +831,8 @@ _SPICY_TIERS = (
      'OUTFIT:', 'FACE LOCK:', 'BUST LOCK:', 'REFERENCE IMAGE 1', 'POSE NOTE:',
      'Photorealistic smartphone', 'Avoid identity drift', 'REFERENCE IMAGE 3'),
     ('PHOTO IDENTITY:', 'HARD SUBJECT LOCK:'),
-    ('TWO WOMEN IN FRAME:', 'AMATEUR HOT FRAME:', 'PRIVATE PLACE OVERRIDE:', 'HANDS:', 'STARTER FRAME:'),
+    ('TWO WOMEN IN FRAME:', 'AMATEUR HOT FRAME:', 'PRIVATE PLACE OVERRIDE:', 'HANDS:', 'STARTER FRAME:',
+     'NO HANDHELD CAMERA:'),
 )
 
 
@@ -958,8 +951,13 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
     result_url: Optional[str] = None
     _spicy_note_error('')
     try:
+        from services.photo_service import no_phone_frame
         input_block: Dict[str, Any] = {
-            "prompt": _fit_spicy_prompt(prompt),
+            # V3.166.12 (владелец: «убери телефон, всё селфи-рамки»): every frame
+            # SpicyAPI draws — photo, «Наедине», «Раздеть», живая ситуация — goes
+            # through here, so the selfie wording is rewritten and the
+            # camera-outside-her-body lock becomes the first line in one place.
+            "prompt": _fit_spicy_prompt(no_phone_frame(prompt)),
             # V3.58.2: Seedream 5.0 Pro schema — an unknown field (the old
             # "size") is a 400, so only documented fields are sent.
             "aspect_ratio": "3:4",  # portrait
@@ -1086,7 +1084,8 @@ async def generate_private_photo_nude(request: PrivatePhotoRequest, prompt: str)
 
 LIVE_IDENTITY_LOCK = (
     'IDENTITY: the woman in the reference photo is her — keep her face, hair and '
-    'body exactly as in the reference. Real phone selfie taken by herself, one '
+    'body exactly as in the reference. A real candid photo of her, taken with the camera propped or a countdown '
+    'timer, one '
     'head, two arms, no duplicated limbs, no text and no watermark on the frame.'
 )
 

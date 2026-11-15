@@ -39,4 +39,6 @@ def test_least_important_lines_go_first():
 def test_request_body_uses_fitted_prompt():
     import inspect
     src = inspect.getsource(pps._spicyapi_render_once)
-    assert '"prompt": _fit_spicy_prompt(prompt)' in src
+    # V3.166.12: the selfie-free rewrite runs inside the fitter call, so no
+    # frame — scene, «Наедине», «Раздеть», живая ситуация — can skip it.
+    assert '"prompt": _fit_spicy_prompt(no_phone_frame(prompt))' in src
