@@ -525,3 +525,53 @@ DUO_TEASER = {
 def duo_teaser(lang: str, host: str, guest: str) -> str:
     text = DUO_TEASER.get(app_lang(lang), DUO_TEASER[EN])
     return text.format(host=host or 'я', guest=guest or 'она')
+
+
+# V3.166.9 (владелец): «пока генерируется фото, мне бы хотелось, чтобы она
+# задала какой-нибудь вопрос». Генерация кадра ушла в фон, и эти строки — то, что
+# он читает в ожидании: она говорит сама, коротко, и чаще всего заканчивает
+# вопросом, чтобы разговор не встал, пока картинка дорисовывается.
+PHOTO_WAIT_LINES = {
+    'ru': ('ещё пара секунд, я делаю кадр. хочу, чтобы тебе понравилось 🙂',
+           'секунду, навожу резкость… какой ракурс тебе нравится больше — поближе или со стороны?',
+           'кадрирую 🔥 ты сейчас дома или где-то в дороге?',
+           'даю тебе пару секунд… скажешь потом, как тебе?'),
+    'en': ('a couple more seconds, i am taking the shot. i want you to like it 🙂',
+           'one sec, focusing… which angle do you like better — close up or from the side?',
+           'framing it 🔥 are you home right now or on the road?',
+           'give me a couple of seconds… you will tell me after how it came out?'),
+    'es': ('un par de segundos más, estoy haciendo la foto. quiero que te guste 🙂',
+           'un segundo, enfoco… ¿qué ángulo te gusta más, de cerca o de lado?',
+           'encuadrando 🔥 ¿estás en casa o por ahí?',
+           'dame un par de segundos… después me cuentas qué te parece?'),
+    'it': ('ancora un paio di secondi, sto scattando. voglio che ti piaccia 🙂',
+           'un secondo, metto a fuoco… quale angolo preferisci, da vicino o di lato?',
+           'sto inquadrando 🔥 sei a casa o sei in giro?',
+           'dammi un paio di secondi… poi mi dici come ti sembra?'),
+    'fr': ('encore deux secondes, je prends la photo. j’aimerais que ça te plaise 🙂',
+           'une seconde, je fais la mise au point… tu préfères quel angle, de près ou de côté ?',
+           'je cadre 🔥 tu es chez toi ou en chemin ?',
+           'laisse-moi deux secondes… après tu me diras ce que tu en penses ?'),
+    'zh': ('再等几秒，我在拍照啦。想让你喜欢 🙂',
+           '稍等，我在对焦…你更喜欢哪个角度，近一点还是侧面？',
+           '在取景 🔥 你现在在家还是在路上？',
+           '给我几秒钟…拍完你告诉我喜不喜欢？'),
+    'ja': ('あと少し、写真を撮ってるよ。気に入ってほしいな 🙂',
+           'ちょっと待って、ピント合わせてる…アングルは近いほうが好き？横からのほうがいい？',
+           '構図を決めてる 🔥 今お家にいる？それとも外出中？',
+           'もう少しだけ待ってて…出来たらどうだったか教えてね？'),
+    'bn': ('আরও কয়েক সেকেন্ড, আমি ছবি তুলছি। চাই তোমার ভালো লাগুক 🙂',
+           'এক সেকেন্ড, ফোকাস করছি… কোন ভঙ্গি তোমার বেশি পছন্দ — কাছে নাকি পাশ থেকে?',
+           'ফ্রেম করছি 🔥 তুমি এখন বাড়িতে না পথে?',
+           'আমাকে কয়েক সেকেন্ড দাও… তুমি পরে বলো কেমন লাগল?'),
+}
+
+DEFAULT_PHOTO_WAIT_LANG = 'ru'
+
+
+def photo_wait_line(lang: str) -> str:
+    """One of her waiting lines while the frame is still being drawn."""
+    import random
+    code = app_lang(lang)
+    lines = PHOTO_WAIT_LINES.get(code) or PHOTO_WAIT_LINES[DEFAULT_PHOTO_WAIT_LANG]
+    return random.choice(lines)

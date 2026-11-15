@@ -5245,6 +5245,13 @@ function insertChatReply(j) {
     box.insertAdjacentHTML('beforeend', chatBubble('bot', parts[0], null));
     if (parts.length > 1) playFollowups(parts.slice(1));
   }
+  // V3.166.9 (владелец): «пока генерируется фото... пусть она задаст вопрос».
+  // Её слова пришли сразу, кадр ещё рисуется — под ними её короткая реплика,
+  // и мы ждём картинку, не дёргая его ответ.
+  if (j.photo_pending) {
+    if (j.photo_wait) box.insertAdjacentHTML('beforeend', chatBubble('bot', j.photo_wait, null));
+    waitForChatPhoto(CHAT ? CHAT.id : '');
+  }
   // V3.88.0: the early locked photo — a blurred «только для тебя» card; a tap
   // opens the Premium pay sheet (the 3-day trial first while eligible).
   if (j.locked_tease && j.locked_tease.url) {
@@ -6343,6 +6350,42 @@ function pollNewChatPhoto(characterId, onPhoto, onGiveUp) {
       }
     } catch (e) { /* keep polling */ }
     if (tries < 40) setTimeout(tick, 6000); else if (onGiveUp) onGiveUp();
+  };
+  tick();
+}
+
+// V3.166.9 (владелец): её слова пришли сразу, кадр дорисовывается в фоне.
+// Спрашиваем только про него — её ответ этого тапа уже на экране. Пузырь с
+// её вопросом сам говорит, что кадр ещё в работе, второй плашка не нужна.
+let PHOTO_WAIT_FOR = '';
+function waitForChatPhoto(characterId) {
+  if (!characterId || PHOTO_WAIT_FOR === characterId) return;
+  PHOTO_WAIT_FOR = characterId;
+  const box = document.getElementById('chatMsgs');
+  const mine = () => CHAT && CHAT.id === characterId;
+  const done = () => { if (PHOTO_WAIT_FOR === characterId) PHOTO_WAIT_FOR = ''; };
+  let tries = 0;
+  const tick = async () => {
+    tries++;
+    if (!mine()) { done(); return; }
+    try {
+      const r = await fetch('/webapp/api/chat/photo-wait?init_data=' + encodeURIComponent(tg.initData || '') +
+        '&character_id=' + encodeURIComponent(characterId));
+      const j = await r.json();
+      if (j.state === 'ready') {
+        done();
+        if (j.photo_url || j.reply || j.photo_block) insertChatReply(j); else loadChatHistory(characterId);
+        box.scrollTop = box.scrollHeight;
+        // второй кадр этого же диалога ещё рисуется — ждать дальше
+        if (j.more) setTimeout(() => waitForChatPhoto(characterId), 2000);
+        return;
+      }
+      // записи больше нет: её забрал другой опрос, приложение перезапустили или
+      // кадр не получился — на экране уже всё, что она успела сказать.
+      if (j.state === 'idle') { done(); return; }
+    } catch (e) { /* сеть моргнула — ждём дальше, до своего потолка попыток */ }
+    if (tries < 45) setTimeout(tick, 4000);
+    else { done(); loadChatHistory(characterId); }   // ждал-ждал: показать историю
   };
   tick();
 }

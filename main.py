@@ -59,7 +59,8 @@ from services.user_service import (
     set_adult_confirmed, is_adult_confirmed,
 )
 # V3.22.0: RU/EN interface layer (reply keyboard + top-level menus).
-from services.ui_lang import EN, RU, menu_rows, app_lang, flow_text, full_user_lang, kb_label, kb_pair, user_lang
+from services.ui_lang import (EN, RU, menu_rows, app_lang, flow_text, full_user_lang, kb_label,
+                              kb_pair, photo_wait_line, user_lang)
 from services.chat_service import (
     join_thought_message, message_block, reply as anna_reply, thought_block)
 from services.access_service import can_send_message, is_premium
@@ -15151,6 +15152,15 @@ def _pings_app_reply(turn):
     return wrapper
 
 
+# V3.166.9: что уезжает из ответа, когда кадр дорисовывается фоном. Её слова уже
+# дошли, поэтому подпись кадра в квитанции не нужна — а вот цена, остаток и
+# коллекция приходят вместе с картинкой, иначе он узнаёт списание только из
+# следующего открытия чата.
+PHOTO_WAIT_KEYS = ('photo_url', 'paid_photo', 'set_completed', 'gallery',
+                   'free_photos_left', 'credits_left')
+PHOTO_WAIT_NOTE_KEYS = ('reply', 'photo_block', 'photo_price', 'locked_tease')
+
+
 @_pings_app_reply
 async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str,
                             text: str, extra: dict | None = None) -> web.Response:
@@ -15336,6 +15346,45 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
 
         return await asyncio.to_thread(_deliver)
 
+    async def _photo_now(scene: str, req, words: str, pay: str | None,
+                         extra_out: dict | None = None) -> web.Response:
+        """V3.166.9 (владелец): «пока генерируется фото, мне бы хотелось, чтобы
+        она задала какой-нибудь вопрос».
+
+        Её слова уходят в этом же ответе, кадр дорисовывается фоном и приходит
+        своим пузырём, а в ожидании SPA показывает одну её короткую строку.
+        `_photo_turn` не тронут: та же генерация, та же сцена, тот же гейт и то
+        же списание — просто они больше не держат его ответ.
+        """
+        from services import chat_photo_wait
+        token = await asyncio.to_thread(chat_photo_wait.begin, telegram_id, character_id)
+
+        async def _render():
+            try:
+                got = await _photo_turn(scene, req, said=words, pay=pay)
+            except Exception:
+                logger.exception('webapp chat background frame failed user=%s scene=%s',
+                                 telegram_id, scene)
+                got = None
+            if got is None:
+                blocked = await asyncio.to_thread(_chat_photo_blocked, uid, character_id,
+                                                  'failed', None, telegram_id=telegram_id,
+                                                  lang=user_language)
+                receipt = {k: v for k, v in blocked.items() if k in PHOTO_WAIT_NOTE_KEYS}
+            else:
+                receipt = {k: v for k, v in got.items() if k in PHOTO_WAIT_KEYS and v}
+                # кадр приехал уже после её ответа — если он вышел из приложения,
+                # в боте должно быть «📸 прислала фото», а не только её слова.
+                _app_ping(telegram_id, character_id, str(got.get('reply') or ''), 'photo')
+            await asyncio.to_thread(chat_photo_wait.deliver, telegram_id, character_id,
+                                    token, receipt)
+
+        _spawn_background(_render())
+        payload = {'ok': True, 'reply': words, 'photo_pending': True,
+                   'photo_wait': photo_wait_line(user_language)}
+        payload.update(extra_out if extra_out is not None else (extra or {}))
+        return web.json_response(payload)
+
     try:
         answer = await anna_reply(
             telegram_id, user_info.get('first_name') or 'ты', text,
@@ -15355,6 +15404,11 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     # вызова, потом картинка — ровно из анкеты, своим пузырём под её текстом.
     # Гейт, сцена и цена остаются те же, что посчитал _prelude.
     if photo_scene:
+        # V3.166.9 (владелец): когда у неё есть что сказать, эти слова уходят
+        # сразу, а кадр дорисовывается фоном; без её слов пузыря с подписью не
+        # было бы, и старый путь остаётся как есть.
+        if said:
+            return await _photo_now(photo_scene, photo_req, said, photo_pay)
         payload = await _photo_turn(photo_scene, photo_req, said=said, pay=photo_pay)
         if payload:
             return web.json_response(payload)
@@ -15385,12 +15439,12 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             return req, _chat_photo_gate(telegram_id, character_id, 'selfie')
         req, block = await asyncio.to_thread(_promise_gate)
         if not block:
-            payload = await _photo_turn('selfie', req, said=said)
-            if payload:
-                if draft_offer:
-                    payload['draft'] = draft_offer
-                return web.json_response(payload)
-            block = 'failed'
+            # V3.166.9 (владелец): её «лови 📸» доходит сразу, кадр приходит,
+            # когда дорисуется; черновик под её словами — как и раньше.
+            wait_extra = dict(extra or {})
+            if draft_offer:
+                wait_extra['draft'] = draft_offer
+            return await _photo_now('selfie', req, said, None, wait_extra)
         if block in ('peaches', 'premium', 'spicy', 'free_used', 'stage', 'adult'):
             # keep her words, add the honest «out of peaches» / «Premium» note + button
             # V3.113.0: «лови 😏» with the free photo already used went out with
@@ -15402,12 +15456,6 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             if block in _LOCKED_CARD_REASONS:
                 out['locked_tease'] = {'url': f'/webapp/locked/{character_id}.jpg'}
             return web.json_response(out)
-        if block == 'failed':
-            note = CHAT_PHOTO_BLOCK_TEXT['failed']
-            await asyncio.to_thread(save_message, uid, character_id, 'assistant', note)
-            return web.json_response({'ok': True,
-                                      'reply': join_thought_message(thought_said, said + '\n\n' + note),
-                                      **(extra or {})})
     payload = {'ok': True, 'reply': answer}
     if draft_offer:
         payload['draft'] = draft_offer
@@ -16262,6 +16310,29 @@ async def _webapp_api_call_end(request: web.Request) -> web.Response:
                             metadata={'character_id': character_id, 'mode': 'premium',
                                       'seconds': round(float(body.get('seconds') or 0), 1)})
     return web.json_response({'ok': True})
+
+
+async def _webapp_api_chat_photo_wait(request: web.Request) -> web.Response:
+    """V3.166.9 (владелец): Mini App спрашивает, дорисовался ли кадр, который
+    ушёл в фон вместе с её словами. Отвечает один раз: готовый ответ забирается,
+    чтобы не показать тот же кадр дважды."""
+    from services import chat_photo_wait
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    character_id = str(request.query.get('character_id', ''))[:64]
+    if not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    receipt = await asyncio.to_thread(chat_photo_wait.take, telegram_id, character_id)
+    if receipt is not None:
+        more = await asyncio.to_thread(chat_photo_wait.waiting, telegram_id, character_id)
+        return web.json_response({'ok': True, 'state': 'ready', 'more': more, **receipt})
+    pending = await asyncio.to_thread(chat_photo_wait.pending, telegram_id, character_id)
+    return web.json_response({'ok': True, 'state': 'rendering' if pending else 'idle'})
 
 
 async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
@@ -20089,6 +20160,8 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/ws/call', _webapp_ws_call)
     app.router.add_post('/webapp/api/chat/speak', _webapp_api_chat_speak)
     app.router.add_post('/webapp/api/chat/photo', _webapp_api_chat_photo)
+    # V3.166.9 (владелец): кадр, ушедший дорисовываться в фон.
+    app.router.add_get('/webapp/api/chat/photo-wait', _webapp_api_chat_photo_wait)
     app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
     app.router.add_post('/webapp/api/chat/marital', _webapp_api_chat_marital)
     app.router.add_get('/webapp/api/marital/arc', _webapp_api_marital_arc)
