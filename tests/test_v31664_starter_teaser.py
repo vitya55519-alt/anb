@@ -181,11 +181,11 @@ def test_the_frame_turn_sends_her_words_then_the_picture():
 
 
 def test_the_app_shows_her_words_as_a_message_and_offers_undressing():
-    flow = WEBAPP[WEBAPP.index('function insertChatReply(j)'):WEBAPP.index('// V3.88.0: the early locked photo')]
+    flow = WEBAPP[WEBAPP.index('function insertChatReply(j, chatId)'):WEBAPP.index('// V3.88.0: the early locked photo')]
     assert 'if (j.starter)' in flow
     assert "chatBubble('bot', j.reply, null)" in flow     # сначала её строка
     assert "media_kind: 'photo', media_url: j.photo_url" in flow
-    tease = WEBAPP[WEBAPP.index('function undressTease(mediaUrl)'):WEBAPP.index('function renderChatReply(j)')]
+    tease = WEBAPP[WEBAPP.index('function undressTease(mediaUrl)'):WEBAPP.index('function renderChatReply(j, chatId)')]
     assert "indexOf('/webapp/starter/') !== 0" in tease    # «🔥 Раздеться» и под стартовым кадром
 
 

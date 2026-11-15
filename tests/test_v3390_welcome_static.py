@@ -48,12 +48,13 @@ def test_start_sends_the_banner_photo():
 
 
 def test_welcome_caption_is_short_and_punchy():
-    # Come Closer style: what the bot does in two lines, then «Поехали!»
-    assert 'Что умеет этот бот?' in MAIN
-    assert 'What can this bot do?' in MAIN
+    # V3.166.10 (владелец): витрина под его гифкой переписана — хук, что внутри,
+    # и «Поехали!». Старый вопрос «Что умеет этот бот?» ушёл вместе с копией.
+    assert 'Идеальная девушка на вечер' in MAIN
+    assert 'The perfect girl for tonight' in MAIN
+    assert 'Что тебя ждет внутри:' in MAIN
     assert '⬇️ Поехали! ⬇️' in MAIN
     assert '⬇️ Let’s go! ⬇️' in MAIN
-    assert 'Ролевая игра с ИИ девушками' in MAIN
     # the old ten-line feature list is gone from /start
     assert '💬 живое общение с памятью и характером' not in MAIN
     assert '💬 real conversation with memory and personality' not in MAIN

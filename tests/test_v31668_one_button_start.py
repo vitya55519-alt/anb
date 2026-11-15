@@ -120,7 +120,7 @@ def test_the_start_copy_stops_asking_for_confirmation():
                  'Confirm you are 18+', 'accept the terms of use'):
         assert gone not in start, gone
     # the features line and the CTA stay — only the ask is gone
-    assert 'Что умеет этот бот?' in start
+    assert 'Идеальная девушка на вечер' in start
     assert '⬇️ Поехали! ⬇️' in start
     assert '⬇️ Let’s go! ⬇️' in start
     assert 'start_keyboard(lang)' in start

@@ -247,7 +247,9 @@ def test_chat_frontend_flow():
     assert 'function loadChatHistory(characterId)' in INDEX
     assert 'function sendChat(retryText)' in INDEX
     assert "fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId))" in INDEX
-    assert "body: JSON.stringify({ character_id: CHAT.id, text: text })," in INDEX
+    # V3.166.10 (владелец): id диалога берётся до первого await — ответ не должен
+    # уехать в тот чат, который открыт к моменту, когда она успела ответить.
+    assert "body: JSON.stringify({ character_id: chatId, text: text })," in INDEX
     # consent / limit toasts instead of silent failures
     assert "j.error === 'consent'" in INDEX
     assert "j.error === 'premium_required'" in INDEX

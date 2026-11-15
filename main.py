@@ -2298,24 +2298,38 @@ async def start(message: types.Message, command: CommandObject):
         if first_start['credits'] or first_start['trial_days']:
             track_event(uid, 'first_start_bonus_granted', metadata=first_start)
         lang = user_lang(message.from_user.id)
+        # V3.166.10 (владелец): новый текст приветствия под его гифкой. Число в
+        # строке про сообщения берётся из того же лимита, который держит стена,
+        # — выключишь кап в окружении, и витрина не соврёт.
+        from services.daily_limit import DAILY_CAP
         if lang == EN:
             welcome = (
-                'What can this bot do?\n\n'
-                'Roleplay with AI girls: live chats with memory, photos for your scenarios, AI video and voice.\n'
-                'The relationship grows through levels 1–10 — closer and more open at every level.\n\n'
-                '🎁 free photo credits for your first photo are already on your account.\n'
-                '⬇️ Let’s go! ⬇️\n\n'
+                'The perfect girl for tonight... or forever. 🔥\n'
+                'Forget the boring bots that lecture you. Here you drive the story.\n\n'
+                'What is waiting inside:\n'
+                '🌸 Two modes: pick the light «Romance» or the hard «18+ uncensored».\n'
+                '📸 Live content: undress her right in the chat and ask for photos of your own fetishes.\n'
+                '🎙 Voice: she answers your fantasies with voice notes.\n'
+                '📈 Growth: take the relationship from small talk to full surrender.\n\n'
+                + (f'🎁 {DAILY_CAP} free messages to start with.\n' if DAILY_CAP
+                   else '🎁 Messages without a limit.\n')
+                + '⬇️ Let’s go! ⬇️\n\n'
             )
             if has_referral:
                 welcome += 'you arrived via a friend’s invite — bonuses for both of you land as soon as you start chatting.\n'
             welcome += 'Open the app — she is already waiting.'
         else:
             welcome = (
-                'Что умеет этот бот?\n\n'
-                'Ролевая игра с ИИ девушками: живые чаты с памятью, фото по твоим сценариям, AI-видео и голос.\n'
-                'Отношения растут по уровням 1–10 — с каждым уровнем ближе и откровеннее.\n\n'
-                '🎁 бесплатные фото-кредиты на первое фото уже на твоём счету.\n'
-                '⬇️ Поехали! ⬇️\n\n'
+                'Идеальная девушка на вечер... или навсегда. 🔥\n'
+                'Забудь про скучных ботов, которые читают нотации. Здесь ты управляешь сюжетом.\n\n'
+                'Что тебя ждет внутри:\n'
+                '🌸 Два режима: Выбирай легкую «Романтику» или жесткий «18+ Без цензуры».\n'
+                '📸 Живой контент: Раздевай её прямо в чате и запрашивай фото по своим фетишам.\n'
+                '🎙 Голос: Реагирует аудио-сообщениями на твои фантазии.\n'
+                '📈 Развитие: Прокачивай отношения от знакомства до полного подчинения.\n\n'
+                + (f'🎁 Дарим {DAILY_CAP} бесплатных сообщений для старта.\n' if DAILY_CAP
+                   else '🎁 Сообщения без лимита.\n')
+                + '⬇️ Поехали! ⬇️\n\n'
             )
             if has_referral:
                 welcome += f'пришёл по приглашению друга — напиши ей {REFERRAL_QUALIFY_MESSAGES} сообщений, и вам обоим капнет по {REFERRAL_INVITEE_CREDITS} 🍑.\n'
@@ -16335,6 +16349,48 @@ async def _webapp_api_chat_photo_wait(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'state': 'rendering' if pending else 'idle'})
 
 
+async def _webapp_api_chat_arrived(request: web.Request) -> web.Response:
+    """V3.166.10 (владелец): «какой-то пуш прямо в приложении — мол Анна написала,
+    тапаешь и попадаешь в её чат». Считается по тому же unread, что рисует бейджи
+    на вкладке «Чаты» (V3.52.0): её реплики позже его последнего хода и позже
+    момента, когда он в последний раз открывал диалог. Тот чат, что открыт сейчас,
+    исключается — там он и так всё видит. Не больше трёх, самые свежие первыми."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    except_id = str(request.query.get('except', ''))[:64]
+
+    def _load():
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '',
+                          language_code=user_info.get('language_code'))
+        return webapp_service.api_chat_list(uid, telegram_id)
+
+    chats = await asyncio.to_thread(_load)
+    arrived = []
+    for row in chats:
+        if not row.get('unread') or row.get('last_role') != 'assistant':
+            continue
+        if row.get('id') == except_id:
+            continue
+        arrived.append({
+            'id': row['id'],
+            'name': row.get('name') or '',
+            'photo': row.get('photo') or '',
+            'emoji': row.get('emoji') or '👩',
+            'status': row.get('status') or 'active',
+            'custom': bool(row.get('custom')),
+            'message': (row.get('last_message') or '')[:90],
+            'unread': int(row.get('unread') or 0),
+        })
+        if len(arrived) >= 3:
+            break
+    return web.json_response({'ok': True, 'arrived': arrived})
+
+
 async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
     """V3.57.0: the user sends a photo (a selfie, for example) in the app chat —
     the vision model looks at it and she reacts in character (compliments him).
@@ -17683,6 +17739,18 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
 # V3.61.7: the buttons under a photo in the chat — «🎬 Оживить» animates THAT
 # photo, «🔥 Раздеть» re-renders it with her top off, covering her chest with
 # her hand (1 free a day, then peaches; 18+ confirmed users only).
+# V3.166.10 (владелец, «третья рука вообще всё портит»): страховка от лишней
+# руки ездила в хвосте промпта. Хвост — то, что режет _fit_spicy_prompt, и то,
+# что модель дочитывает в последнюю очередь. Теперь анатомия — первая строка,
+# с тем же префиксом «HANDS:», что и на обычном фото (tier 3, режется последним).
+UNDRESS_ANATOMY_LOCK = (
+    'HANDS: she is ONE person with exactly two arms and two hands, five correct fingers on each hand, '
+    'both hands attached to her own shoulders. Never a third hand or arm, never a detached hand, never an '
+    'extra or merged finger — count the hands before finishing. A hand already in her hair or on her body in '
+    'image 1 is one of those two hands: the reveal does not get a free third one. If the reveal needs both '
+    'her hands, the phone is not in the frame; if one hand holds the phone in image 1, it keeps holding it '
+    'and the reveal uses only her other hand.'
+)
 UNDRESS_PROMPT = (
     'Edit this exact photo. Keep the SAME adult woman: identical face, hair, makeup, body proportions, '
     'the same place, background, lighting and camera angle as image 1 (her face also matches image 2). '
@@ -17707,8 +17775,8 @@ UNDRESS_NUDE_LOCK = (
 UNDRESS_TAIL = (
     ' Playful, confident, slightly shy expression, as if she does it just for the person she is chatting with. '
     'Natural slender female hands with five correct fingers. Photorealistic, same smartphone-photo look. '
-    # V3.62.6: an undressed selfie grew a third arm — the phone hand stayed and
-    # the reveal added two more.
+    # V3.166.10: «ровно две руки» переехало в UNDRESS_ANATOMY_LOCK — первой
+    # строкой промпта; здесь остаётся только то, как она выглядит.
     'She has exactly two arms and two hands. If one hand holds the phone in image 1, it keeps holding it and the '
     'reveal uses only her other hand; if the reveal needs both hands, the phone is gone from the photo. '
     'Never a third hand or arm.'
@@ -17870,7 +17938,8 @@ def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) 
     variant, reveal = UNDRESS_SAFE_VARIANT if safe else _undress_variant()
     card_scene = scene_card_service.scene_for(telegram_id, character_id)
     place = (UNDRESS_CARD_PLACE.format(place=card_scene) if card_scene else UNDRESS_PLACE_TAIL)
-    prompt, secret = (UNDRESS_PROMPT + place + reveal + ('' if safe else UNDRESS_NUDE_LOCK)
+    prompt, secret = (UNDRESS_ANATOMY_LOCK + '\n' + UNDRESS_PROMPT + place + reveal
+                      + ('' if safe else UNDRESS_NUDE_LOCK)
                       + UNDRESS_TAIL + UNDRESS_AMATEUR_LOCK), False
     try:
         from services.webapp_service import _batch_marital, _default_marital
@@ -18049,7 +18118,13 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
         # V3.138.0: «🏠 Дом» pictures her room — you can bring the room to life,
         # but there is nobody to undress in it, so that action stays for her photos.
-        if not _her_photo(uid, ('photo', 'room') if action == 'animate' else ('photo',)):
+        # V3.166.10 (владелец): платный кадр «наедине…» лежит в истории с пометкой
+        # 'hot', косплей — 'cosplay'. Проверка знала только 'photo' и отвечала на
+        # «Раздеть» «Это фото уже нельзя изменить». Его собственные загрузки по-
+        #прежнему не проходят: их нельзя отдавать движку без цензуры.
+        her_frames = ('photo', 'hot', 'cosplay')
+        kinds = her_frames + ('room',) if action == 'animate' else her_frames
+        if not _her_photo(uid, kinds):
             return uid, ('not_found', 404), None
         if action == 'animate':
             if admin:
@@ -20162,6 +20237,8 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/chat/photo', _webapp_api_chat_photo)
     # V3.166.9 (владелец): кадр, ушедший дорисовываться в фон.
     app.router.add_get('/webapp/api/chat/photo-wait', _webapp_api_chat_photo_wait)
+    # V3.166.10 (владелец): «она написала» — пуш внутри приложения.
+    app.router.add_get('/webapp/api/chat/arrived', _webapp_api_chat_arrived)
     app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
     app.router.add_post('/webapp/api/chat/marital', _webapp_api_chat_marital)
     app.router.add_get('/webapp/api/marital/arc', _webapp_api_marital_arc)

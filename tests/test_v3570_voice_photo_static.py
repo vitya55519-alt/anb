@@ -97,7 +97,7 @@ def test_spa_renders_heard_text_voice_and_photo_reply():
     assert 'async function sendChatPhoto(' in SPA
     # the old sendChat must render through the shared helper now
     send = SPA[SPA.index('async function sendChat('):SPA.index('function renderChatReply(')]
-    assert 'renderChatReply(j);' in send
+    assert 'renderChatReply(j, chatId);' in send
 
 
 def test_spa_locale_strings_for_ru_and_en():

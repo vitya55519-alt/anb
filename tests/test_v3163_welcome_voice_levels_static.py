@@ -12,10 +12,10 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 def test_welcome_message_lists_bot_abilities():
     start = MAIN[MAIN.index('@dp.message(CommandStart()'):]
     start = start.split('@dp.callback_query', 1)[0]
-    # V3.39.0: /start is now the compact Come Closer banner caption — it still
-    # names the abilities (photos / video / voice / levels) but in prose, not
-    # the old ten-line emoji bullet list.
-    for fragment in ('Что умеет этот бот?', 'фото по твоим сценариям', 'AI-видео и голос', 'уровням 1–10'):
+    # V3.166.10 (владелец): /start ведёт его копию — хук, четыре строки о том,
+    # что внутри (режимы, живой контент, голос, развитие), и «Поехали!».
+    for fragment in ('Идеальная девушка на вечер', 'Два режима', 'Живой контент',
+                     '🎙 Голос', '📈 Развитие', '⬇️ Поехали! ⬇️'):
         assert fragment in start
 
 

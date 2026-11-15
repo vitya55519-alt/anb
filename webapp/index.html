@@ -257,6 +257,17 @@
     background: rgba(255,90,160,.12); border-bottom: 1px solid rgba(255,120,180,.25); }
   .guestbar img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
   .guestbar .x { margin-left: auto; background: none; border: 0; color: inherit; font-size: 13px; opacity: .8; cursor: pointer; }
+  /* V3.166.10 (владелец): «какой-то пуш прямо в приложении: Анна написала — тапаю
+     и попадаю в её чат» — плашка над перепиской про сообщения из других диалогов. */
+  .arrivedbar { border-bottom: 1px solid rgba(255,120,180,.25); background: rgba(255,90,160,.10); }
+  .arrivedbar .ab-row { display: flex; align-items: center; gap: 9px; padding: 7px 12px; cursor: pointer; }
+  .arrivedbar .ab-row + .ab-row { border-top: 1px solid rgba(255,120,180,.14); }
+  .arrivedbar img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--card2); }
+  .arrivedbar .ab-mid { min-width: 0; }
+  .arrivedbar .ab-nm { font-size: 13px; font-weight: 700; color: #ff9ccb; }
+  .arrivedbar .ab-pv { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .arrivedbar .ab-n { margin-left: auto; flex-shrink: 0; min-width: 18px; height: 18px; line-height: 18px;
+    padding: 0 5px; border-radius: 9px; background: #ff4d6d; color: #fff; font-size: 12px; font-weight: 700; text-align: center; }
   /* V3.139.0: owner ТЗ (Задача 4) — the duo is called from two places: an
      accent pill in the header, right of the (now compact) level badge, and the
      first banner on «Чем займёмся?». While the second girl is in the chat both
@@ -1540,6 +1551,8 @@
   <!-- V3.78.0: the running storyline: act, level and «Без ролей» -->
   <div class="plotbar" id="plotBar" style="display:none"><span class="pbt" id="plotBarText"></span><button id="plotBarExit" type="button"></button></div>
   <div class="guestbar" id="guestBar" style="display:none"></div>
+  <!-- V3.166.10: «Анна написала» — пуш внутри приложения, тап уводит в её чат -->
+  <div class="arrivedbar" id="arrivedBar" style="display:none"></div>
   <div class="chat-msgs" id="chatMsgs"></div>
   <!-- V3.55.6: one-time tender/passionate picker for premium characters -->
   <div id="personaBanner" style="display:none"></div>
@@ -2181,6 +2194,8 @@ const L_EN = {
   feat_tasks_left: 'more tasks to unlock', feat_total: 'tasks done in total',
   feat_empty: 'Nothing here yet', feat_paid: 'Date paid 💕 she will write in the chat',
   apt_wait: 'She is coming to you… 🏠', date_wait: 'She is getting ready for the date… 💕', date_photo_wait: '📸 the photo from your date is on its way…',
+  // V3.166.10 (владелец): пуш внутри приложения — «Анна wrote you», тап уводит в её чат.
+  arrived_wrote: 'wrote you',
   // V3.43.5: the in-app Settings section (spicy switch + interface language).
   settings_title: 'Settings', lang_title: '🌐 Interface language',
   // V3.165.0 (Задача 100): the entry screen is the only mode choice; V3.166.2
@@ -2517,6 +2532,8 @@ const L_RU = {
   feat_tasks_left: 'ещё заданий до', feat_total: 'заданий выполнено всего',
   feat_empty: 'Здесь пока пусто', feat_paid: 'Свидание оплачено 💕 она напишет в чат',
   apt_wait: 'Она уже идёт к тебе… 🏠', date_wait: 'Собирается на свидание… 💕', date_photo_wait: '📸 фото со свидания уже в пути…',
+  // V3.166.10 (владелец): пуш внутри приложения — «Анна написала тебе», тап уводит в её чат.
+  arrived_wrote: 'написала тебе',
   // V3.43.5: секция «Настройки» в профиле (пошлый режим + язык интерфейса).
   settings_title: 'Настройки', lang_title: '🌐 Язык интерфейса',
   // V3.165.0 (Задача 100): экран выбора режима — тап по карточке и есть выбор.
@@ -4084,13 +4101,22 @@ function thoughtCard(text) {
 // «записывает голосовое…» — never shorter than three seconds (owner ТЗ).
 // V3.152.0: the same pause now also plays «печатает…» over an erased draft, so
 // the line is a parameter (already escaped HTML) and the floor is 4 s there.
-function showRecording(done, ms, line) {
+// V3.166.10 (владелец, «переключился на Камилу — её кадр прилетел к ней»):
+// ответ и кадр доезжают асинхронно, а окно на экране одно — то, которое
+// открыто сейчас. Каждый такой конвейер помнит, из какого диалога он вышел, и
+// молча останавливается, если к этому времени открыт другой чат: на сервере
+// сообщение уже сохранено и дождётся его в истории этого диалога.
+function sameChat(id) { return !id || (CHAT && CHAT.id === id); }
+
+function showRecording(done, ms, line, chatId) {
+  if (!sameChat(chatId)) return;
   const box = document.getElementById('chatMsgs');
   const nm = (CHAT && CHAT.name) || '';
   box.insertAdjacentHTML('beforeend',
     '<div class="typing" id="chatTypingRec">' + (line || esc(nm) + ' ' + esc(L.rec_voice)) + '</div>');
   box.scrollTop = box.scrollHeight;
   setTimeout(() => {
+    if (!sameChat(chatId)) return;
     const el = document.getElementById('chatTypingRec');
     if (el) el.remove();
     done();
@@ -4142,15 +4168,17 @@ function historyLine(m) {
     : chatBubble(m));
 }
 
-function afterDraft(d, done) {
+function afterDraft(d, done, chatId) {
+  if (!sameChat(chatId)) return;
   if (!d || !d.id) { done(); return; }
   const box = document.getElementById('chatMsgs');
   const nm = (CHAT && CHAT.name) || '';
   showRecording(() => {
+    if (!sameChat(chatId)) return;
     box.insertAdjacentHTML('beforeend', draftPlate(d));
     box.scrollTop = box.scrollHeight;
     done();
-  }, 4000, esc(nm) + ' ' + esc(L.typing_now));
+  }, 4000, esc(nm) + ' ' + esc(L.typing_now), chatId);
 }
 
 async function unlockDraft(id, btn) {
@@ -4458,6 +4486,9 @@ function openChat(c) {
   // V3.52.0: opening a chat marks it read on the server; drop the cached «Чаты»
   // list so the badge is cleared the next time the tab is visited.
   _chatsLoaded = false;
+  // V3.166.10 (владелец): «а в это время другой чат ей не молчит» — плашка
+  // «Анна написала» над перепиской; тап уводит к ней.
+  startArrivedPoll();
   return history;
 }
 
@@ -4882,7 +4913,7 @@ async function setGuest(characterId, guestId) {
     }
     // V3.139.0: owner ТЗ (Задача 5) — the second girl crossed the door and the
     // two of them immediately send a free man the blurred joint picture.
-    if (j.duo && j.duo.ok) renderChatReply(j.duo);
+    if (j.duo && j.duo.ok) renderChatReply(j.duo, characterId);
   } catch (e) {
     const typing = document.getElementById('guestTyping');
     if (typing) typing.remove();
@@ -4925,8 +4956,11 @@ async function loadChatHistory(characterId) {
     if (j.live && j.live.id) appendLiveTeaser(j.live);
     // V3.59.2: a new dialog gets tap-to-send openers — most newcomers froze
     // on an empty input not knowing what to write to her.
+    // V3.166.10 (владелец): «переписка уже идёт — они просто исчезают». Подсказки
+    // остаются только в том диалоге, где он ещё ни разу не написал; раньше они
+    // всплывали при каждом открытии чата, пока он не набрал четыре реплики.
     const mine = j.history.filter(m => m.role === 'user').length;
-    if (mine < 4) renderChatHints();
+    if (!mine) renderChatHints();
     box.scrollTop = box.scrollHeight;
   } catch (e) {
     document.getElementById('chatMsgs').innerHTML = `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
@@ -5117,6 +5151,9 @@ async function sendChat(retryText) {
   if (!text) return;
   if (!tg.initData) { toast(L.auth_short); return; }
   chatBusy = true;
+  // V3.166.10: этот ответ принадлежит диалогу, в котором он ушёл, а не тому
+  // экрану, который будет открыт через пару секунд.
+  const chatId = CHAT.id;
   if (typeof retryText !== 'string') input.value = '';
   syncSendBtn();
   const hints = document.getElementById('chatHints'); if (hints) hints.remove();
@@ -5133,7 +5170,7 @@ async function sendChat(retryText) {
     const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: CHAT.id, text: text }),
+      body: JSON.stringify({ character_id: chatId, text: text }),
     });
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 429) {
@@ -5153,7 +5190,7 @@ async function sendChat(retryText) {
     }
     const j = await r.json();
     if (!j.ok) { toast(L.reply_err); return; }
-    renderChatReply(j);
+    renderChatReply(j, chatId);
     noteMissionsDone(j);
   } catch (e) {
     toast(L.reply_err);
@@ -5193,7 +5230,8 @@ function undressTease(mediaUrl) {
 }
 
 // ── V3.57.0: voice messages and user photos in the app chat ──────────────
-function renderChatReply(j) {
+function renderChatReply(j, chatId) {
+  if (!sameChat(chatId)) return;
   if (CHAT) loadChatLevel(CHAT.id);
   // V3.140.0: she invited the friend herself ([INVITE_FRIEND] funnel) — the
   // pill, the banner and the two-girl rows flip right now, not on reload.
@@ -5208,15 +5246,18 @@ function renderChatReply(j) {
   // for four seconds and the grey plate of the message she erased; only then
   // her real reply. The erased text itself is not in this payload.
   if (!nv.thought) {
-    return afterDraft(j.draft, () => insertChatReply(nv.message === j.reply ? j : Object.assign({}, j, { reply: nv.message })));
+    return afterDraft(j.draft, () => insertChatReply(nv.message === j.reply ? j : Object.assign({}, j, { reply: nv.message }), chatId), chatId);
   }
   const box = document.getElementById('chatMsgs');
   box.insertAdjacentHTML('beforeend', thoughtCard(nv.thought));
   box.scrollTop = box.scrollHeight;
-  afterDraft(j.draft, () => showRecording(() => insertChatReply(Object.assign({}, j, { reply: nv.message, novel: 1 }))));
+  afterDraft(j.draft, () => showRecording(() => insertChatReply(Object.assign({}, j, { reply: nv.message, novel: 1 }), chatId), null, null, chatId), chatId);
 }
 
-function insertChatReply(j) {
+function insertChatReply(j, chatId) {
+  // V3.166.10: this is the last door before the screen — her words and her
+  // frame only ever go into the dialog they came from.
+  if (!sameChat(chatId)) return;
   // V3.51.0: a photo request comes back with a real photo attached;
   // V3.57.0: a text reply may carry her voice note (voice_url).
   const box = document.getElementById('chatMsgs');
@@ -5483,10 +5524,11 @@ async function sendChatVoice(blob, secs) {
   box.insertAdjacentHTML('beforeend', `<div class="typing" id="chatTyping">${esc(L.stt_wait)}</div>`);
   box.scrollTop = box.scrollHeight;
   try {
+    const chatId = CHAT.id;
     const b64 = await blobToB64(blob);
     const r = await fetch('/webapp/api/chat/voice?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: CHAT.id, audio: b64 }),
+      body: JSON.stringify({ character_id: chatId, audio: b64 }),
     });
     let j = null;
     try { j = await r.json(); } catch (e) {}
@@ -5500,7 +5542,7 @@ async function sendChatVoice(blob, secs) {
     noteMissionsDone(j);
     const tx = document.querySelector('#' + vid + ' .vtx');
     if (tx) tx.textContent = j.user_text || '';
-    renderChatReply(j);
+    renderChatReply(j, chatId);
   } catch (e) {
     toast(L.mic_err);
   } finally {
@@ -5549,11 +5591,12 @@ async function sendChatPhoto(file) {
   box.insertAdjacentHTML('beforeend', `<div class="typing" id="chatTyping">${esc(CHAT.name)} ${esc(L.typing_now)}</div>`);
   box.scrollTop = box.scrollHeight;
   try {
+    const chatId = CHAT.id;
     const small = await shrinkImage(file);
     const b64 = await blobToB64(small);
     const r = await fetch('/webapp/api/chat/photo?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: CHAT.id, image: b64, mime: small.type || 'image/jpeg', caption: caption }),
+      body: JSON.stringify({ character_id: chatId, image: b64, mime: small.type || 'image/jpeg', caption: caption }),
     });
     let j = null;
     try { j = await r.json(); } catch (e) {}
@@ -5566,7 +5609,7 @@ async function sendChatPhoto(file) {
       return;
     }
     noteMissionsDone(j);
-    renderChatReply(j);
+    renderChatReply(j, chatId);
   } catch (e) {
     toast(L.attach_err);
   } finally {
@@ -5819,6 +5862,7 @@ async function requestMedia(kind, scene, opts) {
   if (mediaBusy) { toast(L.media_busy); return; }
   if (!tg.initData) { toast(L.auth_short); return; }
   mediaBusy = true;
+  const chatId = CHAT.id;
   document.querySelectorAll('.chat-media button').forEach(b => b.disabled = true);
   const box = document.getElementById('chatMsgs');
   const empty = box.querySelector('.chat-empty');
@@ -5830,7 +5874,7 @@ async function requestMedia(kind, scene, opts) {
     const r = await fetch('/webapp/api/chat/media?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: CHAT.id, kind: kind, scene: scene || '', joint: !!opts.joint,
+      body: JSON.stringify({ character_id: chatId, kind: kind, scene: scene || '', joint: !!opts.joint,
                              theme_text: opts.theme_text || '' }),
     });
     if (r.status === 401) { toast(L.auth_short); return; }
@@ -5859,9 +5903,12 @@ async function requestMedia(kind, scene, opts) {
       // V3.139.0: owner ТЗ (Задача 5) — he asked the two of them for a joint
       // photo without Premium. Nothing was rendered and nothing charged; the
       // server answered with the blurred teaser and both girls' hook lines.
-      renderChatReply(j);
+      renderChatReply(j, chatId);
       return;
     }
+    // V3.166.10: он успел уйти к другой, пока рисовался этот кадр — пузырь
+    // остаётся в истории её диалога, а не ложится в чужой экран.
+    if (!sameChat(chatId)) return;
     box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, ts: null }));
     if (kind === 'photo') undressTease(j.url);
     // V3.164.0: owner — «кнопка скачет, убери из чата кнопку позвать друга».
@@ -6374,7 +6421,11 @@ function waitForChatPhoto(characterId) {
       const j = await r.json();
       if (j.state === 'ready') {
         done();
-        if (j.photo_url || j.reply || j.photo_block) insertChatReply(j); else loadChatHistory(characterId);
+        // V3.166.10 (владелец): он переключился на другую, пока кадр
+        // дорисовывался, — в чужой чат он не приходит; кадр лежит в истории
+        // своего диалога и встанет туда, когда он вернётся.
+        if (!sameChat(characterId)) return;
+        if (j.photo_url || j.reply || j.photo_block) insertChatReply(j, characterId); else loadChatHistory(characterId);
         box.scrollTop = box.scrollHeight;
         // второй кадр этого же диалога ещё рисуется — ждать дальше
         if (j.more) setTimeout(() => waitForChatPhoto(characterId), 2000);
@@ -6388,6 +6439,56 @@ function waitForChatPhoto(characterId) {
     else { done(); loadChatHistory(characterId); }   // ждал-ждал: показать историю
   };
   tick();
+}
+
+// V3.166.10 (владелец): «какой-то пуш прямо в приложении: Анна написала —
+// тапаю и попадаю в её чат». Пока он говорит с одной, остальные не молчат:
+// раз в 25 секунд спрашиваем, где у неё есть непрочитанное (тот же счётчик,
+// что рисует бейджи на вкладке «Чаты»), и вешаем над перепиской её плашку.
+// Открытый сейчас диалог сервер не отдаёт — там он и так всё видит.
+let ARRIVED_TIMER = null;
+let ARRIVED_LIST = [];
+function renderArrived(list) {
+  ARRIVED_LIST = list || [];
+  const bar = document.getElementById('arrivedBar');
+  if (!bar) return;
+  if (!ARRIVED_LIST.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.innerHTML = ARRIVED_LIST.slice(0, 3).map(c => {
+    const n = Math.max(0, parseInt(c.unread || 0, 10) || 0);
+    const badge = n > 1 ? `<span class="ab-n">${esc(n > 9 ? '9+' : n)}</span>` : '';
+    return `<div class="ab-row" data-id="${esc(c.id)}">
+      <img src="${esc(c.photo)}" alt="" onerror="this.style.visibility='hidden'">
+      <div class="ab-mid"><div class="ab-nm">${esc(c.name)} ${esc(L.arrived_wrote)}</div><div class="ab-pv">${esc(c.message || '…')}</div></div>${badge}</div>`;
+  }).join('');
+  bar.style.display = 'block';
+  bar.querySelectorAll('.ab-row').forEach(el => el.addEventListener('click', () => {
+    const c = ARRIVED_LIST.find(x => x.id === el.dataset.id);
+    el.remove();
+    if (!bar.querySelector('.ab-row')) { bar.style.display = 'none'; bar.innerHTML = ''; }
+    if (c) openChat({ id: c.id, name: c.name, photo: c.photo, emoji: c.emoji, status: c.status, custom: c.custom, selected: false });
+  }));
+}
+async function pollChatArrived() {
+  // диалог закрыли в обход кнопки «назад» (увод в магазин) — не крутим опрос
+  if (!CHAT || !document.getElementById('chatview').classList.contains('open')) return;
+  const fromChat = CHAT.id;
+  try {
+    const r = await fetch('/webapp/api/chat/arrived?init_data=' + encodeURIComponent(tg.initData || '') +
+      '&except=' + encodeURIComponent(fromChat), { cache: 'no-store' });
+    const j = await r.json();
+    // он успел уйти к другой (или закрыть чат), пока шёл запрос — не показываем
+    if (!CHAT || CHAT.id !== fromChat) return;
+    renderArrived(j.ok ? (j.arrived || []) : []);
+  } catch (e) { /* сеть моргнула — следующий тик */ }
+}
+function startArrivedPoll() {
+  stopArrivedPoll();
+  pollChatArrived();
+  ARRIVED_TIMER = setInterval(pollChatArrived, 25000);
+}
+function stopArrivedPoll() {
+  if (ARRIVED_TIMER) { clearInterval(ARRIVED_TIMER); ARRIVED_TIMER = null; }
+  renderArrived([]);
 }
 
 function waitForDatePhoto(characterId, label) {
@@ -8635,6 +8736,7 @@ document.getElementById('chatBack').addEventListener('click', () => {
   const _pb = document.getElementById('personaBanner');
   if (_pb) _pb.style.display = 'none';
   CHAT = null;
+  stopArrivedPoll();   // V3.166.10: вне чата плашку держать некому — там бейджи на «Чатах»
   // a reply may have landed — refresh the dialog list preview
   loadChats();
 });

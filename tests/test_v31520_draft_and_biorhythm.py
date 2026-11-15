@@ -504,7 +504,7 @@ def test_main_sells_the_plate_in_telegram():
 def test_the_mini_app_draws_the_plate_and_buys_it():
     assert 'function draftPlate(d)' in WEBAPP
     assert 'function historyLine(m)' in WEBAPP
-    assert 'function afterDraft(d, done)' in WEBAPP
+    assert 'function afterDraft(d, done, chatId)' in WEBAPP
     assert 'data-draft="' in WEBAPP and 'unlockDraft' in WEBAPP
     assert "'/webapp/api/chat/draft?init_data=" in WEBAPP
     assert "quickBuy('peaches', () => unlockDraft(id, btn))" in WEBAPP
@@ -519,7 +519,7 @@ def test_the_paid_plate_order_is_card_then_plate_then_message():
     hist = _slice(WEBAPP, 'function historyLine(m)', 'function afterDraft')
     assert hist.index('thoughtCard(nv.thought)') < hist.index('livePlate(m.live)') < hist.index('draftPlate(')
     # вживу: «печатает…» 4 секунды → тарелка → MESSAGE
-    after = _slice(WEBAPP, 'function afterDraft(d, done)', 'async function unlockDraft')
+    after = _slice(WEBAPP, 'function afterDraft(d, done, chatId)', 'async function unlockDraft')
     assert after.index('showRecording(') < after.index('draftPlate(d)')
     assert ', 4000,' in after
     reply = _slice(WEBAPP, 'function renderChatReply', 'function insertChatReply')

@@ -25,7 +25,9 @@ def test_the_start_sends_no_welcome_selfie():
 
 
 def test_chat_openers():
-    assert 'if (mine < 4) renderChatHints();' in INDEX
+    # V3.166.10 (владелец): «переписка уже идёт — они просто исчезают». Подсказки
+    # остались только там, где он ещё ни разу не написал (было — пока не наберёт 4).
+    assert 'if (!mine) renderChatHints();' in INDEX
     assert INDEX.count('chat_hints:') == 8  # every language in Settings
     assert INDEX.count('day1_hints:') == 8
     send = INDEX[INDEX.index('async function sendChat('):]

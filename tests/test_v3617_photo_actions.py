@@ -23,7 +23,11 @@ def test_only_her_generated_photos_can_be_edited():
     # a user-uploaded picture must never reach the uncensored engine
     assert "Message.role == 'assistant', Message.media_kind.in_(kinds)" in MAIN
     # V3.138.0: her room can be brought to life, but there is nobody in it to undress
-    assert "if not _her_photo(uid, ('photo', 'room') if action == 'animate' else ('photo',)):" in MAIN
+    # V3.166.10 (владелец): платный кадр «наедине…» лежит в истории как 'hot',
+    # косплей — 'cosplay'; оба теперь проходят, его загрузки — по-прежнему нет.
+    assert "her_frames = ('photo', 'hot', 'cosplay')" in MAIN
+    assert "kinds = her_frames + ('room',) if action == 'animate' else her_frames" in MAIN
+    assert 'if not _her_photo(uid, kinds):' in MAIN
 
 
 def test_undress_prompt_strips_her_and_adds_the_husband_when_married(monkeypatch):
