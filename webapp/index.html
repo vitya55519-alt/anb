@@ -895,9 +895,12 @@
     padding: 16px 14px calc(18px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,120,180,.3); }
   .capsheet .cap-h { text-align: center; font-weight: 700; font-size: 18px; }
   .capsheet .cap-sub { text-align: center; font-size: 12px; opacity: .7; margin: 4px 0 12px; }
-  /* V3.166.8 (владелец, «красиво, дорого, компактно»): nine rows in two columns —
+  /* V3.166.8 (владелец, «красиво, дорого, компактно»): rows in two columns —
      the whole sheet is read on one screen, not by scrolling to the next. */
   .capsheet .chat-media { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; overflow: visible; }
+  /* V3.166.11 (владелец): «📸 Фото» — the first row and wide, so the nine
+     rows under it still pair up evenly. */
+  .capsheet .chat-media button.full { grid-column: 1 / -1; }
   /* V3.114.0: «👗 Гардероб» */
   .wd-mood { background: var(--card); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; }
   .wd-mood .row { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
@@ -1614,6 +1617,10 @@
     <button id="featDuoPhoto" class="hot" style="display:none"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbFeatDuoPhoto"></span><span class="ds" id="dsFeatDuoPhoto"></span></span></button>
     <button id="featDuoUndress" class="hot" style="display:none"><span class="ic">🔥</span><span class="tx"><span class="lb" id="lbFeatDuoUndress"></span><span class="ds" id="dsFeatDuoUndress"></span></span></button>
     <button id="featDuoVideo" class="hot" style="display:none"><span class="ic">🤫</span><span class="tx"><span class="lb" id="lbFeatDuoVideo"></span><span class="ds" id="dsFeatDuoVideo"></span></span></button>
+    <!-- V3.166.11 (владелец, «в 18+ добавь кнопку фото, как в обычном режиме»):
+         «📸 Фото» вернулась в список и стоит первой — тап открывает тот же
+         выбор сцены, что и в обычном режиме. -->
+    <button id="mediaPhoto" class="hot full"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbMediaPhoto"></span><span class="ds" id="dsMediaPhoto"></span></span></button>
     <button id="featUndress" class="hot"><span class="ic">🔥</span><span class="tx"><span class="lb" id="lbFeatUndress"></span><span class="ds" id="dsFeatUndress"></span></span></button>
     <button id="featPlots" class="hot"><span class="ic">🎬</span><span class="tx"><span class="lb" id="lbFeatPlots"></span><span class="ds" id="dsFeatPlots"></span></span></button>
     <button id="featWardrobe" class="hot"><span class="ic">👗</span><span class="tx"><span class="lb" id="lbFeatWardrobe"></span><span class="ds" id="dsFeatWardrobe"></span></span></button>
@@ -1624,9 +1631,8 @@
     <button id="featHot" class="hot"><span class="ic">💋</span><span class="tx"><span class="lb" id="lbFeatHot"></span><span class="ds" id="dsFeatHot"></span></span></button>
     <button id="featHotCircle" class="hot"><span class="ic">🤫</span><span class="tx"><span class="lb" id="lbFeatHotCircle"></span><span class="ds" id="dsFeatHotCircle"></span></span></button>
     <button id="featCosplay" class="hot"><span class="ic">🎭</span><span class="tx"><span class="lb" id="lbFeatCosplay"></span><span class="ds" id="dsFeatCosplay"></span></span></button>
-    <!-- V3.165.0 (#105): owner — the sheet keeps the nine rows above. These stay
-         wired (a deep link or her 18+ page still opens them), just not listed. -->
-    <button id="mediaPhoto" class="gone"><span class="ic">📸</span><span class="tx"><span class="lb" id="lbMediaPhoto"></span><span class="ds" id="dsMediaPhoto"></span></span></button>
+    <!-- V3.165.0 (#105): owner — the retired rows stay wired (a deep link or her
+         18+ page still opens them), just not listed. V3.166.11 put «📸 Фото» back. -->
     <button id="featQuest" class="gone"><span class="ic">🎯</span><span class="tx"><span class="lb" id="lbFeatQuest"></span><span class="ds" id="dsFeatQuest"></span></span></button>
     <button id="featStory" class="gone"><span class="ic">📖</span><span class="tx"><span class="lb" id="lbFeatStory"></span><span class="ds" id="dsFeatStory"></span></span></button>
     <button id="featDate" class="gone"><span class="ic">💕</span><span class="tx"><span class="lb" id="lbFeatDate"></span><span class="ds" id="dsFeatDate"></span></span></button>
@@ -2160,7 +2166,7 @@ const L_EN = {
   // V3.45.0: new chat buttons
   feat_video: 'Video', feat_cosplay: 'Cosplay', feat_hot: 'Private',
   // V3.64.0: the «✨ Features» button and a line explaining each chat feature.
-  cap_btn: '✨ Features', cap_btn_sub: 'undress · storylines · wardrobe · gifts · private · hot video',
+  cap_btn: '✨ Features', cap_btn_sub: 'photo · undress · storylines · wardrobe · gifts · private · hot video',
   cap_title: '✨ What shall we do?', cap_sub: 'Everything you can do with her besides texting', cap_close: 'Close',
   cap_photo: 'Pick a scene and she sends you her photo from there',
   cap_quest: '2–3 small tasks a day. Do them in the chat to grow closer and unlock stories',
@@ -2500,7 +2506,7 @@ const L_RU = {
   // V3.45.0: новые кнопки в чате
   feat_video: 'Видео', feat_cosplay: 'Косплей', feat_hot: 'Наедине',
   // V3.64.0: кнопка «✨ Возможности» и пояснения к каждой функции чата.
-  cap_btn: '✨ Возможности', cap_btn_sub: 'раздеть · сюжеты · гардероб · подарки · наедине · горячее видео',
+  cap_btn: '✨ Возможности', cap_btn_sub: 'фото · раздеть · сюжеты · гардероб · подарки · наедине · горячее видео',
   cap_title: '✨ Чем займёмся?', cap_sub: 'Всё, что можно делать с ней кроме переписки', cap_close: 'Закрыть',
   cap_photo: 'Выбери сцену, и она пришлёт своё фото оттуда',
   cap_quest: '2–3 маленьких задания на день. Выполняешь в чате — растёт близость и открываются истории',

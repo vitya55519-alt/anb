@@ -7,6 +7,9 @@
 строк: свидание втроём, раздеть её фото, сюжеты, гардероб, подарки, фетиши,
 наедине, горячее видео, косплей.
 
+V3.166.11 (владелец: «в 18+ добавь возможность кнопки фото, как в обычном
+режиме») вернула в список строку «📸 Фото» — теперь их десять.
+
 Тесты статические: пилят разметку и JS приложения, чтобы проверка не зависела от
 браузера, базы и ключей.
 """
@@ -18,12 +21,12 @@ INDEX = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
 LINES = INDEX.splitlines()
 
 FOLDED = ('charRelBar', 'charCollectBar', 'charPathBar', 'charMarital', 'charPlots', 'charTrophies')
-# девять строк, которые владелец оставил в «Возможностях» (плюс три гостевые —
-# они видны только когда в чате вторая девушка)
-SHEET_KEPT = ('featDuo', 'featUndress', 'featPlots', 'featWardrobe', 'featGifts', 'featFetish',
+# строки, которые остаются в «Возможностях» (плюс три гостевые — они видны
+# только когда в чате вторая девушка). V3.166.11 вернула «📸 Фото» первой.
+SHEET_KEPT = ('featDuo', 'mediaPhoto', 'featUndress', 'featPlots', 'featWardrobe', 'featGifts', 'featFetish',
               'featHot', 'featHotCircle', 'featCosplay')
 SHEET_GUEST = ('featDuoPhoto', 'featDuoUndress', 'featDuoVideo')
-SHEET_GONE = ('mediaPhoto', 'featQuest', 'featStory', 'featDate', 'featApt', 'featVideo')
+SHEET_GONE = ('featQuest', 'featStory', 'featDate', 'featApt', 'featVideo')
 
 
 def _block(id_name: str) -> str:
