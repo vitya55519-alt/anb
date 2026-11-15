@@ -13842,6 +13842,25 @@ def _custom_peach_units(body) -> int:
         return 1
 
 
+async def _webapp_api_autopay(request: web.Request) -> web.Response:
+    """V3.120.0: the shop card's «🔁 Автопродление» link — the bot sends the
+    terms / manage menu into his chat and the app opens that chat."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    telegram_id = webapp_service.init_data_user(pairs).get('id')
+    if not telegram_id or not await asyncio.to_thread(has_accepted, telegram_id):
+        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+    try:
+        await _autopay_show(int(telegram_id), int(telegram_id))
+    except Exception:
+        logger.exception('webapp autopay menu failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'send'}, status=502)
+    from config import BOT_USERNAME as _bot_name
+    url = f'https://t.me/{_bot_name}' if _bot_name else ''
+    return web.json_response({'ok': True, 'url': url})
+
+
 async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     # V3.43.0: the Come Closer pay menu — tapping a shop square opens a modal
     # with Stars / card-SBP / crypto rows. Stars reuses /webapp/api/invoice;

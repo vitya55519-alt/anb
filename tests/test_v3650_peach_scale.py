@@ -99,7 +99,10 @@ def test_custom_order_counts_units():
 
 def test_custom_units_from_app_body():
     ns = {'PEACH_CUSTOM_UNIT': 100}
-    src = MAIN[MAIN.index('def _custom_peach_units('):MAIN.index('async def _webapp_api_pay_link(')]
+    # V3.166.3: take the helper up to whatever endpoint follows it — the slice
+    # must hold this one function, not the neighbours' `web.Request` hints.
+    start = MAIN.index('def _custom_peach_units(')
+    src = MAIN[start:MAIN.index('\nasync def ', start + 10)]
     exec(src, ns)
     units = ns['_custom_peach_units']
     assert units({'peaches': 500}) == 5
