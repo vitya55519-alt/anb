@@ -65,6 +65,6 @@ def test_premium_daily_free_limit_helpers():
 
 
 def test_premium_pitch_does_not_promise_free_video():
-    pitch = MAIN[MAIN.index('def premium_pitch_text('):MAIN.index('def _sleep_block_markup(')]
+    pitch = MAIN[MAIN.index('def premium_pitch_text('):MAIN.index('def _limit_wall_markup(')]
     assert 'оживление фото в день' not in pitch
     assert 'photo animation a day' not in pitch

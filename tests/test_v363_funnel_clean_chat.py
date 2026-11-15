@@ -145,10 +145,13 @@ def test_first_offer_scheduled_and_deduped_before_send():
     assert 'ADMIN_TELEGRAM_IDS' in body
 
 
-def test_first_offer_opens_premium_with_discount_and_counts_as_paywall_view():
+def test_first_offer_opens_plain_premium_and_counts_as_paywall_view():
+    # V3.166.2 (owner — «разовая скидка -30% размывает фокус»): the card no
+    # longer opens the one-time discount window, it shows Premium as it is.
     i = MAIN.index("@dp.callback_query(F.data == 'first_offer:open')")
-    body = MAIN[i:i + 1500]
-    assert 'offer_discount(cq.from_user.id)' in body
+    body = MAIN[i:]
+    body = body[:body.index('\n@dp.callback_query', 10)]
+    assert 'offer_discount(' not in body
     assert "'source': 'first_offer'" in body
     assert 'premium_keyboard(discount_info(' in body
 

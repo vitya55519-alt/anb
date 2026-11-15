@@ -178,6 +178,10 @@ def test_spicy_toggle_and_chat_gate():
     # avoid exactly the graphic detail the mode unlocks.
     assert 'ПОШЛЫЙ РЕЖИМ ВКЛЮЧЁН' not in CHAT
     assert 'explicit_mode.mode_rules(' in CHAT
-    assert 'explicit_mode.cap_left(' in CHAT
+    # V3.166.2: the day's ceiling left the mode and became an account counter —
+    # it lives in services/daily_limit.py and stands in front of his message,
+    # so it never reaches her prompt any more.
+    assert 'daily_limit.note_message' in CHAT
+    assert 'explicit_mode.cap_left(' not in CHAT
     # `spicy_line` survives only as the intimacy/card-girl line it became
     assert "spicy_line = CARD_GIRL_DIRTY_LINE" in CHAT

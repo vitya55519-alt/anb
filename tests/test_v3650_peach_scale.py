@@ -99,7 +99,7 @@ def test_custom_order_counts_units():
 
 def test_custom_units_from_app_body():
     ns = {'PEACH_CUSTOM_UNIT': 100}
-    src = MAIN[MAIN.index('def _custom_peach_units('):MAIN.index('async def _webapp_api_demo(')]
+    src = MAIN[MAIN.index('def _custom_peach_units('):MAIN.index('async def _webapp_api_pay_link(')]
     exec(src, ns)
     units = ns['_custom_peach_units']
     assert units({'peaches': 500}) == 5

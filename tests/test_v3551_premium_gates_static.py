@@ -18,10 +18,11 @@ CONFIG = (ROOT / 'config.py').read_text(encoding='utf-8')
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 
 
-def test_free_message_limit_is_unlimited():
-    # V3.137.0: text is unlimited — can_send_message returns True and the config
-    # value is only the «unlimited» sentinel (1000) that drives shop/legal wording.
-    assert 'FREE_MESSAGES_PER_DAY = 1000' in CONFIG
+def test_free_message_limit_is_the_account_ceiling():
+    # V3.166.2 (owner): the free tier has a hard ceiling again — 30 messages a
+    # day for the whole account, and the legal/shop text reads that same number.
+    assert 'FREE_MESSAGES_PER_DAY = CHAT_MSGS_PER_DAY' in CONFIG
+    assert 'CHAT_MSGS_PER_DAY_V166", "30"' in CONFIG
 
 
 def test_send_answer_voice_requires_premium():

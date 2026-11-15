@@ -12,11 +12,14 @@ def test_facts_come_from_live_config():
     import config
     f = honest_card.facts()
     assert f['free_messages'] == config.FREE_MESSAGES_PER_DAY
-    assert f['free_messages_later'] <= f['free_messages']
     assert f['free_photos'] == config.CHAT_FREE_PHOTOS_PER_DAY
     assert f['week_stars'] == config.PREMIUM_WEEKLY_STARS
     assert f['support'] == config.SUPPORT_BOT_USERNAME
-    assert set(f) >= {'enabled', 'free_voice', 'week_rub', 'later_from_day'}
+    assert set(f) >= {'enabled', 'free_voice', 'week_rub'}
+    # V3.166.2: the second tier («с 4-го дня — 10») left with the mechanic, so
+    # the card may not print a second number next to the account ceiling.
+    for gone in ('free_messages_later', 'later_from_day'):
+        assert gone not in f, gone
 
 
 def test_no_fake_social_proof_in_the_facts():

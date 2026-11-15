@@ -44,9 +44,9 @@ def test_test_stage_persists():
     assert 'AdminTestStage' in src and '_db_write(user_id, stage)' in src
 
 
-def test_free_limit_is_unlimited():
-    # V3.137.0: text is unlimited — FREE_MESSAGES_PER_DAY is the «unlimited» sentinel
-    assert 'FREE_MESSAGES_PER_DAY = 1000' in Path('config.py').read_text(encoding='utf-8')
+def test_free_limit_is_the_account_ceiling():
+    # V3.166.2: text is capped again — one number for both modes and both platforms
+    assert 'FREE_MESSAGES_PER_DAY = CHAT_MSGS_PER_DAY' in Path('config.py').read_text(encoding='utf-8')
 
 
 def test_level_snapshot_shape():

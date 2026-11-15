@@ -509,37 +509,46 @@
      not get its file falls back to the glyph, so the screen never breaks. */
   #modeScreen {
     position: fixed; inset: 0; z-index: 47; display: none; flex-direction: column;
-    align-items: center; gap: 12px; padding: 22px 16px 26px; overflow-y: auto;
+    align-items: center; gap: 12px; padding: 20px 12px 26px; overflow-y: auto;
     background: linear-gradient(180deg, #150a1e 0%, var(--bg2) 100%);
   }
   #modeScreen.open { display: flex; }
   #modeScreen h2 { font-size: 21px; color: var(--text); text-align: center; }
   #modeScreen .ms-sub { font-size: 12.5px; color: var(--muted); text-align: center; margin-top: -6px; }
-  /* V3.166.0 (Блок 1): two vertical 3:4 cards — his 864x1152 pictures now lie
-     whole, nothing is cropped, and the mode description sits ON the photo over
-     a bottom-up dark gradient instead of a text block under a 150px strip. */
-  #modeScreen .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: min(360px, 100%); margin-top: 4px; }
+  /* V3.166.2 (Блок 1): the entry cards are full-bleed 3:4 portraits, one under
+     another, the screen scrolls. His 864x1152 shots fill the card and a 3:4 box
+     crops nothing of them. The caption sits on the bottom edge over a tall
+     gradient, everything left-aligned, with a strict hierarchy: 23px/800 pure
+     white title with a shadow, 14.5px/500 soft-white bullets at 1.4 leading, the
+     CTA pill under them. A card whose file is missing keeps the glyph block. */
+  #modeScreen .cards { display: grid; grid-template-columns: 1fr; gap: 14px; width: min(430px, 100%); margin-top: 6px; }
   .modecard {
-    position: relative; display: block; width: 100%; aspect-ratio: 3 / 4; text-align: left; cursor: pointer; padding: 0; overflow: hidden;
-    border: 1px solid rgba(255,255,255,.12); border-radius: 18px; background: var(--card); color: var(--text);
+    position: relative; display: block; width: 100%; aspect-ratio: 3 / 4; text-align: left; cursor: pointer;
+    padding: 0; overflow: hidden; color: #fff; border: 1px solid rgba(255,255,255,.14);
+    border-radius: 24px; background: var(--card);
   }
-  .modecard img, .modecard .ph { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
-  .modecard .ph { display: none; align-items: center; justify-content: center; font-size: 44px; background: var(--card2); }
-  .modecard.nopic img { display: none; }
+  .modecard .pic { position: absolute; inset: 0; overflow: hidden; background: var(--card2); }
+  .modecard .pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .modecard .ph { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; font-size: 64px; background: var(--card2); }
+  .modecard.nopic .pic img { display: none; }
   .modecard.nopic .ph { display: flex; }
   .modecard .shade {
-    position: absolute; inset: 0; pointer-events: none;
-    background: linear-gradient(180deg, rgba(10,4,16,0) 30%, rgba(10,4,16,.55) 60%, rgba(10,4,16,.93) 100%);
+    position: absolute; left: 0; right: 0; bottom: 0; height: 52%; pointer-events: none;
+    background: linear-gradient(to top, rgba(0,0,0,.9) 0%, rgba(0,0,0,.7) 40%, rgba(0,0,0,0) 100%);
   }
-  .modecard .txt { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 11px 12px; }
-  .modecard b { display: block; font-size: 15px; line-height: 1.2; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.5); }
-  .modecard .d { display: block; margin-top: 4px; font-size: 11px; line-height: 1.32; color: rgba(255,255,255,.88); }
+  .modecard .info { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px; text-align: left; }
+  .modecard b {
+    display: block; font-size: 23px; line-height: 1.14; font-weight: 800; letter-spacing: .2px;
+    color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,.5);
+  }
+  .modecard .d { display: block; margin-top: 10px; font-size: 14.5px; line-height: 1.4; font-weight: 500; color: rgba(255,255,255,.9); }
+  .modecard .d .bl { display: block; }
   .modecard .go {
-    display: block; margin-top: 9px; border-radius: 10px; padding: 7px 6px; text-align: center;
-    font-size: 12px; font-weight: 700; color: #fff; background: rgba(255,255,255,.18);
+    display: block; margin-top: 14px; border-radius: 14px; padding: 12px 10px; text-align: center;
+    font-size: 14px; font-weight: 700; line-height: 1.2; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.35);
+    background: linear-gradient(90deg, var(--accent), #ff7ab0);
   }
-  .modecard.spicy { border-color: rgba(255,92,56,.55); }
-  .modecard.spicy b { color: #ffb08c; }
+  .modecard.spicy { border-color: rgba(255,92,56,.5); }
   .modecard.spicy .go { background: linear-gradient(90deg, #ff5c38, var(--accent)); }
   .modecard.on { box-shadow: 0 0 0 2px var(--accent); }
   #modeScreen .ms-note { font-size: 11.5px; line-height: 1.4; color: var(--muted); opacity: .85; text-align: center; }
@@ -549,6 +558,38 @@
   .modenote .mn-b {
     display: inline-block; margin-left: 6px; border: 0; border-radius: 10px; padding: 5px 10px;
     font-size: 11.5px; font-weight: 700; color: #fff; cursor: pointer;
+    background: linear-gradient(90deg, var(--accent), #ff7ab0);
+  }
+  /* V3.166.2 (Блок 3, owner ТЗ): the day's wall is not a system error — the
+     chat behind blurs and her card stays on the screen asking him to remain.
+     Same visual language as the mode cards: white 800 title, 14.5/500 bullets,
+     the accent pill as the only CTA, a discreet ✕. */
+  #wallmodal {
+    position: fixed; inset: 0; z-index: 48; display: none;
+    align-items: center; justify-content: center; padding: 22px 16px;
+    background: rgba(10, 5, 14, .66); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  #wallmodal.open { display: flex; }
+  #wallmodal .box {
+    position: relative; width: min(360px, 92vw); text-align: left; padding: 20px 20px 18px;
+    background: linear-gradient(180deg, #241226, #170c1a); border: 1px solid rgba(255,255,255,.14);
+    border-radius: 24px; box-shadow: 0 18px 46px rgba(0,0,0,.55);
+  }
+  #wallmodal .x {
+    position: absolute; top: 8px; right: 10px; border: 0; background: transparent;
+    color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px;
+  }
+  #wallmodal .wa {
+    display: block; width: 68px; height: 68px; border-radius: 50%; object-fit: cover;
+    margin-bottom: 12px; border: 2px solid rgba(255,140,180,.55); background: var(--card2);
+  }
+  #wallmodal h3 { margin: 0 0 8px; font-size: 21px; line-height: 1.2; font-weight: 800; color: #fff; }
+  #wallmodal .wt { margin: 0 0 14px; font-size: 14.5px; line-height: 1.45; font-weight: 500; color: rgba(255,255,255,.9); }
+  #wallmodal ul { margin: 0 0 16px; padding: 0; list-style: none; }
+  #wallmodal li { font-size: 14.5px; line-height: 1.4; font-weight: 500; color: rgba(255,255,255,.9); padding: 3px 0; }
+  #wallmodal .go {
+    display: block; width: 100%; border: 0; border-radius: 14px; padding: 13px 10px; cursor: pointer;
+    text-align: center; font-size: 15px; font-weight: 700; color: #fff;
     background: linear-gradient(90deg, var(--accent), #ff7ab0);
   }
   /* V3.43.0: the centered gift modal for the channel bonus.
@@ -1461,6 +1502,18 @@
     <div id="payNote" style="margin-top:10px;font-size:12px;opacity:.7;text-align:center"></div>
   </div>
 </div>
+<!-- V3.166.2 (Блок 3): the day's ceiling spent — she asks him to stay. Filled by
+     showLimitWall(): her avatar, the hook, what Premium opens, one button. -->
+<div id="wallmodal">
+  <div class="box">
+    <button class="x" id="wallClose">✕</button>
+    <img class="wa" id="wallAvatar" alt="">
+    <h3 id="wallTitle"></h3>
+    <p class="wt" id="wallText"></p>
+    <ul id="wallBul"></ul>
+    <button class="go" id="wallCta" type="button"></button>
+  </div>
+</div>
 <!-- V3.43.0: full-screen photo lightbox — tap a photo and it opens -->
 <div id="lightbox">
   <button class="x" id="lbClose">✕</button>
@@ -1962,7 +2015,12 @@ const L_EN = {
   input_ph: 'Type a message…', send: 'Send',
   empty_chat: 'Send the first message — she replies right here',
   limit_reached: 'Daily free-message limit reached. Premium lifts it ⭐',
-  qb_limit: 'She is falling asleep till tomorrow 😴 wake her up',
+  // V3.166.2 (Блок 3): the owner's wall copy — she asks him to stay.
+  wall_h: 'Right at the best part… 💔',
+  wall_t: 'I want to keep going so much, but our time is up for today… Lift the limits so we can talk without boundaries in any mode. I will be waiting for you.',
+  wall_b: ['♾ Unlimited in both «Romance» and «18+»', '📸 She takes his order for explicit photos', '🎙 Private voice messages'],
+  wall_cta: '🔓 Unlock Premium',
+  qb_limit: 'Premium — chat without limits 💜',
   qb_peaches: 'Not enough peaches 🍑',
   qb_photo: 'More photos of her 📸',
   photo_topup: p => '🍑 Top up · a photo is ' + p + ' 🍑',
@@ -1986,8 +2044,6 @@ const L_EN = {
   say_btn_prem: '🔊 Voice it · Premium',
   say_wait: '● recording a voice note…',
   qb_more: 'Whole shop',
-  qb_demo: 'Demo Premium for 3 hours — free',
-  qb_demo_on: 'Demo Premium is on ✨',
   consent_needed: 'Confirm 18+ first — open the bot and press /start',
   reply_err: 'Could not reply — try again',
   create_own: 'Create your own', create_sub: 'Looks, figure and personality — she chats the way you pick',
@@ -2124,14 +2180,19 @@ const L_EN = {
   apt_wait: 'She is coming to you… 🏠', date_wait: 'She is getting ready for the date… 💕', date_photo_wait: '📸 the photo from your date is on its way…',
   // V3.43.5: the in-app Settings section (spicy switch + interface language).
   settings_title: 'Settings', lang_title: '🌐 Interface language',
-  // V3.165.0 (Задача 100): the entry screen is two cards — the tap is the
-  // choice, so the banner / explainer / Settings-row captions below them are
-  // deleted with the screens. The daily ceiling is quoted from the server.
+  // V3.165.0 (Задача 100): the entry screen is the only mode choice; V3.166.2
+  // (Блок 2) turns each card into three bullets. The number in the last one is
+  // the server's cap — never a 30 typed a second time into the page. A cap of 0
+  // means the owner switched the ceiling off, so that line says «unlimited».
   ms_title: 'How are we talking today?', ms_sub: 'You can change it on every entry',
-  ms_normal_t: 'Romance & flirting', ms_normal_d: 'Warm talk, flirting, feelings — she opens up more the closer you get. No limit on messages.',
+  ms_normal_t: 'Romance & flirting',
+  ms_normal_b: n => ['Light flirting, dates and long talks.',
+    'Win her heart and she feels the same.',
+    n ? n + ' messages a day (unlimited with Premium).' : 'Unlimited chat, forever.'],
   ms_spicy_t: 'Uncensored 18+',
-  ms_spicy_d: n => 'Open about sex, in your words, no refusals and no hints.' +
-    (n ? ' ' + n + ' explicit messages a day — with Premium, no ceiling.' : ''),
+  ms_spicy_b: n => ['Any fantasy of yours, played out.',
+    'Explicit photos from your own scenarios.',
+    n ? n + ' messages a day (unlimited with Premium).' : 'Unlimited chat, forever.'],
   ms_btn: 'Choose a heroine',
   ms_note: 'Started chats are kept: the new mode takes over from her next reply after you re-open the app.',
   mn_prem: '⭐ Premium — no ceiling',
@@ -2290,7 +2351,14 @@ const L_RU = {
   input_ph: 'Напиши сообщение…', send: 'Отправить',
   empty_chat: 'Напиши первое сообщение — она ответит прямо здесь',
   limit_reached: 'Дневной лимит бесплатных сообщений. Premium снимает лимит ⭐',
-  qb_limit: 'Она засыпает до завтра 😴 разбуди её',
+  // V3.166.2 (Блок 3): формулировки стены — по ТЗ владельца, дословно.
+  wall_h: 'На самом интересном месте... 💔',
+  wall_t: 'Мне так хочется продолжить, но на сегодня наше время вышло... Сними ограничения, чтобы мы могли общаться без границ в любом режиме. Я буду ждать тебя.',
+  wall_b: ['♾ Полный безлимит в режимах «Романтика» и «18+»',
+           '📸 Доступ к заказу откровенных фото',
+           '🎙 Приватные голосовые сообщения'],
+  wall_cta: '🔓 Разблокировать Premium',
+  qb_limit: 'Premium — общение без лимита 💜',
   qb_peaches: 'Не хватает персиков 🍑',
   qb_photo: 'Ещё её фото 📸',
   photo_topup: p => '🍑 Пополнить · фото ' + p + ' 🍑',
@@ -2314,8 +2382,6 @@ const L_RU = {
   say_btn_prem: '🔊 Озвучить · Premium',
   say_wait: '● записывает голосовое…',
   qb_more: 'Весь магазин',
-  qb_demo: 'Демо-Premium на 3 часа — бесплатно',
-  qb_demo_on: 'Демо-Premium включён ✨',
   consent_needed: 'Сначала подтверди 18+ — открой бота и нажми /start',
   reply_err: 'Не получилось ответить — попробуй ещё раз',
   create_own: 'Создать свою', create_sub: 'Внешность, фигура и характер — она будет общаться так, как ты выберешь',
@@ -2451,11 +2517,16 @@ const L_RU = {
   // V3.43.5: секция «Настройки» в профиле (пошлый режим + язык интерфейса).
   settings_title: 'Настройки', lang_title: '🌐 Язык интерфейса',
   // V3.165.0 (Задача 100): экран выбора режима — тап по карточке и есть выбор.
+  // V3.166.2 (Блок 2): три буллита на карточку, цифра лимита приходит с сервера.
   ms_title: 'Как общаемся сегодня?', ms_sub: 'Менять можно при каждом входе',
-  ms_normal_t: 'Романтика и флирт', ms_normal_d: 'Тёплое общение, флирт и чувства — она открывается тем сильнее, чем вы ближе. Без лимита на сообщения.',
+  ms_normal_t: 'Романтика и флирт',
+  ms_normal_b: n => ['Лёгкий флирт, свидания и долгие разговоры.',
+    'Покори её сердце, и она ответит взаимностью.',
+    n ? n + ' сообщений в день (с Premium — безлимит).' : 'Безлимитный чат навсегда.'],
   ms_spicy_t: 'Без цензуры 18+',
-  ms_spicy_d: n => 'Открыто про секс, его словами, без отказов и намёков.' +
-    (n ? ' ' + n + ' откровенных сообщений в день — с Premium без потолка.' : ''),
+  ms_spicy_b: n => ['Воплощение любых твоих фантазий.',
+    'Откровенные фото по твоим сценариям.',
+    n ? n + ' сообщений в день (с Premium — безлимит).' : 'Безлимитный чат навсегда.'],
   ms_btn: 'Выбрать героиню',
   ms_note: 'Начатые диалоги не пропадут: новый режим подхватится с её следующего ответа после перезахода в приложение.',
   mn_prem: '⭐ Premium — без потолка',
@@ -5063,9 +5134,12 @@ async function sendChat(retryText) {
     });
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 429) {
-      const jl = await r.json().catch(() => ({}));
-      if (jl.trial) toast(L.trial_msgs_over);
-      quickBuy('limit', () => { const i = document.getElementById('chatText'); if (i && !i.value) { i.value = text; sendChat(); } }, { demo: !!jl.demo, vip: !!jl.vip });
+      // V3.166.2: the ceiling is the account's (both modes, both platforms) and
+      // the answer is her card, not a toast. His text goes back into the input
+      // so tomorrow he can just press send again.
+      const t = document.getElementById('chatTyping'); if (t) t.remove();
+      if (sub) sub.textContent = subWas;
+      showLimitWall(() => { const i = document.getElementById('chatText'); if (i && !i.value) { i.value = text; sendChat(); } });
       return;
     }
     if (r.status === 403) {
@@ -5235,15 +5309,15 @@ function insertChatReply(j) {
   if (j.interrupt && j.interrupt.id) {
     box.insertAdjacentHTML('beforeend', interruptPlate(j.interrupt));
   }
-  // V3.165.0 (Задача 102, п.7): the daily ceiling of «После полуночи». The
-  // server counts the explicit turns and writes the line; this is the thin note
-  // under her bubble plus the Premium upsell once today's are used up.
-  if (j.explicit_hint && (j.explicit_hint.text || '').trim()) {
-    const h = j.explicit_hint;
+  // V3.166.2: the thin line about today's account ceiling (both modes). The
+  // server counts the turn and writes the line; on the last message of the day
+  // the note carries the way out — her card, the same as the wall.
+  if (j.chat_hint && (j.chat_hint.text || '').trim()) {
+    const h = j.chat_hint;
     box.insertAdjacentHTML('beforeend', '<div class="modenote">' + esc(h.text) +
       (h.reached ? '<button type="button" class="mn-b">' + esc(L.mn_prem) + '</button>' : '') + '</div>');
     const mb = box.lastElementChild.querySelector('.mn-b');
-    if (mb) mb.addEventListener('click', () => quickBuy('spicy'));
+    if (mb) mb.addEventListener('click', () => showLimitWall());
   }
   box.scrollTop = box.scrollHeight;
   // V3.53.0: a photo-on-request can complete a 50-photo gallery set.
@@ -7598,10 +7672,11 @@ async function loadShop() {
     // V3.57.6: the shop note must not hardcode the chat ceiling (V3.57.7 restored
     // the published 30/day). It prints the number normally and falls back to
     // «unlimited» only if the ceiling is ever raised past a fair-use 1000.
+    // V3.166.2: one account ceiling for both modes and both platforms — the old
+    // «с 4-го дня — 10» second tier left with the mechanic itself.
     const chatNote = s.free_tier.messages_per_day >= 1000
       ? esc(L.unlim_title)
-      : `${s.free_tier.messages_per_day} ${esc(L.msg_day)}` + (s.free_tier.messages_per_day_later && s.free_tier.messages_per_day_later < s.free_tier.messages_per_day
-        ? ` (${esc((LANG === 'ru' ? 'с ' + s.free_tier.later_from_day + '-го дня — ' : 'from day ' + s.free_tier.later_from_day + ': ') + s.free_tier.messages_per_day_later)})` : '');
+      : `${s.free_tier.messages_per_day} ${esc(L.msg_day)}`;
     const photoPrice = s.photo_peaches || 0;
     document.getElementById('shopbody').innerHTML = `
       ${premCard}
@@ -7842,8 +7917,7 @@ function trialChip(fallback) {
   const t = (ME && ME.trial_eligible && !ME.premium && SHOP) ? (SHOP.purchases || []).find(p => p.id === 'premium_trial') : null;
   return t ? (L.trial_chip + ' · ' + money(t)) : fallback;
 }
-async function quickBuy(kind, retry, opts) {
-  opts = opts || {};
+async function quickBuy(kind, retry) {
   const done = (kind === 'undress' && typeof retry === 'function') ? () => waitForUndressReady(retry) : retry;
   if (!SHOP) { try { await loadShop(); } catch (e) {} }
   const s = SHOP;
@@ -7852,19 +7926,19 @@ async function quickBuy(kind, retry, opts) {
   // V3.88.0: the cheap 3-day trial goes first while he is eligible.
   const trialFirst = (ME && ME.trial_eligible && !ME.premium) ? ['premium_trial'] : [];
   // V3.97.0: his personal one-time −50% month (the limit answer says vip:true).
+  // V3.166.2: the personal −50% month row is gone with the VIP offer — the wall
+  // sells one thing: Premium.
   const want = kind === 'month' ? ['premium', 'premium_quarter']
     : kind === 'undress' ? ['peach_pack_30', 'peach_pack_100'].concat(trialFirst, ['premium_week'])
     : ((kind === 'limit' || kind === 'voice' || kind === 'spicy') ? trialFirst.concat(['premium_week', 'premium'])
       : (kind === 'photo' ? ['peach_pack_30', 'peach_pack_100', 'peach_pack_10'] : ['peach_pack_10', 'peach_pack_30', 'premium']));
-  if (kind === 'limit' && opts.vip) want.unshift('premium_vip');
   const items = want.map(id => (s.purchases || []).find(p => p.id === id)).filter(Boolean);
   if (!items.length) { showTab('shop'); return; }
-  document.getElementById('payEmo').textContent = kind === 'month' ? '🎬' : kind === 'limit' ? '😴' : (kind === 'voice' ? '🎙' : ((kind === 'spicy' || kind === 'undress') ? '🔥' : '🍑'));
+  document.getElementById('payEmo').textContent = kind === 'month' ? '🎬' : kind === 'limit' ? '💜' : (kind === 'voice' ? '🎙' : ((kind === 'spicy' || kind === 'undress') ? '🔥' : '🍑'));
   document.getElementById('payTitle').textContent = kind === 'month' ? (L.video_month || L.qb_limit) : kind === 'limit' ? L.qb_limit : (kind === 'voice' ? L.qb_voice : ((kind === 'spicy' || kind === 'undress') ? L.qb_spicy : (kind === 'photo' ? L.qb_photo : L.qb_peaches)));
+  // V3.166.2: the free 3-hour demo row left the wall with the mechanic itself —
+  // Premium is the only answer to the ceiling.
   const rows = [];
-  if (kind === 'limit' && opts.demo) {
-    rows.push(`<button class="mrow" data-q="__demo"><span class="ico">🎁</span><span class="nm">${esc(L.qb_demo)}</span><span class="pr">0 ₽</span></button>`);
-  }
   items.forEach(x => rows.push(`<button class="mrow" data-q="${esc(x.id)}"><span class="ico">${esc(x.emoji || '⭐')}</span><span class="nm">${esc(x.title)}${x.badge ? ' · ' + esc(x.badge) : ''}${x.description ? '<small class="qbd">' + esc(x.description) + '</small>' : ''}</span><span class="pr">${esc(money(x))}</span></button>`));
   rows.push(`<button class="mrow" data-q="__shop"><span class="ico">🛍</span><span class="nm">${esc(L.qb_more)}</span><span class="pr"></span></button>`);
   document.getElementById('payRows').innerHTML = rows.join('');
@@ -7877,19 +7951,35 @@ async function quickBuy(kind, retry, opts) {
     const id = b.dataset.q;
     document.getElementById('paymodal').classList.remove('open');
     if (id === '__shop') { showTab('shop'); return; }
-    if (id === '__demo') {
-      try {
-        const r = await fetch('/webapp/api/demo?init_data=' + encodeURIComponent(tg.initData || ''), { method: 'POST' });
-        const j = await r.json().catch(() => ({}));
-        if (j.ok) { toast(L.qb_demo_on); loadMe(); if (typeof retry === 'function') setTimeout(retry, 500); }
-        else quickBuy(kind, retry, {});
-      } catch (e) { toast(L.reply_err); }
-      return;
-    }
     // pick card/SBP or Stars next; a Stars payment still finishes his action
     setTimeout(() => openPay(id, done, kind === 'undress'), 150);
   }));
   document.getElementById('paymodal').classList.add('open');
+}
+// V3.166.2 (Блок 3, owner ТЗ): the daily ceiling is spent — not a system error
+// but a scene. The chat behind blurs, her card stays on the screen and the one
+// button goes into the standard payment flow; ✕ leaves him in the dialog (the
+// wall still stands until midnight Moscow).
+function showLimitWall(retry) {
+  const m = document.getElementById('wallmodal');
+  if (!m) { quickBuy('limit', retry); return; }
+  const av = document.getElementById('wallAvatar');
+  av.onerror = () => { av.style.display = 'none'; };
+  av.style.display = '';
+  av.src = (CHAT && (CHAT.photo || (CHAT.id ? '/webapp/photo/' + CHAT.id : ''))) || '';
+  if (!av.src) av.style.display = 'none';
+  document.getElementById('wallTitle').textContent = L.wall_h;
+  document.getElementById('wallText').textContent = L.wall_t;
+  document.getElementById('wallBul').innerHTML =
+    (L.wall_b || []).map(t => '<li>• ' + esc(t) + '</li>').join('');
+  document.getElementById('wallCta').textContent = L.wall_cta;
+  document.getElementById('wallCta').onclick = () => {
+    m.classList.remove('open');
+    quickBuy('limit', retry);
+  };
+  document.getElementById('wallClose').onclick = () => m.classList.remove('open');
+  m.onclick = (e) => { if (e.target === m) m.classList.remove('open'); };
+  m.classList.add('open');
 }
 // V3.44.23: the custom-peach tile — opens the same pay-method modal with a
 // synthetic product whose stars/rub prices are n × per-unit constants.
@@ -8081,14 +8171,17 @@ async function withdrawPartner() {
 // reset either — the server stamps `mode_set_at` and puts one thin line into
 // each of them, and the new mode bites after he re-opens the app.
 function modeCard(on) {
-  const cap = (ME && ME.explicit_cap) || 0;
+  // V3.166.2: the number is the account ceiling for both modes and both
+  // platforms, not the old explicit-only sub-limit.
+  const cap = (ME && ME.chat_cap) || 0;
+  const bullets = (on ? L.ms_spicy_b : L.ms_normal_b)(cap);
   return '<button class="modecard' + (on ? ' spicy' : '') + '" data-mode="' + (on ? 1 : 0) + '" type="button">' +
-    '<span class="ph">' + (on ? '🔥' : '🌙') + '</span>' +
+    '<span class="pic"><span class="ph">' + (on ? '🔥' : '🌙') + '</span>' +
     '<img src="' + (on ? '/webapp/art/mode_spicy.jpg' : '/webapp/art/mode_normal.jpg') + '" alt="" ' +
-      'onerror="this.closest(\'.modecard\').classList.add(\'nopic\')">' +
+      'onerror="this.closest(\'.modecard\').classList.add(\'nopic\')"></span>' +
     '<span class="shade"></span>' +
-    '<span class="txt"><b>' + esc(on ? L.ms_spicy_t : L.ms_normal_t) + '</b>' +
-    '<span class="d">' + esc(on ? L.ms_spicy_d(cap) : L.ms_normal_d) + '</span>' +
+    '<span class="info"><b>' + esc(on ? L.ms_spicy_t : L.ms_normal_t) + '</b>' +
+    '<span class="d">' + bullets.map(t => '<span class="bl">• ' + esc(t) + '</span>').join('') + '</span>' +
     '<span class="go">' + esc(L.ms_btn) + '</span></span></button>';
 }
 function openModeScreen() {
@@ -8132,6 +8225,14 @@ async function chooseMode(on) {
 function maybeModeEntry(chars) {
   try {
     const sp = new URLSearchParams(location.search);
+    // V3.166.2 (Блок 3): the bot's wall button arrives with «pay=1» — his day is
+    // already spent, so the mode screen would only stand between him and the
+    // one thing he came for. Her card opens right over the heroines list.
+    if (sp.get('pay') === '1') {
+      showTab('characters');
+      if (!(ME && ME.premium)) showLimitWall();
+      return;
+    }
     if (sp.get('mode') === '1' || (!sp.get('open') && !sp.get('scene'))) { openModeScreen(); return; }
   } catch (e) {}
   maybeDeepOpenChat(chars);

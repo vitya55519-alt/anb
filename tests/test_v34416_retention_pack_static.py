@@ -91,8 +91,15 @@ def test_model_columns_for_retention():
 
 
 def test_sleep_block_promises_tomorrow():
-    block = MAIN[MAIN.index('async def _sleep_block_reply('):MAIN.index('# V3.27.0: ruble-shop balances')]
-    assert "pick_text('sleep') + '\\nа завтра утром будет дневной подарок" in block
+    # V3.34.16 teased the daily gift on the «she fell asleep» wall. V3.166.2
+    # rewrote that wall in her own words (owner: «экран оплаты должен быть
+    # продолжением игры»), so the promise left is simply the rolling day.
+    block = MAIN[MAIN.index('async def _limit_wall_reply('):MAIN.index('# V3.27.0: ruble-shop balances')]
+    assert "pick_text('sleep')" not in block and 'дневной подарок' not in block
+    assert 'лимит на сегодня исчерпан' in block
+    from services import daily_limit
+    assert 'после полуночи' in daily_limit.reached_line('ru')
+    assert 'after midnight' in daily_limit.reached_line('en')
 
 
 def test_streak_visible_from_day_two():

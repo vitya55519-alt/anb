@@ -18,6 +18,7 @@ from services.daily_life import her_moment
 from services import biorhythm
 from services import anchor_service
 from services import explicit_mode
+from services import daily_limit
 from services.character_dna_service import competency_context, character_dna_context
 from services.state_service import state_context, softly_evolve_state
 from services.user_service import ensure_user, get_user
@@ -621,6 +622,9 @@ async def _stay_in_chat(answer: str, character: dict | None, *, duo: bool = Fals
 
 async def reply(user_id: int, user_name: str, user_text: str, language_code: str | None = None, character_id: str = CHARACTER_ID,
                 scene: str = '') -> str:
+    # V3.166.2: `scene` is overwritten further down when a storyline lights up,
+    # so the turn counter keeps its own copy of what the CALLER handed her.
+    caller_scene = scene
     # V3.44.2: secret commands check
     from services import retention_features_service
     secret_response = retention_features_service.process_secret_command(user_text)
@@ -730,24 +734,18 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                     persona = (persona + '\n' if persona else '') + invite_funnel.upsell_rule(_fn)
         except Exception:
             pass
-    # V3.37.0 → V3.165.0: the old premium-gated «пошлый режим» text is gone with
+    # V3.37.0 → V3.166.2: the old premium-gated «пошлый режим» text is gone with
     # the rename — its initiative and register rules now live in
     # `explicit_mode.mode_rules`, and the old block told her to avoid exactly the
-    # graphic detail the mode unlocks.
+    # graphic detail the mode unlocks. The mode carries no counter any more: the
+    # day's ceiling is one number for the whole account (services/daily_limit)
+    # and it is a wall in front of his message, not a leash on her answers: a
+    # spent day never reaches this code, so the mode alone decides her register.
     spicy_line = ''
-    # `mode_open` is the flag AND the day's ceiling: when the 30 explicit
-    # messages are spent she keeps the heat and drops to innuendo, which is
-    # exactly what `mode_rules(explicit_allowed=False)` writes.
-    mode_on = False
-    mode_open = False
-    mode_left = None
     try:
-        user_row = get_user(user_id)
-        mode_on = explicit_mode.is_on(user_row)
-        mode_left = explicit_mode.cap_left(user_row, premium=premium, mode_on=mode_on)
-        mode_open = mode_on and (mode_left is None or mode_left > 0)
+        mode_on = explicit_mode.is_on(get_user(user_id))
     except Exception:
-        mode_on = mode_open = False
+        mode_on = False
     card_girl = _is_card_girl(character_id)
     # V3.90.0: intimacy is Premium-only — admins test it as Premium.
     try:
@@ -881,17 +879,16 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                                            wild=plot_heat == 'wild' or bool(fetish_line), premium=intim_ok,
                                            dirty_start=dirty_start,
                                            wine=gift_wine_open,
-                                           mode=mode_open and _adult_ok(user_id))
+                                           mode=mode_on and _adult_ok(user_id))
         if plot_heat == 'soft' and not fetish_line:
             explicit_line = ''
         if fetish_line:
             explicit_line = (explicit_line or EXPLICIT_CHAT_RULE) + '\n' + fetish_line
-        # V3.165.0: the mode rules ride even when the day's ceiling is spent (the
-        # `explicit_allowed=False` variant), otherwise the ceiling would silently
-        # drop him back into the vanilla card and she would start lecturing.
+        # V3.165.0: the mode rules ride on top of the card, whatever the level —
+        # he chose the mode himself, she does not drop back to the vanilla card.
         if mode_on and _adult_ok(user_id):
             explicit_line = (explicit_line + '\n' if explicit_line else '') + explicit_mode.mode_rules(
-                explicit_allowed=mode_open, hook=explicit_mode.hook_line(user_id, character_id))
+                hook=explicit_mode.hook_line(user_id, character_id))
         # V3.165.0 (#108, owner): пустой слот ленты «Трофеи Страсти» работает как
         # зацепка — она сама вспоминает то, чего между вами ещё не было. Одна
         # строка, не раньше третьего его сообщения и не чаще раза в шесть часов;
@@ -944,7 +941,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         character_id=character_id,
         user_name=user_name, duo=duo_chat,
         anchors=anchors,
-        explicit_mode=bool(mode_open and _adult_ok(user_id)),
+        explicit_mode=bool(mode_on and _adult_ok(user_id)),
     )
     messages = [{"role": "system", "content": system}]
     messages += [{"role": m.role, "content": m.content} for m in history]
@@ -1212,18 +1209,15 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             track_event(db_user_id, 'memory_gift_shown', character_id=character_id)
         except Exception:
             _logger.warning('memory gift mark failed user=%s', user_id, exc_info=True)
-    # V3.165.0: «После полуночи» — an explicit turn of his (or of hers) spends one
-    # message of today's account ceiling. Only the reply that was actually
-    # allowed to be graphic is counted, so a spent ceiling never burns itself
-    # further. The delivery layer (bot or Mini App) reads the hint once.
-    if mode_on:
+    # V3.166.2: one accepted turn burns one message of today's account ceiling
+    # — his mode does not matter, and Premium never comes here (his cap is off).
+    # A storyline direction is still a live turn, only the scene the caller
+    # scripted is not. The delivery layer reads the thin line once.
+    if not premium and not caller_scene and (r.text or '').strip():
         try:
-            await asyncio.to_thread(
-                explicit_mode.note_reply, user_id, user_text=user_text, answer=answer,
-                mode_on=mode_on, mode_open=mode_open, premium=premium,
-                language=language_code or 'ru')
+            await asyncio.to_thread(daily_limit.note_message, user_id, language=language_code or 'ru')
         except Exception:
-            _logger.warning('explicit mode note failed user=%s', user_id, exc_info=True)
+            _logger.warning('daily limit note failed user=%s', user_id, exc_info=True)
     # V3.57.8: memory extraction and style analysis are extra LLM round trips the
     # user never reads. They used to be awaited here, so every reply waited for
     # them; now they run in the background after the answer is returned.

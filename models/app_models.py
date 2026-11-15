@@ -77,16 +77,19 @@ class User(Base):
     # V3.31.3: last weekly "support the project" donation ping (nullable =
     # never pinged). Auto-migrated by services/db.py.
     last_donation_ping_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # V3.37.0: the premium-gated "пошлый режим" chat toggle. Auto-migrated.
+    # V3.37.0: the mode flag of the dialog. Auto-migrated.
     # Stays True when Premium lapses — the chat gate re-checks is_premium per
     # message, so the flag simply waits for the next subscription.
     spicy_mode: Mapped[bool] = mapped_column(Boolean, default=False)
-    # V3.165.0: «После полуночи» — the daily ceiling of explicit messages sits on
-    # the ACCOUNT, not on the dialog (the owner ruled the per-girl counter out on
-    # 13 ноя). The day key is Moscow, so it rolls at midnight MSK like the gift
-    # streak. Premium never reads it: his cap is off. Auto-migrated by db.py.
-    explicit_day: Mapped[date | None] = mapped_column(Date, nullable=True)
-    explicit_used: Mapped[int] = mapped_column(Integer, default=0)
+    # V3.166.2: the daily ceiling of ANY message (both modes, both platforms)
+    # sits on the ACCOUNT, not on the dialog (the owner ruled the per-girl
+    # counter out on 13 ноя). The day key is Moscow, so it rolls at midnight
+    # MSK like the gift streak. Premium never reads it: his cap is off.
+    # ``explicit_day``/``explicit_used`` of V3.165 counted explicit turns only —
+    # nothing reads them any more, and a per-day counter is safe to leave
+    # behind, so no destructive migration was run over them. Auto-migrated.
+    chat_day: Mapped[date | None] = mapped_column(Date, nullable=True)
+    chat_used: Mapped[int] = mapped_column(Integer, default=0)
     # V3.165.0: when the entry screen last rewrote the mode. A dialog with no
     # message newer than this shows one thin «режим изменён» line, and only until
     # he writes again. The history itself is never touched or reset.

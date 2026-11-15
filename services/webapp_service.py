@@ -48,9 +48,7 @@ from config import (
     DRAFT_PEACH_COST,  # V3.152.0: the «Стертый черновик» price tag on a locked plate
     EXPLICIT_PHOTO_PEACH_COST,  # V3.165.0: one price for every 18+ frame
     CUSTOM_PHOTO_COST_STARS,
-    FREE_LATE_FROM_DAY,
     FREE_MESSAGES_PER_DAY,
-    FREE_MESSAGES_PER_DAY_LATE,
     FREE_PHOTOS_LEVEL_1_2,
     FREE_PHOTOS_LEVEL_3_6,
     GALLERY_DOWNLOAD_STARS,
@@ -388,21 +386,24 @@ def api_me(telegram_id: int) -> dict:
     except Exception:
         pass
     card = get_card(selected_character)
-    # V3.165.0: режим «После полуночи» — флаг аккаунта, поэтому экран входа,
-    # чат и витрина читают его отсюда же, откуда бот. ``explicit_left`` = None
-    # значит «потолка нет» (Premium, режим выключен или кап 0).
+    # V3.165.0: режим — флаг аккаунта, поэтому экран входа, чат и витрина читают
+    # его отсюда же, откуда бот. V3.166.2: the day's ceiling left the mode — one
+    # number for the whole account, both modes and both platforms
+    # (services/daily_limit). ``chat_left`` = None means «no ceiling» (Premium or
+    # cap 0), and the entry cards + the paywall quote the server's number.
     premium = is_premium(telegram_id)
-    explicit_cap = 0
+    chat_cap = 0
     try:
         from services import explicit_mode
         mode_on = explicit_mode.is_on(user)
-        explicit_left = explicit_mode.cap_left(user, premium=premium, mode_on=mode_on)
-        # The entry cards quote the ceiling, so they quote the server's number
-        # — never a second hard-coded 30 in the SPA.
-        explicit_cap = int(explicit_mode.DAILY_CAP or 0)
     except Exception:
         mode_on = bool(getattr(user, 'spicy_mode', False)) if user else False
-        explicit_left = None
+    try:
+        from services import daily_limit
+        chat_left = daily_limit.left(user, premium=premium)
+        chat_cap = int(daily_limit.DAILY_CAP or 0)
+    except Exception:
+        chat_left = None
     return {
         'id': telegram_id,
         'name': (user.name or '') if user else '',
@@ -444,11 +445,12 @@ def api_me(telegram_id: int) -> dict:
         'photo_credits': ((user.photo_credits or 0) + (user.bonus_peaches or 0)) if user else 0,
         'paid_peaches': (user.photo_credits or 0) if user else 0,
         'bonus_peaches': (user.bonus_peaches or 0) if user else 0,
-        # V3.43.5 → V3.165.0: the flag the entry screen writes. It no longer
-        # needs Premium — the ceiling (``explicit_left``) is what pays.
+        # V3.43.5 → V3.165.0: the flag the entry screen writes.
+        # V3.166.2: it buys nothing any more — the day's wall (``chat_left``) is
+        # what Premium lifts, and it stands in both modes.
         'spicy_mode': bool(mode_on),
-        'explicit_left': explicit_left,
-        'explicit_cap': explicit_cap,
+        'chat_left': chat_left,
+        'chat_cap': chat_cap,
         # V3.55.5: daily streak gift state for the shop block (replaces the
         # V3.44.0 bonus wheel). Read-only — claiming is a POST.
         **_gift_me_fields(telegram_id),
@@ -1020,8 +1022,16 @@ def api_shop(lang: str = 'ru') -> dict:
         # buys: the free frame of the day and no cap on the talk.
         ('🔥', 'откровенные фото: «Наедине», «Раздеть», косплей — один кадр даром каждый день',
          'explicit photos: private, «Undress», cosplay — one frame free every day'),
-        ('🌙', 'режим «После полуночи» без дневного лимита на откровенные сообщения',
-         '“After midnight” mode with no daily cap on explicit messages'),
+        # V3.166.2: owner — the day's ceiling moved from the 18+ flag onto the
+        # account: it counts EVERY message, in both modes and on both platforms,
+        # and Premium is what lifts it. With the emergency lever at 0 there is no
+        # ceiling at all, and the line must not offer to lift a ceiling of zero.
+        ('🌙', (f'общение без дневного лимита в {FREE_MESSAGES_PER_DAY} сообщений — '
+                'в обоих режимах, в приложении и в боте' if FREE_MESSAGES_PER_DAY
+                else 'общение без дневного лимита — в обоих режимах, в приложении и в боте'),
+         (f'chat with no daily ceiling of {FREE_MESSAGES_PER_DAY} messages — '
+          'in both modes, in the app and in the bot' if FREE_MESSAGES_PER_DAY
+          else 'chat with no daily ceiling — in both modes, in the app and in the bot')),
         # V3.83.0: owner — «с Premium можно выбрать любой уровень общения».
         ('🎚', 'любой уровень общения 1–10 с каждой девушкой — выбери сам', 'any relationship level 1–10 with every girl — your pick'),
         # V3.93.0: without Premium — one ready photo a day; with it — two new ones + peaches.
@@ -1085,8 +1095,6 @@ def api_shop(lang: str = 'ru') -> dict:
         },
         'free_tier': {
             'messages_per_day': FREE_MESSAGES_PER_DAY,
-            'messages_per_day_later': min(FREE_MESSAGES_PER_DAY, FREE_MESSAGES_PER_DAY_LATE),
-            'later_from_day': FREE_LATE_FROM_DAY,
             'photos_level_1_2': FREE_PHOTOS_LEVEL_1_2,
             'photos_level_3_6': FREE_PHOTOS_LEVEL_3_6,
         },

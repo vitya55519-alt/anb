@@ -69,14 +69,17 @@ def test_wiring_app_and_pay_sheet():
     assert 'разовый платёж, без автопродления' in MAIN
 
 
-def test_free_text_is_unlimited_on_every_day():
-    from config import FREE_MESSAGES_PER_DAY, FREE_MESSAGES_PER_DAY_LATE
+def test_free_text_has_an_account_ceiling():
+    # V3.166.2 (owner): the free tier is capped again — one number for the whole
+    # account, in both modes and on both platforms, and the legal text prints the
+    # same one the wall enforces (the old «с 4-го дня — 10» second tier is gone).
+    from config import CHAT_MSGS_PER_DAY, FREE_MESSAGES_PER_DAY
     from services.access_service import can_send_message
-    assert FREE_MESSAGES_PER_DAY == FREE_MESSAGES_PER_DAY_LATE == 1000
+    assert FREE_MESSAGES_PER_DAY == CHAT_MSGS_PER_DAY and CHAT_MSGS_PER_DAY > 0
     assert can_send_message(123456789)
     from services import legal_service
     src = (ROOT / 'services' / 'legal_service.py').read_text(encoding='utf-8') if 'ROOT' in globals() else ''
-    assert 'FREE_MESSAGES_PER_DAY_LATE' in (src or open(legal_service.__file__, encoding='utf-8').read())
+    assert 'FREE_MESSAGES_PER_DAY_LATE' not in (src or open(legal_service.__file__, encoding='utf-8').read())
 
 
 def test_gemini38_is_first_voice_with_its_own_tags():

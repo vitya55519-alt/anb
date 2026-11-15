@@ -23,10 +23,13 @@ def test_video_pricing_and_no_free_slots():
 
 
 def test_retention_config_flags():
-    # V3.137.0: text is unlimited on every tier — the gate is can_send_message
-    # (always True), so FREE_MESSAGES_PER_DAY is only the «unlimited» sentinel (1000).
-    assert 'FREE_MESSAGES_PER_DAY = 1000' in CONFIG
-    assert 'DEMO_PREMIUM_HOURS", "3"' in CONFIG
+    # V3.166.2: the ceiling is a hard account number again (30 a day for both
+    # modes on both platforms), and the free demo premium left with it.
+    assert 'FREE_MESSAGES_PER_DAY = CHAT_MSGS_PER_DAY' in CONFIG
+    assert 'CHAT_MSGS_PER_DAY_V166' in CONFIG
+    # сам constant исчез (в config осталась только строчка, которая это
+    # объясняет), поэтому проверяем форму объявления, а не слово
+    assert 'DEMO_PREMIUM_HOURS =' not in CONFIG
     assert 'PREMIUM_DISCOUNT_PERCENT", "30"' in CONFIG
     assert 'PREMIUM_DISCOUNT_HOURS", "24"' in CONFIG
     assert 'RETENTION_REMINDER_HOURS", "24"' in CONFIG
@@ -35,14 +38,14 @@ def test_retention_config_flags():
 
 
 def test_retention_service_helpers_and_pools():
-    for name in (
-        'def has_used_demo(', 'def grant_demo_premium(', 'def demo_hours_left(',
-        'def offer_discount(', 'def discount_info(', 'def pick_text(',
-    ):
+    # V3.166.2: the demo trio is deleted, the discount keeps only its reader —
+    # nothing opens a window, an already open one still resolves.
+    for name in ('def discount_info(', 'def pick_text('):
         assert name in RETENTION
-    # Demo is idempotent and implemented as a real Subscription row.
-    assert 'if has_used_demo(telegram_id):' in RETENTION
-    assert 'Subscription(' in RETENTION
+    for gone in ('def has_used_demo(', 'def grant_demo_premium(', 'def demo_hours_left(',
+                 'def offer_discount(', 'def _demo_marker('):
+        assert gone not in RETENTION
+    assert 'user.discount_offered_at' in RETENTION
     for pool in ('SLEEP_BLOCK_TEXTS', 'MISS_TEXTS', 'JEALOUSY_TEXTS',
                  'CLIFFHANGER_TEXTS', 'MORNING_TEXTS', 'EVENING_TEXTS'):
         assert pool in RETENTION
@@ -58,22 +61,32 @@ def test_discount_product_and_column():
     assert 'discount_offered_at' in MODELS
 
 
-def test_sleep_block_replaces_dry_limit_notice():
-    # Pleasure block: she "falls asleep", admins are exempt, demo + premium CTAs.
-    assert MAIN.count('await _sleep_block_reply(message)') >= 2
+def test_limit_wall_replaces_the_dry_notice():
+    # V3.20.0 blocked by «she fell asleep» + a free demo; V3.166.2 keeps the
+    # soft scene but sells one thing, and admins stay exempt from the gate.
+    assert MAIN.count('await _limit_wall_reply(') >= 3
     assert 'message.from_user.id not in ADMIN_TELEGRAM_IDS and not can_send_message' in MAIN
-    assert "pick_text('sleep')" in MAIN
-    assert "callback_data='retention:demo'" in MAIN
-    assert "callback_data='retention:premium'" in MAIN
+    assert '_sleep_block_reply' not in MAIN and '_sleep_block_markup' not in MAIN
+    assert "pick_text('sleep')" not in MAIN
+    assert "callback_data='retention:demo'" not in MAIN
+    # сама кнопка с wall убрана (остаётся только обработчик — по нему ещё
+    # открываются пузы, доставленные до релиза)
+    assert "callback_data='retention:premium'" not in MAIN
+    assert "F.data == 'retention:premium'" in MAIN
     assert 'на сегодня бесплатный лимит сообщений закончился' not in MAIN
+    # V3.166.2: she asks him to stay in her own words and the one button opens
+    # the app straight on the purchase screen — no system error, no second offer.
+    wall = MAIN[MAIN.index('def _limit_wall_markup('):MAIN.index('# V3.27.0: ruble-shop balances')]
+    assert 'лимит на сегодня исчерпан' in wall and 'не хочу останавливаться' in wall
+    assert '/webapp?pay=1' in wall
+    assert 'grant_demo_premium' not in wall and 'premium_vip' not in wall
 
 
-def test_demo_and_discount_callbacks():
-    demo_block = MAIN[MAIN.index("@dp.callback_query(F.data == 'retention:demo')"):
-                      MAIN.index("@dp.callback_query(F.data == 'retention:premium')")]
-    assert 'grant_demo_premium(' in demo_block
-    assert 'is_premium(' in demo_block
-    assert 'demo_premium_granted' in demo_block
+def test_the_free_demo_callback_is_gone():
+    assert "F.data == 'retention:demo'" not in MAIN
+    assert 'grant_demo_premium(' not in MAIN
+    assert 'demo_premium_granted' not in MAIN
+    # the discount product still pays out for an order made before V3.166.2
     assert 'premium_pitch_text(cq.from_user.id)' in MAIN
     assert "'premium_month_discount', discount['price']" in MAIN
 
@@ -111,7 +124,7 @@ def test_scheduler_retention_tiers_and_rituals():
 
 
 def test_premium_pitch_mentions_new_perks_and_plateau():
-    pitch = MAIN[MAIN.index('def premium_pitch_text('):MAIN.index('def _sleep_block_markup(')]
+    pitch = MAIN[MAIN.index('def premium_pitch_text('):MAIN.index('def _limit_wall_markup(')]
     assert 'оживление фото в день' not in pitch
     assert 'photo animation a day' not in pitch
     assert 'видео-кружочки' in pitch

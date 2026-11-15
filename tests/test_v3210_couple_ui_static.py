@@ -154,7 +154,7 @@ def test_user_columns():
 
 
 def test_premium_pitch_mentions_plateau():
-    pitch = MAIN[MAIN.index('def premium_pitch_text('):MAIN.index('def _sleep_block_markup(')]
+    pitch = MAIN[MAIN.index('def premium_pitch_text('):MAIN.index('def _limit_wall_markup(')]
     assert 'уровни 7–10 отношений' in pitch
     assert 'с 7-го по 10-й' in pitch
 

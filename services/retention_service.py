@@ -1,13 +1,13 @@
 """V3.20.0 retention & monetization pack.
 
 Mechanics implemented here:
-- Demo premium: a ONE-TIME free taste (default 3 hours) granted when the user
-  hits the daily chat limit. Losing it converts stronger than never having it.
-  Implemented as a real Subscription row with a fixed charge marker, so every
-  existing premium check (is_premium, free video slots, chat limits) picks it
-  up automatically.
-- One-time 24h premium discount with a visible deadline, offered after the
-  demo is spent.
+- The read side of the one-time 24h premium discount.
+  V3.166.2 (owner — «убираем полностью разовую раздачу и скидку -30%, они
+  размывают фокус»): the free 3-hour demo premium is deleted with its
+  callbacks, and nothing opens a fresh discount window any more — the reader
+  stays, so a window opened before this release and an in-flight
+  `premium_month_discount` order still resolve. Users who already hold an
+  active demo Subscription simply run it out: `is_premium` reads the row.
 - Static emotional push text pools (miss / jealousy / cliffhanger / morning /
   evening rituals) so the scheduler can nudge silent users without spending
   LLM tokens on every push.
@@ -18,12 +18,11 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from config import (
-    DEMO_PREMIUM_HOURS,
     PREMIUM_DISCOUNT_HOURS,
     PREMIUM_DISCOUNT_PERCENT,
     PREMIUM_DISCOUNT_STARS,
 )
-from models.app_models import Subscription, User
+from models.app_models import User
 from services.db import SessionLocal
 
 # ── Emotional push pools ────────────────────────────────────────────────────
@@ -82,70 +81,10 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _demo_marker(telegram_id: int) -> str:
-    return f'demo:{telegram_id}'
-
-
-def has_used_demo(telegram_id: int) -> bool:
-    with SessionLocal() as s:
-        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
-        if not user:
-            return False
-        return bool(s.scalar(select(Subscription).where(
-            Subscription.user_id == user.id,
-            Subscription.telegram_charge_id == _demo_marker(telegram_id),
-        )))
-
-
-def grant_demo_premium(telegram_id: int) -> bool:
-    """One-time demo premium. Idempotent: a second call returns False."""
-    if has_used_demo(telegram_id):
-        return False
-    now = _now()
-    with SessionLocal() as s:
-        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
-        if not user:
-            return False
-        s.add(Subscription(
-            user_id=user.id,
-            plan='premium',
-            status='active',
-            stars_amount=0,
-            started_at=now,
-            expires_at=now + timedelta(hours=DEMO_PREMIUM_HOURS),
-            telegram_charge_id=_demo_marker(telegram_id),
-        ))
-        s.commit()
-    return True
-
-
-def demo_hours_left(telegram_id: int) -> float:
-    with SessionLocal() as s:
-        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
-        if not user:
-            return 0.0
-        sub = s.scalar(select(Subscription).where(
-            Subscription.user_id == user.id,
-            Subscription.telegram_charge_id == _demo_marker(telegram_id),
-        ))
-        if not sub or not sub.expires_at:
-            return 0.0
-        return max(0.0, (sub.expires_at - _now()).total_seconds() / 3600)
-
-
-def offer_discount(telegram_id: int) -> bool:
-    """Open the one-time 24h discount window. True only when just opened."""
-    with SessionLocal() as s:
-        user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
-        if not user or user.discount_offered_at:
-            return False
-        user.discount_offered_at = _now()
-        s.commit()
-        return True
-
-
 def discount_info(telegram_id: int) -> dict:
-    """Active one-time discount details: {'active', 'price', 'percent', 'hours_left'}."""
+    """Active one-time discount details: {'active', 'price', 'percent', 'hours_left'}.
+    V3.166.2: nothing opens a window any more (``offer_discount`` is deleted),
+    this only reads one the user already has."""
     with SessionLocal() as s:
         user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
         if not user or not user.discount_offered_at:

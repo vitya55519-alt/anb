@@ -22,9 +22,7 @@ from __future__ import annotations
 import os
 
 from config import (
-    FREE_LATE_FROM_DAY,
     FREE_MESSAGES_PER_DAY,
-    FREE_MESSAGES_PER_DAY_LATE,
     FREE_PHOTOS_LEVEL_1_2,
     FREE_PHOTOS_LEVEL_3_6,
     PREMIUM_MONTHLY_STARS,
@@ -223,17 +221,15 @@ def tariffs_text(lang: str = 'ru') -> str:
         for pid, stars in PEACH_PACK_STARS.items()
     ]
     donation_variants = ', '.join(f'{amount} ₽' for amount in DONATION_AMOUNTS_RUB)
-    # V3.57.6: tariff lines must not hardcode the chat ceiling. V3.57.7 put it back
-    # to the published 30/day for non-premium, so this normally prints the number;
-    # the «unlimited» branch only speaks up if the ceiling ever goes ≥ 1000 again
-    # (an absurd counter in a legal document reads like a broken paywall).
-    chat_free_en = ('unlimited messages' if FREE_MESSAGES_PER_DAY >= 1000
+    # V3.57.6: tariff lines must not hardcode the chat ceiling — it is the same
+    # config number the wall enforces (V3.166.2: 30 a day on both modes). A
+    # ceiling of 0 means the owner switched the wall off, and only then the
+    # document may say there is no ceiling at all.
+    _unlimited = not FREE_MESSAGES_PER_DAY or FREE_MESSAGES_PER_DAY >= 1000
+    chat_free_en = ('unlimited messages' if _unlimited
                     else f'{FREE_MESSAGES_PER_DAY} messages per day')
-    chat_free_ru = ('без ограничения количества сообщений' if FREE_MESSAGES_PER_DAY >= 1000
+    chat_free_ru = ('без ограничения количества сообщений' if _unlimited
                     else f'{FREE_MESSAGES_PER_DAY} сообщений в день')
-    if FREE_MESSAGES_PER_DAY < 1000 and FREE_MESSAGES_PER_DAY_LATE < FREE_MESSAGES_PER_DAY:
-        chat_free_en += f' (from day {FREE_LATE_FROM_DAY}: {FREE_MESSAGES_PER_DAY_LATE})'
-        chat_free_ru += f' (с {FREE_LATE_FROM_DAY}-го дня — {FREE_MESSAGES_PER_DAY_LATE})'
     if lang == 'en':
         lines = [
             '💰 Prices & tariffs',

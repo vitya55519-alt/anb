@@ -53,7 +53,12 @@ def test_free_voice_listens():
 
 
 def test_trial_on_sleep_wall_and_chips():
-    assert "callback_data='buy:premium_trial')])\n            if PLATEGA_ENABLED and is_button_enabled('platega_rub'):" in MAIN
+    # V3.166.2: the «she fell asleep» wall is gone — it is one button to the
+    # payment sheet now, so the trial row lives on the ordinary Premium
+    # keyboard (ru + en) instead of stacking offers on top of the wall.
+    wall = MAIN[MAIN.index('def _limit_wall_markup('):MAIN.index('# V3.27.0: ruble-shop balances')]
+    assert 'buy:premium_trial' not in wall
+    assert MAIN.count("callback_data='buy:premium_trial'") >= 2
     assert 'function trialChip(' in SPA
     assert "quickBuy('spicy')\">${esc(trialChip(" in SPA
 
@@ -69,7 +74,11 @@ def test_vip_offer_wired_end_to_end():
     assert "'premium_vip': 'premium_month_vip'" in MAIN     # app SBP order key
     assert "@dp.callback_query(F.data == 'buy:premium_vip')" in MAIN
     assert "'id': 'premium_vip'" in WEB
-    assert "vip: !!jl.vip" in SPA
+    # V3.166.2 owner ruling («размывают фокус»): the wall stopped opening this
+    # window, so the app sheet never receives the flag. The product itself
+    # stays — an order placed before the release still has to resolve.
+    assert 'vip: !!jl.vip' not in SPA
+    assert 'opts.vip' not in SPA
 
 
 def test_trial_followup_and_first_minutes_jobs():

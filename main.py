@@ -32,7 +32,6 @@ from config import (
     PHOTO_TOTAL_BUDGET_SECONDS,
     AI_KEY, LIBRARY_MODERATION_ENABLED, LIBRARY_MODERATION_MODEL,
     GEMINI_VIDEO_ENABLED, VIDEO_COST_STARS, GALLERY_DOWNLOAD_STARS, WALLET_PAY_ENABLED,
-    PREMIUM_DISCOUNT_PERCENT, DEMO_PREMIUM_HOURS,
     REFERRAL_REFERRER_CREDITS, REFERRAL_INVITEE_CREDITS, REFERRAL_QUALIFY_MESSAGES,
     CONSTRUCTOR_COST_STARS, PHOTO_REACTION_ENABLED, PHOTO_REACTION_COOLDOWN_SECONDS,
     CONSTRUCTOR_COST_RUB, TOKEN_PRICE_RUB, TOKEN_PACK_SIZE, VIDEO_TOKEN_COST, COSPLAY_TOKEN_COST,
@@ -1393,105 +1392,33 @@ def premium_pitch_text(telegram_id: int) -> str:
     return '\n'.join(lines)
 
 
-def _sleep_block_markup(telegram_id: int) -> InlineKeyboardMarkup:
-    """V3.20.0 daily-limit paywall: demo premium first, then premium."""
-    from services.retention_service import has_used_demo, discount_info
-    rows = []
-    try:
-        _en = user_lang(telegram_id) == EN
-    except Exception:
-        _en = False
-    if _en:
-        # V3.111.0: the wall the heaviest EN users stood at was all Russian and
-        # card/SBP only — English, Stars first, crypto/card second.
-        if not has_used_demo(telegram_id):
-            rows.append([InlineKeyboardButton(text=f'🎁 Free Premium demo for {DEMO_PREMIUM_HOURS} hours', callback_data='retention:demo')])
-        try:
-            from services import vip_offer
-            vinfo = vip_offer.info(telegram_id)
-            if vinfo.get('active'):
-                rows.append([InlineKeyboardButton(
-                    text=f'💝 A month −{vinfo["percent"]}% just for you — {vinfo["stars"]} Stars ({vinfo["hours_left"]:.0f} h left)',
-                    callback_data='buy:premium_vip')])
-        except Exception:
-            logger.warning('sleep block vip row failed', exc_info=True)
-        from services import offer_buttons
-        for t, c in offer_buttons.plan_rows(trial_eligible(telegram_id), True):
-            rows.append([InlineKeyboardButton(text=t, callback_data=c)])
-        rows.append([InlineKeyboardButton(text='⭐ Premium — wake her up, no limits', callback_data='retention:premium')])
-        return InlineKeyboardMarkup(inline_keyboard=rows)
-    if not has_used_demo(telegram_id):
-        rows.append([InlineKeyboardButton(text=f'🎁 Демо-Premium на {DEMO_PREMIUM_HOURS} часа — бесплатно', callback_data='retention:demo')])
-    # V3.97.0: his personal one-time −50% month once he keeps hitting the limit.
-    try:
-        from services import vip_offer
-        vinfo = vip_offer.info(telegram_id)
-        if vinfo.get('active'):
-            rows.append([InlineKeyboardButton(
-                text=f'💝 Месяц −{vinfo["percent"]}% только для тебя — {vinfo["stars"]} Stars (ещё {vinfo["hours_left"]:.0f} ч)',
-                callback_data='buy:premium_vip')])
-            if vinfo.get('rub') and is_button_enabled('platega_rub'):
-                rows.append([_platega_pay_button(
-                    vip_offer.PRODUCT, vinfo['rub'],
-                    f'💳 💝 Месяц за {vinfo["rub"]} ₽ вместо {PLATEGA_PREMIUM_PRICE_RUB} ₽ · карта / СБП')])
-    except Exception:
-        logger.warning('sleep block vip row failed', exc_info=True)
-    # V3.97.0: the 99 ₽ trial is the only thing people actually buy (2 of 2
-    # who opened its link paid) — it now sits on the «she fell asleep» wall
-    # too, where the most active users stood hundreds of times.
-    try:
-        if trial_eligible(telegram_id):
-            trial_fiat = fiat_suffix(PREMIUM_TRIAL_STARS, rub=PLATEGA_PREMIUM_TRIAL_PRICE_RUB, rub_enabled=PLATEGA_ENABLED)
-            rows.append([InlineKeyboardButton(
-                text=f'🔥 {PREMIUM_TRIAL_DAYS} дня Premium — {PREMIUM_TRIAL_STARS} Stars{trial_fiat}',
-                callback_data='buy:premium_trial')])
-            if PLATEGA_ENABLED and is_button_enabled('platega_rub'):
-                rows.append([_platega_pay_button(
-                    'premium_trial', PLATEGA_PREMIUM_TRIAL_PRICE_RUB,
-                    f'💳 🔥 {PREMIUM_TRIAL_DAYS} дня — {PLATEGA_PREMIUM_TRIAL_PRICE_RUB} ₽ · карта / СБП')])
-    except Exception:
-        logger.warning('sleep block trial row failed', exc_info=True)
-    discount = discount_info(telegram_id)
-    if discount.get('active'):
-        label = f'⭐ Premium −{discount["percent"]}% — {discount["price"]}⭐ (осталось {discount["hours_left"]:.0f} ч)'
-    else:
-        label = '⭐ Premium — разбудить без лимитов'
-    rows.append([InlineKeyboardButton(text=label, callback_data='retention:premium')])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+def _limit_wall_markup(telegram_id: int) -> InlineKeyboardMarkup:
+    """V3.166.2: the wall has ONE button — it opens the Mini App right on the
+    payment sheet. The free demo, the personal −% VIP month and the one-time
+    discount used to sit here; the owner took them out («размывают фокус»),
+    Premium is the only way through. With no public app url there is nothing to
+    open, so the ordinary Premium keyboard answers instead."""
+    if not PUBLIC_BASE_URL:
+        return premium_keyboard(telegram_id=telegram_id)
+    en = user_lang(telegram_id) == EN
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text='Keep going, no limits 🔓' if en else 'Продолжить безлимитно 🔓',
+        web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?pay=1'))]])
 
 
-async def _sleep_block_reply(message: types.Message) -> None:
-    """V3.20.0: blocks pleasure (the conversation), not features — she simply
-    "falls asleep". First limit hit offers the free demo; once the demo is
-    spent, the one-time 24h discount window opens."""
-    from services.retention_service import pick_text, has_used_demo, offer_discount
+async def _limit_wall_reply(message: types.Message) -> None:
+    """V3.166.2: owner — «31-е сообщение → заглушка с кнопкой», and «экран
+    оплаты должен быть продолжением игры»: she asks him to stay in her own
+    words, no dry «лимит исчерпан, купите подписку»."""
     uid = ensure_user(message.from_user.id, message.from_user.first_name)
-    if is_premium(message.from_user.id):
-        # V3.124.0: a trial man used his trial messages — offer the full plans.
-        track_event(uid, 'trial_cap_messages', metadata={'source': 'bot'})
-        from services import trial_caps
-        if user_lang(message.from_user.id) == EN:
-            text = (f'mm, the {trial_caps.TRIAL_MESSAGES} trial messages are over 🥺 '
-                    'stay with me on full Premium: unlimited chat, voice, calls every day')
-        else:
-            text = (f'ммм, {trial_caps.TRIAL_MESSAGES} сообщений пробного закончились 🥺 '
-                    'останься со мной в полном Premium: общение без лимита, голос и звонки каждый день')
-        await message.answer(text, reply_markup=premium_keyboard(telegram_id=message.from_user.id))
-        return
-    if has_used_demo(message.from_user.id):
-        offer_discount(message.from_user.id)
-    track_event(uid, 'chat_sleep_block')
-    try:
-        from services import vip_offer
-        if vip_offer.maybe_open(message.from_user.id):
-            track_event(uid, 'vip_offer_shown', metadata={'source': 'bot'})
-    except Exception:
-        pass
-    # V3.44.16: the moment she "falls asleep" is the exit door — give a
-    # concrete reason to come back tomorrow, not just the premium upsell.
-    # V3.55.5: the wheel became the daily streak gift (app → Магазин, or /profile).
-    text = pick_text('sleep') + '\nа завтра утром будет дневной подарок 🍑 — заберёшь в приложении (Магазин) или через /profile'
-    await message.answer(text, reply_markup=_sleep_block_markup(message.from_user.id))
+    track_event(uid, 'chat_limit_wall', metadata={'source': 'bot'})
+    if user_lang(message.from_user.id) == EN:
+        text = ("mm… looks like today's limit is used up 🙈 "
+                "But I don't want to stop. Come here to lift every limit:")
+    else:
+        text = ("Ой... кажется, наш лимит на сегодня исчерпан 🙈 "
+                "Но я не хочу останавливаться. Заходи сюда, чтобы снять ограничения:")
+    await message.answer(text, reply_markup=_limit_wall_markup(message.from_user.id))
 
 
 # V3.27.0: ruble-shop balances (tokens + constructor credit) live on the users
@@ -4688,19 +4615,20 @@ async def settings(message: types.Message):
     profile = get_profile(user.id, CHARACTER_ID) if user else None
     language = {'ru':'Русский','en':'English','zh':'中文','es':'Español','de':'Deutsch','fr':'Français','it':'Italiano','pt':'Português','uk':'Українська','ja':'日本語','ko':'한국어'}.get(getattr(profile, 'preferred_language', 'auto'), getattr(profile, 'preferred_language', 'Авто') if profile else 'Авто')
     rituals_on = user.notify_rituals if user.notify_rituals is not None else True
-    # V3.165.0: режим переименован в «После полуночи» и больше не требует
-    # Premium — выбирается на экране входа в приложение, поэтому здесь он
-    # только виден. Premium снимает дневный потолок откровенных сообщений,
-    # поэтому счётчик стоит в этой же строке.
-    from services import explicit_mode
+    # V3.165.0: режим больше не требует Premium — выбирается на экране входа в
+    # приложение, поэтому здесь он только виден.
+    # V3.166.2: the day's ceiling left the mode: it counts ANY message of the
+    # account, in both modes and on both platforms, and Premium alone lifts it.
+    from services import explicit_mode, daily_limit
     spicy_on = explicit_mode.is_on(user)
-    spicy_left = explicit_mode.cap_left(user, premium=is_premium(message.from_user.id), mode_on=spicy_on)
-    cap_note = '' if spicy_left is None else (
-        f' · {spicy_left} of {explicit_mode.DAILY_CAP} explicit messages left today'
-        if spicy_left else ' · today’s explicit messages are used up')
-    cap_note_ru = '' if spicy_left is None else (
-        f' · осталось {spicy_left} из {explicit_mode.DAILY_CAP} откровенных сообщений'
-        if spicy_left else ' · на сегодня откровенные сообщения кончились')
+    _premium_here = is_premium(message.from_user.id)
+    _left = daily_limit.left(user, premium=_premium_here)
+    cap_note = '' if _left is None else (
+        f' · {_left} of {daily_limit.DAILY_CAP} messages left today'
+        if _left else f' · today’s {daily_limit.DAILY_CAP} messages are used up')
+    cap_note_ru = '' if _left is None else (
+        f' · осталось {_left} из {daily_limit.DAILY_CAP} сообщений'
+        if _left else f' · на сегодня {daily_limit.DAILY_CAP} сообщений кончились')
     lang = user_lang(message.from_user.id)
     if lang == EN:
         text = (
@@ -6320,27 +6248,6 @@ async def buy_premium_week(cq: types.CallbackQuery):
     await send_stars_invoice(cq.message.chat.id, 'Anna Premium', 'Premium-доступ на 7 дней', 'premium_week', PREMIUM_WEEKLY_STARS)
 
 
-@dp.callback_query(F.data == 'retention:demo')
-async def retention_demo_cb(cq: types.CallbackQuery):
-    """V3.20.0: one-time free demo premium — the taste-before-loss hook."""
-    uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
-    if not has_accepted(cq.from_user.id):
-        await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
-    from services.retention_service import grant_demo_premium
-    if is_premium(cq.from_user.id):
-        await cq.answer('премиум уже активен ✨', show_alert=True); return
-    if grant_demo_premium(cq.from_user.id):
-        track_event(uid, 'demo_premium_granted', metadata={'hours': DEMO_PREMIUM_HOURS})
-        await cq.answer()
-        await cq.message.answer(
-            f'🎁 Демо-Premium активен на {DEMO_PREMIUM_HOURS} часа!\n'
-            'безлимит сообщений — всё твоё 😏\n'
-            'когда время выйдет, я буду скучать по нашему безлимиту… 💋'
-        )
-    else:
-        await cq.answer('демо уже использовано 😔 но для тебя есть скидка — открой /premium', show_alert=True)
-
-
 @dp.callback_query(F.data == 'retention:premium')
 async def retention_premium_cb(cq: types.CallbackQuery):
     """Paywall opened straight from the sleep block."""
@@ -6578,7 +6485,9 @@ async def story_choice_cb(cq: types.CallbackQuery):
 async def first_offer_open_cb(cq: types.CallbackQuery):
     """V3.63.2: «🔓 открыть» on the first-evening locked card — the Premium
     screen with the one-time 24h discount switched on (urgency the sleep
-    block used to give only after the free demo was spent)."""
+    block used to give only after the free demo was spent).
+    V3.166.2 (owner): the discount window is no longer opened here — the wall
+    sells one thing, Premium at its plain price."""
     uid = ensure_user(cq.from_user.id, cq.from_user.first_name, language_code=cq.from_user.language_code)
     if not has_accepted(cq.from_user.id):
         await cq.answer('Сначала /start и подтверждение 18+', show_alert=True); return
@@ -6586,8 +6495,7 @@ async def first_offer_open_cb(cq: types.CallbackQuery):
     if is_premium(cq.from_user.id):
         await cq.message.answer('у тебя уже Premium ✨ попроси у меня фото прямо в чате 😏')
         return
-    from services.retention_service import discount_info, offer_discount
-    offer_discount(cq.from_user.id)
+    from services.retention_service import discount_info
     track_event(uid, 'paywall_view', metadata={'product': 'premium_month', 'source': 'first_offer'})
     await cq.message.answer(premium_pitch_text(cq.from_user.id), reply_markup=premium_keyboard(discount_info(cq.from_user.id), telegram_id=cq.from_user.id))
 
@@ -10036,7 +9944,7 @@ async def toggle_spicy(cq: types.CallbackQuery):
     the Mini App. This handler survives so the old «⚙️ Настройки» messages
     already in people's chats still answer a tap: it points at the app instead
     of flipping the flag."""
-    from services import explicit_mode
+    from services import explicit_mode, daily_limit
     lang = user_lang(cq.from_user.id)
     await cq.answer('режим выбирается в приложении' if lang != EN else 'picked in the app')
     markup = None
@@ -10044,31 +9952,37 @@ async def toggle_spicy(cq: types.CallbackQuery):
         markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
             text='🌙 Выбрать режим' if lang != EN else '🌙 Pick the mode',
             web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?mode=1'))]])
+    # V3.166.2: the mode sells nothing — the day's ceiling sits on the account
+    # and counts every message, in both modes and on both platforms.
     await cq.message.answer(
         f'режим «{explicit_mode.MODE_NAME_RU}» теперь выбирается при входе в приложение 🌙 '
-        f'там же он и меняется — в {explicit_mode.DAILY_CAP} откровенных сообщениях в сутки '
-        f'он держит потолок, а Premium снимает его вовсе.'
+        f'там же он и меняется. Сообщений в сутки на весь аккаунт {daily_limit.DAILY_CAP}, '
+        f'дальше — пауза до полуночи; с Premium потолка нет вовсе.'
         if lang != EN else
         f'“{explicit_mode.MODE_NAME_EN}” is picked when you open the app 🌙 and changed there too — '
-        f'it runs on {explicit_mode.DAILY_CAP} explicit messages a day, and Premium lifts the ceiling.',
+        f'the account gets {daily_limit.DAILY_CAP} messages a day in any mode, then a pause '
+        'until midnight; Premium has no ceiling at all.',
         reply_markup=markup)
 
 
-async def _explicit_cap_note(message: types.Message, telegram_id: int) -> None:
-    """V3.165.0: тонкая строка про дневной потолок «После полуночи» под её
-    ответом. Событие уже посчитано в chat_service, здесь оно читается один раз;
-    на исчерпании к строке кладём кнопку Premium — потолок снимает именно он."""
+async def _daily_limit_note(message: types.Message, telegram_id: int) -> bool:
+    """V3.166.2: the thin line under her answer about today's account ceiling —
+    it counts in BOTH modes now. The turn was already burned inside chat_service;
+    the bot reads the event once, and on the last message of the day the line
+    carries the way out (Premium). True when a line was shown."""
     try:
-        from services import explicit_mode
-        hint = explicit_mode.take_hint(telegram_id)
+        from services import daily_limit
+        hint = daily_limit.take_hint(telegram_id)
         if not hint or not (hint.get('text') or '').strip():
-            return
+            return False
         if hint.get('reached'):
             await message.answer(hint['text'], reply_markup=premium_keyboard(telegram_id=telegram_id))
         else:
             await message.answer(hint['text'])
+        return True
     except Exception:
-        logger.warning('explicit cap note failed user=%s', telegram_id, exc_info=True)
+        logger.warning('daily limit note failed user=%s', telegram_id, exc_info=True)
+        return False
 
 
 # V3.19.0: per-user cooldown for vision reactions to user photos.
@@ -10138,7 +10052,9 @@ async def on_life_reply_tap(cq: types.CallbackQuery):
     from services.life_event_service import tap_reply_text
     user_line = tap_reply_text(key)
     if cq.from_user.id not in ADMIN_TELEGRAM_IDS and not can_send_message(cq.from_user.id):
-        await cq.answer('лимит сообщений на сегодня', show_alert=True)
+        # V3.166.2: the tap is a turn like any other — the day's wall answers it.
+        await cq.answer()
+        await _limit_wall_reply(cq.message)
         return
     await cq.answer()
     try:
@@ -11283,36 +11199,12 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
         if taken and branch != 'passion' and new_stage == 'eternal':
             await asyncio.to_thread(branch_service.mark_left_him, ensure_user(telegram_id), character_id)
         track_event(ensure_user(telegram_id), 'relationship_ceremony_sent', metadata={'level': level}, character_id=character_id)
-        await _maybe_level_up_premium_offer(telegram_id, level)
         if special:
             await _start_photo_background(telegram_id, telegram_id, special[1], 'story')
         else:
             await _start_photo_background(telegram_id, telegram_id, PhotoRequest(scene='selfie', mood='romantic'), 'story')
     except Exception as exc:
         logger.warning('level-up ceremony failed user=%s error=%s', telegram_id, type(exc).__name__)
-
-
-async def _maybe_level_up_premium_offer(telegram_id: int, level: int) -> None:
-    """V3.62.9: nobody saw Premium on day one (the first 24h are unlimited and
-    the first limit hit gives a free demo) — 0 purchases in 30 days. The first
-    level-up is a warm moment: she opens the one-time −30% window herself,
-    once per user (offer_discount is True only when it just opened)."""
-    try:
-        from services.retention_service import offer_discount, discount_info
-        if level < 2 or telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id):
-            return
-        if not await asyncio.to_thread(offer_discount, telegram_id):
-            return
-        d = discount_info(telegram_id)
-        text = ('кстати… мне так хорошо с тобой, что хочу сделать подарок 🙈 '
-                f'сегодня Premium для тебя −{d.get("percent", 30)}%: без лимита сообщений, мои кружочки, '
-                'голосовые и уровни 7–10, где я только твоя 💋 предложение действует {d.get("hours_left", 24):.0f} ч')
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-            text=f'⭐ Premium −{d.get("percent", 30)}% — {d.get("price")}⭐', callback_data='retention:premium')]])
-        await bot.send_message(telegram_id, text, reply_markup=kb)
-        track_event(ensure_user(telegram_id), 'premium_offer_levelup', metadata={'level': level})
-    except Exception:
-        logger.exception('level-up premium offer failed user=%s', telegram_id)
 
 
 set_stage_change_notifier(_on_relationship_stage_up)
@@ -11361,8 +11253,8 @@ async def voice_message(message: types.Message):
     _track_proactive_reply_if_any(message.from_user.id, uid)
     cancel_active_wake(message.from_user.id)
     if message.from_user.id not in ADMIN_TELEGRAM_IDS and not can_send_message(message.from_user.id):
-        # V3.20.0: she "falls asleep" instead of a dry limit notice.
-        await _sleep_block_reply(message)
+        # V3.166.2: she asks him to stay and opens the purchase screen.
+        await _limit_wall_reply(message)
         return
     try:
         data = await bot.download(message.voice)
@@ -11385,10 +11277,9 @@ async def voice_message(message: types.Message):
             logger.info('fake_photo_intercepted user=%s source=voice', message.from_user.id)
             asyncio.create_task(_deliver_intercepted_photo(message))
         await send_answer(message, answer)
-        # V3.165.0: голосовые реплики считаются тем же счётчиком, что и текст.
-        from services import explicit_mode as _capmode_v
-        if await asyncio.to_thread(_capmode_v.is_on_for, message.from_user.id):
-            await _explicit_cap_note(message, message.from_user.id)
+        # V3.166.2: голосовые реплики считаются тем же счётчиком, что и текст,
+        # и строка потолка идёт в обоих режимах.
+        await _daily_limit_note(message, message.from_user.id)
         try:
             from services.gamification_service import unlock_achievement
             unlock_achievement(message.from_user.id, 'voice_user')
@@ -12430,8 +12321,8 @@ async def text_message(message: types.Message):
     except Exception:
         pass
     if message.from_user.id not in ADMIN_TELEGRAM_IDS and not can_send_message(message.from_user.id):
-        # V3.20.0: she "falls asleep" instead of a dry limit notice.
-        await _sleep_block_reply(message)
+        # V3.166.2: she asks him to stay and opens the purchase screen.
+        await _limit_wall_reply(message)
         return
     text = message.text or ''
     try:
@@ -12507,11 +12398,11 @@ async def text_message(message: types.Message):
         # V3.90.0: intimacy is Premium-only — once a day his explicit message
         # gets a Premium button under her reply.
         # V3.165.0: в режиме «После полуночи» откровенный текст бесплатен,
-        # поэтому вместо этой кнопки идёт строка дневного потолка.
-        from services import explicit_mode as _capmode
-        if await asyncio.to_thread(_capmode.is_on_for, message.from_user.id):
-            await _explicit_cap_note(message, message.from_user.id)
-        else:
+        # поэтому вместо этой кнопки шла строка дневного потолка.
+        # V3.166.2: the ceiling is the account's now, so the line reads in BOTH
+        # modes — and where it speaks, the intimacy upsell keeps quiet (one
+        # extra bubble per turn, never two).
+        if not await _daily_limit_note(message, message.from_user.id):
             try:
                 from services import intimacy_gate
                 if await asyncio.to_thread(intimacy_gate.should_offer, message.from_user.id,
@@ -13951,48 +13842,6 @@ def _custom_peach_units(body) -> int:
         return 1
 
 
-async def _webapp_api_demo(request: web.Request) -> web.Response:
-    """V3.62.10: the free 3h demo Premium from the app's limit sheet."""
-    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
-    if not pairs:
-        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    telegram_id = webapp_service.init_data_user(pairs).get('id')
-    if not telegram_id or not has_accepted(telegram_id):
-        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
-    from services.retention_service import grant_demo_premium
-
-    def _grant():
-        if is_premium(telegram_id):
-            return True
-        ok = grant_demo_premium(telegram_id)
-        if ok:
-            track_event(ensure_user(telegram_id), 'demo_premium_granted',
-                        metadata={'hours': DEMO_PREMIUM_HOURS, 'source': 'webapp'})
-        return ok
-
-    ok = await asyncio.to_thread(_grant)
-    return web.json_response({'ok': bool(ok), 'hours': DEMO_PREMIUM_HOURS} if ok else {'ok': False, 'error': 'used'})
-
-
-async def _webapp_api_autopay(request: web.Request) -> web.Response:
-    """V3.120.0: the shop card's «🔁 Автопродление» link — the bot sends the
-    terms / manage menu into his chat and the app opens that chat."""
-    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
-    if not pairs:
-        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
-    telegram_id = webapp_service.init_data_user(pairs).get('id')
-    if not telegram_id or not await asyncio.to_thread(has_accepted, telegram_id):
-        return web.json_response({'ok': False, 'error': 'consent'}, status=403)
-    try:
-        await _autopay_show(int(telegram_id), int(telegram_id))
-    except Exception:
-        logger.exception('webapp autopay menu failed user=%s', telegram_id)
-        return web.json_response({'ok': False, 'error': 'send'}, status=502)
-    from config import BOT_USERNAME as _bot_name
-    url = f'https://t.me/{_bot_name}' if _bot_name else ''
-    return web.json_response({'ok': True, 'url': url})
-
-
 async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     # V3.43.0: the Come Closer pay menu — tapping a shop square opens a modal
     # with Stars / card-SBP / crypto rows. Stars reuses /webapp/api/invoice;
@@ -14613,23 +14462,14 @@ def _webapp_chat_gate(character_id: str, telegram_id: int):
     if not has_accepted(telegram_id):
         return web.json_response({'ok': False, 'error': 'consent'}, status=403)
     if telegram_id not in ADMIN_TELEGRAM_IDS and not can_send_message(telegram_id):
-        if is_premium(telegram_id):
-            # V3.124.0: the trial's message total is spent — the full plans, no demo.
-            track_event(ensure_user(telegram_id), 'trial_cap_messages', metadata={'source': 'webapp'})
-            return web.json_response({'ok': False, 'error': 'limit', 'demo': False, 'vip': False,
-                                      'trial': True}, status=429)
-        # V3.62.10: the app limit used to be a bare toast — tell the sheet
-        # whether the free demo is still there, like the bot's sleep block.
-        from services.retention_service import has_used_demo, offer_discount
-        demo = not has_used_demo(telegram_id)
-        if not demo:
-            offer_discount(telegram_id)
-        track_event(ensure_user(telegram_id), 'chat_sleep_block', metadata={'source': 'webapp'})
-        from services import vip_offer
-        if vip_offer.maybe_open(telegram_id):
-            track_event(ensure_user(telegram_id), 'vip_offer_shown', metadata={'source': 'webapp'})
-        return web.json_response({'ok': False, 'error': 'limit', 'demo': demo,
-                                  'vip': vip_offer.is_active(telegram_id)}, status=429)
+        # V3.166.2: owner — «30 любых сообщений в сутки на весь аккаунт, после
+        # 30-го жёсткий блок до полуночи МСК». One answer for both modes: the
+        # sheet shows her paywall card (the demo, the VIP offer and the one-time
+        # discount are gone — Premium is the only way through).
+        from services import daily_limit
+        track_event(ensure_user(telegram_id), 'chat_limit_wall', metadata={'source': 'webapp'})
+        return web.json_response({'ok': False, 'error': 'limit',
+                                  'cap': int(daily_limit.DAILY_CAP or 0)}, status=429)
     return None
 
 
@@ -15321,16 +15161,16 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                 payload['sext_offer'] = True
         except Exception:
             logger.warning('sext offer failed user=%s', telegram_id, exc_info=True)
-    # V3.165.0: счётчик дневного потолка откровенных сообщений. reply() уже
-    # записал событие, приложение читает его один раз — тонкая строка под её
-    # ответом («осталось N» / «на сегодня всё» + путь к Premium).
+    # V3.166.2: the thin line under her answer — today's account ceiling (both
+    # modes, both platforms). reply() already burned the turn; the app reads the
+    # event once ('осталось N' / the wall she hit).
     try:
-        from services import explicit_mode as _xm
-        cap_hint = _xm.take_hint(telegram_id)
-        if cap_hint:
-            payload['explicit_hint'] = cap_hint
+        from services import daily_limit
+        chat_hint = daily_limit.take_hint(telegram_id)
+        if chat_hint:
+            payload['chat_hint'] = chat_hint
     except Exception:
-        logger.warning('explicit cap hint read failed user=%s', telegram_id, exc_info=True)
+        logger.warning('daily limit hint read failed user=%s', telegram_id, exc_info=True)
     # V3.72.0: the circle hook — in a flirty moment (or when asked) she offers
     # a circle under her reply. Free to show; the render starts on a paid tap.
     try:
@@ -19797,7 +19637,6 @@ async def _start_web_server() -> None:
     app.router.add_route('*', '/webapp/api/char_like', _webapp_api_char_like)
     # V3.34.0: storefront actions — Stars purchases and character selection.
     app.router.add_post('/webapp/api/invoice', _webapp_api_invoice)
-    app.router.add_post('/webapp/api/demo', _webapp_api_demo)
     app.router.add_post('/webapp/api/autopay', _webapp_api_autopay)
     # V3.43.0: the pay-method modal — card/SBP and crypto payment links.
     app.router.add_post('/webapp/api/pay_link', _webapp_api_pay_link)

@@ -13,4 +13,11 @@ def is_premium(telegram_id:int)->bool:
 
 
 def can_send_message(telegram_id:int)->bool:
-    return True
+    """V3.166.2: the daily ceiling is hard again — 30 messages a day for the
+    whole account, in both modes and on both platforms (owner: «безлимит
+    дается только платным подписчикам»). Premium is the only lift, so this is
+    the single gate the bot chat, its button taps and the Mini App all ask."""
+    if is_premium(telegram_id):
+        return True
+    from services import daily_limit
+    return daily_limit.has_left(telegram_id)

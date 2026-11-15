@@ -91,11 +91,14 @@ COSPLAY_PHOTO_FREE_DAILY = max(0, int(os.getenv("COSPLAY_PHOTO_FREE_DAILY", "1")
 # вернули прежние ценники (так же поступили с CHAT_PHOTO_PRICE_PEACHES).
 EXPLICIT_PHOTO_PEACH_COST = _peaches("EXPLICIT_PHOTO_PEACH_COST", 300)
 PRIVATE_PHOTO_PEACH_COST = _peaches("PRIVATE_PHOTO_PEACHES_V165", EXPLICIT_PHOTO_PEACH_COST)
-# V3.165.0: owner — «в обычном режиме лимита нет, в „После полуночи“ — 30
-# откровенных сообщений в сутки, с премиумом безлимит». Считаются только
-# откровенные реплики (обычная болтовня кап не жжёт), счётчик — на аккаунт
-# целиком и обнуляется в полночь МСК. 0 = кап выключен у всех.
-EXPLICIT_MSGS_PER_DAY = max(0, int(os.getenv("EXPLICIT_MSGS_PER_DAY_V165", "30")))
+# V3.166.2: owner — «30 любых сообщений в сутки на весь аккаунт, оба режима и
+# обе платформы; безлимита для бесплатных больше нет». Считается каждый
+# принятый ход (текст и голос, Mini App и Telegram), обнуляется в полночь МСК,
+# после 30-го — жёсткая стена с покупкой Premium. Premium снимает её совсем.
+# 0 = стена выключена у всех (для кухни и экстренного отката лимита).
+# Имя env — новое нарочно: EXPLICIT_MSGS_PER_DAY_V165 лежал бы на Railway
+# и вернул бы прошлый смысл (только откровенные реплики).
+CHAT_MSGS_PER_DAY = max(0, int(os.getenv("CHAT_MSGS_PER_DAY_V166", "30")))
 # V3.60.3: a photo asked for in the app chat (owner: «2 персика это фото»).
 # V3.123.0: owner — a chat photo past the Premium daily two costs 300 🍑 (was
 # 200). New env name on purpose: Railway may still hold the old
@@ -643,11 +646,11 @@ ADAPTATION_ENABLED = os.getenv("ADAPTATION_ENABLED", "true").strip().lower() not
 ADAPTATION_ANALYZE_EVERY = max(3, min(20, int(os.getenv("ADAPTATION_ANALYZE_EVERY", "5"))))
 ADAPTATION_MAX_EXPRESSIONS = max(3, min(20, int(os.getenv("ADAPTATION_MAX_EXPRESSIONS", "12"))))
 
-# Text is unlimited on every tier. The 1000 sentinel only selects the existing
-# «unlimited» wording in the shop and legal texts; can_send_message has no counter.
-FREE_MESSAGES_PER_DAY = 1000
-FREE_MESSAGES_PER_DAY_LATE = FREE_MESSAGES_PER_DAY
-FREE_LATE_FROM_DAY = 4
+# V3.166.2: the published ceiling of the free tier — the legal card, the shop
+# and the honest card all read it here, so none of them can drift from what
+# the wall really enforces. 0 (``CHAT_MSGS_PER_DAY`` off) keeps the old
+# «unlimited» wording.
+FREE_MESSAGES_PER_DAY = CHAT_MSGS_PER_DAY
 FREE_PHOTOS_LEVEL_1_2 = int(os.getenv("FREE_PHOTOS_LEVEL_1_2", "1"))
 FREE_PHOTOS_LEVEL_3_6 = int(os.getenv("FREE_PHOTOS_LEVEL_3_6", "2"))
 PREMIUM_MONTHLY_STARS = int(os.getenv("PREMIUM_MONTHLY_STARS", "500"))
@@ -701,11 +704,11 @@ QUEST_REPLAY_STARS = int(os.getenv("QUEST_REPLAY_STARS", "10"))
 PREMIUM_MONTHLY_QUEST_REPLAYS = int(os.getenv("PREMIUM_MONTHLY_QUEST_REPLAYS", "2"))
 
 # V3.20.0 retention & monetization pack.
-# Demo premium: a one-time free taste granted when the user hits the daily
-# chat limit — losing it converts stronger than never having it.
-DEMO_PREMIUM_HOURS = max(1, min(72, int(os.getenv("DEMO_PREMIUM_HOURS", "3"))))
-# One-time 24h premium discount offered after the demo is used; the deadline
-# creates urgency in the paywall button.
+# V3.166.2 (owner): the free demo premium is gone — the wall sells Premium
+# only, so there is no DEMO_PREMIUM_HOURS to hand out.
+# One-time 24h premium discount. V3.166.2: nothing opens a window any more;
+# the constants stay so a window opened before this release and an in-flight
+# `premium_month_discount` order still resolve to the price it was shown.
 PREMIUM_DISCOUNT_PERCENT = max(0, min(90, int(os.getenv("PREMIUM_DISCOUNT_PERCENT", "30"))))
 PREMIUM_DISCOUNT_STARS = max(1, int(PREMIUM_MONTHLY_STARS * (100 - PREMIUM_DISCOUNT_PERCENT) // 100))
 PREMIUM_DISCOUNT_HOURS = max(1, int(os.getenv("PREMIUM_DISCOUNT_HOURS", "24")))

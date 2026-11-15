@@ -107,8 +107,25 @@ def test_owner_kitchen_has_the_three_step_card_flow():
 
 
 def test_vertical_cards_scenario_chips_and_standard_paid_flow():
-    assert 'aspect-ratio: 3 / 4' in INDEX
-    assert 'linear-gradient(' in INDEX[INDEX.index('.modecard .shade'):INDEX.index('.modecard .txt')]
+    css = INDEX[INDEX.index('#modeScreen .cards'):INDEX.index('#modeScreen .ms-note')]
+    # V3.166.2 (Блок 1): full-bleed 3:4 cards, one under another, caption on the
+    # bottom edge over the tall gradient — the owner's shot fills the card and a
+    # 3:4 box crops nothing of an 864x1152 picture.
+    assert 'grid-template-columns: 1fr;' in css
+    assert 'aspect-ratio: 3 / 4' in css
+    assert 'linear-gradient(to top, rgba(0,0,0,.9) 0%, rgba(0,0,0,.7) 40%, rgba(0,0,0,0) 100%)' in css
+    assert 'padding: 18px' in css and 'text-align: left' in css
+    # the hierarchy he asked for: 23px/800 white title, 14.5px/500 soft-white bullets
+    assert 'font-size: 23px' in css and 'font-weight: 800' in css
+    assert 'font-size: 14.5px' in css and 'line-height: 1.4' in css
+    assert 'class="shade"' in INDEX and '<span class="bl">' in INDEX
+    # V3.166.2 (Блок 2): the exact bullet copy, the ceiling number from the server
+    assert "ms_normal_b: n => ['Лёгкий флирт, свидания и долгие разговоры.'," in INDEX
+    assert "'Покори её сердце, и она ответит взаимностью.'," in INDEX
+    assert "ms_spicy_b: n => ['Воплощение любых твоих фантазий.'," in INDEX
+    assert "'Откровенные фото по твоим сценариям.'," in INDEX
+    assert "n + ' сообщений в день (с Premium — безлимит).'" in INDEX
+    assert 'ME.chat_cap' in INDEX
     assert "ms_normal_t: 'Романтика и флирт'" in INDEX
     assert "ms_spicy_t: 'Без цензуры 18+'" in INDEX
     assert "ms_normal_t: 'Romance & flirting'" in INDEX

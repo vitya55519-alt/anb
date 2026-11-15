@@ -40,18 +40,20 @@ def test_entry_screen_is_the_only_mode_choice():
     # and it lands on the heroine roster.
     assert "showTab('characters');" in INDEX
     assert "ms_btn: 'Выбрать героиню'" in INDEX
-    # V3.166.0: two vertical 3:4 cards, the owner's pictures are not a thin strip.
+    # V3.166.2: full-bleed 3:4 cards one under another — the picture fills the
+    # card, the bullets and the CTA sit on its bottom edge over the gradient.
     assert "modeCard(false) + modeCard(true)" in INDEX
     assert "ms_spicy_t: 'Без цензуры 18+'" in INDEX
     assert "ms_normal_t: 'Романтика и флирт'" in INDEX
-    assert 'aspect-ratio: 3 / 4' in INDEX
-    assert 'class="shade"' in INDEX
+    assert 'grid-template-columns: 1fr;' in INDEX
+    assert '<span class="pic"><span class="ph">' in INDEX
+    assert '<span class="shade"></span>' in INDEX
     # the owner's own pictures, with a glyph fallback while a file is missing
     assert "/webapp/art/mode_normal" in INDEX and "/webapp/art/mode_spicy" in INDEX
     assert r"classList.add(\'nopic\')" in INDEX
     # the ceiling inside the card caption is the number /me sent, not a 30
     # typed a second time into the page
-    assert "ME.explicit_cap" in INDEX
+    assert "ME.chat_cap" in INDEX
 
 
 def test_screen_opens_on_every_entry_but_not_over_a_deep_link():

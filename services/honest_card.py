@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 
 from config import (
-    FREE_MESSAGES_PER_DAY, FREE_MESSAGES_PER_DAY_LATE, FREE_LATE_FROM_DAY,
+    FREE_MESSAGES_PER_DAY,
     CHAT_FREE_PHOTOS_PER_DAY, PLATEGA_ENABLED, PLATEGA_PREMIUM_WEEKLY_PRICE_RUB,
     PREMIUM_WEEKLY_STARS, SUPPORT_BOT_USERNAME,
 )
@@ -34,8 +34,6 @@ def facts() -> dict:
     return {
         'enabled': ENABLED,
         'free_messages': int(FREE_MESSAGES_PER_DAY),
-        'free_messages_later': int(min(FREE_MESSAGES_PER_DAY, FREE_MESSAGES_PER_DAY_LATE)),
-        'later_from_day': int(FREE_LATE_FROM_DAY),
         'free_photos': int(CHAT_FREE_PHOTOS_PER_DAY),
         'free_voice': int(free_voice),
         'week_rub': int(PLATEGA_PREMIUM_WEEKLY_PRICE_RUB) if PLATEGA_ENABLED else None,

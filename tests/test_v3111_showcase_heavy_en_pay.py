@@ -64,4 +64,7 @@ def test_en_pay_path_in_bot_chat():
     assert "'premium_trial': lambda: ('Premium trial'" in MAIN
     assert 'title, description = _invoice_texts_en(chat_id, title, description, payload)' in MAIN
     assert "text='💎 Pay', url=link" in MAIN
-    assert 'Free Premium demo for' in MAIN
+    # V3.166.2: the free demo row left the wall (owner: «размывают фокус»).
+    # English users now stand at the same single button as everybody else.
+    assert 'Free Premium demo for' not in MAIN
+    assert "'Keep going, no limits 🔓'" in MAIN

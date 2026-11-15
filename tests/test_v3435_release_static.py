@@ -91,8 +91,8 @@ def test_api_me_exposes_spicy_mode():
     # V3.165.0: the flag is read through explicit_mode (the account flag the
     # entry screen writes), and the app gets the ceiling with it.
     assert "'spicy_mode': bool(mode_on)," in WEBAPP_SVC
-    assert "'explicit_left': explicit_left," in WEBAPP_SVC
-    assert "'explicit_cap': explicit_cap," in WEBAPP_SVC
+    assert "'chat_left': chat_left," in WEBAPP_SVC
+    assert "'chat_cap': chat_cap," in WEBAPP_SVC
 
 
 def test_profile_screen_carries_the_settings_section():
