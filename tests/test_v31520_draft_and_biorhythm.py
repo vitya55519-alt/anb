@@ -165,7 +165,10 @@ def test_the_trigger_rides_before_the_three_block_rule(monkeypatch):
                                   language_code='ru'))
     msgs = seen[0]
     assert msgs[-1]['role'] == 'system'
-    assert msgs[-1]['content'] == ds.DRAFT_FORMAT_SUFFIX
+    # V3.166.7: анкета кадра приклеена к хвосту правила формата, а не встала
+    # вместо него — триггер по-прежнему перед форматом, формат перед генерацией.
+    assert msgs[-1]['content'].startswith(ds.DRAFT_FORMAT_SUFFIX)
+    assert 'АНКЕТА КАДРА' in msgs[-1]['content']
     assert msgs[-2]['content'].startswith('[SYSTEM TRIGGER: DRAFT_MESSAGE]')
     assert msgs[-3] == {'role': 'user', 'content': 'ты чего не отвечаешь'}
     # одна карточка и одно сообщение — черновика в его тексте нет
@@ -208,7 +211,7 @@ def test_without_the_trigger_the_engine_stays_exactly_as_it_was(monkeypatch):
     monkeypatch.setattr(ds, 'will_trigger', lambda *a, **kw: False)
     seen = _fake_llm(monkeypatch, RAW3)
     asyncio.run(cs.reply(tid, 'draftOff', 'привет', language_code='ru'))
-    assert seen[0][-1]['content'] == cs.NOVEL_FORMAT_SUFFIX
+    assert seen[0][-1]['content'].startswith(cs.NOVEL_FORMAT_SUFFIX)
     assert not any('[SYSTEM TRIGGER: DRAFT_MESSAGE]' in str(m) for m in seen[0])
     assert ds.take_pending(tid, 'anna_01') is None
 

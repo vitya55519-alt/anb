@@ -1315,6 +1315,37 @@ PRIVATE_PLACE_OVERRIDE = (
     'Never depict a lingerie or undressed look where other people can see her.'
 )
 
+# V3.166.7 (владелец, «локация берётся ИСКЛЮЧИТЕЛЬНО из того, что скажет LLM»):
+# маркер в строке локации значит, что комнату уже назвали её же слова — выдумывать
+# спальню из PRIVATE_PLACES нельзя. Закрытой становится та же обстановка, а
+# «никого в комнате» меняется на того, кого анкета сама пустила в эту комнату.
+CARD_PLACE = re.compile(r'PLACE FROM HER MESSAGE:\s*([^\n]+)', re.I)
+CARD_TOGETHER = re.compile(r'in the same room:\s*([^;\n.]+)', re.I)
+# Место без стен и без двери: запереться в нём нельзя, поэтому оно по-прежнему
+# уводится внутрь (старое поведение) — иначе стоп-кадр с ней на улице в белье.
+OPEN_AIR_VENUE = re.compile(
+    r'\b(street|sidewalk|avenue|road|park|square|plaza|promenade|embankment|beach|shore|seaside|rooftop'
+    r'|balcony|terrace|courtyard|yard|garden|market|queue|dance floor|subway|metro|bus|trolleybus|tram'
+    r'|train|platform|station|airport|taxi|parking|car park|pool|lake)\b', re.I)
+
+# Комната за дверью уже названа её словами — «примерочная», «ванная», «душ»,
+# «кабина»: переносить её в выдуманную спальню не за чем, кадр и так приватный.
+ALREADY_PRIVATE = re.compile(
+    r'\b(fitting|dressing|cloak)\s+room|\b(bathroom|bathtub|restroom|toilet|shower|locker\s+room|sauna'
+    r'|booth|cabin|bedroom|bed|wardrobe)\b'
+    r'|(примерочн\w*|раздевалк\w*|ванн[аойе]|душ|туалет[ае]?|кабин[аыуе]?|спальн\w*|кровать|гардеробн\w*)', re.I)
+
+CARD_PRIVATE_OVERRIDE = (
+    'PRIVATE PLACE OVERRIDE: she wears only lingerie (or nothing) in this frame, so this photo is NOT taken '
+    'where other people can see her. The place her own words named — {place} — stays that very place: shoot '
+    'the frame in its closed private room behind a shut door (a fitting room, a bathroom, a private booth, '
+    'an empty back room), never in another building and never in a bedroom her words did not name. The '
+    'interior, the light and the objects still belong to {place}. {people}'
+    'Treat any open, shared area of this venue as a mistake: the closed room of the same venue wins.'
+)
+CARD_PRIVATE_ALONE = 'Nobody but her is in the room and no bystanders are visible. '
+CARD_PRIVATE_WITH = '{who} is the only other person in that room; no crowd and no bystanders. '
+
 
 def _intimate_prompt_text(prompt: str) -> bool:
     """Is she showing skin in this prompt? Boilerplate that only forbids
@@ -1342,7 +1373,13 @@ def enforce_private_location(prompt: str, user_text: str = '', *, intimate: bool
     V3.166.5 (владелец): a starter frame never gets a random room — the place
     she promised in her own first line wins, and only a genuinely public venue
     in it is pulled inside her apartment (STARTER_PRIVATE_PLACE keeps the desk
-    or the car, so a bathtub scenario stops landing in a bedroom)."""
+    or the car, so a bathtub scenario stops landing in a bedroom).
+
+    V3.166.7 (владелец): when her own words already named the room — the card
+    marker in the location line — no random bedroom is invented on top of it.
+    A room that has walls keeps its venue and only gets its door shut; a place
+    without walls still moves inside. Whoever the card put in the room stays
+    there instead of the blanket «nobody but her»."""
     if not prompt:
         return prompt
     if intimate is None:
@@ -1351,6 +1388,18 @@ def enforce_private_location(prompt: str, user_text: str = '', *, intimate: bool
         return prompt
     if starter:
         return f'{STARTER_PRIVATE_PLACE}\n{prompt}'
+    card = CARD_PLACE.search(prompt)
+    if card:
+        place = card.group(1).strip()
+        # Её слова уже назвали комнату за дверью — спорить с ними не за чем.
+        if not PUBLIC_VENUE.search(place) or ALREADY_PRIVATE.search(place):
+            return prompt
+        if OPEN_AIR_VENUE.search(place):
+            return f'{PRIVATE_PLACE_OVERRIDE.format(place=random.choice(PRIVATE_PLACES))}\n{prompt}'
+        together = CARD_TOGETHER.search(place)
+        people = (CARD_PRIVATE_WITH.format(who=together.group(1).strip()) if together
+                  else CARD_PRIVATE_ALONE)
+        return f'{CARD_PRIVATE_OVERRIDE.format(place=place, people=people)}\n{prompt}'
     if not PUBLIC_VENUE.search(prompt):
         return prompt
     place = random.choice(PRIVATE_PLACES)
@@ -2372,7 +2421,19 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
             hairstyle = preferred_hair
         else:
             hairstyle = random.choice(hair_pool)
-    if request.location:
+    # V3.166.7 (владелец, «локация исключительно из того, что скажет LLM»):
+    # живая анкета кадра сильнее и состояния дня, и банка случайных идей, и
+    # дефолтной сцены. Своё место остаётся только за тем, что он назвал сам в
+    # этой просьбе о фото («customized»). Маркер «PLACE FROM HER MESSAGE» — не
+    # для генератора красоты: по нему enforce_private_location понимает, что
+    # комнату выдумывать не надо, она уже названа словами.
+    from services import scene_card_service
+    card_scene = scene_card_service.scene_for(telegram_id, character_id)
+    if request.customized and request.location:
+        location = request.location
+    elif card_scene:
+        location = f'PLACE FROM HER MESSAGE: {card_scene}'
+    elif request.location:
         location = request.location
     elif request.scene == 'selfie' and getattr(state, 'location', None):
         activity = getattr(state, 'activity', None) or 'having a normal day'
@@ -3547,7 +3608,7 @@ async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: 
     character = resolve_character(character_id)
     # Pinterest-style variety: underspecified ordinary requests get a fresh
     # curated/LLM idea (location + camera). Explicit and private requests pass through.
-    request, idea_source = await enrich_request_with_idea(telegram_id, request)
+    request, idea_source = await enrich_request_with_idea(telegram_id, request, character_id=character_id)
     if idea_source:
         track_event(ensure_user(telegram_id), 'photo_idea_applied', metadata={'scene': request.scene, 'source': idea_source})
     resolved = _resolve_request(telegram_id, request, character_id=character_id)

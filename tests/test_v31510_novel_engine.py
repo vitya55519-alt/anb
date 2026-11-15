@@ -125,7 +125,10 @@ def test_the_format_rule_rides_after_his_last_message(monkeypatch):
     seen = _fake_llm(monkeypatch, RAW)
     answer = asyncio.run(cs.reply(tid, 'novelSuffix', 'ты чего не отвечаешь', language_code='ru'))
     msgs = seen[0]
-    assert msgs[-1]['role'] == 'system' and msgs[-1]['content'] == NOVEL_FORMAT_SUFFIX
+    # V3.166.7: к хвосту этого же правила приклеена анкета кадра — блок-формат
+    # всё равно последнее, что читает модель.
+    assert msgs[-1]['role'] == 'system' and msgs[-1]['content'].startswith(NOVEL_FORMAT_SUFFIX)
+    assert 'АНКЕТА КАДРА' in msgs[-1]['content']
     assert msgs[-2] == {'role': 'user', 'content': 'ты чего не отвечаешь'}
     assert msgs[0]['role'] == 'system' and 'ДВИЖОК НОВЕЛЛЫ' in msgs[0]['content']
     assert thought_block(answer) and message_block(answer)
@@ -141,7 +144,8 @@ def test_duo_chat_keeps_one_layer_but_shares_the_bans(monkeypatch):
         seen = _fake_llm(monkeypatch, 'Анна: мы вдвоём пришли\nАлиса: и не уходим')
         asyncio.run(cs.reply(tid, 'novelDuo', 'пригласи подругу', language_code='ru'))
         msgs = seen[0]
-        assert msgs[-1]['content'] == NOVEL_FORMAT_SUFFIX_DUO
+        assert msgs[-1]['content'].startswith(NOVEL_FORMAT_SUFFIX_DUO)
+        assert 'КАДР одна на двоих' in msgs[-1]['content']
         assert 'ДВИЖОК НОВЕЛЛЫ' not in msgs[0]['content']
     finally:
         cgs.set_guest(tid, 'anna_01', None)

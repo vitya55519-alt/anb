@@ -15304,12 +15304,6 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
 
         return await asyncio.to_thread(_deliver)
 
-    if photo_scene:
-        payload = await _photo_turn(photo_scene, photo_req, pay=photo_pay)
-        if payload:
-            return web.json_response(payload)
-        return web.json_response(await asyncio.to_thread(
-            _chat_photo_blocked, uid, character_id, 'failed', extra))
     try:
         answer = await anna_reply(
             telegram_id, user_info.get('first_name') or 'ты', text,
@@ -15324,6 +15318,16 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     # which draws the card from it.
     said = message_block(answer or '')
     thought_said = thought_block(answer or '')
+    # V3.166.7 (владелец, «одна голова»): кадр на его печатную просьбу больше не
+    # генерируется до её слов. Сначала её реплика и анкета кадра из этого же
+    # вызова, потом картинка — ровно из анкеты, своим пузырём под её текстом.
+    # Гейт, сцена и цена остаются те же, что посчитал _prelude.
+    if photo_scene:
+        payload = await _photo_turn(photo_scene, photo_req, said=said, pay=photo_pay)
+        if payload:
+            return web.json_response(payload)
+        return web.json_response(await asyncio.to_thread(
+            _chat_photo_blocked, uid, character_id, 'failed', extra))
     # V3.152.0: owner ТЗ (Фогель, Модуль 1) — «Стертый черновик». reply() saved
     # the hidden text on the message row; the app gets only its id and price,
     # so an unpaid draft cannot ride in this payload or in the chat history.
@@ -17579,6 +17583,10 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
 UNDRESS_PROMPT = (
     'Edit this exact photo. Keep the SAME adult woman: identical face, hair, makeup, body proportions, '
     'the same place, background, lighting and camera angle as image 1 (her face also matches image 2). '
+    # V3.166.7 (владелец): image 2 is her portrait — a bedroom shot — and the
+    # engine used to move the paid frame into that bedroom. The portrait gives
+    # a face and nothing else.
+    'Image 2 is only her face: never take its room, background, furniture, clothing or light from image 2. '
     # V3.166.5: it used to read «keep her outfit recognisable», which fought every
     # reveal below and is what left her dressed after he paid.
     'Change only what the reveal below describes: where it says a garment is off, that garment is gone and her '
@@ -17607,13 +17615,24 @@ UNDRESS_TAIL = (
 # «то же место» из UNDRESS_PROMPT проигрывает, если на оригинале видно бар,
 # клуб, улицу или офис. Исключение — только его прямая просьба показать её
 # на людях (её обрабатывает enforce_private_location в общем конвейере).
-UNDRESS_AMATEUR_TAIL = (
-    ' ' + AMATEUR_HOT_FRAME_LOCK + ' PLACE: keep the room of image 1 when it is already private '
+UNDRESS_AMATEUR_LOCK = ' ' + AMATEUR_HOT_FRAME_LOCK
+UNDRESS_PLACE_TAIL = (
+    ' PLACE: keep the room of image 1 when it is already private '
     '(her home, bedroom, bathroom, hotel room). If image 1 was taken where other people can see her — a bar, '
     'club, restaurant, street, office, mall, gym or transport — this reveal does NOT happen there: move her into '
     'her bedroom or a hotel room and keep her face, hair, body and the rest of her outfit exactly as in image 1. '
     'This place rule beats «the same place» above.'
 )
+# V3.166.7 (владелец, «муж в гараже — он же не рядом», «локация из её слов»):
+# когда анкета кадра уже назвала комнату, правка платного кадра берёт её, а не
+# выдуманную спальню из UNDRESS_PLACE_TAIL и не комнату с референса лица.
+UNDRESS_CARD_PLACE = (
+    ' PLACE FROM HER OWN WORDS: her last message put her here — {place}. That is the room of the new photo: '
+    'keep it, its walls, its furniture and its light, and only shut its door. Never move her into a bedroom '
+    'or a hotel room her words did not name, and never take the room from the face reference. '
+    'This place rule beats «the same place» above.'
+)
+UNDRESS_AMATEUR_TAIL = UNDRESS_AMATEUR_LOCK + UNDRESS_PLACE_TAIL
 # V3.61.10: «Раздеть» is not one pose — she shows a little of what is under
 # her clothes, picked to fit what she wears. Since V3.166.5 this whole set is
 # only the last, gentlest try: what the engine gets first is the nude pool below.
@@ -17739,16 +17758,24 @@ UNDRESS_SAFE_VARIANT = UNDRESS_VARIANTS_LINGERIE[3]
 def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) -> tuple[str, bool]:
     """V3.166.5: the paid frame is always fully naked — his relationship level no
     longer picks the pool, only the engine's refusal does (``safe`` is the last,
-    gentlest try before the tap is refunded)."""
+    gentlest try before the tap is refunded).
+
+    V3.166.7: the room and the people in it come from her own scene card — the
+    place she named stays, and a man appears behind her only while the card says
+    somebody physically stands in this same room («Платон в гараже» → nobody)."""
+    from services import scene_card_service
     variant, reveal = UNDRESS_SAFE_VARIANT if safe else _undress_variant()
-    prompt, secret = (UNDRESS_PROMPT + reveal + ('' if safe else UNDRESS_NUDE_LOCK)
-                      + UNDRESS_TAIL + UNDRESS_AMATEUR_TAIL), False
+    card_scene = scene_card_service.scene_for(telegram_id, character_id)
+    place = (UNDRESS_CARD_PLACE.format(place=card_scene) if card_scene else UNDRESS_PLACE_TAIL)
+    prompt, secret = (UNDRESS_PROMPT + place + reveal + ('' if safe else UNDRESS_NUDE_LOCK)
+                      + UNDRESS_TAIL + UNDRESS_AMATEUR_LOCK), False
     try:
         from services.webapp_service import _batch_marital, _default_marital
         status = _batch_marital(telegram_id, [character_id]).get(character_id) \
             or _default_marital(character_id, is_custom_character(character_id))
         who = {'mar_married': 'husband', 'mar_boyfriend': 'boyfriend'}.get(status)
-        if who:
+        near, _ = scene_card_service.together_with(telegram_id, character_id)
+        if who and near is not False:
             line = UNDRESS_SECRET_NO_FINGER if variant in UNDRESS_BOTH_HANDS else UNDRESS_SECRET
             prompt += line.format(who=who)
             secret = True

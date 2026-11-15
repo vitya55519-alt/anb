@@ -181,7 +181,7 @@ async def _llm_variation(seed: dict) -> dict | None:
     return {'scene': seed.get('scene'), 'location': location, 'angle': angle}
 
 
-async def enrich_request_with_idea(telegram_id: int, request):
+async def enrich_request_with_idea(telegram_id: int, request, *, character_id: str):
     """Fill an underspecified ordinary photo request with a fresh idea.
 
     Returns ``(request, source)`` where source is 'bank', 'llm' or None.
@@ -191,6 +191,11 @@ async def enrich_request_with_idea(telegram_id: int, request):
         return request, None
     scene = getattr(request, 'scene', '') or 'selfie'
     if scene in _PRIVATE_SCENES or getattr(request, 'location', '') or getattr(request, 'angle', ''):
+        return request, None
+    # V3.166.7 (владелец): место, которое она назвала в своём сообщении, сильнее
+    # любой придуманной картинки из банка — иначе кадр спорит с её словами.
+    from services import scene_card_service
+    if character_id and scene_card_service.scene_for(telegram_id, character_id):
         return request, None
 
     idea = pick_idea(telegram_id, scene)

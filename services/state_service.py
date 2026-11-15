@@ -76,6 +76,13 @@ def ensure_life_state(telegram_id: int, *, force: bool = False):
 
 def state_context(telegram_id: int, character_id: str = '') -> str:
     s = ensure_life_state(telegram_id)
+    # V3.166.7 (владелец, «чтобы была логика»): живая анкета кадра сильнее
+    # условного дня. Она родилась из её же последнего ответа и знает, где она
+    # стоит на самом деле, поэтому «текущая локация истории» молчит, пока сцена
+    # названа словами — иначе «Платон в гараже» и «она дома» спорят в одном
+    # промпте, и выигрывает всегда дефолт.
+    from services import scene_card_service
+    card = scene_card_service.current(telegram_id, character_id) if character_id else {}
     # User's local time — so Anna knows if it's night, morning, etc.
     local = _local_now(telegram_id)
     part = _daypart(local.hour)
@@ -89,14 +96,18 @@ def state_context(telegram_id: int, character_id: str = '') -> str:
     own_day = (character_id or '') in ROUTINES
     parts.append(f"твоё настроение: {s.mood}")
     parts.append(f"энергия: {'низкая' if s.energy < .4 else 'обычная' if s.energy < .75 else 'высокая'}")
-    if s.activity and not own_day: parts.append(f"сейчас по условной истории: {s.activity}")
-    if s.location and not own_day: parts.append(f"текущая локация истории: {s.location}")
+    if s.activity and not own_day and not card: parts.append(f"сейчас по условной истории: {s.activity}")
+    if s.location and not own_day and not card: parts.append(f"текущая локация истории: {s.location}")
     # V3.113.0: «в чёрной майке» rode in 45 replies a week because the last
     # photo's outfit sat here unlabelled; it is for photo continuity only.
     if s.outfit: parts.append(f"последний показанный на фото образ (только для фото; в тексте не называй одежду, если он не спросил): {s.outfit}")
     if s.hairstyle: parts.append(f"последняя причёска на фото: {s.hairstyle}")
     if s.pending_hook: parts.append(f"незакрытая тема пользователя, к которой можно естественно вернуться: {s.pending_hook}")
-    return '; '.join(parts) + '. Используй время естественно: ночью можно спросить «чего не спишь?», утром — «доброе утро», вечером — предложить что-то. Не перечисляй это пользователю списком и не утверждай, что это реальные внешние события.'
+    text = ('; '.join(parts) + '. Используй время естественно: ночью можно спросить «чего не спишь?», '
+            'утром — «доброе утро», вечером — предложить что-то. Не перечисляй это пользователю списком '
+            'и не утверждай, что это реальные внешние события.')
+    note = scene_card_service.continuation(card)
+    return f'{note}\n{text}' if note else text
 
 
 def softly_evolve_state(telegram_id: int, user_text: str):

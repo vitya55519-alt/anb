@@ -19,6 +19,7 @@ from services import biorhythm
 from services import anchor_service
 from services import explicit_mode
 from services import daily_limit
+from services import scene_card_service
 from services.character_dna_service import competency_context, character_dna_context
 from services.state_service import state_context, softly_evolve_state
 from services.user_service import ensure_user, get_user
@@ -195,6 +196,10 @@ def _blocks(raw: str) -> tuple[str, str, str]:
     the novel format: it comes back as ('', '', text), so every older caller and
     test that mocks a plain model answer keeps working exactly as before."""
     t = raw or ''
+    # V3.166.7 (владелец): скрытая анкета кадра вырезается здесь, до любого
+    # чтения блоков — поэтому её нет ни в его bubble, ни в базе, ни в озвучке,
+    # ни в истории, которую модель видит на следующем ходу.
+    t = scene_card_service.strip_card(t)
     marks = [{'key': m.group(1).lower(), 'a': m.start(), 'b': m.end()} for m in _NOVEL_MARK.finditer(t)]
     if not marks or not any(not _is_thought_key(x['key']) and not _is_draft_key(x['key']) for x in marks):
         return '', '', t
@@ -1078,8 +1083,26 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         # the generation is what the model obeys.
         if draft_due:
             messages.append({"role": "system", "content": draft_service.trigger_directive()})
-        messages.append({"role": "system", "content": novel_format_suffix(duo=duo_chat, draft=draft_due)})
+        # V3.166.7 (владелец, «чтобы была логика»): одна и та же голова решает и
+        # что она печатает, и что на фото. Живая сцена идёт перед правилом
+        # формата, а анкета кадра приклеена к его хвосту — последним остаётся
+        # блок-формат, и никакое новое правило не вытесняет его с места, где его
+        # слушают. Одинаково в обоих режимах — и в «Романтике», и в 18+: логика
+        # нужна не только в пошлом.
+        card_note = scene_card_service.continuation(
+            scene_card_service.current(user_id, character_id))
+        if card_note:
+            messages.append({"role": "system", "content": card_note})
+        card_rule = scene_card_service.SCENE_CARD_DIRECTIVE
+        if duo_chat:
+            card_rule += ' ' + scene_card_service.SCENE_CARD_DIRECTIVE_DUO
+        messages.append({"role": "system",
+                         "content": novel_format_suffix(duo=duo_chat, draft=draft_due) + '\n' + card_rule})
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
+    if not chosen.intent.startswith('task'):
+        # V3.166.7: the hidden card is ~60 tokens of its own — on the old cap it
+        # ate the end of MESSAGE instead of the end of its own line.
+        token_budget += 90
     if scene:
         token_budget = 420
     if novel_layers:
@@ -1167,6 +1190,15 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     if draft and (not draft_due or live_talk.looks_leaked(draft)):
         draft = ''
     answer = join_thought_message(thought, answer)
+    # V3.166.7 (владелец): анкета кадра читается из сырого ответа и ложится в
+    # состояние до того, как сохранено что-либо ещё, — от неё зависят и кадр
+    # под этим сообщением, и «кто в кадре». Пустая или кривая строка ничего не
+    # меняет: прошлая сцена остаётся до следующей названной.
+    try:
+        await asyncio.to_thread(scene_card_service.remember, user_id, character_id,
+                                scene_card_service.card_line(r.text or ''))
+    except Exception:
+        _logger.warning('scene card remember failed user=%s', user_id, exc_info=True)
     save_message(db_user_id, character_id, "user", user_text)
     parts = duo_lines(answer) if duo_chat else []
     if parts:
