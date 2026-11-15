@@ -739,6 +739,16 @@ def consent_keyboard(lang: str = RU):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def start_keyboard(lang: str = RU):
+    """V3.166.8 (владелец): первый экран — ровно одна кнопка приложения.
+
+    ``consent_keyboard`` остаётся для старых пузырей, которые уже лежат в
+    переписках, и для редких веток «сначала подтверди 18+ через /start»: у
+    человека без согласия должна остаться живая кнопка, а не тупик.
+    """
+    return InlineKeyboardMarkup(inline_keyboard=[_app_row(lang)])
+
+
 def legal_keyboard(lang: str = RU):
     """V3.32.0: permanent legal access for the payment partner's bank review."""
     if lang == EN:
@@ -2264,30 +2274,52 @@ async def start(message: types.Message, command: CommandObject):
         logger.warning('girl of day deep link failed user=%s', message.from_user.id, exc_info=True)
 
     if not has_accepted(message.from_user.id):
+        # V3.166.8 (владелец): тапать «Мне 18+» на старте больше не нужно —
+        # на экране одна кнопка приложения. Согласие и флаг совершеннолетия
+        # бот ставит здесь сам: без них несколько десятков гейтов
+        # («has_accepted», «is_adult_confirmed») выслали бы новичка
+        # «подтверди 18+ в чате бота», а кнопки такой больше нет.
+        accept_consent(message.from_user.id)
+        set_adult_confirmed(message.from_user.id, True)
+        track_event(uid, 'consent_accepted', metadata={'terms': TERMS_VERSION,
+                                                      'privacy': PRIVACY_VERSION, 'auto': True})
+        # Бонусы и реферальный подарок — под тем же замком, что и раньше:
+        # двойной /start не должен начислить кредиты дважды.
+        async with referral_user_lock(message.from_user.id):
+            ref = pending_referral(message.from_user.id)
+            if ref:
+                res = apply_referral(message.from_user.id, ref)
+                logger.info('referral on start invitee=%s referrer=%s status=%s',
+                            message.from_user.id, ref, res.get('status'))
+                if res.get('awarded'):
+                    track_event(uid, 'referral_awarded_on_consent', metadata={'referrer_id': str(ref)})
+            first_start = apply_first_start_bonuses(message.from_user.id)
+        if first_start['credits'] or first_start['trial_days']:
+            track_event(uid, 'first_start_bonus_granted', metadata=first_start)
         lang = user_lang(message.from_user.id)
         if lang == EN:
             welcome = (
                 'What can this bot do?\n\n'
                 'Roleplay with AI girls: live chats with memory, photos for your scenarios, AI video and voice.\n'
                 'The relationship grows through levels 1–10 — closer and more open at every level.\n\n'
-                '🎁 after confirming 18+ you get free photo credits for your first photo.\n'
+                '🎁 free photo credits for your first photo are already on your account.\n'
                 '⬇️ Let’s go! ⬇️\n\n'
             )
             if has_referral:
-                welcome += 'you arrived via a friend’s invite — bonuses for both of you land right after you confirm.\n'
-            welcome += 'Confirm you are 18+ and accept the terms of use and the privacy policy.'
+                welcome += 'you arrived via a friend’s invite — bonuses for both of you land as soon as you start chatting.\n'
+            welcome += 'Open the app — she is already waiting.'
         else:
             welcome = (
                 'Что умеет этот бот?\n\n'
                 'Ролевая игра с ИИ девушками: живые чаты с памятью, фото по твоим сценариям, AI-видео и голос.\n'
                 'Отношения растут по уровням 1–10 — с каждым уровнем ближе и откровеннее.\n\n'
-                '🎁 после подтверждения 18+ — бесплатные фото-кредиты на первое фото.\n'
+                '🎁 бесплатные фото-кредиты на первое фото уже на твоём счету.\n'
                 '⬇️ Поехали! ⬇️\n\n'
             )
             if has_referral:
                 welcome += f'пришёл по приглашению друга — напиши ей {REFERRAL_QUALIFY_MESSAGES} сообщений, и вам обоим капнет по {REFERRAL_INVITEE_CREDITS} 🍑.\n'
-            welcome += 'Подтверди, что тебе 18+, и прими условия использования и политику конфиденциальности.'
-        await _send_welcome_banner(message, lang, welcome, consent_keyboard(lang))
+            welcome += 'Открой приложение — она уже ждёт.'
+        await _send_welcome_banner(message, lang, welcome, start_keyboard(lang))
         return
 
     # Returning user who already accepted: apply any pending referral/bonus now

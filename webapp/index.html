@@ -884,7 +884,9 @@
     padding: 16px 14px calc(18px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,120,180,.3); }
   .capsheet .cap-h { text-align: center; font-weight: 700; font-size: 18px; }
   .capsheet .cap-sub { text-align: center; font-size: 12px; opacity: .7; margin: 4px 0 12px; }
-  .capsheet .chat-media { flex-direction: column; flex-wrap: nowrap; gap: 8px; overflow: visible; }
+  /* V3.166.8 (владелец, «красиво, дорого, компактно»): nine rows in two columns —
+     the whole sheet is read on one screen, not by scrolling to the next. */
+  .capsheet .chat-media { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; overflow: visible; }
   /* V3.114.0: «👗 Гардероб» */
   .wd-mood { background: var(--card); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; }
   .wd-mood .row { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
@@ -935,12 +937,13 @@
   .hm-sgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .hm-sgrid .wd-pic { aspect-ratio: 4/3; }
   .wd-act input { background: var(--card); border: 1px solid rgba(255,140,190,.25); color: var(--text); border-radius: 12px; padding: 10px 12px; font: inherit; }
-  .capsheet .chat-media button { flex-direction: row; align-items: center; gap: 12px; width: 100%; text-align: left;
-    padding: 11px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); color: var(--text); }
-  .capsheet .chat-media button .ic { font-size: 24px; width: 30px; text-align: center; flex: none; }
+  .capsheet .chat-media button { flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; text-align: left;
+    padding: 10px 11px; border-radius: 16px; border: 1px solid rgba(255,255,255,.07); color: var(--text); }
+  .capsheet .chat-media button .ic { font-size: 20px; width: auto; text-align: left; flex: none; line-height: 1; }
   .capsheet .chat-media button .tx { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .capsheet .chat-media button .lb { font-size: 15px; font-weight: 600; white-space: normal; }
-  .capsheet .chat-media button .ds { font-size: 12px; line-height: 1.35; opacity: .72; }
+  .capsheet .chat-media button .lb { font-size: 13.5px; font-weight: 700; white-space: normal; line-height: 1.25; }
+  .capsheet .chat-media button .ds { font-size: 11px; line-height: 1.3; opacity: .72; display: -webkit-box;
+    -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .capsheet .chat-media button.hot .lb, .capsheet .chat-media button.hot .ds { color: #fff; opacity: 1; }
   /* V3.165.0 (#105): owner — «Возможности» keeps nine rows. The retired ones stay
      wired (their sheets still open from a deep link), only the list is shorter. */
@@ -1984,10 +1987,10 @@ const L_EN = {
   pa_undress_prem: 'Pick: one «Undress» or Premium 🔥',
   pic_spicy_prem: '18+ pictures are a Premium feature ⭐',
   hm_pick_style: 'Her room is empty for now. Pick a style, the first one is free', hm_restyle_sub: 'New style: {p} 🍑, the furniture stays', hm_free: 'free', hm_now: 'now', hm_back: '← Back to the room', hm_drawing: 'the room picture is being drawn… 🏠', hm_change: 'Change style', hm_placed: '✓ in the room', hm_pick_item: 'Tap a thing to put it in her room', hm_put: 'Put it back · {p} 🍑', hm_wait: 'drawing the room… 🏠',
-  wd_cap: 'Wardrobe', wd_cap_ds: 'Give her clothes and things for her room: she wears them in photos', wd_h: '👗 {name}\'s wardrobe', wd_sub: 'Every gift stays hers forever. The price includes a try-on photo', wd_mood: '💗 Mood', wd_tab_wear: '👗 Clothes', wd_tab_room: '🏠 Home', wd_owned: '✓ she has it', wd_worn: '✓ wearing today', wd_buy: 'Give: {title} · {price} 🍑', wd_wear: '👗 Wear today', wd_unwear: 'Take it off', wd_have: 'She already has it', wd_locked: '18+ items open with Premium ⭐', wd_wait: 'she is trying it on… 📸', wd_pet_ph: 'Kitten name', wd_pet_go: 'Name the kitten', wd_pick: 'Tap a thing to see it', wd_worn_set: 'She is wearing it today 👗',
+  wd_cap: 'Wardrobe', wd_cap_ds: 'Clothes and things for her room — she wears them in photos', wd_h: '👗 {name}\'s wardrobe', wd_sub: 'Every gift stays hers forever. The price includes a try-on photo', wd_mood: '💗 Mood', wd_tab_wear: '👗 Clothes', wd_tab_room: '🏠 Home', wd_owned: '✓ she has it', wd_worn: '✓ wearing today', wd_buy: 'Give: {title} · {price} 🍑', wd_wear: '👗 Wear today', wd_unwear: 'Take it off', wd_have: 'She already has it', wd_locked: '18+ items open with Premium ⭐', wd_wait: 'she is trying it on… 📸', wd_pet_ph: 'Kitten name', wd_pet_go: 'Name the kitten', wd_pick: 'Tap a thing to see it', wd_worn_set: 'She is wearing it today 👗',
   // V3.153.0 (Фогель, Модуль 4): «🎁 Подарки» — the impulse tier next to the
   // wardrobe. What he buys once stays on her in every later photo.
-  gs_cap: 'Gifts', gs_cap_ds: '100–400 🍑 · she keeps them on and it changes how she acts',
+  gs_cap: 'Gifts', gs_cap_ds: '100–400 🍑 · she keeps them, it changes how she acts',
   gs_h: '🎁 Gifts for {name}', gs_sub: 'A gift is hers for good: the last one you gave is what she wears in every new photo',
   gs_none: 'She has nothing from you yet', gs_now_worn: 'On her now: ', gs_wine_left: '🍾 still warm: ', gs_passion_left: '⛓ still his: ',
   gs_buy: 'Give: {title} · {price} 🍑', gs_worn: '✓ on her now', gs_owned: '✓ she has it', gs_have: 'She already has this gift',
@@ -1996,14 +1999,14 @@ const L_EN = {
   gs_wine: n => `Takes her shyness off for ${n} of her replies and moves the closeness gate one step`,
   gs_passion: n => `For ${n} of her replies she leads instead of holding back`,
   gs_photo: 'a try-on photo comes with it 📸', gs_progress: ' · and moves you a step closer',
-  fet_cap: 'Fetishes', fet_cap_ds: 'Pick a theme and she leads it, at any level', fet_h: '🎭 Fetishes', fet_sub: 'Adults only, mutual play. Pick a theme, or write your own', fet_locked: '🎭 Fetish mode unlocks with Premium ⭐', fet_ph: 'Your own theme (up to 80 characters)', fet_go: 'Start', fet_off: '✖ Turn off the theme', fet_refused: 'This theme is not possible', fet_on: 'on', fet_set: 'Theme is on', fet_photo: 'Photo of this theme',  // V3.104.0: the locked sheet still shows her face (the task asked for «замазать фетиши» only where it is locked)...
+  fet_cap: 'Fetishes', fet_cap_ds: 'Your theme — she leads it', fet_h: '🎭 Fetishes', fet_sub: 'Adults only, mutual play. Pick a theme, or write your own', fet_locked: '🎭 Fetish mode unlocks with Premium ⭐', fet_ph: 'Your own theme (up to 80 characters)', fet_go: 'Start', fet_off: '✖ Turn off the theme', fet_refused: 'This theme is not possible', fet_on: 'on', fet_set: 'Theme is on', fet_photo: 'Photo of this theme',  // V3.104.0: the locked sheet still shows her face (the task asked for «замазать фетиши» only where it is locked)...
   // V3.157.0: owner ТЗ (Фогель, Модуль 6) — «Трофеи Страсти»: her album of six
   // lived-through fantasies on the character page.
   tr_head: '🏆 Open fantasies', tr_open: 'tap to hear what she admits', tr_replay: '▶ hear it again',
   tr_locked: '🔒 still locked', tr_busy: 'she is remembering…', tr_failed: 'her voice did not come through — tap again',
   tr_album: '🏆 Album photo', tr_album_hint: 'open all six and she shoots one frame just for this',
   tr_album_open: 'tap — she shows the frame that lives only here',
-  plots_h: '🎬 Storylines', plots_sub: 'Role-play scenes: she writes first and stays in role all day', plots_locked: '🎬 Storylines unlock with Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'on', plots_hint: 'All storylines come with Premium', plots_cap: 'Storylines', plots_cap_ds: 'Role-play scenes with her, from light flirting to the hottest', heat_sub: 'How explicit should it be?', heat_soft: 'Tender', heat_soft_ds: 'Romance, flirting and kisses', heat_hot: 'Hot', heat_hot_ds: 'Passionate and bold', heat_wild: 'No limits', heat_wild_ds: 'As explicit as it gets', plot_exit: '✖ No roles', plot_act: 'act', plot_done: '🎬 Storyline complete!', plot_next: '▶ Next', plot_all_done: 'You have played all her storylines 🔥', plot_left: 'You left the role',
+  plots_h: '🎬 Storylines', plots_sub: 'Role-play scenes: she writes first and stays in role all day', plots_locked: '🎬 Storylines unlock with Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'on', plots_hint: 'All storylines come with Premium', plots_cap: 'Storylines', plots_cap_ds: 'Role-play scenes: flirting to no limits', heat_sub: 'How explicit should it be?', heat_soft: 'Tender', heat_soft_ds: 'Romance, flirting and kisses', heat_hot: 'Hot', heat_hot_ds: 'Passionate and bold', heat_wild: 'No limits', heat_wild_ds: 'As explicit as it gets', plot_exit: '✖ No roles', plot_act: 'act', plot_done: '🎬 Storyline complete!', plot_next: '▶ Next', plot_all_done: 'You have played all her storylines 🔥', plot_left: 'You left the role',
   paid_prem: 'Premium activated ✨', paid_credit: 'Photo credit added 📸',
   pay_failed: 'Payment failed', pay_cancelled: 'Payment cancelled',
   invoice_err: 'Could not open payment — try again',
@@ -2101,7 +2104,7 @@ const L_EN = {
   ach_title: 'Achievements', gal_title: 'My gallery', gal_empty: 'No photos yet — generate one in “Alone”.', gal_count: n => n + ' photos',
   partner_row: '💰 Partner program', docs_row: '📜 Documents & prices', open_chat: 'chat',
   // V3.39.0: the Come Closer character page + in-app chat media.
-  start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', hot_tile: '18+ only', hot_tile_sub: 'Undress, «After Midnight», 18+ call', hot_btn: '🔥 18+: undress, After Midnight', hot_h: '🔥 18+ only', hot_sub_for: 'With her:', hot_undress: '🙈 Undress her photo', hot_undress_ds: 'Premium: 1–3 a day', hot_fet: '🎭 Fetishes', hot_fet_ds: 'your fantasies, she plays along', hot_plots: '🎬 Hot storylines', hot_plots_ds: 'role-play scenes up to «no limits»', hot_call: '📞 18+ call', hot_call_ds: 'she whispers and moans by voice', hot_circle: '🎥 Hot video note', hot_circle_ds: 'a short video from her', hot_video: '🤫 Secret video', hot_video_ds: 'an explicit 5 s video', hot_peach: 'for 🍑', hot_prem: 'Premium', hot_cta: '🔓 Unlock everything for 3 days', hot_note: 'Only for those who confirmed 18+. We never undress photos of real people.', hot_undress_tip: 'Ask her for a photo: «🔥 Undress» will be under it', hot_close: 'Close', tune_btn: '🎛 Set level and bond', tune_title: '🎛 Set her up yourself', tune_hint: 'With Premium you choose right away how close you are and what your bond is like. She talks that way from the next message.', tune_lvl: 'Intimacy level', tune_path: 'Bond', tune_path_hint: 'from level 4 the bond is chosen', tune_apply: '✨ Apply', tune_real: '↩ Back to the real level', tune_locked: '🔒 Open with Premium', tune_picked: 'chosen by you', tune_more: 'Full road with all levels', tune_close: 'Close', lb_title: '🏆 Top Popular',
+  start_chat: 'Start chat', plot: 'SHE MESSAGES YOU FIRST', make_mine: '❤️ Make her yours', rel_level: 'Intimacy level', hot_tile: '18+ only', hot_tile_sub: 'Undress, «After Midnight», 18+ call', hot_btn: '🔥 18+: undress, After Midnight', hot_h: '🔥 18+ only', hot_sub_for: 'With her:', hot_undress: '🔥 Undress', hot_undress_ds: 'Premium: 1–3 a day', hot_fet: '🎭 Fetishes', hot_fet_ds: 'your fantasies, she plays along', hot_plots: '🎬 Hot storylines', hot_plots_ds: 'role-play scenes up to «no limits»', hot_call: '📞 18+ call', hot_call_ds: 'she whispers and moans by voice', hot_circle: '🎥 Hot video note', hot_circle_ds: 'a short video from her', hot_video: '🤫 Secret video', hot_video_ds: 'an explicit 5 s video', hot_peach: 'for 🍑', hot_prem: 'Premium', hot_cta: '🔓 Unlock everything for 3 days', hot_note: 'Only for those who confirmed 18+. We never undress photos of real people.', hot_undress_tip: 'Ask her for a photo: «🔥 Undress» will be under it', hot_close: 'Close', tune_btn: '🎛 Set level and bond', tune_title: '🎛 Set her up yourself', tune_hint: 'With Premium you choose right away how close you are and what your bond is like. She talks that way from the next message.', tune_lvl: 'Intimacy level', tune_path: 'Bond', tune_path_hint: 'from level 4 the bond is chosen', tune_apply: '✨ Apply', tune_real: '↩ Back to the real level', tune_locked: '🔒 Open with Premium', tune_picked: 'chosen by you', tune_more: 'Full road with all levels', tune_close: 'Close', lb_title: '🏆 Top Popular',
     // V3.53.0: «Собери галерею» — every 50 photos of a character is one gallery set.
     collect_lbl: 'Gallery', collect_sets: n => n + ' sets', collect_done: '🖼 Gallery set complete! +1 🏆 — start the next 50',
     path_lbl: '💞 Relationship path', path_tender: 'Tender', path_balanced: 'Balanced', path_free: 'Uninhibited', path_end_l: 'Tenderness', path_end_r: 'Passion',
@@ -2124,7 +2127,7 @@ const L_EN = {
   stt_wait: 'Reading your voice message…', mic_denied: 'No microphone access — allow it in the browser settings', mic_short: 'Too short — say something 🙂', mic_nospeech: 'Could not make out the words — try again', mic_err: 'Voice message failed — try again', attach_err: 'Could not send the photo', attach_big: 'Photo too heavy — send a lighter one', attach_wait: 'Wait a few seconds before the next photo 🙂', rec_hint: '‹ slide to cancel', rec_cancel: 'Cancel',
   circle_limit: 'Not enough 🍑 for a circle',
   co_circle: '🎥 Video circle from her', co_hot: '🤫 Secret video — just for you',
-  feat_hot_circle: 'Hot video', cap_hot_circle: n => `A private video circle only for you: she undresses and touches herself. ${peachNum(n)} 🍑, charged only if it works`,
+  feat_hot_circle: 'Hot video', cap_hot_circle: n => `A private circle only for you: she undresses and touches herself. ${peachNum(n)} 🍑, charged only if it works`,
   media_wait_hot: 'She is recording a secret video — 3–5 min…',
   // V3.42.2: readable labels for the chat action pills (the voice button is gone).
   media_photo: 'Photo', media_video: 'Video', media_circle: 'Circle',
@@ -2152,12 +2155,12 @@ const L_EN = {
   cap_date: 'Take her to a cafe, the movies or a walk. She tells you how the evening went and sends a photo',
   cap_apt: 'Your shared home. Pick a room and something to do together, she answers in the chat',
   cap_video: 'Bring her photo to life as a short video',
-  cap_cosplay: 'She dresses up as a famous character and sends you a photo',
-  cap_hot: 'Explicit photos just for you: pick the outfit, place and mood',
+  cap_cosplay: 'A photo of her in a famous character',
+  cap_hot: 'Explicit photos: outfit, place, mood',
   // V3.165.0 (#105): «Раздеть её фото» is a row of its own now — the newest frame
   // of hers, one tap, no hunting for the button under the photo.
-  cap_undress: n => 'Her newest photo, one frame without clothes · ' + peachNum(n) + ' 🍑, charged only if it works',
-  cap_undress_prem: 'Her newest photo, one frame without clothes · in Premium',
+  cap_undress: n => 'One frame without clothes · ' + peachNum(n) + ' 🍑, charged only if it works',
+  cap_undress_prem: 'One frame without clothes · in Premium',
   // V3.165.0 (#104): «Сутки без стеснения» — the no-shame pass now sells here.
   pass_h: '🎟 No-shame pass', pass_sub: 'Explicit frames with the pass included — cheaper than one by one',
   pass_on: 'Pass active, frames left', pass_day: 'Day', pass_week: 'Week', pass_month: 'Month',
@@ -2324,8 +2327,8 @@ const L_RU = {
   pa_undress_prem: 'Выбери: одно «Раздеть» или Premium 🔥',
   pic_spicy_prem: 'Откровенные картинки — только с Premium ⭐',
   hm_pick_style: 'Её комната пока пустая. Выбери стиль, первый бесплатно', hm_restyle_sub: 'Новый стиль: {p} 🍑, мебель остаётся', hm_free: 'бесплатно', hm_now: 'сейчас', hm_back: '← Назад к комнате', hm_drawing: 'картинка комнаты рисуется… 🏠', hm_change: 'Сменить стиль', hm_placed: '✓ стоит в комнате', hm_pick_item: 'Нажми на вещь, чтобы поставить её в комнату', hm_put: 'Поставить обратно · {p} 🍑', hm_wait: 'рисую комнату… 🏠',
-  wd_cap: 'Гардероб', wd_cap_ds: 'Дари ей одежду и вещи для комнаты, она будет в них на фото', wd_h: '👗 Гардероб: {name}', wd_sub: 'Подарок остаётся у неё навсегда. В цену входит фото примерки', wd_mood: '💗 Настроение', wd_tab_wear: '👗 Одежда', wd_tab_room: '🏠 Дом', wd_owned: '✓ у неё есть', wd_worn: '✓ надето сегодня', wd_buy: 'Подарить: {title} · {price} 🍑', wd_wear: '👗 Надеть сегодня', wd_unwear: 'Снять', wd_have: 'Это у неё уже есть', wd_locked: 'Вещи 18+ открываются с Premium ⭐', wd_wait: 'примеряет… 📸', wd_pet_ph: 'Имя котёнка', wd_pet_go: 'Назвать котёнка', wd_pick: 'Нажми на вещь, чтобы выбрать', wd_worn_set: 'Сегодня она в этом 👗',
-  gs_cap: 'Подарки', gs_cap_ds: '100–400 🍑 · она в них на фото, и это меняет то, как она себя ведёт',
+  wd_cap: 'Гардероб', wd_cap_ds: 'Одежда и вещи для неё — она в них на фото', wd_h: '👗 Гардероб: {name}', wd_sub: 'Подарок остаётся у неё навсегда. В цену входит фото примерки', wd_mood: '💗 Настроение', wd_tab_wear: '👗 Одежда', wd_tab_room: '🏠 Дом', wd_owned: '✓ у неё есть', wd_worn: '✓ надето сегодня', wd_buy: 'Подарить: {title} · {price} 🍑', wd_wear: '👗 Надеть сегодня', wd_unwear: 'Снять', wd_have: 'Это у неё уже есть', wd_locked: 'Вещи 18+ открываются с Premium ⭐', wd_wait: 'примеряет… 📸', wd_pet_ph: 'Имя котёнка', wd_pet_go: 'Назвать котёнка', wd_pick: 'Нажми на вещь, чтобы выбрать', wd_worn_set: 'Сегодня она в этом 👗',
+  gs_cap: 'Подарки', gs_cap_ds: '100–400 🍑 · остаётся у неё и меняет её поведение',
   gs_h: '🎁 Подарки для {name}', gs_sub: 'Подарок остаётся у неё навсегда: последний — то, в чём она на каждом новом фото',
   gs_none: 'У неё пока нет твоих подарков', gs_now_worn: 'Сейчас на ней: ', gs_wine_left: '🍾 ещё разогрета: ', gs_passion_left: '⛓ ещё твоя: ',
   gs_buy: 'Подарить: {title} · {price} 🍑', gs_worn: '✓ на ней', gs_owned: '✓ у неё есть', gs_have: 'Это у неё уже есть',
@@ -2334,12 +2337,12 @@ const L_RU = {
   gs_wine: n => `Снимает стеснение на ${n} её сообщений и приоткрывает уровень ближе`,
   gs_passion: n => `${n} её сообщений она ведёт сама, а не сдерживается`,
   gs_photo: 'с фото примерки 📸', gs_progress: ' · и шаг ближе к новому уровню',
-  fet_cap: 'Фетиши', fet_cap_ds: 'Выбери тему, и она поведёт её сама, на любом уровне', fet_h: '🎭 Фетиши', fet_sub: 'Только для взрослых и по взаимной игре. Выбери тему или напиши свою', fet_locked: '🎭 Режим фетишей открывается с Premium ⭐', fet_ph: 'Своя тема (до 80 символов)', fet_go: 'Начать', fet_off: '✖ Выключить тему', fet_refused: 'Такая тема невозможна', fet_on: 'идёт', fet_set: 'Тема включена', fet_photo: 'Фото по этой теме',
+  fet_cap: 'Фетиши', fet_cap_ds: 'Твоя тема — она ведёт её сама', fet_h: '🎭 Фетиши', fet_sub: 'Только для взрослых и по взаимной игре. Выбери тему или напиши свою', fet_locked: '🎭 Режим фетишей открывается с Premium ⭐', fet_ph: 'Своя тема (до 80 символов)', fet_go: 'Начать', fet_off: '✖ Выключить тему', fet_refused: 'Такая тема невозможна', fet_on: 'идёт', fet_set: 'Тема включена', fet_photo: 'Фото по этой теме',
   tr_head: '🏆 Открытые фантазии', tr_open: 'нажми — и она признается', tr_replay: '▶ переслушать',
   tr_locked: '🔒 ещё закрыто', tr_busy: 'она вспоминает…', tr_failed: 'её голос не собрался — нажми ещё раз',
   tr_album: '🏆 Фото альбома', tr_album_hint: 'открой все шесть — и она снимет кадр только для этого',
   tr_album_open: 'нажми — и она покажет кадр, который живёт только здесь',
-  plots_h: '🎬 Сюжеты', plots_sub: 'Ролевые сцены: она пишет первой и держит роль весь день', plots_locked: '🎬 Сюжеты открываются с Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'идёт', plots_hint: 'Все сюжеты доступны с Premium', plots_cap: 'Сюжеты', plots_cap_ds: 'Ролевые сцены с ней: от лёгкого флирта до самого горячего', heat_sub: 'Насколько откровенно будет?', heat_soft: 'Нежно', heat_soft_ds: 'Романтика, флирт и поцелуи', heat_hot: 'Горячо', heat_hot_ds: 'Страстно и смело, откровенные намёки', heat_wild: 'Без тормозов', heat_wild_ds: 'Максимально откровенно и пошло', plot_exit: '✖ Без ролей', plot_act: 'акт', plot_done: '🎬 Сюжет пройден!', plot_next: '▶ Дальше', plot_all_done: 'Ты прошёл все её сюжеты 🔥', plot_left: 'Вы вышли из роли',
+  plots_h: '🎬 Сюжеты', plots_sub: 'Ролевые сцены: она пишет первой и держит роль весь день', plots_locked: '🎬 Сюжеты открываются с Premium ⭐', plots_badge: '⭐ Premium', plots_play: '▶', plots_on: 'идёт', plots_hint: 'Все сюжеты доступны с Premium', plots_cap: 'Сюжеты', plots_cap_ds: 'Ролевые сцены: от флирта до без тормозов', heat_sub: 'Насколько откровенно будет?', heat_soft: 'Нежно', heat_soft_ds: 'Романтика, флирт и поцелуи', heat_hot: 'Горячо', heat_hot_ds: 'Страстно и смело, откровенные намёки', heat_wild: 'Без тормозов', heat_wild_ds: 'Максимально откровенно и пошло', plot_exit: '✖ Без ролей', plot_act: 'акт', plot_done: '🎬 Сюжет пройден!', plot_next: '▶ Дальше', plot_all_done: 'Ты прошёл все её сюжеты 🔥', plot_left: 'Вы вышли из роли',
   paid_prem: 'Premium активирован ✨', paid_credit: 'Фото-кредит начислен 📸',
   pay_failed: 'Оплата не прошла', pay_cancelled: 'Оплата отменена',
   invoice_err: 'Не удалось открыть оплату — попробуй ещё раз',
@@ -2439,7 +2442,7 @@ const L_RU = {
   ach_title: 'Достижения', gal_title: 'Моя галерея', gal_empty: 'Фото пока нет — создай его в «Наедине».', gal_count: n => n + ' фото',
   partner_row: '💰 Партнёрка', docs_row: '📜 Документы и цены', open_chat: 'чат',
   // V3.39.0: карточка персонажа как у Come Closer + медиа в чате.
-  start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', hot_tile: 'Только 18+', hot_tile_sub: 'Раздеть, «После полуночи», звонок 18+', hot_btn: '🔥 18+: раздеть, «После полуночи»', hot_h: '🔥 Только 18+', hot_sub_for: 'С ней:', hot_undress: '🙈 Раздеть её фото', hot_undress_ds: 'в Premium 1–3 в день', hot_fet: '🎭 Фетиши', hot_fet_ds: 'твои фантазии, она подыграет', hot_plots: '🎬 Горячие сюжеты', hot_plots_ds: 'ролевые сцены до «без тормозов»', hot_call: '📞 Звонок 18+', hot_call_ds: 'шепчет и стонет голосом', hot_circle: '🎥 Горячий кружок', hot_circle_ds: 'короткое видео от неё', hot_video: '🤫 Тайное видео', hot_video_ds: 'откровенное видео 5 сек', hot_peach: 'за 🍑', hot_prem: 'Premium', hot_cta: '🔓 Открыть всё на 3 дня · 99 ₽', hot_note: 'Только для тех, кто подтвердил 18+. Фото реальных людей не раздеваем.', hot_undress_tip: 'Попроси у неё фото: под ним будет «🔥 Раздеть»', hot_close: 'Закрыть', tune_btn: '🎛 Настроить уровень и связь', tune_title: '🎛 Настрой её сам', tune_hint: 'С Premium ты сразу выбираешь, насколько вы близки и какая у вас связь. Она будет общаться так со следующего сообщения.', tune_lvl: 'Уровень близости', tune_path: 'Характер связи', tune_path_hint: 'с 4 уровня выбирается характер связи', tune_apply: '✨ Применить', tune_real: '↩ Вернуть настоящий уровень', tune_locked: '🔒 Открыть с Premium', tune_picked: 'выбран тобой', tune_more: 'Вся дорога по уровням', tune_close: 'Закрыть', lb_title: ' Топ популярных',
+  start_chat: 'Начать чат', plot: 'ОНА ПИШЕТ ТЕБЕ ПЕРВОЙ', make_mine: '❤️ Сделать твоей', rel_level: 'Уровень близости', hot_tile: 'Только 18+', hot_tile_sub: 'Раздеть, «После полуночи», звонок 18+', hot_btn: '🔥 18+: раздеть, «После полуночи»', hot_h: '🔥 Только 18+', hot_sub_for: 'С ней:', hot_undress: '🔥 Раздеть', hot_undress_ds: 'в Premium 1–3 в день', hot_fet: '🎭 Фетиши', hot_fet_ds: 'твои фантазии, она подыграет', hot_plots: '🎬 Горячие сюжеты', hot_plots_ds: 'ролевые сцены до «без тормозов»', hot_call: '📞 Звонок 18+', hot_call_ds: 'шепчет и стонет голосом', hot_circle: '🎥 Горячий кружок', hot_circle_ds: 'короткое видео от неё', hot_video: '🤫 Тайное видео', hot_video_ds: 'откровенное видео 5 сек', hot_peach: 'за 🍑', hot_prem: 'Premium', hot_cta: '🔓 Открыть всё на 3 дня · 99 ₽', hot_note: 'Только для тех, кто подтвердил 18+. Фото реальных людей не раздеваем.', hot_undress_tip: 'Попроси у неё фото: под ним будет «🔥 Раздеть»', hot_close: 'Закрыть', tune_btn: '🎛 Настроить уровень и связь', tune_title: '🎛 Настрой её сам', tune_hint: 'С Premium ты сразу выбираешь, насколько вы близки и какая у вас связь. Она будет общаться так со следующего сообщения.', tune_lvl: 'Уровень близости', tune_path: 'Характер связи', tune_path_hint: 'с 4 уровня выбирается характер связи', tune_apply: '✨ Применить', tune_real: '↩ Вернуть настоящий уровень', tune_locked: '🔒 Открыть с Premium', tune_picked: 'выбран тобой', tune_more: 'Вся дорога по уровням', tune_close: 'Закрыть', lb_title: ' Топ популярных',
     // V3.53.0: «Собери галерею» — каждые 50 фото персонажа = один сет галереи.
     collect_lbl: 'Галерея', collect_sets: n => n + ' сетов', collect_done: '🖼 Сет галереи собран! +1 🏆 — собирай следующие 50',
     path_lbl: '💞 Характер связи', path_tender: 'Нежная', path_balanced: 'Сбалансированная', path_free: 'Раскрепощённая', path_end_l: 'Нежность', path_end_r: 'Страсть',
@@ -2462,7 +2465,7 @@ const L_RU = {
   stt_wait: 'Узнаю твой голос…', mic_denied: 'Нет доступа к микрофону — разреши его в настройках', mic_short: 'Слишком коротко — скажи что-нибудь 🙂', mic_nospeech: 'Не смогла разобрать слова — попробуй ещё раз', mic_err: 'Голосовое не отправилось — попробуй ещё раз', attach_err: 'Не удалось отправить фото', attach_big: 'Фото слишком тяжёлое — пришли полегче', attach_wait: 'Подожди пару секунд перед следующим фото 🙂', rec_hint: '‹ влево — отмена', rec_cancel: 'Отмена',
   circle_limit: 'На кружочек не хватает 🍑',
   co_circle: '🎥 Кружочек от неё', co_hot: '🤫 Тайное видео — только тебе',
-  feat_hot_circle: 'Горячее видео', cap_hot_circle: n => `Её горячий кружочек только для тебя: раздевается и ласкает себя. ${peachNum(n)} 🍑, спишем только если получится`,
+  feat_hot_circle: 'Горячее видео', cap_hot_circle: n => `Горячий кружок только для тебя: раздевается и ласкает себя. ${peachNum(n)} 🍑, спишем если получится`,
   media_wait_hot: 'Она записывает тайное видео — 3–5 минут…',
   // V3.42.2: читаемые подписи к кнопкам чата (голосовая кнопка убрана).
   media_photo: 'Фото', media_video: 'Видео', media_circle: 'Кружок',
@@ -2490,10 +2493,10 @@ const L_RU = {
   cap_date: 'Пригласи её в кафе, кино или на прогулку. Она расскажет, как прошёл вечер, и пришлёт фото',
   cap_apt: 'Ваш общий дом. Выбери комнату и занятие, например ужин или кино на диване, и она ответит в чате',
   cap_video: 'Оживи её фото: из снимка получится короткое видео',
-  cap_cosplay: 'Она переоденется в известного персонажа и пришлёт фото в образе',
-  cap_hot: 'Откровенные фото только для тебя: выбираешь образ, место и настроение',
-  cap_undress: n => 'Она снимет всё с себя на следующем кадре · ' + peachNum(n) + ' 🍑, спишем только если получится',
-  cap_undress_prem: 'Она снимет всё с себя на следующем кадре · в Premium',
+  cap_cosplay: 'Фото в образе известного персонажа',
+  cap_hot: 'Откровенные фото: образ, место, настроение',
+  cap_undress: n => 'Снимет всё на следующем кадре · ' + peachNum(n) + ' 🍑, спишем если получится',
+  cap_undress_prem: 'Снимет всё на следующем кадре · в Premium',
   // V3.165.0 (#104): «Сутки без стеснения» — пропуск теперь продаётся здесь.
   pass_h: '🎟 Сутки без стеснения', pass_sub: 'Откровенные кадры входят в пропуск — выходит дешевле, чем по одному',
   pass_on: 'Пропуск активен, осталось кадров', pass_day: 'Сутки', pass_week: 'Неделя', pass_month: 'Месяц',
@@ -5176,13 +5179,17 @@ function undressTease(mediaUrl) {
       String(mediaUrl).indexOf('/webapp/starter/') !== 0) return;
   _undressTeased[CHAT.id] = 1;
   const box = document.getElementById('chatMsgs');
-  setTimeout(() => {
-    if (!CHAT) return;
-    box.insertAdjacentHTML('beforeend', chatBubble('bot', L.undress_tease, null));
-    box.insertAdjacentHTML('beforeend', '<div class="chat-offer"><button class="mchip on" data-pact="undress" data-media="' +
-      esc(mediaUrl) + '">' + esc(L.undress_tease_btn + (ME && ME.premium ? '' : ' · ' + peachNum((ME && ME.undress_peaches) || PP('undress')) + ' 🍑')) + '</button></div>');
-    box.scrollTop = box.scrollHeight;
-  }, 1600);
+  // V3.166.8 (владелец, «кнопка плавает, не в тему»): без паузы и не в конец
+  // чата — её слова и кнопка встают сразу под тот самый кадр, к которому они
+  // относятся, а не догоняют переписку через полторы секунды.
+  const sel = '.phact button[data-pact="undress"][data-media="' + String(mediaUrl).replace(/["\\]/g, '\\$&') + '"]';
+  const btn = box.querySelector(sel);
+  const anchor = btn ? btn.closest('.msg') : null;
+  const html = chatBubble('bot', L.undress_tease, null) + '<div class="chat-offer"><button class="mchip on" data-pact="undress" data-media="' +
+    esc(mediaUrl) + '">' + esc(L.undress_tease_btn + (ME && ME.premium ? '' : ' · ' + peachNum((ME && ME.undress_peaches) || PP('undress')) + ' 🍑')) + '</button></div>';
+  if (anchor) anchor.insertAdjacentHTML('afterend', html);
+  else box.insertAdjacentHTML('beforeend', html);
+  box.scrollTop = box.scrollHeight;
 }
 
 // ── V3.57.0: voice messages and user photos in the app chat ──────────────
