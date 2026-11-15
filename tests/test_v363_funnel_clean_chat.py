@@ -127,7 +127,7 @@ def test_the_app_leaves_the_first_line_to_him():
 
 def test_day1_entry_has_continuation_hints():
     assert "get('entry') === 'day1'" in INDEX
-    assert 'const hints = day1 ? L.day1_hints : L.chat_hints;' in INDEX
+    assert "const hints = (custom && custom.length) ? custom : (day1 ? L.day1_hints : L.chat_hints);" in INDEX
     assert INDEX.count('day1_hints:') == 8
     assert 'Давай продолжим наш разговор' in INDEX
     assert 'Let’s continue our conversation' in INDEX

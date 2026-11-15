@@ -40,10 +40,12 @@ def test_entry_screen_is_the_only_mode_choice():
     # and it lands on the heroine roster.
     assert "showTab('characters');" in INDEX
     assert "ms_btn: 'Выбрать героиню'" in INDEX
-    # two cards: the ordinary mode and «После полуночи»
+    # V3.166.0: two vertical 3:4 cards, the owner's pictures are not a thin strip.
     assert "modeCard(false) + modeCard(true)" in INDEX
-    assert "ms_spicy_t: 'ПОСЛЕ ПОЛУНОЧИ'" in INDEX
-    assert "ms_normal_t: 'Обычный режим'" in INDEX
+    assert "ms_spicy_t: 'Без цензуры 18+'" in INDEX
+    assert "ms_normal_t: 'Романтика и флирт'" in INDEX
+    assert 'aspect-ratio: 3 / 4' in INDEX
+    assert 'class="shade"' in INDEX
     # the owner's own pictures, with a glyph fallback while a file is missing
     assert "/webapp/art/mode_normal" in INDEX and "/webapp/art/mode_spicy" in INDEX
     assert r"classList.add(\'nopic\')" in INDEX

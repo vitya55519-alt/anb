@@ -893,3 +893,25 @@ class TrophyAlbum(Base):
     character_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     photo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class CharacterGreeting(Base):
+    """V3.166.0 (Блок 2, owner): the opening line of a chat is a written-once
+    card, not a generation. One row = one heroine (or ``all`` for the universal
+    scenarios), one mode (``normal`` / ``spicy`` / ``both``), one photo and her
+    own first line with the chips under it. ``photo_file_id`` is what Telegram
+    reuses, ``photo_bytes`` is what the Mini App serves from
+    ``/webapp/greeting/<id>`` — the bytes live in PostgreSQL so Railway's
+    ephemeral disk never eats the owner's uploads. ``translations_json`` caches
+    each language after a single paid translation, so a non-Russian newcomer
+    costs that call only once per scenario. Table is auto-created."""
+    __tablename__ = "character_greetings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    character_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False, default='all')
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, default='both', index=True)
+    photo_file_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    photo_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    message_text: Mapped[str] = mapped_column(Text, nullable=False, default='')
+    buttons_json: Mapped[str] = mapped_column(Text, nullable=False, default='[]')
+    translations_json: Mapped[str] = mapped_column(Text, nullable=False, default='{}')
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

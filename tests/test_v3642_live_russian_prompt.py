@@ -20,10 +20,11 @@ def test_opening_line_is_correct_russian():
 
 def test_girl_examples_are_feminine():
     t = _prompt()
-    # V3.137.0: «если устала — «я так устала сегодня»» became a live-style cue;
-    # the feminine form must still be what she is offered, never the masculine.
-    assert 'Если устала — скажи это коротко и по-живому' in t
-    assert 'устала' in t and 'я так устал сегодня' not in t
+    # V3.166.0: she no longer opens with complaints about being tired; the old
+    # masculine example must not come back either.
+    assert 'НИКОГДА не жалуйся на здоровье, усталость или бытовые проблемы' in t
+    assert 'Если устала — скажи это коротко и по-живому' not in t
+    assert 'я так устал сегодня' not in t
     assert 'я тут подумала' in t
     assert 'звучит, как будто тебе грустно' not in t
 

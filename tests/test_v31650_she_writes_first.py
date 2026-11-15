@@ -72,7 +72,7 @@ def test_the_start_picker_is_gone():
 
 # ── 2. открыл чат — она пишет ──────────────────────────────────────────────
 def test_opening_an_empty_dialog_asks_for_her_line():
-    hist = INDEX[INDEX.index('async function loadChatHistory('):INDEX.index('function renderChatHints()')]
+    hist = INDEX[INDEX.index('async function loadChatHistory('):INDEX.index('function renderChatHints(custom, undressPrice)')]
     branch = hist[hist.index('if (!j.history.length)'):hist.index('else {')]
     assert 'requestChatOpener(characterId)' in branch
     assert 'openStartSheet' not in hist
@@ -83,7 +83,7 @@ def test_the_opener_shows_typing_then_her_bubble():
     assert "L.typing_now" in opener                        # «печатает…», а не пустой экран
     assert "'/webapp/api/chat/start" in opener
     assert 'chatBubble({ role: \'assistant\'' in opener     # её строка — обычное её сообщение
-    assert 'renderChatHints()' in opener                     # подсказки остаются под её строкой
+    assert 'renderChatHints(data && data.chips, data && data.undress_price)' in opener
     # сбой сети не оставляют чат пустым: возвращается placeholder
     assert 'L.empty_chat' in opener
 

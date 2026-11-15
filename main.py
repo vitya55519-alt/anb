@@ -83,6 +83,7 @@ from services.payments import trial_eligible  # V3.88.0
 from services.payments import record_payment, get_photo_credits, get_paid_peaches, record_refund, grant_premium, revoke_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
 from services.bot_description import apply_bot_descriptions
 from services import seo_landing
+from services import greeting_service
 from services.referral_service import (
     parse_referral_payload, apply_first_start_bonuses, apply_referral, referral_count, referral_link,
     referral_user_lock, pending_referral, remember_referral, referral_leaderboard, referral_rank,
@@ -843,6 +844,9 @@ def admin_keyboard():
         [InlineKeyboardButton(text='💡 Идеи для фото', callback_data='admin:ideas')],
         [InlineKeyboardButton(text='🏆 Арт достижений/миссий', callback_data='admin:badges')],
         [InlineKeyboardButton(text='📸 Медиа для утра/вечера', callback_data='admin:prophoto')],
+        # V3.166.0 (Блок 2): his base of ready opening cards — photo + her first
+        # line + chips, so a new chat starts instantly without a generation.
+        [InlineKeyboardButton(text='💌 Стартовые сообщения', callback_data='admin:greet')],
         # V3.94.0: a ready «🔥 Девушка дня» channel post in two taps.
         [InlineKeyboardButton(text='📣 Пост в канал', callback_data='gday:menu')],
         # V3.129.0: channel rubrics «🗳 Выбираете вы» and «💬 Диалог дня».
@@ -3397,6 +3401,169 @@ async def admin_card_media_upload(message: types.Message):
         f'✅ Карточка {character_id}: в витрине теперь {kind}. '
         'Открой приложение заново — ссылка уже с новой версией.',
         reply_markup=admin_card_keyboard(character_id))
+
+
+# ── V3.166.0 (Блок 2): «Стартовые сообщения» — the owner's greeting base ──────
+# One card = heroine + mode + photo + her first line + the chips under it. The
+# bot takes Telegram's file_id AND the bytes (PostgreSQL), so the same shot goes
+# out instantly in Telegram and is served to the Mini App after any redeploy.
+GREETING_WAIT: dict[int, dict] = {}
+GREETING_MODE_LABEL = {'normal': '🌙 Романтика и флирт', 'spicy': '🔥 Без цензуры 18+', 'both': '🌙🔥 Оба режима'}
+
+
+def _greet_name(character_id: str) -> str:
+    return '🌐 Универсальные (все девушки)' if character_id == 'all' else _character_display_name(character_id)
+
+
+def admin_greet_keyboard():
+    rows = []
+    try:
+        cards = list_cards(visible_only=False)
+    except Exception:
+        cards = []
+    for card in cards:
+        rows.append([InlineKeyboardButton(
+            text=f'{card.display_name} ({len(greeting_service.list_for(card.character_id))})',
+            callback_data=f'admin:greet:{card.character_id}')])
+    rows.append([InlineKeyboardButton(
+        text=f'🌐 Универсальные ({len(greeting_service.list_for("all"))})', callback_data='admin:greet:all')])
+    rows.append([InlineKeyboardButton(text='⬅️ Админка', callback_data='admin:home')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_greet_char_keyboard(character_id: str):
+    rows = []
+    for item in greeting_service.list_for(character_id):
+        label = f"🗑 #{item['id']} · {item['mode']} · {'📸' if item['has_photo'] else 'текст'} · {item['text'][:34]}"
+        rows.append([InlineKeyboardButton(text=label, callback_data=f'admin:greetdel:{character_id}:{item["id"]}')])
+    rows.append([InlineKeyboardButton(text=GREETING_MODE_LABEL[m], callback_data=f'admin:greetadd:{character_id}:{m}')
+                 for m in ('normal', 'spicy')])
+    rows.append([InlineKeyboardButton(text=GREETING_MODE_LABEL['both'], callback_data=f'admin:greetadd:{character_id}:both')])
+    rows.append([InlineKeyboardButton(text='⬅️ Стартовые сообщения', callback_data='admin:greet')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _greet_char_screen(chat_id: int, character_id: str):
+    items = greeting_service.list_for(character_id)
+    await bot.send_message(
+        chat_id,
+        f'💌 Стартовые сообщения — {_greet_name(character_id)}\n\n'
+        f'Заготовок: {len(items)}. Открытие чата берёт одну случайную подходящую под режим; '
+        'если у девушки своих нет — работает универсальная.\n'
+        '➕ Добавить: выбери режим, пришли фото (или «-» без фото), текст и кнопки. '
+        'До 4 карточек за один заход, /done — закончить, /cancel — отмена.\n'
+        'Кнопка 🗑 удаляет заготовку.',
+        reply_markup=admin_greet_char_keyboard(character_id))
+
+
+@dp.callback_query(F.data == 'admin:greet')
+async def admin_greet_home(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    GREETING_WAIT.pop(cq.from_user.id, None)
+    await cq.answer()
+    await cq.message.answer(
+        '💌 Стартовые сообщения\n\n'
+        'Это база первых реплик: при открытии чата в приложении девушка мгновенно '
+        'присылает готовое фото и текст — без генерации и без ожидания. '
+        'Выбери девушку или универсальный набор.',
+        reply_markup=admin_greet_keyboard())
+
+
+@dp.callback_query(F.data.startswith('admin:greet:'))
+async def admin_greet_char(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    GREETING_WAIT.pop(cq.from_user.id, None)
+    await cq.answer()
+    await _greet_char_screen(cq.message.chat.id, cq.data.split(':', 2)[2])
+
+
+@dp.callback_query(F.data.startswith('admin:greetadd:'))
+async def admin_greet_add(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _, _, character_id, mode = cq.data.split(':', 3)
+    GREETING_WAIT[cq.from_user.id] = {'character_id': character_id, 'mode': mode,
+                                      'step': 'photo', 'photo_file_id': '', 'photo_bytes': None,
+                                      'text': '', 'added': 0}
+    await cq.answer()
+    await cq.message.answer(
+        f'➕ Новая заготовка: {_greet_name(character_id)} · {GREETING_MODE_LABEL.get(mode, mode)}\n\n'
+        'Шаг 1 из 3 — пришли ФОТО этой карточки (или «-», если она будет только текстом).')
+
+
+@dp.callback_query(F.data.startswith('admin:greetdel:'))
+async def admin_greet_delete(cq: types.CallbackQuery):
+    if cq.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    _, _, character_id, raw_id = cq.data.split(':', 3)
+    greeting_service.delete(int(raw_id))
+    await cq.answer('заготовка удалена')
+    await _greet_char_screen(cq.message.chat.id, character_id)
+
+
+def _greet_buttons(raw: str) -> list[str]:
+    parts = [p.strip() for p in raw.replace('\n', '|').split('|')]
+    return [p[:60] for p in parts if p][:4]
+
+
+@dp.message(lambda m: m.from_user is not None and m.from_user.id in GREETING_WAIT, F.photo | F.text)
+async def admin_greet_upload(message: types.Message):
+    """The three steps of one greeting card: photo → her line → chips."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    state = GREETING_WAIT.get(message.from_user.id)
+    if not state:
+        return
+    text = (message.text or '').strip()
+    if text in ('/cancel', '/done'):
+        added = state.get('added', 0)
+        GREETING_WAIT.pop(message.from_user.id, None)
+        await message.answer(f'Готово, добавлено карточек: {added}.',
+                             reply_markup=admin_greet_keyboard())
+        return
+    step = state.get('step')
+    if step == 'photo':
+        if message.photo:
+            buf = io.BytesIO()
+            await bot.download(message.photo[-1].file_id, destination=buf)
+            state['photo_file_id'] = message.photo[-1].file_id
+            state['photo_bytes'] = buf.getvalue()
+        elif text == '-':
+            state['photo_file_id'], state['photo_bytes'] = '', None
+        else:
+            await message.answer('Пришли фото или «-» без фото.')
+            return
+        state['step'] = 'text'
+        await message.answer('Шаг 2 из 3 — ТЕКСТ её первого сообщения. Можно {name} — подставится имя девушки.')
+        return
+    if step == 'text':
+        if not text:
+            await message.answer('Нужен текст сообщения — одним сообщением.')
+            return
+        state['text'] = text
+        state['step'] = 'buttons'
+        await message.answer('Шаг 3 из 3 — кнопки-чипы через «|», например:\n'
+                             'Подойти сзади | Обнять её\n\nИли «-» — без кнопок.')
+        return
+    if step == 'buttons':
+        buttons = [] if text == '-' else _greet_buttons(text)
+        greeting_id = greeting_service.create(
+            state['character_id'], state['mode'], state['text'], buttons,
+            photo_file_id=state.get('photo_file_id') or '', photo_bytes=state.get('photo_bytes'))
+        state['added'] = state.get('added', 0) + 1
+        state.update(step='photo', photo_file_id='', photo_bytes=None, text='')
+        left = 4 - state['added']
+        if left <= 0:
+            GREETING_WAIT.pop(message.from_user.id, None)
+        await message.answer(
+            f'✅ Карточка #{greeting_id} сохранена (фото: {"есть" if greeting_service.photo_for(greeting_id) else "нет"}, '
+            f'кнопок: {len(buttons)}).\n' +
+            (f'Ещё можно {left}: пришли следующее фото или «-». /done — закончить.' if left > 0
+             else 'Добавлены 4 карточки — заход завершён.'),
+            reply_markup=None if left > 0 else admin_greet_keyboard())
+        return
 
 
 # ── V3.47.1: admin achievement/mission art (badges) ──────────────────────────
@@ -13546,6 +13713,24 @@ async def _webapp_live(request: web.Request) -> web.Response:
                         'Cache-Control': 'public, max-age=604800'})
 
 
+async def _webapp_greeting_photo(request: web.Request) -> web.Response:
+    """V3.166.0 (Блок 2): his greeting photo, straight from PostgreSQL — the
+    same public immutable caching as the storefront card media, so a redeploy
+    never asks him to upload the welcome shots again."""
+    from services import greeting_service
+    try:
+        greeting_id = int(request.match_info['greeting_id'])
+    except (TypeError, ValueError):
+        return web.Response(status=404)
+    body = await asyncio.to_thread(greeting_service.photo_for, greeting_id)
+    if not body:
+        return web.Response(status=404)
+    body, content_type = await asyncio.to_thread(
+        webapp_service.web_image, body, 'image/jpeg', f'greeting:{greeting_id}')
+    return web.Response(body=body, content_type=content_type,
+                        headers={'Cache-Control': 'public, max-age=604800'})
+
+
 async def _webapp_card(request: web.Request) -> web.Response:
     # V3.43.3: the admin-uploaded storefront media (photo/gif/mp4) — same
     # immutable caching as the other ?v=-stamped assets.
@@ -15238,6 +15423,15 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
         from services.memory_service import get_recent_messages
         if get_recent_messages(uid, character_id, 1):
             return uid, None, None
+        # V3.166.0 (Блок 3): a fresh dialog starts at her place, not in a bar or
+        # a shop. The ambient daypart script keeps rolling later — this only
+        # pins where the two of them are when she writes first.
+        try:
+            from services.user_service import update_state
+            update_state(telegram_id, location='дома / в спальне',
+                         activity='жду его у себя дома', mood='игривое')
+        except Exception:
+            logger.debug('opening home location failed user=%s', telegram_id)
         scene, persona = None, ''
         if is_custom_character(character_id):
             from services.custom_character_service import custom_character_params, custom_persona_context
@@ -15251,6 +15445,31 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
         return uid, scene, persona
 
     uid, scene, persona = await asyncio.to_thread(_prepare)
+    # V3.166.0 (Блок 3, owner): the opening is a written-once card, not a
+    # generation. One random greeting for this girl and this mode — the universal
+    # set covers the girls without their own — with no LLM and no image render.
+    # A non-Russian text is translated once and cached on the row. Her line is
+    # saved as her own message, so the model goes on with the scene she started.
+    if uid and not is_custom_character(character_id):
+        try:
+            from services import greeting_service, lang_guard
+            _greeting = await greeting_service.opening(
+                character_id,
+                spicy=await asyncio.to_thread(_chat_opening_spicy, telegram_id),
+                lang=await asyncio.to_thread(lang_guard.lang_for_push, uid, user_info.get('language_code')),
+                name=_character_display_name(character_id))
+        except Exception:
+            logger.warning('greeting opening failed char=%s', character_id)
+            _greeting = None
+        if _greeting and _greeting.get('text'):
+            if _greeting.get('photo_url'):
+                await asyncio.to_thread(save_message, uid, character_id, 'assistant', '📸 отправила фото',
+                                        media_kind='photo', media_url=_greeting['photo_url'])
+            await asyncio.to_thread(save_message, uid, character_id, 'assistant', _greeting['text'])
+            return web.json_response({'ok': True, 'reply': _greeting['text'],
+                                      'photo_url': _greeting.get('photo_url') or '',
+                                      'chips': _greeting.get('buttons') or [],
+                                      'undress_price': EXPLICIT_PHOTO_PEACH_COST})
     if uid and scene is None and persona:
         try:
             from services.llm_provider_service import generate_text
@@ -19570,6 +19789,7 @@ async def _start_web_server() -> None:
     # V3.43.1: the living tiles — i2v mp4 loops next to the Ken-Burns webp.
     app.router.add_get('/webapp/live/{character_id}', _webapp_live)
     app.router.add_get('/webapp/card/{character_id}', _webapp_card)
+    app.router.add_get('/webapp/greeting/{greeting_id}', _webapp_greeting_photo)
     app.router.add_post('/webapp/api/char_view', _webapp_api_char_view)
     # V3.43.0: the channel-subscribe peach bonus — GET status, POST check+grant.
     app.router.add_route('*', '/webapp/api/channel_bonus', _webapp_api_channel_bonus)
@@ -20016,6 +20236,13 @@ async def main():
             logger.exception('failed to install admin command scope chat_id=%s', admin_id)
     ensure_default_cards()
     ensure_default_payment_methods()
+    # V3.166.0 (Блок 4): his written-once opening scenarios — seeded once,
+    # idempotent; he adds the photos and more scenarios in «Стартовые сообщения».
+    from services import greeting_service
+    try:
+        greeting_service.ensure_seed()
+    except Exception:
+        logger.exception('greeting seed failed')
     # V3.55.5: seed the welcome promo shelf (ANNA5 · +5 🍑) — idempotent,
     # fail-silent; the owner manages/toggles it later in «🎟 Промокоды».
     from services import gift_service

@@ -515,27 +515,31 @@
   #modeScreen.open { display: flex; }
   #modeScreen h2 { font-size: 21px; color: var(--text); text-align: center; }
   #modeScreen .ms-sub { font-size: 12.5px; color: var(--muted); text-align: center; margin-top: -6px; }
-  #modeScreen .cards { display: grid; gap: 12px; width: min(360px, 100%); margin-top: 4px; }
+  /* V3.166.0 (Блок 1): two vertical 3:4 cards — his 864x1152 pictures now lie
+     whole, nothing is cropped, and the mode description sits ON the photo over
+     a bottom-up dark gradient instead of a text block under a 150px strip. */
+  #modeScreen .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: min(360px, 100%); margin-top: 4px; }
   .modecard {
-    display: block; width: 100%; text-align: left; cursor: pointer; padding: 0; overflow: hidden;
+    position: relative; display: block; width: 100%; aspect-ratio: 3 / 4; text-align: left; cursor: pointer; padding: 0; overflow: hidden;
     border: 1px solid rgba(255,255,255,.12); border-radius: 18px; background: var(--card); color: var(--text);
   }
-  .modecard img, .modecard .ph { display: block; width: 100%; height: 150px; object-fit: cover; }
-  /* his pictures are vertical selfies: centred on the strip they cut the faces
-     off, so the crop sits high and keeps heads (and the «shush» finger) in. */
-  .modecard img { object-position: 50% 20%; }
+  .modecard img, .modecard .ph { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
   .modecard .ph { display: none; align-items: center; justify-content: center; font-size: 44px; background: var(--card2); }
   .modecard.nopic img { display: none; }
   .modecard.nopic .ph { display: flex; }
-  .modecard .txt { padding: 11px 13px 13px; }
-  .modecard b { display: block; font-size: 16px; }
-  .modecard .d { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.35; color: var(--muted); }
-  .modecard .go {
-    display: block; margin-top: 11px; border-radius: 12px; padding: 9px; text-align: center;
-    font-size: 13.5px; font-weight: 700; color: #fff; background: rgba(255,255,255,.10);
+  .modecard .shade {
+    position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(180deg, rgba(10,4,16,0) 30%, rgba(10,4,16,.55) 60%, rgba(10,4,16,.93) 100%);
   }
-  .modecard.spicy { border-color: rgba(255,92,56,.55); background: linear-gradient(180deg, rgba(255,92,56,.16), rgba(232,68,127,.10)); }
-  .modecard.spicy b { color: #ff8a5c; }
+  .modecard .txt { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 11px 12px; }
+  .modecard b { display: block; font-size: 15px; line-height: 1.2; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.5); }
+  .modecard .d { display: block; margin-top: 4px; font-size: 11px; line-height: 1.32; color: rgba(255,255,255,.88); }
+  .modecard .go {
+    display: block; margin-top: 9px; border-radius: 10px; padding: 7px 6px; text-align: center;
+    font-size: 12px; font-weight: 700; color: #fff; background: rgba(255,255,255,.18);
+  }
+  .modecard.spicy { border-color: rgba(255,92,56,.55); }
+  .modecard.spicy b { color: #ffb08c; }
   .modecard.spicy .go { background: linear-gradient(90deg, #ff5c38, var(--accent)); }
   .modecard.on { box-shadow: 0 0 0 2px var(--accent); }
   #modeScreen .ms-note { font-size: 11.5px; line-height: 1.4; color: var(--muted); opacity: .85; text-align: center; }
@@ -966,6 +970,8 @@
   .chathints { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin: 6px 0 4px; }
   .chathints button { border: 1px solid rgba(232,68,127,.5); background: rgba(232,68,127,.12); color: var(--text);
     border-radius: 18px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
+  /* V3.166.0: the paid chip is a purchase, not a reply — it carries the price. */
+  .chathints button.pay { background: linear-gradient(90deg, #ff5c38, var(--accent)); border-color: transparent; color: #fff; font-weight: 700; }
   .aptintro { background: rgba(232,68,127,.12); border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.45; margin-bottom: 10px; }
   /* V3.165.0 (#104): «Сутки без стеснения» — the pass strip of the «Наедине» menu. */
   .passcard { background: rgba(232,68,127,.12); border: 1px solid rgba(232,68,127,.35); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; }
@@ -1822,7 +1828,7 @@ const LANG = APP_LANGS.includes(_savedLang) ? _savedLang
 
 const L_EN = {
   call_btn: 'Call', call_connecting: 'Calling…', call_listen: 'Listening…', call_think: 'Thinking…', call_talk: 'Speaking…', call_ready: 'Connected', call_end: 'Hang up', call_mute: 'Mic', call_skip: 'Interrupt', call_mode_prem: '👑 Premium call · 18+', call_mode_live: '⚡ Live call', call_fail: 'Could not get through — try again', call_limit_prem: 'Call minutes for today are used up, tomorrow 15 minutes again 💛', call_limit_trial: 'The trial call minutes are used up. Full Premium has much more 💛', trial_msgs_over: 'Trial messages are over — continue with full Premium 💛', call_limit_plan: 'The call minutes of your Premium are used up, they come back when you renew 💛', plan_voice_out: 'The voice notes of your Premium are used up, they come back when you renew 💛', call_up_h: 'Want to talk more? 📞', call_up_tx: 'Free: {m} min of live call a day, nothing explicit. With Premium: {p} minutes a day, and the call can go anywhere the chat can, 18+.', call_up_go: '👑 Open Premium', call_up_no: 'Later', call_bye: 'Call ended', call_nospeech: 'Didn\'t catch that — say it again', call_left: 'left',
-  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', nude_new_frame: n => '🔥 New frame · ' + peachNum(n) + ' 🍑', fork_romance: '❤️ I really like you', fork_passion: '🔥 I don\'t think of you as a friend 😏', fork_q: 'She is waiting for your answer: which path are you on?', fork_taken: 'The path is already chosen', fork_romance_on: '❤️ The path of romance', fork_passion_on: '🔥 The path of passion', fork_would: 'there:', path_map: 'Your road', path_romance: 'Romance', path_passion: 'Passion', path_romance_other: 'on the romance path', path_passion_other: 'on the passion path', lvl_pick_hint: 'Premium: tap any level and she talks that way right away', lvl_pick_reset: 'Back to the real level', lvl_pick_premium: 'With Premium you can pick any level 1–10', lvl_pick_done: 'level picked:', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', pa_failed: 'Did not work, nothing was charged — try again', pa_not_found: 'This photo can no longer be edited', video_limit: 'photo animation is paid separately', video_limit_day: 'photo animation is paid separately 🎬', video_month: 'Photo animation is paid separately', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
+  chars_title: 'Characters', loading: 'Loading…', chat_hints: ['Hi 😊', 'Tell me about yourself', 'Show me yourself 📸'], photo_save: '⬇️ Save photo', pa_save: '⬇️ Save', pa_anim: '🎬 Animate', pa_undress: '🔥 Undress', nude_new_frame: n => '🔥 New frame · ' + peachNum(n) + ' 🍑', opener_undress: n => '🔥 Undress her · ' + peachNum(n) + ' 🍑', fork_romance: '❤️ I really like you', fork_passion: '🔥 I don\'t think of you as a friend 😏', fork_q: 'She is waiting for your answer: which path are you on?', fork_taken: 'The path is already chosen', fork_romance_on: '❤️ The path of romance', fork_passion_on: '🔥 The path of passion', fork_would: 'there:', path_map: 'Your road', path_romance: 'Romance', path_passion: 'Passion', path_romance_other: 'on the romance path', path_passion_other: 'on the passion path', lvl_pick_hint: 'Premium: tap any level and she talks that way right away', lvl_pick_reset: 'Back to the real level', lvl_pick_premium: 'With Premium you can pick any level 1–10', lvl_pick_done: 'level picked:', pa_wait_anim: 'animating the photo… this takes a couple of minutes 🎬', pa_wait_undress: 'undressing… 🙈', pa_failed: 'Did not work, nothing was charged — try again', pa_not_found: 'This photo can no longer be edited', video_limit: 'photo animation is paid separately', video_limit_day: 'photo animation is paid separately 🎬', video_month: 'Photo animation is paid separately', photo_save_hint: 'Press and hold the photo to save it', load_failed: 'Could not load — check the connection', retry: 'Try again',
   day1_hints: ['Let me tell you about my day', 'Let’s continue our conversation', 'What did you do today?'],
   chars_hint: 'Tap a card — the dialog opens right here. History is shared with the bot chat.',
   typing_now: 'typing…',
@@ -2122,8 +2128,8 @@ const L_EN = {
   // choice, so the banner / explainer / Settings-row captions below them are
   // deleted with the screens. The daily ceiling is quoted from the server.
   ms_title: 'How are we talking today?', ms_sub: 'You can change it on every entry',
-  ms_normal_t: 'Regular mode', ms_normal_d: 'Warm talk, flirting, feelings — she opens up more the closer you get. No limit on messages.',
-  ms_spicy_t: 'AFTER MIDNIGHT',
+  ms_normal_t: 'Romance & flirting', ms_normal_d: 'Warm talk, flirting, feelings — she opens up more the closer you get. No limit on messages.',
+  ms_spicy_t: 'Uncensored 18+',
   ms_spicy_d: n => 'Open about sex, in your words, no refusals and no hints.' +
     (n ? ' ' + n + ' explicit messages a day — with Premium, no ceiling.' : ''),
   ms_btn: 'Choose a heroine',
@@ -2154,7 +2160,7 @@ const L_EN = {
 // languages arrive below as partial overrides on top of the English one.
 const L_RU = {
   call_btn: 'Позвонить', call_connecting: 'Звоню…', call_listen: 'Слушает тебя…', call_think: 'Думает…', call_talk: 'Говорит…', call_ready: 'На связи', call_end: 'Сбросить', call_mute: 'Микрофон', call_skip: 'Перебить', call_mode_prem: '👑 Premium-звонок · 18+', call_mode_live: '⚡ Живой звонок', call_fail: 'Не получилось дозвониться — попробуй ещё раз', call_limit_prem: 'Минуты звонков на сегодня закончились, завтра снова 15 минут 💛', call_limit_trial: 'Минуты звонка на пробном закончились. В полном Premium их намного больше 💛', trial_msgs_over: 'Сообщения пробного закончились, продолжим в полном Premium 💛', call_limit_plan: 'Минуты звонков в твоём Premium закончились, они вернутся при продлении 💛', plan_voice_out: 'Голосовые в твоём Premium закончились, они вернутся при продлении 💛', call_up_h: 'Хочешь поговорить ещё? 📞', call_up_tx: 'Бесплатно — {m} мин живого звонка в день, без откровенного. С Premium — {p} минут в день, и в звонке можно всё, как в переписке, 18+.', call_up_go: '👑 Открыть Premium', call_up_no: 'Позже', call_bye: 'Звонок завершён', call_nospeech: 'Не расслышала — скажи ещё раз', call_left: 'осталось',
-  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', nude_new_frame: n => '🔥 Новый кадр · ' + peachNum(n) + ' 🍑', fork_romance: '❤️ Ты мне правда нравишься', fork_passion: '🔥 Я думаю о тебе совсем не по-дружески 😏', fork_q: 'Она ждёт твоего ответа: какой у вас путь?', fork_taken: 'Путь уже выбран', fork_romance_on: '❤️ Вы на пути романтики', fork_passion_on: '🔥 Вы на пути страсти', fork_would: 'там:', path_map: 'Ваша дорога', path_romance: 'Романтика', path_passion: 'Страсть', path_romance_other: 'на пути романтики', path_passion_other: 'на пути страсти', lvl_pick_hint: 'Premium: нажми на любой уровень, и она сразу будет общаться так', lvl_pick_reset: 'Вернуть настоящий уровень', lvl_pick_premium: 'С Premium можно выбрать любой уровень 1–10', lvl_pick_done: 'уровень выбран:', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', pa_failed: 'Не получилось, персики не списаны — попробуй ещё раз', pa_not_found: 'Это фото уже нельзя изменить', video_limit: 'оживление фото оплачивается отдельно', video_limit_day: 'оживление фото оплачивается отдельно 🎬', video_month: 'Оживление фото оплачивается отдельно', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
+  chars_title: 'Персонажи', loading: 'Загрузка…', chat_hints: ['Привет 😊', 'Расскажи о себе', 'Покажи себя 📸'], photo_save: '⬇️ Скачать фото', pa_save: '⬇️ Скачать', pa_anim: '🎬 Оживить', pa_undress: '🔥 Раздеть', nude_new_frame: n => '🔥 Новый кадр · ' + peachNum(n) + ' 🍑', opener_undress: n => '🔥 Раздеться · ' + peachNum(n) + ' 🍑', fork_romance: '❤️ Ты мне правда нравишься', fork_passion: '🔥 Я думаю о тебе совсем не по-дружески 😏', fork_q: 'Она ждёт твоего ответа: какой у вас путь?', fork_taken: 'Путь уже выбран', fork_romance_on: '❤️ Вы на пути романтики', fork_passion_on: '🔥 Вы на пути страсти', fork_would: 'там:', path_map: 'Ваша дорога', path_romance: 'Романтика', path_passion: 'Страсть', path_romance_other: 'на пути романтики', path_passion_other: 'на пути страсти', lvl_pick_hint: 'Premium: нажми на любой уровень, и она сразу будет общаться так', lvl_pick_reset: 'Вернуть настоящий уровень', lvl_pick_premium: 'С Premium можно выбрать любой уровень 1–10', lvl_pick_done: 'уровень выбран:', pa_wait_anim: 'оживляю фото… это займёт пару минут 🎬', pa_wait_undress: 'раздевается… 🙈', pa_failed: 'Не получилось, персики не списаны — попробуй ещё раз', pa_not_found: 'Это фото уже нельзя изменить', video_limit: 'оживление фото оплачивается отдельно', video_limit_day: 'оживление фото оплачивается отдельно 🎬', video_month: 'Оживление фото оплачивается отдельно', photo_save_hint: 'Зажми фото пальцем, чтобы сохранить', load_failed: 'Не получилось загрузить — проверь интернет', retry: 'Повторить',
   day1_hints: ['Расскажу, как прошёл день', 'Давай продолжим наш разговор', 'Что ты сегодня делала?'],
   chars_hint: 'Нажми на карточку — диалог откроется прямо здесь. История общая с чатом бота.',
   typing_now: 'печатает…',
@@ -2446,8 +2452,8 @@ const L_RU = {
   settings_title: 'Настройки', lang_title: '🌐 Язык интерфейса',
   // V3.165.0 (Задача 100): экран выбора режима — тап по карточке и есть выбор.
   ms_title: 'Как общаемся сегодня?', ms_sub: 'Менять можно при каждом входе',
-  ms_normal_t: 'Обычный режим', ms_normal_d: 'Тёплое общение, флирт и чувства — она открывается тем сильнее, чем вы ближе. Без лимита на сообщения.',
-  ms_spicy_t: 'ПОСЛЕ ПОЛУНОЧИ',
+  ms_normal_t: 'Романтика и флирт', ms_normal_d: 'Тёплое общение, флирт и чувства — она открывается тем сильнее, чем вы ближе. Без лимита на сообщения.',
+  ms_spicy_t: 'Без цензуры 18+',
   ms_spicy_d: n => 'Открыто про секс, его словами, без отказов и намёков.' +
     (n ? ' ' + n + ' откровенных сообщений в день — с Premium без потолка.' : ''),
   ms_btn: 'Выбрать героиню',
@@ -4389,19 +4395,26 @@ async function requestChatOpener(characterId) {
   const box = document.getElementById('chatMsgs');
   if (!box) return;
   box.innerHTML = `<div class="typing">${esc((CHAT && CHAT.name) || '')} ${esc(L.typing_now)}</div>`;
-  let reply = null;
+  let reply = null, data = null;
   try {
     const r = await fetch('/webapp/api/chat/start?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ character_id: characterId }),
     });
     const j = await r.json();
-    reply = j && j.ok ? j.reply : null;
+    data = j && j.ok ? j : null;
+    reply = data ? data.reply : null;
   } catch (e) {}
   if (!CHAT || CHAT.id !== characterId) return;
-  box.innerHTML = reply ? chatBubble({ role: 'assistant', content: reply, ts: new Date().toISOString() })
-    : `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
-  renderChatHints();
+  // V3.166.0 (Блок 3): her opening may arrive as a ready card — his photo, her
+  // written line and the chips of this scenario. No waiting on a generation.
+  let html = '';
+  if (reply && data && data.photo_url) {
+    html += chatBubble({ role: 'assistant', content: '', media_kind: 'photo', media_url: data.photo_url, ts: new Date().toISOString() });
+  }
+  html += reply ? chatBubble({ role: 'assistant', content: reply, ts: new Date().toISOString() }) : '';
+  box.innerHTML = html || `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
+  renderChatHints(data && data.chips, data && data.undress_price);
   box.scrollTop = box.scrollHeight;
 }
 
@@ -4846,18 +4859,25 @@ async function loadChatHistory(characterId) {
   }
 }
 
-function renderChatHints() {
+function renderChatHints(custom, undressPrice) {
   const box = document.getElementById('chatMsgs');
   const old = document.getElementById('chatHints'); if (old) old.remove();
   const day1 = new URLSearchParams(location.search).get('entry') === 'day1';
-  const hints = day1 ? L.day1_hints : L.chat_hints;
+  const hints = (custom && custom.length) ? custom : (day1 ? L.day1_hints : L.chat_hints);
+  // V3.166.0 (Блок 3): under her opening card the chips are the scenario's own
+  // answers, and the paid «Раздеться» keeps its ordinary price and once-a-day
+  // rule — it opens the same 18+ sheet as everywhere else, nothing is free.
+  const paid = undressPrice ? '<button type="button" class="pay" id="openerUndress">'
+    + esc(L.opener_undress(undressPrice)) + '</button>' : '';
   const html = '<div class="chathints" id="chatHints">' + hints.map(h =>
-    '<button data-hint="' + esc(h) + '">' + esc(h) + '</button>').join('') + '</div>';
+    '<button data-hint="' + esc(h) + '">' + esc(h) + '</button>').join('') + paid + '</div>';
   box.insertAdjacentHTML('beforeend', html);
-  document.querySelectorAll('#chatHints button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#chatHints button[data-hint]').forEach(b => b.addEventListener('click', () => {
     document.getElementById('chatText').value = b.dataset.hint;
     sendChat();
   }));
+  const undress = document.getElementById('openerUndress');
+  if (undress) undress.addEventListener('click', () => openHot18(CHAT));
 }
 
 function renderPersonaBanner(characterId) {
@@ -8066,6 +8086,7 @@ function modeCard(on) {
     '<span class="ph">' + (on ? '🔥' : '🌙') + '</span>' +
     '<img src="' + (on ? '/webapp/art/mode_spicy.jpg' : '/webapp/art/mode_normal.jpg') + '" alt="" ' +
       'onerror="this.closest(\'.modecard\').classList.add(\'nopic\')">' +
+    '<span class="shade"></span>' +
     '<span class="txt"><b>' + esc(on ? L.ms_spicy_t : L.ms_normal_t) + '</b>' +
     '<span class="d">' + esc(on ? L.ms_spicy_d(cap) : L.ms_normal_d) + '</span>' +
     '<span class="go">' + esc(L.ms_btn) + '</span></span></button>';
