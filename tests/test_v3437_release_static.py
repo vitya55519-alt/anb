@@ -104,7 +104,7 @@ def test_chat_media_accepts_and_gates_the_scene():
     # menu-scene whitelist, relationship-stage gate, the 18+ adult gate —
     # the same rules the bot's photo keyboard enforces
     assert 'if scene not in PHOTO_MENU_ORDER:' in CHAT_MEDIA
-    assert 'scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id))' in CHAT_MEDIA
+    assert 'scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id), telegram_id)' in CHAT_MEDIA
     assert "requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id)" in CHAT_MEDIA
     assert "'error': 'adult_confirm'" in CHAT_MEDIA
     assert 'await _webapp_media_photo(telegram_id, character_id, scene)' in CHAT_MEDIA

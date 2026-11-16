@@ -124,7 +124,7 @@ def test_background_job_spends_credit_only_on_success():
     assert 'skip_stage=spend_undress_credit' in MAIN
     # a fresh buyer at level 1 still gets the photo he paid for
     assert 'skip_stage: bool = False' in PPS
-    assert 'if not skip_stage and not scene_allowed_for_stage(request.scene, stage):' in PPS
+    assert 'if not skip_stage and not scene_allowed_for_stage(request.scene, stage, telegram_id):' in PPS
 
 
 def test_credit_status_endpoint_and_spa_retry():

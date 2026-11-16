@@ -73,6 +73,7 @@ from services.photo_service import (
     generate_photo_set, photo_frame_bytes, AUTO_CAPTIONS,
     admin_pool_count, admin_pool_get, admin_pool_latest_id, admin_pool_neighbor, admin_pool_set_shared,
     ensure_custom_avatar_cached, attach_guest, spicy_needs_premium, AMATEUR_HOT_FRAME_LOCK,
+    scenes_open_in_explicit_mode,
 )
 from services.photo_idea_service import (
     idea_counts, list_admin_ideas, add_admin_idea, delete_admin_idea,
@@ -1662,7 +1663,11 @@ def adult_keyboard():
 def photo_keyboard(telegram_id: int):
     level = get_relationship_level(telegram_id, get_user_character(telegram_id))
     lang = user_lang(telegram_id)
-    unlocked = [scene for scene in PHOTO_MENU_ORDER if SCENE_LEVELS.get(scene, 99) <= level]
+    # V3.167.7 (владелец): «Без цензуры 18+» снимает лесенку уровней с кнопок
+    # сюжетов. Платные ряды (кастом, приватное, косплей) и цены — как были.
+    open_all = scenes_open_in_explicit_mode(telegram_id)
+    unlocked = [scene for scene in PHOTO_MENU_ORDER
+                if open_all or SCENE_LEVELS.get(scene, 99) <= level]
     rows = []
     for i in range(0, len(unlocked), 2):
         rows.append([
@@ -1673,7 +1678,7 @@ def photo_keyboard(telegram_id: int):
     # Show the NEXT unlock instead of hiding progression. This gives users a
     # concrete reason to continue the relationship without turning it into a paywall.
     future_levels = sorted({SCENE_LEVELS[s] for s in PHOTO_MENU_ORDER if SCENE_LEVELS.get(s, 99) > level})
-    if future_levels:
+    if not open_all and future_levels:
         next_level = future_levels[0]
         locked = [s for s in PHOTO_MENU_ORDER if SCENE_LEVELS.get(s) == next_level]
         for i in range(0, len(locked), 2):
@@ -1684,11 +1689,11 @@ def photo_keyboard(telegram_id: int):
                 )
                 for scene in locked[i:i + 2]
             ])
-        if level == 4 and next_level == 5:
-            rows.append([InlineKeyboardButton(
-                text='🔒 ✨ Кастомное фото · ур.5',
-                callback_data='locked:custom',
-            )])
+    if future_levels and level == 4 and future_levels[0] == 5:
+        rows.append([InlineKeyboardButton(
+            text='🔒 ✨ Кастомное фото · ур.5',
+            callback_data='locked:custom',
+        )])
 
     if level >= 5:
         rows.append([InlineKeyboardButton(text=f'✨ Кастомное фото — {CUSTOM_PHOTO_COST_STARS}⭐{fiat_suffix(CUSTOM_PHOTO_COST_STARS)}', callback_data='custom:start')])
@@ -1765,6 +1770,9 @@ def photo_menu_text(telegram_id: int) -> str:
     names = LEVEL_NAMES_EN if lang == EN else RELATIONSHIP_LEVEL_NAMES
     name = names.get(level, '')
     future = sorted({required for required in SCENE_LEVELS.values() if required > level})
+    # V3.167.7: в режиме без цензуры лесенки уровней на кадрах нет.
+    if scenes_open_in_explicit_mode(telegram_id):
+        future = []
     if lang == EN:
         next_line = f'\n🔒 Next photos unlock at level {future[0]}/6' if future else '\n✨ All photo levels are already open'
         return (
@@ -2118,7 +2126,7 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
     observe_photo_preference(db_uid, request.scene, request.clothing, request.hairstyle, request.location, get_user_character(telegram_id))
     stage = get_relationship_stage(telegram_id, get_user_character(telegram_id))
     # V3.88.0: spicy scenes are gated by Premium below, not by level.
-    if not spicy_needs_premium(request) and not scene_allowed_for_stage(request.scene, stage):
+    if not spicy_needs_premium(request) and not scene_allowed_for_stage(request.scene, stage, telegram_id):
         track_event(db_uid, 'photo_locked_view', metadata={'scene': request.scene, 'level': get_relationship_level(telegram_id, get_user_character(telegram_id))})
         await bot.send_message(chat_id, 'такой образ я пока оставлю при себе 😏')
         return
@@ -8697,6 +8705,16 @@ async def photo_menu(message: types.Message):
 @dp.callback_query(F.data.startswith('locked:'))
 async def locked_photo_callback(cq: types.CallbackQuery):
     item = cq.data.split(':', 1)[1]
+    # V3.167.7: меню могло быть открыто до смены режима. Кнопка сюжета в
+    # «Без цензуры 18+» уже не закрыта — старое 🔒 просто обновляем.
+    if item != 'custom' and scenes_open_in_explicit_mode(cq.from_user.id):
+        await cq.answer('В режиме без цензуры это уже открыто 😌'
+                        if user_lang(cq.from_user.id) != EN else 'Already open in the uncensored mode 😌')
+        try:
+            await cq.message.edit_reply_markup(reply_markup=photo_keyboard(cq.from_user.id))
+        except Exception:
+            logger.info('locked refresh failed user=%s', cq.from_user.id)
+        return
     required = 5 if item == 'custom' else SCENE_LEVELS.get(item, 6)
     current = get_relationship_level(cq.from_user.id, get_user_character(cq.from_user.id))
     if user_lang(cq.from_user.id) == EN:
@@ -9318,9 +9336,66 @@ async def qte_pick(cq: types.CallbackQuery):
     await send_answer(cq.message, answer)
 
 
-def _thought_card(name: str, thought: str) -> str:
+# V3.167.8 (владелец): карточка мыслей приходит свёрнутым окном — он раскрывает
+# её тапом и так же сворачивает обратно. Текст держим в памяти процесса: окно
+# нужно на один прочитанный ход, после рестарта вместо пустоты остаётся кнопка
+# «мысли уже не здесь».
+_thought_cards: dict[int, tuple[int, str, str]] = {}
+_thought_seq = 0
+
+
+def _thought_register(telegram_id: int, name: str, thought: str) -> int:
+    global _thought_seq
+    _thought_seq += 1
+    _thought_cards[_thought_seq] = (int(telegram_id), name, thought)
+    while len(_thought_cards) > 400:
+        _thought_cards.pop(next(iter(_thought_cards)))
+    return _thought_seq
+
+
+def _thought_card(name: str, thought: str, *, expanded: bool = False, lang: str = RU) -> str:
     import html as _html
-    return f'💭 <b>Мысли {_html.escape(name)}:</b> <i>{_html.escape(thought)}</i>'
+    if lang == EN:
+        head = f"💭 <b>{_html.escape(name)}'s thoughts</b>"
+        hint = '· tap to read'
+    else:
+        head = f'💭 <b>Мысли {_html.escape(name)}</b>'
+        hint = '· нажми, чтобы прочитать'
+    if expanded:
+        return f'{head}:\n<i>{_html.escape(thought)}</i>'
+    return f'{head} <i>{hint}</i>'
+
+
+def _thought_toggle_keyboard(telegram_id: int, key: int, expanded: bool) -> InlineKeyboardMarkup:
+    if user_lang(telegram_id) == EN:
+        label, action = ('🔒 Hide thoughts', 'hide') if expanded else ('👁 Read thoughts', 'show')
+    else:
+        label, action = ('🔒 Свернуть мысли', 'hide') if expanded else ('👁 Прочитать мысли', 'show')
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=label, callback_data=f'thought:{action}:{key}')]])
+
+
+@dp.callback_query(F.data.startswith('thought:'))
+async def _thought_toggle(cq: types.CallbackQuery) -> None:
+    _, action, raw = cq.data.split(':', 2)
+    rec = _thought_cards.get(int(raw) if raw.isdigit() else 0)
+    if not rec:
+        await cq.answer('Эти мысли уже не здесь 🙂' if user_lang(cq.from_user.id) != EN
+                        else 'Those thoughts are gone 🙂')
+        return
+    tid, name, thought = rec
+    if cq.from_user.id != tid:
+        await cq.answer('Это не твои мысли 🙂' if user_lang(cq.from_user.id) != EN
+                        else 'Not your thoughts 🙂')
+        return
+    expanded = action == 'show'
+    try:
+        await cq.message.edit_text(
+            _thought_card(name, thought, expanded=expanded, lang=user_lang(tid)),
+            parse_mode='HTML', reply_markup=_thought_toggle_keyboard(tid, int(raw), expanded))
+    except Exception as exc:
+        logger.info('thought toggle failed user=%s: %s', tid, exc)
+    await cq.answer()
 
 
 async def _send_novel_answer(message: types.Message, thought: str, said: str,
@@ -9328,14 +9403,17 @@ async def _send_novel_answer(message: types.Message, thought: str, said: str,
     """The card goes instantly, then her single message — in her voice for a
     Premium man, after a real recording pause."""
     name = _character_display_name(get_user_character(message.from_user.id) or '')
+    tid = message.from_user.id
+    lang = user_lang(tid)
+    key = _thought_register(tid, name, thought)
     try:
-        await message.answer(_thought_card(name, thought), parse_mode='HTML')
+        await message.answer(_thought_card(name, thought, lang=lang), parse_mode='HTML',
+                             reply_markup=_thought_toggle_keyboard(tid, key, False))
     except Exception:
         logger.warning('thought card failed user=%s', message.from_user.id)
         await message.answer(f'💭 {thought}')
     if not said:
         return
-    tid = message.from_user.id
     if voice and user and getattr(user, 'voice_enabled', False) \
             and (is_premium(tid) or tid in ADMIN_TELEGRAM_IDS) \
             and (tid in ADMIN_TELEGRAM_IDS or _trial_voice_ok(tid)):
@@ -15039,7 +15117,7 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str, *, undress
     # Premium открыто всё откровенное»); a fresh buyer at level 1 must get
     # the photo he paid for, not «пока рано».
     if not spicy_needs_premium(PhotoRequest(scene=scene)) \
-            and not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
+            and not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id), telegram_id):
         return 'stage'
     if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id) \
             and spicy_needs_premium(PhotoRequest(scene=scene)):
@@ -18561,7 +18639,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
                 return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
             # V3.88.0: spicy scenes are gated by Premium (below), not by level.
             if not spicy_needs_premium(PhotoRequest(scene=scene)) \
-                    and not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id)):
+                    and not scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id), telegram_id):
                 return web.json_response({'ok': False, 'error': 'locked'}, status=403)
             if requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id):
                 return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
@@ -18861,9 +18939,12 @@ def _webapp_api_feature_impl(request: web.Request) -> web.Response:
         # the order and the relationship-level gates.
         # V3.88.0: spicy scenes are never level-locked — Premium is their gate
         # (non-Premium taps open the Premium sheet).
+        # V3.167.7 (владелец, скрин 16.11): в режиме «Без цензуры 18+» уровни
+        # не прячут кнопки сюжетов — весь список идёт открытым.
+        open_all = scenes_open_in_explicit_mode(telegram_id)
         items = [{
             'id': scene,
-            'locked': SCENE_LEVELS.get(scene, 99) > level and not spicy_needs_premium(PhotoRequest(scene=scene)),
+            'locked': not open_all and SCENE_LEVELS.get(scene, 99) > level and not spicy_needs_premium(PhotoRequest(scene=scene)),
             'min_level': SCENE_LEVELS.get(scene, 99),
         } for scene in PHOTO_MENU_ORDER]
         title = '📸 Photo' if lang == EN else '📸 Фото'
@@ -20035,7 +20116,7 @@ async def _webapp_api_story_action(request: web.Request) -> web.Response:
     photo_url = None
     # V3.57.2: the stage lookup is a PostgreSQL read
     rstage = await asyncio.to_thread(get_relationship_stage, telegram_id, character_id)
-    stage_ok = bool(scene) and await asyncio.to_thread(scene_allowed_for_stage, scene, rstage)
+    stage_ok = bool(scene) and await asyncio.to_thread(scene_allowed_for_stage, scene, rstage, telegram_id)
     # V3.58.3: the result and her reaction go out at once; the reward photo is
     # rendered in the background and lands in the shared chat (the SPA polls
     # for it), instead of holding the whole answer hostage to the photo chain.

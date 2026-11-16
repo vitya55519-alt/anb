@@ -35,7 +35,9 @@ def test_cosplay_scene_level_is_floor():
 def test_backend_gate_reads_scene_levels():
     # scene_allowed_for_stage compares the stage against SCENE_LEVELS, so a
     # cosplay value of 1 makes it pass at the very first relationship stage.
-    assert 'def scene_allowed_for_stage(scene: str, stage: str) -> bool:' in PHOTO
+    # V3.167.7: у гейта появился третий аргумент — id аккаунта, чтобы режим
+    # «Без цензуры 18+» снимал лесенку уровней. Для cosplay это не меняет ничего.
+    assert 'def scene_allowed_for_stage(scene: str, stage: str, telegram_id=None) -> bool:' in PHOTO
     assert 'return STAGE_INDEX.get(stage, 0) + 1 >= SCENE_LEVELS.get(scene, 99)' in PHOTO
 
 

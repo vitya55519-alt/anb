@@ -48,4 +48,4 @@ def test_locked_tease_fires_once_at_third_message():
 
 def test_premium_not_level_opens_spicy_scenes():
     assert MAIN.count('not spicy_needs_premium(PhotoRequest(scene=scene))') >= 3
-    assert "if not spicy_needs_premium(request) and not scene_allowed_for_stage(request.scene, stage):" in MAIN
+    assert "if not spicy_needs_premium(request) and not scene_allowed_for_stage(request.scene, stage, telegram_id):" in MAIN

@@ -1550,7 +1550,23 @@ def has_free_photo(telegram_id: int, character_id: str = CHARACTER_ID) -> bool:
     return used < limit
 
 
-def scene_allowed_for_stage(scene: str, stage: str) -> bool:
+def scenes_open_in_explicit_mode(telegram_id) -> bool:
+    """V3.167.7 (владелец, скрин 16.11): «в режиме без цензуры открой все кнопки».
+    Аккаунт, выбравший «Без цензуры 18+», не упирается в лесенку уровней — как
+    и с Premium, уровень здесь ничего не прячет. Цена кадра, 18+ и Premium
+    остаются там, где были."""
+    if not telegram_id:
+        return False
+    try:
+        from services import explicit_mode
+        return explicit_mode.is_on_for(telegram_id)
+    except Exception:
+        return False
+
+
+def scene_allowed_for_stage(scene: str, stage: str, telegram_id=None) -> bool:
+    if SCENE_LEVELS.get(scene) is not None and scenes_open_in_explicit_mode(telegram_id):
+        return True
     return STAGE_INDEX.get(stage, 0) + 1 >= SCENE_LEVELS.get(scene, 99)
 
 
@@ -4030,7 +4046,7 @@ async def deliver_photo(
     skip_stage: bool = False,
 ):
     stage = get_relationship_stage(telegram_id, character_id)
-    if not skip_stage and not scene_allowed_for_stage(request.scene, stage):
+    if not skip_stage and not scene_allowed_for_stage(request.scene, stage, telegram_id):
         raise PermissionError('scene_locked')
     if requires_adult_confirmation(request) and not is_adult_confirmed(telegram_id):
         raise PermissionError('age_gate')
