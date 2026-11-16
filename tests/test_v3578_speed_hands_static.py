@@ -46,7 +46,9 @@ def test_llm_clients_have_timeouts():
     for client in ('_minimax', '_gemini'):
         block = LLM[LLM.index(f'{client} = ('):]
         block = block[:block.index('\n)\n')]
-        assert 'timeout=LLM_TIMEOUT_SECONDS' in block and 'max_retries=0' in block
+        # V3.167.4: у клиента тоже есть свой таймаут, но он не меньше
+        # самого длинного среза — иначе дефолт в 30 с рвал повтор на 30.1 с.
+        assert 'timeout=' in block and 'max_retries=0' in block
     # Третьего клиента с другим таймаутом в цепочке не осталось.
     assert '_openrouter' not in LLM
     assert 'LLM_FALLBACK_TIMEOUT_SECONDS' not in LLM

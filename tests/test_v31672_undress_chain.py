@@ -60,7 +60,9 @@ def test_the_reveal_only_names_garments():
 def test_the_lock_is_the_last_thing_the_trimmer_touches():
     from services import private_photo_service as pps
     assert 'SAME FRAME LOCK:' in pps._SPICY_TIERS[2] and 'CLOTHES:' in pps._SPICY_TIERS[2]
+    assert 'SAME PLACE LOCK:' in pps._SPICY_TIERS[2]
     assert pps._spicy_tier('SAME FRAME LOCK: this is the SAME photo') == 3
+    assert pps._spicy_tier('SAME PLACE LOCK: the place of image 1') == 3
     assert pps._spicy_tier('CLOTHES: every garment she wears in image 1') == 3
     fitted = pps._fit_spicy_prompt(_prompt())
     assert len(fitted) <= pps.SPICYAPI_PROMPT_MAX
@@ -72,17 +74,24 @@ def test_the_no_phone_pass_leaves_the_lock_first():
     assert no_phone_frame(_prompt()).startswith('SAME FRAME LOCK:')
 
 
-def test_the_public_place_stays_the_one_exception():
+def test_the_place_of_the_photo_he_is_looking_at_never_changes(monkeypatch):
+    # V3.167.4 (владелец, «тот же кадр без исключений»): V3.152.1 переносил
+    # публичный кадр в её комнату, V3.166.7 брал комнату из её слов. Оба
+    # исключения выпилены — куда бы движок ни понёс такие формулировки, в
+    # промпте их больше нет.
     import main
-    tail = main.UNDRESS_PLACE_TAIL
-    assert 'PLACE: keep the room of image 1 when it is already private' in tail
-    assert 'her bedroom or a hotel room replaces those walls, and that is the ONLY change to the photo' in tail
-    assert 'Her pose, hands, body, face, hair, light, camera angle and framing stay exactly as in image 1' in tail
-    assert 'the same-frame lock' in tail
-    # когда её слова назвали комнату, правка не трогает даже её
-    card = main.UNDRESS_CARD_PLACE.format(place='a kitchen, evening light')
-    assert 'keep it, its walls, its furniture and its light exactly as image 1 shows them' in card
-    assert 'her pose, camera angle, framing and light do not change' in card
+    lock = main.UNDRESS_PLACE_LOCK
+    assert lock.startswith('SAME PLACE LOCK:')
+    assert 'Nobody moves her anywhere' in lock
+    assert 'This line has no exception' in lock
+    for public in ('bar', 'club', 'street', 'office', 'gym', 'transport'):
+        assert public in lock, public
+    prompt = _prompt()
+    assert main.UNDRESS_PLACE_LOCK in prompt
+    for moved in ('replaces those walls', 'her bedroom or a hotel room', 'PLACE FROM HER OWN WORDS'):
+        assert moved not in prompt, moved
+    # прежних правил больше нет в модуле — их не вернёшь случайно
+    assert not hasattr(main, 'UNDRESS_PLACE_TAIL') and not hasattr(main, 'UNDRESS_CARD_PLACE')
 
 
 def test_her_line_names_the_frame_he_is_looking_at():

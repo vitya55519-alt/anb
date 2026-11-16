@@ -1175,7 +1175,10 @@ _NO_PHONE_LEFTOVER = re.compile(
 # engine draws one girl, without the private-place line lingerie lands in the
 # office. The lock sits behind them and in front of everything else.
 # V3.167.2: the paid «Раздеть» edit joins them — the frame must stay the frame.
-_NO_PHONE_HEAD_KEEP = ('TWO WOMEN IN FRAME:', 'PRIVATE PLACE OVERRIDE:', 'SAME FRAME LOCK:')
+# V3.167.4: and so does its place — «тот же кадр без исключений», ни в какую
+# спальню публичный кадр больше не переносится.
+_NO_PHONE_HEAD_KEEP = ('TWO WOMEN IN FRAME:', 'PRIVATE PLACE OVERRIDE:', 'SAME FRAME LOCK:',
+                       'SAME PLACE LOCK:')
 
 
 def no_phone_frame(prompt: str) -> str:

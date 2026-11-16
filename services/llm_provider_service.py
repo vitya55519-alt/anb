@@ -84,6 +84,13 @@ LLM_RETRY_PAUSE_SECONDS = max(0.0, min(10.0, float(os.getenv('LLM_RETRY_PAUSE_SE
 # времени, но в пределах тех же 90 с на весь ход: 30 + пауза + 40. Ровно его
 # схема обратно — LLM_RETRY_TIMEOUT_SECONDS=30 в Railway.
 LLM_RETRY_TIMEOUT_SECONDS = _env_float('LLM_RETRY_TIMEOUT_SECONDS', 40.0)
+# V3.167.4 (владелец, «сделай так, чтобы общалась»): диалог ждёт дольше
+# вспомогательных вызовов — его читает человек, а не планировщик. 40 + 2 + 1.5
+# + 40 + 2 = 85.5 с, в его же бюджете 90 с. Остальные purposes сидят на 30 с.
+LLM_DIALOGUE_TIMEOUT_SECONDS = _env_float('LLM_DIALOGUE_TIMEOUT_SECONDS', 40.0)
+# Страховка поверх среза: коннект и разбор ответа SDK. Наружный wait_for без
+# неё мог бы снять попытку раньше, чем таймаут провайдера успел сработать.
+LLM_SLICE_GUARD_SECONDS = _env_float('LLM_SLICE_GUARD_SECONDS', 2.0)
 MINIMAX_ATTEMPTS = 2
 MIN_PROVIDER_SLICE_SECONDS = 3.0
 
@@ -128,7 +135,13 @@ GEMINI_REASONING_HEADROOM = max(0, int(os.getenv('GEMINI_REASONING_HEADROOM', '5
 # лежал в его переменной, а model id «minimax/minimax-m3» — его, не MiniMax.
 _minimax = (
     AsyncOpenAI(api_key=MINIMAX_API_KEY, base_url=MINIMAX_BASE_URL,
-                timeout=LLM_TIMEOUT_SECONDS, max_retries=0)
+                # V3.167.4: дефолт клиента — самый длинный срез, какой вообще
+                # просим. Раньше тут стояло 30 с, и он молча перебивал срез
+                # повтора: тот умирал на 30.1 с с APITimeoutError. Каждый вызов
+                # теперь приносит свой timeout сам.
+                timeout=max(LLM_TIMEOUT_SECONDS, LLM_DIALOGUE_TIMEOUT_SECONDS,
+                            LLM_RETRY_TIMEOUT_SECONDS) + LLM_SLICE_GUARD_SECONDS,
+                max_retries=0)
     if MINIMAX_API_KEY else None
 )
 # Gemini из диалога убран (429 на каждую вторую реплику). Он остался ровно там,
@@ -265,6 +278,10 @@ async def generate_text(
             retry_headroom = MINIMAX_EMPTY_RETRY_HEADROOM
             if MINIMAX_RETRY_EFFORT:
                 retry_kwargs['reasoning_effort'] = MINIMAX_RETRY_EFFORT
+        # V3.167.4: размер отправленного запроса в причинах — «M3 молчит» и
+        # «M3 молчит под промптом в 40 тыс. знаков» для владельца выглядят
+        # одинаково, пока не запишешь эту цифру.
+        _sent = f'{sum(len(str(m.get("content") or "")) for m in messages) / 1000:.1f}k'
         for attempt, (tag, kwargs, room) in enumerate((
             ('ask', mm_kwargs, headroom),
             ('retry', retry_kwargs, retry_headroom),
@@ -280,7 +297,16 @@ async def generate_text(
             # V3.167.3: в причину всегда попадает, сколько её ждали — «молчит» и
             # «отвечает 29 секунд и пустой» для владельца выглядят одинаково,
             # пока не запишешь секунды.
-            slice_seconds = LLM_TIMEOUT_SECONDS if not attempt else LLM_RETRY_TIMEOUT_SECONDS
+            # V3.167.4 (его сигнал 16.11: «ask: TimeoutError [waited 30.0s of
+            # 30s]; retry: APITimeoutError [waited 30.1s of 40s]»): повтор умер
+            # ровно на 30 с, хотя его срез — 40. Это таймаут КЛИЕНТА
+            # (AsyncOpenAI(timeout=30)), а не мой: create() без своего timeout
+            # наследует 30 с, и «дать повтору больше времени» значило ровно
+            # ничего. Теперь срез уходит и в SDK, и наружу (страховка на
+            # коннект), а в причину — ещё размер отправленного запроса:
+            # медленный ответ от длинного промпта отличается только этой цифрой.
+            slice_seconds = ((LLM_DIALOGUE_TIMEOUT_SECONDS if purpose == 'dialogue' else LLM_TIMEOUT_SECONDS)
+                             if not attempt else LLM_RETRY_TIMEOUT_SECONDS)
             _started = time.monotonic()
             try:
                 r = await asyncio.wait_for(
@@ -289,14 +315,15 @@ async def generate_text(
                         messages=messages,
                         temperature=temperature,
                         max_tokens=max_tokens + room,
+                        timeout=slice_seconds,
                         **kwargs,
                     ),
-                    timeout=_slice(slice_seconds),
+                    timeout=_slice(slice_seconds + LLM_SLICE_GUARD_SECONDS),
                 )
             except Exception as exc:
                 waited = time.monotonic() - _started
                 detail = (f'MiniMax({mm_model}) {tag}: {type(exc).__name__}: {_safe(str(exc))} '
-                          f'[waited {waited:.1f}s of {slice_seconds:g}s]')
+                          f'[waited {waited:.1f}s of {slice_seconds:g}s, sent {_sent}]')
                 errors.append(detail)
                 logger.warning('MiniMax FAILED purpose=%s %s', purpose, detail)
                 continue
@@ -304,15 +331,15 @@ async def generate_text(
             text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'minimax', mm_model, r)
             if text:
-                logger.info('LLM ok provider=minimax model=%s purpose=%s attempt=%s len=%d %.1fs',
-                            mm_model, purpose, tag, len(text), waited)
+                logger.info('LLM ok provider=minimax model=%s purpose=%s attempt=%s len=%d %.1fs sent=%s',
+                            mm_model, purpose, tag, len(text), waited, _sent)
                 return LLMResult(text, 'minimax', mm_model, _complete(r))
             # «finish=length» на пустом тексте и есть признак того, что thinking
             # съел весь ответ; без этой строки два молчания в журнале не отличить.
             finish = getattr(r.choices[0], 'finish_reason', '?') if getattr(r, 'choices', None) else '?'
             minimax_empty = True
             errors.append(f'MiniMax({mm_model}) {tag}: empty text (finish={finish}) '
-                          f'[waited {waited:.1f}s of {slice_seconds:g}s]')
+                          f'[waited {waited:.1f}s of {slice_seconds:g}s, sent {_sent}]')
             logger.warning('MiniMax EMPTY purpose=%s attempt=%s finish=%s waited=%.1fs',
                            purpose, tag, finish, waited)
 
@@ -372,6 +399,7 @@ def provider_status() -> dict:
         'minimax_dialogue_model': MINIMAX_DIALOGUE_MODEL,
         'minimax_base_url': MINIMAX_BASE_URL,
         'minimax_timeout_seconds': LLM_TIMEOUT_SECONDS,
+        'dialogue_timeout_seconds': LLM_DIALOGUE_TIMEOUT_SECONDS,
         'retry_timeout_seconds': LLM_RETRY_TIMEOUT_SECONDS,
         'dialogue_reasoning_effort': MINIMAX_DIALOGUE_EFFORT or 'default',
         'minimax_attempts': MINIMAX_ATTEMPTS,

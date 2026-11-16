@@ -127,12 +127,17 @@ def test_main_keyboard_rows_pin_the_legal_row():
 
 def test_chat_media_endpoint_gains_the_video_kind():
     block = MAIN[MAIN.index('async def _webapp_api_chat_media('):MAIN.index('async def _webapp_media(')]
-    assert "if kind not in ('photo', 'circle', 'voice', 'video') or not character_id:" in block
+    # V3.167.4: список видов медиа в этой ручке вырос — держим нынешний.
+    assert "if kind not in ('photo', 'circle', 'hotcircle', 'voice', 'video', 'hot', 'cosplay') or not character_id:" in block
     # a separate Premium gate keeps the circle branch (and its test) untouched
-    assert "if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS:" in block
+    # V3.167.4: видео дорожает персиками, проверка влезла в две строки.
+    assert "if kind == 'video' and telegram_id not in ADMIN_TELEGRAM_IDS" in block
+    assert 'and get_paid_peaches(telegram_id) < webapp_service.WEBAPP_VIDEO_COST_CREDITS' in block
     assert "kind == 'circle'" in block
     assert "elif kind == 'video':" in block
-    assert "'video': '🎬 отправила видео'" in block
+    # V3.167.4: подписи медиа лежат в словаре _media_caps, а видео-подпись в
+    # исходнике записана escape-последовательностями — держим сам словарь.
+    assert '_media_caps' in block and "'video':" in block
 
 
 def test_video_and_scene_helpers_exist_and_chain_the_engines():
@@ -156,7 +161,8 @@ def test_feature_endpoints_and_routes_registered():
     # the photo scene picker as the fourth kind
     feat = MAIN[MAIN.index('async def _webapp_api_feature('):MAIN.index('async def _webapp_api_feature_action(')]
     assert 'validate_init_data' in feat
-    assert "if kind not in ('apartment', 'date', 'quest', 'photo'):" in feat
+    # V3.167.4: в меню добавились видео, косплей и «горячее» — держим нынешний список.
+    assert "if kind not in ('apartment', 'date', 'quest', 'photo', 'video', 'cosplay', 'hot'):" in feat
     assert 'apartment_service.get_available_rooms(level)' in feat
     assert 'dates_service.get_available(level)' in feat
     assert 'couple_service.daily_quest(telegram_id)' in feat
@@ -174,9 +180,16 @@ def test_feature_action_reuses_the_existing_services():
     # date: free/admin delivers app-native, paid returns a Stars invoice that
     # reuses the bot's existing «date:» payment + reward path
     assert 'has_free_date(telegram_id)' in act
-    assert 'await _webapp_media_scene(telegram_id, character_id, date.scene)' in act
-    assert "payload=f'date:{date.id}'" in act
-    assert "currency='XTR'" in act
+    # V3.167.4: кадр прогулки рендерится фоном, чтобы ответ не ждал генерацию.
+    assert '_spawn_background(_deliver_date_photo(telegram_id, character_id, uid, date.id, date.scene))' in act
+    assert 'async def _deliver_date_photo(telegram_id: int, character_id: str, uid: int, date_id: str, scene: str)' in MAIN
+    assert 'await _webapp_media_scene(telegram_id, character_id, scene)' in MAIN
+    # V3.167.4: свидание с V3.65.0 оплачивается персиками, а не Stars — звёздный
+    # счётчик в этой ручке больше не встречается.
+    assert '_date_peaches = date.cost * PEACH_SCALE' in act
+    assert 'spend_peaches(telegram_id, _date_peaches)' in act
+    assert "reason=f'date:{date.id}'" in act
+    assert "currency='XTR'" not in act
 
 
 def test_paid_date_mirrors_into_the_app_history():

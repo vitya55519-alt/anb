@@ -112,9 +112,13 @@ def test_constructor_steps_cover_full_profile():
     keys = [step['key'] for step in ccs.CONSTRUCTOR_STEPS]
     # V3.35.0: face/breast/waist/hips steps + shy/naughty temperaments.
     # V3.37.0: 'style' first — realistic vs anime art direction.
+    # V3.167.4: шагов с тех пор стало больше (семейное положение, сценарий,
+    # загруженное фото, история, характер, первая сцена, дуэт, теги,
+    # «Сообщество») — список ниже = порядок шагов в текущем коде.
     assert keys == [
         'style', 'age', 'face', 'body', 'breast', 'waist', 'hips', 'hair', 'eyes',
-        'temperament', 'profession', 'role',
+        'temperament', 'profession', 'role', 'marital', 'scenario', 'photo_reference',
+        'backstory', 'personality', 'opening', 'duo_name', 'duo_desc', 'tags', 'community',
     ]
     values = [value for step in ccs.CONSTRUCTOR_STEPS for value, _, _ in step['options']]
     assert len(values) == len(set(values)), 'option callback values must be unique'
@@ -124,8 +128,12 @@ def test_constructor_steps_cover_full_profile():
 
 def test_constructor_character_id_and_detection():
     ccs = importlib.import_module('services.custom_character_service')
-    assert ccs.custom_character_id(12345) == 'custom_12345'
-    assert ccs.is_custom_character('custom_12345')
+    # V3.44.6: id стало уникальным на персонажа — к id пользователя липнет
+    # случайный суффикс, поэтому держим форму, а не конкретное значение.
+    cid = ccs.custom_character_id(12345)
+    assert cid.startswith('custom_12345_') and len(cid) == len('custom_12345_') + 8
+    assert cid != ccs.custom_character_id(12345), 'у одного владельца может быть несколько персонажей'
+    assert ccs.is_custom_character(cid)
     assert not ccs.is_custom_character('anna_01')
     assert not ccs.is_custom_character(None)
 
@@ -183,11 +191,16 @@ def test_custom_character_model_and_cleanup():
 def test_faceswap_uploads_reference_and_locks_identity():
     photo_service_src = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
     assert 'async def generate_custom_avatar' in photo_service_src
-    assert '_seedream_edit(reference_path, prompt' in photo_service_src
+    # V3.167.4: с V3.64.5 загруженное настоящее лицо идёт через цензурированный
+    # Gemini-edit (без цензурного движка на фото реального человека), а
+    # выдуманная девушка без референса — через Spicy text-to-image с замком.
+    assert '_gemini_edit(prompt, reference_path)' in photo_service_src
+    assert 'HARD SUBJECT LOCK: a fictional adult woman (21+). Never depict minors.' in photo_service_src
     # Wizard offers the face upload step and stores the bytes for generation.
     assert 'cbuild:face_upload' in MAIN
     assert "cons['face_bytes'] = face_bytes" in MAIN
-    assert 'face_swap=bool(face_path)' in MAIN
+    # V3.167.4: якорь лица в конструкторе живёт в переменной identity_anchor.
+    assert 'face_swap=bool(identity_anchor)' in MAIN
 
 
 # ── 7. V3.19.1: admin free constructor + video diagnostics ────────────────

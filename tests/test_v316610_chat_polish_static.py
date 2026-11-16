@@ -62,7 +62,9 @@ def test_the_anatomy_lock_leads_the_undress_prompt():
     # рука, уже лежащая в первом кадре, не получает права на третью
     assert 'a free third one' in lock
     assembly = _block('    prompt, secret = (UNDRESS_SAME_FRAME_LOCK', '\n    try:')
-    assert "UNDRESS_SAME_FRAME_LOCK + '\\n' + UNDRESS_ANATOMY_LOCK + '\\n' + UNDRESS_PROMPT" in assembly
+    # V3.167.4: порядок склейки — кадр, анатомия, место, сам промпт.
+    assert "UNDRESS_SAME_FRAME_LOCK + '\\n' + UNDRESS_ANATOMY_LOCK + '\\n' + UNDRESS_PLACE_LOCK + '\\n" in assembly
+    assert "+ UNDRESS_PROMPT + reveal" in assembly
     # хвост по-прежнему идёт после всего — но анатомии в нём больше нет
     assert assembly.index('UNDRESS_ANATOMY_LOCK') < assembly.index('UNDRESS_TAIL')
 

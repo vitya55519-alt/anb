@@ -21,7 +21,8 @@ def test_v3121_anna_is_more_sensual_but_non_graphic():
     rel=(ROOT/'services/relationship_engine.py').read_text(encoding='utf-8')
     assert 'sensuality' in dna and 'playful_teasing' in dna
     assert 'ФЛИРТ И ЧУВСТВЕННОСТЬ' in prompt
-    # Wording was refreshed by the natural/flirty style rewrite.
-    assert 'Лёгкая пошлость — это нормально' in prompt
+    # V3.167.4: фразы стиля менялись — заклейка держит нынешнюю формулировку
+    # раскованного блока (смысл тот же: пошлость можно, графика нельзя).
+    assert 'Не стесняешься пошлости' in prompt and 'Обожаешь флирт, намёки и чувственные разговоры' in prompt
     assert 'Без графического секса и анатомических деталей' in prompt
     assert 'заметный чувственный флирт' in rel

@@ -239,9 +239,15 @@ def test_characters_tab_has_segment_switch():
 
 def test_studio_has_two_engines_and_admin_reason():
     # a single provider outage no longer kills the «Картинки» tab
-    assert 'async def _seedream_t2i(prompt: str)' in PHOTO
-    assert 'studio Seedream t2i failed; falling back to Gemini' in PHOTO
+    # V3.167.4: у движка появился флаг взрослой-leg — строка заклеена по факту.
+    assert 'async def _seedream_t2i(prompt: str, allow_adult: bool = False)' in PHOTO
     gen = MAIN[MAIN.index('async def _webapp_api_picture_generate('):MAIN.index('async def _webapp_media_photo(')]
+    # V3.167.4: студия идёт тремя движками подряд — Spicy text-to-image, Spicy
+    # с canonical-референсами персонажа и старый движок аватаров. Одно падение
+    # больше не убивает вкладку «Картинки».
+    assert 'generate_private_photo_t2i(final_prompt)' in gen
+    assert 'generate_private_photo_real(_req, character_dna_context(_char), final_prompt)' in gen
+    assert 'photo_service.generate_custom_avatar(final_prompt, ref_path)' in gen
     assert "'reason': reason" in gen
     assert 'telegram_id in ADMIN_TELEGRAM_IDS' in gen
     assert 'toast(j.reason || L.pic_gen_fail)' in INDEX

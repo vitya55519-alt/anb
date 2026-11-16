@@ -207,11 +207,16 @@ def _undress_prompt(tid, monkeypatch, who_status='mar_married'):
     return main._undress_prompt(tid, 'lana_01')
 
 
-def test_the_undress_edit_takes_the_room_from_her_words(monkeypatch):
+def test_the_undress_edit_no_longer_takes_the_room_from_her_words(monkeypatch):
+    # V3.167.4 (владелец, «тот же кадр без исключений»): комната платного кадра
+    # берётся только из самого кадра. Анкета остаётся при одном — есть ли в этой
+    # же комнате мужчина (следующий тест).
+    import main
     tid = _tid(5)
     sc.remember(tid, 'lana_01', 'где=кухня | рядом=нет | кто= | сцена=a kitchen, evening light')
     prompt, _ = _undress_prompt(tid, monkeypatch)
-    assert 'PLACE FROM HER OWN WORDS' in prompt and 'a kitchen, evening light' in prompt
+    assert main.UNDRESS_PLACE_LOCK in prompt
+    assert 'PLACE FROM HER OWN WORDS' not in prompt and 'a kitchen, evening light' not in prompt
     assert 'move her into her bedroom or a hotel room' not in prompt
     assert 'never take its room, background, furniture' in prompt  # image 2 = only her face
 

@@ -18166,30 +18166,21 @@ UNDRESS_TAIL = (
     'She has exactly two arms and two hands, both staying exactly where image 1 leaves them; no device and no '
     'arm reaching toward the camera appear in the photo. Never a third hand or arm.'
 )
-# V3.152.1: owner ТЗ (Задачи 4 и 5) — снятый кадр остаётся её собственным
-# фото с телефона, а не съёмкой в студии, и в общественном месте он не живёт:
-# «то же место» из UNDRESS_PROMPT проигрывает, если на оригинале видно бар,
-# клуб, улицу или офис. Исключение — только его прямая просьба показать её
-# на людях (её обрабатывает enforce_private_location в общем конвейере).
+# V3.152.1 оставлял правке одно исключение: публичное место на исходном фото
+# (бар, клуб, улица, офис, зал, транспорт) переносило кадр в её комнату.
+# V3.167.4 (владелец, 16.11, «тот же кадр без исключений»): исключение снято —
+# где он её видит, там она и остаётся, приватно это место или нет. Свой префикс
+# («SAME PLACE LOCK:»), а не «PLACE:», чтобы не пересекаться с тем же замком
+# обычного фото-конвейера; префикс зарегистрирован в последнем срезе.
+UNDRESS_PLACE_LOCK = (
+    'SAME PLACE LOCK: the place of image 1 IS the place of the new photo, private or public alike — her home, '
+    'bedroom, bathroom or hotel, but a bar, club, restaurant, street, office, mall, gym or transport just the '
+    'same. Nobody moves her anywhere: the same walls, furniture, street, light and time of day, seen from the '
+    'same spot. This line has no exception, and it is not an exception to the same-frame lock above it.'
+)
+# V3.152.1: снятый кадр остаётся её собственным любительским снимком, а не
+# студийной съёмкой (в общем конвейере за это же отвечает enforce_private_location).
 UNDRESS_AMATEUR_LOCK = ' ' + AMATEUR_HOT_FRAME_LOCK
-UNDRESS_PLACE_TAIL = (
-    ' PLACE: keep the room of image 1 when it is already private '
-    '(her home, bedroom, bathroom, hotel room). If image 1 was taken where other people can see her — a bar, '
-    'club, restaurant, street, office, mall, gym or transport — this reveal does NOT happen there: her bedroom or '
-    'a hotel room replaces those walls, and that is the ONLY change to the photo. Her pose, hands, body, face, '
-    'hair, light, camera angle and framing stay exactly as in image 1. This place rule is the one exception to '
-    'the same-frame lock and it beats «the same place» above.'
-)
-# V3.166.7 (владелец, «муж в гараже — он же не рядом», «локация из её слов»):
-# когда анкета кадра уже назвала комнату, правка платного кадра берёт её, а не
-# выдуманную спальню из UNDRESS_PLACE_TAIL и не комнату с референса лица.
-UNDRESS_CARD_PLACE = (
-    ' PLACE FROM HER OWN WORDS: her last message put her here — {place}. That is the room of the new photo: '
-    'keep it, its walls, its furniture and its light exactly as image 1 shows them, and only shut its door. '
-    'Never move her into a bedroom or a hotel room her words did not name, and never take the room from the '
-    'face reference. The same-frame lock above still holds: her pose, camera angle, framing and light do not '
-    'change.'
-)
 # V3.61.10 introduced a pool of poses («поднять подол», «показать спину», «лечь на
 # кровать»), V3.166.5 — пул голых поз. Оба они переснимали кадр заново и рвали ту
 # самую цепочку, о которой он пишет: вместо того снимка, что у него перед глазами,
@@ -18253,23 +18244,23 @@ UNDRESS_SAFE_VARIANT = ('lace', UNDRESS_CLOTHES_LACE)
 
 
 def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) -> tuple[str, bool]:
-    """V3.167.2 (владелец): the paid frame is the photo he is looking at with her
-    clothes off — the same pose, camera angle, room and light, nothing else. The
+    """V3.167.4 (владелец): the paid frame is the photo he is looking at with her
+    clothes off and NOTHING else changed — the same pose, camera angle, room and
+    light, and now the same place too: the public-place exception of V3.152.1 and
+    the room-from-her-words rule of V3.166.7 are both gone, because either one
+    could hand back a different photo than the one in front of him. The
     relationship level never decides what is in the frame; only the engine's
     refusal does (``safe`` is the last, gentlest try before the tap is refunded).
 
-    V3.166.7: the room and the people in it come from her own scene card — the
-    place she named stays, and a man appears behind her only while the card says
-    somebody physically stands in this same room («Платон в гараже» → nobody)."""
-    from services import scene_card_service
+    The scene card still decides one thing: whether a man physically stands in
+    that same room, and may therefore show up behind her."""
     reveal = UNDRESS_SAFE_VARIANT[1] if safe else UNDRESS_CLOTHES_OFF
-    card_scene = scene_card_service.scene_for(telegram_id, character_id)
-    place = (UNDRESS_CARD_PLACE.format(place=card_scene) if card_scene else UNDRESS_PLACE_TAIL)
-    prompt, secret = (UNDRESS_SAME_FRAME_LOCK + '\n' + UNDRESS_ANATOMY_LOCK + '\n' + UNDRESS_PROMPT
-                      + place + reveal
+    prompt, secret = (UNDRESS_SAME_FRAME_LOCK + '\n' + UNDRESS_ANATOMY_LOCK + '\n' + UNDRESS_PLACE_LOCK + '\n'
+                      + UNDRESS_PROMPT + reveal
                       + ('' if safe else UNDRESS_NUDE_LOCK)
                       + UNDRESS_TAIL + UNDRESS_AMATEUR_LOCK), False
     try:
+        from services import scene_card_service
         from services.webapp_service import _batch_marital, _default_marital
         status = _batch_marital(telegram_id, [character_id]).get(character_id) \
             or _default_marital(character_id, is_custom_character(character_id))

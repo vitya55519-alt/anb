@@ -93,21 +93,26 @@ def test_frames_parameter_threaded_through_every_engine():
 # ── 2. the scene picker: backend menu + frontend sheet ──────────────────
 
 def test_feature_endpoint_serves_the_photo_menu():
-    assert "if kind not in ('apartment', 'date', 'quest', 'photo'):" in FEATURE
+    # V3.167.4: меню выросло до семи видов — держим нынешний список.
+    assert "if kind not in ('apartment', 'date', 'quest', 'photo', 'video', 'cosplay', 'hot'):" in FEATURE
     assert '} for scene in PHOTO_MENU_ORDER]' in FEATURE
-    assert "'locked': SCENE_LEVELS.get(scene, 99) > level," in FEATURE
+    # V3.167.4: замок стал составным — spicy-сюжеты ждёт Premium, а в режиме
+    # «Без цензуры 18+» список открыт целиком.
+    assert "'locked': not open_all and SCENE_LEVELS.get(scene, 99) > level and not spicy_needs_premium(PhotoRequest(scene=scene))," in FEATURE
     assert "'min_level': SCENE_LEVELS.get(scene, 99)," in FEATURE
 
 
 def test_chat_media_accepts_and_gates_the_scene():
-    assert "scene = str(body.get('scene') or 'selfie')[:40]" in CHAT_MEDIA
+    # V3.167.4: сцену режут по 80 символов — держим нынешний лимит.
+    assert "scene = str(body.get('scene') or 'selfie')[:80]" in CHAT_MEDIA
     # menu-scene whitelist, relationship-stage gate, the 18+ adult gate —
     # the same rules the bot's photo keyboard enforces
     assert 'if scene not in PHOTO_MENU_ORDER:' in CHAT_MEDIA
     assert 'scene_allowed_for_stage(scene, get_relationship_stage(telegram_id, character_id), telegram_id)' in CHAT_MEDIA
     assert "requires_adult_confirmation(PhotoRequest(scene=scene)) and not is_adult_confirmed(telegram_id)" in CHAT_MEDIA
     assert "'error': 'adult_confirm'" in CHAT_MEDIA
-    assert 'await _webapp_media_photo(telegram_id, character_id, scene)' in CHAT_MEDIA
+    # V3.167.4: у ручки появился попутчик-гость, кадр зовёт его в аргументах.
+    assert 'await _webapp_media_photo(telegram_id, character_id, scene, guest_id)' in CHAT_MEDIA
     # her caption is scene-flavored, like the bot's delivery
     assert 'random.choice(AUTO_CAPTIONS.get(scene' in CHAT_MEDIA
 

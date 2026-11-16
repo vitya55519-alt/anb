@@ -69,15 +69,34 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+# V3.167.4 (владелец: «закрой дырки в данных»): ключ «liked_3am» не проходил
+# правило [a-z_]+ и переименован. Активный сюжет живёт у пользователя сутки,
+# поэтому старый ключ принимается как алиас и сам становится новым при
+# ближайшем сохранении — никто не теряет начатый сюжет из-за буквосочетания.
+_KEY_ALIASES = {'liked_3am': 'liked_at_three'}
+
+
+def _renamed(value):
+    if isinstance(value, dict) and value.get('key') in _KEY_ALIASES:
+        fixed = dict(value)
+        fixed['key'] = _KEY_ALIASES[value['key']]
+        return fixed
+    if isinstance(value, list):
+        return [_KEY_ALIASES.get(k, k) for k in value]
+    return value
+
+
 def _user(telegram_id: int) -> dict:
     try:
         raw = dict(_state.get(int(telegram_id)) or {})
     except Exception:
         raw = {}
     # V3.78.0 first shape kept {char: {key, until}} at the top level
-    active = dict(raw.get('active') or {k: v for k, v in raw.items()
-                                         if isinstance(v, dict) and 'key' in v})
-    return {'active': active, 'done': dict(raw.get('done') or {}), 'just_done': dict(raw.get('just_done') or {})}
+    active = {cid: _renamed(v) for cid, v in dict(raw.get('active') or {k: v for k, v in raw.items()
+                                                              if isinstance(v, dict) and 'key' in v}).items()}
+    return {'active': active,
+            'done': {cid: _renamed(keys) for cid, keys in dict(raw.get('done') or {}).items()},
+            'just_done': {cid: _renamed(v) for cid, v in dict(raw.get('just_done') or {}).items()}}
 
 
 def _save(telegram_id: int, data: dict) -> None:

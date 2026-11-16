@@ -160,7 +160,8 @@ def test_private_menu_hot_categories_are_amateur_too():
 
 def test_the_paid_undress_edit_is_a_phone_photo_too():
     prompt = _undress_prompt()
-    assert 'AMATEUR HOT FRAME:' in prompt and 'PLACE: keep the room of image 1' in prompt
+    # V3.167.4: исключений по локации больше нет — место держит SAME PLACE LOCK.
+    assert 'AMATEUR HOT FRAME:' in prompt and 'SAME PLACE LOCK:' in prompt
 
 
 def _undress_prompt():
