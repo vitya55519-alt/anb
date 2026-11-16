@@ -395,9 +395,14 @@
      the thought itself italic, and the block never goes into the voice. */
   .thcard { align-self: flex-start; max-width: calc(82% - 36px); margin: 0 0 0 36px;
     padding: 8px 12px; border-radius: 14px; border-left: 3px solid #FF4D8D;
-    background: rgba(255, 77, 141, .08); font-size: 13px; line-height: 1.45; }
+    background: rgba(255, 77, 141, .08); font-size: 13px; line-height: 1.45; cursor: pointer; }
   .thcard .th-h { color: #FF4D8D; font-weight: 700; font-size: 12px; }
   .thcard .th-b { font-style: italic; opacity: .9; margin-top: 3px; white-space: pre-wrap; word-break: break-word; }
+  .thcard .th-t { font-weight: 600; font-size: 11px; opacity: .7; margin-left: 6px; }
+  /* V3.167.8 (владелец): мысли приходят свёрнутым окном — тап раскрывает, тап
+     же прячет обратно. Одна строка видна, чтобы он понял, что там есть что. */
+  .thcard.min .th-b { display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1; line-clamp: 1; overflow: hidden; }
   /* V3.152.0: owner ТЗ (Фогель, Модуль 1) — «Стертый черновик»: a grey italic
      plate where her erased message used to be, and the paid text in its place. */
   .dplate { align-self: flex-start; max-width: calc(82% - 36px); margin: 4px 0 10px 36px;
@@ -1917,6 +1922,7 @@ const L_EN = {
   typing_now: 'typing…',
   // V3.151.0: the novel engine — her thought card and the recording pause
   thoughts: n => '💭 ' + n + '\'s thoughts:', rec_voice: 'recording a voice note…',
+  th_more: 'tap to read', th_less: 'hide',
   // V3.152.0: the «Стертый черновик» plate (Фогель, Модуль 1)
   draft_plate: n => '✍️ ' + n + ' typed a long message and erased it…',
   draft_btn: p => '👀 Read what she erased · ' + p + ' 🍑',
@@ -2259,6 +2265,7 @@ const L_RU = {
   typing_now: 'печатает…',
   // V3.151.0: движок новеллы — карточка мыслей и пауза записи голосового
   thoughts: n => '💭 Мысли ' + n + ':', rec_voice: 'записывает голосовое…',
+  th_more: 'развернуть', th_less: 'свернуть',
   // V3.152.0: тарелка «Стертый черновик» (Фогель, Модуль 1)
   draft_plate: n => '✍️ ' + n + ' долго печатала сообщение и стёрла его…',
   draft_btn: p => '👀 Прочитать стёртое · ' + p + ' 🍑',
@@ -4108,7 +4115,10 @@ function parseThought(raw) {
 function thoughtCard(text) {
   const nm = (CHAT && CHAT.name) || '';
   const label = typeof L.thoughts === 'function' ? L.thoughts(nm) : '💭 ' + nm;
-  return '<div class="thcard"><div class="th-h">' + esc(label) + '</div>' +
+  // V3.167.8 (владелец): окно приходит свёрнутым — он раскрывает его тапом по
+  // шапке и тем же тапом прячет обратно.
+  return '<div class="thcard min"><div class="th-h">' + esc(label) +
+    '<span class="th-t">' + esc(String(L.th_more)) + '</span></div>' +
     '<div class="th-b">' + esc(text) + '</div></div>';
 }
 
@@ -5924,6 +5934,16 @@ document.addEventListener('click', e => {
   if (!b) return;
   e.stopPropagation();
   pickInterrupt(b.getAttribute('data-qte'), Number(b.getAttribute('data-qn')) || 0, b);
+});
+
+// V3.167.8 (владелец): карточка мыслей — свёрнутое окно. Тап раскрывает, тап
+// же сворачивает; её текст при этом никуда не уходит и в голос не попадает.
+document.addEventListener('click', e => {
+  const card = e.target && e.target.closest ? e.target.closest('.thcard') : null;
+  if (!card) return;
+  const min = card.classList.toggle('min');
+  const hint = card.querySelector('.th-t');
+  if (hint) hint.textContent = String(min ? L.th_more : L.th_less);
 });
 
 async function requestMedia(kind, scene, opts) {
