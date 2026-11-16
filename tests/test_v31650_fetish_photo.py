@@ -33,7 +33,7 @@ def _req(theme: str, **kw) -> pps.PrivatePhotoRequest:
 def test_fetish_category_is_hidden_and_costs_the_frame_price():
     cat = pps.PRIVATE_PHOTO_CATEGORIES['fetish']
     assert cat['hidden'] is True, 'у темы свой вход — чип 📸, не кнопка в «Наедине»'
-    assert cat['peach_cost'] == config.EXPLICIT_PHOTO_PEACH_COST == 300
+    assert cat['peach_cost'] == config.EXPLICIT_PHOTO_PEACH_COST == 250
     assert len(cat['types']) == len(fetish_mode.FETISHES) == 17
     assert [t['id'] for t in cat['types']] == [f[0] for f in fetish_mode.FETISHES]
 

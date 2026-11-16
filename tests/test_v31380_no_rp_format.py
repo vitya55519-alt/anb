@@ -101,13 +101,13 @@ def test_name_line_bans_it_for_the_messages_she_writes_first():
 
 
 # ── 4. «Раздеть»: peaches only (V3.154.0: 400 🍑; V3.165.0: owner — «одна цена
-#    300 для обоих режимов», so the frame price moved down to 300 🍑 ≈ 30 ₽) ─
+#    300 для обоих режимов»; V3.167.1: owner — «250 персиков раздеть», 25 ₽) ─
 
-def test_undress_price_is_peaches_worth_30_rubles():
+def test_undress_price_is_peaches_worth_25_rubles():
     from config import EXPLICIT_PHOTO_PEACH_COST, PEACH_SCALE, PEACH_PACK_10_RUB, UNDRESS_PEACH_COST
-    assert UNDRESS_PEACH_COST == 300 == EXPLICIT_PHOTO_PEACH_COST
+    assert UNDRESS_PEACH_COST == 250 == EXPLICIT_PHOTO_PEACH_COST
     rubles = UNDRESS_PEACH_COST / PEACH_SCALE * (PEACH_PACK_10_RUB / 10)
-    assert 25 <= rubles <= 35, rubles
+    assert 20 <= rubles <= 30, rubles
 
 
 def test_the_app_prices_undress_in_peaches_everywhere_it_offers_it():
@@ -125,10 +125,11 @@ def test_the_peach_route_replaces_the_money_paywall():
     # non-premium is not a wall any more: what he already paid for spends first,
     # only a short peach balance sends him to the sheet
     assert gate.index('if not is_premium(telegram_id):') < gate.index('undress_credits.balance(telegram_id) > 0')
-    assert gate.index('undress_credits.balance(telegram_id) > 0') < gate.index('get_paid_peaches(telegram_id) < UNDRESS_PEACH_COST')
+    # V3.167.1: the peach check is «paid or today's earned slot» now, still after the credit
+    assert gate.index('undress_credits.balance(telegram_id) > 0') < gate.index('photo_peaches_ready(telegram_id, UNDRESS_PEACH_COST)')
     # and the readiness poll says ready when peaches are enough
     ready = MAIN.split('async def _webapp_api_undress_credit(', 1)[1].split('async def _webapp_api_photo_action', 1)[0]
-    assert 'peaches >= UNDRESS_PEACH_COST' in ready
+    assert 'photo_peaches_ready(telegram_id, UNDRESS_PEACH_COST)' in ready
 
 
 # ── 5. nobody to undress in a picture of the room ────────────────────────────

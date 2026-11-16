@@ -80,7 +80,7 @@ from services.photo_idea_service import (
 from config import PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIAL_PRICE_RUB  # V3.88.0
 from config import UNDRESS_ONE_ENABLED, UNDRESS_ONE_PRICE_RUB, UNDRESS_ONE_STARS  # V3.132.0
 from services.payments import trial_eligible  # V3.88.0
-from services.payments import record_payment, get_photo_credits, get_paid_peaches, record_refund, grant_premium, revoke_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches
+from services.payments import record_payment, get_photo_credits, get_paid_peaches, record_refund, grant_premium, revoke_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches, photo_peaches_ready, spend_photo_peaches
 from services.bot_description import apply_bot_descriptions
 from services import seo_landing
 from services import greeting_service
@@ -14944,8 +14944,11 @@ def _chat_photo_gate(telegram_id: int, character_id: str, scene: str, *, undress
         if undress_credit:
             from services import undress_credits
             from config import UNDRESS_PEACH_COST
+            # V3.167.1 (владелец: «на одно фото можно заработать»): когда
+            # купленных персиков не хватает, сегодняшний кадр открывает
+            # заработанный слот — один раз в сутки, списание проверяет его заново.
             if undress_credits.balance(telegram_id) > 0 \
-                    or get_paid_peaches(telegram_id) >= UNDRESS_PEACH_COST:
+                    or photo_peaches_ready(telegram_id, UNDRESS_PEACH_COST):
                 return None
         # V3.165.0 (#104, owner): «откровенный текст без Premium — за 300 🍑».
         # Premium stops being the only door: bought peaches open this exact
@@ -15324,9 +15327,13 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                 elif pay == 'undress_peaches':
                     # V3.138.0: «Раздеть» for peaches. V3.165.0: it is the one
                     # frame price now, not the ordinary chat-photo price.
+                    # V3.167.1 (владелец: «на одно фото можно заработать»):
+                    # списываем купленные, а когда их не хватает — сегодняшний
+                    # заработанный слот. «left» — весь баланс, таким его видит он.
                     from config import UNDRESS_PEACH_COST
-                    spend_peaches(telegram_id, UNDRESS_PEACH_COST, paid_only=True)
-                    paid_note = {'price': UNDRESS_PEACH_COST, 'left': get_paid_peaches(telegram_id)}
+                    if not spend_photo_peaches(telegram_id, UNDRESS_PEACH_COST):
+                        logger.warning('undress peach race user=%s', telegram_id)
+                    paid_note = {'price': UNDRESS_PEACH_COST, 'left': get_photo_credits(telegram_id)}
                 elif pay == 'explicit_peaches':
                     # V3.165.0 (#104): one explicit frame without Premium — the
                     # one frame price, bought peaches only, like «Раздеть».
@@ -18066,7 +18073,11 @@ async def _webapp_api_undress_credit(request: web.Request) -> web.Response:
         credits = undress_credits.balance(telegram_id)
         premium = is_premium(telegram_id)
         peaches = get_paid_peaches(telegram_id)
-        return {'ok': True, 'ready': bool(premium or credits > 0 or peaches >= UNDRESS_PEACH_COST),
+        # V3.167.1 (владелец: «на одно фото можно заработать»): кнопка светится и
+        # когда купленных не хватает, а сегодняшний бонусный слот свободен, —
+        # иначе она обещала бы кадр человеку с нулём купленных персиков.
+        return {'ok': True, 'ready': bool(premium or credits > 0
+                                          or photo_peaches_ready(telegram_id, UNDRESS_PEACH_COST)),
                 'credits': credits, 'premium': premium, 'peaches': peaches, 'price': UNDRESS_PEACH_COST}
 
     return web.json_response(await asyncio.to_thread(_read))
@@ -18161,7 +18172,9 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         if not is_premium(telegram_id):
             if undress_credits.balance(telegram_id) > 0:
                 return uid, None, 'credit'
-            if get_paid_peaches(telegram_id) < UNDRESS_PEACH_COST:
+            # V3.167.1 (владелец: «на одно фото можно заработать»): не хватает
+            # купленных — открываем сегодняшний заработанный слот.
+            if not photo_peaches_ready(telegram_id, UNDRESS_PEACH_COST):
                 return uid, ('credits', 402), None
             return uid, None, 'peaches'
         _used_today = count_today(uid, 'undress_free')
@@ -18169,7 +18182,7 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
             return uid, None, 'free'
         if undress_credits.balance(telegram_id) > 0:
             return uid, None, 'credit'
-        if get_paid_peaches(telegram_id) < UNDRESS_PEACH_COST:
+        if not photo_peaches_ready(telegram_id, UNDRESS_PEACH_COST):
             return uid, ('credits', 402), None
         return uid, None, 'peaches'
 
@@ -18245,7 +18258,10 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
             if pay in ('free', 'trial'):
                 note_today(uid, f'undress_{pay}', character_id)
             elif pay == 'peaches':
-                spend_peaches(telegram_id, UNDRESS_PEACH_COST, paid_only=True)
+                # V3.167.1: купленные персики сначала; когда их не хватает,
+                # кадр закрывает сегодняшний заработанный слот (один в сутки).
+                if not spend_photo_peaches(telegram_id, UNDRESS_PEACH_COST):
+                    logger.warning('webapp undress peach race user=%s', telegram_id)
             elif pay == 'credit':
                 from services import undress_credits
                 undress_credits.spend(telegram_id)

@@ -30,6 +30,11 @@ class User(Base):
     photo_credits: Mapped[int] = mapped_column(Integer, default=0)
     # V3.123.0: free peaches (missions, channel, referrals) — wardrobe/dates only, never renders.
     bonus_peaches: Mapped[int] = mapped_column(Integer, default=0)
+    # V3.167.1: owner — «на одно фото можно заработать»: когда купленных не
+    # хватает, один «Раздеть» в сутки оплачивается заработанными персиками.
+    # Хранит момент последнего такого кадра (nullable = ни разу). Auto-migrated
+    # by services/db.py.
+    bonus_photo_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     attention_points: Mapped[int] = mapped_column(Integer, default=0)
     streak_count: Mapped[int] = mapped_column(Integer, default=0)
     streak_last_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

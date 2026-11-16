@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta, timezone
 import logging
-from sqlalchemy import case, func, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from services.db import SessionLocal
 from models.app_models import Subscription, StarTransaction, User
-from config import PREMIUM_TRIAL_STARS, PREMIUM_TRIAL_DAYS, PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_STARS, PREMIUM_QUARTERLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS, PEACH_PACK_10_STARS, PEACH_PACK_30_STARS, PEACH_PACK_100_STARS, PEACH_PACK_CREDITS, PEACH_SCALE, PEACH_CUSTOM_UNIT
+from config import PREMIUM_TRIAL_STARS, PREMIUM_TRIAL_DAYS, PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_STARS, PREMIUM_QUARTERLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS, PEACH_PACK_10_STARS, PEACH_PACK_30_STARS, PEACH_PACK_100_STARS, PEACH_PACK_CREDITS, PEACH_SCALE, PEACH_CUSTOM_UNIT, BONUS_PHOTO_ENABLED
 from services.access_service import is_premium
 
 logger = logging.getLogger(__name__)
@@ -178,6 +178,60 @@ def get_bonus_peaches(telegram_id:int)->int:
     with SessionLocal() as s:
         user=s.scalar(select(User).where(User.telegram_id==str(telegram_id)))
         return int(user.bonus_peaches or 0) if user else 0
+
+
+MSK_OFFSET = timedelta(hours=3)
+
+
+def _bonus_photo_day_start(now: datetime | None = None) -> datetime:
+    """Полночь МСК текущих суток как наивная UTC-метка — тот же рубеж, с которого
+    считает день остальные дневные счётчики бота (daily_limit.msk_today)."""
+    local = (now or datetime.now(timezone.utc)).astimezone(timezone(MSK_OFFSET))
+    return (local.replace(hour=0, minute=0, second=0, microsecond=0) - MSK_OFFSET).replace(tzinfo=None)
+
+
+def bonus_photo_open(telegram_id: int) -> bool:
+    """V3.167.1 (владелец: «на одно фото можно заработать»): свободен ли ещё
+    сегодняшний кадр за заработанные персики. Это только проверка для гейта —
+    списание ниже перепроверяет штамп внутри своего UPDATE."""
+    if not BONUS_PHOTO_ENABLED:
+        return False
+    with SessionLocal() as s:
+        stamp = s.scalar(select(User.bonus_photo_at).where(User.telegram_id == str(telegram_id)))
+    return stamp is None or stamp < _bonus_photo_day_start()
+
+
+def photo_peaches_ready(telegram_id: int, amount: int) -> bool:
+    """Можно ли вообще оплатить кадр: купленными персиками — всегда, заработанными
+    — один раз в сутки."""
+    amount = int(amount)
+    if get_paid_peaches(telegram_id) >= amount:
+        return True
+    return bonus_photo_open(telegram_id) and get_bonus_peaches(telegram_id) >= amount
+
+
+def spend_photo_peaches(telegram_id: int, amount: int) -> str:
+    """Списание одного «Раздеть»: 'paid' с купленных, 'bonus' с сегодняшнего
+    бонусного слота, '' когда не хватает ни того ни другого. Обе ветки — один
+    условный UPDATE (V3.58.0), поэтому два тапа в одну секунду не могут пройти
+    проверку баланса вдвоём и не могут взять один и тот же бонусный слот."""
+    amount = int(amount)
+    if spend_peaches(telegram_id, amount, paid_only=True):
+        return 'paid'
+    if not BONUS_PHOTO_ENABLED:
+        return ''
+    bonus = func.coalesce(User.bonus_peaches, 0)
+    with SessionLocal() as s:
+        result = s.execute(update(User)
+                           .where(User.telegram_id == str(telegram_id),
+                                  bonus >= amount,
+                                  or_(User.bonus_photo_at.is_(None),
+                                      User.bonus_photo_at < _bonus_photo_day_start()))
+                           .values(bonus_peaches=bonus - amount,
+                                   bonus_photo_at=datetime.now(timezone.utc).replace(tzinfo=None))
+                           .execution_options(synchronize_session=False))
+        s.commit()
+        return 'bonus' if result.rowcount == 1 else ''
 
 
 def peach_wallet(telegram_id:int)->dict:

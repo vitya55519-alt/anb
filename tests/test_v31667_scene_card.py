@@ -239,7 +239,7 @@ def test_the_husband_stands_behind_her_only_while_he_is_in_the_room(monkeypatch)
 # ── экономика после первого кадра не тронута ───────────────────────────────
 
 def test_the_frame_economy_is_untouched():
-    assert 'EXPLICIT_PHOTO_PEACH_COST = _peaches("EXPLICIT_PHOTO_PEACH_COST", 300)' in CONFIG
+    assert 'EXPLICIT_PHOTO_PEACH_COST = _peaches("EXPLICIT_PHOTO_PEACH_COST", 250)' in CONFIG
     assert 'UNDRESS_PEACH_COST = _peaches("UNDRESS_PEACHES_V165", EXPLICIT_PHOTO_PEACH_COST)' in CONFIG
     assert "pay in ('undress_credit', 'undress_peaches', 'explicit_peaches'" in MAIN
     for price in ('EXPLICIT_PHOTO_PEACH_COST', 'UNDRESS_PEACH_COST', 'CHAT_PHOTO_PEACH_COST'):

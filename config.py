@@ -89,7 +89,9 @@ COSPLAY_PHOTO_FREE_DAILY = max(0, int(os.getenv("COSPLAY_PHOTO_FREE_DAILY", "1")
 # Имена env — новые нарочно: на Railway могут лежать старые
 # PRIVATE_PHOTO_PEACH_COST=2 / COSPLAY_PHOTO_PEACH_COST=2, и они бы молча
 # вернули прежние ценники (так же поступили с CHAT_PHOTO_PRICE_PEACHES).
-EXPLICIT_PHOTO_PEACH_COST = _peaches("EXPLICIT_PHOTO_PEACH_COST", 300)
+# V3.167.1: owner — «250 персиков раздеть». Рендер стоит ~$0.04, поэтому 250 🍑
+# (25 ₽) всё ещё окупается; цена одна на раздевание, «Наедине», косплей и фетиш.
+EXPLICIT_PHOTO_PEACH_COST = _peaches("EXPLICIT_PHOTO_PEACH_COST", 250)
 PRIVATE_PHOTO_PEACH_COST = _peaches("PRIVATE_PHOTO_PEACHES_V165", EXPLICIT_PHOTO_PEACH_COST)
 # V3.166.2: owner — «30 любых сообщений в сутки на весь аккаунт, оба режима и
 # обе платформы; безлимита для бесплатных больше нет». Считается каждый
@@ -149,6 +151,13 @@ UNDRESS_PREMIUM_FREE_L7_8 = max(0, int(os.getenv("UNDRESS_PREMIUM_FREE_L7_8", "3
 # Новое имя env (UNDRESS_PEACH_COST=4 на Railway вернул бы 400 🍑).
 UNDRESS_PEACH_COST = _peaches("UNDRESS_PEACHES_V165", EXPLICIT_PHOTO_PEACH_COST)
 COSPLAY_PHOTO_PEACH_COST = _peaches("COSPLAY_PHOTO_PEACHES_V165", EXPLICIT_PHOTO_PEACH_COST)
+# V3.167.1: owner — «на одно фото можно заработать». Один «Раздеть» в сутки он
+# вправе оплатить заработанными персиками (задания, серия, канал): так он пробует
+# разблокировку кадра без кошелька. Ровно один в сутки — колонка users.
+# bonus_photo_at хранит последний такой кадр. Флаг false возвращает прежнее
+# «только купленные персики». Всё остальное (Наедине, фетиш, серия, видео)
+# по-прежнему только с купленными: плодить бесплатные рендеры владелец запретил.
+BONUS_PHOTO_ENABLED = os.getenv("BONUS_PHOTO_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
 # V3.152.0: owner ТЗ (Фогель, Модуль 1) — «Стертый черновик». Sometimes she
 # writes something bolder than she dares to send, deletes it and answers
 # shortly; reading what she erased costs peaches. Pure text, no render, so the

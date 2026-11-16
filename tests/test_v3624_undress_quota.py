@@ -16,7 +16,7 @@ def test_trial_and_premium_gate():
     assert "return uid, ('premium_required', 403), None" not in MAIN
     gate = MAIN[MAIN.index('async def _webapp_api_photo_action('):]
     gate = gate[:gate.index('    uid, err, pay = await')]
-    assert gate.index("if undress_credits.balance(telegram_id) > 0:") < gate.index('get_paid_peaches(telegram_id) < UNDRESS_PEACH_COST')
+    assert gate.index("if undress_credits.balance(telegram_id) > 0:") < gate.index('photo_peaches_ready(telegram_id, UNDRESS_PEACH_COST)')
     assert "note_today(uid, f'undress_{pay}', character_id)" in MAIN
 
 

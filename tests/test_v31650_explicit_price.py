@@ -22,7 +22,9 @@ CONFIG = (ROOT / 'config.py').read_text(encoding='utf-8')
 
 
 def test_one_price_for_every_explicit_frame():
-    assert config.EXPLICIT_PHOTO_PEACH_COST == 300
+    # V3.167.1 (владелец: «250 персиков раздеть») — число изменилось, а идея
+    # V3.165.0 осталась: один ценник на раздевание, «Наедине», косплей и фетиш.
+    assert config.EXPLICIT_PHOTO_PEACH_COST == 250
     assert config.PRIVATE_PHOTO_PEACH_COST == config.EXPLICIT_PHOTO_PEACH_COST
     assert config.COSPLAY_PHOTO_PEACH_COST == config.EXPLICIT_PHOTO_PEACH_COST
     assert config.UNDRESS_PEACH_COST == config.EXPLICIT_PHOTO_PEACH_COST
@@ -30,9 +32,9 @@ def test_one_price_for_every_explicit_frame():
 
 def test_photo_by_fetish_costs_the_same_frame_price():
     # The fetish plate is billed through the «Наедине» price, so it can never
-    # drift away from 300 🍑 on its own.
+    # drift away from 250 🍑 on its own.
     assert 'EXPLICIT_PHOTO_PEACH_COST' in SERVICE or 'PRIVATE_PHOTO_PEACH_COST' in SERVICE
-    assert config.PRIVATE_PHOTO_PEACH_COST == 300
+    assert config.PRIVATE_PHOTO_PEACH_COST == 250
 
 
 def test_series_is_four_frames_700_and_hot_circle_2000():

@@ -87,7 +87,7 @@ def test_the_cap_is_checked_after_the_kitchen_and_before_the_money():
     assert undress_gate.index('if admin:') < undress_gate.index('undress_nudity.is_nude(telegram_id, character_id)')
     # 18+ он подтверждает как раньше, а цена — только там, где раздеваться ещё есть
     assert undress_gate.index('if not is_adult_confirmed(telegram_id):') < undress_gate.index('undress_nudity.is_nude')
-    assert undress_gate.index('undress_nudity.is_nude') < undress_gate.index('get_paid_peaches(telegram_id) < UNDRESS_PEACH_COST')
+    assert undress_gate.index('undress_nudity.is_nude') < undress_gate.index('photo_peaches_ready(telegram_id, UNDRESS_PEACH_COST)')
     assert "return uid, None, 'already'" in undress_gate
     assert undress_gate.index("return uid, None, 'already'") < undress_gate.index("return uid, None, 'peaches'")
 

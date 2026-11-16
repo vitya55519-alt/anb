@@ -105,7 +105,7 @@ def test_single_credit_skips_pool_free_allowance_and_peaches():
     # no ready-made pool for a paid «Раздеть» — neither the credit nor the peach route
     # V3.139.0: and none for a joint photo either, a single girl is not what he asked for
     # V3.165.0 (#104): and none for an explicit frame bought with peaches — what he
-    # paid 300 🍑 for is a new picture of the scene he asked for.
+    # paid 250 🍑 (V3.167.1) for is a new picture of the scene he asked for.
     assert "pooled = None if (pay in ('undress_credit', 'undress_peaches', 'explicit_peaches')" in turn
     assert 'or guest_id) else' in turn
     # the credit is spent, not the free photo of the day and not peaches
@@ -114,7 +114,8 @@ def test_single_credit_skips_pool_free_allowance_and_peaches():
     # V3.138.0: without Premium and without a credit the direct «разденься» costs peaches
     assert "pay = 'undress_credit' if undress_credits.balance(telegram_id) > 0 else 'undress_peaches'" in turn
     assert "elif pay == 'undress_peaches':" in turn
-    assert 'spend_peaches(telegram_id, UNDRESS_PEACH_COST, paid_only=True)' in turn
+    # V3.167.1: bought first, and today's earned slot when nothing was bought
+    assert 'spend_photo_peaches(telegram_id, UNDRESS_PEACH_COST)' in turn
 
 
 def test_background_job_spends_credit_only_on_success():
