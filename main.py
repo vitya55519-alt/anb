@@ -15084,7 +15084,8 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
         from services import greeting_service, starter_photo_service
 
         def _match():
-            # Romantika never sees this mechanic — there she writes herself.
+            # ТЗ V3.167.0 §4: in the warm mode her card exists but no frame
+            # stands behind it, so a chip tap stays an ordinary message.
             if not _chat_opening_spicy(telegram_id):
                 return None
             return greeting_service.take_offer(telegram_id, character_id, text)
@@ -15670,14 +15671,16 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
     if uid and not is_custom_character(character_id):
         try:
             from services import greeting_service, lang_guard
+            _spicy = await asyncio.to_thread(_chat_opening_spicy, telegram_id)
             _greeting = await greeting_service.opening(
                 character_id,
-                spicy=await asyncio.to_thread(_chat_opening_spicy, telegram_id),
+                spicy=_spicy,
                 lang=await asyncio.to_thread(lang_guard.lang_for_push, uid, user_info.get('language_code')),
                 name=_character_display_name(character_id))
         except Exception:
             logger.warning('greeting opening failed char=%s', character_id)
             _greeting = None
+            _spicy = False
         if _greeting and _greeting.get('text'):
             # V3.166.4 (Блок 2, owner): the opening is her line and the chips
             # under it — nothing else. The frame comes ONLY after he taps a
@@ -15688,9 +15691,12 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
                                         int(_greeting.get('id') or 0), _greeting.get('buttons') or [],
                                         _greeting.get('reply') or '')
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', _greeting['text'])
+            # ТЗ V3.167.0 §4: romance gets the same card and the same chips, but
+            # «Раздеть за 300 🍑» under them is the spicy door only — in the warm
+            # mode the chips are just his two answers.
             return web.json_response({'ok': True, 'reply': _greeting['text'],
                                       'chips': _greeting.get('buttons') or [],
-                                      'undress_price': EXPLICIT_PHOTO_PEACH_COST})
+                                      'undress_price': EXPLICIT_PHOTO_PEACH_COST if _spicy else 0})
     if uid and scene is None and persona:
         try:
             from services.llm_provider_service import generate_text
@@ -20673,6 +20679,15 @@ async def main():
             logger.info('greeting reply_text filled=%s', filled)
     except Exception:
         logger.exception('greeting reply sync failed')
+    # ТЗ V3.167.0 §4 («одна дверь — романтика»): the warm mode gets its own 15
+    # cards — the same written-once mechanic, chips included, without a hidden
+    # frame behind them. One-time fill, its own marker; his own cards untouched.
+    try:
+        romance = await asyncio.to_thread(greeting_service.sync_romance_seed)
+        if romance:
+            logger.info('greeting romance seed added=%s', romance)
+    except Exception:
+        logger.exception('greeting romance seed failed')
     # V3.55.5: seed the welcome promo shelf (ANNA5 · +5 🍑) — idempotent,
     # fail-silent; the owner manages/toggles it later in «🎟 Промокоды».
     from services import gift_service

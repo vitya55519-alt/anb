@@ -27,21 +27,25 @@ def clean_greetings():
 
 
 def test_seed_has_six_personal_and_fifteen_universal_cards_and_is_idempotent():
-    assert greeting_service.ensure_seed() == 21
+    # V3.167.0 §4: к 21 spicy-строке добавились 15 тёплых — романтика больше не
+    # «пишет сама из OPENING_SCENES», у неё свой сид.
+    assert greeting_service.ensure_seed() == 36
     assert greeting_service.ensure_seed() == 0
     with SessionLocal() as s:
         rows = list(s.scalars(select(CharacterGreeting)))
-    assert len([r for r in rows if r.character_id == 'all']) == 15
+    assert len([r for r in rows if r.character_id == 'all']) == 30
     personal = {r.character_id for r in rows if r.character_id != 'all'}
     assert personal == {'anna_01', 'kamila_01', 'maria_01', 'liza_01', 'lana_01', 'kira_01'}
-    assert all(r.mode == 'spicy' and not r.photo_bytes for r in rows)
+    assert all(not r.photo_bytes for r in rows)
+    assert {r.mode for r in rows} == {'spicy', 'normal'}
     # V3.166.4 (Блок 4): his personal top-6 cards stay text-only, the universal
     # hooks each carry the hidden English frame behind their chips.
     assert all(not r.image_prompt for r in rows if r.character_id != 'all')
     universal = [r for r in rows if r.character_id == 'all']
-    assert all(r.image_prompt and all(c.isascii() for c in r.image_prompt) for r in universal)
+    spicy = [r for r in universal if r.mode == 'spicy']
+    assert all(r.image_prompt and all(c.isascii() for c in r.image_prompt) for r in spicy)
     assert all(len(json.loads(r.buttons_json)) == 2 for r in universal)
-    # every hook ends by asking his consent to see the frame
+    # every hook ends by asking his consent — to see the frame, or to answer her
     assert all(r.message_text.rstrip().endswith('?') for r in universal)
 
 
@@ -57,7 +61,11 @@ def test_opening_uses_heroine_then_universal_and_keeps_normal_fallback():
     universal = asyncio.run(greeting_service.opening('unknown_01', spicy=True))
     assert 'панорамного окна' in personal['text']
     assert universal['text'] and len(universal['buttons']) == 2
-    assert asyncio.run(greeting_service.opening('anna_01', spicy=False)) is None
+    # ТЗ V3.167.0 §4: романтика больше не пустая — свой тёплый набор, те же два
+    # чипа, но без кадра за ними (только тогда её строка не превращается в 18+).
+    warm = asyncio.run(greeting_service.opening('anna_01', spicy=False))
+    assert warm['text'] and len(warm['buttons']) == 2
+    assert warm['starter'] is False and not warm['reply']
 
 
 def test_both_mode_name_substitution_and_starter_flag():
@@ -83,7 +91,8 @@ def test_greeting_endpoint_saves_only_her_line_and_registers_the_tap():
     assert "'assistant', _greeting['text']" in start
     assert "greeting_service.remember_offer" in start
     assert "'chips': _greeting.get('buttons') or []" in start
-    assert "'undress_price': EXPLICIT_PHOTO_PEACH_COST" in start
+    # ТЗ V3.167.0 §4: плашка «Раздеть» — дверь в 18+, в тёплом режиме её нет
+    assert "'undress_price': EXPLICIT_PHOTO_PEACH_COST if _spicy else 0" in start
     assert "media_kind='photo'" not in start
     assert "app.router.add_get('/webapp/starter/{cache_id}', _webapp_starter_photo)" in MAIN
     assert "_webapp_greeting_photo" not in MAIN

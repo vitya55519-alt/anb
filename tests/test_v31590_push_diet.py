@@ -7,8 +7,9 @@
 # донат-пинг — 40%, случайный подарок — 34%, ветка «скучаю» — 24%.
 #
 # Правка: одни ворота (services/push_governor.py) перед каждой такой отправкой.
-# Ночью молчим; если в двухчасовом окне уже было два первых сообщения, третье
-# пропускаем. Новых таблиц нет — окно считается по тем же product_events.
+# Ночью молчим; если в окне уже было три первых сообщения со сканера, четвёртое
+# пропускаем (V3.167.0: окно 90 минут, её ритуальные строки в нём не считаются).
+# Новых таблиц нет — окно считается по тем же product_events.
 
 
 import asyncio
@@ -66,13 +67,19 @@ def test_a_man_asleep_is_not_written_to(monkeypatch):
     assert pg.allow_push(uid, 'Europe/Moscow') == (False, 'night')
 
 
-def test_the_third_first_message_in_one_window_is_one_too_many(monkeypatch):
+def test_the_third_scan_push_in_one_window_is_one_too_many(monkeypatch):
+    # V3.167.0: the window holds three and her two clock-anchored lines are not
+    # in it at all — morning and evening neither spend it nor are stopped by it.
     uid = ensure_user(771590002, 'Тест')
     monkeypatch.setattr(pg, 'local_hour', lambda tz: 9)
     assert pg.pushes_in_window(uid) == 0
     _events(uid, ['ritual_morning_sent', 'life_event_sent'])
-    assert pg.pushes_in_window(uid) == 2
+    assert pg.pushes_in_window(uid) == 1
+    assert pg.allow_push(uid, 'Europe/Moscow') == (True, '')
+    _events(uid, ['proactive_sent', 'day1_hook_sent', 'whats_new_sent_ok'])
+    assert pg.pushes_in_window(uid) == 4
     assert pg.allow_push(uid, 'Europe/Moscow') == (False, 'burst')
+    assert pg.allow_push(uid, 'Europe/Moscow', 'ritual') == (True, '')
 
 
 def test_her_words_under_the_photo_are_not_a_second_message(monkeypatch):
@@ -85,18 +92,20 @@ def test_her_words_under_the_photo_are_not_a_second_message(monkeypatch):
     assert not any(n.startswith('chat_') or n.startswith('webapp_') for n in pg.PUSH_EVENTS)
 
 
-def test_the_diet_is_two_knobs_not_a_wheel(monkeypatch):
+def test_the_timing_is_two_knobs_not_a_wheel(monkeypatch):
+    # V3.167.0 split the DAY by rail, but the timing stays two numbers: how
+    # long the window is and how many scan pushes may land in it.
     uid = ensure_user(771590004, 'Тест')
     monkeypatch.setattr(pg, 'local_hour', lambda tz: 9)
     monkeypatch.setattr(pg, 'PUSH_MAX_IN_WINDOW', 0)
     monkeypatch.setattr(pg, 'PUSH_MAX_PER_DAY', 0)   # V3.162.0 added a third knob
-    _events(uid, list(pg.PUSH_EVENTS[:4]))
+    _events(uid, [n for n in pg.SPACED_PUSHES[:4]])
     assert pg.allow_push(uid, 'Europe/Moscow') == (True, '')
     monkeypatch.setattr(pg, 'PUSH_MAX_IN_WINDOW', 2)
     monkeypatch.setattr(pg, 'PUSH_SPACING_WINDOW_MINUTES', 0)
     assert pg.pushes_in_window(uid) == 0
     assert pg.allow_push(uid, 'Europe/Moscow') == (True, '')
-    assert PUSH_SPACING_WINDOW_MINUTES == 120 and PUSH_MAX_IN_WINDOW == 2
+    assert PUSH_SPACING_WINDOW_MINUTES == 90 and PUSH_MAX_IN_WINDOW == 3
 
 
 def test_every_rail_that_writes_first_passes_the_gate():

@@ -75,6 +75,6 @@ def test_scheduler_registers_weekly_reminder():
     assert 'donation_service.due_donation_pings' in body
     assert 'donation_service.mark_donation_ping_sent' in body
     assert "track_event(uid, 'donation_reminder_sent'" in body
-    # registered behind the enabled+link guard
+    # registered behind the enabled+link guard (V3.167.0: и по имени в PUSH_RAILS)
     assert "scheduler.add_job(_donation_reminder,'interval',hours=12,args=[bot],id='donation_reminder',replace_existing=True)" in SCHED
-    assert 'if DONATION_REMINDER_ENABLED and DONATION_LINK:' in SCHED
+    assert "if push_rail_on('donation_reminder') and DONATION_REMINDER_ENABLED and DONATION_LINK:" in SCHED

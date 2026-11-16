@@ -30,7 +30,8 @@ REMINDERS = SCHEDULER[SCHEDULER.index('async def _reminders(bot):'):SCHEDULER.in
 
 
 def test_ghost_window_knob():
-    assert 'PROACTIVE_MAX_INACTIVE_DAYS = max(3, min(30, int(os.getenv("PROACTIVE_MAX_INACTIVE_DAYS", "10"))))' in CONFIG
+    # V3.167.0: 10 дней ловили каждого, кто вернулся на 11–20 день, — окно сдвинуто на 21
+    assert 'PROACTIVE_MAX_INACTIVE_DAYS = max(3, min(30, int(os.getenv("PROACTIVE_MAX_INACTIVE_DAYS", "21"))))' in CONFIG
     assert 'PROACTIVE_MAX_INACTIVE_DAYS,' in SCHEDULER
     assert 'ghost_cutoff=now-dt.timedelta(days=PROACTIVE_MAX_INACTIVE_DAYS)' in PROACTIVE
     assert 'User.last_active_at>=ghost_cutoff' in PROACTIVE

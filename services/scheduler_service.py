@@ -12,7 +12,9 @@ from config import (
     LIFE_EVENTS_ENABLED, LIFE_EVENTS_MAX_PER_DAY, LIFE_EVENTS_SCAN_MINUTES,
     LIFE_EVENTS_ACTIVE_WINDOW_DAYS, LIFE_EVENTS_QUIET_START_HOUR, LIFE_EVENTS_QUIET_END_HOUR,
     LIFE_EVENTS_SILENCE_HOURS,
-    MARKETING_PUSH_ENABLED,
+    LIFE_EVENTS_YOUNG_ACCOUNT_HOURS, LIFE_EVENTS_YOUNG_SILENCE_HOURS,
+    LIFE_EVENTS_YOUNG_MAX_PER_DAY,
+    MARKETING_PUSH_ENABLED, push_rail_on,
 )
 from services.db import SessionLocal
 from models.app_models import User, CharacterState
@@ -894,7 +896,10 @@ async def _ritual_line_push(bot, uid: int, tg_id: int, char_id: str, kind: str, 
     the gate held it back (night, burst, or his two are already out), and no
     slot is burned: the next scan retries inside the window."""
     from services.push_governor import allow_push
-    ok, reason = await asyncio.to_thread(allow_push, uid, tz)
+    # V3.167.0: her two lines pay for themselves — the ritual rail spends its
+    # own budget and never the marketing one, and the burst window skips it
+    # because morning and evening are anchored to the clock, not to each other.
+    ok, reason = await asyncio.to_thread(allow_push, uid, tz, 'ritual')
     if not ok:
         logger.info('ritual line held user=%s kind=%s reason=%s', tg_id, kind, reason)
         return False
@@ -1392,24 +1397,32 @@ async def _life_events(bot):
         )).all()
         snapshot = [(u.id, int(u.telegram_id), u.name or 'ты',
                      (u.selected_character or CHARACTER_ID), u.timezone,
-                     getattr(u, 'language_code', None)) for u in users]
+                     getattr(u, 'language_code', None),
+                     (now - u.created_at).total_seconds() / 3600.0 if u.created_at else 1e9)
+                    for u in users]
     today_key = now.date().isoformat()
-    for uid, tg_id, _name, char_id, tz, lang in snapshot:
+    for uid, tg_id, _name, char_id, tz, lang, account_hours in snapshot:
         try:
             if not has_accepted(tg_id):
                 continue
             local_hour = _user_local_hour_simple(tz)
             if _in_quiet_hours(local_hour):
                 continue
+            # V3.167.0 (owner): the first three days are the whole funnel — for
+            # a man younger than 72 hours the rail runs hotter, an older one
+            # keeps the calm profile.
+            young = account_hours < LIFE_EVENTS_YOUNG_ACCOUNT_HOURS
+            per_day = LIFE_EVENTS_YOUNG_MAX_PER_DAY if young else LIFE_EVENTS_MAX_PER_DAY
             part = _daypart(local_hour)
             prior = _life_events_store.get(tg_id) or {}
             slots = list(prior.get('slots') or []) if prior.get('date') == today_key else []
-            if part in slots or len(slots) >= LIFE_EVENTS_MAX_PER_DAY:
+            if part in slots or len(slots) >= per_day:
                 continue
             # V3.151.0: owner ТЗ (Часть 1, п.1) — «подмес» is banned. Her day is
             # a return push, not a third voice in a live dialog: while he is
             # still writing, nothing from scheduler_service enters the chat.
-            if silence_hours(uid, char_id) < LIFE_EVENTS_SILENCE_HOURS:
+            silence_need = LIFE_EVENTS_YOUNG_SILENCE_HOURS if young else LIFE_EVENTS_SILENCE_HOURS
+            if silence_hours(uid, char_id) < silence_need:
                 continue
             # Sprinkle sends across the scan window instead of firing at the
             # boundary for everyone at once (also keeps the LLM load flat).
@@ -1910,9 +1923,15 @@ def start_scheduler(bot):
     # «что нового», 847 random gifts, 822 «останешься?», 694 story hooks, 398
     # day-1 pings. From now on only two things may start a conversation: her
     # morning/evening text line and the alarm the man set himself.
-    # MARKETING_PUSH_ENABLED=true brings every other rail back, no code change.
+    # V3.167.0 (owner 16.11 «разрешаю по пушам»): the rails the 13 Nov dump
+    # never actually measured — her life, the rituals, day-1, the daily gift,
+    # scenario cards, the first minutes — come back through PUSH_RAILS, each by
+    # its own name. The condemned noise (compatibility forecast, random gifts,
+    # partner and donation pings) is not in the default list and stays dark
+    # until he switches it on. MARKETING_PUSH_ENABLED=false still shuts the
+    # whole block; rituals ride PUSH_RAILS alone.
     scheduler.add_job(_reminders,'interval',seconds=30,args=[bot],id='reminders',replace_existing=True)
-    if RITUALS_ENABLED:
+    if push_rail_on('rituals') and RITUALS_ENABLED:
         scheduler.add_job(_rituals,'interval',minutes=30,args=[bot],id='rituals',replace_existing=True)
     # books, moods, bonuses he asked for and the admin screens — not first writes
     scheduler.add_job(_autopay_scan,'interval',minutes=15,args=[bot],id='autopay_scan',replace_existing=True)
@@ -1927,32 +1946,46 @@ def start_scheduler(bot):
     # V3.92.0: «🔥 Девушка дня» channel post for the admins at 09:00 MSK.
     scheduler.add_job(_girl_of_day,'cron',hour=6,minute=0,args=[bot],id='girl_of_day',replace_existing=True)
     if MARKETING_PUSH_ENABLED:
-        scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
+        if push_rail_on('proactive'):
+            scheduler.add_job(_proactive,'interval',hours=1,args=[bot],id='proactive',replace_existing=True)
         # V3.44.16: the day-1 hook scans often but sends at most once per user.
-        scheduler.add_job(_day1_hook,'interval',minutes=15,args=[bot],id='day1_hook',replace_existing=True)
-        scheduler.add_job(_first_offer,'interval',minutes=10,args=[bot],id='first_offer',replace_existing=True)
-        scheduler.add_job(_trial_followup,'interval',minutes=15,args=[bot],id='trial_followup',replace_existing=True)
+        if push_rail_on('day1_hook'):
+            scheduler.add_job(_day1_hook,'interval',minutes=15,args=[bot],id='day1_hook',replace_existing=True)
+        if push_rail_on('first_offer'):
+            scheduler.add_job(_first_offer,'interval',minutes=10,args=[bot],id='first_offer',replace_existing=True)
+        if push_rail_on('trial_followup'):
+            scheduler.add_job(_trial_followup,'interval',minutes=15,args=[bot],id='trial_followup',replace_existing=True)
         # V3.111.0: one honest offer after 150+ messages without Premium.
-        scheduler.add_job(_heavy_offer,'interval',minutes=30,args=[bot],id='heavy_offer',replace_existing=True)
+        if push_rail_on('heavy_offer'):
+            scheduler.add_job(_heavy_offer,'interval',minutes=30,args=[bot],id='heavy_offer',replace_existing=True)
         # V3.129.0: «что у нас нового» for the men who left (once per round)
-        scheduler.add_job(_whats_new,'interval',minutes=30,args=[bot],id='whats_new',replace_existing=True)
+        if push_rail_on('whats_new'):
+            scheduler.add_job(_whats_new,'interval',minutes=30,args=[bot],id='whats_new',replace_existing=True)
         # V3.104.0: next-day message after a payment, and «останешься?» before the end.
-        scheduler.add_job(_paid_day1,'interval',minutes=15,args=[bot],id='paid_day1',replace_existing=True)
-        scheduler.add_job(_renewal_care,'interval',minutes=15,args=[bot],id='renewal_care',replace_existing=True)
-        scheduler.add_job(_first_minutes,'interval',minutes=3,args=[bot],id='first_minutes',replace_existing=True)
+        if push_rail_on('paid_day1'):
+            scheduler.add_job(_paid_day1,'interval',minutes=15,args=[bot],id='paid_day1',replace_existing=True)
+        if push_rail_on('renewal_care'):
+            scheduler.add_job(_renewal_care,'interval',minutes=15,args=[bot],id='renewal_care',replace_existing=True)
+        if push_rail_on('first_minutes'):
+            scheduler.add_job(_first_minutes,'interval',minutes=3,args=[bot],id='first_minutes',replace_existing=True)
         # V3.75.0: scenario cards — scans often, one card a day per user at most.
-        scheduler.add_job(_scenario_cards,'interval',minutes=20,args=[bot],id='scenario_cards',replace_existing=True)
-        if DONATION_REMINDER_ENABLED and DONATION_LINK:
+        if push_rail_on('scenario_cards'):
+            scheduler.add_job(_scenario_cards,'interval',minutes=20,args=[bot],id='scenario_cards',replace_existing=True)
+        if push_rail_on('donation_reminder') and DONATION_REMINDER_ENABLED and DONATION_LINK:
             scheduler.add_job(_donation_reminder,'interval',hours=12,args=[bot],id='donation_reminder',replace_existing=True)
         # V3.62.13: partner-program reminder (real-money referral payouts).
-        scheduler.add_job(_partner_nudge,'interval',hours=2,args=[bot],id='partner_nudge',replace_existing=True)
+        if push_rail_on('partner_nudge'):
+            scheduler.add_job(_partner_nudge,'interval',hours=2,args=[bot],id='partner_nudge',replace_existing=True)
         # V3.44.2: new retention jobs
-        scheduler.add_job(_random_gifts,'interval',hours=6,args=[bot],id='random_gifts',replace_existing=True)
-        scheduler.add_job(_daily_compatibility,'interval',hours=12,args=[bot],id='daily_compatibility',replace_existing=True)
+        if push_rail_on('random_gifts'):
+            scheduler.add_job(_random_gifts,'interval',hours=6,args=[bot],id='random_gifts',replace_existing=True)
+        if push_rail_on('daily_compatibility'):
+            scheduler.add_job(_daily_compatibility,'interval',hours=12,args=[bot],id='daily_compatibility',replace_existing=True)
         # V3.45.0: ежедневный подарок — раз в день в 12:00
-        scheduler.add_job(_daily_gift,'cron',hour=12,minute=0,args=[bot],id='daily_gift',replace_existing=True)
+        if push_rail_on('daily_gift'):
+            scheduler.add_job(_daily_gift,'cron',hour=12,minute=0,args=[bot],id='daily_gift',replace_existing=True)
         # V3.52.0: «Жизнь без тебя» — scans often, but the persisted slot log caps each
         # user to LIFE_EVENTS_MAX_PER_DAY spontaneous messages per day.
-        if LIFE_EVENTS_ENABLED:
+        if push_rail_on('life_events') and LIFE_EVENTS_ENABLED:
             scheduler.add_job(_life_events,'interval',minutes=LIFE_EVENTS_SCAN_MINUTES,args=[bot],id='life_events',replace_existing=True)
     if not scheduler.running: scheduler.start()

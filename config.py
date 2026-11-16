@@ -192,10 +192,14 @@ GIFT_AUTO_PHOTO_MIN_PEACHES = max(0, int(os.getenv("GIFT_AUTO_PHOTO_MIN_PEACHES"
 INTERRUPTS_ENABLED = os.getenv("INTERRUPTS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 INTERRUPT_EVERY_MIN = max(2, int(os.getenv("INTERRUPT_EVERY_MIN", "10")))
 INTERRUPT_EVERY_MAX = max(INTERRUPT_EVERY_MIN, int(os.getenv("INTERRUPT_EVERY_MAX", "15")))
-INTERRUPT_MAX_PER_DAY = max(0, min(5, int(os.getenv("INTERRUPT_MAX_PER_DAY", "1"))))
-# До третьего уровня «секрет» ещё нет: вас никто не ждёт, и событие выглядело бы
-# как спам от скрипта.
-INTERRUPT_MIN_LEVEL = max(1, min(10, int(os.getenv("INTERRUPT_MIN_LEVEL", "3"))))
+# V3.167.0 (owner): two a day — the перебивка is the cheapest adrenaline in the
+# product and it only exists inside a dialog he is already in.
+INTERRUPT_MAX_PER_DAY = max(0, min(5, int(os.getenv("INTERRUPT_MAX_PER_DAY", "2"))))
+# Was «до третьего уровня секрет ещё нет». The 16.11 dump says the opposite:
+# most men never reach level 3, so the rail was tuned for a reader who does not
+# exist. The wait of INTERRUPT_EVERY_MIN (10) messages still keeps it off his
+# first lines.
+INTERRUPT_MIN_LEVEL = max(1, min(10, int(os.getenv("INTERRUPT_MIN_LEVEL", "2"))))
 INTERRUPT_PEACH_COST = max(0, int(float(os.getenv("INTERRUPT_PEACH_COST", "0.3")) * PEACH_SCALE))
 # V3.155.0: owner ТЗ (Фогель, Модуль 3) — «Эмоциональные якоря». Каждые
 # ANCHOR_EVERY_MESSAGES его сообщений фоновый промпт выжимает из диалога ОДИН
@@ -731,7 +735,10 @@ RETENTION_MAX_NUDGES = max(1, min(10, int(os.getenv("RETENTION_MAX_NUDGES", "5")
 # retention/LLM pushes at all (a real return re-arms the ladder). Before this,
 # every failed send (user blocked the bot) left the user eligible again the
 # next hour, so the hourly scan re-burned the proactive LLM budget on ghosts.
-PROACTIVE_MAX_INACTIVE_DAYS = max(3, min(30, int(os.getenv("PROACTIVE_MAX_INACTIVE_DAYS", "10"))))
+# V3.167.0: 10 days threw away every man who came back on day 11-20 — the dump
+# shows the return ladder was already dead for them. The ghost window stays
+# (blocked users and true ghosts still cost nothing), it only sits further out.
+PROACTIVE_MAX_INACTIVE_DAYS = max(3, min(30, int(os.getenv("PROACTIVE_MAX_INACTIVE_DAYS", "21"))))
 # The day-1 hook: a special "your bonus wheel is waiting" push for YOUNG
 # accounts that went silent — D1 was 5%, the wheel gives a concrete reason
 # to open the app on day 2.
@@ -745,7 +752,7 @@ RITUAL_MORNING_START_HOUR = max(0, min(23, int(os.getenv("RITUAL_MORNING_START_H
 RITUAL_MORNING_END_HOUR = max(0, min(23, int(os.getenv("RITUAL_MORNING_END_HOUR", "10"))))
 RITUAL_EVENING_START_HOUR = max(0, min(23, int(os.getenv("RITUAL_EVENING_START_HOUR", "20"))))
 RITUAL_EVENING_END_HOUR = max(0, min(23, int(os.getenv("RITUAL_EVENING_END_HOUR", "21"))))
-RITUAL_MAX_INACTIVE_DAYS = max(1, int(os.getenv("RITUAL_MAX_INACTIVE_DAYS", "7")))
+RITUAL_MAX_INACTIVE_DAYS = max(1, int(os.getenv("RITUAL_MAX_INACTIVE_DAYS", "14")))
 
 # V3.52.0: «Жизнь без тебя» — proactive, personality-grounded life moments she
 # sends on her own (a slice of her day, a memory callback, an open loop), for the
@@ -753,16 +760,27 @@ RITUAL_MAX_INACTIVE_DAYS = max(1, int(os.getenv("RITUAL_MAX_INACTIVE_DAYS", "7")
 # nudge: it only targets recently-active, opted-in users. Photos come from the
 # existing media pool only (never a fresh provider render) → near-zero extra cost.
 LIFE_EVENTS_ENABLED = os.getenv("LIFE_EVENTS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
-LIFE_EVENTS_MAX_PER_DAY = max(0, min(4, int(os.getenv("LIFE_EVENTS_MAX_PER_DAY", "2"))))
+# V3.167.0 (owner 16.11 «разрешаю по пушам»): life moments get their own budget
+# of three a day instead of eating the two ritual lines that used to be all she
+# was allowed to write.
+LIFE_EVENTS_MAX_PER_DAY = max(0, min(4, int(os.getenv("LIFE_EVENTS_MAX_PER_DAY", "3"))))
 LIFE_EVENTS_SCAN_MINUTES = max(10, min(120, int(os.getenv("LIFE_EVENTS_SCAN_MINUTES", "20"))))
 # Only users active within this window get life events (reward showing up, not
 # chasing the churned — that path is _proactive/retention).
-LIFE_EVENTS_ACTIVE_WINDOW_DAYS = max(1, int(os.getenv("LIFE_EVENTS_ACTIVE_WINDOW_DAYS", "7")))
+# V3.167.0: 7 days cut off every man who came back on day 8-30; the window now
+# matches the month the funnel is measured on.
+LIFE_EVENTS_ACTIVE_WINDOW_DAYS = max(1, int(os.getenv("LIFE_EVENTS_ACTIVE_WINDOW_DAYS", "30")))
 # V3.151.0: owner ТЗ (Часть 1, п.1) — «жёлтый цветок» must never cut into a live
 # dialog. A life event is a return push, so it waits for this many hours of HIS
-# own silence first (the ТЗ asks for 4–12; the upper bound stays
-# LIFE_EVENTS_ACTIVE_WINDOW_DAYS).
-LIFE_EVENTS_SILENCE_HOURS = max(1, min(24, int(os.getenv("LIFE_EVENTS_SILENCE_HOURS", "4"))))
+# own silence first. V3.167.0 (owner «возвращаем»): 4–12 hours was a second
+# visit, not a follow-up — two hours of silence is enough to be alone.
+LIFE_EVENTS_SILENCE_HOURS = max(1, min(24, int(os.getenv("LIFE_EVENTS_SILENCE_HOURS", "2"))))
+# V3.167.0: a man younger than 72 hours is the one the funnel is actually about
+# — for him the rail runs hotter: 1.5 hours of silence, up to four moments a
+# day. Older accounts keep the calm profile above.
+LIFE_EVENTS_YOUNG_ACCOUNT_HOURS = max(1, int(os.getenv("LIFE_EVENTS_YOUNG_ACCOUNT_HOURS", "72")))
+LIFE_EVENTS_YOUNG_SILENCE_HOURS = max(0.5, min(24, float(os.getenv("LIFE_EVENTS_YOUNG_SILENCE_HOURS", "1.5"))))
+LIFE_EVENTS_YOUNG_MAX_PER_DAY = max(1, min(4, int(os.getenv("LIFE_EVENTS_YOUNG_MAX_PER_DAY", "4"))))
 # Never write during the user's local quiet hours [start, end) (wrap-aware).
 LIFE_EVENTS_QUIET_START_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_START_HOUR", "23"))))
 LIFE_EVENTS_QUIET_END_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_END_HOUR", "7"))))
@@ -772,18 +790,37 @@ LIFE_EVENTS_PHOTO_CHANCE = max(0.0, min(1.0, float(os.getenv("LIFE_EVENTS_PHOTO_
 # V3.159.0: диета пушей (дамп 13.11). Ночное окно берём то же, что и у «жизни
 # без тебя», — PUSH не плодим константами; считается только пауза между
 # первыми сообщениями: сколько их влезло в одно окно и сколько всего в сутки.
-PUSH_SPACING_WINDOW_MINUTES = max(0, min(360, int(os.getenv("PUSH_SPACING_WINDOW_MINUTES", "120"))))
-PUSH_MAX_IN_WINDOW = max(0, min(5, int(os.getenv("PUSH_MAX_IN_WINDOW", "2"))))
+PUSH_SPACING_WINDOW_MINUTES = max(0, min(360, int(os.getenv("PUSH_SPACING_WINDOW_MINUTES", "90"))))
+PUSH_MAX_IN_WINDOW = max(0, min(5, int(os.getenv("PUSH_MAX_IN_WINDOW", "3"))))
 # V3.162.0: owner — «два пуша всего в день, не надо вот эти остальные херачить».
-# His own calendar day on his own clock: she writes first twice — morning and
-# evening — and nothing else ever starts a conversation.
+# V3.167.0 (owner 16.11 «разрешаю по пушам»): the day stops being ONE bucket.
+# Counting everything together is what made «жизнь без тебя» eat the budget and
+# strangle her morning and evening line — so every rail family now spends its
+# own money: PUSH_MAX_PER_DAY is the marketing rails, the rituals and the
+# scenario card have their own caps, and the life budget stays
+# LIFE_EVENTS_MAX_PER_DAY (one knob, not a second copy of it).
 PUSH_MAX_PER_DAY = max(0, min(5, int(os.getenv("PUSH_MAX_PER_DAY", "2"))))
-# V3.162.0: the marketing rails go dark (owner review of the 13.11 dump; over
-# the last week alone: 2149 «жизнь без тебя», 1250 прогноз совместимости —
-# «это бред», 1174 «что нового», 847 случайный подарок, 822 «останешься?»,
-# 694 хук истории, 398 день-1). Her two lines stay. true brings them back
-# without touching the code.
-MARKETING_PUSH_ENABLED = os.getenv("MARKETING_PUSH_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+RITUAL_BUDGET_PER_DAY = max(0, min(5, int(os.getenv("RITUAL_BUDGET_PER_DAY", "2"))))
+SCENARIO_BUDGET_PER_DAY = max(0, min(5, int(os.getenv("SCENARIO_BUDGET_PER_DAY", "1"))))
+# V3.162.0: the marketing rails went dark (owner review of the 13.11 dump).
+# V3.167.0 (owner 16.11 «разрешаю по пушам»): they come back, but one by one —
+# the 13.11 dump only condemned the noise rails (compatibility forecast «это
+# бред», «что нового», random gifts, «останешься?»), and switching the master
+# flag alone would have dragged those in with the retention rails that were
+# never given a chance. PUSH_RAILS names what may start a conversation;
+# MARKETING_PUSH_ENABLED stays as the kill switch: false = nothing but her two
+# ritual lines, whatever the list says.
+MARKETING_PUSH_ENABLED = os.getenv("MARKETING_PUSH_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+PUSH_RAILS_DEFAULT = 'life_events,rituals,day1_hook,daily_gift,scenario_cards,first_minutes'
+PUSH_RAILS = {r.strip().lower() for r in os.getenv("PUSH_RAILS", PUSH_RAILS_DEFAULT).split(',') if r.strip()}
+
+
+def push_rail_on(name: str) -> bool:
+    """Is this scheduler rail named in PUSH_RAILS? Rituals are gated by the
+    list alone; MARKETING_PUSH_ENABLED stays the master switch of everything
+    that was dark since V3.162.0, so flipping it off never silences her morning
+    and evening line — that one is his, not the marketings'."""
+    return str(name or '').strip().lower() in PUSH_RAILS
 
 # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации» + спон-фото. Her day keeps the
 # life-event rail, but now and then the moment ends on a photo she is about to

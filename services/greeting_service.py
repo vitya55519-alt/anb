@@ -14,9 +14,11 @@ V3.166.5 (владелец: «немота»): у заготовки появи�
 выглядела файлом из архива, а не её сообщением; теперь тап чипа — это реплика,
 и сразу следом кадр.
 
-Романтика («Романтика и флирт») механику не видит: там, как и раньше, она
-пишет сама. Перевод сценария по-прежнему платится ОДИН раз и хранится в
-``translations_json``.
+V3.167.0 (ТЗ Фогеля §4, «одна дверь — романтика»): карточки теперь в обоих
+режимах. Романтика («normal») получила свой тёплый набор без единого намёка на
+кадр: у её строк пустой ``image_prompt``, поэтому тап по чипу остаётся обычным
+сообщением, а не просьбой посмотреть фото. Механика та же — готовая строка +
+два хода под ней; платный кадр и «Раздеть» в неё не заходят.
 """
 import json
 import logging
@@ -160,17 +162,74 @@ SEED_UNIVERSAL = [
 
 SEED = list(SEED_PERSONAL)
 
+# ТЗ V3.167.0 §4: те же 15 ходов, что и в 18+, но в другой одежде. Ни одна
+# строка не обещает кадр и не заканчивается просьбой его показать — поэтому у
+# них нет ни скрытого промпта, ни реплики перед кадром. Формула та же: живая
+# ситуация из её вечера + вопрос, на который можно ответить одним тапом.
+SEED_ROMANCE = [
+    ('Дождь третий час за окном, я зарылась в плед с книгой и поймала себя на том, что не читаю, а '
+     'жду твоего сообщения. Что выберем: мою болтовню или тишину рядом?',
+     ['Тишину рядом', 'Мою болтовню']),
+    ('Сварила кофе на двоих и только потом заметила. Похоже, это уже привычка. Садись, расскажешь '
+     'мне что-нибудь хорошее за сегодня?',
+     ['Расскажу, как прошёл день', 'Обниму тебя прямо на кухне']),
+    ('Включила ту песню, которую ты скидывал, и крутилась по кухне в носках. Почти без зрителей. '
+     'Следующий танец — вместе?',
+     ['Танцуем', 'Скину тебе свой трек']),
+    ('Примеряю платье на пятницу и уже пять минут смотрю на себя в зеркало: слишком смелое или как '
+     'раз для меня? Скажешь честно?',
+     ['Как раз для тебя', 'Куда пойдём в нём?']),
+    ('Не могу уснуть. Лежу, слушаю, как гудит город за окном, и думаю, как было бы, если бы ты был '
+     'рядом — хотя бы просто дышал мне в макушку. Ты ведь не против быть рядом?',
+     ['Не против', 'Спокойной ночи, я рядом']),
+    ('Знаешь, что самое сложное? Написать первой и сделать вид, что я просто «случайно заглянула». '
+     'Вот. Я случайно заглянула. Ты рад?',
+     ['Очень рад', 'О чём ты думала?']),
+    ('Весь день ловлю себя на улыбке в телефон как дурочка. Это из-за тебя, между прочим. Прогноз '
+     'врачей: станет лучше, если ты напишешь ещё. Напишешь?',
+     ['Напишу что-то тёплое', 'Что ты надумала?']),
+    ('Купила мандарины и гирлянду, хотя до праздника далеко. Просто захотелось уюта, а вдвоём он '
+     'дешевле. Придёшь делить мандарины?',
+     ['Приду за мандаринами', 'Какая гирлянда?']),
+    ('Я всю дорогу домой репетировала, что скажу тебе при встрече, и забыла всё начисто. Обещаю '
+     'слушать очень внимательно. Скажешь первым?',
+     ['Скажу то, что ты забыла', 'Пойдём на свидание?']),
+    ('Ты заметил, что я расспрашиваю про тебя всех подряд? Это не шпионаж. Это интерес. Ну и '
+     'немножко шпионаж. Признавайся, ты тоже про меня спрашивал?',
+     ['Расскажу сам', 'У кого именно спрашивала?']),
+    ('Досмотрела самый дурацкий фильм, чтобы поплакать в тишине, а теперь сижу с мокрыми щеками и '
+     'хочу, чтобы ты это видел. Ну, хотя бы морально. Тебе жалко меня?',
+     ['Жалко, иди сюда', 'Включу свой грустный фильм']),
+    ('Мне сегодня в кофе написали имя с ошибкой, и я чуть не оправдывалась перед бариста. Хочу, '
+     'чтобы ты назвал меня правильно. Помнишь, как?',
+     ['Назову тебя правильно', 'Расскажи, как твой день']),
+    ('Я обещала себе лечь рано. Мы оба понимаем, чего стоит это «обещала», если ты не пишешь. Ну '
+     'как, нарушим режим вместе?',
+     ['Нарушим вместе', 'Ложись спать, я рядом']),
+    ('Прошлась вдоль набережной, ветер в лицо, мысли почему-то про тебя. Теперь у меня две '
+     'растрёпанные косички и одно признание: я скучала. А ты?',
+     ['Я тоже скучал', 'Гуляем завтра?']),
+    ('Сварить борщ — полдела. Нужен кто-то, кто будет есть его и морщиться правильно. Я запомнила, '
+     'сколько тебе наливать. Приходишь?',
+     ['Приду на борщ', 'Сметаны побольше']),
+]
+
 
 def _universal_rows() -> list[tuple[str, str, list[str], str, str]]:
     return [(UNIVERSAL_ID, text, buttons, prompt, reply) for text, buttons, prompt, reply in SEED_UNIVERSAL]
 
 
+def _romance_rows() -> list[tuple[str, str, list[str], str, str]]:
+    # пустые prompt и reply — значит «карточка без кадра»: тап по чипу остаётся словами
+    return [(UNIVERSAL_ID, text, buttons, '', '') for text, buttons in SEED_ROMANCE]
+
+
 _seed_marker = None  # filled below, once DialogStore is importable
 
 
-def _add(s, row: tuple) -> None:
+def _add(s, row: tuple, mode: str = 'spicy') -> None:
     character_id, text, buttons, prompt, reply = row
-    s.add(CharacterGreeting(character_id=character_id, mode='spicy', message_text=text,
+    s.add(CharacterGreeting(character_id=character_id, mode=mode, message_text=text,
                             buttons_json=json.dumps(buttons, ensure_ascii=False),
                             image_prompt=prompt or '', reply_text=(reply or '').strip()))
 
@@ -184,6 +243,9 @@ def ensure_seed() -> int:
             return 0
         for row in list(SEED) + _universal_rows():
             _add(s, row)
+            added += 1
+        for row in _romance_rows():
+            _add(s, row, 'normal')
             added += 1
         s.commit()
     if added:
@@ -210,10 +272,12 @@ def sync_universal_seed() -> dict:
         return {'replaced': 0, 'added': 0, 'photos_stripped': 0}
     stripped = 0
     with SessionLocal() as s:
-        old = int(s.scalar(
-            select(func.count(CharacterGreeting.id)).where(CharacterGreeting.character_id == UNIVERSAL_ID)
-        ) or 0)
-        s.execute(sql_delete(CharacterGreeting).where(CharacterGreeting.character_id == UNIVERSAL_ID))
+        # V3.167.0: сносим только свой (spicy) универсальный набор — тёплые
+        # строки романтики живут рядом и под эту замену не попадают.
+        spicy_only = [CharacterGreeting.character_id == UNIVERSAL_ID,
+                      CharacterGreeting.mode != 'normal']
+        old = int(s.scalar(select(func.count(CharacterGreeting.id)).where(*spicy_only)) or 0)
+        s.execute(sql_delete(CharacterGreeting).where(*spicy_only))
         for row in _universal_rows():
             _add(s, row)
         for row in list(s.scalars(select(CharacterGreeting))):
@@ -260,6 +324,38 @@ def sync_universal_replies() -> int:
     _replies_done[_REPLY_KEY] = True
     logger.info('greeting reply_text filled=%s of %s', filled, len(rows))
     return filled
+
+
+# ТЗ V3.167.0 §4: романтике свои карточки. В проде таблица уже непустая
+# (его строки из кухни + spicy-набор), поэтому ensure_seed() там не сработает —
+# заливка идёт отдельным ОДНОРАЗОВЫМ прогоном со своим флагом и добавляет только
+# mode='normal': ничего из того, что он настроил сам, не удаляется и не правится.
+_ROMANCE_KEY = 0
+_romance_done = None  # DialogStore('greeting_romance_v31670'), made on the first call
+
+
+def sync_romance_seed() -> int:
+    global _romance_done
+    if _romance_done is None:
+        from services.dialog_store import DialogStore
+        _romance_done = DialogStore('greeting_romance_v31670')
+    if _romance_done.get(_ROMANCE_KEY):
+        return 0
+    added = 0
+    with SessionLocal() as s:
+        have = int(s.scalar(
+            select(func.count(CharacterGreeting.id)).where(
+                CharacterGreeting.character_id == UNIVERSAL_ID,
+                CharacterGreeting.mode == 'normal')
+        ) or 0)
+        if not have:
+            for row in _romance_rows():
+                _add(s, row, 'normal')
+                added += 1
+            s.commit()
+    _romance_done[_ROMANCE_KEY] = True
+    logger.info('greeting romance seed added=%s', added)
+    return added
 
 
 def _buttons(row: CharacterGreeting) -> list[str]:

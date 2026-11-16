@@ -2,7 +2,8 @@
 
 Часть 1 (техническая сырость):
 1. фоновая «будтовуха» life_event не подмешивается в живой диалог — пуш только
-   после того, как замолчал он (LIFE_EVENTS_SILENCE_HOURS, по умолчанию 4 часа);
+   после того, как замолчал он (LIFE_EVENTS_SILENCE_HOURS; V3.167.0 — 2 часа,
+   1,5 для аккаунта младше 72 часов);
 2. один ответ модели = одна реплика, не 2–3 пузыря (хук «two» убран, правило в
    промпте, поверх карточки splitBubbles не работает);
 3. THOUGHT/MESSAGE парсятся и рисуются: в приложении 💭 карточка (розовый
@@ -210,10 +211,13 @@ def test_silence_hours_measures_his_last_line():
 
 
 def test_life_push_waits_for_the_silence_gate():
-    assert LIFE_EVENTS_SILENCE_HOURS >= 4
+    # V3.167.0: the gate dropped 4→2 hours (and 1.5 for a three-day account) —
+    # it still has to be HIS silence that opens the rail, not a live dialog.
+    assert LIFE_EVENTS_SILENCE_HOURS >= 2
     body = SCHED[SCHED.index('async def _life_events'):]
     body = body[:body.index('\nasync def ')]
-    assert 'silence_hours(uid, char_id) < LIFE_EVENTS_SILENCE_HOURS' in body
+    assert 'silence_hours(uid, char_id) < silence_need' in body
+    assert 'silence_need = LIFE_EVENTS_YOUNG_SILENCE_HOURS if young else LIFE_EVENTS_SILENCE_HOURS' in body
     assert body.index('silence_hours(uid, char_id)') < body.index('await build_life_moment')
 
 
