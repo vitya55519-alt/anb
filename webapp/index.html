@@ -4527,6 +4527,46 @@ async function requestChatOpener(characterId) {
   box.innerHTML = html || `<div class="chat-empty">${esc(L.empty_chat)}</div>`;
   renderChatHints(data && data.chips, data && data.undress_price);
   box.scrollTop = box.scrollHeight;
+  // ТЗ V3.167.3 §3: её открывающая строка на экране — начинаем смотреть, не
+  // дописала ли она сама, пока он молчит.
+  if (reply) {
+    OPENER_UNDRESS = (data && data.undress_price) || 0;
+    startOpenerFollowPoll(characterId);
+  }
+}
+
+// ТЗ V3.167.3 §3 «вернуть первый ход» (владелец 16.11: «пусть это будет всё в
+// мини-приложении идти… в бот только оповещение вам написали»). Часы живут на
+// сервере: через 90 с его молчания она дописывает сама, без кадра и без
+// списаний. Здесь только глаз — забирает то, что она уже написала и что он ещё
+// не видел, пока чат открыт и он не ответил. Вышел из приложения — строка
+// останется в диалоге (вернётся с историей), а в боте сработает «вам написали».
+let OPENER_UNDRESS = 0;
+let FOLLOW_TIMER = null;
+function stopOpenerFollowPoll() {
+  if (FOLLOW_TIMER) { clearInterval(FOLLOW_TIMER); FOLLOW_TIMER = null; }
+}
+function startOpenerFollowPoll(characterId) {
+  stopOpenerFollowPoll();
+  let ticks = 0;
+  FOLLOW_TIMER = setInterval(async () => {
+    if (!CHAT || CHAT.id !== characterId || ++ticks > 24) return stopOpenerFollowPoll();
+    if (document.visibilityState !== 'visible') return;
+    try {
+      const r = await fetch('/webapp/api/chat/followup?char=' + encodeURIComponent(characterId) +
+        '&init_data=' + encodeURIComponent(tg.initData || ''), { cache: 'no-store' });
+      const j = await r.json();
+      if (!j || !j.ok || !CHAT || CHAT.id !== characterId) return;
+      const lines = j.lines || [];
+      if (!lines.length) return;
+      const box = document.getElementById('chatMsgs');
+      box.insertAdjacentHTML('beforeend', lines.map(l => chatBubble({
+        role: 'assistant', content: l.text, ts: new Date().toISOString() })).join(''));
+      const last = lines[lines.length - 1] || {};
+      renderChatHints(last.chips && last.chips.length ? last.chips : null, OPENER_UNDRESS);
+      box.scrollTop = box.scrollHeight;
+    } catch (e) { /* сеть моргнула — следующий тик */ }
+  }, 15000);
 }
 
 // V3.62.0: the level-3 fork — the romance or the passion path with this girl.
@@ -5163,6 +5203,8 @@ async function sendChat(retryText) {
   if (typeof retryText !== 'string') input.value = '';
   syncSendBtn();
   const hints = document.getElementById('chatHints'); if (hints) hints.remove();
+  // ТЗ V3.167.3 §3: он написал — первый ход сыгран, она больше не дописывает.
+  stopOpenerFollowPoll();
   const box = document.getElementById('chatMsgs');
   const empty = box.querySelector('.chat-empty');
   if (empty) empty.remove();
@@ -8743,6 +8785,7 @@ document.getElementById('chatBack').addEventListener('click', () => {
   if (_pb) _pb.style.display = 'none';
   CHAT = null;
   stopArrivedPoll();   // V3.166.10: вне чата плашку держать некому — там бейджи на «Чатах»
+  stopOpenerFollowPoll();  // V3.167.3 §3: ушёл из диалога — опрос её второй строки не нужен
   // a reply may have landed — refresh the dialog list preview
   loadChats();
 });

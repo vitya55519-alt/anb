@@ -46,6 +46,10 @@ class User(Base):
     # V3.44.16: when the day-1 "bonus wheel is waiting" hook was sent
     # (nullable = never). Auto-migrated by services/db.py.
     day1_hook_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # V3.167.3: ТЗ §3 «вернуть первый ход» — момент, когда Mini App показал ему
+    # её первую строку. Ставится один раз и больше не перезаписывается: сама
+    # открывашка не приходит повторно. Auto-migrated by services/db.py.
+    opening_shown_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     adult_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     # V3.21.0: couple-layer UI pack (pet name, daily quest, rituals toggle,
     # celebrated anniversaries, onboarding tour). Auto-migrated by services/db.py.

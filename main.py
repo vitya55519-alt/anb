@@ -52,7 +52,7 @@ from config import (
     HOT_CIRCLE_PEACH_COST, HOT_CIRCLE_ENABLED,
     HOT_PASS_DAY_PEACHES, HOT_PASS_PRODUCTS,
     EXPLICIT_PHOTO_PEACH_COST, PHOTO_SERIES_PEACH_COST, PHOTO_SERIES_FRAMES,
-    VOICE_PHOTO_PEACH_COST,
+    VOICE_PHOTO_PEACH_COST, AUTO_OPENING_ENABLED,
 )
 from services.user_service import (
     ensure_user, get_user, get_state, update_user_settings, touch_user,
@@ -15096,6 +15096,40 @@ def _app_ping(telegram_id: int, character_id: str, text: str, media: str | None 
         logger.warning('app ping hook failed user=%s', telegram_id, exc_info=True)
 
 
+def _mark_opening_shown(uid: int) -> None:
+    """ТЗ V3.167.3 §3: «повторно открывашка не приходит». Ставится один раз и
+    больше не перезаписывается — по колонке видно, случался ли первый ход на этом
+    аккаунте вообще (и с неё же считается D1 в аналитике)."""
+    try:
+        from datetime import datetime, timezone
+        from models.app_models import User
+        from services.db import SessionLocal
+        with SessionLocal() as s:
+            u = s.get(User, int(uid))
+            if u is not None and u.opening_shown_at is None:
+                u.opening_shown_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                s.commit()
+    except Exception:
+        logger.debug('opening_shown stamp failed user=%s', uid)
+
+
+def _opening_followup(telegram_id: int, uid: int, character_id: str, text: str,
+                      chips: list | None = None) -> None:
+    """ТЗ V3.167.3 §3 «вернуть первый ход» (владелец 16.11: всё это идёт в Mini
+    App, в бот — только «вам написали»). Её первая строка легла в диалог:
+    записать о ней записку в боте и поставить в очередь её вторую реплику — на
+    случай, если он так и не ответит. Язык реплики берётся из самой строки:
+    кириллица — русская, всё остальное — английская (пул маленький, а русская
+    фраза в бенгальском диалоге выглядела бы ошибкой)."""
+    try:
+        _app_ping(int(telegram_id), character_id, text)
+        from services import lang_guard, opening_nudge
+        opening_nudge.arm(bot, int(telegram_id), int(uid), character_id, chips or [],
+                          'ru' if lang_guard.is_cyrillic_dominant(text or '') else 'en')
+    except Exception:
+        logger.warning('opening followup failed user=%s', telegram_id, exc_info=True)
+
+
 async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: str,
                               text: str) -> web.Response | None:
     """V3.166.4 (Блок 2 ТЗ, владелец): он тапнул чип под её первой репликой —
@@ -15673,6 +15707,11 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
             return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
     elif not get_card(character_id):
         return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+    # ТЗ V3.167.3 §3: первый ход — механика Mini App, и выключается она одним
+    # флагом. Без открывашки чат при первом открытии остаётся пустым (как было
+    # до V3.165.0) — подсказки под вводом рисует сам клиент.
+    if not AUTO_OPENING_ENABLED:
+        return web.json_response({'ok': True})
 
     def _prepare():
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
@@ -15729,11 +15768,14 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
                                         int(_greeting.get('id') or 0), _greeting.get('buttons') or [],
                                         _greeting.get('reply') or '')
             await asyncio.to_thread(save_message, uid, character_id, 'assistant', _greeting['text'])
+            _chips = _greeting.get('buttons') or []
+            await asyncio.to_thread(_mark_opening_shown, uid)
+            _opening_followup(telegram_id, uid, character_id, _greeting['text'], _chips)
             # ТЗ V3.167.0 §4: romance gets the same card and the same chips, but
             # «Раздеть за 300 🍑» under them is the spicy door only — in the warm
             # mode the chips are just his two answers.
             return web.json_response({'ok': True, 'reply': _greeting['text'],
-                                      'chips': _greeting.get('buttons') or [],
+                                      'chips': _chips,
                                       'undress_price': EXPLICIT_PHOTO_PEACH_COST if _spicy else 0})
     if uid and scene is None and persona:
         try:
@@ -15780,6 +15822,8 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
             logger.warning('opening scene translation failed char=%s', character_id)
     if uid and scene:
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', scene)
+        await asyncio.to_thread(_mark_opening_shown, uid)
+        _opening_followup(telegram_id, uid, character_id, scene, [])
     return web.json_response({'ok': True, 'reply': scene})
 
 
@@ -16433,6 +16477,26 @@ async def _webapp_api_chat_arrived(request: web.Request) -> web.Response:
         if len(arrived) >= 3:
             break
     return web.json_response({'ok': True, 'arrived': arrived})
+
+
+async def _webapp_api_chat_followup(request: web.Request) -> web.Response:
+    """ТЗ V3.167.3 §3 (владелец: «пусть это будет всё в мини-приложении идти»).
+    Часы и сама её вторая строка живут на сервере (services/opening_nudge) —
+    сюда клиент заглядывает только за тем, что она уже написала и он ещё не
+    видел: одну отдаём один раз. Ушёл из приложения — не потеряется: про неё
+    скажет записка «вам написали» в боте."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    character_id = str(request.query.get('char', ''))[:64]
+    if not character_id:
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    from services import opening_nudge
+    return web.json_response({'ok': True, 'lines': opening_nudge.take(int(telegram_id), character_id)})
 
 
 async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
@@ -20296,6 +20360,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/chat/photo-wait', _webapp_api_chat_photo_wait)
     # V3.166.10 (владелец): «она написала» — пуш внутри приложения.
     app.router.add_get('/webapp/api/chat/arrived', _webapp_api_chat_arrived)
+    app.router.add_get('/webapp/api/chat/followup', _webapp_api_chat_followup)  # V3.167.3 §3
     app.router.add_post('/webapp/api/chat/persona', _webapp_api_chat_persona)
     app.router.add_post('/webapp/api/chat/marital', _webapp_api_chat_marital)
     app.router.add_get('/webapp/api/marital/arc', _webapp_api_marital_arc)

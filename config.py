@@ -158,6 +158,15 @@ COSPLAY_PHOTO_PEACH_COST = _peaches("COSPLAY_PHOTO_PEACHES_V165", EXPLICIT_PHOTO
 # «только купленные персики». Всё остальное (Наедине, фетиш, серия, видео)
 # по-прежнему только с купленными: плодить бесплатные рендеры владелец запретил.
 BONUS_PHOTO_ENABLED = os.getenv("BONUS_PHOTO_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+# V3.167.3: ТЗ Фогеля §3 «вернуть первый ход» (владелец 16.11: всё это идёт
+# в Mini App, в бот — только записка «вам написали»). false = открывашка гаснет
+# и чат при первом открытии остаётся пустым, как до V3.165.0.
+AUTO_OPENING_ENABLED = os.getenv("AUTO_OPENING_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
+# Молчание после её первой строки, через которое она пишет сама ещё раз, и
+# сколько таких строк на одно открытие диалога. Кадр не рисуется, персики не
+# списываются: это текст и те же чипы под ним.
+OPENING_NUDGE_SECONDS = max(15, int(os.getenv("OPENING_NUDGE_SECONDS", "90")))
+OPENING_NUDGE_MAX = max(0, min(3, int(os.getenv("OPENING_NUDGE_MAX", "2"))))
 # V3.152.0: owner ТЗ (Фогель, Модуль 1) — «Стертый черновик». Sometimes she
 # writes something bolder than she dares to send, deletes it and answers
 # shortly; reading what she erased costs peaches. Pure text, no render, so the

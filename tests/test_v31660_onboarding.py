@@ -90,7 +90,9 @@ def test_greeting_endpoint_saves_only_her_line_and_registers_the_tap():
     assert "location='дома / в спальне'" in start
     assert "'assistant', _greeting['text']" in start
     assert "greeting_service.remember_offer" in start
-    assert "'chips': _greeting.get('buttons') or []" in start
+    # V3.167.3: те же кнопки теперь живут в переменной — их заодно получает
+    # очередь её второй строки.
+    assert "'chips': _chips" in start
     # ТЗ V3.167.0 §4: плашка «Раздеть» — дверь в 18+, в тёплом режиме её нет
     assert "'undress_price': EXPLICIT_PHOTO_PEACH_COST if _spicy else 0" in start
     assert "media_kind='photo'" not in start
