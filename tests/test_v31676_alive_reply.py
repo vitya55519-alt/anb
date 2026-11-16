@@ -106,3 +106,49 @@ def test_app_turn_never_returns_the_dead_error(monkeypatch):
         'ты хочешь сосать мне хуй?'))
     assert resp.status == 200, resp.body
     assert b'"ok": true' in resp.body
+
+
+def test_app_turn_bounces_when_the_whole_turn_dies(monkeypatch):
+    """Не только ИИ: любой сбой хода в Mini App теперь её живая строка, а не
+    мёртвая плашка «Не получилось ответить»."""
+    import main
+
+    _seed(tid=559005, name='bounce')
+    main.set_adult_confirmed(559005, True)
+
+    async def boom(*a, **kw):
+        raise RuntimeError('PostgreSQL is down')
+
+    sent = []
+
+    async def _no_send(*a, **kw):
+        sent.append(a)
+
+    monkeypatch.setattr(main, 'anna_reply', boom)
+    monkeypatch.setattr(main.bot, 'send_message', _no_send)
+    resp = asyncio.run(main._webapp_chat_turn(
+        559005, {'first_name': 'bounce', 'language_code': 'ru'}, 'anna_01', 'привет'))
+    assert resp.status == 200, resp.body
+    assert b'"fallback": true' in resp.body
+
+
+def test_failure_notice_is_redacted_and_once_a_minute(monkeypatch):
+    import main
+
+    main._turn_fail_at.clear()
+    sent = []
+
+    async def capture(chat_id, text, **kw):
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr(main.bot, 'send_message', capture)
+    monkeypatch.setattr(main, 'ADMIN_TELEGRAM_IDS', {9001})
+    asyncio.run(main._notify_turn_failure(559006, 'ход чата в Mini App',
+                                          RuntimeError('upstream sk-ABCDEFGHIJKLMNOPQRSTUVWX')))
+    assert len(sent) == 1
+    text = sent[0][1]
+    assert 'RuntimeError' in text and 'ход чата' in text
+    assert 'ABCDEFGHIJKLMNOPQRSTUVWX' not in text
+    asyncio.run(main._notify_turn_failure(559006, 'ход чата в Mini App', RuntimeError('ещё')))
+    assert len(sent) == 1, 'второго сообщения в ту же минуту нет'
+

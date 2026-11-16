@@ -10214,6 +10214,27 @@ async def _series_note(message: types.Message, telegram_id: int) -> bool:
 # V3.19.0: per-user cooldown for vision reactions to user photos.
 _photo_reaction_ts: dict[int, float] = {}
 
+# V3.167.6 (владелец 16.11): причина упавшего хода прилетает админам в личку —
+# до лога Railway дороги нет, а «Не получилось ответить» ничего не объясняет.
+_turn_fail_at: dict[int, float] = {}
+_turn_fail_secret = re.compile(r'[A-Za-z0-9_-]{24,}')
+
+
+async def _notify_turn_failure(telegram_id: int, where: str, exc: BaseException) -> None:
+    """Одно сообщение на аккаунт в минуту: тип ошибки и её первая строка. Ни
+    его слов, ни ключей — длинные случайные последовательности вырезаны."""
+    key = int(telegram_id or 0)
+    now = _time.time()
+    if _turn_fail_at.get(key, 0) > now - 60:
+        return
+    _turn_fail_at[key] = now
+    detail = _turn_fail_secret.sub('…', f'{type(exc).__name__}: {str(exc)[:400]}')[:400]
+    for admin in ADMIN_TELEGRAM_IDS:
+        try:
+            await bot.send_message(admin, f'🛑 {where}: user={key}\n{detail}')
+        except Exception:
+            logger.info('turn failure notice failed admin=%s', admin)
+
 
 async def _react_to_user_photo(message: types.Message):
     """In-character vision reaction to a photo the user sent in chat.
@@ -12711,6 +12732,7 @@ async def text_message(message: types.Message):
         touch_user(message.from_user.id)
     except Exception as exc:
         logger.exception('chat handler user=%s error=%s', message.from_user.id, type(exc).__name__)
+        _spawn_background(_notify_turn_failure(message.from_user.id, 'ход чата в боте', exc))
         err_msg = str(exc)[:200] if exc else 'unknown'
         await message.answer(f'я сейчас немного зависла 😅 попробуй ещё раз\n\n💡 если повторяется — напиши /support')
 
@@ -15540,9 +15562,16 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             telegram_id, user_info.get('first_name') or 'ты', text,
             language_code=user_info.get('language_code'), character_id=character_id,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception('webapp chat reply failed user=%s character=%s', telegram_id, character_id)
-        return web.json_response({'ok': False, 'error': 'reply'}, status=502)
+        _spawn_background(_notify_turn_failure(telegram_id, 'ход чата в Mini App', exc))
+        # V3.167.6 (владелец 16.11): в боте на упавший ход она говорит «я
+        # зависла, попробуй ещё раз», а в Mini App тот же сбой был мёртвой
+        # плашкой и сгоревшим сообщением. Теперь здесь её живой отскок: ход
+        # не обрывается, а причина падает админу в личку.
+        from services.chat_service import stall_line
+        return web.json_response({'ok': True, 'fallback': True,
+                                  'reply': stall_line('en' if (user_language or 'ru').startswith('en') else 'ru')})
     # V3.151.0: owner ТЗ — her thoughts are a card, not her line. Everything
     # that decides what happens next (a photo promise, a circle, the voice)
     # reads the MESSAGE block only; the marked text still goes to the app,
@@ -16333,8 +16362,9 @@ async def _webapp_api_call_turn(request: web.Request) -> web.Response:
         answer = await anna_reply(telegram_id, user_info.get('first_name') or 'ты', text,
                                   language_code=user_info.get('language_code'),
                                   character_id=character_id, scene=scene)
-    except Exception:
+    except Exception as exc:
         logger.exception('call reply failed user=%s character=%s', telegram_id, character_id)
+        _spawn_background(_notify_turn_failure(telegram_id, 'её ответ в звонке', exc))
         return web.json_response({'ok': False, 'error': 'reply'}, status=502)
     from services import invite_funnel
     said = voice_call.spoken(invite_funnel.strip_tag(message_block(answer))) or '…'
