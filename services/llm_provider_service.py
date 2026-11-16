@@ -79,6 +79,11 @@ LLM_TIMEOUT_SECONDS = _env_float('LLM_TIMEOUT_SECONDS', 30.0)
 # весь ход, третьей попытки нет: она только удлиняла «печатает…».
 LLM_CHAIN_BUDGET_SECONDS = _env_float('LLM_CHAIN_BUDGET_SECONDS', 90.0)
 LLM_RETRY_PAUSE_SECONDS = max(0.0, min(10.0, float(os.getenv('LLM_RETRY_PAUSE_SECONDS', '1.5'))))
+# V3.167.3: повтор — единственная попытка, которая в его сигнале упёрлась в
+# таймаут (30 с). Первая уже провалена, поэтому повтору даётся чуть больше
+# времени, но в пределах тех же 90 с на весь ход: 30 + пауза + 40. Ровно его
+# схема обратно — LLM_RETRY_TIMEOUT_SECONDS=30 в Railway.
+LLM_RETRY_TIMEOUT_SECONDS = _env_float('LLM_RETRY_TIMEOUT_SECONDS', 40.0)
 MINIMAX_ATTEMPTS = 2
 MIN_PROVIDER_SLICE_SECONDS = 3.0
 
@@ -98,6 +103,14 @@ RETRY_EMPTY_PURPOSES = frozenset({'dialogue'})
 # низкую глубину размышления (reasoning_effort — параметр OpenAI SDK с v2, его
 # принимают и MiniMax-M3, и M3.1-Flash; модель та же) и больше места под ответ.
 MINIMAX_RETRY_EFFORT = os.getenv('MINIMAX_RETRY_EFFORT', 'low').strip()
+# V3.167.3 (владелец, 16.11, сигнал «🛑 ход чата: провайдеры молчат: ask: empty
+# text (finish=length); retry: TimeoutError»): первая попытка в диалоге и так
+# уходила в молчание — thinking съедал весь лимит и видимого текста не оставалось
+# (finish=length на пустом ответе), а повтор бился в свой таймаут. Раз low усилие
+# спасает повтор, та же глубина теперь просится и на первую попытку диалога:
+# модель та же, меняется только то, сколько она думает до ответа. Пусто в env —
+# вернуть прежнее поведение без правки кода (MINIMAX_DIALOGUE_EFFORT=).
+MINIMAX_DIALOGUE_EFFORT = os.getenv('MINIMAX_DIALOGUE_EFFORT', 'low').strip()
 # V3.143.0: owner ТЗ — she sometimes kept writing after his turn («User: …») and
 # sent a dialogue where she answered for both. Every call that produces a chat
 # message is cut at these markers; the caller adds the client's own name.
@@ -234,6 +247,9 @@ async def generate_text(
             # ends and invented facts about his life peaked. top_p stays wide so
             # the wording keeps varying at the lower temperature.
             mm_kwargs['top_p'] = 0.95
+            # V3.167.3: думать меньше — с первого запроса, а не только с повтора.
+            if MINIMAX_DIALOGUE_EFFORT:
+                mm_kwargs['reasoning_effort'] = MINIMAX_DIALOGUE_EFFORT
         if stop:
             mm_kwargs['stop'] = stop
         # V3.63.4: M3 spends its reasoning inside the same answer budget — short
@@ -261,6 +277,11 @@ async def generate_text(
                     errors.append(f'MiniMax({mm_model}): the turn budget ran out')
                     break
                 await asyncio.sleep(LLM_RETRY_PAUSE_SECONDS)
+            # V3.167.3: в причину всегда попадает, сколько её ждали — «молчит» и
+            # «отвечает 29 секунд и пустой» для владельца выглядят одинаково,
+            # пока не запишешь секунды.
+            slice_seconds = LLM_TIMEOUT_SECONDS if not attempt else LLM_RETRY_TIMEOUT_SECONDS
+            _started = time.monotonic()
             try:
                 r = await asyncio.wait_for(
                     _minimax.chat.completions.create(
@@ -270,25 +291,30 @@ async def generate_text(
                         max_tokens=max_tokens + room,
                         **kwargs,
                     ),
-                    timeout=_slice(LLM_TIMEOUT_SECONDS),
+                    timeout=_slice(slice_seconds),
                 )
             except Exception as exc:
-                detail = f'MiniMax({mm_model}) {tag}: {type(exc).__name__}: {_safe(str(exc))}'
+                waited = time.monotonic() - _started
+                detail = (f'MiniMax({mm_model}) {tag}: {type(exc).__name__}: {_safe(str(exc))} '
+                          f'[waited {waited:.1f}s of {slice_seconds:g}s]')
                 errors.append(detail)
                 logger.warning('MiniMax FAILED purpose=%s %s', purpose, detail)
                 continue
+            waited = time.monotonic() - _started
             text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'minimax', mm_model, r)
             if text:
-                logger.info('LLM ok provider=minimax model=%s purpose=%s attempt=%s len=%d',
-                            mm_model, purpose, tag, len(text))
+                logger.info('LLM ok provider=minimax model=%s purpose=%s attempt=%s len=%d %.1fs',
+                            mm_model, purpose, tag, len(text), waited)
                 return LLMResult(text, 'minimax', mm_model, _complete(r))
             # «finish=length» на пустом тексте и есть признак того, что thinking
             # съел весь ответ; без этой строки два молчания в журнале не отличить.
             finish = getattr(r.choices[0], 'finish_reason', '?') if getattr(r, 'choices', None) else '?'
             minimax_empty = True
-            errors.append(f'MiniMax({mm_model}) {tag}: empty text (finish={finish})')
-            logger.warning('MiniMax EMPTY purpose=%s attempt=%s finish=%s', purpose, tag, finish)
+            errors.append(f'MiniMax({mm_model}) {tag}: empty text (finish={finish}) '
+                          f'[waited {waited:.1f}s of {slice_seconds:g}s]')
+            logger.warning('MiniMax EMPTY purpose=%s attempt=%s finish=%s waited=%.1fs',
+                           purpose, tag, finish, waited)
 
     # ── 2. Gemini vision: the two calls that carry a photo ───────────
     if purpose in VISION_PURPOSES:
@@ -346,6 +372,8 @@ def provider_status() -> dict:
         'minimax_dialogue_model': MINIMAX_DIALOGUE_MODEL,
         'minimax_base_url': MINIMAX_BASE_URL,
         'minimax_timeout_seconds': LLM_TIMEOUT_SECONDS,
+        'retry_timeout_seconds': LLM_RETRY_TIMEOUT_SECONDS,
+        'dialogue_reasoning_effort': MINIMAX_DIALOGUE_EFFORT or 'default',
         'minimax_attempts': MINIMAX_ATTEMPTS,
         'retry_pause_seconds': LLM_RETRY_PAUSE_SECONDS,
         'turn_budget_seconds': LLM_CHAIN_BUDGET_SECONDS,

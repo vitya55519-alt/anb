@@ -242,7 +242,8 @@ def test_static_budget_and_hook_shape():
     assert "LLM_TIMEOUT_SECONDS = _env_float('LLM_TIMEOUT_SECONDS', 30.0)" in LLM_SRC
     assert 'MINIMAX_ATTEMPTS = 2' in LLM_SRC
     assert 'def _slice(cap: float) -> float:' in LLM_SRC
-    assert 'timeout=_slice(LLM_TIMEOUT_SECONDS)' in LLM_SRC
+    assert 'timeout=_slice(slice_seconds)' in LLM_SRC
+    assert 'slice_seconds = LLM_TIMEOUT_SECONDS if not attempt else LLM_RETRY_TIMEOUT_SECONDS' in LLM_SRC
     assert "error=f'{type(exc).__name__}: {str(exc)[:300]}'" in CHAT
     assert "if not (m.role == 'assistant' and is_stall_line(m.content))]" in CHAT
 
