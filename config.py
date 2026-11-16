@@ -753,7 +753,10 @@ RETENTION_REMINDER_HOURS = max(6, min(48, int(os.getenv("RETENTION_REMINDER_HOUR
 # push per user lifetime (last_nudge_at >= last_active_at skipped forever),
 # so D7 collapsed to 1% — now nudges repeat while the user stays away.
 RETENTION_NUDGE_INTERVAL_HOURS = max(6, min(48, int(os.getenv("RETENTION_NUDGE_INTERVAL_HOURS", "24"))))
-RETENTION_MAX_NUDGES = max(1, min(10, int(os.getenv("RETENTION_MAX_NUDGES", "5"))))
+# V3.167.4 #173: пять одинаковых «скучаю» подряд не работают — после третьего он
+# перестаёт открывать. Лестница (SILENCE_LADDER_HOURS) даёт ровно четыре срока,
+# у каждого свой разговор, пятый — это уже спам.
+RETENTION_MAX_NUDGES = max(1, min(10, int(os.getenv("RETENTION_MAX_NUDGES", "4"))))
 # V3.55.9: ghost window — a user silent longer than this is churned: no more
 # retention/LLM pushes at all (a real return re-arms the ladder). Before this,
 # every failed send (user blocked the bot) left the user eligible again the
@@ -807,6 +810,18 @@ LIFE_EVENTS_YOUNG_MAX_PER_DAY = max(1, min(4, int(os.getenv("LIFE_EVENTS_YOUNG_M
 # Never write during the user's local quiet hours [start, end) (wrap-aware).
 LIFE_EVENTS_QUIET_START_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_START_HOUR", "23"))))
 LIFE_EVENTS_QUIET_END_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_END_HOUR", "7"))))
+# V3.167.4 #173 (владелец ТЗ §6): сколько её «жёлтых цветов» он ещё готов
+# накопить, не ответив. Четвёртый неотвеченный читается как рассылка, и после
+# него он перестаёт открывать пуши вообще — рельса встаёт и ждёт его реплики.
+LIFE_EVENTS_UNANSWERED_MAX = max(1, min(5, int(os.getenv("LIFE_EVENTS_UNANSWERED_MAX", "3"))))
+# А старше трёх суток его прошлые строки уже не догоняются по одной: при
+# возврате он получает одну сводку вместо трёх смс задним числом.
+LIFE_EVENTS_DIGEST_AFTER_HOURS = max(24, int(os.getenv("LIFE_EVENTS_DIGEST_AFTER_HOURS", "72")))
+# V3.167.4 #173: лестница замолкания — сутки мягко, двое «сцена остывает» +
+# чипсы, трое эмоциональная реакция, семеро подарок и факт. Ступени в часах,
+# их можно переставить одним env: шаг считается по его молчанию, а не по тому,
+# сколько раз мы уже написали.
+SILENCE_LADDER_HOURS = tuple(int(h) for h in os.getenv("SILENCE_LADDER_HOURS", "24,48,72,168").split(",") if h.strip())
 # Probability of attaching a pool photo to a life moment (0 disables).
 # V3.167.4 (владелец ТЗ §4): «её день» без кадра выглядит пересказом — кадров
 # стало больше (0.35), но ровно на столько, сколько выдерживает общий кап

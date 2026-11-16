@@ -10268,13 +10268,34 @@ async def on_life_reply_tap(cq: types.CallbackQuery):
     character_id = parts[1] if len(parts) > 1 else get_user_character(cq.from_user.id)
     key = parts[2] if len(parts) > 2 else 'tell_more'
     from services.life_event_service import tap_reply_text
-    user_line = tap_reply_text(key)
+    await cq.answer()
+    await _tap_her_button(cq, tap_reply_text(key), character_id)
+
+
+@dp.callback_query(F.data.startswith('ladder_chip:'))
+async def on_ladder_chip_tap(cq: types.CallbackQuery):
+    """V3.167.4 #173: на вторые сутки она напомнила про незакрытую сцену и
+    положила под неё его же строки — самому придумывать первую он не будет.
+    Тап по кнопке считается его обычным сообщением."""
+    from services import silence_ladder
+    try:
+        index = int(cq.data.split(':', 1)[1])
+    except (TypeError, ValueError):
+        index = 0
+    character_id, user_line = silence_ladder.chip(cq.from_user.id, index)
+    await cq.answer()
+    if not user_line:
+        return
+    await _tap_her_button(cq, user_line, character_id or get_user_character(cq.from_user.id))
+
+
+async def _tap_her_button(cq: types.CallbackQuery, user_line: str, character_id: str) -> None:
+    """Один тап по её кнопке — это его ход: дневная стена отвечает на него как на
+    напечатанное сообщение, дальше говорит тот же пайплайн."""
     if cq.from_user.id not in ADMIN_TELEGRAM_IDS and not can_send_message(cq.from_user.id):
         # V3.166.2: the tap is a turn like any other — the day's wall answers it.
-        await cq.answer()
         await _limit_wall_reply(cq.message)
         return
-    await cq.answer()
     try:
         async with ChatActionSender.typing(bot=bot, chat_id=cq.message.chat.id):
             answer = await anna_reply(

@@ -27,6 +27,8 @@ from services import partner_service
 from services import retention_features_service
 from services import dialog_store
 from services import push_governor
+from services import silence_ladder
+from services import life_backlog
 from services.ui_lang import app_lang, flow_text
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
@@ -193,6 +195,12 @@ async def _proactive(bot):
                 if last_nudge and not returned:
                     if (now-last_nudge).total_seconds() < RETENTION_NUDGE_INTERVAL_HOURS*3600: continue
                     if nudge_count >= RETENTION_MAX_NUDGES: continue
+                # V3.167.4 #173: лестница замолкания 1/2/3/7 суток — у каждого
+                # срока свой разговор. Ступень считается по тому, сколько ОН молчит,
+                # а не по тому, сколько раз написали мы: «рано» слот не сжигает и
+                # провайдера не зовёт.
+                step=silence_ladder.next_step(hours,returned,nudge_count)
+                if step is None: continue
                 # V3.55.9: consume the slot BEFORE spending money. The stamp used
                 # to be written only after a successful send, so every failed send
                 # (user blocked the bot, flood-wait, Telegram 4xx) left the user
@@ -209,6 +217,30 @@ async def _proactive(bot):
                 # A pending hook is consumed by one proactive follow-up so Anna does not repeat it forever.
                 st.pending_hook=None
                 s.commit()
+            if step in silence_ladder.NEW_STEPS:
+                # V3.167.4 #173: двое суток — «сцена остывает» и под ней его же
+                # строки: придумывать первую сам он не собирается. Седьмые сутки —
+                # кадр из её пула и одна её память про него. Не собралось ни того,
+                # ни другого — говорит прежняя рельса, а не молчит.
+                pack=await silence_ladder.compose(step,telegram_id,char_id,user_lang)
+                if pack and pack.get('text'):
+                    chips=[str(c) for c in (pack.get('chips') or []) if str(c).strip()]
+                    if chips: silence_ladder.note_chips(telegram_id,char_id,chips)
+                    shot=pack.get('photo')
+                    if shot:
+                        from aiogram.types import BufferedInputFile
+                        data,_ctype,pkind=shot
+                        moving=pkind in ('gif','video')
+                        method='send_animation' if pkind=='gif' else ('send_video' if moving else 'send_photo')
+                        await getattr(bot,method)(telegram_id,BufferedInputFile(
+                            data,filename='ladder.mp4' if moving else 'ladder.jpg'),caption=pack['text'])
+                    else:
+                        await bot.send_message(telegram_id,pack['text'],
+                                               reply_markup=silence_ladder.chips_markup(chips))
+                    _to_app_chat(uid,telegram_id,char_id,pack['text'],shot)
+                    track_event(uid,'retention_push_sent',metadata={'hours_inactive':hours,
+                                                                   'kind':f'ladder_{step}','nudge':nudge_count+1})
+                    continue
             if hours < PROACTIVE_MIN_HOURS:
                 # V3.20.0 first tier (24-48h): cheap static emotional push —
                 # unfinished-conversation cliffhanger first, then jealousy for
@@ -1408,6 +1440,12 @@ async def _life_events(bot):
             local_hour = _user_local_hour_simple(tz)
             if _in_quiet_hours(local_hour):
                 continue
+            # V3.167.4 #173 (владелец ТЗ §6): он вернулся, а за его спиной
+            # накопились её дни. Догонять их по одной смс уже поздно — вместо
+            # этого приходит одна сводка, что у неё было. Слот суток она не
+            # тратит: это ответ на возврат, а не ещё один пуш дня.
+            if await life_backlog.maybe_digest(bot, uid, tg_id, char_id, lang or 'ru'):
+                continue
             # V3.167.0 (owner): the first three days are the whole funnel — for
             # a man younger than 72 hours the rail runs hotter, an older one
             # keeps the calm profile.
@@ -1423,6 +1461,11 @@ async def _life_events(bot):
             # still writing, nothing from scheduler_service enters the chat.
             silence_need = LIFE_EVENTS_YOUNG_SILENCE_HOURS if young else LIFE_EVENTS_SILENCE_HOURS
             if silence_hours(uid, char_id) < silence_need:
+                continue
+            # V3.167.4 #173: пока он не ответил, её строк в диалоге не больше
+            # LIFE_EVENTS_UNANSWERED_MAX. Рельса встаёт и ждёт, слот суток НЕ
+            # сжигается: после его ответа она заговорит в этой же части суток.
+            if life_backlog.is_capped(uid, char_id):
                 continue
             # Sprinkle sends across the scan window instead of firing at the
             # boundary for everyone at once (also keeps the LLM load flat).
