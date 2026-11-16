@@ -16,6 +16,10 @@ of 30s]; retry: APITimeoutError [waited 30.1s of 40s]». Повтор умер �
 timeout=30 и каждый вызов наследовал именно его. Теперь срез едет в сам create
 (+наружняя страховка на коннект), диалог ждёт 40 с с первой попытки, а в
 причине лежит ещё и размер отправленного запроса.
+
+V3.167.11 (его же выбор после замеров): 40 с первая попытка больше не держит
+ответ ~1000 токенов, поэтому срез диалога вырос до 70 с, а повтор урезается до
+остатка бюджета хода — цифры в tests/test_v316711_dialogue_slice.py.
 """
 import asyncio
 import logging
@@ -134,12 +138,13 @@ def test_the_slice_now_reaches_the_provider_itself(monkeypatch):
 
 
 def test_a_small_dialogue_gets_real_time(monkeypatch):
-    # схема хода: диалог ждёт 40 с с первой попытки, вспомогательные вызовы — 30
+    # схема хода: диалог ждёт со своей первой попытки дольше всех (V3.167.11 — 70 с),
+    # вспомогательные вызовы — 30
     mm = _FakeProvider([_resp('да, приезжай 🙈'), _resp('да, приезжай 🙈')])
     _patch(monkeypatch, mm)
     asyncio.run(llm.generate_text([{'role': 'user', 'content': 'x'}],
                                   max_tokens=40, purpose='dialogue'))
-    assert mm.calls[0]['timeout'] == 40.0, mm.calls[0]['timeout']
+    assert mm.calls[0]['timeout'] == llm.LLM_DIALOGUE_TIMEOUT_SECONDS == 70.0, mm.calls[0]['timeout']
     mm2 = _FakeProvider([_resp('момент'), _resp('момент')])
     _patch(monkeypatch, mm2)
     asyncio.run(llm.generate_text([{'role': 'user', 'content': 'x'}],

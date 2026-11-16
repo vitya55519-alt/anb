@@ -85,9 +85,14 @@ LLM_RETRY_PAUSE_SECONDS = max(0.0, min(10.0, float(os.getenv('LLM_RETRY_PAUSE_SE
 # схема обратно — LLM_RETRY_TIMEOUT_SECONDS=30 в Railway.
 LLM_RETRY_TIMEOUT_SECONDS = _env_float('LLM_RETRY_TIMEOUT_SECONDS', 40.0)
 # V3.167.4 (владелец, «сделай так, чтобы общалась»): диалог ждёт дольше
-# вспомогательных вызовов — его читает человек, а не планировщик. 40 + 2 + 1.5
-# + 40 + 2 = 85.5 с, в его же бюджете 90 с. Остальные purposes сидят на 30 с.
-LLM_DIALOGUE_TIMEOUT_SECONDS = _env_float('LLM_DIALOGUE_TIMEOUT_SECONDS', 40.0)
+# вспомогательных вызовов — его читает человек, а не планировщик. Остальные
+# purposes сидят на 30 с.
+# V3.167.11 (его выбор 16.11, «дай одной попытке 60–70 секунд»): по журналу с 11
+# по 15 ноя ответ вырос до ~1000 токенов (медиана) при ~824 токенах размышления
+# перед ним — 40 с на это перестало хватать, и попытка умирала ровно на своём
+# срезе. Теперь первая попытка диалога получает 70 с, а повтор — сколько осталось
+# до его же бюджета 90 с (срез повтора режется ниже, см. slice_seconds).
+LLM_DIALOGUE_TIMEOUT_SECONDS = _env_float('LLM_DIALOGUE_TIMEOUT_SECONDS', 70.0)
 # Страховка поверх среза: коннект и разбор ответа SDK. Наружный wait_for без
 # неё мог бы снять попытку раньше, чем таймаут провайдера успел сработать.
 LLM_SLICE_GUARD_SECONDS = _env_float('LLM_SLICE_GUARD_SECONDS', 2.0)
@@ -315,7 +320,13 @@ async def generate_text(
             # коннект), а в причину — ещё размер отправленного запроса:
             # медленный ответ от длинного промпта отличается только этой цифрой.
             slice_seconds = ((LLM_DIALOGUE_TIMEOUT_SECONDS if purpose == 'dialogue' else LLM_TIMEOUT_SECONDS)
-                             if not attempt else LLM_RETRY_TIMEOUT_SECONDS)
+                             if not attempt
+                             # V3.167.11: срез повтора не может быть больше, чем
+                             # осталось до бюджета хода, иначе в причине лежала бы
+                             # цифра, которую попытка никогда не жила. Просьбу
+                             # меньше остатка не поднимаем — её выбирает владелец.
+                             else min(LLM_RETRY_TIMEOUT_SECONDS,
+                                      max(1.0, _left() - LLM_SLICE_GUARD_SECONDS)))
             _started = time.monotonic()
             try:
                 r = await asyncio.wait_for(

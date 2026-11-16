@@ -243,7 +243,9 @@ def test_static_budget_and_hook_shape():
     assert 'MINIMAX_ATTEMPTS = 2' in LLM_SRC
     assert 'def _slice(cap: float) -> float:' in LLM_SRC
     assert 'timeout=_slice(slice_seconds + LLM_SLICE_GUARD_SECONDS)' in LLM_SRC
-    assert 'if not attempt else LLM_RETRY_TIMEOUT_SECONDS)' in LLM_SRC
+    assert 'if not attempt else LLM_RETRY_TIMEOUT_SECONDS)' not in LLM_SRC, \
+        'V3.167.11: срез повтора режется до остатка бюджета хода'
+    assert 'else min(LLM_RETRY_TIMEOUT_SECONDS,' in LLM_SRC
     assert "error=f'{type(exc).__name__}: {str(exc)[:300]}'" in CHAT
     assert "if not (m.role == 'assistant' and is_stall_line(m.content))]" in CHAT
 
