@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import time
 from dataclasses import dataclass
 
 from openai import AsyncOpenAI
@@ -74,6 +76,16 @@ def _env_float(name: str, default: float) -> float:
 LLM_TIMEOUT_SECONDS = _env_float('LLM_TIMEOUT_SECONDS', 25.0)
 LLM_FALLBACK_TIMEOUT_SECONDS = _env_float('LLM_FALLBACK_TIMEOUT_SECONDS', 40.0)
 
+# V3.167.9 (владелец 16.11, «долго ответ идет»): у каждого провайдера свой
+# таймаут, но ход чата — это до четырёх попыток подряд, и висящий MiniMax с
+# запасным держал его в «печатает…» полторы минуты. Теперь у всего хода есть
+# общий бюджет: каждый следующий провайдер получает только то, что от него
+# осталось, а после конца бюджета цепочка обрывается, а не тянется дальше.
+LLM_CHAIN_BUDGET_SECONDS = _env_float('LLM_CHAIN_BUDGET_SECONDS', 55.0)
+# Запас, который у primary не вычитается из времени следующего провайдера.
+LLM_FALLBACK_RESERVE_SECONDS = _env_float('LLM_FALLBACK_RESERVE_SECONDS', 15.0)
+MIN_PROVIDER_SLICE_SECONDS = 3.0
+
 # V3.63.4: reasoning tokens MiniMax may spend before the visible answer.
 MINIMAX_REASONING_HEADROOM = max(0, int(os.getenv('MINIMAX_REASONING_HEADROOM', '512')))
 # V3.64.8: for the one-liners she sends first M3 often thinks ~600 tokens and
@@ -84,6 +96,13 @@ _MINIMAX_HEADROOM_BY_PURPOSE = {'life_event': 1200, 'proactive': 1200}
 _MINIMAX_HEADROOM_BY_PURPOSE['dialogue'] = max(0, int(os.getenv('MINIMAX_DIALOGUE_HEADROOM', '1024')))
 MINIMAX_EMPTY_RETRY_HEADROOM = max(512, int(os.getenv('MINIMAX_EMPTY_RETRY_HEADROOM', '2400')))
 RETRY_EMPTY_PURPOSES = frozenset({'dialogue'})
+# V3.167.9 (владелец 16.11, «мыслей нет, общение падает»): пустой ответ M3 в логах
+# — это thinking, съевший весь лимит: модель думает, видимого текста нет, и вторая
+# попытка с тем же усилием думала ровно так же. Повтор теперь просит у провайдера
+# низкую глубину размышления (reasoning_effort — параметр OpenAI SDK, его принимают
+# и MiniMax-M3, и M3.1-Flash; модель та же). Если провайдер параметр не знает,
+# повтор случается по-старому.
+MINIMAX_RETRY_EFFORT = os.getenv('MINIMAX_RETRY_EFFORT', 'low').strip()
 # V3.143.0: owner ТЗ — she sometimes kept writing after his turn («User: …») and
 # sent a dialogue where she answered for both. Every call that produces a chat
 # message is cut at these markers; the caller adds the client's own name.
@@ -134,6 +153,10 @@ class LLMResult:
     model: str
     # False when the provider stopped on the token cap: the text is cut off.
     complete: bool = True
+    # V3.167.9: почему текста нет. Пустой ответ раньше был тихим — ход уходил в
+    # запасную фразу, а владелец так и не узнавал, кто именно из провайдеров
+    # молчит. Заполнено только на пустом результате.
+    error: str = ''
 
 
 def _complete(r) -> bool:
@@ -173,6 +196,20 @@ async def generate_text(
     Raises RuntimeError with full diagnostic if all providers fail.
     """
     errors: list[str] = []
+    # V3.167.9: общий бюджет хода. _slice(cap, reserve) — сколько секунд можно
+    # отдать этому провайдеру, оставив запас на следующего; меньше секунды не
+    # просим, запрос с таким таймаутом всё равно ничего не успеет.
+    _deadline = time.monotonic() + LLM_CHAIN_BUDGET_SECONDS
+
+    def _left() -> float:
+        return _deadline - time.monotonic()
+
+    def _slice(cap: float, reserve: float = 0.0) -> float:
+        return max(1.0, min(cap, _left() - reserve))
+
+    def _summary() -> str:
+        return '; '.join(errors) if errors else 'no providers configured'
+
     if stop is None and purpose in STOP_PURPOSES:
         stop = list(DEFAULT_STOP)
     stop = [s for s in (str(x).strip() for x in (stop or [])) if s][:STOP_MAX]
@@ -182,7 +219,7 @@ async def generate_text(
     # persona degrades (no memory capture, no auto-rewording) instead of dying.
     if purpose in spend_service.AUX_PURPOSES and not spend_service.llm_aux_allowed():
         logger.warning('LLM aux skipped by daily budget purpose=%s', purpose)
-        return LLMResult('', 'budget', 'skipped')
+        return LLMResult('', 'budget', 'skipped', error='daily budget')
 
     minimax_empty = False
     # ── 1. MiniMax (V3.45: primary chat provider) ─────────────────────
@@ -201,44 +238,66 @@ async def generate_text(
         if stop:
             mm_kwargs['stop'] = stop
         try:
-            r = await _minimax.chat.completions.create(
-                model=mm_model,
-                messages=messages,
-                temperature=temperature,
-                # V3.63.4: MiniMax-M3 spends ~90 reasoning tokens inside the
-                # same budget — short calls (life moments, proactive, rewrite,
-                # adaptation) came back EMPTY. Give the thinking its own room.
-                max_tokens=max_tokens + max(MINIMAX_REASONING_HEADROOM, _MINIMAX_HEADROOM_BY_PURPOSE.get(purpose, 0)),
-                **mm_kwargs,
+            r = await asyncio.wait_for(
+                _minimax.chat.completions.create(
+                    model=mm_model,
+                    messages=messages,
+                    temperature=temperature,
+                    # V3.63.4: MiniMax-M3 spends ~90 reasoning tokens inside the
+                    # same budget — short calls (life moments, proactive, rewrite,
+                    # adaptation) came back EMPTY. Give the thinking its own room.
+                    max_tokens=max_tokens + max(MINIMAX_REASONING_HEADROOM, _MINIMAX_HEADROOM_BY_PURPOSE.get(purpose, 0)),
+                    **mm_kwargs,
+                ),
+                timeout=_slice(LLM_TIMEOUT_SECONDS, LLM_FALLBACK_RESERVE_SECONDS),
             )
             text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'minimax', mm_model, r)
             logger.info('LLM ok provider=minimax model=%s purpose=%s len=%d', mm_model, purpose, len(text))
             if text:
                 return LLMResult(text, 'minimax', mm_model, _complete(r))
+            # V3.167.9: «finish=length» на пустом тексте и есть признак того, что
+            # thinking съел весь ответ — без этой строки в журнале хода различить
+            # нечем.
+            _finish = getattr(r.choices[0], 'finish_reason', '?') if getattr(r, 'choices', None) else '?'
             # V3.97.0: in a dialogue an EMPTY M3 answer means the reasoning ate
             # the whole cap (out == reasoning == cap in the logs). The free
             # Gemini fallback then often comes back empty too on adult chats,
             # and she answered «я зависла» 141 times a week. One retry with
             # a much larger room for the thinking comes first.
-            if purpose in RETRY_EMPTY_PURPOSES:
-                try:
-                    r = await _minimax.chat.completions.create(
-                        model=mm_model,
-                        messages=messages,
-                        temperature=temperature,
-                        max_tokens=max_tokens + MINIMAX_EMPTY_RETRY_HEADROOM,
-                        **mm_kwargs,
-                    )
-                    text = _strip_thinking((r.choices[0].message.content or '').strip())
-                    _record_usage(purpose, 'minimax', mm_model, r)
-                    logger.info('LLM retry provider=minimax purpose=%s len=%d', purpose, len(text))
-                    if text:
-                        return LLMResult(text, 'minimax', mm_model, _complete(r))
-                except Exception as exc:
-                    logger.warning('MiniMax retry FAILED purpose=%s %s: %s', purpose, type(exc).__name__, _safe(str(exc)))
+            # V3.167.9: то же самое молчание дважды подряд — молчание, поэтому
+            # сначала повтор с коротким размышлением, и только если провайдер не
+            # понял параметра — повтор ровно как раньше.
+            if purpose in RETRY_EMPTY_PURPOSES and _left() > MIN_PROVIDER_SLICE_SECONDS + LLM_FALLBACK_RESERVE_SECONDS:
+                variants = []
+                if MINIMAX_RETRY_EFFORT:
+                    variants.append(({**mm_kwargs, 'reasoning_effort': MINIMAX_RETRY_EFFORT}, f'effort={MINIMAX_RETRY_EFFORT}'))
+                variants.append((dict(mm_kwargs), 'plain'))
+                for mm_retry_kwargs, tag in variants:
+                    try:
+                        r = await asyncio.wait_for(
+                            _minimax.chat.completions.create(
+                                model=mm_model,
+                                messages=messages,
+                                temperature=temperature,
+                                max_tokens=max_tokens + MINIMAX_EMPTY_RETRY_HEADROOM,
+                                **mm_retry_kwargs,
+                            ),
+                            timeout=_slice(LLM_TIMEOUT_SECONDS, LLM_FALLBACK_RESERVE_SECONDS),
+                        )
+                        text = _strip_thinking((r.choices[0].message.content or '').strip())
+                        _record_usage(purpose, 'minimax', mm_model, r)
+                        logger.info('LLM retry provider=minimax purpose=%s %s len=%d', purpose, tag, len(text))
+                        if text:
+                            return LLMResult(text, 'minimax', mm_model, _complete(r))
+                        errors.append(f'MiniMax({mm_model}) retry {tag}: empty text')
+                        break  # второй раз за ход та же пустота — дальше только время
+                    except Exception as exc:
+                        detail = f'MiniMax({mm_model}) retry {tag}: {type(exc).__name__}: {_safe(str(exc))}'
+                        errors.append(detail)
+                        logger.warning('MiniMax retry FAILED purpose=%s %s', purpose, detail)
             # empty answer: let the free Gemini fallback try instead
-            errors.append(f'MiniMax({mm_model}): empty text')
+            errors.append(f'MiniMax({mm_model}): empty text (finish={_finish})')
             minimax_empty = True
             logger.warning('MiniMax EMPTY purpose=%s, trying fallback', purpose)
         except Exception as exc:
@@ -247,28 +306,32 @@ async def generate_text(
             logger.warning('MiniMax FAILED purpose=%s %s', purpose, detail)
 
     # ── 2. Gemini (free fallback) ────────────────────────────────────
-    if _gemini:
+    if _gemini and _left() > MIN_PROVIDER_SLICE_SECONDS:
         try:
-            r = await _gemini.chat.completions.create(
-                model=GEMINI_CHAT_MODEL,
-                messages=messages,
-                # V3.143.0: the fallback used to ignore the caller's temperature,
-                # so the same reply came back hotter than the one asked for.
-                temperature=temperature,
-                max_tokens=max_tokens + GEMINI_REASONING_HEADROOM,
-                **({'stop': stop} if stop else {}),
+            r = await asyncio.wait_for(
+                _gemini.chat.completions.create(
+                    model=GEMINI_CHAT_MODEL,
+                    messages=messages,
+                    # V3.143.0: the fallback used to ignore the caller's temperature,
+                    # so the same reply came back hotter than the one asked for.
+                    temperature=temperature,
+                    max_tokens=max_tokens + GEMINI_REASONING_HEADROOM,
+                    **({'stop': stop} if stop else {}),
+                ),
+                timeout=_slice(LLM_TIMEOUT_SECONDS),
             )
             text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'gemini', GEMINI_CHAT_MODEL, r)
             logger.info('LLM ok provider=gemini model=%s purpose=%s len=%d', GEMINI_CHAT_MODEL, purpose, len(text))
-            return LLMResult(text, 'gemini', GEMINI_CHAT_MODEL, _complete(r))
+            return LLMResult(text, 'gemini', GEMINI_CHAT_MODEL, _complete(r),
+                             '' if text else _summary())
         except Exception as exc:
             detail = f'Gemini({GEMINI_CHAT_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
             errors.append(detail)
             logger.warning('Gemini FAILED purpose=%s %s', purpose, detail)
 
     # ── 3. OpenRouter (fallback, needs balance) ──────────────────────
-    if _openrouter:
+    if _openrouter and _left() > MIN_PROVIDER_SLICE_SECONDS:
         try:
             extra = {}
             if purpose == 'dialogue':
@@ -285,11 +348,14 @@ async def generate_text(
                 kwargs['stop'] = stop
             if extra:
                 kwargs['extra_body'] = extra
-            r = await _openrouter.chat.completions.create(**kwargs)
+            r = await asyncio.wait_for(
+                _openrouter.chat.completions.create(**kwargs),
+                timeout=_slice(LLM_FALLBACK_TIMEOUT_SECONDS),
+            )
             text = _strip_thinking((r.choices[0].message.content or '').strip())
             _record_usage(purpose, 'openrouter', OPENROUTER_MODEL, r)
             logger.info('LLM ok provider=openrouter model=%s purpose=%s len=%d', OPENROUTER_MODEL, purpose, len(text))
-            return LLMResult(text, 'openrouter', OPENROUTER_MODEL)
+            return LLMResult(text, 'openrouter', OPENROUTER_MODEL, True, '' if text else _summary())
         except Exception as exc:
             detail = f'OpenRouter({OPENROUTER_MODEL}): {type(exc).__name__}: {_safe(str(exc))}'
             errors.append(detail)
@@ -297,8 +363,10 @@ async def generate_text(
 
     # ── All failed ─────────────────────────────────────────────────────
     if minimax_empty:
-        # callers already handle an empty answer; keep that, not a crash
-        return LLMResult('', 'minimax', MINIMAX_MODEL)
+        # callers already handle an empty answer; keep that, not a crash.
+        # V3.167.9: этот путь не raise, поэтому без причины в error ход выглядел
+        # как её запасная фраза и никто не знал, кто именно молчит.
+        return LLMResult('', 'minimax', MINIMAX_MODEL, True, _summary())
     summary = '; '.join(errors) if errors else 'no providers configured'
     logger.error('ALL LLM PROVIDers FAILED purpose=%s errors=[%s]', purpose, summary)
     raise RuntimeError(f'LLM unavailable: {summary}')

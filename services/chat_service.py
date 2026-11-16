@@ -116,9 +116,52 @@ STALL_LINES_EN = (
 def stall_line(lang: str = 'ru', recent: list[str] | None = None) -> str:
     import random
     pool = STALL_LINES_EN if lang == 'en' else STALL_LINES_RU
-    recent_set = {(r or '').strip() for r in (recent or [])}
-    fresh = [p for p in pool if p not in recent_set] or list(pool)
+    used = {_stall_key(r) for r in (recent or [])}
+    fresh = [p for p in pool if _stall_key(p) not in used] or list(pool)
     return random.choice(fresh)
+
+
+# V3.167.9 (владелец 16.11, «он троит общение»): запасную фразу она подкидывала
+# сама себе — она лежит в истории как её же ответ, и на следующем ходу модель
+# подхватывала её «ой, секунду, мне тут звонят» и вела диалог по кругу. Сравнение
+# идёт по буквам без emoji и знаков препинания: diversify_emoji меняет только
+# смайлик, слова остаются те же, а начало строки переживает любое сокращение —
+# поэтому сравнивается префикс.
+_LETTERS_ONLY = re.compile(r'[^0-9a-zа-яё]+', re.I)
+
+
+def _stall_key(text: str) -> str:
+    return _LETTERS_ONLY.sub('', text or '').lower()
+
+
+_STALL_KEYS = frozenset(k for k in (_stall_key(s) for s in STALL_LINES_RU + STALL_LINES_EN) if k)
+
+
+def is_stall_line(text: str) -> bool:
+    """Её ли это строка из пула запасных, а не живая. Короткие реплики не
+    сравниваем: совпадение по началу на «ок» было бы ложным."""
+    key = _stall_key(text)
+    if len(key) < 12:
+        return False
+    return any(k.startswith(key) or key.startswith(k) for k in _STALL_KEYS)
+
+
+# V3.167.9: main.py вешает на этот хук свой сигнал владельцу
+# (_notify_turn_failure) — у пустой цепочки исключения нет, а ход выглядит как
+# её живой отскок, и без причины узнать, кто именно молчит, было нечем.
+llm_failure_hook = None
+
+
+async def _report_llm_failure(user_id: int, where: str, reason: str) -> None:
+    if not llm_failure_hook or not (reason or '').strip():
+        return
+    # сигнал всё равно оборачивается в RuntimeError, поэтому класс ошибки из
+    # строки провайдера убран — иначе в его личке два «RuntimeError: » подряд.
+    reason = re.sub(r'^(?:\w*(?:Error|Exception): )+', '', (reason or '').strip())[:400]
+    try:
+        await llm_failure_hook(int(user_id or 0), where, RuntimeError(reason))
+    except Exception:
+        _logger.info('llm failure notice failed user=%s', user_id)
 
 
 async def _gen(messages, **kw):
@@ -126,12 +169,13 @@ async def _gen(messages, **kw):
     ответила, generate_text поднимает RuntimeError, и весь ход падал — он видел
     «Не получилось ответить — попробуй ещё раз» вместо её строки. Причина того
     отказа в проде не доказана, но исход один: провайдер-отказ теперь такой же
-    пустой ответ, как раньше, — ниже по коду он уходит в запасную живую фразу."""
+    пустой ответ, как раньше, — ниже по коду он уходит в запасную живую фразу.
+    V3.167.9: вместе с пустым ответом едет и причина, а не только лог."""
     try:
         return await generate_text(messages, **kw)
     except Exception as exc:
         _logger.warning('LLM call failed purpose=%s, empty answer instead: %s', kw.get('purpose'), exc)
-        return LLMResult('', 'failed', 'failed')
+        return LLMResult('', 'failed', 'failed', error=f'{type(exc).__name__}: {str(exc)[:300]}')
 
 
 def _clean(answer: str, *, duo: bool = False) -> str:
@@ -962,7 +1006,9 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         explicit_mode=bool(mode_on and _adult_ok(user_id)),
     )
     messages = [{"role": "system", "content": system}]
-    messages += [{"role": m.role, "content": m.content} for m in history]
+    # V3.167.9: её запасные фразы в промпт не идут — в них диалог и застревал.
+    messages += [{"role": m.role, "content": m.content} for m in history
+                 if not (m.role == 'assistant' and is_stall_line(m.content))]
     # V3.59.6: a status buried mid-prompt lost to 30 lines of history («свободна,
     # как птица» right after «Замужем» was picked) — repeat it next to the message.
     if marital_reminder:
@@ -1134,7 +1180,12 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     if not (r.text or '').strip():
         _lang = 'en' if (foreign or (language_code or '').lower().startswith('en')) else 'ru'
         answer = stall_line(_lang, [m.content for m in history if m.role == 'assistant'][-6:])
-        _logger.warning('dialogue empty from all providers user=%s character=%s', user_id, character_id)
+        _logger.warning('dialogue empty from all providers user=%s character=%s reason=%s',
+                        user_id, character_id, getattr(r, 'error', '') or r.provider)
+        # V3.167.9: он видит её живой отскок, а владелец теперь видит, почему.
+        await _report_llm_failure(
+            user_id, 'ход чата: провайдеры молчат',
+            getattr(r, 'error', '') or f'empty text from provider={r.provider} model={r.model}')
     else:
         thought, answer = novel_pair(r.text, duo=duo_chat)
         # V3.152.0 (Фогель, Модуль 1): the erased draft is born in this same
@@ -1154,9 +1205,13 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                 else:
                     answer = stall_line('ru', _her_recent[-6:])
                     draft = ''
-            except Exception:
+            except Exception as exc:
                 answer = stall_line('ru', _her_recent[-6:])
                 draft = ''
+                # V3.167.9: и здесь цепочка могла вернуться ни с чем — тот же
+                # сигнал владельцу, что и на пустом ходу.
+                await _report_llm_failure(user_id, 'ход чата: правка после утечки',
+                                          f'{type(exc).__name__}: {str(exc)[:300]}')
         elif not getattr(r, 'complete', True):
             answer = finish_or_drop(answer, False, lang) or answer
         if REFUSAL.search(answer):

@@ -10314,6 +10314,15 @@ async def _notify_turn_failure(telegram_id: int, where: str, exc: BaseException)
             logger.info('turn failure notice failed admin=%s', admin)
 
 
+# V3.167.9 (владелец 16.11, «общение падает»): пустая цепочка провайдеров — не
+# исключение, а её живая запасная фраза, поэтому в except хода она не попадает и
+# владелец ничего не видел. chat_service сам зовёт этот же сигнал через хук —
+# лимит «не чаще раза в минуту на аккаунт» и вырезание ключей здесь же.
+from services import chat_service
+
+chat_service.llm_failure_hook = _notify_turn_failure
+
+
 async def _react_to_user_photo(message: types.Message):
     """In-character vision reaction to a photo the user sent in chat.
 

@@ -88,7 +88,8 @@ def test_llm_usage_is_recorded_and_braked():
     # both provider legs log their spend on success
     assert LLM.count('_record_usage(purpose,') >= 2
     # the aux brake returns an empty result the callers already tolerate
-    assert "return LLMResult('', 'budget', 'skipped')" in LLM
+    # (V3.167.9: an empty result now also carries why it is empty)
+    assert "return LLMResult('', 'budget', 'skipped', error='daily budget')" in LLM
     assert 'if purpose in spend_service.AUX_PURPOSES and not spend_service.llm_aux_allowed():' in LLM
     # ask OpenRouter to report the real bill per call
     assert "extra['usage'] = {'include': True}" in LLM
