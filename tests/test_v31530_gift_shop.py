@@ -265,7 +265,8 @@ def test_dialog_reads_boosts_once_and_spends_them_only_on_live_replies():
     assert '_gshop.chat_line(user_id, character_id)' in CHAT
     assert 'wine=gift_wine_open' in CHAT
     tick = CHAT[CHAT.index('def reply('):]
-    assert 'if not scene and (r.text or \'\').strip():' in tick    # pushes never burn it
+    # V3.167.1: заглушка про связь — не её слова, она тоже не тратит подарок.
+    assert 'if not scene and her_words:' in tick    # pushes never burn it
     assert 'gift_shop_service.tick(user_id, character_id)' in tick
 
 

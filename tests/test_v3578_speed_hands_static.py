@@ -40,14 +40,16 @@ def test_adaptation_context_built_once():
 
 
 def test_llm_clients_have_timeouts():
-    assert "LLM_TIMEOUT_SECONDS = _env_float('LLM_TIMEOUT_SECONDS', 25.0)" in LLM
+    # V3.167.1 (владелец): ход = 30 с × 2 попытки MiniMax, общий лимит 90 с.
+    assert "LLM_TIMEOUT_SECONDS = _env_float('LLM_TIMEOUT_SECONDS', 30.0)" in LLM
+    assert "LLM_CHAIN_BUDGET_SECONDS = _env_float('LLM_CHAIN_BUDGET_SECONDS', 90.0)" in LLM
     for client in ('_minimax', '_gemini'):
         block = LLM[LLM.index(f'{client} = ('):]
         block = block[:block.index('\n)\n')]
         assert 'timeout=LLM_TIMEOUT_SECONDS' in block and 'max_retries=0' in block
-    block = LLM[LLM.index('_openrouter = ('):]
-    block = block[:block.index('\n)\n')]
-    assert 'timeout=LLM_FALLBACK_TIMEOUT_SECONDS' in block
+    # Третьего клиента с другим таймаутом в цепочке не осталось.
+    assert '_openrouter' not in LLM
+    assert 'LLM_FALLBACK_TIMEOUT_SECONDS' not in LLM
 
 
 def test_hand_gesture_expressions_use_the_free_hand():

@@ -48,11 +48,11 @@ def test_ritual_sends_media_by_kind():
     ritual = SCHED[SCHED.index('async def _rituals(bot, only_tg=None, force_kind=None):'):SCHED.index('async def _donation_reminder(bot):')]
     assert 'shot = retention_features_service.random_proactive_photo(char_id, user_id=' in ritual
     assert "data, ctype, media_kind = shot" in ritual
-    assert 'await bot.send_animation(int(tg_id), BufferedInputFile(data, filename=\'ritual.mp4\'), caption=text, reply_markup=markup)' in ritual
-    assert 'await bot.send_video(int(tg_id), BufferedInputFile(data, filename=\'ritual.mp4\'), caption=text, reply_markup=markup)' in ritual
-    assert 'await bot.send_photo(int(tg_id), BufferedInputFile(data, filename=\'ritual.jpg\'), caption=text, reply_markup=markup)' in ritual
+    assert 'await bot.send_animation(int(tg_id), BufferedInputFile(data, filename=\'ritual.mp4\'), caption=_her(text, char_id), reply_markup=markup)' in ritual
+    assert 'await bot.send_video(int(tg_id), BufferedInputFile(data, filename=\'ritual.mp4\'), caption=_her(text, char_id), reply_markup=markup)' in ritual
+    assert 'await bot.send_photo(int(tg_id), BufferedInputFile(data, filename=\'ritual.jpg\'), caption=_her(text, char_id), reply_markup=markup)' in ritual
     # empty pool keeps the old plain-text behavior
-    assert 'await bot.send_message(int(tg_id),text,reply_markup=markup)' in ritual
+    assert 'await bot.send_message(int(tg_id),_her(text,char_id),reply_markup=markup)' in ritual
 
 
 # ── admin upload: photo OR animation OR video lands in the pool ────────────

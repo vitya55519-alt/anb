@@ -30,6 +30,7 @@ from sqlalchemy import select, func
 from services.db import SessionLocal
 from models.app_models import User, PrivateGallery
 from services.user_service import ensure_user
+from services.heroine_label import stamp as _her
 from config import (
     PRIVATE_PHOTO_FREE_DAILY,
     COSPLAY_PHOTO_FREE_DAILY,
@@ -1368,7 +1369,7 @@ async def send_daily_gift(telegram_id: int, bot) -> bool:
     await bot.send_photo(
         chat_id=telegram_id,
         photo=BufferedInputFile(data, filename='daily_gift.jpg'),
-        caption='🎁 Я скучала... вот, держи 💋',
+        caption=_her('🎁 Я скучала... вот, держи 💋', gift_char),
     )
     # V3.61.8: the gift also shows up in her chat inside the Mini App.
     try:

@@ -55,6 +55,7 @@ from services.payments import consume_photo_credit, get_photo_credits
 from services.adaptation_service import get_visual_preferences
 from services.analytics_service import track_event
 from services import spend_service
+from services.heroine_label import stamp as _her
 from services.photo_library_service import choose_unseen_pack, choose_fallback_pack, mark_pack_seen, mark_items_seen
 from services.state_service import ensure_life_state
 
@@ -3936,7 +3937,7 @@ async def _deliver_library_failure_fallback(
         for idx, item in enumerate(pack.photos):
             row_id = _insert_delivery_row(telegram_id, pack.scene, 'free', provider='telegram_library_fallback', estimated_cost_usd=0.0, character_id=character_id)
             sent = await bot.send_photo(
-                chat_id, item.file_id, caption=fallback_caption if idx == 0 else None,
+                chat_id, item.file_id, caption=_her(fallback_caption, character_id) if idx == 0 else None,
                 reply_markup=_photo_action_markup(row_id, item),
             )
             _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else item.file_id)
@@ -4056,7 +4057,7 @@ async def deliver_photo(
     if delivery_type == 'credit' and get_photo_credits(telegram_id) < PEACH_SCALE:
         raise PermissionError('no_credit')
 
-    caption = caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',)))
+    caption = _her(caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',))), character_id)
     sent_messages = []
 
     # High-level at-home sets are lingerie-only (see _build_prompt): they must

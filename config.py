@@ -18,25 +18,10 @@ else:
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 TELEGRAM_BOT_NAME = os.getenv("TELEGRAM_BOT_NAME", "Anna")
 
-# ── OpenRouter (primary chat / memory / adaptation provider) ──────────────
-# Support both correct spelling and legacy typo (OPENEROUTER_API_KEY)
-OPENROUTER_API_KEY = (
-    os.getenv("OPENROUTER_API_KEY")
-    or os.getenv("OPENEROUTER_API_KEY")
-    or ""
-).strip()
-OPENROUTER_BASE_URL = (
-    os.getenv("OPENROUTER_BASE_URL")
-    or os.getenv("OPENEROUTER_BASE_URL")
-    or "https://openrouter.ai/api/v1"
-).strip().rstrip("/")
-OPENROUTER_MODEL = (
-    os.getenv("OPENROUTER_MODEL")
-    or os.getenv("OPENEROUTER_MODEL")
-    or "minimax/minimax-m3"
-).strip()
-
-# ── MiniMax (V3.45: primary chat provider, замена OpenRouter) ──────────────
+# ── MiniMax (V3.167.1: единственный провайдер её слов) ───────────────────
+# Официальный прямой API: свой ключ, свой endpoint, имя модели без слеша.
+# Чат-агрегатор (лег «minimax/minimax-m3» через него) выпилен целиком: он мог
+# отвечать только 401, потому что тот же ключ лежал в его переменной.
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "").strip()
 MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io/v1").strip().rstrip("/")
 MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M3").strip()
@@ -361,12 +346,13 @@ PHOTO_SPICY_FIRST = os.getenv("PHOTO_SPICY_FIRST", "1") == "1"
 # Legacy OpenAI key — kept ONLY for optional TTS/Whisper/moderation.
 # No longer required for chat or image generation.
 AI_KEY = (os.getenv("OPENAI_API_KEY") or os.getenv("AI_KEY") or "").strip()
-AI_MODEL = os.getenv("AI_MODEL", OPENROUTER_MODEL)
-AI_BASE_URL = os.getenv("AI_BASE_URL", OPENROUTER_BASE_URL if OPENROUTER_API_KEY else None)
+# V3.167.1: no OpenRouter behind this any more — with no explicit base URL the
+# OpenAI SDK speaks to api.openai.com, which is what a legacy OpenAI key wants.
+AI_BASE_URL = (os.getenv("AI_BASE_URL") or "").strip() or None
 
-# Dialogue provider chain: OpenRouter primary → Gemini fallback.
-# Legacy provider-switching env vars were removed; the chain is hard-wired
-# in services/llm_provider_service.py for stability.
+# Chat provider: services/llm_provider_service.py speaks to MiniMax directly and
+# to nobody else (Gemini only lends eyes to the two photo calls below). Legacy
+# provider-switching env vars were removed; the chain is hard-wired for stability.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 # V3.19.3: a key pasted with non-ASCII characters (Cyrillic lookalikes, NBSP)
 # or embedded whitespace breaks every Gemini call with an opaque auth error.
@@ -376,9 +362,12 @@ GEMINI_API_KEY_VALID = bool(GEMINI_API_KEY) and GEMINI_API_KEY.isascii() and not
 if GEMINI_API_KEY and not GEMINI_API_KEY_VALID:
     print(
         'CONFIG WARNING: GEMINI_API_KEY contains non-ASCII or whitespace characters - '
-        'Gemini chat/image/video disabled until the key is re-pasted cleanly on Railway',
+        'Gemini vision/image/video disabled until the key is re-pasted cleanly on Railway',
         flush=True,
     )
+# V3.167.1: this model no longer writes a single word of dialogue — MiniMax does
+# all of that. It stays because the two calls that have to LOOK at a photo (her
+# reaction to his picture, the evening frame acceptance) still go to Gemini.
 GEMINI_CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.5-flash").strip()
 GEMINI_OPENAI_BASE_URL = os.getenv(
     "GEMINI_OPENAI_BASE_URL",
@@ -461,12 +450,12 @@ CHARACTER_DIR = Path(os.getenv("CHARACTER_DIR", str(BASE_DIR / "data" / "charact
 CHARACTER_FILE = os.getenv("CHARACTER_FILE", str(CHARACTER_DIR / "anna.json"))
 
 # ── Image generation: fal/Seedream only (V3.44.19); OpenAI leg optional ─────
-# V3.44.19 owner rule: «фото через fal.ai, OpenRouter — только общение».
-# IMAGE_BASE_URL used to fall back to AI_BASE_URL, which itself defaults to the
-# OpenRouter URL whenever OPENROUTER_API_KEY is set — so a pasted OpenAI/IMAGE
-# key silently billed images on the chat account (the google/gemini-…-image
-# charges in his OpenRouter activity). The image leg no longer inherits the
-# OpenRouter URL and refuses to start when one is set explicitly.
+# V3.44.19 owner rule: «фото через fal.ai, провайдер общения — только общение».
+# IMAGE_BASE_URL used to fall back to AI_BASE_URL, which back then defaulted to
+# a chat-aggregator URL — so a pasted OpenAI/IMAGE key silently billed images on
+# the chat account (the google/gemini-…-image charges in his activity). The
+# image leg no longer inherits that URL and refuses to start when one is set
+# explicitly; V3.167.1 removed the aggregator itself, the guard stays as a net.
 IMAGE_API_KEY = (os.getenv("IMAGE_API_KEY") or AI_KEY).strip()
 _non_or_image_base = AI_BASE_URL if (AI_BASE_URL and "openrouter" not in AI_BASE_URL.lower()) else None
 IMAGE_BASE_URL = os.getenv("IMAGE_BASE_URL") or _non_or_image_base
@@ -533,14 +522,11 @@ PHOTO_TOTAL_BUDGET_SECONDS = max(60, int(os.getenv("PHOTO_TOTAL_BUDGET_SECONDS",
 # main photo engine (Gemini image) carried a unit price of 0 — so «себестоимость
 # фото: $0.00» in /stats was structurally blind, not true.
 # Per-million-token prices used to estimate cost when the provider does not
-# return one (OpenRouter returns usage.cost when asked, Gemini does not).
+# return a bill of its own in the usage block.
 LLM_USD_PER_M_INPUT = float(os.getenv("LLM_USD_PER_M_INPUT", "0.23"))
 LLM_USD_PER_M_OUTPUT = float(os.getenv("LLM_USD_PER_M_OUTPUT", "0.96"))
 GEMINI_LLM_USD_PER_M_INPUT = float(os.getenv("GEMINI_LLM_USD_PER_M_INPUT", "0.10"))
 GEMINI_LLM_USD_PER_M_OUTPUT = float(os.getenv("GEMINI_LLM_USD_PER_M_OUTPUT", "0.40"))
-# Ask OpenRouter to bill-report every completion (usage.include). Costs nothing
-# extra; it is the only way to see real spend without opening the dashboard.
-LLM_REPORT_USAGE = os.getenv("LLM_REPORT_USAGE", "true").strip().lower() in {"1", "true", "yes", "on"}
 # Daily brakes, 0 = brake off. Only AUXILIARY LLM work is throttled (memory
 # extraction, style adaptation, relationship pulse, photo ideas/reactions and
 # the humanizer rewrite) — the visible chat reply is never blocked. When the
@@ -1173,8 +1159,14 @@ ADMIN_TELEGRAM_IDS = {int(x.strip()) for x in os.getenv("ADMIN_TELEGRAM_IDS", ""
 
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN is not configured")
-_has_llm = bool(OPENROUTER_API_KEY or GEMINI_API_KEY or AI_KEY)
+_has_llm = bool(MINIMAX_API_KEY or GEMINI_API_KEY or AI_KEY)
 if not _has_llm:
     raise RuntimeError(
-        "No LLM provider configured. Set OPENEROUTER_API_KEY, GEMINI_API_KEY, or OPENAI_API_KEY."
+        "No LLM provider configured. Set MINIMAX_API_KEY."
+    )
+if not MINIMAX_API_KEY:
+    print(
+        'CONFIG WARNING: MINIMAX_API_KEY is empty - she has nobody to answer with, '
+        'every chat turn falls back to the neutral «связь подвисла» line',
+        flush=True,
     )

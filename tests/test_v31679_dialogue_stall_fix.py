@@ -1,15 +1,17 @@
-"""V3.167.9 (владелец, скрин 16.11): «мыслей нет, он троит общение, и долго
-ответ идет».
+"""V3.167.9 (владелец, скрин 16.11) в форме V3.167.1 (СРОЧНО, «стоп по новым
+релизам»).
 
-Три дыры, три проверки:
 1) пустая цепочка провайдеров была тихой — ход уходил в запасную фразу, а
-   владелец не знал, кто именно молчит;
-2) её же запасная фраза лежала в истории и модель подхватывала её как свою
-   манеру говорить — диалог ходил по кругу;
+   владелец не знал, кто именно молчит; причина по-прежнему доезжает до хука;
+2) её же запасные фразы лежали в истории и модель подхватывала их как свою
+   манеру говорить — диалог ходил по кругу. Пул отравошников выпилен совсем
+   (V3.167.1), старые строки лишь фильтруются из промпта как legacy-история;
 3) у цепочки не было общего бюджета: висящий primary с запасными держал его в
-   «печатает…» полторы минуты.
-Модель та же — MiniMax M3; повтор после пустого ответа просто просит меньшую
-глубину размышления.
+   «печатает…» полторы минуты. Схема хода: прямой MiniMax (30 с) → авто-повтор
+   MiniMax (30 с) → нейтральная заглушка про связь; бюджет хода 90 с.
+Модель та же — MiniMax M3; повтор после пустого ответа просит меньшую глубину
+размышления. Gemini из диалога убран (429 на каждую вторую реплику), чат-
+агрегатор выпилен (его лег отвечал ровно 401 на тот же ключ).
 """
 import asyncio
 import logging
@@ -19,9 +21,9 @@ from types import SimpleNamespace
 
 import services.chat_service as cs
 import services.llm_provider_service as llm
-from services.chat_service import STALL_LINES_RU, is_stall_line, stall_line
+from services.chat_service import STUB_REPLY_RU, _RETIRED_STALL_LINES, is_stall_line
 from services.llm_provider_service import LLMResult
-from services.memory_service import save_message
+from services.memory_service import get_recent_messages, save_message
 from services.user_service import ensure_user
 
 logging.getLogger('services.llm_provider_service').setLevel(logging.CRITICAL)
@@ -66,10 +68,10 @@ async def _slow():
     return _resp('не дойдёт')
 
 
-# ── 2. цикл самоповтора ────────────────────────────────────────────────
+# ── 2. legacy-отговорки не попадают в промпт ────────────────────────────
 
-def test_stall_line_is_recognised_through_emoji_and_truncation():
-    for line in STALL_LINES_RU:
+def test_retired_stall_lines_are_recognised_through_emoji_and_truncation():
+    for line in _RETIRED_STALL_LINES:
         assert is_stall_line(line), line
         # diversify_emoji меняет только смайлик
         assert is_stall_line(line.replace('😌', '😇').replace('🙈', '🙊').replace('😏', '😔')), line
@@ -80,11 +82,10 @@ def test_stall_line_is_recognised_through_emoji_and_truncation():
     assert not is_stall_line('')
 
 
-def test_stall_choice_does_not_repeat_the_same_line_under_another_emoji():
-    line = STALL_LINES_RU[0]
-    recent = [x.replace('😌', '😇').replace('🙈', '🙊').replace('😏', '😔')
-              for x in STALL_LINES_RU if x != line]
-    assert stall_line('ru', recent) == line
+def test_the_pool_of_excuse_lines_is_gone():
+    # V3.167.1: у неё больше нет пула живых отравошников — одна строка в коде.
+    assert 'def stall_line(' not in CHAT
+    assert 'STALL_LINES_RU' not in CHAT
 
 
 def _seed(tid: int, name: str, extra_assistant=()) -> int:
@@ -100,8 +101,8 @@ def test_her_own_stall_lines_leave_the_prompt(monkeypatch):
     tid = 559101
     _seed(tid, 'stallloop', extra_assistant=[
         'да, и очень хочу 🔥',
-        STALL_LINES_RU[0],                       # её запасная, ещё раз
-        STALL_LINES_RU[1].replace('😌', '😇'),   # та же, но смайлик другой
+        _RETIRED_STALL_LINES[0],                    # её запасная, ещё раз
+        _RETIRED_STALL_LINES[1].replace('😌', '😇'),  # та же, но смайлик другой
     ])
     seen = []
 
@@ -135,7 +136,7 @@ def test_empty_chain_reason_reaches_the_owner(monkeypatch):
     monkeypatch.setattr(cs, 'generate_text', fake)
     monkeypatch.setattr(cs, 'llm_failure_hook', hook)
     answer = asyncio.run(cs.reply(tid, 'emptyreason', 'приезжай ко мне', language_code='ru'))
-    assert answer in STALL_LINES_RU, answer
+    assert answer == STUB_REPLY_RU, answer
     assert notes and notes[0][0] == tid
     assert 'finish=length' in notes[0][2]
 
@@ -154,7 +155,7 @@ def test_provider_exception_reason_reaches_the_hook(monkeypatch):
     monkeypatch.setattr(cs, 'generate_text', fake)
     monkeypatch.setattr(cs, 'llm_failure_hook', hook)
     answer = asyncio.run(cs.reply(tid, 'crashreason', 'целую, я поехал', language_code='ru'))
-    assert answer in STALL_LINES_RU, answer
+    assert answer == STUB_REPLY_RU, answer
     assert notes and 'balance' in notes[0]
 
 
@@ -174,12 +175,13 @@ def test_gen_carries_the_reason_and_main_wires_the_hook():
     assert 'await _report_llm_failure(' in CHAT
 
 
-# ── 3. общий бюджет хода и дешёвый повтор ──────────────────────────────
+# ── 3. бюджет хода, две попытки, никакого запасного провайдера ──────────
 
-def _patch_chain(monkeypatch, minimax=None, gemini=None, openrouter=None):
+def _patch_chain(monkeypatch, minimax=None, gemini=None):
     monkeypatch.setattr(llm, '_minimax', minimax)
     monkeypatch.setattr(llm, '_gemini', gemini)
-    monkeypatch.setattr(llm, '_openrouter', openrouter)
+    # V3.167.1: между попытками стоит пауза; ждать её в тесте незачем.
+    monkeypatch.setattr(llm, 'LLM_RETRY_PAUSE_SECONDS', 0.0)
 
 
 def test_chain_budget_cuts_a_hung_provider(monkeypatch):
@@ -207,37 +209,57 @@ def test_empty_dialogue_retry_asks_for_less_thinking(monkeypatch):
 
 
 def test_second_empty_answer_does_not_ask_a_third_time(monkeypatch):
+    # V3.167.1 (владелец, Q1): третьей попытки и запасного провайдера нет —
+    # после глухого повтора ход отдаёт нейтральную заглушку про связь.
     mm = _FakeProvider([_resp('', 'length'), _resp('', 'length'), _resp('не дойдёт')])
     gem = _FakeProvider([_resp('наконец-то я тут 😌')])
     _patch_chain(monkeypatch, minimax=mm, gemini=gem)
     out = asyncio.run(llm.generate_text([{'role': 'user', 'content': 'x'}], max_tokens=40, purpose='dialogue'))
-    assert len(mm.calls) == 2, 'повтор один, дальше — запасной провайдер'
-    assert out.provider == 'gemini' and 'наконец-то' in out.text
-    assert out.error == ''
+    assert len(mm.calls) == 2, 'повтор один, дальше — заглушка'
+    assert len(gem.calls) == 0, 'текст она у Gemini не просит'
+    assert out.text == '' and out.provider == 'minimax'
 
 
-def test_unknown_parameter_falls_back_to_the_plain_retry(monkeypatch):
+def test_a_crash_on_the_retry_does_not_buy_a_third_attempt(monkeypatch):
     mm = _FakeProvider([_resp('', 'length'),
-                        TypeError("create() got unexpected keyword 'reasoning_effort'"),
-                        _resp('я всё равно рядом 💛')])
+                        TypeError("create() got unexpected keyword 'reasoning_effort'")])
     _patch_chain(monkeypatch, minimax=mm)
     out = asyncio.run(llm.generate_text([{'role': 'user', 'content': 'x'}], max_tokens=40, purpose='dialogue'))
-    assert 'reasoning_effort' in mm.calls[1] and 'reasoning_effort' not in mm.calls[2]
-    assert 'рядом' in out.text
+    assert len(mm.calls) == 2
+    assert out.text == '' and 'TypeError' in out.error
 
 
 def test_empty_result_always_carries_a_reason(monkeypatch):
     mm = _FakeProvider([_resp('', 'length'), _resp('', 'length')])
-    gem = _FakeProvider([_resp('')])
-    _patch_chain(monkeypatch, minimax=mm, gemini=gem)
+    _patch_chain(monkeypatch, minimax=mm)
     out = asyncio.run(llm.generate_text([{'role': 'user', 'content': 'x'}], max_tokens=40, purpose='dialogue'))
     assert out.text == ''
     assert 'MiniMax' in out.error and 'finish=length' in out.error, out.error
 
 
 def test_static_budget_and_hook_shape():
-    assert "LLM_CHAIN_BUDGET_SECONDS = _env_float('LLM_CHAIN_BUDGET_SECONDS', 55.0)" in LLM_SRC
-    assert 'def _slice(cap: float, reserve: float = 0.0) -> float:' in LLM_SRC
-    assert 'timeout=_slice(LLM_TIMEOUT_SECONDS, LLM_FALLBACK_RESERVE_SECONDS)' in LLM_SRC
+    assert "LLM_CHAIN_BUDGET_SECONDS = _env_float('LLM_CHAIN_BUDGET_SECONDS', 90.0)" in LLM_SRC
+    assert "LLM_TIMEOUT_SECONDS = _env_float('LLM_TIMEOUT_SECONDS', 30.0)" in LLM_SRC
+    assert 'MINIMAX_ATTEMPTS = 2' in LLM_SRC
+    assert 'def _slice(cap: float) -> float:' in LLM_SRC
+    assert 'timeout=_slice(LLM_TIMEOUT_SECONDS)' in LLM_SRC
     assert "error=f'{type(exc).__name__}: {str(exc)[:300]}'" in CHAT
     assert "if not (m.role == 'assistant' and is_stall_line(m.content))]" in CHAT
+
+
+def test_the_stub_never_enters_the_dialogue_history(monkeypatch):
+    # V3.167.1 (владелец): его строка остаётся (он её писал), её заглушка — нет.
+    tid = 559104
+    uid = _seed(tid, 'stubnotstored')
+
+    async def fake(messages, **kw):
+        return LLMResult('', 'minimax', 'MiniMax-M3', True, 'MiniMax: TimeoutError')
+
+    monkeypatch.setattr(cs, 'generate_text', fake)
+    before = len([m for m in get_recent_messages(uid, 'anna_01', 200) if m.role == 'assistant'])
+    answer = asyncio.run(cs.reply(tid, 'stubnotstored', 'ты там?', language_code='ru'))
+    assert answer == STUB_REPLY_RU
+    after = get_recent_messages(uid, 'anna_01', 200)
+    assert len([m for m in after if m.role == 'assistant']) == before, 'заглушка не сохранена'
+    assert STUB_REPLY_RU not in [m.content for m in after]
+    assert any('ты там?' in m.content for m in after), 'его строка сохранена'

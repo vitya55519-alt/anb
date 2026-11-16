@@ -93,40 +93,39 @@ ASSISTANTY = re.compile(
 )
 
 
-# V3.97.0: «хм… я зависла на секунду 🙈» went out 141 times a week whenever
-# both providers came back empty — the same robotic line, even to «целую, я
-# поехал». When nothing came back she now answers like a busy live girl, with
-# a different line each time, in his language.
-STALL_LINES_RU = (
+# V3.167.1 (владелец, 16.11): вместо пула живых фраз-оправошников — одна
+# нейтральная заглушка про связь. Старые строки («ой, секунду, мне тут звонят»,
+# «стоп, повтори…») она писала сама себе в диалог, и на следующем ходу модель
+# подхватывала их как её реплику — переписка сваливалась в круг, а он видел
+# сломанный бот. Заглушка ниже в историю не пишется вообще: это не её ответ.
+STUB_REPLY_RU = 'Секунду, связь подвисла… Напиши ещё раз ❤️'
+STUB_REPLY_EN = 'One sec, the connection dropped… send it again ❤️'
+
+
+def stub_reply(lang: str = 'ru') -> str:
+    return STUB_REPLY_EN if (lang or 'ru').lower().startswith('en') else STUB_REPLY_RU
+
+
+# Строки, которые она раздавала вместо ответа до V3.167.1. Новые больше не
+# появляются, но лежат в истории у всех, кто писал ей в те недели: в промпт им
+# ход закрыт, иначе модель продолжает диалог от своей же отговорки.
+_RETIRED_STALL_LINES = (
     'ой, секунду, мне тут звонят 🙈 не уходи, ладно?',
     'подожди, отвлеклась на минутку… так, о чём ты? 😌',
     'ммм, я тут задумалась над тем, что ты написал 😏 скажи ещё раз, по-другому',
     'прости, подруга написала, отвлекла 🙈 я снова только твоя',
     'так, я перечитала твоё сообщение и улыбаюсь как дурочка 😊 продолжай',
     'стоп, повтори, я хочу это прочитать ещё раз 😏',
-)
-STALL_LINES_EN = (
     'oops, one sec, someone is calling me 🙈 don\'t go anywhere, ok?',
     'sorry, got distracted for a moment… so, where were we? 😌',
     'hmm, I\'m still thinking about what you wrote 😏 say it again, differently',
     'my friend just texted me 🙈 I\'m all yours again',
+    'хм… я зависла на секунду 🙈',
 )
 
-
-def stall_line(lang: str = 'ru', recent: list[str] | None = None) -> str:
-    import random
-    pool = STALL_LINES_EN if lang == 'en' else STALL_LINES_RU
-    used = {_stall_key(r) for r in (recent or [])}
-    fresh = [p for p in pool if _stall_key(p) not in used] or list(pool)
-    return random.choice(fresh)
-
-
-# V3.167.9 (владелец 16.11, «он троит общение»): запасную фразу она подкидывала
-# сама себе — она лежит в истории как её же ответ, и на следующем ходу модель
-# подхватывала её «ой, секунду, мне тут звонят» и вела диалог по кругу. Сравнение
-# идёт по буквам без emoji и знаков препинания: diversify_emoji меняет только
-# смайлик, слова остаются те же, а начало строки переживает любое сокращение —
-# поэтому сравнивается префикс.
+# Сравнение идёт по буквам без emoji и знаков препинания: полировка меняет
+# только смайлик, слова остаются те же, а начало строки переживает любое
+# сокращение — поэтому сравнивается префикс.
 _LETTERS_ONLY = re.compile(r'[^0-9a-zа-яё]+', re.I)
 
 
@@ -134,14 +133,16 @@ def _stall_key(text: str) -> str:
     return _LETTERS_ONLY.sub('', text or '').lower()
 
 
-_STALL_KEYS = frozenset(k for k in (_stall_key(s) for s in STALL_LINES_RU + STALL_LINES_EN) if k)
+_STALL_KEYS = frozenset(k for k in (_stall_key(s) for s in _RETIRED_STALL_LINES) if k)
 
 
 def is_stall_line(text: str) -> bool:
-    """Её ли это строка из пула запасных, а не живая. Короткие реплики не
-    сравниваем: совпадение по началу на «ок» было бы ложным."""
+    """Её ли это строка — отговорка из старых релизов, — а не живая. Короткие
+    реплики не сравниваем: совпадение по началу на «ок» было бы ложным.
+    Порог в 10 букв, а не 12: латиница в шестнадцать знаков помещает их меньше,
+    чем кириллица, а обрезанный «oops, one sec, s» тоже её строка."""
     key = _stall_key(text)
-    if len(key) < 12:
+    if len(key) < 10:
         return False
     return any(k.startswith(key) or key.startswith(k) for k in _STALL_KEYS)
 
@@ -169,7 +170,7 @@ async def _gen(messages, **kw):
     ответила, generate_text поднимает RuntimeError, и весь ход падал — он видел
     «Не получилось ответить — попробуй ещё раз» вместо её строки. Причина того
     отказа в проде не доказана, но исход один: провайдер-отказ теперь такой же
-    пустой ответ, как раньше, — ниже по коду он уходит в запасную живую фразу.
+    пустой ответ, как раньше, — ниже по коду он уходит в заглушку про связь.
     V3.167.9: вместе с пустым ответом едет и причина, а не только лог."""
     try:
         return await generate_text(messages, **kw)
@@ -179,13 +180,16 @@ async def _gen(messages, **kw):
 
 
 def _clean(answer: str, *, duo: bool = False) -> str:
-    answer = (answer or stall_line()).strip()
+    # V3.167.1: пустой ответ здесь больше не подменяется запасной фразой.
+    # Заглушка рождается один раз — в конце хода — и в историю диалога не
+    # пишется, чтобы на следующем ходу модель не продолжила разговор от неё.
+    answer = (answer or '').strip()
     answer = re.sub(r"^(Конечно|Разумеется|Понимаю тебя|Хорошо,? |Да,? (?:конечно|разумеется))[,!:。.\.\s]+", "", answer, flags=re.I)
     answer = re.sub(r"\n[-*•]\s", "\n", answer)  # strip markdown lists
     answer = re.sub(r"\*\*(.+?)\*\*", r"\1", answer)  # strip bold
     answer = plain_message(answer, duo=duo)
     answer = re.sub(r"\n{3,}", "\n\n", answer)
-    return answer.strip() or stall_line()
+    return answer.strip()
 
 
 # V3.138.0: owner — «это не переписка, это театральная пьеса». MiniMax keeps
@@ -1177,9 +1181,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     r = await _gen(messages, max_tokens=token_budget, temperature=0.8, purpose='dialogue', stop=stops)
     thought = ''
     draft = ''
+    # V3.167.1: язык заглушки пуст, пока её слова живые; рождается она одна и
+    # в одном месте — ниже, перед записью в диалог.
+    stub_lang = ''
     if not (r.text or '').strip():
-        _lang = 'en' if (foreign or (language_code or '').lower().startswith('en')) else 'ru'
-        answer = stall_line(_lang, [m.content for m in history if m.role == 'assistant'][-6:])
+        answer = ''
         _logger.warning('dialogue empty from all providers user=%s character=%s reason=%s',
                         user_id, character_id, getattr(r, 'error', '') or r.provider)
         # V3.167.9: он видит её живой отскок, а владелец теперь видит, почему.
@@ -1203,10 +1209,10 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                     answer, r, thought = fixed, retry, t2
                     draft = novel_draft(retry.text or '') if draft_due else ''
                 else:
-                    answer = stall_line('ru', _her_recent[-6:])
+                    answer = ''
                     draft = ''
             except Exception as exc:
-                answer = stall_line('ru', _her_recent[-6:])
+                answer = ''
                 draft = ''
                 # V3.167.9: и здесь цепочка могла вернуться ни с чем — тот же
                 # сигнал владельцу, что и на пустом ходу.
@@ -1258,6 +1264,16 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     if draft and (not draft_due or live_talk.looks_leaked(draft)):
         draft = ''
     answer = join_thought_message(thought, answer)
+    # V3.167.1 (владелец): если на выходе не её слова — одна нейтральная заглушка
+    # про связь. Она не полируется (он видит ровно ту строку, что в коде), не
+    # тратит лимит дня и в историю диалога не пишется: иначе на следующем ходу
+    # модель продолжает разговор от собственной отговорки.
+    if not (answer or '').strip():
+        stub_lang = 'en' if foreign or (language_code or '').lower().startswith('en') else 'ru'
+        answer, thought, draft = stub_reply(stub_lang), '', ''
+    # Всё, что ниже считает «он ответил / потратил сообщение дня /gift тикает»,
+    # считается только по её живым словам: заглушка про связь — не ответ.
+    her_words = bool((r.text or '').strip()) and not stub_lang
     # V3.166.7 (владелец): анкета кадра читается из сырого ответа и ложится в
     # состояние до того, как сохранено что-либо ещё, — от неё зависят и кадр
     # под этим сообщением, и «кто в кадре». Пустая или кривая строка ничего не
@@ -1278,7 +1294,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         _logger.debug('life reply note failed user=%s', user_id, exc_info=True)
     save_message(db_user_id, character_id, "user", user_text)
     parts = duo_lines(answer) if duo_chat else []
-    if parts:
+    if stub_lang:
+        # V3.167.1: его строка в диалоге остаётся (он её писал), её заглушка —
+        # нет. Иначе она накапливается в истории и модель отвечает сама себе.
+        _logger.info('dialogue stub delivered, not stored user=%s character=%s', user_id, character_id)
+    elif parts:
         # V3.139.0: two girls answer as two messages, the way they would in a
         # real group chat — the name stays on the line, it is the only marker
         # of who speaks (the app draws her avatar from it).
@@ -1295,7 +1315,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # them on her live replies only. A proactive push, a ritual message or the
     # purchase reaction itself (it always comes with a scene note) must not eat
     # what he just paid for.
-    if not scene and (r.text or '').strip():
+    if not scene and her_words:
         try:
             from services import gift_shop_service
             gift_shop_service.tick(user_id, character_id)
@@ -1304,13 +1324,13 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # V3.154.0 (Фогель, Модуль 2): «Перебивки» — раз в 10–15 его сообщений кто-то
     # возвращается домой. Счётчик идёт только по живым репликам: сцена покупки и
     # пуш не должны тратить событие. Карточку рисует слой доставки.
-    if not scene and (r.text or '').strip():
+    if not scene and her_words:
         try:
             from services import interrupt_service
             await asyncio.to_thread(interrupt_service.note_turn, user_id, character_id, adaptation_level)
         except Exception:
             _logger.warning('interrupt note failed user=%s', user_id, exc_info=True)
-    if gift and (r.text or '').strip():
+    if gift and her_words:
         try:
             from services import memory_gift
             from services.analytics_service import track_event
@@ -1322,7 +1342,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # — his mode does not matter, and Premium never comes here (his cap is off).
     # A storyline direction is still a live turn, only the scene the caller
     # scripted is not. The delivery layer reads the thin line once.
-    if not premium and not caller_scene and (r.text or '').strip():
+    if not premium and not caller_scene and her_words:
         try:
             await asyncio.to_thread(daily_limit.note_message, user_id, language=language_code or 'ru')
         except Exception:
@@ -1330,7 +1350,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # V3.167.4 (владелец 16.11): «зашёл, написал пять сообщений — получил 50 🍑».
     # Считаются его реплики в диалоге, а не потолок дня: с Premium потолка нет,
     # а серия нужна и ему. Плашку читает один раз тот слой, что отдаёт ответ.
-    if not caller_scene and (r.text or '').strip():
+    if not caller_scene and her_words:
         try:
             from services import series_reward
             await asyncio.to_thread(series_reward.note_his_message, user_id, db_user_id)

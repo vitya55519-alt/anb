@@ -41,7 +41,7 @@ def test_stamp_consumed_before_money_is_spent():
     # the slot write must happen BEFORE the LLM call / send, so a failed
     # send can never re-arm the hourly retry
     assert PROACTIVE.index('st.last_nudge_at=now') < PROACTIVE.index('msg=await proactive_reply(')
-    assert PROACTIVE.index('s.commit()') < PROACTIVE.index('await bot.send_message(telegram_id,msg)')
+    assert PROACTIVE.index('s.commit()') < PROACTIVE.index('await bot.send_message(telegram_id,_her(msg,char_id))')
     # the old post-send stamp session is gone (only one stamp block in the job)
     assert PROACTIVE.count('st.last_nudge_at=now') == 1
 

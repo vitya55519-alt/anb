@@ -33,7 +33,7 @@ LLM = (ROOT / 'services' / 'llm_provider_service.py').read_text(encoding='utf-8'
 def _env():
     import os
     os.environ.setdefault('TELEGRAM_TOKEN', 'test-token')
-    os.environ.setdefault('OPENROUTER_API_KEY', 'test-key')
+    os.environ.setdefault('MINIMAX_API_KEY', 'test-key')
     yield
 
 
@@ -106,12 +106,13 @@ def test_fal_leg_keeps_the_v34418_spend_ledger():
     assert "spend_service.record_image_spend(\n                        f'fal/{candidate}'" in PHOTO
 
 
-def test_openrouter_stays_the_chat_provider():
-    # the chat leg is untouched: MiniMax M3 via OpenRouter stays the dialogue
-    # engine (that IS the «общение» cost center the owner keeps)
-    assert 'OPENROUTER_MODEL,' in LLM
+def test_the_chat_leg_is_direct_minimax_only():
+    # V3.167.1 (владелец): «выпиливай и OpenRouter, и Gemini» — общение ведёт
+    # только официальный прямой MiniMax; агрегатор из кода убран целиком.
+    assert 'MINIMAX_MODEL,' in LLM
     assert "if purpose == 'dialogue':" in LLM
-    assert "extra['reasoning'] = {'enabled': True}" in LLM
+    assert 'OPENROUTER_MODEL' not in LLM
+    assert "extra['reasoning'] = {'enabled': True}" not in LLM
 
 
 def test_startup_diagnostic_names_the_fal_model(photo_mod):

@@ -4,14 +4,15 @@
 Цензура провайдера на 18+ тексте поднимает RuntimeError из цепочки, и весь ход
 падал: в Mini App это 502 {'ok': False, 'error': 'reply'}, то есть мёртвая
 плашка вместо её строки. Теперь отказ провайдера — это пустой ответ, а пустой
-ответ у неё уже был отработан: запасная живая фраза, диалог продолжается.
+ответ в V3.167.1 закрывает одна нейтральная заглушка про связь: диалог
+продолжается, и в историю она не пишется.
 """
 import asyncio
 import logging
 from types import SimpleNamespace
 
 import services.chat_service as cs
-from services.chat_service import STALL_LINES_RU, _gen
+from services.chat_service import STUB_REPLY_RU, _gen
 from services.user_service import ensure_user
 from services.memory_service import save_message
 
@@ -55,7 +56,7 @@ def test_dialogue_crash_answers_instead_of_dying(monkeypatch):
     answer = asyncio.run(cs.reply(TID, 'alive', 'ты хочешь сосать мне хуй?', language_code='ru'))
     assert seen, 'the dialogue call was attempted'
     assert (answer or '').strip(), 'he must get her line, not an empty reply'
-    assert answer in STALL_LINES_RU, answer
+    assert answer == STUB_REPLY_RU, answer
 
 
 def test_rewrite_crash_keeps_her_own_words(monkeypatch):

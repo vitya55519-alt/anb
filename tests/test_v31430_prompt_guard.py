@@ -129,7 +129,6 @@ def _fake_llm(monkeypatch):
 
     monkeypatch.setattr(L, '_minimax', SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=mm_create))))
     monkeypatch.setattr(L, '_gemini', None, raising=False)
-    monkeypatch.setattr(L, '_openrouter', None, raising=False)
     return seen
 
 
@@ -160,7 +159,7 @@ def test_dialogue_sampling_wired_in_the_chat_pipeline():
     assert "mm_kwargs['stop'] = stop" in LLM
     assert "kwargs['stop'] = stop" in LLM
     assert "**({'stop': stop} if stop else {})" in LLM
-    assert "temperature=temperature," in LLM[LLM.index('# ── 2. Gemini'):LLM.index('# ── 3. OpenRouter')]
+    assert "temperature=temperature," in LLM[LLM.index('# ── 2. Gemini'):LLM.index('# ── Глухо')]
 
 
 def test_dialogue_temperature_is_inside_the_owner_band():

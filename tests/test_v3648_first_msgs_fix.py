@@ -47,7 +47,7 @@ def _resp(text, finish='stop'):
     return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text), finish_reason=finish)], usage=None)
 
 
-def test_gemini_gets_thinking_room_and_reports_cut(monkeypatch):
+def test_gemini_vision_gets_thinking_room_and_reports_cut(monkeypatch):
     from services import llm_provider_service as L
     seen = {}
 
@@ -56,7 +56,9 @@ def test_gemini_gets_thinking_room_and_reports_cut(monkeypatch):
         return _resp('Надела сегодня тот', 'length')
     monkeypatch.setattr(L, '_minimax', None)
     monkeypatch.setattr(L, '_gemini', SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=gem_create))))
-    r = asyncio.run(L.generate_text([{'role': 'user', 'content': 'x'}], max_tokens=90, purpose='life_event'))
+    # V3.167.1: Gemini теперь только глаза (реакция на фото, приёмка кадра).
+    r = asyncio.run(L.generate_text([{'role': 'user', 'content': 'x'}], max_tokens=90,
+                                    purpose='photo_reaction'))
     assert seen['max'] == 90 + L.GEMINI_REASONING_HEADROOM
     assert r.complete is False
 

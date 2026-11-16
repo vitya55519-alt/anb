@@ -8,9 +8,13 @@ VIDEO = (ROOT / 'services' / 'gemini_video_service.py').read_text(encoding='utf-
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
 
 
-def test_openrouter_is_primary_with_gemini_fallback_and_no_openai_chat():
-    assert 'OPENROUTER_API_KEY' in CONFIG
-    assert 'OPENROUTER_MODEL' in CONFIG
+def test_minimax_is_the_only_chat_provider_and_openrouter_is_gone():
+    # V3.167.1 (владелец): в цепочке остался только официальный прямой MiniMax.
+    assert 'MINIMAX_API_KEY' in CONFIG
+    assert 'MINIMAX_MODEL' in CONFIG
+    assert 'MINIMAX_BASE_URL' in CONFIG
+    assert 'OPENROUTER_API_KEY' not in CONFIG
+    assert 'openrouter' not in PROVIDER.lower()
     assert 'GEMINI_API_KEY' in CONFIG
     assert 'GEMINI_CHAT_MODEL' in CONFIG
     assert 'gemini-3.5-flash' in CONFIG
@@ -18,7 +22,7 @@ def test_openrouter_is_primary_with_gemini_fallback_and_no_openai_chat():
     assert 'CHAT_PROVIDER' not in CONFIG
     assert 'CHAT_FALLBACK_OPENAI' not in CONFIG
     assert 'CHAT_FALLBACK_GEMINI' not in CONFIG
-    assert 'provider=openrouter' in PROVIDER
+    assert 'provider=minimax' in PROVIDER
     assert 'provider=gemini' in PROVIDER
     assert 'LLM unavailable' in PROVIDER
 

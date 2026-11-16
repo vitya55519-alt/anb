@@ -87,7 +87,7 @@ def test_photo_background_caches_custom_avatar():
     bg = MAIN[MAIN.index('async def _run_photo_background('):]
     bg = bg[:bg.index('\nasync def ') if '\nasync def ' in bg else len(bg)]
     assert 'ensure_custom_avatar_cached(bot, character_id)' in bg
-    assert 'character_id = get_user_character(telegram_id)' in bg
+    assert 'character_id = character_id or get_user_character(telegram_id)' in bg
 
 
 def test_invoice_titles_use_selected_character_name():

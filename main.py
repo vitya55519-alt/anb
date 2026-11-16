@@ -488,6 +488,29 @@ def set_user_character(telegram_id: int, character_id: str) -> None:
     except Exception:
         logger.exception('failed to persist selected character user=%s', telegram_id)
 
+
+def _remember_character(telegram_id: int, character_id: str) -> None:
+    """V3.167.1 (владелец, «он общается с Миланой, а кадр приходит от Анны»):
+    выбор в Mini App и есть её адрес. Уровневое фото, кружок и пуши берут
+    «последнюю активную», а не дефолт — без этой записи они говорили с той,
+    кого он последний раз менял в самом боте. Пишем только когда изменилось:
+    ходов в день много, а selected_character — обычный UPDATE строки."""
+    if not character_id or get_user_character(telegram_id) == character_id:
+        return
+    set_user_character(telegram_id, character_id)
+
+
+def _her_label(telegram_id: int) -> str:
+    """V3.167.1 (владелец, Q3): метка «💬 Имя: » для её строк в общем чате
+    бота. Дефолтная героиня не подписывается: у неё чат свой, а лишний
+    префикс сломал бы теги и кнопки. Пустая строка, если имя не нашлось."""
+    from services.heroine_label import label
+    try:
+        return label(get_user_character(telegram_id) or '')
+    except Exception:
+        return ''
+
+
 def _character_display_name(character_id: str) -> str:
     """V3.31.8: user-facing name of a character for invoice titles. Before this
     every Stars invoice said «Анна» even when the user was chatting with Emily
@@ -1961,12 +1984,15 @@ def _hot_frame_is_free(telegram_id: int, category: str) -> bool:
     return bool(free_carrier and consume_free_private_photo(telegram_id, category))
 
 
-async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False, spend_explicit_peaches: bool = False):
+async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False, spend_explicit_peaches: bool = False, character_id: str | None = None):
     uid = ensure_user(telegram_id)
     ping = asyncio.create_task(_photo_progress_ping(chat_id, telegram_id))
     try:
         track_event(uid, 'photo_generation_started', metadata={'scene': request.scene, 'delivery_type': delivery_type})
-        character_id = get_user_character(telegram_id)
+        # V3.167.1 (владелец): церемония уровня знает, кто в ней участвует, —
+        # кадр обязан прийти той же, а не той, кого он открыл часом раньше.
+        # Без переданного id остаётся прошлое поведение: последняя активная.
+        character_id = character_id or get_user_character(telegram_id)
         if is_custom_character(character_id):
             # V3.31.8: constructor personas generate from their own avatar —
             # make sure the reference image is on disk before routing.
@@ -2008,7 +2034,7 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
                 latest = get_latest_photo_delivery(telegram_id)
                 if latest:
                     couple_service.add_album_milestone(
-                        uid, get_relationship_level(telegram_id, get_user_character(telegram_id)), latest['id'],
+                        uid, get_relationship_level(telegram_id, character_id), latest['id'],
                     )
         except Exception:
             pass
@@ -2046,7 +2072,7 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
         _photo_jobs.pop(telegram_id, None)
 
 
-async def _start_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False, spend_explicit_peaches: bool = False):
+async def _start_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False, spend_explicit_peaches: bool = False, character_id: str | None = None):
     active = _photo_jobs.get(telegram_id)
     if (active and not active.done()) or telegram_id in _photo_job_reservations:
         if await _maybe_refund_paid_photo(chat_id, telegram_id, charge, amount, product):
@@ -2073,7 +2099,7 @@ async def _start_photo_background(chat_id: int, telegram_id: int, request: Photo
             'погоди чуть-чуть 😌 хочу сделать красиво',
             'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
         )))
-        task = _spawn_job('photo', telegram_id, _run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, amount=amount, product=product, spend_undress_credit=spend_undress_credit, spend_explicit_peaches=spend_explicit_peaches), payload={'product': product or ''})
+        task = _spawn_job('photo', telegram_id, _run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, amount=amount, product=product, spend_undress_credit=spend_undress_credit, spend_explicit_peaches=spend_explicit_peaches, character_id=character_id), payload={'product': product or ''})
         _photo_jobs[telegram_id] = task
         return True
     finally:
@@ -6273,7 +6299,8 @@ async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: in
             # Not every engine output survives the strict video-note format —
             # a normal video still delivers the moment.
             await bot.send_video(chat_id, BufferedInputFile(video_bytes, filename='circle.mp4'),
-                                 caption='в кружок не поместилось 😅 держи так', supports_streaming=True)
+                                 caption=_her_label(telegram_id) + 'в кружок не поместилось 😅 держи так',
+                                 supports_streaming=True)
         track_event(
             ensure_user(telegram_id), 'circle_delivered',
             metadata={'source_delivery_id': delivery_id, 'engine': used_engine, 'charge_id': charge_id or 'free'},
@@ -6379,9 +6406,9 @@ async def gemini_status_cmd(message: types.Message):
     st = provider_status()
     await message.answer(
         '🧠 LLM status\n\n'
-        f'OpenRouter: {"✅" if st["openrouter_key_present"] else "❌"} model: {st["openrouter_model"]}\n'
-        f'OpenRouter URL: {st["openrouter_base_url"]}\n'
-        f'Gemini (fallback): {"✅" if st["gemini_key_present"] else "❌"} model: {st["gemini_model"]}\n'
+        f'MiniMax (единственный текст): {"✅" if st["minimax_key_present"] else "❌"} model: {st["minimax_model"]}\n'
+        f'MiniMax URL: {st["minimax_base_url"]}\n'
+        f'Gemini (только глаза для фото): {"✅" if st["gemini_vision_key_present"] else "❌"} model: {st["gemini_model"]}\n'
         f'Video (SpicyAPI): {"✅" if spicy_video_available() else "❌"}'
     )
 
@@ -9452,6 +9479,10 @@ async def _voice_premium_nudge(message: types.Message, user) -> None:
 
 async def _send_answer_body(message: types.Message, text: str):
     user = get_user(message.from_user.id)
+    # V3.167.1: в общем чате бота одна ветка на всех героинь, поэтому её
+    # строку подписывают именем. Duo и роман уже называют говорящую — там
+    # метка не нужна, и она считается ниже, после этих веток.
+    her_tag = _her_label(message.from_user.id)
     # V3.139.0: a duo answer is two messages, not one script.
     duo = await asyncio.to_thread(_duo_speakers, message.from_user.id)
     from services.chat_service import duo_lines
@@ -9474,7 +9505,8 @@ async def _send_answer_body(message: types.Message, text: str):
             character_id = get_user_character(message.from_user.id)
             audio = await synthesize_bytes(text, user.voice_style, character_id=character_id)
             filename = 'voice.ogg' if user.voice_anon_mode else f'{character_id}.ogg'
-            await message.answer_voice(BufferedInputFile(audio, filename=filename))
+            await message.answer_voice(BufferedInputFile(audio, filename=filename),
+                                       caption=her_tag or None)
             return
         except Exception:
             logger.exception('tts failed')
@@ -9492,9 +9524,9 @@ async def _send_answer_body(message: types.Message, text: str):
                     except Exception:
                         pass
                     await asyncio.sleep(_bubble_pause(part))
-                await message.answer(part)
+                await message.answer(her_tag + part if i == 0 else part)
             return
-    await message.answer(text)
+    await message.answer(her_tag + text)
     await _voice_premium_nudge(message, user)
 
 
@@ -11542,7 +11574,7 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
             text += '\n\nТеперь доступно:\n' + '\n'.join('• ' + u for u in unlocks)
         if not special:
             text += '\n\nи небольшой подарок от меня 🤍'
-        await bot.send_message(telegram_id, text)
+        await bot.send_message(telegram_id, _her_label(telegram_id) + text)
         try:
             save_message(ensure_user(telegram_id), character_id, 'assistant', text)
         except Exception:
@@ -11555,9 +11587,10 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
             await asyncio.to_thread(branch_service.mark_left_him, ensure_user(telegram_id), character_id)
         track_event(ensure_user(telegram_id), 'relationship_ceremony_sent', metadata={'level': level}, character_id=character_id)
         if special:
-            await _start_photo_background(telegram_id, telegram_id, special[1], 'story')
+            await _start_photo_background(telegram_id, telegram_id, special[1], 'story', character_id=character_id)
         else:
-            await _start_photo_background(telegram_id, telegram_id, PhotoRequest(scene='selfie', mood='romantic'), 'story')
+            await _start_photo_background(telegram_id, telegram_id, PhotoRequest(scene='selfie', mood='romantic'), 'story',
+                                          character_id=character_id)
     except Exception as exc:
         logger.warning('level-up ceremony failed user=%s error=%s', telegram_id, type(exc).__name__)
 
@@ -15421,6 +15454,9 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                             text: str, extra: dict | None = None) -> web.Response:
     from services import spend_service
     spend_service.set_spend_user(telegram_id)
+    # V3.167.1: с кем он говорит в Mini App — та она и есть; кадр, кружок и
+    # пуши читают именно этот выбор, а не дефолтную Анну.
+    await asyncio.to_thread(_remember_character, telegram_id, character_id)
     # V3.166.4 (Блок 2, owner): «механика тизера» — opening line, then his tap
     # on the chip under it is what brings the frame. It runs before any photo
     # parsing and before the model: the words he pressed are known to us, so
@@ -15654,11 +15690,12 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         _spawn_background(_notify_turn_failure(telegram_id, 'ход чата в Mini App', exc))
         # V3.167.6 (владелец 16.11): в боте на упавший ход она говорит «я
         # зависла, попробуй ещё раз», а в Mini App тот же сбой был мёртвой
-        # плашкой и сгоревшим сообщением. Теперь здесь её живой отскок: ход
+        # плашкой и сгоревшим сообщением. Теперь здесь тоже её ответ: ход
         # не обрывается, а причина падает админу в личку.
-        from services.chat_service import stall_line
+        # V3.167.1: фраза та же для обеих площадок и в диалог она не пишется.
+        from services.chat_service import stub_reply
         return web.json_response({'ok': True, 'fallback': True,
-                                  'reply': stall_line('en' if (user_language or 'ru').startswith('en') else 'ru')})
+                                  'reply': stub_reply('en' if (user_language or 'ru').startswith('en') else 'ru')})
     # V3.151.0: owner ТЗ — her thoughts are a card, not her line. Everything
     # that decides what happens next (a photo promise, a circle, the voice)
     # reads the MESSAGE block only; the marked text still goes to the app,
@@ -15900,6 +15937,9 @@ async def _webapp_api_chat_start(request: web.Request) -> web.Response:
             return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
     elif not get_card(character_id):
         return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+    # V3.167.1: открыл чат с ней — значит она и есть «последняя активная»; с
+    # этого момента её же кадр, кружок и пуши идут ей, а не дефолтной Анне.
+    await asyncio.to_thread(_remember_character, int(telegram_id), character_id)
     # ТЗ V3.167.3 §3: первый ход — механика Mini App, и выключается она одним
     # флагом. Без открывашки чат при первом открытии остаётся пустым (как было
     # до V3.165.0) — подсказки под вводом рисует сам клиент.
@@ -16713,6 +16753,8 @@ async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', ''))
     image_b64 = str(body.get('image', ''))
     mime = str(body.get('mime', 'image/jpeg'))
+    # V3.167.1: он прислал кадр именно ей — её имя и становится последним.
+    await asyncio.to_thread(_remember_character, int(telegram_id), character_id)
     # V3.96.0: the text he typed before tapping 📎 rides as the caption.
     caption = str(body.get('caption', '') or '').strip()[:300]
     if not character_id or not image_b64 or mime not in ('image/jpeg', 'image/png', 'image/webp'):
@@ -18391,6 +18433,8 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
     character_id = str(body.get('character_id', ''))[:64]
     action = str(body.get('action', ''))
     media_url = str(body.get('media_url', ''))
+    # V3.167.1: он жмёт кадр в её диалоге — выбор того же хода, что и реплика.
+    await asyncio.to_thread(_remember_character, int(telegram_id), character_id)
     # V3.166.5 (владелец, 16:40): под стартовым кадром из общего кэша кнопка
     # «Раздеть» отвечала «Это фото уже нельзя изменить» — эндпоинт знал только
     # личные файлы /webapp/media/…, а такой кадр лежит в БД по
@@ -18604,6 +18648,10 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     if kind not in ('photo', 'circle', 'hotcircle', 'voice', 'video', 'hot', 'cosplay') or not character_id:
         logger.warning('webapp chat media bad_request user=%s kind=%r character=%r', telegram_id, kind, character_id)
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    # V3.167.1 (владелец): «он общается с Миланой, а кадр приходит от Анны».
+    # Та, в чьём диалоге он жмёт медиа, и есть последняя активная — от неё же
+    # теперь уровневый кадр, кружок и утренний пуш.
+    await asyncio.to_thread(_remember_character, int(telegram_id), character_id)
     # V3.139.0: owner ТЗ (Задачи 5–6) — «Свидание втроем». A joint frame needs the
     # invited girl; without her this stays the ordinary photo request.
     # V3.139.2: «видео вдвоём» rides the same joint flag on the hot-circle kind.
@@ -21013,9 +21061,12 @@ async def main():
         logger.exception('startup reminder check failed')
     st = provider_status()
     logger.info(
-        'LLM status: openrouter=%s model=%s gemini=%s gemini_model=%s video=%s',
-        st['openrouter_key_present'], st['openrouter_model'], st['gemini_key_present'],
-        st['gemini_model'], spicy_video_available(),
+        'LLM status: minimax=%s model=%s base=%s timeout=%ss attempts=%s pause=%ss budget=%ss | '
+        'gemini_vision=%s gemini_model=%s video=%s',
+        st['minimax_key_present'], st['minimax_model'], st['minimax_base_url'],
+        st['minimax_timeout_seconds'], st['minimax_attempts'],
+        st['retry_pause_seconds'], st['turn_budget_seconds'],
+        st['gemini_vision_key_present'], st['gemini_model'], spicy_video_available(),
     )
     # V3.28.0: jobs interrupted by the previous deploy — mark them recovered
     # and let the affected users know they can retry.

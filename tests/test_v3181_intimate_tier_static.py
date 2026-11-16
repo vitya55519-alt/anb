@@ -30,7 +30,7 @@ MAIN_SRC = (ROOT / 'main.py').read_text(encoding='utf-8')
 def _env():
     import os
     os.environ.setdefault('TELEGRAM_TOKEN', 'test-token')
-    os.environ.setdefault('OPENROUTER_API_KEY', 'test-key')
+    os.environ.setdefault('MINIMAX_API_KEY', 'test-key')
     yield
 
 

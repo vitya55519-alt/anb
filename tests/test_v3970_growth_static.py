@@ -24,22 +24,26 @@ WEB = (ROOT / 'services' / 'webapp_service.py').read_text(encoding='utf-8')
 
 
 def test_no_frozen_fallback_line():
-    assert '"хм… я зависла на секунду 🙈"' not in CHAT
-    assert 'def stall_line(' in CHAT
-    assert 'answer = stall_line(_lang' in CHAT
+    # V3.167.1 (владелец): живых фраз-оправошников больше нет — одна нейтральная
+    # заглушка про связь, и она не пишется в диалог.
+    assert 'def stall_line(' not in CHAT
+    assert 'def stub_reply(' in CHAT
+    assert 'answer, thought, draft = stub_reply(' in CHAT
 
 
-def test_stall_line_avoids_recent_repeats():
-    from services.chat_service import stall_line, STALL_LINES_RU, STALL_LINES_EN
-    for line in STALL_LINES_RU:
-        recent = [x for x in STALL_LINES_RU if x != line]
-        assert stall_line('ru', recent) == line
-    assert stall_line('en') in STALL_LINES_EN
+def test_the_retired_stall_lines_stay_out_of_the_prompt():
+    from services.chat_service import is_stall_line, _RETIRED_STALL_LINES
+    for line in _RETIRED_STALL_LINES:
+        assert is_stall_line(line), line
+        assert is_stall_line(line[:16]), line
+    assert not is_stall_line('ок')
+    assert not is_stall_line('')
 
 
 def test_empty_dialogue_retries_minimax_with_more_room():
     assert "RETRY_EMPTY_PURPOSES = frozenset({'dialogue'})" in LLM
-    assert 'max_tokens=max_tokens + MINIMAX_EMPTY_RETRY_HEADROOM' in LLM
+    assert 'retry_headroom = MINIMAX_EMPTY_RETRY_HEADROOM' in LLM
+    assert 'max_tokens=max_tokens + room' in LLM
     assert "_MINIMAX_HEADROOM_BY_PURPOSE['dialogue']" in LLM
 
 

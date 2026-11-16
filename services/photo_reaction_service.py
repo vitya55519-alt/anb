@@ -51,8 +51,8 @@ async def react_to_photo(
 ) -> str | None:
     """Return an in-character reaction to the photo, or None when unavailable.
 
-    Uses the OpenAI-compatible multimodal message format so the existing
-    OpenRouter/Gemini chain handles the image natively.
+    Uses the OpenAI-compatible multimodal message format, which the Gemini
+    vision leg (V3.167.1: the only place Gemini is still asked) reads natively.
     """
     if not image_b64 or len(image_b64) > MAX_BASE64_BYTES:
         return None

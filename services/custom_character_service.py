@@ -788,6 +788,25 @@ def bio_looks_glued(bio: str, params: dict, display_name: str) -> bool:
     return bool(glued) and (bio or '').strip().startswith(glued)
 
 
+def bio_is_publishable(text: str) -> bool:
+    """V3.167.1 (владелец, Q6): на витрине остаётся только дописанное русское
+    описание. Модель отвечает и на английском («I can't write that» — refusal
+    цензуры), и обрывает фразу на середине слова на лимите токенов; и то, и другое
+    покупатель видит как сломанную карточку, поэтому такое био не сохраняется.
+    Признаки: меньше двух предложений, кириллицы меньше половины букв, конец не на
+    точку/вопрос/восклицание, длиннее трёхсот знаков (столько просит промпт)."""
+    t = (text or '').strip()
+    if not 40 <= len(t) <= 300:
+        return False
+    letters = [c for c in t if c.isalpha()]
+    if not letters:
+        return False
+    cyr = sum(1 for c in letters if '\u0410' <= c.upper() <= '\u042f' or c in 'ёЁ')
+    if cyr * 2 < len(letters):
+        return False
+    return t[-1] in '.!?\u2026"'
+
+
 async def write_card_bio(params: dict, display_name: str) -> str | None:
     """V3.59.4: a pretty storefront description from the constructor choices.
 
@@ -813,8 +832,11 @@ async def write_card_bio(params: dict, display_name: str) -> str | None:
             max_tokens=400, temperature=0.9, purpose='constructor_bio',
         )
         text = (result.text or '').strip().strip('«»"').strip()
-        if len(text) < 40:
-            logger.warning('constructor bio too short provider=%s len=%d', getattr(result, 'provider', ''), len(text))
+        if not bio_is_publishable(text):
+            # ни рефьюз, ни обрывок не идут в карточку: вызывающий остаётся на
+            # русском шаблоне (template_card_bio)
+            logger.warning('constructor bio rejected provider=%s len=%d',
+                           getattr(result, 'provider', ''), len(text))
             return None
         return text[:400]
     except Exception:

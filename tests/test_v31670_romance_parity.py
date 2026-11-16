@@ -109,12 +109,14 @@ def test_the_spicy_resync_leaves_the_warm_rows_alone(monkeypatch):
 
 
 def test_a_woman_without_her_own_warm_card_uses_the_universal_one():
-    assert gs.ensure_seed() == 36
+    # V3.167.1 (владелец, Q4): личных заготовок топ-6 в сиде нет — и тёплый, и
+    # 18+ ход Анна берёт из универсального набора.
+    assert gs.ensure_seed() == 30
     warm = asyncio.run(gs.opening('anna_01', spicy=False))
     assert warm and warm['starter'] is False and not warm['reply']
     assert warm['text'].rstrip().endswith('?') and len(warm['buttons']) == 2
     spicy = asyncio.run(gs.opening('anna_01', spicy=True))
-    assert 'панорамного окна' in spicy['text'] and spicy['starter'] is False
+    assert spicy['starter'] is True and spicy['reply'] and len(spicy['buttons']) == 2
 
 
 def test_the_chat_start_stops_selling_the_frame_in_the_warm_mode():

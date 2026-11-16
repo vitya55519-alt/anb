@@ -31,7 +31,7 @@ def test_gemini_engines_gated_on_valid_key():
     # Chat fallback client is not built for a broken key.
     assert 'GEMINI_API_KEY_VALID' in LLM
     assert 'if GEMINI_API_KEY_VALID else None' in LLM
-    assert "'gemini_key_present': bool(GEMINI_API_KEY_VALID)" in LLM
+    assert "'gemini_vision_key_present': bool(GEMINI_API_KEY_VALID)" in LLM
 
 
 def test_seedream_fallback_chain_is_hardened():

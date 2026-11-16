@@ -13,6 +13,7 @@ STATUS_LABELS = {
     "soon": "скоро",
     "locked": "закрыта",
     "premium": "Premium",
+    "hidden": "скрыта",
 }
 
 DEFAULT_CARDS = {

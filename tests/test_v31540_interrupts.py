@@ -206,7 +206,7 @@ def test_the_scene_note_keeps_her_inside_the_scene():
 def test_only_her_live_replies_spending_the_counter():
     block = CHAT[CHAT.index("from services import interrupt_service") - 200:]
     block = block[:block.index('def ', block.index('interrupt_service'))]
-    assert 'if not scene and (r.text or \'\').strip():' in CHAT
+    assert 'if not scene and her_words:' in CHAT
     assert 'interrupt_service.note_turn' in block
     # the purchase reaction / a push must not eat what he just paid for
     assert 'gift_shop_service.tick(user_id, character_id)' in CHAT

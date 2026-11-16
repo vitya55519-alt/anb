@@ -73,7 +73,7 @@ def record_llm_usage(purpose: str, provider: str, model: str, *,
                      prompt_tokens: int = 0, completion_tokens: int = 0,
                      reasoning_tokens: int = 0, cost_usd: float | None = None) -> None:
     """One ledger row per completion. ``cost_usd`` is the provider-reported bill
-    when OpenRouter returns one; otherwise we estimate from token counts."""
+    when the response carries one; otherwise we estimate from token counts."""
     try:
         prompt_tokens = max(0, int(prompt_tokens or 0))
         completion_tokens = max(0, int(completion_tokens or 0))

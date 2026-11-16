@@ -26,21 +26,17 @@ def clean_greetings():
         s.commit()
 
 
-def test_seed_has_six_personal_and_fifteen_universal_cards_and_is_idempotent():
-    # V3.167.0 §4: к 21 spicy-строке добавились 15 тёплых — романтика больше не
-    # «пишет сама из OPENING_SCENES», у неё свой сид.
-    assert greeting_service.ensure_seed() == 36
+def test_seed_is_the_thirty_universal_cards_and_is_idempotent():
+    # V3.167.1 (владелец, Q4): личных заготовок топ-6 в сиде больше нет — «пусть
+    # топ-6 крутятся через 15 универсальных тизеров (all)». 15 spicy + 15 тёплых.
+    assert greeting_service.ensure_seed() == 30
     assert greeting_service.ensure_seed() == 0
     with SessionLocal() as s:
         rows = list(s.scalars(select(CharacterGreeting)))
     assert len([r for r in rows if r.character_id == 'all']) == 30
-    personal = {r.character_id for r in rows if r.character_id != 'all'}
-    assert personal == {'anna_01', 'kamila_01', 'maria_01', 'liza_01', 'lana_01', 'kira_01'}
+    assert not [r for r in rows if r.character_id != 'all']
     assert all(not r.photo_bytes for r in rows)
     assert {r.mode for r in rows} == {'spicy', 'normal'}
-    # V3.166.4 (Блок 4): his personal top-6 cards stay text-only, the universal
-    # hooks each carry the hidden English frame behind their chips.
-    assert all(not r.image_prompt for r in rows if r.character_id != 'all')
     universal = [r for r in rows if r.character_id == 'all']
     spicy = [r for r in universal if r.mode == 'spicy']
     assert all(r.image_prompt and all(c.isascii() for c in r.image_prompt) for r in spicy)
@@ -57,9 +53,11 @@ def test_seed_does_not_duplicate_or_replace_the_owners_rows():
 
 def test_opening_uses_heroine_then_universal_and_keeps_normal_fallback():
     greeting_service.ensure_seed()
+    # V3.167.1: у Анны личной заготовки нет — она, как и все, получает
+    # универсальный тизер.
     personal = asyncio.run(greeting_service.opening('anna_01', spicy=True))
     universal = asyncio.run(greeting_service.opening('unknown_01', spicy=True))
-    assert 'панорамного окна' in personal['text']
+    assert personal['text'] and len(personal['buttons']) == 2
     assert universal['text'] and len(universal['buttons']) == 2
     # ТЗ V3.167.0 §4: романтика больше не пустая — свой тёплый набор, те же два
     # чипа, но без кадра за ними (только тогда её строка не превращается в 18+).

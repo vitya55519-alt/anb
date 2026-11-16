@@ -23,7 +23,6 @@ def _setup(monkeypatch, mm_text, gem_text=None, gem_exc=None):
     gem = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=gem_create)))
     monkeypatch.setattr(L, '_minimax', mm)
     monkeypatch.setattr(L, '_gemini', gem)
-    monkeypatch.setattr(L, '_openrouter', None, raising=False)
     return L, seen
 
 
@@ -33,10 +32,12 @@ def test_headroom_added(monkeypatch):
     assert r.text == 'привет' and seen['mm_max'] == 90 + L.MINIMAX_REASONING_HEADROOM
 
 
-def test_empty_minimax_falls_back_to_gemini(monkeypatch):
+def test_empty_minimax_retries_itself_never_gemini(monkeypatch):
+    # V3.167.1: Gemini из диалога убран (429 на каждую вторую реплику). Пустой
+    # MiniMax повторяет себя, а к фото-глазам ход не уходит.
     L, _ = _setup(monkeypatch, '', gem_text='из gemini')
     r = asyncio.run(L.generate_text([{'role': 'user', 'content': 'x'}], max_tokens=90, purpose='life_event'))
-    assert r.text == 'из gemini' and r.provider == 'gemini'
+    assert r.text == '' and r.provider == 'minimax'
 
 
 def test_empty_everywhere_stays_empty_not_crash(monkeypatch):

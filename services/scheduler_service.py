@@ -30,6 +30,7 @@ from services import push_governor
 from services import silence_ladder
 from services import life_backlog
 from services.ui_lang import app_lang, flow_text
+from services.heroine_label import stamp as _her
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 logger=logging.getLogger(__name__); scheduler=AsyncIOScheduler()
@@ -115,9 +116,9 @@ async def _reminders(bot):
                 kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='☀️ я проснулся',callback_data='wake:up')]])
                 audio=await wake_service.wake_voice(line,char_id,user.voice_style)
                 if audio:
-                    await bot.send_voice(telegram_id,BufferedInputFile(audio,filename=f'{char_id}.ogg'),caption=line,reply_markup=kb)
+                    await bot.send_voice(telegram_id,BufferedInputFile(audio,filename=f'{char_id}.ogg'),caption=_her(line,char_id),reply_markup=kb)
                 else:
-                    await bot.send_message(telegram_id,line,reply_markup=kb)
+                    await bot.send_message(telegram_id,_her(line,char_id),reply_markup=kb)
                 await asyncio.to_thread(mark_after_send,r.id,idx==wake_service.WAKE_ATTEMPTS-1,wake_service.WAKE_DELAYS[idx])
             else:
                 await bot.send_message(telegram_id,f"напоминаю: {r.text}"); await asyncio.to_thread(mark_after_send,r.id,True)
@@ -243,9 +244,9 @@ async def _proactive(bot):
                         moving=pkind in ('gif','video')
                         method='send_animation' if pkind=='gif' else ('send_video' if moving else 'send_photo')
                         await getattr(bot,method)(telegram_id,BufferedInputFile(
-                            data,filename='ladder.mp4' if moving else 'ladder.jpg'),caption=pack['text'])
+                            data,filename='ladder.mp4' if moving else 'ladder.jpg'),caption=_her(pack['text'],char_id))
                     else:
-                        await bot.send_message(telegram_id,pack['text'],
+                        await bot.send_message(telegram_id,_her(pack['text'],char_id),
                                                reply_markup=silence_ladder.chips_markup(chips))
                     _to_app_chat(uid,telegram_id,char_id,pack['text'],shot)
                     track_event(uid,'retention_push_sent',metadata={'hours_inactive':hours,
@@ -266,7 +267,7 @@ async def _proactive(bot):
                 if kind in ('miss','jealousy'):
                     mtxt=_marital_push(telegram_id,char_id,user_lang)
                     if mtxt:
-                        await bot.send_message(telegram_id,mtxt)
+                        await bot.send_message(telegram_id,_her(mtxt,char_id))
                         _to_app_chat(uid,telegram_id,char_id,mtxt)
                         track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': 'marital', 'nudge': nudge_count + 1})
                         continue
@@ -290,7 +291,7 @@ async def _proactive(bot):
                         kind=kind+'_topic'
                 if not msg:
                     msg=retention_features_service.get_retention_text(kind, char_id)
-                await bot.send_message(telegram_id,msg)
+                await bot.send_message(telegram_id,_her(msg,char_id))
                 _to_app_chat(uid,telegram_id,char_id,msg)
                 track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': kind, 'nudge': nudge_count + 1})
             else:
@@ -300,7 +301,7 @@ async def _proactive(bot):
                     # an empty message (that used to raise and re-arm the retry).
                     logger.warning('proactive empty reply user=%s', telegram_id)
                     continue
-                await bot.send_message(telegram_id,msg)
+                await bot.send_message(telegram_id,_her(msg,char_id))
                 track_event(uid, 'proactive_sent', metadata={'hours_inactive': hours, 'nudge': nudge_count + 1})
         except TelegramForbiddenError:
             # V3.55.9: 403 = the user blocked or deleted the bot — switch the
@@ -356,7 +357,7 @@ async def _day1_hook(bot):
                     text=flow_text(lang, 'open_chat'),
                     web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat&char={quote(_char, safe="")}&entry=day1'),
                 )]])
-                await bot.send_message(telegram_id, continuation, reply_markup=markup)
+                await bot.send_message(telegram_id, _her(continuation, _char), reply_markup=markup)
                 _to_app_chat(uid,telegram_id,_char,continuation)
                 with SessionLocal() as s:
                     u=s.get(User,uid)
@@ -557,7 +558,7 @@ async def _send_story(bot, uid: int, telegram_id: int, char_id: str) -> bool:
     from services import push_photos
     file_id=push_photos.pick(char_id or CHARACTER_ID) if story.photo_ok else None
     if file_id:
-        await bot.send_photo(telegram_id,file_id,caption=body,reply_markup=markup)
+        await bot.send_photo(telegram_id,file_id,caption=_her(body,char_id or CHARACTER_ID),reply_markup=markup)
         _to_app_chat(uid,telegram_id,char_id or CHARACTER_ID,body)
         track_event(uid,'story_hook_sent',metadata={'story':story.key,'photo':'owner'})
         return True
@@ -575,9 +576,9 @@ async def _send_story(bot, uid: int, telegram_id: int, char_id: str) -> bool:
         except Exception:
             logger.exception('story photo failed user=%s',uid)
     if photo:
-        await bot.send_photo(telegram_id,BufferedInputFile(photo,filename='story.jpg'),caption=body,reply_markup=markup)
+        await bot.send_photo(telegram_id,BufferedInputFile(photo,filename='story.jpg'),caption=_her(body,char_id or CHARACTER_ID),reply_markup=markup)
     else:
-        await bot.send_message(telegram_id,body,reply_markup=markup)
+        await bot.send_message(telegram_id,_her(body,char_id or CHARACTER_ID),reply_markup=markup)
     _to_app_chat(uid,telegram_id,char_id or CHARACTER_ID,body)
     track_event(uid,'story_hook_sent',metadata={'story':story.key})
     return True
@@ -644,7 +645,7 @@ async def _first_offer(bot):
                 buttons.append([InlineKeyboardButton(text='💬 reply to her' if en else '💬 ответить ей',
                                                      web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
             await bot.send_photo(telegram_id,BufferedInputFile(card,filename='for_you.jpg'),
-                                 caption=cap,reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+                                 caption=_her(cap,char_id or CHARACTER_ID),reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
             fos.remember_photo(telegram_id,char_id or CHARACTER_ID,fid,None if fid else ref_path)
             track_event(uid,'first_offer_sent',character_id=char_id or CHARACTER_ID,
                         metadata={'showcase':int(showcase),'trial':int(trial)})
@@ -948,7 +949,7 @@ async def _ritual_line_push(bot, uid: int, tg_id: int, char_id: str, kind: str, 
     from services.ui_lang import full_user_lang, ritual_line
     lang = await asyncio.to_thread(full_user_lang, tg_id)
     text = ritual_line(kind, lang)
-    await bot.send_message(tg_id, text, reply_markup=_chat_open_markup(char_id, lang))
+    await bot.send_message(tg_id, _her(text, char_id), reply_markup=_chat_open_markup(char_id, lang))
     _to_app_chat(uid, tg_id, char_id, text)
     return True
 
@@ -1175,13 +1176,13 @@ async def _rituals(bot, only_tg=None, force_kind=None):
                 if shot:
                     data, ctype, media_kind = shot
                     if media_kind == 'gif':
-                        await bot.send_animation(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=_ev.caption(text), reply_markup=markup)
+                        await bot.send_animation(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=_her(_ev.caption(text), char_id), reply_markup=markup)
                     elif media_kind == 'video':
-                        await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=_ev.caption(text), reply_markup=markup)
+                        await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=_her(_ev.caption(text), char_id), reply_markup=markup)
                     else:
-                        await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=_ev.caption(text), reply_markup=markup)
+                        await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=_her(_ev.caption(text), char_id), reply_markup=markup)
                 else:
-                    voice_caption, voice_markup = _ev.caption(text), markup
+                    voice_caption, voice_markup = _her(_ev.caption(text), char_id), markup
                 _send_later(_ritual_voice(bot, tg_id, char_id, ritual_voice,
                                           caption=voice_caption, markup=voice_markup))
                 track_event(uid, f'{kind}_voice_sent', character_id=char_id)
@@ -1191,15 +1192,15 @@ async def _rituals(bot, only_tg=None, force_kind=None):
                 from aiogram.types import BufferedInputFile
                 data, ctype, media_kind = shot
                 if media_kind == 'gif':
-                    await bot.send_animation(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=text, reply_markup=markup)
+                    await bot.send_animation(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=_her(text, char_id), reply_markup=markup)
                 elif media_kind == 'video':
-                    await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=text, reply_markup=markup)
+                    await bot.send_video(int(tg_id), BufferedInputFile(data, filename='ritual.mp4'), caption=_her(text, char_id), reply_markup=markup)
                 else:
-                    await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=text, reply_markup=markup)
+                    await bot.send_photo(int(tg_id), BufferedInputFile(data, filename='ritual.jpg'), caption=_her(text, char_id), reply_markup=markup)
                 if evening_shot:
                     track_event(uid, f'{kind}_photo_sent', character_id=char_id)
             else:
-                await bot.send_message(int(tg_id),text,reply_markup=markup)
+                await bot.send_message(int(tg_id),_her(text,char_id),reply_markup=markup)
             if preview:
                 continue
             _to_app_chat(uid,tg_id,char_id,text,shot)
@@ -1500,7 +1501,7 @@ async def _life_events(bot):
                     btn = flow_text(lang or 'ru', 'live_button', price=int(live['price']))
                     markup = InlineKeyboardMarkup(inline_keyboard=[[
                         InlineKeyboardButton(text=btn[:64], callback_data=f"live:unlock:{live['id']}")]])
-                    await bot.send_message(tg_id, live['text'], reply_markup=markup)
+                    await bot.send_message(tg_id, _her(live['text'], char_id), reply_markup=markup)
                     track_event(uid, 'life_event_sent',
                                 metadata={'character_id': char_id, 'when': part, 'live': 1})
                 except TelegramForbiddenError:
@@ -1535,13 +1536,13 @@ async def _life_events(bot):
                          media_url=media_url, origin=LIFE_ORIGIN)
             if media_url:
                 if pkind == 'gif':
-                    await bot.send_animation(tg_id, BufferedInputFile(data, filename='life.mp4'), caption=text, reply_markup=markup)
+                    await bot.send_animation(tg_id, BufferedInputFile(data, filename='life.mp4'), caption=_her(text, char_id), reply_markup=markup)
                 elif pkind == 'video':
-                    await bot.send_video(tg_id, BufferedInputFile(data, filename='life.mp4'), caption=text, reply_markup=markup)
+                    await bot.send_video(tg_id, BufferedInputFile(data, filename='life.mp4'), caption=_her(text, char_id), reply_markup=markup)
                 else:
-                    await bot.send_photo(tg_id, BufferedInputFile(data, filename='life.jpg'), caption=text, reply_markup=markup)
+                    await bot.send_photo(tg_id, BufferedInputFile(data, filename='life.jpg'), caption=_her(text, char_id), reply_markup=markup)
             else:
-                await bot.send_message(tg_id, text, reply_markup=markup)
+                await bot.send_message(tg_id, _her(text, char_id), reply_markup=markup)
             # V3.167.5 §9 (владелец ТЗ): имя события из ТЗ — по нему считается
             # DoD «≥70% аккаунтов получили ≥1 событие в первые сутки».
             # Прежнее life_event_sent остаётся: на него смотрит push-губернатор.

@@ -34,7 +34,8 @@ def test_pricing_and_budget_config():
     assert 'LLM_USD_PER_M_OUTPUT = float(os.getenv("LLM_USD_PER_M_OUTPUT", "0.96"))' in CONFIG
     assert 'GEMINI_LLM_USD_PER_M_INPUT = float(os.getenv("GEMINI_LLM_USD_PER_M_INPUT", "0.10"))' in CONFIG
     assert 'GEMINI_LLM_USD_PER_M_OUTPUT = float(os.getenv("GEMINI_LLM_USD_PER_M_OUTPUT", "0.40"))' in CONFIG
-    assert 'LLM_REPORT_USAGE = os.getenv("LLM_REPORT_USAGE", "true")' in CONFIG
+    # V3.167.1: usage всегда включён — отдельного выключателя больше нет
+    assert 'LLM_REPORT_USAGE' not in CONFIG
     # daily brakes, clamped non-negative; V3.56.2: the image brake ships OFF;
     # V3.57.6: the LLM brake is off by default too (owner request)
     assert 'SPEND_LLM_DAILY_BUDGET_USD = max(0.0, float(os.getenv("SPEND_LLM_DAILY_BUDGET_USD", "0")))' in CONFIG
@@ -91,8 +92,10 @@ def test_llm_usage_is_recorded_and_braked():
     # (V3.167.9: an empty result now also carries why it is empty)
     assert "return LLMResult('', 'budget', 'skipped', error='daily budget')" in LLM
     assert 'if purpose in spend_service.AUX_PURPOSES and not spend_service.llm_aux_allowed():' in LLM
-    # ask OpenRouter to report the real bill per call
-    assert "extra['usage'] = {'include': True}" in LLM
+    # V3.167.1: OpenRouter выпилен — прямой MiniMax сам отдаёт usage в ответе,
+    # просить его отдельным extra_body больше не у кого.
+    assert "extra['usage']" not in LLM
+    assert "'OPENROUTER_API_KEY'" not in LLM
 
 
 def test_rewrite_no_longer_reuploads_the_whole_prompt():

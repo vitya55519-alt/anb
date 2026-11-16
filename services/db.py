@@ -244,6 +244,57 @@ def _split_bonus_peaches() -> None:
         logger.exception('peach wallet split skipped (will retry on next boot)')
 
 
+def _drop_personal_greetings() -> None:
+    """V3.167.1 (владелец, Q4): шесть личных заготовок топ-6 были залиты в базу
+    пустыми — без скрытого кадра и без реплики перед ним, поэтому на витрине они
+    только заглушали 15 универсальных тизеров. Владелец: «удаляй эти 6 старых
+    строк из базы полностью, ничего заполнять не надо». Идемпотентно и по точным
+    id: строки 1..6, но только если это не универсальный набор («all») — на чистой
+    базе под ними лежат именно он. Marker-first, как остальные прогоны."""
+    name = 'personal_greetings_removed_v31671'
+    try:
+        with engine.begin() as conn:
+            if conn.execute(text('SELECT 1 FROM app_migrations WHERE name = :n'), {'n': name}).first():
+                return
+            conn.execute(text('INSERT INTO app_migrations (name) VALUES (:n)'), {'n': name})
+            removed = conn.execute(text(
+                "DELETE FROM character_greetings WHERE id IN (1, 2, 3, 4, 5, 6) "
+                "AND character_id <> 'all'")).rowcount
+        logger.warning('personal greeting stubs removed=%s', removed)
+    except Exception:
+        logger.exception('personal greeting stubs removal skipped (will retry on next boot)')
+
+
+def _repair_character_cards() -> None:
+    """V3.167.1 (владелец, Q6): карточка Лай снята с витрины и убрана из напарниц
+    — её собирал другой аккаунт, и в общем каталоге она только путала. Лизина
+    витрина оборвана на середине фразы (LLM не дописал), владелец продиктовал
+    текст целиком. По точным id, один раз, marker-first."""
+    name = 'character_cards_repaired_v31671'
+    lai = 'custom_6328140267_a4e61b58'
+    liza = 'custom_6237849550_257f28e7'
+    liza_bio = ('Лиза знает, как одним взглядом заставить забыть обо всём. '
+                'Её дерзкий характер и страстный темперамент превратят ваш вечер в игру без правил.')
+    try:
+        with engine.begin() as conn:
+            if conn.execute(text('SELECT 1 FROM app_migrations WHERE name = :n'), {'n': name}).first():
+                return
+            conn.execute(text('INSERT INTO app_migrations (name) VALUES (:n)'), {'n': name})
+            hidden = conn.execute(text(
+                "UPDATE character_cards SET is_visible = false, status = 'hidden' "
+                "WHERE character_id = :c"), {'c': lai}).rowcount
+            guests = conn.execute(text(
+                "DELETE FROM chat_guests WHERE guest_id = :c"), {'c': lai}).rowcount
+            bio = conn.execute(text(
+                "UPDATE character_cards SET short_bio = :b WHERE character_id = :c "
+                "AND (short_bio IS NULL OR short_bio <> :b)"),
+                {'b': liza_bio, 'c': liza}).rowcount
+        logger.warning('card repairs applied: lai hidden=%s guests_removed=%s liza_bio=%s',
+                       hidden, guests, bio)
+    except Exception:
+        logger.exception('character card repairs skipped (will retry on next boot)')
+
+
 def _index_analytics_stream() -> None:
     """V3.167.5 §10: лента рельсов (`push_sent` / `push_denied` / `digest_shown`)
     читается по имени события и времени — экран кухни и сам губернатор смотрят
@@ -329,5 +380,9 @@ def init_db():
     _rescale_peaches()
     # V3.123.0: split the peach balance into bought + bonus, once.
     _split_bonus_peaches()
+    # V3.167.1: его пустые заготовки топ-6 из базы уходят, витрина топ-6 — универсальная.
+    _drop_personal_greetings()
+    # V3.167.1: снятая карточка Лай и оборванное био Лизы, по точным id.
+    _repair_character_cards()
 
 init_db()

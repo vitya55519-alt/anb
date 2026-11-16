@@ -29,19 +29,19 @@ def test_her_words_live_under_the_photo():
     for method in ('send_animation', 'send_video', 'send_photo'):
         lines = [ln.strip() for ln in BRANCH.splitlines() if f'await bot.{method}(' in ln]
         assert len(lines) == 1, method
-        assert 'caption=_ev.caption(text)' in lines[0], method
+        assert 'caption=_her(_ev.caption(text), char_id)' in lines[0], method
         assert 'reply_markup=markup' in lines[0], method
     # and the text never becomes a third bubble of its own
     assert 'send_message' not in BRANCH
 
 
 def test_the_voice_does_not_repeat_what_the_photo_already_said():
-    assert BRANCH.count('voice_caption, voice_markup = _ev.caption(text), markup') == 1
+    assert BRANCH.count('voice_caption, voice_markup = _her(_ev.caption(text), char_id), markup') == 1
     assert BRANCH.index('voice_caption=voice_markup=None') < BRANCH.index('if shot:')
     # the no-photo branch is the only one handing the words + the gift button
     # to the voice note
     tail = BRANCH[BRANCH.rindex('else:'):]
-    assert 'voice_caption, voice_markup = _ev.caption(text), markup' in tail
+    assert 'voice_caption, voice_markup = _her(_ev.caption(text), char_id), markup' in tail
     assert '_send_later(_ritual_voice(' in tail
     assert 'caption=voice_caption, markup=voice_markup' in BRANCH
 

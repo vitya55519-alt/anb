@@ -30,7 +30,9 @@ def test_ceremony_notifier_registered():
     assert 'Новый этап:' in ceremony
     assert 'Теперь доступно:' in ceremony
     assert "'relationship_ceremony_sent'" in ceremony
-    assert "_start_photo_background(telegram_id, telegram_id, PhotoRequest(scene='selfie', mood='romantic'), 'story')" in ceremony
+    flat = ' '.join(ceremony.split())
+    assert "special[1], 'story', character_id=character_id)" in flat
+    assert "PhotoRequest(scene='selfie', mood='romantic'), 'story', character_id=character_id)" in flat
     # Fires from record_user_message regardless of the caller.
     assert '_stage_change_notifier' in SERVICE
 
