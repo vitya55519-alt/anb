@@ -969,6 +969,19 @@ DAILY_GIFT_DAY_AMOUNT = _peach_env("DAILY_GIFT_DAY_AMOUNT", 1, 0)
 DAILY_GIFT_JACKPOT_DAY = int(os.getenv("DAILY_GIFT_JACKPOT_DAY", "7"))
 DAILY_GIFT_JACKPOT_AMOUNT = _peach_env("DAILY_GIFT_JACKPOT_AMOUNT", 3, 0)
 DAILY_GIFT_BALANCE_CAP = _peach_env("DAILY_GIFT_BALANCE_CAP", 15, 0)
+# V3.167.4: owner 16.11 — «включи награду за серию… пусть будет серия по 50
+# персиков в сутки. Он зашёл, написал пять сообщений и получил 50 персиков».
+# Одно правило без кнопки: пять его сообщений за московские сутки (счётчик
+# services/daily_limit + services/series_reward) = SERIES_REWARD_PEACHES в
+# тот же кошелёк, что у заданий. Старая рельса 🎁 выше остаётся выключенной:
+# две награды за один и тот же день владельцу не нужны.
+SERIES_REWARD_ENABLED = os.getenv("SERIES_REWARD_ENABLED", "1") == "1"
+SERIES_REWARD_PEACHES = max(1, int(float(os.getenv("SERIES_REWARD_PEACHES", "50"))))
+SERIES_REWARD_MIN_MESSAGES = max(1, int(os.getenv("SERIES_REWARD_MIN_MESSAGES", "5")))
+# Владелец ТЗ §5: пропущенный день не должен убивать серию в ноль — раз в
+# неделю день сам собой «замораживается», серия продолжает расти. 0 выключает
+# заморозку: пропуск, как раньше, начинает серию заново.
+SERIES_FREEZE_PER_WEEK = max(0, int(os.getenv("SERIES_FREEZE_PER_WEEK", "1")))
 PROMO_MAX_CREDITS = _peach_env("PROMO_MAX_CREDITS", 20, 0)
 # V3.55.5: полка welcome — сеется на старте, чтобы новых юзеров хватало на
 # самое дешёвое платное действие: копилка стрика 15 🍑 + 5 🍑 за код = 20 🍑

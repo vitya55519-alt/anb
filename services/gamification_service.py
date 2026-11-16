@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from config import FREE_MESSAGES_PER_DAY, CHARACTER_ID, STREAK_REWARDS
+from config import FREE_MESSAGES_PER_DAY, CHARACTER_ID, STREAK_REWARDS, SERIES_FREEZE_PER_WEEK
 from models.app_models import Achievement, StarTransaction, User, AchievementBadge
 from services.db import SessionLocal
 from services.user_service import ensure_user, get_user
@@ -460,6 +460,12 @@ def _date_key(dt: datetime | None) -> str:
     return dt.strftime('%Y-%m-%d')
 
 
+def _iso_week(key: str) -> str:
+    """KC-неделя для «одна заморозка серии в неделю» (services/series_reward)."""
+    year, week, _ = datetime.strptime(key, '%Y-%m-%d').isocalendar()
+    return f'{year}-W{week}'
+
+
 def touch_activity(telegram_id: int) -> dict:
     """Update streak and attention points on user activity. Returns summary."""
     user = get_user(telegram_id)
@@ -480,6 +486,13 @@ def touch_activity(telegram_id: int) -> dict:
         if last_key == today_key:
             pass  # already counted today
         elif last_key == _date_key(today - timedelta(days=1)):
+            u.streak_count = (u.streak_count or 0) + 1
+        elif (SERIES_FREEZE_PER_WEEK > 0 and (u.streak_count or 0) > 0
+              and last_key == _date_key(today - timedelta(days=2))
+              and (getattr(u, 'streak_freeze_week', None) or '') != _iso_week(today_key)):
+            # V3.167.4: один пропущенный день в неделю серию не рвёт — её
+            # закрывает заморозка. Тот же шаг, что в services/series_reward.
+            u.streak_freeze_week = _iso_week(today_key)
             u.streak_count = (u.streak_count or 0) + 1
         else:
             u.streak_count = 1

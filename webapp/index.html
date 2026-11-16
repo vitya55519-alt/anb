@@ -303,6 +303,10 @@
   /* V3.60.9: level chip in the chat header + its bottom sheet */
   .lvlchip { display: inline-block; margin-top: 2px; padding: 2px 8px; border-radius: 10px; font-size: 11px;
     background: rgba(255,90,160,.18); color: #ffd1e6; border: 1px solid rgba(255,120,180,.35); cursor: pointer; }
+  /* V3.167.4 (owner ТЗ §5): «серия видна» — the day streak sits next to the
+     level in the header. Not a button: it tells him today, nothing to tap. */
+  .lvlchip + .lvlchip { margin-left: 6px; }
+  .lvlchip.strk { background: rgba(255,150,60,.18); color: #ffd9a8; border-color: rgba(255,170,90,.35); cursor: default; }
   .lvlsheet { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; }
   .lvlsheet .box { width: 100%; max-height: 80vh; overflow: auto; background: #1d1424; border-radius: 20px 20px 0 0;
     padding: 18px 16px 24px; border-top: 1px solid rgba(255,120,180,.3); }
@@ -571,6 +575,9 @@
     font-size: 11.5px; font-weight: 700; color: #fff; cursor: pointer;
     background: linear-gradient(90deg, var(--accent), #ff7ab0);
   }
+  /* V3.167.4 (owner 16.11): the series line — «5 сообщений и вот 50 🍑». Same
+     quiet note under her answer, warm so it reads as a gift, not as a limit. */
+  .modenote.sernote { color: #ffd9a8; opacity: 1; }
   /* V3.166.2 (Блок 3, owner ТЗ): the day's wall is not a system error — the
      chat behind blurs and her card stays on the screen asking him to remain.
      Same visual language as the mode cards: white 800 title, 14.5/500 bullets,
@@ -1547,6 +1554,7 @@
       <div class="nm" id="chatName"></div>
       <div class="sub" id="chatSub"></div>
       <span class="lvlchip" id="chatLvl" style="display:none"></span>
+      <span class="lvlchip strk" id="chatStreak" style="display:none"></span>
     </div>
     <button class="duopill" id="chatInvite" type="button" style="display:none"></button>
     <button class="callbtn" id="chatCall" type="button" title="Позвонить" aria-label="Позвонить"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg></button>
@@ -4628,6 +4636,15 @@ async function loadChatLevel(characterId) {
     chip.title = j.level + ' · ' + j.title;
     chip.style.display = '';
     chip.onclick = openLevelSheet;
+    // V3.167.4: the series of days beside the level. One day is not a series
+    // worth showing, so the chip stays quiet until he has two in a row.
+    const strk = document.getElementById('chatStreak');
+    const days = Number(j.streak) || 0;
+    if (strk) {
+      strk.textContent = days > 1 ? '🔥 ' + days : '';
+      strk.title = days > 1 ? 'серия: ' + days + ' дн. подряд' : '';
+      strk.style.display = days > 1 ? '' : 'none';
+    }
     if (prev && j.level > prev) toast('🎉 новый уровень: ' + j.level + ' · ' + j.title);
   } catch (e) { /* the chip is optional */ }
 }
@@ -5433,6 +5450,13 @@ function insertChatReply(j, chatId) {
       (h.reached ? '<button type="button" class="mn-b">' + esc(L.mn_prem) + '</button>' : '') + '</div>');
     const mb = box.lastElementChild.querySelector('.mn-b');
     if (mb) mb.addEventListener('click', () => showLimitWall());
+  }
+  // V3.167.4 (owner 16.11): «зашёл, написал пять сообщений — получил 50 🍑».
+  // The server paid on this very turn and hands the line over once; the header
+  // chip reloads so the number of days he reads matches what he just got.
+  if (j.series && (j.series.text || '').trim()) {
+    box.insertAdjacentHTML('beforeend', '<div class="modenote sernote">' + esc(j.series.text) + '</div>');
+    if (CHAT) loadChatLevel(CHAT.id);
   }
   box.scrollTop = box.scrollHeight;
   // V3.53.0: a photo-on-request can complete a 50-photo gallery set.

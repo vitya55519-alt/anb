@@ -38,6 +38,14 @@ class User(Base):
     attention_points: Mapped[int] = mapped_column(Integer, default=0)
     streak_count: Mapped[int] = mapped_column(Integer, default=0)
     streak_last_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # V3.167.4: владелец ТЗ §5 — «серия видна, пропуск её обнуляет, но не
+    # уровень». Один пропущенный день в неделю закрывает заморозка (колонка
+    # хранит неделю, в которой её уже потратили), со второго пропуска серия
+    # начинается с единицы; близость пары и её незакрытая тема живут в других
+    # таблицах и обнуления не видят. streak_reward_day — сутки, за которые
+    # 50 🍑 уже выданы (services/series_reward). Auto-migrated by services/db.py.
+    streak_freeze_week: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    streak_reward_day: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     video_free_date: Mapped[str] = mapped_column(String(10), default="")
     video_free_used: Mapped[int] = mapped_column(Integer, default=0)
     # V3.20.0: the moment the one-time 24h premium discount window was opened

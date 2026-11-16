@@ -10186,6 +10186,23 @@ async def _daily_limit_note(message: types.Message, telegram_id: int) -> bool:
         return False
 
 
+async def _series_note(message: types.Message, telegram_id: int) -> bool:
+    """V3.167.4 (владелец 16.11): строка о награде за серию — раз в сутки, под
+    её ответом. Выплату делает services/series_reward на принятом ходе, здесь
+    только то, что он об этом узнаёт."""
+    try:
+        from services import series_reward
+        notice = series_reward.take_notice(telegram_id)
+        if not notice:
+            return False
+        await message.answer(series_reward.line(notice, full_user_lang(
+            telegram_id, message.from_user.language_code if message.from_user else None)))
+        return True
+    except Exception:
+        logger.warning('series note failed user=%s', telegram_id, exc_info=True)
+        return False
+
+
 # V3.19.0: per-user cooldown for vision reactions to user photos.
 _photo_reaction_ts: dict[int, float] = {}
 
@@ -11480,6 +11497,7 @@ async def voice_message(message: types.Message):
         await send_answer(message, answer)
         # V3.166.2: голосовые реплики считаются тем же счётчиком, что и текст,
         # и строка потолка идёт в обоих режимах.
+        await _series_note(message, message.from_user.id)
         await _daily_limit_note(message, message.from_user.id)
         try:
             from services.gamification_service import unlock_achievement
@@ -12634,6 +12652,7 @@ async def text_message(message: types.Message):
         # V3.166.2: the ceiling is the account's now, so the line reads in BOTH
         # modes — and where it speaks, the intimacy upsell keeps quiet (one
         # extra bubble per turn, never two).
+        await _series_note(message, message.from_user.id)
         if not await _daily_limit_note(message, message.from_user.id):
             try:
                 from services import intimacy_gate
@@ -15621,6 +15640,20 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             payload['chat_hint'] = chat_hint
     except Exception:
         logger.warning('daily limit hint read failed user=%s', telegram_id, exc_info=True)
+    # V3.167.4 (владелец 16.11): награда за серию — тот же путь, что и строка
+    # потолка: выплатил services/series_reward на этом ходе, сюда прилетела
+    # плашка с суммой. Рисуется один раз, пока он смотрит в чат.
+    try:
+        from services import series_reward
+        series_notice = series_reward.take_notice(telegram_id)
+        if series_notice:
+            payload['series'] = {'amount': series_notice['amount'],
+                                 'streak': series_notice['streak'],
+                                 'text': series_reward.line(
+                                     series_notice,
+                                     full_user_lang(telegram_id, user_info.get('language_code')))}
+    except Exception:
+        logger.warning('series reward read failed user=%s', telegram_id, exc_info=True)
     # V3.72.0: the circle hook — in a flirty moment (or when asked) she offers
     # a circle under her reply. Free to show; the render starts on a paid tap.
     try:
@@ -16841,6 +16874,9 @@ async def _webapp_api_chat_level(request: web.Request) -> web.Response:
             from services.test_mode import picked_stage
             snap['can_pick'] = bool(premium)
             snap['picked'] = bool(picked_stage(telegram_id, character_id))
+            # V3.167.4 (владелец ТЗ §5): серия дней живёт прямо в шапке чата —
+            # то же число, что в профиле и в награде за постоянство.
+            snap['streak'] = int(getattr(user, 'streak_count', 0) or 0)
             return snap
 
     try:

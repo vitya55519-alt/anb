@@ -1250,6 +1250,15 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             await asyncio.to_thread(daily_limit.note_message, user_id, language=language_code or 'ru')
         except Exception:
             _logger.warning('daily limit note failed user=%s', user_id, exc_info=True)
+    # V3.167.4 (владелец 16.11): «зашёл, написал пять сообщений — получил 50 🍑».
+    # Считаются его реплики в диалоге, а не потолок дня: с Premium потолка нет,
+    # а серия нужна и ему. Плашку читает один раз тот слой, что отдаёт ответ.
+    if not caller_scene and (r.text or '').strip():
+        try:
+            from services import series_reward
+            await asyncio.to_thread(series_reward.note_his_message, user_id, db_user_id)
+        except Exception:
+            _logger.warning('series reward note failed user=%s', user_id, exc_info=True)
     # V3.57.8: memory extraction and style analysis are extra LLM round trips the
     # user never reads. They used to be awaited here, so every reply waited for
     # them; now they run in the background after the answer is returned.
