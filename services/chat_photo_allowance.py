@@ -17,13 +17,16 @@ from datetime import datetime, time, timezone
 from sqlalchemy import func, select
 
 from config import (CHAT_FREE_PHOTOS_PER_DAY, CHAT_POOL_PHOTOS_PER_DAY, CHAT_PREMIUM_PHOTOS_PER_DAY,
-                    FREE_PHOTO_COST_USD, FREE_PHOTO_DAILY_BUDGET_USD)
+                    FREE_PHOTO_COST_USD, FREE_PHOTO_DAILY_BUDGET_USD, FREE_FRAMES_PER_DAY)
 from models.app_models import ProductEvent
 from services.db import SessionLocal
 
 EVENT = 'chat_free_photo'
 # V3.81.0: a free photo served from the pool after the daily budget ran out.
 POOL_EVENT = 'chat_free_photo_pool'
+# V3.167.4: a frame she attached to her own day (the push rail) — $0 too, so it
+# spends the same shared quota instead of living outside every counter.
+PUSH_EVENT = 'push_pool_photo'
 
 
 def _day_start() -> datetime:
@@ -115,15 +118,35 @@ def pool_photos_left(uid: int) -> int:
     """V3.162.0: owner — «приветственное фото не должно сжирать лимит одного
     бесплатного фото в сутки». A frame already in her pool costs us nothing, so
     it no longer spends his one free photo of the day; it is capped on its own
-    instead, or a free man farms stock pictures all day and never meets the wall."""
+    instead, or a free man farms stock pictures all day and never meets the wall.
+    V3.167.4: on top of its own quota it now also respects the account-wide
+    ceiling — the frame she attached to her own day is the same $0 money."""
     try:
-        return max(0, CHAT_POOL_PHOTOS_PER_DAY - count_today(uid, POOL_EVENT))
+        return min(max(0, CHAT_POOL_PHOTOS_PER_DAY - count_today(uid, POOL_EVENT)),
+                   frames_left(uid))
     except Exception:
         return 0
 
 
 def use_pool_photo(uid: int, character_id: str) -> None:
     note_today(uid, POOL_EVENT, character_id)
+
+
+def frames_left(uid: int) -> int:
+    """V3.167.4 (владелец 16.11): «лимит 2 фото в сутки» — сколько кадров за $0
+    аккаунт ещё сегодня увидит. Считаем обе рельсы одним счётчиком: кадр из пула
+    в чате и кадр, который она сама приложила к своему дню. Рендер за персики
+    сюда не попадает: покупка и цена кадра остаются как есть."""
+    try:
+        return max(0, FREE_FRAMES_PER_DAY - count_today(uid, POOL_EVENT)
+                    - count_today(uid, PUSH_EVENT))
+    except Exception:
+        return 0            # без счётчика кран закрываем: лишнего кадра не будет
+
+
+def use_push_frame(uid: int, character_id: str) -> None:
+    """Кадр «её дня» потрачен — записываем в тот же суточный счётчик."""
+    note_today(uid, PUSH_EVENT, character_id)
 
 
 def count_today(uid: int, event: str) -> int:

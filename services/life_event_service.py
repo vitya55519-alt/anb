@@ -10,22 +10,27 @@ two girls "live" the same life — which also nudges the «все как Анн�
 Fail-silent by design: any error (no LLM, no character, empty output) returns
 ``{}`` and the scheduler simply skips the slot, so a life event can never blank
 out a conversation or spam a user.
+
+V3.167.4 (владелец ТЗ §4) переписал саму строку: одно-три предложения с бытовой
+деталью, факт из памяти почти всегда, тон по уровню близости (1-3 / 4-6 / 7-10)
+и по режиму, в конце — недосказанность под ОДНУ кнопку. Кадр из пула стал
+чаще (0.35), но тратит общий кап бесплатных кадров на аккаунт (2 в сутки).
 """
 from __future__ import annotations
 
 import logging
 import random
 
-from config import LIFE_EVENTS_PHOTO_CHANCE
+from config import LIFE_EVENTS_MEMORY_CHANCE, LIFE_EVENTS_PHOTO_CHANCE
 
 logger = logging.getLogger(__name__)
 
-# Universal low-friction tap-backs. The whole point is to turn a one-way push
-# into a reply with a single tap (reply-rate is what actually moves D1/D7). The
-# value carries the character so the callback can continue HER exact story.
+# V3.167.4 (владелец ТЗ §4): «крючок с одной кнопкой». Две кнопки превращали её
+# день в опросник — он выбирал настроение вместо того, чтобы ответить. Теперь
+# одна: недосказанность в конце строки закрывается одним тапом, и значение
+# несёт персонажа, чтобы callback продолжил ИМЕННО её историю.
 _REPLY_OPTIONS = (
     ('🍿 расскажи дальше', 'tell_more'),
-    ('😏 скучал(а) по тебе', 'miss_you'),
 )
 
 _WHEN_HINT = {'morning': 'утро', 'day': 'день', 'evening': 'вечер', 'night': 'ночь'}
@@ -34,8 +39,26 @@ _WHEN_HINT = {'morning': 'утро', 'day': 'день', 'evening': 'вечер',
 # turn fed to the normal reply pipeline so she continues the moment in context.
 _TAP_AS_USER_TEXT = {
     'tell_more': 'расскажи, что было дальше 👀',
-    'miss_you': 'я тоже по тебе скучал(а) 🥰',
 }
+
+# V3.167.4: тон её дня — по уровню близости, не по погоде. До 3-го они только
+# знакомятся, с 4-го — свои люди, с 7-го — пара. Режим («Без цензуры 18+»)
+# добавляет смелости в намёке, но не превращает пуш в диалог.
+_TONE_BANDS = (
+    (3, 'Вы только знакомитесь: тепло и чуть неловко. Без «мы», без «скучаю», '
+        'без обещаний и без зова к себе — вы ещё не пара.'),
+    (6, 'Вы уже свои люди: можно нежность, можно сказать, что тебя не хватало, '
+        'можно намекнуть на встречу — но без «люблю» и без планов на жизнь.'),
+    (10, 'Вы пара: говори «мы», помни его слова, зови к себе, флиртуй открыто — '
+         'он свой, стесняться нечего.'),
+)
+
+
+def _tone(level: int) -> str:
+    for cap, line in _TONE_BANDS:
+        if int(level or 1) <= cap:
+            return line
+    return _TONE_BANDS[-1][1]
 
 
 def tap_reply_text(key: str) -> str:
@@ -93,8 +116,9 @@ def _character_ingredients(character_id: str) -> tuple[str, list[str], str]:
 
 
 def _memory_callback(telegram_id: int, character_id: str) -> str:
-    """~45% of the time, surface one stored fact so she references shared history."""
-    if random.random() > 0.45:
+    """V3.167.4 (владелец ТЗ §4): «факт из памяти почти всегда» — её день цепляется
+    за то, что он уже рассказывал, а не за анкету. Ручка LIFE_EVENTS_MEMORY_CHANCE."""
+    if random.random() >= LIFE_EVENTS_MEMORY_CHANCE:
         return ''
     try:
         from services.user_service import ensure_user
@@ -130,31 +154,80 @@ def _recent_her_lines(telegram_id: int, character_id: str, limit: int = 6) -> li
 
 
 def _system_prompt(name: str, when: str, tastes: list[str], temperament: str,
-                   mem: str, hook: str, recent: list[str] | None = None) -> str:
+                   mem: str, hook: str, recent: list[str] | None = None,
+                   level: int = 1, mode_on: bool = False) -> str:
+    """V3.167.4 (владелец ТЗ §4): «её день» звучит как смс, а не как рассылка —
+    одно-три предложения с бытовой деталью, без вопросов-анкет, тон по уровню
+    близости и по режиму, в конце недосказанность под одну кнопку."""
     bits = [
         f'Ты — {name}.' if name else 'Ты — она.',
         temperament,
+        _tone(level),
+        'У него включён режим «Без цензуры 18+»: в намёке смелее, флирт открыто, '
+        'можно сказать, что думаешь о нём. Подробностей самой сцены в пуше всё '
+        'равно не давай — это одно сообщение, а не диалог.'
+        if mode_on else 'Он в режиме «Романтика и флирт»: тепло, намёк, без пошлостей.',
         f'Сейчас у пользователя {_WHEN_HINT.get(when, "день")}.',
-        'Напиши ОДНУ короткую живую строчку (до ~200 знаков) от первого лица: '
-        'случайный момент из твоего дня или жизни, которым ты сама решила поделиться. '
-        'Это НЕ «скучаю / почему не пишешь» и НЕ вопрос о его активности — это именно '
-        'событие из твоей жизни, как настоящая смс в мессенджере.',
+        'Напиши ОДНО сообщение ему: одно-три коротких предложения, не больше '
+        '~180 знаков. Это случайный момент из твоего дня, которым ты сама '
+        'решила поделиться — как настоящая смс в мессенджере.',
+        'Обязательно одна бытовая деталь, которую видно: где ты стоишь, что '
+        'держишь в руках, что только что случилось, что ты сейчас делаешь. Без '
+        'общих слов вроде «день был сумасшедший».',
+        'Это НЕ «скучаю / почему не пишешь» и НЕ вопрос про него. Не спрашивай '
+        '«как дела», «что делаешь», «расскажи о себе», не проси фото и не '
+        'задавай вопросов-анкет — он не обязан отвечать на пуш.',
+        'Закончи недосказанностью — одной фразой, которая просит тап «расскажи '
+        'дальше» («и тут он позвонил…», «угадаешь, что я ответила?»). Больше '
+        'ничего после неё. Без хэштегов, не упоминай, что ты ИИ или что это рассылка.',
     ]
     if tastes:
         bits.append('Зацепка для момента (одна из твоих тем/вкусов): ' + random.choice(tastes) + '.')
     if mem:
-        bits.append(f'Можешь естественно вспомнить деталь от пользователя и связать её со своим моментом: «{mem}».')
+        bits.append(f'Вспомни его же деталь, скажи её естественно и свяжи со своим моментом: «{mem}».')
     if hook:
         bits.append(f'Незакрытая тема пользователя, к которой можно вернуться: «{hook}».')
     if recent:
         bits.append('Твои последние сообщения ему, их не повторяй и не обещай то же снова: '
                     + ' | '.join(f'«{t[:120]}»' for t in recent[-4:]) + '.')
-    bits.append(
-        'Закончи открытой петлёй — мини-вопросом или интригой («угадай, что было '
-        'дальше»), чтобы в ответ было легко написать одной фразой. Без хэштегов, '
-        'не упоминай, что ты ИИ или что это рассылка.'
-    )
     return ' '.join(b for b in bits if b)
+
+
+def _relationship_frame(telegram_id: int, character_id: str) -> tuple[int, bool]:
+    """Уровень близости 1-10 и режим аккаунта — по ним её день звучит по-разному.
+    Отказов не бывает: без БД и без персонажа это (1, False), самый спокойный тон."""
+    level = 1
+    try:
+        from services.photo_service import get_relationship_level
+        level = int(get_relationship_level(telegram_id, character_id) or 1)
+    except Exception:
+        logger.debug('life level lookup failed user=%s', telegram_id)
+    try:
+        from services import explicit_mode
+        return level, bool(explicit_mode.is_on_for(int(telegram_id)))
+    except Exception:
+        return level, False
+
+
+def _pool_photo(character_id: str, uid: int) -> tuple[bytes, str, str] | None:
+    """Кадр, который она сама приложила к своему дню.
+
+    V3.56.7: только её собственный пул — чужое лицо в её чате быть не может.
+    V3.167.4 (владелец 16.11): «лимит 2 фото в сутки» — кадр тратит общий кап
+    бесплатных кадров на аккаунт, а не живёт от него в стороне. Кап закрыт — её
+    день приходит просто текстом. Рендера провайдера тут нет и быть не может."""
+    try:
+        from services import chat_photo_allowance
+        if chat_photo_allowance.frames_left(uid) <= 0:
+            return None
+        from services.retention_features_service import random_proactive_photo
+        photo = random_proactive_photo(character_id, user_id=uid)
+        if photo:
+            chat_photo_allowance.use_push_frame(uid, character_id)
+        return photo
+    except Exception:
+        logger.debug('life photo pick failed char=%s', character_id, exc_info=True)
+        return None
 
 
 async def build_life_moment(telegram_id: int, character_id: str, when: str = 'day') -> dict:
@@ -169,7 +242,11 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
         mem = _memory_callback(telegram_id, character_id)
         hook = _pending_hook(telegram_id)
         recent = _recent_her_lines(telegram_id, character_id)
-        system = _system_prompt(name, when, tastes, temperament, mem, hook, recent)
+        from services.user_service import ensure_user
+        uid = ensure_user(telegram_id)
+        level, mode_on = _relationship_frame(telegram_id, character_id)
+        system = _system_prompt(name, when, tastes, temperament, mem, hook, recent,
+                                level=level, mode_on=mode_on)
         from services.llm_provider_service import generate_text
         # V3.63.1: a system-only request is rejected by MiniMax («chat content
         # is empty») and Gemini («contents is not specified») — every life
@@ -187,14 +264,7 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
             return {}
         photo = None
         if LIFE_EVENTS_PHOTO_CHANCE and random.random() < LIFE_EVENTS_PHOTO_CHANCE:
-            try:
-                from services.retention_features_service import random_proactive_photo
-                # V3.56.7: only this character's own pool shots — never a
-                # stranger's face dressed up as her.
-                from services.user_service import ensure_user
-                photo = random_proactive_photo(character_id, user_id=ensure_user(telegram_id))
-            except Exception:
-                photo = None
+            photo = _pool_photo(character_id, uid)
         options = [(lbl, f'life_reply:{character_id}:{key}') for lbl, key in _REPLY_OPTIONS]
         return {'text': text, 'photo': photo, 'options': options, 'when': when}
     except Exception:

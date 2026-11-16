@@ -118,6 +118,11 @@ CHAT_FREE_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_FREE_PHOTOS_PER_DAY_FREE",
 # and it stays at one, otherwise a free user farms stock frames all day and
 # never sees the wall (V3.93.0: без према — всего одна фотка).
 CHAT_POOL_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_POOL_PHOTOS_PER_DAY", "1")))
+# V3.167.4 (владелец 16.11, ответ на ТЗ §4): «лимит 2 фото в сутки» — общий кап
+# кадров за $0 на аккаунт, считает обе рельсы разом: кадр из пула в чате и кадр,
+# который она сама приложила к своему дню. Рендеры за персики сюда не входят и
+# своих правил не видят: покупка и цена кадра остаются как есть.
+FREE_FRAMES_PER_DAY = max(0, int(os.getenv("FREE_FRAMES_PER_DAY", "2")))
 # V3.166.4 (Блок 1, owner): how many frames one scenario may hold per heroine.
 # Under the cap her tap renders a new picture and it is kept for everyone after
 # her; at the cap the server draws one of the stored four at random — no
@@ -803,7 +808,14 @@ LIFE_EVENTS_YOUNG_MAX_PER_DAY = max(1, min(4, int(os.getenv("LIFE_EVENTS_YOUNG_M
 LIFE_EVENTS_QUIET_START_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_START_HOUR", "23"))))
 LIFE_EVENTS_QUIET_END_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_END_HOUR", "7"))))
 # Probability of attaching a pool photo to a life moment (0 disables).
-LIFE_EVENTS_PHOTO_CHANCE = max(0.0, min(1.0, float(os.getenv("LIFE_EVENTS_PHOTO_CHANCE", "0.25"))))
+# V3.167.4 (владелец ТЗ §4): «её день» без кадра выглядит пересказом — кадров
+# стало больше (0.35), но ровно на столько, сколько выдерживает общий кап
+# бесплатных кадров ниже: кадр из пула это $0, а не новая генерация.
+LIFE_EVENTS_PHOTO_CHANCE = max(0.0, min(1.0, float(os.getenv("LIFE_EVENTS_PHOTO_CHANCE", "0.35"))))
+# V3.167.4: «факт из памяти почти всегда» — её момент дня цепляется за то, что
+# он уже рассказывал, а не за анкету. 0.9 оставляет немного места для совсем
+# свежих аккаунтов, где вспоминать ещё нечего.
+LIFE_EVENTS_MEMORY_CHANCE = max(0.0, min(1.0, float(os.getenv("LIFE_EVENTS_MEMORY_CHANCE", "0.9"))))
 
 # V3.159.0: диета пушей (дамп 13.11). Ночное окно берём то же, что и у «жизни
 # без тебя», — PUSH не плодим константами; считается только пауза между
