@@ -15,6 +15,15 @@ the regular Premium screen with the one-time 24h discount switched on.
 
 Dedup is a persisted DialogStore marker (no schema change), written BEFORE the
 send so a failing send can never re-fire the offer every scan.
+
+V3.167.12 (owner — «пусть чаще всем пользователям приходит предложение
+оплаты»): the rail behind this card (PUSH_RAILS 'first_offer') had never been
+switched on, so the offer only existed on paper — and the honest long-form one
+in services/heavy_offer.py needed 150 messages, which is five heavy days under
+the 30/day ceiling. Both queues run now: the card once in the first 72 hours of
+a fresh account, then the honest offer weekly while he stays free. Every send
+goes through services/push_governor like any other first write, so her two
+pushes a day and the 23→7 silence still decide when it actually lands.
 """
 from __future__ import annotations
 

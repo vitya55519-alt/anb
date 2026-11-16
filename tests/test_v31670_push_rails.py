@@ -35,10 +35,13 @@ from services import scheduler_service as ss
 # её две строки + рельсы, которые дампом 13.11 НЕ были осуждены
 ON_RAILS = {'life_events', 'rituals', 'day1_hook', 'daily_gift', 'scenario_cards',
             'first_minutes'}
+# V3.167.12 (владелец 16.11: «пусть чаще всем пользователям приходит предложение
+# оплаты»): очереди офферов дампом не осуждены — их просто ни разу не включали.
+ON_RAILS |= {'first_offer', 'heavy_offer'}
 # осуждённый шум: ни один не входит в список по умолчанию
 OFF_RAILS = {'proactive', 'partner_nudge', 'random_gifts', 'daily_compatibility',
-             'whats_new', 'donation_reminder', 'first_offer', 'trial_followup',
-             'heavy_offer', 'paid_day1', 'renewal_care'}
+             'whats_new', 'donation_reminder', 'trial_followup',
+             'paid_day1', 'renewal_care'}
 # каждый джоб, который НАЧИНАЕТ разговор, регистрируется только по имени
 PUSH_JOBS = tuple(sorted(ON_RAILS | OFF_RAILS))
 

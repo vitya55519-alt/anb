@@ -606,6 +606,11 @@ async def _first_offer(bot):
                 continue
             if not has_accepted(telegram_id) or is_premium(telegram_id):
                 continue
+            # V3.167.12: карточка с замком — тоже «она написала первой», и
+            # раньше она шла мимо диеты (её очередь была просто темна). Теперь
+            # сначала ворота: ночью и когда его два пуша на сегодня уже вышли,
+            # слот не сжигается — скан через 10 минут попробует снова.
+            if not await asyncio.to_thread(_push_ok, uid): continue
             # consume the slot first — a failed send must not re-fire every scan
             fos.mark_offered(telegram_id)
             lang=user_lang(telegram_id)
@@ -1674,6 +1679,9 @@ async def _heavy_offer(bot):
         try:
             if telegram_id in ADMIN_TELEGRAM_IDS or is_premium(telegram_id) or not has_accepted(telegram_id):
                 continue
+            # V3.167.12: то же самое, что и для карточки с замком, — диету
+            # пушей не обходит ни одна очередь, которая начинает разговор.
+            if not await asyncio.to_thread(_push_ok, uid): continue
             # the slot first — a failed send must not re-fire every scan
             await asyncio.to_thread(ho.mark, uid, char_id or CHARACTER_ID, count)
             en = user_lang(telegram_id) == EN

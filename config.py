@@ -842,7 +842,14 @@ SCENARIO_BUDGET_PER_DAY = max(0, min(5, int(os.getenv("SCENARIO_BUDGET_PER_DAY",
 # MARKETING_PUSH_ENABLED stays as the kill switch: false = nothing but her two
 # ritual lines, whatever the list says.
 MARKETING_PUSH_ENABLED = os.getenv("MARKETING_PUSH_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
-PUSH_RAILS_DEFAULT = 'life_events,rituals,day1_hook,daily_gift,scenario_cards,first_minutes'
+# V3.167.12 (владелец 16.11: «пусть чаще всем пользователям приходит предложение
+# оплаты»): обе очереди офферов были темны не потому, что их осудил дамп, а
+# потому, что их ни разу не включали. first_offer = карточка в первые 72 часа,
+# heavy_offer = честное предложение тем, кто уже переписывается. Обе теперь
+# проходят через её же диету пушей (services/push_governor), поэтому «два пуша
+# в сутки» и тишина с 23 до 7 на них действуют так же, как на остальное.
+PUSH_RAILS_DEFAULT = ('life_events,rituals,day1_hook,daily_gift,scenario_cards,first_minutes,'
+                      'first_offer,heavy_offer')
 PUSH_RAILS = {r.strip().lower() for r in os.getenv("PUSH_RAILS", PUSH_RAILS_DEFAULT).split(',') if r.strip()}
 
 

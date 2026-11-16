@@ -39,10 +39,13 @@ def test_two_a_day_and_the_noise_rails_are_off():
     # V3.167.0 (owner «разрешаю по пушам»): the marketing bucket stays at two,
     # the master flag is on again, and the rails the 13.11 dump condemned are
     # simply not named in the default list.
+    # V3.167.12: heavy_offer belongs to the offers the owner asked to send more
+    # often, not to the condemned noise — it now runs, behind the same gate.
     assert PUSH_MAX_PER_DAY == 2
     assert MARKETING_PUSH_ENABLED is True
     assert not {'partner_nudge', 'daily_compatibility', 'whats_new', 'random_gifts',
-                'donation_reminder', 'heavy_offer', 'proactive'} & PUSH_RAILS
+                'donation_reminder', 'proactive'} & PUSH_RAILS
+    assert {'first_offer', 'heavy_offer'} <= PUSH_RAILS
     assert {'life_events', 'rituals', 'day1_hook', 'daily_gift',
             'scenario_cards', 'first_minutes'} <= PUSH_RAILS
 

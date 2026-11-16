@@ -44,11 +44,14 @@ def test_showcase_voice_then_card_and_photo_after_payment():
 
 def test_heavy_offer_text_is_honest_and_scheduled():
     from services import heavy_offer as ho
-    assert ho.MIN_MESSAGES == 150
+    # V3.167.12 (владелец: «пусть чаще всем пользователям приходит предложение
+    # оплаты»): 150 сообщений при потолке 30 в сутки = пять тяжёлых дней.
+    # Порог опущен до 15, и текст больше не обещает, что это «один раз».
+    assert ho.MIN_MESSAGES == 15 and ho.REPEAT_DAYS == 7
     assert ho.rounded(237) == 200 and ho.rounded(512) == 500 and ho.rounded(160) == 150
     ru, en = ho.text(237, 'ru'), ho.text(237, 'en')
-    assert '200' in ru and 'один раз' in ru and 'ничего не поменяется' in ru
-    assert 'nothing changes' in en
+    assert '200' in ru and 'один раз' not in ru and 'ничего не поменяется' in ru
+    assert 'once' not in en and 'nothing changes' in en
     for bad in ('осталось', 'только сегодня', 'обижусь', 'последний шанс'):
         assert bad not in ru
     assert "scheduler.add_job(_heavy_offer,'interval',minutes=30" in SCHED

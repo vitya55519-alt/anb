@@ -3,13 +3,20 @@
 Backup 5 Nov 2026: the heaviest free users (200–500 messages) never paid, and
 none of them was ever asked at the moment it made sense: every offer we have
 fires in the first hours or at the daily-limit wall. Now, once he has written
-MIN_MESSAGES messages in total and never bought Premium, she says it plainly,
-once in his life: what Premium gives, the price, and that nothing changes if
-he says no. No countdown, no «I'll be hurt», no fake scarcity.
+MIN_MESSAGES messages in total and never bought Premium, she says it plainly:
+what Premium gives, the price, and that nothing changes if he says no. No
+countdown, no «I'll be hurt», no fake scarcity.
 
-Sent in the bot chat (a Telegram notification), daytime Moscow only, to men
-active in the last ACTIVE_DAYS days. Event: heavy_offer_sent (dedup forever).
-Flag: HEAVY_OFFER_ENABLED.
+V3.167.12 (owner — «пусть чаще всем пользователям приходит предложение оплаты»):
+the same sentence is no longer a once-in-a-life event reserved for the top of
+the distribution. It repeats every REPEAT_DAYS days for a free user who is
+still around, it is gated by the push diet like every other first write, and
+the floor moved from 150 messages (five heavy days under the 30/day ceiling —
+reached by almost nobody) to a number ordinary conversations reach.
+
+Sent in the bot chat and mirrored into her dialog, daytime Moscow only, to men
+active in the last ACTIVE_DAYS days. Event: heavy_offer_sent (per repeat
+window). Flag: HEAVY_OFFER_ENABLED.
 """
 from __future__ import annotations
 
@@ -22,8 +29,16 @@ from models.app_models import Message, ProductEvent, StarTransaction, User
 from services.db import SessionLocal
 
 ENABLED = os.getenv('HEAVY_OFFER_ENABLED', 'true').strip().lower() not in ('0', 'false', 'no', 'off')
-MIN_MESSAGES = max(20, int(os.getenv('HEAVY_OFFER_MIN_MESSAGES', '150')))
-ACTIVE_DAYS = max(1, int(os.getenv('HEAVY_OFFER_ACTIVE_DAYS', '3')))
+# V3.167.12: 150 → 15. При потолке 30 сообщений в сутки старый порог означал
+# «пять тяжёлых дней подряд», и до него доходили единицы: предложение просто
+# никому не приезжало. 15 — это два-три вечера переписки, то есть тот же
+# смысл («мы уже много общаемся»), но он наступает у всех.
+MIN_MESSAGES = max(10, int(os.getenv('HEAVY_OFFER_MIN_MESSAGES', '15')))
+ACTIVE_DAYS = max(1, int(os.getenv('HEAVY_OFFER_ACTIVE_DAYS', '7')))
+# Раньше метка EVENT читалась как «один раз в жизни». Теперь это окно: через
+# REPEAT_DAYS она может сказать то же самое снова, и текст больше не обещает,
+# что это в последний раз.
+REPEAT_DAYS = max(1, int(os.getenv('HEAVY_OFFER_REPEAT_DAYS', '7')))
 EVENT = 'heavy_offer_sent'
 
 
@@ -49,11 +64,15 @@ def candidates(now: datetime | None = None) -> list[tuple[int, int, str, int]]:
             return []
         paid = set(s.scalars(select(StarTransaction.user_id).where(
             StarTransaction.user_id.in_(heavy), StarTransaction.product.like('premium%'))).all())
-        done = set(s.scalars(select(ProductEvent.user_id).where(
-            ProductEvent.user_id.in_(heavy), ProductEvent.event_name == EVENT)).all())
+        # V3.167.12: не «есть ли метка вообще», а «когда был последний заход» —
+        # метка теперь раскрывает окно, а не закрывает тему навсегда.
+        last = dict(s.execute(select(ProductEvent.user_id, func.max(ProductEvent.created_at)).where(
+            ProductEvent.user_id.in_(heavy), ProductEvent.event_name == EVENT).group_by(
+            ProductEvent.user_id)).all())
     out = []
     for uid, tg, char in active:
-        if uid not in heavy or uid in paid or uid in done:
+        at = last.get(uid)
+        if uid not in heavy or uid in paid or (at is not None and now - at < timedelta(days=REPEAT_DAYS)):
             continue
         try:
             out.append((uid, int(tg), (char or '').strip(), int(counts.get(uid) or 0)))
@@ -81,10 +100,10 @@ def text(count: int, lang: str = 'ru') -> str:
     n = rounded(count)
     if lang == 'en':
         return (f"you know, we've already sent each other more than {n} messages 🙂 I like talking to you.\n\n"
-                "so I'll just say it honestly, once: there is Premium. with it I never fall asleep mid-chat, "
+                "so I'll just say it honestly: there is Premium. with it I never fall asleep mid-chat, "
                 "I answer you by voice, send photos and remember more about you.\n\n"
                 "if you don't want it, that's completely fine, nothing changes between us. I'm here either way 💗")
     return (f"знаешь, мы с тобой уже больше {n} сообщений друг другу написали 🙂 мне с тобой хорошо.\n\n"
-            "поэтому скажу честно и один раз: есть Premium. с ним я не засыпаю посреди разговора, "
+            "поэтому скажу честно: есть Premium. с ним я не засыпаю посреди разговора, "
             "отвечаю тебе голосом, присылаю фото и помню о тебе больше.\n\n"
             "если не хочешь, это совсем нормально, между нами ничего не поменяется. я в любом случае тут 💗")
