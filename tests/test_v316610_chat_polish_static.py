@@ -54,15 +54,15 @@ def test_the_spa_already_lays_the_chips_under_a_paid_frame():
 # ── 2. анатомия — первая строка промпта «Раздеть» ─────────────────────────
 
 def test_the_anatomy_lock_leads_the_undress_prompt():
-    lock = _block('UNDRESS_ANATOMY_LOCK = (\n', 'UNDRESS_PROMPT = (')
+    lock = _block('UNDRESS_ANATOMY_LOCK = (\n', 'UNDRESS_SAME_FRAME_LOCK = (')
     assert lock.startswith("UNDRESS_ANATOMY_LOCK = (\n    'HANDS:")
     assert 'exactly two arms and two hands' in lock
     assert 'five correct fingers on each hand' in lock
     assert 'Never a third hand or arm' in lock
     # рука, уже лежащая в первом кадре, не получает права на третью
-    assert 'the reveal does not get a free third one' in lock
-    assembly = _block('    prompt, secret = (UNDRESS_ANATOMY_LOCK', '\n    try:')
-    assert "UNDRESS_ANATOMY_LOCK + '\\n' + UNDRESS_PROMPT" in assembly
+    assert 'a free third one' in lock
+    assembly = _block('    prompt, secret = (UNDRESS_SAME_FRAME_LOCK', '\n    try:')
+    assert "UNDRESS_SAME_FRAME_LOCK + '\\n' + UNDRESS_ANATOMY_LOCK + '\\n' + UNDRESS_PROMPT" in assembly
     # хвост по-прежнему идёт после всего — но анатомии в нём больше нет
     assert assembly.index('UNDRESS_ANATOMY_LOCK') < assembly.index('UNDRESS_TAIL')
 

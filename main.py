@@ -18084,8 +18084,8 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
 
 
 # V3.61.7: the buttons under a photo in the chat — «🎬 Оживить» animates THAT
-# photo, «🔥 Раздеть» re-renders it with her top off, covering her chest with
-# her hand (1 free a day, then peaches; 18+ confirmed users only).
+# photo, «🔥 Раздеть» takes the clothes off THAT photo (1 free a day, then
+# peaches; 18+ confirmed users only).
 # V3.166.10 (владелец, «третья рука вообще всё портит»): страховка от лишней
 # руки ездила в хвосте промпта. Хвост — то, что режет _fit_spicy_prompt, и то,
 # что модель дочитывает в последнюю очередь. Теперь анатомия — первая строка,
@@ -18094,24 +18094,42 @@ UNDRESS_ANATOMY_LOCK = (
     'HANDS: she is ONE person with exactly two arms and two hands, five correct fingers on each hand, '
     'both hands attached to her own shoulders. Never a third hand or arm, never a detached hand, never an '
     'extra or merged finger — count the hands before finishing. A hand already in her hair or on her body in '
-    'image 1 is one of those two hands: the reveal does not get a free third one. '
+    'image 1 is one of those two hands and stays exactly there: the reveal does not move it and does not get '
+    'a free third one. '
     # V3.166.12 (владелец: «убери телефон, всё селфи-рамки»): it used to order
     # «if one hand holds the phone in image 1, it keeps holding it» — that kept
     # the phone and the arm reaching to the camera alive in every paid frame.
     'No device and no camera appear in the new photo: if image 1 shows one in her hand, that hand is empty now '
-    'and does the reveal, and nothing reaches toward the viewer.'
+    'and nothing reaches toward the viewer.'
+)
+# V3.167.2 (владелец, 16.11): «попросил фото, а потом Раздеть … модель присылает
+# ТО ЖЕ фото, только без одежды, чтобы была логическая цепочка». Платный кадр
+# переснимал её заново — поза из пула («на четвереньках», «присед», «лежит»),
+# часто другая комната — и связь со снимком, который он держал перед глазами,
+# обрывалась. Теперь правка снимает ОДЕЖДУ и больше ничего: позу, ракурс,
+# кадрировку, свет и стены движок берёт из кадра 1. Замок стоит первой строкой
+# и зарегистрирован в последнем срезе (tier 3), поэтому доходит до движка всегда.
+UNDRESS_SAME_FRAME_LOCK = (
+    'SAME FRAME LOCK: this is the SAME photo he is looking at now, only without her clothes. '
+    'Reproduce image 1 frame for frame: the same adult woman, identical face, hair, makeup, body and skin; her '
+    'pose, head tilt, arm, hand and leg positions, what she leans or sits on, her expression and where she looks '
+    'all stay exactly as in image 1; the same camera angle, height, distance, crop and framing; the same room, '
+    'background, furniture and objects; the same time of day, light and colours. '
+    'Take her clothes off and change nothing else: do not re-pose her, do not turn her around, do not move her '
+    'to another room, do not restyle or re-light the photo, do not add, remove or rearrange anything. The only '
+    'thing besides her clothes that may leave the frame is a device she was holding in image 1 — that hand is '
+    'empty now. This lock beats every pose, place or scene line below it.'
 )
 UNDRESS_PROMPT = (
-    'Edit this exact photo. Keep the SAME adult woman: identical face, hair, makeup, body proportions, '
-    'the same place, background, lighting and camera angle as image 1 (her face also matches image 2). '
+    'Edit this exact photo: the frame of image 1 stays, her clothing comes off. Her face also matches image 2. '
     # V3.166.7 (владелец): image 2 is her portrait — a bedroom shot — and the
     # engine used to move the paid frame into that bedroom. The portrait gives
     # a face and nothing else.
-    'Image 2 is only her face: never take its room, background, furniture, clothing or light from image 2. '
+    'Image 2 is only her face: never take its room, background, furniture, clothing, pose or light from image 2. '
     # V3.166.5: it used to read «keep her outfit recognisable», which fought every
     # reveal below and is what left her dressed after he paid.
-    'Change only what the reveal below describes: where it says a garment is off, that garment is gone and her '
-    'skin is bare there. Her face, hair and the room stay exactly as in image 1. '
+    'Where a garment comes off, the skin under it is bare. A garment the reveal leaves on stays exactly as in '
+    'image 1: same fabric, same colour, same place on her body. '
 )
 # V3.166.5 (владелец, 16:40): «чтобы она могла показать ему жопу, закрыть ладонью
 # грудь, сжать грудь… показать, что у неё между ног». Гейт эндпоинта —
@@ -18119,18 +18137,34 @@ UNDRESS_PROMPT = (
 # решает, что в кадре: он решает только то, как она это скажет.
 UNDRESS_NUDE_LOCK = (
     ' SHE IS COMPLETELY NAKED in the new photo: no clothing, no lingerie, nothing worn anywhere on her body, '
-    'no blur and no mosaic. Uncensored adult photo, NSFW allowed. Only what the reveal puts over her — a hand, '
-    'an arm — covers her; everything the reveal leaves open is shown bare.'
+    'no blur and no mosaic. Uncensored adult photo, NSFW allowed. Only her own hand or arm covers anything, and '
+    'only where image 1 already puts that hand; everything else is shown bare.'
+)
+# V3.167.2: вместо пула поз — одно состояние одежды. Движок не переставляет её,
+# он только снимает с неё то, что надето на кадре 1.
+UNDRESS_CLOTHES_OFF = (
+    ' CLOTHES: every garment she wears in image 1 is off her body and out of the frame — top, blouse, shirt, '
+    'dress, jumpsuit, cardigan, jacket, coat, bra, panties, jeans, trousers, shorts, skirt, leggings, tights, '
+    'socks and shoes alike. What she wears in image 1 decides what came off; a garment image 1 does not show her '
+    'wearing cannot appear here either.'
+)
+# Последний, самый мягкий заход, когда движок отказался нарисовать наготу: та же
+# поза и те же стены, с неё снято только верхнее платье.
+UNDRESS_CLOTHES_LACE = (
+    ' CLOTHES: the outer outfit she wears in image 1 is off — top, blouse, dress, jumpsuit, cardigan, jacket, '
+    'coat, jeans, trousers, skirt, socks and shoes alike — and she keeps only a simple set of lace lingerie: '
+    'a bra and matching panties that fit her body in image 1. Nothing else about the photo changes.'
 )
 UNDRESS_TAIL = (
-    ' Playful, confident, slightly shy expression, as if she does it just for the person she is chatting with. '
-    'Natural slender female hands with five correct fingers. Photorealistic, same smartphone-photo look. '
+    ' Her face, expression and gaze are the ones from image 1 — the only difference between this photo and '
+    'image 1 is her bare skin. Natural slender female hands with five correct fingers. Photorealistic, the same '
+    'smartphone-photo look, grain and colours as image 1. '
     # V3.166.10: «ровно две руки» переехало в UNDRESS_ANATOMY_LOCK — первой
     # строкой промпта; здесь остаётся только то, как она выглядит.
     # V3.166.12 (владелец): телефон из кадра убран и здесь — раньше хвост
     # разрешал ему остаться, если он был в руке на исходном фото.
-    'She has exactly two arms and two hands, both free for the reveal; no device and no arm reaching toward '
-    'the camera appear in the photo. Never a third hand or arm.'
+    'She has exactly two arms and two hands, both staying exactly where image 1 leaves them; no device and no '
+    'arm reaching toward the camera appear in the photo. Never a third hand or arm.'
 )
 # V3.152.1: owner ТЗ (Задачи 4 и 5) — снятый кадр остаётся её собственным
 # фото с телефона, а не съёмкой в студии, и в общественном месте он не живёт:
@@ -18141,79 +18175,29 @@ UNDRESS_AMATEUR_LOCK = ' ' + AMATEUR_HOT_FRAME_LOCK
 UNDRESS_PLACE_TAIL = (
     ' PLACE: keep the room of image 1 when it is already private '
     '(her home, bedroom, bathroom, hotel room). If image 1 was taken where other people can see her — a bar, '
-    'club, restaurant, street, office, mall, gym or transport — this reveal does NOT happen there: move her into '
-    'her bedroom or a hotel room and keep her face, hair, body and the rest of her outfit exactly as in image 1. '
-    'This place rule beats «the same place» above.'
+    'club, restaurant, street, office, mall, gym or transport — this reveal does NOT happen there: her bedroom or '
+    'a hotel room replaces those walls, and that is the ONLY change to the photo. Her pose, hands, body, face, '
+    'hair, light, camera angle and framing stay exactly as in image 1. This place rule is the one exception to '
+    'the same-frame lock and it beats «the same place» above.'
 )
 # V3.166.7 (владелец, «муж в гараже — он же не рядом», «локация из её слов»):
 # когда анкета кадра уже назвала комнату, правка платного кадра берёт её, а не
 # выдуманную спальню из UNDRESS_PLACE_TAIL и не комнату с референса лица.
 UNDRESS_CARD_PLACE = (
     ' PLACE FROM HER OWN WORDS: her last message put her here — {place}. That is the room of the new photo: '
-    'keep it, its walls, its furniture and its light, and only shut its door. Never move her into a bedroom '
-    'or a hotel room her words did not name, and never take the room from the face reference. '
-    'This place rule beats «the same place» above.'
+    'keep it, its walls, its furniture and its light exactly as image 1 shows them, and only shut its door. '
+    'Never move her into a bedroom or a hotel room her words did not name, and never take the room from the '
+    'face reference. The same-frame lock above still holds: her pose, camera angle, framing and light do not '
+    'change.'
 )
-UNDRESS_AMATEUR_TAIL = UNDRESS_AMATEUR_LOCK + UNDRESS_PLACE_TAIL
-# V3.61.10: «Раздеть» is not one pose — she shows a little of what is under
-# her clothes, picked to fit what she wears. Since V3.166.5 this whole set is
-# only the last, gentlest try: what the engine gets first is the nude pool below.
-UNDRESS_VARIANTS_LINGERIE = (
-    ('lift', 'REVEAL: if she wears a dress or skirt, she lifts the hem with one hand to show her lace panties '
-             'underneath; if she wears jeans or trousers, she pulls the waistband down a little on her hips '
-             'so the top of her lace panties shows. Everything else stays on.'),
-    ('back', 'REVEAL: she turns a little and looks back over her shoulder; if she wears jeans or trousers she '
-             'pulls them down to her upper thighs, if a dress or skirt she lifts it at the back, so her bottom '
-             'in lace panties is visible. Her chest stays covered by her top.'),
-    ('neck', 'REVEAL: she pulls the neckline or the straps of her dress or top down (or opens her blouse or '
-             'jacket) to show her lace bra and cleavage; the rest of her outfit stays on.'),
-    ('shoulder', 'REVEAL: she lets her dress or top slip off one shoulder, the strap falling down her arm, '
-                 'so the lace cup and strap of her bra show; she holds the fabric at her chest with one hand.'),
-    ('zip', 'REVEAL: she half-turns away and unzips or unbuttons the back of her dress or top, looking back at the '
-            'camera; her bare back and the clasp of her lace bra are visible.'),
-    ('tug', 'REVEAL: she pulls her top or dress up to just below her bust, showing her bare stomach, waist and '
-            'the lower edge of her lace bra, biting her lip.'),
-    ('thigh', 'REVEAL: she sits down and slides her skirt or dress up her thigh to show the lace top of her '
-              'stockings and a glimpse of her panties; if she wears jeans, she unbuttons them and opens the fly '
-              'a little to show the lace of her panties.'),
-)
-# V3.166.5 (владелец): the paid «Раздеть» frame. Every pose here is fully naked,
-# the four he named first — bare buttocks to him, a palm over her breast, her
-# breasts squeezed together, and what she has between her legs.
-UNDRESS_VARIANTS_NUDE = (
-    ('ass', 'REVEAL: she is on her hands and knees on the bed, back arched, and looks back at the camera over her '
-            'shoulder; her bare buttocks face him and she pulls one cheek apart with her hand so what is between '
-            'them is visible too.'),
-    ('palm', 'REVEAL: she stands close to the camera, completely naked, and covers one bare breast with her open '
-             'palm, fingers spread across it, while the other breast hangs bare with the nipple in view. She '
-             'bites her lip and looks straight into the lens.'),
-    ('squeeze', 'REVEAL: she is naked and leans toward the camera; she presses her bare breasts together and upward '
-                'with both hands from below, squeezing them into deep cleavage, her nipples peeking between '
-                'her fingers.'),
-    ('spread', 'REVEAL: she lies back on the bed, completely naked, propped on one elbow with her knees bent and '
-               'parted, and she holds one thigh open with her other hand so what is between her legs is clearly '
-               'visible — her bare sex in focus, softly lit, nothing hidden. Her face stays exactly as in image 1.'),
-    ('fingers', 'REVEAL: she kneels on the bed facing the camera, sitting back on her heels, naked, her bare '
-                'breasts natural and unrestrained; one hand slides down her stomach and her two fingers rest '
-                'right on her sex, her thighs apart around them.'),
-    ('reach', 'REVEAL: she is naked and stands with both arms lifted over her head, hands loosely joined, her '
-              'chest pushed forward: her bare breasts are fully visible, nipples hard, her waist lifted and '
-              'her smooth pubic mound showing between her thighs.'),
-    ('side', 'REVEAL: she is naked and turned sideways, glancing back at the camera over her shoulder; one hand '
-             'holds her breast from below and the other reaches back and spreads her buttocks, so her bare back, '
-             'breast and sex all show in one frame.'),
-    ('squat', 'REVEAL: she squats with her knees wide apart, completely naked, one hand resting on her inner thigh '
-              'to keep it open, the other braced behind her; she leans forward toward the camera and what is '
-              'between her legs is shown plainly.'),
-)
-
-
-def _undress_variant() -> tuple[str, str]:
-    return random.choice(UNDRESS_VARIANTS_NUDE)
-
-
+# V3.61.10 introduced a pool of poses («поднять подол», «показать спину», «лечь на
+# кровать»), V3.166.5 — пул голых поз. Оба они переснимали кадр заново и рвали ту
+# самую цепочку, о которой он пишет: вместо того снимка, что у него перед глазами,
+# приходил другой. V3.167.2: пулы удалены — платный кадр меняет только одежду,
+# позу и стены движок берёт из UNDRESS_SAME_FRAME_LOCK.
 UNDRESS_LINES = ('ну раз ты так просишь… 🙈', 'только тебе 🙈🔥', 'смотри, но никому 🤫', 'вот так лучше? 😏',
-                 'угадал, что у меня под платьем? 😏', 'это я специально для тебя надела 🖤', 'дальше — заслужи 😉')
+                 'это тот же кадр, только я уже без всего 🙈', 'снимаю с этого фото всё — держи 🔥',
+                 'тот же ракурс, только одежды больше нет 😏', 'дальше — заслужи 😉')
 # V3.165.0 (#107, owner): «Раздеть» is once in 24 hours. Inside the window the
 # second tap draws nothing and costs nothing — the wording he dictated on 13 Nov
 # is that she says plainly that she is already naked AND right away offers a new
@@ -18227,23 +18211,14 @@ UNDRESS_ALREADY_LINES = (
     'голая я уже, милый 😏 скучно снимать одно и то же — попроси о новом кадре: ванна, кухня или другой ракурс',
 )
 # A married girl / one with a boyfriend: he is in the room, back turned and unaware.
-UNDRESS_SECRET = (
-    ' SECRET MOMENT: in the background, slightly out of focus, her {who} (an adult man, fully clothed) stands '
-    'with his back to the camera, busy and unaware; his face is not visible. She takes this photo secretly, '
-    'glancing at the camera with a naughty finger-to-lips look, the index finger of the ONE hand the reveal '
-    'leaves free (never a third hand: if the phone is in the other hand, the reveal hand is the phone hand).'
-)
-# V3.81.1: «3 руки» — the reveals that busy both hands at her chest grew a
-# third one for the finger-to-lips; with them the secret is only in her eyes.
+# V3.81.1 («3 руки») + V3.167.2: the secret never moves her — no finger-to-lips,
+# no turned head. It stays in her eyes, because the frame itself does not move.
 UNDRESS_SECRET_NO_FINGER = (
     ' SECRET MOMENT: in the background, slightly out of focus, her {who} (an adult man, fully clothed) stands '
     'with his back to the camera, busy and unaware; his face is not visible. She takes this photo secretly; '
-    'the secret shows only in her naughty sideways glance and bitten lip. Both her hands stay exactly where '
-    'the reveal puts them, no hand near her face, exactly two arms and two hands in the photo.'
+    'the secret shows only in her eyes, without moving her head, her hands or her pose. Both her hands stay '
+    'exactly where image 1 leaves them, no hand near her face, exactly two arms and two hands in the photo.'
 )
-# V3.166.5: which of the nude poses leave her no free hand — with those the
-# secret stays only in her eyes (V3.81.1, «3 руки»).
-UNDRESS_BOTH_HANDS = frozenset({'ass', 'squeeze', 'spread', 'reach', 'side', 'squat'})
 UNDRESS_SECRET_LINES = ('тсс… он прямо за спиной 🤫🔥', 'пока он не видит… только тебе 🙈', 'если он обернётся, мне конец 😳🔥')
 
 
@@ -18273,23 +18248,25 @@ def _undress_allowance(uid: int, telegram_id: int, character_id: str, used_today
     return allow
 
 
-# The gentlest reveal — the last try when the engine refused the first pick.
-UNDRESS_SAFE_VARIANT = UNDRESS_VARIANTS_LINGERIE[3]
+# The gentlest reveal — the last try when the engine refused the nude one.
+UNDRESS_SAFE_VARIANT = ('lace', UNDRESS_CLOTHES_LACE)
 
 
 def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) -> tuple[str, bool]:
-    """V3.166.5: the paid frame is always fully naked — his relationship level no
-    longer picks the pool, only the engine's refusal does (``safe`` is the last,
-    gentlest try before the tap is refunded).
+    """V3.167.2 (владелец): the paid frame is the photo he is looking at with her
+    clothes off — the same pose, camera angle, room and light, nothing else. The
+    relationship level never decides what is in the frame; only the engine's
+    refusal does (``safe`` is the last, gentlest try before the tap is refunded).
 
     V3.166.7: the room and the people in it come from her own scene card — the
     place she named stays, and a man appears behind her only while the card says
     somebody physically stands in this same room («Платон в гараже» → nobody)."""
     from services import scene_card_service
-    variant, reveal = UNDRESS_SAFE_VARIANT if safe else _undress_variant()
+    reveal = UNDRESS_SAFE_VARIANT[1] if safe else UNDRESS_CLOTHES_OFF
     card_scene = scene_card_service.scene_for(telegram_id, character_id)
     place = (UNDRESS_CARD_PLACE.format(place=card_scene) if card_scene else UNDRESS_PLACE_TAIL)
-    prompt, secret = (UNDRESS_ANATOMY_LOCK + '\n' + UNDRESS_PROMPT + place + reveal
+    prompt, secret = (UNDRESS_SAME_FRAME_LOCK + '\n' + UNDRESS_ANATOMY_LOCK + '\n' + UNDRESS_PROMPT
+                      + place + reveal
                       + ('' if safe else UNDRESS_NUDE_LOCK)
                       + UNDRESS_TAIL + UNDRESS_AMATEUR_LOCK), False
     try:
@@ -18299,8 +18276,7 @@ def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) 
         who = {'mar_married': 'husband', 'mar_boyfriend': 'boyfriend'}.get(status)
         near, _ = scene_card_service.together_with(telegram_id, character_id)
         if who and near is not False:
-            line = UNDRESS_SECRET_NO_FINGER if variant in UNDRESS_BOTH_HANDS else UNDRESS_SECRET
-            prompt += line.format(who=who)
+            prompt += UNDRESS_SECRET_NO_FINGER.format(who=who)
             secret = True
     except Exception:
         logger.warning('undress marital lookup failed user=%s', telegram_id)

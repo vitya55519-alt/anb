@@ -1174,7 +1174,8 @@ _NO_PHONE_LEFTOVER = re.compile(
 # Two head lines may not be pushed down by the lock: without the duo line the
 # engine draws one girl, without the private-place line lingerie lands in the
 # office. The lock sits behind them and in front of everything else.
-_NO_PHONE_HEAD_KEEP = ('TWO WOMEN IN FRAME:', 'PRIVATE PLACE OVERRIDE:')
+# V3.167.2: the paid «Раздеть» edit joins them — the frame must stay the frame.
+_NO_PHONE_HEAD_KEEP = ('TWO WOMEN IN FRAME:', 'PRIVATE PLACE OVERRIDE:', 'SAME FRAME LOCK:')
 
 
 def no_phone_frame(prompt: str) -> str:
