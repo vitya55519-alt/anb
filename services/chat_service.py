@@ -5,7 +5,7 @@ import logging
 import re
 from zoneinfo import ZoneInfo
 from config import CHARACTER_ID
-from services.llm_provider_service import generate_text
+from services.llm_provider_service import generate_text, LLMResult
 from services.character_service import get_character, build_system_prompt, stop_sequences
 from services.memory_service import get_recent_messages, get_memories, save_message, extract_memory
 from services.relationship_service import record_user_message
@@ -119,6 +119,18 @@ def stall_line(lang: str = 'ru', recent: list[str] | None = None) -> str:
     recent_set = {(r or '').strip() for r in (recent or [])}
     fresh = [p for p in pool if p not in recent_set] or list(pool)
     return random.choice(fresh)
+
+
+async def _gen(messages, **kw):
+    """V3.167.6 (владелец, скрин 16.11): на откровенном ходе цензура провайдера
+    поднимает RuntimeError, и весь ход падал — он видел «Не получилось ответить
+    — попробуй ещё раз» вместо неё. Отказ провайдера теперь такой же пустой
+    ответ, как раньше: ниже по коду он уходит в запасную строку, диалог живёт."""
+    try:
+        return await generate_text(messages, **kw)
+    except Exception as exc:
+        _logger.warning('LLM call failed purpose=%s, empty answer instead: %s', kw.get('purpose'), exc)
+        return LLMResult('', 'failed', 'failed')
 
 
 def _clean(answer: str, *, duo: bool = False) -> str:
@@ -589,7 +601,7 @@ async def _rewrite_if_needed(messages: list[dict], user_text: str, answer: str, 
         {"role": "system", "content": who + _editor_instructions()},
         {"role": "user", "content": answer},
     ]
-    r = await generate_text(rewrite_messages, max_tokens=280, temperature=0.8, purpose='rewrite')
+    r = await _gen(rewrite_messages, max_tokens=280, temperature=0.8, purpose='rewrite')
     if not r.text.strip():
         # The daily budget brake (or a dead provider) must never blank out the
         # message she actually sends — keep the original wording instead.
@@ -601,7 +613,7 @@ async def _recover_from_refusal(answer: str, character: dict | None, *, duo: boo
     """V3.60.6: the model's help-desk refusal is reworded in her own voice — she
     still declines what the model declined, but as herself, not as a service."""
     name = (character or {}).get('name', 'Анна')
-    r = await generate_text(
+    r = await _gen(
         [{"role": "system", "content": _refusal_rewrite_instructions(name)}, {"role": "user", "content": answer}],
         max_tokens=200, temperature=0.9, purpose='rewrite')
     text = _clean(r.text, duo=duo) if r.text.strip() else ''
@@ -1115,7 +1127,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # default (1.0 was where the dead ends and invented facts peaked), and the
     # stop sequences cut her off the moment she starts typing his line.
     stops = stop_sequences(user_name)
-    r = await generate_text(messages, max_tokens=token_budget, temperature=0.8, purpose='dialogue', stop=stops)
+    r = await _gen(messages, max_tokens=token_budget, temperature=0.8, purpose='dialogue', stop=stops)
     thought = ''
     draft = ''
     if not (r.text or '').strip():
