@@ -4384,6 +4384,10 @@ async def admin_stats_button(cq: types.CallbackQuery):
     # bill. These lines name both streams and who ate them.
     from services import spend_service
     spend_lines = '\n'.join(spend_service.format_spend_lines(spend_service.spend_snapshot()))
+    # V3.167.5 §9: лента рельсов — кто из неё заговорил за сутки, кого и почему
+    # придержали, и два числа из DoD (ответы на её день, событие в первые сутки).
+    from services.analytics_service import format_rail_lines
+    rail_lines = '\n'.join(format_rail_lines(snap.get('rails') or {}))
     await cq.message.answer(
         '📊 Статистика пользователей\n\n'
         f'👥 всего: {snap["users_total"]} · новых за 24ч: {snap["new_24h"]} · за 7д: {snap["new_7d"]}\n'
@@ -4393,6 +4397,10 @@ async def admin_stats_button(cq: types.CallbackQuery):
         f'📸 медиа за 24ч: фото {snap["photos_24h"]} · кружки {snap["circles_24h"]} · видео {snap["videos_24h"]}\n'
         f'🎨 студия: ✅{photo_ok} ❌{photo_fail} (успешность {studio_rate:.0f}%)\n'
         f'🔁 удержание: D1 {snap["d1_retention"]:.0f}% · D7 {snap["d7_retention"]:.0f}%\n'
+        f'🎯 дошли до 12+ сообщений: D1 {snap["d1_retention_activated"]:.0f}% '
+        f'({snap["activated_cohort_d1"]} чел.) · D7 {snap["d7_retention_activated"]:.0f}% '
+        f'({snap["activated_cohort_d7"]} чел.)\n'
+        f'{rail_lines}\n'
         f'🚪 воронка 30д: /start {snap["funnel"]["started"]} → 18+ {snap["funnel"]["consent"]} → написали {snap["funnel"]["first_message"]}\n'
         f'💳 оплата 30д: видели предложение {snap["pay_funnel"]["offer"]} → открыли счёт {snap["pay_funnel"]["invoice"]} → оплатили {snap["pay_funnel"]["paid"]}\n'
         f'💰 Stars за 30д: {snap["stars_30d"]} · себестоимость фото за 24ч: ${snap["photo_cost_24h"]:.2f}\n\n'
@@ -12114,11 +12122,16 @@ async def admin_stats_cmd(message: types.Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
     snap = admin_snapshot()
+    from services.analytics_service import format_rail_lines
     await message.answer(
         '📊 Anna beta stats\n\n'
         f'Users: {snap["users_total"]} · active 24h: {snap["users_24h"]} · active 7d: {snap["users_7d"]}\n'
         f'New 7d: {snap["new_7d"]} · messages 24h: {snap["messages_24h"]}\n'
         f'Retention D1/D3/D7: {snap["d1_retention"]:.1f}% / {snap["d3_retention"]:.1f}% / {snap["d7_retention"]:.1f}%\n'
+        f'Retention of 12+ cohort: D1 {snap["d1_retention_activated"]:.1f}% '
+        f'({snap["activated_cohort_d1"]}) · D7 {snap["d7_retention_activated"]:.1f}% '
+        f'({snap["activated_cohort_d7"]})\n'
+        + '\n'.join(format_rail_lines(snap.get('rails') or {})) + '\n'
         f'Funnel 30d: /start {snap["funnel"]["started"]} → 18+ {snap["funnel"]["consent"]} → first msg {snap["funnel"]["first_message"]}\n'
         f'Photo requests 24h: {snap["photo_requests_24h"]} · delivered sets: {snap["photos_24h"]}\n'
         f'Failures: {snap["photo_failures_24h"]} ({snap["photo_failure_rate"]:.1f}%) · partial: {snap["photo_partial_24h"]}\n'
@@ -15140,6 +15153,7 @@ def _mark_opening_shown(uid: int) -> None:
     """ТЗ V3.167.3 §3: «повторно открывашка не приходит». Ставится один раз и
     больше не перезаписывается — по колонке видно, случался ли первый ход на этом
     аккаунте вообще (и с неё же считается D1 в аналитике)."""
+    done = False
     try:
         from datetime import datetime, timezone
         from models.app_models import User
@@ -15149,8 +15163,17 @@ def _mark_opening_shown(uid: int) -> None:
             if u is not None and u.opening_shown_at is None:
                 u.opening_shown_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 s.commit()
+                done = True
     except Exception:
         logger.debug('opening_shown stamp failed user=%s', uid)
+    if done:
+        # V3.167.5 §9: «opening_shown» — один раз на аккаунт, тем же условием,
+        # которым открывашка больше не приходит. По нему воронка видит, дошёл ли
+        # новичок до её первого хода, а не только до тапа 18+.
+        try:
+            track_event(int(uid), 'opening_shown')
+        except Exception:
+            pass
 
 
 def _opening_followup(telegram_id: int, uid: int, character_id: str, text: str,

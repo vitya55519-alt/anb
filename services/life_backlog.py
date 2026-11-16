@@ -24,6 +24,15 @@ logger = logging.getLogger(__name__)
 #: она уже не «что я пропустил», а «почему ты молчишь»
 RETURN_WINDOW_HOURS = 24
 
+# V3.167.5 (владелец ТЗ §9, 16.11): чья строка в диалоге. Пишется в
+# messages.origin и только по ней видно, что ОНА написала первой: обыкновенный
+# ответ на его сообщение — не неотвеченный пуш, и кап накопления, и «ответил ли
+# он на её день» считаются по этим трём меткам.
+PUSH_ORIGIN = 'push'          # маркетинг, лестница замолкания, ритуалы, карточка
+LIFE_ORIGIN = 'life'          # «её день» (жизнь, живая ситуация)
+DIGEST_ORIGIN = 'digest'      # сводка на возврат
+PUSHED_ORIGINS = (PUSH_ORIGIN, LIFE_ORIGIN, DIGEST_ORIGIN)
+
 _digest_store = None            # DialogStore('life_backlog'), создаётся на первый вызов
 
 
@@ -39,20 +48,47 @@ def _utcnow() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
 
 
-def unanswered(uid: int, character_id: str, limit: int = 6) -> list[tuple[str, dt.datetime]]:
-    """Её реплики после его последнего слова — то, на что он ещё не ответил."""
+def _pushed(uid: int, character_id: str, limit: int = 6) -> list[tuple[str, dt.datetime, str]]:
+    """Её собственные ходы в диалоге: (текст, когда, чей рельс)."""
     from sqlalchemy import func, select
     from models.app_models import Message
     from services.db import SessionLocal
     with SessionLocal() as s:
         last_his = s.scalar(select(func.max(Message.created_at)).where(
             Message.user_id == uid, Message.character_id == character_id, Message.role == 'user'))
-        q = select(Message.content, Message.created_at).where(
-            Message.user_id == uid, Message.character_id == character_id, Message.role == 'assistant')
+        q = select(Message.content, Message.created_at, Message.origin).where(
+            Message.user_id == uid, Message.character_id == character_id, Message.role == 'assistant',
+            Message.origin.in_(PUSHED_ORIGINS))
         if last_his:
             q = q.where(Message.created_at > last_his)
         rows = s.execute(q.order_by(Message.created_at.asc()).limit(int(limit))).all()
-    return [(str(r[0] or '').strip(), r[1]) for r in rows if (r[0] or '').strip()]
+    return [(str(r[0] or '').strip(), r[1], str(r[2] or '')) for r in rows if (r[0] or '').strip()]
+
+
+def unanswered(uid: int, character_id: str, limit: int = 6) -> list[tuple[str, dt.datetime]]:
+    """Её реплики после его последнего слова — то, на что он ещё не ответил.
+    V3.167.5: считаются только строки с меткой рельса (messages.origin): ответ
+    на его сообщение неотвеченным пушем быть не может."""
+    return [(text, when) for text, when, _origin in _pushed(uid, character_id, limit)]
+
+
+def note_replied(uid: int, character_id: str) -> int:
+    """V3.167.5 §9: «ответы на её день ≥12%» из DoD владельца. Вызывается на
+    ЕГО ходу, до того как его сообщение легло в диалог, — иначе хвост уже пуст и
+    ответить не на что. Считает только её строки жизни и сводки: ответ на
+    маркетинговый пуш измеряется прежним proactive_replied."""
+    try:
+        rows = _pushed(int(uid), character_id, LIFE_EVENTS_UNANSWERED_MAX)
+        life = sum(1 for _t, _w, origin in rows if origin in (LIFE_ORIGIN, DIGEST_ORIGIN))
+        if not life:
+            return 0
+        from services.analytics_service import track_event
+        track_event(int(uid), 'life_event_replied',
+                    metadata={'character_id': character_id, 'unanswered': len(rows), 'life': life})
+        return life
+    except Exception:
+        logger.debug('life reply track failed user=%s', uid, exc_info=True)
+        return 0
 
 
 def is_capped(uid: int, character_id: str) -> bool:
@@ -97,7 +133,7 @@ def missed(uid: int, character_id: str) -> list[tuple[str, dt.datetime]]:
         latest, previous = his[0], his[1]
         rows = s.execute(select(Message.content, Message.created_at).where(
             Message.user_id == uid, Message.character_id == character_id,
-            Message.role == 'assistant',
+            Message.role == 'assistant', Message.origin.in_(PUSHED_ORIGINS),
             Message.created_at > previous, Message.created_at < latest
         ).order_by(Message.created_at.asc()).limit(LIFE_EVENTS_UNANSWERED_MAX)).all()
     return [(str(r[0] or '').strip(), r[1]) for r in rows if (r[0] or '').strip()]
@@ -143,12 +179,14 @@ async def maybe_digest(bot, uid: int, telegram_id: int, character_id: str,
         if already_sent_today(telegram_id, today):
             return True                       # сегодня уже была сводка — второй не надо
         from services.memory_service import save_message
-        save_message(uid, character_id, 'assistant', text)
+        save_message(uid, character_id, 'assistant', text, origin=DIGEST_ORIGIN)
         await bot.send_message(telegram_id, text)
         _store()[int(telegram_id)] = {'date': today}
         try:
+            # V3.167.5 §9: имя из ТЗ — «digest_shown». Прежнее имя для этой же
+            # строки прожило сутки и нигде не читалось, вторую запись не заводим.
             from services.analytics_service import track_event
-            track_event(uid, 'life_digest_sent', metadata={'character_id': character_id})
+            track_event(uid, 'digest_shown', metadata={'character_id': character_id})
         except Exception:
             pass
         return True

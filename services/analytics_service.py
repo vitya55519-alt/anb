@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 
-from config import CHARACTER_ID, DAILY_IMAGE_BUDGET_USD, MONTHLY_IMAGE_BUDGET_USD
+from config import ACTIVATION_MIN_MESSAGES, CHARACTER_ID, DAILY_IMAGE_BUDGET_USD, MONTHLY_IMAGE_BUDGET_USD
 from models.app_models import ProductEvent, StarTransaction, Subscription, User, Message
 from models.photo_models import PhotoDelivery
 from services.db import SessionLocal
@@ -15,17 +15,57 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+#: V3.167.5 §9 (владелец ТЗ): «push_sent(rail, reason)» — одна каноническая
+#: лента вместо двадцати четырёх имён, которые сейчас надо знать наизусть,
+#: чтобы спросить «сколько раз она написала первой». Пишется сама на каждом
+#: физическом событии рельса, поэтому ни один из 24 вызовов трогать не пришлось.
+PUSH_SENT_EVENT = 'push_sent'
+_RAIL_BY_PUSH_EVENT: dict[str, str] | None = None
+
+
+def _push_rail(event_name: str) -> str:
+    global _RAIL_BY_PUSH_EVENT
+    if _RAIL_BY_PUSH_EVENT is None:
+        try:
+            from services import push_governor
+            _RAIL_BY_PUSH_EVENT = {str(e): str(fam)
+                                   for fam, names in push_governor.FAMILY_EVENTS.items()
+                                   for e in names}
+        except Exception:
+            _RAIL_BY_PUSH_EVENT = {}
+    return _RAIL_BY_PUSH_EVENT.get(str(event_name) or '', '')
+
+
 def track_event(user_id: int | None, event_name: str, *, value: float = 0.0, metadata: dict | None = None, character_id: str = CHARACTER_ID) -> None:
-    """Best-effort product analytics. Never raise into user-facing flows."""
+    """Best-effort product analytics. Never raise into user-facing flows.
+
+    V3.167.5: a push of any rail gets a second, canonical row (`push_sent`)
+    carrying its rail family and the original metadata, so the kitchen asks one
+    question instead of enumerating event names. The canonical row is NOT part
+    of push_governor.PUSH_EVENTS and must never be added there — the day's
+    budget is counted by physical name, and an alias inside that tuple would
+    make every push spend two messages of it."""
     try:
+        name = str(event_name)[:64]
+        meta = metadata or {}
         with SessionLocal() as s:
             s.add(ProductEvent(
                 user_id=user_id,
                 character_id=character_id,
-                event_name=str(event_name)[:64],
+                event_name=name,
                 value=float(value or 0.0),
-                metadata_json=json.dumps(metadata or {}, ensure_ascii=False),
+                metadata_json=json.dumps(meta, ensure_ascii=False),
             ))
+            rail = _push_rail(name) if user_id else ''
+            if rail:
+                s.add(ProductEvent(
+                    user_id=user_id,
+                    character_id=character_id,
+                    event_name=PUSH_SENT_EVENT,
+                    value=float(value or 0.0),
+                    metadata_json=json.dumps({**meta, 'rail': rail, 'kind': name},
+                                             ensure_ascii=False),
+                ))
             s.commit()
     except Exception:
         return
@@ -62,14 +102,29 @@ ACTIVE_EVENTS = (
 )
 
 
-def _retention_rate(day: int) -> float:
+def _retention_rate(day: int, activated_only: bool = False) -> float:
     """Cohort retention: the user did something themselves in the 24h window starting at day N."""
+    return retention_split(day, activated_only=activated_only)
+
+
+def retention_split(day: int, *, activated_only: bool = False,
+                    activated: set[int] | None = None) -> float:
+    """Возврат на N-е сутки. V3.167.5 §9 (владелец ТЗ): D1/D7 считаются ещё и
+    по когорте «дошёл до ACTIVATION_MIN_MESSAGES своих сообщений» — отдельным
+    числом, не в общем бленде: у владельца 354 аккаунта из 711 не написали
+    ни разу, и в общем знаменателе её день тонет в тех, кто ничего не начал.
+
+    `activated` передаётся из админ-снимка, чтобы когорта за сутки считалась
+    один раз на все три срока, а не по новому проходу на каждый."""
     now = _now()
     window_start_age = day + 1
     cohort_since = now - timedelta(days=30)
     eligible_before = now - timedelta(days=window_start_age)
     with SessionLocal() as s:
         users = s.scalars(select(User).where(User.created_at >= cohort_since, User.created_at <= eligible_before)).all()
+        if activated_only:
+            ids = activated if activated is not None else activated_ids(s, [u.id for u in users])
+            users = [u for u in users if u.id in ids]
         if not users:
             return 0.0
         retained = 0
@@ -80,6 +135,149 @@ def _retention_rate(day: int) -> float:
             if hit:
                 retained += 1
     return retained / len(users) * 100.0
+
+
+def activated_ids(session, ids: list[int], min_messages: int | None = None) -> set[int]:
+    """Активация по ТЗ: он сам написал ≥12 сообщений. Всего за всё время, а не
+    «успел за сутки»: цифра отвечает на вопрос «кто вообще дошёл», и в неё
+    попадают оба места — бот и Mini App, у них одна таблица сообщений."""
+    if not ids:
+        return set()
+    wanted = int(min_messages if min_messages is not None else ACTIVATION_MIN_MESSAGES)
+    rows = session.execute(
+        select(Message.user_id, func.count(Message.id))
+        .where(Message.user_id.in_(ids), Message.role == 'user')
+        .group_by(Message.user_id)).all()
+    return {int(uid) for uid, n in rows if int(n or 0) >= wanted}
+
+
+def retention_cohorts(days=(1, 3, 7), *, activated: set[int] | None = None) -> dict:
+    """{сутки: {'all': %, 'дошёл до 12+': %}} — одним проходом по когорте, а не
+    тремя: экран кухни дёргают руками, и лишний обход таблицы событий на каждый
+    срок ему ни к чему."""
+    now = _now()
+    cohort_since = now - timedelta(days=30)
+    want = sorted({int(d) for d in days if int(d) > 0})
+    out = {d: {'all': 0.0, 'activated': 0.0, 'cohort': 0, 'activated_cohort': 0} for d in want}
+    with SessionLocal() as s:
+        users = [(int(uid), created) for uid, created in s.execute(
+            select(User.id, User.created_at).where(User.created_at >= cohort_since)).all()
+            if created]
+        if not users:
+            return out
+        ids = [uid for uid, _ in users]
+        act = activated if activated is not None else activated_ids(s, ids)
+        born = dict(users)
+        hits: dict[int, set[int]] = {d: set() for d in want}
+        for uid, at in s.execute(select(ProductEvent.user_id, ProductEvent.created_at).where(
+                ProductEvent.user_id.in_(ids),
+                ProductEvent.event_name.in_(ACTIVE_EVENTS),
+                ProductEvent.created_at >= cohort_since)).all():
+            started = born.get(int(uid))
+            if not started or not at:
+                continue
+            age = int((at - started).total_seconds() // 86400)
+            if age in hits:
+                hits[age].add(int(uid))
+        for d in want:
+            elig = [uid for uid, created in users if created <= now - timedelta(days=d + 1)]
+            if not elig:
+                continue
+            lit = [uid for uid in elig if uid in act]
+            out[d]['cohort'] = len(elig)
+            out[d]['activated_cohort'] = len(lit)
+            out[d]['all'] = len(hits[d] & set(elig)) / len(elig) * 100.0
+            out[d]['activated'] = (len(hits[d] & set(lit)) / len(lit) * 100.0) if lit else 0.0
+    return out
+
+
+def _denial_event() -> str:
+    try:
+        from services import push_governor
+        return push_governor.DENIAL_EVENT
+    except Exception:
+        return 'push_denied'
+
+
+def rail_activity(days: int = 1) -> dict:
+    """§9 целиком на одном экране: сколько заговорила каждая рельса, сколько её
+    держали и по какой причине, + два числа из DoD владельца (доля аккаунтов,
+    получивших ≥1 событие её дня в первые сутки, и доля ответов на них).
+
+    Лента каноническая (`push_sent` / `push_denied`), рельс и причина живут в
+    metadata — поэтому здесь просто считываются строки за окно."""
+    window = max(1, int(days or 1))
+    since = _now() - timedelta(days=window)
+    denial = _denial_event()
+    sent: dict[str, int] = {}
+    held: dict[str, int] = {}
+    reasons: dict[str, int] = {}
+    shown = replied = 0
+    with SessionLocal() as s:
+        for name, blob in s.execute(select(ProductEvent.event_name, ProductEvent.metadata_json).where(
+                ProductEvent.created_at >= since,
+                ProductEvent.event_name.in_((PUSH_SENT_EVENT, denial,
+                                             'life_event_shown', 'life_event_replied')))).all():
+            try:
+                meta = json.loads(blob or '{}')
+            except Exception:
+                meta = {}
+            rail = str(meta.get('rail') or 'other')
+            if name == PUSH_SENT_EVENT:
+                sent[rail] = sent.get(rail, 0) + 1
+            elif name == denial:
+                held[rail] = held.get(rail, 0) + 1
+                key = f"{rail}:{meta.get('reason') or '?'}"
+                reasons[key] = reasons.get(key, 0) + 1
+            elif name == 'life_event_shown':
+                shown += 1
+            elif name == 'life_event_replied':
+                replied += 1
+        # DoD: ≥70% аккаунтов получили её событие в первые сутки после /start.
+        cohort = s.execute(select(User.id, User.created_at).where(
+            User.created_at >= _now() - timedelta(days=30))).all()
+        first_event = {int(uid): at for uid, at in s.execute(
+            select(ProductEvent.user_id, func.min(ProductEvent.created_at)).where(
+                ProductEvent.event_name == 'life_event_shown').group_by(ProductEvent.user_id)).all()}
+    lit = sum(1 for uid, created in cohort
+              if created and int(uid) in first_event
+              and timedelta(0) <= (first_event[int(uid)] - created) <= timedelta(days=1))
+    cohort_size = len(cohort)
+    return {
+        'days': window,
+        'sent_by_rail': sent, 'held_by_rail': held, 'held_by_reason': reasons,
+        'life_shown': shown, 'life_replied': replied,
+        'event_reply_rate': (replied / shown * 100.0) if shown else 0.0,
+        'cohort_30d': cohort_size, 'event_first_day': lit,
+        'activation_rate': (lit / cohort_size * 100.0) if cohort_size else 0.0,
+    }
+
+
+#: как назвать рельсу на экране кухни (ключи — FAMILY_EVENTS из push_governor)
+RAIL_LABELS = {'life': 'её день', 'ritual': 'утро/вечер', 'scenario': 'карточка',
+               'marketing': 'замолчание', 'other': 'прочее'}
+DENIAL_LABELS = {'night': 'ночь', 'burst': 'кучей', 'daily': 'норма дня'}
+
+
+def format_rail_lines(rails: dict) -> list[str]:
+    """Строки для экрана «Статистика пользователей»: кто заговорил, кого и
+    почему придержали, и два числа из DoD."""
+    sent, held, reasons = (rails.get('sent_by_rail') or {}), (rails.get('held_by_rail') or {}), \
+        (rails.get('held_by_reason') or {})
+    out = ['📣 её ход за сутки: ' + (' · '.join(
+        f'{RAIL_LABELS.get(k, k)} {v}' for k, v in sorted(sent.items(), key=lambda kv: -kv[1])) or 'тишина')]
+    if held:
+        out.append('✋ придержали: ' + ' · '.join(
+            f'{RAIL_LABELS.get(k, k)} {v}' for k, v in sorted(held.items(), key=lambda kv: -kv[1])))
+    if reasons:
+        out.append('почему: ' + ' · '.join(
+            f'{DENIAL_LABELS.get(p.split(":")[-1], p.split(":")[-1])} {n}'
+            for p, n in sorted(reasons.items(), key=lambda kv: -kv[1])))
+    out.append(f'💬 ответы на её день: {rails.get("life_replied", 0)}/{rails.get("life_shown", 0)} '
+               f'({rails.get("event_reply_rate", 0.0):.0f}% · надо ≥12%)')
+    out.append(f'🎯 событие в первые сутки: {rails.get("event_first_day", 0)}/'
+               f'{rails.get("cohort_30d", 0)} новых ({rails.get("activation_rate", 0.0):.0f}% · надо ≥70%)')
+    return out
 
 
 def onboarding_funnel(days: int = 30) -> dict:
@@ -160,12 +358,20 @@ def admin_snapshot() -> dict:
             ).all()
     failure_rate = (failures_24h / photo_requests_24h * 100.0) if photo_requests_24h else 0.0
     proactive_reply_rate = (proactive_replied_7d / proactive_sent_7d * 100.0) if proactive_sent_7d else 0.0
+    # V3.167.5 §9: бленд и когорта «дошёл до 12+» — одним проходом, и сразу
+    # лента рельсов (кто заговорил, кого придержали и почему).
+    cohorts = retention_cohorts((1, 3, 7))
+    rails = rail_activity(1)
     return {
         'users_total': int(users_total), 'users_24h': int(users_24h), 'users_7d': int(users_7d), 'new_7d': int(new_7d),
         'messages_24h': int(messages_24h), 'photos_24h': int(photos_24h), 'photo_requests_24h': int(photo_requests_24h),
         'photo_failures_24h': int(failures_24h), 'photo_partial_24h': int(partial_24h), 'photo_failure_rate': failure_rate,
         'photo_cost_24h': float(photo_cost_24h), 'photo_cost_30d': float(photo_cost_30d), 'stars_30d': int(stars_30d),
-        'first_frame_avg_seconds': float(first_frame_avg), 'd1_retention': _retention_rate(1), 'd3_retention': _retention_rate(3), 'd7_retention': _retention_rate(7),
+        'first_frame_avg_seconds': float(first_frame_avg), 'd1_retention': cohorts[1]['all'],
+        'd3_retention': cohorts[3]['all'], 'd7_retention': cohorts[7]['all'],
+        'd1_retention_activated': cohorts[1]['activated'], 'd7_retention_activated': cohorts[7]['activated'],
+        'activated_cohort_d1': cohorts[1]['activated_cohort'], 'activated_cohort_d7': cohorts[7]['activated_cohort'],
+        'rails': rails,
         'proactive_sent_7d': int(proactive_sent_7d), 'proactive_replied_7d': int(proactive_replied_7d), 'proactive_reply_rate': proactive_reply_rate,
         'feedback_like_7d': int(feedback_like_7d), 'feedback_dislike_7d': int(feedback_dislike_7d),
         'new_24h': int(new_24h), 'premium_active': int(premium_active), 'messages_7d': int(messages_7d),

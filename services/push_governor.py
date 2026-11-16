@@ -159,4 +159,55 @@ def allow_push(db_user_id: int, tz_name=None, family: str = 'marketing') -> tupl
 
 def _deny(db_user_id, family: str, reason: str) -> tuple[bool, str]:
     logger.info('push held user=%s rail=%s reason=%s', db_user_id, family, reason)
+    _note_denial(db_user_id, family, reason)
     return False, reason
+
+
+#: V3.167.5 §9 (владелец ТЗ): «push_denied(rail, reason)». Отказов в сотни раз
+#: больше, чем отправок: сканер спрашивает каждый час, и молчащий аккаунт
+#: получает «night» или «daily» на каждом витке. В product_events это лилась бы
+#: тысячами строк в сутки, поэтому один (аккаунт, рельс, причина) пишется ровно
+#: раз за его сутки — ровно столько, чтобы отличить «губернатор держит» от
+#: «джоба не завелась», и не больше.
+DENIAL_EVENT = 'push_denied'
+_denial_memo: dict[tuple[int, str, str], str] = {}
+
+
+def _already_denied(db_user_id: int, family: str, reason: str, today: str) -> bool:
+    if _denial_memo.get((db_user_id, family, reason)) == today:
+        return True                     # тот же отказ в этом процессе — без запроса
+    try:
+        needle = f'"rail": "{family}", "reason": "{reason}"'
+        with SessionLocal() as s:
+            hit = bool(s.scalar(select(ProductEvent.id).where(
+                ProductEvent.user_id == db_user_id,
+                ProductEvent.event_name == DENIAL_EVENT,
+                ProductEvent.created_at >= _local_day_start(None),
+                ProductEvent.metadata_json.like(f'%{needle}%'),
+            ).limit(1)))
+    except Exception:
+        return False
+    if hit:
+        _remember_denial(db_user_id, family, reason, today)
+    return hit
+
+
+def _remember_denial(db_user_id: int, family: str, reason: str, today: str) -> None:
+    if len(_denial_memo) > 20000:       # ключей на одного молчащего в сутки три
+        _denial_memo.clear()
+    _denial_memo[(db_user_id, family, reason)] = today
+
+
+def _note_denial(db_user_id, family: str, reason: str) -> None:
+    uid = int(db_user_id or 0)
+    if uid <= 0:
+        return
+    try:
+        today = dt.date.today().isoformat()
+        if _already_denied(uid, family, reason, today):
+            return
+        from services.analytics_service import track_event
+        track_event(uid, DENIAL_EVENT, metadata={'rail': family, 'reason': reason})
+        _remember_denial(uid, family, reason, today)
+    except Exception:
+        logger.debug('push denial journal failed user=%s', uid, exc_info=True)

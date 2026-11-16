@@ -34,6 +34,11 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 logger=logging.getLogger(__name__); scheduler=AsyncIOScheduler()
 
+# V3.167.5 §9: чей ход лежит в messages.origin — чтобы кап накопления и «он
+# ответил на её день» видели её собственный пуш, а не весь хвост диалога.
+PUSH_ORIGIN = life_backlog.PUSH_ORIGIN
+LIFE_ORIGIN = life_backlog.LIFE_ORIGIN
+
 
 def _push_ok(uid: int, tz_name=None) -> bool:
     """V3.159.0: one gate for every rail that writes first (services/push_governor)."""
@@ -124,11 +129,15 @@ async def _reminders(bot):
             logger.info('reminder dropped (user blocked bot) id=%s', r.id)
         except Exception: logger.exception('reminder failed id=%s', r.id if r else None)
 
-def _to_app_chat(uid, tg_id, char_id, text, shot=None) -> None:
+def _to_app_chat(uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN) -> None:
     """V3.61.8: what she writes first also lands in the shared dialog, so the
     Mini App shows it in her chat with the «new» badge — the user opens the app
     and sees «ты где?» from her instead of the last thing he said himself.
-    Saved after a successful send only: a blocked user gets no ghost history."""
+    Saved after a successful send only: a blocked user gets no ghost history.
+    V3.167.5 (ТЗ §9): every line that goes through here is hers first, so it is
+    stamped with its rail (`origin`). The accumulation cap and the answer rate
+    read that stamp — her ordinary answer to his message is not an unanswered
+    push, and without the stamp the cap counted the whole tail of the dialog."""
     try:
         from services.memory_service import save_message
         media_kind = media_url = None
@@ -138,7 +147,8 @@ def _to_app_chat(uid, tg_id, char_id, text, shot=None) -> None:
             moving = pkind in ('gif', 'video')
             filename = webapp_service.save_chat_media(int(tg_id), data, 'mp4' if moving else 'jpg', ctype)
             media_kind, media_url = ('video' if moving else 'photo'), f'/webapp/media/{filename}'
-        save_message(uid, char_id, 'assistant', text, media_kind=media_kind, media_url=media_url)
+        save_message(uid, char_id, 'assistant', text, media_kind=media_kind, media_url=media_url,
+                     origin=origin)
     except Exception:
         logger.exception('proactive app-chat persist failed user=%s', uid)
 
@@ -1519,7 +1529,10 @@ async def _life_events(bot):
                 media_url = f'/webapp/media/{filename}'
             # Persist into the SHARED dialog BEFORE delivering, so the Mini App
             # «Чаты» badge (assistant msg newer than last read) lights up.
-            save_message(uid, char_id, 'assistant', text, media_kind=media_kind, media_url=media_url)
+            # V3.167.5 §9: `origin='life'` — по этой метке кап накопления видит
+            # её день, а не любой хвост диалога.
+            save_message(uid, char_id, 'assistant', text, media_kind=media_kind,
+                         media_url=media_url, origin=LIFE_ORIGIN)
             if media_url:
                 if pkind == 'gif':
                     await bot.send_animation(tg_id, BufferedInputFile(data, filename='life.mp4'), caption=text, reply_markup=markup)
@@ -1529,6 +1542,11 @@ async def _life_events(bot):
                     await bot.send_photo(tg_id, BufferedInputFile(data, filename='life.jpg'), caption=text, reply_markup=markup)
             else:
                 await bot.send_message(tg_id, text, reply_markup=markup)
+            # V3.167.5 §9 (владелец ТЗ): имя события из ТЗ — по нему считается
+            # DoD «≥70% аккаунтов получили ≥1 событие в первые сутки».
+            # Прежнее life_event_sent остаётся: на него смотрит push-губернатор.
+            track_event(uid, 'life_event_shown',
+                        metadata={'character_id': char_id, 'when': part, 'has_photo': bool(media_url)})
             track_event(uid, 'life_event_sent', metadata={'character_id': char_id, 'when': part, 'has_photo': bool(media_url)})
         except TelegramForbiddenError:
             # V3.55.9: blocked — the slot is already consumed above; take the

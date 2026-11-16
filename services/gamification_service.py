@@ -482,6 +482,7 @@ def touch_activity(telegram_id: int) -> dict:
 
         # Attention points: small reward for every activity
         u.attention_points = (u.attention_points or 0) + 1
+        froze = False
 
         if last_key == today_key:
             pass  # already counted today
@@ -494,6 +495,7 @@ def touch_activity(telegram_id: int) -> dict:
             # закрывает заморозка. Тот же шаг, что в services/series_reward.
             u.streak_freeze_week = _iso_week(today_key)
             u.streak_count = (u.streak_count or 0) + 1
+            froze = True
         else:
             u.streak_count = 1
         u.streak_last_date = today
@@ -505,6 +507,20 @@ def touch_activity(telegram_id: int) -> dict:
             'attention_points': u.attention_points or 0,
             'new_streak_day': last_key != today_key,
         }
+        uid = u.id
+    if summary.get('new_streak_day'):
+        # V3.167.5 §9 (владелец ТЗ): «streak_tick» и «streak_freeze» — по ним
+        # видно, держит ли серия человека после того, как её включили, и сколько
+        # раз её спасла заморозка. Один раз на сутки, на том же условии, что и
+        # сам шаг счётчика.
+        try:
+            from services.analytics_service import track_event
+            track_event(uid, 'streak_tick', metadata={'streak': summary['streak_count'],
+                                                      'frozen': bool(froze)})
+            if froze:
+                track_event(uid, 'streak_freeze', metadata={'streak': summary['streak_count']})
+        except Exception:
+            logger.debug('streak tick track failed user=%s', telegram_id, exc_info=True)
 
     # Unlock streak achievements
     streak = summary['streak_count']

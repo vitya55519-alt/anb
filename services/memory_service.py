@@ -8,16 +8,19 @@ from services.llm_provider_service import generate_text
 
 def _now(): return datetime.now(timezone.utc).replace(tzinfo=None)
 
-def save_message(user_id, character_id, role, content, media_kind=None, media_url=None, draft_text=None, image_prompt=None):
+def save_message(user_id, character_id, role, content, media_kind=None, media_url=None, draft_text=None, image_prompt=None, origin=None):
     """Store one chat line and return its id. V3.152.0: `draft_text` is the
     erased draft of THIS answer — paid text, kept out of `content` so neither
     the history endpoint nor the prompt can ship it to him for free.
     V3.156.0: `image_prompt` is the paid live photo this line teases — the
-    English scene never reaches the client, only the plate that offers it."""
+    English scene never reaches the client, only the plate that offers it.
+    V3.167.5: `origin` marks the line SHE wrote first ('push' / 'life' /
+    'digest') — the accumulation cap and the answer-rate read it, so a normal
+    answer to his message is no longer counted as an unanswered push."""
     with SessionLocal() as s:
         row = Message(user_id=user_id, character_id=character_id, role=role, content=content,
                       media_kind=media_kind, media_url=media_url, draft_text=draft_text,
-                      image_prompt=image_prompt)
+                      image_prompt=image_prompt, origin=origin)
         s.add(row)
         if role == "user":
             user=s.get(User,user_id)

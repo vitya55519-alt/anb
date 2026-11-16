@@ -418,14 +418,17 @@ def phase_changed(telegram_id: int, when: str) -> bool:
 
 
 def store_teaser(telegram_id: int, character_id: str, teaser: dict, uid: int | None = None) -> int:
-    """Её строка — в ``content``, промпт кадра — в свою колонку."""
+    """Её строка — в ``content``, промпт кадра — в свою колонку. V3.167.5 §9:
+    рельс помечен как «её день» — это она написала первой, и кап накопления
+    обязан это видеть."""
     from services.chat_service import join_thought_message
     from services.user_service import ensure_user
     from services.memory_service import save_message
+    from services.life_backlog import LIFE_ORIGIN
     db_uid = int(uid or ensure_user(int(telegram_id), ''))
     text = join_thought_message(teaser.get('thought') or '', teaser['message'])
     return int(save_message(db_uid, character_id, 'assistant', text,
-                            image_prompt=teaser['image_prompt']) or 0)
+                            image_prompt=teaser['image_prompt'], origin=LIFE_ORIGIN) or 0)
 
 
 async def push(telegram_id: int, character_id: str, when: str | None = None,

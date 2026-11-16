@@ -18,14 +18,57 @@ _pool_kwargs = {} if DATABASE_URL.startswith("sqlite") else {"pool_size": 10, "m
 engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True, **_pool_kwargs)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
+def _ensure_migration_ledger(conn) -> None:
+    """V3.167.5 §10: журнал миграций был нужен и раньше (_rescale_peaches), но
+    каждая миграция создавала таблицу сама. Теперь табка одна и она же отвечает
+    за идемпотентность: имя миграции = первичный ключ, повторный старт просто
+    ничего не добавляет."""
+    conn.execute(text(
+        'CREATE TABLE IF NOT EXISTS app_migrations ('
+        'name VARCHAR(64) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)'))
+
+
+def _already_applied(conn, name: str) -> bool:
+    return bool(conn.execute(text('SELECT 1 FROM app_migrations WHERE name = :n'),
+                             {'n': str(name)[:64]}).first())
+
+
+def _mark_applied(conn, name: str) -> None:
+    conn.execute(text('INSERT INTO app_migrations (name) VALUES (:n)'), {'n': str(name)[:64]})
+
+
+def _rows_in(conn, table: str) -> int:
+    """Сколько строк было в таблице на момент миграции — «лог строк» ТЗ: по нему
+    видно, задела ли миграция что-то живое, и тот же номер попадет в журнал."""
+    try:
+        return int(conn.execute(text(f'SELECT COUNT(*) FROM {table}')).scalar() or 0)
+    except Exception:
+        return -1
+
+
 def _add_missing_columns(table, wanted):
     inspector=inspect(engine)
     if table not in inspector.get_table_names(): return
     existing={c['name'] for c in inspector.get_columns(table)}
+    missing={name: ddl for name, ddl in wanted.items() if name not in existing}
+    if not missing:
+        return
+    # V3.167.5 §10: одна транзакция на таблицу + запись в журнал и в лог.
+    # Полупустая таблица после половины ALTER быть не должно: упал — откатилось
+    # всё, следующий старт повторит целиком.
     with engine.begin() as conn:
-        for name,ddl in wanted.items():
-            if name not in existing:
-                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}'))
+        _ensure_migration_ledger(conn)
+        rows = _rows_in(conn, table)
+        added = []
+        for name, ddl in missing.items():
+            marker = f'schema:{table}:{name}'
+            if _already_applied(conn, marker):
+                continue
+            conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}'))
+            _mark_applied(conn, marker)
+            added.append(name)
+        if added:
+            logger.warning('schema %s: +%s (rows=%s)', table, ','.join(added), rows)
 
 def _auto_migrate_all_tables():
     """Catch-all schema repair: add any model columns that are missing from existing tables.
@@ -56,18 +99,35 @@ def _auto_migrate_all_tables():
             return f" DEFAULT '{escaped}'"
         return ''
 
+    added_by_table = {}
     for table in Base.metadata.sorted_tables:
         if table.name not in existing_tables:
             continue
         existing = {c['name'] for c in inspector.get_columns(table.name)}
-        for col in table.columns:
-            if col.name in existing:
-                continue
-            ddl_type = type_compiler.process(col.type)
-            default = _default_clause(col)
-            stmt = f'ALTER TABLE {table.name} ADD COLUMN {col.name} {ddl_type}{default}'
-            with engine.begin() as conn:
+        missing = [col for col in table.columns if col.name not in existing]
+        if not missing:
+            continue
+        # V3.167.5 §10: одна транзакция на таблицу, каждая колонка — со своей
+        # записью в журнале (имя = PRIMARY KEY, значит повторный старт их просто
+        # пропустит), и всё это видно в логе вместе с числом строк.
+        with engine.begin() as conn:
+            _ensure_migration_ledger(conn)
+            rows = _rows_in(conn, table.name)
+            added = []
+            for col in missing:
+                marker = f'schema:{table.name}:{col.name}'
+                if _already_applied(conn, marker):
+                    continue
+                ddl_type = type_compiler.process(col.type)
+                default = _default_clause(col)
+                stmt = f'ALTER TABLE {table.name} ADD COLUMN {col.name} {ddl_type}{default}'
                 conn.execute(text(stmt))
+                _mark_applied(conn, marker)
+                added.append(col.name)
+            if added:
+                added_by_table[table.name] = added
+                logger.warning('auto schema %s: +%s (rows=%s)', table.name, ','.join(added), rows)
+    return added_by_table
 
 def _migrate_existing_users():
     bool_false='FALSE'; bool_true='TRUE'
@@ -135,9 +195,7 @@ def _rescale_peaches() -> None:
     name = f'peach_scale_x{PEACH_SCALE}'
     try:
         with engine.begin() as conn:
-            conn.execute(text(
-                'CREATE TABLE IF NOT EXISTS app_migrations ('
-                'name VARCHAR(64) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)'))
+            _ensure_migration_ledger(conn)
     except Exception:
         logger.exception('app_migrations table create failed')
         return
@@ -184,6 +242,32 @@ def _split_bonus_peaches() -> None:
         logger.warning('peach wallet split applied: %s non-payer balances moved to bonus', moved)
     except Exception:
         logger.exception('peach wallet split skipped (will retry on next boot)')
+
+
+def _index_analytics_stream() -> None:
+    """V3.167.5 §10: лента рельсов (`push_sent` / `push_denied` / `digest_shown`)
+    читается по имени события и времени — экран кухни и сам губернатор смотрят
+    «что было за сутки», а по одиночным индексам Postgres для этого перебирает
+    все строки имени. Идемпотентно (IF NOT EXISTS), а на живой базе ставится
+    CONCURRENTLY вне транзакции: обычный CREATE INDEX держал бы всю таблицу
+    product_events записанной на время стройки, и бот встал бы посреди дня.
+    Не вышло (заблокирован lock_timeout'ом) — следующий старт догонит."""
+    name = 'ix_product_events_name_created'
+    try:
+        if engine.dialect.name == 'postgresql':
+            # AUTOCOMMIT обязателен: CONCURRENTLY нельзя внутри транзакции
+            with engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                conn.execute(text("SET lock_timeout '3s'"))
+                conn.execute(text(f'CREATE INDEX CONCURRENTLY IF NOT EXISTS {name} '
+                                  f'ON product_events (event_name, created_at)'))
+        else:
+            with engine.connect() as conn:
+                conn.execute(text(f'CREATE INDEX IF NOT EXISTS {name} '
+                                  f'ON product_events (event_name, created_at)'))
+                conn.commit()
+        logger.info('analytics stream index ready')
+    except Exception:
+        logger.info('analytics stream index skipped (locked or unsupported), next boot retries')
 
 
 def init_db():
@@ -239,6 +323,8 @@ def init_db():
     # automatically. This prevents future "UndefinedColumn" crashes when new fields
     # are added to models but forgotten in explicit migrations.
     _auto_migrate_all_tables()
+    # V3.167.5 §10: индекс по ленте событий — после того как таблицы есть.
+    _index_analytics_stream()
     # V3.65.0: after every table exists, multiply stored peaches once.
     _rescale_peaches()
     # V3.123.0: split the peach balance into bought + bonus, once.

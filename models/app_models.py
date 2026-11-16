@@ -389,6 +389,13 @@ class Message(Base):
     # peaches are spent. `_auto_migrate_all_tables` adds both columns.
     image_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_unlocked: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    # V3.167.5 (владелец ТЗ §9, 16.11): «её день» и его ответ на него нельзя
+    # измерить, не отличив её реплику от ответа на его сообщение. Строка, которую
+    # она написала первой, несёт свой рельс ('push' / 'life' / 'digest');
+    # обыкновенный ответ остаётся NULL. `_auto_migrate_all_tables` добавляет
+    # колонку, старые строки читаются как обычный ответ — кап накопления и
+    # дайджест считаются по ней, а не по всему хвосту диалога.
+    origin: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 class Memory(Base):

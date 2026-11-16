@@ -1199,6 +1199,15 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                                 scene_card_service.card_line(r.text or ''))
     except Exception:
         _logger.warning('scene card remember failed user=%s', user_id, exc_info=True)
+    # V3.167.5 §9 (владелец ТЗ, DoD «ответы на её день ≥12%»): ДО того как его
+    # строка легла в диалог, смотрим её хвост — если там её собственные ходы
+    # («день», сводка), значит он на них ответил. После записи мерить нечего:
+    # хвост пуст.
+    try:
+        from services import life_backlog
+        await asyncio.to_thread(life_backlog.note_replied, db_user_id, character_id)
+    except Exception:
+        _logger.debug('life reply note failed user=%s', user_id, exc_info=True)
     save_message(db_user_id, character_id, "user", user_text)
     parts = duo_lines(answer) if duo_chat else []
     if parts:

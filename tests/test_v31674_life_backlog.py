@@ -54,8 +54,11 @@ def _user() -> tuple[int, int]:
 
 
 def _line(uid: int, role: str, text: str, ago: timedelta) -> int:
+    """Её строки в этих тестах — те, что пришли ей самой (V3.167.5: накопление
+    и сводка считаются по messages.origin), его реплики метки не имеют."""
     from services.memory_service import save_message
-    mid = save_message(uid, CHAR, role, text)
+    mid = save_message(uid, CHAR, role, text,
+                       origin=B.LIFE_ORIGIN if role == 'assistant' else None)
     with SessionLocal() as s:
         row = s.get(Message, mid)
         row.created_at = _now() - ago

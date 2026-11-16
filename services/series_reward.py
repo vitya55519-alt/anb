@@ -118,6 +118,11 @@ def note_his_message(telegram_id: int, uid: int) -> dict | None:
         track_event(int(uid), 'series_reward',
                     metadata={'streak': streak, 'amount': SERIES_REWARD_PEACHES,
                               'frozen': bool(frozen)})
+        if frozen:
+            # V3.167.5 §9: та же заморозка, что её спасла, — отдельным числом.
+            # В этот момент ключ недели уже записан, поэтому ветка в
+            # gamification.touch_activity её второй раз не посчитает.
+            track_event(int(uid), 'streak_freeze', metadata={'streak': streak})
     except Exception:
         logger.debug('series reward track failed user=%s', telegram_id, exc_info=True)
     logger.info('series reward paid user=%s streak=%s', telegram_id, streak)
