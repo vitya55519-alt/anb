@@ -11753,8 +11753,16 @@ async def admin_ritual_approve(cq: types.CallbackQuery):
     from services import scheduler_service as _ss
     await asyncio.to_thread(_ss.approve_ritual, kind, day, cq.from_user.id)
     await cq.answer('Отправляю всем…')
+    state = RITUAL_PH_WAIT.get(cq.from_user.id)
     try:
-        await cq.message.edit_reply_markup(reply_markup=None)
+        if state and state.get('kind') == kind:
+            # V3.167.2: отпустил из карусели — карусель и остаётся: ◀/▶ и
+            # «Авто-подбор» нужны и после отправки (кадр дойдёт до тех, кому
+            # голосовое ещё не шло). Кнопки «Отправить всем» больше нет:
+            # второй тап гнал бы ритуал дважды.
+            await cq.message.edit_reply_markup(reply_markup=_ritual_ph_keyboard(state, day, True))
+        else:
+            await cq.message.edit_reply_markup(reply_markup=None)
         await cq.message.answer('✅ Одобрено. Голосовые с фото уходят сейчас, а у кого другой часовой пояс, придут в их 9:00/20:00.')
     except Exception:
         pass
@@ -11799,13 +11807,20 @@ def _ritual_ph_choose_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _ritual_ph_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='◀️', callback_data='ritual_ph:prev'),
-         InlineKeyboardButton(text='✅ Это фото', callback_data='ritual_ph:set'),
-         InlineKeyboardButton(text='▶️', callback_data='ritual_ph:next')],
-        [InlineKeyboardButton(text='🔄 Авто-подбор', callback_data='ritual_ph:auto'),
-         InlineKeyboardButton(text='👩 Другая героиня', callback_data='ritual_ph:char')]])
+def _ritual_ph_keyboard(state: dict, day: str, approved: bool) -> InlineKeyboardMarkup:
+    # V3.167.2 (владелец): «🖼 Фото под голосовое» перекраивает ровно тот пузырь,
+    # на котором лежит «✅ Отправить всем», — кнопка исчезала вместе с подписью,
+    # и ритуал висел неотправленным. Теперь отпуск всегда под рукой: он в самой
+    # карусели. Когда сегодня он уже нажимал «Отправить всем», кнопка не
+    # возвращается — повторный тап вторично гнал бы голосовое тем, кому оно уже шло.
+    rows = [] if approved else [[InlineKeyboardButton(
+        text='✅ Отправить всем', callback_data=f'ritual_ok:{state["kind"]}:{day}')]]
+    rows.append([InlineKeyboardButton(text='◀️', callback_data='ritual_ph:prev'),
+                 InlineKeyboardButton(text='✅ Это фото', callback_data='ritual_ph:set'),
+                 InlineKeyboardButton(text='▶️', callback_data='ritual_ph:next')])
+    rows.append([InlineKeyboardButton(text='🔄 Авто-подбор', callback_data='ritual_ph:auto'),
+                 InlineKeyboardButton(text='👩 Другая героиня', callback_data='ritual_ph:char')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def _ritual_ph_show(cq: types.CallbackQuery, state: dict, note: str = '') -> None:
@@ -11834,19 +11849,32 @@ async def _ritual_ph_show(cq: types.CallbackQuery, state: dict, note: str = '') 
     state = {**state, 'idx': idx}
     RITUAL_PH_WAIT[cq.from_user.id] = state
     label = '🌅 утреннее' if state['kind'] == 'morning' else '🌙 вечернее'
-    choice = await asyncio.to_thread(_ev.get_choice, state['kind'], _ss.ritual_day(), state['character_id'])
+    day = _ss.ritual_day()
+    choice = await asyncio.to_thread(_ev.get_choice, state['kind'], day, state['character_id'])
+    # V3.167.2: он не раз спрашивал «а где кнопка отправить всем» — подпись
+    # обещала её там, где её уже съела карусель. Теперь строка и кнопка
+    # говорят одно: «Отправить всем» живёт в клавиатуре карусели.
+    approved = await asyncio.to_thread(_ss.ritual_is_approved, state['kind'], day)
     caption = (
         (f'{note}\n\n' if note else '')
         + f'🖼 {_ritual_ph_name(state["character_id"])} · {idx + 1}/{len(cands)} — фото под {label} голосовое\n'
         + (f'📌 закреплен кадр #{choice["ref"]}' if choice else '🔄 сейчас играет авто-подбор')
+        + ('\n✅ сегодня уже уходило всем — новый кадр получат те, кому ещё не шло' if approved
+           else '\n📣 кадр отойдёт всем, когда нажмёшь «✅ Отправить всем»')
         + ('' if cands[idx].get('checked') else '\n⚠️ этот кадр ещё не проходил vision-проверку'))
+    kb = _ritual_ph_keyboard(state, day, approved)
+    photo = types.InputMediaPhoto(media=types.BufferedInputFile(media[0], filename='ritual_pick.jpg'),
+                                  caption=caption)
     try:
-        await cq.message.edit_media(
-            types.InputMediaPhoto(media=types.BufferedInputFile(media[0], filename='ritual_pick.jpg'),
-                                  caption=caption),
-            reply_markup=_ritual_ph_keyboard())
+        await cq.message.edit_media(photo, reply_markup=kb)
     except Exception:
-        await cq.message.answer(caption, reply_markup=_ritual_ph_keyboard())
+        # Telegram не переписывает текст в фото и наоборот: раньше фоллэк писал
+        # подпись голым текстом, и кадр на экране пропадал («нету фотка»).
+        try:
+            await cq.message.answer_photo(media=types.BufferedInputFile(media[0], filename='ritual_pick.jpg'),
+                                          caption=caption, reply_markup=kb)
+        except Exception:
+            await cq.message.answer(caption, reply_markup=kb)
 
 
 def _ritual_ph_state(cq: types.CallbackQuery) -> dict | None:
@@ -11922,9 +11950,12 @@ async def ritual_ph_set(cq: types.CallbackQuery):
     _ss.invalidate_ritual_bundles(state['kind'], day, state['character_id'])
     label = 'утреннее' if state['kind'] == 'morning' else 'вечернее'
     await cq.answer('закрепил')
+    # V3.167.2: подсказка «жми «✅ Отправить всем»» имела смысл, только пока
+    # сегодня он её ещё не нажимал, — и кнопка теперь действительно под кадром.
+    approved = await asyncio.to_thread(_ss.ritual_is_approved, state['kind'], day)
     await _ritual_ph_show(cq, state, note=(
-        f'✅ Под {label} голосовое для «{_ritual_ph_name(state["character_id"])}» сегодня уйдёт этот кадр — '
-        'жми «✅ Отправить всем».'))
+        f'✅ Под {label} голосовое для «{_ritual_ph_name(state["character_id"])}» сегодня уйдёт этот кадр'
+        + ('' if approved else ' — жми «✅ Отправить всем».')))
 
 
 @dp.callback_query(F.data == 'ritual_ph:auto')

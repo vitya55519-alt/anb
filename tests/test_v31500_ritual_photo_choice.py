@@ -6,6 +6,10 @@
 3. Закреплённый кадр важнее авто-подбора, а сам выбор сбрасывает бандл, который
    превью уже построил, — «✅ Отправить всем» уносит именно то, что он выбрал.
 4. «🔄 Авто-подбор» и следующие сутки возвращают ротацию.
+5. V3.167.2 (владелец 16.11: «а где это „всем“?»): «🖼 Фото под голосовое»
+   переписывает пузырь превью, поэтому «✅ Отправить всем» живёт в самой
+   карусели; после отпуска кнопка не возвращается, а кадр при отказе правки
+   уходит отдельным сообщением, а не теряется.
 """
 import asyncio
 import datetime as dt
@@ -262,22 +266,33 @@ def _character_ids():
 
 # ── 5. the picker walks the carousel and pins ──────────────────────────────
 class _Msg:
-    def __init__(self):
+    def __init__(self, edit_fails=False):
         self.edited = []
         self.answers = []
+        self.photos = []
+        self.markups = []
+        self.edit_fails = edit_fails
 
     async def edit_media(self, media, reply_markup=None):
+        if self.edit_fails:
+            raise RuntimeError('Telegram refuses text<->photo edits')
         self.edited.append((media, reply_markup))
 
     async def answer(self, text, reply_markup=None):
         self.answers.append((text, reply_markup))
 
+    async def answer_photo(self, media=None, caption=None, reply_markup=None):
+        self.photos.append((media, caption, reply_markup))
+
+    async def edit_reply_markup(self, reply_markup=None):
+        self.markups.append(reply_markup)
+
 
 class _CQ:
-    def __init__(self, data: str, admin_id: int = ADMIN_ID):
+    def __init__(self, data: str, admin_id: int = ADMIN_ID, edit_fails: bool = False):
         self.data = data
         self.from_user = SimpleNamespace(id=admin_id, first_name='Owner')
-        self.message = _Msg()
+        self.message = _Msg(edit_fails)
         self.answers = []
 
     async def answer(self, *a, **k):
@@ -291,7 +306,24 @@ def picker(monkeypatch):
     monkeypatch.setattr(main, 'CHARACTER_ID', CHAR)
     monkeypatch.setattr(ev, '_candidates', lambda c, u: [])
     main.RITUAL_PH_WAIT.pop(ADMIN_ID, None)
+    _unreleased_today()
     return main
+
+
+def _unreleased_today():
+    # Карусель каждый раз смотрит, уходило ли сегодня голосовое, — ни один тест
+    # не должен наследовать чужое одобрение (оно живёт и в процессе, и в журнале).
+    import json
+    from models.app_models import ProductEvent
+    from services.db import SessionLocal
+    today = ss.ritual_day()
+    ss._ritual_approved.difference_update({('morning', today), ('evening', today)})
+    with SessionLocal() as s:
+        for row in s.query(ProductEvent).filter(
+                ProductEvent.event_name == 'ritual_approved').all():
+            if json.loads(row.metadata_json or '{}').get('day') == today:
+                s.delete(row)
+        s.commit()
 
 
 def test_the_carousel_walks_her_frames(picker):
@@ -307,8 +339,9 @@ def test_the_carousel_walks_her_frames(picker):
     assert f'1/{len(cands)}' in caption
     assert 'авто-подбор' in caption
     rows = cq.message.edited[0][1].inline_keyboard
-    assert [btn.text for btn in rows[0]] == ['◀️', '✅ Это фото', '▶️']
-    assert [btn.text for btn in rows[1]] == ['🔄 Авто-подбор', '👩 Другая героиня']
+    assert [btn.text for btn in rows[0]] == ['✅ Отправить всем']
+    assert [btn.text for btn in rows[1]] == ['◀️', '✅ Это фото', '▶️']
+    assert [btn.text for btn in rows[2]] == ['🔄 Авто-подбор', '👩 Другая героиня']
     # ▶️ walks to the other frame instead of generating a new one ($0 генераций)
     nxt = _CQ('ritual_ph:next')
     asyncio.run(main.ritual_ph_move(nxt))
@@ -353,6 +386,85 @@ def test_a_stranger_cannot_pin_the_owners_photo(picker):
     asyncio.run(main.ritual_ph_set(cq))
     assert ev.get_choice('evening', ss.ritual_day(), CHAR) is None
     assert cq.message.edited == [] and cq.message.answers == []
+
+
+# ── 6. V3.167.2: отпустить ритуал можно прямо из карусели ─────────────────
+
+def _texts(markup):
+    return [b.text for row in markup.inline_keyboard for b in row]
+
+
+def test_the_carousel_itself_carries_the_release_button(picker):
+    # Владелец: тап по «🖼 Фото под голосовое» переписывает ровно тот пузырь, где
+    # лежит «✅ Отправить всем», — кнопка исчезала, а ритуал висел неотправленным.
+    main = picker
+    _add_pool(b'first')
+    _add_pool(b'second')
+    cq = _CQ('ritual_ph:open:evening')
+    asyncio.run(main._ritual_ph_show(cq, {'kind': 'evening', 'character_id': CHAR, 'idx': 0}))
+    assert _texts(cq.message.edited[0][1]).count('✅ Отправить всем') == 1
+    nxt = _CQ('ritual_ph:next')
+    asyncio.run(main.ritual_ph_move(nxt))
+    assert [b.text for b in nxt.message.edited[0][1].inline_keyboard[0]] == ['✅ Отправить всем'], \
+        'листание кадров не съедает отпуск'
+    assert nxt.message.edited[0][1].inline_keyboard[0][0].callback_data == \
+        f'ritual_ok:evening:{ss.ritual_day()}'
+
+
+def test_the_release_note_points_at_a_button_that_exists(picker):
+    main = picker
+    _add_pool(b'chosen')
+    cq = _CQ('ritual_ph:set')
+    main.RITUAL_PH_WAIT[cq.from_user.id] = {'kind': 'evening', 'character_id': CHAR, 'idx': 0}
+    asyncio.run(main.ritual_ph_set(cq))
+    assert 'жми «✅ Отправить всем»' in cq.message.edited[0][0].caption
+    assert '✅ Отправить всем' in _texts(cq.message.edited[0][1]), 'а где это «всем»? — кнопка под кадром'
+
+
+def test_after_the_release_the_button_does_not_come_back(picker):
+    main = picker
+    _add_pool(b'chosen')
+    day = ss.ritual_day()
+    ss.approve_ritual('evening', day, ADMIN_ID)
+    cq = _CQ('ritual_ph:open:evening')
+    asyncio.run(main._ritual_ph_show(cq, {'kind': 'evening', 'character_id': CHAR, 'idx': 0}))
+    assert '✅ Отправить всем' not in _texts(cq.message.edited[0][1]), \
+        'повторный тап гнал бы голосовое тем, кому оно уже ушло'
+    assert 'уже уходило' in cq.message.edited[0][0].caption
+    set_cq = _CQ('ritual_ph:set')
+    main.RITUAL_PH_WAIT[ADMIN_ID] = {'kind': 'evening', 'character_id': CHAR, 'idx': 0}
+    asyncio.run(main.ritual_ph_set(set_cq))
+    assert 'жми «✅ Отправить всем»' not in set_cq.message.edited[0][0].caption
+
+
+def test_releasing_from_the_carousel_keeps_the_arrows(picker, monkeypatch):
+    main = picker
+
+    async def _no_send(*_a, **_k):
+        return None
+
+    monkeypatch.setattr(ss, '_rituals', _no_send)
+    _add_pool(b'chosen')
+    day = ss.ritual_day()
+    main.RITUAL_PH_WAIT[ADMIN_ID] = {'kind': 'evening', 'character_id': CHAR, 'idx': 0}
+    cq = _CQ(f'ritual_ok:evening:{day}')
+    asyncio.run(main.admin_ritual_approve(cq))
+    texts = _texts(cq.message.markups[0])
+    assert '✅ Отправить всем' not in texts
+    assert '◀️' in texts and '▶️' in texts, 'после отпуска карусель остаётся живой'
+    assert ss.ritual_is_approved('evening', day)
+
+
+def test_a_refused_edit_still_shows_the_frame(picker):
+    # Telegram не переписывает текст в фото и обратно. Раньше фоллэк писал
+    # подпись голым текстом — у владельца на экране «нету фотка».
+    main = picker
+    _add_pool(b'chosen')
+    cq = _CQ('ritual_ph:open:evening', edit_fails=True)
+    asyncio.run(main._ritual_ph_show(cq, {'kind': 'evening', 'character_id': CHAR, 'idx': 0}))
+    assert cq.message.photos, 'кадр ушёл отдельным сообщением, а не потерялся'
+    assert 'фото под' in cq.message.photos[0][1]
+    assert cq.message.answers == []
 
 
 def test_the_picker_survives_a_lost_session(picker):
