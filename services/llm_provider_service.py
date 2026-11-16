@@ -93,6 +93,10 @@ LLM_DIALOGUE_TIMEOUT_SECONDS = _env_float('LLM_DIALOGUE_TIMEOUT_SECONDS', 40.0)
 LLM_SLICE_GUARD_SECONDS = _env_float('LLM_SLICE_GUARD_SECONDS', 2.0)
 MINIMAX_ATTEMPTS = 2
 MIN_PROVIDER_SLICE_SECONDS = 3.0
+# Знаков на один токен в русском промпте — по prod-журналу llm_usage (дампы
+# 05–16.11): 5.8k–10.5k токенов входа при 14k–26k знаков. Нужно, чтобы «k» в
+# причине падения больше не читалось как тысячи токенов.
+_CHARS_PER_TOKEN = 2.4
 
 # V3.63.4: reasoning tokens MiniMax may spend before the visible answer.
 MINIMAX_REASONING_HEADROOM = max(0, int(os.getenv('MINIMAX_REASONING_HEADROOM', '512')))
@@ -281,7 +285,12 @@ async def generate_text(
         # V3.167.4: размер отправленного запроса в причинах — «M3 молчит» и
         # «M3 молчит под промптом в 40 тыс. знаков» для владельца выглядят
         # одинаково, пока не запишешь эту цифру.
-        _sent = f'{sum(len(str(m.get("content") or "")) for m in messages) / 1000:.1f}k'
+        # V3.167.10: цифра была в ЗНАКАХ, и «sent 30.3k» прочиталось как
+        # «30 тысяч токенов». По prod-журналу llm_usage 25.9k знаков = 10.5k
+        # токенов, то есть один токен ≈ 2.4 знака. Теперь рядом обе величины.
+        _chars = sum(len(str(m.get('content') or '')) for m in messages)
+        _sent = (f'{_chars / 1000:.1f}k знаков ≈{int(_chars / _CHARS_PER_TOKEN / 1000)}k токенов'
+                 if _chars >= 2400 else f'{_chars} знаков')
         for attempt, (tag, kwargs, room) in enumerate((
             ('ask', mm_kwargs, headroom),
             ('retry', retry_kwargs, retry_headroom),

@@ -174,7 +174,8 @@ def test_the_reason_says_how_much_was_sent(monkeypatch):
     with pytest.raises(RuntimeError) as exc:
         asyncio.run(llm.generate_text([{'role': 'user', 'content': 'y' * 2500}],
                                       max_tokens=40, purpose='dialogue'))
-    assert 'sent 2.5k]' in str(exc.value), str(exc.value)
+    # V3.167.10: рядом токены — «2.5k» в журнале читалось как тысячи токенов
+    assert 'sent 2.5k знаков' in str(exc.value), str(exc.value)
 
 
 def test_the_turn_still_never_runs_past_the_chain_budget(monkeypatch):

@@ -69,12 +69,15 @@ def test_each_rail_family_spends_its_own_day(monkeypatch):
     assert pg.allow_push(uid, 'Europe/Moscow', 'life') == (False, 'daily')
 
 
-def test_a_refusal_names_the_rail_and_the_man(caplog):
+def test_a_refusal_names_the_rail_and_the_man(caplog, monkeypatch):
     # V3.167.0 п.1.3: «held back» must be tellable apart from «the job never ran».
     import logging
     from services.db import init_db
     init_db()
     uid = ensure_user(771620006, 'Тест')
+    # час заморожен: в тишину (23→7) отказ называется «night», и тест проверял
+    # бы не дневной кап, а стенные часы
+    monkeypatch.setattr(pg, 'local_hour', lambda tz: 12)
     with caplog.at_level(logging.INFO, logger='services.push_governor'):
         pg.allow_push(uid, 'Europe/Moscow', 'scenario')
         _events(uid, ['scenario_card_sent'] * pg.SCENARIO_BUDGET_PER_DAY)

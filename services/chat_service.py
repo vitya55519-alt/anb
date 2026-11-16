@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import os
 import re
 from zoneinfo import ZoneInfo
 from config import CHARACTER_ID
@@ -48,6 +49,38 @@ def _spawn_background(coro, label: str) -> None:
         return
     _BACKGROUND_TASKS.add(task)
     task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
+# V3.167.10 (хотфикс, его сигнал «sent 30.3k — обрезки истории нет»): хвост
+# переписки и так упирается в 16 реплик (Premium — в 30), а по замеру живой
+# переписки из дампа 16.11 даёт 7% запроса — 1.7k знаков из 25.9k. Знаковый
+# потолок ниже нужен самым длинным чатам: у худшего хвост весит 7.5k.
+LLM_HISTORY_TAIL_CHARS = max(1000, int(os.getenv('LLM_HISTORY_TAIL_CHARS', '4000')))
+# Несколько последних реплик не отдаём ни при каком капе — без них она отвечает
+# не на то, что он написал сейчас.
+_TAIL_KEEP_LINES = 6
+
+
+def _cap_history_tail(messages: list[dict]) -> list[dict]:
+    """Сбрасывает самые старые реплики хвоста, пока они в LLM_HISTORY_TAIL_CHARS.
+
+    Системную простыню, указы этого хода и его сообщение не трогает: резать
+    будем то, что собираем сами, а не то, как она говорит.
+    """
+    head, *rest = messages
+    idx = [i for i, m in enumerate(rest) if m.get('role') in ('user', 'assistant')]
+    keep, used = 0, 0
+    for i in reversed(idx):
+        used_next = used + len(str(rest[i].get('content') or ''))
+        if used_next > LLM_HISTORY_TAIL_CHARS and keep >= _TAIL_KEEP_LINES:
+            break
+        used, keep = used_next, keep + 1
+    if keep >= len(idx):
+        return messages
+    gone = len(idx) - keep
+    _logger.info('dialogue tail capped lines=%d chars=%d cap=%d', gone, used, LLM_HISTORY_TAIL_CHARS)
+    dropped = set(idx[:gone])
+    return [head] + [m for i, m in enumerate(rest) if i not in dropped]
 
 
 def _time_context(telegram_id: int, character_id: str = '', level: int = 0,
@@ -1178,6 +1211,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # default (1.0 was where the dead ends and invented facts peaked), and the
     # stop sequences cut her off the moment she starts typing his line.
     stops = stop_sequences(user_name)
+    # V3.167.10: его ТЗ на хотфикс — не отдавать в API весь хвост переписки.
+    messages = _cap_history_tail(messages)
     r = await _gen(messages, max_tokens=token_budget, temperature=0.8, purpose='dialogue', stop=stops)
     thought = ''
     draft = ''
