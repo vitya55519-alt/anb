@@ -38,8 +38,10 @@ ON_RAILS = {'life_events', 'rituals', 'day1_hook', 'daily_gift', 'scenario_cards
 # V3.167.12 (владелец 16.11: «пусть чаще всем пользователям приходит предложение
 # оплаты»): очереди офферов дампом не осуждены — их просто ни разу не включали.
 ON_RAILS |= {'first_offer', 'heavy_offer'}
+# Authorized 1/2/3/7-day ladder now delivers its content in the app.
+ON_RAILS.add('proactive')
 # осуждённый шум: ни один не входит в список по умолчанию
-OFF_RAILS = {'proactive', 'partner_nudge', 'random_gifts', 'daily_compatibility',
+OFF_RAILS = {'partner_nudge', 'random_gifts', 'daily_compatibility',
              'whats_new', 'donation_reminder', 'trial_followup',
              'paid_day1', 'renewal_care'}
 # каждый джоб, который НАЧИНАЕТ разговор, регистрируется только по имени

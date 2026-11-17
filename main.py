@@ -19,6 +19,7 @@ import httpx
 from dataclasses import replace
 
 from aiogram import Bot, Dispatcher, F, types
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice, BufferedInputFile, FSInputFile, ReplyKeyboardMarkup, KeyboardButton
 from sqlalchemy import select
@@ -214,6 +215,56 @@ def service_screen(handler):
         finally:
             chat_hygiene.close_screen(token)
     return wrapper
+
+
+# Old conversational buttons remain on Telegram messages indefinitely. Register
+# this guard BEFORE their handlers, including for the owner as a conversation
+# participant. Service/admin/payment callbacks deliberately do not match it.
+_APP_ONLY_CALLBACK_PREFIXES = (
+    'life_reply:', 'ladder_chip:', 'thought:', 'story:', 'quest:', 'qte:pick:',
+    'draft:unlock:', 'live:unlock:', 'life:', 'questday:',
+    'photo:', 'photo_menu:', 'photo_feedback:', 'retry_photo:', 'locked:',
+    'video:', 'videopreset:', 'libvideo:', 'gallery:', 'cosplay:', 'custom:',
+    'private_photo:', 'private_cosplay:', 'private_voice:', 'private_gallery:',
+    'room:', 'room_locked:', 'apt_action:', 'date:', 'date_locked:', 'gift:',
+    'spicy:', 'mychar:chat:', 'character:', 'onboard:character:', 'onboard:meet',
+)
+
+
+def _bot_callback_character(cq: types.CallbackQuery) -> str | None:
+    """Only resolve a destination; never replay a choice or open paid content."""
+    data = cq.data or ''
+    for prefix in ('life_reply:', 'mychar:chat:', 'character:view:', 'onboard:character:'):
+        if data.startswith(prefix):
+            return data[len(prefix):].split(':', 1)[0] or None
+    if data == 'character:anna':
+        return 'anna_01'
+    if data == 'character:alena_soon':
+        return 'alena_01'
+    if data.startswith('ladder_chip:'):
+        from services import silence_ladder
+        try:
+            character_id, _ = silence_ladder.chip(cq.from_user.id, int(data.split(':', 1)[1]))
+            return character_id or None
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+@dp.callback_query(F.data.startswith(_APP_ONLY_CALLBACK_PREFIXES), F.data != 'gift:claim')
+async def app_only_callback(cq: types.CallbackQuery):
+    # gift:claim is the daily wallet bonus, not a gift/reaction scene.
+    await cq.answer()
+    await _redirect_bot_chat(cq.message, cq.from_user, _bot_callback_character(cq))
+
+
+def app_only_dialogue(handler):
+    """Retire a conversational menu without changing service FSM precedence."""
+    @functools.wraps(handler)
+    async def redirect(message, *args, **kwargs):
+        await _redirect_bot_chat(message)
+    return redirect
+
 
 PHOTO_LABELS = {
     'selfie': '📸 Селфи',
@@ -1928,8 +1979,10 @@ async def _maybe_refund_paid_photo(chat_id: int, telegram_id: int, charge: str |
     if not charge:
         return False
     try:
-        await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge)
-        record_refund(telegram_id, charge, amount, product=product)
+        refunded = await bot.refund_star_payment(user_id=telegram_id, telegram_payment_charge_id=charge)
+        recorded = record_refund(telegram_id, charge, amount, product=product)
+        if refunded and recorded and product == 'fantasy':
+            await asyncio.to_thread(spicy_service.finish_paid_fantasy, telegram_id, charge, 'refunded')
         await bot.send_message(chat_id, 'не получилось сделать этот сет 😕 Stars вернул автоматически.')
     except Exception:
         logger.exception('spicy refund failed user=%s charge=%s', telegram_id, charge)
@@ -1984,9 +2037,20 @@ def _hot_frame_is_free(telegram_id: int, category: str) -> bool:
     return bool(free_carrier and consume_free_private_photo(telegram_id, category))
 
 
-async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False, spend_explicit_peaches: bool = False, character_id: str | None = None):
+async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False, spend_explicit_peaches: bool = False, character_id: str | None = None, app_only: bool = False):
+    from contextlib import nullcontext
     uid = ensure_user(telegram_id)
-    ping = asyncio.create_task(_photo_progress_ping(chat_id, telegram_id))
+    delivered_ids = []
+
+    async def app_delivery(data: bytes, mime: str, delivery_id: int, caption: str):
+        ext = {'image/png': 'png', 'image/webp': 'webp'}.get(mime, 'jpg')
+        filename = await asyncio.to_thread(webapp_service.save_chat_media, telegram_id, data, ext, mime)
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', caption,
+                                media_kind='photo', media_url=f'/webapp/media/{filename}')
+        delivered_ids.append(delivery_id)
+        _app_ping(telegram_id, character_id, caption, 'photo')
+
+    ping = None if app_only else asyncio.create_task(_photo_progress_ping(chat_id, telegram_id))
     try:
         track_event(uid, 'photo_generation_started', metadata={'scene': request.scene, 'delivery_type': delivery_type})
         # V3.167.1 (владелец): церемония уровня знает, кто в ней участвует, —
@@ -2000,16 +2064,24 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
                 await ensure_custom_avatar_cached(bot, character_id)
             except Exception:
                 logger.exception('custom avatar cache failed user=%s character=%s', telegram_id, character_id)
-        async with ChatActionSender.upload_photo(bot=bot, chat_id=chat_id):
+        async with (nullcontext() if app_only else ChatActionSender.upload_photo(bot=bot, chat_id=chat_id)):
             # V3.44.15: one delivery, one hard cap. fal's worst-case silent
             # chain (3 routes x 3 retries x 210s read timeout) could grind
             # ~30 minutes — she wrote «смотри на меня» and nothing arrived.
             # The timeout lands in the failure branch: refund + retry button.
             sent = await asyncio.wait_for(
                 deliver_photo(bot, chat_id, telegram_id, request, delivery_type, character_id=character_id,
-                              skip_stage=spend_undress_credit or spend_explicit_peaches),
+                              skip_stage=spend_undress_credit or spend_explicit_peaches,
+                              app_delivery=app_delivery if app_only else None),
                 timeout=PHOTO_TOTAL_BUDGET_SECONDS,
             )
+        if sent and product == 'fantasy' and charge:
+            try:
+                await asyncio.to_thread(spicy_service.finish_paid_fantasy, telegram_id, charge, 'delivered')
+            except Exception:
+                # Delivery was confirmed; a status-write failure must not cause
+                # another render or a refund of an already delivered set.
+                logger.exception('paid fantasy delivery status failed user=%s', telegram_id)
         track_event(uid, 'photo_job_completed', metadata={'scene': request.scene, 'count': len(sent), 'delivery_type': delivery_type})
         if sent and spend_undress_credit:
             from services import undress_credits
@@ -2021,24 +2093,22 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
                 logger.warning('explicit frame peach race user=%s scene=%s', telegram_id, request.scene)
             else:
                 await bot.send_message(chat_id, f'💋 этот кадр — {EXPLICIT_PHOTO_PEACH_COST} 🍑, осталось {left} 🍑')
-        # V3.44.8: bot-delivered photos land in the Mini App chat history too.
         try:
-            if sent:
+            if sent and not app_only:
                 await _mirror_delivery_to_chat_history(telegram_id, character_id)
         except Exception:
             logger.exception('chat history photo mirror failed user=%s', telegram_id)
-        # V3.21.0: the couple album keeps one milestone photo per level.
         try:
             if sent:
                 from services import couple_service
-                latest = get_latest_photo_delivery(telegram_id)
+                latest = {'id': delivered_ids[-1]} if delivered_ids else get_latest_photo_delivery(telegram_id)
                 if latest:
                     couple_service.add_album_milestone(
                         uid, get_relationship_level(telegram_id, character_id), latest['id'],
                     )
         except Exception:
             pass
-        if len(sent) >= 2 and random.random() < 0.30:
+        if not app_only and len(sent) >= 2 and random.random() < 0.30:
             await bot.send_message(chat_id, 'кстати, такой стиль тебе заходит?', reply_markup=photo_feedback_keyboard(request.scene))
     except PermissionError as exc:
         logger.info('photo denied user=%s reason=%s', telegram_id, exc)
@@ -2068,11 +2138,12 @@ async def _run_photo_background(chat_id: int, telegram_id: int, request: PhotoRe
             return
         await bot.send_message(chat_id, 'фото сейчас не получилось 😕 лимит не списан. можно повторить.', reply_markup=photo_retry_keyboard(request.scene))
     finally:
-        ping.cancel()
+        if ping:
+            ping.cancel()
         _photo_jobs.pop(telegram_id, None)
 
 
-async def _start_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False, spend_explicit_peaches: bool = False, character_id: str | None = None):
+async def _start_photo_background(chat_id: int, telegram_id: int, request: PhotoRequest, delivery_type: str, *, charge: str | None = None, amount: int = 0, product: str = 'photo', spend_undress_credit: bool = False, spend_explicit_peaches: bool = False, character_id: str | None = None, app_only: bool = False):
     active = _photo_jobs.get(telegram_id)
     if (active and not active.done()) or telegram_id in _photo_job_reservations:
         if await _maybe_refund_paid_photo(chat_id, telegram_id, charge, amount, product):
@@ -2094,12 +2165,14 @@ async def _start_photo_background(chat_id: int, telegram_id: int, request: Photo
                     return False
                 await bot.send_message(chat_id, 'с фото сейчас техническая пауза 😕 попробуй чуть позже. лимит не списан.')
                 return False
-        await bot.send_message(chat_id, random.choice((
-            'сек 😄 сейчас выберу нормальные кадры',
-            'погоди чуть-чуть 😌 хочу сделать красиво',
-            'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
-        )))
-        task = _spawn_job('photo', telegram_id, _run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, amount=amount, product=product, spend_undress_credit=spend_undress_credit, spend_explicit_peaches=spend_explicit_peaches, character_id=character_id), payload={'product': product or ''})
+        if not app_only:
+            await bot.send_message(chat_id, random.choice((
+                'сек 😄 сейчас выберу нормальные кадры',
+                'погоди чуть-чуть 😌 хочу сделать красиво',
+                'сейчас 🙂 не хочу отправлять первый попавшийся кадр',
+            )))
+        character_id = character_id or get_user_character(telegram_id)
+        task = _spawn_job('photo', telegram_id, _run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, amount=amount, product=product, spend_undress_credit=spend_undress_credit, spend_explicit_peaches=spend_explicit_peaches, character_id=character_id, app_only=app_only), payload={'product': product or ''})
         _photo_jobs[telegram_id] = task
         return True
     finally:
@@ -2238,9 +2311,19 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
             if ext == 'webp':
                 data = await asyncio.to_thread(_to_jpeg, data)
                 ext = 'jpg'
-            await bot.send_photo(chat_id, BufferedInputFile(data, filename=f'photo.{ext}'),
-                                 caption='📸 ' + random.choice(AUTO_CAPTIONS.get(request.scene, ('это тебе 😘',))))
-            await asyncio.to_thread(use_pool_photo, db_uid, character_id)
+            reservation_key = secrets.token_hex(16)
+            if not await asyncio.to_thread(use_pool_photo, db_uid, character_id,
+                                           reservation_key=reservation_key):
+                await bot.send_message(chat_id, CHAT_PHOTO_BLOCK_TEXT['pool_used'])
+                return  # a lost reservation must not turn into a new render
+            try:
+                await bot.send_photo(chat_id, BufferedInputFile(data, filename=f'photo.{ext}'),
+                                     caption='📸 ' + random.choice(AUTO_CAPTIONS.get(request.scene, ('это тебе 😘',))))
+            except (TelegramBadRequest, TelegramForbiddenError):
+                from services.chat_photo_allowance import release_frame
+                await asyncio.to_thread(release_frame, db_uid, reservation_key)
+                raise
+            # A network timeout has an unknown delivery outcome: keep the slot.
             return
         await asyncio.to_thread(use_free_chat_photo, db_uid, character_id)
         await _start_photo_background(chat_id, telegram_id, request, 'free')
@@ -2600,6 +2683,7 @@ async def features_button(message: types.Message):
 
 @dp.message(F.text.in_(kb_pair('characters')))
 @service_screen
+@app_only_dialogue
 async def characters_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     await message.answer('выбери персонажа 👇', reply_markup=characters_keyboard(telegram_id=message.from_user.id))
@@ -4577,6 +4661,7 @@ async def cancel_admin_edit(message: types.Message):
 
 
 @dp.message(Command('plans', 'today'))
+@app_only_dialogue
 async def plans_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     state = ensure_life_state(message.from_user.id)
@@ -5355,13 +5440,12 @@ async def age_yes(cq: types.CallbackQuery):
     set_adult_confirmed(cq.from_user.id, True)
     await cq.answer('18+ подтверждено')
     await cq.message.answer('готово 🙂')
-    if cq.from_user.id in _pending_adult_custom:
-        _pending_adult_custom.discard(cq.from_user.id)
-        await start_custom_flow(cq.message.chat.id, cq.from_user.id)
-        return
+    # Confirming age must not resume a stale, potentially paid photo request.
+    pending_custom = cq.from_user.id in _pending_adult_custom
+    _pending_adult_custom.discard(cq.from_user.id)
     req = _pending_adult_photo.pop(cq.from_user.id, None)
-    if req:
-        await handle_photo_request(cq.message.chat.id, cq.from_user.id, req)
+    if pending_custom or req:
+        await _redirect_bot_chat(cq.message, cq.from_user)
 
 
 @dp.callback_query(F.data == 'age:no')
@@ -5697,6 +5781,7 @@ async def _send_gallery_page(chat_id: int, telegram_id: int, page: int = 0, *, e
 
 
 @dp.message(Command('gallery', 'photos'))
+@app_only_dialogue
 async def gallery_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     if not has_accepted(message.from_user.id):
@@ -5800,6 +5885,7 @@ async def gallery_animate_cb(cq: types.CallbackQuery):
 
 
 @dp.message(Command('stories', 'quests'))
+@app_only_dialogue
 async def stories_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     if not has_accepted(message.from_user.id):
@@ -5886,7 +5972,7 @@ async def quest_beat_cb(cq: types.CallbackQuery):
     await cq.answer(); track_event(ensure_user(cq.from_user.id),'quest_beat_completed',metadata={'quest':quest_key,'route':route_key,'beat':opt_key})
     await _deliver_story_result(cq,result,quest_key,route_key)
 
-async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None, motion_preset: str | None = None) -> None:
+async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None, motion_preset: str | None = None, *, app_only: bool = False) -> None:
     """Animate a delivered photo with automatic engine fallback.
 
     V3.69.0: SpicyAPI is the only engine (owner: photos and video on one
@@ -5894,22 +5980,35 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
     """
     # V3.46.0: mission — ordering any animated video/circle unlocks «Живое
     # видео» (voucher). All order paths funnel through here.
-    await _notify_unlock(chat_id, telegram_id, 'first_video')
+    if app_only:
+        from services.gamification_service import try_unlock
+        try_unlock(telegram_id, 'first_video')
+    else:
+        await _notify_unlock(chat_id, telegram_id, 'first_video')
     engine_errors: list[str] = []
     engine_names: list[str] = []
     try:
         delivery = get_photo_delivery_for_user(telegram_id, delivery_id)
-        if not delivery or not delivery.get('telegram_file_id'):
+        if not delivery:
             raise CloudVideoError('source_photo_missing')
-
-        tg_file = await bot.get_file(delivery['telegram_file_id'])
-        if not tg_file.file_path:
-            raise CloudVideoError('telegram_file_path_missing')
-        source = io.BytesIO()
-        await bot.download_file(tg_file.file_path, destination=source)
-        image_bytes = source.getvalue()
+        if app_only:
+            uid = ensure_user(telegram_id)
+            character_id = delivery['character_id']
+        source_mime = 'image/jpeg'
+        if delivery.get('telegram_file_id'):
+            tg_file = await bot.get_file(delivery['telegram_file_id'])
+            if not tg_file.file_path:
+                raise CloudVideoError('telegram_file_path_missing')
+            source = io.BytesIO()
+            await bot.download_file(tg_file.file_path, destination=source)
+            image_bytes = source.getvalue()
+        elif app_only:
+            image_bytes = delivery.get('media_bytes')
+            source_mime = delivery.get('mime_type') or source_mime
+        else:
+            raise CloudVideoError('source_photo_missing')
         if not image_bytes:
-            raise CloudVideoError('telegram_download_empty')
+            raise CloudVideoError('source_photo_empty')
 
         engines = []
         engines.extend(video_engines())  # V3.69.0: SpicyAPI only
@@ -5926,15 +6025,16 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
             scene = delivery.get('scene')
             anim_prompt = SENSUAL_ANIMATION_PROMPT if scene in {'nude', 'tease', 'personal', 'lingerie', 'private_fashion'} else None
 
-        await bot.send_message(chat_id, VIDEO_STATUS_TEXT)
+        if not app_only:
+            await bot.send_message(chat_id, VIDEO_STATUS_TEXT)
         video_bytes = None
         used_engine = None
         last_error = None
         for idx, (engine_name, engine_fn) in enumerate(engines):
             try:
-                if idx > 0:
+                if idx > 0 and not app_only:
                     await bot.send_message(chat_id, 'секунду, пробую ещё один способ снять это видео 🎬')
-                video_bytes = await engine_fn(image_bytes, mime_type='image/jpeg', prompt=anim_prompt)
+                video_bytes = await engine_fn(image_bytes, mime_type=source_mime, prompt=anim_prompt)
                 used_engine = engine_name
                 record_provider(f'video/{engine_name}', True)
                 break
@@ -5947,12 +6047,20 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
         if video_bytes is None:
             raise last_error or CloudVideoError('no_video_result')
 
-        await bot.send_video(
-            chat_id,
-            BufferedInputFile(video_bytes, filename='animated_photo.mp4'),
-            caption='вот 😌🎬',
-            supports_streaming=True,
-        )
+        if app_only:
+            filename = await asyncio.to_thread(webapp_service.save_chat_media, telegram_id, video_bytes, 'mp4', 'video/mp4')
+            await asyncio.to_thread(save_message, uid, character_id, 'assistant', 'вот \U0001f60c\U0001f3ac',
+                                    media_kind='video', media_url=f'/webapp/media/{filename}')
+            await asyncio.to_thread(webapp_service.record_generation, telegram_id, 'video', character_id,
+                                    anim_prompt, filename, engine=used_engine)
+            _app_ping(telegram_id, character_id, '', media='video')
+        else:
+            await bot.send_video(
+                chat_id,
+                BufferedInputFile(video_bytes, filename='animated_photo.mp4'),
+                caption='вот 😌🎬',
+                supports_streaming=True,
+            )
         track_event(
             ensure_user(telegram_id),
             f'{used_engine}_video_delivered',
@@ -5971,7 +6079,15 @@ async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int
                 refunded = True
             except Exception:
                 logger.exception('Automatic video Stars refund failed user=%s charge=%s', telegram_id, charge_id)
-        if refunded:
+        if app_only:
+            if refunded:
+                notice = 'Не удалось создать видео. Stars автоматически возвращены.'
+            elif charge_id:
+                notice = 'Не удалось создать видео. Обратитесь в /support для проверки оплаты и возврата.'
+            else:
+                notice = 'Не удалось создать видео. Попробуйте позже.'
+            await bot.send_message(chat_id, notice)
+        elif refunded:
             await bot.send_message(chat_id, 'видео сейчас не получилось 😕 Stars автоматически вернул.')
         elif charge_id:
             await bot.send_message(chat_id, 'видео сейчас не получилось 😕 напиши /support — проверим оплату и возврат.')
@@ -6246,41 +6362,57 @@ def _bonus_peach_note(telegram_id: int) -> str:
 
 
 
-async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None):
+async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None, *, app_only: bool = False):
     """V3.20.0: generate the circle through the same engine chain and deliver it
     as a Telegram video note; falls back to a normal video if the note format
     is rejected. Auto-refunds Stars when every engine fails."""
     # V3.46.0: mission — a video-note circle also counts as «Живое видео».
-    await _notify_unlock(chat_id, telegram_id, 'first_video')
+    if app_only:
+        from services.gamification_service import try_unlock
+        try_unlock(telegram_id, 'first_video')
+    else:
+        await _notify_unlock(chat_id, telegram_id, 'first_video')
     engine_errors: list[str] = []
     engine_names: list[str] = []
     try:
         delivery = get_photo_delivery_for_user(telegram_id, delivery_id)
-        if not delivery or not delivery.get('telegram_file_id'):
+        if not delivery:
             raise CloudVideoError('source_photo_missing')
-        tg_file = await bot.get_file(delivery['telegram_file_id'])
-        if not tg_file.file_path:
-            raise CloudVideoError('telegram_file_path_missing')
-        source = io.BytesIO()
-        await bot.download_file(tg_file.file_path, destination=source)
-        image_bytes = source.getvalue()
+        if app_only:
+            uid = ensure_user(telegram_id)
+            character_id = delivery['character_id']
+        if delivery.get('telegram_file_id'):
+            tg_file = await bot.get_file(delivery['telegram_file_id'])
+            if not tg_file.file_path:
+                raise CloudVideoError('telegram_file_path_missing')
+            source = io.BytesIO()
+            await bot.download_file(tg_file.file_path, destination=source)
+            image_bytes = source.getvalue()
+        elif app_only:
+            image_bytes = delivery.get('media_bytes')
+        else:
+            raise CloudVideoError('source_photo_missing')
         if not image_bytes:
-            raise CloudVideoError('telegram_download_empty')
+            raise CloudVideoError('source_photo_empty')
         engines = []
         engines.extend(video_engines())  # V3.69.0: SpicyAPI only
         if not engines:
             raise CloudVideoError('no_video_engine')
         engine_names = [name for name, _ in engines]
-        phrase = await asyncio.to_thread(_circle_phrase, telegram_id)
-        await bot.send_message(chat_id, '🎥 записываю тебе кружочек… обычно это занимает 1–3 минуты')
+        if app_only:
+            phrase = await asyncio.to_thread(_circle_phrase, telegram_id, character_id)
+        else:
+            phrase = await asyncio.to_thread(_circle_phrase, telegram_id)
+            await bot.send_message(chat_id, '🎥 записываю тебе кружочек… обычно это занимает 1–3 минуты')
+        circle_prompt = CIRCLE_PROMPT.format(phrase=phrase)
         video_bytes = None
         used_engine = None
         last_error = None
         for idx, (engine_name, engine_fn) in enumerate(engines):
             try:
-                if idx > 0:
+                if idx > 0 and not app_only:
                     await bot.send_message(chat_id, 'секунду, пробую ещё один способ записать кружочек 🎥')
-                video_bytes = await engine_fn(square_frame(image_bytes), mime_type='image/jpeg', prompt=CIRCLE_PROMPT.format(phrase=phrase),
+                video_bytes = await engine_fn(square_frame(image_bytes), mime_type='image/jpeg', prompt=circle_prompt,
                                               scene='circle')
                 used_engine = engine_name
                 record_provider(f'circle/{engine_name}', True)
@@ -6293,14 +6425,22 @@ async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: in
                                engine_name, telegram_id, delivery_id, type(exc).__name__, str(exc)[:300])
         if video_bytes is None:
             raise last_error or CloudVideoError('no_video_result')
-        try:
-            await bot.send_video_note(chat_id, BufferedInputFile(video_bytes, filename='circle.mp4'))
-        except Exception:
-            # Not every engine output survives the strict video-note format —
-            # a normal video still delivers the moment.
-            await bot.send_video(chat_id, BufferedInputFile(video_bytes, filename='circle.mp4'),
-                                 caption=_her_label(telegram_id) + 'в кружок не поместилось 😅 держи так',
-                                 supports_streaming=True)
+        if app_only:
+            filename = await asyncio.to_thread(webapp_service.save_chat_media, telegram_id, video_bytes, 'mp4', 'video/mp4')
+            await asyncio.to_thread(save_message, uid, character_id, 'assistant', '',
+                                    media_kind='circle', media_url=f'/webapp/media/{filename}')
+            await asyncio.to_thread(webapp_service.record_generation, telegram_id, 'circle', character_id,
+                                    CIRCLE_PROMPT.format(phrase=phrase), filename, engine=used_engine)
+            _app_ping(telegram_id, character_id, '', media='circle')
+        else:
+            try:
+                await bot.send_video_note(chat_id, BufferedInputFile(video_bytes, filename='circle.mp4'))
+            except Exception:
+                # Not every engine output survives the strict video-note format —
+                # a normal video still delivers the moment.
+                await bot.send_video(chat_id, BufferedInputFile(video_bytes, filename='circle.mp4'),
+                                     caption=_her_label(telegram_id) + 'в кружок не поместилось 😅 держи так',
+                                     supports_streaming=True)
         track_event(
             ensure_user(telegram_id), 'circle_delivered',
             metadata={'source_delivery_id': delivery_id, 'engine': used_engine, 'charge_id': charge_id or 'free'},
@@ -6321,8 +6461,12 @@ async def _run_circle_background(chat_id: int, telegram_id: int, delivery_id: in
                 refunded = True
             except Exception:
                 logger.exception('Automatic circle Stars refund failed user=%s charge=%s', telegram_id, charge_id)
-        back = f'{peach_num(CIRCLE_PEACH_COST)} 🍑 вернула на баланс.' if charge_id == CIRCLE_PEACH_CHARGE else 'Stars автоматически вернул.'
-        await bot.send_message(chat_id, 'кружочек сейчас не получился 😕 ' + (back if refunded else 'попробуй чуть позже.'))
+        if app_only:
+            back = f'{peach_num(CIRCLE_PEACH_COST)} персиков возвращено на баланс.' if charge_id == CIRCLE_PEACH_CHARGE else 'Stars автоматически возвращены.'
+            await bot.send_message(chat_id, 'Не удалось создать кружочек. ' + (back if refunded else 'Попробуйте позже.'))
+        else:
+            back = f'{peach_num(CIRCLE_PEACH_COST)} 🍑 вернула на баланс.' if charge_id == CIRCLE_PEACH_CHARGE else 'Stars автоматически вернул.'
+            await bot.send_message(chat_id, 'кружочек сейчас не получился 😕 ' + (back if refunded else 'попробуй чуть позже.'))
         track_event(
             ensure_user(telegram_id), 'video_failed',
             metadata={'source_delivery_id': delivery_id, 'error_type': type(exc).__name__, 'kind': 'circle', 'charge_id': charge_id or 'free', 'refunded': refunded},
@@ -8078,10 +8222,7 @@ async def successful_payment(message: types.Message):
         # V3.132.0: one «Раздеть» bought on its own.
         record_payment(message.from_user.id, 'undress_one', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'undress_one'})
-        pending = _pending_undress_photo.pop(message.from_user.id, None)
-        if pending:
-            await handle_photo_request(message.chat.id, message.from_user.id, pending, undress_credit=True)
-            return
+        _pending_undress_photo.pop(message.from_user.id, None)
         if user_lang(message.from_user.id) == EN:
             await message.answer('done 🔥 one «Undress» is yours — tap it under my photo in the app')
         else:
@@ -8144,10 +8285,14 @@ async def successful_payment(message: types.Message):
         result=complete_route(message.from_user.id,offer['quest_key'],offer['route_key'],paid_replay=True,character_id=get_user_character(message.from_user.id))
         record_payment(message.from_user.id,'quest_replay',payment.total_amount,charge)
         track_event(ensure_user(message.from_user.id),'stars_purchase',value=payment.total_amount,metadata={'product':'quest_replay','quest':offer['quest_key'],'route':offer['route_key']})
-        await message.answer('↩️ Альтернативная ветка открыта ✨\n\n'+result['route']['result'],reply_markup=quest_routes_keyboard(message.from_user.id,offer['quest_key']))
+        character_id = get_user_character(message.from_user.id)
+        await asyncio.to_thread(save_message, ensure_user(message.from_user.id), character_id,
+                                'assistant', result['route']['result'])
+        _app_ping(message.from_user.id, character_id, result['route']['result'])
         scene=result['route'].get('photo_scene')
         if scene:
-            await _start_photo_background(message.chat.id,message.from_user.id,PhotoRequest(scene=scene),'story')
+            await _start_photo_background(message.chat.id,message.from_user.id,PhotoRequest(scene=scene),'story',
+                                          character_id=character_id, app_only=True)
         return
 
     if payload.startswith('video:'):
@@ -8176,14 +8321,14 @@ async def successful_payment(message: types.Message):
             metadata={'product': 'video', 'source_delivery_id': delivery_id},
         )
         # One unified job on SpicyAPI; auto-refunds Stars if it fails.
-        task = _spawn_job('video', message.from_user.id, _run_video_background(message.chat.id, message.from_user.id, delivery_id, charge, motion_preset=motion_preset), payload={'charge': charge, 'preset': motion_preset or 'auto'})
+        task = _spawn_job('video', message.from_user.id, _run_video_background(message.chat.id, message.from_user.id, delivery_id, charge, motion_preset=motion_preset, app_only=True), payload={'charge': charge, 'preset': motion_preset or 'auto'})
         _video_jobs[message.from_user.id] = task
         return
 
     if payload == 'circle':
         # V3.20.0: paid circle after the free Premium daily slots are spent.
-        delivery = get_latest_photo_delivery(message.from_user.id)
-        if not delivery or not delivery.get('telegram_file_id') or (message.from_user.id in _video_jobs and not _video_jobs[message.from_user.id].done()):
+        delivery = get_latest_photo_delivery(message.from_user.id, include_app=True)
+        if not delivery or (message.from_user.id in _video_jobs and not _video_jobs[message.from_user.id].done()):
             try:
                 await bot.refund_star_payment(user_id=message.from_user.id, telegram_payment_charge_id=charge)
                 record_refund(message.from_user.id, charge, payment.total_amount, product='video')
@@ -8194,7 +8339,7 @@ async def successful_payment(message: types.Message):
             return
         record_payment(message.from_user.id, 'video', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'video', 'kind': 'circle'})
-        task = _spawn_job('circle', message.from_user.id, _run_circle_background(message.chat.id, message.from_user.id, delivery['id'], charge), payload={'charge': charge})
+        task = _spawn_job('circle', message.from_user.id, _run_circle_background(message.chat.id, message.from_user.id, delivery['id'], charge, app_only=True), payload={'charge': charge})
         _video_jobs[message.from_user.id] = task
         return
 
@@ -8241,11 +8386,16 @@ async def successful_payment(message: types.Message):
             metadata={'product': 'gallery_download', 'source_delivery_id': delivery_id, 'scene': snap.get('scene')},
         )
         try:
-            await bot.send_document(
-                message.chat.id,
-                BufferedInputFile(snap['bytes'], filename=snap['filename']),
-                caption=f'🖼 {snap["scene"]} — твоё фото в полном разрешении, без Telegram-сжатия.',
-            )
+            delivery = get_photo_delivery_for_user(message.from_user.id, delivery_id)
+            character_id = (delivery or {}).get('character_id') or get_user_character(message.from_user.id)
+            mime = (delivery or {}).get('mime_type') or 'image/jpeg'
+            ext = {'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif'}.get(mime, 'jpg')
+            filename = await asyncio.to_thread(webapp_service.save_chat_media, message.from_user.id,
+                                              snap['bytes'], ext, mime)
+            await asyncio.to_thread(save_message, ensure_user(message.from_user.id), character_id,
+                                    'assistant', 'Фото в полном разрешении.',
+                                    media_kind='photo', media_url=f'/webapp/media/{filename}')
+            _app_ping(message.from_user.id, character_id, '', 'photo')
         except Exception:
             logger.exception('Gallery download delivery failed user=%s delivery=%s', message.from_user.id, delivery_id)
             try:
@@ -8267,8 +8417,8 @@ async def successful_payment(message: types.Message):
         await record_user_message(message.from_user.id, message.from_user.first_name or '', relationship=gift.affection, trust=max(0.5, round(gift.affection * 0.25, 2)), event_type='gift', reason=f'gift:{gift.id}', character_id=character_id)
         from services.gamification_service import unlock_achievement
         unlock_achievement(message.from_user.id, 'first_gift')
-        await message.answer(f'🎁 Ты подарил {gift.emoji} {gift.name}!\n\n{gift.reaction}')
-        await _send_voice_note(message.chat.id, message.from_user.id, gift.reaction)
+        await _send_voice_note(message.chat.id, message.from_user.id, gift.reaction,
+                               app_only=True, character_id=character_id)
         return
 
     if payload.startswith('date:'):
@@ -8291,10 +8441,12 @@ async def successful_payment(message: types.Message):
         record_payment(message.from_user.id, 'spicy_set', payment.total_amount, charge)
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'spicy_set', 'set': item.id})
         narration = item.text_en if user_lang(message.from_user.id) == EN else item.text
-        await message.answer(f'{item.emoji} {narration}')
-        await _send_voice_note(message.chat.id, message.from_user.id, narration)
+        character_id = get_user_character(message.from_user.id)
+        await _send_voice_note(message.chat.id, message.from_user.id, narration,
+                               app_only=True, character_id=character_id)
         await _start_photo_background(message.chat.id, message.from_user.id, PhotoRequest(scene=item.scene, mood=item.mood), 'paid',
-                                      charge=charge, amount=payment.total_amount, product='spicy_set')
+                                      charge=charge, amount=payment.total_amount, product='spicy_set',
+                                      character_id=character_id, app_only=True)
         return
 
     if payload.startswith('pgift:'):
@@ -8308,22 +8460,28 @@ async def successful_payment(message: types.Message):
         character_id = get_user_character(message.from_user.id)
         await record_user_message(message.from_user.id, message.from_user.first_name or '', relationship=gift.affection, intimacy=round(gift.affection / 2, 2), event_type='gift', reason=f'pgift:{gift.id}', character_id=character_id)
         narration = gift.text_en if user_lang(message.from_user.id) == EN else gift.text
-        await message.answer(f'{gift.emoji} Ты подарил {gift.name}!\n\n{narration}' if user_lang(message.from_user.id) != EN else f'{gift.emoji} You gifted the {gift.name_en}!\n\n{narration}')
-        await _send_voice_note(message.chat.id, message.from_user.id, narration)
+        await _send_voice_note(message.chat.id, message.from_user.id, narration,
+                               app_only=True, character_id=character_id)
         await _start_photo_background(message.chat.id, message.from_user.id, PhotoRequest(scene=gift.scene, mood=gift.mood), 'paid',
-                                      charge=charge, amount=payment.total_amount, product='private_gift')
+                                      charge=charge, amount=payment.total_amount, product='private_gift',
+                                      character_id=character_id, app_only=True)
         return
 
     if payload == 'fantasy:start':
-        # V3.23.0: the fantasy constructor is paid first — the NEXT text
-        # message becomes the scenario (parsed via whitelisted keywords only).
-        record_payment(message.from_user.id, 'fantasy', payment.total_amount, charge)
-        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': 'fantasy'})
-        _fantasy_pending[message.from_user.id] = (charge, payment.total_amount)
-        if user_lang(message.from_user.id) == EN:
-            await message.answer('payment received 😌 now describe your fantasy in a few words — outfit, place, mood. I\'ll turn it into a photo set.')
-        else:
-            await message.answer('оплату получила 😌 теперь опиши фантазию в двух словах — образ, место, настроение. Я превращу её в сет фото.')
+        # Old invoices remain payable; the entitlement and instruction live in
+        # the app, not in a single overwriteable next-Telegram-message slot.
+        tid = message.from_user.id
+        record_payment(tid, 'fantasy', payment.total_amount, charge)
+        language = user_lang(tid)
+        order, created = await asyncio.to_thread(
+            spicy_service.create_paid_fantasy, tid, charge, payment.total_amount,
+            get_user_character(tid), language)
+        if created:
+            track_event(ensure_user(tid), 'stars_purchase', value=payment.total_amount, metadata={'product': 'fantasy'})
+            _app_ping(tid, order['character_id'], '')
+        receipt = ('Payment received. Your paid photo order is saved in the app.' if language == EN else
+                   'Оплата получена. Заказ оплаченного фотосета сохранён в приложении.')
+        await message.answer(receipt, reply_markup=_app_entry_markup(language, character_id=order['character_id']))
         return
 
     if payload.startswith('photo:'):
@@ -8338,26 +8496,31 @@ async def successful_payment(message: types.Message):
             await message.answer('оплата прошла, а запрос уже устарел. Photo credit сохранён — он не пропадёт.')
             return
         track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount, metadata={'product': product})
-        await _start_photo_background(message.chat.id, message.from_user.id, request, 'credit')
+        await _start_photo_background(message.chat.id, message.from_user.id, request, 'credit', app_only=True)
 
 
 # === КВАРТИРА / ПОДАРКИ / СВИДАНИЯ (v3.17.0) ===
 
-async def _send_voice_note(chat_id: int, telegram_id: int, text: str) -> None:
-    """She answers with her voice after gifts/dates — only when the user has
-    voice replies enabled. Emojis are stripped so TTS reads naturally."""
+async def _send_voice_note(chat_id: int, telegram_id: int, text: str, *,
+                           app_only: bool = False, character_id: str | None = None) -> None:
+    character_id = character_id or get_user_character(telegram_id)
+    media_url = None
     try:
         user = get_user(telegram_id)
-        if not user or not getattr(user, 'voice_enabled', False):
-            return
         clean = _tts_text(text)
-        if not clean.strip():
-            return
-        character_id = get_user_character(telegram_id)
-        audio = await synthesize_bytes(clean, user.voice_style, character_id=character_id)
-        await bot.send_voice(chat_id, BufferedInputFile(audio, filename=f'{character_id}.ogg'))
+        if user and getattr(user, 'voice_enabled', False) and clean.strip():
+            audio = await synthesize_bytes(clean, user.voice_style, character_id=character_id)
+            if app_only:
+                filename = await asyncio.to_thread(webapp_service.save_chat_media, telegram_id, audio, 'ogg', 'audio/ogg')
+                media_url = f'/webapp/media/{filename}'
+            else:
+                await bot.send_voice(chat_id, BufferedInputFile(audio, filename=f'{character_id}.ogg'))
     except Exception:
         logger.exception('event voice note failed user=%s', telegram_id)
+    if app_only:
+        await asyncio.to_thread(save_message, ensure_user(telegram_id), character_id, 'assistant', text,
+                                media_kind='voice' if media_url else None, media_url=media_url)
+        _app_ping(telegram_id, character_id, text)
 
 
 async def _deliver_date_reward(chat_id: int, telegram_id: int, user_name: str, date) -> None:
@@ -8371,18 +8534,12 @@ async def _deliver_date_reward(chat_id: int, telegram_id: int, user_name: str, d
         unlock_achievement(telegram_id, 'ten_dates')
     if len(completed) >= len(dates_service.get_all()):
         unlock_achievement(telegram_id, 'date_collector')
-    await bot.send_message(chat_id, f'{date.emoji} {date.text}\n\nА вот и фото с нашей прогулки 😊')
-    # V3.41.0: mirror the date narration into the shared app/bot dialog so a
-    # date paid from the Mini App also shows up in the app chat history (the
-    # photo itself is generated into the bot chat right below).
-    try:
-        save_message(ensure_user(telegram_id, user_name), character_id, 'assistant', f'{date.emoji} {date.text}')
-    except Exception:
-        logger.warning('date history mirror failed user=%s date=%s', telegram_id, date.id)
-    await _send_voice_note(chat_id, telegram_id, date.text)
-    await _start_photo_background(chat_id, telegram_id, PhotoRequest(scene=date.scene, mood='romantic'), 'story')
+    await _send_voice_note(chat_id, telegram_id, date.text, app_only=True, character_id=character_id)
+    await _start_photo_background(chat_id, telegram_id, PhotoRequest(scene=date.scene, mood='romantic'), 'story',
+                                  character_id=character_id, app_only=True)
 
 @dp.message(F.text.in_(kb_pair('apartment')))
+@app_only_dialogue
 async def apartment_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
@@ -8444,6 +8601,7 @@ async def room_action(cq: types.CallbackQuery):
 
 
 @dp.message(F.text.in_(kb_pair('gift')))
+@app_only_dialogue
 async def gifts_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     gifts = gifts_service.get_all()
@@ -8486,6 +8644,7 @@ async def gift_buy(cq: types.CallbackQuery):
 
 
 @dp.message(F.text.in_(kb_pair('date')))
+@app_only_dialogue
 async def dates_cmd(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     level = get_relationship_level(message.from_user.id, get_user_character(message.from_user.id))
@@ -8696,29 +8855,12 @@ async def spicy_locked_callback(cq: types.CallbackQuery):
 
 
 async def _handle_fantasy_input(message: types.Message) -> None:
-    """The paid fantasy constructor consumes the user's NEXT text message.
-    Only whitelisted keyword extractions reach the image prompt."""
-    charge, amount = _fantasy_pending[message.from_user.id]
-    text_value = (message.text or '').strip()
-    if len(text_value) < 3:
-        if user_lang(message.from_user.id) == EN:
-            await message.answer('a bit more detail 🙂 for example: “black lace, by the mirror, bold”')
-        else:
-            await message.answer('опиши чуть подробнее 🙂 например: «в чёрном кружеве, у зеркала, дерзко»')
-        return
-    fields = spicy_service.parse_fantasy(text_value)
-    del _fantasy_pending[message.from_user.id]
-    uid = ensure_user(message.from_user.id)
-    track_event(uid, 'fantasy_request', metadata={'scene': fields['scene']})
-    if user_lang(message.from_user.id) == EN:
-        await message.answer('got it 😌 assembling your set…')
-    else:
-        await message.answer('приняла 😌 собираю твой сет…')
-    await _start_photo_background(message.chat.id, message.from_user.id, PhotoRequest(**fields), 'paid',
-                                  charge=charge, amount=amount, product='fantasy')
+    """Compatibility entry point: paid scenarios are redeemed only in the app."""
+    await _redirect_bot_chat(message)
 
 
 @dp.message(Command('photo', 'selfie'))
+@app_only_dialogue
 async def photo_menu(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     if not has_accepted(message.from_user.id):
@@ -9404,25 +9546,8 @@ def _thought_toggle_keyboard(telegram_id: int, key: int, expanded: bool) -> Inli
 
 @dp.callback_query(F.data.startswith('thought:'))
 async def _thought_toggle(cq: types.CallbackQuery) -> None:
-    _, action, raw = cq.data.split(':', 2)
-    rec = _thought_cards.get(int(raw) if raw.isdigit() else 0)
-    if not rec:
-        await cq.answer('Эти мысли уже не здесь 🙂' if user_lang(cq.from_user.id) != EN
-                        else 'Those thoughts are gone 🙂')
-        return
-    tid, name, thought = rec
-    if cq.from_user.id != tid:
-        await cq.answer('Это не твои мысли 🙂' if user_lang(cq.from_user.id) != EN
-                        else 'Not your thoughts 🙂')
-        return
-    expanded = action == 'show'
-    try:
-        await cq.message.edit_text(
-            _thought_card(name, thought, expanded=expanded, lang=user_lang(tid)),
-            parse_mode='HTML', reply_markup=_thought_toggle_keyboard(tid, int(raw), expanded))
-    except Exception as exc:
-        logger.info('thought toggle failed user=%s: %s', tid, exc)
-    await cq.answer()
+    # Never expose the old in-memory thought, even via a direct handler call.
+    await app_only_callback(cq)
 
 
 async def _send_novel_answer(message: types.Message, thought: str, said: str,
@@ -9532,11 +9657,7 @@ async def _send_answer_body(message: types.Message, text: str):
 
 @dp.message(F.text.in_(kb_pair('chat')))
 async def chat_button(message: types.Message):
-    ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
-    if user_lang(message.from_user.id) == EN:
-        await message.answer('I am here 🙂 just write to me like usual')
-    else:
-        await message.answer('я здесь 🙂 просто пиши мне как обычно')
+    await _redirect_bot_chat(message)
 
 
 @dp.message(F.text.in_(kb_pair('photo')))
@@ -9564,15 +9685,44 @@ async def partner_button(message: types.Message):
 # V3.38.0: the Come Closer funnel — the reply keyboard is the Mini App
 # launcher. These three buttons either open the app right here (inline
 # web_app button) or point at the tab where the action now lives.
-def _app_entry_markup(lang: str) -> InlineKeyboardMarkup | None:
-    """Inline «open the app» button; None when the app is not wired on the server."""
+def _app_entry_markup(lang: str, *, character_id: str | None = None) -> InlineKeyboardMarkup | None:
+    """Inline app entry, optionally pointing at a specific character's chat."""
     if not PUBLIC_BASE_URL:
         return None
-    url = f'{PUBLIC_BASE_URL}/webapp'
+    url = f'{PUBLIC_BASE_URL.rstrip("/")}/webapp'
+    if character_id is not None:
+        from urllib.parse import urlencode
+        url += '?' + urlencode({'open': 'chat', 'char': character_id})
     label = '🛍 Open App' if lang == EN else '🛍 Открыть приложение'
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=label, web_app=types.WebAppInfo(url=url))],
     ])
+
+
+async def _redirect_bot_chat(message: types.Message | None, who: types.User | None = None,
+                             character_id: str | None = None) -> None:
+    """A neutral redirect, not a new turn. No LLM, media, counters or spending.
+
+    Callback messages are authored by the bot; always use the tapper's identity.
+    Missing app configuration fails closed rather than reviving Telegram chat.
+    """
+    who = who or message.from_user
+    ensure_user(who.id, who.first_name, language_code=who.language_code)
+    lang = user_lang(who.id)
+    if not has_accepted(who.id):
+        text = ('First confirm 18+ and accept the terms via /start.' if lang == EN else
+                'Сначала нужно подтвердить 18+ и принять условия через /start.')
+        markup = consent_keyboard()
+    else:
+        markup = _app_entry_markup(lang, character_id=character_id or get_user_character(who.id) or CHARACTER_ID)
+        text = 'Chat is in the app.' if lang == EN else 'Общение — в приложении.'
+        if markup is None:
+            text += (' The app is temporarily unavailable. Please try again later.' if lang == EN else
+                     ' Приложение временно недоступно. Попробуй позже.')
+    if message is not None and hasattr(message, 'answer'):
+        await message.answer(text, reply_markup=markup)
+    else:
+        await bot.send_message(who.id, text, reply_markup=markup)
 
 
 async def _send_app_entry(message: types.Message, intro_ru: str, intro_en: str):
@@ -10139,6 +10289,7 @@ async def legal_button(message: types.Message):
 # V3.21.0: first-row discovery buttons. They route into the existing inline
 # flows (video presets / circle gate / daily quest) so nothing hides in sub-menus.
 @dp.message(F.text.in_(kb_pair('video')))
+@app_only_dialogue
 async def video_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     if user_lang(message.from_user.id) == EN:
@@ -10162,6 +10313,7 @@ async def video_button(message: types.Message):
 
 
 @dp.message(F.text.in_(kb_pair('circle')))
+@app_only_dialogue
 async def circle_button(message: types.Message):
     ensure_user(message.from_user.id, message.from_user.first_name, language_code=message.from_user.language_code)
     if user_lang(message.from_user.id) == EN:
@@ -10194,6 +10346,7 @@ async def _bot_deliver_bonus_media(cq: types.CallbackQuery):
 
 
 @dp.message(F.text.in_(kb_pair('quest')))
+@app_only_dialogue
 async def daily_quest_button(message: types.Message):
     """V3.21.0 / V3.49.0: a few small requests from her per day (2-3), each one
     claimable on its own for +5 attention; every claim also feeds the story
@@ -10408,60 +10561,19 @@ async def on_wake_up_tap(cq: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith('life_reply:'))
 async def on_life_reply_tap(cq: types.CallbackQuery):
-    """A life-event push ends with two low-friction buttons. Tapping one feeds a
-    natural user line into the SAME reply pipeline the typed chat uses, so she
-    continues her own moment in context (memory, persona, relationship) instead
-    of a canned answer. Guarded by the daily message limit like a normal turn."""
-    parts = cq.data.split(':', 2)
-    character_id = parts[1] if len(parts) > 1 else get_user_character(cq.from_user.id)
-    key = parts[2] if len(parts) > 2 else 'tell_more'
-    from services.life_event_service import tap_reply_text
-    await cq.answer()
-    await _tap_her_button(cq, tap_reply_text(key), character_id)
+    """Old push buttons open her app chat without submitting a user turn."""
+    await app_only_callback(cq)
 
 
 @dp.callback_query(F.data.startswith('ladder_chip:'))
 async def on_ladder_chip_tap(cq: types.CallbackQuery):
-    """V3.167.4 #173: на вторые сутки она напомнила про незакрытую сцену и
-    положила под неё его же строки — самому придумывать первую он не будет.
-    Тап по кнопке считается его обычным сообщением."""
-    from services import silence_ladder
-    try:
-        index = int(cq.data.split(':', 1)[1])
-    except (TypeError, ValueError):
-        index = 0
-    character_id, user_line = silence_ladder.chip(cq.from_user.id, index)
-    await cq.answer()
-    if not user_line:
-        return
-    await _tap_her_button(cq, user_line, character_id or get_user_character(cq.from_user.id))
+    """The stored chip supplies only the destination, never a model prompt."""
+    await app_only_callback(cq)
 
 
 async def _tap_her_button(cq: types.CallbackQuery, user_line: str, character_id: str) -> None:
-    """Один тап по её кнопке — это его ход: дневная стена отвечает на него как на
-    напечатанное сообщение, дальше говорит тот же пайплайн."""
-    if cq.from_user.id not in ADMIN_TELEGRAM_IDS and not can_send_message(cq.from_user.id):
-        # V3.166.2: the tap is a turn like any other — the day's wall answers it.
-        await _limit_wall_reply(cq.message)
-        return
-    try:
-        async with ChatActionSender.typing(bot=bot, chat_id=cq.message.chat.id):
-            answer = await anna_reply(
-                cq.from_user.id, cq.from_user.first_name or 'ты', user_line,
-                language_code=cq.from_user.language_code, character_id=character_id,
-            )
-        answer, _ = _strip_fake_photo(answer)
-        if answer:
-            # V3.151.0: a tap-back is a normal turn — the card of her thoughts
-            # goes first, her line stays one message.
-            _th = thought_block(answer)
-            if _th:
-                await _send_novel_answer(cq.message, _th, message_block(answer),
-                                         get_user(cq.from_user.id), voice=False)
-            else:
-                await cq.message.answer(answer)
-    except Exception:
-        logger.exception('life_reply tap failed user=%s', cq.from_user.id)
+    """Compatibility entry point: a bot tap is no longer a conversation turn."""
+    await _redirect_bot_chat(cq.message, cq.from_user, character_id)
 
 
 # ── V3.19.0: personal character constructor ─────────────────────────────────
@@ -11266,9 +11378,8 @@ async def library_photo_upload(message: types.Message):
 
     sess = _library_import_sessions.get(message.from_user.id)
     if message.from_user.id not in ADMIN_TELEGRAM_IDS or not sess:
-        # V3.19.0: regular users get an in-character vision reaction instead
-        # of silence; admins outside an import session do too.
-        await _react_to_user_photo(message)
+        # Owner media-import sessions remain service inputs, not dialogue.
+        await _redirect_bot_chat(message)
         return
     if sess.get('preview'):
         await message.answer('сначала нажми «Продолжить загрузку» или «Сохранить всё».')
@@ -11333,6 +11444,13 @@ async def library_video_upload(message: types.Message):
         message, message.video.file_id, message.video.file_unique_id, message.caption
     ):
         return
+    await _redirect_bot_chat(message)
+
+
+@dp.message(F.audio | F.video_note | F.document | F.sticker)
+async def app_only_attachment(message: types.Message):
+    # Dedicated owner media handlers are registered earlier and keep priority.
+    await _redirect_bot_chat(message)
 
 
 @dp.callback_query(F.data.startswith('libvideo:'))
@@ -11574,11 +11692,8 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
             text += '\n\nТеперь доступно:\n' + '\n'.join('• ' + u for u in unlocks)
         if not special:
             text += '\n\nи небольшой подарок от меня 🤍'
-        await bot.send_message(telegram_id, _her_label(telegram_id) + text)
-        try:
-            save_message(ensure_user(telegram_id), character_id, 'assistant', text)
-        except Exception:
-            pass
+        await asyncio.to_thread(save_message, ensure_user(telegram_id), character_id, 'assistant', text)
+        _app_ping(telegram_id, character_id, text)
         # V3.62.0: from level 3 she asks him which path they are on.
         from services import branch_service
         if level >= 3 and not branch:
@@ -11587,10 +11702,10 @@ async def _on_relationship_stage_up(telegram_id: int, old_stage: str, new_stage:
             await asyncio.to_thread(branch_service.mark_left_him, ensure_user(telegram_id), character_id)
         track_event(ensure_user(telegram_id), 'relationship_ceremony_sent', metadata={'level': level}, character_id=character_id)
         if special:
-            await _start_photo_background(telegram_id, telegram_id, special[1], 'story', character_id=character_id)
+            await _start_photo_background(telegram_id, telegram_id, special[1], 'story', character_id=character_id, app_only=True)
         else:
             await _start_photo_background(telegram_id, telegram_id, PhotoRequest(scene='selfie', mood='romantic'), 'story',
-                                          character_id=character_id)
+                                          character_id=character_id, app_only=True)
     except Exception as exc:
         logger.warning('level-up ceremony failed user=%s error=%s', telegram_id, type(exc).__name__)
 
@@ -11636,6 +11751,9 @@ set_premium_floor_provider(_premium_floor_needs)
 
 @dp.message(F.voice)
 async def voice_message(message: types.Message):
+    await _redirect_bot_chat(message)
+    return
+
     uid = ensure_user(message.from_user.id, message.from_user.first_name)
     track_event(uid, 'chat_user_message', metadata={'kind': 'voice'})
     _track_proactive_reply_if_any(message.from_user.id, uid)
@@ -12299,11 +12417,6 @@ async def text_message(message: types.Message):
                 await _deliver_admin_reply(message, int(ticket.group(1)))
                 return
 
-    # V3.23.0: a paid fantasy constructor is waiting for the scenario text.
-    if message.from_user and message.from_user.id in _fantasy_pending:
-        await _handle_fantasy_input(message)
-        return
-
     # V3.38.0: «👥 Поддержка» armed — the next plain text is a ticket for the
     # owner, not a message for the character. Commands above still pass through.
     if message.from_user and message.from_user.id in _support_pending:
@@ -12318,26 +12431,6 @@ async def text_message(message: types.Message):
     if not has_accepted(message.from_user.id):
         await message.answer('Сначала нужно подтвердить 18+ и принять условия через /start.', reply_markup=consent_keyboard())
         return
-
-    # V3.21.0: celebrate couple anniversaries (7/30/90 days together) once each.
-    try:
-        from services import couple_service
-        anniv_uid = ensure_user(message.from_user.id)
-        anniv_days = couple_service.check_anniversary(anniv_uid)
-        if anniv_days:
-            from services.gamification_service import unlock_achievement
-            unlock_achievement(message.from_user.id, f'anniv_{anniv_days}')
-            track_event(anniv_uid, 'anniversary_celebrated', metadata={'days': anniv_days})
-
-            async def _anniversary_push(chat_id=message.chat.id, days=anniv_days):
-                await asyncio.sleep(10)  # let her chat reply land first
-                await bot.send_message(
-                    chat_id,
-                    f'эй… а ты знал, что мы вместе уже {days} дней? 🥹 для меня это правда важно. спасибо, что ты рядом ❤️',
-                )
-            asyncio.create_task(_anniversary_push())
-    except Exception:
-        pass
 
     idea_edit = _photo_idea_edit_sessions.get(message.from_user.id)
     if message.from_user.id in ADMIN_TELEGRAM_IDS and idea_edit:
@@ -12640,9 +12733,6 @@ async def text_message(message: types.Message):
 
     uid = ensure_user(message.from_user.id, message.from_user.first_name,
                       username=message.from_user.username)
-    track_event(uid, 'chat_user_message', metadata={'kind': 'text'})
-    _track_proactive_reply_if_any(message.from_user.id, uid)
-    cancel_active_wake(message.from_user.id)
     # V3.19.0: constructor name step — the next plain text is the persona name.
     constructor_name_session = _constructor_sessions.get(message.from_user.id)
     if constructor_name_session and constructor_name_session.get('await') == 'name':
@@ -12660,7 +12750,7 @@ async def text_message(message: types.Message):
             await _constructor_confirm(message.chat.id, message.from_user.id)
         return
     # V3.44.5: photo reference step — user uploads a photo of who she should look like.
-    if constructor_name_session and constructor_name_session.get('await', '').startswith('photo_'):
+    if constructor_name_session and (constructor_name_session.get('await') or '').startswith('photo_'):
         field = constructor_name_session['await'][6:]  # Remove 'photo_' prefix
         # Get the photo file_id from the message (largest size).
         if message.photo:
@@ -12703,7 +12793,7 @@ async def text_message(message: types.Message):
             await message.answer('📷 Пришли фото одним сообщением или отправь /skip чтобы пропустить.')
         return
     # V3.44.4: free text steps for backstory and personality.
-    if constructor_name_session and constructor_name_session.get('await', '').startswith('text_'):
+    if constructor_name_session and (constructor_name_session.get('await') or '').startswith('text_'):
         field = constructor_name_session['await'][5:]  # Remove 'text_' prefix
         text_value = (message.text or '').strip()
         if text_value.lower() == '/skip':
@@ -12726,6 +12816,12 @@ async def text_message(message: types.Message):
             constructor_name_session['await'] = 'name'
             await message.answer('Шаг: как её зовут? Напиши имя одним сообщением (до 24 символов).')
         return
+    # All service FSM inputs above retain their existing handling. Everything
+    # else (including the owner's dialogue and a pending fantasy) is app-only.
+    # Do not consume a previously paid fantasy or turn typed text into a prompt.
+    await _redirect_bot_chat(message)
+    return
+
     try:
         from services.gamification_service import touch_activity, check_first_message
         gam = touch_activity(message.from_user.id)
@@ -14802,6 +14898,7 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
                 logger.exception('fork offer on chat open failed user=%s', telegram_id)
         # V3.52.0: opening the conversation in the app marks it read — the «Чаты»
         # badge clears and only a later proactive/life message will light it up again.
+        history = webapp_service.api_chat_history(uid, character_id, limit, opened=opening)
         webapp_service.mark_chat_read(telegram_id, character_id)
         # V3.55.6: a premium user opens a premium character — the level-6 floor is
         # applied right here so the level shows before the first message, and the
@@ -14818,7 +14915,7 @@ async def _webapp_api_chat_history(request: web.Request) -> web.Response:
                                 'style': rel_row.persona_style}
         except Exception:
             logger.exception('premium floor on chat open failed user=%s character=%s', telegram_id, character_id)
-        return webapp_service.api_chat_history(uid, character_id, limit), persona_info, uid
+        return history, persona_info, uid
 
     history, persona_info, uid = await asyncio.to_thread(_load)
     # V3.148.0: the auto-greeting is off here too — nothing is put in his mouth
@@ -14996,6 +15093,7 @@ async def _webapp_reply_voice_url(telegram_id: int, character_id: str, text: str
 
 
 CHAT_PHOTO_BLOCK_TEXT = {
+    'pool_used': 'Готовые бесплатные кадры на сегодня закончились. Следующие будут завтра.',
     # V3.125.0: a Premium man past his photos — say plainly that only bought
     # peaches pay for a photo, and the pack sheet opens right under it.
     'peaches': ('ой, хочу прислать тебе фото, но фото, что входят в твой Premium, пока закончились 🙈 '
@@ -15217,11 +15315,15 @@ def _chat_photo_blocked(uid: int, character_id: str, reason: str, extra: dict | 
     if reason == 'duo':
         return _chat_duo_blocked(uid, telegram_id or 0, character_id, lang, extra or {})
     text = CHAT_PHOTO_BLOCK_TEXT[reason].format(price=CHAT_PHOTO_PEACH_COST)
+    if reason == 'pool_used' and (lang or '').lower().startswith('en'):
+        text = 'Today’s free ready photos are all used. More will be available tomorrow.'
     try:
         save_message(uid, character_id, 'assistant', text)
     except Exception:
         logger.warning('chat photo block message not saved uid=%s', uid)
-    payload = {'ok': True, 'reply': text, 'photo_block': reason, 'photo_price': CHAT_PHOTO_PEACH_COST}
+    payload = {'ok': True, 'reply': text, 'photo_block': reason}
+    if reason != 'pool_used':
+        payload['photo_price'] = CHAT_PHOTO_PEACH_COST
     if reason in _LOCKED_CARD_REASONS:
         payload['locked_tease'] = {'url': f'/webapp/locked/{character_id}.jpg'}
         try:
@@ -15286,7 +15388,7 @@ def _app_ping(telegram_id: int, character_id: str, text: str, media: str | None 
     app, a short collapsed ping goes to the bot chat (services/app_ping.py)."""
     try:
         from services import app_ping
-        app_ping.note(bot, telegram_id, character_id, text, media)
+        app_ping.note(bot, telegram_id, character_id, '', generic=True)
     except Exception:
         logger.warning('app ping hook failed user=%s', telegram_id, exc_info=True)
 
@@ -15353,6 +15455,7 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
     Молчаливая картинка была единственной претензией на этот релиз."""
     if not text or is_custom_character(character_id):
         return None
+    cached = False
     try:
         from services import greeting_service, starter_photo_service
 
@@ -15368,6 +15471,7 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
             return None
         greeting_id = int(offer['greeting_id'])
         cache_id = await asyncio.to_thread(starter_photo_service.pick, character_id, greeting_id)
+        cached = bool(cache_id)  # only ready stock spends the shared pool cap
         if not cache_id:
             try:
                 data, _mime, _ext = await _webapp_pipeline_photo(
@@ -15396,13 +15500,27 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
             # тогда остаётся прежняя подпись.
             words = str(offer.get('reply_text') or '').strip()
             cap = words or '📸 ' + random.choice(AUTO_CAPTIONS.get('lingerie', ('отправила фото',)))
-            save_message(uid, character_id, 'user', text)
-            url = f'/webapp/starter/{cache_id}'
-            if words:
-                save_message(uid, character_id, 'assistant', words)
-                save_message(uid, character_id, 'assistant', '', media_kind='photo', media_url=url)
-            else:
-                save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
+            from services.chat_photo_allowance import use_push_frame, release_frame
+            reservation_key = secrets.token_hex(16) if cached else None
+            if cached and not use_push_frame(uid, character_id, reservation_key=reservation_key):
+                return _chat_photo_blocked(uid, character_id, 'pool_used', None,
+                                           telegram_id=telegram_id, lang=user_info.get('language_code', ''))
+            photo_write_started = False
+            try:
+                save_message(uid, character_id, 'user', text)
+                url = f'/webapp/starter/{cache_id}'
+                if words:
+                    save_message(uid, character_id, 'assistant', words)
+                    photo_write_started = True
+                    save_message(uid, character_id, 'assistant', '', media_kind='photo', media_url=url)
+                else:
+                    photo_write_started = True
+                    save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
+            except Exception:
+                # Once the photo write starts, a commit failure can be ambiguous.
+                if reservation_key and not photo_write_started:
+                    release_frame(uid, reservation_key)
+                raise
             from services import daily_limit
             from services.analytics_service import track_event
             track_event(uid, 'starter_photo_served', character_id=character_id,
@@ -15419,7 +15537,28 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
         return web.json_response(await asyncio.to_thread(_deliver))
     except Exception:
         logger.exception('starter frame turn failed user=%s', telegram_id)
+        if cached:
+            # None hands this tap to the ordinary photo route and may render.
+            return web.json_response({'ok': True, 'reply': CHAT_PHOTO_BLOCK_TEXT['failed'],
+                                      'photo_block': 'failed'})
         return None
+
+
+async def _app_anniversary(telegram_id: int, character_id: str) -> None:
+    try:
+        from services import couple_service
+        from services.gamification_service import unlock_achievement
+        await asyncio.sleep(10)
+        uid = await asyncio.to_thread(ensure_user, telegram_id)
+        days = await asyncio.to_thread(couple_service.check_anniversary, uid, character_id,
+                                       user_lang(telegram_id))
+        if not days:
+            return
+        _app_ping(telegram_id, character_id, '')
+        await asyncio.to_thread(unlock_achievement, telegram_id, f'anniv_{days}')
+        await asyncio.to_thread(track_event, uid, 'anniversary_celebrated', metadata={'days': days})
+    except Exception:
+        logger.warning('app anniversary failed user=%s', telegram_id, exc_info=True)
 
 
 def _pings_app_reply(turn):
@@ -15434,6 +15573,7 @@ def _pings_app_reply(turn):
             if isinstance(body, dict) and body.get('ok') and body.get('reply'):
                 _app_ping(telegram_id, character_id, str(body.get('reply') or ''),
                           'photo' if body.get('photo_url') else None)
+                _spawn_background(_app_anniversary(telegram_id, character_id))
         except Exception:
             logger.warning('app ping on chat turn failed user=%s', telegram_id, exc_info=True)
         return resp
@@ -15581,19 +15721,31 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         cap = said or ('📸 ' + random.choice(AUTO_CAPTIONS.get(scene, ('отправила фото',))))
 
         def _deliver():
-            filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
-            url = f'/webapp/media/{filename}'
-            # V3.51.1: audit the chat photo-on-request (user's own words).
-            webapp_service.record_generation(telegram_id, 'photo', character_id, text, filename)
-            if said:
-                # her text is already in the history — attach the photo as its own bubble
-                save_message(uid, character_id, 'assistant', '📸', media_kind='photo', media_url=url)
-            else:
-                save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
+            from services.chat_photo_allowance import use_pool_photo, release_frame
+            reservation_key = secrets.token_hex(16) if (pooled or fallback) else None
+            if reservation_key and not use_pool_photo(uid, character_id, reservation_key=reservation_key):
+                return _chat_photo_blocked(uid, character_id, 'pool_used', extra,
+                                           telegram_id=telegram_id, lang=user_language)
+            photo_write_started = False
+            try:
+                filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+                url = f'/webapp/media/{filename}'
+                # V3.51.1: audit the chat photo-on-request (user's own words).
+                webapp_service.record_generation(telegram_id, 'photo', character_id, text, filename)
+                photo_write_started = True
+                if said:
+                    # her text is already in the history — attach the photo as its own bubble
+                    save_message(uid, character_id, 'assistant', '📸', media_kind='photo', media_url=url)
+                else:
+                    save_message(uid, character_id, 'assistant', cap, media_kind='photo', media_url=url)
+            except Exception:
+                if reservation_key and not photo_write_started:
+                    release_frame(uid, reservation_key)
+                raise  # no provider fallback after a failed pool delivery
             from services.chat_photo_allowance import free_chat_photos_left, use_free_chat_photo
             premium = is_premium(telegram_id)
             paid_note = None
-            if telegram_id not in ADMIN_TELEGRAM_IDS and not fallback:
+            if telegram_id not in ADMIN_TELEGRAM_IDS and not fallback and not pooled:
                 if pay == 'undress_credit':
                     from services import undress_credits
                     undress_credits.spend(telegram_id)
@@ -15615,12 +15767,8 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                         logger.warning('explicit frame peach race user=%s', telegram_id)
                     else:
                         paid_note = {'price': EXPLICIT_PHOTO_PEACH_COST, 'left': left}
-                # V3.61.5: a free photo of the day first, then peaches.
-                # V3.162.0: owner — a frame from her pool is $0 for us and no
-                # longer spends that photo of the day; it costs its own quota.
-                elif pooled:
-                    from services.chat_photo_allowance import use_pool_photo
-                    use_pool_photo(uid, character_id)
+                # Pool frames were already reserved above; renders keep their
+                # existing free allowance and paid accounting unchanged.
                 elif free_chat_photos_left(uid, premium=premium) > 0:
                     use_free_chat_photo(uid, character_id)
                 else:
@@ -15666,11 +15814,13 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                                                   'failed', None, telegram_id=telegram_id,
                                                   lang=user_language)
                 receipt = {k: v for k, v in blocked.items() if k in PHOTO_WAIT_NOTE_KEYS}
-            else:
+            elif got.get('photo_url'):
                 receipt = {k: v for k, v in got.items() if k in PHOTO_WAIT_KEYS and v}
                 # кадр приехал уже после её ответа — если он вышел из приложения,
                 # в боте должно быть «📸 прислала фото», а не только её слова.
                 _app_ping(telegram_id, character_id, str(got.get('reply') or ''), 'photo')
+            else:
+                receipt = {k: v for k, v in got.items() if k in PHOTO_WAIT_NOTE_KEYS and v}
             await asyncio.to_thread(chat_photo_wait.deliver, telegram_id, character_id,
                                     token, receipt)
 
@@ -16192,10 +16342,118 @@ async def _webapp_api_chat_send(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     # V3.57.2: the gate is four PostgreSQL reads — off the event loop.
     gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)
+    # The shared gate still includes the chat cap. Only a paid entitlement may
+    # pass that particular result; access/consent failures always remain closed.
+    chat_limit = (gate is not None and gate.status == 429
+                  and json.loads(gate.body).get('error') == 'limit')
+    if gate is not None and not chat_limit:
+        return gate
+    fantasy = await asyncio.to_thread(spicy_service.claim_paid_fantasy,
+                                      telegram_id, character_id, text, user_lang(telegram_id))
+    if fantasy is not None:
+        response = fantasy['response']
+        if fantasy['claimed']:
+            order = fantasy['order']
+            _app_ping(telegram_id, character_id, '')
+            try:
+                started = await _start_photo_background(
+                    telegram_id, telegram_id, PhotoRequest(**order['request']['fields']), 'paid',
+                    charge=order['charge'], amount=order['amount'], product='fantasy',
+                    character_id=character_id, app_only=True)
+            except Exception:
+                logger.exception('paid fantasy scheduling failed user=%s', telegram_id)
+                started = False
+            if not started:
+                # A refund may already be confirmed. Never turn an ambiguous
+                # start into a new pending order or silently schedule it again.
+                await asyncio.to_thread(spicy_service.finish_paid_fantasy,
+                                        telegram_id, order['charge'], 'needs_support')
+                current = await asyncio.to_thread(spicy_service.get_paid_fantasy,
+                                                  telegram_id, order['charge'])
+                response = spicy_service.paid_fantasy_response(current)
+        status = 200 if response['ok'] else (403 if response['error'] == 'adult' else 400)
+        return web.json_response(response, status=status)
     if gate is not None:
         return gate
     return await _webapp_chat_turn(telegram_id, user_info, character_id, text,
                                    extra=await _app_chat_missions(telegram_id, text=text))
+
+
+async def _webapp_api_chat_action(request: web.Request) -> web.Response:
+    from sqlalchemy import update
+    from models.app_models import Message
+    from services.memory_service import message_actions
+    from services import story_hooks
+
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    info = webapp_service.init_data_user(pairs) if pairs else {}
+    telegram_id = info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise ValueError
+        character_id = str(body.get('character_id') or '')[:64]
+        message_id = int(body['message_id'])
+        action_index = int(body['action_index'])
+        if not character_id or message_id <= 0 or action_index < 0:
+            raise ValueError
+    except (ValueError, TypeError, KeyError):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)
+    if gate is not None:
+        return gate
+
+    def _load_action():
+        user = get_user(telegram_id)
+        if not user:
+            return None
+        with SessionLocal() as session:
+            row = session.scalar(select(Message).where(
+                Message.id == message_id, Message.user_id == user.id,
+                Message.character_id == character_id, Message.role == 'assistant'))
+            actions = message_actions(row.actions_json) if row else []
+            if action_index >= len(actions):
+                return None
+            return user.id, actions[action_index], row.actions_json
+
+    loaded = await asyncio.to_thread(_load_action)
+    if not loaded:
+        return web.json_response({'ok': False, 'error': 'not_found'}, status=404)
+    uid, action, original = loaded
+    if action['type'] == 'story_hook':
+        unlimited = telegram_id in ADMIN_TELEGRAM_IDS or await asyncio.to_thread(is_premium, telegram_id)
+        lang = full_user_lang(telegram_id, info.get('language_code'))
+        result = await asyncio.to_thread(story_hooks.choose_in_app, uid, character_id,
+                                        message_id, action_index, 'en' if lang == EN else 'ru',
+                                        unlimited=unlimited)
+        if result['ok']:
+            await asyncio.to_thread(_remember_character, telegram_id, character_id)
+            await asyncio.to_thread(track_event, uid, 'story_hook_choice', metadata={
+                'story': result['story'], 'side': result['side'], 'source': 'webapp'})
+            result.update(await _app_chat_missions(telegram_id, text=result['user_text']))
+        status = 200 if result['ok'] else (429 if result['error'] == 'limit' else 404)
+        return web.json_response(result, status=status)
+
+    def _set_actions(expected, value):
+        with SessionLocal() as session:
+            changed = session.execute(update(Message).where(
+                Message.id == message_id, Message.user_id == uid,
+                Message.character_id == character_id, Message.actions_json == expected,
+            ).values(actions_json=value)).rowcount
+            session.commit()
+            return changed == 1
+
+    if not await asyncio.to_thread(_set_actions, original, '[]'):
+        return web.json_response({'ok': False, 'error': 'not_found'}, status=404)
+    response = await _webapp_chat_turn(telegram_id, info, character_id, action['text'],
+        extra=await _app_chat_missions(telegram_id, text=action['text']))
+    if response.status >= 400:
+        await asyncio.to_thread(_set_actions, '[]', original)
+    else:
+        await asyncio.to_thread(_set_actions, '[]', None)
+    return response
 
 
 async def _referral_qualify_check(telegram_id: int, text: str | None = None) -> None:
@@ -19289,18 +19547,13 @@ async def _after_premium_paid(telegram_id: int, product: str) -> None:
         await bot.send_message(telegram_id, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
         await asyncio.to_thread(paid_welcome.mark, uid, paid_welcome.CARD_EVENT, character_id, product)
         await _deliver_showcase_photo(telegram_id, uid, lang)
-        # she «types» for a moment, then writes herself
         await asyncio.sleep(paid_welcome.HEROINE_DELAY_SECONDS)
-        try:
-            await bot.send_chat_action(telegram_id, 'typing')
-        except Exception:
-            pass
         from services.chat_service import paid_moment
         msg = await paid_moment(telegram_id, '', 'welcome', language_code='en' if en else None,
                                 character_id=character_id)
         msg = msg or paid_welcome.fallback('welcome', lang)
-        await bot.send_message(telegram_id, msg)
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', msg)
+        _app_ping(telegram_id, character_id, msg)
         await asyncio.to_thread(paid_welcome.mark, uid, paid_welcome.WELCOME_EVENT, character_id, product)
     except Exception:
         logger.warning('paid welcome failed user=%s product=%s', telegram_id, product, exc_info=True)
@@ -19310,29 +19563,34 @@ async def _deliver_showcase_photo(telegram_id: int, uid: int, lang: str) -> None
     """V3.111.0: the photo that was blurred on his first-hour card, clean,
     once — the card said «открою», so after the payment it opens."""
     from services import first_offer_service as fos
+    pending = None
+    saved = False
     try:
         pending = await asyncio.to_thread(fos.take_pending_photo, telegram_id)
         if not pending:
             return
         caption = fos.deliver_caption(lang)
+        character_id = pending.get('char') or await asyncio.to_thread(get_user_character, telegram_id)
         if pending.get('fid'):
-            await bot.send_photo(telegram_id, pending['fid'], caption=caption)
+            photo = await bot.download(pending['fid'])
+            body = photo.getvalue()
+            ext, mime = 'jpg', 'image/jpeg'
         else:
+            import mimetypes
             path = Path(pending.get('path') or '')
-            if not path.is_file():
-                return
-            def _jpg() -> bytes:
-                import io
-                from PIL import Image
-                img = Image.open(path).convert('RGB')
-                img.thumbnail((1080, 1440))
-                buf = io.BytesIO()
-                img.save(buf, 'JPEG', quality=90)
-                return buf.getvalue()
-            body = await asyncio.to_thread(_jpg)
-            await bot.send_photo(telegram_id, types.BufferedInputFile(body, filename='for_you.jpg'), caption=caption)
+            body = await asyncio.to_thread(path.read_bytes)
+            ext = path.suffix.lstrip('.').lower()
+            mime = mimetypes.guess_type(path.name)[0] or 'image/jpeg'
+        filename = await asyncio.to_thread(webapp_service.save_chat_media, telegram_id, body, ext, mime)
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', caption,
+                                media_kind='photo', media_url=f'/webapp/media/{filename}')
+        saved = True
+        _app_ping(telegram_id, character_id, caption, 'photo')
         await asyncio.to_thread(track_event, uid, 'showcase_photo_delivered')
     except Exception:
+        if pending and not saved:
+            await asyncio.to_thread(fos.remember_photo, telegram_id, pending.get('char'),
+                                    pending.get('fid'), pending.get('path'))
         logger.warning('showcase photo delivery failed user=%s', telegram_id, exc_info=True)
 
 
@@ -20562,6 +20820,7 @@ async def _start_web_server() -> None:
     app.router.add_get('/webapp/api/chat', _webapp_api_chat_history)
     app.router.add_post('/webapp/api/presence', _webapp_api_presence)  # V3.128.0
     app.router.add_post('/webapp/api/chat', _webapp_api_chat_send)
+    app.router.add_post('/webapp/api/chat/action', _webapp_api_chat_action)
     app.router.add_post('/webapp/api/lang', _webapp_api_lang)
     app.router.add_post('/webapp/api/chat/voice', _webapp_api_chat_voice)
     app.router.add_get('/webapp/api/call/info', _webapp_api_call_info)  # V3.115.0

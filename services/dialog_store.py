@@ -197,6 +197,8 @@ def cleanup_stale_sessions(hours: int = STALE_AFTER_HOURS) -> int:
     with SessionLocal() as s:
         removed = s.query(DialogSession).filter(
             DialogSession.updated_at < cutoff,
+            DialogSession.session_key != 'fantasy_pending',
+            ~DialogSession.session_key.startswith('paid_fantasy:', autoescape=True),
         ).delete()
         s.commit()
         return removed

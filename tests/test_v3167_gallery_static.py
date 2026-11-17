@@ -3,6 +3,7 @@
 Every AI-delivered photo is archived in PhotoDelivery with its raw bytes,
 and the user can open /gallery to page through the collection and buy a
 full-resolution download for GALLERY_DOWNLOAD_STARS."""
+import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,11 +54,51 @@ def test_gallery_download_invoice_and_delivery():
     # Pre-checkout validates the payload and the bytes are still available.
     assert "payload.startswith('gallery_dl:')" in MAIN
     assert "ok = amount == GALLERY_DOWNLOAD_STARS and bool(get_gallery_item_bytes(query.from_user.id, delivery_id))" in MAIN
-    # Successful payment re-loads bytes and sends them as a Telegram document.
-    assert "await bot.send_document(" in MAIN
-    assert "BufferedInputFile(snap['bytes'], filename=snap['filename'])" in MAIN
-    # If bytes are gone between invoice and payment, the purchase is auto-refunded.
-    assert "product='gallery_download'" in MAIN
+    payment = next(node for node in ast.parse(MAIN).body
+                   if isinstance(node, ast.AsyncFunctionDef) and node.name == 'successful_payment')
+    gallery = next(node for node in payment.body if isinstance(node, ast.If)
+                   and ast.unparse(node.test) == "payload.startswith('gallery_dl:')")
+    calls = [node for node in ast.walk(gallery) if isinstance(node, ast.Call)]
+    assert any(ast.unparse(node) == 'get_gallery_item_bytes(message.from_user.id, delivery_id)'
+               for node in calls)
+
+    # Keep the original bytes and their MIME in app storage, with one photo
+    # Message in the source heroine's dialogue, never a Telegram media upload.
+    storage = [node for node in calls if ast.unparse(node.func) == 'asyncio.to_thread'
+               and ast.unparse(node.args[0]) == 'webapp_service.save_chat_media']
+    assert len(storage) == 1
+    assert [ast.unparse(arg) for arg in storage[0].args[1:]] == [
+        'message.from_user.id', "snap['bytes']", 'ext', 'mime']
+    rows = [node for node in calls if ast.unparse(node.func) == 'asyncio.to_thread'
+            and ast.unparse(node.args[0]) == 'save_message']
+    assert len(rows) == 1
+    assert [ast.unparse(arg) for arg in rows[0].args[1:4]] == [
+        'ensure_user(message.from_user.id)', 'character_id', "'assistant'"]
+    assert {kw.arg: ast.unparse(kw.value) for kw in rows[0].keywords} == {
+        'media_kind': "'photo'", 'media_url': "f'/webapp/media/{filename}'"}
+    assert any(isinstance(node, ast.Assign) and ast.unparse(node) ==
+               "character_id = (delivery or {}).get('character_id') or get_user_character(message.from_user.id)"
+               for node in ast.walk(gallery))
+    assert any(ast.unparse(node) == "_app_ping(message.from_user.id, character_id, '', 'photo')"
+               for node in calls)
+    assert not any(isinstance(node.func, ast.Attribute) and node.func.attr in {
+        'send_document', 'send_photo', 'send_video', 'send_media_group',
+        'answer_document', 'answer_photo', 'answer_video', 'answer_media_group'} for node in calls)
+
+    # Missing source bytes and app-storage failures both retain the refund.
+    missing = next(node for node in gallery.body if isinstance(node, ast.If)
+                   and ast.unparse(node.test) == 'not snap')
+    delivery = next(node for node in gallery.body if isinstance(node, ast.Try)
+                    and storage[0] in list(ast.walk(node)))
+    for failure in (missing, delivery.handlers[0]):
+        refunds = [node for node in ast.walk(failure) if isinstance(node, ast.Call)
+                   and ast.unparse(node.func) == 'bot.refund_star_payment']
+        assert len(refunds) == 1
+        assert {kw.arg: ast.unparse(kw.value) for kw in refunds[0].keywords} == {
+            'user_id': 'message.from_user.id', 'telegram_payment_charge_id': 'charge'}
+        assert any(isinstance(node, ast.Call) and ast.unparse(node) ==
+                   "record_refund(message.from_user.id, charge, payment.total_amount, product='gallery_download')"
+                   for node in ast.walk(failure))
 
 
 def test_gallery_animate_reuses_video_gate():

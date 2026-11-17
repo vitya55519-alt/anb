@@ -78,4 +78,6 @@ def test_flow_text_has_every_app_language():
 def test_failed_photo_falls_back_to_pool_without_charge():
     assert "'photo_fallback_pool'" in MAIN
     assert 'not spicy_needs_premium(PhotoRequest(scene=scene))' in MAIN
-    assert 'if telegram_id not in ADMIN_TELEGRAM_IDS and not fallback:' in MAIN
+    turn = MAIN[MAIN.index('async def _webapp_chat_turn('):MAIN.index('async def _webapp_api_chat_start(')]
+    # Both ready-pool success and fallback bypass generated-photo charging.
+    assert 'if telegram_id not in ADMIN_TELEGRAM_IDS and not fallback and not pooled:' in turn

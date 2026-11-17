@@ -129,8 +129,8 @@ def test_the_paid_scene_has_its_own_column_not_the_message_body():
                                       'image_prompt': 'mall fitting room selfie'}, uid=uid)
     row = _message_row(mid)
     assert row.image_prompt == 'mall fitting room selfie'
-    # движок новеллы: THOUGHT + MESSAGE в content, а English-сцены там нет
-    assert row.content.startswith('THOUGHT:') and 'MESSAGE: я в примерочной' in row.content
+    assert row.content == 'я в примерочной'
+    assert 'THOUGHT' not in row.content and 'мысль' not in row.content
     assert 'fitting room' not in row.content
     assert not row.image_unlocked
 
@@ -203,7 +203,8 @@ def test_the_teaser_prompt_asks_for_the_event_and_the_photo_hook(monkeypatch):
     system = fake.calls[0][0][0]['content']
     assert fake.calls[0][1]['purpose'] == 'live_situation'
     assert '[SYSTEM EVENT: SITUATIONAL PHOTO TEASER]' in system
-    assert 'IMAGE_PROMPT' in system and 'THOUGHT' in system and 'MESSAGE' in system
+    assert 'IMAGE_PROMPT' in system and 'MESSAGE' in system
+    assert 'THOUGHT' not in system
     assert lss.PEEK_QUESTION in system
     assert 'ПОСТОЯНСТВО ЛОКАЦИИ' in system          # LOCATION CONSISTENCY
     assert lss.DAY_SITUATIONS[0]['place'] in system
@@ -455,7 +456,13 @@ def test_the_push_lands_with_the_paid_plate_and_the_chat_open_waits_for_a_phase(
     assert 'live:unlock:' in MAIN and 'await live.unlock_photo' in MAIN
     assert '/webapp/api/chat/live' in MAIN
     assert "from services.live_situation_service import push as live_push" in SCHED
-    assert "callback_data=f\"live:unlock:{live['id']}\"" in SCHED
+    live = SCHED[SCHED.index("if live and live.get('id'):"):SCHED.index('moment = await build_life_moment')]
+    assert "app_ping.note(bot, tg_id, char_id, '', channel='life', generic=True)" in live
+    assert 'life_event_sent' in live and live.rstrip().endswith('continue')
+    # live_push already persisted the teaser: no duplicate row or Telegram plate.
+    assert '_to_app_chat(' not in live and '_app_delivery(' not in live
+    assert 'bot.send_' not in live and 'callback_data=' not in live
+    assert "callback_data=f\"live:unlock:{live['id']}\"" not in SCHED
     # открытие чата: ждём ровно «сколько она печатает», не больше
     assert '_live_situation_on_open' in MAIN
     assert 'LIVE_SITUATION_WAIT_SECONDS = 6.0' in MAIN

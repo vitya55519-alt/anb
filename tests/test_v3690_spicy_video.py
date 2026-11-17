@@ -1,5 +1,6 @@
 """V3.69.0: all video and circles on SpicyAPI; circles are square selfie
 clips that say a line from the dialogue; user frames never hit the spicy model."""
+import ast
 import asyncio
 import io
 import os
@@ -21,9 +22,41 @@ def test_no_old_engines_in_main():
 
 def test_frame_route_and_square_circles():
     assert "app.router.add_get('/webapp/vsrc/{token}', _webapp_video_frame)" in MAIN
-    assert MAIN.count('square_frame(image_bytes)') == 2
-    assert MAIN.count('CIRCLE_PROMPT.format(phrase=phrase)') == 2
     assert 'handheld front-camera selfie' in MAIN
+    functions = {node.name: node for node in ast.parse(MAIN).body
+                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    background = functions['_run_circle_background']
+    for name in ('_run_circle_background', '_webapp_media_circle'):
+        function = functions[name]
+        engine = next(node for node in ast.walk(function) if isinstance(node, ast.Call)
+                      and ast.unparse(node.func) == 'engine_fn')
+        assert ast.unparse(engine.args[0]) == 'square_frame(image_bytes)'
+        keywords = {kw.arg: ast.unparse(kw.value) for kw in engine.keywords}
+        assert keywords['scene'] == "'circle'"
+        assert keywords['mime_type'] == "'image/jpeg'"
+        if name == '_run_circle_background':
+            assert keywords['prompt'] == 'circle_prompt'
+            assert any(isinstance(node, ast.Assign) and ast.unparse(node) ==
+                       'circle_prompt = CIRCLE_PROMPT.format(phrase=phrase)'
+                       for node in ast.walk(function))
+        else:
+            assert keywords['prompt'] == 'CIRCLE_PROMPT.format(phrase=phrase)'
+        # Both app routes use this heroine's dialogue, never a changed selection.
+        phrase = next(node for node in ast.walk(function) if isinstance(node, ast.Call)
+                      and ast.unparse(node.func) == 'asyncio.to_thread'
+                      and ast.unparse(node.args[0]) == '_circle_phrase' and len(node.args) == 3)
+        assert [ast.unparse(arg) for arg in phrase.args[1:]] == ['telegram_id', 'character_id']
+        if name == '_run_circle_background':
+            assert any(isinstance(node, ast.If) and ast.unparse(node.test) == 'app_only'
+                       and any(phrase in list(ast.walk(stmt)) for stmt in node.body)
+                       for node in ast.walk(function))
+    assert any(isinstance(node, ast.Assign) and ast.unparse(node) ==
+               "character_id = delivery['character_id']" for node in ast.walk(background))
+    lookup = functions['_circle_phrase']
+    assert any(isinstance(node, ast.Assign) and ast.unparse(node) ==
+               'cid = character_id or get_user_character(telegram_id)' for node in ast.walk(lookup))
+    assert any(isinstance(node, ast.Call) and ast.unparse(node.func) == 'webapp_service.api_chat_history'
+               and ast.unparse(node.args[1]) == 'cid' for node in ast.walk(lookup))
 
 
 def test_studio_runs_safe_model():

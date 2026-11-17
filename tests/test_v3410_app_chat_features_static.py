@@ -17,6 +17,7 @@ Owner request (garbled voice note, decoded + confirmed over two question rounds)
    missing from the app chat — add 🎬 Видео, 🏠 Квартира, 💕 Свидание and
    🎯 Задание дня right in the in-app chat (p5).
 """
+import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -193,9 +194,48 @@ def test_feature_action_reuses_the_existing_services():
 
 
 def test_paid_date_mirrors_into_the_app_history():
-    # a date paid from the Mini App must also show up in the app chat history
-    assert "save_message(ensure_user(telegram_id, user_name), character_id, 'assistant', f'{date.emoji} {date.text}')" in MAIN
-    assert "logger.warning('date history mirror failed user=%s date=%s', telegram_id, date.id)" in MAIN
+    functions = {node.name: node for node in ast.parse(MAIN).body
+                 if isinstance(node, ast.AsyncFunctionDef)}
+    paid = next(node for node in functions['successful_payment'].body
+                if isinstance(node, ast.If) and ast.unparse(node.test) == "payload.startswith('date:')")
+    deliveries = [node for node in ast.walk(paid) if isinstance(node, ast.Call)
+                  and ast.unparse(node.func) == '_deliver_date_reward']
+    assert len(deliveries) == 1
+    assert ast.unparse(deliveries[0].args[-1]) == 'date'
+    assert not any(isinstance(node, ast.Name) and node.id in {'save_message', '_send_voice_note'}
+                   for node in ast.walk(paid))
+    reward = functions['_deliver_date_reward']
+    calls = [node for node in ast.walk(reward) if isinstance(node, ast.Call)]
+    voice_calls = [node for node in calls if ast.unparse(node.func) == '_send_voice_note']
+    assert len(voice_calls) == 1
+    assert [ast.unparse(arg) for arg in voice_calls[0].args] == ['chat_id', 'telegram_id', 'date.text']
+    assert {kw.arg: ast.unparse(kw.value) for kw in voice_calls[0].keywords} == {
+        'app_only': 'True', 'character_id': 'character_id'}
+    # The helper owns the text row. A direct legacy mirror here would duplicate
+    # the date, including when TTS is disabled or fails.
+    assert not any(isinstance(node, ast.Name) and node.id == 'save_message'
+                   for node in ast.walk(reward))
+
+    voice = functions['_send_voice_note']
+    rows = [node for node in ast.walk(voice) if isinstance(node, ast.Call)
+            and ast.unparse(node.func) == 'asyncio.to_thread'
+            and ast.unparse(node.args[0]) == 'save_message']
+    assert len(rows) == 1
+    assert sum(isinstance(node, ast.Name) and node.id == 'save_message'
+               for node in ast.walk(voice)) == 1
+    app = next(node for node in voice.body if isinstance(node, ast.If)
+               and ast.unparse(node.test) == 'app_only')
+    assert rows[0] in list(ast.walk(app))
+    assert [ast.unparse(arg) for arg in rows[0].args[1:]] == [
+        'ensure_user(telegram_id)', 'character_id', "'assistant'", 'text']
+    assert {kw.arg: ast.unparse(kw.value) for kw in rows[0].keywords} == {
+        'media_kind': "'voice' if media_url else None", 'media_url': 'media_url'}
+    # Save after the TTS try/except: text survives both no voice and TTS errors.
+    assert next(node for node in voice.body if isinstance(node, ast.Try)).end_lineno < app.lineno
+    assert any(isinstance(node, ast.Assign) and ast.unparse(node) == 'media_url = None'
+               for node in voice.body)
+    assert not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                   and node.func.attr in {'send_voice', 'send_message'} for node in ast.walk(app))
 
 
 def test_frontend_has_the_four_feature_buttons_and_sheet():

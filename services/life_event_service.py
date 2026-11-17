@@ -217,13 +217,15 @@ def _pool_photo(character_id: str, uid: int) -> tuple[bytes, str, str] | None:
     бесплатных кадров на аккаунт, а не живёт от него в стороне. Кап закрыт — её
     день приходит просто текстом. Рендера провайдера тут нет и быть не может."""
     try:
-        from services import chat_photo_allowance
+        from services import chat_photo_allowance, life_backlog
         if chat_photo_allowance.frames_left(uid) <= 0:
+            life_backlog.note_denial(uid, 'life', 'photo_cap')
             return None
         from services.retention_features_service import random_proactive_photo
         photo = random_proactive_photo(character_id, user_id=uid)
-        if photo:
-            chat_photo_allowance.use_push_frame(uid, character_id)
+        if photo and not chat_photo_allowance.use_push_frame(uid, character_id):
+            life_backlog.note_denial(uid, 'life', 'photo_cap')
+            return None
         return photo
     except Exception:
         logger.debug('life photo pick failed char=%s', character_id, exc_info=True)

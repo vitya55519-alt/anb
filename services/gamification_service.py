@@ -494,6 +494,7 @@ def touch_activity(telegram_id: int) -> dict:
             # V3.167.4: один пропущенный день в неделю серию не рвёт — её
             # закрывает заморозка. Тот же шаг, что в services/series_reward.
             u.streak_freeze_week = _iso_week(today_key)
+            u.streak_freeze_used_at = today
             u.streak_count = (u.streak_count or 0) + 1
             froze = True
         else:

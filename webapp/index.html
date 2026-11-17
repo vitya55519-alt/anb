@@ -391,18 +391,11 @@
   .msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border-bottom-right-radius: 4px; }
   .msg.bot { align-self: flex-start; background: var(--card); border-bottom-left-radius: 4px; }
   .msg .t { display: block; font-size: 10px; opacity: .6; margin-top: 4px; }
-  /* V3.151.0: owner ТЗ (Часть 1, п.3) — «💭 Мысли {Имя}:» bold pink (#FF4D8D),
-     the thought itself italic, and the block never goes into the voice. */
-  .thcard { align-self: flex-start; max-width: calc(82% - 36px); margin: 0 0 0 36px;
+  .thcard, .msg.bot.thcard {
     padding: 8px 12px; border-radius: 14px; border-left: 3px solid #FF4D8D;
-    background: rgba(255, 77, 141, .08); font-size: 13px; line-height: 1.45; cursor: pointer; }
+    background: rgba(255, 77, 141, .08); font-size: 13px; line-height: 1.45; }
   .thcard .th-h { color: #FF4D8D; font-weight: 700; font-size: 12px; }
-  .thcard .th-b { font-style: italic; opacity: .9; margin-top: 3px; white-space: pre-wrap; word-break: break-word; }
-  .thcard .th-t { font-weight: 600; font-size: 11px; opacity: .7; margin-left: 6px; }
-  /* V3.167.8 (владелец): мысли приходят свёрнутым окном — тап раскрывает, тап
-     же прячет обратно. Одна строка видна, чтобы он понял, что там есть что. */
-  .thcard.min .th-b { display: -webkit-box; -webkit-box-orient: vertical;
-    -webkit-line-clamp: 1; line-clamp: 1; overflow: hidden; }
+  .thcard .th-b { font-style: normal; opacity: .9; margin-top: 3px; white-space: pre-wrap; word-break: break-word; }
   /* V3.152.0: owner ТЗ (Фогель, Модуль 1) — «Стертый черновик»: a grey italic
      plate where her erased message used to be, and the paid text in its place. */
   .dplate { align-self: flex-start; max-width: calc(82% - 36px); margin: 4px 0 10px 36px;
@@ -4088,38 +4081,31 @@ function fmtK(n) {
   return String(n);
 }
 
-// V3.151.0: owner ТЗ (Фогель, Часть 1, п.3) — the model answers in two layers,
-// «THOUGHT: …» (what she thinks) and «MESSAGE: …» (what she types). The first
-// becomes a pink card, the second one bubble, and the card never goes to TTS.
 function parseThought(raw) {
   const t = String(raw || '');
-  const re = /(?:^|\s)(THOUGHT|МЫСЛИ|MESSAGE|СООБЩЕНИЕ)\s*:\s*/gi;
+  const re = /(?:^|\s)(THOUGHT|МЫСЛИ|DRAFT|ЧЕРНОВИК|MESSAGE|СООБЩЕНИЕ)\s*:\s*/gi;
   const marks = [];
   let mm;
   while ((mm = re.exec(t)) !== null) {
     marks.push({ key: mm[1].toLowerCase(), a: mm.index, b: mm.index + mm[0].length });
   }
   const isMsg = k => k.indexOf('message') === 0 || k.indexOf('сообщен') === 0;
-  if (!marks.length || !marks.some(x => isMsg(x.key))) return { thought: '', message: t };
-  let th = '', ms = marks[0].a > 0 ? t.slice(0, marks[0].a).trim() : '';
+  if (!marks.length) return { message: t };
+  const messages = [];
   for (let i = 0; i < marks.length; i++) {
+    if (!isMsg(marks[i].key)) continue;
     const end = i + 1 < marks.length ? marks[i + 1].a : t.length;
     const body = t.slice(marks[i].b, end).trim();
-    if (!body) continue;
-    if (isMsg(marks[i].key)) ms = ms ? ms + '\n' + body : body;
-    else th = th ? th + ' ' + body : body;
+    if (body) messages.push(body);
   }
-  return ms ? { thought: th, message: ms } : { thought: '', message: th };
+  return { message: messages.join('\n\n') };
 }
 
-function thoughtCard(text) {
-  const nm = (CHAT && CHAT.name) || '';
-  const label = typeof L.thoughts === 'function' ? L.thoughts(nm) : '💭 ' + nm;
-  // V3.167.8 (владелец): окно приходит свёрнутым — он раскрывает его тапом по
-  // шапке и тем же тапом прячет обратно.
-  return '<div class="thcard min"><div class="th-h">' + esc(label) +
-    '<span class="th-t">' + esc(String(L.th_more)) + '</span></div>' +
-    '<div class="th-b">' + esc(text) + '</div></div>';
+function messageCard(text) {
+  if (!text) return '';
+  const nm = (CHAT && !CHAT.duo && CHAT.name) || '';
+  return (nm ? '<div class="th-h">&#128173; ' + esc(nm) + '</div>' : '') +
+    '<div class="th-b">' + duoNames(esc(text)) + '</div>';
 }
 
 // «записывает голосовое…» — never shorter than three seconds (owner ТЗ).
@@ -4180,16 +4166,24 @@ function livePlate(l) {
     '<button class="mchip on" data-live="' + l.id + '">' + esc(btn) + '</button></div>';
 }
 
+function eventActions(m) {
+  const id = Number(m && m.id);
+  if (!id || m.role === 'user' || !Array.isArray(m.actions)) return '';
+  const buttons = m.actions.map((a, i) => {
+    if (!a || !['reply', 'story_hook'].includes(a.type) || !a.label) return '';
+    const text = a.type === 'reply' ? a.text : a.label;
+    if (!text) return '';
+    return '<button type="button" class="mchip" data-event-message="' + id +
+      '" data-event-index="' + i + '" data-event-text="' + esc(text) + '">' + esc(a.label) + '</button>';
+  }).join('');
+  return buttons ? '<div class="chat-offer event-actions">' + buttons + '</div>' : '';
+}
+
 function historyLine(m) {
-  if (!m || m.role === 'user' || !m.id || m.media_kind) return chatBubble(m);
-  if (!m.draft && !m.live) return chatBubble(m);
-  const nv = parseThought(m.content || '');
-  const head = (nv.thought ? thoughtCard(nv.thought) : '') + livePlate(m.live) +
+  if (!m || m.role === 'user' || !m.id) return chatBubble(m);
+  const head = m.media_kind ? '' : livePlate(m.live && Object.assign({ id: m.id }, m.live)) +
     (m.draft ? draftPlate(Object.assign({ id: m.id }, m.draft)) : '');
-  // same order as a live answer: card → plate → the message she did send
-  return head + (nv.thought
-    ? chatBubble(Object.assign({}, m, { content: nv.message, novel: true }))
-    : chatBubble(m));
+  return head + chatBubble(m) + eventActions(m);
 }
 
 function afterDraft(d, done, chatId) {
@@ -4292,14 +4286,10 @@ async function unlockLive(id, btn) {
   }
 }
 
-// Её живой тизер, приехавший вместе с открытием чата: строка появилась уже
-// после истории, поэтому карточка мысли, её сообщение и тарелка дописываются.
 function appendLiveTeaser(l) {
   const box = document.getElementById('chatMsgs');
   if (!box || !l || !l.id) return;
-  const content = l.thought ? ('THOUGHT: ' + l.thought + '\nMESSAGE: ' + (l.text || '')) : (l.text || '');
-  if (!content) return;
-  box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: content, ts: null }));
+  box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: l.text || '', ts: null }));
   box.insertAdjacentHTML('beforeend', livePlate({ id: l.id, price: l.price }));
   box.scrollTop = box.scrollHeight;
 }
@@ -4361,35 +4351,24 @@ async function pickInterrupt(id, n, btn) {
 function chatBubble(roleOrM, content, ts) {
   // V3.39.0: media messages (photo / circle / voice) render like in the bot
   // dialog — round video for circles, a player for voice, a photo otherwise.
-  const m = (roleOrM && typeof roleOrM === 'object') ? roleOrM : { role: roleOrM, content: content, ts: ts };
-  // V3.151.0: her thought card first, then her message as ONE bubble.
-  if (m.role !== 'user' && !m.novel && m.content && !m.media_kind) {
-    const nv = parseThought(m.content);
-    if (nv.thought) {
-      return thoughtCard(nv.thought) + chatBubble(Object.assign({}, m, { content: nv.message, novel: true }));
-    }
-  }
-  // V3.63.13: her «мысль + дополнение» after a blank line are separate bubbles, like in Telegram.
-  if (m.role !== 'user' && !m.novel && !m.media_url && !m.media_kind && m.content && !(CHAT && CHAT.duo)) {
-    const parts = splitBubbles(m.content);
-    if (parts.length > 1) {
-      return parts.map((p, i) => chatBubble(Object.assign({}, m, { content: p, ts: i === parts.length - 1 ? m.ts : null }))).join('');
-    }
+  let m = (roleOrM && typeof roleOrM === 'object') ? roleOrM : { role: roleOrM, content: content, ts: ts };
+  if (m.role !== 'user') {
+    m = Object.assign({}, m, { content: parseThought(m.content).message });
+    if (!m.content && !m.media_url && !m.media_kind) return '';
   }
   const t = fmtTime(m.ts) ? `<span class="t">${esc(fmtTime(m.ts))}</span>` : '';
   const cls = m.role === 'user' ? 'user' : 'bot';
-  let body = esc(m.content);
+  const pink = cls === 'bot' && (!m.media_url || m.media_kind === 'voice');
+  let body = pink ? messageCard(m.content) : esc(m.content);
   // V3.62.0: her level-3 question «что я для тебя?» — two answers pick the path.
   if (cls === 'bot' && m.media_kind === 'fork' && !(CHAT_LEVEL && CHAT && CHAT_LEVEL.cid === CHAT.id && CHAT_LEVEL.branch)) {
     body += forkButtons();
   }
-  // V3.61.0: a duo persona answers as «Имя: …» lines — the speaker's name in bold.
-  if (cls === 'bot' && !m.media_url && CHAT && CHAT.duo) body = duoNames(body);
   if (m.media_url) {
     const src = m.media_url + '?init_data=' + encodeURIComponent(tg.initData || '');
     if (m.media_kind === 'circle') body = `<video class="circle" src="${esc(src)}" loop autoplay muted playsinline></video>`;
     else if (m.media_kind === 'video') body = `<video class="m" src="${esc(src)}" controls playsinline></video>`;
-    else if (m.media_kind === 'voice') body = voicePlayer(src);
+    else if (m.media_kind === 'voice') body = cls === 'bot' ? body + voicePlayer(src) : voicePlayer(src);
     else if (m.media_kind === 'duo_teaser') {
       // V3.139.0: owner ТЗ (Задача 5) — the blurred joint picture IS the
       // paywall: nothing to save or animate under it, only the Premium button.
@@ -4417,7 +4396,11 @@ function chatBubble(roleOrM, content, ts) {
         + '</div>';
     }
     else body = `<img class="m" src="${esc(src)}" data-lb="1" alt=""><br><button class="dl" data-dl="${esc(src)}">${esc(L.photo_save)}</button>`;
-    if (m.content) body += `<div style="margin-top:4px">${duoNames(esc(m.content))}</div>`;
+    if (m.content && !(cls === 'bot' && m.media_kind === 'voice')) {
+      body += cls === 'bot'
+        ? '<div class="thcard" style="margin-top:4px">' + messageCard(m.content) + '</div>'
+        : `<div style="margin-top:4px">${duoNames(esc(m.content))}</div>`;
+    }
   }
   // V3.63.5: her plain text can be voiced on tap (Premium perk).
   const say = (cls === 'bot' && !m.media_url && m.content) ? ` data-say="${esc(m.content)}"` : '';
@@ -4425,12 +4408,7 @@ function chatBubble(roleOrM, content, ts) {
   if (say) body += voicePlayer('', m.content);
   // V3.63.7: her photo beside every bubble of hers (duo chats keep per-line avatars).
   const av = (cls === 'bot') ? herAvatar() : '';
-  return `<div class="msg ${cls}` + (av ? ' hav' : '') + `"` + say + `>` + av + `${body}${t}</div>`;
-}
-
-function splitBubbles(text) {
-  const parts = String(text || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
-  return (parts.length > 1 && parts.length <= 3) ? parts : [text];
+  return `<div class="msg ${cls}` + (pink ? ' thcard' : '') + (av ? ' hav' : '') + `"` + say + `>` + av + `${body}${t}</div>`;
 }
 
 // V3.139.0: «Имя: …» of a duo — the speaker's name in bold plus her avatar, so
@@ -4446,30 +4424,21 @@ function duoNames(html) {
   })).join('\n');
 }
 
-// V3.63.13: the next bubble arrives after a «печатает…» pause sized to its length.
-async function playFollowups(parts) {
-  const box = document.getElementById('chatMsgs');
-  for (const p of parts) {
-    box.insertAdjacentHTML('beforeend', '<div class="typing" id="chatTypingMore">' + esc(CHAT ? CHAT.name : '') + ' ' + esc(L.typing_now) + '</div>');
-    box.scrollTop = box.scrollHeight;
-    await new Promise(res => setTimeout(res, Math.min(3500, 900 + p.length * 22)));
-    const t = document.getElementById('chatTypingMore');
-    if (t) t.remove();
-    box.insertAdjacentHTML('beforeend', chatBubble('bot', p, null));
-    box.scrollTop = box.scrollHeight;
-  }
-}
-
 // V3.139.0: owner ТЗ (Задача 3) — in a duo chat the two lines are two messages,
 // each in her own voice. The server splits «Амира: …» / «Агата: …» into
 // reply_parts; they land one after another, with who-is-typing named.
 async function playDuo(parts) {
+  const chatId = CHAT && CHAT.id;
+  if (!chatId) return;
   const box = document.getElementById('chatMsgs');
   for (const p of parts) {
-    const text = (p.name ? p.name + ': ' : '') + (p.text || '');
+    const said = parseThought(p.text || '').message;
+    if (!said) continue;
+    const text = (p.name ? p.name + ': ' : '') + said;
     box.insertAdjacentHTML('beforeend', '<div class="typing" id="chatTypingMore">' + esc(p.name || (CHAT ? CHAT.name : '')) + ' ' + esc(L.typing_now) + '</div>');
     box.scrollTop = box.scrollHeight;
     await new Promise(res => setTimeout(res, Math.min(3500, 900 + text.length * 22)));
+    if (!sameChat(chatId)) return;
     const t = document.getElementById('chatTypingMore');
     if (t) t.remove();
     box.insertAdjacentHTML('beforeend', chatBubble({
@@ -5217,7 +5186,7 @@ async function choosePersona(characterId, style) {
   }
 }
 
-async function sendChat(retryText) {
+async function sendChat(retryText, eventAction) {
   if (!CHAT || chatBusy) return;
   const input = document.getElementById('chatText');
   const text = (typeof retryText === 'string' ? retryText : input.value).trim();
@@ -5242,10 +5211,12 @@ async function sendChat(retryText) {
   const subWas = sub ? sub.textContent : '';
   if (sub) sub.textContent = L.typing_now;
   try {
-    const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData), {
+    const endpoint = eventAction ? '/webapp/api/chat/action' : '/webapp/api/chat';
+    const r = await fetch(endpoint + '?init_data=' + encodeURIComponent(tg.initData), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: chatId, text: text }),
+      body: JSON.stringify(eventAction ? Object.assign({ character_id: chatId }, eventAction) :
+        { character_id: chatId, text: text }),
     });
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 429) {
@@ -5267,6 +5238,7 @@ async function sendChat(retryText) {
     if (!j.ok) { toast(L.reply_err); return; }
     renderChatReply(j, chatId);
     noteMissionsDone(j);
+    return true;
   } catch (e) {
     toast(L.reply_err);
   } finally {
@@ -5312,21 +5284,7 @@ function renderChatReply(j, chatId) {
   // pill, the banner and the two-girl rows flip right now, not on reload.
   if (j.guest && CHAT) { CHAT.duo = j.guest.name; CHAT.guest = j.guest; renderGuest(CHAT.id, j.guest, true); }
   if (CHAT && !CHAT.custom && !CHAT.duo) refreshPlotBar(CHAT.id, true);
-  // V3.151.0: owner ТЗ (Фогель, Часть 1, п.3) — the thought card is on screen
-  // the moment the reply lands, then «записывает голосовое…» for at least three
-  // seconds, then the single MESSAGE bubble. The card is text only and is never
-  // handed to TTS.
-  const nv = parseThought(String(j.reply || ''));
-  // V3.152.0: owner ТЗ (Фогель, Модуль 1) — under her card comes «печатает…»
-  // for four seconds and the grey plate of the message she erased; only then
-  // her real reply. The erased text itself is not in this payload.
-  if (!nv.thought) {
-    return afterDraft(j.draft, () => insertChatReply(nv.message === j.reply ? j : Object.assign({}, j, { reply: nv.message }), chatId), chatId);
-  }
-  const box = document.getElementById('chatMsgs');
-  box.insertAdjacentHTML('beforeend', thoughtCard(nv.thought));
-  box.scrollTop = box.scrollHeight;
-  afterDraft(j.draft, () => showRecording(() => insertChatReply(Object.assign({}, j, { reply: nv.message, novel: 1 }), chatId), null, null, chatId), chatId);
+  return afterDraft(j.draft, () => insertChatReply(j, chatId), chatId);
 }
 
 function insertChatReply(j, chatId) {
@@ -5355,11 +5313,7 @@ function insertChatReply(j, chatId) {
     // own voice note, arriving one after the other.
     duoPlayed = playDuo(j.reply_parts);
   } else {
-    // V3.151.0: one turn is one bubble — when a thought card already went up,
-    // the MESSAGE stays a single reply, no follow-up bubbles.
-    const parts = ((CHAT && CHAT.duo) || j.novel) ? [j.reply] : splitBubbles(j.reply || '');
-    box.insertAdjacentHTML('beforeend', chatBubble('bot', parts[0], null));
-    if (parts.length > 1) playFollowups(parts.slice(1));
+    box.insertAdjacentHTML('beforeend', chatBubble('bot', j.reply || '', null));
   }
   // V3.166.9 (владелец): «пока генерируется фото... пусть она задаст вопрос».
   // Её слова пришли сразу, кадр ещё рисуется — под ними её короткая реплика,
@@ -5399,7 +5353,7 @@ function insertChatReply(j, chatId) {
   // V3.60.3: no peaches for the photo she promised — one tap to the shop.
   // V3.76.0: a card girl's photos are Premium-only — one tap to the shop.
   // V3.97.0: straight to the trial-first sheet instead of the whole shop.
-  if (j.photo_block === 'premium' || j.photo_block === 'free_used') {
+  if (j.photo_block === 'premium' || j.photo_block === 'free_used' || j.story_offer) {
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('spicy')">${esc(trialChip('⭐ ' + L.need_premium))}</button></div>`);
   }
   // V3.90.0: his explicit message without Premium — a quiet chip, no auto sheet.
@@ -5912,6 +5866,18 @@ document.addEventListener('click', e => {
   requestMedia(kind);
 });
 
+document.addEventListener('click', async e => {
+  const b = e.target && e.target.closest ? e.target.closest('[data-event-message]') : null;
+  if (!b || !CHAT || chatBusy) return;
+  e.stopPropagation();
+  const row = b.closest('.event-actions');
+  if (await sendChat(b.dataset.eventText, {
+    message_id: Number(b.dataset.eventMessage), action_index: Number(b.dataset.eventIndex),
+  })) {
+    if (row) row.remove();
+  }
+});
+
 // V3.152.0: «👀 Прочитать стёртое» — the plate pays itself in place.
 document.addEventListener('click', e => {
   const b = e.target && e.target.closest ? e.target.closest('[data-draft]') : null;
@@ -5934,16 +5900,6 @@ document.addEventListener('click', e => {
   if (!b) return;
   e.stopPropagation();
   pickInterrupt(b.getAttribute('data-qte'), Number(b.getAttribute('data-qn')) || 0, b);
-});
-
-// V3.167.8 (владелец): карточка мыслей — свёрнутое окно. Тап раскрывает, тап
-// же сворачивает; её текст при этом никуда не уходит и в голос не попадает.
-document.addEventListener('click', e => {
-  const card = e.target && e.target.closest ? e.target.closest('.thcard') : null;
-  if (!card) return;
-  const min = card.classList.toggle('min');
-  const hint = card.querySelector('.th-t');
-  if (hint) hint.textContent = String(min ? L.th_more : L.th_less);
 });
 
 async function requestMedia(kind, scene, opts) {
@@ -7507,7 +7463,8 @@ function renderChats(list) {
     return;
   }
   box.innerHTML = list.map(c => {
-    const prev = (c.last_role === 'user' ? '✓ ' : '') + (c.last_message || '…');
+    const last = c.last_role === 'user' ? c.last_message : parseThought(c.last_message).message;
+    const prev = (c.last_role === 'user' ? '✓ ' : '') + (last || '…');
     // V3.52.0: «she wrote you» badge — proactive / life messages the user has not
     // opened yet light up a pill; opening the chat marks it read server-side.
     const un = Math.max(0, parseInt(c.unread || 0, 10) || 0);

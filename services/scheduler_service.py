@@ -130,15 +130,8 @@ async def _reminders(bot):
             logger.info('reminder dropped (user blocked bot) id=%s', r.id)
         except Exception: logger.exception('reminder failed id=%s', r.id if r else None)
 
-def _to_app_chat(uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN) -> None:
-    """V3.61.8: what she writes first also lands in the shared dialog, so the
-    Mini App shows it in her chat with the «new» badge — the user opens the app
-    and sees «ты где?» from her instead of the last thing he said himself.
-    Saved after a successful send only: a blocked user gets no ghost history.
-    V3.167.5 (ТЗ §9): every line that goes through here is hers first, so it is
-    stamped with its rail (`origin`). The accumulation cap and the answer rate
-    read that stamp — her ordinary answer to his message is not an unanswered
-    push, and without the stamp the cap counted the whole tail of the dialog."""
+def _to_app_chat(uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN, actions=None) -> int | None:
+    """Persist the app message before notifying; a failed save never counts as delivery."""
     try:
         from services.memory_service import save_message
         media_kind = media_url = None
@@ -146,12 +139,36 @@ def _to_app_chat(uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN) -> No
             from services import webapp_service
             data, ctype, pkind = shot
             moving = pkind in ('gif', 'video')
-            filename = webapp_service.save_chat_media(int(tg_id), data, 'mp4' if moving else 'jpg', ctype)
+            ext = 'mp4' if moving else {'image/png': 'png', 'image/webp': 'webp'}.get(ctype, 'jpg')
+            filename = webapp_service.save_chat_media(int(tg_id), data, ext, ctype)
             media_kind, media_url = ('video' if moving else 'photo'), f'/webapp/media/{filename}'
-        save_message(uid, char_id, 'assistant', text, media_kind=media_kind, media_url=media_url,
-                     origin=origin)
+        return save_message(uid, char_id, 'assistant', text, media_kind=media_kind, media_url=media_url,
+                            origin=origin, actions=actions)
     except Exception:
         logger.exception('proactive app-chat persist failed user=%s', uid)
+        return None
+
+
+def _app_delivery(bot, uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN, actions=None) -> int | None:
+    mid = _to_app_chat(uid, tg_id, char_id, text, shot, origin, actions)
+    if mid:
+        try:
+            from services import app_ping
+            app_ping.note(bot, tg_id, char_id, '',
+                          channel='life' if origin == LIFE_ORIGIN else 'default', generic=True)
+        except Exception:
+            logger.warning('app notification failed user=%s', uid, exc_info=True)
+    return mid
+
+
+def _life_actions(options, char_id) -> list[dict]:
+    from services.life_event_service import tap_reply_text
+    actions = []
+    for label, callback in options or []:
+        parts = str(callback).split(':')
+        if len(parts) == 3 and parts[0] in ('life', 'life_reply') and parts[1] == char_id:
+            actions.append({'type': 'reply', 'label': label, 'text': tap_reply_text(parts[2])})
+    return actions
 
 
 def _marital_push(telegram_id, char_id, lang):
@@ -236,19 +253,10 @@ async def _proactive(bot):
                 pack=await silence_ladder.compose(step,telegram_id,char_id,user_lang)
                 if pack and pack.get('text'):
                     chips=[str(c) for c in (pack.get('chips') or []) if str(c).strip()]
-                    if chips: silence_ladder.note_chips(telegram_id,char_id,chips)
-                    shot=pack.get('photo')
-                    if shot:
-                        from aiogram.types import BufferedInputFile
-                        data,_ctype,pkind=shot
-                        moving=pkind in ('gif','video')
-                        method='send_animation' if pkind=='gif' else ('send_video' if moving else 'send_photo')
-                        await getattr(bot,method)(telegram_id,BufferedInputFile(
-                            data,filename='ladder.mp4' if moving else 'ladder.jpg'),caption=_her(pack['text'],char_id))
-                    else:
-                        await bot.send_message(telegram_id,_her(pack['text'],char_id),
-                                               reply_markup=silence_ladder.chips_markup(chips))
-                    _to_app_chat(uid,telegram_id,char_id,pack['text'],shot)
+                    shot=pack.get('photo')  # compose already reserved this pool frame
+                    actions=[{'type': 'reply', 'label': chip, 'text': chip} for chip in chips]
+                    if not _app_delivery(bot,uid,telegram_id,char_id,pack['text'],shot,actions=actions):
+                        continue
                     track_event(uid,'retention_push_sent',metadata={'hours_inactive':hours,
                                                                    'kind':f'ladder_{step}','nudge':nudge_count+1})
                     continue
@@ -267,8 +275,8 @@ async def _proactive(bot):
                 if kind in ('miss','jealousy'):
                     mtxt=_marital_push(telegram_id,char_id,user_lang)
                     if mtxt:
-                        await bot.send_message(telegram_id,_her(mtxt,char_id))
-                        _to_app_chat(uid,telegram_id,char_id,mtxt)
+                        if not _app_delivery(bot,uid,telegram_id,char_id,mtxt):
+                            continue
                         track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': 'marital', 'nudge': nudge_count + 1})
                         continue
                 # V3.63.2: the plain «скучаю» became a story hook while the
@@ -283,7 +291,7 @@ async def _proactive(bot):
                     # 136 proactive pushes got a reply in 3 h) — the static line
                     # stays as the fallback when there is no talk to pick up.
                     try:
-                        msg=await proactive_reply(telegram_id,name,hours,character_id=char_id,topic=True)
+                        msg=await proactive_reply(telegram_id,name,hours,character_id=char_id,topic=True,persist=False)
                     except Exception as topic_exc:
                         logger.warning('topic push failed user=%s: %s',uid,topic_exc)
                         msg=''
@@ -291,17 +299,18 @@ async def _proactive(bot):
                         kind=kind+'_topic'
                 if not msg:
                     msg=retention_features_service.get_retention_text(kind, char_id)
-                await bot.send_message(telegram_id,_her(msg,char_id))
-                _to_app_chat(uid,telegram_id,char_id,msg)
+                if not _app_delivery(bot,uid,telegram_id,char_id,msg):
+                    continue
                 track_event(uid, 'retention_push_sent', metadata={'hours_inactive': hours, 'kind': kind, 'nudge': nudge_count + 1})
             else:
-                msg=await proactive_reply(telegram_id,name,hours,character_id=char_id,topic=True)
+                msg=await proactive_reply(telegram_id,name,hours,character_id=char_id,topic=True,persist=False)
                 if not msg:
                     # Provider hiccup: the slot is already spent — do not send
                     # an empty message (that used to raise and re-arm the retry).
                     logger.warning('proactive empty reply user=%s', telegram_id)
                     continue
-                await bot.send_message(telegram_id,_her(msg,char_id))
+                if not _app_delivery(bot,uid,telegram_id,char_id,msg):
+                    continue
                 track_event(uid, 'proactive_sent', metadata={'hours_inactive': hours, 'nudge': nudge_count + 1})
         except TelegramForbiddenError:
             # V3.55.9: 403 = the user blocked or deleted the bot — switch the
@@ -352,13 +361,8 @@ async def _day1_hook(bot):
                 logger.exception('day1 personal continuation failed user=%s', uid)
                 continuation = ''
             if continuation:
-                from urllib.parse import quote
-                markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-                    text=flow_text(lang, 'open_chat'),
-                    web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat&char={quote(_char, safe="")}&entry=day1'),
-                )]])
-                await bot.send_message(telegram_id, _her(continuation, _char), reply_markup=markup)
-                _to_app_chat(uid,telegram_id,_char,continuation)
+                if not _app_delivery(bot,uid,telegram_id,_char,continuation):
+                    continue
                 with SessionLocal() as s:
                     u=s.get(User,uid)
                     if u:
@@ -380,13 +384,9 @@ async def _day1_hook(bot):
                         s.commit()
                 track_event(uid, 'day1_hook_sent', metadata={'hours_inactive': int((now-last_active).total_seconds()/3600) if last_active else 0, 'story': True})
                 continue
-            markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-                # V3.55.5: the wheel is retired — day-1 now opens the streak gift
-                text=flow_text(lang, 'gift_button'),
-                web_app=WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp'),
-            )]])
-            await bot.send_message(telegram_id, flow_text(
-                lang, 'gift_text', amount=DAILY_GIFT_JACKPOT_AMOUNT), reply_markup=markup)
+            text=flow_text(lang, 'gift_text', amount=DAILY_GIFT_JACKPOT_AMOUNT)
+            if not _app_delivery(bot,uid,telegram_id,_char,text):
+                continue
             with SessionLocal() as s:
                 u=s.get(User,uid)
                 if u:
@@ -541,46 +541,44 @@ async def _send_story(bot, uid: int, telegram_id: int, char_id: str) -> bool:
     story and two choice buttons. False when this user has used them all."""
     from services import story_hooks
     from services.ui_lang import user_lang, EN
-    from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
     story=story_hooks.pick_unused(telegram_id)
     if story is None:
         return False
-    story_hooks.mark_used(telegram_id, story.key)
+    char_id = char_id or CHARACTER_ID
     lang='en' if user_lang(telegram_id)==EN else 'ru'
-    markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=story_hooks.label(story.a,lang),callback_data=f'story:{story.key}:a')],
-        [InlineKeyboardButton(text=story_hooks.label(story.b,lang),callback_data=f'story:{story.key}:b')],
-    ])
+    actions=[{'type': 'story_hook', 'label': story_hooks.label(choice,lang),
+              'story_key': story.key, 'choice': side}
+             for side, choice in (('a', story.a), ('b', story.b))]
     body=story_hooks.text(story,lang)
     photo=None
-    # V3.63.2: the owner's own photos of THIS girl (uploaded via /storyphoto,
-    # kept as Telegram file_ids) come first for stories where they fit.
-    from services import push_photos
-    file_id=push_photos.pick(char_id or CHARACTER_ID) if story.photo_ok else None
-    if file_id:
-        await bot.send_photo(telegram_id,file_id,caption=_her(body,char_id or CHARACTER_ID),reply_markup=markup)
-        _to_app_chat(uid,telegram_id,char_id or CHARACTER_ID,body)
-        track_event(uid,'story_hook_sent',metadata={'story':story.key,'photo':'owner'})
-        return True
-    # Only the default heroine's reference is a known everyday (café) shot;
-    # other girls get the text-only story rather than a random reference.
-    if (char_id or CHARACTER_ID)==CHARACTER_ID:
-        try:
-            def _jpg():
-                import io
-                from PIL import Image
+    ctype='image/jpeg'
+    from services import push_photos, chat_photo_allowance
+    if story.photo_ok:
+        file_id=push_photos.pick(char_id)
+        if file_id:
+            try:
+                source = await bot.download(file_id)
+                photo = source.getvalue() if hasattr(source, 'getvalue') else source.read()
+            except Exception:
+                logger.warning('story photo download failed user=%s', uid)
+        elif char_id == CHARACTER_ID:
+            try:
+                import mimetypes
                 src=_media_pick('stories',story.key,exact=True) or _reference_photo(char_id)
-                img=Image.open(src).convert('RGB'); img.thumbnail((900,1200))
-                buf=io.BytesIO(); img.save(buf,'JPEG',quality=86); return buf.getvalue()
-            photo=await asyncio.to_thread(_jpg)
-        except Exception:
-            logger.exception('story photo failed user=%s',uid)
-    if photo:
-        await bot.send_photo(telegram_id,BufferedInputFile(photo,filename='story.jpg'),caption=_her(body,char_id or CHARACTER_ID),reply_markup=markup)
-    else:
-        await bot.send_message(telegram_id,_her(body,char_id or CHARACTER_ID),reply_markup=markup)
-    _to_app_chat(uid,telegram_id,char_id or CHARACTER_ID,body)
-    track_event(uid,'story_hook_sent',metadata={'story':story.key})
+                photo=await asyncio.to_thread(src.read_bytes)
+                ctype=mimetypes.guess_type(str(src))[0] or 'image/jpeg'
+            except Exception:
+                logger.warning('story photo unavailable user=%s', uid)
+    # Only an available frame spends the atomic allowance. Transfer original
+    # owner bytes without resizing or rendering a replacement for missing media.
+    if photo and not chat_photo_allowance.use_push_frame(uid, char_id):
+        life_backlog.note_denial(uid, 'story', 'photo_cap')
+        photo=None
+    shot = (photo, ctype, 'photo') if photo else None
+    if not _app_delivery(bot,uid,telegram_id,char_id,body,shot,actions=actions):
+        return False
+    story_hooks.mark_used(telegram_id, story.key)
+    track_event(uid,'story_hook_sent',metadata={'story':story.key,'has_photo':bool(photo)})
     return True
 
 
@@ -954,9 +952,7 @@ async def _ritual_line_push(bot, uid: int, tg_id: int, char_id: str, kind: str, 
     from services.ui_lang import full_user_lang, ritual_line
     lang = await asyncio.to_thread(full_user_lang, tg_id)
     text = ritual_line(kind, lang)
-    await bot.send_message(tg_id, _her(text, char_id), reply_markup=_chat_open_markup(char_id, lang))
-    _to_app_chat(uid, tg_id, char_id, text)
-    return True
+    return bool(_app_delivery(bot, uid, tg_id, char_id, text))
 
 
 async def _rituals(bot, only_tg=None, force_kind=None):
@@ -1432,9 +1428,7 @@ async def _life_events(bot):
         return
     from services.consent_service import has_accepted
     from services.life_event_service import build_life_moment, silence_hours
-    from services.memory_service import save_message
-    from services import webapp_service
-    from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+    from services import app_ping
     now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     fresh_cutoff = now - dt.timedelta(days=LIFE_EVENTS_ACTIVE_WINDOW_DAYS)
     with SessionLocal() as s:
@@ -1448,13 +1442,14 @@ async def _life_events(bot):
                      getattr(u, 'language_code', None),
                      (now - u.created_at).total_seconds() / 3600.0 if u.created_at else 1e9)
                     for u in users]
-    today_key = now.date().isoformat()
     for uid, tg_id, _name, char_id, tz, lang, account_hours in snapshot:
         try:
             if not has_accepted(tg_id):
                 continue
+            today_key = life_backlog.local_day(tz, now)[0]
             local_hour = _user_local_hour_simple(tz)
             if _in_quiet_hours(local_hour):
+                life_backlog.note_denial(uid, 'life', 'night', tz)
                 continue
             # V3.167.4 #173 (владелец ТЗ §6): он вернулся, а за его спиной
             # накопились её дни. Догонять их по одной смс уже поздно — вместо
@@ -1471,6 +1466,8 @@ async def _life_events(bot):
             prior = _life_events_store.get(tg_id) or {}
             slots = list(prior.get('slots') or []) if prior.get('date') == today_key else []
             if part in slots or len(slots) >= per_day:
+                if len(slots) >= per_day:
+                    life_backlog.note_denial(uid, 'life', 'daily', tz)
                 continue
             # V3.151.0: owner ТЗ (Часть 1, п.1) — «подмес» is banned. Her day is
             # a return push, not a third voice in a live dialog: while he is
@@ -1482,6 +1479,7 @@ async def _life_events(bot):
             # LIFE_EVENTS_UNANSWERED_MAX. Рельса встаёт и ждёт, слот суток НЕ
             # сжигается: после его ответа она заговорит в этой же части суток.
             if life_backlog.is_capped(uid, char_id):
+                life_backlog.note_denial(uid, 'life', 'unanswered', tz)
                 continue
             # Sprinkle sends across the scan window instead of firing at the
             # boundary for everyone at once (also keeps the LLM load flat).
@@ -1501,18 +1499,13 @@ async def _life_events(bot):
             if live and live.get('id'):
                 slots.append(part)
                 _life_events_store[tg_id] = {'date': today_key, 'slots': slots}
-                try:
-                    from services.ui_lang import flow_text
-                    btn = flow_text(lang or 'ru', 'live_button', price=int(live['price']))
-                    markup = InlineKeyboardMarkup(inline_keyboard=[[
-                        InlineKeyboardButton(text=btn[:64], callback_data=f"live:unlock:{live['id']}")]])
-                    await bot.send_message(tg_id, _her(live['text'], char_id), reply_markup=markup)
-                    track_event(uid, 'life_event_sent',
-                                metadata={'character_id': char_id, 'when': part, 'live': 1})
-                except TelegramForbiddenError:
-                    _mark_blocked(uid)
-                except Exception:
-                    logger.exception('live situation delivery failed user=%s', uid)
+                # live_push already committed the row and its locked photo plate.
+                # Do not duplicate it or expose its text/paid scene in Telegram.
+                app_ping.note(bot, tg_id, char_id, '', channel='life', generic=True)
+                track_event(uid, 'life_event_shown',
+                            metadata={'character_id': char_id, 'when': part, 'live': 1})
+                track_event(uid, 'life_event_sent',
+                            metadata={'character_id': char_id, 'when': part, 'live': 1})
                 continue
             moment = await build_life_moment(tg_id, char_id, when=part)
             # Consume the slot whether or not text came back, so an empty/no-LLM
@@ -1523,37 +1516,15 @@ async def _life_events(bot):
                 continue
             text = moment['text']
             photo = moment.get('photo')
-            markup = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=lbl, callback_data=cb)] for lbl, cb in (moment.get('options') or [])
-            ])
-            media_kind = media_url = None
-            if photo:
-                data, ctype, pkind = photo
-                ext = 'jpg' if pkind not in ('gif', 'video') else 'mp4'
-                media_kind = 'video' if pkind in ('gif', 'video') else 'photo'
-                filename = webapp_service.save_chat_media(tg_id, data, ext, ctype)
-                media_url = f'/webapp/media/{filename}'
-            # Persist into the SHARED dialog BEFORE delivering, so the Mini App
-            # «Чаты» badge (assistant msg newer than last read) lights up.
-            # V3.167.5 §9: `origin='life'` — по этой метке кап накопления видит
-            # её день, а не любой хвост диалога.
-            save_message(uid, char_id, 'assistant', text, media_kind=media_kind,
-                         media_url=media_url, origin=LIFE_ORIGIN)
-            if media_url:
-                if pkind == 'gif':
-                    await bot.send_animation(tg_id, BufferedInputFile(data, filename='life.mp4'), caption=_her(text, char_id), reply_markup=markup)
-                elif pkind == 'video':
-                    await bot.send_video(tg_id, BufferedInputFile(data, filename='life.mp4'), caption=_her(text, char_id), reply_markup=markup)
-                else:
-                    await bot.send_photo(tg_id, BufferedInputFile(data, filename='life.jpg'), caption=_her(text, char_id), reply_markup=markup)
-            else:
-                await bot.send_message(tg_id, _her(text, char_id), reply_markup=markup)
+            if not _app_delivery(bot, uid, tg_id, char_id, text, photo, origin=LIFE_ORIGIN,
+                                 actions=_life_actions(moment.get('options'), char_id)):
+                continue
             # V3.167.5 §9 (владелец ТЗ): имя события из ТЗ — по нему считается
             # DoD «≥70% аккаунтов получили ≥1 событие в первые сутки».
             # Прежнее life_event_sent остаётся: на него смотрит push-губернатор.
             track_event(uid, 'life_event_shown',
-                        metadata={'character_id': char_id, 'when': part, 'has_photo': bool(media_url)})
-            track_event(uid, 'life_event_sent', metadata={'character_id': char_id, 'when': part, 'has_photo': bool(media_url)})
+                        metadata={'character_id': char_id, 'when': part, 'has_photo': bool(photo)})
+            track_event(uid, 'life_event_sent', metadata={'character_id': char_id, 'when': part, 'has_photo': bool(photo)})
         except TelegramForbiddenError:
             # V3.55.9: blocked — the slot is already consumed above; take the
             # whole proactive rail off so no LLM money goes to this user.

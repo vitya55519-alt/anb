@@ -91,25 +91,31 @@ def test_her_live_answer_and_the_ceremony_carry_the_label():
     assert 'her_tag' not in _body('async def _send_novel_answer(')
 
 
-def test_the_rails_she_starts_sign_themselves():
+def test_transferred_rails_keep_app_text_unlabelled_and_notify_generically():
     assert 'from services.heroine_label import stamp as _her' in SCHED
-    # пуши, лестница молчания, сцены, ритуалы, события её жизни — всё подписано
-    assert SCHED.count('_her(') >= 20
+    # Remaining Telegram media previews retain their heroine label.
     assert "caption=_her(_ev.caption(text), char_id), reply_markup=markup)" in SCHED
-    assert "caption=_her(body,char_id or CHARACTER_ID),reply_markup=markup)" in SCHED
-    assert "_her(live['text'], char_id)" in SCHED
-    # его же строки и общая лента Mini App остаются чистыми: метка только на её
-    assert "save_message(uid, char_id, 'assistant', text, media_kind=media_kind," in SCHED
-    assert '_her(' not in SCHED[SCHED.index('def _to_app_chat('):SCHED.index('def _marital_push(')]
+    persist = SCHED[SCHED.index('def _to_app_chat('):SCHED.index('def _app_delivery(')]
+    delivery = SCHED[SCHED.index('def _app_delivery('):SCHED.index('def _life_actions(')]
+    # Her app dialog identifies her: store the raw text and its durable actions.
+    assert "return save_message(uid, char_id, 'assistant', text, media_kind=media_kind," in persist
+    assert 'origin=origin, actions=actions)' in persist
+    assert '_her(' not in persist + delivery
+    assert 'mid = _to_app_chat(uid, tg_id, char_id, text, shot, origin, actions)' in delivery
+    assert delivery.index('if mid:') < delivery.index('app_ping.note(')
+    assert "app_ping.note(bot, tg_id, char_id, ''," in delivery
+    assert "channel='life' if origin == LIFE_ORIGIN else 'default', generic=True" in delivery
+    assert 'return mid' in delivery and 'bot.send_' not in delivery
 
 
-def test_photos_and_the_daily_gift_are_labelled():
+def test_telegram_photos_are_labelled_but_the_app_gift_is_not():
     assert 'from services.heroine_label import stamp as _her' in PHOTO
     assert 'caption = _her(caption or random.choice(AUTO_CAPTIONS' in PHOTO
     assert 'caption=_her(fallback_caption, character_id)' in PHOTO
-    assert "caption=_her('🎁 Я скучала... вот, держи 💋', gift_char)" in GIFT
-    # в ленту Mini App подарок уходит без подписи — там её чат и так её
-    assert "gift_char, '🎁 Я скучала... вот, держи 💋'" in GIFT
+    gift = GIFT[GIFT.index('async def send_daily_gift('):GIFT.index('# ─── Голос + фото комбо')]
+    assert 'gift_char = user.selected_character or CHARACTER_ID' in gift
+    assert '_to_app_chat(uid, telegram_id, gift_char, text, shot)' in gift
+    assert '_her(' not in gift and 'bot.send_photo(' not in gift
     # сам кружок подписать нельзя: у Telegram video note нет подписи. Метка
     # достается обычному видео, куда кружок не влез.
     assert "caption=_her_label(telegram_id) + 'в кружок не поместилось 😅 держи так'" in MAIN

@@ -45,6 +45,7 @@ class User(Base):
     # таблицах и обнуления не видят. streak_reward_day — сутки, за которые
     # 50 🍑 уже выданы (services/series_reward). Auto-migrated by services/db.py.
     streak_freeze_week: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    streak_freeze_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     streak_reward_day: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     video_free_date: Mapped[str] = mapped_column(String(10), default="")
     video_free_used: Mapped[int] = mapped_column(Integer, default=0)
@@ -396,6 +397,7 @@ class Message(Base):
     # колонку, старые строки читаются как обычный ответ — кап накопления и
     # дайджест считаются по ней, а не по всему хвосту диалога.
     origin: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    actions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 class Memory(Base):

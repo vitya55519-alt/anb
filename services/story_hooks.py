@@ -133,3 +133,51 @@ def reply(choice: Choice, lang: str) -> str:
 
 def choice(story: Story, side: str) -> Choice | None:
     return story.a if side == 'a' else story.b if side == 'b' else None
+
+
+def choose_in_app(user_id: int, character_id: str, message_id: int,
+                  action_index: int, lang: str, *, unlimited: bool = False) -> dict:
+    from datetime import datetime, timezone
+    from sqlalchemy import select, update
+    from models.app_models import Message, User
+    from services.db import SessionLocal
+    from services import daily_limit
+    from services.memory_service import message_actions
+
+    with SessionLocal() as session:
+        # The write locks the account on SQLite and PostgreSQL before checking its quota.
+        session.execute(update(User).where(User.id == user_id).values(chat_used=User.chat_used))
+        user = session.get(User, user_id)
+        row = session.scalar(select(Message).where(
+            Message.id == message_id, Message.user_id == user_id,
+            Message.character_id == character_id, Message.role == 'assistant'))
+        actions = message_actions(row.actions_json) if row else []
+        if user is None or not 0 <= action_index < len(actions):
+            return {'ok': False, 'error': 'not_found'}
+        action = actions[action_index]
+        if action['type'] != 'story_hook':
+            return {'ok': False, 'error': 'bad_request'}
+        if not unlimited and daily_limit.left(user, premium=False) == 0:
+            return {'ok': False, 'error': 'limit', 'cap': int(daily_limit.DAILY_CAP)}
+        story = get(action['story_key'])
+        picked = choice(story, action['choice'])
+        said, answer = label(picked, lang), reply(picked, lang)
+        row.actions_json = None
+        session.add_all([
+            Message(user_id=user_id, character_id=character_id, role='user', content=said),
+            Message(user_id=user_id, character_id=character_id, role='assistant', content=answer),
+        ])
+        user.last_active_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        hint = None
+        if not unlimited and daily_limit.DAILY_CAP:
+            user.chat_used = daily_limit.used_today(user) + 1
+            user.chat_day = daily_limit.msk_today()
+            remaining = max(0, daily_limit.DAILY_CAP - user.chat_used)
+            if remaining <= daily_limit.HINT_AT_LEFT:
+                hint = {'left': remaining, 'reached': remaining == 0,
+                        'text': daily_limit.hint_line(lang, remaining)}
+        session.commit()
+    return {'ok': True, 'user_text': said, 'reply': answer,
+            'story': story.key, 'side': action['choice'],
+            'story_offer': picked.offer and not unlimited,
+            **({'chat_hint': hint} if hint else {})}

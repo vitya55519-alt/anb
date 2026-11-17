@@ -2,6 +2,7 @@
 fallback, richer looks (hairstyles/makeup/monthly hair color), bust stability,
 visible-under-clothes lingerie progression and automatic contest Premium.
 """
+import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,13 +14,31 @@ CONFIG = (ROOT / 'config.py').read_text(encoding='utf-8')
 
 
 def test_unified_video_job_with_engine_fallback():
-    sig = 'async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None, motion_preset: str | None = None)'
-    assert sig in MAIN
-    block = MAIN[MAIN.index(sig):]
-    block = block.split('\n\n\n@dp.', 1)[0]
-    # V3.69.0: SpicyAPI is the only video engine (owner, 2026-10-21).
-    assert 'engines.extend(video_engines())' in block
-    assert 'if charge_id:' in block
+    job = next(node for node in ast.parse(MAIN).body
+               if isinstance(node, ast.AsyncFunctionDef) and node.name == '_run_video_background')
+    # The registry currently exposes SpicyAPI; the job still walks the registry
+    # in order and only stops on success, rather than abandoning later engines.
+    calls = [node for node in ast.walk(job) if isinstance(node, ast.Call)]
+    assert any(ast.unparse(node) == 'engines.extend(video_engines())' for node in calls)
+    loop = next(node for node in ast.walk(job) if isinstance(node, ast.For)
+                and ast.unparse(node.iter) == 'enumerate(engines)')
+    attempt = next(node for node in loop.body if isinstance(node, ast.Try))
+    assert any(isinstance(node, ast.Await) and isinstance(node.value, ast.Call)
+               and ast.unparse(node.value.func) == 'engine_fn'
+               for node in ast.walk(attempt))
+    assert any(isinstance(node, ast.Break) for node in attempt.body)
+    assert attempt.handlers
+    for handler in attempt.handlers:
+        assert not any(isinstance(node, (ast.Break, ast.Return, ast.Raise))
+                       for node in ast.walk(handler))
+        assert any(isinstance(node, ast.Call) and ast.unparse(node.func) == 'engine_errors.append'
+                   for node in ast.walk(handler))
+        assert any(isinstance(node, ast.Assign) and ast.unparse(node) == 'last_error = exc'
+                   for node in ast.walk(handler))
+    exhausted = next(node for node in ast.walk(job) if isinstance(node, ast.If)
+                     and ast.unparse(node.test) == 'video_bytes is None')
+    assert isinstance(exhausted.body[0], ast.Raise)
+    assert ast.unparse(exhausted.body[0].exc) == "last_error or CloudVideoError('no_video_result')"
     # The two old single-engine jobs are gone.
     assert 'async def _run_gemini_video_background(' not in MAIN
     assert 'async def _run_hf_video_background(' not in MAIN

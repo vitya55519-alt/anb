@@ -143,7 +143,7 @@ async def _write(bot, key: tuple, episode: dict) -> bool:
     # уже вышел (решает services/app_ping: он внутри — он её видит на экране).
     try:
         from services import app_ping
-        app_ping.note(bot, key[0], key[1], line)
+        app_ping.note(bot, key[0], key[1], '', generic=True)
     except Exception:
         logger.warning('opening nudge ping failed user=%s', key[0], exc_info=True)
     return True

@@ -46,6 +46,12 @@ def _rows_in(conn, table: str) -> int:
         return -1
 
 
+def _begin_sqlite_ddl(conn) -> None:
+    # SQLite's legacy driver does not begin transactions for DDL or SELECT.
+    if conn.dialect.name == 'sqlite' and not conn.connection.driver_connection.in_transaction:
+        conn.exec_driver_sql('BEGIN')
+
+
 def _add_missing_columns(table, wanted):
     inspector=inspect(engine)
     if table not in inspector.get_table_names(): return
@@ -57,6 +63,7 @@ def _add_missing_columns(table, wanted):
     # Полупустая таблица после половины ALTER быть не должно: упал — откатилось
     # всё, следующий старт повторит целиком.
     with engine.begin() as conn:
+        _begin_sqlite_ddl(conn)
         _ensure_migration_ledger(conn)
         rows = _rows_in(conn, table)
         added = []
@@ -111,6 +118,7 @@ def _auto_migrate_all_tables():
         # записью в журнале (имя = PRIMARY KEY, значит повторный старт их просто
         # пропустит), и всё это видно в логе вместе с числом строк.
         with engine.begin() as conn:
+            _begin_sqlite_ddl(conn)
             _ensure_migration_ledger(conn)
             rows = _rows_in(conn, table.name)
             added = []
@@ -128,6 +136,68 @@ def _auto_migrate_all_tables():
                 added_by_table[table.name] = added
                 logger.warning('auto schema %s: +%s (rows=%s)', table.name, ','.join(added), rows)
     return added_by_table
+
+_ENGAGEMENT_LOG_MIGRATION = 'engagement_log_views_v1'
+
+
+def _migrate_engagement_logs() -> None:
+    """Expose named logs without copying the canonical ProductEvent stream."""
+    with engine.begin() as conn:
+        _begin_sqlite_ddl(conn)
+        _ensure_migration_ledger(conn)
+        if _already_applied(conn, _ENGAGEMENT_LOG_MIGRATION):
+            return
+        _mark_applied(conn, _ENGAGEMENT_LOG_MIGRATION)
+        users = _rows_in(conn, 'users')
+        events = _rows_in(conn, 'product_events')
+        columns = 'id, user_id, character_id, event_name, value, metadata_json, created_at'
+        # A lost ledger can leave either view intact. Inspect this transaction's
+        # connection and skip only views: a real table with the same name must fail.
+        existing_views = set(inspect(conn).get_view_names())
+        # rail/reason remain in metadata_json, exactly as recorded by ProductEvent.
+        if 'life_event_log' not in existing_views:
+            conn.execute(text(
+                f'CREATE VIEW life_event_log AS SELECT {columns} FROM product_events '
+                "WHERE event_name IN ('life_event_sent', 'life_event_shown', 'life_event_replied')"))
+        if 'push_denial_log' not in existing_views:
+            conn.execute(text(
+                f'CREATE VIEW push_denial_log AS SELECT {columns} FROM product_events '
+                "WHERE event_name = 'push_denied'"))
+        # A week key is quota bookkeeping, not evidence of a consumption time.
+        backfilled = conn.execute(text(
+            'UPDATE users SET streak_freeze_used_at = ('
+            'SELECT MAX(created_at) FROM product_events '
+            "WHERE user_id = users.id AND event_name = 'streak_freeze') "
+            'WHERE streak_freeze_used_at IS NULL AND EXISTS ('
+            'SELECT 1 FROM product_events WHERE user_id = users.id '
+            "AND event_name = 'streak_freeze' AND created_at IS NOT NULL)")).rowcount
+        life = _rows_in(conn, 'life_event_log')
+        denials = _rows_in(conn, 'push_denial_log')
+    logger.warning('engagement logs applied: users rows=%s product_events rows=%s '
+                   'life_event_log rows=%s push_denial_log rows=%s freeze timestamps backfilled=%s',
+                   users, events, life, denials, backfilled)
+
+
+def reverse_engagement_logs_migration() -> None:
+    """Explicit rollback of named log views; never called by startup."""
+    with engine.begin() as conn:
+        _begin_sqlite_ddl(conn)
+        _ensure_migration_ledger(conn)
+        if not _already_applied(conn, _ENGAGEMENT_LOG_MIGRATION):
+            return
+        users = _rows_in(conn, 'users')
+        events = _rows_in(conn, 'product_events')
+        life = _rows_in(conn, 'life_event_log')
+        denials = _rows_in(conn, 'push_denial_log')
+        conn.execute(text('DROP VIEW IF EXISTS life_event_log'))
+        conn.execute(text('DROP VIEW IF EXISTS push_denial_log'))
+        # Retain user timestamps and ProductEvent history: older apps safely ignore them.
+        conn.execute(text('DELETE FROM app_migrations WHERE name = :n'),
+                     {'n': _ENGAGEMENT_LOG_MIGRATION})
+    logger.warning('engagement logs reversed: users rows=%s product_events rows=%s retained; '
+                   'dropped life_event_log rows=%s push_denial_log rows=%s',
+                   users, events, life, denials)
+
 
 def _migrate_existing_users():
     bool_false='FALSE'; bool_true='TRUE'
@@ -374,6 +444,7 @@ def init_db():
     # automatically. This prevents future "UndefinedColumn" crashes when new fields
     # are added to models but forgotten in explicit migrations.
     _auto_migrate_all_tables()
+    _migrate_engagement_logs()
     # V3.167.5 §10: индекс по ленте событий — после того как таблицы есть.
     _index_analytics_stream()
     # V3.65.0: after every table exists, multiply stored peaches once.

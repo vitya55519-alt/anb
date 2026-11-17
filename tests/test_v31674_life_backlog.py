@@ -148,19 +148,23 @@ def test_the_digest_is_plain_words_and_both_languages():
 
 
 # ── 3. доставка: ровно один раз за сутки ────────────────────────────────────
-def test_the_return_gets_one_digest_and_then_she_waits():
+def test_the_return_gets_one_digest_and_then_she_waits(monkeypatch):
     tid, uid = _user()
     _line(uid, 'user', 'ушёл в завал', timedelta(days=9))
     _line(uid, 'assistant', 'принесла документы в офис не ту папку', timedelta(days=8))
     _line(uid, 'assistant', 'дождь застал меня у метро', timedelta(days=7))
     _line(uid, 'user', 'я вернулся', timedelta(hours=1))
     bot = _Bot()
+    from services import app_ping
+    from unittest.mock import Mock
+    note = Mock()
+    monkeypatch.setattr(app_ping, 'note', note)
     assert asyncio.run(B.maybe_digest(bot, uid, tid, CHAR, 'ru')) is True
-    assert len(bot.sent) == 1 and bot.sent[0][0] == tid
-    assert 'у меня было 2 истории' in bot.sent[0][1]
-    assert _dialog(uid)[-1].role == 'assistant'    # сводка легла в общий диалог (бейдж Mini App)
+    assert bot.sent == []  # full content stays in the app, not Telegram
+    assert 'у меня было 2 истории' in _dialog(uid)[-1].content
+    assert _dialog(uid)[-1].role == 'assistant'
     assert asyncio.run(B.maybe_digest(bot, uid, tid, CHAR, 'ru')) is True
-    assert len(bot.sent) == 1                      # второй раз за день она не повторяется
+    note.assert_called_once_with(bot, tid, CHAR, '', generic=True)
     with SessionLocal() as s:                      # отметка живёт в dialog_sessions
         assert s.scalar(select(DialogSession.session_key).where(
             DialogSession.telegram_id == int(tid),

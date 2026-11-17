@@ -68,12 +68,11 @@ def test_a_chat_inside_the_budget_is_not_touched(monkeypatch):
     assert cs._cap_history_tail(src) is src, 'короткий диалог не перечитывается'
 
 
-def test_the_last_lines_survive_any_cap(monkeypatch):
-    # пол в шесть реплик (его сообщение считается) — иначе она отвечает не на то,
-    # что он написал сейчас
+def test_the_last_lines_cannot_bypass_the_cap(monkeypatch):
     monkeypatch.setattr(cs, 'LLM_HISTORY_TAIL_CHARS', 1000)
     out = cs._cap_history_tail(_msgs(506, 20))
-    assert len(_window(out)) == cs._TAIL_KEEP_LINES, len(_window(out))
+    assert len(_window(out)) == 2
+    assert sum(len(m['content']) for m in _window(out)) <= 1000
 
 
 def test_the_char_cap_is_an_env_lever():

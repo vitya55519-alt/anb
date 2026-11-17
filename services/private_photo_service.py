@@ -23,7 +23,7 @@ import re
 import uuid
 import asyncio
 import aiohttp
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, asdict
 from sqlalchemy import select, func
@@ -1350,38 +1350,56 @@ async def send_daily_gift(telegram_id: int, bot) -> bool:
     An empty pool simply means no photo gift today; a proactive push never
     spends money. The gift date is only stamped once the photo actually lands."""
     uid = ensure_user(telegram_id)
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     with SessionLocal() as session:
         user = session.scalar(select(User).where(User.id == uid))
-        if not user:
+        if not user or not user.proactive_enabled:
             return False
         if user.last_daily_gift_date == today:
             return False
         # V3.56.7: the gift photo must be THE GIRL HE CHATS with — the pool is
         # per-character now, picked by the user's selected character.
         gift_char = user.selected_character or CHARACTER_ID
-    from services import retention_features_service
+    from services import chat_photo_allowance, retention_features_service, webapp_service
+    try:
+        prefs = webapp_service.get_notification_prefs(int(telegram_id))
+        if not all(prefs.get(key, True) for key in ('enabled', 'new_messages', 'daily_bonus')):
+            return False
+    except Exception:
+        logger.warning('daily gift preferences unavailable user=%s', telegram_id, exc_info=True)
+        return False
     shot = retention_features_service.random_proactive_photo(gift_char, user_id=uid)
     if not shot:
         return False  # no free pool image — skip, never pay for a push
-    data, _ctype, _kind = shot
-    from aiogram.types import BufferedInputFile
-    await bot.send_photo(
-        chat_id=telegram_id,
-        photo=BufferedInputFile(data, filename='daily_gift.jpg'),
-        caption=_her('🎁 Я скучала... вот, держи 💋', gift_char),
-    )
-    # V3.61.8: the gift also shows up in her chat inside the Mini App.
+    # The day key also prevents two scheduler processes gifting twice today.
+    reservation_key = f'daily_gift:{uid}:{today.isoformat()}'
+    if not chat_photo_allowance.use_push_frame(uid, gift_char, reservation_key=reservation_key):
+        return False
+    text = 'Я скучала... вот, держи'
     try:
         from services.scheduler_service import _to_app_chat
-        _to_app_chat(uid, telegram_id, gift_char, '🎁 Я скучала... вот, держи 💋', shot)
+        saved = _to_app_chat(uid, telegram_id, gift_char, text, shot)
     except Exception:
+        # An unknown commit outcome stays reserved, never followed by a render.
         logger.exception('daily gift app-chat persist failed user=%s', telegram_id)
-    with SessionLocal() as session:
-        user = session.scalar(select(User).where(User.id == uid))
-        if user:
-            user.last_daily_gift_date = today
-            session.commit()
+        return False
+    if not saved:
+        chat_photo_allowance.release_frame(uid, reservation_key)
+        return False
+    try:
+        with SessionLocal() as session:
+            user = session.scalar(select(User).where(User.id == uid))
+            if user:
+                user.last_daily_gift_date = today
+                session.commit()
+    except Exception:
+        # The app already has the frame; do not release it or send it again.
+        logger.exception('daily gift date persist failed user=%s', telegram_id)
+    try:
+        from services import app_ping
+        app_ping.note(bot, int(telegram_id), gift_char, '', generic=True)
+    except Exception:
+        logger.warning('daily gift notification failed user=%s', telegram_id, exc_info=True)
     # V3.56.0: audit the gift into the admin feed (free pool, $0) so the owner
     # finally sees proactive sends next to the paid renders.
     try:

@@ -62,6 +62,32 @@ def test_topic_push_uses_the_last_topic_line(monkeypatch):
     assert 'ТОЧНОЙ теме' not in seen['system']
 
 
+def test_topic_composition_does_not_persist_before_app_delivery(monkeypatch):
+    from sqlalchemy import select
+    from services import app_ping, scheduler_service
+
+    _capture(monkeypatch)
+    tg = _user_with_talk(hours_ago=30)
+    with SessionLocal() as s:
+        uid = s.scalar(select(User.id).where(User.telegram_id == str(tg)))
+        before = s.query(Message).filter_by(user_id=uid).count()
+    out = asyncio.run(chat_service.proactive_reply(
+        tg, 't', 30, character_id='anna_01', topic=True, persist=False))
+    assert out
+    with SessionLocal() as s:
+        assert s.query(Message).filter_by(user_id=uid).count() == before
+    notifications = []
+    monkeypatch.setattr(app_ping, 'note', lambda *a, **kw: notifications.append((a, kw)))
+    bot = object()
+    mid = scheduler_service._app_delivery(bot, uid, tg, 'anna_01', out)
+    with SessionLocal() as s:
+        assert s.query(Message).filter_by(user_id=uid).count() == before + 1
+        row = s.get(Message, mid)
+        assert row.content == out and row.origin == 'push' and row.role == 'assistant'
+        assert row.character_id == 'anna_01'
+    assert notifications == [((bot, tg, 'anna_01', ''), {'channel': 'default', 'generic': True})]
+
+
 def test_topic_push_needs_some_talk(monkeypatch):
     seen = _capture(monkeypatch)
     tg = _user_with_talk(hours_ago=30, n_user=1)
@@ -72,5 +98,10 @@ def test_topic_push_needs_some_talk(monkeypatch):
 def test_scheduler_wiring():
     assert "morning_callback(int(tg_id), name, _el, char_id, evening=True)" in SCHED
     assert "evening_callback_sent" in SCHED
-    assert "proactive_reply(telegram_id,name,hours,character_id=char_id,topic=True)" in SCHED
-    assert "kind=kind+'_topic'" in SCHED
+    proactive = SCHED[SCHED.index('async def _proactive('):SCHED.index('async def _day1_hook(')]
+    # Both tiers compose without saving; the delivery helper owns the one row.
+    assert proactive.count('proactive_reply(') == 2
+    assert proactive.count('proactive_reply(telegram_id,name,hours,character_id=char_id,topic=True,persist=False)') == 2
+    assert proactive.count('if not _app_delivery(bot,uid,telegram_id,char_id,msg):') == 2
+    assert 'bot.send_message(' not in proactive and 'bot.send_photo(' not in proactive
+    assert "kind=kind+'_topic'" in proactive

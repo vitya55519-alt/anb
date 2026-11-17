@@ -1148,12 +1148,20 @@ def api_constructor_steps(lang: str = 'ru', *, admin: bool = False) -> list[dict
     return out
 
 
-def api_chat_history(db_user_id: int, character_id: str, limit: int = 30) -> list[dict]:
+def api_chat_history(db_user_id: int, character_id: str, limit: int = 30, *, opened: bool = False) -> list[dict]:
     """V3.35.0: recent dialog rows for the Mini App chat view (oldest first).
 
     Same ``messages`` table the bot chat writes to — the app and the bot share
-    one continuous dialog per (user, character).
+    one continuous dialog per (user, character). ``opened`` must only be set
+    for an explicit open=1 request, never the chat polling heartbeat.
     """
+    if opened:
+        from services.life_backlog import digest_on_open
+        with SessionLocal() as session:
+            user = session.get(User, int(db_user_id))
+            if user:
+                digest_on_open(db_user_id, int(user.telegram_id), character_id,
+                               user.chat_lang or user.ui_lang or 'ru')
     limit = max(1, min(60, int(limit or 30)))
     try:
         from services.memory_service import get_recent_messages
@@ -1172,11 +1180,16 @@ def api_chat_history(db_user_id: int, character_id: str, limit: int = 30) -> lis
         # price, nothing more.
         draft = (getattr(m, 'draft_text', None) or '').strip()
         paid = bool(getattr(m, 'draft_unlocked', False))
-        entry = {'id': m.id, 'role': m.role, 'content': m.content, 'ts': ts,
+        from services.chat_service import message_block
+        content = message_block(m.content) if m.role == 'assistant' else m.content
+        entry = {'id': m.id, 'role': m.role, 'content': content, 'ts': ts,
                  # V3.39.0: media messages (photo / circle / voice) travel
                  # with the history so the app renders them like the bot.
                  'media_kind': getattr(m, 'media_kind', None),
                  'media_url': getattr(m, 'media_url', None)}
+        from services.memory_service import message_actions
+        entry['actions'] = message_actions(getattr(m, 'actions_json', None))
+        entry['origin'] = getattr(m, 'origin', None)
         if draft:
             entry['draft'] = {'paid': paid, 'price': DRAFT_PEACH_COST,
                               'text': draft if paid else ''}
@@ -1252,6 +1265,8 @@ def api_chat_list(db_user_id: int, telegram_id: int | None = None) -> list[dict]
             ts = last.created_at.isoformat() if last.created_at else None
         except Exception:
             ts = None
+        from services.chat_service import message_block
+        content = message_block(last.content) if last.role == 'assistant' else (last.content or '')
         out.append({
             'id': character_id,
             'name': card.display_name if card else (character_id if not custom else '—'),
@@ -1261,7 +1276,7 @@ def api_chat_list(db_user_id: int, telegram_id: int | None = None) -> list[dict]
             'custom': custom,
             'mine': character_id in mine_ids,
             'selected': False,
-            'last_message': (last.content or '')[:140],
+            'last_message': content[:140],
             'last_role': last.role,
             'last_ts': ts,
             'unread': int(unread_counts.get(character_id, 0) or 0),
@@ -2583,7 +2598,7 @@ def web_image(data: bytes, content_type: str, cache_key: str) -> tuple[bytes, st
 # ── V3.39.0: in-app chat media (photos / circles / voice) ──────────────────
 
 APP_MEDIA_DIR = ROOT / 'data' / 'app_media'
-_MEDIA_NAME_RE = re.compile(r'^\d+_[0-9a-f]{8}\.(jpg|jpeg|png|mp4|ogg)$')
+_MEDIA_NAME_RE = re.compile(r'^\d+_[0-9a-f]{8}\.(jpg|jpeg|png|webp|mp4|ogg)$')
 
 
 def save_chat_media(telegram_id: int, data: bytes, ext: str, content_type: str = '') -> str:
@@ -2606,6 +2621,7 @@ def save_chat_media(telegram_id: int, data: bytes, ext: str, content_type: str =
             session.commit()
     except Exception:
         logger.exception('chat media db persist failed user=%s', telegram_id)
+        raise
     return name
 
 

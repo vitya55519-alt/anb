@@ -62,12 +62,45 @@ def test_photo_reaction_service_runtime_guard():
 
 
 def test_photo_reaction_wired_into_photo_handler():
-    assert 'react_to_photo' in MAIN
-    assert '_react_to_user_photo(message)' in MAIN
-    assert 'PHOTO_REACTION_ENABLED' in MAIN
-    assert 'PHOTO_REACTION_COOLDOWN_SECONDS' in MAIN
-    # Sharing a photo grows the bond.
-    assert "event_type='meaningful_share'" in MAIN
+    import ast
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    functions = {node.name: node for node in ast.parse(MAIN).body
+                 if isinstance(node, ast.AsyncFunctionDef)}
+    photo = functions['library_photo_upload']
+    assert any(ast.unparse(decorator) == 'dp.message(F.photo)' for decorator in photo.decorator_list)
+    photo.decorator_list = []
+    module = ast.parse('from __future__ import annotations')
+    module.body.append(photo)
+    redirect = AsyncMock()
+    ns = {
+        'ADMIN_TELEGRAM_IDS': {2}, '_payment_method_edit_sessions': {},
+        '_character_card_edit_sessions': {}, '_constructor_sessions': {},
+        '_library_import_sessions': {}, '_redirect_bot_chat': redirect,
+    }
+    exec(compile(module, str(ROOT / 'main.py'), 'exec'), ns)
+    # Outside service upload sessions, neither a user nor the owner receives a
+    # bot reaction. No downloader, model, relationship writer or sender is bound.
+    for telegram_id in (1, 2):
+        redirect.reset_mock()
+        message = SimpleNamespace(from_user=SimpleNamespace(id=telegram_id))
+        asyncio.run(ns['library_photo_upload'](message))
+        redirect.assert_awaited_once_with(message)
+
+    app_photo = ast.get_source_segment(MAIN, functions['_webapp_api_chat_photo'])
+    assert "add_post('/webapp/api/chat/photo', _webapp_api_chat_photo)" in MAIN
+    assert 'PHOTO_REACTION_ENABLED' in app_photo
+    assert 'PHOTO_REACTION_COOLDOWN_SECONDS' in app_photo
+    assert app_photo.index('_webapp_chat_gate') < app_photo.index('await react_to_photo(')
+    assert 'await react_to_photo(image_b64, mime_type=mime, caption=caption or None, character_id=character_id)' in app_photo
+    # Her app reaction and the uploaded photo remain in the same character's
+    # history, and the response delivers both to the app rather than Telegram.
+    assert "save_message(uid, character_id, 'user', caption or" in app_photo
+    assert "media_kind='photo', media_url=url" in app_photo
+    assert "save_message(uid, character_id, 'assistant', reaction)" in app_photo
+    assert "'photo_reaction_sent'" in app_photo
+    assert "{'ok': True, 'reply': reaction, 'user_photo_url': url}" in app_photo
 
 
 # ── 3. Scenario hooks ──────────────────────────────────────────────────────

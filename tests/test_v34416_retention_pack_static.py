@@ -52,24 +52,24 @@ def test_missing_state_row_no_longer_spams_hourly():
 
 
 def test_day1_hook_job():
-    hook = SCHEDULER[SCHEDULER.index('async def _day1_hook(bot):'):SCHEDULER.index('def _user_local_hour(')]
+    hook = SCHEDULER[SCHEDULER.index('async def _day1_hook(bot):'):SCHEDULER.index('\n_MEDIA_DIR =')]
     # young + silent + not yet hooked accounts only
     assert 'User.day1_hook_at.is_(None)' in hook
     assert 'User.created_at>=young' in hook
     assert 'User.last_active_at<=silent' in hook
     assert "u.chat_lang or u.ui_lang or 'ru'" in hook
     assert 'lang = app_lang(lang)' in hook
-    # the message promises the daily streak gift and opens the app
-    # (V3.55.5: the bonus wheel was replaced by the streak gift rail)
+    # The gift fallback and personal continuation now live in her app dialog.
     assert 'копится дневной подарок' in UI_LANG
-    assert "flow_text(lang, 'gift_button')" in hook
     assert "lang, 'gift_text', amount=DAILY_GIFT_JACKPOT_AMOUNT" in hook
-    assert 'WebAppInfo(url=f\'{PUBLIC_BASE_URL}/webapp\')' in hook
-    # an engaged user gets a personal continuation and a direct same-girl chat link
     assert 'continuation = await morning_callback(telegram_id, name, lang, _char)' in hook
-    assert "quote(_char, safe=\"\")" in hook
-    assert "entry=day1" in hook
-    assert '_to_app_chat(uid,telegram_id,_char,continuation)' in hook
+    assert 'if not _app_delivery(bot,uid,telegram_id,_char,continuation):' in hook
+    assert 'if not _app_delivery(bot,uid,telegram_id,_char,text):' in hook
+    assert hook.index('_app_delivery(') < hook.index('u.day1_hook_at=now')
+    assert 'bot.send_message(' not in hook and 'bot.send_photo(' not in hook
+    # The notification, not a Telegram copy of her words, opens that same girl.
+    ping = (ROOT / 'services' / 'app_ping.py').read_text(encoding='utf-8')
+    assert '/webapp?open=chat&char={quote(pend["char"])}' in ping
     # exactly once per user
     assert 'u.day1_hook_at=now' in hook
     assert 'has_accepted(telegram_id)' in hook

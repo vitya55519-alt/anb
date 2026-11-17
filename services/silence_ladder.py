@@ -96,15 +96,17 @@ def _gift_frame(telegram_id: int, character_id: str):
     """Подарок — кадр из её готового пула: $0 для нас и тот же общий кап
     бесплатных кадров в сутки. Рендера провайдера здесь нет и не будет."""
     try:
-        from services import chat_photo_allowance
+        from services import chat_photo_allowance, life_backlog
         from services.user_service import ensure_user
         uid = ensure_user(int(telegram_id))
         if chat_photo_allowance.frames_left(uid) <= 0:
+            life_backlog.note_denial(uid, 'proactive', 'photo_cap')
             return None
         from services.retention_features_service import random_proactive_photo
         shot = random_proactive_photo(character_id, user_id=uid)
-        if shot:
-            chat_photo_allowance.use_push_frame(uid, character_id)
+        if shot and not chat_photo_allowance.use_push_frame(uid, character_id):
+            life_backlog.note_denial(uid, 'proactive', 'photo_cap')
+            return None
         return shot
     except Exception:
         logger.debug('ladder gift frame failed user=%s', telegram_id, exc_info=True)

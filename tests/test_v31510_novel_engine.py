@@ -92,12 +92,11 @@ def test_unmarked_answer_stays_exactly_as_it_was():
     assert message_block('привет, как ты') == 'привет, как ты'
 
 
-def test_a_card_without_a_message_never_eats_her_reply():
+def test_a_missing_message_never_promotes_the_hidden_monologue():
     th, md = novel_pair('THOUGHT: молчу, мне страшно\nMESSAGE:')
-    assert md == 'молчу, мне страшно' and th == ''
-    # only a THOUGHT block came back: the mark is stripped, he still gets a line
+    assert md == '' and th == 'молчу, мне страшно'
     th, md = novel_pair('THOUGHT: только мысль')
-    assert (th, md) == ('', 'только мысль')
+    assert (th, md) == ('только мысль', '')
 
 
 def test_join_roundtrips_and_the_card_never_enters_the_spoken_text():
@@ -131,8 +130,8 @@ def test_the_format_rule_rides_after_his_last_message(monkeypatch):
     assert msgs[-1]['role'] == 'system' and msgs[-1]['content'].startswith(NOVEL_FORMAT_SUFFIX)
     assert 'АНКЕТА КАДРА' in msgs[-1]['content']
     assert msgs[-2] == {'role': 'user', 'content': 'ты чего не отвечаешь'}
-    assert msgs[0]['role'] == 'system' and 'ДВИЖОК НОВЕЛЛЫ' in msgs[0]['content']
-    assert thought_block(answer) and message_block(answer)
+    assert msgs[0]['role'] == 'system' and 'без внутреннего монолога' in msgs[0]['content']
+    assert not thought_block(answer) and message_block(answer)
     saved = [m.content for m in get_recent_messages(uid, 'anna_01', 12) if m.role == 'assistant']
     assert answer in saved
 
@@ -154,18 +153,17 @@ def test_duo_chat_keeps_one_layer_but_shares_the_bans(monkeypatch):
 
 def test_engine_context_gates_levels_and_the_taboo():
     low, mid, high = novel_engine_context(1), novel_engine_context(4), novel_engine_context(8)
-    assert 'УРОВЕНЬ 1–2' in low and 'УРОВЕНЬ 3–5' not in low
-    assert 'УРОВЕНЬ 3–5' in mid
-    assert 'УРОВЕНЬ 6–10' in high and 'УРОВЕНЬ 1–2' not in high
+    assert 'Держи дистанцию' in low and 'доверительнее' not in low
+    assert 'доверительнее' in mid
+    assert 'сама предлагай следующий шаг' in high and 'Держи дистанцию' not in high
     for block in (low, mid, high):
-        assert 'ДВА СЛОЯ' in block and 'КОНТРАСТ' in block
-        assert 'один физический шаг' in block.lower()
-    married = novel_engine_context(3, 'mar_married')
-    assert 'ГДЕ РИСК' in married and 'муж' in married
-    bf = novel_engine_context(3, 'mar_boyfriend')
-    assert 'ГДЕ РИСК' in bf and 'парень' in bf
+        assert 'без внутреннего монолога' in block
+        assert 'один шаг сцены' in block.lower()
+        assert 'THOUGHT:' not in block
+    for status in ('mar_married', 'mar_boyfriend', 'mar_wife', 'mar_with_you'):
+        assert 'семейное положение' in novel_engine_context(3, status)
     for alone in ('mar_single', 'mar_divorced', 'mar_open', ''):
-        assert 'ГДЕ РИСК' not in novel_engine_context(3, alone)
+        assert 'семейное положение' not in novel_engine_context(3, alone)
 
 
 def test_format_suffix_bans_the_shower_gag_and_foreign_names():
@@ -244,16 +242,13 @@ def test_app_voice_and_call_never_speak_the_thought():
     assert 'voice_call.spoken(invite_funnel.strip_tag(message_block(answer)))' in MAIN
 
 
-def test_webapp_draws_the_pink_card_and_holds_the_recording():
+def test_webapp_draws_one_pink_message_without_a_recording_delay():
     assert '.thcard .th-h { color: #FF4D8D; font-weight: 700' in WEBAPP
-    assert '.thcard .th-b { font-style: italic' in WEBAPP
-    assert 'function parseThought(' in WEBAPP and 'function thoughtCard(' in WEBAPP
-    assert '💭 Мысли ' in WEBAPP and 'rec_voice' in WEBAPP
+    assert '.thcard .th-b { font-style: normal' in WEBAPP
+    assert 'function parseThought(' in WEBAPP and 'function messageCard(' in WEBAPP
+    assert 'function thoughtCard(' not in WEBAPP
     render = WEBAPP[WEBAPP.index('function renderChatReply('):WEBAPP.index('function insertChatReply(')]
-    assert 'parseThought(String(j.reply' in render and 'thoughtCard(nv.thought)' in render
-    assert 'showRecording(() => insertChatReply' in render
-    rec = WEBAPP[WEBAPP.index('function showRecording('):WEBAPP.index('function chatBubble(')]
-    assert 'Math.max(3000' in rec
-    # one bubble per turn, and the history redraws the card, not the raw marks
-    assert '|| j.novel) ? [j.reply] : splitBubbles' in WEBAPP
-    assert 'content: nv.message, novel: true' in WEBAPP
+    assert 'afterDraft(j.draft, () => insertChatReply(j, chatId), chatId)' in render
+    assert 'showRecording(' not in render and 'setTimeout(' not in render
+    assert 'content: parseThought(m.content).message' in WEBAPP
+    assert 'splitBubbles(' not in WEBAPP and 'playFollowups(' not in WEBAPP

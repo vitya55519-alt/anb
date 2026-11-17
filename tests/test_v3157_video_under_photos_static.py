@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,12 +44,38 @@ def test_video_gate_paid_stars_except_admin():
 
 
 def test_video_refund_only_for_paid_runs():
-    sig = 'async def _run_video_background(chat_id: int, telegram_id: int, delivery_id: int, charge_id: str | None = None, motion_preset: str | None = None)'
-    assert sig in MAIN
-    block = MAIN[MAIN.index(sig):MAIN.index('@dp.callback_query(F.data.startswith(\'video:animate:\'))')]
-    assert 'if charge_id:' in block
-    # V3.69.0: SpicyAPI is the only video engine (owner, 2026-10-21).
-    assert 'engines.extend(video_engines())' in block
+    functions = {node.name: node for node in ast.parse(MAIN).body
+                 if isinstance(node, ast.AsyncFunctionDef)}
+    job = functions['_run_video_background']
+    assert [arg.arg for arg in job.args.args] == [
+        'chat_id', 'telegram_id', 'delivery_id', 'charge_id', 'motion_preset']
+    assert [ast.literal_eval(value) for value in job.args.defaults] == [None, None]
+    defaults = dict(zip((arg.arg for arg in job.args.kwonlyargs), job.args.kw_defaults))
+    assert ast.literal_eval(defaults['app_only']) is False
+
+    # Both the actual refund and its ledger entry must be inside the charge
+    # guard, not merely somewhere in a function that mentions charge_id.
+    failure = next(node for node in job.body if isinstance(node, ast.Try)).handlers[0]
+    guard = next(node for node in failure.body
+                 if isinstance(node, ast.If) and ast.unparse(node.test) == 'charge_id')
+    for name in ('bot.refund_star_payment', 'record_refund'):
+        calls = [node for node in ast.walk(job)
+                 if isinstance(node, ast.Call) and ast.unparse(node.func) == name]
+        assert len(calls) == 1
+        assert calls[0] in list(ast.walk(guard.body[0]))
+    refund = next(node for node in ast.walk(guard) if isinstance(node, ast.Call)
+                  and ast.unparse(node.func) == 'bot.refund_star_payment')
+    assert {kw.arg: ast.unparse(kw.value) for kw in refund.keywords} == {
+        'user_id': 'telegram_id', 'telegram_payment_charge_id': 'charge_id'}
+
+    # Stars purchases opt into app delivery; the default still supports admin jobs.
+    paid_calls = [node for node in ast.walk(functions['successful_payment'])
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                  and node.func.id == '_run_video_background']
+    assert len(paid_calls) == 1
+    assert ast.unparse(paid_calls[0].args[3]) == 'charge'
+    assert any(kw.arg == 'app_only' and ast.literal_eval(kw.value) is True
+               for kw in paid_calls[0].keywords)
 
 
 def test_premium_daily_free_limit_helpers():

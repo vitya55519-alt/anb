@@ -115,10 +115,14 @@ def test_anniversaries():
     assert 'def check_anniversary(' in COUPLE
     for key in ('anniv_7', 'anniv_30', 'anniv_90'):
         assert f"'{key}'" in GAMIF
-    hook = MAIN[MAIN.index('async def text_message('):MAIN.index('idea_edit = _photo_idea_edit_sessions')]
-    assert 'couple_service.check_anniversary(' in hook
+    hook = MAIN[MAIN.index('async def _app_anniversary('):MAIN.index('def _pings_app_reply(')]
+    assert 'couple_service.check_anniversary, uid, character_id' in hook
     assert "'anniversary_celebrated'" in hook
-    assert '_anniversary_push' in hook
+    assert '_app_ping(telegram_id, character_id' in hook
+    wrapper = MAIN[MAIN.index('def _pings_app_reply('):MAIN.index('PHOTO_WAIT_KEYS =')]
+    assert '_spawn_background(_app_anniversary(telegram_id, character_id))' in wrapper
+    assert '@_pings_app_reply\nasync def _webapp_chat_turn(' in MAIN
+    assert 'bot.send_message' not in hook
 
 
 def test_profile_hearts_progress_and_plateau_hint():

@@ -22,9 +22,15 @@ def test_voice_and_photo_routes_registered():
 def test_shared_gate_and_turn_helpers():
     assert 'def _webapp_chat_gate(' in MAIN
     assert 'async def _webapp_chat_turn(' in MAIN
-    # the text, voice and photo endpoints all pass through the same gate
+    # Text, story action, voice and photo all pass through the same gate.
     # V3.57.2: the gate is PostgreSQL reads, so it runs off the event loop
-    assert MAIN.count('gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)') == 3
+    gate_call = 'gate = await asyncio.to_thread(_webapp_chat_gate, character_id, telegram_id)'
+    assert MAIN.count(gate_call) == 4
+    for endpoint in ('send', 'action', 'voice', 'photo'):
+        body = MAIN[MAIN.index(f'async def _webapp_api_chat_{endpoint}('):]
+        body = body[:body.index('\nasync def ')]
+        assert gate_call in body
+        assert 'if gate is not None:\n        return gate' in body
     assert MAIN.count('return await _webapp_chat_turn(') == 2
 
 

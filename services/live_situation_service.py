@@ -229,12 +229,10 @@ def _recent_her_lines(telegram_id: int, character_id: str, limit: int = 4) -> li
 
 
 FORMAT_RULES = (
-    'ВАЖНО: ответ строго в три блока, другим меткам места нет:\n'
-    'THOUGHT: <что она думает в эту секунду, 30–50 слов>\n'
+    'ВАЖНО: только два блока, без внутреннего монолога и рассуждений:\n'
     'MESSAGE: <что она пишет ему прямо сейчас, 20–40 слов>\n'
     'IMAGE_PROMPT: <одно английское описание кадра в одну строку>\n'
-    'THOUGHT идёт первым, MESSAGE вторым, IMAGE_PROMPT третьим; между блоками и '
-    'вокруг них слов нет.\n'
+    'MESSAGE идёт первым, IMAGE_PROMPT вторым; между блоками и вокруг них слов нет.\n'
     'MESSAGE — живая строчка из той самой ситуации: чем она занята, где стоит, '
     'что у неё надето и что вот-вот случится. Коротко, как смс, без абзацев. '
     'MESSAGE обязана кончаться вопросом про фото — своими словами, но смысл '
@@ -332,12 +330,12 @@ async def build_teaser(telegram_id: int, character_id: str, when: str | None = N
         from services.llm_provider_service import generate_text
         r = await generate_text([{'role': 'system', 'content': system},
                                  {'role': 'user',
-                                  'content': 'Напиши ему это сообщение прямо сейчас, три блока.'}],
+                                  'content': 'Напиши ему сообщение и описание кадра, два блока.'}],
                                 max_tokens=420, temperature=0.95, purpose='live_situation')
     except Exception:
         logger.warning('live situation LLM failed user=%s', telegram_id, exc_info=True)
         return None
-    thought, message, image = split_teaser(getattr(r, 'text', '') or '')
+    _, message, image = split_teaser(getattr(r, 'text', '') or '')
     from services.dialogue_guard_service import finish_or_drop
     message = finish_or_drop(message, getattr(r, 'complete', True))
     if len(message) < 12:
@@ -347,7 +345,7 @@ async def build_teaser(telegram_id: int, character_id: str, when: str | None = N
     # и писался.
     image = (image or '').strip().strip('`"') or sit['image']
     return {'when': when, 'key': sit['key'], 'place': sit['place'],
-            'thought': thought, 'message': message, 'image_prompt': image}
+            'message': message, 'image_prompt': image}
 
 
 def count_today(telegram_id: int, character_id: str) -> int:
@@ -421,12 +419,11 @@ def store_teaser(telegram_id: int, character_id: str, teaser: dict, uid: int | N
     """Её строка — в ``content``, промпт кадра — в свою колонку. V3.167.5 §9:
     рельс помечен как «её день» — это она написала первой, и кап накопления
     обязан это видеть."""
-    from services.chat_service import join_thought_message
     from services.user_service import ensure_user
     from services.memory_service import save_message
     from services.life_backlog import LIFE_ORIGIN
     db_uid = int(uid or ensure_user(int(telegram_id), ''))
-    text = join_thought_message(teaser.get('thought') or '', teaser['message'])
+    text = teaser['message']
     return int(save_message(db_uid, character_id, 'assistant', text,
                             image_prompt=teaser['image_prompt'], origin=LIFE_ORIGIN) or 0)
 
@@ -456,7 +453,7 @@ async def push(telegram_id: int, character_id: str, when: str | None = None,
     except Exception:
         logger.debug('live situation analytics failed user=%s', telegram_id)
     return {'id': mid, 'price': price(), 'text': teaser['message'],
-            'thought': teaser['thought'], 'when': when, 'key': teaser['key']}
+            'when': when, 'key': teaser['key']}
 
 
 def directive_for(telegram_id: int, character_id: str) -> str:

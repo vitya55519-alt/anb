@@ -76,7 +76,7 @@ def test_a_line_she_wrote_first_carries_its_rail():
     assert 'origin: Mapped[str | None]' in (ROOT / 'models' / 'app_models.py').read_text(encoding='utf-8')
     assert 'origin=origin' in (ROOT / 'services' / 'memory_service.py').read_text(encoding='utf-8')
     # весь scheduler идёт через одну точку — и по умолчанию это её ход
-    assert 'def _to_app_chat(uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN)' in SCHED
+    assert 'def _to_app_chat(uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN, actions=None)' in SCHED
     assert SCHED.count('_to_app_chat(') > SCHED.count('origin=LIFE_ORIGIN')   # остальные — 'push'
     assert 'origin=LIFE_ORIGIN' in SCHED and 'origin=LIFE_ORIGIN' in LIVE
 
@@ -94,7 +94,8 @@ def test_her_answer_to_him_is_not_an_unanswered_push():
 
 def test_the_digest_is_hers_too():
     src = (ROOT / 'services' / 'life_backlog.py').read_text(encoding='utf-8')
-    assert "save_message(uid, character_id, 'assistant', text, origin=DIGEST_ORIGIN)" in src
+    # The message and daily dedupe marker now commit in the same transaction.
+    assert 'content=text, origin=DIGEST_ORIGIN)' in src
     assert LB.PUSHED_ORIGINS == (LB.PUSH_ORIGIN, LB.LIFE_ORIGIN, LB.DIGEST_ORIGIN)
 
 

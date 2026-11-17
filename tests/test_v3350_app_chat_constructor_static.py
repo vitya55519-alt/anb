@@ -100,7 +100,8 @@ def test_api_chat_history_payload():
     # with the same role/content/ts triple and continues onto the media fields.
     # V3.152.0: the triple gains «id» in front — a tap on «прочитать стёртое»
     # must point at exactly this message row.
-    assert "{'id': m.id, 'role': m.role, 'content': m.content, 'ts': ts," in fn
+    assert "content = message_block(m.content) if m.role == 'assistant' else m.content" in fn
+    assert "{'id': m.id, 'role': m.role, 'content': content, 'ts': ts," in fn
 
 
 def test_characters_grid_marks_custom_and_mine():
@@ -125,7 +126,8 @@ def test_chat_history_handler():
     assert 'validate_init_data' in handler
     assert "status=401" in handler
     assert "character_id = str(request.query.get('character_id', ''))" in handler
-    assert 'api_chat_history(uid, character_id, limit)' in handler
+    assert "opening = request.query.get('open') == '1'" in handler
+    assert 'api_chat_history(uid, character_id, limit, opened=opening)' in handler
 
 
 def test_chat_send_handler_reuses_bot_pipeline():
@@ -245,11 +247,11 @@ def test_chat_frontend_flow():
     assert 'function openCharacter(el)' in INDEX
     assert 'function openChat(c)' in INDEX
     assert 'function loadChatHistory(characterId)' in INDEX
-    assert 'function sendChat(retryText)' in INDEX
+    assert 'function sendChat(retryText, eventAction)' in INDEX
     assert "fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '') + '&character_id=' + encodeURIComponent(characterId))" in INDEX
     # V3.166.10 (владелец): id диалога берётся до первого await — ответ не должен
     # уехать в тот чат, который открыт к моменту, когда она успела ответить.
-    assert "body: JSON.stringify({ character_id: chatId, text: text })," in INDEX
+    assert "{ character_id: chatId, text: text })," in INDEX
     # consent / limit toasts instead of silent failures
     assert "j.error === 'consent'" in INDEX
     assert "j.error === 'premium_required'" in INDEX

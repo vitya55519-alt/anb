@@ -113,19 +113,8 @@ _MINIMAX_HEADROOM_BY_PURPOSE = {'life_event': 1200, 'proactive': 1200}
 _MINIMAX_HEADROOM_BY_PURPOSE['dialogue'] = max(0, int(os.getenv('MINIMAX_DIALOGUE_HEADROOM', '1024')))
 MINIMAX_EMPTY_RETRY_HEADROOM = max(512, int(os.getenv('MINIMAX_EMPTY_RETRY_HEADROOM', '2400')))
 RETRY_EMPTY_PURPOSES = frozenset({'dialogue'})
-# V3.167.9 (владелец 16.11, «мыслей нет, общение падает»): пустой ответ M3 в логах
-# — это thinking, съевший весь лимит: модель думает, видимого текста нет, и вторая
-# попытка с тем же усилием думала ровно так же. Авто-повтор в диалоге теперь просит
-# низкую глубину размышления (reasoning_effort — параметр OpenAI SDK с v2, его
-# принимают и MiniMax-M3, и M3.1-Flash; модель та же) и больше места под ответ.
+# M3.1-Flash не поддерживает отключение thinking, только глубину reasoning_effort.
 MINIMAX_RETRY_EFFORT = os.getenv('MINIMAX_RETRY_EFFORT', 'low').strip()
-# V3.167.3 (владелец, 16.11, сигнал «🛑 ход чата: провайдеры молчат: ask: empty
-# text (finish=length); retry: TimeoutError»): первая попытка в диалоге и так
-# уходила в молчание — thinking съедал весь лимит и видимого текста не оставалось
-# (finish=length на пустом ответе), а повтор бился в свой таймаут. Раз low усилие
-# спасает повтор, та же глубина теперь просится и на первую попытку диалога:
-# модель та же, меняется только то, сколько она думает до ответа. Пусто в env —
-# вернуть прежнее поведение без правки кода (MINIMAX_DIALOGUE_EFFORT=).
 MINIMAX_DIALOGUE_EFFORT = os.getenv('MINIMAX_DIALOGUE_EFFORT', 'low').strip()
 # V3.143.0: owner ТЗ — she sometimes kept writing after his turn («User: …») and
 # sent a dialogue where she answered for both. Every call that produces a chat
@@ -261,7 +250,11 @@ async def generate_text(
     # V3.96.0: на присланное фото нужны глаза, а чат-модели MiniMax читают только
     # текст, поэтому vision-вызовы идут мимо этой ветки в Gemini.
     if _minimax and purpose not in VISION_PURPOSES:
+        thinking_disabled = mm_model == 'MiniMax-M3'
+        effort_supported = mm_model == 'MiniMax-M3.1-Flash'
         mm_kwargs = {}
+        if thinking_disabled:
+            mm_kwargs['extra_body'] = {'thinking': {'type': 'disabled'}}
         if purpose == 'dialogue':
             # V3.63.12: MiniMax's own guidance for chat is temperature 1.0 with
             # top_p 0.95; below that M3 drifts into the same safe phrasing.
@@ -270,22 +263,23 @@ async def generate_text(
             # the wording keeps varying at the lower temperature.
             mm_kwargs['top_p'] = 0.95
             # V3.167.3: думать меньше — с первого запроса, а не только с повтора.
-            if MINIMAX_DIALOGUE_EFFORT:
+            if effort_supported and MINIMAX_DIALOGUE_EFFORT:
                 mm_kwargs['reasoning_effort'] = MINIMAX_DIALOGUE_EFFORT
         if stop:
             mm_kwargs['stop'] = stop
         # V3.63.4: M3 spends its reasoning inside the same answer budget — short
         # calls (life moments, proactive, rewrite, adaptation) came back EMPTY.
         # The thinking gets its own room on top of max_tokens.
-        headroom = max(MINIMAX_REASONING_HEADROOM, _MINIMAX_HEADROOM_BY_PURPOSE.get(purpose, 0))
+        headroom = 0 if thinking_disabled else max(
+            MINIMAX_REASONING_HEADROOM, _MINIMAX_HEADROOM_BY_PURPOSE.get(purpose, 0))
         retry_kwargs = dict(mm_kwargs)
         retry_headroom = headroom
         # V3.97.0: пустой ответ в диалоге — это thinking, съевший весь лимит
         # (out == reasoning == cap в журнале). Повтор просит короткое
         # размышление и даёт под ответ заметно больше места.
-        if purpose in RETRY_EMPTY_PURPOSES:
+        if purpose in RETRY_EMPTY_PURPOSES and not thinking_disabled:
             retry_headroom = MINIMAX_EMPTY_RETRY_HEADROOM
-            if MINIMAX_RETRY_EFFORT:
+            if effort_supported and MINIMAX_RETRY_EFFORT:
                 retry_kwargs['reasoning_effort'] = MINIMAX_RETRY_EFFORT
         # V3.167.4: размер отправленного запроса в причинах — «M3 молчит» и
         # «M3 молчит под промптом в 40 тыс. знаков» для владельца выглядят
@@ -421,7 +415,9 @@ def provider_status() -> dict:
         'minimax_timeout_seconds': LLM_TIMEOUT_SECONDS,
         'dialogue_timeout_seconds': LLM_DIALOGUE_TIMEOUT_SECONDS,
         'retry_timeout_seconds': LLM_RETRY_TIMEOUT_SECONDS,
-        'dialogue_reasoning_effort': MINIMAX_DIALOGUE_EFFORT or 'default',
+        'dialogue_thinking_disabled': MINIMAX_DIALOGUE_MODEL == 'MiniMax-M3',
+        'dialogue_reasoning_effort': (MINIMAX_DIALOGUE_EFFORT or 'default')
+            if MINIMAX_DIALOGUE_MODEL == 'MiniMax-M3.1-Flash' else 'not_applicable',
         'minimax_attempts': MINIMAX_ATTEMPTS,
         'retry_pause_seconds': LLM_RETRY_PAUSE_SECONDS,
         'turn_budget_seconds': LLM_CHAIN_BUDGET_SECONDS,

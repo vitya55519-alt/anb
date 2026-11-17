@@ -62,10 +62,16 @@ def test_discount_product_and_column():
 
 
 def test_limit_wall_replaces_the_dry_notice():
-    # V3.20.0 blocked by «she fell asleep» + a free demo; V3.166.2 keeps the
-    # soft scene but sells one thing, and admins stay exempt from the gate.
-    assert MAIN.count('await _limit_wall_reply(') >= 3
-    assert 'message.from_user.id not in ADMIN_TELEGRAM_IDS and not can_send_message' in MAIN
+    # App dialogue uses the shared limit gate, with admins exempt. Bot
+    # redirects must not need a legacy in-character wall or consume a turn.
+    gate = MAIN[MAIN.index('def _webapp_chat_gate('):MAIN.index('def _tts_text(')]
+    assert 'telegram_id not in ADMIN_TELEGRAM_IDS and not can_send_message(telegram_id)' in gate
+    assert "'error': 'limit'" in gate and 'status=429' in gate
+    assert "'chat_limit_wall'" in gate
+    index = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
+    assert 'if (r.status === 429)' in index
+    assert "showLimitWall(() => { const i = document.getElementById('chatText')" in index
+    assert "quickBuy('limit', retry)" in index
     assert '_sleep_block_reply' not in MAIN and '_sleep_block_markup' not in MAIN
     assert "pick_text('sleep')" not in MAIN
     assert "callback_data='retention:demo'" not in MAIN

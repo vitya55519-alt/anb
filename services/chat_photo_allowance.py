@@ -11,15 +11,19 @@ and one he may already have seen — so it spends its own small daily quota
 """
 from __future__ import annotations
 
+import json
+import logging
 import re
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 
 from config import (CHAT_FREE_PHOTOS_PER_DAY, CHAT_POOL_PHOTOS_PER_DAY, CHAT_PREMIUM_PHOTOS_PER_DAY,
                     FREE_PHOTO_COST_USD, FREE_PHOTO_DAILY_BUDGET_USD, FREE_FRAMES_PER_DAY)
-from models.app_models import ProductEvent
+from models.app_models import ProductEvent, User
 from services.db import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 EVENT = 'chat_free_photo'
 # V3.81.0: a free photo served from the pool after the daily budget ran out.
@@ -128,8 +132,65 @@ def pool_photos_left(uid: int) -> int:
         return 0
 
 
-def use_pool_photo(uid: int, character_id: str) -> None:
-    note_today(uid, POOL_EVENT, character_id)
+def use_pool_photo(uid: int, character_id: str, *, reservation_key: str | None = None) -> bool:
+    """Atomically reserve a chat-pool frame within both daily account caps."""
+    return _reserve_frame(uid, character_id, POOL_EVENT, reservation_key)
+
+
+def _reserve_frame(uid: int, character_id: str, event: str,
+                   reservation_key: str | None) -> bool:
+    """Lock the account with UPDATE: unlike FOR UPDATE, it also serializes SQLite writers."""
+    try:
+        with SessionLocal() as session:
+            locked = session.execute(update(User).where(User.id == uid).values(id=User.id))
+            if locked.rowcount != 1:
+                return False
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            start = datetime.combine(now.date(), time.min)
+            counts = dict(session.execute(
+                select(ProductEvent.event_name, func.count(ProductEvent.id)).where(
+                    ProductEvent.user_id == uid,
+                    ProductEvent.event_name.in_((POOL_EVENT, PUSH_EVENT)),
+                    ProductEvent.created_at >= start,
+                    ProductEvent.created_at < start + timedelta(days=1),
+                ).group_by(ProductEvent.event_name)).all())
+            if sum(counts.values()) >= FREE_FRAMES_PER_DAY:
+                return False
+            if event == POOL_EVENT and counts.get(POOL_EVENT, 0) >= CHAT_POOL_PHOTOS_PER_DAY:
+                return False
+            metadata = json.dumps({'reservation_key': reservation_key}) if reservation_key else '{}'
+            if reservation_key and session.scalar(select(ProductEvent.id).where(
+                    ProductEvent.user_id == uid,
+                    ProductEvent.event_name.in_((POOL_EVENT, PUSH_EVENT)),
+                    ProductEvent.metadata_json == metadata).limit(1)) is not None:
+                return False  # a reservation key must never authorize a second delivery
+            session.add(ProductEvent(user_id=uid, character_id=character_id, event_name=event,
+                                     created_at=now, metadata_json=metadata))
+            session.commit()
+            return True
+    except Exception:
+        logger.warning('ready frame reservation failed user=%s', uid, exc_info=True)
+        return False
+
+
+def release_frame(uid: int, reservation_key: str) -> bool:
+    """Release only this reservation after confirmed non-delivery; uncertain outcomes stay counted."""
+    if not reservation_key:
+        return False
+    try:
+        with SessionLocal() as session:
+            locked = session.execute(update(User).where(User.id == uid).values(id=User.id))
+            if locked.rowcount != 1:
+                return False
+            result = session.execute(delete(ProductEvent).where(
+                ProductEvent.user_id == uid,
+                ProductEvent.event_name.in_((POOL_EVENT, PUSH_EVENT)),
+                ProductEvent.metadata_json == json.dumps({'reservation_key': reservation_key})))
+            session.commit()
+            return result.rowcount == 1
+    except Exception:
+        logger.warning('ready frame release failed user=%s', uid, exc_info=True)
+        return False
 
 
 def frames_left(uid: int) -> int:
@@ -138,15 +199,21 @@ def frames_left(uid: int) -> int:
     в чате и кадр, который она сама приложила к своему дню. Рендер за персики
     сюда не попадает: покупка и цена кадра остаются как есть."""
     try:
-        return max(0, FREE_FRAMES_PER_DAY - count_today(uid, POOL_EVENT)
-                    - count_today(uid, PUSH_EVENT))
+        start = _day_start()
+        with SessionLocal() as session:
+            used = session.scalar(select(func.count(ProductEvent.id)).where(
+                ProductEvent.user_id == uid,
+                ProductEvent.event_name.in_((POOL_EVENT, PUSH_EVENT)),
+                ProductEvent.created_at >= start,
+                ProductEvent.created_at < start + timedelta(days=1))) or 0
+            return max(0, FREE_FRAMES_PER_DAY - used)
     except Exception:
         return 0            # без счётчика кран закрываем: лишнего кадра не будет
 
 
-def use_push_frame(uid: int, character_id: str) -> None:
-    """Кадр «её дня» потрачен — записываем в тот же суточный счётчик."""
-    note_today(uid, PUSH_EVENT, character_id)
+def use_push_frame(uid: int, character_id: str, *, reservation_key: str | None = None) -> bool:
+    """Reserve a ready push/starter frame within the shared account/day cap."""
+    return _reserve_frame(uid, character_id, PUSH_EVENT, reservation_key)
 
 
 def count_today(uid: int, event: str) -> int:

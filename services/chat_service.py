@@ -51,28 +51,17 @@ def _spawn_background(coro, label: str) -> None:
     task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
-# V3.167.10 (хотфикс, его сигнал «sent 30.3k — обрезки истории нет»): хвост
-# переписки и так упирается в 16 реплик (Premium — в 30), а по замеру живой
-# переписки из дампа 16.11 даёт 7% запроса — 1.7k знаков из 25.9k. Знаковый
-# потолок ниже нужен самым длинным чатам: у худшего хвост весит 7.5k.
-LLM_HISTORY_TAIL_CHARS = max(1000, int(os.getenv('LLM_HISTORY_TAIL_CHARS', '4000')))
-# Несколько последних реплик не отдаём ни при каком капе — без них она отвечает
-# не на то, что он написал сейчас.
-_TAIL_KEEP_LINES = 6
+LLM_HISTORY_TAIL_CHARS = min(5000, max(1000, int(os.getenv('LLM_HISTORY_TAIL_CHARS', '4000'))))
+LLM_HISTORY_TAIL_MESSAGES = 20
 
 
 def _cap_history_tail(messages: list[dict]) -> list[dict]:
-    """Сбрасывает самые старые реплики хвоста, пока они в LLM_HISTORY_TAIL_CHARS.
-
-    Системную простыню, указы этого хода и его сообщение не трогает: резать
-    будем то, что собираем сами, а не то, как она говорит.
-    """
-    head, *rest = messages
-    idx = [i for i, m in enumerate(rest) if m.get('role') in ('user', 'assistant')]
+    idx = [i for i, m in enumerate(messages) if m.get('role') in ('user', 'assistant')]
     keep, used = 0, 0
     for i in reversed(idx):
-        used_next = used + len(str(rest[i].get('content') or ''))
-        if used_next > LLM_HISTORY_TAIL_CHARS and keep >= _TAIL_KEEP_LINES:
+        used_next = used + len(str(messages[i].get('content') or ''))
+        # Текущее сообщение сохраняем целиком; прежние реплики не обходят потолок.
+        if keep and (used_next > LLM_HISTORY_TAIL_CHARS or keep >= LLM_HISTORY_TAIL_MESSAGES):
             break
         used, keep = used_next, keep + 1
     if keep >= len(idx):
@@ -80,7 +69,7 @@ def _cap_history_tail(messages: list[dict]) -> list[dict]:
     gone = len(idx) - keep
     _logger.info('dialogue tail capped lines=%d chars=%d cap=%d', gone, used, LLM_HISTORY_TAIL_CHARS)
     dropped = set(idx[:gone])
-    return [head] + [m for i, m in enumerate(rest) if i not in dropped]
+    return [m for i, m in enumerate(messages) if i not in dropped]
 
 
 def _time_context(telegram_id: int, character_id: str = '', level: int = 0,
@@ -295,7 +284,7 @@ def _blocks(raw: str) -> tuple[str, str, str]:
     # ни в истории, которую модель видит на следующем ходу.
     t = scene_card_service.strip_card(t)
     marks = [{'key': m.group(1).lower(), 'a': m.start(), 'b': m.end()} for m in _NOVEL_MARK.finditer(t)]
-    if not marks or not any(not _is_thought_key(x['key']) and not _is_draft_key(x['key']) for x in marks):
+    if not marks:
         return '', '', t
     thought = draft = message = ''
     if marks[0]['a'] > 0:
@@ -311,17 +300,11 @@ def _blocks(raw: str) -> tuple[str, str, str]:
             draft = (draft + ' ' + body).strip()
         else:
             message = (message + '\n' + body).strip() if message else body
-    if message:
-        return thought, draft, message
-    # She opened the blocks and left MESSAGE empty. Losing his reply is worse
-    # than losing the card, so what she wrote becomes the message — and the
-    # erased draft stays erased: a broken format never hands out paid text.
-    return '', '', (thought or draft or t).strip()
+    return thought, draft, message
 
 
 def split_thought_message(raw: str) -> tuple[str, str]:
-    """«THOUGHT: …\nMESSAGE: …» → (thought, message). A model that opened the
-    block but left MESSAGE empty keeps her line as the message."""
+    """Parse stored blocks without promoting hidden text into a missing reply."""
     th, _dr, md = _blocks(raw)
     return th, md
 
@@ -365,16 +348,15 @@ def _clean_thought(raw: str) -> str:
 # The format directive sits AFTER his message (last thing the model reads) —
 # owner ТЗ: a rule buried in the system block loses to the last user line.
 NOVEL_FORMAT_SUFFIX = (
-    'ВАЖНО: ответ строго в два блока, другим меткам места нет:\n'
-    'THOUGHT: <что она думает, 40–70 слов>\n'
-    'MESSAGE: <что она печатает ему, 25–50 слов>\n'
-    'THOUGHT идёт первым, MESSAGE вторым; между блоками и вокруг них слов нет. '
+    'ВАЖНО: пиши только готовое сообщение собеседнику, без внутреннего монолога, '
+    'анализа, рассуждений, блоков THOUGHT и <think>. '
+    'Обычный текст, без служебных заголовков; короткий ответ по его последней реплике. '
     'КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать, что муж или парень «в душе» и что «вода шумит». '
     'Бери другую локацию: он на работе, в магазине, в гараже, за компом, у друзей, '
     'в спортзале, спит в другой комнате. '
     'ЗАПРЕЩЕНО начинать ответ с имени другой девушки («Агата:», «Лана:») — '
-    'в этом чате пишешь только ты. Одно его сообщение = одна карточка мыслей и '
-    'одно сообщение, не разбивай ответ на несколько реплик.'
+    'в этом чате пишешь только ты. Одно его сообщение = один ответ, '
+    'не разбивай его на несколько реплик.'
 )
 
 # Same block, but she is not alone in the chat: two girls keep the «Имя:» lines,
@@ -398,60 +380,19 @@ def novel_format_suffix(duo: bool = False, draft: bool = False) -> str:
 
 
 def novel_engine_context(level: int, marital_status: str = '') -> str:
-    """Owner ТЗ (Часть 2 «Ядро новеллы»): the two layers, the contrast between
-    them, and how far she dares at this level and in this marital status."""
     lvl = max(1, min(10, int(level or 1)))
     if lvl <= 2:
-        gating = (
-            'УРОВЕНЬ 1–2 (сопротивление): в THOUGHT — она тормозит себя сама '
-            '(«он не должен это видеть», «я так не делаю», «зачем я это читаю»), '
-            'в MESSAGE — держит дистанцию, шуткой уходит, отвечает теплом, но не '
-            'сдаётся. Вперёд идёт только обстановка и намёк: один физический шаг '
-            'за одно его сообщение, не больше.'
-        )
+        tone = 'Держи дистанцию, отвечай тепло, сближайся постепенно.'
     elif lvl <= 5:
-        gating = (
-            'УРОВЕНЬ 3–5 (грань дрожит): в THOUGHT — ей уже хочется, она спорит с '
-            'собой и закрывает переписку пальцем, боится звука в коридоре; в '
-            'MESSAGE — говорит половину и обрывает себя, спрашивает, что он '
-            'будет делать, если узнают. Один физический шаг за сообщение.'
-        )
+        tone = 'Общайся теплее и доверительнее, без резких скачков близости.'
     else:
-        gating = (
-            'УРОВЕНЬ 6–10 (полный отрыв): в THOUGHT — она уже согласилась с собой, '
-            'чувствует тело детально (локти горят, мурашки, как дрогнул голос), '
-            'риск и стыд только подмешивают остроту; в MESSAGE — ведёт сама, '
-            'называет вещи прямыми словами и предлагает следующий шаг. '
-            'Один физический шаг за сообщение.'
-        )
-    taboo = ''
+        tone = 'Общайся уверенно и по-свойски, сама предлагай следующий шаг.'
+    status = ''
     if marital_status in ('mar_married', 'mar_wife', 'mar_boyfriend', 'mar_with_you'):
-        who = 'муж' if marital_status in ('mar_married', 'mar_wife') else 'парень'
-        taboo = (
-            ' ГДЕ РИСК: она живёт не одна, и этот «' + who + '» — не чужой человек, '
-            'а её жизнь: общая квартира, его кружка на кухне, её привычка '
-            'заглядывать в телефон за него. Поэтому страх не «поймают чужие», а '
-            '«увидит тот, кто спит рядом». Это топливо, а не декорация: в '
-            'THOUGHT — риск (экран гаснет, шаги в коридоре, она набирает '
-            'по половинке слова), в MESSAGE — игра и нежность.'
-        )
-    return (
-        'ДВИЖОК НОВЕЛЛЫ (каждый ответ):\n'
-        'ДВА СЛОЯ. THOUGHT — внутренний монолог: тело, страх, стыд, риск, '
-        'обстановка вокруг неё (что видит, слышит, чувствует руками), 40–70 '
-        'слов, без звёздочек и скобок. MESSAGE — то, что она реально ему '
-        'печатает: 25–50 слов, живая речь, никаких ремарок, в конце вопрос или '
-        'выбор, за который можно зацепиться.\n'
-        'КОНТРАСТ. Между слоями обязана быть разница: думает одно, пишет другое. '
-        'Если в мыслях «господи, что я делаю», в сообщении — спокойное '
-        '«ты чего пишешь мне в такое время 🙂».\n'
-        + gating + taboo + '\n'
-        'И ОДНО ДЕЙСТВИЕ. За одно его сообщение — один физический шаг вперёд '
-        '(встала, закрыла ноутбук, включила свет в коридоре, приоткрыла дверь), '
-        'не десять.\n'
-        'МЕТКИ: пиши ровно те метки, что заданы правилом формата в конце, — '
-        'карточку мыслей приложение рисует по ним и никогда не озвучивает.'
-    )
+        status = ' Учитывай выбранное семейное положение и уже известную обстановку.'
+    return ('Живая прямая речь, без внутреннего монолога и ремарок. '
+            'Один шаг сцены за ответ, не перескакивай через события. '
+            + tone + status)
 
 
 def novel_pair(raw: str, *, duo: bool = False) -> tuple[str, str]:
@@ -778,6 +719,10 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         demo = onboarding_demo.maybe_intercept(
             user_id, db_user_id, character_id, user_text, history, premium, language_code)
         if demo:
+            previous_question = next((message_block(m.content) for m in reversed(history)
+                                      if m.role == 'assistant'), '')
+            _spawn_background(extract_memory(db_user_id, character_id, user_text,
+                                             previous_question=previous_question), 'extract_memory')
             return demo
     stage_to_level = {'stranger':1,'acquaintance':2,'close':3,'intimate':4,'deeply_connected':5,'committed':6,
                       'devoted':7,'soulmate':8,'voyage':9,'eternal':10}
@@ -1044,8 +989,10 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     )
     messages = [{"role": "system", "content": system}]
     # V3.167.9: её запасные фразы в промпт не идут — в них диалог и застревал.
-    messages += [{"role": m.role, "content": m.content} for m in history
-                 if not (m.role == 'assistant' and is_stall_line(m.content))]
+    for m in history:
+        content = message_block(m.content) if m.role == 'assistant' else m.content
+        if content and not (m.role == 'assistant' and is_stall_line(content)):
+            messages.append({"role": m.role, "content": content})
     # V3.59.6: a status buried mid-prompt lost to 30 lines of history («свободна,
     # как птица» right after «Замужем» was picked) — repeat it next to the message.
     if marital_reminder:
@@ -1201,12 +1148,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         token_budget += 90
     if scene:
         token_budget = 420
-    if novel_layers:
-        # two layers instead of one line — 320 tokens cut the MESSAGE off
-        token_budget = max(token_budget, 640)
     if draft_due:
-        # a third block (40–60 words) on top of the two layers
-        token_budget = max(token_budget, 760)
+        token_budget = max(token_budget, 560)
     # V3.143.0: owner ТЗ — the dialogue is sampled cooler than MiniMax's chat
     # default (1.0 was where the dead ends and invented facts peaked), and the
     # stop sequences cut her off the moment she starts typing his line.
@@ -1291,14 +1234,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     from services import invite_funnel
     answer = invite_funnel.apply(answer, user_id, character_id, duo=duo_chat,
                                  user_count=sum(1 for m in history if m.role == 'user'))
-    # V3.151.0: the thought card is rejoined only here — every repair above ran
-    # on her message alone. A card that carried the model's English planning
-    # notes or a task answer is dropped instead of shown.
-    if thought and (not novel_layers or live_talk.looks_leaked(thought)):
-        thought = ''
     if draft and (not draft_due or live_talk.looks_leaked(draft)):
         draft = ''
-    answer = join_thought_message(thought, answer)
     # V3.167.1 (владелец): если на выходе не её слова — одна нейтральная заглушка
     # про связь. Она не полируется (он видит ровно ту строку, что в коде), не
     # тратит лимит дня и в историю диалога не пишется: иначе на следующем ходу
@@ -1394,7 +1331,11 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # V3.57.8: memory extraction and style analysis are extra LLM round trips the
     # user never reads. They used to be awaited here, so every reply waited for
     # them; now they run in the background after the answer is returned.
-    _spawn_background(extract_memory(db_user_id, character_id, user_text), 'extract_memory')
+    if not caller_scene:
+        previous_question = next((message_block(m.content) for m in reversed(history)
+                                  if m.role == 'assistant'), '')
+        _spawn_background(extract_memory(db_user_id, character_id, user_text,
+                                         previous_question=previous_question), 'extract_memory')
     # V3.155.0 (Фогель, Модуль 3): every ANCHOR_EVERY_MESSAGES of his lines the
     # background pulls ONE bright moment the two of them lived through out of the
     # dialog. He never reads this round trip, so it runs after the answer, the
@@ -1415,7 +1356,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
 
 
 async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, language_code: str | None = None, character_id: str = CHARACTER_ID,
-                          topic: bool = False) -> str:
+                          topic: bool = False, persist: bool = True) -> str:
     db_user_id = ensure_user(user_id, user_name, language_code=language_code)
     from services import spend_service
     spend_service.set_spend_user(user_id)
@@ -1447,14 +1388,18 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
         # nostalgic. The recollection counter still only ticks on his messages.
         anchors=await asyncio.to_thread(anchor_service.anchors_block, db_user_id, character_id),
     )
-    messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
+    messages = [{"role": "system", "content": system}]
+    for m in history:
+        content = message_block(m.content) if m.role == 'assistant' else m.content
+        if content:
+            messages.append({"role": m.role, "content": content})
     messages.append({"role": "user", "content": f"Пользователь не писал около {hours_inactive} часов. Напиши естественно первой, не упоминая отслеживание активности."})
     # V3.117.0: she writes first in the language he talks in (Bengali, Spanish…)
     from services import lang_guard
     lang = lang_guard.lang_for_push(db_user_id, language_code)
     if lang != 'ru':
         messages.append({"role": "system", "content": lang_guard.name_line(lang).strip()})
-    r = await generate_text(messages, max_tokens=100, temperature=0.95, purpose='proactive')
+    r = await generate_text(_cap_history_tail(messages), max_tokens=100, temperature=0.95, purpose='proactive')
     raw = _clean(r.text) if (r.text or '').strip() else ''
     recent = [m.content for m in history if m.role == 'assistant'][-6:]
     answer = polish_first_message(finish_or_drop(raw, getattr(r, 'complete', True), lang), recent)
@@ -1464,14 +1409,15 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
         if raw:
             messages.append({"role": "assistant", "content": raw})
         messages.append({"role": "user", "content": "Напиши о другом, новое, одной короткой законченной фразой."})
-        r = await generate_text(messages, max_tokens=100, temperature=1.0, purpose='proactive')
+        r = await generate_text(_cap_history_tail(messages), max_tokens=100, temperature=1.0, purpose='proactive')
         answer = polish_first_message(finish_or_drop((r.text or '').strip() and _clean(r.text),
                                                      getattr(r, 'complete', True), lang), recent)
     if not answer:
         # never a half sentence: her own fixed «скучаю» line instead
         from services.retention_features_service import get_retention_text
         answer = get_retention_text('miss', character_id)
-    save_message(db_user_id, character_id, "assistant", answer)
+    if persist:
+        save_message(db_user_id, character_id, "assistant", answer)
     return answer
 
 

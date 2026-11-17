@@ -75,6 +75,7 @@ def _advance(row, today: str) -> tuple[int, bool]:
             and str(getattr(row, 'streak_freeze_week', None) or '') != _week_key(today)):
         # Один пропущенный день в неделю серия не рвёт — её закрывает заморозка.
         row.streak_freeze_week = _week_key(today)
+        row.streak_freeze_used_at = datetime.now(timezone.utc).replace(tzinfo=None)
         frozen = True
         return streak + 1, frozen
     return 1, False

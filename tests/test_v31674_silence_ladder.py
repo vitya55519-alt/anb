@@ -115,7 +115,59 @@ def test_a_gift_needs_something_to_give():
 
 
 # ── 3. чипсы: его строка под её сценой ───────────────────────────────────────
-def test_the_chips_are_his_message_and_survive_a_redeploy():
+def test_scheduled_chips_survive_in_the_message_not_a_telegram_keyboard(monkeypatch):
+    import json
+    from datetime import datetime, timedelta, timezone
+    from models.app_models import CharacterState, User
+    from services import app_ping, scheduler_service as scheduler, webapp_service
+
+    tid, uid, char = _user()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        user.selected_character = char
+        user.last_active_at = now - timedelta(hours=50)
+        user.proactive_enabled = True
+        s.add(CharacterState(user_id=uid, character_id=char, nudge_count=1,
+                             last_nudge_at=now - timedelta(hours=26)))
+        s.commit()
+    chips = ['Что было дальше?', 'Ты откуда пишешь?', 'Продолжай']
+    text = 'У нас осталась незакрытая сцена.'
+    expected = [{'type': 'reply', 'label': chip, 'text': chip} for chip in chips]
+
+    async def compose(step, telegram_id, character_id, lang):
+        assert (step, telegram_id, character_id) == (2, tid, char)
+        return {'text': text, 'chips': chips, 'photo': None}
+
+    notifications = []
+
+    def note(bot, telegram_id, character_id, body, **kwargs):
+        # The notification is only queued after a committed, actionable row exists.
+        rows = _dialog(uid, char)
+        assert len(rows) == 1 and json.loads(rows[0].actions_json) == expected
+        notifications.append((telegram_id, character_id, body, kwargs))
+
+    def no_legacy_store(*args, **kwargs):
+        raise AssertionError('scheduled chips must not use the Telegram chip store')
+
+    monkeypatch.setattr(scheduler, '_push_ok', lambda user_id, *a: user_id == uid)
+    monkeypatch.setattr(S, 'compose', compose)
+    monkeypatch.setattr(S, 'note_chips', no_legacy_store)
+    monkeypatch.setattr(S, 'chips_markup', no_legacy_store)
+    monkeypatch.setattr(app_ping, 'note', note)
+    asyncio.run(scheduler._proactive(object()))
+
+    # Fresh sessions/history reads require no transient chip cache after restart.
+    rows = _dialog(uid, char)
+    assert len(rows) == 1 and rows[0].content == text and rows[0].origin == 'push'
+    assert json.loads(rows[0].actions_json) == expected
+    history = webapp_service.api_chat_history(uid, char)
+    assert len(history) == 1 and history[0]['id'] == rows[0].id
+    assert history[0]['actions'] == expected
+    assert notifications == [(tid, char, '', {'channel': 'default', 'generic': True})]
+
+
+def test_legacy_telegram_chips_remain_readable_after_a_redeploy():
     tid, _uid, char = _user()
     S.note_chips(tid, char, ['Что было дальше?', 'Ты откуда пишешь?', 'Третья', 'четвёртая'])
     assert S.chip(tid, 0) == (char, 'Что было дальше?')
@@ -140,15 +192,15 @@ def test_the_chip_buttons_carry_only_an_index():
     assert 'ladder_chip:{i}' in LADDER and 'callback_data=f' in LADDER
 
 
-def test_the_tap_is_an_ordinary_turn_of_his():
+def test_the_legacy_tap_only_opens_the_app():
     assert "F.data.startswith('ladder_chip:')" in MAIN
     handler = MAIN[MAIN.index('async def on_ladder_chip_tap'):MAIN.index('async def _tap_her_button')]
-    assert 'silence_ladder.chip(' in handler
-    assert '_tap_her_button(' in handler
-    # тот же пайплайн ответа и та же дневная стена, что у напечатанного сообщения
-    shared = MAIN[MAIN.index('async def _tap_her_button'):]
-    assert 'anna_reply' in shared and 'can_send_message' in shared
-    assert MAIN.count('await _tap_her_button(cq,') == 2
+    assert 'await app_only_callback(cq)' in handler
+    resolver = MAIN[MAIN.index('def _bot_callback_character'):MAIN.index('async def app_only_callback')]
+    assert 'silence_ladder.chip(' in resolver
+    shared = MAIN[MAIN.index('async def _tap_her_button'):MAIN.index('_constructor_sessions =')]
+    assert 'await _redirect_bot_chat(cq.message, cq.from_user, character_id)' in shared
+    assert 'anna_reply' not in shared and 'can_send_message' not in shared
 
 
 # ── 4. рельса: слот тратится только на сыгравшую ступень ─────────────────────
@@ -164,9 +216,11 @@ def test_the_new_steps_are_delivered_counted_and_end_the_loop():
     body = PROACTIVE[PROACTIVE.index('if step in silence_ladder.NEW_STEPS:'):]
     sent = body[:body.index('if hours < PROACTIVE_MIN_HOURS:')]
     assert "silence_ladder.compose(step,telegram_id,char_id,user_lang)" in sent
-    assert "silence_ladder.note_chips(telegram_id,char_id,chips)" in sent
-    assert "reply_markup=silence_ladder.chips_markup(chips)" in sent
-    assert "_to_app_chat(uid,telegram_id,char_id,pack['text'],shot)" in sent  # и в Mini App
+    assert "actions=[{'type': 'reply', 'label': chip, 'text': chip} for chip in chips]" in sent
+    assert "if not _app_delivery(bot,uid,telegram_id,char_id,pack['text'],shot,actions=actions):" in sent
+    assert 'silence_ladder.note_chips(' not in sent
+    assert 'silence_ladder.chips_markup(' not in sent and 'bot.send_' not in sent
+    assert sent.index('_app_delivery(') < sent.index('track_event(')
     assert "f'ladder_{step}'" in sent
     assert sent.rstrip().endswith('continue')
     # не собралось — говорит прежняя рельса, а не молчит

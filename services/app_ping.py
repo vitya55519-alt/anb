@@ -1,10 +1,10 @@
 """V3.128.0: she wrote in the Mini App — a short ping in the bot chat.
 
-Pushes from the scheduler (rituals, «скучаю», life events, gifts) already go
-to Telegram AND into the shared dialog. What never reached Telegram is what
-lands in the app chat AFTER he left it: her reply he did not wait for, a photo
-that finished rendering a minute later, a wardrobe try-on, a room picture.
-He closed the app, the bot chat stayed silent, the message waited unseen.
+App replies and scheduler events live in the shared dialog. Transferred
+scheduler events only send a generic notification here, never their content.
+Life notifications have a separate queue and daily counter; ordinary replies
+and marketing retain the existing notification budget. Neither notification
+counter records another life_event_sent event.
 
 Now such a message leaves a short note in the bot chat — her name, a preview
 and «💬 Ответить» that opens exactly her dialog in the app. Rules, so it never
@@ -65,19 +65,22 @@ PREVIEW_CHARS = 110
 
 # telegram_id -> (monotonic time of the last heartbeat, away flag)
 _presence: dict[int, tuple[float, bool]] = {}
-# telegram_id -> pending ping {char, text, media, count, noted, at}
-_pending: dict[int, dict] = {}
+PingKey = int | tuple[int, str]
+
+# Normal notifications keep their existing integer key and six/day budget.
+# Life uses (telegram_id, 'life') throughout the queue/counters, so neither
+# channel can spend or reclassify the other's budget when messages collapse.
+_pending: dict[PingKey, dict] = {}
 # telegram_id -> (character_id, monotonic time) of the last «I am looking at her
 # dialog» ack from the SPA (V3.164.0) — the only proof he really read it.
 _seen: dict[int, tuple[str, float]] = {}
-# telegram_id -> monotonic time of the last ping sent
-_last_ping: dict[int, float] = {}
-# telegram_id -> (utc date iso, pings sent that day)
-_day_count: dict[int, tuple[str, int]] = {}
-# users with a live _later task, so a collapsed message never waits unattended
-_armed: set[int] = set()
-# users whose ping is being sent right now — a flush and the wait must not race
-_sending: set[int] = set()
+# Each channel retains its own cooldown and UTC notification day.
+_last_ping: dict[PingKey, float] = {}
+_day_count: dict[PingKey, tuple[str, int]] = {}
+# Channels with a live _later task, so a collapsed message never waits unattended.
+_armed: set[PingKey] = set()
+# A flush and the wait must not race for the same channel.
+_sending: set[PingKey] = set()
 _tasks: set[asyncio.Task] = set()
 
 
@@ -158,30 +161,34 @@ def _today() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 
 
-def limits_ok(telegram_id: int, now: float | None = None) -> bool:
+def limits_ok(telegram_id: PingKey, now: float | None = None) -> bool:
     now = time.monotonic() if now is None else now
-    last = _last_ping.get(int(telegram_id))
+    last = _last_ping.get(telegram_id)
     if last is not None and now - last < APP_PING_COOLDOWN_MINUTES * 60:
         return False
     return not _capped_today(telegram_id)
 
 
-def _cooldown_left(telegram_id: int, now: float | None = None) -> float:
+def _cooldown_left(telegram_id: PingKey, now: float | None = None) -> float:
     """Seconds until the next ping of his is allowed; 0 when it is allowed now."""
-    last = _last_ping.get(int(telegram_id))
+    last = _last_ping.get(telegram_id)
     if last is None:
         return 0.0
     now = time.monotonic() if now is None else now
     return max(0.0, APP_PING_COOLDOWN_MINUTES * 60 - (now - last))
 
 
-def _capped_today(telegram_id: int) -> bool:
-    day, n = _day_count.get(int(telegram_id), ('', 0))
-    return day == _today() and n >= APP_PING_MAX_PER_DAY
+def _capped_today(telegram_id: PingKey) -> bool:
+    day, n = _day_count.get(telegram_id, ('', 0))
+    cap = APP_PING_MAX_PER_DAY
+    if isinstance(telegram_id, tuple):
+        from config import LIFE_EVENTS_MAX_PER_DAY, LIFE_EVENTS_YOUNG_MAX_PER_DAY
+        cap = max(LIFE_EVENTS_MAX_PER_DAY, LIFE_EVENTS_YOUNG_MAX_PER_DAY)
+    return day == _today() and n >= cap
 
 
-def _count_ping(telegram_id: int, now: float | None = None) -> None:
-    tg = int(telegram_id)
+def _count_ping(telegram_id: PingKey, now: float | None = None) -> None:
+    tg = telegram_id
     _last_ping[tg] = time.monotonic() if now is None else now
     day, n = _day_count.get(tg, ('', 0))
     _day_count[tg] = (_today(), (n + 1) if day == _today() else 1)
@@ -243,14 +250,20 @@ def _character_name(character_id: str) -> str:
 
 
 # ── the ping ────────────────────────────────────────────────────────────
-def note(bot, telegram_id: int, character_id: str, text: str, media: str | None = None) -> bool:
+def note(bot, telegram_id: int, character_id: str, text: str, media: str | None = None,
+         *, channel: str = 'default', generic: bool = False) -> bool:
     """Her message just landed in the app chat and nowhere else. Schedules one
     collapsed ping if he is not in the app. Returns True when one is pending.
     Never raises: a ping is never worth breaking her reply."""
     try:
         if not APP_PING_ENABLED or bot is None or not telegram_id or not character_id:
             return False
-        tg = int(telegram_id)
+        if channel not in ('default', 'life'):
+            return False
+        tg = (int(telegram_id), 'life') if channel == 'life' else int(telegram_id)
+        generic = generic or channel == 'life'
+        if generic:
+            text, media = '', None
         # V3.164.0: waiting messages are cheap but not free — a user who never
         # comes back would otherwise keep his entry until the next redeploy.
         if len(_pending) > 256:
@@ -269,7 +282,9 @@ def note(bot, telegram_id: int, character_id: str, text: str, media: str | None 
         if pend:
             pend['count'] += 1
             # the newest message is the preview; the first one sets «read since»
-            pend.update(char=str(character_id), text=text or '', media=media)
+            generic = generic or pend.get('generic', False)
+            pend.update(char=str(character_id), text='' if generic else (text or ''),
+                        media=None if generic else media, generic=generic)
             if time.monotonic() - pend.get('at', 0.0) > APP_PING_PENDING_TTL_SECONDS:
                 # too old to bundle; this line starts a fresh, short wait
                 pend.update(count=1, noted=noted_iso, at=time.monotonic())
@@ -279,7 +294,8 @@ def note(bot, telegram_id: int, character_id: str, text: str, media: str | None 
                 _arm(bot, tg)
             return True
         _pending[tg] = {'char': str(character_id), 'text': text or '', 'media': media,
-                        'count': 1, 'noted': noted_iso, 'at': time.monotonic()}
+                        'count': 1, 'noted': noted_iso, 'at': time.monotonic(),
+                        'channel': channel, 'generic': generic}
         _arm(bot, tg)
         return True
     except Exception:
@@ -287,7 +303,7 @@ def note(bot, telegram_id: int, character_id: str, text: str, media: str | None 
         return False
 
 
-def _arm(bot, tg: int) -> None:
+def _arm(bot, tg: PingKey) -> None:
     """One live waiter per user, sleeping APP_PING_DELAY_SECONDS before it looks."""
     _armed.add(tg)
     task = asyncio.get_running_loop().create_task(_later(bot, tg))
@@ -300,18 +316,20 @@ def flush(bot, telegram_id: int) -> bool:
     exactly this moment is delivered now instead of never."""
     try:
         tg = int(telegram_id)
-        if not APP_PING_ENABLED or bot is None or not _pending.get(tg):
+        if not APP_PING_ENABLED or bot is None:
             return False
-        task = asyncio.get_running_loop().create_task(_deliver(bot, tg))
-        _tasks.add(task)
-        task.add_done_callback(_tasks.discard)
-        return True
+        keys = [key for key in (tg, (tg, 'life')) if _pending.get(key)]
+        for key in keys:
+            task = asyncio.get_running_loop().create_task(_deliver(bot, key))
+            _tasks.add(task)
+            task.add_done_callback(_tasks.discard)
+        return bool(keys)
     except Exception:
         logger.warning('app ping flush failed user=%s', telegram_id, exc_info=True)
         return False
 
 
-async def _later(bot, tg: int) -> None:
+async def _later(bot, tg: PingKey) -> None:
     try:
         await asyncio.sleep(APP_PING_DELAY_SECONDS)
         if await _deliver(bot, tg) == 'cooldown':
@@ -329,10 +347,11 @@ async def _later(bot, tg: int) -> None:
         _armed.discard(tg)
 
 
-async def _deliver(bot, tg: int) -> str:
+async def _deliver(bot, tg: PingKey) -> str:
     """One attempt; returns why the ping did not go, or 'sent'. Only a terminal
     reason clears the waiting messages — «he is in the app» and «still in
     cooldown» leave them for the away beacon."""
+    telegram_id = tg[0] if isinstance(tg, tuple) else tg
     pend = _pending.get(tg)
     if not pend:
         return 'empty'
@@ -346,11 +365,11 @@ async def _deliver(bot, tg: int) -> str:
         _pending.pop(tg, None)
         logger.info('app ping dropped user=%s reason=day_cap', tg)
         return 'capped'
-    if _read_since(tg, pend['char'], pend['noted']) or _saw_it(tg, pend['char'], pend.get('at', 0.0)):
+    if _read_since(telegram_id, pend['char'], pend['noted']) or _saw_it(telegram_id, pend['char'], pend.get('at', 0.0)):
         _pending.pop(tg, None)
         logger.info('app ping cancelled user=%s reason=already_read', tg)
         return 'read'
-    if in_app(tg):
+    if in_app(telegram_id):
         logger.info('app ping waiting user=%s reason=in_app', tg)
         return 'in_app'
     if _cooldown_left(tg) > 0:
@@ -358,7 +377,7 @@ async def _deliver(bot, tg: int) -> str:
         return 'cooldown'
     _sending.add(tg)
     try:
-        ctx = await asyncio.to_thread(_user_ctx, tg)
+        ctx = await asyncio.to_thread(_user_ctx, telegram_id)
         if not ctx:
             _pending.pop(tg, None)
             logger.info('app ping dropped user=%s reason=switches_off', tg)
@@ -377,7 +396,7 @@ async def _deliver(bot, tg: int) -> str:
         _count_ping(tg)
         _pending.pop(tg, None)
         try:
-            await bot.send_message(tg, body, reply_markup=markup, disable_notification=quiet)
+            await bot.send_message(telegram_id, body, reply_markup=markup, disable_notification=quiet)
         except Exception as exc:
             from aiogram.exceptions import TelegramForbiddenError
             if isinstance(exc, TelegramForbiddenError):
@@ -392,7 +411,8 @@ async def _deliver(bot, tg: int) -> str:
             from services.analytics_service import track_event
             await asyncio.to_thread(track_event, ctx['uid'], 'app_ping_sent',
                                     metadata={'character_id': pend['char'], 'count': pend['count'],
-                                              'media': pend['media'] or 'text', 'quiet': quiet})
+                                              'media': pend['media'] or 'text', 'quiet': quiet,
+                                              'channel': pend.get('channel', 'default')})
         except Exception:
             pass
         return 'sent'

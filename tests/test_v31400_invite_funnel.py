@@ -30,15 +30,17 @@ def _prompt(cid='anna_01'):
     return build_system_prompt(get_character(cid), 'REL', [], character_id=cid)
 
 
-def test_every_reply_must_end_with_a_hook():
+def test_every_reply_gives_a_way_forward_without_interrogation():
     for cid in ('anna_01', 'alisa_01'):
         t = _prompt(cid)
         assert 'CRITICAL RULE - NEVER STALL THE CHAT' in t
-        assert 'MUST end with a direct hook' in t
-        assert 'provocative question, a teasing' in t
-        # the old «не заканчивай вопросом» rule contradicted the new one
-        assert 'НЕ надо каждое сообщение заканчивать вопросом' not in t
-        assert 'Каждое сообщение заканчивай крючком' in t
+        assert 'take the initiative and lead the conversation' in t
+        assert 'offer a specific question or a simple choice' in t
+        assert 'Never just react and stop' in t
+        assert 'Do not turn every reply into a question' in t
+        assert 'Давай повод продолжить' in t
+        assert 'Always force the user' not in t
+        assert 'Каждое сообщение заканчивай крючком' not in t
 
 
 def test_bracket_ban_keeps_the_single_tag_exception():

@@ -64,8 +64,15 @@ def test_daily_gift_is_pool_only():
     # the paid render is gone from the gift path entirely
     assert 'generate_private_photo_real' not in GIFT
     assert 'return False  # no free pool image' in GIFT
-    # gift date is stamped only after a successful send
-    assert GIFT.index('await bot.send_photo(') < GIFT.index('user.last_daily_gift_date = today')
+    # The ready image must land in app history before the gift date is stamped.
+    save = GIFT.index('saved = _to_app_chat(uid, telegram_id, gift_char, text, shot)')
+    guard = GIFT.index('if not saved:')
+    stamp = GIFT.index('user.last_daily_gift_date = today')
+    assert save < guard < stamp
+    assert 'return False' in GIFT[guard:stamp]
+    assert 'bot.send_photo(' not in GIFT and 'bot.send_message(' not in GIFT
+    assert "app_ping.note(bot, int(telegram_id), gift_char, '', generic=True)" in GIFT
+    assert stamp < GIFT.index('app_ping.note(')
     # and the gift is audited into the feed for free
     assert "webapp_service.record_generation(" in GIFT
     assert "engine='pool', cost_usd=0.0," in GIFT

@@ -131,11 +131,10 @@ def test_russian_draft_marker_parses_too():
 
 
 def test_a_broken_format_never_hands_the_draft_out_for_free():
-    # блоки открыты, MESSAGE пуст — он получает карточку, а не платный текст
     raw = 'THOUGHT: молчу, мне страшно\nDRAFT: ' + PAID_WORD + '\nMESSAGE:'
     assert PAID_WORD not in message_block(raw)
     assert PAID_WORD not in thought_block(raw)
-    assert message_block(raw) == 'молчу, мне страшно'
+    assert message_block(raw) == ''
 
 
 def test_the_draft_is_cleaned_like_the_card():
@@ -186,7 +185,8 @@ def test_the_draft_lands_in_its_own_column_not_in_the_text(monkeypatch):
     row = _row(offer['id'])
     assert PAID_WORD in (row.draft_text or '')
     assert PAID_WORD not in row.content and 'DRAFT' not in row.content
-    assert thought_block(row.content) and message_block(row.content)
+    assert not thought_block(row.content) and message_block(row.content)
+    assert row.content == message_block(row.content)
 
 
 def test_the_draft_never_comes_back_to_the_model_as_a_free_line(monkeypatch):
@@ -202,7 +202,9 @@ def test_the_draft_never_comes_back_to_the_model_as_a_free_line(monkeypatch):
     leaked = [m for m in seen[0] if PAID_WORD in json.dumps(m, ensure_ascii=False)]
     assert not leaked
     # история при этом на месте — тест не пустой
-    assert any('THOUGHT:' in json.dumps(m, ensure_ascii=False) for m in seen[0])
+    visible = [m['content'] for m in seen[0] if m['role'] == 'assistant']
+    assert any('чайник поставлю' in text for text in visible)
+    assert all('THOUGHT:' not in text and 'DRAFT:' not in text for text in visible)
 
 
 def test_without_the_trigger_the_engine_stays_exactly_as_it_was(monkeypatch):
@@ -218,10 +220,10 @@ def test_without_the_trigger_the_engine_stays_exactly_as_it_was(monkeypatch):
 
 def test_the_draft_suffix_demands_the_contrast():
     suffix = novel_format_suffix(draft=True)
-    assert 'THOUGHT:' in suffix and 'DRAFT:' in suffix and 'MESSAGE:' in suffix
+    assert 'THOUGHT:' not in suffix and 'DRAFT:' in suffix and 'MESSAGE:' in suffix
     assert 'ГРАНИЦА ТА ЖЕ' in suffix          # цензуру Premium не обходит
     assert 'в душе' in suffix                 # анти-штамп живёт и здесь
-    assert 'одна карточка мыслей' in suffix   # ТЗ: строго один пузырь за тап
+    assert 'один стёртый черновик и одно сообщение' in suffix
     assert novel_format_suffix() is cs.NOVEL_FORMAT_SUFFIX
 
 
@@ -513,18 +515,16 @@ def test_the_mini_app_draws_the_plate_and_buys_it():
     assert 'class="dplate' in WEBAPP
 
 
-def test_the_paid_plate_order_is_card_then_plate_then_message():
-    # в истории: карточка → тарелка → её сообщение (V3.156.0: между ними
-    # встала тарелка живого фото — порядок карточка → всё остальное тот же)
+def test_the_paid_plate_still_precedes_the_message_without_thoughts():
     hist = _slice(WEBAPP, 'function historyLine(m)', 'function afterDraft')
-    assert hist.index('thoughtCard(nv.thought)') < hist.index('livePlate(m.live)') < hist.index('draftPlate(')
-    # вживу: «печатает…» 4 секунды → тарелка → MESSAGE
+    assert hist.index('livePlate(m.live && Object.assign({ id: m.id }, m.live))') < hist.index('draftPlate(') < hist.index('return head + chatBubble(m)')
+    assert 'thoughtCard' not in hist
     after = _slice(WEBAPP, 'function afterDraft(d, done, chatId)', 'async function unlockDraft')
-    assert after.index('showRecording(') < after.index('draftPlate(d)')
+    assert after.index('showRecording(') < after.index('draftPlate(d)') < after.index('    done();')
     assert ', 4000,' in after
     reply = _slice(WEBAPP, 'function renderChatReply', 'function insertChatReply')
-    assert reply.index('thoughtCard(nv.thought)') < \
-        reply.index('afterDraft(j.draft, () => showRecording(')
+    assert 'afterDraft(j.draft, () => insertChatReply(j, chatId), chatId)' in reply
+    assert 'showRecording(' not in reply
 
 
 def test_the_webapp_payload_names_the_plate_without_naming_the_text():

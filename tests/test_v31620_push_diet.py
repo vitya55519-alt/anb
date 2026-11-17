@@ -10,11 +10,11 @@ import datetime as dt
 from pathlib import Path
 
 import pytest
-from config import MARKETING_PUSH_ENABLED, PUSH_MAX_PER_DAY, PUSH_RAILS, PUBLIC_BASE_URL
+from config import MARKETING_PUSH_ENABLED, PUSH_MAX_PER_DAY, PUSH_RAILS
 from models.app_models import ProductEvent
 from services import push_governor as pg
 from services import scheduler_service as ss
-from services.db import SessionLocal, init_db
+from services.db import SessionLocal
 from services.ui_lang import APP_LANGS, RITUAL_LINES, flow_text, ritual_line
 from services.user_service import ensure_user
 
@@ -44,8 +44,9 @@ def test_two_a_day_and_the_noise_rails_are_off():
     assert PUSH_MAX_PER_DAY == 2
     assert MARKETING_PUSH_ENABLED is True
     assert not {'partner_nudge', 'daily_compatibility', 'whats_new', 'random_gifts',
-                'donation_reminder', 'proactive'} & PUSH_RAILS
-    assert {'first_offer', 'heavy_offer'} <= PUSH_RAILS
+                'donation_reminder'} & PUSH_RAILS
+    # The existing 1/2/3/7-day ladder is enabled, without widening marketing's cap.
+    assert {'proactive', 'first_offer', 'heavy_offer'} <= PUSH_RAILS
     assert {'life_events', 'rituals', 'day1_hook', 'daily_gift',
             'scenario_cards', 'first_minutes'} <= PUSH_RAILS
 
@@ -110,20 +111,41 @@ def test_her_lines_exist_in_every_app_language(kind):
     assert flow_text('bn', 'open_chat') != flow_text('ru', 'open_chat')
 
 
-def test_users_get_the_text_push_with_the_button_into_her_dialog(monkeypatch):
-    init_db()
-    tid = 771620002
-    uid = ensure_user(tid, 'Тест')
-    with SessionLocal() as s:
-        from models.app_models import User
-        u = s.get(User, uid)
-        u.proactive_enabled = True
-        u.notify_rituals = True
-        u.timezone = 'UTC'
-        u.selected_character = 'anna_01'
-        u.last_active_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
-        s.commit()
+@pytest.fixture
+def ritual_user(tmp_path, monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from models.app_models import Base, User
+    from services import analytics_service, memory_service
 
+    # only_tg selects the owner media-preview path, not the ordinary text path.
+    # Give the real scan its own DB instead of scanning other tests' users.
+    engine = create_engine('sqlite:///' + (tmp_path / 'ritual.sqlite').as_posix(),
+                           connect_args={'check_same_thread': False})
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    for module in (ss, memory_service, analytics_service):
+        monkeypatch.setattr(module, 'SessionLocal', sessions)
+    tid = 771620002
+    with sessions() as s:
+        user = User(telegram_id=str(tid), name='Test', proactive_enabled=True,
+                    notify_rituals=True, timezone='UTC', selected_character='anna_01',
+                    ui_lang='ru', chat_lang='ru',
+                    last_active_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None))
+        s.add(user)
+        s.commit()
+        uid = user.id
+    try:
+        yield tid, uid, sessions
+    finally:
+        engine.dispose()
+
+
+def test_ritual_lands_in_history_and_only_a_generic_note_opens_her_dialog(monkeypatch, ritual_user):
+    import config
+    from services import app_ping, ui_lang, webapp_service
+
+    tid, uid, sessions = ritual_user
     sent = {'message': [], 'media': []}
 
     class Bot:
@@ -140,23 +162,53 @@ def test_users_get_the_text_push_with_the_button_into_her_dialog(monkeypatch):
             sent['media'].append('animation')
 
     monkeypatch.setattr(ss, '_user_local_hour', lambda u: 9)
-    # only THIS man may pass the gate today — nobody else in the test DB gets written to
-    monkeypatch.setattr(pg, 'allow_push',
-                        lambda uid_, tz=None, family='marketing':
-                        (True, '') if uid_ == uid else (False, 'daily'))
-    monkeypatch.setattr(ss, 'PUBLIC_BASE_URL', PUBLIC_BASE_URL or 'https://x.test', raising=False)
-    ss._ritual_sent.clear()
-    ss._ritual_hydrated.clear()
-    asyncio.run(ss._rituals(Bot()))
+    monkeypatch.setattr(ss, 'RITUAL_APPROVAL_MODE', False)
+    monkeypatch.setattr(ss, 'RITUAL_MEDIA_TO_USERS', False)
+    monkeypatch.setattr(ss, '_ritual_sent', set())
+    monkeypatch.setattr(ss, '_ritual_hydrated', set())
+    monkeypatch.setattr(pg, 'allow_push', lambda *a, **kw: (True, ''))
+    monkeypatch.setattr(ui_lang, 'full_user_lang', lambda tg: 'ru')
+    monkeypatch.setattr(config, 'PUBLIC_BASE_URL', 'https://x.test')
+    monkeypatch.setattr(app_ping, 'APP_PING_ENABLED', True)
+    for name in ('_pending', '_presence', '_seen', '_last_ping', '_day_count'):
+        monkeypatch.setattr(app_ping, name, {})
+    monkeypatch.setattr(app_ping, '_sending', set())
+    # Drive the delayed delivery explicitly, without sleeping or background tasks.
+    monkeypatch.setattr(app_ping, '_arm', lambda *a: None)
+    monkeypatch.setattr(app_ping, '_read_since', lambda *a: False)
+    monkeypatch.setattr(app_ping, '_quiet_now', lambda tz: False)
+    monkeypatch.setattr(app_ping, '_character_name', lambda char: 'Анна')
+    monkeypatch.setattr(app_ping, '_user_ctx', lambda tg: {'uid': uid, 'lang': 'ru', 'tz': 'UTC'})
+    bot = Bot()
+    asyncio.run(ss._rituals(bot))
+    asyncio.run(ss._rituals(bot))                 # a second scan cannot duplicate it
 
-    mine = [m for m in sent['message'] if m[0] == tid]
-    assert len(mine) == 1, mine
-    _chat, text, markup = mine[0]
-    assert text in RITUAL_LINES['ru']['morning']
-    btn = markup.inline_keyboard[0][0]
-    assert btn.web_app.url.endswith('/webapp?open=chat&char=anna_01')
-    assert sent['media'] == []                       # no photo, no voice note
+    history = webapp_service.api_chat_history(uid, 'anna_01')
+    assert len(history) == 1
+    row = history[0]
+    assert row['id'] and row['role'] == 'assistant' and row['origin'] == 'push'
+    assert row['content'] in RITUAL_LINES['ru']['morning']
+    assert row['media_kind'] is None and row['media_url'] is None
+    assert row['actions'] == []
+    assert sent['message'] == []                 # no direct Telegram delivery
+    assert set(app_ping._pending) == {tid}
+    pending = app_ping._pending[tid]
+    assert pending['char'] == 'anna_01' and pending['count'] == 1
+    assert pending['generic'] is True and pending['channel'] == 'default'
+    assert pending['text'] == '' and pending['media'] is None
+    assert asyncio.run(app_ping._deliver(bot, tid)) == 'sent'
+
+    assert len(sent['message']) == 1
+    chat, text, markup = sent['message'][0]
+    assert chat == tid
+    assert text == app_ping.ping_text('Анна', '', None, 0, 'ru')
+    assert row['content'] not in text
+    assert markup.inline_keyboard[0][0].web_app.url == 'https://x.test/webapp?open=chat&char=anna_01'
+    assert sent['media'] == []
     assert (uid, 'morning', dt.datetime.now(dt.timezone.utc).date().isoformat()) in ss._ritual_sent
+    with sessions() as s:
+        events = s.query(ProductEvent).filter_by(user_id=uid, event_name='ritual_morning_sent').all()
+        assert len(events) == 1
 
 
 def test_the_text_line_needs_no_approval_press():

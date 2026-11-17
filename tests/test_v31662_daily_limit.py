@@ -172,12 +172,87 @@ def test_every_live_turn_burns_one_and_only_one():
     assert 'explicit_mode.note_reply' not in CHAT and 'cap_left' not in CHAT
 
 
-def test_the_gate_is_one_function_asked_by_both_platforms():
+def test_the_gate_is_one_function_asked_by_both_platforms(monkeypatch):
+    import ast
+    import asyncio
+    import json
+    from aiohttp import web
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
     assert 'daily_limit.has_left' in GATE
-    assert MAIN.count('can_send_message(') >= 3
-    # ботовская заглушка и ответ по тапу кнопки — тоже через неё
-    assert 'await _limit_wall_reply(message)' in MAIN
-    assert "await _limit_wall_reply(cq.message)" in MAIN
+    # Execute the real entry points without importing main (bot/network setup).
+    # Only Mini App turns ask the shared gate; bot taps are neutral redirects.
+    names = ('_webapp_chat_gate', '_webapp_api_chat_send', '_webapp_api_chat_voice',
+             '_webapp_api_chat_photo', 'app_only_callback', '_redirect_bot_chat')
+    functions = {node.name: node for node in ast.parse(MAIN).body
+                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    nodes = [functions[name] for name in names]
+    for node in nodes:
+        node.decorator_list = []
+    module = ast.parse('from __future__ import annotations')
+    module.body.extend(nodes)
+    tapper = SimpleNamespace(id=123, first_name='Test', language_code='en')
+    markup = object()
+    can_send = Mock(return_value=False)
+    ensure = Mock(return_value=456)
+    ns = {
+        'asyncio': asyncio,
+        'web': web, 'json': json,
+        'spicy_service': SimpleNamespace(claim_paid_fantasy=Mock(return_value=None)),
+        'webapp_service': SimpleNamespace(
+            validate_init_data=lambda _: {'user': 'test'},
+            init_data_user=lambda _: {'id': tapper.id}),
+        'is_custom_character': lambda _: False,
+        'get_card': lambda _: SimpleNamespace(status='active'),
+        'ADMIN_TELEGRAM_IDS': set(), 'can_send_message': can_send,
+        'has_accepted': lambda _: True, 'ensure_user': ensure,
+        'track_event': Mock(), '_remember_character': Mock(),
+        'user_lang': lambda _: 'en', 'EN': 'en',
+        '_app_entry_markup': Mock(return_value=markup),
+        '_bot_callback_character': Mock(return_value='anna_01'),
+    }
+    exec(compile(module, str(ROOT / 'main.py'), 'exec'), ns)
+    for handler, payload in (
+        ('_webapp_api_chat_send', {'text': 'hello'}),
+        ('_webapp_api_chat_voice', {'audio': 'dGVzdA=='}),
+        ('_webapp_api_chat_photo', {'image': 'dGVzdA=='}),
+    ):
+        request = SimpleNamespace(query={'init_data': 'test'}, json=AsyncMock(
+            return_value={'character_id': 'anna_01', **payload}))
+        can_send.reset_mock()
+        response = asyncio.run(ns[handler](request))
+        assert response.status == 429
+        assert json.loads(response.body) == {'ok': False, 'error': 'limit', 'cap': dl.DAILY_CAP}
+        can_send.assert_called_once_with(tapper.id)
+    ns['spicy_service'].claim_paid_fantasy.assert_called_once_with(tapper.id, 'anna_01', 'hello', 'en')
+    can_send.return_value = True
+    assert ns['_webapp_chat_gate']('anna_01', tapper.id) is None
+    can_send.return_value = False
+    ns['ADMIN_TELEGRAM_IDS'].add(tapper.id)
+    can_send.reset_mock()
+    assert ns['_webapp_chat_gate']('anna_01', tapper.id) is None
+    can_send.assert_not_called()
+
+    # The message belongs to the bot, but consent/destination use the tapper.
+    note_message = Mock(side_effect=AssertionError('Bot redirects must not consume chat quota'))
+    monkeypatch.setattr(dl, 'note_message', note_message)
+    ns['track_event'].reset_mock()
+    message = SimpleNamespace(from_user=SimpleNamespace(id=999), answer=AsyncMock())
+    cq = SimpleNamespace(message=message, from_user=tapper, answer=AsyncMock())
+    for admins in (set(), {tapper.id}):
+        ns['ADMIN_TELEGRAM_IDS'] = admins
+        ensure.reset_mock()
+        message.answer.reset_mock()
+        cq.answer.reset_mock()
+        asyncio.run(ns['app_only_callback'](cq))
+        cq.answer.assert_awaited_once_with()
+        ensure.assert_called_once_with(tapper.id, tapper.first_name, language_code='en')
+        ns['_app_entry_markup'].assert_called_with('en', character_id='anna_01')
+        message.answer.assert_awaited_once_with('Chat is in the app.', reply_markup=markup)
+        can_send.assert_not_called()
+        note_message.assert_not_called()
+        ns['track_event'].assert_not_called()
 
 
 # ── пэйволл: сцена, а не ошибка ────────────────────────────────────────────

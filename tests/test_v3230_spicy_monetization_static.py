@@ -101,8 +101,8 @@ def test_successful_payment_delivers_paid_sets_with_refund_hook():
     assert "'paid'" in payment and 'charge=charge' in payment
     # private gifts grow the relationship like ordinary gifts
     assert "reason=f'pgift:{gift.id}'" in payment
-    # fantasy stores charge and waits for the scenario text
-    assert '_fantasy_pending[message.from_user.id] = (charge, payment.total_amount)' in payment
+    # fantasy stores a charge-keyed app entitlement, not an overwriteable slot
+    assert 'spicy_service.create_paid_fantasy' in payment
 
 
 def test_paid_delivery_never_consumes_free_quota():
@@ -145,11 +145,13 @@ def test_spicy_menu_handlers_registered():
 
 
 def test_fantasy_input_intercepted_before_chat():
-    # v3.29.0: fantasy state moved to the persistent dialog_sessions store
+    # Existing paid tuples migrate lazily; Telegram itself only redirects.
     assert "_fantasy_pending = dialog_store.DialogStore('fantasy_pending')" in MAIN
-    catch_all = MAIN[MAIN.index('async def text_message('):]
-    assert '_handle_fantasy_input' in catch_all.split('has_accepted')[0]
     handler = MAIN[MAIN.index('async def _handle_fantasy_input('):MAIN.index("@dp.message(Command('photo', 'selfie'))")]
-    assert 'spicy_service.parse_fantasy(' in handler
-    assert "PhotoRequest(**fields)" in handler
-    assert "product='fantasy'" in handler
+    assert 'await _redirect_bot_chat(message)' in handler
+    assert '_start_photo_background' not in handler
+    api = MAIN[MAIN.index('async def _webapp_api_chat_send('):MAIN.index('async def _webapp_api_chat_action(')]
+    assert api.index('_webapp_chat_gate') < api.index('spicy_service.claim_paid_fantasy') < api.index('_webapp_chat_turn')
+    assert 'PhotoRequest(**order[\'request\'][\'fields\'])' in api
+    assert "product='fantasy'" in api and 'app_only=True' in api
+    assert 'fields = parse_fantasy(text)' in SPICY

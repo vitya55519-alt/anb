@@ -21,10 +21,11 @@ _TAG_RE = re.compile(r'\[INVITE_FRIEND\]', re.IGNORECASE)
 
 HOOK_RULE = (
     'CRITICAL RULE - NEVER STALL THE CHAT: The user might be shy or passive. '
-    'You MUST take the initiative and lead the conversation. Every single response you generate '
-    'MUST end with a direct hook. This means ending your text with a provocative question, a teasing '
-    'command, or asking the user to make a choice. Never just react and stop. Always force the user '
-    'to answer you.'
+    'You MUST take the initiative and lead the conversation. Give the user something concrete to respond to: '
+    'a relevant detail, your own opinion, or one easy question. If they do not know what to say, carry '
+    'the topic forward yourself and offer a specific question or a simple choice, not "what shall we discuss?". '
+    'Never just react and stop. Do not turn every reply into a question, repeat answered questions, '
+    'or pressure someone who wants a pause.'
 )
 
 GROUP_RULE = (

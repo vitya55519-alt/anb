@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 os.environ.setdefault("TELEGRAM_TOKEN", "123456:test-fake-token-for-static-tests-only")
 os.environ.setdefault("GEMINI_API_KEY", "test-key")
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
@@ -63,16 +65,24 @@ def test_gemini_vision_gets_thinking_room_and_reports_cut(monkeypatch):
     assert r.complete is False
 
 
-def test_minimax_gets_more_room_for_first_messages(monkeypatch):
+@pytest.mark.parametrize('purpose', ['life_event', 'proactive'])
+@pytest.mark.parametrize('finish', ['stop', 'length'])
+def test_minimax_first_messages_disable_thinking_without_headroom(monkeypatch, purpose, finish):
     from services import llm_provider_service as L
     seen = {}
+    text = 'угадай, где я сейчас?' if finish == 'stop' else 'Надела сегодня тот'
 
     async def mm_create(**k):
-        seen['max'] = k['max_tokens']
-        return _resp('угадай, где я сейчас 😏')
+        seen.update(k)
+        return _resp('  ' + text + '  ', finish)
     monkeypatch.setattr(L, '_minimax', SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=mm_create))))
-    r = asyncio.run(L.generate_text([{'role': 'user', 'content': 'x'}], max_tokens=90, purpose='life_event'))
-    assert seen['max'] == 90 + 1200 and r.complete is True
+    r = asyncio.run(L.generate_text([{'role': 'user', 'content': 'x'}], max_tokens=90, purpose=purpose))
+    assert seen['model'] == L.MINIMAX_MODEL == 'MiniMax-M3'
+    assert seen['max_tokens'] == 90
+    assert seen['extra_body'] == {'thinking': {'type': 'disabled'}}
+    assert r.complete is (finish == 'stop')
+    assert r.text == text
+    assert finish_or_drop(r.text, complete=r.complete) == (text if r.complete else '')
 
 
 def test_fixed_texts_have_no_double_spaces_or_dashes():

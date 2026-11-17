@@ -22,6 +22,21 @@ def test_rhythm_kinds_and_notes():
     assert 'коротко' in live_talk.rhythm_note('ок')
 
 
+def test_passive_reply_gets_a_concrete_easy_way_to_continue(monkeypatch):
+    monkeypatch.setattr(live_talk, 'ENABLED', True)
+    for text in ('не знаю', 'Не знаю, что написать...', 'ага', 'да!', 'скучно', 'idk'):
+        note = live_talk.rhythm_note(text)
+        assert note == live_talk.PASSIVE_NOTE
+        assert 'сама развей текущую тему' in note
+        assert 'конкретный вопрос либо простой выбор' in note
+        assert 'Не спрашивай «о чём поговорим?»' in note
+    assert 'Отказ не означает согласие' in live_talk.rhythm_note('нет')
+    for text in ('Как дела?', 'Нет, я хочу спать', 'Пока', 'Не знаю, куда переехать'):
+        assert live_talk.rhythm_note(text) != live_talk.PASSIVE_NOTE
+    monkeypatch.setattr(live_talk, 'ENABLED', False)
+    assert live_talk.rhythm_note('не знаю') == ''
+
+
 def test_fit_rhythm_trims_essay_to_one_word_only():
     essay = 'да нормально, лениво выбираю наряд и уже в предвкушении вечера ✨\n\n' + 'а у тебя как? ' * 12
     assert live_talk.fit_rhythm(essay, 'ок') == 'да нормально, лениво выбираю наряд и уже в предвкушении вечера ✨'

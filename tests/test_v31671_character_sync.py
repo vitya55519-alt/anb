@@ -7,6 +7,7 @@
 героиню (открытие чата, её ход, его фото, тап по кадру, заказ медиа), записывает
 её как последнюю активную — а rails читают ровно это.
 """
+import ast
 import asyncio
 import logging
 from pathlib import Path
@@ -82,14 +83,19 @@ def test_switching_girls_replaces_the_previous_one():
 
 def test_every_app_entry_point_that_names_her_records_her():
     # открытие чата, её ход (текст и голос идут через _webapp_chat_turn), его
-    # фото, тап по кадру и заказ медиа — пять мест, где приложение называет её.
-    assert MAIN.count('await asyncio.to_thread(_remember_character') == 5
+    # фото, тап по кадру, заказ медиа и выбор в истории — шесть мест.
+    assert MAIN.count('await asyncio.to_thread(_remember_character') == 6
     assert 'def _remember_character(' in MAIN
     assert '_remember_character' in _body('async def _webapp_chat_turn(')
     assert '_remember_character' in _body('async def _webapp_api_chat_start(')
     assert '_remember_character' in _body('async def _webapp_api_chat_media(')
     assert '_remember_character' in _body('async def _webapp_api_chat_photo(')
     assert '_remember_character' in _body('async def _webapp_api_photo_action(')
+    assert "add_post('/webapp/api/chat/action', _webapp_api_chat_action)" in MAIN
+    action = _body('async def _webapp_api_chat_action(')
+    story = action[action.index("if action['type'] == 'story_hook':"):action.index('    def _set_actions(')]
+    assert 'await asyncio.to_thread(story_hooks.choose_in_app, uid, character_id,' in story
+    assert "if result['ok']:\n            await asyncio.to_thread(_remember_character, telegram_id, character_id)" in story
 
 
 def test_photo_rails_take_the_character_of_the_event_not_the_default():
@@ -97,8 +103,16 @@ def test_photo_rails_take_the_character_of_the_event_not_the_default():
     assert 'character_id: str | None = None' in _body('async def _run_photo_background(')
     assert 'character_id = character_id or get_user_character(telegram_id)' in MAIN
     ceremony = ' '.join(_body('async def _on_relationship_stage_up(').split())
-    assert "special[1], 'story', character_id=character_id)" in ceremony
-    assert "PhotoRequest(scene='selfie', mood='romantic'), 'story', character_id=character_id)" in ceremony
-    assert '_run_photo_background(chat_id, telegram_id, request, delivery_type, charge=charge, ' \
-           'amount=amount, product=product, spend_undress_credit=spend_undress_credit, ' \
-           'spend_explicit_peaches=spend_explicit_peaches, character_id=character_id)' in MAIN
+    assert "special[1], 'story', character_id=character_id, app_only=True)" in ceremony
+    assert "PhotoRequest(scene='selfie', mood='romantic'), 'story', character_id=character_id, app_only=True)" in ceremony
+    starter = next(node for node in ast.parse(MAIN).body
+                   if isinstance(node, ast.AsyncFunctionDef) and node.name == '_start_photo_background')
+    calls = [node for node in ast.walk(starter) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Name) and node.func.id == '_run_photo_background']
+    assert len(calls) == 1
+    assert [ast.unparse(arg) for arg in calls[0].args] == [
+        'chat_id', 'telegram_id', 'request', 'delivery_type']
+    forwarded = {kw.arg: ast.unparse(kw.value) for kw in calls[0].keywords}
+    for name in ('charge', 'amount', 'product', 'spend_undress_credit',
+                 'spend_explicit_peaches', 'character_id', 'app_only'):
+        assert forwarded[name] == name

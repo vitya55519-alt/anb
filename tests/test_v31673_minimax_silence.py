@@ -82,12 +82,12 @@ def test_the_first_dialogue_attempt_already_thinks_less(monkeypatch):
     out = asyncio.run(llm.generate_text([{'role': 'user', 'content': 'x'}],
                                         max_tokens=40, purpose='dialogue'))
     assert out.text.startswith('да')
-    assert mm.calls[0]['reasoning_effort'] == 'low', 'думать меньше — с первого запроса'
-    assert mm.calls[1]['reasoning_effort'] == 'low'
+    assert mm.calls[0]['extra_body'] == {'thinking': {'type': 'disabled'}}
+    assert mm.calls[1]['extra_body'] == {'thinking': {'type': 'disabled'}}
+    assert all('reasoning_effort' not in call for call in mm.calls)
 
 
-def test_the_effort_switch_is_an_env_escape_hatch(monkeypatch):
-    # MINIMAX_DIALOGUE_EFFORT= в Railway возвращает прежнюю глубину без правки кода
+def test_the_effort_switch_does_not_reenable_m3_thinking(monkeypatch):
     mm = _FakeProvider([_resp('обычное размышление 😌')])
     _patch(monkeypatch, mm)
     monkeypatch.setattr(llm, 'MINIMAX_DIALOGUE_EFFORT', '')

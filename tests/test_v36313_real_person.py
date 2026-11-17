@@ -45,5 +45,6 @@ def test_wiring():
     main = (ROOT / 'main.py').read_text(encoding='utf-8')
     assert 'await asyncio.sleep(_bubble_pause(part))' in main
     html = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
-    assert 'function splitBubbles(text)' in html and 'async function playFollowups(parts)' in html
+    assert 'splitBubbles(' not in html and 'playFollowups(' not in html
+    assert "chatBubble('bot', j.reply || '', null)" in html
     assert "typing_now: 'печатает…'" in html

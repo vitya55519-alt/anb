@@ -60,52 +60,38 @@ def test_card_is_html_safe():
     assert '<img' not in card and 'a &lt; b' in main._thought_card(NAME, 'a < b', expanded=True)
 
 
-def test_toggle_switches_the_same_message():
+def test_legacy_toggle_redirects_instead_of_revealing(monkeypatch):
+    from unittest.mock import AsyncMock
     tid = _user()
     key = main._thought_register(tid, NAME, THOUGHT)
-    edits = []
-    answers = []
-
-    async def edit_text(text, **kw):
-        edits.append({'text': text, **kw})
-
-    async def answer(text='', **kw):
-        answers.append(text)
-
+    redirect = AsyncMock()
+    monkeypatch.setattr(main, '_redirect_bot_chat', redirect)
+    edit = AsyncMock(side_effect=AssertionError('Telegram must not reveal thoughts'))
     cq = SimpleNamespace(
         data=f'thought:show:{key}', from_user=SimpleNamespace(id=tid),
-        message=SimpleNamespace(edit_text=edit_text), answer=answer)
+        message=SimpleNamespace(edit_text=edit), answer=AsyncMock())
     asyncio.run(main._thought_toggle(cq))
-    assert THOUGHT in edits[0]['text']
-    assert edits[0]['reply_markup'].inline_keyboard[0][0].callback_data == f'thought:hide:{key}'
-
+    redirect.assert_awaited_once_with(cq.message, cq.from_user, None)
     cq.data = f'thought:hide:{key}'
     asyncio.run(main._thought_toggle(cq))
-    assert THOUGHT not in edits[1]['text']
-    assert edits[1]['reply_markup'].inline_keyboard[0][0].callback_data == f'thought:show:{key}'
-    assert answers == ['', '']
+    assert redirect.await_count == 2
+    edit.assert_not_awaited()
 
 
-def test_foreign_and_stale_taps_are_harmless():
-    tid = _user()
-    key = main._thought_register(tid, NAME, THOUGHT)
-    answers = []
-
-    async def edit_text(text, **kw):
-        raise AssertionError('чужой тап не должен править карточку')
-
-    async def answer(text='', **kw):
-        answers.append(text)
-
-    other = SimpleNamespace(data=f'thought:show:{key}', from_user=SimpleNamespace(id=777001),
-                            message=SimpleNamespace(edit_text=edit_text), answer=answer)
-    asyncio.run(main._thought_toggle(other))
-    assert answers and 'не твои' in answers[0]
-
-    missing = SimpleNamespace(data='thought:show:999999', from_user=SimpleNamespace(id=tid),
-                              message=SimpleNamespace(edit_text=edit_text), answer=answer)
-    asyncio.run(main._thought_toggle(missing))
-    assert 'не здесь' in answers[1]
+def test_foreign_and_stale_taps_redirect_without_reading_store(monkeypatch):
+    from unittest.mock import AsyncMock
+    class ForbiddenStore(dict):
+        def get(self, *args):
+            raise AssertionError('A legacy tap must not read any thought')
+    monkeypatch.setattr(main, '_thought_cards', ForbiddenStore())
+    redirect = AsyncMock()
+    monkeypatch.setattr(main, '_redirect_bot_chat', redirect)
+    for tid, data in ((777001, 'thought:show:1'), (TID, 'thought:show:999999')):
+        cq = SimpleNamespace(data=data, from_user=SimpleNamespace(id=tid),
+                             message=SimpleNamespace(), answer=AsyncMock())
+        asyncio.run(main._thought_toggle(cq))
+        redirect.assert_awaited_with(cq.message, cq.from_user, None)
+    assert redirect.await_count == 2
 
 
 def test_store_is_bounded():
@@ -126,10 +112,12 @@ def test_novel_answer_sends_the_window_with_a_button():
     assert sent[1]['text'] == 'да, и очень хочу 🙈'
 
 
-def test_mini_app_window_is_collapsed_and_tappable():
-    assert 'class="thcard min"' in WEBAPP
-    assert "e.target.closest('.thcard')" in WEBAPP
-    assert "card.classList.toggle('min')" in WEBAPP
-    assert '-webkit-line-clamp: 1' in WEBAPP
-    assert "th_more: 'развернуть', th_less: 'свернуть'" in WEBAPP
-    assert "th_more: 'tap to read', th_less: 'hide'" in WEBAPP
+def test_mini_app_message_is_not_collapsible():
+    assert '.msg.bot.thcard' in WEBAPP
+    assert 'class="thcard min"' not in WEBAPP
+    assert "e.target.closest('.thcard')" not in WEBAPP
+    assert "card.classList.toggle('min')" not in WEBAPP
+    assert '.thcard.min' not in WEBAPP and '.thcard .th-t' not in WEBAPP
+    card = WEBAPP[WEBAPP.index('function messageCard('):WEBAPP.index('function sameChat(')]
+    assert 'esc(nm)' in card and 'L.thoughts' not in card
+    assert 'L.th_more' not in card and 'L.th_less' not in card

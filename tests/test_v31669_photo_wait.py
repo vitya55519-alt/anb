@@ -117,4 +117,4 @@ def test_the_spa_shows_her_line_and_waits_for_the_frame():
     assert "chatBubble('bot', j.photo_wait, null)" in reply
     assert "waitForChatPhoto(CHAT ? CHAT.id : '')" in reply
     # её вопрос встаёт сразу под её словами, а не после чипов этого ответа
-    assert reply.index("parts[0], null)") < reply.index('if (j.photo_pending) {')
+    assert reply.index("chatBubble('bot', j.reply || '', null)") < reply.index('if (j.photo_pending) {')

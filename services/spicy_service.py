@@ -20,8 +20,11 @@ Safety rules:
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 
@@ -118,6 +121,198 @@ def get_private_gift(gift_id: str) -> PrivateGift | None:
         if item.id == gift_id:
             return item
     return None
+
+
+# Paid entitlements are not expiring wizard state. Keep one immutable identity
+# per charge, including terminal orders, so payment/request replays cannot render.
+PAID_FANTASY_PREFIX = 'paid_fantasy:'
+
+
+def paid_fantasy_key(charge: str) -> str:
+    # Existing PostgreSQL column is VARCHAR(32); no schema migration is needed.
+    # Check the full charge in the payload as well (fail closed on a collision).
+    return PAID_FANTASY_PREFIX + hashlib.sha256(charge.encode('utf-8')).hexdigest()[:19]
+
+
+@contextmanager
+def _fantasy_session(telegram_id: int):
+    from sqlalchemy import select, update
+    from models.app_models import User
+    from services.db import SessionLocal
+
+    with SessionLocal() as session:
+        # Like memory/story claims: locks the account on SQLite AND PostgreSQL.
+        session.execute(update(User).where(User.telegram_id == str(telegram_id))
+                        .values(chat_used=User.chat_used))
+        user = session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
+        if user is None:
+            raise ValueError('fantasy user not found')
+        yield session, user
+        session.commit()
+
+
+def _fantasy_row(session, telegram_id: int, charge: str):
+    from sqlalchemy import select
+    from models.app_models import DialogSession
+
+    row = session.scalar(select(DialogSession).where(
+        DialogSession.telegram_id == int(telegram_id),
+        DialogSession.session_key == paid_fantasy_key(charge)))
+    if row is not None and json.loads(row.payload_json).get('charge') != charge:
+        raise ValueError('fantasy charge key collision')
+    return row
+
+
+def _create_fantasy_order(session, user, charge: str, amount: int,
+                          character_id: str, language: str, created_at=None):
+    from models.app_models import DialogSession, Message
+
+    if not charge or amount <= 0 or not character_id:
+        raise ValueError('invalid paid fantasy')
+    row = _fantasy_row(session, int(user.telegram_id), charge)
+    if row is not None:
+        return json.loads(row.payload_json), False
+    instruction = (
+        'Your paid photo set is saved. Describe the scenario here: outfit, place, mood. '
+        'This is a photo scenario, not a chat turn; no second payment is needed.'
+        if language == 'en' else
+        'Оплаченный фотосет сохранён. Опиши здесь сценарий: образ, место, настроение. '
+        'Это сценарий фото, а не ход диалога; повторная оплата не нужна.')
+    message = Message(user_id=user.id, character_id=character_id, role='assistant',
+                      content=instruction, origin='fantasy')
+    session.add(message)
+    session.flush()
+    order = {'charge': charge, 'amount': amount, 'character_id': character_id,
+             'status': 'pending', 'language': language, 'instruction_id': message.id}
+    row = DialogSession(telegram_id=int(user.telegram_id), session_key=paid_fantasy_key(charge),
+                        payload_json=json.dumps(order, ensure_ascii=False))
+    if created_at is not None:
+        row.created_at = created_at
+    session.add(row)
+    session.flush()
+    return order, True
+
+
+def _migrate_fantasy_pending(session, user, language: str):
+    from sqlalchemy import select
+    from models.app_models import DialogSession
+    from config import CHARACTER_ID
+
+    legacy = session.scalar(select(DialogSession).where(
+        DialogSession.telegram_id == int(user.telegram_id),
+        DialogSession.session_key == 'fantasy_pending'))
+    if legacy is None:
+        return
+    value = json.loads(legacy.payload_json)
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ValueError('invalid legacy paid fantasy')
+    charge, amount = value
+    # Bind once to the persisted selection, never to an arbitrary request's girl.
+    character_id = (user.selected_character or '').strip() or CHARACTER_ID
+    _create_fantasy_order(session, user, str(charge), int(amount), character_id,
+                          language, legacy.created_at)
+    session.delete(legacy)
+    session.flush()
+
+
+def create_paid_fantasy(telegram_id: int, charge: str, amount: int,
+                        character_id: str, language: str = 'ru') -> tuple[dict, bool]:
+    """Persist payment entitlement + app instruction atomically, without overwrites."""
+    with _fantasy_session(telegram_id) as (session, user):
+        _migrate_fantasy_pending(session, user, language)
+        return _create_fantasy_order(session, user, charge, int(amount), character_id, language)
+
+
+def paid_fantasy_response(order: dict) -> dict:
+    english = order.get('language') == 'en'
+    status = order['status']
+    replies = {
+        'generating': ('Scenario received. Your paid set is being prepared.',
+                       'Сценарий принят. Готовим оплаченный сет.'),
+        'delivered': ('Your paid set has been delivered to this chat.',
+                      'Оплаченный сет уже доставлен в этот чат.'),
+        'refunded': ('The set could not be delivered. Stars were refunded.',
+                     'Сет не удалось доставить. Stars возвращены.'),
+        'needs_support': ('Your order is saved. Contact /support to check delivery; do not pay again.',
+                          'Заказ сохранён. Напиши /support для проверки доставки; не оплачивай повторно.'),
+    }
+    reply = replies[status][0 if english else 1]
+    return {'ok': True, 'reply': reply, 'message_id': order.get('message_id'),
+            'fantasy_status': status}
+
+
+def claim_paid_fantasy(telegram_id: int, character_id: str, text: str,
+                       language: str = 'ru') -> dict | None:
+    """Intercept a scenario, or its replay, before chat/memory/quota processing.
+
+    An ambiguous generating order is NEVER reclaimed after a restart. The saved
+    text also deduplicates a replay after delivery, even if another purchase waits.
+    """
+    from sqlalchemy import select
+    from models.app_models import DialogSession, Message
+
+    text = (text or '').strip()[:4000]
+    with _fantasy_session(telegram_id) as (session, user):
+        _migrate_fantasy_pending(session, user, language)
+        rows = session.scalars(select(DialogSession).where(
+            DialogSession.telegram_id == int(telegram_id),
+            DialogSession.session_key.startswith(PAID_FANTASY_PREFIX, autoescape=True))
+            .order_by(DialogSession.created_at, DialogSession.id)).all()
+        orders = [(row, json.loads(row.payload_json)) for row in rows]
+        mine = [(row, order) for row, order in orders if order['character_id'] == character_id]
+        replay = next((order for _, order in mine if order.get('request', {}).get('text') == text), None)
+        active = next((order for _, order in mine if order['status'] in {'generating', 'needs_support'}), None)
+        pending = next(((row, order) for row, order in mine if order['status'] == 'pending'), None)
+        if not (replay or active or pending):
+            return None
+        if not user.adult_confirmed:
+            return {'claimed': False, 'response': {'ok': False, 'error': 'adult'}}
+        if replay or active:
+            return {'claimed': False, 'response': paid_fantasy_response(replay or active)}
+        if len(text) < 3:
+            return {'claimed': False, 'response': {'ok': False, 'error': 'fantasy_scenario_short'}}
+        # Do not claim another girl's queued order while a previous set is in flight.
+        if any(order['status'] in {'generating', 'needs_support'} for _, order in orders):
+            return {'claimed': False, 'response': {'ok': False, 'error': 'fantasy_busy'}}
+        row, order = pending
+        fields = parse_fantasy(text)
+        order.update(status='generating', request={'text': text, 'fields': fields})
+        scenario = Message(user_id=user.id, character_id=character_id, role='user',
+                           content=('Paid photo scenario: ' if language == 'en' else
+                                    'Сценарий оплаченного фото: ') + text, origin='fantasy')
+        ack = Message(user_id=user.id, character_id=character_id, role='assistant',
+                      content=paid_fantasy_response(order)['reply'], origin='fantasy')
+        session.add_all([scenario, ack])
+        session.flush()
+        order.update(message_id=ack.id, scenario_message_id=scenario.id)
+        row.payload_json = json.dumps(order, ensure_ascii=False)
+        return {'claimed': True, 'order': order, 'response': paid_fantasy_response(order)}
+
+
+def finish_paid_fantasy(telegram_id: int, charge: str, status: str) -> bool:
+    """Record confirmed delivery/refund, or ambiguity; never reopen an order."""
+    if status not in {'delivered', 'refunded', 'needs_support'}:
+        raise ValueError('invalid fantasy completion')
+    with _fantasy_session(telegram_id) as (session, user):
+        row = _fantasy_row(session, telegram_id, charge)
+        if row is None:
+            return False
+        order = json.loads(row.payload_json)
+        if order['status'] in {'delivered', 'refunded'}:
+            return order['status'] == status
+        if order['status'] not in {'generating', 'needs_support'}:
+            return False
+        order['status'] = status
+        row.payload_json = json.dumps(order, ensure_ascii=False)
+        return True
+
+
+def get_paid_fantasy(telegram_id: int, charge: str) -> dict | None:
+    from services.db import SessionLocal
+
+    with SessionLocal() as session:
+        row = _fantasy_row(session, telegram_id, charge)
+        return json.loads(row.payload_json) if row else None
 
 
 # --- Fantasy constructor parser ----------------------------------------------

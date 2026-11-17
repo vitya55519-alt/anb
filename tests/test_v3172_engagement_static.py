@@ -1,6 +1,7 @@
 """Static regression tests for v3.17.2: underwear layering fix, video chain
 diagnostics + Replicate polling, gift-of-day discount, voice notes after
 gifts/dates, and the 7-day-streak free date voucher."""
+import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,14 +53,35 @@ def test_gift_of_the_day_wired_in_main():
 
 
 def test_voice_note_after_gift_and_date():
-    assert 'async def _send_voice_note(' in MAIN
-    assert "getattr(user, 'voice_enabled', False)" in MAIN
-    # The successful_payment gift branch (not the pre_checkout elif) sends it.
-    gift = MAIN[MAIN.index("\n    if payload.startswith('gift:')"):]
-    gift = gift[:gift.index("\n    if payload.startswith('date:')")]
-    assert 'await _send_voice_note(message.chat.id, message.from_user.id, gift.reaction)' in gift
-    # Shared date reward path sends the voice note too.
-    assert 'await _send_voice_note(chat_id, telegram_id, date.text)' in MAIN
+    functions = {node.name: node for node in ast.parse(MAIN).body
+                 if isinstance(node, ast.AsyncFunctionDef)}
+    voice = functions['_send_voice_note']
+    assert any(isinstance(node, ast.Call) and ast.unparse(node) ==
+               "getattr(user, 'voice_enabled', False)" for node in ast.walk(voice))
+    synth = next(node for node in ast.walk(voice) if isinstance(node, ast.Call)
+                 and ast.unparse(node.func) == 'synthesize_bytes')
+    assert any(kw.arg == 'character_id' and ast.unparse(kw.value) == 'character_id'
+               for kw in synth.keywords)
+
+    # Scope the paid gift branch, not pre-checkout or the admin-only preview.
+    gift = next(node for node in functions['successful_payment'].body
+                if isinstance(node, ast.If) and ast.unparse(node.test) == "payload.startswith('gift:')")
+    date = functions['_deliver_date_reward']
+    for reward, args in ((gift, ['message.chat.id', 'message.from_user.id', 'gift.reaction']),
+                         (date, ['chat_id', 'telegram_id', 'date.text'])):
+        calls = [node for node in ast.walk(reward) if isinstance(node, ast.Call)
+                 and ast.unparse(node.func) == '_send_voice_note']
+        assert len(calls) == 1
+        assert [ast.unparse(arg) for arg in calls[0].args] == args
+        assert {kw.arg: ast.unparse(kw.value) for kw in calls[0].keywords} == {
+            'app_only': 'True', 'character_id': 'character_id'}
+        assert not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                       and node.func.attr in {'send_voice', 'answer_voice', 'send_photo', 'answer_photo'}
+                       for node in ast.walk(reward))
+    photo = next(node for node in ast.walk(date) if isinstance(node, ast.Call)
+                 and ast.unparse(node.func) == '_start_photo_background')
+    assert {kw.arg: ast.unparse(kw.value) for kw in photo.keywords} == {
+        'app_only': 'True', 'character_id': 'character_id'}
 
 
 def test_free_date_voucher_service():

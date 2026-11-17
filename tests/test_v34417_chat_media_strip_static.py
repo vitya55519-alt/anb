@@ -69,7 +69,14 @@ def test_history_renderers_stay():
     # dialog history even though the buttons are gone
     assert "m.media_kind === 'video'" in INDEX
     assert 'video class="circle"' in INDEX
-    assert "body = voicePlayer(src);" in INDEX  # V3.63.8: Telegram-style player
+    # Voice history retains her pink text card before the player, once only.
+    bubble = INDEX[INDEX.index('function chatBubble('):]
+    bubble = bubble[:bubble.index('\n}') + 2]
+    assert "const pink = cls === 'bot' && (!m.media_url || m.media_kind === 'voice');" in bubble
+    text = bubble.index('let body = pink ? messageCard(m.content) : esc(m.content);')
+    voice = bubble.index("else if (m.media_kind === 'voice') body = cls === 'bot' ? body + voicePlayer(src) : voicePlayer(src);")
+    assert text < voice
+    assert "if (m.content && !(cls === 'bot' && m.media_kind === 'voice'))" in bubble
 
 
 def test_i18n_keys_kept_for_the_revert():

@@ -205,7 +205,8 @@ def test_empty_dialogue_retry_asks_for_less_thinking(monkeypatch):
     out = asyncio.run(llm.generate_text([{'role': 'user', 'content': 'x'}], max_tokens=40, purpose='dialogue'))
     assert out.text.startswith('да')
     assert len(mm.calls) == 2
-    assert mm.calls[1]['reasoning_effort'] == 'low'
+    assert mm.calls[1]['extra_body'] == {'thinking': {'type': 'disabled'}}
+    assert 'reasoning_effort' not in mm.calls[1]
 
 
 def test_second_empty_answer_does_not_ask_a_third_time(monkeypatch):
@@ -247,7 +248,7 @@ def test_static_budget_and_hook_shape():
         'V3.167.11: срез повтора режется до остатка бюджета хода'
     assert 'else min(LLM_RETRY_TIMEOUT_SECONDS,' in LLM_SRC
     assert "error=f'{type(exc).__name__}: {str(exc)[:300]}'" in CHAT
-    assert "if not (m.role == 'assistant' and is_stall_line(m.content))]" in CHAT
+    assert "if content and not (m.role == 'assistant' and is_stall_line(content))" in CHAT
 
 
 def test_the_stub_never_enters_the_dialogue_history(monkeypatch):

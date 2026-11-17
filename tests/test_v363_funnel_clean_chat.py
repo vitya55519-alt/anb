@@ -52,10 +52,22 @@ def test_screen_capture_installed_on_the_bot_session():
 
 
 def test_menu_buttons_are_screens():
+    import ast
+
+    handlers = {node.name: node for node in ast.parse(MAIN).body
+                if isinstance(node, ast.AsyncFunctionDef)}
     for fn in ('start', 'app_button', 'credits_button', 'paint_button', 'partner_button',
                'support_button', 'legal_button', 'premium_button', 'profile_button',
                'settings_button', 'characters_button', 'referral_button'):
-        assert f'@service_screen\nasync def {fn}(' in MAIN, fn
+        decorators = [ast.unparse(node) for node in handlers[fn].decorator_list]
+        assert 'service_screen' in decorators, fn
+        if fn == 'characters_button':
+            # Keep screen cleanup around the app-only wrapper; the retired
+            # character picker itself must never run as a bot dialogue screen.
+            assert 'app_only_dialogue' in decorators
+            assert decorators.index('service_screen') < decorators.index('app_only_dialogue')
+        else:
+            assert 'app_only_dialogue' not in decorators, fn
 
 
 def test_background_tasks_cannot_join_a_closed_screen():
@@ -255,5 +267,15 @@ def test_push_photos_wired_admin_only():
     assert 'push_photos.add(character_id, message.photo[-1].file_id)' in body
     # the catch-all photo handler is registered later, so the caption wins
     assert i < MAIN.index('@dp.message(F.photo)\n')
-    assert 'push_photos.pick(char_id or CHARACTER_ID) if story.photo_ok else None' in SCHED
-    assert 'source=await bot.download(fid)' in SCHED
+    story = SCHED[SCHED.index('async def _send_story('):SCHED.index('async def _first_offer(')]
+    assert 'char_id = char_id or CHARACTER_ID' in story
+    assert 'if story.photo_ok:\n        file_id=push_photos.pick(char_id)' in story
+    assert 'source = await bot.download(file_id)' in story
+    assert "photo = source.getvalue() if hasattr(source, 'getvalue') else source.read()" in story
+    assert story.index('await bot.download(') < story.index('chat_photo_allowance.use_push_frame(')
+    assert 'if photo and not chat_photo_allowance.use_push_frame(uid, char_id):' in story
+    assert 'if not _app_delivery(bot,uid,telegram_id,char_id,body,shot,actions=actions):' in story
+    assert "'type': 'story_hook'" in story and "'story_key': story.key, 'choice': side" in story
+    assert story.index('_app_delivery(') < story.index('story_hooks.mark_used(')
+    assert 'bot.send_photo(' not in story and 'bot.send_message(' not in story
+    assert 'resize(' not in story and 'generate_image(' not in story

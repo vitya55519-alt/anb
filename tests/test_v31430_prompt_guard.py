@@ -66,17 +66,17 @@ def test_duo_mode_keeps_the_names_it_needs():
 
 # ── 3. БЛОК 1: the owner's directive, verbatim, in every character ───────────
 
-def test_she_leads_and_every_message_ends_with_a_hook():
+def test_she_leads_with_relevant_curiosity_not_an_interrogation():
     t = _prompt()
     assert DIRECTIVE_BLOCK in t
     assert '[DIRECTIVE: ПРОАКТИВНОСТЬ И УПРАВЛЕНИЕ ДИАЛОГОМ]' in t
     assert '1. ТЫ — ВЕДУЩАЯ' in t
-    assert 'Категорически запрещено пассивно ждать действий от пользователя' in t
-    assert '2. ПРАВИЛО КРЮЧКА (MANDATORY HOOKS)' in t
-    assert 'Никогда не заканчивай реплику просто описанием действия' in t
-    assert 'Разденешь меня сам, или мне сделать это для тебя?' in t
-    # the same rule reaches the messages she writes first
-    assert 'закончи её ' in CHAT and 'не обязательно задавай вопрос' not in CHAT
+    assert 'не перекладывай весь разговор на пользователя' in t
+    assert '2. ЖИВОЕ ЛЮБОПЫТСТВО' in t
+    assert 'Один конкретный вопрос за раз, не анкета' in t
+    assert 'чередуй его со своей реакцией и рассказом' in t
+    assert 'Не спрашивай снова то, на что он уже ответил' in t
+    assert 'закончи её ' in CHAT
 
 
 def test_one_word_answers_are_her_green_light():
@@ -84,9 +84,12 @@ def test_one_word_answers_are_her_green_light():
     assert '3. АНТИ-ПАССИВНОСТЬ' in t
     for short in ('«да»', '«не знаю»', '«ага»', '«делай»'):
         assert short in t, short
-    assert 'Опиши своё активное действие' in t
-    assert 'снова задай вопрос-крючок' in t
-    assert 'Заставь его реагировать' in t
+    assert 'Сама продвинь текущую тему' in t
+    assert 'один лёгкий конкретный вопрос или выбор' in t
+    assert 'Не спрашивай «о чём поговорим?»' in t
+    assert 'не жди, что он придумает тему' in t
+    assert 'спокойно отпусти его' in t
+    assert 'Заставь его реагировать' not in t
     # and she does it the way a person texts, not as a play script
     assert 'без звёздочек и скобок' in t
 
@@ -97,9 +100,9 @@ def test_she_never_invents_his_life():
     t = _prompt()
     assert '4. ЗАПРЕТ НА ГАЛЛЮЦИНАЦИИ' in t
     assert 'никогда не выдумывай факты из реальной жизни пользователя' in t
-    assert 'переводи тему на свои эмоции' in t
-    # initiative never means going further than the stage allows
-    assert 'решает этап ваших отношений' in t
+    assert 'Бери их только из его слов и сохранённой памяти' in t
+    assert 'Последнее явное исправление пользователя важнее старой записи' in t
+    assert 'Близость и тон определяет этап ваших отношений' in t
 
 
 # ── 5. stop sequences + sampling ─────────────────────────────────────────────

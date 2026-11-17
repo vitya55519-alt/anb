@@ -82,7 +82,8 @@ def _quiet_ping(monkeypatch) -> list:
     """app_ping — единственное, что этот релиз отдаёт в Telegram."""
     import services.app_ping as ap
     notes: list = []
-    monkeypatch.setattr(ap, 'note', lambda bot, tg, char, text, media=None: notes.append((tg, char, text)))
+    monkeypatch.setattr(ap, 'note', lambda bot, tg, char, text, media=None, **kw:
+                        notes.append((tg, char, text, kw)))
     return notes
 
 
@@ -155,7 +156,7 @@ def test_silence_writes_her_second_line_and_notes_it(monkeypatch):
     assert asyncio.run(opening_nudge._write(None, KEY, ep)) is True
     lines = _dialog(uid)
     assert len(lines) == 1 and lines[0].role == 'assistant'
-    assert notes == [(TG, CHAR, lines[0].content)]
+    assert notes == [(TG, CHAR, '', {'generic': True})]
     assert opening_nudge.take(*KEY)[0]['text'] == lines[0].content
 
 
@@ -235,7 +236,7 @@ def test_the_client_watches_for_her_second_line():
 
 
 def test_the_client_stops_the_minute_he_answers_or_leaves():
-    send = INDEX[INDEX.index('async function sendChat(retryText)'):INDEX.index('// V3.87.1')]
+    send = INDEX[INDEX.index('async function sendChat('):INDEX.index('// V3.87.1')]
     assert 'stopOpenerFollowPoll()' in send
     back = INDEX[INDEX.index("document.getElementById('chatBack').addEventListener"):
         INDEX.index("document.getElementById('chatSend').addEventListener")]

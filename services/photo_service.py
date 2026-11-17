@@ -1493,6 +1493,13 @@ class PhotoRequest:
     starter_note: str = ''
 
 
+AppPhotoDelivery = Callable[[bytes, str, int, str], Awaitable[None]]
+
+
+class PhotoAppDeliveryError(RuntimeError):
+    pass
+
+
 class PhotoGenerationError(RuntimeError):
     def __init__(self, provider: str, reason: str):
         self.provider = provider
@@ -3669,6 +3676,8 @@ async def generate_photo_set(telegram_id: int, request: PhotoRequest, on_frame: 
     )
     try:
         return await _run_routed_photo_set(character, telegram_id, resolved, provider, on_frame=on_frame, character_id=character_id, frames=frames), resolved
+    except PhotoAppDeliveryError:
+        raise
     except PhotoGenerationError:
         # V3.22.0: keep the original provider/reason — the old wrapper replaced
         # the real reason with the exception class name ("PhotoGenerationError"),
@@ -3749,6 +3758,54 @@ def _insert_delivery_row(
         return int(row.id)
 
 
+def _photo_mime_type(data: bytes) -> str:
+    if data.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'image/png'
+    if data.startswith(b'RIFF') and data[8:12] == b'WEBP':
+        return 'image/webp'
+    if data.startswith((b'GIF87a', b'GIF89a')):
+        return 'image/gif'
+    return 'image/jpeg'
+
+
+async def _deliver_app_photo(
+    bot: Bot,
+    telegram_id: int,
+    scene: str,
+    delivery_type: str,
+    app_delivery: AppPhotoDelivery,
+    *,
+    data: bytes | None = None,
+    file_id: str | None = None,
+    url: str | None = None,
+    caption: str = '',
+    provider: str = 'unknown',
+    estimated_cost_usd: float = 0.0,
+    character_id: str = CHARACTER_ID,
+    community_shared: bool = False,
+    source_delivery_id: int | None = None,
+) -> int:
+    try:
+        if not data and file_id:
+            downloaded = await bot.download(file_id)
+            data = downloaded.getvalue() if downloaded is not None else None
+        if not data and url:
+            data = await _download_result_bytes(GeneratedPhoto(url=url, provider=provider))
+        if not data:
+            raise ValueError('empty_photo_bytes')
+        mime = _photo_mime_type(data)
+        row_id = _insert_delivery_row(
+            telegram_id, scene, delivery_type, url=url, provider=provider,
+            estimated_cost_usd=estimated_cost_usd, character_id=character_id,
+            full_bytes=data, community_shared=community_shared,
+            source_delivery_id=source_delivery_id,
+        )
+        await app_delivery(data, mime, row_id, caption)
+        return row_id
+    except Exception as exc:
+        raise PhotoAppDeliveryError('app_delivery_failed') from exc
+
+
 def _attach_delivery_file(delivery_id: int, file_id: str | None):
     """Store the sent Telegram file_id so the animate button works later."""
     if not file_id:
@@ -3776,12 +3833,26 @@ def _record(telegram_id: int, scene: str, delivery_type: str, file_id=None, url=
 # instead of paying for a new generation. Only generate new photos when the
 # pool has nothing unseen for this user.
 
+def _delivery_media_filter(include_app: bool):
+    sendable = PhotoDelivery.telegram_file_id.isnot(None)
+    if include_app:
+        sendable = sendable | PhotoDelivery.full_resolution_bytes.isnot(None)
+    return sendable
+
+
+def _delivery_app_media(row: PhotoDelivery) -> dict:
+    data = row.full_resolution_bytes
+    return {'media_bytes': data, 'mime_type': _photo_mime_type(data) if data else None}
+
+
 def query_community_photos(
     telegram_id: int,
     character_id: str,
     scene: str,
     relationship_level: int,
     count: int = 1,
+    *,
+    include_app: bool = False,
 ) -> list[dict]:
     """Return up to ``count`` random unseen community-shared photos.
 
@@ -3812,7 +3883,7 @@ def query_community_photos(
             PhotoDelivery.community_shared.is_(True),
             PhotoDelivery.character_id == character_id,
             PhotoDelivery.scene == scene,
-            PhotoDelivery.telegram_file_id.isnot(None),
+            _delivery_media_filter(include_app),
         )
         if exclude:
             query = query.where(PhotoDelivery.id.notin_(exclude))
@@ -3825,6 +3896,7 @@ def query_community_photos(
                 'telegram_file_id': r.telegram_file_id,
                 'scene': r.scene,
                 'provider': r.provider,
+                **(_delivery_app_media(r) if include_app else {}),
             }
             for r in rows
         ]
@@ -3923,8 +3995,9 @@ async def _deliver_library_failure_fallback(
     caption: str | None = None,
     *,
     character_id: str = CHARACTER_ID,
+    app_delivery: AppPhotoDelivery | None = None,
 ):
-    """Serve a ready Telegram photo when ordinary free AI generation fails."""
+    """Serve a ready library photo when ordinary free AI generation fails."""
     if request.scene in _PRIVATE_LIBRARY_SCENES:
         return []
     level = get_relationship_level(telegram_id, character_id)
@@ -3939,6 +4012,15 @@ async def _deliver_library_failure_fallback(
     sent_messages = []
     try:
         for idx, item in enumerate(pack.photos):
+            if app_delivery is not None:
+                row_id = await _deliver_app_photo(
+                    bot, telegram_id, pack.scene, 'free', app_delivery,
+                    file_id=item.file_id,
+                    caption=_her(fallback_caption, character_id) if idx == 0 else '',
+                    provider='telegram_library_fallback', character_id=character_id,
+                )
+                sent_messages.append(row_id)
+                continue
             row_id = _insert_delivery_row(telegram_id, pack.scene, 'free', provider='telegram_library_fallback', estimated_cost_usd=0.0, character_id=character_id)
             sent = await bot.send_photo(
                 chat_id, item.file_id, caption=_her(fallback_caption, character_id) if idx == 0 else None,
@@ -3946,6 +4028,8 @@ async def _deliver_library_failure_fallback(
             )
             _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else item.file_id)
             sent_messages.append(sent)
+    except PhotoAppDeliveryError:
+        raise
     except Exception:
         logger.exception('library failure fallback send failed user=%s requested_scene=%s pack=%s', telegram_id, request.scene, pack.pack_key)
         return []
@@ -3974,6 +4058,7 @@ async def _deliver_library_partial_topup(
     needed: int,
     *,
     character_id: str = CHARACTER_ID,
+    app_delivery: AppPhotoDelivery | None = None,
 ):
     """Fill missing ordinary free/story frames from ready library content.
 
@@ -3998,6 +4083,15 @@ async def _deliver_library_partial_topup(
         sent_item_ids: list[int] = []
         try:
             for item in chosen_items:
+                if app_delivery is not None:
+                    row_id = await _deliver_app_photo(
+                        bot, telegram_id, request.scene, 'free', app_delivery,
+                        file_id=item.file_id, provider='telegram_library_topup',
+                        character_id=character_id,
+                    )
+                    sent_messages.append(row_id)
+                    sent_item_ids.append(int(item.item_id))
+                    continue
                 row_id = _insert_delivery_row(telegram_id, request.scene, 'free', provider='telegram_library_topup', estimated_cost_usd=0.0, character_id=character_id)
                 sent = await bot.send_photo(
                     chat_id, item.file_id, reply_markup=_photo_action_markup(row_id, item),
@@ -4005,6 +4099,8 @@ async def _deliver_library_partial_topup(
                 _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else item.file_id)
                 sent_messages.append(sent)
                 sent_item_ids.append(int(item.item_id))
+        except PhotoAppDeliveryError:
+            raise
         except Exception:
             logger.exception(
                 'library partial topup send failed user=%s requested_scene=%s pack=%s sent=%s/%s',
@@ -4049,7 +4145,9 @@ async def deliver_photo(
     *,
     character_id: str = CHARACTER_ID,
     skip_stage: bool = False,
+    app_delivery: AppPhotoDelivery | None = None,
 ):
+    """Return Telegram messages, or delivery IDs when using app_delivery."""
     stage = get_relationship_stage(telegram_id, character_id)
     if not skip_stage and not scene_allowed_for_stage(request.scene, stage, telegram_id):
         raise PermissionError('scene_locked')
@@ -4063,6 +4161,26 @@ async def deliver_photo(
 
     caption = _her(caption or random.choice(AUTO_CAPTIONS.get(request.scene, ('вот 😌',))), character_id)
     sent_messages = []
+
+    async def _send_community_frame(cp: dict, idx: int, provider: str, record_type: str):
+        if app_delivery is not None:
+            sent = await _deliver_app_photo(
+                bot, telegram_id, request.scene, record_type, app_delivery,
+                data=cp.get('media_bytes'), file_id=cp['telegram_file_id'],
+                caption=caption if idx == 0 else '', provider=provider,
+                character_id=character_id, source_delivery_id=cp['id'],
+            )
+        else:
+            row_id = _insert_delivery_row(
+                telegram_id, request.scene, record_type, provider=provider,
+                estimated_cost_usd=0.0, character_id=character_id, source_delivery_id=cp['id'],
+            )
+            sent = await bot.send_photo(
+                chat_id, cp['telegram_file_id'], caption=caption if idx == 0 else None,
+                reply_markup=_photo_action_markup(row_id),
+            )
+            _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else cp['telegram_file_id'])
+        sent_messages.append(sent)
 
     # High-level at-home sets are lingerie-only (see _build_prompt): they must
     # neither be served from the community pool (which holds low-level clothed
@@ -4103,22 +4221,10 @@ async def deliver_photo(
         and COMMUNITY_POOL_ENABLED and COMMUNITY_POOL_FIRST
     ):
         level = get_relationship_level(telegram_id, character_id)
-        community_photos = query_community_photos(telegram_id, character_id, request.scene, level, count=PHOTO_SET_SIZE)
+        community_photos = query_community_photos(telegram_id, character_id, request.scene, level, count=PHOTO_SET_SIZE, include_app=app_delivery is not None)
         if len(community_photos) >= PHOTO_SET_SIZE:
             for idx, cp in enumerate(community_photos[:PHOTO_SET_SIZE]):
-                row_id = _insert_delivery_row(
-                    telegram_id, request.scene, delivery_type,
-                    provider='community_pool', estimated_cost_usd=0.0,
-                    character_id=character_id,
-                    source_delivery_id=cp['id'],
-                )
-                sent = await bot.send_photo(
-                    chat_id, cp['telegram_file_id'],
-                    caption=caption if idx == 0 else None,
-                    reply_markup=_photo_action_markup(row_id),
-                )
-                _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else cp['telegram_file_id'])
-                sent_messages.append(sent)
+                await _send_community_frame(cp, idx, provider='community_pool', record_type=delivery_type)
             _bump_photo_usage(telegram_id, delivery_type, character_id=character_id)
             uid = ensure_user(telegram_id)
             track_event(uid, 'photo_community_pool_served', metadata={'scene': request.scene, 'count': len(sent_messages)})
@@ -4129,6 +4235,16 @@ async def deliver_photo(
     # community pool and curated library remain safety nets if AI fails.
 
     async def _send_frame(result: GeneratedPhoto, idx: int):
+        if app_delivery is not None:
+            row_id = await _deliver_app_photo(
+                bot, telegram_id, request.scene, delivery_type, app_delivery,
+                data=result.data, url=result.url, caption=caption if idx == 0 else '',
+                provider=result.provider, estimated_cost_usd=result.estimated_cost_usd,
+                character_id=character_id,
+                community_shared=not home_lingerie_mode and request.scene not in ADULT_SCENES,
+            )
+            sent_messages.append(row_id)
+            return
         item_caption = caption if idx == 0 else None
         # Capture the raw bytes so the paid gallery download can re-send this
         # frame uncompressed as a Telegram document. URL-only providers may
@@ -4166,22 +4282,10 @@ async def deliver_photo(
         if delivery_type in {'free', 'story'} and request.scene not in _PRIVATE_LIBRARY_SCENES:
             if COMMUNITY_POOL_ENABLED:
                 level = get_relationship_level(telegram_id, character_id)
-                community_photos = query_community_photos(telegram_id, character_id, request.scene, level, count=PHOTO_SET_SIZE)
+                community_photos = query_community_photos(telegram_id, character_id, request.scene, level, count=PHOTO_SET_SIZE, include_app=app_delivery is not None)
                 if community_photos:
                     for idx, cp in enumerate(community_photos):
-                        row_id = _insert_delivery_row(
-                            telegram_id, request.scene, 'free',
-                            provider='community_pool_fallback', estimated_cost_usd=0.0,
-                            character_id=character_id,
-                            source_delivery_id=cp['id'],
-                        )
-                        sent = await bot.send_photo(
-                            chat_id, cp['telegram_file_id'],
-                            caption=caption if idx == 0 else None,
-                            reply_markup=_photo_action_markup(row_id),
-                        )
-                        _attach_delivery_file(row_id, sent.photo[-1].file_id if sent.photo else cp['telegram_file_id'])
-                        sent_messages.append(sent)
+                        await _send_community_frame(cp, idx, provider='community_pool_fallback', record_type='free')
                     _bump_photo_usage(telegram_id, 'free', character_id=character_id)
                     uid = ensure_user(telegram_id)
                     track_event(uid, 'photo_community_fallback_served', metadata={
@@ -4191,7 +4295,7 @@ async def deliver_photo(
                     logger.warning('AI failed but community pool recovered user=%s scene=%s provider=%s reason=%s count=%s',
                                    telegram_id, request.scene, exc.provider, exc.reason, len(sent_messages))
                     return sent_messages
-            fallback_sent = await _deliver_library_failure_fallback(bot, chat_id, telegram_id, request, character_id=character_id)
+            fallback_sent = await _deliver_library_failure_fallback(bot, chat_id, telegram_id, request, character_id=character_id, app_delivery=app_delivery)
             if fallback_sent:
                 logger.warning('AI failed but library fallback recovered user=%s scene=%s provider=%s reason=%s', telegram_id, request.scene, exc.provider, exc.reason)
                 return fallback_sent
@@ -4203,7 +4307,7 @@ async def deliver_photo(
     if delivery_type in {'free', 'story'} and request.scene not in _PRIVATE_LIBRARY_SCENES and len(sent_messages) < PHOTO_SET_SIZE:
         topup = await _deliver_library_partial_topup(
             bot, chat_id, telegram_id, request, PHOTO_SET_SIZE - len(sent_messages),
-            character_id=character_id,
+            character_id=character_id, app_delivery=app_delivery,
         )
         sent_messages.extend(topup)
         library_topup_count = len(topup)
@@ -4248,7 +4352,8 @@ async def deliver_photo(
                 extra = ' photo credit сохранила — спишу только за полный AI-сет.'
             elif delivery_type == 'free' and delivered_count < 2:
                 extra = ' бесплатный запрос тоже не списала.'
-            await bot.send_message(chat_id, f'часть сета уже есть 🙂 получилось {delivered_count} из {PHOTO_SET_SIZE}.{extra}')
+            if app_delivery is None:
+                await bot.send_message(chat_id, f'часть сета уже есть 🙂 получилось {delivered_count} из {PHOTO_SET_SIZE}.{extra}')
         except Exception:
             pass
     else:
@@ -4275,32 +4380,36 @@ def get_photo_delivery_for_user(telegram_id: int, delivery_id: int):
             return None
         return {
             'id': row.id, 'scene': row.scene, 'telegram_file_id': row.telegram_file_id,
+            'character_id': row.character_id,
             'provider': row.provider, 'created_at': row.created_at,
+            **_delivery_app_media(row),
         }
 
 
-def get_latest_photo_delivery(telegram_id: int):
+def get_latest_photo_delivery(telegram_id: int, *, include_app: bool = False):
     with SessionLocal() as s:
         user = s.scalar(select(User).where(User.telegram_id == str(telegram_id)))
         if not user:
             return None
         row = s.scalar(
             select(PhotoDelivery)
-            .where(PhotoDelivery.user_id == user.id, PhotoDelivery.telegram_file_id.is_not(None))
+            .where(PhotoDelivery.user_id == user.id, _delivery_media_filter(include_app))
             .order_by(PhotoDelivery.created_at.desc(), PhotoDelivery.id.desc())
         )
         if not row:
             return None
         return {
             'id': row.id, 'scene': row.scene, 'telegram_file_id': row.telegram_file_id,
+            'character_id': row.character_id,
             'provider': row.provider, 'created_at': row.created_at,
+            **_delivery_app_media(row),
         }
 
 
 GALLERY_PAGE_SIZE = 6
 
 
-def get_gallery_page(telegram_id: int, page: int = 0) -> dict:
+def get_gallery_page(telegram_id: int, page: int = 0, *, include_app: bool = False) -> dict:
     """Return a slice of the user's deliveries with metadata for pagination.
 
     Each item carries everything the gallery UI needs: telegram_file_id for
@@ -4313,7 +4422,7 @@ def get_gallery_page(telegram_id: int, page: int = 0) -> dict:
             return {'items': [], 'total': 0, 'page': 0, 'pages': 0}
         q = (
             select(PhotoDelivery)
-            .where(PhotoDelivery.user_id == user.id, PhotoDelivery.telegram_file_id.is_not(None))
+            .where(PhotoDelivery.user_id == user.id, _delivery_media_filter(include_app))
             .order_by(PhotoDelivery.created_at.desc(), PhotoDelivery.id.desc())
         )
         rows = s.scalars(q).all()

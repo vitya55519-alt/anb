@@ -78,12 +78,11 @@ def test_unread_is_computed_and_returned():
     assert 'webapp_service.mark_chat_read(telegram_id, character_id)' in MAIN
 
 
-def test_tap_back_continues_the_shared_reply_pipeline():
-    # callback handler feeds the natural user line into anna_reply (bot + app
-    # share the pipeline: memory, persona, relationship)
+def test_legacy_tap_back_only_opens_the_app():
     assert "F.data.startswith('life_reply:')" in MAIN
-    assert 'from services.life_event_service import tap_reply_text' in MAIN
-    assert 'anna_reply' in MAIN[MAIN.index("def on_life_reply_tap"):]
+    handler = MAIN[MAIN.index('async def on_life_reply_tap'):MAIN.index('async def on_ladder_chip_tap')]
+    assert 'await app_only_callback(cq)' in handler
+    assert 'tap_reply_text' not in handler and 'anna_reply' not in handler
 
 
 def test_spa_badge_and_read_on_open():

@@ -52,16 +52,17 @@ def test_pool_photo_leaves_the_free_render_alone():
     from services.user_service import ensure_user
     uid = ensure_user(812999001, 'P')
     left = A.free_chat_photos_left(uid, False)
-    A.use_pool_photo(uid, 'anna_01')
+    assert A.use_pool_photo(uid, 'anna_01') is True
     assert A.free_chat_photos_left(uid, False) == left
     assert A.pool_photos_left(uid) == config.CHAT_POOL_PHOTOS_PER_DAY - 1
-    A.use_pool_photo(uid, 'anna_01')
-    assert A.pool_photos_left(uid) == max(0, config.CHAT_POOL_PHOTOS_PER_DAY - 2)
+    assert A.use_pool_photo(uid, 'anna_01') is False
+    assert A.count_today(uid, A.POOL_EVENT) == 1
+    assert A.pool_photos_left(uid) == 0
 
 
 def test_bot_and_app_pay_the_pool_from_its_own_quota():
     assert 'use_pool_photo, db_uid, character_id' in MAIN      # telegram chat
-    assert 'use_pool_photo(uid, character_id)' in MAIN          # mini app chat
+    assert 'not use_pool_photo(uid, character_id, reservation_key=reservation_key)' in MAIN  # app reserves before delivery
     assert 'await asyncio.to_thread(pool_photos_left, db_uid) > 0' in MAIN
     assert 'if pool_photos_left(uid) <= 0:' in MAIN             # _free_photo_from_pool
     # the old double accounting (pool frame + free photo of the day) is gone

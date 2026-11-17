@@ -9,7 +9,7 @@ import random
 import re
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from models.app_models import CoupleAlbum, Message, ProductEvent, User
 from models.relationship_models import UserCharacterRelationship
@@ -215,16 +215,15 @@ def album_entries(user_id: int) -> list[tuple[int, int]]:
         return [(r.level, r.delivery_id) for r in rows]
 
 
-def check_anniversary(user_id: int) -> int | None:
-    """Newest reached-but-uncelebrated anniversary (7/30/90 days), if any."""
+def check_anniversary(user_id: int, character_id: str, lang: str = 'ru') -> int | None:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     with SessionLocal() as session:
+        session.execute(update(User).where(User.id == user_id).values(chat_used=User.chat_used))
         user = session.get(User, user_id)
-        rel = session.scalar(
-            select(UserCharacterRelationship)
-            .where(UserCharacterRelationship.user_id == user_id)
-            .order_by(UserCharacterRelationship.id.asc())
-        )
+        rel = session.scalar(select(UserCharacterRelationship).where(
+            UserCharacterRelationship.user_id == user_id,
+            UserCharacterRelationship.character_id == character_id,
+        ))
         if not user or not rel or not rel.first_interaction_at:
             return None
         days = (now - rel.first_interaction_at).days
@@ -232,6 +231,12 @@ def check_anniversary(user_id: int) -> int | None:
         new = [d for d in ANNIVERSARY_DAYS if days >= d and str(d) not in done]
         if not new:
             return None
+        days = max(new)
+        text = (f'We have been together for {days} days. That means a lot to me. Thank you for being here.'
+                if lang == 'en' else
+                f'Мы вместе уже {days} дней. Для меня это правда важно. Спасибо, что ты рядом.')
+        session.add(Message(user_id=user_id, character_id=character_id, role='assistant',
+                            content=text, origin='anniversary'))
         user.anniversaries = ','.join(sorted(done | {str(d) for d in new}, key=int))
         session.commit()
-    return max(new)
+    return days

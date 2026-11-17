@@ -199,7 +199,14 @@ def test_chat_media_persistence_and_rendering():
     # V3.42.2: the crooked voice action button was removed from the chat strip
     assert 'id="mediaVoice"' not in INDEX
     assert 'video class="circle"' in INDEX
-    assert "body = voicePlayer(src);" in INDEX  # V3.63.8: Telegram-style player
+    # Her voice player follows the visible pink message card, never replaces it.
+    bubble = INDEX[INDEX.index('function chatBubble('):]
+    bubble = bubble[:bubble.index('\n}') + 2]
+    assert "const pink = cls === 'bot' && (!m.media_url || m.media_kind === 'voice');" in bubble
+    text = bubble.index('let body = pink ? messageCard(m.content) : esc(m.content);')
+    voice = bubble.index("else if (m.media_kind === 'voice') body = cls === 'bot' ? body + voicePlayer(src) : voicePlayer(src);")
+    assert text < voice
+    assert "if (m.content && !(cls === 'bot' && m.media_kind === 'voice'))" in bubble
     assert 'circle_limit' in INDEX
 
 
