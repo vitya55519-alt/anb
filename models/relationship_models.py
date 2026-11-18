@@ -41,6 +41,11 @@ class UserCharacterRelationship(Base):
     # None (not chosen yet). Picks level names, perks, tone and scenes.
     # Auto-migrated by services/db.py.
     branch: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # V3.167.14: уровень раскрепощённости в режиме «Без цензуры 18+» (1-10).
+    # Отдельно для каждой героини. Влияет на степень обнажения на фото (для публичных мест)
+    # и стиль общения. Повышается за действия и за персики (Premium = 10).
+    # Auto-migrated by services/db.py.
+    spicy_confidence_level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     stage: Mapped[str] = mapped_column(String(32), default="stranger", nullable=False)
 
     first_interaction_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
