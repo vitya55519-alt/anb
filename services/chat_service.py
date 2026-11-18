@@ -21,6 +21,7 @@ from services import anchor_service
 from services import explicit_mode
 from services import daily_limit
 from services import scene_card_service
+from services import spicy_confidence
 from services.character_dna_service import competency_context, character_dna_context
 from services.state_service import state_context, softly_evolve_state
 from services.user_service import ensure_user, get_user
@@ -51,26 +52,7 @@ def _spawn_background(coro, label: str) -> None:
     task.add_done_callback(_BACKGROUND_TASKS.discard)
 
 
-# V3.167.14: уровень раскрепощённости для стиля общения в режиме «Без цензуры 18+».
-def _get_spicy_confidence_level(user_id: int, character_id: str = CHARACTER_ID) -> int:
-    """Возвращает 1-10, если пользователь в режиме 18+; иначе 0."""
-    try:
-        if not explicit_mode.is_on_for(user_id):
-            return 0
-        from services.db import SessionLocal
-        from models.relationship_models import UserCharacterRelationship
-        from sqlalchemy import select
-        db_user_id = ensure_user(user_id)
-        with SessionLocal() as session:
-            rel = session.scalar(select(UserCharacterRelationship).where(
-                UserCharacterRelationship.user_id == db_user_id,
-                UserCharacterRelationship.character_id == character_id,
-            ))
-            return rel.spicy_confidence_level if rel and rel.spicy_confidence_level > 0 else 0
-    except Exception:
-        _logger.warning('failed to get spicy confidence level user=%s character=%s',
-                        user_id, character_id, exc_info=True)
-        return 0
+# V3.167.14: уровень раскрепощённости берём из services/spicy_confidence.py.
 
 
 LLM_HISTORY_TAIL_CHARS = min(5000, max(1000, int(os.getenv('LLM_HISTORY_TAIL_CHARS', '4000'))))
@@ -722,6 +704,14 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             asyncio.get_running_loop().create_task(maybe_pulse(user_id, user_name, character_id))
         except Exception:
             pass
+        # V3.167.14 этап 6: +1 очко раскрепощённости за каждое сообщение в 18+ режиме.
+        try:
+            _spawn_background(
+                asyncio.to_thread(spicy_confidence.apply_progress, user_id, character_id, kind='message'),
+                'spicy_progress_message',
+            )
+        except Exception:
+            _logger.warning('spicy message progress schedule failed user=%s', user_id, exc_info=True)
     # V3.31.8: constructor personas must not degrade to Anna's file here —
     # character_service.get_character() silently falls back to Anna's JSON for
     # unknown ids, so a custom girl was told "Ты — Анна" in her own chat.
@@ -1008,7 +998,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         user_name=user_name, duo=duo_chat,
         anchors=anchors,
         explicit_mode=bool(mode_on and _adult_ok(user_id)),
-        spicy_level=_get_spicy_confidence_level(user_id, character_id),
+        spicy_level=spicy_confidence.current_level(user_id, character_id),
     )
     messages = [{"role": "system", "content": system}]
     # V3.167.9: её запасные фразы в промпт не идут — в них диалог и застревал.
@@ -1410,7 +1400,7 @@ async def proactive_reply(user_id: int, user_name: str, hours_inactive: int, lan
         # V3.155.0 (Фогель, Модуль 3): a push is exactly the moment she gets
         # nostalgic. The recollection counter still only ticks on his messages.
         anchors=await asyncio.to_thread(anchor_service.anchors_block, db_user_id, character_id),
-        spicy_level=_get_spicy_confidence_level(user_id, character_id),
+        spicy_level=spicy_confidence.current_level(user_id, character_id),
     )
     messages = [{"role": "system", "content": system}]
     for m in history:
@@ -1540,7 +1530,7 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
         # V3.155.0 (Фогель, Модуль 3): a push is exactly the moment she gets
         # nostalgic. The recollection counter still only ticks on his messages.
         anchors=await asyncio.to_thread(anchor_service.anchors_block, db_user_id, character_id),
-        spicy_level=_get_spicy_confidence_level(user_id, character_id),
+        spicy_level=spicy_confidence.current_level(user_id, character_id),
     )
     messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": ("Вечер. Напиши ему первой: как прошёл его день, с привязкой к тому, что ты о нём знаешь."
@@ -1661,7 +1651,7 @@ async def paid_moment(user_id: int, user_name: str, moment: str, language_code: 
             time_context=_time_context(user_id, character_id),
             character_id=character_id,
             user_name=user_name,
-            spicy_level=_get_spicy_confidence_level(user_id, character_id),
+            spicy_level=spicy_confidence.current_level(user_id, character_id),
         )
         messages = [{"role": "system", "content": system}] + [{"role": m.role, "content": m.content} for m in history]
         messages.append({"role": "user", "content": "Напиши ему первой."})

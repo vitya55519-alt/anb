@@ -3834,6 +3834,12 @@ def _bump_photo_usage(telegram_id: int, delivery_type: str, character_id: str = 
         elif delivery_type in {'credit', 'paid'}:
             usage.paid_used += 1
         session.commit()
+    # V3.167.14 этап 6: +3 очка раскрепощённости за успешно доставленный кадр.
+    try:
+        from services import spicy_confidence
+        spicy_confidence.apply_progress(telegram_id, character_id, kind='photo')
+    except Exception:
+        logger.warning('spicy photo progress failed user=%s character=%s', telegram_id, character_id, exc_info=True)
 
 
 def _insert_delivery_row(

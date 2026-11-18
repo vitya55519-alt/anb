@@ -46,6 +46,10 @@ class UserCharacterRelationship(Base):
     # и стиль общения. Повышается за действия и за персики (Premium = 10).
     # Auto-migrated by services/db.py.
     spicy_confidence_level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    # V3.167.14 этап 6: счётчик «очков раскрепощённости» (сообщение +1, генерация фото +3).
+    # Пороги пересчитываются в services/spicy_confidence.py; уровень никогда не падает.
+    # Auto-migrated by services/db.py.
+    spicy_confidence_progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     stage: Mapped[str] = mapped_column(String(32), default="stranger", nullable=False)
 
     first_interaction_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
