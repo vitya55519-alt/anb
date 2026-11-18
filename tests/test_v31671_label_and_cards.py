@@ -85,7 +85,12 @@ def test_her_live_answer_and_the_ceremony_carry_the_label():
     assert 'await message.answer(her_tag + text)' in answer
     assert 'await message.answer(her_tag + part if i == 0 else part)' in answer
     assert 'caption=her_tag or None' in answer
-    assert 'await bot.send_message(telegram_id, _her_label(telegram_id) + text)' in MAIN
+    # V3.167.10: церемония уровня уехала в Mini App — текст ложится в app-чат через
+    # save_message + _app_ping, а не отдельным Telegram-сообщением с меткой.
+    ceremony = _body('async def _on_relationship_stage_up(')
+    assert "await asyncio.to_thread(save_message, ensure_user(telegram_id), character_id, 'assistant', text)" in ceremony
+    assert '_app_ping(telegram_id, character_id, text)' in ceremony
+    assert 'bot.send_message' not in ceremony
     # Duo и роман называют говорящую сами — там метка не нужна.
     assert 'her_tag' not in _body('async def _send_duo_answer(')
     assert 'her_tag' not in _body('async def _send_novel_answer(')
