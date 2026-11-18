@@ -55,6 +55,7 @@ from services.user_service import ensure_user, get_state, update_state, is_adult
 from services.payments import consume_photo_credit, get_photo_credits
 from services.adaptation_service import get_visual_preferences
 from services.character_preferences import get_character_preferences
+from services import spicy_confidence
 from services.analytics_service import track_event
 from services import spend_service
 from services.heroine_label import stamp as _her
@@ -2605,19 +2606,13 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     makeup = request.makeup or char_prefs.get('preferred_makeup') or random.choice(MAKEUP_POOL_EXTENDED)
     accessory = request.accessory or char_prefs.get('preferred_accessories') or random.choice(ACCESSORY_POOL_EXTENDED)
     time_of_day = _outdoor_light(request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL), request.scene)
-    # V3.167.14: если режим 18+ и задан уровень раскрепощённости — используем одежду по уровню
-    from services import explicit_mode
-    spicy_level = 0
-    if explicit_mode.is_on_for(telegram_id):
-        # Получаем уровень раскрепощённости из базы
-        uid = ensure_user(telegram_id)
-        with SessionLocal() as session:
-            rel = session.scalar(select(UserCharacterRelationship).where(
-                UserCharacterRelationship.user_id == uid,
-                UserCharacterRelationship.character_id == character_id,
-            ))
-            if rel:
-                spicy_level = rel.spicy_confidence_level
+    # V3.167.14 этап 7: уровень раскрепощённости меняет одежду только на ПУБЛИЧНЫХ сценах.
+    # Домашние (van, спальня, ванная, «Раздеть», «Наедине», селфи) остаются всегда в белье/голые.
+    PRIVATE_SCENES = SEEDREAM_ADULT_SCENES | {'selfie'}
+    if request.scene in PRIVATE_SCENES:
+        spicy_level = 0
+    else:
+        spicy_level = spicy_confidence.current_level(telegram_id, character_id)
     if spicy_level > 0 and spicy_level <= 10:
         # Используем одежду по уровню раскрепощённости (уже включает обувь и чулки)
         clothing = SPICY_OUTFIT_LEVELS[spicy_level]
