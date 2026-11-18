@@ -17331,6 +17331,12 @@ async def _webapp_api_chat_level(request: web.Request) -> web.Response:
             from services.relationship_engine import TAKEN_STATUSES
             taken = guest_marital(telegram_id, character_id) in TAKEN_STATUSES
             snap = level_snapshot(session, row, get_test_stage(telegram_id, character_id), premium=premium, taken=taken)
+            # V3.167.15 (владелец 18.11): в режиме «Без цензуры 18+» карточка
+            # показывает раскрепощённость, а не полосы отношений/доверия/страсти.
+            from services import spicy_confidence
+            spicy = spicy_confidence.snapshot(telegram_id, character_id)
+            if spicy:
+                snap['spicy'] = spicy
             # V3.83.0: Premium picks any level 1-10 on the level panel.
             from services.test_mode import picked_stage
             snap['can_pick'] = bool(premium)

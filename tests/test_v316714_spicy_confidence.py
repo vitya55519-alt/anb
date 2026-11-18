@@ -129,23 +129,92 @@ def test_photo_service_wires_photo_delta_and_home_bypass():
 
 def test_build_system_prompt_has_spicy_blocks():
     assert "spicy_level: int = 0" in CHAR_SRC
-    for marker in ("ИГРИВАЯ РАСКРЕПОЩЁННОСТЬ", "ОТКРОВЕННАЯ РАСКРЕПОЩЁННОСТЬ",
-                   "ГОРЯЧАЯ РАСКРЕПОЩЁННОСТЬ", "ПОЛНАЯ РАСКРЕПОЩЁННОСТЬ"):
-        assert marker in CHAR_SRC, marker
+    # Речь и названия уровней живут в одном месте — services/spicy_confidence.py.
+    assert "from services import spicy_confidence" in CHAR_SRC
+    assert "spicy_confidence.level_speech(spicy_level)" in CHAR_SRC
 
 
 def test_build_system_prompt_selects_block_by_level():
     from services.character_service import build_system_prompt, get_character
+    from services.spicy_confidence import SPICY_LEVEL_NAMES
     char = get_character('anna_01')
-    variants = {}
-    for lvl in (1, 5, 8, 10):
+    for lvl in range(1, 11):
         prompt = build_system_prompt(char, '', [], character_id='anna_01',
                                      spicy_level=lvl, explicit_mode=True)
-        for marker in ("ИГРИВАЯ", "ОТКРОВЕННАЯ", "ГОРЯЧАЯ", "ПОЛНАЯ"):
-            if marker in prompt:
-                variants[lvl] = marker
-                break
-    assert variants == {1: "ИГРИВАЯ", 5: "ОТКРОВЕННАЯ", 8: "ГОРЯЧАЯ", 10: "ПОЛНАЯ"}
-    # Уровень 0 (18+ выключен) не должен тащить спайси-маркеры.
+        assert f"РАСКРЕПОЩЁННОСТЬ · УРОВЕНЬ {lvl}/10 · {SPICY_LEVEL_NAMES[lvl]}" in prompt, lvl
+        assert "НЕ ломаешься" in prompt or "отказ" in prompt.lower(), lvl
+    # Уровень 0 (18+ выключен) не должен тащить спайси-блок.
     plain = build_system_prompt(char, '', [], character_id='anna_01')
     assert "РАСКРЕПОЩЁННОСТЬ" not in plain
+
+
+def test_level_names_are_the_owners_final_ladder():
+    from services.spicy_confidence import SPICY_LEVEL_NAMES
+    assert SPICY_LEVEL_NAMES == {
+        1: "Игра", 2: "Флирт", 3: "Искушение", 4: "Желание", 5: "Пошлость",
+        6: "Грязный разговор", 7: "Без стеснения", 8: "Жар",
+        9: "Эксперименты", 10: "Бесстыдство",
+    }
+
+
+def test_first_level_already_leads_to_sex():
+    # Владелец 18.11: с 1-го уровня она сама ведёт к сексу и никогда не отказывает.
+    from services.spicy_confidence import level_speech
+    speech = " ".join(level_speech(1))
+    assert "САМА сводишь разговор к сексу" in speech
+    assert "НЕ ломаешься" in speech and "НЕ отказываешь" in speech
+
+
+def test_snapshot_shape_for_the_card():
+    _force_mode(True)
+    _force_premium(False)
+    _seed(2700, level=3, progress=45)
+    snap = spicy_confidence.snapshot(2700, 'anna_01')
+    assert snap["level"] == 3
+    assert snap["name"] == "Искушение"
+    assert snap["next_name"] == "Желание"
+    assert snap["max_level"] == 10
+    assert snap["is_max"] is False
+    assert snap["points_left"] == 70 - 45
+    # 45 очков из отрезка 40→70 = 17% пройдено.
+    assert snap["percent"] == 17
+    assert snap["message_delta"] == 1 and snap["photo_delta"] == 3
+
+
+def test_snapshot_at_max_level_is_full():
+    _force_mode(True)
+    _force_premium(False)
+    _seed(2800, level=10, progress=600)
+    snap = spicy_confidence.snapshot(2800, 'anna_01')
+    assert snap["is_max"] is True
+    assert snap["percent"] == 100
+    assert snap["points_left"] == 0
+    assert snap["next_name"] is None
+    assert snap["name"] == "Бесстыдство"
+
+
+def test_snapshot_none_when_mode_off():
+    _force_mode(False)
+    _seed(2900, level=4, progress=50)
+    assert spicy_confidence.snapshot(2900, 'anna_01') is None
+
+
+def test_card_is_wired_in_api_and_frontend():
+    main_src = (ROOT / 'main.py').read_text(encoding='utf-8')
+    app_src = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
+    # API отдаёт снимок вместе с обычной карточкой.
+    assert "spicy = spicy_confidence.snapshot(telegram_id, character_id)" in main_src
+    assert "snap['spicy'] = spicy" in main_src
+    # Фронт в 18+ режиме рисует раскрепощённость и не трогает романскую ветку.
+    assert "if (j.spicy) { showLevelSheet(spicySheetHtml(j.spicy)); return; }" in app_src
+    assert "function spicySheetHtml(s)" in app_src
+    assert "function showLevelSheet(html)" in app_src
+
+
+def test_spicy_card_has_no_relationship_meters():
+    app_src = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
+    body = app_src[app_src.index('function spicySheetHtml(s)'):app_src.index('function showLevelSheet(html)')]
+    # Полос отношений/доверия/страсти в 18+ карточке быть не должно.
+    for banned in ('Отношения', 'Доверие', 'Страсть', 'Сейчас между вами', 'из 100'):
+        assert banned not in body, banned
+

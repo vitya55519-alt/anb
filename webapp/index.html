@@ -4660,8 +4660,52 @@ function pathMapHtml(j) {
     + '<div class="pcols">' + col('romance') + col('passion') + '</div></div>';
 }
 
+// V3.167.15: карточка уровня раскрепощённости для режима «Без цензуры 18+».
+function spicySheetHtml(s) {
+  const pl = (n, one, few, many) => {
+    const x = Math.abs(n) % 100, d = x % 10;
+    if (x > 10 && x < 20) return many;
+    if (d > 1 && d < 5) return few;
+    if (d === 1) return one;
+    return many;
+  };
+  let html = '<h3>🔥 Уровень ' + s.level + '/' + s.max_level + ' · ' + esc(s.name) + '</h3>'
+    + '<div class="bond">' + esc(s.flavor || '') + '</div>';
+  if (s.is_max) {
+    html += '<div class="trk" style="margin:12px 0 8px"><i style="width:100%"></i></div>'
+      + '<div class="left">Это максимальный уровень 🔥</div>';
+    return html;
+  }
+  html += '<div style="font-size:13px;opacity:.85;margin-top:14px">До уровня ' + (s.level + 1)
+    + ' «' + esc(s.next_name) + '» — ' + s.percent + '%</div>'
+    + '<div class="trk" style="margin:6px 0 8px"><i style="width:' + s.percent + '%"></i></div>'
+    + '<div style="font-size:13px;margin:4px 0">💬 сообщение — <b>+' + s.message_delta + ' '
+    + pl(s.message_delta, 'очко', 'очка', 'очков') + '</b></div>'
+    + '<div style="font-size:13px;margin:4px 0">📸 кадр — <b>+' + s.photo_delta + ' '
+    + pl(s.photo_delta, 'очко', 'очка', 'очков') + '</b></div>'
+    + '<div class="left">' + (s.points_left > 0
+        ? 'Осталось примерно <b>' + s.points_left + '</b> ' + pl(s.points_left, 'очко', 'очка', 'очков') + '.'
+        : 'Уже хватает — уровень поднимется с следующим сообщением или кадром.') + '</div>';
+  if (!s.premium) {
+    html += '<div style="font-size:13px;margin-top:10px;opacity:.85">💎 Premium — сразу 10-й уровень.</div>';
+  }
+  return html;
+}
+
+function showLevelSheet(html) {
+  const sheet = document.getElementById('lvlSheet');
+  document.getElementById('lvlBox').innerHTML = html + '<button class="close" id="lvlClose">Закрыть</button>';
+  sheet.style.display = 'flex';
+  const close = () => { sheet.style.display = 'none'; };
+  document.getElementById('lvlClose').onclick = close;
+  sheet.onclick = (e) => { if (e.target === sheet) close(); };
+}
+
 function openLevelSheet() {
   const j = CHAT_LEVEL; if (!j) return;
+  // V3.167.15 (владелец 18.11): в режиме «Без цензуры 18+» полос отношений,
+  // доверия и страсти здесь быть не должно — показываем уровень раскрепощённости.
+  if (j.spicy) { showLevelSheet(spicySheetHtml(j.spicy)); return; }
   // V3.61.3: two separate blocks — her real scores (0–100), then what the next
   // level still needs. 100% there used to read as «страсть 100%» next to «7%».
   const scoreRow = (label, v) => '<div class="row"><div class="t"><span>' + label + '</span><span>' + v + ' из 100</span></div>'
