@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import mimetypes
@@ -2477,14 +2478,20 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         char_hairstyles = style.get('hairstyles', [])
         base_hair_pool = char_hairstyles if char_hairstyles else HAIRSTYLE_POOL
         hair_pool = [x for x in base_hair_pool if x.strip().lower() not in recent_hair] or list(base_hair_pool)
+        # V3.167.14: причёска привязана к дате — меняется раз в 3 дня для каждой модели.
+        # Это создаёт ощущение "жизни": сегодня 18 ноября — одна причёска, 22 ноября — другая.
+        today = _today()
+        days_since_epoch = (today - datetime(2026, 1, 1, tzinfo=timezone.utc).date()).days
+        three_day_period = days_since_epoch // 3
+        hair_seed = hashlib.md5(f"{character_id}_{three_day_period}".encode()).hexdigest()
+        hair_index = int(hair_seed, 16) % len(hair_pool)
+        hairstyle = hair_pool[hair_index]
         uid = ensure_user(telegram_id)
         visual_prefs = get_visual_preferences(uid, character_id)
         hair_counts = visual_prefs.get('hairstyles', {}) if isinstance(visual_prefs, dict) else {}
         preferred_hair = max(hair_counts, key=hair_counts.get) if hair_counts and max(hair_counts.values()) >= 2 else ''
         if preferred_hair and preferred_hair.strip().lower() not in recent_hair and random.random() < 0.50:
             hairstyle = preferred_hair
-        else:
-            hairstyle = random.choice(hair_pool)
     # V3.166.7 (владелец, «локация исключительно из того, что скажет LLM»):
     # живая анкета кадра сильнее и состояния дня, и банка случайных идей, и
     # дефолтной сцены. Своё место остаётся только за тем, что он назвал сам в
@@ -2556,6 +2563,13 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         poses = list(TENDER_POSE_POOL)
     random.shuffle(poses)
     pose_rotation = tuple(request.pose_rotation) or tuple(poses)
+    # V3.167.14: логирование выбранных тегов для отладки разнообразия генерации.
+    logging.info(
+        f"[photo_service] character={character_id} scene={request.scene} "
+        f"hairstyle='{hairstyle}' hair_color='{hair_color}' makeup='{makeup}' "
+        f"accessory='{accessory}' underwear_color='{underwear_color}' "
+        f"underwear_style='{underwear_style}' poses_count={len(pose_rotation)}"
+    )
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season,
                    pack_outfits=pack_outfits, hair_color=hair_color, makeup=makeup,
                    accessory=accessory, time_of_day=time_of_day,

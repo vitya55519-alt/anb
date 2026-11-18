@@ -2040,7 +2040,7 @@ const L_EN = {
     constructor_price_note: p => 'creation — ' + p + ' 🍑',
   pay_get: 'Get', pay_link_err: 'Could not create the payment — try again',
   pay_opened: 'Payment page opened — finish the payment there',
-  shop_custom_ph: 'Your amount, e.g. 500', shop_custom_btn: (n, price) => n > 0 ? n + ' 🍑 · ' + price : 'Buy',
+  shop_custom_ph: 'Your amount, e.g. 500', shop_custom_btn: (n, price) => n > 0 ? n + ' 🍑 · ' + price : '🍑',
   input_ph: 'Type a message…', send: 'Send',
   empty_chat: 'Send the first message — she replies right here',
   limit_reached: 'Daily free-message limit reached. Premium lifts it ⭐',
@@ -2050,9 +2050,11 @@ const L_EN = {
   wall_b: ['♾ Unlimited in both «Romance» and «18+»', '📸 She takes his order for explicit photos', '🎙 Private voice messages'],
   wall_cta: '🔓 Unlock Premium',
   qb_limit: 'Premium — chat without limits 💜',
-  qb_peaches: 'Not enough peaches 🍑',
+  qb_peaches: 'Her photo costs this many 🍑',
+  need_peaches: n => n > 0 ? 'Need ' + peachNum(n) + ' 🍑 — that is ' + peachNum(Math.max(1, Math.round(n / PP('explicit')))) + ' photo of hers'
+                            : 'Not enough 🍑 — a photo of hers costs ' + peachNum(PP('explicit')) + ' 🍑',
   qb_photo: 'More photos of her 📸',
-  photo_topup: p => '🍑 Top up · a photo is ' + p + ' 🍑',
+  photo_topup: p => '📸 A photo of her · ' + peachNum(p) + ' 🍑',
   photo_paid: (p, left) => '📸 this photo: ' + p + ' 🍑 · ' + left + ' 🍑 left',
   bonus_word: 'bonus 🍑 · for outfits, dates, gifts',
   bonus_note: n => 'Your ' + n + ' bonus 🍑 go to outfits, dates and gifts — and once a day to one «Undress» frame. Everything else takes bought peaches.',
@@ -2379,7 +2381,7 @@ const L_RU = {
     constructor_price_note: p => 'создание — ' + p + ' 🍑',
   pay_get: 'Получить', pay_link_err: 'Не удалось создать счёт — попробуй ещё раз',
   pay_opened: 'Платёжная страница открыта — заверши оплату там',
-  shop_custom_ph: 'Своё количество, напр. 500', shop_custom_btn: (n, price) => n > 0 ? n + ' 🍑 · ' + price : 'Купить',
+  shop_custom_ph: 'Своё количество, напр. 500', shop_custom_btn: (n, price) => n > 0 ? n + ' 🍑 · ' + price : '🍑',
   input_ph: 'Напиши сообщение…', send: 'Отправить',
   empty_chat: 'Напиши первое сообщение — она ответит прямо здесь',
   limit_reached: 'Дневной лимит бесплатных сообщений. Premium снимает лимит ⭐',
@@ -2391,9 +2393,11 @@ const L_RU = {
            '🎙 Приватные голосовые сообщения'],
   wall_cta: '🔓 Разблокировать Premium',
   qb_limit: 'Premium — общение без лимита 💜',
-  qb_peaches: 'Не хватает персиков 🍑',
+  qb_peaches: 'Её фото стоит столько 🍑',
+  need_peaches: n => n > 0 ? 'Нужно ' + peachNum(n) + ' 🍑 — это ' + peachNum(Math.max(1, Math.round(n / PP('explicit')))) + ' её кадр'
+                            : 'Не хватает 🍑 — её кадр стоит ' + peachNum(PP('explicit')) + ' 🍑',
   qb_photo: 'Ещё её фото 📸',
-  photo_topup: p => '🍑 Пополнить · фото ' + p + ' 🍑',
+  photo_topup: p => '📸 Её кадр · ' + peachNum(p) + ' 🍑',
   photo_paid: (p, left) => '📸 это фото — ' + p + ' 🍑 · осталось ' + left + ' 🍑',
   bonus_word: 'бонусных 🍑 · на гардероб, свидания, подарки',
   bonus_note: n => 'Твои ' + n + ' бонусных 🍑 идут на гардероб, свидания и подарки — и раз в сутки на один кадр «Раздеть». Остальное за купленные персики.',
@@ -3820,7 +3824,7 @@ async function homeAction(kind, payload) {
     const r = await fetch('/webapp/api/home/' + kind + '?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ character_id: CHAT.id }, payload)) });
     let j = {}; try { j = await r.json(); } catch (e) {}
-    if (r.status === 402) { toast('Нужно ' + (j.cost || '?') + ' 🍑 — не хватает персиков'); quickBuy('peaches'); return; }
+    if (r.status === 402) { toast(needPeaches(j.cost)); quickBuy('peaches'); return; }
     if (!j.ok) { toast(L.reply_err); return; }
     HM_RESTYLE = false;
     document.getElementById('wdSheet').style.display = 'none';
@@ -3841,7 +3845,7 @@ async function wardrobeBuy(it) {
   try {
     const { status, j } = await wardrobePost('buy', { item_id: it.id });
     if (status === 401) { toast(L.auth_short); return; }
-    if (status === 402) { toast('Нужно ' + (j.cost || it.price) + ' 🍑 — не хватает персиков'); quickBuy('peaches'); return; }
+    if (status === 402) { toast(needPeaches(j.cost || it.price)); quickBuy('peaches'); return; }
     if (!j.ok) {
       if (j.error === 'premium_required') toast(L.wd_locked);
       else if (j.error === 'adult') toast(L.adult_confirm_needed);
@@ -3946,7 +3950,7 @@ async function giftBuy(it) {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ character_id: CHAT.id, gift_id: it.id }) });
     let j = {}; try { j = await r.json(); } catch (e) {}
     if (r.status === 401) { toast(L.auth_short); return; }
-    if (r.status === 402) { toast('Нужно ' + (j.cost || it.price) + ' 🍑 — не хватает персиков'); quickBuy('peaches'); return; }
+    if (r.status === 402) { toast(needPeaches(j.cost || it.price)); quickBuy('peaches'); return; }
     if (!j.ok) {
       if (j.error === 'premium_required') toast(L.gs_locked);
       else if (j.error === 'adult') toast(L.adult_confirm_needed);
@@ -4137,6 +4141,10 @@ function showRecording(done, ms, line, chatId) {
 // under. `d` is {'id', 'price'} from her answer or {'paid', 'text'} from the
 // history; an unpaid draft text never reaches this file at all.
 const peachNum = n => String(Number(n) || 0).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+
+// The wall says what the money buys, not how heavy the wallet is: one paid
+// frame of hers is the unit the price list already uses (PP('explicit')).
+const needPeaches = cost => L.need_peaches(Number(cost) || 0);
 
 function draftPlate(d) {
   if (!d) return '';
@@ -6587,7 +6595,7 @@ async function featurePost(payload) {
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 402) {
       const je = await r.json().catch(() => ({}));
-      toast('Нужно ' + (je.cost || '?') + ' 🍑 — не хватает персиков');
+      toast(needPeaches(je.cost));
       quickBuy('peaches');
       return;
     }
