@@ -54,6 +54,7 @@ from services.access_service import is_premium
 from services.user_service import ensure_user, get_state, update_state, is_adult_confirmed
 from services.payments import consume_photo_credit, get_photo_credits
 from services.adaptation_service import get_visual_preferences
+from services.character_preferences import get_character_preferences
 from services.analytics_service import track_event
 from services import spend_service
 from services.heroine_label import stamp as _her
@@ -2599,11 +2600,40 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
             hair_color = random.choice(available)
         else:
             hair_color = current_hair_color()
-    makeup = request.makeup or random.choice(MAKEUP_POOL)
-    accessory = request.accessory or random.choice(ACCESSORY_POOL)
+    # V3.167.14: используем предпочтения персонажей для разнообразия
+    char_prefs = get_character_preferences(character_id)
+    makeup = request.makeup or char_prefs.get('preferred_makeup') or random.choice(MAKEUP_POOL_EXTENDED)
+    accessory = request.accessory or char_prefs.get('preferred_accessories') or random.choice(ACCESSORY_POOL_EXTENDED)
     time_of_day = _outdoor_light(request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL), request.scene)
-    underwear_color = random.choice(UNDERWEAR_COLOR_POOL)
-    underwear_style = random.choice(UNDERWEAR_STYLE_POOL)
+    # V3.167.14: если режим 18+ и задан уровень раскрепощённости — используем одежду по уровню
+    from services import explicit_mode
+    spicy_level = 0
+    if explicit_mode.is_on_for(telegram_id):
+        # Получаем уровень раскрепощённости из базы
+        uid = ensure_user(telegram_id)
+        with SessionLocal() as session:
+            rel = session.scalar(select(UserCharacterRelationship).where(
+                UserCharacterRelationship.user_id == uid,
+                UserCharacterRelationship.character_id == character_id,
+            ))
+            if rel:
+                spicy_level = rel.spicy_confidence_level
+    if spicy_level > 0 and spicy_level <= 10:
+        # Используем одежду по уровню раскрепощённости (уже включает обувь и чулки)
+        clothing = SPICY_OUTFIT_LEVELS[spicy_level]
+        underwear_color = ''
+        underwear_style = ''
+    else:
+        # Обычная логика выбора белья
+        underwear_color = random.choice(UNDERWEAR_COLOR_POOL)
+        underwear_style = random.choice(UNDERWEAR_STYLE_POOL)
+        # V3.167.14: добавляем обувь и чулки из предпочтений персонажей
+        shoes = char_prefs.get('preferred_shoes') or random.choice(SHOES_POOL)
+        stockings = char_prefs.get('preferred_stockings') or random.choice(STOCKINGS_POOL)
+        if clothing:
+            clothing = f'{clothing}, {shoes}, {stockings}'
+        else:
+            clothing = f'{shoes}, {stockings}'
     if wd.get('underwear'):
         # his 18+ gift is the set she wears when the home-lingerie rule applies
         underwear_color, underwear_style = 'his gift', wd['underwear']
@@ -2643,7 +2673,8 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         f"[photo_service] character={character_id} scene={request.scene} "
         f"hairstyle='{hairstyle}' hair_color='{hair_color}' makeup='{makeup}' "
         f"accessory='{accessory}' underwear_color='{underwear_color}' "
-        f"underwear_style='{underwear_style}' poses_count={len(pose_rotation)}"
+        f"underwear_style='{underwear_style}' clothing='{clothing[:100]}' "
+        f"spicy_level={spicy_level} poses_count={len(pose_rotation)}"
     )
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season,
                    pack_outfits=pack_outfits, hair_color=hair_color, makeup=makeup,
