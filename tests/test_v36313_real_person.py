@@ -1,6 +1,7 @@
 """V3.63.13: she lives her own day, writes casually, and her second bubble comes after «печатает…»."""
 import datetime as dt
 from pathlib import Path
+import re
 
 from services.daily_life import ROUTINES, her_moment
 from services.dialogue_guard_service import casual_punctuation
@@ -46,5 +47,8 @@ def test_wiring():
     assert 'await asyncio.sleep(_bubble_pause(part))' in main
     html = (ROOT / 'webapp' / 'index.html').read_text(encoding='utf-8')
     assert 'splitBubbles(' not in html and 'playFollowups(' not in html
-    assert "chatBubble('bot', j.reply || '', null)" in html
+    start = html.index('function insertChatReply(')
+    reply = re.sub(r'\s+', ' ', html[start:html.index('\n}', start) + 2])
+    assert ("chatBubble({ role: 'bot', content: j.reply || '', "
+            "id: j.message_id, character_id: chatId, ts: null })") in reply
     assert "typing_now: 'печатает…'" in html

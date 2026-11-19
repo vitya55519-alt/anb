@@ -107,14 +107,14 @@ def _clean_state():
 
 # ── 1. the role split ──────────────────────────────────────────────────────
 def test_a_plain_user_gets_the_doors_and_the_command_rows(monkeypatch):
-    # V3.163.0: the four doors, then what the hidden slash commands used to
-    # open — stories, collection, features, support and the donation post.
+    # The four doors remain, followed by support and the donation post.
+    # Stories, collection and features were removed from this menu on 19 Nov.
     main = _main(monkeypatch)
     rows = main.menu_markup(USER_ID).inline_keyboard
     assert [r[0].text for r in rows] == ['📱 Открыть приложение', '👯‍♀️ Галерея персонажей',
                                        '⏰ Будильник', '📝 Напоминание',
-                                       '🎯 Истории', '✨ Возможности', '💖 Поддержать проект']
-    assert [b.text for r in rows for b in r].count('🖼 Коллекция') == 1
+                                       '👥 Поддержка', '💖 Поддержать проект']
+    assert not {'🎯 Истории', '🖼 Коллекция', '✨ Возможности'} & {b.text for r in rows for b in r}
     assert [b.text for r in rows for b in r].count('👥 Поддержка') == 1
 
 
@@ -155,7 +155,7 @@ def test_the_reply_keyboard_uses_the_same_role_split(monkeypatch):
     user_rows = main.main_keyboard(False, USER_ID).keyboard
     assert [r[0].text for r in user_rows] == ['📱 Открыть приложение', '👯‍♀️ Галерея персонажей',
                                         '⏰ Будильник', '📝 Напоминание',
-                                        '🎯 Истории', '✨ Возможности', '💖 Поддержать проект']
+                                        '👥 Поддержка', '💖 Поддержать проект']
     admin_rows = main.main_keyboard(True, ADMIN_ID).keyboard
     assert len(admin_rows) > len(user_rows)
 

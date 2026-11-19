@@ -9,6 +9,7 @@ cancel, a quick tap records hands-free. His photo only goes to the vision model
 (Gemini) for a text reaction — it is never edited or sent to an image engine.
 Static pins only, no network.
 """
+import ast
 import os
 from pathlib import Path
 
@@ -61,13 +62,19 @@ def test_photo_is_shrunk_and_carries_the_caption():
     assert 'const small = await shrinkImage(file);' in body
     assert 'caption: caption' in body
     assert "1280 / Math.max(img.naturalWidth, img.naturalHeight)" in SPA
-    ep = MAIN[MAIN.index('async def _webapp_api_chat_photo('):MAIN.index('async def _webapp_api_chat_persona(')]
+    handler = next(node for node in ast.parse(MAIN).body
+                   if isinstance(node, ast.AsyncFunctionDef)
+                   and node.name == '_webapp_api_chat_photo')
+    ep = ast.get_source_segment(MAIN, handler)
     assert "caption = str(body.get('caption', '') or '').strip()[:300]" in ep
     assert "'error': 'too_big'" in ep
 
 
 def test_his_photo_only_goes_to_vision_never_to_an_image_engine():
-    ep = MAIN[MAIN.index('async def _webapp_api_chat_photo('):MAIN.index('async def _webapp_api_chat_persona(')]
+    handler = next(node for node in ast.parse(MAIN).body
+                   if isinstance(node, ast.AsyncFunctionDef)
+                   and node.name == '_webapp_api_chat_photo')
+    ep = ast.get_source_segment(MAIN, handler)
     for bad in ('spicy', 'Spicy', 'seedream', 'undress', 'edit_image', 'fal'):
         assert bad not in ep, bad
     # vision skips the text-only MiniMax and goes straight to Gemini

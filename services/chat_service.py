@@ -13,7 +13,10 @@ from services.relationship_service import record_user_message
 from services.relationship_signals import infer_delta
 from services.test_mode import get_stage as get_test_stage
 from services.behavior_service import behavior_context, choose_behavior
-from services.dialogue_guard_service import build_repetition_guard, casual_punctuation, diversify_emoji, finish_or_drop, polish_first_message
+from services.dialogue_guard_service import (
+    build_repetition_guard, build_turn_guidance, is_explicit_pause,
+    casual_punctuation, diversify_emoji, finish_or_drop, polish_first_message,
+)
 from services.hook_service import next_hook
 from services.daily_life import her_moment
 from services import biorhythm
@@ -1053,6 +1056,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             messages.append({"role": "system", "content": care_note})
     except Exception:
         care_kind = ''
+    ordinary_turn = not (scene or guest_reminder or care_kind or behavior_kind.startswith('task'))
+    pause_turn = ordinary_turn and is_explicit_pause(user_text)
     # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации». Пока её свежий тизер не
     # остыл, она не имеет права телепортироваться домой: фото, обещанное из
     # маршрутки, рисуется из маршрутки, а иначе она выруливает одним из двух
@@ -1071,12 +1076,12 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # can never disagree. A scene he directed herself into, and a day where he
     # is down, are not the moment for a paid curiosity.
     from services import draft_service
-    draft_due = bool(novel_layers and not scene and not care_kind and
+    draft_due = bool(novel_layers and not scene and not care_kind and not pause_turn and
                      draft_service.will_trigger(db_user_id, character_id,
                                                 adaptation_level, user_text))
     # V3.113.0: her own small story for these days (services/her_story.py) —
     # something happens in her life, she tells it and asks what he thinks.
-    if not scene and not guest_reminder and not care_kind and not _is_card_girl(character_id):
+    if not scene and not guest_reminder and not care_kind and not pause_turn and not _is_card_girl(character_id):
         try:
             from services import her_story
             story_note = await asyncio.to_thread(her_story.directive, db_user_id, user_id, character_id)
@@ -1090,12 +1095,12 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     _short = live_talk.rhythm_kind(user_text) == 'short'
     _bargained = live_talk.bargained_recently(_her_recent)
     # V3.63.12: one concrete hook for this reply, right before his message.
-    if not scene and not guest_reminder and not care_kind:
+    if not scene and not guest_reminder and not care_kind and not pause_turn:
         hook = next_hook(user_id, character_id, behavior_kind, has_memories=bool(memories),
                          short=_short and live_talk.ENABLED, no_game=_bargained)
         if hook:
             messages.append({"role": "system", "content": hook})
-    if live_talk.ENABLED and not behavior_kind.startswith('task'):
+    if live_talk.ENABLED and not behavior_kind.startswith('task') and not pause_turn:
         if _bargained and not scene:
             messages.append({"role": "system", "content": live_talk.NO_BARGAIN_NOTE})
         rhythm = live_talk.rhythm_note(user_text)
@@ -1104,7 +1109,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # V3.104.0: «память как подарок» — he is back after a pause, so she brings
     # up one thing he told her before, herself (services/memory_gift.py).
     gift = None
-    if not scene and not guest_reminder and not care_kind and memories:
+    if not scene and not guest_reminder and not care_kind and not pause_turn and memories:
         try:
             from services import memory_gift
             _mine = [m for m in history if m.role == 'user']
@@ -1114,6 +1119,12 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                     messages.append({"role": "system", "content": memory_gift.directive(gift[1])})
         except Exception:
             gift = None
+    if ordinary_turn:
+        # History already contains only her visible MESSAGE blocks; system
+        # notes are ignored by the pure guard. Keep it after hooks/rhythm/memory.
+        turn_guidance = build_turn_guidance(messages, user_text)
+        if turn_guidance:
+            messages.append({"role": "system", "content": turn_guidance})
     # V3.98.0: he writes English → she answers English (14% of such replies
     # used to come back in Russian). The directive sits right before his text.
     # V3.117.0: not only English — Bengali, Spanish, Japanese… whatever he

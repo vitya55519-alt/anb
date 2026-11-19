@@ -1,6 +1,8 @@
 """V3.106.0 — a human voice, free voice taste, Stars first abroad, «без автопродления»."""
+import ast
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from models.app_models import Base, ProductEvent, User
 from services import voice_humanize as vh
@@ -29,10 +31,36 @@ def test_at_most_three_tags_and_clean_fallback():
     assert vh.strip_tags('[laugh], ну ты даёшь [giggle] я жду') == 'ну ты даёшь я жду'
 
 
-def test_tags_only_for_grok():
-    assert 'spoken = voice_humanize.to_speech(text, character_id)' in VOICE
-    assert '_tts_grok(spoken or text, character_id)' in VOICE and 'text = plain' in VOICE
-    assert MAIN.count('_tts_text(text)') >= 4
+def test_tags_only_for_grok(monkeypatch):
+    synth = next(n for n in ast.parse(VOICE).body
+                 if isinstance(n, ast.AsyncFunctionDef) and n.name == 'synthesize_bytes')
+    source = ast.get_source_segment(VOICE, synth)
+    assert 'spoken = voice_humanize.to_speech(text, character_id)' in source
+    assert '_tts_grok(spoken or text, character_id)' in source and 'text = plain' in source
+    functions = {n.name: n for n in ast.parse(MAIN).body
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    # The three automatic-voice paths still clean text before synthesis.
+    for name in ('_send_voice_note', '_webapp_reply_voice_url', '_webapp_media_voice'):
+        body = ast.get_source_segment(MAIN, functions[name])
+        assert body.index('clean = _tts_text(text)') < body.index('synthesize_bytes(clean,')
+    # Tap-to-speak now selects/cleans the stored MESSAGE on the server, rather
+    # than passing arbitrary client text through a fourth _tts_text call.
+    tap = ast.get_source_segment(MAIN, functions['_webapp_api_chat_speak'])
+    assert 'voices.reserve, telegram_id, character_id, message_id, part=part' in tap
+    assert "reservation['text'], reservation['voice_style']" in tap
+    scope = {}
+    exec(compile(ast.Module(body=[functions['_tts_text']], type_ignores=[]),
+                 str(ROOT / 'main.py'), 'exec'), scope)
+    from services import message_voice_service as voices
+    visible = 'ахаха))) я жду \U0001f618'
+    message = SimpleNamespace(content='THOUGHT: private\nMESSAGE: ' + visible,
+                              character_id='anna_01')
+    for enabled, expected in ((True, visible), (False, 'ахаха))) я жду')):
+        monkeypatch.setattr(vh, 'ENABLED', enabled)
+        assert scope['_tts_text'](visible).strip() == expected
+        text, speaker = voices._source_part(123456789, message, 0)
+        assert text.strip() == expected and speaker == 'anna_01'
+        assert 'private' not in text and 'THOUGHT:' not in text
 
 
 def _user():

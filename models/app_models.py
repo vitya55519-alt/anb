@@ -400,6 +400,32 @@ class Message(Base):
     actions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
+class MessageVoice(Base):
+    """One replayable entitlement per owned assistant message/visible part.
+
+    A pending attempt owns its wallet split and quota event until ready or
+    refunded. A retry replaces the attempt token, never the entitlement id.
+    """
+    __tablename__ = "message_voices"
+    __table_args__ = (UniqueConstraint("user_id", "message_id", "part", name="uq_message_voice_part"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    message_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    part: Mapped[int] = mapped_column(Integer, default=0)
+    character_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    attempt: Mapped[str] = mapped_column(String(36), nullable=False)
+    bonus_spent: Mapped[int] = mapped_column(Integer, default=0)
+    bought_spent: Mapped[int] = mapped_column(Integer, default=0)
+    quota_event_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    filename: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    played_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class Memory(Base):
     __tablename__ = "memories"
     __table_args__ = (UniqueConstraint("user_id", "character_id", "memory_key", name="uq_memory_key"),)

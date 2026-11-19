@@ -77,9 +77,9 @@ KB_LABELS = {
 
 # V3.149.0: owner ТЗ «Динамическое меню (Admin/User)» replaces the old
 # Come Closer layout (MAIN_KB_ROWS) — the Mini App stays the product and the
-# chat keyboard is its launcher. A plain user gets the four doors, and since
-# V3.163.0 the three rows that carry what the hidden slash commands used to
-# open. The whole kitchen (peaches, Premium, the picture studio, partner
+# chat keyboard is its launcher. A plain user gets the four doors, support
+# and donations. On 19 Nov the owner removed stories, collection and features
+# from the menu only. The whole kitchen (peaches, Premium, the picture studio, partner
 # program, promo codes, profile, admin panel) only renders when the id sits in
 # ADMIN_TELEGRAM_IDS. Old keys stay in KB_LABELS so cached reply keyboards from
 # earlier versions keep resolving.
@@ -88,8 +88,7 @@ USER_MENU_ROWS = [
     ['gallery'],
     ['alarm'],
     ['reminder'],
-    ['stories', 'collection'],
-    ['features', 'support'],
+    ['support'],
     ['donate'],
 ]
 ADMIN_MENU_ROWS = [

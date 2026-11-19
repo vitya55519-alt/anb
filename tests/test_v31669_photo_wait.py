@@ -2,6 +2,7 @@
 задала какой-нибудь вопрос». Her words come first, the frame is drawn in the
 background, and one short line of hers covers the wait."""
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
@@ -113,8 +114,12 @@ def test_the_spa_shows_her_line_and_waits_for_the_frame():
     assert SPA.count('function waitForChatPhoto(') == 1
     # второй плашки «кадр в пути» нет: её вопрос и есть знак, что картинка едет
     assert 'photoWaitTyping' not in SPA and 'photo_making' not in SPA
-    reply = SPA[SPA.index('function insertChatReply('):SPA.index('function insertChatReply(') + 4000]
+    start = SPA.index('function insertChatReply(')
+    reply = SPA[start:SPA.index('\n}', start) + 2]
     assert "chatBubble('bot', j.photo_wait, null)" in reply
     assert "waitForChatPhoto(CHAT ? CHAT.id : '')" in reply
     # её вопрос встаёт сразу под её словами, а не после чипов этого ответа
-    assert reply.index("chatBubble('bot', j.reply || '', null)") < reply.index('if (j.photo_pending) {')
+    reply = re.sub(r'\s+', ' ', reply)
+    message = ("chatBubble({ role: 'bot', content: j.reply || '', "
+               "id: j.message_id, character_id: chatId, ts: null })")
+    assert reply.index(message) < reply.index('if (j.photo_pending) {')

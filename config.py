@@ -116,6 +116,7 @@ FREE_FRAMES_PER_DAY = max(0, int(os.getenv("FREE_FRAMES_PER_DAY", "2")))
 STARTER_PHOTOS_PER_SCENARIO = max(1, int(os.getenv("STARTER_PHOTOS_PER_SCENARIO", "4")))
 # V3.97.0: free «🔊 Озвучить» listens a day without Premium (then the wall).
 SPEAK_FREE_PER_DAY = max(0, int(os.getenv("SPEAK_FREE_PER_DAY", "3")))
+SPEAK_PEACH_COST = 20
 CHAT_PREMIUM_PHOTOS_PER_DAY = max(0, int(os.getenv("CHAT_PREMIUM_PHOTOS_PER_DAY", "2")))
 # V3.81.0: a daily ceiling on what the FREE chat photos may cost (all users
 # together). Until it is spent every free photo is rendered for the moment, as

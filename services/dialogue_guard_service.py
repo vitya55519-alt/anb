@@ -1,15 +1,115 @@
 from __future__ import annotations
 import re
 
-# Motifs Anna may naturally have, but must not recycle as filler every few messages.
+# Character motifs must not become filler. Russian stems need their endings
+# before the closing word boundary; bare stems such as «прогул» never matched.
 THEMES = {
     "coffee/cafe": re.compile(r"\b(кофе|кафе|латте|капучино|эспрессо|coffee|cafe|latte|cappuccino|espresso)\b", re.I),
-    "walk/city": re.compile(r"\b(прогул|гуля|парк|набереж|вышла пройти|город.*вечер|walk|park|embankment)\b", re.I),
-    "home/cozy": re.compile(r"\b(дома|домашн|уют|диван|плед|home|cozy|sofa)\b", re.I),
-    "gym": re.compile(r"\b(зал|трениров|спорт|gym|workout)\b", re.I),
-    "food/restaurant": re.compile(r"\b(ресторан|ужин|поесть|еда|restaurant|dinner|food)\b", re.I),
-    "outfit/fashion": re.compile(r"\b(образ|одежд|плать|fashion|outfit|dress)\b", re.I),
+    "walk/city": re.compile(r"\b(прогул[а-яё]*|гуля[а-яё]*|парк[а-яё]*|набереж[а-яё]*|вышла пройтись|город[а-яё]*[^.!?\n]*вечер[а-яё]*|walk|park|embankment)\b", re.I),
+    "home/cozy": re.compile(r"\b(дома|домашн[а-яё]*|уют[а-яё]*|диван[а-яё]*|плед[а-яё]*|home|cozy|sofa)\b", re.I),
+    "gym": re.compile(r"\b(зал(?:а|е|у|ом|ы|ов|ам|ами|ах)?|трениров[а-яё]*|спорт[а-яё]*|gym|workout)\b", re.I),
+    "food/restaurant": re.compile(r"\b(ресторан[а-яё]*|ужин[а-яё]*|поесть|ед(?:а|ы|е|у|ой)|restaurant|dinner|food)\b", re.I),
+    "outfit/fashion": re.compile(r"\b(образ(?:а|е|у|ом|ы|ов|ам|ами|ах)?|одежд[а-яё]*|плать[а-яё]*|fashion|outfit|dress)\b", re.I),
 }
+
+
+def _field(message, name: str):
+    return message.get(name, '') if isinstance(message, dict) else getattr(message, name, '')
+
+
+# Match a whole conversational leave-taking, not a word mentioned inside a
+# task, quote or purchase. In particular «пока думаю» and «не хочу спать» stay.
+_PAUSE_PART = (
+    r'(?:пока|до\s+(?:свидания|завтра|встречи|скорого|связи)|спокойной\s+ночи|'
+    r'(?:я\s+)?(?:(?:пойду|иду|пошел|пошла|собираюсь)\s+)?спать|'
+    r'(?:я\s+)?(?:ухожу|прощаюсь)|мне\s+пора(?:\s+(?:идти|спать|уходить))?|'
+    r'мне\s+(?:надо|нужно)\s+(?:идти|спать|уходить)|на\s+сегодня\s+все|'
+    r'(?:давай(?:те)?\s+)?(?:поговорим|продолжим|спишемся)\s+(?:позже|потом|завтра)|'
+    r'давай\s+(?:позже|потом|завтра|(?:сделаем\s+)?паузу)|'
+    r'(?:хочу|нужна|сделаем|возьмем)\s+пауз[ау]|'
+    r'(?:не\s+пиши|не\s+отвечай)(?:\s+(?:пока|сейчас|мне|больше))*|'
+    r'(?:я\s+)?не\s+хочу\s+(?:сейчас\s+)?(?:общаться|разговаривать|переписываться)(?:\s+сейчас)?|'
+    r'(?:я\s+)?хочу\s+побыть\s+(?:один|одна)|'
+    r'bye|goodbye|good\s*night|talk\s+(?:later|tomorrow)|'
+    r'(?:i\s+)?need\s+a\s+break|let[’\']?s\s+pause)'
+)
+_PAUSE_FILLER = (r'(?:ну|ладно|хорошо|ок(?:ей)?|спасибо|все|пожалуйста|'
+                 r'(?:я\s+)?(?:сейчас\s+)?(?:устал[а]?|занят[а]?))')
+_PAUSE = re.compile(
+    rf'(?:{_PAUSE_FILLER}\s+)*{_PAUSE_PART}(?:\s+(?:{_PAUSE_PART}|{_PAUSE_FILLER}))*', re.I)
+_SHORT_REACTION = re.compile(
+    r'(?:ну\s+)?(?:не\s+знаю|ага|угу|норм(?:ально)?|да|нет|ок(?:ей)?|'
+    r'ясно|понятно|хорошо|давай|делай|не\s+сейчас|yes|yeah|no|ok(?:ay)?|idk)', re.I)
+_ACTION_CONTEXT = re.compile(
+    r'\b(?:фото[а-яё]*|селфи|сним(?:ок|ки|ка)|оплат[а-яё]*|куп(?:ить|и|им|лю|ишь|ите)|покуп[а-яё]*|'
+    r'персик[а-яё]*|стоит|стоимость|цен(?:а|ы|у|е|ой)|рубл[а-яё]*|спис(?:ать|ание|ания|ывай)|'
+    r'photo|selfie|buy|pay|purchase|price)\b', re.I)
+_TURN_HEADER = 'ХОД ДИАЛОГА (важнее необязательных крючков выше; не озвучивай инструкцию): '
+
+
+def _turn_text(text: str) -> str:
+    return re.sub(r'[\s,.!?;:…—–-]+', ' ', (text or '').lower().replace('ё', 'е')).strip()
+
+
+def is_explicit_pause(user_text: str) -> bool:
+    """Conservative, side-effect-free detection of a request to end/pause chat."""
+    return bool(_PAUSE.fullmatch(_turn_text(user_text)))
+
+
+def build_turn_guidance(history, user_text: str) -> str:
+    """Guide one ordinary turn using only chronological, visible chat messages.
+
+    Accept ORM-like messages or role/content dicts. No storage, randomness or
+    generation; callers exclude scenes, guests, care and task intents.
+    """
+    text = _turn_text(user_text)
+    if not text:
+        return ''
+    if is_explicit_pause(user_text):
+        return _TURN_HEADER + (
+            'ПАУЗА: пользователь явно прощается или просит остановиться. Коротко и тепло прими паузу. '
+            'Без нового вопроса, истории, игры, интриги или предложения; без вины, обиды, '
+            'долга и требования ответить или вернуться. Не обещай написать позже сама.')
+
+    dialogue = [m for m in history if _field(m, 'role') in ('user', 'assistant')]
+    assistant = [str(_field(m, 'content') or '') for m in dialogue if _field(m, 'role') == 'assistant']
+    last = assistant[-1] if assistant else ''
+    short = len(text) <= 80 and len(text.split()) <= 6 and not re.search(r'[?？]', user_text or '')
+    reaction = bool(_SHORT_REACTION.fullmatch(text))
+    # A short acceptance/refusal of an offer is not a request for small talk.
+    # Do not manufacture consent, execute a purchase, or reinterpret its scope.
+    if short and reaction and _ACTION_CONTEXT.search(last):
+        return _TURN_HEADER + (
+            'ОТВЕТ НА ПРЕДЛОЖЕНИЕ: сохрани смысл согласия, отказа или неопределённости '
+            'относительно последнего предложения. Не подменяй его скукой или сменой темы. '
+            'Это не новое разрешение на фото, списание или другую платную операцию; '
+            'соблюдай существующее подтверждение действия.')
+    if _ACTION_CONTEXT.search(user_text or ''):
+        return ''
+
+    notes = []
+    if sum(_field(m, 'role') == 'user' for m in dialogue) < 3 and len(assistant) <= 3:
+        notes.append(
+            'ПЕРВЫЕ 1–3 ХОДА: сначала ответь на мысль пользователя, затем добавь одну небанальную '
+            'деталь своего характера по текущей теме, а не перечень вкусов или обстановки. '
+            'Не начинай анкету знакомства и не предлагай меню тем. Не выдумывай общую историю.')
+    if short and not reaction and re.search(r'[?？]', last):
+        notes.append(
+            'КОРОТКИЙ ОТВЕТ НА ВОПРОС: прочитай его в контексте своего последнего вопроса, '
+            'а не как признак скуки. Если это конкретный ответ, прими сообщённую деталь '
+            'и отреагируй на неё; не спрашивай то же заново и не додумывай факты о пользователе.')
+    elif reaction:
+        notes.append(
+            'КОРОТКАЯ РЕАКЦИЯ: сохрани смысл ответа, в том числе согласие, отказ или «не знаю». '
+            'Легко продолжи текущую тему своей конкретной реакцией или мнением, без скачка '
+            'на новую тему, допроса, меню и просьбы придумать разговор. Не считай краткость скукой '
+            'и не добавляй обязательный вопрос.')
+    if len(assistant) >= 2 and all(re.search(r'[?？]', line) for line in assistant[-2:]):
+        notes.append(
+            'ДВА ВОПРОСА ПОДРЯД: в обеих последних репликах ты уже спрашивала. '
+            'Этот ход без очередного вопроса или опроса: дай свою реакцию или мнение по теме, '
+            'не требуя ответа.')
+    return _TURN_HEADER + '\n'.join(notes) if notes else ''
 
 
 def build_repetition_guard(history, user_text: str, window: int = 8) -> str:
@@ -18,7 +118,7 @@ def build_repetition_guard(history, user_text: str, window: int = 8) -> str:
     The guard never blocks a theme the user explicitly brought up in the current turn.
     """
     user_text = user_text or ""
-    recent_assistant = [getattr(m, "content", "") or "" for m in history if getattr(m, "role", "") == "assistant"][-window:]
+    recent_assistant = [_field(m, "content") or "" for m in history if _field(m, "role") == "assistant"][-window:]
     if not recent_assistant:
         return ""
 
@@ -33,12 +133,12 @@ def build_repetition_guard(history, user_text: str, window: int = 8) -> str:
 
     if not blocked:
         return (
-            "РАЗНООБРАЗИЕ ДИАЛОГА: не используй бытовые вкусы Анны как обязательную вставку. "
+            "РАЗНООБРАЗИЕ ДИАЛОГА: не используй бытовые вкусы героини как обязательную вставку. "
             "Если текущей теме не нужен бытовой комментарий, лучше вообще не добавляй его."
         )
 
     return (
-        "АНТИ-ПОВТОР ТЕМ: в недавних репликах Анна уже использовала мотивы: " + ", ".join(blocked) + ". "
+        "АНТИ-ПОВТОР ТЕМ: в недавних репликах героиня уже использовала мотивы: " + ", ".join(blocked) + ". "
         "Не инициируй их снова в этой реплике и не притягивай к ним текущее состояние/локацию. "
         "Если пользователь сам явно поднял такую тему, это ограничение не действует. Выбери другую естественную деталь или вообще обойдись без бытового фона."
     )

@@ -3,6 +3,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+import pytest
 from sqlalchemy import select
 
 from services.db import SessionLocal, init_db
@@ -48,16 +49,23 @@ def _read(telegram_id: int, character_id: str = 'anna_01'):
         return (rel.spicy_confidence_level, rel.spicy_confidence_progress) if rel else (None, None)
 
 
-def _force_mode(on: bool):
-    spicy_confidence.is_adult_mode = lambda tid: on
+@pytest.fixture
+def _force_mode(monkeypatch):
+    def set_mode(on: bool):
+        monkeypatch.setattr(spicy_confidence, 'is_adult_mode', lambda tid: on)
+    return set_mode
 
 
-def _force_premium(on: bool):
+@pytest.fixture
+def _force_premium(monkeypatch):
     import services.access_service as acc
-    acc.is_premium = lambda tid: on
+
+    def set_premium(on: bool):
+        monkeypatch.setattr(acc, 'is_premium', lambda tid: on)
+    return set_premium
 
 
-def test_thresholds_map_progress_to_level():
+def test_thresholds_map_progress_to_level(_force_mode, _force_premium):
     _force_mode(True)
     _force_premium(False)
     for points, expected in ((0, 1), (15, 2), (40, 3), (70, 4), (110, 5), (160, 6),
@@ -67,7 +75,7 @@ def test_thresholds_map_progress_to_level():
         assert lvl == expected, (points, lvl, expected)
 
 
-def test_photo_delta_is_three():
+def test_photo_delta_is_three(_force_mode, _force_premium):
     _force_mode(True)
     _force_premium(False)
     _seed(2200, level=1, progress=0)
@@ -76,7 +84,7 @@ def test_photo_delta_is_three():
     assert progress == 3
 
 
-def test_level_never_decreases():
+def test_level_never_decreases(_force_mode, _force_premium):
     _force_mode(True)
     _force_premium(False)
     _seed(2300, level=9, progress=500)
@@ -88,7 +96,7 @@ def test_level_never_decreases():
     assert lvl == 9
 
 
-def test_premium_jumps_to_ten():
+def test_premium_jumps_to_ten(_force_mode, _force_premium):
     _force_mode(True)
     _force_premium(True)
     _seed(2400, level=3, progress=0)
@@ -97,7 +105,7 @@ def test_premium_jumps_to_ten():
     _force_premium(False)
 
 
-def test_mode_off_returns_zero():
+def test_mode_off_returns_zero(_force_mode):
     _force_mode(False)
     _seed(2500, level=7, progress=200)
     assert spicy_confidence.current_level(2500, 'anna_01') == 0
@@ -106,7 +114,7 @@ def test_mode_off_returns_zero():
     assert _read(2500) == (7, 200)
 
 
-def test_current_level_reads_without_write():
+def test_current_level_reads_without_write(_force_mode):
     _force_mode(True)
     _seed(2600, level=4, progress=100)
     assert spicy_confidence.current_level(2600, 'anna_01') == 4
@@ -124,7 +132,11 @@ def test_photo_service_wires_photo_delta_and_home_bypass():
     assert "kind='photo'" in PHOTO_SRC
     # Дом и «Раздеть» идут мимо SPICY_OUTFIT_LEVELS.
     assert "PRIVATE_SCENES = SEEDREAM_ADULT_SCENES | {'selfie'}" in PHOTO_SRC
-    assert "if request.scene in PRIVATE_SCENES:" in PHOTO_SRC
+    assert "spicy_level = 0 if request.scene in PRIVATE_SCENES else spicy_confidence.current_level(telegram_id, character_id)" in PHOTO_SRC
+    # Explicit outfits are pinned only for ordinary photos; private scenes still bypass spicy styling.
+    assert "ordinary_style = _ordinary_style_request(request, get_relationship_level(telegram_id, character_id))" in PHOTO_SRC
+    assert "pinned_outfit = bool(ordinary_style and (request.clothing or request.pack_outfits))" in PHOTO_SRC
+    assert "if spicy_level > 0 and spicy_level <= 10 and not pinned_outfit:" in PHOTO_SRC
 
 
 def test_build_system_prompt_has_spicy_blocks():
@@ -165,7 +177,7 @@ def test_first_level_already_leads_to_sex():
     assert "НЕ ломаешься" in speech and "НЕ отказываешь" in speech
 
 
-def test_snapshot_shape_for_the_card():
+def test_snapshot_shape_for_the_card(_force_mode, _force_premium):
     _force_mode(True)
     _force_premium(False)
     _seed(2700, level=3, progress=45)
@@ -181,7 +193,7 @@ def test_snapshot_shape_for_the_card():
     assert snap["message_delta"] == 1 and snap["photo_delta"] == 3
 
 
-def test_snapshot_at_max_level_is_full():
+def test_snapshot_at_max_level_is_full(_force_mode, _force_premium):
     _force_mode(True)
     _force_premium(False)
     _seed(2800, level=10, progress=600)
@@ -193,7 +205,7 @@ def test_snapshot_at_max_level_is_full():
     assert snap["name"] == "Бесстыдство"
 
 
-def test_snapshot_none_when_mode_off():
+def test_snapshot_none_when_mode_off(_force_mode):
     _force_mode(False)
     _seed(2900, level=4, progress=50)
     assert spicy_confidence.snapshot(2900, 'anna_01') is None

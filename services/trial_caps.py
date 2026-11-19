@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 logger = logging.getLogger(__name__)
 
@@ -111,12 +112,12 @@ def _tier_for(sub, product: str | None) -> str:
     return 'quarter'
 
 
-def plan_uid(uid: int) -> tuple[datetime, dict, list[str]] | None:
-    """(window start, summed allowance, tiers) for his active Premium, or None."""
+def plan_uid(uid: int, *, session=None) -> tuple[datetime, dict, list[str]] | None:
+    """(window start, summed allowance, tiers); optionally in the caller's transaction."""
     from models.app_models import StarTransaction, Subscription
     from services.db import SessionLocal
     now = _now()
-    with SessionLocal() as s:
+    with (nullcontext(session) if session is not None else SessionLocal()) as s:
         subs = s.scalars(select(Subscription).where(
             Subscription.user_id == uid, Subscription.status == 'active',
             Subscription.expires_at > now)).all()
@@ -237,9 +238,61 @@ def _take(telegram_id: int, key: str, event: str) -> bool:
         return True
 
 
+def lock_voice_user(session, telegram_id: int):
+    """Acquire the shared account write lock BEFORE reads (SQLite and Postgres).
+
+    The no-op UPDATE starts SQLite's write transaction too; SELECT FOR UPDATE
+    alone would not. Callers keep this transaction short and never run TTS in it.
+    """
+    from models.app_models import User
+    changed = session.execute(update(User).where(
+        User.telegram_id == str(telegram_id)).values(id=User.id),
+        execution_options={'synchronize_session': False}).rowcount
+    if not changed:
+        return None
+    return session.scalar(select(User).where(User.telegram_id == str(telegram_id))
+                          .execution_options(populate_existing=True))
+
+
+def reserve_voice_uid(uid: int, *, session, character_id: str = 'anna_01',
+                      now: datetime | None = None) -> tuple[bool, int | None, int | None]:
+    """(allowed, reserved event id, remaining). Caller MUST hold lock_voice_user.
+
+    No active Premium returns (True, None, None), not a Premium entitlement.
+    The returned event belongs to this reservation and can be refunded by id.
+    Unlimited plans still record their usage, as the previous voice path did.
+    """
+    from models.app_models import ProductEvent
+    p = plan_uid(uid, session=session)
+    if p is None:
+        return True, None, None
+    limit = p[1]['voice']
+    used = int(session.scalar(select(func.count(ProductEvent.id)).where(
+        ProductEvent.user_id == uid, ProductEvent.event_name == VOICE_EVENT,
+        ProductEvent.created_at >= p[0])) or 0)
+    if limit >= 0 and used >= limit:
+        return False, None, 0
+    row = ProductEvent(user_id=uid, character_id=character_id,
+                       event_name=VOICE_EVENT, created_at=now or _now())
+    session.add(row)
+    session.flush()
+    return True, row.id, None if limit < 0 else max(0, limit - used - 1)
+
+
 def take_voice(telegram_id: int) -> bool:
-    """True when she may send him a voice note now (counts one)."""
-    return _take(telegram_id, 'voice', VOICE_EVENT)
+    """Atomically share the Premium allowance with tap-to-speak reservations."""
+    from services.db import SessionLocal
+    try:
+        with SessionLocal.begin() as session:
+            user = lock_voice_user(session, telegram_id)
+            if user is None:
+                return True
+            allowed, _, _ = reserve_voice_uid(user.id, session=session)
+            return allowed
+    except Exception:
+        logger.exception('plan cap voice check failed user=%s', telegram_id)
+        # A failed check must not permit a competing paid generation.
+        return False
 
 
 def take_animation(telegram_id: int) -> bool:

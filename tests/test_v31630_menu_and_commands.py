@@ -6,11 +6,13 @@
    command scopes are cleared at startup, and the full list installs only into
    each ADMIN_TELEGRAM_IDS chat. The handlers stay, so a command typed by hand
    still works — it is simply never offered to a stranger.
-2. What a real user needed from those commands lives in his menu now: истории,
-   коллекция, возможности, поддержка — and the donation post under them.
+2. Support and the donation post remain in the menu. On 19 Nov the owner
+   removed stories, collection and features from the menu, not their handlers.
 """
 import os
 from pathlib import Path
+
+import pytest
 
 os.environ.setdefault('TELEGRAM_TOKEN', '123456:test-fake-token-for-static-tests-only')
 os.environ.setdefault('GEMINI_API_KEY', 'x')
@@ -52,29 +54,42 @@ def test_the_commands_a_user_needed_stay_registered():
         assert f"Command('{cmd}'" in MAIN, cmd
 
 
-# ── 2. the same content as buttons in his menu ─────────────────────────────
-def test_the_user_menu_rows_gained_the_command_rows():
-    block = UI[UI.index('USER_MENU_ROWS = ['):UI.index('ADMIN_MENU_ROWS = [')]
-    for row in ("['stories', 'collection'],", "['features', 'support'],", "['donate'],"):
-        assert row in block, row
+# ── 2. the reduced menu keeps all other buttons ────────────────────────────
+def test_the_user_menu_keeps_only_the_requested_rows():
+    from services.ui_lang import menu_rows
+    assert menu_rows(False) == [
+        ['app'], ['gallery'], ['alarm'], ['reminder'], ['support'], ['donate'],
+    ]
 
 
-def test_every_new_menu_key_has_a_label_and_a_route():
+def test_removed_menu_keys_keep_their_legacy_labels_and_routes():
     from services.ui_lang import KB_LABELS, menu_rows
     for key in ('stories', 'collection', 'features', 'support', 'donate'):
         assert key in KB_LABELS, key
+    for key in ('stories', 'collection', 'features'):
+        assert not any(key in row for row in menu_rows(True)), key
+    for key in ('support', 'donate'):
         assert any(key in row for row in menu_rows(False)), key
     assert KB_LABELS['donate'][0] == '💖 Поддержать проект'
 
 
-def test_the_user_menu_renders_the_new_rows_as_callbacks(monkeypatch):
+@pytest.mark.parametrize('lang', ['ru', 'en'])
+@pytest.mark.parametrize('tid', [USER_ID, ADMIN_ID])
+def test_removed_buttons_are_absent_from_both_keyboards(monkeypatch, lang, tid):
+    from services.ui_lang import kb_label
     main = _main(monkeypatch)
-    flat = {b.text: b for row in main.menu_markup(USER_ID).inline_keyboard for b in row}
-    assert flat['🎯 Истории'].callback_data == 'quest:list'
-    assert flat['🖼 Коллекция'].callback_data == 'menu:collection'
-    assert flat['✨ Возможности'].callback_data == 'onboard:abilities'
-    assert flat['👥 Поддержка'].callback_data == 'menu:support'
-    assert flat['💖 Поддержать проект'].callback_data == 'donate:open'
+    monkeypatch.setattr(main, 'user_lang', lambda _: lang)
+    inline = main.menu_markup(tid, lang).inline_keyboard
+    reply = main.main_keyboard(tid == ADMIN_ID, tid).keyboard
+    removed = {kb_label(key, lang) for key in ('stories', 'collection', 'features')}
+    expected = [[kb_label(key, lang)] for key in
+                ('app', 'gallery', 'alarm', 'reminder', 'support', 'donate')]
+    for rows in (inline, reply):
+        assert [[button.text for button in row] for row in rows[:6]] == expected
+        assert not removed & {button.text for row in rows for button in row}
+    callbacks = {b.callback_data for row in inline for b in row if b.callback_data}
+    assert not {'quest:list', 'menu:collection', 'onboard:abilities'} & callbacks
+    assert {'menu:support', 'donate:open'} <= callbacks
 
 
 def test_the_kitchen_is_still_not_in_his_menu(monkeypatch):

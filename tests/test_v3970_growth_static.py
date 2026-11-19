@@ -2,16 +2,19 @@
 
 - no more «хм… я зависла на секунду 🙈»: an empty dialogue answer retries
   MiniMax with more room, then she answers with a live «busy» line;
-- 3 free «🔊» listens a day before the Premium wall;
+- 3 free message voice generations per account/day, then explicit paid consent;
 - the 99 ₽ trial on the bot's «she fell asleep» wall and on the chat chips;
 - a one-time −50% month for users who keep hitting the limit;
 - she writes before and after the trial ends;
 - the morning continues yesterday's talk;
 - one nudge for people quiet in their first ten minutes;
 - a weekly report to the owner (Monday + /week), «Девушка дня» tagged.
-Static pins only, no network.
+Offline regression checks, no network.
 """
+import ast
+from datetime import datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / 'main.py').read_text(encoding='utf-8')
@@ -47,13 +50,58 @@ def test_empty_dialogue_retries_minimax_with_more_room():
     assert "_MINIMAX_HEADROOM_BY_PURPOSE['dialogue']" in LLM
 
 
-def test_free_voice_listens():
-    assert 'SPEAK_FREE_PER_DAY' in MAIN
-    assert "chat_photo_allowance.count_today(uid, 'speak_free')" in MAIN
-    assert "payload['free_left'] = free_left" in MAIN
-    assert 'L.speak_free_left(j.free_left)' in SPA
+def test_free_voice_listens(monkeypatch):
     import config
+    from models.app_models import Message, ProductEvent, User
+    from services import message_voice_service as voices
+    from services.db import SessionLocal
+
     assert config.SPEAK_FREE_PER_DAY >= 0
+    monkeypatch.setattr(voices, 'SPEAK_FREE_PER_DAY', 3)
+    monkeypatch.setattr(voices, 'ADMIN_TELEGRAM_IDS', set())
+    now = datetime(2026, 11, 18, 12)
+    monkeypatch.setattr(voices, '_now', lambda: now)
+    telegram_id = uuid4().int % 10 ** 12
+    with SessionLocal.begin() as s:
+        user = User(telegram_id=str(telegram_id), bonus_peaches=7, photo_credits=73)
+        other = User(telegram_id=str(telegram_id + 10 ** 12))
+        s.add_all([user, other])
+        s.flush()
+        uid = user.id
+        # Neither another account's usage nor yesterday/tomorrow's usage may
+        # consume today's taste. Switching characters must NOT reset it.
+        s.add_all([ProductEvent(user_id=owner, event_name='speak_free', created_at=when)
+                   for owner, when in ((uid, now - timedelta(days=1)),
+                                       (uid, now + timedelta(days=1)), (other.id, now))])
+        messages = [Message(user_id=uid, character_id=cid, role='assistant',
+                            content='A visible stored reply.')
+                    for cid in ('anna_01', 'eva_01', 'anna_01', 'eva_01')]
+        s.add_all(messages)
+        s.flush()
+        sources = [(m.character_id, m.id) for m in messages]
+    for left, (cid, mid) in zip((2, 1, 0), sources[:3]):
+        result = voices.reserve(telegram_id, cid, mid)
+        assert result['ok'] and result['status'] == 'pending'
+        assert result['free_left'] == left and result['charged'] == 0
+    cid, mid = sources[3]
+    assert voices.reserve(telegram_id, cid, mid) == {
+        'ok': False, 'error': 'payment_required', 'price': voices.SPEAK_PEACH_COST}
+    with SessionLocal() as s:
+        assert s.query(ProductEvent).filter(
+            ProductEvent.user_id == uid, ProductEvent.event_name == 'speak_free',
+            ProductEvent.created_at >= now.replace(hour=0),
+            ProductEvent.created_at < now.replace(hour=0) + timedelta(days=1)).count() == 3
+        user = s.get(User, uid)
+        assert (user.bonus_peaches, user.photo_credits) == (7, 73)
+    # The route forwards the reservation's remaining count; the UI still
+    # displays it. These pins are scoped to the actual handling functions.
+    handler = next(n for n in ast.parse(MAIN).body
+                   if isinstance(n, ast.AsyncFunctionDef) and n.name == '_webapp_api_chat_speak')
+    body = ast.get_source_segment(MAIN, handler)
+    assert 'voices.reserve, telegram_id, character_id, message_id' in body
+    assert "payload['free_left'] = reservation['free_left']" in body
+    start = SPA.index('async function speakLazy(')
+    assert 'L.speak_free_left(j.free_left)' in SPA[start:SPA.index('\n}', start) + 2]
 
 
 def test_trial_on_sleep_wall_and_chips():

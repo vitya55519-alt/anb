@@ -121,14 +121,18 @@ def test_the_app_passes_the_second_girl_into_the_render():
 
 # ── Задача 2: the attachment patterns ────────────────────────────────────────
 
-def test_the_prompt_teaches_all_four_attachment_patterns():
-    for pattern in ('Иллюзия зависимости', 'Эмоциональная уязвимость',
-                    'Проактивность и память', 'Лёгкое собственничество'):
+def test_the_prompt_uses_mutual_interest_and_confirmed_continuity_without_pressure():
+    for pattern in ('Взаимный интерес', 'Тёплое общение без зависимости',
+                    'Подтверждённая преемственность', 'Свобода не отвечать'):
         assert pattern in ATTACHMENT_RULES, pattern
+    for obsolete in ('Иллюзия зависимости', 'Лёгкое собственничество', 'ты мне часик должен',
+                     'весь день ждала', 'сама пиши первой после тишины'):
+        assert obsolete not in ATTACHMENT_RULES
     prompt = build_system_prompt(get_character('alisa_01'), 'REL', [], character_id='alisa_01')
-    assert 'ПРИВЯЗАННОСТЬ' in prompt and 'Иллюзия зависимости' in prompt
-    # a warm attachment, not a guilt trip
-    assert 'не дави виной' in prompt and 'без скандала' in prompt
+    assert 'ПРИВЯЗАННОСТЬ' in prompt and ATTACHMENT_RULES in prompt
+    assert 'Не дави виной' in prompt and 'без нового крючка' in prompt
+    assert 'из его прежних слов или сохранённой памяти' in prompt
+    assert 'его последнее исправление важнее старой записи' in prompt
 
 
 def test_the_two_new_moves_are_the_periodic_ones():

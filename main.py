@@ -16029,6 +16029,9 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                     entry['voice_url'] = url
                 elif url == 'offer' and not bubbles:
                     voice_url = 'offer'
+            entry['id'] = await asyncio.to_thread(
+                webapp_service.chat_reply_message_id, uid, character_id,
+                f'{who}: {line}', entry.get('voice_url'))
             bubbles.append(entry)
         payload['reply_parts'] = bubbles
     else:
@@ -16040,6 +16043,10 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
             payload['voice_offer'] = True  # V3.106.0: «🎙 слышать её голос всегда»
     elif voice_url:
         payload['voice_url'] = voice_url
+    if len(parts) <= 1:
+        payload['message_id'] = await asyncio.to_thread(
+            webapp_service.chat_reply_message_id, uid, character_id, said,
+            payload.get('voice_url'))
     payload.update(extra or {})
     return web.json_response(payload)
 
@@ -16504,9 +16511,7 @@ async def _app_chat_missions(telegram_id: int, voice: bool = False, text: str | 
 
 
 async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
-    """V3.63.5: tap her message in the app chat → «🔊 Озвучить» → she says it
-    in her own voice. A Premium perk (admins bypass); non-Premium gets 403
-    premium_required so the SPA opens the Premium quick-buy sheet."""
+    """Voice an owned stored reply once; replay never consumes quota or peaches."""
     pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
     if not pairs:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
@@ -16517,55 +16522,73 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:
         body = {}
-    body = body or {}
-    character_id = str(body.get('character_id', ''))[:64]
-    text = str(body.get('text', ''))
-    clean = _tts_text(text)
-    if not character_id or not clean.strip():
+    if not isinstance(body, dict):
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
-
-    def _gate():
-        # V3.97.0: 54 people a week tapped «🔊» without Premium and hit a wall
-        # before ever hearing her — for 34 of them it was the last thing they
-        # saw. Now SPEAK_FREE_PER_DAY listens a day are free; the wall comes
-        # after them, when he already knows what her voice is worth.
-        from services import chat_photo_allowance
-        from config import SPEAK_FREE_PER_DAY
-        user = get_user(telegram_id)
-        style = (user.voice_style if user else None) or 'nova'
-        if telegram_id in ADMIN_TELEGRAM_IDS:
-            return style, None
-        if is_premium(telegram_id):
-            # V3.124.0: the trial's voice total covers «🔊 Озвучить» too.
-            return (style, None) if _trial_voice_ok(telegram_id) else (None, -1)
-        uid = ensure_user(telegram_id)
-        left = SPEAK_FREE_PER_DAY - chat_photo_allowance.count_today(uid, 'speak_free')
-        if left > 0:
-            return style, left - 1
-        return None, 0
-
-    voice_style, free_left = await asyncio.to_thread(_gate)
-    if not voice_style and free_left == -1:
-        # V3.124.0: he has Premium, its voice-note total is spent.
-        return web.json_response({'ok': False, 'error': 'plan_voice_out'}, status=403)
-    if not voice_style:
-        track_event(ensure_user(telegram_id), 'speak_premium_wall')
-        return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+    character_id = str(body.get('character_id', ''))[:64]
     try:
-        audio = await synthesize_bytes(clean, voice_style, character_id=character_id)
-        filename = await asyncio.to_thread(
-            webapp_service.save_chat_media, telegram_id, audio, 'ogg', 'audio/ogg')
-    except Exception:
-        logger.warning('webapp speak failed user=%s', telegram_id, exc_info=True)
-        return web.json_response({'ok': False, 'error': 'tts_failed'}, status=502)
-    track_event(ensure_user(telegram_id), 'speak_message', metadata={'character_id': character_id})
-    payload = {'ok': True, 'url': f'/webapp/media/{filename}'}
-    if free_left is not None:
-        from services import chat_photo_allowance
-        await asyncio.to_thread(chat_photo_allowance.note_today, ensure_user(telegram_id),
-                                'speak_free', character_id)
-        payload['free_left'] = free_left
-    return web.json_response(payload, headers={'Cache-Control': 'no-store'})
+        message_id = body.get('message_id')
+        part = body.get('part', 0)
+        if type(message_id) is not int or type(part) is not int:
+            raise ValueError('invalid source type')
+        quoted_price = body.get('quoted_price')
+        if quoted_price is not None and (type(quoted_price) is not int or quoted_price < 0):
+            raise ValueError('invalid price')
+        if message_id <= 0 or part < 0 or not character_id:
+            raise ValueError('invalid source')
+    except (ValueError, TypeError):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    from services import message_voice_service as voices
+    reservation = await asyncio.to_thread(
+        voices.reserve, telegram_id, character_id, message_id, part=part,
+        allow_paid=body.get('allow_paid') is True, quoted_price=quoted_price)
+    if not reservation.get('ok'):
+        status = {'payment_required': 402, 'insufficient_peaches': 402,
+                  'voice_pending': 409, 'not_found': 404}.get(reservation.get('error'), 400)
+        return web.json_response(reservation, status=status, headers={'Cache-Control': 'no-store'})
+    if reservation.get('status') == 'ready':
+        return web.json_response(reservation, headers={'Cache-Control': 'no-store'})
+    voice_id, attempt = reservation['voice_id'], reservation['attempt']
+    try:
+        # A bounded whole attempt keeps reservations shorter than their recovery lease.
+        audio = await asyncio.wait_for(synthesize_bytes(
+            reservation['text'], reservation['voice_style'],
+            character_id=reservation['character_id']), timeout=90)
+        payload = await asyncio.to_thread(voices.finish, telegram_id, voice_id, attempt, audio)
+        if not payload.get('ok'):
+            await asyncio.to_thread(voices.fail, telegram_id, voice_id, attempt)
+        elif reservation.get('free_left') is not None:
+            payload['free_left'] = reservation['free_left']
+        return web.json_response(payload, status=200 if payload.get('ok') else 502,
+                                 headers={'Cache-Control': 'no-store'})
+    except asyncio.CancelledError:
+        await asyncio.shield(asyncio.to_thread(voices.fail, telegram_id, voice_id, attempt))
+        raise
+    except Exception as exc:
+        # Provider exceptions may contain request text; log only the class here.
+        logger.warning('webapp speak failed voice=%s type=%s', voice_id, type(exc).__name__)
+        await asyncio.to_thread(voices.fail, telegram_id, voice_id, attempt)
+        return web.json_response({'ok': False, 'error': 'tts_failed'}, status=502,
+                                 headers={'Cache-Control': 'no-store'})
+
+
+async def _webapp_api_chat_speak_event(request: web.Request) -> web.Response:
+    """Measure actual playback separately from successful synthesis, without text."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    telegram_id = webapp_service.init_data_user(pairs).get('id') if pairs else None
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+        if not isinstance(body, dict) or body.get('event') not in ('play', 'end'):
+            raise ValueError('invalid event')
+        voice_id = body.get('voice_id')
+        if type(voice_id) is not int or voice_id <= 0:
+            raise ValueError('invalid voice')
+    except (ValueError, TypeError):
+        return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
+    from services import message_voice_service as voices
+    ok = await asyncio.to_thread(voices.mark_playback, telegram_id, voice_id, body['event'])
+    return web.json_response({'ok': bool(ok)}, status=200 if ok else 404)
 
 
 async def _webapp_api_chat_voice(request: web.Request) -> web.Response:
@@ -19149,7 +19172,8 @@ async def _webapp_media(request: web.Request) -> web.Response:
         return web.Response(status=404)
     body = await asyncio.to_thread(path.read_bytes)
     ctype = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
-             'mp4': 'video/mp4', 'ogg': 'audio/ogg'}.get(path.suffix.lstrip('.'), 'application/octet-stream')
+             'mp4': 'video/mp4', 'ogg': 'audio/ogg', 'wav': 'audio/wav',
+             'mp3': 'audio/mpeg'}.get(path.suffix.lstrip('.'), 'application/octet-stream')
     # the file name is an unguessable immutable token — a day of cache is free
     return web.Response(body=body, content_type=ctype,
                         headers={'Cache-Control': 'private, max-age=86400, immutable'})
@@ -20835,6 +20859,7 @@ async def _start_web_server() -> None:
     app.router.add_post('/webapp/api/call/say', _webapp_api_call_say)  # V3.115.1
     app.router.add_get('/webapp/ws/call', _webapp_ws_call)
     app.router.add_post('/webapp/api/chat/speak', _webapp_api_chat_speak)
+    app.router.add_post('/webapp/api/chat/speak/event', _webapp_api_chat_speak_event)
     app.router.add_post('/webapp/api/chat/photo', _webapp_api_chat_photo)
     # V3.166.9 (владелец): кадр, ушедший дорисовываться в фон.
     app.router.add_get('/webapp/api/chat/photo-wait', _webapp_api_chat_photo_wait)

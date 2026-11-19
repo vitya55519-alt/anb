@@ -31,19 +31,47 @@ def test_avatar_css_sits_left_of_bubble():
 
 
 def test_voice_notes_use_the_telegram_style_player():
-    assert "else if (m.media_kind === 'voice') body = cls === 'bot' ? body + voicePlayer(src) : voicePlayer(src);" in SPA
-    assert 'function voicePlayer(src, text)' in SPA and 'class="vp-wave"' in SPA
+    assert "else if (m.media_kind === 'voice') body = cls === 'bot' ? body + voicePlayer(src) : voicePlayer(src);" in _js_function('chatBubble')
+    player = _js_function('voicePlayer')
+    assert 'function voicePlayer(src, text, voiceId)' in player and 'class="vp-wave"' in player
     assert "async function speakLazy(vp)" in SPA and "if (vp.dataset.lazy) { speakLazy(vp); return; }" in SPA
-    # media events don't bubble: the player listens in the capture phase
-    assert "'timeupdate', 'play', 'pause', 'ended'].forEach(ev =>" in SPA
+    # Media events don't bubble: all playback updates still use capture.
+    # 'playing' was added for actual playback telemetry, not synthesis success.
+    events = re.search(r"^(\[[^\n]*'timeupdate'[^\n]*\])\.forEach\(ev =>\n"
+                       r"(.*?)\n  \}, (true|false)\)\);", SPA, re.M | re.S)
+    assert events is not None and events[3] == 'true'
+    assert {'loadedmetadata', 'durationchange', 'timeupdate', 'play', 'playing',
+            'pause', 'ended'} <= set(re.findall(r"'([^']+)'", events[1]))
+    assert "au.tagName !== 'AUDIO'" in events[2] and 'vpPaint(au)' in events[2]
     assert '<audio controls src=' not in SPA
 
 
 def test_her_text_carries_a_voice_note_player():
-    # V3.63.9: the owner preferred the Telegram-style note over a «▶ Голосом» pill
-    assert "if (say) body += voicePlayer('', m.content);" in SPA
-    assert '<div class="vp" data-lazy="1">' in SPA
+    # Text keeps one player: lazy until generated, then its persistent ready
+    # entitlement (for this part only), never a second synthesis after reload.
     assert '<button class="say sm">' not in SPA
+    _run_chat_js(r'''
+const m = { id: 17, character_id: 'anna', role: 'assistant',
+  content: 'THOUGHT: private\nMESSAGE: public', voice_part: 1 };
+const lazy = historyLine(m);
+assert(lazy.includes('<div class="vp" data-lazy="1">'));
+assert(!lazy.includes('<audio '));
+const voices = [{ part: 0, url: '/wrong.ogg', voice_id: 50 },
+                { part: 1, url: '/saved.ogg', voice_id: 51 }];
+const ready = historyLine({ ...m, voices });
+assert(ready.includes('<div class="vp" data-voice-id="51">'));
+assert(ready.includes('<audio preload="metadata" src="/saved.ogg?init_data=auth%26test">'));
+assert(!ready.includes('data-lazy=') && !ready.includes('/wrong.ogg'));
+assert.equal(historyLine({ ...m, voices: [voices[0]] }), lazy);
+for (const html of [lazy, ready]) {
+  assert(html.includes('data-message-id="17"') && html.includes('data-character-id="anna"'));
+  assert(html.includes('data-voice-part="1"') && html.includes('data-say="public"'));
+  assert(!html.includes('private') && !html.includes('THOUGHT:'));
+  assert.equal((html.match(/class="msg bot thcard/g) || []).length, 1);
+  assert.equal((html.match(/class="vp"/g) || []).length, 1);
+  assert(html.indexOf('public</div>') < html.indexOf('class="vp"'));
+}
+''')
 
 
 def _node():
@@ -170,8 +198,9 @@ def test_history_events_and_new_replies_share_one_immediate_pink_message():
 const raw = 'THOUGHT: private\nMESSAGE: Первый абзац\n\nВторой абзац';
 const m = { id: 1, role: 'assistant', content: raw };
 const expected = historyLine(m);
-assert.equal(chatBubble('bot', raw, null), expected);
-renderChatReply({ reply: raw }, 'anna');
+assert.equal(chatBubble({ ...m, role: 'bot', ts: null }), expected);
+assert(expected.includes('data-message-id="1"') && expected.includes('data-character-id="anna"'));
+renderChatReply({ reply: raw, message_id: m.id }, 'anna');
 assert.deepEqual(painted, [expected]);
 assert.equal(timers.length, 0);
 assert(expected.includes('<div class="th-h">&#128173; Анна</div>'));
@@ -179,11 +208,15 @@ assert(expected.includes('Первый абзац\n\nВторой абзац'));
 assert(!expected.includes('Мысли') && !expected.includes('th-t'));
 assert(expected.indexOf('class="th-b"') < expected.indexOf('class="vp"'));
 reset();
-insertChatReply({ reply: raw }, 'anna');
+insertChatReply({ reply: raw, message_id: m.id }, 'anna');
 assert.deepEqual(painted, [expected]);
 reset();
+// A teaser's id is not a persisted Message.id. Its unsourced bubble must
+// still match the full rendering of an equivalent unsourced history item.
+const teaserMessage = historyLine({ role: 'assistant', content: raw });
+assert(teaserMessage.includes('data-message-id="0"'));
 appendLiveTeaser({ id: 8, text: raw, thought: 'MESSAGE: private', price: 1234 });
-assert.deepEqual(painted, [expected, livePlate({ id: 8, price: 1234 })]);
+assert.deepEqual(painted, [teaserMessage, livePlate({ id: 8, price: 1234 })]);
 assert(!painted.join('').includes('private'));
 assert.equal(timers.length, 0);
 CHAT.name = '<img src=x>';
@@ -210,7 +243,7 @@ def test_voice_replies_keep_text_above_one_player_including_history():
 const raw = 'THOUGHT: private\nMESSAGE: public\n\nmore';
 const m = { id: 2, role: 'assistant', content: raw, media_kind: 'voice', media_url: '/voice.ogg' };
 const expected = historyLine(m);
-renderChatReply({ reply: raw, voice_url: '/voice.ogg' }, 'anna');
+renderChatReply({ reply: raw, message_id: m.id, voice_url: '/voice.ogg' }, 'anna');
 assert.deepEqual(painted, [expected]);
 assert.equal(timers.length, 0);
 assert(expected.includes('class="msg bot thcard hav"'));
@@ -223,6 +256,8 @@ assert(empty.includes('<audio ') && !empty.includes('private') && !empty.include
 const user = chatBubble({ ...m, role: 'user' });
 assert(user.includes('class="msg user"') && !user.includes('thcard'));
 assert(user.includes(raw) && user.indexOf('class="vp"') < user.indexOf(raw));
+assert(!user.includes('data-message-id=') && !user.includes('data-character-id='));
+assert(!user.includes('data-voice-part=') && !user.includes('data-say='));
 ''')
 
 
@@ -258,11 +293,11 @@ def test_draft_live_plates_and_wrong_chat_guards_survive():
 const raw = 'THOUGHT: private\nMESSAGE: public';
 const draft = { id: 7, price: 1234, text: 'unpaid secret' };
 const m = { id: 7, role: 'assistant', content: raw, draft };
-const expected = draftPlate(draft) + chatBubble('bot', raw, null);
+const expected = draftPlate(draft) + chatBubble({ ...m, role: 'bot', ts: null });
 assert.equal(historyLine(m), expected);
 assert(!expected.includes('unpaid secret') && !expected.includes('private'));
 assert(expected.includes('data-draft="7"') && expected.includes('1\u00a0234'));
-renderChatReply({ reply: raw, draft }, 'anna');
+renderChatReply({ reply: raw, message_id: m.id, draft }, 'anna');
 assert.deepEqual(timers.map(t => t.ms), [4000]);
 assert(!painted.join('').includes('public'));
 timers.shift().done();
@@ -278,7 +313,7 @@ renderChatReply({ reply: raw }, 'other');
 insertChatReply({ reply: raw, voice_url: '/voice.ogg' }, 'other');
 assert.equal(painted.length, 0);
 assert.equal(timers.length, 0);
-renderChatReply({ reply: raw, draft }, 'anna');
+renderChatReply({ reply: raw, message_id: m.id, draft }, 'anna');
 const count = painted.length;
 CHAT = { id: 'other', name: 'Other' };
 timers.shift().done();

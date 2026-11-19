@@ -36,7 +36,7 @@ from config import (
     GEMINI_VIDEO_BASE_URL,
     COMMUNITY_POOL_ENABLED, COMMUNITY_POOL_FIRST,
 )
-from models.app_models import User
+from models.app_models import ProductEvent, User
 from models.relationship_models import UserCharacterRelationship
 from models.photo_models import PhotoDailyUsage, PhotoDelivery, PhotoOffer
 from services.db import SessionLocal
@@ -517,7 +517,7 @@ OUTFIT_COLOR_POOL = [
     'olive', 'burgundy', 'dusty pink', 'lavender', 'emerald green',
     'chocolate brown', 'graphite', 'soft red', 'mint',
 ]
-_recent_outfit_colors: dict[int, list[str]] = {}
+_recent_outfit_colors: dict[int | tuple[int, str], list[str]] = {}
 
 # Small tasteful details so every set feels like a fresh photo session.
 ACCESSORY_POOL = [
@@ -2284,11 +2284,86 @@ def _json_list(raw: str | None) -> list[str]:
         return []
 
 
-def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season: str, *, character_id: str = CHARACTER_ID) -> tuple[str, ...]:
+def _ordinary_style_request(request: PhotoRequest, relationship_level: int) -> bool:
+    """Style continuity only, never a change to intimate-photo routing/pools."""
+    if request.scene not in SCENES or request.scene in (
+        SEEDREAM_ADULT_SCENES | ADULT_SCENES | {'peek', 'dressing'}
+    ) or request.starter_note or request.with_guest:
+        return False
+    if request.scene in HOME_LINGERIE_SCENES and relationship_level >= 5 and not request.gift_outfit:
+        return False
+    details = ' '.join((request.clothing, request.location, request.angle, request.mood,
+                        request.story_detail, *request.pack_outfits, *request.pose_rotation))
+    return not (INTIMATE_STYLE.search(details) or re.search(
+        r'\b(nud\w*|naked|undress\w*|topless|explicit|erotic\w*|sensual|sexy|sheer|see-through|'
+        r'гол\w*|обнаж\w*|раздет\w*|раздень\w*|эрот\w*)\b', details, re.I))
+
+
+def _ordinary_hairstyle(character_id: str, style: dict) -> str:
+    """Stable character list + UTC three-day step; history cannot reshuffle it."""
+    options = style.get('hairstyles') or []
+    options = options if isinstance(options, (list, tuple)) else []
+    pool = []
+    seen = set()
+    try:
+        visual = resolve_character(character_id).get('visual_identity') or {}
+        identity = ' '.join(visual.get('preserve_identity') or [])
+    except Exception:
+        identity = ''
+    short_hair = re.search(r'\b(bob|pixie|short hair|cropped hair)\b|коротк\w* волос', identity, re.I)
+    for option in options:
+        if not isinstance(option, str) or not option.strip():
+            continue
+        option = option.strip()
+        if short_hair and re.search(r'\b(long|ponytail|braid\w*|plaits?|bun|chignon)\b', option, re.I):
+            continue
+        if option.casefold() not in seen:
+            pool.append(option)
+            seen.add(option.casefold())
+    # No generic long-hair/updo pool for an unknown or short canonical cut.
+    if not pool:
+        pool = ['hair styled with a natural side part',
+                'hair softly brushed back at its existing length']
+    period = (_today() - datetime(2026, 1, 1, tzinfo=timezone.utc).date()).days // 3
+    offset = int(hashlib.md5(character_id.encode()).hexdigest(), 16)
+    chosen = pool[(offset + period) % len(pool)]
+    return f'{chosen}; preserve the canonical hair length and cut from the identity references'
+
+
+def _outfit_history_key(outfit: str) -> str:
+    # Strip only our generated color suffix, including legacy rows with shoes
+    # appended after it. Garment colors inside the original outfit stay intact.
+    return re.split(r'\s+in a\s+[^,;]+?\s+(?:color|tone)(?=$|[,;])',
+                    ' '.join(outfit.split()).casefold(), maxsplit=1)[0]
+
+
+def _ordinary_pose_rotation(telegram_id: int, character_id: str) -> tuple[str, ...]:
+    uid = ensure_user(telegram_id)
+    with SessionLocal() as session:
+        # Rows/bytes are created before delivery. Count app frames only after
+        # the callback persisted them; failed attempts must not advance poses.
+        app_delivered = select(ProductEvent.id).where(
+            ProductEvent.user_id == uid, ProductEvent.character_id == character_id,
+            ProductEvent.event_name == 'photo_app_delivered',
+            ProductEvent.value == PhotoDelivery.id,
+        ).exists()
+        telegram_delivered = (PhotoDelivery.telegram_file_id.isnot(None)
+                              & (PhotoDelivery.telegram_file_id != ''))
+        delivered = session.scalar(select(func.count(PhotoDelivery.id)).where(
+            PhotoDelivery.user_id == uid, PhotoDelivery.character_id == character_id,
+            telegram_delivered | app_delivered,
+        )) or 0
+    start = delivered % len(POSE_POOL)
+    return tuple(POSE_POOL[start:] + POSE_POOL[:start])
+
+
+def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season: str, *, character_id: str = CHARACTER_ID, ordinary_style: bool | None = None) -> tuple[str, ...]:
     if request.clothing:
         return tuple(request.clothing for _ in range(PHOTO_SET_SIZE))
-    state = get_state(telegram_id)
+    state = get_state(telegram_id, character_id=character_id)
     level = get_relationship_level(telegram_id, character_id)
+    if ordinary_style is None:
+        ordinary_style = _ordinary_style_request(request, level)
     pool = _wardrobe_pool(request.scene, level, season, character_id=character_id)
     uid = ensure_user(telegram_id)
     visual_prefs = get_visual_preferences(uid, character_id)
@@ -2301,13 +2376,16 @@ def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season:
     group = SCENE_GROUP.get(request.scene, 'day_casual')
     has_char_wardrobe = bool(style.get('wardrobe', {}).get(group))
     picks: list[str] = []
-    recent = {x.strip().lower() for x in _json_list(getattr(state, 'recent_outfits_json', '[]'))}
+    history_key = _outfit_history_key if ordinary_style else lambda x: x.strip().lower()
+    recent = {history_key(x) for x in _json_list(getattr(state, 'recent_outfits_json', '[]'))}
     if state.outfit:
-        recent.add(state.outfit.strip().lower())
+        recent.add(history_key(state.outfit))
     for i in range(PHOTO_SET_SIZE):
-        usable = [x for x in pool if x not in picks and x.strip().lower() not in recent]
+        picked = {history_key(x) for x in picks}
+        unused = [x for x in pool if history_key(x) not in picked] if ordinary_style else [x for x in pool if x not in picks]
+        usable = [x for x in unused if history_key(x) not in recent]
         if not usable:
-            usable = [x for x in pool if x not in picks] or pool
+            usable = unused or pool
         chosen = random.choice(usable)
         if not has_char_wardrobe:
             # Generic pool: color diversity per frame as before.
@@ -2315,7 +2393,8 @@ def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season:
                     and SCENE_GROUP.get(request.scene) != 'adult' and random.random() < 0.35:
                 chosen = f'{chosen} in a {favorite_color} tone'
             else:
-                recent_colors = _recent_outfit_colors.setdefault(telegram_id, [])
+                color_key = (telegram_id, character_id) if ordinary_style else telegram_id
+                recent_colors = _recent_outfit_colors.setdefault(color_key, [])
                 color_pool = [c for c in OUTFIT_COLOR_POOL if c not in recent_colors] or list(OUTFIT_COLOR_POOL)
                 color = random.choice(color_pool)
                 recent_colors.append(color)
@@ -2505,7 +2584,7 @@ def marital_photo_detail(telegram_id: int, character_id: str, *, allow_sometimes
 
 
 def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: str = CHARACTER_ID) -> PhotoRequest:
-    state = ensure_life_state(telegram_id)
+    state = ensure_life_state(telegram_id, character_id=character_id)
     season = request.season or _default_season()
     # V3.114.0: «👗 Гардероб» — what he gave her: today's garment, jewellery, room things.
     wd, gf = {}, {}
@@ -2540,7 +2619,13 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
                           if request.accessory else gf['accessory'])
     if gf.get('underwear') and not wd.get('underwear'):
         wd = dict(wd, underwear=gf['underwear'])
-    pack_outfits = tuple(request.pack_outfits) if request.pack_outfits else _choose_progression_outfits(telegram_id, request, season, character_id=character_id)
+    PRIVATE_SCENES = SEEDREAM_ADULT_SCENES | {'selfie'}
+    spicy_level = 0 if request.scene in PRIVATE_SCENES else spicy_confidence.current_level(telegram_id, character_id)
+    ordinary_style = _ordinary_style_request(request, get_relationship_level(telegram_id, character_id))
+    pinned_outfit = bool(ordinary_style and (request.clothing or request.pack_outfits))
+    ordinary_style = ordinary_style and (spicy_level == 0 or pinned_outfit)
+    pack_outfits = tuple(request.pack_outfits) if request.pack_outfits else _choose_progression_outfits(
+        telegram_id, request, season, character_id=character_id, ordinary_style=ordinary_style)
     clothing = pack_outfits[-1] if pack_outfits else request.clothing
     # V3.43.8: character-specific styling. Each built-in heroine has her own
     # hair colors, hairstyles and wardrobe in visual_identity.photo_style;
@@ -2548,6 +2633,8 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     style = _photo_style(character_id)
     if request.hairstyle:
         hairstyle = request.hairstyle
+    elif ordinary_style:
+        hairstyle = _ordinary_hairstyle(character_id, style)
     else:
         recent_hair = {x.strip().lower() for x in _json_list(getattr(state, 'recent_hairstyles_json', '[]'))}
         if state.hairstyle:
@@ -2593,6 +2680,10 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     # a palette fall back to the original cycle.
     if request.hair_color:
         hair_color = request.hair_color
+    elif ordinary_style:
+        # No HAIR COLOR override: the canonical identity/reference keeps its
+        # original color (including constructor personas), not a random dye.
+        hair_color = ''
     else:
         char_colors = style.get('hair_colors', [])
         if char_colors:
@@ -2608,12 +2699,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     time_of_day = _outdoor_light(request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL), request.scene)
     # V3.167.14 этап 7: уровень раскрепощённости меняет одежду только на ПУБЛИЧНЫХ сценах.
     # Домашние (van, спальня, ванная, «Раздеть», «Наедине», селфи) остаются всегда в белье/голые.
-    PRIVATE_SCENES = SEEDREAM_ADULT_SCENES | {'selfie'}
-    if request.scene in PRIVATE_SCENES:
-        spicy_level = 0
-    else:
-        spicy_level = spicy_confidence.current_level(telegram_id, character_id)
-    if spicy_level > 0 and spicy_level <= 10:
+    if spicy_level > 0 and spicy_level <= 10 and not pinned_outfit:
         # Используем одежду по уровню раскрепощённости (уже включает обувь и чулки)
         clothing = SPICY_OUTFIT_LEVELS[spicy_level]
         underwear_color = ''
@@ -2625,10 +2711,11 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         # V3.167.14: добавляем обувь и чулки из предпочтений персонажей
         shoes = char_prefs.get('preferred_shoes') or random.choice(SHOES_POOL)
         stockings = char_prefs.get('preferred_stockings') or random.choice(STOCKINGS_POOL)
-        if clothing:
-            clothing = f'{clothing}, {shoes}, {stockings}'
-        else:
-            clothing = f'{shoes}, {stockings}'
+        if not pinned_outfit:
+            if clothing:
+                clothing = f'{clothing}, {shoes}, {stockings}'
+            else:
+                clothing = f'{shoes}, {stockings}'
     if wd.get('underwear'):
         # his 18+ gift is the set she wears when the home-lingerie rule applies
         underwear_color, underwear_style = 'his gift', wd['underwear']
@@ -2662,7 +2749,10 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     elif tender and request.scene not in {'personal', 'lingerie', 'private_fashion', 'tease'}:
         poses = list(TENDER_POSE_POOL)
     random.shuffle(poses)
-    pose_rotation = tuple(request.pose_rotation) or tuple(poses)
+    pose_rotation = tuple(request.pose_rotation) or (
+        _ordinary_pose_rotation(telegram_id, character_id)
+        if ordinary_style and not passion and not tender and not request.angle else tuple(poses)
+    )
     # V3.167.14: логирование выбранных тегов для отладки разнообразия генерации.
     logging.info(
         f"[photo_service] character={character_id} scene={request.scene} "
@@ -3922,6 +4012,13 @@ async def _deliver_app_photo(
             source_delivery_id=source_delivery_id,
         )
         await app_delivery(data, mime, row_id, caption)
+        # Best-effort marker after successful persistence, never before it.
+        # This changes only ordinary pose rotation, not prices or daily usage.
+        try:
+            track_event(ensure_user(telegram_id), 'photo_app_delivered',
+                        character_id=character_id, value=row_id)
+        except Exception:
+            pass  # Analytics failure cannot turn a delivered frame into a refund.
         return row_id
     except Exception as exc:
         raise PhotoAppDeliveryError('app_delivery_failed') from exc
@@ -4451,11 +4548,11 @@ async def deliver_photo(
     # Per-frame delivery rows were already created inside _send_frame; only the
     # set-level daily-quota accounting happens here.
     _bump_photo_usage(telegram_id, record_delivery_type, character_id=character_id)
-    current_state = get_state(telegram_id)
+    current_state = get_state(telegram_id, character_id=character_id)
     recent_outfits = (_json_list(getattr(current_state, 'recent_outfits_json', '[]')) + list(resolved.pack_outfits))[-6:]
     recent_hair = (_json_list(getattr(current_state, 'recent_hairstyles_json', '[]')) + [resolved.hairstyle])[-4:]
     update_state(
-        telegram_id,
+        telegram_id, character_id=character_id,
         outfit=resolved.clothing,
         hairstyle=resolved.hairstyle,
         recent_outfits_json=json.dumps(recent_outfits, ensure_ascii=False),

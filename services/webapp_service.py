@@ -1148,6 +1148,27 @@ def api_constructor_steps(lang: str = 'ru', *, admin: bool = False) -> list[dict
     return out
 
 
+def chat_reply_message_id(db_user_id: int, character_id: str, content: str,
+                          voice_url: str | None = None) -> int | None:
+    """Attach a freshly returned reply to its stored source, never to another chat."""
+    from services.chat_service import message_block
+    visible = message_block(content).strip()
+    if not visible:
+        return None
+    with SessionLocal() as session:
+        rows = session.scalars(select(Message).where(
+            Message.user_id == db_user_id, Message.character_id == character_id,
+            Message.role == 'assistant').order_by(Message.id.desc()).limit(12)).all()
+        for row in rows:
+            if message_block(row.content).strip() != visible:
+                continue
+            if voice_url and not row.media_url:
+                row.media_kind, row.media_url = 'voice', voice_url
+                session.commit()
+            return row.id
+    return None
+
+
 def api_chat_history(db_user_id: int, character_id: str, limit: int = 30, *, opened: bool = False) -> list[dict]:
     """V3.35.0: recent dialog rows for the Mini App chat view (oldest first).
 
@@ -1200,6 +1221,10 @@ def api_chat_history(db_user_id: int, character_id: str, limit: int = 30, *, ope
             entry['live'] = {'paid': bool(getattr(m, 'image_unlocked', False)),
                              'price': LIVE_SITUATION_PEACH_COST}
         out.append(entry)
+    from services import message_voice_service as voices
+    ready = voices.ready_by_messages(db_user_id, [m['id'] for m in out])
+    for entry in out:
+        entry['voices'] = ready.get(entry['id'], [])
     return out
 
 
@@ -2598,7 +2623,7 @@ def web_image(data: bytes, content_type: str, cache_key: str) -> tuple[bytes, st
 # ── V3.39.0: in-app chat media (photos / circles / voice) ──────────────────
 
 APP_MEDIA_DIR = ROOT / 'data' / 'app_media'
-_MEDIA_NAME_RE = re.compile(r'^\d+_[0-9a-f]{8}\.(jpg|jpeg|png|webp|mp4|ogg)$')
+_MEDIA_NAME_RE = re.compile(r'^\d+_[0-9a-f]{8}\.(jpg|jpeg|png|webp|mp4|ogg|wav|mp3)$')
 
 
 def save_chat_media(telegram_id: int, data: bytes, ext: str, content_type: str = '') -> str:

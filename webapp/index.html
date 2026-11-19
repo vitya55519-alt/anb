@@ -2067,7 +2067,7 @@ const L_EN = {
   pay_stars_en: 'Telegram Stars — bought right in Telegram (Apple Pay / Google Pay / card)', pay_sbp_en: 'Crypto / Russian card',
   pay_crypto_pg: 'Crypto', pay_sbp_only: 'Russian card / SBP',
   trial_chip: '🔥 3 days of Premium',
-  speak_free_left: n => n > 0 ? `🎙 free listens left today: ${n}` : '🎙 that was the last free listen today',
+  speak_free_left: n => n > 0 ? `Free new voice notes today: ${n}. Replays are free.` : 'That was today’s last free new voice note. Replays are free.',
   sc_prem_only: '⭐ Premium only',
   undress_tease: 'like it? 😏 want to see what is underneath… tap and I will take it off for you 🔥',
   undress_tease_btn: '🔥 Undress her',
@@ -2410,7 +2410,7 @@ const L_RU = {
   pay_stars_en: 'Telegram Stars', pay_sbp_en: 'Карта / СБП / крипта',
   pay_crypto_pg: 'Криптовалюта', pay_sbp_only: 'Карта / СБП',
   trial_chip: '🔥 3 дня Premium',
-  speak_free_left: n => n > 0 ? `🎙 бесплатных прослушиваний сегодня: ещё ${n}` : '🎙 это было последнее бесплатное прослушивание сегодня',
+  speak_free_left: n => n > 0 ? `Новых голосовых бесплатно сегодня: ещё ${n}. Повторы бесплатны.` : 'Последнее бесплатное новое голосовое сегодня. Повторы бесплатны.',
   sc_prem_only: '⭐ только с Premium',
   undress_tease: 'нравится? 😏 а хочешь увидеть, что под ним… нажми — и я сниму это для тебя 🔥',
   undress_tease_btn: '🔥 Раздеть её',
@@ -4410,13 +4410,17 @@ function chatBubble(roleOrM, content, ts) {
         : `<div style="margin-top:4px">${duoNames(esc(m.content))}</div>`;
     }
   }
-  // V3.63.5: her plain text can be voiced on tap (Premium perk).
+  // A saved voice belongs to this source message; reopening never synthesizes it again.
   const say = (cls === 'bot' && !m.media_url && m.content) ? ` data-say="${esc(m.content)}"` : '';
-  // V3.63.9: a Telegram-style voice note under her text — ▶ voices it (Premium), no extra button.
-  if (say) body += voicePlayer('', m.content);
+  if (say) {
+    const ready = (m.voices || []).find(v => Number(v.part || 0) === Number(m.voice_part || 0));
+    const url = ready && ready.url ? ready.url + '?init_data=' + encodeURIComponent(tg.initData || '') : '';
+    body += voicePlayer(url, m.content, ready && ready.voice_id);
+  }
+  const source = cls === 'bot' ? ` data-message-id="${esc(Number(m.id) || 0)}" data-character-id="${esc(m.character_id || (CHAT && CHAT.id) || '')}" data-voice-part="${esc(Number(m.voice_part) || 0)}"` : '';
   // V3.63.7: her photo beside every bubble of hers (duo chats keep per-line avatars).
   const av = (cls === 'bot') ? herAvatar() : '';
-  return `<div class="msg ${cls}` + (pink ? ' thcard' : '') + (av ? ' hav' : '') + `"` + say + `>` + av + `${body}${t}</div>`;
+  return `<div class="msg ${cls}` + (pink ? ' thcard' : '') + (av ? ' hav' : '') + `"` + say + source + `>` + av + `${body}${t}</div>`;
 }
 
 // V3.139.0: «Имя: …» of a duo — the speaker's name in bold plus her avatar, so
@@ -4450,7 +4454,7 @@ async function playDuo(parts) {
     const t = document.getElementById('chatTypingMore');
     if (t) t.remove();
     box.insertAdjacentHTML('beforeend', chatBubble({
-      role: 'bot', content: text, ts: null,
+      role: 'bot', content: text, ts: null, id: p.id, character_id: chatId,
       media_url: p.voice_url || null, media_kind: p.voice_url ? 'voice' : null,
     }));
     box.scrollTop = box.scrollHeight;
@@ -5359,13 +5363,15 @@ function insertChatReply(j, chatId) {
     }
     undressTease(j.photo_url);
   } else if (j.voice_url) {
-    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'voice', media_url: j.voice_url, ts: null }));
+    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '', media_kind: 'voice', media_url: j.voice_url,
+      id: j.message_id, character_id: chatId, ts: null }));
   } else if (j.reply_parts && j.reply_parts.length) {
     // V3.139.0: owner ТЗ (Задача 3) — two girls are two messages, each with her
     // own voice note, arriving one after the other.
     duoPlayed = playDuo(j.reply_parts);
   } else {
-    box.insertAdjacentHTML('beforeend', chatBubble('bot', j.reply || '', null));
+    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.reply || '',
+      id: j.message_id, character_id: chatId, ts: null }));
   }
   // V3.166.9 (владелец): «пока генерируется фото... пусть она задаст вопрос».
   // Её слова пришли сразу, кадр ещё рисуется — под ними её короткая реплика,
@@ -5778,37 +5784,91 @@ function nudeFrameOffer(box) {
   const row = document.getElementById('nudOffer');
   row.firstElementChild.onclick = () => { row.remove(); openFeature('hot'); };
 }
-// V3.63.9: ▶ on the voice note under her text — Premium hears her say it,
-// everyone else gets the Premium sheet. The audio is made on the first tap.
+// Resolve older immediate replies through owned history, never by sending arbitrary TTS text.
+async function speakSource(msg, chatId) {
+  const known = Number(msg.dataset.messageId || 0);
+  if (known) return known;
+  const r = await fetch('/webapp/api/chat?init_data=' + encodeURIComponent(tg.initData || '')
+    + '&character_id=' + encodeURIComponent(chatId));
+  const j = await r.json();
+  if (!j.ok || !Array.isArray(j.history)) return 0;
+  const text = (msg.getAttribute('data-say') || '').trim();
+  const row = j.history.slice().reverse().find(m => m.role === 'assistant'
+    && parseThought(m.content).message.trim() === text);
+  if (row) msg.dataset.messageId = String(row.id);
+  return row ? Number(row.id) : 0;
+}
+function confirmVoice(price) {
+  const q = LANG === 'ru'
+    ? `Озвучить это сообщение за ${price} персиков? Повторное прослушивание бесплатно.`
+    : `Voice this message for ${price} peaches? Replaying is free.`;
+  return new Promise(resolve => {
+    if (tg.showConfirm) tg.showConfirm(q, resolve);
+    else resolve(window.confirm(q));
+  });
+}
 async function speakLazy(vp) {
   const msg = vp.closest('.msg');
   const btn = vp.querySelector('.vp-btn');
-  if (!CHAT || !msg || vp.dataset.busy) return;
+  const chatId = msg && msg.dataset.characterId;
+  const current = () => sameChat(chatId) && vp.isConnected;
+  if (!CHAT || !msg || !chatId || vp.dataset.busy || !current()) return;
   vp.dataset.busy = '1'; btn.textContent = '…';
   try {
-    const r = await fetch('/webapp/api/chat/speak?init_data=' + encodeURIComponent(tg.initData || ''), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_id: CHAT.id, text: msg.getAttribute('data-say') || '' }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (r.status === 403 && j.error === 'premium_required') { quickBuy('voice'); return; }
-    if (r.status === 403 && j.error === 'plan_voice_out') { toast(L.plan_voice_out); return; }
+    const messageId = await speakSource(msg, chatId);
+    if (!current()) return;
+    if (!messageId) { toast(L.reply_err); return; }
+    const source = { character_id: chatId, message_id: messageId, part: Number(msg.dataset.voicePart || 0) };
+    const send = async body => {
+      const r = await fetch('/webapp/api/chat/speak?init_data=' + encodeURIComponent(tg.initData || ''), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      return r.json().catch(() => ({}));
+    };
+    let j = await send(source);
+    if (!current()) return;
+    if (j.error === 'payment_required') {
+      const price = Number(j.price);
+      if (!Number.isSafeInteger(price) || price <= 0) { toast(L.reply_err); return; }
+      if (!await confirmVoice(price) || !current()) return;
+      j = await send(Object.assign({}, source, { allow_paid: true, quoted_price: price }));
+      if (!current()) return;
+    }
+    if (j.error === 'voice_pending') {
+      toast(LANG === 'ru' ? 'Голосовое ещё готовится. Нажми чуть позже — повторной оплаты не будет.' : 'Still preparing. Tap again shortly; no duplicate charge.'); return;
+    }
+    if (j.error === 'insufficient_peaches') {
+      const price = Number(j.price);
+      if (!Number.isSafeInteger(price) || price <= 0) { toast(L.reply_err); return; }
+      toast(LANG === 'ru' ? `Для голосового нужно ${price} персиков.` : `This voice note needs ${price} peaches.`); return;
+    }
     if (!j.ok || !j.url) { toast(L.reply_err); return; }
     if (typeof j.free_left === 'number' && typeof L.speak_free_left === 'function') toast(L.speak_free_left(j.free_left));
     const au = document.createElement('audio');
     au.preload = 'auto';
     au.src = j.url + '?init_data=' + encodeURIComponent(tg.initData || '');
+    if (j.voice_id) vp.dataset.voiceId = String(j.voice_id);
     vp.appendChild(au);
     delete vp.dataset.lazy;
     vpPlay(au);
-  } catch (err) { toast(L.reply_err); }
+  } catch (err) { if (current()) toast(L.reply_err); }
   finally { delete vp.dataset.busy; if (vp.dataset.lazy) btn.textContent = '▶'; }
+}
+function voicePlaybackEvent(vp, event) {
+  const id = Number(vp.dataset.voiceId || 0);
+  const key = event === 'play' ? 'notedPlay' : 'notedEnd';
+  if (!id || vp.dataset[key]) return;
+  vp.dataset[key] = '1';
+  fetch('/webapp/api/chat/speak/event?init_data=' + encodeURIComponent(tg.initData || ''), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ voice_id: id, event: event }),
+  }).then(r => { if (!r.ok) delete vp.dataset[key]; }).catch(() => { delete vp.dataset[key]; });
 }
 
 // V3.63.8: Telegram-like voice player. The waveform is drawn from the file's
 // address (stable per message), the bars fill as she speaks, a tap seeks.
 const VP_BARS = 34;
-function voicePlayer(src, text) {
+function voicePlayer(src, text, voiceId) {
   // V3.63.9: without src it is her text's voice note, made on the first ▶.
   const seed = src || text || '';
   let h = 0;
@@ -5824,7 +5884,7 @@ function voicePlayer(src, text) {
     return '<div class="vp" data-lazy="1"><button class="vp-btn" type="button">▶</button><div class="vp-wave">' + bars
       + '</div><span class="vp-dur">' + vpFmt(Math.max(2, words / 2.6)) + '</span></div>';
   }
-  return '<div class="vp"><button class="vp-btn" type="button">▶</button><div class="vp-wave">' + bars
+  return '<div class="vp" data-voice-id="' + (Number(voiceId) || 0) + '"><button class="vp-btn" type="button">▶</button><div class="vp-wave">' + bars
     + '</div><span class="vp-dur">0:00</span><audio preload="metadata" src="' + esc(src) + '"></audio></div>';
 }
 function vpFmt(sec) {
@@ -5848,11 +5908,15 @@ function vpPaint(au) {
   vp.querySelector('.vp-dur').textContent = vpFmt(au.paused && !t ? d : (isFinite(d) ? d - t : t));
 }
 // Media events don't bubble, so listen in the capture phase.
-['loadedmetadata', 'durationchange', 'timeupdate', 'play', 'pause', 'ended'].forEach(ev =>
+['loadedmetadata', 'durationchange', 'timeupdate', 'play', 'playing', 'pause', 'ended'].forEach(ev =>
   document.addEventListener(ev, e => {
     const au = e.target;
     if (!au || au.tagName !== 'AUDIO' || !au.closest('.vp')) return;
-    if (ev === 'ended') au.currentTime = 0;
+    if (ev === 'playing') voicePlaybackEvent(au.closest('.vp'), 'play');
+    if (ev === 'ended') {
+      voicePlaybackEvent(au.closest('.vp'), 'end');
+      au.currentTime = 0;
+    }
     vpPaint(au);
   }, true));
 document.addEventListener('click', e => {

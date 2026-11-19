@@ -53,9 +53,9 @@ def _daypart(hour: int) -> str:
     return 'night'
 
 
-def ensure_life_state(telegram_id: int, *, force: bool = False):
-    """Keep a lightweight fictional daily-life state without pretending it is real-world telemetry."""
-    state = get_state(telegram_id)
+def ensure_life_state(telegram_id: int, *, force: bool = False, character_id: str | None = None):
+    """Keep daily context; photos can opt into a separate character's state."""
+    state = get_state(telegram_id, character_id=character_id)
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     age_hours = 99.0
     if getattr(state, 'updated_at', None):
@@ -70,8 +70,8 @@ def ensure_life_state(telegram_id: int, *, force: bool = False):
     rng = random.Random(seed)
     location, activity, mood = rng.choice(LIFE_BY_DAYPART[part])
     energy = {'morning': .62, 'afternoon': .72, 'evening': .68, 'night': .38}[part]
-    update_state(telegram_id, location=location, activity=activity, mood=mood, energy=energy)
-    return get_state(telegram_id)
+    update_state(telegram_id, character_id=character_id, location=location, activity=activity, mood=mood, energy=energy)
+    return get_state(telegram_id, character_id=character_id)
 
 
 def state_context(telegram_id: int, character_id: str = '') -> str:
@@ -100,8 +100,9 @@ def state_context(telegram_id: int, character_id: str = '') -> str:
     if s.location and not own_day and not card: parts.append(f"текущая локация истории: {s.location}")
     # V3.113.0: «в чёрной майке» rode in 45 replies a week because the last
     # photo's outfit sat here unlabelled; it is for photo continuity only.
-    if s.outfit: parts.append(f"последний показанный на фото образ (только для фото; в тексте не называй одежду, если он не спросил): {s.outfit}")
-    if s.hairstyle: parts.append(f"последняя причёска на фото: {s.hairstyle}")
+    visual = get_state(telegram_id, character_id=character_id) if character_id else s
+    if visual.outfit: parts.append(f"последний показанный на фото образ (только для фото; в тексте не называй одежду, если он не спросил): {visual.outfit}")
+    if visual.hairstyle: parts.append(f"последняя причёска на фото: {visual.hairstyle}")
     if s.pending_hook: parts.append(f"незакрытая тема пользователя, к которой можно естественно вернуться: {s.pending_hook}")
     text = ('; '.join(parts) + '. Используй время естественно: ночью можно спросить «чего не спишь?», '
             'утром — «доброе утро», вечером — предложить что-то. Не перечисляй это пользователю списком '
