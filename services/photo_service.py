@@ -1411,11 +1411,12 @@ HANDS_RULE = (
     'HANDS: she has exactly two arms and two hands, both naturally attached to her own shoulders — '
     'never a third hand, a third arm or a disembodied hand. Both hands do only what the pose says: if one '
     'hand is at her lips or in her hair, the other rests on her lap, her hip or the bed — it never adds a '
-    'second gesture and never reaches toward the viewer. Count the arms before finishing: exactly two.'
+    'second gesture and never reaches toward the viewer. Count the arms before finishing: exactly two. '
+    'Exactly two arms, two hands and ten fingers in total — no third arm, no extra hand, no extra limbs.'
 )
 NEGATIVE_BLOCK = (
     'Avoid identity drift, generic doll-like face, plastic skin, asymmetrical eyes, warped hands, extra fingers, '
-    'a third hand or arm, more than two hands, '
+    'a third hand or arm, three hands, more than two hands, extra limbs, '
     'duplicate limbs, distorted anatomy, text, watermark, random accessories, overprocessed beauty filters, '
     'a long fully protruding or extra tongue, fake plastic-looking tongue, deformed mouth interior, teeth clipping through lips, '
     'and underwear worn over the outfit: bra over the top, panties over jeans or any lingerie as outerwear.'
@@ -2925,7 +2926,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     if spicy_level > 0 and spicy_level <= 10 and not pinned_outfit:
         # Используем случайный вариант одежды по уровню раскрепощённости (20 вариантов на уровень)
         clothing = random.choice(SPICY_OUTFIT_LEVELS[spicy_level])
-        logger.info('photo_service: spicy branch taken, level=%s clothing=%s', spicy_level, clothing[:80])
+        logger.info('photo_service: spicy branch taken, level=%s pinned_outfit=%s clothing=%s', spicy_level, pinned_outfit, clothing[:120])
         # Бельё не показываем — уровень уже определяет откровенность
         underwear_color = ''
         underwear_style = ''
@@ -3139,11 +3140,18 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # prompt reached SpicyAPI with «exactly two arms» already trimmed off —
     # that is the third arm in the owner's screenshot.
     hands_lock = f'{HANDS_RULE}\n'
+    # V3.167.18: accessories ride at the head with concrete examples; at the
+    # tail of a long prompt the model dropped them.
+    accessory_lock = (
+        f'ACCESSORIES (must be clearly visible): {request.accessory}. '
+        'Example level of detail: gold hoop earrings, a thin bracelet on the wrist, a delicate necklace.\n'
+    ) if request.accessory and not request.accessory.lower().startswith('no accessories') else ''
     body = apply_art_style(
         f'{identity}\n'
         + (f'{duo_block}\n' if duo_block else '')
         + f'{amateur_lock}'
         + f'{hands_lock}'
+        + f'{accessory_lock}'
         + f'{adult_lock}\n'
         + (f'SCENE: {request.starter_note}.\n{STARTER_FRAME_LOCK}\n' if starter
            else f'SCENE: {scene}. {request.location}.\n')
