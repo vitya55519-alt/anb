@@ -84,7 +84,8 @@ def test_photo_variety_accessories_and_time_of_day():
     assert 'accessory: str' in PHOTO
     assert 'time_of_day: str' in PHOTO
     assert 'ACCESSORY_POOL_EXTENDED = [' in PHOTO
-    assert 'random.choice(ACCESSORY_POOL_EXTENDED)' in PHOTO
+    # V3.167.22: every frame gets a jewellery set (earrings, chain, watch/bracelet).
+    assert 'accessory = request.accessory or _jewellery_set(char_prefs)' in PHOTO
     assert 'random.choice(DAYLIGHT_POOL)' in PHOTO
     build = PHOTO[PHOTO.index('def _build_prompt('):]
     build = build.split('\ndef _extract_openai_many', 1)[0]

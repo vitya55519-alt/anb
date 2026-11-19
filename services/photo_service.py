@@ -2543,6 +2543,40 @@ def _ordinary_style_request(request: PhotoRequest, relationship_level: int) -> b
         r'гол\w*|обнаж\w*|раздет\w*|раздень\w*|эрот\w*)\b', details, re.I))
 
 
+# V3.167.22 (владелец): украшения в каждом кадре, и в романтике тоже —
+# серьги + цепочка/кулон + часы/браслет. Её любимые вещи остаются, но набор
+# каждый раз собирается заново, чтобы кадры не были одинаковыми.
+JEWELLERY_EARRINGS = (
+    'small gold hoop earrings', 'delicate pearl stud earrings', 'thin silver drop earrings',
+    'tiny diamond stud earrings', 'gold huggie earrings', 'long thin chain earrings',
+)
+JEWELLERY_NECK = (
+    'a thin gold chain necklace', 'a delicate silver chain with a small pendant',
+    'a fine gold chain with a tiny heart pendant', 'a layered set of two thin gold chains',
+    'a thin choker with a small charm', 'a short pearl necklace',
+)
+JEWELLERY_WRIST = (
+    'an elegant gold wristwatch', 'a slim silver watch with a leather strap', 'a thin gold bracelet',
+    'a few stacked thin bracelets', 'a minimalist steel watch', 'a delicate chain bracelet',
+)
+
+
+def _jewellery_set(char_prefs: dict | None = None) -> str:
+    fav = str((char_prefs or {}).get('preferred_accessories') or '').strip()
+    if not (fav and random.random() < 0.5):
+        fav = ''
+    low = fav.lower()
+    # her favourites stay as they are; the missing slots are filled at random
+    parts = [fav] if fav else []
+    if 'earring' not in low:
+        parts.append(random.choice(JEWELLERY_EARRINGS))
+    if not any(w in low for w in ('chain', 'necklace', 'pendant', 'choker')):
+        parts.append(random.choice(JEWELLERY_NECK))
+    if not any(w in low for w in ('watch', 'bracelet')):
+        parts.append(random.choice(JEWELLERY_WRIST))
+    return ', '.join(parts)
+
+
 def _ordinary_hairstyle(character_id: str, style: dict) -> str:
     """Stable character list + UTC three-day step; history cannot reshuffle it."""
     options = style.get('hairstyles') or []
@@ -2564,6 +2598,16 @@ def _ordinary_hairstyle(character_id: str, style: dict) -> str:
         if option.casefold() not in seen:
             pool.append(option)
             seen.add(option.casefold())
+    # V3.167.22 (владелец): причёска меняется каждые 3 дня — у большинства
+    # героинь в карточке всего 3 варианта, так что цикл повторялся за 9 дней.
+    # Общий пул расширяет его (длинные укладки не попадают к коротким стрижкам).
+    if pool:
+        for option in HAIRSTYLE_POOL:
+            if short_hair and re.search(r'\b(long|ponytail|braid\w*|plaits?|bun|chignon|buns)\b', option, re.I):
+                continue
+            if option.casefold() not in seen:
+                pool.append(option)
+                seen.add(option.casefold())
     # No generic long-hair/updo pool for an unknown or short canonical cut.
     if not pool:
         pool = ['hair styled with a natural side part',
@@ -2881,7 +2925,9 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     style = _photo_style(character_id)
     if request.hairstyle:
         hairstyle = request.hairstyle
-    elif ordinary_style:
+    elif ordinary_style or spicy_level > 0:
+        # V3.167.22: 18+ frames follow the same 3-day hairstyle as romance —
+        # the per-photo reshuffle below changed her hair on every request.
         hairstyle = _ordinary_hairstyle(character_id, style)
     else:
         recent_hair = {x.strip().lower() for x in _json_list(getattr(state, 'recent_hairstyles_json', '[]'))}
@@ -2943,7 +2989,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     # V3.167.14: используем предпочтения персонажей для разнообразия
     char_prefs = get_character_preferences(character_id)
     makeup = request.makeup or char_prefs.get('preferred_makeup') or random.choice(MAKEUP_POOL_EXTENDED)
-    accessory = request.accessory or char_prefs.get('preferred_accessories') or random.choice(ACCESSORY_POOL_EXTENDED)
+    accessory = request.accessory or _jewellery_set(char_prefs)
     time_of_day = _outdoor_light(request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL), request.scene)
     # V3.167.17: уровень раскрепощённости меняет одежду на ВСЕХ сценах в режиме 18+.
     logger.info('photo_service: telegram_id=%s character_id=%s spicy_level=%s pinned_outfit=%s clothing_before=%s',
@@ -2969,7 +3015,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
             clothing = f'{clothing}, {stockings}'
         # Добавляем аксессуары (часы, браслеты, серьги, цепочки, кольца)
         if not request.accessory:
-            accessory = random.choice(ACCESSORY_POOL_EXTENDED)
+            accessory = _jewellery_set(char_prefs)
         # V3.167.19: _build_prompt reads pack_outfits first, so the spicy outfit
         # has to replace it, otherwise the old pack wardrobe reaches the model.
         pack_outfits = tuple(
@@ -3183,8 +3229,9 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # V3.167.18: accessories ride at the head with concrete examples; at the
     # tail of a long prompt the model dropped them.
     accessory_lock = (
-        f'ACCESSORIES (must be clearly visible): {request.accessory}. '
-        'Example level of detail: gold hoop earrings, a thin bracelet on the wrist, a delicate necklace.\n'
+        f'JEWELLERY AND ACCESSORIES (must be clearly visible in the frame): {request.accessory}. '
+        'Earrings visible at the ears, the chain or necklace visible on the neck or chest, the watch or bracelet '
+        'visible on the wrist; small, realistic, well-fitted, never oversized.\n'
     ) if request.accessory and not request.accessory.lower().startswith('no accessories') else ''
     body = apply_art_style(
         f'{identity}\n'

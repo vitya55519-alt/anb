@@ -363,8 +363,12 @@ def test_high_level_home_and_auto_spicy_keep_legacy_styling(env, monkeypatch):
     monkeypatch.setattr(ps, 'get_relationship_level', lambda *a: 6)
     monkeypatch.setattr(ps, '_ordinary_hairstyle', Mock(side_effect=AssertionError('ordinary helper')))
     assert resolve(ps.PhotoRequest(scene='selfie')).hair_color in env.style['hair_colors']
+    # V3.167.22: 18+ frames follow the same 3-day hairstyle helper as romance.
+    monkeypatch.setattr(ps, '_ordinary_hairstyle', Mock(return_value='3-day hair'))
     monkeypatch.setattr(ps.spicy_confidence, 'current_level', lambda *a: 5)
-    assert resolve().hair_color in env.style['hair_colors']
+    spicy = resolve()
+    assert spicy.hair_color in env.style['hair_colors']
+    assert spicy.hairstyle == '3-day hair'
 
 
 def test_delivered_history_is_written_to_the_resolved_pair(env, monkeypatch):
