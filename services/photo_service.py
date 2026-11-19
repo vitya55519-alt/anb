@@ -2919,12 +2919,12 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     accessory = request.accessory or char_prefs.get('preferred_accessories') or random.choice(ACCESSORY_POOL_EXTENDED)
     time_of_day = _outdoor_light(request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL), request.scene)
     # V3.167.17: уровень раскрепощённости меняет одежду на ВСЕХ сценах в режиме 18+.
-    _logger.info('photo_service: telegram_id=%s character_id=%s spicy_level=%s pinned_outfit=%s clothing_before=%s',
+    logger.info('photo_service: telegram_id=%s character_id=%s spicy_level=%s pinned_outfit=%s clothing_before=%s',
                  telegram_id, character_id, spicy_level, pinned_outfit, clothing[:80] if clothing else None)
     if spicy_level > 0 and spicy_level <= 10 and not pinned_outfit:
         # Используем случайный вариант одежды по уровню раскрепощённости (20 вариантов на уровень)
         clothing = random.choice(SPICY_OUTFIT_LEVELS[spicy_level])
-        _logger.info('photo_service: spicy branch taken, level=%s clothing=%s', spicy_level, clothing[:80])
+        logger.info('photo_service: spicy branch taken, level=%s clothing=%s', spicy_level, clothing[:80])
         # Бельё не показываем — уровень уже определяет откровенность
         underwear_color = ''
         underwear_style = ''
@@ -2941,7 +2941,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         if not request.accessory:
             accessory = random.choice(ACCESSORY_POOL_EXTENDED)
     else:
-        _logger.info('photo_service: ordinary branch taken, spicy_level=%s pinned_outfit=%s', spicy_level, pinned_outfit)
+        logger.info('photo_service: ordinary branch taken, spicy_level=%s pinned_outfit=%s', spicy_level, pinned_outfit)
         # Обычная логика выбора белья
         underwear_color = random.choice(UNDERWEAR_COLOR_POOL)
         underwear_style = random.choice(UNDERWEAR_STYLE_POOL)
