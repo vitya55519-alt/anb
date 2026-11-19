@@ -190,8 +190,8 @@ def current_level(telegram_id: int, character_id: str = CHARACTER_ID) -> int:
             rel = _find_row(session, db_user_id, character_id)
             if rel is None:
                 return 0
-            level = int(rel.spicy_confidence_level or 0)
-            return level if 1 <= level <= 10 else 0
+            level = int(rel.spicy_confidence_level or 1)
+            return level if 1 <= level <= 10 else 1
     except Exception:
         _logger.warning('spicy_confidence.current_level failed user=%s character=%s',
                         telegram_id, character_id, exc_info=True)
