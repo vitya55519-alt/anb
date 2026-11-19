@@ -3262,8 +3262,9 @@ function renderCharacters(list) {
     if (CHAR_SEG === 'prem') {
       if (c.status !== 'premium') return false;
     } else if (CHAR_SEG === 'official') {
-      if (!!c.custom || c.status === 'premium') return false;
-    } else if (!c.custom || c.status === 'premium') return false;
+      // V3.167.24: an admin-made persona flagged official lives here too.
+      if ((!!c.custom && !c.official) || c.status === 'premium') return false;
+    } else if (!c.custom || c.official || c.status === 'premium') return false;
     // V3.45.28: in the community tab the search narrows by name, bio or tag.
     // V3.55.3: the premium витрина reuses the same search box.
     if ((CHAR_SEG === 'community' || CHAR_SEG === 'prem') && q) {
@@ -3354,6 +3355,13 @@ function renderCharacters(list) {
   renderCharPager(pages);
   // V3.55.3: the admin-only premium create card rides next to the ➕ in the
   // same grid; it opens the wizard with the premium flag on.
+  // V3.167.24 (владелец): the admin creates «Персиковый сад» heroines in the app.
+  if (CHAR_SEG === 'official' && !q && ME && ME.admin) {
+    grid.innerHTML += `<div class="card create" id="officialCreateCard">
+        <div class="photo" style="display:flex;align-items:center;justify-content:center"><div class="plus">➕</div></div>
+        <div class="body"><div class="lbl2">🍑 ${esc(L.create_own)}</div><div class="sub2">${esc(L.seg_official)}</div></div>
+      </div>`;
+  }
   if (CHAR_SEG === 'prem' && ME && ME.admin) {
     grid.innerHTML += `<div class="card create" id="premCreateCard">
         <div class="photo" style="display:flex;align-items:center;justify-content:center"><div class="plus">➕</div></div>
@@ -3373,6 +3381,8 @@ function renderCharacters(list) {
   if (hc) hc.addEventListener('click', () => openHot18(null));
   const cc = document.getElementById('createCard');
   if (cc) cc.addEventListener('click', () => openWizard());
+  const occ = document.getElementById('officialCreateCard');
+  if (occ) occ.addEventListener('click', () => openWizard('official'));
   const pcc = document.getElementById('premCreateCard');
   if (pcc) pcc.addEventListener('click', () => openWizard(true));
   // V3.38.0: the profile «MY CHARACTERS» block lists mine cards — re-render
@@ -7349,13 +7359,18 @@ async function openWizard(premiumMode) {
   // V3.55.3: the premium tab's admin-only ➕ flags the draft as a premium
   // persona; the backend double-checks ADMIN_TELEGRAM_IDS, the flag alone
   // buys nothing.
-  WIZ.premium = !!premiumMode;
+  // V3.167.24: «official» = the admin ➕ on «🍑 Персиковый сад».
+  const wizPremium = premiumMode === true;
+  const wizOfficial = premiumMode === 'official';
   try {
     const q = tg.initData ? ('?init_data=' + encodeURIComponent(tg.initData) + '&') : '?';
     const r = await fetch('/webapp/api/constructor/options' + q + 'lang=' + LANG);
     const j = await r.json();
     if (!j.ok || !j.steps || !j.steps.length) { toast(L.invoice_err); return; }
     WIZ = { steps: j.steps, idx: 0, params: {}, name: '', stars: j.stars || 0, rub: j.rub || 0, usd: j.usd || 0, peaches: j.peaches || 0, free: !!j.free, templates: j.templates || [], tpl: null };
+    // V3.167.24: the flags used to be set before this reset and were lost.
+    WIZ.premium = wizPremium;
+    WIZ.official = wizOfficial;
     // V3.45.28: one-screen form — pre-select the first option of every
     // structured field so the persona is always complete (face/body/breast
     // consistency is guaranteed even if the user only types a name).
@@ -7494,7 +7509,7 @@ function renderWizScreen() {
 // instead of looking lost on «Peach Garden». V3.55.3: a premium-flagged
 // creation lands on the new «⭐ Premium» tab instead.
 function segForCreate(isPremium) {
-  CHAR_SEG = isPremium ? 'prem' : 'community';
+  CHAR_SEG = isPremium ? 'prem' : (WIZ && WIZ.official ? 'official' : 'community');
   document.querySelectorAll('#charSeg button').forEach(b =>
     b.classList.toggle('on', b.dataset.seg === CHAR_SEG));
 }
@@ -7509,7 +7524,7 @@ async function submitWizard(method) {
     const dr = await fetch('/webapp/api/constructor/draft?init_data=' + encodeURIComponent(tg.initData || ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ params: WIZ.params, name: WIZ.name, premium: !!WIZ.premium }),
+      body: JSON.stringify({ params: WIZ.params, name: WIZ.name, premium: !!WIZ.premium, official: !!WIZ.official }),
     });
     if (dr.status === 401) { toast(L.auth_short); if (btn) btn.disabled = false; return; }
     if (dr.status === 409) { toast(L.wiz_exists); if (btn) btn.disabled = false; return; }

@@ -10954,6 +10954,19 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
                 logger.exception('constructor avatar generation failed user=%s attempt=%s', telegram_id, attempt)
                 if attempt < 2:
                     await asyncio.sleep(20)
+        # V3.167.24: an uploaded photo only renders on Gemini, and a Gemini
+        # quota (HTTP 429) left every such persona without an avatar. Draw her
+        # from the description instead (SpicyAPI text-to-image, no real photo
+        # sent there) so the creation still delivers a face.
+        if avatar_bytes is None and identity_anchor:
+            try:
+                avatar_bytes, _mime = await asyncio.wait_for(
+                    generate_custom_avatar(build_avatar_prompt(params, face_swap=False), None),
+                    timeout=260,
+                )
+                logger.info('constructor avatar fallback t2i ok user=%s', telegram_id)
+            except Exception:
+                logger.exception('constructor avatar fallback t2i failed user=%s', telegram_id)
     finally:
         if face_path:
             try:
@@ -11077,18 +11090,19 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     # every existing premium gate keys on.
     card_status = ('premium' if cons.get('premium') and telegram_id in ADMIN_TELEGRAM_IDS
                    else 'active')
+    official = params.get('official') == 'official_yes' and telegram_id in ADMIN_TELEGRAM_IDS
     try:
         if get_card(row.character_id):
             update_card(
                 row.character_id, display_name=display_name, age=card_age,
                 short_bio=bio, status=card_status, card_photo_file_id=avatar_file_id,
-                is_visible=False,
+                is_visible=official,
             )
         else:
             # V3.37.0: anime personas get their own card emoji.
             card_emoji = '🌸' if str(params.get('style', '')) == 'style_anime' else ''
             create_card(row.character_id, display_name, card_age, bio, card_emoji, 'female')
-            update_card(row.character_id, status=card_status, card_photo_file_id=avatar_file_id, is_visible=False)
+            update_card(row.character_id, status=card_status, card_photo_file_id=avatar_file_id, is_visible=official)
     except Exception:
         logger.exception('constructor card registration failed user=%s', telegram_id)
     track_event(
@@ -11098,7 +11112,8 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     )
     await bot.send_message(
         chat_id,
-        f'🎉 Знакомься — это {display_name}! Теперь она твоя личная собеседница.',
+        (f'🍑 {display_name} добавлена в «Персиковый сад» — её уже видят все.' if official
+         else f'🎉 Знакомься — это {display_name}! Теперь она твоя личная собеседница.'),
         reply_markup=_my_character_keyboard(row.character_id),
     )
     # V3.46.0: mission — the user has now built their own character (covers the
@@ -20749,6 +20764,12 @@ async def _webapp_api_constructor_draft(request: web.Request) -> web.Response:
     # server-side, so a forged body flag can never mint a premium persona.
     if body.get('premium') and telegram_id in ADMIN_TELEGRAM_IDS:
         session_data['premium'] = True
+    # V3.167.24 (владелец): the ➕ on «🍑 Персиковый сад» — an admin-made
+    # heroine goes straight to the official roster for everyone. The flag rides
+    # in params so it survives the draft resume and lands in params_json.
+    if body.get('official') and telegram_id in ADMIN_TELEGRAM_IDS:
+        params['official'] = 'official_yes'
+        params['community'] = 'community_no'
     # V3.44.5: store base64 photo data in session for _finish_constructor.
     if photo_reference_base64:
         session_data['photo_reference_base64'] = photo_reference_base64

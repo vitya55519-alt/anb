@@ -44,8 +44,8 @@ def test_prem_tab_closed_for_non_premium():
 def test_three_way_segment_filter():
     # premium girls only on the prem tab; official + community both exclude them
     assert "if (CHAR_SEG === 'prem') {\n      if (c.status !== 'premium') return false;" in INDEX
-    assert "} else if (CHAR_SEG === 'official') {\n      if (!!c.custom || c.status === 'premium') return false;" in INDEX
-    assert "} else if (!c.custom || c.status === 'premium') return false;" in INDEX
+    assert "} else if (CHAR_SEG === 'official') {\n      // V3.167.24: an admin-made persona flagged official lives here too.\n      if ((!!c.custom && !c.official) || c.status === 'premium') return false;" in INDEX
+    assert "} else if (!c.custom || c.official || c.status === 'premium') return false;" in INDEX
 
 
 def test_admin_only_premium_create_card():
@@ -57,7 +57,7 @@ def test_admin_only_premium_create_card():
     assert "pcc.addEventListener('click', () => openWizard(true));" in INDEX
     # openWizard carries the flag into the draft body
     assert 'async function openWizard(premiumMode) {' in INDEX
-    assert 'WIZ.premium = !!premiumMode;' in INDEX
+    assert 'WIZ.premium = wizPremium;' in INDEX
     assert 'premium: !!WIZ.premium' in INDEX
 
 
