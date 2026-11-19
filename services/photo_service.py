@@ -1567,7 +1567,9 @@ HANDS_RULE = (
     'HANDS: she has exactly two arms and two hands, both naturally attached to her own shoulders — '
     'never a third hand, a third arm or a disembodied hand. Both hands do only what the pose says: if one '
     'hand is at her lips or in her hair, the other rests on her lap, her hip or the bed — it never adds a '
-    'second gesture and never reaches toward the viewer. Count the arms before finishing: exactly two. '
+    'second gesture and never reaches toward the viewer. Only the POSE NOTE (or the WARDROBE line when it '
+    'places her hands) decides where her two hands are; the expression, jewellery and every other line never '
+    'add a hand gesture. Count the arms before finishing: exactly two. '
     'Exactly two arms, two hands and ten fingers in total — no third arm, no extra hand, no extra limbs.'
 )
 NEGATIVE_BLOCK = (
@@ -3301,7 +3303,14 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # in the at-home lingerie sets and the private scenes instead.
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
-    identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key or (request.expression_rotation[shot_index % len(request.expression_rotation)] if request.expression_rotation else None))
+    frame_expression = request.expression_key or (request.expression_rotation[shot_index % len(request.expression_rotation)] if request.expression_rotation else None)
+    # V3.167.25: one owner for the hands per frame. With a pose note (or an
+    # outfit that already places her hands) a hand gesture in the expression
+    # becomes its hand-free twin — two hand instructions drew a third arm.
+    if request.pose_rotation or _wardrobe_places_hands(request.clothing):
+        from services.photo_expression_service import hand_free_key
+        frame_expression = hand_free_key(frame_expression)
+    identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=frame_expression)
     if adult_scene or starter or spicy_frame:
         # V3.166.5 (владелец: «полная нагота всегда, и стартовые кадры тоже»):
         # the teaser frame is shown only in the «Без цензуры 18+» mode, so the
@@ -3364,8 +3373,9 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # tail of a long prompt the model dropped them.
     accessory_lock = (
         f'JEWELLERY AND ACCESSORIES (must be clearly visible in the frame): {request.accessory}. '
-        'Earrings visible at the ears, the chain or necklace visible on the neck or chest, the watch or bracelet '
-        'visible on the wrist; small, realistic, well-fitted, never oversized.\n'
+        'Earrings at the ears, the chain or necklace on the neck or chest, the watch or bracelet on a wrist '
+        'that the pose already shows — never add, raise or move an arm just to display jewellery; '
+        'small, realistic, well-fitted, never oversized.\n'
     ) if request.accessory and not request.accessory.lower().startswith('no accessories') else ''
     body = apply_art_style(
         f'{identity}\n'
@@ -3394,7 +3404,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         + 
         f'TIME OF DAY: {request.time_of_day}. The light must match this time of day.\n'
         f'CAMERA/POSE: {angle}.\n'
-        + (f'POSE NOTE: {_pose_note(request, shot_index)}. '
+        + (f'POSE NOTE: {_pose_note(request, shot_index, wardrobe)}. '
            'Use exactly this posture for this frame and keep it clearly different from the other frames of the set.\n'
            if request.pose_rotation else '')
         + (f'HAIR COLOR: {request.hair_color}. This is the character\'s current hair color; it overrides the hair color in the reference photos and in the identity description above; her face, features and everything else stay exactly the same.\n' if request.hair_color else '')
@@ -3423,10 +3433,25 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     ))
 
 
-def _pose_note(request: 'PhotoRequest', shot_index: int) -> str:
+_HANDS_IN_WARDROBE = re.compile(
+    r'(?<!to )\bher (?:hands?|arms?)\b|\bheld against\b', re.I)
+
+
+def _wardrobe_places_hands(wardrobe: str | None) -> bool:
+    """V3.167.25: outfits like «her hands covering her chest» own her hands."""
+    return bool(wardrobe and _HANDS_IN_WARDROBE.search(wardrobe))
+
+
+def _pose_note(request: 'PhotoRequest', shot_index: int, wardrobe: str | None = None) -> str:
     """One pose sentence. V3.166.12: it used to append «(her other hand holds
-    the phone)» — the phone is no longer in the frame, so the pose is the pose."""
-    return request.pose_rotation[shot_index % len(request.pose_rotation)]
+    the phone)» — the phone is no longer in the frame, so the pose is the pose.
+    V3.167.25: when the wardrobe already places her hands, the pose keeps only
+    the body position, so the two never give her hands two different jobs."""
+    if not _wardrobe_places_hands(wardrobe or getattr(request, 'clothing', '')):
+        return request.pose_rotation[shot_index % len(request.pose_rotation)]
+    # the pose's own arm directions would be a second job for the same hands
+    return ('a natural relaxed body position for this outfit; her arms and hands are exactly '
+            'where the WARDROBE line puts them and nowhere else')
 
 
 def _extract_openai_many(result) -> list[GeneratedPhoto]:
