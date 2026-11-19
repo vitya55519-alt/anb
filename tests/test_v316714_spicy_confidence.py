@@ -237,9 +237,9 @@ def test_spicy_outfit_levels_have_variety():
         assert level in SPICY_OUTFIT_LEVELS, f"Уровень {level} отсутствует"
         variants = SPICY_OUTFIT_LEVELS[level]
         assert isinstance(variants, list), f"Уровень {level} должен быть списком"
-        assert len(variants) == 20, f"Уровень {level} должен иметь 20 вариантов, найдено {len(variants)}"
+        assert len(variants) == 30, f"Уровень {level} должен иметь 30 вариантов, найдено {len(variants)}"
         # Все варианты должны быть уникальными
-        assert len(set(variants)) == 20, f"Уровень {level} имеет дубликаты"
+        assert len(set(variants)) == 30, f"Уровень {level} имеет дубликаты"
 
 
 def test_spicy_levels_apply_to_all_scenes():

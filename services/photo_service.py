@@ -791,6 +791,16 @@ SPICY_OUTFIT_LEVELS = {
         'a tight camisole, short shorts, high heels; summer terrace, golden hour',
         'a low-cut crop top, denim mini, platform heels; rooftop bar, sunset glow',
         'a fitted tank top, short skirt, thigh-high heeled boots; evening out, city lights',
+        'a cropped white tank top and tiny cotton shorts, barefoot',
+        'a fitted mini sundress with thin straps and a low back, strappy sandals',
+        'a tight ribbed knit dress ending mid-thigh, white sneakers',
+        'a cropped cardigan buttoned only at the middle, a short denim skirt, heeled sandals',
+        'a satin slip top with lace edges, high-waisted mom shorts, mules',
+        'an off-shoulder fitted top, a short wrap skirt, wedge sandals',
+        'a backless halter top, low-rise flared jeans, heeled sandals',
+        'a fitted gym crop top and tight bike shorts, sneakers',
+        'a short silk shirt dress with the top buttons undone, ankle-strap heels',
+        'a lace-up corset-style top, a black mini skirt, chunky boots',
     ],
     2: [  # открытые плечи, декольте
         'an open blouse, her collarbone showing, a short skirt above the knee, sheer stockings, stiletto heels; evening neon, light rain',
@@ -813,6 +823,16 @@ SPICY_OUTFIT_LEVELS = {
         'a deep V-back top, mini skirt, high heels; night out, neon signs',
         'a halter dress, short hem, stiletto boots; summer party, warm night',
         'a cold-shoulder dress, tight skirt, platform heels; bar scene, dim lighting',
+        'an off-shoulder bodycon mini dress, strappy heels',
+        'a one-shoulder fitted top, a leather mini skirt, sheer black tights, ankle boots',
+        'a corset top with a sweetheart neckline, wide-leg trousers, pointed heels',
+        'a plunging wrap dress tied at the waist, slingback heels',
+        'a lace bralette under an open oversized blazer, a mini skirt, heels',
+        'a satin cowl-neck camisole, a short satin skirt, strappy sandals',
+        'a fitted square-neck mini dress, knee-high boots',
+        'a sheer-sleeve bodysuit with a deep scoop neck, high-waisted shorts, heels',
+        'a tight tube top and a slit midi skirt, strappy heels',
+        'a cropped sweater falling off one shoulder, a pleated mini skirt, over-the-knee socks',
     ],
     3: [  # глубокое декольте, короткие юбки
         'a deep plunging neckline, a fitted short skirt with a slit, high heels; her skin glistening from the rain',
@@ -835,6 +855,16 @@ SPICY_OUTFIT_LEVELS = {
         'a vinyl dress with zipper, short hem, knee-high boots; night club, neon signs',
         'a deep V-back top, short front, high heels; cocktail bar, warm ambiance',
         'a plunge neckline dress, fitted short skirt, stiletto boots; evening out, city lights',
+        'a plunging halter bodysuit, a micro mini skirt, stiletto heels',
+        'a satin corset with a deep neckline, a tight leather mini skirt, thigh-high boots',
+        'a backless mini dress with a deep front cutout, strappy heels',
+        'a bandage mini dress with a plunging neckline, platform heels',
+        'a lace-trimmed bustier, high-cut tiny shorts, fishnet tights, heels',
+        'a wrap crop top tied under the bust, a micro skirt with a high slit, heels',
+        'a fitted shirt tied at the waist with only one button closed, a micro denim skirt, heels',
+        'a sheer lace top over a balconette bra, a leather mini skirt, stiletto boots',
+        'a cut-out mini dress with side windows at the waist, sandals with ankle straps',
+        'a deep V latex-look mini dress, pointed stiletto heels',
     ],
     4: [  # прозрачное, без белья
         'a thin fitted blouse with no bra underneath, its outline reading through the fabric, a short skirt, sheer stockings, high heels; damp clothes clinging to her shape',
@@ -857,6 +887,16 @@ SPICY_OUTFIT_LEVELS = {
         'a sheer chiffon gown with no lining, short hem, high heels; beach party, sunset glow',
         'a wet cotton shirt unbuttoned low, no bra, denim shorts, high heels; summer rain, warm air',
         'a thin fitted blouse with no bra, short skirt, sheer stockings, high heels; damp clothes clinging',
+        'a sheer chiffon blouse with nothing underneath, a short satin skirt, heels',
+        'a thin white tank top with no bra, a tiny tennis skirt, sneakers',
+        'a sheer black mesh long-sleeve top with no bra, a leather mini skirt, boots',
+        'a fine-knit white sweater worn with no bra, nothing but tiny shorts, socks',
+        'a thin silk camisole with no bra and a matching short slip skirt, barefoot',
+        'a sheer lace bodysuit with no lining, high-waisted jeans, heels',
+        'a light linen shirt dress with no bra, sun behind her making it see-through, sandals',
+        'a fishnet top over bare skin with small pasties, a vinyl mini skirt, boots',
+        'a sheer organza mini dress over a skin-tone base layer, heels',
+        'a thin ribbed tank top with no bra, low-rise sweatpants, barefoot',
     ],
     5: [  # мокрое, облегающее, без белья
         'a wet white T-shirt with nothing underneath, stuck to her shape, short shorts, high heels; evening, wet hair, glistening skin',
@@ -879,6 +919,16 @@ SPICY_OUTFIT_LEVELS = {
         'a thin ribbed dress soaked through, no bra, short shorts, stiletto heels; warm rain, evening glow',
         'a wet jersey camisole clinging to her body, no underwear, tiny shorts, high heels; summer night, warm air',
         'a soaked lace top over bare skin, short shorts, high heels; rain, colorful lights',
+        'his oversized white shirt, wet and clinging, nothing underneath but panties',
+        'a soaked thin sundress clinging to her curves, no bra, barefoot',
+        'a wet white crop top and tiny wet shorts after a pool splash, barefoot',
+        'a damp sheer bath robe loosely tied, nothing underneath, barefoot',
+        'a wet tight gym top and leggings soaked with sweat, no bra',
+        'a wet thin swimsuit cover-up over a tiny bikini, barefoot',
+        'a soaked white tank top clinging to her shape, a wet denim mini skirt',
+        'a wet silk slip dress clinging to her body, no bra, heels in her hand',
+        'a damp towel wrapped around her body, slipping a little, wet hair',
+        'a rain-soaked open trench coat over a wet bralette and tiny shorts',
     ],
     6: [  # очень откровенно, спущенные бретели
         'a low-cut fitted top with a lace trim just visible at the neckline, a very short skirt, one thin strap slipping off her shoulder, high heels; rain, wet skin',
@@ -901,6 +951,16 @@ SPICY_OUTFIT_LEVELS = {
         'a wet silk blouse unbuttoned low, one strap off shoulder, short skirt, high heels; rain, warm evening',
         'a sheer lace bodysuit with one strap down, micro skirt, platform boots; night out, colorful lights',
         'a deep V-back dress with strap slipping, short front, heeled boots; gala event, warm glow',
+        'a black lace bra and matching high-cut panties, sheer thigh-high stockings, heels',
+        'a red satin bralette with one strap off her shoulder, matching panties, barefoot',
+        'a lace babydoll with one thin strap slipping down, matching thong',
+        'a sporty bralette and matching thong, white knee socks',
+        'an open silk robe over a plunging lace bra and panties',
+        'a strappy cage bra and matching panties, high heels',
+        'a sheer mesh bra and matching high-waisted panties, heels',
+        'a balconette bra with one strap down and lace boyshorts, barefoot',
+        'a white cotton bra and panties set with a loose shirt half off her shoulders',
+        'a satin cami with straps slipped down to her arms, matching tiny shorts',
     ],
     7: [  # очень низко посаженное, открытые бёдра
         'her trousers worn low on the hips, a tight cropped top with no bra, one thin strap slipping off her shoulder, high heels; evening neon, a light haze',
@@ -923,6 +983,16 @@ SPICY_OUTFIT_LEVELS = {
         'a tight leather top with zipper open to navel, a short vinyl skirt, platform boots; fetish party, neon signs',
         'a sheer chiffon top over bare skin, low-rise jeans, high heels; evening out, warm glow',
         'a strapless crop top with no bra, low-rise denim unbuttoned, heeled boots; night out, city lights',
+        'a lace garter belt with sheer stockings, a matching thong and a bra, heels',
+        'a tight corset laced at the front, a lace thong, thigh-high stockings',
+        'an open-cup lace bralette harness over a sheer bra, matching panties, heels',
+        'low-rise unbuttoned jeans pulled down to her hips showing the thong, a bra',
+        'a sheer black bodystocking with a deep plunge, heels',
+        'a strappy harness lingerie set with a thong, heels',
+        'a lace teddy cut high on the hips with a plunging neck, stockings',
+        'a sheer robe falling off her shoulders over a lace thong and bra',
+        'a micro bikini top and a tiny string bikini bottom, barefoot',
+        'a satin bra and garter set with ribbon ties, sheer stockings, heels',
     ],
     8: [  # прозрачное платье, облегающее
         'a thin fitted dress soaked through and clinging to her body, its neckline low, the outline of her figure reading through the wet fabric, high heels; rain',
@@ -945,6 +1015,16 @@ SPICY_OUTFIT_LEVELS = {
         'a soaked jersey dress clinging to her body, deep neckline, heeled boots; rain, city lights',
         'a sheer chiffon dress with a plunging back, no bra, high heels; gala event, warm lighting',
         'a wet vinyl dress sticking to her body, a micro hem, platform boots; fetish party, neon signs',
+        'a fully sheer black lace bodysuit with no lining, heels',
+        'a sheer mesh mini dress over a tiny thong, no bra, heels',
+        'a transparent chiffon babydoll over nothing but a thong',
+        'an open-back sheer teddy with a deep plunge, stockings',
+        'sheer embroidered lingerie set with see-through cups, garter, stockings',
+        'a see-through tulle robe over bare skin and a lace thong',
+        'a sheer slip dress clinging to her body, nothing underneath but a thong',
+        'a fishnet bodystocking with a deep plunge, heels',
+        'a wet sheer white bodysuit, see-through, barefoot',
+        'a sheer lace bralette with transparent cups and a matching thong, stockings',
     ],
     9: [  # коктейльное платье, почти прозрачное
         'a tiny cocktail dress, deep neckline, sheer fabric over a fitted base layer, one shoulder strap slipped down, high heels; wet hair, evening city light',
@@ -967,6 +1047,16 @@ SPICY_OUTFIT_LEVELS = {
         'a corset gown laced very tight, a high slit, thigh-high heeled boots; gothic gala, dark ambiance',
         'a sheer mesh dress over bare skin, no bra, short hem, platform heels; rave, laser lights',
         'a thin chiffon dress soaked through, deep neckline, high heels; summer storm, warm evening',
+        'only an open oversized shirt over a tiny thong, no bra, her hand holding it closed',
+        'a sheer lace robe hanging open over a thong, no bra',
+        'topless with her arm covering her chest, wearing only a lace thong and stockings',
+        'only a thin unbuttoned silk shirt slipping off her shoulders, lace panties',
+        'a tiny string thong and an unclasped bra falling from her shoulders',
+        'only a satin sheet loosely wrapped around her body, slipping down',
+        'a micro string bikini that barely covers anything, barefoot',
+        'only stockings, a garter belt and a thong, her hands covering her chest',
+        'an open sheer kimono over bare skin and a tiny thong',
+        'only a cropped tank top pulled up and lace panties, sitting on the bed',
     ],
     10: [  # максимально откровенно, почти раздето
         'an open raincoat over a tight micro top and tiny shorts, no bra, the coat sliding off one shoulder, high heels; rain, soaked clothes clinging to her shape, wet hair',
@@ -989,6 +1079,16 @@ SPICY_OUTFIT_LEVELS = {
         'a corset top laced very loose, micro mini with side ties open, thigh-high heels; gothic party, dark ambiance',
         'a sheer chiffon gown with no lining, high slit to hip, high heels; cocktail bar, colorful lights',
         'a thin cotton dress soaked through, no bra, short hem, high heels; beach rain, sunset glow',
+        'nothing but a thin lace thong, her hands covering her bare chest',
+        'nude under a sheer white sheet that clings to her body',
+        'only thigh-high stockings and heels, her arms and pose covering her chest',
+        'only a bath towel half fallen away, her arm across her chest',
+        'nothing but his unbuttoned shirt hanging open from her shoulders',
+        'only a lace choker and stockings, posed so her arms cover her chest',
+        'topless in tiny lace panties, her long hair falling over her chest',
+        'only a sheer bodystocking with nothing underneath',
+        'nude, covered only by a pillow held against her body',
+        'only lace panties pulled down a little at the hips, her hand over her chest',
     ],
 }
 
@@ -1414,10 +1514,42 @@ SEEDREAM_IDENTITY_LOCK = (
 )
 BODY_REINFORCEMENT_SCENES = {'mirror', 'gym', 'cafe', 'restaurant', 'home', 'outfit', 'selfie'}
 
+# V3.167.23 (владелец 19.11): «не как идеальная — родинки, качество как в
+# реальности». Каждая героиня получает свои 2 родинки (одни и те же во всех
+# кадрах — по хешу id) и живую кожу/камеру телефона без бьюти-фильтра.
+MOLE_SPOTS = (
+    'a small dark mole on the left side of her neck',
+    'a tiny beauty mark just above her right collarbone',
+    'a small mole on her left shoulder',
+    'a tiny mole on her right cheek near the jawline',
+    'a small beauty mark under her left eye, faint',
+    'a small mole on her stomach just beside the navel',
+    'a couple of tiny moles on her upper back',
+    'a small mole on the inside of her right forearm',
+    'a tiny mole above the left corner of her upper lip',
+    'a small mole on her right hip',
+)
+
+
+def real_skin_lock(character_id: str | None) -> str:
+    seed = int(hashlib.md5(str(character_id or '').encode()).hexdigest(), 16)
+    first = MOLE_SPOTS[seed % len(MOLE_SPOTS)]
+    second = MOLE_SPOTS[(seed // len(MOLE_SPOTS) + 1 + seed % len(MOLE_SPOTS)) % len(MOLE_SPOTS)]
+    if second == first:
+        second = MOLE_SPOTS[(seed + 3) % len(MOLE_SPOTS)]
+    return (
+        'REAL PERSON, NOT A PERFECT MODEL: natural un-retouched skin with visible pores, fine texture, '
+        f'faint uneven tone, tiny natural imperfections; her permanent marks (same in every photo, only where that '
+        f'body area is visible): {first}; {second}. No beauty filter, no airbrushing, no plastic or waxy skin, '
+        'no perfectly symmetrical face. Real smartphone photo quality: slight sensor noise in shadows, natural '
+        'white balance, everyday framing that is not perfectly composed, ordinary available light.\n'
+    )
+
+
 QUALITY_BLOCK = (
     'Photorealistic smartphone/lifestyle photography, authentic candid amateur photo feel, realistic skin texture with natural pores and micro-imperfections, '
     'realistic fabric texture and clothing wrinkles, realistic hands and anatomy, natural hair strands, coherent perspective, '
-    'premium photographic detail, soft cinematic realism, shallow depth of field where appropriate. '
+    'ordinary phone-camera detail (not a studio or beauty retouch), shallow depth of field where appropriate. '
     'Absolutely no CGI, 3D render, doll-like or airbrushed look.'
 )
 OPENAI_GENERAL_AUDIENCE_BLOCK = (
@@ -3226,6 +3358,8 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # prompt reached SpicyAPI with «exactly two arms» already trimmed off —
     # that is the third arm in the owner's screenshot.
     hands_lock = f'{HANDS_RULE}\n'
+    if art_style(character_id) == 'photo':
+        hands_lock += real_skin_lock(character_id)
     # V3.167.18: accessories ride at the head with concrete examples; at the
     # tail of a long prompt the model dropped them.
     accessory_lock = (
