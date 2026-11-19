@@ -232,8 +232,8 @@ def test_characters_tab_has_segment_switch():
     # girls only ride the «⭐ Premium» tab, the official/community tabs exclude
     # them so a persona never appears on two tabs at once.
     assert "if (CHAR_SEG === 'prem') {" in INDEX
-    assert "if (!!c.custom || c.status === 'premium') return false;" in INDEX
-    assert "} else if (!c.custom || c.status === 'premium') return false;" in INDEX
+    assert "if ((!!c.custom && !c.official) || c.status === 'premium') return false;" in INDEX
+    assert "} else if (!c.custom || c.official || c.status === 'premium') return false;" in INDEX
     # V3.55.3: the always-live ➕ now belongs to the community tab only (the
     # premium tab has its own admin-only create card, id="premCreateCard").
     assert "const createCard = (CHAR_SEG === 'community') ?" in INDEX

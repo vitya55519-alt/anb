@@ -676,6 +676,30 @@ def _batch_tags(character_ids: list[str]) -> dict[str, str]:
     return out
 
 
+def _batch_official(character_ids: list[str]) -> set[str]:
+    """V3.167.24: constructor personas an admin made for «🍑 Персиковый сад»."""
+    if not character_ids:
+        return set()
+    from models.app_models import CustomCharacter
+    try:
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(CustomCharacter.character_id, CustomCharacter.params_json)
+                .where(CustomCharacter.character_id.in_(character_ids))
+            ).all()
+    except Exception:
+        logger.exception('batch official read failed')
+        return set()
+    out = set()
+    for cid, raw in rows:
+        try:
+            if (json.loads(raw or '{}') or {}).get('official') == 'official_yes':
+                out.add(cid)
+        except Exception:
+            continue
+    return out
+
+
 def api_characters(telegram_id: int | None = None) -> list[dict]:
     """Storefront grid: every visible card plus its storefront photo URL.
 
@@ -720,6 +744,7 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
     # present, so the storefront can render chips + power the community filter
     # without a per-card query.
     tags_by_id = _batch_tags([c.character_id for c in cards if is_custom_character(c.character_id)])
+    official_ids = _batch_official([c.character_id for c in cards if is_custom_character(c.character_id)])
     # V3.50.0: batched read of the romance<->bold path for the card indicator.
     path_axes = _batch_path_axis(telegram_id, [c.character_id for c in cards])
     maritals = _batch_marital(telegram_id, [c.character_id for c in cards])
@@ -779,6 +804,7 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
             ),
             'selected': card.character_id == selected,
             'custom': custom,
+            'official': card.character_id in official_ids,
             'mine': mine,
             # V3.44.8: own not-community-published card — visible only to its author.
             'private': mine and not card.is_visible,

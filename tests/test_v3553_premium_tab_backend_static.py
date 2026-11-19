@@ -54,7 +54,7 @@ def test_finish_constructor_registers_premium_status():
             in MAIN)
     assert "else 'active')" in MAIN
     assert 'short_bio=bio, status=card_status, card_photo_file_id=avatar_file_id,' in MAIN
-    assert 'update_card(row.character_id, status=card_status, card_photo_file_id=avatar_file_id, is_visible=False)' in MAIN
+    assert 'update_card(row.character_id, status=card_status, card_photo_file_id=avatar_file_id, is_visible=official)' in MAIN
 
 
 def test_premium_status_label_exists():
