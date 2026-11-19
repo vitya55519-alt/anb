@@ -132,6 +132,10 @@ SCENES = {
     'kitchen': 'a cozy personal photo in a modern kitchen, casual domestic vibe',
     'bedroom': 'a relaxed personal photo in a cozy bedroom with soft natural light',
     'subway': 'an urban personal photo in a modern subway station, city commute aesthetic',
+    # V3.167.26 (владелец: «добавь ещё 15 мест»): three new places.
+    'forest': 'a personal smartphone photo on a quiet forest trail: tall pines and birches, ferns, dappled sunlight through the leaves, soft moss underfoot',
+    'office': 'a personal smartphone photo in a modern office after hours: her desk with a laptop and a lamp, glass walls, city lights behind the window, the floor empty',
+    'library': 'a personal smartphone photo in an old quiet library: tall wooden bookshelves, green reading lamps, a long reading table, warm dusty light',
     'bridge': 'a dramatic personal photo on a city bridge with urban architecture in the background',
     'concert': 'an energetic personal photo at a live music concert with stage lights in the background',
     'festival': 'a vibrant personal photo at an outdoor music festival with colorful atmosphere',
@@ -173,6 +177,7 @@ SCENE_LEVELS = {
     'pool': 2, 'balcony': 2, 'subway': 2, 'bridge': 2, 'yoga': 2, 'gaming': 2,
     'yacht': 3, 'hotel': 3, 'concert': 3, 'festival': 3, 'sunset': 3,
     'night': 4, 'rain': 4, 'snow': 4, 'spa': 4,
+    'forest': 1, 'library': 2, 'office': 3,
     # V3.19.2: 'peek'/'dressing' are retired from generation — every public
     # venue scene must stay fully clothed; lingerie belongs to the private
     # scenes only. They stay in SCENES/AUTO_CAPTIONS for old library photos.
@@ -212,6 +217,9 @@ AUTO_CAPTIONS = {
     'dressing': ('ещё собираюсь 😌', 'поймала момент до того, как оделась'),
     'cosplay': ('примерила образ специально для тебя 🎭', 'косплей-сет готов 😏', 'как тебе мой костюм? 🎭'),
     # V3.44.1: new trending scene captions
+    'forest': ('гуляю в лесу 🌲', 'тут так тихо', 'лес и я'),
+    'office': ('задержалась на работе', 'офис пустой, только я', 'рабочий вечер'),
+    'library': ('в библиотеке тихо-тихо 📚', 'читаю и думаю о тебе', 'книжный вайб'),
     'beach': ('пляж сегодня шикарный', 'море + солнце = идеальный сет', 'поймала волну и кадр'),
     'pool': ('у бассейна', 'летний вайб у воды', 'бассейн + хороший свет'),
     'yacht': ('сегодня на яхте', 'море и свобода', 'поймала морской бриз в кадр'),
@@ -314,6 +322,7 @@ SCENE_GROUP = {
     'subway':'day_casual', 'concert':'evening', 'night':'evening',
     'rain':'day_casual', 'snow':'day_casual',
     'spa':'home', 'yoga':'gym', 'gaming':'home',
+    'forest':'warm_outdoor', 'office':'day_casual', 'library':'day_casual',
 }
 
 WARDROBE_LEVEL_POOLS = {
@@ -599,6 +608,9 @@ SHOT_VARIANTS = {
     'topless': ['at-home mirror photo, the camera stood on the sink below the mirror edge: she stands at her bedroom or bathroom mirror and pulls her thin tank top up with one hand so her bare breasts are visible, playful confident look into the mirror, real home interior', 'stylish three-quarter topless portrait', 'premium artistic topless photo with elegant composition'],
     'explicit': ['natural explicit selfie', 'stylish three-quarter explicit portrait', 'premium explicit photo with intimate composition'],
     # V3.44.1: new trending scene angles
+    'forest': ['natural selfie on the forest trail with pines behind', 'three-quarter photo leaning on a birch trunk', 'full-body photo on the path with sun rays through the trees'],
+    'office': ['natural selfie at her office desk', 'three-quarter photo sitting on the edge of the desk', 'full-body photo by the window with the city lights behind'],
+    'library': ['natural selfie between the bookshelves', 'three-quarter photo at the reading table under a green lamp', 'full-body photo leaning on a tall bookshelf'],
     'beach': ['natural beach selfie with ocean behind', 'stylish three-quarter beach portrait with waves', 'premium full-body beach photo with golden-hour light'],
     'pool': ['natural poolside selfie', 'stylish three-quarter pool portrait with blue water', 'premium full-body pool photo with summer vibes'],
     'yacht': ['natural yacht deck selfie with sea behind', 'stylish three-quarter yacht portrait', 'premium full-body yacht photo with open sea'],
@@ -801,6 +813,16 @@ SPICY_OUTFIT_LEVELS = {
         'a fitted gym crop top and tight bike shorts, sneakers',
         'a short silk shirt dress with the top buttons undone, ankle-strap heels',
         'a lace-up corset-style top, a black mini skirt, chunky boots',
+        'a fitted white shirt knotted at the waist, high-waisted wide-leg trousers, strappy heels',  # V3.167.26 not only skirts
+        'a ribbed knit bodysuit, low-rise mom jeans, white sneakers',  # V3.167.26 not only skirts
+        'a cropped cardigan buttoned over bare skin, cigarette trousers, loafers',  # V3.167.26 not only skirts
+        'a sleeveless turtleneck, leather leggings, ankle boots',  # V3.167.26 not only skirts
+        'a denim jumpsuit unzipped to the chest, chunky sneakers',  # V3.167.26 not only skirts
+        'a halter top, cargo pants slung low on her hips, platform sandals',  # V3.167.26 not only skirts
+        'an oversized blazer over a lace bralette, straight jeans, heels',  # V3.167.26 not only skirts
+        'a sporty zip-up top half open, bike shorts, sneakers',  # V3.167.26 not only skirts
+        'a fitted tee tied at the side, ripped boyfriend jeans, heeled mules',  # V3.167.26 not only skirts
+        'a satin shirt with the top buttons open, tailored shorts, block heels',  # V3.167.26 not only skirts
     ],
     2: [  # открытые плечи, декольте
         'an open blouse, her collarbone showing, a short skirt above the knee, sheer stockings, stiletto heels; evening neon, light rain',
@@ -833,6 +855,16 @@ SPICY_OUTFIT_LEVELS = {
         'a sheer-sleeve bodysuit with a deep scoop neck, high-waisted shorts, heels',
         'a tight tube top and a slit midi skirt, strappy heels',
         'a cropped sweater falling off one shoulder, a pleated mini skirt, over-the-knee socks',
+        'an off-shoulder knit sweater slipping down, skinny jeans, heeled boots',  # V3.167.26 not only skirts
+        'a corset top, flared high-waisted trousers, platform heels',  # V3.167.26 not only skirts
+        'a one-shoulder bodysuit, leather pants, stiletto heels',  # V3.167.26 not only skirts
+        'a plunging wrap jumpsuit, strappy sandals',  # V3.167.26 not only skirts
+        'a cropped off-shoulder top, satin cargo pants, heels',  # V3.167.26 not only skirts
+        'a bandeau top under an open linen shirt, white wide-leg pants, espadrilles',  # V3.167.26 not only skirts
+        'a square-neck fitted top, flared jeans, platform boots',  # V3.167.26 not only skirts
+        'a strapless tube top, tailored culottes, mules',  # V3.167.26 not only skirts
+        'a backless halter top, low-rise trousers, heeled sandals',  # V3.167.26 not only skirts
+        'a sheer-sleeved bodysuit, high-waisted leather shorts, ankle boots',  # V3.167.26 not only skirts
     ],
     3: [  # глубокое декольте, короткие юбки
         'a deep plunging neckline, a fitted short skirt with a slit, high heels; her skin glistening from the rain',
@@ -865,6 +897,16 @@ SPICY_OUTFIT_LEVELS = {
         'a sheer lace top over a balconette bra, a leather mini skirt, stiletto boots',
         'a cut-out mini dress with side windows at the waist, sandals with ankle straps',
         'a deep V latex-look mini dress, pointed stiletto heels',
+        'a deep V-neck jumpsuit, gold heeled sandals',  # V3.167.26 not only skirts
+        'a lace bustier, high-waisted leather trousers, stilettos',  # V3.167.26 not only skirts
+        'a plunging blazer worn with nothing under it, matching suit trousers, heels',  # V3.167.26 not only skirts
+        'a satin corset, wide palazzo pants, heels',  # V3.167.26 not only skirts
+        'a cut-out catsuit, ankle boots',  # V3.167.26 not only skirts
+        'a low-cut ribbed bodysuit, distressed micro denim shorts, heeled boots',  # V3.167.26 not only skirts
+        'a halter neck crop top, flared vinyl pants, platform heels',  # V3.167.26 not only skirts
+        'a deep-cut silk camisole, tailored cigarette trousers, kitten heels',  # V3.167.26 not only skirts
+        'a lace-up front top, low-rise jeans, cowboy boots',  # V3.167.26 not only skirts
+        'a strappy cropped top, satin joggers, heeled sandals',  # V3.167.26 not only skirts
     ],
     4: [  # прозрачное, без белья
         'a thin fitted blouse with no bra underneath, its outline reading through the fabric, a short skirt, sheer stockings, high heels; damp clothes clinging to her shape',
@@ -897,6 +939,16 @@ SPICY_OUTFIT_LEVELS = {
         'a fishnet top over bare skin with small pasties, a vinyl mini skirt, boots',
         'a sheer organza mini dress over a skin-tone base layer, heels',
         'a thin ribbed tank top with no bra, low-rise sweatpants, barefoot',
+        'a sheer mesh long-sleeve top with no bra, high-waisted leather pants, heels',  # V3.167.26 not only skirts
+        'a transparent chiffon blouse with no bra, tailored trousers, stilettos',  # V3.167.26 not only skirts
+        'a sheer lace bodysuit, high-waisted jeans, ankle boots',  # V3.167.26 not only skirts
+        'a see-through knit top, low-rise cargo pants, sneakers',  # V3.167.26 not only skirts
+        'a sheer organza shirt open over bare skin, wide-leg trousers, heels',  # V3.167.26 not only skirts
+        'a fishnet top with no bra, vinyl shorts, platform boots',  # V3.167.26 not only skirts
+        'a thin white tee with no bra, grey sweatpants slung low, barefoot',  # V3.167.26 not only skirts
+        'a sheer catsuit, heeled boots',  # V3.167.26 not only skirts
+        'a lace top with no lining, satin pants, mules',  # V3.167.26 not only skirts
+        'a mesh bodysuit, leather shorts, thigh-high boots',  # V3.167.26 not only skirts
     ],
     5: [  # мокрое, облегающее, без белья
         'a wet white T-shirt with nothing underneath, stuck to her shape, short shorts, high heels; evening, wet hair, glistening skin',
@@ -929,6 +981,16 @@ SPICY_OUTFIT_LEVELS = {
         'a wet silk slip dress clinging to her body, no bra, heels in her hand',
         'a damp towel wrapped around her body, slipping a little, wet hair',
         'a rain-soaked open trench coat over a wet bralette and tiny shorts',
+        'a wet white shirt clinging to her body with no bra, denim shorts, barefoot',  # V3.167.26 not only skirts
+        'a damp ribbed bodysuit, low-rise jeans, sneakers',  # V3.167.26 not only skirts
+        'a wet sports top, tiny running shorts, sneakers',  # V3.167.26 not only skirts
+        'a soaked linen jumpsuit clinging to her figure, barefoot',  # V3.167.26 not only skirts
+        'a wet tank top with no bra, cut-off shorts, sandals',  # V3.167.26 not only skirts
+        'a stretchy one-piece swimsuit with high-cut legs, slides',  # V3.167.26 not only skirts
+        'a tight latex catsuit, heeled boots',  # V3.167.26 not only skirts
+        'a wet oversized boyfriend shirt and nothing else, barefoot',  # V3.167.26 not only skirts
+        'a damp crop top with no bra, leggings, sneakers',  # V3.167.26 not only skirts
+        'a skin-tight seamless bodysuit, barefoot',  # V3.167.26 not only skirts
     ],
     6: [  # очень откровенно, спущенные бретели
         'a low-cut fitted top with a lace trim just visible at the neckline, a very short skirt, one thin strap slipping off her shoulder, high heels; rain, wet skin',
@@ -961,6 +1023,16 @@ SPICY_OUTFIT_LEVELS = {
         'a balconette bra with one strap down and lace boyshorts, barefoot',
         'a white cotton bra and panties set with a loose shirt half off her shoulders',
         'a satin cami with straps slipped down to her arms, matching tiny shorts',
+        'a silk robe loosely tied over bare skin, barefoot',  # V3.167.26 not only skirts
+        'an unbuttoned shirt slipping off one shoulder, lace briefs, barefoot',  # V3.167.26 not only skirts
+        'a lace bralette, low-rise satin pants, heels',  # V3.167.26 not only skirts
+        'a one-piece swimsuit with a deep plunge to the navel, heels',  # V3.167.26 not only skirts
+        'a cropped hoodie with nothing under it, tiny shorts, sneakers',  # V3.167.26 not only skirts
+        'a corset with garters, high-waisted leather trousers, stilettos',  # V3.167.26 not only skirts
+        'a strapless satin bodysuit with one side pulled down, heels',  # V3.167.26 not only skirts
+        'a micro bikini top, low-rise jeans unbuttoned, sandals',  # V3.167.26 not only skirts
+        'a sheer kimono open over a lace bra and briefs, barefoot',  # V3.167.26 not only skirts
+        'a backless jumpsuit with a neckline to the waist, heels',  # V3.167.26 not only skirts
     ],
     7: [  # очень низко посаженное, открытые бёдра
         'her trousers worn low on the hips, a tight cropped top with no bra, one thin strap slipping off her shoulder, high heels; evening neon, a light haze',
@@ -993,6 +1065,16 @@ SPICY_OUTFIT_LEVELS = {
         'a sheer robe falling off her shoulders over a lace thong and bra',
         'a micro bikini top and a tiny string bikini bottom, barefoot',
         'a satin bra and garter set with ribbon ties, sheer stockings, heels',
+        'a lace teddy bodysuit, barefoot',  # V3.167.26 not only skirts
+        'a string bikini, barefoot',  # V3.167.26 not only skirts
+        'an oversized knit sweater and lace panties, wool socks',  # V3.167.26 not only skirts
+        'a satin pajama shirt open, matching panties, barefoot',  # V3.167.26 not only skirts
+        'a sheer babydoll, heels',  # V3.167.26 not only skirts
+        'a sports bra and tiny shorts pulled low, sneakers',  # V3.167.26 not only skirts
+        'a lace bra and high-waisted briefs under an open blazer, heels',  # V3.167.26 not only skirts
+        'a cut-out one-piece swimsuit, heels',  # V3.167.26 not only skirts
+        'a sheer robe over a thong, barefoot',  # V3.167.26 not only skirts
+        'a cropped tank and lace boyshorts, barefoot',  # V3.167.26 not only skirts
     ],
     8: [  # прозрачное платье, облегающее
         'a thin fitted dress soaked through and clinging to her body, its neckline low, the outline of her figure reading through the wet fabric, high heels; rain',
@@ -1025,6 +1107,16 @@ SPICY_OUTFIT_LEVELS = {
         'a fishnet bodystocking with a deep plunge, heels',
         'a wet sheer white bodysuit, see-through, barefoot',
         'a sheer lace bralette with transparent cups and a matching thong, stockings',
+        'a sheer bodystocking, heels',  # V3.167.26 not only skirts
+        'a lace-up corset and a thong, stilettos',  # V3.167.26 not only skirts
+        'a mesh teddy, barefoot',  # V3.167.26 not only skirts
+        'a micro bikini, barefoot',  # V3.167.26 not only skirts
+        'a sheer chemise with nothing under it, barefoot',  # V3.167.26 not only skirts
+        'an open silk shirt and a lace thong, barefoot',  # V3.167.26 not only skirts
+        'a strappy lingerie set, heels',  # V3.167.26 not only skirts
+        'a fishnet bodysuit, platform boots',  # V3.167.26 not only skirts
+        'a see-through lace robe over bare skin, barefoot',  # V3.167.26 not only skirts
+        'a wet white tank top and a thong, barefoot',  # V3.167.26 not only skirts
     ],
     9: [  # коктейльное платье, почти прозрачное
         'a tiny cocktail dress, deep neckline, sheer fabric over a fitted base layer, one shoulder strap slipped down, high heels; wet hair, evening city light',
@@ -1057,6 +1149,16 @@ SPICY_OUTFIT_LEVELS = {
         'only stockings, a garter belt and a thong, her hands covering her chest',
         'an open sheer kimono over bare skin and a tiny thong',
         'only a cropped tank top pulled up and lace panties, sitting on the bed',
+        'an unbuttoned denim shirt with nothing under it, barefoot',  # V3.167.26 not only skirts
+        'only a lace thong and an open kimono, barefoot',  # V3.167.26 not only skirts
+        'a sheer bralette and nothing else, barefoot',  # V3.167.26 not only skirts
+        'only a loose necktie and lace panties, heels',  # V3.167.26 not only skirts
+        'only a cropped sweater and nothing below, wool socks',  # V3.167.26 not only skirts
+        'only an apron over bare skin, heels',  # V3.167.26 not only skirts
+        'only a sheer slip falling off both shoulders, barefoot',  # V3.167.26 not only skirts
+        'only a bikini bottom and sunglasses, barefoot',  # V3.167.26 not only skirts
+        'only a fishnet bodystocking, heels',  # V3.167.26 not only skirts
+        'only an unzipped hoodie and a thong, sneakers',  # V3.167.26 not only skirts
     ],
     10: [  # максимально откровенно, почти раздето
         'an open raincoat over a tight micro top and tiny shorts, no bra, the coat sliding off one shoulder, high heels; rain, soaked clothes clinging to her shape, wet hair',
@@ -1089,6 +1191,16 @@ SPICY_OUTFIT_LEVELS = {
         'only a sheer bodystocking with nothing underneath',
         'nude, covered only by a pillow held against her body',
         'only lace panties pulled down a little at the hips, her hand over her chest',
+        'completely nude, only gold hoop earrings, barefoot',  # V3.167.26 not only skirts
+        'nude, only thigh-high stockings, barefoot',  # V3.167.26 not only skirts
+        'nude, only a silk scarf loosely around her neck, heels',  # V3.167.26 not only skirts
+        'nude, only a thin waist chain, barefoot',  # V3.167.26 not only skirts
+        'nude, a sheer robe sliding off her shoulders to the floor, barefoot',  # V3.167.26 not only skirts
+        'nude, only high heels',  # V3.167.26 not only skirts
+        'nude, only a choker and an ankle bracelet, barefoot',  # V3.167.26 not only skirts
+        'nude, wrapped loosely in a thin white sheet slipping down, barefoot',  # V3.167.26 not only skirts
+        'nude, only a sun hat, barefoot',  # V3.167.26 not only skirts
+        'nude, only wet skin and water droplets, barefoot',  # V3.167.26 not only skirts
     ],
 }
 
@@ -1632,7 +1744,7 @@ _NO_PHONE_LEFTOVER = re.compile(
 # V3.167.17: it stays at the head for a different reason — the reveal is a NEW
 # frame again, and what must never be trimmed away is the lock that keeps her the
 # same woman in the same private place, in the pose the pool just picked for her.
-_NO_PHONE_HEAD_KEEP = ('TWO WOMEN IN FRAME:', 'PRIVATE PLACE OVERRIDE:', 'NEW SHOT LOCK:',
+_NO_PHONE_HEAD_KEEP = ('TWO WOMEN IN FRAME:', 'PRIVATE PLACE OVERRIDE:', 'PLACE LOCK:', 'NEW SHOT LOCK:',
                        'SHOT PLACE:', 'SHOT POSE:', 'UNDRESS REVEAL:')
 
 
@@ -1667,9 +1779,10 @@ AMATEUR_HOT_FRAME_LOCK = (
     'AMATEUR HOT FRAME: this is a real candid photo of herself, not a photoshoot. '
     'Her camera was leaned against the wall, propped on a shelf or set by a countdown timer, so it sits outside '
     'the frame and both her hands are free. The framing is slightly off, '
-    'one corner of the room cut off. The room behind her is lived-in and a little messy — clothes on the chair, '
-    'an unmade bed, a towel on the floor. Intimate low warm light from a lamp or a window, real skin with pores '
-    'and soft shadows, nothing retouched. '
+    'one corner of the place cut off. V3.167.26: the background is exactly the place the SCENE or Location line '
+    'names and nothing else — real, tidy and clean, with depth and '
+    'ordinary small details; a bed appears only when that line itself names her bed. '
+    'Natural light of that place, real skin with pores and soft shadows, nothing retouched. '
     'Never: a professional photoshoot, studio lighting, a posed editorial frame, an artificial or symmetrical '
     'portrait, high-fashion styling, a photographer\u2019s camera or a clean seamless backdrop. '
     'Her face stays fully visible and recognizable from the references.'
@@ -1839,6 +1952,27 @@ CARD_PRIVATE_OVERRIDE = (
     'interior, the light and the objects still belong to {place}. {people}'
     'Treat any open, shared area of this venue as a mistake: the closed room of the same venue wins.'
 )
+# V3.167.26 (владелец: «на всех фото в режиме без цензуры фон — неубранная
+# квартира; если парк, то парк»). In the 18+ mode the scene button he pressed is
+# the place. A revealing look there is not moved into a bedroom any more: it is
+# shot in a secluded, empty spot of that very place, with nobody else around.
+SPICY_PLACE_LOCK = (
+    'PLACE LOCK: the photo is taken exactly here — {place}. This place is the whole background; it is '
+    'never swapped for a bedroom or an apartment.'
+)
+SPICY_SECLUDED_PLACE_LOCK = (
+    'PLACE LOCK: the photo is taken exactly here — {place}. This place is the whole background; it is '
+    'never swapped for a bedroom or an apartment. She is completely alone: a secluded, empty spot of '
+    'this very place, nobody else anywhere in the frame, no bystanders, no faces in windows.'
+)
+
+
+def spicy_place_lock(scene_text: str, wardrobe: str) -> str:
+    template = SPICY_SECLUDED_PLACE_LOCK if _intimate_prompt_text(wardrobe) else SPICY_PLACE_LOCK
+    place = (scene_text or '').strip().rstrip('.')
+    return template.format(place=place[:260])
+
+
 CARD_PRIVATE_ALONE = 'Nobody but her is in the room and no bystanders are visible. '
 CARD_PRIVATE_WITH = '{who} is the only other person in that room; no crowd and no bystanders. '
 
@@ -3145,7 +3279,10 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         # V3.167.20: the outfit strings carry a venue after ';' (club, beach…);
         # it fought the scene he picked (gym button → home/club frame). The
         # scene button decides the place, the level decides only the garment.
-        clothing = random.choice(SPICY_OUTFIT_LEVELS[spicy_level]).split(';', 1)[0].strip()
+        # V3.167.26 (владелец: «кадры с одеждой повторяются на уровне»): the set
+        # draws distinct garments the last sets did not show yet.
+        spicy_picks = _pick_spicy_outfits(state, spicy_level, max(1, len(pack_outfits) or PHOTO_SET_SIZE))
+        clothing = spicy_picks[0]
         logger.info('photo_service: spicy branch taken, level=%s pinned_outfit=%s clothing=%s', spicy_level, pinned_outfit, clothing[:120])
         # Бельё не показываем — уровень уже определяет откровенность
         underwear_color = ''
@@ -3165,8 +3302,8 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         # V3.167.19: _build_prompt reads pack_outfits first, so the spicy outfit
         # has to replace it, otherwise the old pack wardrobe reaches the model.
         pack_outfits = tuple(
-            clothing if i == 0 else random.choice(SPICY_OUTFIT_LEVELS[spicy_level]).split(';', 1)[0].strip()
-            for i in range(max(1, len(pack_outfits) or PHOTO_SET_SIZE))
+            clothing if i == 0 else spicy_picks[i % len(spicy_picks)]
+            for i in range(len(spicy_picks))
         )
     else:
         logger.info('photo_service: ordinary branch taken, spicy_level=%s pinned_outfit=%s', spicy_level, pinned_outfit)
@@ -3361,6 +3498,10 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
         adult_scene or home_lingerie or spicy_frame
         or (not force_safe and request.scene in (SEEDREAM_ADULT_SCENES | ADULT_SCENES))
     )
+    # V3.167.26: an 18+ frame on an ordinary place button (park, beach, office…)
+    # keeps that place; only the true private scenes stay indoors.
+    spicy_place = bool(spicy_frame and not starter and not adult_scene
+                       and request.scene not in (SEEDREAM_ADULT_SCENES | ADULT_SCENES))
     public_dress_rule = '' if private_look else PUBLIC_DRESS_RULE + '\n'
     bust_lock = bust_lock_line(character_id)
     bust_lock_tail = f'\n{bust_lock}' if bust_lock else ''
@@ -3437,6 +3578,9 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # Only the Seedream-flavoured legs (SpicyAPI and fal) ever render an
     # intimate look; the general-audience OpenAI/Gemini routes stay clothed, so
     # they must never be told she is in lingerie.
+    if spicy_place:
+        return no_phone_frame(duo_head + spicy_place_lock(
+            request.location if request.location and scene[:40] not in request.location else scene, wardrobe) + '\n' + body)
     return no_phone_frame(duo_head + enforce_private_location(
         body,
         f'{request.story_detail} {request.clothing} {request.location} {request.angle}',
@@ -3447,6 +3591,18 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
 
 _HANDS_IN_WARDROBE = re.compile(
     r'(?<!to )\bher (?:hands?|arms?)\b|\bheld against\b', re.I)
+
+
+def _pick_spicy_outfits(state, level: int, count: int) -> list[str]:
+    """V3.167.26: distinct garments of this 18+ level, the recently shown ones last."""
+    pool = [o.split(';', 1)[0].strip() for o in SPICY_OUTFIT_LEVELS[level]]
+    shown = ' || '.join(_json_list(getattr(state, 'recent_outfits_json', '[]'))).lower()
+    fresh = [g for g in pool if g.lower() not in shown]
+    stale = [g for g in pool if g.lower() in shown]
+    random.shuffle(fresh)
+    random.shuffle(stale)
+    order = fresh + stale
+    return [order[i % len(order)] for i in range(count)]
 
 
 def _wardrobe_places_hands(wardrobe: str | None) -> bool:
@@ -5053,7 +5209,8 @@ async def deliver_photo(
     # set-level daily-quota accounting happens here.
     _bump_photo_usage(telegram_id, record_delivery_type, character_id=character_id)
     current_state = get_state(telegram_id, character_id=character_id)
-    recent_outfits = (_json_list(getattr(current_state, 'recent_outfits_json', '[]')) + list(resolved.pack_outfits))[-6:]
+    # V3.167.26: 30 remembered garments (10 sets) so an 18+ level stops repeating.
+    recent_outfits = (_json_list(getattr(current_state, 'recent_outfits_json', '[]')) + list(resolved.pack_outfits))[-30:]
     recent_hair = (_json_list(getattr(current_state, 'recent_hairstyles_json', '[]')) + [resolved.hairstyle])[-4:]
     update_state(
         telegram_id, character_id=character_id,

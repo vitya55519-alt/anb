@@ -291,6 +291,22 @@ PHOTO_LABELS = {
     'private_fashion': '🔐 Будуар',
     'nude': '🔥 Обнажённая',
     'tease': '🍑 Дразнит',
+    # V3.167.26 (владелец: «добавь ещё 15 мест … и кнопки в фото»)
+    'beach': '🏖 На пляже',
+    'pool': '💦 У бассейна',
+    'yacht': '🛥 На яхте',
+    'hotel': '🏨 В отеле',
+    'balcony': '🌇 На балконе',
+    'garden': '🌸 В саду',
+    'kitchen': '🍳 На кухне',
+    'bedroom': '🛏 В спальне',
+    'spa': '🧖‍♀️ В спа',
+    'yoga': '🧘‍♀️ Йога',
+    'bridge': '🌉 На мосту',
+    'concert': '🎸 На концерте',
+    'forest': '🌲 В лесу',
+    'office': '💼 В офисе',
+    'library': '📚 В библиотеке',
 }
 
 PHOTO_MENU_ORDER = [
@@ -299,6 +315,8 @@ PHOTO_MENU_ORDER = [
     'restaurant', 'cinema', 'embankment', 'fashion',
     'evening', 'bar', 'karaoke', 'rooftop',
     'club', 'personal', 'lingerie', 'private_fashion',
+    'beach', 'pool', 'yacht', 'hotel', 'balcony', 'garden', 'kitchen', 'bedroom',
+    'spa', 'yoga', 'bridge', 'concert', 'forest', 'office', 'library',
     # V3.30.0: the two explicit adult buttons left the menu — the image
     # providers moderate them into HTTP 422 almost every time. Those scenes
     # stay in photo_service only for old library photos.
