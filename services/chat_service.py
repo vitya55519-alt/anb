@@ -965,6 +965,9 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                     explicit_line = (explicit_line + '\n' if explicit_line else '') + _trophy_hook
             except Exception:
                 _logger.debug('trophy hook failed user=%s', user_id, exc_info=True)
+        # V3.167.20: one line per reply to see why the 18+ register is on or off.
+        _logger.info('chat 18+ gate user=%s character=%s mode_on=%s adult_ok=%s intim_ok=%s explicit_line=%s',
+                     user_id, character_id, mode_on, _adult_ok(user_id), intim_ok, bool(explicit_line))
         if explicit_line:
             style_line = (style_line + '\n' if style_line else '') + explicit_line
         elif not intim_ok:
