@@ -141,10 +141,26 @@ def _bounds(level: int) -> tuple[int, int]:
 
 
 def _find_row(session, db_user_id: int, character_id: str) -> UserCharacterRelationship | None:
-    return session.scalar(select(UserCharacterRelationship).where(
+    row = session.scalar(select(UserCharacterRelationship).where(
         UserCharacterRelationship.user_id == db_user_id,
         UserCharacterRelationship.character_id == character_id,
     ))
+    # V3.167.17 fix: если записи нет, создаём её с нулевыми полями раскрепощённости.
+    # Иначе apply_progress и snapshot возвращают 0/None для новых девушек.
+    if row is None:
+        from datetime import datetime, timezone
+        row = UserCharacterRelationship(
+            user_id=db_user_id,
+            character_id=character_id,
+            spicy_confidence_level=1,
+            spicy_confidence_progress=0,
+            first_interaction_at=datetime.now(timezone.utc),
+            last_interaction_at=datetime.now(timezone.utc),
+            active_days=1,
+        )
+        session.add(row)
+        session.flush()
+    return row
 
 
 def _level_from_progress(progress: int) -> int:
