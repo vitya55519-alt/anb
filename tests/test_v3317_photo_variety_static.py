@@ -86,7 +86,7 @@ def test_photo_request_and_prompt_use_rotations():
     assert 'shuffled_sensual_variety_keys()' in PHOTO  # V3.51.4: rotation now defaults to the sensual pool
     # per-frame picks inside _build_prompt
     assert 'request.expression_rotation[shot_index % len(request.expression_rotation)]' in PHOTO
-    assert 'POSE NOTE: {_pose_note(request, shot_index)}' in PHOTO
+    assert 'POSE NOTE: {_pose_note(request, shot_index, wardrobe)}' in PHOTO
     # V3.166.12: the pose pick moved inside _pose_note together with the
     # «her other hand holds the phone» clause it used to append.
     assert 'return request.pose_rotation[shot_index % len(request.pose_rotation)]' in PHOTO

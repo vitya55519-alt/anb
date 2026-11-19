@@ -157,6 +157,19 @@ EXPRESSIONS: dict[str, str] = {
         'exactly two hands in total), warm bright eyes and a soft '
         'smile. Flirty and endearing.'
     ),
+    # V3.167.25 (владелец: «3 руки, искорени»): hand-free twins of the hand
+    # gestures. A frame with a POSE NOTE already places both hands; «blow a
+    # kiss with one hand, the other on the lap» on top of «one arm above her
+    # head» is exactly the third arm in the owner's screenshot.
+    'blow_kiss_lips': (
+        'a playful affectionate look with her lips softly pursed in an air kiss toward '
+        'the camera, warm bright eyes and a soft smile — the kiss is shown by her lips '
+        'only, no hand gesture. Flirty and endearing.'
+    ),
+    'shush_look': (
+        'a conspirative playful look with a hint of a secret smile, bright eyes, head '
+        'slightly tilted — shown by her face only, no hand gesture.'
+    ),
     'licking_lips': (
         'a hungry sensual expression: the tongue slowly running up over her lower '
         'lip, tip only visible between the lips — a single anatomically correct '
@@ -318,6 +331,14 @@ def detect_expression_key(text: str | None) -> str | None:
 
 
 PHOTO_SAFE_MOOD = {'upset': 'pouty_seductive', 'concerned': 'smile'}
+
+
+HAND_EXPRESSIONS = {'blow_kiss': 'blow_kiss_lips', 'shush': 'shush_look'}
+
+
+def hand_free_key(key: str | None) -> str | None:
+    """V3.167.25: the same look without a hand gesture (pose owns the hands)."""
+    return HAND_EXPRESSIONS.get(key or '', key)
 
 
 def expression_description(key: str | None, name: str) -> str:
