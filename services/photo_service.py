@@ -2840,6 +2840,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     # V3.167.17 (баг): уровни раскрепощённости применяются ко ВСЕМ сценам в режиме 18+,
     # включая селфи и приватные. Раньше PRIVATE_SCENES сбрасывали уровень в 0.
     spicy_level = spicy_confidence.current_level(telegram_id, character_id)
+    logger.info('photo_service._resolve_request: telegram_id=%s character_id=%s spicy_level=%s', telegram_id, character_id, spicy_level)
     ordinary_style = _ordinary_style_request(request, get_relationship_level(telegram_id, character_id))
     # V3.167.17 fix: если spicy_level > 0, то pinned_outfit должен быть False,
     # чтобы использовалась одежда из SPICY_OUTFIT_LEVELS, а не pack_outfits.
