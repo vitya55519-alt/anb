@@ -229,3 +229,32 @@ def test_spicy_card_has_no_relationship_meters():
     for banned in ('Отношения', 'Доверие', 'Страсть', 'Сейчас между вами', 'из 100'):
         assert banned not in body, banned
 
+
+def test_spicy_outfit_levels_have_variety():
+    """V3.167.17: 10 вариантов одежды на каждый уровень для разнообразия."""
+    from services.photo_service import SPICY_OUTFIT_LEVELS
+    for level in range(1, 11):
+        assert level in SPICY_OUTFIT_LEVELS, f"Уровень {level} отсутствует"
+        variants = SPICY_OUTFIT_LEVELS[level]
+        assert isinstance(variants, list), f"Уровень {level} должен быть списком"
+        assert len(variants) == 10, f"Уровень {level} должен иметь 10 вариантов, найдено {len(variants)}"
+        # Все варианты должны быть уникальными
+        assert len(set(variants)) == 10, f"Уровень {level} имеет дубликаты"
+
+
+def test_spicy_levels_apply_to_all_scenes():
+    """V3.167.17: уровни применяются ко всем сценам, включая selfie и приватные."""
+    # Проверяем, что код не сбрасывает уровень в 0 для PRIVATE_SCENES
+    assert "spicy_level = 0 if request.scene in PRIVATE_SCENES" not in PHOTO_SRC
+    assert "spicy_level = spicy_confidence.current_level(telegram_id, character_id)" in PHOTO_SRC
+
+
+def test_spicy_outfit_includes_shoes_and_stockings():
+    """V3.167.17: к одежде по уровню добавляются обувь и чулки."""
+    # Проверяем, что код добавляет обувь и чулки
+    assert "shoes = char_prefs.get('preferred_shoes') or random.choice(SHOES_POOL)" in PHOTO_SRC
+    assert "stockings = char_prefs.get('preferred_stockings') or random.choice(STOCKINGS_POOL)" in PHOTO_SRC
+    # Проверяем, что обувь и чулки добавляются к clothing
+    assert "clothing = f'{clothing}, {shoes}'" in PHOTO_SRC
+    assert "clothing = f'{clothing}, {stockings}'" in PHOTO_SRC
+

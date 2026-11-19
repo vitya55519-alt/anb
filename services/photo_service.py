@@ -2820,8 +2820,18 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     if spicy_level > 0 and spicy_level <= 10 and not pinned_outfit:
         # Используем случайный вариант одежды по уровню раскрепощённости (10 вариантов на уровень)
         clothing = random.choice(SPICY_OUTFIT_LEVELS[spicy_level])
+        # Бельё не показываем — уровень уже определяет откровенность
         underwear_color = ''
         underwear_style = ''
+        # Добавляем обувь и чулки для разнообразия (если их нет в описании одежды)
+        shoes = char_prefs.get('preferred_shoes') or random.choice(SHOES_POOL)
+        stockings = char_prefs.get('preferred_stockings') or random.choice(STOCKINGS_POOL)
+        # Проверяем, есть ли уже обувь в описании одежды
+        if not any(shoe_word in clothing.lower() for shoe_word in ['heel', 'boot', 'sandal', 'shoe', 'barefoot', 'wedge', 'mule']):
+            clothing = f'{clothing}, {shoes}'
+        # Проверяем, есть ли уже чулки в описании одежды
+        if not any(stocking_word in clothing.lower() for stocking_word in ['stocking', 'tights', 'fishnet']):
+            clothing = f'{clothing}, {stockings}'
     else:
         # Обычная логика выбора белья
         underwear_color = random.choice(UNDERWEAR_COLOR_POOL)
