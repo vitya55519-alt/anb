@@ -9910,7 +9910,20 @@ async def profile_button(message: types.Message):
     level_name = names.get(level, 'Getting to know each other' if lang == EN else 'Знакомство')
     hearts = '❤️' * min(level, MAX_RELATIONSHIP_LEVEL) + '🤍' * max(0, MAX_RELATIONSHIP_LEVEL - level)
     plateau_hint = ''
-    if not info['premium'] and level >= 6:
+    # V3.167.18: в режиме 18+ профиль показывает уровень раскрепощённости (1-10),
+    # а не уровень отношений, чтобы две шкалы не путались.
+    try:
+        from services import spicy_confidence as _spicy
+        _snap = _spicy.snapshot(message.from_user.id, char_id)
+    except Exception:
+        _snap = None
+    if _snap:
+        level = _snap['level']
+        level_name = ('🔥 Openness: ' if lang == EN else '🔥 Раскрепощённость: ') + _snap['name']
+        hearts = '🔥' * level + '🤍' * (_snap['max_level'] - level)
+        progress_text = ''
+        bond_text = ''
+    if not _snap and not info['premium'] and level >= 6:
         plateau_hint = (
             '🔒 ahead is the top of your path — levels 7–10 are Premium only\n'
             if lang == EN else
