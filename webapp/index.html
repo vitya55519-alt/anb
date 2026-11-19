@@ -906,11 +906,38 @@
   .chat-media button.hot { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
   /* V3.64.0: one full-width «✨ Возможности» button above the input replaces the
      pill strip; the pills live in #capSheet as rows with a short explanation. */
-  .chat-input .featmenu { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 9px 14px;
+  .chat-input .featmenu { width: 100%; position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 9px 14px;
     border-radius: 14px; border: 1px solid rgba(255,140,190,.35); color: #fff; font-size: 15px;
     background: linear-gradient(90deg, rgba(232,68,127,.28), rgba(180,76,255,.28)); box-shadow: 0 0 14px rgba(232,68,127,.18); }
   .featmenu .fm-t { font-weight: 700; letter-spacing: .2px; }
   .featmenu .fm-s { font-size: 11px; opacity: .75; font-weight: 400; }
+  /* V3.167.27 (владелец): «окно которое сварачивается и разварачивается» above
+     «✨ Возможности» — his own words draw the frame, the first one per Moscow
+     day is free, every later one the same price as a frame «наедине». */
+  .wishpanel { width: 100%; border: 1px solid rgba(255,140,190,.35); border-radius: 14px;
+    background: linear-gradient(135deg, rgba(232,68,127,.16), rgba(180,76,255,.16)); overflow: hidden; }
+  .wishpanel .wp-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px;
+    background: none; border: 0; color: #fff; font-size: 13px; text-align: left; cursor: pointer; }
+  .wishpanel .wp-t { flex: 1; font-weight: 700; }
+  .wishpanel .wp-cost { font-size: 11px; opacity: .7; font-weight: 400; }
+  .wishpanel .wp-arrow { font-size: 11px; opacity: .7; transition: transform .15s; }
+  .wishpanel.folded .wp-arrow { transform: rotate(-90deg); }
+  .wishpanel.folded .wp-body { display: none; }
+  .wishpanel .wp-body { display: flex; gap: 6px; padding: 2px 8px 8px; }
+  .wishpanel .wp-body input { flex: 1; min-width: 0; background: var(--card); border: 0; border-radius: 10px;
+    padding: 9px 10px; color: var(--text); font-size: 14px; }
+  .wishpanel .wp-body button { flex: 0 0 auto; border: 0; border-radius: 10px; padding: 0 14px; color: #fff;
+    font-size: 13px; font-weight: 700; cursor: pointer; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .wishpanel .wp-body button:disabled { opacity: .5; }
+  /* V3.167.27: «сделай чтобы кнопка возможности тоже сварачивалась» — the same
+     fold for the «✨ Возможности» strip: a plain row with no glow. */
+  .chat-input .featmenu.folded { flex-direction: row; justify-content: flex-start; gap: 8px; padding: 7px 12px;
+    border-color: rgba(255,255,255,.12); background: var(--card); box-shadow: none; }
+  .featmenu.folded .fm-s { display: none; }
+  .featmenu.folded .fm-t { font-size: 13px; }
+  .featmenu .fm-arrow { position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    font-size: 11px; opacity: .65; }
+  .featmenu.folded .fm-arrow { transform: translateY(-50%) rotate(-90deg); }
   .capsheet { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; }
   .capsheet .box { width: 100%; max-height: 86vh; overflow: auto; background: #1d1424; border-radius: 20px 20px 0 0;
     padding: 16px 14px calc(18px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,120,180,.3); }
@@ -1594,7 +1621,20 @@
     <!-- V3.64.0: «вкладки Свидание/Квартира непонятны» — the strip of 8 pills is
          gone from above the input; one full-width «✨ Возможности» button opens a
          sheet where every feature has a one-line explanation. -->
-    <button id="featMenuBtn" class="featmenu" type="button"><span class="fm-t" id="lbFeatMenu"></span><span class="fm-s" id="lbFeatMenuSub"></span></button>
+    <!-- V3.167.27: «✨ Фантазия» — his own words, her photo. Open by default
+         (owner: «по умолчанию открыто»), the fold is remembered per device. -->
+    <div id="wishPanel" class="wishpanel">
+      <button id="wishHead" class="wp-head" type="button">
+        <span class="wp-t" id="lbWishTitle"></span>
+        <span class="wp-cost" id="lbWishCost"></span>
+        <span class="wp-arrow">▾</span>
+      </button>
+      <div class="wp-body">
+        <input id="wishText" maxlength="300">
+        <button id="wishGo" class="wp-go" type="button"></button>
+      </div>
+    </div>
+    <button id="featMenuBtn" class="featmenu" type="button"><span class="fm-t" id="lbFeatMenu"></span><span class="fm-s" id="lbFeatMenuSub"></span><span class="fm-arrow">▾</span></button>
     <div class="chat-field">
       <input id="chatText" maxlength="4000" placeholder="">
       <button id="chatAttach" class="inbtn" type="button" aria-label="photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5 12.4 20.1a5.5 5.5 0 0 1-7.8-7.8l8.9-8.9a3.7 3.7 0 0 1 5.2 5.2l-8.9 8.9a1.8 1.8 0 0 1-2.6-2.6l8.2-8.2"/></svg></button>
@@ -2201,6 +2241,10 @@ const L_EN = {
   feat_video: 'Video', feat_cosplay: 'Cosplay', feat_hot: 'Private',
   // V3.64.0: the «✨ Features» button and a line explaining each chat feature.
   cap_btn: '✨ Features', cap_btn_sub: 'photo · undress · storylines · wardrobe · gifts · private · hot video',
+  // V3.167.27: the standalone «✨ Fantasy» panel above the Features strip.
+  wish_title: '✨ Fantasy', wish_ph: 'write what you want to see — any fantasy of yours',
+  wish_go: 'Show', wish_fold: 'Show a cheaper frame later', wish_yours: 'Your fantasy',
+  wish_refused: 'The generator won’t draw a frame like that — pick another plot',
   cap_title: '✨ What shall we do?', cap_sub: 'Everything you can do with her besides texting', cap_close: 'Close',
   cap_photo: 'Pick a scene and she sends you her photo from there',
   cap_quest: '2–3 small tasks a day. Do them in the chat to grow closer and unlock stories',
@@ -2552,6 +2596,10 @@ const L_RU = {
   feat_video: 'Видео', feat_cosplay: 'Косплей', feat_hot: 'Наедине',
   // V3.64.0: кнопка «✨ Возможности» и пояснения к каждой функции чата.
   cap_btn: '✨ Возможности', cap_btn_sub: 'фото · раздеть · сюжеты · гардероб · подарки · наедине · горячее видео',
+  // V3.167.27: отдельная панель «✨ Фантазия» над полосой «Возможности».
+  wish_title: '✨ Фантазия', wish_ph: 'напиши, что ты хочешь увидеть — любая твоя фантазия',
+  wish_go: 'Показать', wish_fold: 'Потом покажу кадр подешевле', wish_yours: 'Твоя фантазия',
+  wish_refused: 'Такой кадр генератор не рисует — выбери другой сюжет',
   cap_title: '✨ Чем займёмся?', cap_sub: 'Всё, что можно делать с ней кроме переписки', cap_close: 'Закрыть',
   cap_photo: 'Выбери сцену, и она пришлёт своё фото оттуда',
   cap_quest: '2–3 маленьких задания на день. Выполняешь в чате — растёт близость и открываются истории',
@@ -3123,6 +3171,10 @@ if(document.getElementById('lbFeatHotCircle')) document.getElementById('lbFeatHo
 // V3.64.0: «✨ Возможности» button + the explanation under each feature row.
 document.getElementById('lbFeatMenu').textContent = L.cap_btn;
 document.getElementById('lbFeatMenuSub').textContent = L.cap_btn_sub;
+// V3.167.27: the «✨ Фантазия» panel texts.
+document.getElementById('lbWishTitle').textContent = L.wish_title;
+document.getElementById('wishText').placeholder = L.wish_ph;
+document.getElementById('wishGo').textContent = L.wish_go;
 document.getElementById('capTitle').textContent = L.cap_title;
 document.getElementById('capSub').textContent = L.cap_sub;
 document.getElementById('capClose').textContent = L.cap_close;
@@ -6153,6 +6205,93 @@ async function requestMedia(kind, scene, opts) {
   }
 }
 
+// ── V3.167.27 (владелец): «✨ Фантазия» — his own words become her frame ────
+// A separate product, not a fetishes variant: the backend /webapp/api/chat/wish
+// bills it on its own (first frame of a Moscow day is free, later ones cost
+// the same as a frame «наедине») and charges only after the frame is delivered.
+async function wishSend() {
+  if (!CHAT) return;
+  if (mediaBusy) { toast(L.media_busy); return; }
+  if (!tg.initData) { toast(L.auth_short); return; }
+  const inp = document.getElementById('wishText');
+  const text = (inp.value || '').trim();
+  if (!text) { toast(L.wish_ph); return; }
+  const chatId = CHAT.id;
+  mediaBusy = true;
+  const btn = document.getElementById('wishGo');
+  btn.disabled = true;
+  const box = document.getElementById('chatMsgs');
+  const empty = box.querySelector('.chat-empty');
+  if (empty) empty.remove();
+  box.insertAdjacentHTML('beforeend', chatBubble({ role: 'user', content: L.wish_yours + ': ' + text }));
+  box.insertAdjacentHTML('beforeend', `<div class="typing" id="wishTyping">${esc(L.media_wait_photo)}</div>`);
+  box.scrollTop = box.scrollHeight;
+  try {
+    const r = await fetch('/webapp/api/chat/wish?init_data=' + encodeURIComponent(tg.initData), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: chatId, text: text }),
+    });
+    if (r.status === 401) { toast(L.auth_short); return; }
+    if (r.status === 400) { toast(L.wish_refused); return; }
+    if (r.status === 402) { quickBuy('peaches', wishSend); return; }
+    if (r.status === 403) {
+      const j = await r.json().catch(() => ({}));
+      if (j.error === 'premium_required') { quickBuy('spicy', wishSend); return; }
+      toast(j.error === 'consent' ? L.consent_needed : L.locked);
+      return;
+    }
+    const j = await r.json();
+    if (!j.ok) { toast(j.error === 'wish_refused' ? L.wish_refused : (j.reason || L.pic_gen_fail || L.reply_err)); return; }
+    // His other chat may have opened while this frame was rendering — the
+    // bubble stays in the dialog it belongs to (same rule as requestMedia).
+    if (!sameChat(chatId)) return;
+    box.insertAdjacentHTML('beforeend', chatBubble({ role: 'bot', content: j.content, media_kind: j.kind, media_url: j.url, nude: !!j.nude, ts: null }));
+    box.scrollTop = box.scrollHeight;
+    if (ME && j.credits_left != null) ME.photo_credits = j.credits_left;
+    if (j.set_completed > 0) toast(L.collect_done);
+    inp.value = '';
+  } catch (e) {
+    toast(L.reply_err);
+  } finally {
+    const t = document.getElementById('wishTyping');
+    if (t) t.remove();
+    mediaBusy = false;
+    btn.disabled = false;
+  }
+}
+document.getElementById('wishGo').addEventListener('click', wishSend);
+document.getElementById('wishText').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); wishSend(); } });
+
+// V3.167.27: both strips fold — the fantasy panel open by default, «Возможности»
+// as it was; the choice is remembered on this device.
+function setFold(el, key, folded) {
+  el.classList.toggle('folded', folded);
+  try { localStorage.setItem(key, folded ? '1' : '0'); } catch (e) {}
+}
+function isFolded(key) {
+  try { return localStorage.getItem(key) === '1'; } catch (e) { return false; }
+}
+const wishPanel = document.getElementById('wishPanel');
+const featMenuBtnEl = document.getElementById('featMenuBtn');
+setFold(wishPanel, 'wish_fold', isFolded('wish_fold'));
+setFold(featMenuBtnEl, 'feat_fold', isFolded('feat_fold'));
+// A panel folded on a previous visit must say so from the first frame, not
+// only after he taps the header.
+document.getElementById('lbWishCost').textContent = wishPanel.classList.contains('folded') ? L.wish_fold : '';
+document.getElementById('wishHead').addEventListener('click', () => {
+  const folded = !wishPanel.classList.contains('folded');
+  setFold(wishPanel, 'wish_fold', folded);
+  document.getElementById('lbWishCost').textContent = folded ? L.wish_fold : '';
+});
+document.getElementById('featMenuBtn').addEventListener('click', (e) => {
+  if (e.target.closest('.fm-arrow')) {
+    setFold(featMenuBtnEl, 'feat_fold', !featMenuBtnEl.classList.contains('folded'));
+    return;
+  }
+  openCapSheet();
+});
+
 // ── V3.41.0: app-chat feature sheet — apartment / date / daily quest ───────
 // One overlay renders all three menus from /webapp/api/feature; taps post to
 // /webapp/api/feature/action. Built with string concatenation + esc() so every
@@ -9091,7 +9230,8 @@ document.getElementById('plotSheet').addEventListener('click', (e) => { if (e.ta
 // own listener above opens that feature as before.
 function openCapSheet() { document.getElementById('capSheet').style.display = 'flex'; }
 function closeCapSheet() { document.getElementById('capSheet').style.display = 'none'; }
-document.getElementById('featMenuBtn').addEventListener('click', openCapSheet);
+// V3.167.27: the fold-arrow listener above owns the button now — the old
+// one-line listener here opened the sheet on every tap, including the arrow.
 document.getElementById('capClose').addEventListener('click', closeCapSheet);
 document.getElementById('capSheet').addEventListener('click', (e) => {
   if (e.target.id === 'capSheet' || e.target.closest('.chat-media button')) closeCapSheet();

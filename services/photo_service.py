@@ -3411,7 +3411,11 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     if request.gift_outfit:  # V3.116.0: today's gift garment wins over the level-5+ lingerie rule
         home_lingerie = False
     if adult_scene:
-        wardrobe = 'nothing at all — an elegant fine-art nude composition, tasteful and intimate, styled like classic boudoir photography'
+        # V3.167.27 (owner 20.11: «на груди нет сосков»): bare frames need the
+        # anatomy said plainly, the engine does not infer it.
+        wardrobe = ('nothing at all — an elegant fine-art nude composition, tasteful and intimate, styled like '
+                    'classic boudoir photography; her chest shows real adult anatomy with visible natural nipples, '
+                    'never a smooth featureless chest')
         underlay_rule = ''
     elif home_lingerie:
         style_note = f' ({request.underwear_style})' if request.underwear_style else ''

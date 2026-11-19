@@ -133,5 +133,7 @@ def test_the_adult_safety_block_is_not_baked_into_the_warm_prompt():
     # У романтики нет ни adult-сцены, ни старта (её строки без image_prompt),
     # значит кадр рисуется в обычном цензурном конверте.
     assert PHOTO.count('safety = ADULT_SAFETY') == 1
-    block = PHOTO[PHOTO.index('if adult_scene or starter:'):]
+    # V3.167.17 added spicy_frame to the same condition — the romance route has
+    # none of the three, so its frame still goes through the censored envelope.
+    block = PHOTO[PHOTO.index('if adult_scene or starter or spicy_frame:'):]
     assert 'safety = ADULT_SAFETY' in block[:700]

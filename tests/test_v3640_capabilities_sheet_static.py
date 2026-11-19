@@ -25,5 +25,10 @@ def test_every_feature_has_an_explanation_in_both_languages():
 
 
 def test_sheet_opens_and_closes_on_row_tap():
-    assert "getElementById('featMenuBtn').addEventListener('click', openCapSheet)" in INDEX
+    # V3.167.27: the strip has a fold arrow now — the tap still opens the sheet,
+    # only a tap on the arrow folds it instead.
+    handler = INDEX[INDEX.index("getElementById('featMenuBtn').addEventListener('click'"):]
+    handler = handler[:handler.index('});')]
+    assert "closest('.fm-arrow')" in handler
+    assert 'openCapSheet()' in handler
     assert "e.target.closest('.chat-media button')) closeCapSheet()" in INDEX

@@ -27,7 +27,8 @@ def test_pool_only_reuses_fresh_renders_and_admin_skips_it():
     main = (ROOT / 'main.py').read_text(encoding='utf-8')
     # V3.165.0 (#104): a «Серия кадров» frame skips the stockpile too — four
     # pictures pulled from the pool would be the same photo four times.
-    assert 'pooled = None if (series or telegram_id in ADMIN_TELEGRAM_IDS) else pool_get(' in main
+    # V3.167.27: «✨ Фантазия» skips it too — his words must draw their own frame.
+    assert 'pooled = None if (series or wish or telegram_id in ADMIN_TELEGRAM_IDS) else pool_get(' in main
 
 
 def test_lifted_top_types_and_bra_variety():

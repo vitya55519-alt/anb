@@ -689,6 +689,15 @@ def build_private_photo_prompt(
                 'part of this picture: dress her and pose her exactly as the THEME line says, her body exactly as '
                 'declared in BODY IDENTITY.'
             )
+        # V3.167.27 (owner 20.11: «ланы на груди нет сосков»): on bare frames the
+        # engine paints smooth featureless chests unless the anatomy is said
+        # plainly — so it is said for every uncensored render (nude categories
+        # and his own theme/fantasy frames).
+        if request.category in ADULT_RENDER_CATEGORIES or request.theme:
+            parts.append(
+                'ANATOMY: her chest is drawn with real adult anatomy — visible natural nipples and areolae, '
+                'never a smooth featureless chest.'
+            )
         # V3.45.26: player-picked colour for lingerie / apparel categories.
         if request.color and request.category in ("lingerie", "suggestive", "roleplay"):
             color_data = next((c for c in LINGERIE_COLORS if c["id"] == request.color), None)

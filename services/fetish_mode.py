@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 ACTIVE_HOURS = 24
 CUSTOM_MAX = 80
+# V3.167.27 (owner): the standalone fantasy panel allows his own words up to
+# 300 characters — the same hard-limit filter, only a longer budget.
+WISH_MAX = 300
 _state = dialog_store.DialogStore('fetish_mode')
 
 # key, emoji, ru title, en title, what the theme is (for the prompt), her opening line
@@ -156,11 +159,12 @@ def photo_theme(telegram_id: int, character_id: str, key: str = '') -> dict | No
         return None
 
 
-def photo_theme_text(text: str) -> dict | None:
+def photo_theme_text(text: str, max_len: int = CUSTOM_MAX) -> dict | None:
     """V3.165.0 (#104): his own words as a PHOTO theme, straight from the sheet —
     the same hard-limit filter as the chat mode, without switching the mode on (a
-    man without Premium buys the frame, not the theme). None = refused."""
-    c = clean_custom(text)
+    man without Premium buys the frame, not the theme). None = refused.
+    V3.167.27: ``max_len`` — the standalone fantasy panel sends 300-char text."""
+    c = clean_custom(text, max_len)
     if not c:
         return None
     return {'key': 'custom', 'title': c, 'visual': CUSTOM_PHOTO_NOTE.format(text=c)}
@@ -182,9 +186,12 @@ def public_list(lang: str = 'ru') -> list[dict]:
     return [{'key': k, 'emoji': e, 'title': (en if lang == 'en' else ru)} for k, e, ru, en, _d, _o in FETISHES]
 
 
-def clean_custom(text: str) -> str | None:
-    """His own theme, one line, or None when it is empty / touches a hard limit."""
-    t = re.sub(r'\s+', ' ', str(text or '')).strip()[:CUSTOM_MAX]
+def clean_custom(text: str, max_len: int = CUSTOM_MAX) -> str | None:
+    """His own theme, one line, or None when it is empty / touches a hard limit.
+
+    V3.167.27: ``max_len`` lets the standalone fantasy panel allow 300 chars
+    while the fetish sheet keeps its 80 — the same _BLOCKED filter either way."""
+    t = re.sub(r'\s+', ' ', str(text or '')).strip()[:max_len]
     t = t.replace('«', '').replace('»', '').replace('"', '').strip()
     if len(t) < 3 or _BLOCKED.search(t):
         return None

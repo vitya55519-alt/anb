@@ -18209,13 +18209,17 @@ def _hot_scene_is_nude(scene) -> bool:
 
 
 async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, cosplay: bool = False,
-                            theme_text: str = '', series: bool = False):
+                            theme_text: str = '', series: bool = False, wish: bool = False):
     """V3.45: generate a private/cosplay photo via SpicyAPI.
 
     V3.165.0 (#104): ``series`` is one frame of «Серия кадров» — the caller bills
     the whole set at once, so a series frame never spends the free shot of the
     day, never pays the single-frame price and never reuses the cache or the
     stockpile: four identical pictures are not a series.
+    V3.167.27: ``wish`` is the standalone «✨ Фантазия» frame — its own endpoint
+    bills it (one free per Moscow day, then the explicit-frame price), so here
+    it never touches the Premium/pass free shot, never pays internally and
+    never takes a pooled frame, which was rendered for different words.
     """
     from services.private_photo_service import (
         PrivatePhotoRequest, build_private_photo_prompt, generate_private_photo_real,
@@ -18238,7 +18242,8 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     # V3.165.0 (#104): «Наедине» opened to everyone who pays, so its free shot
     # of the day stays the Premium / pass / earned perk. Cosplay keeps its own
     # long-standing free daily for everybody.
-    free_used = (consume_free_private_photo(telegram_id, 'cosplay') if cosplay
+    free_used = (True if wish else
+                 consume_free_private_photo(telegram_id, 'cosplay') if cosplay
                  else False if series else _hot_frame_is_free(telegram_id, cat_id))
     if not free_used and not series:
         if get_paid_peaches(telegram_id) < peach_cost:
@@ -18259,7 +18264,9 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
             # No key = the theme running in this chat. Unknown/refused theme: no
             # render at all, so nobody is charged for a frame nobody asked for.
             from services import fetish_mode
-            theme_item = (fetish_mode.photo_theme_text(theme_text) if theme_text
+            theme_item = (fetish_mode.photo_theme_text(theme_text, max_len=fetish_mode.WISH_MAX)
+                          if wish else
+                          fetish_mode.photo_theme_text(theme_text) if theme_text
                           else fetish_mode.photo_theme(telegram_id, character_id, type_id))
             if not theme_item:
                 raise PhotoGenerationError('hot', 'theme_refused')
@@ -18293,7 +18300,10 @@ async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, 
     # rotation makes the exact prompt-hash cache_get almost never repeat, so
     # this reads the accumulated stockpile matched on stable columns instead.
     # V3.60.1: the owner tests fresh renders, never the stockpile.
-    pooled = None if (series or telegram_id in ADMIN_TELEGRAM_IDS) else pool_get(character_id, cat_id, req.type_id)
+    # V3.167.27: a wish frame never takes the stockpile either — the pooled
+    # shot was rendered for someone else's words, and his fantasy must match
+    # HIS words.
+    pooled = None if (series or wish or telegram_id in ADMIN_TELEGRAM_IDS) else pool_get(character_id, cat_id, req.type_id)
     if pooled:
         if not free_used:
             spend_peaches(telegram_id, peach_cost, paid_only=True)
@@ -19325,6 +19335,122 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     if isinstance(out, dict) and out.get('ok'):
         _app_ping(telegram_id, character_id, out.get('content') or '',
                   out.get('kind') if out.get('kind') in ('photo', 'video', 'circle') else None)
+    return web.json_response(out)
+
+
+async def _webapp_api_chat_wish(request: web.Request) -> web.Response:
+    """V3.167.27 (owner ТЗ, 20.11): «✨ Фантазия» — отдельная функция над
+    «Возможностями». Он своими словами пишет, что хочет видеть, и генератор
+    рисует ЭТУ девушку из чата: режим 18+ — без цензуры (тот же несъёмный
+    движок, что и у кадров «Наедине»), романтика — обычный цензурный конвейер
+    фото. Экономика своя и только что заданная владельцем: первый кадр в
+    сутки (МСК) бесплатен для любого аккаунта, дальше — существующая цена
+    платного кадра; списание только за доставленный кадр, отказ движка ничего
+    не стоит. Фетиш-режим при этом НЕ включается и стена сообщений не тратится."""
+    pairs = webapp_service.validate_init_data(request.query.get('init_data', ''))
+    if not pairs:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    user_info = webapp_service.init_data_user(pairs)
+    telegram_id = user_info.get('id')
+    if not telegram_id:
+        return web.json_response({'ok': False, 'error': 'auth'}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    character_id = str(body.get('character_id', ''))
+    from services import wish_service
+    # His own words, one line up to 300 chars; only the engine's hard limits
+    # (minors / animals / violence) refuse a frame — nothing else is filtered.
+    text = wish_service.clean_wish(str(body.get('text') or ''))
+    if not text or not character_id:
+        return web.json_response({'ok': False, 'error': 'wish_refused'}, status=400)
+    await asyncio.to_thread(_remember_character, int(telegram_id), character_id)
+
+    def _gate():
+        if is_custom_character(character_id):
+            if not get_custom_character_by_id(character_id):
+                return web.json_response({'ok': False, 'error': 'unknown_character'}, status=400)
+            if _custom_premium_gate_block(character_id, telegram_id):
+                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+        else:
+            card = get_card(character_id)
+            if not card or card.status not in ('active', 'premium'):
+                return web.json_response({'ok': False, 'error': 'locked'}, status=403)
+            if card.status == 'premium' and not is_premium(telegram_id):
+                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+            if _card_girl_photo_locked(character_id, telegram_id):
+                return web.json_response({'ok': False, 'error': 'premium_required'}, status=403)
+        if not has_accepted(telegram_id):
+            return web.json_response({'ok': False, 'error': 'consent'}, status=403)
+        if telegram_id not in ADMIN_TELEGRAM_IDS and not wish_service.free_available(telegram_id) \
+                and get_paid_peaches(telegram_id) < wish_service.cost():
+            try:
+                track_event(ensure_user(telegram_id), 'paywall_view',
+                            metadata={'product': 'wish', 'scene': 'wish', 'source': 'app'})
+            except Exception:
+                pass
+            return web.json_response({'ok': False, 'error': 'credits',
+                                      'cost': wish_service.cost()}, status=402)
+        uid = ensure_user(telegram_id, user_info.get('first_name') or '',
+                          language_code=user_info.get('language_code'))
+        track_event(uid, 'webapp_chat_media',
+                    metadata={'character_id': character_id, 'kind': 'wish', 'scene': 'wish'})
+        return uid
+
+    gated = await asyncio.to_thread(_gate)
+    if not isinstance(gated, int):
+        return gated
+    uid = gated
+    uncensored = bool(is_adult_confirmed(telegram_id))
+    try:
+        if uncensored:
+            data, mime, ext = await _webapp_media_hot(telegram_id, character_id, 'fetish:custom',
+                                                      theme_text=text, wish=True)
+        else:
+            data, mime, ext = await _webapp_pipeline_photo(
+                telegram_id, character_id,
+                PhotoRequest(scene='selfie', starter_note=wish_service.photo_line(text)))
+    except PhotoGenerationError as exc:
+        logger.warning('webapp wish gen failed user=%s provider=%s reason=%s',
+                       telegram_id, exc.provider, exc.reason)
+        await asyncio.to_thread(webapp_service.record_generation_failure, telegram_id, 'wish',
+                                character_id, 'wish', f'{exc.provider}: {exc.reason}')
+        reason = exc.reason if telegram_id in ADMIN_TELEGRAM_IDS else None
+        return web.json_response({'ok': False, 'error': 'gen', 'reason': reason}, status=502)
+    except Exception:
+        logger.exception('webapp wish failed user=%s', telegram_id)
+        return web.json_response({'ok': False, 'error': 'gen'}, status=502)
+    if not data:
+        return web.json_response({'ok': False, 'error': 'gen'}, status=502)
+
+    def _finish():
+        filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
+        url = f'/webapp/media/{filename}'
+        hint = _HOT_MEDIA_HINT.pop(telegram_id, None) if uncensored else None
+        if hint:
+            webapp_service.record_generation(telegram_id, 'wish', character_id, 'wish', filename,
+                                             engine=hint[0], cost_usd=hint[1])
+        else:
+            webapp_service.record_generation(telegram_id, 'wish', character_id, 'wish', filename)
+        content = ('\U0001f48b \u043d\u0430\u0435\u0434\u0438\u043d\u0435...' if uncensored
+                   else '\U0001f4f8 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0444\u043e\u0442\u043e')
+        save_message(uid, character_id, 'assistant', content, media_kind='photo', media_url=url)
+        # The frame exists — only now the day's free slot is burned or the
+        # explicit-frame price is spent (paid peaches only, the owner's rail).
+        billed = 'free' if telegram_id in ADMIN_TELEGRAM_IDS else wish_service.settle(telegram_id)
+        from services.collection_service import gallery_set_progress, note_gallery_set
+        set_completed = note_gallery_set(telegram_id, character_id)
+        gallery = gallery_set_progress(telegram_id, character_id)
+        return {'ok': True, 'kind': 'photo', 'url': url, 'content': content, 'nude': False,
+                'billed': billed, 'wish_cost': 0 if billed == 'free' else wish_service.cost(),
+                'credits_left': get_photo_credits(telegram_id),
+                'set_completed': set_completed, 'gallery': gallery}
+
+    out = await asyncio.to_thread(_finish)
+    if isinstance(out, dict) and out.get('ok'):
+        _app_ping(telegram_id, character_id, out.get('content') or '', 'photo')
     return web.json_response(out)
 
 
@@ -21062,6 +21188,7 @@ async def _start_web_server() -> None:
     # V3.38.0: the Come Closer tabs — dialog list, picture studio + gallery.
     app.router.add_get('/webapp/api/chats', _webapp_api_chats)
     app.router.add_post('/webapp/api/chat/media', _webapp_api_chat_media)
+    app.router.add_post('/webapp/api/chat/wish', _webapp_api_chat_wish)
     # V3.41.0: the app-chat feature buttons — apartment / date / daily quest.
     app.router.add_get('/webapp/api/feature', _webapp_api_feature)
     app.router.add_post('/webapp/api/feature/action', _webapp_api_feature_action)

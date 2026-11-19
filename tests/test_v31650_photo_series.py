@@ -45,7 +45,9 @@ def test_a_series_frame_spends_nothing_on_its_own():
     assert 'series: bool = False' in hot
     assert 'series else _hot_frame_is_free' in hot, 'даром-кадр дня не входит в сет'
     assert 'cached = None if series else cache_get' in hot, 'сет — это разные кадры'
-    assert 'None if (series or telegram_id in ADMIN_TELEGRAM_IDS) else pool_get' in hot
+    # V3.167.27: his own fantasy frame skips the stockpile for the same reason —
+    # a pooled picture was rendered for someone else's words.
+    assert 'None if (series or wish or telegram_id in ADMIN_TELEGRAM_IDS) else pool_get' in hot
     assert hot.count('if not free_used and not series:') == 2, 'плата за кадр вне сцены сета'
 
 

@@ -83,13 +83,14 @@ def test_switching_girls_replaces_the_previous_one():
 
 def test_every_app_entry_point_that_names_her_records_her():
     # открытие чата, её ход (текст и голос идут через _webapp_chat_turn), его
-    # фото, тап по кадру, заказ медиа и выбор в истории — шесть мест.
-    assert MAIN.count('await asyncio.to_thread(_remember_character') == 6
+    # фото, тап по кадру, заказ медиа, выбор в истории и «✨ Фантазия» — семь мест.
+    assert MAIN.count('await asyncio.to_thread(_remember_character') == 7
     assert 'def _remember_character(' in MAIN
     assert '_remember_character' in _body('async def _webapp_chat_turn(')
     assert '_remember_character' in _body('async def _webapp_api_chat_start(')
     assert '_remember_character' in _body('async def _webapp_api_chat_media(')
     assert '_remember_character' in _body('async def _webapp_api_chat_photo(')
+    assert '_remember_character' in _body('async def _webapp_api_chat_wish(')
     assert '_remember_character' in _body('async def _webapp_api_photo_action(')
     assert "add_post('/webapp/api/chat/action', _webapp_api_chat_action)" in MAIN
     action = _body('async def _webapp_api_chat_action(')
