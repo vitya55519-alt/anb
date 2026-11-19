@@ -2462,22 +2462,18 @@ async def ensure_custom_avatar_cached(bot, character_id: str) -> Path | None:
 async def generate_custom_avatar(prompt: str, reference_path: Path | None = None) -> tuple[bytes, str]:
     """Generate a constructor avatar as (jpeg_bytes, mime).
 
-    Seedream with a user face reference acts as face-swap (identity anchor);
-    without a reference it creates a fresh identity. Gemini image generation
-    is the fallback route when fal.ai is unavailable or fails.
+    Without a reference the avatar/studio frame is a fictional girl and
+    renders on SpicyAPI text-to-image (V3.64.5: «вообще все генерации через
+    Spicy», fal dead since 15.10).
+    V3.167.26 (owner 19.11: «вместо Гимины рисует Спайси»): an uploaded face
+    reference now rides SpicyAPI's edit engine FIRST — Gemini kept drifting
+    the identity («лицо не похоже на фотопромпт») and beautified it. Gemini
+    stays only as the fallback leg when Spicy returns nothing.
+    Every engine attempt bumps the provider counters (V3.40.0), so the admin
+    «Отказы» screen shows which leg of the chain is flaky, and the whole
+    failure chain is carried into the studio toast (V3.44.3).
     """
-    # V3.25.0: _seedream_edit/_gemini_edit below are the real engines; the
-    # face reference makes Seedream act as a face-swap identity anchor.
-    # V3.40.0: every engine attempt bumps the provider counters, so the admin
-    # «Отказы» screen shows which leg of the chain is flaky.
-    # V3.44.3: accumulate the whole chain — the studio toast must show WHY
-    # every engine failed, not just the last one.
     chain_errors: list[str] = []
-    # V3.64.5: owner's call «вообще все генерации через Spicy» — fal is off
-    # for good (dead since 15.10). Without a reference the avatar/studio frame
-    # is a fictional girl and renders on SpicyAPI text-to-image. A reference
-    # here is a user's real uploaded photo: that one never goes to the
-    # uncensored engine and stays on the censored Gemini edit.
     if reference_path is None:
         from services.private_photo_service import generate_private_photo_t2i
         data = await generate_private_photo_t2i(
@@ -2488,6 +2484,22 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
             return data, 'image/jpeg'
         from services.private_photo_service import spicyapi_last_error
         raise PhotoGenerationError('custom_avatar', f'spicyapi_t2i/{spicyapi_last_error() or "empty_result"}')
+    from services.private_photo_service import (
+        SPICYAPI_IMAGE_MODEL, _spicyapi_render, spicyapi_last_error,
+    )
+    data = None
+    try:
+        data = await _spicyapi_render(
+            SPICYAPI_IMAGE_MODEL, prompt, [_file_data_uri(reference_path)],
+            scene='avatar_edit',
+        )
+    except Exception as exc:
+        chain_errors.append(f'spicy/{type(exc).__name__}')
+    record_provider('photo/spicyapi_edit', bool(data))
+    if data:
+        return data, 'image/jpeg'
+    if not any(e.startswith('spicy/') for e in chain_errors):
+        chain_errors.append(f'spicy/{spicyapi_last_error() or "empty_result"}')
     if gemini_on_cooldown():
         chain_errors.append('gemini/skipped: http_429 cooldown')
         raise PhotoGenerationError('custom_avatar', ' → '.join(chain_errors))

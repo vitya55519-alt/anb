@@ -17934,8 +17934,10 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
     # censored fal Seedream answers HTTP 422 content_policy_violation on an
     # explicit prompt, so those renders ride the same SpicyAPI text-to-image
     # the «Наедине» nude flow uses. Minors/coercion are hard-blocked above and
-    # never reach any engine. V3.54.0: a real uploaded face NEVER routes to the
-    # uncensored engine — img2img stays on the censored Seedream/Gemini chain.
+    # never reach any engine. V3.54.0: img2img over an uploaded photo stayed
+    # on the censored Gemini leg. V3.167.26 (owner 19.11: «вместо Гимины рисует
+    # Спайси»): uploaded references now draw on SpicyAPI edit first, Gemini is
+    # the fallback inside generate_custom_avatar; uploads remain admin-only.
     # V3.86.0: owner — explicit pictures are Premium-only. A spicy prompt from
     # a non-Premium user gets the Premium sheet (nothing charged, no render);
     # the uncensored engine is opened for Premium (and admins) only.
