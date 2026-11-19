@@ -1773,6 +1773,7 @@ class PhotoRequest:
     accessory: str = ''
     time_of_day: str = ''
     pack_outfits: tuple[str, ...] = ()
+    spicy_level: int = 0  # V3.167.19: 1-10 in «Без цензуры 18+», 0 otherwise
     customized: bool = False
     underwear_color: str = ''
     underwear_style: str = ''
@@ -2942,6 +2943,12 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         # Добавляем аксессуары (часы, браслеты, серьги, цепочки, кольца)
         if not request.accessory:
             accessory = random.choice(ACCESSORY_POOL_EXTENDED)
+        # V3.167.19: _build_prompt reads pack_outfits first, so the spicy outfit
+        # has to replace it, otherwise the old pack wardrobe reaches the model.
+        pack_outfits = tuple(
+            clothing if i == 0 else random.choice(SPICY_OUTFIT_LEVELS[spicy_level])
+            for i in range(max(1, len(pack_outfits) or PHOTO_SET_SIZE))
+        )
     else:
         logger.info('photo_service: ordinary branch taken, spicy_level=%s pinned_outfit=%s', spicy_level, pinned_outfit)
         # Обычная логика выбора белья
@@ -3001,7 +3008,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         f"spicy_level={spicy_level} poses_count={len(pose_rotation)}"
     )
     return replace(request, clothing=clothing, hairstyle=hairstyle, location=location, season=season,
-                   pack_outfits=pack_outfits, hair_color=hair_color, makeup=makeup,
+                   pack_outfits=pack_outfits, spicy_level=spicy_level, hair_color=hair_color, makeup=makeup,
                    accessory=accessory, time_of_day=time_of_day,
                    underwear_color=underwear_color, underwear_style=underwear_style,
                    expression_rotation=expression_rotation, pose_rotation=pose_rotation,
@@ -3040,6 +3047,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # only: the general-audience OpenAI fallback route keeps ordinary
     # wardrobes to stay within its moderation envelope.
     adult_scene = seedream and request.scene in ADULT_SCENES and not force_safe
+    spicy_frame = bool(seedream and request.spicy_level > 0 and not force_safe)
     home_lingerie = seedream and level_key >= 5 and request.scene in HOME_LINGERIE_SCENES and not force_safe
     if request.gift_outfit:  # V3.116.0: today's gift garment wins over the level-5+ lingerie rule
         home_lingerie = False
@@ -3086,7 +3094,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     season = request.season or _default_season()
     season_rule = SEASON_RULES.get(season, SEASON_RULES['summer'])
     identity, personal, safety, expression_identity = _character_identity_lock(character_id, seedream=seedream, expression_key=request.expression_key or (request.expression_rotation[shot_index % len(request.expression_rotation)] if request.expression_rotation else None))
-    if adult_scene or starter:
+    if adult_scene or starter or spicy_frame:
         # V3.166.5 (владелец: «полная нагота всегда, и стартовые кадры тоже»):
         # the teaser frame is shown only in the «Без цензуры 18+» mode, so the
         # censorship envelope of the romantic route must not sit under it — the
@@ -3119,7 +3127,7 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
     # force_safe even a private scene stays general-audience, so the lock
     # applies there too.
     private_look = (
-        adult_scene or home_lingerie
+        adult_scene or home_lingerie or spicy_frame
         or (not force_safe and request.scene in (SEEDREAM_ADULT_SCENES | ADULT_SCENES))
     )
     public_dress_rule = '' if private_look else PUBLIC_DRESS_RULE + '\n'
