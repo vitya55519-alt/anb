@@ -231,15 +231,15 @@ def test_spicy_card_has_no_relationship_meters():
 
 
 def test_spicy_outfit_levels_have_variety():
-    """V3.167.17: 10 вариантов одежды на каждый уровень для разнообразия."""
+    """V3.167.17: 20 вариантов одежды на каждый уровень для разнообразия."""
     from services.photo_service import SPICY_OUTFIT_LEVELS
     for level in range(1, 11):
         assert level in SPICY_OUTFIT_LEVELS, f"Уровень {level} отсутствует"
         variants = SPICY_OUTFIT_LEVELS[level]
         assert isinstance(variants, list), f"Уровень {level} должен быть списком"
-        assert len(variants) == 10, f"Уровень {level} должен иметь 10 вариантов, найдено {len(variants)}"
+        assert len(variants) == 20, f"Уровень {level} должен иметь 20 вариантов, найдено {len(variants)}"
         # Все варианты должны быть уникальными
-        assert len(set(variants)) == 10, f"Уровень {level} имеет дубликаты"
+        assert len(set(variants)) == 20, f"Уровень {level} имеет дубликаты"
 
 
 def test_spicy_levels_apply_to_all_scenes():
