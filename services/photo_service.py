@@ -2627,8 +2627,9 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
                           if request.accessory else gf['accessory'])
     if gf.get('underwear') and not wd.get('underwear'):
         wd = dict(wd, underwear=gf['underwear'])
-    PRIVATE_SCENES = SEEDREAM_ADULT_SCENES | {'selfie'}
-    spicy_level = 0 if request.scene in PRIVATE_SCENES else spicy_confidence.current_level(telegram_id, character_id)
+    # V3.167.17 (баг): уровни раскрепощённости применяются ко ВСЕМ сценам в режиме 18+,
+    # включая селфи и приватные. Раньше PRIVATE_SCENES сбрасывали уровень в 0.
+    spicy_level = spicy_confidence.current_level(telegram_id, character_id)
     ordinary_style = _ordinary_style_request(request, get_relationship_level(telegram_id, character_id))
     pinned_outfit = bool(ordinary_style and (request.clothing or request.pack_outfits))
     ordinary_style = ordinary_style and (spicy_level == 0 or pinned_outfit)
@@ -2705,8 +2706,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     makeup = request.makeup or char_prefs.get('preferred_makeup') or random.choice(MAKEUP_POOL_EXTENDED)
     accessory = request.accessory or char_prefs.get('preferred_accessories') or random.choice(ACCESSORY_POOL_EXTENDED)
     time_of_day = _outdoor_light(request.time_of_day or _local_time_light(telegram_id) or random.choice(DAYLIGHT_POOL), request.scene)
-    # V3.167.14 этап 7: уровень раскрепощённости меняет одежду только на ПУБЛИЧНЫХ сценах.
-    # Домашние (van, спальня, ванная, «Раздеть», «Наедине», селфи) остаются всегда в белье/голые.
+    # V3.167.17: уровень раскрепощённости меняет одежду на ВСЕХ сценах в режиме 18+.
     if spicy_level > 0 and spicy_level <= 10 and not pinned_outfit:
         # Используем одежду по уровню раскрепощённости (уже включает обувь и чулки)
         clothing = SPICY_OUTFIT_LEVELS[spicy_level]

@@ -130,9 +130,8 @@ def test_chat_service_wires_message_delta():
 def test_photo_service_wires_photo_delta_and_home_bypass():
     assert "from services import spicy_confidence" in PHOTO_SRC
     assert "kind='photo'" in PHOTO_SRC
-    # Дом и «Раздеть» идут мимо SPICY_OUTFIT_LEVELS.
-    assert "PRIVATE_SCENES = SEEDREAM_ADULT_SCENES | {'selfie'}" in PHOTO_SRC
-    assert "spicy_level = 0 if request.scene in PRIVATE_SCENES else spicy_confidence.current_level(telegram_id, character_id)" in PHOTO_SRC
+    # V3.167.17: уровни раскрепощённости применяются ко ВСЕМ сценам в режиме 18+.
+    assert "spicy_level = spicy_confidence.current_level(telegram_id, character_id)" in PHOTO_SRC
     # Explicit outfits are pinned only for ordinary photos; private scenes still bypass spicy styling.
     assert "ordinary_style = _ordinary_style_request(request, get_relationship_level(telegram_id, character_id))" in PHOTO_SRC
     assert "pinned_outfit = bool(ordinary_style and (request.clothing or request.pack_outfits))" in PHOTO_SRC
