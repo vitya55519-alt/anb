@@ -14839,11 +14839,16 @@ async def _webapp_api_spicy(request: web.Request) -> web.Response:
         body = {}
     wanted = (body or {}).get('spicy')
     wanted = None if wanted is None else bool(wanted)
+    # V3.167.21: the «Мне есть 18 лет» sheet in the app sends adult_confirm —
+    # his own tap is the 18+ confirmation, same as the bot's button.
+    adult_tap = bool((body or {}).get('adult_confirm'))
 
     def _set():
         user = get_user(telegram_id)
         current = bool(getattr(user, 'spicy_mode', False)) if user else False
         new = current if wanted is None else bool(wanted)
+        if new and adult_tap and not is_adult_confirmed(telegram_id):
+            set_adult_confirmed(telegram_id, True)
         if new == current:
             return current
         if new and not is_adult_confirmed(telegram_id):
