@@ -2841,7 +2841,9 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     # включая селфи и приватные. Раньше PRIVATE_SCENES сбрасывали уровень в 0.
     spicy_level = spicy_confidence.current_level(telegram_id, character_id)
     ordinary_style = _ordinary_style_request(request, get_relationship_level(telegram_id, character_id))
-    pinned_outfit = bool(ordinary_style and (request.clothing or request.pack_outfits))
+    # V3.167.17 fix: если spicy_level > 0, то pinned_outfit должен быть False,
+    # чтобы использовалась одежда из SPICY_OUTFIT_LEVELS, а не pack_outfits.
+    pinned_outfit = bool(ordinary_style and (request.clothing or request.pack_outfits)) and spicy_level == 0
     ordinary_style = ordinary_style and (spicy_level == 0 or pinned_outfit)
     pack_outfits = tuple(request.pack_outfits) if request.pack_outfits else _choose_progression_outfits(
         telegram_id, request, season, character_id=character_id, ordinary_style=ordinary_style)
