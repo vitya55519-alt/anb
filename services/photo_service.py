@@ -2926,7 +2926,10 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
                  telegram_id, character_id, spicy_level, pinned_outfit, clothing[:80] if clothing else None)
     if spicy_level > 0 and spicy_level <= 10 and not pinned_outfit:
         # Используем случайный вариант одежды по уровню раскрепощённости (20 вариантов на уровень)
-        clothing = random.choice(SPICY_OUTFIT_LEVELS[spicy_level])
+        # V3.167.20: the outfit strings carry a venue after ';' (club, beach…);
+        # it fought the scene he picked (gym button → home/club frame). The
+        # scene button decides the place, the level decides only the garment.
+        clothing = random.choice(SPICY_OUTFIT_LEVELS[spicy_level]).split(';', 1)[0].strip()
         logger.info('photo_service: spicy branch taken, level=%s pinned_outfit=%s clothing=%s', spicy_level, pinned_outfit, clothing[:120])
         # Бельё не показываем — уровень уже определяет откровенность
         underwear_color = ''
@@ -2946,7 +2949,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         # V3.167.19: _build_prompt reads pack_outfits first, so the spicy outfit
         # has to replace it, otherwise the old pack wardrobe reaches the model.
         pack_outfits = tuple(
-            clothing if i == 0 else random.choice(SPICY_OUTFIT_LEVELS[spicy_level])
+            clothing if i == 0 else random.choice(SPICY_OUTFIT_LEVELS[spicy_level]).split(';', 1)[0].strip()
             for i in range(max(1, len(pack_outfits) or PHOTO_SET_SIZE))
         )
     else:
