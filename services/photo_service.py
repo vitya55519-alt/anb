@@ -971,13 +971,13 @@ SPICY_OUTFIT_LEVELS = {
 # V3.167.14: обувь для разнообразия
 SHOES_POOL = [
     'high heels, long legs',
-    'sneakers, sporty style',
-    'strappy thin-strap sandals',
-    'platform boots',
-    'classic court shoes',
-    'barefoot, natural',
+    'stiletto heels',
+    'platform heels',
     'knee-high heeled boots',
-    'flat sandals',
+    'thigh-high heeled boots',
+    'heeled ankle boots',
+    'classic court shoes',
+    'platform boots',
 ]
 
 # V3.167.14: чулки/колготки для разнообразия
