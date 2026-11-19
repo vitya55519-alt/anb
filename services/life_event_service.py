@@ -155,7 +155,7 @@ def _recent_her_lines(telegram_id: int, character_id: str, limit: int = 6) -> li
 
 def _system_prompt(name: str, when: str, tastes: list[str], temperament: str,
                    mem: str, hook: str, recent: list[str] | None = None,
-                   level: int = 1, mode_on: bool = False) -> str:
+                   level: int = 1, mode_on: bool = False, participation: bool = False) -> str:
     """V3.167.4 (владелец ТЗ §4): «её день» звучит как смс, а не как рассылка —
     одно-три предложения с бытовой деталью, без вопросов-анкет, тон по уровню
     близости и по режиму, в конце недосказанность под одну кнопку."""
@@ -181,6 +181,10 @@ def _system_prompt(name: str, when: str, tastes: list[str], temperament: str,
         'дальше» («и тут он позвонил…», «угадаешь, что я ответила?»). Больше '
         'ничего после неё. Без хэштегов, не упоминай, что ты ИИ или что это рассылка.',
     ]
+    if participation:
+        from services.life_scene import PARTICIPATION_RULE
+        # Replace the control cliffhanger, rather than asking for both formats.
+        bits[-1] = PARTICIPATION_RULE
     if tastes:
         bits.append('Зацепка для момента (одна из твоих тем/вкусов): ' + random.choice(tastes) + '.')
     if mem:
@@ -247,16 +251,30 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
         from services.user_service import ensure_user
         uid = ensure_user(telegram_id)
         level, mode_on = _relationship_frame(telegram_id, character_id)
-        system = _system_prompt(name, when, tastes, temperament, mem, hook, recent,
-                                level=level, mode_on=mode_on)
+        from services import life_experiment
+        experiment = life_experiment.assignment(uid)
+        experiment['mode_on'] = mode_on
+        participation = experiment['variant'] == 'treatment'
+        # The legacy pending hook is account-wide. Never copy it into a new
+        # character-specific scene; the confirmed memory above is scoped.
+        system = _system_prompt(name, when, tastes, temperament, mem,
+                                '' if participation else hook, recent,
+                                level=level, mode_on=mode_on, participation=participation)
         from services.llm_provider_service import generate_text
         # V3.63.1: a system-only request is rejected by MiniMax («chat content
         # is empty») and Gemini («contents is not specified») — every life
         # moment failed. The user turn carries the ask.
         r = await generate_text([{'role': 'system', 'content': system},
                                  {'role': 'user', 'content': 'Напиши ему это сообщение сейчас.'}],
-                                max_tokens=90, temperature=0.95, purpose='life_event')
+                                max_tokens=160 if participation else 90,
+                                temperature=0.95, purpose='life_event')
         text = (getattr(r, 'text', '') or '').strip().strip('"').strip()
+        actions = None
+        if participation:
+            from services.life_scene import parse_moment
+            text, actions = parse_moment(text)
+            if not text:
+                return {}
         # V3.63.15: same chat polish as replies (no em dash, no emoji tic) and
         # nothing she already said; a pure repeat skips the slot.
         from services.dialogue_guard_service import finish_or_drop, polish_first_message
@@ -268,7 +286,8 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
         if LIFE_EVENTS_PHOTO_CHANCE and random.random() < LIFE_EVENTS_PHOTO_CHANCE:
             photo = _pool_photo(character_id, uid)
         options = [(lbl, f'life_reply:{character_id}:{key}') for lbl, key in _REPLY_OPTIONS]
-        return {'text': text, 'photo': photo, 'options': options, 'when': when}
+        return {'text': text, 'photo': photo, 'options': options, 'when': when,
+                'actions': actions, 'experiment': experiment}
     except Exception:
         logger.exception('build_life_moment failed user=%s char=%s', telegram_id, character_id)
         return {}

@@ -25,9 +25,11 @@ def test_only_her_generated_photos_can_be_edited():
     # V3.138.0: her room can be brought to life, but there is nobody in it to undress
     # V3.166.10 (владелец): платный кадр «наедине…» лежит в истории как 'hot',
     # косплей — 'cosplay'; оба теперь проходят, его загрузки — по-прежнему нет.
+    # V3.167.17: _her_photo возвращает (found, frame_nude), и гейт проверяет found.
     assert "her_frames = ('photo', 'hot', 'cosplay')" in MAIN
     assert "kinds = her_frames + ('room',) if action == 'animate' else her_frames" in MAIN
-    assert 'if not _her_photo(uid, kinds):' in MAIN
+    assert 'found, frame_nude = _her_photo(uid, kinds)' in MAIN
+    assert 'if not found:' in MAIN
 
 
 def test_undress_prompt_strips_her_and_adds_the_husband_when_married(monkeypatch):

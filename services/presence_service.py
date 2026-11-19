@@ -53,9 +53,14 @@ def maybe_welcome_back(user_id: int, character_id: str, now: datetime | None = N
                 return None  # a brand-new chat opens with her greeting, not this
             if now - last.created_at < timedelta(hours=WELCOME_BACK_HOURS):
                 return None
-            line = welcome_back_line(last.role, character_id)
-            s.add(Message(user_id=user_id, character_id=character_id, role='assistant', content=line))
+            from services.life_scene import welcome_back
+            handled, line = welcome_back(s, user_id, character_id, now)
+            if not handled:
+                line = welcome_back_line(last.role, character_id)
+                s.add(Message(user_id=user_id, character_id=character_id, role='assistant', content=line))
             s.commit()
+            if not line:
+                return None
         try:
             from services.analytics_service import track_event
             track_event(user_id, 'welcome_back_shown', metadata={'character_id': character_id})

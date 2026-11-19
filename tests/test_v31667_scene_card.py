@@ -119,7 +119,7 @@ def test_the_reply_carries_the_card_rule_and_the_remember_runs_first():
     turn = CHAT[CHAT.index('def _blocks('):]
     assert 'scene_card_service.strip_card(t)' in turn[:turn.index('marks =')]
     reply = CHAT[CHAT.index('async def reply('):]
-    assert reply.index('scene_card_service.remember') < reply.index('save_message(db_user_id, character_id, "user"')
+    assert reply.index('scene_card_service.remember') < reply.index('save_message(db_user_id, character_id, "assistant", answer,')
 
 
 def test_the_photo_now_comes_after_her_words():
@@ -208,14 +208,14 @@ def _undress_prompt(tid, monkeypatch, who_status='mar_married'):
 
 
 def test_the_undress_edit_no_longer_takes_the_room_from_her_words(monkeypatch):
-    # V3.167.4 (владелец, «тот же кадр без исключений»): комната платного кадра
-    # берётся только из самого кадра. Анкета остаётся при одном — есть ли в этой
-    # же комнате мужчина (следующий тест).
+    # V3.167.17 (владелец, «Раздеть» = НОВЫЙ кадр): комната берётся из пула UNDRESS_SHOTS
+    # (только приватные места), а не из анкеты кадра. Анкета остаётся при одном —
+    # есть ли в этой же комнате мужчина (следующий тест).
     import main
     tid = _tid(5)
     sc.remember(tid, 'lana_01', 'где=кухня | рядом=нет | кто= | сцена=a kitchen, evening light')
     prompt, _ = _undress_prompt(tid, monkeypatch)
-    assert main.UNDRESS_PLACE_LOCK in prompt
+    assert main.UNDRESS_NEW_SHOT_LOCK in prompt
     assert 'PLACE FROM HER OWN WORDS' not in prompt and 'a kitchen, evening light' not in prompt
     assert 'move her into her bedroom or a hotel room' not in prompt
     assert 'never take its room, background, furniture' in prompt  # image 2 = only her face

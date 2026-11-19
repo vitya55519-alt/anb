@@ -6861,7 +6861,7 @@ async def story_choice_cb(cq: types.CallbackQuery):
                                           web_app=types.WebAppInfo(url=f'{PUBLIC_BASE_URL}/webapp?open=chat'))])
     await cq.message.answer(answer, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
     try:
-        await asyncio.to_thread(save_message, uid, character_id, 'user', said)
+        await asyncio.to_thread(save_message, uid, character_id, 'user', said, origin='user_input')
         await asyncio.to_thread(save_message, uid, character_id, 'assistant', answer)
     except Exception:
         logger.exception('story persist failed user=%s', cq.from_user.id)
@@ -12036,6 +12036,57 @@ async def admin_week_cmd(message: types.Message):
     await message.answer(weekly_report.render(data, _character_display_name))
 
 
+@dp.message(Command('life_stop'))
+async def admin_life_stop_cmd(message: types.Message):
+    """Rollback switch of the «её день» experiment: durable stop, no new
+    scenes, existing dialogs keep working. Admin only."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import life_experiment as life
+    await asyncio.to_thread(life.stop, 'manual')
+    await message.answer('Эксперимент «её день» остановлен. Новые сцены не создаются, '
+                         'обычные события и диалоги работают как раньше.')
+
+
+@dp.message(Command('life_issues'))
+async def admin_life_issues_cmd(message: types.Message):
+    """Review queue of memory/intrusiveness signals (identifiers, no texts)."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import life_experiment as life
+    rows = await asyncio.to_thread(life.recent_issues, 15)
+    if not rows:
+        await message.answer('Сигналов по событиям пока нет.')
+        return
+    lines = ['Сигналы (подтвердить: /life_confirm номер):']
+    for r in rows:
+        mark = '✅' if r['confirmed'] else '⏳'
+        kind = 'память' if r['kind'] == 'memory' else 'навязчивость'
+        lines.append(f"{mark} #{r['id']} · {kind} · событие {r['event_id']} · сообщение {r['message_id']}")
+    await message.answer('\n'.join(lines))
+
+
+@dp.message(Command('life_confirm'))
+async def admin_life_confirm_cmd(message: types.Message):
+    """Confirm one reviewed incident; two distinct confirmed ones stop the run."""
+    if message.from_user.id not in ADMIN_TELEGRAM_IDS:
+        return
+    from services import life_experiment as life
+    parts = (message.text or '').split()
+    try:
+        issue_id = int(parts[1])
+    except (IndexError, ValueError):
+        await message.answer('Формат: /life_confirm номер (номера — в /life_issues)')
+        return
+    ok = await asyncio.to_thread(life.confirm_issue, issue_id)
+    if not ok:
+        await message.answer('Не найдено или уже подтверждено.')
+        return
+    data = await asyncio.to_thread(life.collect_report)
+    tail = ' Эксперимент остановлен: два подтверждённых сбоя.' if data['status'] == 'stopped' else ''
+    await message.answer(f'Сигнал #{issue_id} подтверждён.{tail}')
+
+
 # ── V3.108.0: /voicecast — the owner's one-off evening voice to everyone ──
 # Owner: «отправить всем пользователям голосовое… мягкое, человеческое,
 # сексуальное. посмотрим, как звучит». First the admin hears it himself; the
@@ -15507,7 +15558,7 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
                                            telegram_id=telegram_id, lang=user_info.get('language_code', ''))
             photo_write_started = False
             try:
-                save_message(uid, character_id, 'user', text)
+                save_message(uid, character_id, 'user', text, origin='user_input')
                 url = f'/webapp/starter/{cache_id}'
                 if words:
                     save_message(uid, character_id, 'assistant', words)
@@ -16420,7 +16471,8 @@ async def _webapp_api_chat_action(request: web.Request) -> web.Response:
             row = session.scalar(select(Message).where(
                 Message.id == message_id, Message.user_id == user.id,
                 Message.character_id == character_id, Message.role == 'assistant'))
-            actions = message_actions(row.actions_json) if row else []
+            from services.life_scene import action_available
+            actions = message_actions(row.actions_json) if row and action_available(session, row) else []
             if action_index >= len(actions):
                 return None
             return user.id, actions[action_index], row.actions_json
@@ -17072,7 +17124,7 @@ async def _webapp_api_chat_photo(request: web.Request) -> web.Response:
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
         filename = webapp_service.save_chat_media(telegram_id, data, 'jpg', mime)
         url = f'/webapp/media/{filename}'
-        save_message(uid, character_id, 'user', caption or '📷', media_kind='photo', media_url=url)
+        save_message(uid, character_id, 'user', caption or '📷', media_kind='photo', media_url=url, origin='user_input')
         save_message(uid, character_id, 'assistant', reaction)
         track_event(uid, 'photo_reaction_sent', metadata={'character_id': character_id, 'source': 'webapp'})
         return url
@@ -18092,6 +18144,16 @@ async def _webapp_media_photo(telegram_id: int, character_id: str, scene: str = 
 # feed shows the true money trail; the caller pops it on the same event loop tick.
 _HOT_MEDIA_HINT: dict = {}
 
+# V3.167.17 (владелец): категории «Наедине», где движок рисует её полностью
+# голой. Под таким кадром «Раздеть» не предлагает ничего снять — плата за уже
+# снятое, — поэтому доставка помечает кадр как голый. «fetish» здесь нет: его
+# кадр рисуется по его же теме и может быть в одежде.
+NUDE_HOT_FRAME_CATEGORIES = frozenset({'fully_nude', 'nude_art'})
+
+
+def _hot_scene_is_nude(scene) -> bool:
+    return str(scene or '').split(':')[0] in NUDE_HOT_FRAME_CATEGORIES
+
 
 async def _webapp_media_hot(telegram_id: int, character_id: str, category: str, cosplay: bool = False,
                             theme_text: str = '', series: bool = False):
@@ -18380,14 +18442,12 @@ async def _webapp_media_video(telegram_id: int, character_id: str):
 UNDRESS_ANATOMY_LOCK = (
     'HANDS: she is ONE person with exactly two arms and two hands, five correct fingers on each hand, '
     'both hands attached to her own shoulders. Never a third hand or arm, never a detached hand, never an '
-    'extra or merged finger — count the hands before finishing. A hand already in her hair or on her body in '
-    'image 1 is one of those two hands and stays exactly there: the reveal does not move it and does not get '
-    'a free third one. '
+    'extra or merged finger — count the hands before finishing. The pose below names where her two hands are, '
+    'and that pose is the whole answer: the new photo never borrows a hand from image 1. '
     # V3.166.12 (владелец: «убери телефон, всё селфи-рамки»): it used to order
     # «if one hand holds the phone in image 1, it keeps holding it» — that kept
     # the phone and the arm reaching to the camera alive in every paid frame.
-    'No device and no camera appear in the new photo: if image 1 shows one in her hand, that hand is empty now '
-    'and nothing reaches toward the viewer.'
+    'No device and no camera appear in the new photo: nothing reaches toward the viewer.'
 )
 # V3.167.2 (владелец, 16.11): «попросил фото, а потом Раздеть … модель присылает
 # ТО ЖЕ фото, только без одежды, чтобы была логическая цепочка». Платный кадр
@@ -18396,86 +18456,104 @@ UNDRESS_ANATOMY_LOCK = (
 # обрывалась. Теперь правка снимает ОДЕЖДУ и больше ничего: позу, ракурс,
 # кадрировку, свет и стены движок берёт из кадра 1. Замок стоит первой строкой
 # и зарегистрирован в последнем срезе (tier 3), поэтому доходит до движка всегда.
-UNDRESS_SAME_FRAME_LOCK = (
-    'SAME FRAME LOCK: this is the SAME photo he is looking at now, only without her clothes. '
-    'Reproduce image 1 frame for frame: the same adult woman, identical face, hair, makeup, body and skin; her '
-    'pose, head tilt, arm, hand and leg positions, what she leans or sits on, her expression and where she looks '
-    'all stay exactly as in image 1; the same camera angle, height, distance, crop and framing; the same room, '
-    'background, furniture and objects; the same time of day, light and colours. '
-    'Take her clothes off and change nothing else: do not re-pose her, do not turn her around, do not move her '
-    'to another room, do not restyle or re-light the photo, do not add, remove or rearrange anything. The only '
-    'thing besides her clothes that may leave the frame is a device she was holding in image 1 — that hand is '
-    'empty now. This lock beats every pose, place or scene line below it.'
+# V3.167.2 (владелец, 16.11) держал правило «тот же кадр, только без одежды».
+# 19.11 (владелец, по скриншотам Mini App) решение изменено: «Раздеть» = НОВЫЙ
+# кадр — другая поза и другое место, но та же она. Замок держит лицо, волосы,
+# тело и то, что он на неё подарил, и прямо запрещает копировать позу, рамку и
+# стены исходного снимка.
+UNDRESS_NEW_SHOT_LOCK = (
+    'NEW SHOT LOCK: a new photo of the same woman he is looking at in image 1, taken a minute later. '
+    'Her face, eyes, nose, smile, hair, makeup, nails, skin tone, figure and body shape are identical to image 1, '
+    'and she is the only person in the photo. Everything else is new: another pose, another camera height and '
+    'distance, another place. Do not copy image 1 — not its pose, not its framing, not its room, not its light. '
+    'Her face stays fully visible and she looks into the camera; never a photo of her back alone. '
+    'Jewellery is not clothing: what she wears as jewellery in image 1 stays on her in the new photo.'
+)
+# Куда и как она переставляется. Только приватные места: голый кадр на улице или
+# в офисе — не то, за что он платит (тот же смысл держит enforce_private_location).
+# Поза и место берутся парой, чтобы кадр не собирался в «сидит на полу в боксе у
+# окна».
+UNDRESS_SHOTS = (
+    ('her bedroom, the bedside lamp on',
+     'sitting on the edge of the bed, leaning toward the camera, both hands resting on her own thighs'),
+    ('her bedroom, morning light through the curtains',
+     'lying on her side, propped on one elbow, looking up into the camera'),
+    ('the bathroom, warm light and steam on the mirror',
+     'standing by the sink, half-turned, looking back over her shoulder at the camera'),
+    ('her kitchen at night, lit only by the hood lamp',
+     'leaning back against the counter, one knee bent, one hand lifted into her hair'),
+    ('the hall of her flat, by the front door',
+     'sitting on the floor with her back against the door, knees drawn up, both hands at her sides'),
+    ('her living room, the sofa under a low lamp',
+     'reclining along the sofa, both arms folded on her own waist'),
+    ('a hotel room on a trip, the lamp by the headboard',
+     'kneeling on the bed facing the camera, both hands open on her own thighs'),
+    ('the balcony of her flat, city lights behind her',
+     'standing at the rail in side profile, her chin turned to the camera'),
+)
+UNDRESS_SHOT_PLACE = (
+    'SHOT PLACE: the new photo is taken in {place}. It is a private place — never a street, bar, club, restaurant, '
+    'office, gym, mall or any public venue — and it is not the room of image 1.'
+)
+UNDRESS_SHOT_POSE = (
+    'SHOT POSE: in the new photo she is {pose}. This is a different pose from image 1, and the camera stands '
+    'outside her body at another height and distance; both her hands belong to her own shoulders.'
 )
 UNDRESS_PROMPT = (
-    'Edit this exact photo: the frame of image 1 stays, her clothing comes off. Her face also matches image 2. '
-    # V3.166.7 (владелец): image 2 is her portrait — a bedroom shot — and the
-    # engine used to move the paid frame into that bedroom. The portrait gives
-    # a face and nothing else.
+    'A new photo of the same woman as in image 1, her clothing gone. Her face also matches image 2. '
+    # V3.166.7 (владелец): image 2 — её портрет, и движок уносил кадр в спальню с
+    # этого портрета. Портрет даёт лицо и ничего больше.
     'Image 2 is only her face: never take its room, background, furniture, clothing, pose or light from image 2. '
-    # V3.166.5: it used to read «keep her outfit recognisable», which fought every
-    # reveal below and is what left her dressed after he paid.
-    'Where a garment comes off, the skin under it is bare. A garment the reveal leaves on stays exactly as in '
-    'image 1: same fabric, same colour, same place on her body. '
+    # V3.166.5: «keep her outfit recognisable» противоречило каждому заходу ниже.
+    'Where a garment used to be, the skin is bare. '
 )
-# V3.166.5 (владелец, 16:40): «чтобы она могла показать ему жопу, закрыть ладонью
-# грудь, сжать грудь… показать, что у неё между ног». Гейт эндпоинта —
-# подтверждённые 18+ и уплаченные персики, поэтому уровень близости больше не
-# решает, что в кадре: он решает только то, как она это скажет.
+# Вода V3.166.5: гейт эндпоинта — подтверждённые 18+ и уплаченные персики,
+# поэтому уровень близости больше не решает, что в кадре: он решает только то,
+# как она это скажет.
 UNDRESS_NUDE_LOCK = (
-    ' SHE IS COMPLETELY NAKED in the new photo: no clothing, no lingerie, nothing worn anywhere on her body, '
-    'no blur and no mosaic. Uncensored adult photo, NSFW allowed. Only her own hand or arm covers anything, and '
-    'only where image 1 already puts that hand; everything else is shown bare.'
+    ' SHE IS COMPLETELY NAKED in the new photo: no clothing and no lingerie anywhere on her body, no blur and no '
+    'mosaic. Uncensored adult photo, NSFW allowed. Only her own hand or arm covers anything. Jewellery is not '
+    'clothing and stays on her — earrings, a necklace, a bracelet, a ring.'
 )
-# V3.167.2: вместо пула поз — одно состояние одежды. Движок не переставляет её,
-# он только снимает с неё то, что надето на кадре 1.
 UNDRESS_CLOTHES_OFF = (
-    ' CLOTHES: every garment she wears in image 1 is off her body and out of the frame — top, blouse, shirt, '
-    'dress, jumpsuit, cardigan, jacket, coat, bra, panties, jeans, trousers, shorts, skirt, leggings, tights, '
-    'socks and shoes alike. What she wears in image 1 decides what came off; a garment image 1 does not show her '
-    'wearing cannot appear here either.'
+    ' CLOTHES: she wears nothing in the new photo — no top, blouse, shirt, dress, jumpsuit, cardigan, jacket, '
+    'coat, bra, panties, jeans, trousers, shorts, skirt, leggings, tights, socks and no shoes. Whatever image 1 '
+    'showed her wearing stays off her body and out of the frame, and a garment she never wore cannot appear.'
 )
-# Последний, самый мягкий заход, когда движок отказался нарисовать наготу: та же
-# поза и те же стены, с неё снято только верхнее платье.
+# Последний, самый мягкий заход, когда движок отказался нарисовать наготу. Если
+# бельё он ей уже подарил — остаётся его, а не случайное кружево.
 UNDRESS_CLOTHES_LACE = (
-    ' CLOTHES: the outer outfit she wears in image 1 is off — top, blouse, dress, jumpsuit, cardigan, jacket, '
-    'coat, jeans, trousers, skirt, socks and shoes alike — and she keeps only a simple set of lace lingerie: '
-    'a bra and matching panties that fit her body in image 1. Nothing else about the photo changes.'
+    ' CLOTHES: she wears only a simple set of lace lingerie — a bra and matching panties that fit her body — and '
+    'nothing else: no dress, no jeans, no trousers, no socks, no shoes.'
 )
+UNDRESS_KEEPS_LINGERIE = (' CLOTHES: the lingerie he gave her is the only thing left on her body — {lingerie} — '
+                          'and nothing else: no dress, no jeans, no trousers, no shoes.')
+UNDRESS_KEEPS_JEWELS = ' SHE KEEPS ON: the jewellery he gave her stays on her in the new photo — {jewels}.'
+UNDRESS_KEEPS_ROOM = (' HER ROOM: this is her own room, the one he furnished for her: {room}. Those things are in '
+                      'the frame; do not replace them with a generic bedroom.')
 UNDRESS_TAIL = (
-    ' Her face, expression and gaze are the ones from image 1 — the only difference between this photo and '
-    'image 1 is her bare skin. Natural slender female hands with five correct fingers. Photorealistic, the same '
-    'smartphone-photo look, grain and colours as image 1. '
+    ' Her face is unmistakably the woman from image 1 — the same eyes, nose, smile, hair and skin; only the pose, '
+    'the place and the camera are new. Natural slender female hands with five correct fingers. Photorealistic, the '
+    'same amateur smartphone-photo look, grain and colours as image 1. '
     # V3.166.10: «ровно две руки» переехало в UNDRESS_ANATOMY_LOCK — первой
     # строкой промпта; здесь остаётся только то, как она выглядит.
     # V3.166.12 (владелец): телефон из кадра убран и здесь — раньше хвост
     # разрешал ему остаться, если он был в руке на исходном фото.
-    'She has exactly two arms and two hands, both staying exactly where image 1 leaves them; no device and no '
-    'arm reaching toward the camera appear in the photo. Never a third hand or arm.'
+    'She has exactly two arms and two hands. No device and no arm reaching toward the camera appear in the photo. '
+    'Never a third hand or arm.'
 )
 # V3.152.1 оставлял правке одно исключение: публичное место на исходном фото
 # (бар, клуб, улица, офис, зал, транспорт) переносило кадр в её комнату.
-# V3.167.4 (владелец, 16.11, «тот же кадр без исключений»): исключение снято —
-# где он её видит, там она и остаётся, приватно это место или нет. Свой префикс
-# («SAME PLACE LOCK:»), а не «PLACE:», чтобы не пересекаться с тем же замком
-# обычного фото-конвейера; префикс зарегистрирован в последнем срезе.
-UNDRESS_PLACE_LOCK = (
-    'SAME PLACE LOCK: the place of image 1 IS the place of the new photo, private or public alike — her home, '
-    'bedroom, bathroom or hotel, but a bar, club, restaurant, street, office, mall, gym or transport just the '
-    'same. Nobody moves her anywhere: the same walls, furniture, street, light and time of day, seen from the '
-    'same spot. This line has no exception, and it is not an exception to the same-frame lock above it.'
-)
-# V3.152.1: снятый кадр остаётся её собственным любительским снимком, а не
-# студийной съёмкой (в общем конвейере за это же отвечает enforce_private_location).
+# V3.167.4 («тот же кадр без исключений») снял его, V3.167.17 вернул другое:
+# новый кадр сам выбирается из приватных мест, поэтому исключений больше нет.
 UNDRESS_AMATEUR_LOCK = ' ' + AMATEUR_HOT_FRAME_LOCK
 # V3.61.10 introduced a pool of poses («поднять подол», «показать спину», «лечь на
 # кровать»), V3.166.5 — пул голых поз. Оба они переснимали кадр заново и рвали ту
-# самую цепочку, о которой он пишет: вместо того снимка, что у него перед глазами,
-# приходил другой. V3.167.2: пулы удалены — платный кадр меняет только одежду,
-# позу и стены движок берёт из UNDRESS_SAME_FRAME_LOCK.
+# самую цепочку, о которой он писал 16.11; V3.167.17 тем же выбором вернул новый
+# кадр, поэтому пары «место + поза» снова живут в UNDRESS_SHOTS.
 UNDRESS_LINES = ('ну раз ты так просишь… 🙈', 'только тебе 🙈🔥', 'смотри, но никому 🤫', 'вот так лучше? 😏',
-                 'это тот же кадр, только я уже без всего 🙈', 'снимаю с этого фото всё — держи 🔥',
-                 'тот же ракурс, только одежды больше нет 😏', 'дальше — заслужи 😉')
+                 'переставилась — держи 🔥', 'другая поза, только для тебя 🙈', 'новый ракурс, как ты любишь 😏',
+                 'дальше — заслужи 😉')
 # V3.165.0 (#107, owner): «Раздеть» is once in 24 hours. Inside the window the
 # second tap draws nothing and costs nothing — the wording he dictated on 13 Nov
 # is that she says plainly that she is already naked AND right away offers a new
@@ -18489,13 +18567,14 @@ UNDRESS_ALREADY_LINES = (
     'голая я уже, милый 😏 скучно снимать одно и то же — попроси о новом кадре: ванна, кухня или другой ракурс',
 )
 # A married girl / one with a boyfriend: he is in the room, back turned and unaware.
-# V3.81.1 («3 руки») + V3.167.2: the secret never moves her — no finger-to-lips,
-# no turned head. It stays in her eyes, because the frame itself does not move.
+# V3.81.1 («3 руки») + V3.167.17: the secret never moves her — no finger-to-lips,
+# no turned head. It stays in her eyes, because her hands are already busy in the
+# pose above and a hand near her face is how the engine grows a third arm.
 UNDRESS_SECRET_NO_FINGER = (
     ' SECRET MOMENT: in the background, slightly out of focus, her {who} (an adult man, fully clothed) stands '
     'with his back to the camera, busy and unaware; his face is not visible. She takes this photo secretly; '
-    'the secret shows only in her eyes, without moving her head, her hands or her pose. Both her hands stay '
-    'exactly where image 1 leaves them, no hand near her face, exactly two arms and two hands in the photo.'
+    'the secret shows only in her eyes, without moving her head or her pose. Both her hands stay in the pose '
+    'above, no hand near her face, exactly two arms and two hands in the photo.'
 )
 UNDRESS_SECRET_LINES = ('тсс… он прямо за спиной 🤫🔥', 'пока он не видит… только тебе 🙈', 'если он обернётся, мне конец 😳🔥')
 
@@ -18530,22 +18609,44 @@ def _undress_allowance(uid: int, telegram_id: int, character_id: str, used_today
 UNDRESS_SAFE_VARIANT = ('lace', UNDRESS_CLOTHES_LACE)
 
 
-def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) -> tuple[str, bool]:
-    """V3.167.4 (владелец): the paid frame is the photo he is looking at with her
-    clothes off and NOTHING else changed — the same pose, camera angle, room and
-    light, and now the same place too: the public-place exception of V3.152.1 and
-    the room-from-her-words rule of V3.166.7 are both gone, because either one
-    could hand back a different photo than the one in front of him. The
-    relationship level never decides what is in the frame; only the engine's
-    refusal does (``safe`` is the last, gentlest try before the tap is refunded).
+def _undress_keeps(telegram_id: int, character_id: str) -> dict:
+    """What the reveal is not allowed to take off her: the jewellery he gave her,
+    the lingerie he gave her, the room he furnished (wardrobe_service.reveal_keeps).
+    Fail-silent — a gift lookup must never cost him a paid frame."""
+    try:
+        from services import wardrobe_service
+        return wardrobe_service.reveal_keeps(telegram_id, character_id) or {}
+    except Exception:
+        logger.warning('undress keeps lookup failed user=%s', telegram_id)
+        return {}
 
-    The scene card still decides one thing: whether a man physically stands in
-    that same room, and may therefore show up behind her."""
-    reveal = UNDRESS_SAFE_VARIANT[1] if safe else UNDRESS_CLOTHES_OFF
-    prompt, secret = (UNDRESS_SAME_FRAME_LOCK + '\n' + UNDRESS_ANATOMY_LOCK + '\n' + UNDRESS_PLACE_LOCK + '\n'
-                      + UNDRESS_PROMPT + reveal
-                      + ('' if safe else UNDRESS_NUDE_LOCK)
-                      + UNDRESS_TAIL + UNDRESS_AMATEUR_LOCK), False
+
+def _undress_prompt(telegram_id: int, character_id: str, *, safe: bool = False) -> tuple[str, bool]:
+    """V3.167.17 (владелец, по скриншотам Mini App): «Раздеть» = НОВЫЙ кадр —
+    другая поза и другое место, но та же она и то, что он на неё подарил.
+    Уровень раскрепощённости по-прежнему не решает, сколько на ней остаётся
+    (правило гейта V3.166.5: платят персиками и 18+ — значит кадр голый);
+    мягкий заход в бельё включает только отказ движка (``safe`` — последняя
+    попытка перед возвратом).
+
+    Анкета кадра решает одно: стоит ли в этой же комнате мужчина, который может
+    оказаться у неё за спиной."""
+    place, pose = random.choice(UNDRESS_SHOTS)
+    keeps = _undress_keeps(telegram_id, character_id)
+    room = str(keeps.get('room') or '')
+    if room and 'bedroom' in place:
+        place = 'her own bedroom'
+    jewels = UNDRESS_KEEPS_JEWELS.format(jewels=keeps['jewels']) if keeps.get('jewels') else ''
+    room_line = UNDRESS_KEEPS_ROOM.format(room=room) if room and 'bedroom' in place else ''
+    reveal = (UNDRESS_KEEPS_LINGERIE.format(lingerie=keeps['lingerie']) if keeps.get('lingerie')
+              else UNDRESS_SAFE_VARIANT[1]) if safe else UNDRESS_CLOTHES_OFF
+    prompt, secret = ('\n'.join((UNDRESS_NEW_SHOT_LOCK,
+                                 UNDRESS_SHOT_PLACE.format(place=place),
+                                 UNDRESS_SHOT_POSE.format(pose=pose),
+                                 UNDRESS_ANATOMY_LOCK))
+                      + '\nUNDRESS REVEAL:' + UNDRESS_PROMPT + reveal
+                      + ('' if safe else UNDRESS_NUDE_LOCK) + jewels + room_line
+                      + '\n' + UNDRESS_TAIL + UNDRESS_AMATEUR_LOCK), False
     try:
         from services import scene_card_service
         from services.webapp_service import _batch_marital, _default_marital
@@ -18713,17 +18814,22 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
             return starter_photo_service.body_for(starter_id)
         return path.read_bytes()
 
-    def _her_photo(uid: int, kinds: tuple[str, ...]) -> bool:
+    def _her_photo(uid: int, kinds: tuple[str, ...]) -> tuple[bool, bool]:
         # Only HER generated photo in this chat — never a picture the user
         # uploaded (those must never reach the uncensored engine).
+        # V3.167.17: (её ли это кадр, голый ли он) — под уже голым кадром
+        # «Раздеть» не рисует и не списывает: снимать с него нечего.
         from sqlalchemy import select as _select
         from models.app_models import Message
         with SessionLocal() as session:
-            return session.scalar(_select(Message.id).where(
+            row = session.execute(_select(Message.media_nude).where(
                 Message.user_id == uid, Message.character_id == character_id,
                 Message.role == 'assistant', Message.media_kind.in_(kinds),
                 Message.media_url == src_url,
-            ).limit(1)) is not None
+            ).limit(1)).first()
+        if row is None:
+            return False, False
+        return True, bool(row[0])
 
     def _gate():
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
@@ -18735,7 +18841,8 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         #прежнему не проходят: их нельзя отдавать движку без цензуры.
         her_frames = ('photo', 'hot', 'cosplay')
         kinds = her_frames + ('room',) if action == 'animate' else her_frames
-        if not _her_photo(uid, kinds):
+        found, frame_nude = _her_photo(uid, kinds)
+        if not found:
             return uid, ('not_found', 404), None
         if action == 'animate':
             if admin:
@@ -18751,8 +18858,12 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         # V3.165.0 (#107, owner): «Раздеть» — один раз в сутки. She is still naked
         # from the frame he already paid for, so this tap renders and charges
         # nothing; the endpoint answers with her «я уже голая» line instead.
+        # V3.167.17 (владелец, по скриншоту): то же и для самого голого кадра —
+        # пластина «🔥 Раздеть · 400 🍑» под ним снимала персики за то, с чего
+        # уже всё снято. Флаг ставит доставка кадра, поэтому проверка знает про
+        # этот кадр, а не только про вчерашние сутки.
         from services import undress_nudity
-        if undress_nudity.is_nude(telegram_id, character_id):
+        if frame_nude or undress_nudity.is_nude(telegram_id, character_id):
             return uid, None, 'already'
         # V3.86.0: owner — «раздеть» only with Premium, the button sold Premium.
         # V3.132.0: a «Раздеть» bought on its own (50 ₽) works without Premium.
@@ -18788,6 +18899,7 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         _app_ping(telegram_id, character_id, content)
         return web.json_response({'ok': True, 'kind': '', 'url': '', 'content': content,
                                   'already_nude': True})
+    revealed = False
     try:
         if action == 'animate':
             raw = await asyncio.to_thread(_source_bytes)
@@ -18804,6 +18916,10 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
                    else f'{PUBLIC_BASE_URL}/webapp/smedia/{int(telegram_id)}/{filename}/{_media_sig(telegram_id, filename)}')
             refs = [src, f'{PUBLIC_BASE_URL}/webapp/photo/{character_id}?i=0']
             prompt, secret = await asyncio.to_thread(_undress_prompt, telegram_id, character_id)
+            # V3.167.17: «полный» кадр (без белья) помечается в истории, чтобы
+            # пластина «Раздеть» под ним больше не появлялась. Мягкий заход —
+            # бельё, он остаётся обычным кадром.
+            revealed = True
             data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs, scene='undress', breaker=False)
             if not data:
                 # V3.61.10: one more try with the chat photo alone — the face
@@ -18818,6 +18934,7 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
                                telegram_id, character_id, spicyapi_last_error())
                 prompt, secret = await asyncio.to_thread(_undress_prompt, telegram_id, character_id, safe=True)
                 data = await _spicyapi_render(SPICYAPI_IMAGE_MODEL, prompt, refs[:1], scene='undress', breaker=False)
+                revealed = bool(data)
             if not data:
                 raise PhotoGenerationError('spicyapi', spicyapi_last_error() or 'empty_result')
             ext, mime, kind = 'jpg', 'image/jpeg', 'photo'
@@ -18834,7 +18951,8 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
         name = webapp_service.save_chat_media(telegram_id, data, ext, mime)
         url = f'/webapp/media/{name}'
         webapp_service.record_generation(telegram_id, kind, character_id, f'{action}: {media_url}', name)
-        save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url)
+        save_message(uid, character_id, 'assistant', content, media_kind=kind, media_url=url,
+                     media_nude=bool(revealed))
         if action == 'animate' and pay == 'peaches':
             if not spend_peaches(telegram_id, webapp_service.WEBAPP_VIDEO_COST_CREDITS, paid_only=True):
                 logger.warning('webapp photo animation peach race user=%s', telegram_id)
@@ -18855,7 +18973,7 @@ async def _webapp_api_photo_action(request: web.Request) -> web.Response:
             elif pay == 'credit':
                 from services import undress_credits
                 undress_credits.spend(telegram_id)
-        return {'ok': True, 'kind': kind, 'url': url, 'content': content,
+        return {'ok': True, 'kind': kind, 'url': url, 'content': content, 'nude': bool(revealed),
                 'credits_left': get_photo_credits(telegram_id)}
 
     out = await asyncio.to_thread(_deliver)
@@ -19082,6 +19200,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
     shown_kind = 'circle' if kind == 'hotcircle' else kind
 
     def _finish():
+        frame_nude = kind == 'hot' and _hot_scene_is_nude(scene)
         filename = webapp_service.save_chat_media(telegram_id, data, ext, mime)
         url = f'/webapp/media/{filename}'
         # V3.51.1: audit the user-requested media (photo/hot/cosplay/video/circle);
@@ -19112,7 +19231,8 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
                            'video': '\U0001f3ac \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0432\u0438\u0434\u0435\u043e'}
             content = _media_caps.get(kind, '')
         # V3.72.0: a hot circle is stored and drawn as a regular round circle.
-        save_message(uid, character_id, 'assistant', content, media_kind=shown_kind, media_url=url)
+        save_message(uid, character_id, 'assistant', content, media_kind=shown_kind, media_url=url,
+                     media_nude=frame_nude)
         if kind == 'photo' and telegram_id not in ADMIN_TELEGRAM_IDS:
             # V3.165.0 (#104): a frame a man without Premium bought with his
             # peaches costs the explicit frame price, not the single chat credit.
@@ -19143,7 +19263,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
             from services.collection_service import gallery_set_progress, note_gallery_set
             _set_completed = note_gallery_set(telegram_id, character_id)
             _gallery = gallery_set_progress(telegram_id, character_id)
-        return {'ok': True, 'kind': shown_kind, 'url': url, 'content': content,
+        return {'ok': True, 'kind': shown_kind, 'url': url, 'content': content, 'nude': frame_nude,
                 'credits_left': get_photo_credits(telegram_id),
                 'set_completed': _set_completed,
                 'gallery': _gallery}
@@ -19993,7 +20113,7 @@ async def _webapp_api_wardrobe_pet(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'bad_request'}, status=400)
     def _note():
         uid_ = ensure_user(telegram_id)
-        save_message(uid_, cid, 'user', f'*называю котёнка: {name}* 🐈')
+        save_message(uid_, cid, 'user', f'*называю котёнка: {name}* 🐈', origin='user_input')
         save_message(uid_, cid, 'assistant', f'{name}! 😍 ему идёт. Слышишь, {name}? Это тебя так зовут теперь 🐾')
     await asyncio.to_thread(_note)
     return web.json_response({'ok': True, 'name': name})
@@ -20206,7 +20326,7 @@ def _series_deliver_frame(telegram_id: int, uid: int, character_id: str, scene: 
     content = (_SERIES_CAPS[index] if index < len(_SERIES_CAPS)
                else f'💋 серия · кадр {index + 1} из {PHOTO_SERIES_FRAMES}')
     save_message(uid, character_id, 'assistant', content, media_kind='photo',
-                 media_url=f'/webapp/media/{filename}')
+                 media_url=f'/webapp/media/{filename}', media_nude=_hot_scene_is_nude(scene))
 
 
 async def _webapp_api_gifts_buy(request: web.Request) -> web.Response:
@@ -21260,7 +21380,7 @@ async def main():
         # installed now — for everyone else «/» opens an empty list.
         try:
             await bot.set_my_commands(
-                public_commands + [types.BotCommand(command='admin', description='🛠 Админка'), types.BotCommand(command='week', description='📈 Отчёт за неделю'), types.BotCommand(command='refundstars', description='↩️ Возврат Stars'), types.BotCommand(command='geministatus', description='🧠 Gemini status'), types.BotCommand(command='grant', description='🎁 Выдать premium/токены по @username'), types.BotCommand(command='setmenubutton', description='🔵 Установить кнопку «Открыть приложение»')],
+                public_commands + [types.BotCommand(command='admin', description='🛠 Админка'), types.BotCommand(command='week', description='📈 Отчёт за неделю'), types.BotCommand(command='refundstars', description='↩️ Возврат Stars'), types.BotCommand(command='geministatus', description='🧠 Gemini status'), types.BotCommand(command='grant', description='🎁 Выдать premium/токены по @username'), types.BotCommand(command='setmenubutton', description='🔵 Установить кнопку «Открыть приложение»'), types.BotCommand(command='life_stop', description='🧪 Остановить эксперимент «её день»'), types.BotCommand(command='life_issues', description='🧪 Сигналы по событиям'), types.BotCommand(command='life_confirm', description='🧪 Подтвердить сбой события')],
                 scope=types.BotCommandScopeChat(chat_id=admin_id),
             )
         except Exception:

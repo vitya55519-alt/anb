@@ -88,6 +88,11 @@ def collect(days: int = 7) -> dict:
         out['d1'] = _retention_rate(1)
     except Exception:
         out['d1'] = None
+    try:
+        from services.life_experiment import collect_report
+        out['life_experiment'] = collect_report(now=now)
+    except Exception:
+        out['life_experiment'] = None
     return out
 
 
@@ -126,4 +131,7 @@ def render(d: dict, name_of=lambda cid: cid) -> str:
     lines += [f'· {name_of(c)} — {n} сооб. ({u} чел.)' for c, n, u in d.get('top', [])] or ['· пусто']
     lines += ['', '📥 откуда пришли:']
     lines += [f'· {t} — {n}' for t, n in d.get('sources', [])] or ['· нет новых']
+    if d.get('life_experiment'):
+        from services.life_experiment import render_report
+        lines += ['', render_report(d['life_experiment'])]
     return '\n'.join(lines)

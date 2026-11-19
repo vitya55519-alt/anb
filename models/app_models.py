@@ -397,6 +397,12 @@ class Message(Base):
     # колонку, старые строки читаются как обычный ответ — кап накопления и
     # дайджест считаются по ней, а не по всему хвосту диалога.
     origin: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # V3.167.17 (владелец, по скриншотам Mini App): под уже голым кадром кнопка
+    # «🔥 Раздеть» снимала персики за то, что с неё уже снято. Отличить голый
+    # кадр от одетого знает только тот, кто его прислал: «Раздеть» ставит флаг,
+    # мягкий заход с бельём — нет. `_auto_migrate_all_tables` добавляет колонку,
+    # старые строки читаются как обычный кадр.
+    media_nude: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
     actions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
@@ -1001,4 +1007,86 @@ class StarterPhotoCache(Base):
     greeting_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     file_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     photo_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# Measurement stores identifiers and timestamps, never a second copy of chat text.
+from sqlalchemy import CheckConstraint, Index
+
+
+class LifeExperiment(Base):
+    __tablename__ = "life_experiments"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # NULL only for a durable manual stop before the first eligible attempt.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="running")
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    stop_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    review_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class LifeParticipant(Base):
+    __tablename__ = "life_participants"
+    __table_args__ = (
+        UniqueConstraint("experiment_key", "user_id", name="uq_life_participant"),
+        CheckConstraint("variant IN ('control', 'treatment')", name="ck_life_participant_variant"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    experiment_key: Mapped[str] = mapped_column(String(64), index=True)
+    variant: Mapped[str] = mapped_column(String(16))
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    first_event_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    first_mode: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    returned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class LifeEvent(Base):
+    __tablename__ = "life_events"
+    __table_args__ = (
+        Index("ix_life_event_pair_delivery", "user_id", "character_id", "delivered_at"),
+        CheckConstraint("kind IN ('moment', 'live_photo')", name="ck_life_event_kind"),
+        CheckConstraint("variant IN ('control', 'treatment', 'outside')", name="ck_life_event_variant"),
+        CheckConstraint("scene_status IN ('pending', 'active', 'paused', 'closed')", name="ck_life_scene_status"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    character_id: Mapped[str] = mapped_column(String(64))
+    # Deliberately not an FK: existing Message retention/deletion stays valid.
+    message_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    experiment_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    variant: Mapped[str] = mapped_column(String(16), default="outside")
+    mode_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    delivered_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    first_reply_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    engaged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reply_count: Mapped[int] = mapped_column(Integer, default=0)
+    scene_status: Mapped[str] = mapped_column(String(16), default="pending")
+    choice_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reply_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    offered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    closed_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class LifeEventReply(Base):
+    __tablename__ = "life_event_replies"
+    message_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(Integer, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class LifeExperimentIssue(Base):
+    __tablename__ = "life_experiment_issues"
+    __table_args__ = (
+        UniqueConstraint("event_id", "message_id", "kind", name="uq_life_experiment_issue"),
+        CheckConstraint("kind IN ('memory', 'intrusive')", name="ck_life_issue_kind"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(Integer, index=True)
+    message_id: Mapped[int] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -268,6 +268,37 @@ def photo_overrides(telegram_id: int, character_id: str, scene: str, group: str)
 
 # ── chat ──────────────────────────────────────────────────────────────────
 
+def reveal_keeps(telegram_id: int, character_id: str) -> dict:
+    """V3.167.17 (владелец): что «Раздеть» не имеет права с неё снять.
+
+    Промпт правки жил без гардероба и стирал вместе с одеждой то, за что он
+    платил в лавке: серьги и кулон («nothing worn anywhere on her body»), его
+    кружевной комплект (мягкий заход рисовал случайное кружево) и обставленную
+    им комнату (новый кадр — случайная спальня). Ключи: 'jewels', 'lingerie',
+    'room' — английские фрагменты, они уходят прямо в промпт картинки.
+    Fail-silent: {} на любой ошибке, поиск подарка не стоит ему кадра."""
+    try:
+        owned = owned_ids(telegram_id, character_id)
+        if not owned:
+            return {}
+        out: dict = {}
+        jewels = [_BY_ID[i].prompt for i in owned if i in _BY_ID and _BY_ID[i].kind == 'jewel']
+        if jewels:
+            out['jewels'] = ' and '.join(jewels)
+        worn = worn_today(telegram_id, character_id)
+        if worn and worn.kind == 'adult':
+            out['lingerie'] = worn.prompt
+        home = home_state(telegram_id, character_id, owned)
+        st_ = get_style(home['style'])
+        things = [_BY_ID[i].prompt for i in home['active'][:PHOTO_SLOTS_MAX] if i in _BY_ID]
+        if st_ or things:
+            out['room'] = '; '.join(([st_.prompt] if st_ else []) + things)
+        return out
+    except Exception:
+        logger.exception('wardrobe reveal keeps failed user=%s', telegram_id)
+        return {}
+
+
 def chat_line(telegram_id: int, character_id: str) -> str:
     """A short note for her system prompt; '' when he gave her nothing."""
     try:

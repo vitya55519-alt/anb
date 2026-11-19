@@ -246,6 +246,11 @@ def _persist_digest(uid: int, telegram_id: int, character_id: str, lang: str,
         text = due(uid, character_id, lang, on_open=on_open)
         if not text:
             return False, None
+        from services.life_scene import suppress_digest
+        if suppress_digest(uid, character_id):
+            # Keep the existing scheduler slot handled, but never replay a
+            # declined/answered treatment scene through the old summary.
+            return True, None
         row = Message(user_id=uid, character_id=character_id, role='assistant',
                       content=text, origin=DIGEST_ORIGIN)
         s.add(row)

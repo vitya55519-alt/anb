@@ -736,78 +736,85 @@ UNDERWEAR_STYLE_POOL = [
 ]
 
 # V3.167.14: 10 уровней сексуальной одежды для режима «Без цензуры 18+».
-# Каждый уровень — своя степень обнажения + сексуальные ситуации (дождь, мокрая одежда, вечер).
 # Используется только в режиме 18+ (explicit_mode.is_on_for(telegram_id)).
+# Две правки 19.11 (владелец, «почему она не применяется»):
+# 1) SpicyAPI и fal читают только английский (см. _NO_PHONE_PHRASES ниже) — пул
+#    был написан по-русски, и движок его просто не выполнял;
+# 2) верхние уровни требовали наготы там, где в том же промпте лежит
+#    PUBLIC_DRESS_RULE («публично она одета, ничего просвечивающего»). Выбор
+#    владельца — «она одета, но всё откровеннее»: лесенка растет через посадку,
+#    длину, вырез, мокрую ткань и проступающий контур, а не через снятую одежду.
+#    Нагота живёт в приватных сценах и в «Раздеть» — там уровень не меняет ничего.
 SPICY_OUTFIT_LEVELS = {
-    1: 'укороченный топ с открытым животом, короткие шорты, босоножки на каблуках; мокрая от дождя одежда прилипла к телу, волосы мокрые',
-    2: 'приоткрытая рубашка (видны ключицы и часть груди), короткая юбка выше колена, чулки без пояса; вечер, неон, лёгкий дождь',
-    3: 'глубокое декольте (видна половина груди), короткая юбка с разрезом, туфли на высоких каблуках; мокрая кожа блестит от воды',
-    4: 'полупрозрачная блузка без белья (видны соски), короткая юбка, чулки с поясом; дождь, одежда прозрачная от воды',
-    5: 'мокрая белая футболка (видно всё под ней), короткие шорты, босиком или босоножки; вечер, волосы мокрые, кожа блестит',
-    6: 'только кружевные трусики и полупрозрачный лифчик (грудь почти открыта), чулки с поясом, туфли на каблуках; дождь, мокрая кожа',
-    7: 'приспущенные штаны (видны бёдра и часть ягодиц), топ без белья, чулки с поясом, туфли на каблуках; вечер, неон, лёгкая дымка',
-    8: 'прозрачное платье без белья (видны соски и контур трусиков), чулки с поясом, туфли на каблуках; дождь, одежда прилипла к телу',
-    9: 'только чулки с поясом и кружевные трусики (грудь полностью открыта), туфли на каблуках; мокрая кожа, волосы мокрые, вечер',
-    10: 'полностью голая, только туфли на каблуках и чулки с поясом; дождь, мокрая кожа блестит, волосы прилипли к лицу',
+    1: 'a cropped top baring her midriff, short shorts, heeled sandals; rain-damp clothes clinging to her body, wet hair',
+    2: 'an open blouse, her collarbone showing, a short skirt above the knee, sheer stockings, heeled boots; evening neon, light rain',
+    3: 'a deep plunging neckline, a fitted short skirt with a slit, high heels; her skin glistening from the rain',
+    4: 'a thin fitted blouse with no bra underneath, its outline reading through the fabric, a short skirt, sheer stockings, heels; damp clothes clinging to her shape',
+    5: 'a wet white T-shirt with nothing underneath, stuck to her shape, short shorts, barefoot; evening, wet hair, glistening skin',
+    6: 'a low-cut fitted top with a lace trim just visible at the neckline, a very short skirt, one thin strap slipping off her shoulder, heels; rain, wet skin',
+    7: 'her trousers worn low on the hips, a tight cropped top with no bra, one thin strap slipping off her shoulder, heels; evening neon, a light haze',
+    8: 'a thin fitted dress soaked through and clinging to her body, its neckline low, the outline of her figure reading through the wet fabric, heels; rain',
+    9: 'a tiny cocktail dress, deep neckline, sheer fabric over a fitted base layer, one shoulder strap slipped down, heels; wet hair, evening city light',
+    10: 'an open raincoat over a tight micro top and tiny shorts, no bra, the coat sliding off one shoulder, heels; rain, soaked clothes clinging to her shape, wet hair',
 }
 
 # V3.167.14: обувь для разнообразия
 SHOES_POOL = [
-    'высокие каблуки, стройные ноги',
-    'кроссовки, спортивный стиль',
-    'босоножки на тонких ремешках',
-    'ботинки на высокой платформе',
-    'туфли-лодочки классические',
-    'босиком, естественность',
-    'сапоги до колена на каблуке',
-    'сандалии на плоской подошве',
+    'high heels, long legs',
+    'sneakers, sporty style',
+    'strappy thin-strap sandals',
+    'platform boots',
+    'classic court shoes',
+    'barefoot, natural',
+    'knee-high heeled boots',
+    'flat sandals',
 ]
 
 # V3.167.14: чулки/колготки для разнообразия
 STOCKINGS_POOL = [
-    'чёрные чулки с поясом',
-    'белые кружевные чулки',
-    'сетчатые колготки',
-    'прозрачные колготки',
-    'чулки без пояса, держатся сами',
-    'без чулок, голые ноги',
-    'чулки в полоску',
-    'кружевные чулки с бантиками',
+    'black stockings with a garter belt under her skirt',
+    'white lace stockings under her skirt',
+    'fishnet tights',
+    'sheer tights',
+    'stockings staying up on their own',
+    'bare legs, no stockings',
+    'striped tights',
+    'lace stockings with a small bow',
 ]
 
 # V3.167.14: расширенные аксессуары (часы, кольца, браслеты, серьги)
 ACCESSORY_POOL_EXTENDED = [
-    'тонкое золотое кольцо на пальце',
-    'серебряный браслет на запястье',
-    'элегантные часы на руке',
-    'серьги-кольца',
-    'тонкая цепочка на шее',
-    'чокер с кулоном',
-    'несколько тонких браслетов',
-    'кольцо на большом пальце',
-    'серьги-гвоздики',
-    'без аксессуаров, минимализм',
-    'золотой браслет с гравировкой',
-    'серебряная цепочка на шее',
-    'часы с кожаным ремешком',
-    'серьги с камнями',
-    'брошь на одежде',
+    'a thin gold ring on her finger',
+    'a silver bracelet on her wrist',
+    'an elegant watch on her wrist',
+    'hoop earrings',
+    'a thin chain necklace',
+    'a choker with a small pendant',
+    'several thin bracelets',
+    'a ring on her thumb',
+    'stud earrings',
+    'no jewellery, minimal',
+    'an engraved gold bracelet',
+    'a silver chain necklace',
+    'a watch with a leather strap',
+    'stone earrings',
+    'a brooch on her clothes',
 ]
 
 # V3.167.14: расширенная косметика
 MAKEUP_POOL_EXTENDED = [
-    'яркая красная помада, стрелки',
-    'натуральный макияж, блеск для губ',
-    'смоки айс, тёмные тени',
-    'розовые губы, лёгкий румянец',
-    'без макияжа, естественность',
-    'блестящие тени, длинные ресницы',
-    'матовая помада, контур губ',
-    'светлый макияж, акцент на глаза',
-    ' nude макияж, естественные тона',
-    'вечерний макияж с акцентом на губы',
-    'лёгкий макияж с блёстками',
-    'дерзкий макияж с чёрными стрелками',
+    'bright red lipstick, winged eyeliner',
+    'natural makeup, glossy lips',
+    'smokey eyes, dark shadow',
+    'pink lips, light blush',
+    'no makeup, natural',
+    'shimmer eyeshadow, long lashes',
+    'matte lipstick, defined lip line',
+    'light makeup with an emphasis on her eyes',
+    'nude makeup, natural tones',
+    'evening makeup with the emphasis on her lips',
+    'light makeup with a little glitter',
+    'bold makeup with black winged eyeliner',
 ]
 
 # Bust size must never drift between frames or between sets.
@@ -1252,11 +1259,12 @@ _NO_PHONE_LEFTOVER = re.compile(
 # Two head lines may not be pushed down by the lock: without the duo line the
 # engine draws one girl, without the private-place line lingerie lands in the
 # office. The lock sits behind them and in front of everything else.
-# V3.167.2: the paid «Раздеть» edit joins them — the frame must stay the frame.
-# V3.167.4: and so does its place — «тот же кадр без исключений», ни в какую
-# спальню публичный кадр больше не переносится.
-_NO_PHONE_HEAD_KEEP = ('TWO WOMEN IN FRAME:', 'PRIVATE PLACE OVERRIDE:', 'SAME FRAME LOCK:',
-                       'SAME PLACE LOCK:')
+# V3.167.2: the paid «Раздеть» edit joined them — the frame had to stay the frame.
+# V3.167.17: it stays at the head for a different reason — the reveal is a NEW
+# frame again, and what must never be trimmed away is the lock that keeps her the
+# same woman in the same private place, in the pose the pool just picked for her.
+_NO_PHONE_HEAD_KEEP = ('TWO WOMEN IN FRAME:', 'PRIVATE PLACE OVERRIDE:', 'NEW SHOT LOCK:',
+                       'SHOT PLACE:', 'SHOT POSE:', 'UNDRESS REVEAL:')
 
 
 def no_phone_frame(prompt: str) -> str:

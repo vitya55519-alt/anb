@@ -290,6 +290,8 @@ def _blocks(raw: str) -> tuple[str, str, str]:
     # чтения блоков — поэтому её нет ни в его bubble, ни в базе, ни в озвучке,
     # ни в истории, которую модель видит на следующем ходу.
     t = scene_card_service.strip_card(t)
+    from services.life_scene import strip_state
+    t = strip_state(t)
     marks = [{'key': m.group(1).lower(), 'a': m.start(), 'b': m.end()} for m in _NOVEL_MARK.finditer(t)]
     if not marks:
         return '', '', t
@@ -1017,19 +1019,30 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         messages.append({"role": "system", "content": guest_reminder})
     # V3.64.1: a «Квартира» / «Свидание» tap is played as a live scene — the
     # direction sits right before his action so she acts it out with a hook.
+    _life_pending = None
     if scene:
         messages.append({"role": "system", "content": scene})
     # V3.75.0: a scenario card he walked into (services/scenario_cards.py)
     # keeps her in that role-play scene for a day.
     elif not guest_reminder:
+        # A live «её день» continuation outranks the automatic scenario/plot:
+        # his answer to the event must not be swallowed by a stored role-play.
+        # His own directed scene (above) and paid frames are never displaced.
+        try:
+            from services import life_scene
+            _life_pending = await asyncio.to_thread(
+                life_scene.turn_context, db_user_id, character_id, user_text,
+                mode_on=bool(explicit_mode.is_on_for(user_id)))
+        except Exception:
+            _life_pending = None
         try:
             from services.scenario_cards import direction_for
-            scene = direction_for(user_id, character_id, str(character.get('name') or ''))
-            if not scene:
+            scene = '' if _life_pending else direction_for(user_id, character_id, str(character.get('name') or ''))
+            if not scene and not _life_pending:
                 # V3.78.0: a Premium storyline he picked on her page
                 from services.storylines import direction_for as plot_direction_for
                 scene = plot_direction_for(user_id, character_id, str(character.get('name') or ''), tick=True)
-            if not scene:
+            if not scene and not _life_pending:
                 # V3.134.0: a step of her marital story (services/marital_arcs.py)
                 from services.marital_arcs import direction_for as arc_direction_for
                 scene = arc_direction_for(user_id, character_id, str(character.get('name') or ''), tick=True)
@@ -1041,7 +1054,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             # V3.134.0: «чуть не попались» — now and then he walks in or calls.
             try:
                 from services.marital_arcs import caught_note
-                _caught = caught_note(marital_status or '', character_id)
+                _caught = '' if _life_pending else caught_note(marital_status or '', character_id)
                 if _caught:
                     messages.append({"role": "system", "content": _caught})
             except Exception:
@@ -1058,6 +1071,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         care_kind = ''
     ordinary_turn = not (scene or guest_reminder or care_kind or behavior_kind.startswith('task'))
     pause_turn = ordinary_turn and is_explicit_pause(user_text)
+    # Computed once above (it also decided the scenario priority); reuse it.
+    life_context = _life_pending if ordinary_turn and not caller_scene else None
     # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации». Пока её свежий тизер не
     # остыл, она не имеет права телепортироваться домой: фото, обещанное из
     # маршрутки, рисуется из маршрутки, а иначе она выруливает одним из двух
@@ -1076,12 +1091,12 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # can never disagree. A scene he directed herself into, and a day where he
     # is down, are not the moment for a paid curiosity.
     from services import draft_service
-    draft_due = bool(novel_layers and not scene and not care_kind and not pause_turn and
+    draft_due = bool(novel_layers and not scene and not care_kind and not pause_turn and not life_context and
                      draft_service.will_trigger(db_user_id, character_id,
                                                 adaptation_level, user_text))
     # V3.113.0: her own small story for these days (services/her_story.py) —
     # something happens in her life, she tells it and asks what he thinks.
-    if not scene and not guest_reminder and not care_kind and not pause_turn and not _is_card_girl(character_id):
+    if not scene and not guest_reminder and not care_kind and not pause_turn and not life_context and not _is_card_girl(character_id):
         try:
             from services import her_story
             story_note = await asyncio.to_thread(her_story.directive, db_user_id, user_id, character_id)
@@ -1095,7 +1110,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     _short = live_talk.rhythm_kind(user_text) == 'short'
     _bargained = live_talk.bargained_recently(_her_recent)
     # V3.63.12: one concrete hook for this reply, right before his message.
-    if not scene and not guest_reminder and not care_kind and not pause_turn:
+    if not scene and not guest_reminder and not care_kind and not pause_turn and not life_context:
         hook = next_hook(user_id, character_id, behavior_kind, has_memories=bool(memories),
                          short=_short and live_talk.ENABLED, no_game=_bargained)
         if hook:
@@ -1109,7 +1124,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     # V3.104.0: «память как подарок» — he is back after a pause, so she brings
     # up one thing he told her before, herself (services/memory_gift.py).
     gift = None
-    if not scene and not guest_reminder and not care_kind and not pause_turn and memories:
+    if not scene and not guest_reminder and not care_kind and not pause_turn and not life_context and memories:
         try:
             from services import memory_gift
             _mine = [m for m in history if m.role == 'user']
@@ -1165,6 +1180,8 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             card_rule += ' ' + scene_card_service.SCENE_CARD_DIRECTIVE_DUO
         messages.append({"role": "system",
                          "content": novel_format_suffix(duo=duo_chat, draft=draft_due) + '\n' + card_rule})
+    if life_context:
+        messages.append({'role': 'system', 'content': life_context['note']})
     token_budget = 180 if behavior_kind == 'task_clarify' else (900 if behavior_kind == 'task_execute' else 320)
     if not chosen.intent.startswith('task'):
         # V3.166.7: the hidden card is ~60 tokens of its own — on the old cap it
@@ -1180,6 +1197,19 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
     stops = stop_sequences(user_name)
     # V3.167.10: его ТЗ на хотфикс — не отдавать в API весь хвост переписки.
     messages = _cap_history_tail(messages)
+    # Accept his real input before waiting for the provider. A late proactive
+    # event must not claim an answer that he had already sent.
+    user_message_id = save_message(db_user_id, character_id, 'user', user_text,
+                                   origin='synthetic' if caller_scene else 'user_input')
+    if life_context:
+        life_context['user_message_id'] = user_message_id
+        if life_context.get('complaint'):
+            try:
+                from services.life_experiment import record_issue
+                await asyncio.to_thread(record_issue, life_context['event_id'],
+                                        user_message_id, 'memory', confirmed=False)
+            except Exception:
+                _logger.warning('life quality signal unavailable user=%s', user_id)
     r = await _gen(messages, max_tokens=token_budget, temperature=0.8, purpose='dialogue', stop=stops)
     thought = ''
     draft = ''
@@ -1279,16 +1309,10 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
                                 scene_card_service.card_line(r.text or ''))
     except Exception:
         _logger.warning('scene card remember failed user=%s', user_id, exc_info=True)
-    # V3.167.5 §9 (владелец ТЗ, DoD «ответы на её день ≥12%»): ДО того как его
-    # строка легла в диалог, смотрим её хвост — если там её собственные ходы
-    # («день», сводка), значит он на них ответил. После записи мерить нечего:
-    # хвост пуст.
-    try:
-        from services import life_backlog
-        await asyncio.to_thread(life_backlog.note_replied, db_user_id, character_id)
-    except Exception:
-        _logger.debug('life reply note failed user=%s', user_id, exc_info=True)
-    save_message(db_user_id, character_id, "user", user_text)
+    if life_context:
+        from services import life_scene
+        life_context['response_state'] = life_scene.response_state(r.text or '')
+        answer = life_scene.strip_state(answer)
     parts = duo_lines(answer) if duo_chat else []
     if stub_lang:
         # V3.167.1: его строка в диалоге остаётся (он её писал), её заглушка —
@@ -1302,7 +1326,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
             save_message(db_user_id, character_id, "assistant", f'{name}: {line}')
     else:
         mid = save_message(db_user_id, character_id, "assistant", answer,
-                           draft_text=draft or None)
+                           draft_text=draft or None, life_scene_context=life_context)
         if draft and mid:
             # The plate itself is drawn by the delivery layer (Mini App payload
             # / Telegram handler) — it gets the id, never the text.

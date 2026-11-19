@@ -21,22 +21,21 @@ def _prompt(**kw):
 def test_the_same_frame_lock_leads_the_paid_edit():
     import main
     prompt = _prompt()
-    assert prompt.startswith(main.UNDRESS_SAME_FRAME_LOCK)
-    lock = main.UNDRESS_SAME_FRAME_LOCK
-    for keep in ('the SAME photo he is looking at now, only without her clothes',
-                 'her pose, head tilt, arm, hand and leg positions',
-                 'the same camera angle, height, distance, crop and framing',
-                 'the same room, background, furniture and objects',
-                 'the same time of day, light and colours',
-                 'Take her clothes off and change nothing else',
-                 'This lock beats every pose, place or scene line below it'):
+    assert prompt.startswith(main.UNDRESS_NEW_SHOT_LOCK)
+    lock = main.UNDRESS_NEW_SHOT_LOCK
+    # V3.167.17: «Раздеть» = НОВЫЙ кадр, та же женщина, другая поза и место.
+    for keep in ('a new photo of the same woman he is looking at in image 1',
+                 'Her face, eyes, nose, smile, hair, makeup, nails, skin tone, figure and body shape are identical',
+                 'Everything else is new: another pose, another camera height and distance, another place',
+                 'Do not copy image 1',
+                 'Jewellery is not clothing: what she wears as jewellery in image 1 stays on her'):
         assert keep in lock, keep
-    assert 'do not re-pose her, do not turn her around, do not move her' in lock
 
 
 def test_no_pose_from_the_old_pool_survives_in_the_prompt():
     prompt = _prompt()
-    for stale in ('REVEAL:', 'on her hands and knees', 'she squats', 'she lies back on the bed',
+    # V3.167.17: старые позы из пула убраны, но «UNDRESS REVEAL:» — это маркер раздела, а не поза.
+    for stale in ('on her hands and knees', 'she squats', 'she lies back on the bed',
                   'she kneels on the bed', 'she turns a little and looks back', 'lifts the hem',
                   'pulls the waistband down', 'slip off one shoulder', 'unzips or unbuttons the back',
                   'arms lifted over her head', 'she sits down and slides'):
@@ -59,45 +58,48 @@ def test_the_reveal_only_names_garments():
 
 def test_the_lock_is_the_last_thing_the_trimmer_touches():
     from services import private_photo_service as pps
-    assert 'SAME FRAME LOCK:' in pps._SPICY_TIERS[2] and 'CLOTHES:' in pps._SPICY_TIERS[2]
-    assert 'SAME PLACE LOCK:' in pps._SPICY_TIERS[2]
-    assert pps._spicy_tier('SAME FRAME LOCK: this is the SAME photo') == 3
-    assert pps._spicy_tier('SAME PLACE LOCK: the place of image 1') == 3
-    assert pps._spicy_tier('CLOTHES: every garment she wears in image 1') == 3
+    # V3.167.17: tier 3 держит NEW SHOT LOCK, SHOT PLACE, SHOT POSE, UNDRESS REVEAL, CLOTHES.
+    assert 'NEW SHOT LOCK:' in pps._SPICY_TIERS[2] and 'CLOTHES:' in pps._SPICY_TIERS[2]
+    assert 'SHOT PLACE:' in pps._SPICY_TIERS[2]
+    assert 'SHOT POSE:' in pps._SPICY_TIERS[2]
+    assert 'UNDRESS REVEAL:' in pps._SPICY_TIERS[2]
+    assert pps._spicy_tier('NEW SHOT LOCK: a new photo of the same woman') == 3
+    assert pps._spicy_tier('SHOT PLACE: the new photo is taken in') == 3
+    assert pps._spicy_tier('SHOT POSE: in the new photo she is') == 3
+    assert pps._spicy_tier('UNDRESS REVEAL: A new photo of the same woman') == 3
+    assert pps._spicy_tier('CLOTHES: she wears nothing in the new photo') == 3
     fitted = pps._fit_spicy_prompt(_prompt())
     assert len(fitted) <= pps.SPICYAPI_PROMPT_MAX
-    assert 'SAME FRAME LOCK:' in fitted and 'CLOTHES:' in fitted
+    assert 'NEW SHOT LOCK:' in fitted and 'CLOTHES:' in fitted
 
 
 def test_the_no_phone_pass_leaves_the_lock_first():
     from services.photo_service import no_phone_frame
-    assert no_phone_frame(_prompt()).startswith('SAME FRAME LOCK:')
+    # V3.167.17: промпт начинается с NEW SHOT LOCK, и no_phone_frame его не сдвигает.
+    assert no_phone_frame(_prompt()).startswith('NEW SHOT LOCK:')
 
 
 def test_the_place_of_the_photo_he_is_looking_at_never_changes(monkeypatch):
-    # V3.167.4 (владелец, «тот же кадр без исключений»): V3.152.1 переносил
-    # публичный кадр в её комнату, V3.166.7 брал комнату из её слов. Оба
-    # исключения выпилены — куда бы движок ни понёс такие формулировки, в
-    # промпте их больше нет.
+    # V3.167.17 (владелец, «Раздеть» = НОВЫЙ кадр): место берётся из пула UNDRESS_SHOTS
+    # (только приватные), и SHOT PLACE прямо запрещает публичные venues.
     import main
-    lock = main.UNDRESS_PLACE_LOCK
-    assert lock.startswith('SAME PLACE LOCK:')
-    assert 'Nobody moves her anywhere' in lock
-    assert 'This line has no exception' in lock
-    for public in ('bar', 'club', 'street', 'office', 'gym', 'transport'):
-        assert public in lock, public
+    place_line = main.UNDRESS_SHOT_PLACE
+    assert place_line.startswith('SHOT PLACE:')
+    assert 'private place' in place_line
+    for public in ('street', 'bar', 'club', 'restaurant', 'office', 'gym', 'mall'):
+        assert public in place_line, public
     prompt = _prompt()
-    assert main.UNDRESS_PLACE_LOCK in prompt
-    for moved in ('replaces those walls', 'her bedroom or a hotel room', 'PLACE FROM HER OWN WORDS'):
-        assert moved not in prompt, moved
+    assert 'SHOT PLACE:' in prompt
     # прежних правил больше нет в модуле — их не вернёшь случайно
+    assert not hasattr(main, 'UNDRESS_PLACE_LOCK')
     assert not hasattr(main, 'UNDRESS_PLACE_TAIL') and not hasattr(main, 'UNDRESS_CARD_PLACE')
 
 
 def test_her_line_names_the_frame_he_is_looking_at():
     import main
+    # V3.167.17: реплики говорят про новый кадр, новую позу, новый ракурс.
     tied = [line for line in main.UNDRESS_LINES
-            if 'тот же' in line or 'с этого фото' in line]
+            if 'переставилась' in line or 'другая поза' in line or 'новый ракурс' in line]
     assert len(tied) >= 3, tied
 
 

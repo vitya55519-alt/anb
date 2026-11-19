@@ -1177,6 +1177,8 @@ def api_chat_history(db_user_id: int, character_id: str, limit: int = 30, *, ope
     for an explicit open=1 request, never the chat polling heartbeat.
     """
     if opened:
+        from services.life_experiment import record_open
+        record_open(db_user_id, character_id)
         from services.life_backlog import digest_on_open
         with SessionLocal() as session:
             user = session.get(User, int(db_user_id))
@@ -1207,6 +1209,10 @@ def api_chat_history(db_user_id: int, character_id: str, limit: int = 30, *, ope
                  # V3.39.0: media messages (photo / circle / voice) travel
                  # with the history so the app renders them like the bot.
                  'media_kind': getattr(m, 'media_kind', None),
+                 # V3.167.17 (владелец): голый кадр знает, что он голый — приложение
+                 # не рисует под ним пластину «🔥 Раздеть», платить за то, с чего
+                 # уже всё снято.
+                 'nude': bool(getattr(m, 'media_nude', False)),
                  'media_url': getattr(m, 'media_url', None)}
         from services.memory_service import message_actions
         entry['actions'] = message_actions(getattr(m, 'actions_json', None))
@@ -1221,6 +1227,18 @@ def api_chat_history(db_user_id: int, character_id: str, limit: int = 30, *, ope
             entry['live'] = {'paid': bool(getattr(m, 'image_unlocked', False)),
                              'price': LIVE_SITUATION_PEACH_COST}
         out.append(entry)
+    # Stale event buttons must not linger in the view: the server already
+    # rejects them, here they simply stop being offered after a newer event,
+    # a refusal, a mode switch or the experiment stop.
+    try:
+        from services.life_scene import action_available
+        with SessionLocal() as action_session:
+            for entry, m in zip(out, rows):
+                if entry['actions'] and getattr(m, 'origin', None) == 'life' \
+                        and not action_available(action_session, m):
+                    entry['actions'] = []
+    except Exception:
+        pass
     from services import message_voice_service as voices
     ready = voices.ready_by_messages(db_user_id, [m['id'] for m in out])
     for entry in out:

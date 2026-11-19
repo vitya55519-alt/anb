@@ -141,7 +141,7 @@ def test_room_picture_is_marked_and_never_offered_for_undress():
     # V3.165.0: the old pin compared two file-wide indexes and a new '</button>')
     # elsewhere in the SPA moved it; check the feed bubble itself instead.
     feed = HTML[HTML.index("const room = m.media_kind === 'room';"):]
-    assert "room ? '' : '<button class=\"pa hot\" data-pact=\"undress\"" in feed[:1500]
+    assert "bare ? '' : '<button class=\"pa hot\" data-pact=\"undress\"" in feed[:1500]
     # V3.166.10 (владелец): пометка 'room' допустима только для «Оживить»
     assert "kinds = her_frames + ('room',) if action == 'animate' else her_frames" in MAIN
     assert "her_frames = ('photo', 'hot', 'cosplay')" in MAIN

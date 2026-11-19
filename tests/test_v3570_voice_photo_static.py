@@ -69,7 +69,7 @@ def test_photo_endpoint_reuses_vision_reaction():
     assert 'len(image_b64) > MAX_BASE64_BYTES' in body
     # only real image formats, and the dialog keeps both sides of the moment
     assert "('image/jpeg', 'image/png', 'image/webp')" in body
-    assert "save_message(uid, character_id, 'user', caption or '📷', media_kind='photo', media_url=url)" in body
+    assert "save_message(uid, character_id, 'user', caption or '📷', media_kind='photo', media_url=url, origin='user_input')" in body
     assert "save_message(uid, character_id, 'assistant', reaction)" in body
 
 

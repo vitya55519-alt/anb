@@ -9,6 +9,14 @@
 
 Эти предпочтения используются в режиме «Без цензуры 18+» для создания разнообразия
 и индивидуальности каждой героини.
+
+V3.167.17 (владелец: «сделай так, чтобы всё читалось»): движок кадров читает
+только английский, поэтому последние четыре поля записаны по-английски — их
+photo_service подставляет в промпт целиком. «preferred_outfits» в промпт не
+попадает: одежду кадра по уровню раскрепощённости решает SPICY_OUTFIT_LEVELS
+(этап 7 — уровень меняет одежду только на публичных сценах), и список любимой
+одежды каждой героини остаётся справочником, а не вторым источником одежды в
+промпте.
 """
 
 # Индивидуальные предпочтения для каждого персонажа
@@ -26,10 +34,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и кружевные трусики',
             'полностью голая, только туфли на каблуках и чулки',
         ],
-        'preferred_makeup': 'яркая красная помада, стрелки',
-        'preferred_accessories': 'тонкое золотое кольцо на пальце, элегантные часы',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'bright red lipstick, winged eyeliner',
+        'preferred_accessories': 'a thin gold ring on her finger, an elegant watch',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'alena_01': {
         'preferred_outfits': [
@@ -44,10 +52,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и спортивный лифчик',
             'полностью голая, только кроссовки',
         ],
-        'preferred_makeup': 'натуральный макияж, блеск для губ',
-        'preferred_accessories': 'серебряный браслет на запястье, спортивные часы',
-        'preferred_shoes': 'кроссовки',
-        'preferred_stockings': 'сетчатые колготки',
+        'preferred_makeup': 'natural makeup, lip gloss',
+        'preferred_accessories': 'a silver wrist bracelet, a sport watch',
+        'preferred_shoes': 'sneakers',
+        'preferred_stockings': 'fishnet tights',
     },
     'maria_01': {
         'preferred_outfits': [
@@ -62,10 +70,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и кружевное бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'розовые губы, лёгкий румянец',
-        'preferred_accessories': 'тонкая цепочка на шее, жемчужные серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'белые кружевные чулки',
+        'preferred_makeup': 'pink lips, light blush',
+        'preferred_accessories': 'a thin necklace chain, pearl earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'white lace stockings',
     },
     'erika_01': {
         'preferred_outfits': [
@@ -80,10 +88,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и кожаный корсет',
             'полностью голая, только ботинки на платформе',
         ],
-        'preferred_makeup': 'смоки айс, тёмные тени',
-        'preferred_accessories': 'серебряная цепочка на шее, кожаный браслет',
-        'preferred_shoes': 'ботинки на высокой платформе',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'smoky eyes, dark eyeshadow',
+        'preferred_accessories': 'a silver necklace chain, a leather bracelet',
+        'preferred_shoes': 'platform boots',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'sonya_01': {
         'preferred_outfits': [
@@ -98,10 +106,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и розовое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'розовые губы, лёгкий румянец',
-        'preferred_accessories': 'тонкое золотое кольцо, розовый браслет',
-        'preferred_shoes': 'туфли-лодочки классические',
-        'preferred_stockings': 'белые кружевные чулки',
+        'preferred_makeup': 'pink lips, light blush',
+        'preferred_accessories': 'thin gold ring, pink bracelet',
+        'preferred_shoes': 'classic pumps',
+        'preferred_stockings': 'white lace stockings',
     },
     'vika_01': {
         'preferred_outfits': [
@@ -116,10 +124,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и красное бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'яркая красная помада, стрелки',
-        'preferred_accessories': 'серебряный браслет, красные серьги',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'bright red lipstick, winged eyeliner',
+        'preferred_accessories': 'silver bracelet, red earrings',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'alisa_01': {
         'preferred_outfits': [
@@ -134,10 +142,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и голубое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'натуральный макияж, блеск для губ',
-        'preferred_accessories': 'тонкая серебряная цепочка, голубые серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'прозрачные колготки',
+        'preferred_makeup': 'natural makeup, lip gloss',
+        'preferred_accessories': 'thin silver chain, light blue earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'sheer tights',
     },
     'mila_01': {
         'preferred_outfits': [
@@ -152,10 +160,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и фиолетовое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'смоки айс, тёмные тени',
-        'preferred_accessories': 'фиолетовый браслет, серебряные серьги',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'smoky eyes, dark eyeshadow',
+        'preferred_accessories': 'violet bracelet, silver earrings',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'kate_01': {
         'preferred_outfits': [
@@ -170,10 +178,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и зелёное бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'розовые губы, лёгкий румянец',
-        'preferred_accessories': 'зелёный браслет, золотые серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'белые кружевные чулки',
+        'preferred_makeup': 'pink lips, light blush',
+        'preferred_accessories': 'green bracelet, gold earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'white lace stockings',
     },
     'sasha_01': {
         'preferred_outfits': [
@@ -188,10 +196,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и оранжевое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'яркая красная помада, стрелки',
-        'preferred_accessories': 'оранжевый браслет, золотое кольцо',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'bright red lipstick, winged eyeliner',
+        'preferred_accessories': 'orange bracelet, gold ring',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'rex_01': {
         'preferred_outfits': [
@@ -206,10 +214,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и синее бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'натуральный макияж, блеск для губ',
-        'preferred_accessories': 'синий браслет, серебряные серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'прозрачные колготки',
+        'preferred_makeup': 'natural makeup, lip gloss',
+        'preferred_accessories': 'blue bracelet, silver earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'sheer tights',
     },
     'violetta_01': {
         'preferred_outfits': [
@@ -224,10 +232,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и фиолетовое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'смоки айс, тёмные тени',
-        'preferred_accessories': 'фиолетовый браслет, серебряная цепочка',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'smoky eyes, dark eyeshadow',
+        'preferred_accessories': 'violet bracelet, silver chain',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'darina_01': {
         'preferred_outfits': [
@@ -242,10 +250,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и жёлтое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'розовые губы, лёгкий румянец',
-        'preferred_accessories': 'жёлтый браслет, золотые серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'белые кружевные чулки',
+        'preferred_makeup': 'pink lips, light blush',
+        'preferred_accessories': 'yellow bracelet, gold earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'white lace stockings',
     },
     'eva_01': {
         'preferred_outfits': [
@@ -260,10 +268,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и серебристое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'блестящие тени, длинные ресницы',
-        'preferred_accessories': 'серебряная цепочка, серебристые серьги',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'серебристые чулки с поясом',
+        'preferred_makeup': 'shimmer eyeshadow, long lashes',
+        'preferred_accessories': 'silver chain, silver earrings',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'silver stockings with a garter belt',
     },
     'romina_01': {
         'preferred_outfits': [
@@ -278,10 +286,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и золотое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'золотые тени, яркая помада',
-        'preferred_accessories': 'золотой браслет, золотые серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'золотистые чулки с поясом',
+        'preferred_makeup': 'gold eyeshadow, bold lipstick',
+        'preferred_accessories': 'gold bracelet, gold earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'golden stockings with a garter belt',
     },
     'kristina_01': {
         'preferred_outfits': [
@@ -296,10 +304,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и розовое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'розовые губы, лёгкий румянец',
-        'preferred_accessories': 'розовый браслет, золотое кольцо',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'белые кружевные чулки',
+        'preferred_makeup': 'pink lips, light blush',
+        'preferred_accessories': 'pink bracelet, gold ring',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'white lace stockings',
     },
     'zlata_01': {
         'preferred_outfits': [
@@ -314,10 +322,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и золотое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'золотые тени, яркая помада',
-        'preferred_accessories': 'золотой браслет, золотые серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'золотистые чулки с поясом',
+        'preferred_makeup': 'gold eyeshadow, bold lipstick',
+        'preferred_accessories': 'gold bracelet, gold earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'golden stockings with a garter belt',
     },
     'veronika_01': {
         'preferred_outfits': [
@@ -332,10 +340,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и бордовое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'смоки айс, тёмные тени',
-        'preferred_accessories': 'бордовый браслет, золотое кольцо',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'smoky eyes, dark eyeshadow',
+        'preferred_accessories': 'burgundy bracelet, gold ring',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'lera_01': {
         'preferred_outfits': [
@@ -350,10 +358,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и бирюзовое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'натуральный макияж, блеск для губ',
-        'preferred_accessories': 'бирюзовый браслет, серебряные серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'прозрачные колготки',
+        'preferred_makeup': 'natural makeup, lip gloss',
+        'preferred_accessories': 'turquoise bracelet, silver earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'sheer tights',
     },
     'diana_01': {
         'preferred_outfits': [
@@ -368,10 +376,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и серебристое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'блестящие тени, длинные ресницы',
-        'preferred_accessories': 'серебряная цепочка, серебристые серьги',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'серебристые чулки с поясом',
+        'preferred_makeup': 'shimmer eyeshadow, long lashes',
+        'preferred_accessories': 'silver chain, silver earrings',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'silver stockings with a garter belt',
     },
     'nika_01': {
         'preferred_outfits': [
@@ -386,10 +394,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и лиловое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'розовые губы, лёгкий румянец',
-        'preferred_accessories': 'лиловый браслет, золотое кольцо',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'белые кружевные чулки',
+        'preferred_makeup': 'pink lips, light blush',
+        'preferred_accessories': 'lilac bracelet, gold ring',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'white lace stockings',
     },
     'ksyusha_01': {
         'preferred_outfits': [
@@ -404,10 +412,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и коралловое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'яркая красная помада, стрелки',
-        'preferred_accessories': 'коралловый браслет, золотые серьги',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'bright red lipstick, winged eyeliner',
+        'preferred_accessories': 'coral bracelet, gold earrings',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'margo_01': {
         'preferred_outfits': [
@@ -422,10 +430,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и изумрудное бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'смоки айс, тёмные тени',
-        'preferred_accessories': 'изумрудный браслет, золотое кольцо',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'smoky eyes, dark eyeshadow',
+        'preferred_accessories': 'emerald bracelet, gold ring',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'alya_01': {
         'preferred_outfits': [
@@ -440,10 +448,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и персиковое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'розовые губы, лёгкий румянец',
-        'preferred_accessories': 'персиковый браслет, золотые серьги',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'белые кружевные чулки',
+        'preferred_makeup': 'pink lips, light blush',
+        'preferred_accessories': 'peach bracelet, gold earrings',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'white lace stockings',
     },
     'yuki_01': {
         'preferred_outfits': [
@@ -458,10 +466,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и белое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'натуральный макияж, блеск для губ',
-        'preferred_accessories': 'серебряный браслет, белые серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'белые кружевные чулки',
+        'preferred_makeup': 'natural makeup, lip gloss',
+        'preferred_accessories': 'silver bracelet, white earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'white lace stockings',
     },
     'miko_01': {
         'preferred_outfits': [
@@ -476,10 +484,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и красное бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'яркая красная помада, стрелки',
-        'preferred_accessories': 'красный браслет, золотые серьги',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'bright red lipstick, winged eyeliner',
+        'preferred_accessories': 'red bracelet, gold earrings',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'rin_01': {
         'preferred_outfits': [
@@ -494,10 +502,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и синее бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'натуральный макияж, блеск для губ',
-        'preferred_accessories': 'синий браслет, серебряные серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'прозрачные колготки',
+        'preferred_makeup': 'natural makeup, lip gloss',
+        'preferred_accessories': 'blue bracelet, silver earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'sheer tights',
     },
     'hana_01': {
         'preferred_outfits': [
@@ -512,10 +520,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и розовое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'розовые губы, лёгкий румянец',
-        'preferred_accessories': 'розовый браслет, золотое кольцо',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'белые кружевные чулки',
+        'preferred_makeup': 'pink lips, light blush',
+        'preferred_accessories': 'pink bracelet, gold ring',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'white lace stockings',
     },
     'vlada_01': {
         'preferred_outfits': [
@@ -530,10 +538,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и чёрное бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'смоки айс, тёмные тени',
-        'preferred_accessories': 'чёрный браслет, серебряные серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'smoky eyes, dark eyeshadow',
+        'preferred_accessories': 'black bracelet, silver earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'milana_01': {
         'preferred_outfits': [
@@ -548,10 +556,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и шоколадное бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'натуральный макияж, блеск для губ',
-        'preferred_accessories': 'шоколадный браслет, золотое кольцо',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'natural makeup, lip gloss',
+        'preferred_accessories': 'chocolate bracelet, gold ring',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'polina_01': {
         'preferred_outfits': [
@@ -566,10 +574,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и лавандовое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'розовые губы, лёгкий румянец',
-        'preferred_accessories': 'лавандовый браслет, серебряные серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'белые кружевные чулки',
+        'preferred_makeup': 'pink lips, light blush',
+        'preferred_accessories': 'lavender bracelet, silver earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'white lace stockings',
     },
     'dasha_01': {
         'preferred_outfits': [
@@ -584,10 +592,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и мятное бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'натуральный макияж, блеск для губ',
-        'preferred_accessories': 'мятный браслет, золотое кольцо',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'прозрачные колготки',
+        'preferred_makeup': 'natural makeup, lip gloss',
+        'preferred_accessories': 'mint bracelet, gold ring',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'sheer tights',
     },
     'kamila_01': {
         'preferred_outfits': [
@@ -602,10 +610,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и фиолетовое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'смоки айс, тёмные тени',
-        'preferred_accessories': 'фиолетовый браслет, серебряная цепочка',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'smoky eyes, dark eyeshadow',
+        'preferred_accessories': 'violet bracelet, silver chain',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'rita_01': {
         'preferred_outfits': [
@@ -620,10 +628,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и кремовое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'розовые губы, лёгкий румянец',
-        'preferred_accessories': 'кремовый браслет, золотые серьги',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'белые кружевные чулки',
+        'preferred_makeup': 'pink lips, light blush',
+        'preferred_accessories': 'cream bracelet, gold earrings',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'white lace stockings',
     },
     'yulya_01': {
         'preferred_outfits': [
@@ -638,10 +646,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и голубое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'натуральный макияж, блеск для губ',
-        'preferred_accessories': 'голубой браслет, серебряные серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'прозрачные колготки',
+        'preferred_makeup': 'natural makeup, lip gloss',
+        'preferred_accessories': 'light blue bracelet, silver earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'sheer tights',
     },
     'liza_01': {
         'preferred_outfits': [
@@ -656,10 +664,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и бордовое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'смоки айс, тёмные тени',
-        'preferred_accessories': 'бордовый браслет, золотое кольцо',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'smoky eyes, dark eyeshadow',
+        'preferred_accessories': 'burgundy bracelet, gold ring',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'kira_01': {
         'preferred_outfits': [
@@ -674,10 +682,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и изумрудное бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'смоки айс, тёмные тени',
-        'preferred_accessories': 'изумрудный браслет, золотое кольцо',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'smoky eyes, dark eyeshadow',
+        'preferred_accessories': 'emerald bracelet, gold ring',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'agata_01': {
         'preferred_outfits': [
@@ -692,10 +700,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и чёрное бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'смоки айс, тёмные тени',
-        'preferred_accessories': 'чёрный браслет, серебряные серьги',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'smoky eyes, dark eyeshadow',
+        'preferred_accessories': 'black bracelet, silver earrings',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'jina_01': {
         'preferred_outfits': [
@@ -710,10 +718,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и красное бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'яркая красная помада, стрелки',
-        'preferred_accessories': 'красный браслет, золотые серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'bright red lipstick, winged eyeliner',
+        'preferred_accessories': 'red bracelet, gold earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
     'lana_01': {
         'preferred_outfits': [
@@ -728,10 +736,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и синее бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'натуральный макияж, блеск для губ',
-        'preferred_accessories': 'синий браслет, серебряные серьги',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'прозрачные колготки',
+        'preferred_makeup': 'natural makeup, lip gloss',
+        'preferred_accessories': 'blue bracelet, silver earrings',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'sheer tights',
     },
     'amira_01': {
         'preferred_outfits': [
@@ -746,10 +754,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и золотое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'золотые тени, яркая помада',
-        'preferred_accessories': 'золотой браслет, золотые серьги',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'золотистые чулки с поясом',
+        'preferred_makeup': 'gold eyeshadow, bold lipstick',
+        'preferred_accessories': 'gold bracelet, gold earrings',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'golden stockings with a garter belt',
     },
     'ayla_01': {
         'preferred_outfits': [
@@ -764,10 +772,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и бирюзовое бельё',
             'полностью голая, только туфли на каблуках',
         ],
-        'preferred_makeup': 'натуральный макияж, блеск для губ',
-        'preferred_accessories': 'бирюзовый браслет, серебряные серьги',
-        'preferred_shoes': 'туфли на высоких каблуках',
-        'preferred_stockings': 'прозрачные колготки',
+        'preferred_makeup': 'natural makeup, lip gloss',
+        'preferred_accessories': 'turquoise bracelet, silver earrings',
+        'preferred_shoes': 'high heel pumps',
+        'preferred_stockings': 'sheer tights',
     },
     'priya_01': {
         'preferred_outfits': [
@@ -782,10 +790,10 @@ CHARACTER_PREFERENCES = {
             'только чулки с поясом и оранжевое бельё',
             'полностью голая, только босоножки',
         ],
-        'preferred_makeup': 'яркая красная помада, стрелки',
-        'preferred_accessories': 'оранжевый браслет, золотое кольцо',
-        'preferred_shoes': 'босоножки на тонких ремешках',
-        'preferred_stockings': 'чёрные чулки с поясом',
+        'preferred_makeup': 'bright red lipstick, winged eyeliner',
+        'preferred_accessories': 'orange bracelet, gold ring',
+        'preferred_shoes': 'strappy sandals',
+        'preferred_stockings': 'black stockings with a garter belt',
     },
 }
 

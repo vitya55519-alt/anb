@@ -104,9 +104,9 @@ def test_transferred_rails_keep_app_text_unlabelled_and_notify_generically():
     delivery = SCHED[SCHED.index('def _app_delivery('):SCHED.index('def _life_actions(')]
     # Her app dialog identifies her: store the raw text and its durable actions.
     assert "return save_message(uid, char_id, 'assistant', text, media_kind=media_kind," in persist
-    assert 'origin=origin, actions=actions)' in persist
+    assert 'origin=origin, actions=actions, life_context=life_context)' in persist
     assert '_her(' not in persist + delivery
-    assert 'mid = _to_app_chat(uid, tg_id, char_id, text, shot, origin, actions)' in delivery
+    assert 'mid = _to_app_chat(uid, tg_id, char_id, text, shot, origin, actions, life_context=life_context)' in delivery
     assert delivery.index('if mid:') < delivery.index('app_ping.note(')
     assert "app_ping.note(bot, tg_id, char_id, ''," in delivery
     assert "channel='life' if origin == LIFE_ORIGIN else 'default', generic=True" in delivery

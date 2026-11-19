@@ -380,3 +380,34 @@ def test_actual_two_question_prompt_gets_a_no_question_turn(prompt_env):
     messages = env.run('Не знаю')
     assert 'ДВА ВОПРОСА ПОДРЯД:' in guidance_in(messages)[0]
     assert 'без очередного вопроса' in guidance_in(messages)[0]
+
+
+def test_actual_prompt_continues_a_delivered_life_event_without_extra_producers(prompt_env):
+    env = prompt_env
+    from sqlalchemy import select
+    from models.app_models import LifeEvent, LifeParticipant, Message
+    from services import db, life_experiment as E, memory_service as M
+    from services.user_service import ensure_user
+    uid = ensure_user(915990, 'Synthetic')
+    ctx = E.assignment(uid)
+    with db.SessionLocal() as s:
+        participant = s.scalar(select(LifeParticipant).where(LifeParticipant.user_id == uid))
+        participant.variant = 'treatment'
+        s.commit()
+    ctx.update(variant='treatment', mode_on=False)
+    M.save_message(uid, 'turn_test_character', 'assistant',
+                   'Пирог подгорел. Спасаем или пицца?', origin='life', life_context=ctx)
+    messages = env.run('Давай пиццу')
+    notes = [m['content'] for m in messages if m['role'] == 'system' and 'ЕЁ ДЕНЬ' in m['content']]
+    assert len(notes) == 1 and 'Пирог подгорел' in notes[0]
+    env.hook.assert_not_called()
+    env.story.assert_not_called()
+    env.gift.assert_not_called()
+    with db.SessionLocal() as s:
+        rows = s.scalars(select(Message).where(Message.user_id == uid)).all()
+        assert any(m.role == 'user' and m.content == 'Давай пиццу' and m.origin == 'user_input'
+                   for m in rows)
+        event = s.scalar(select(LifeEvent).where(LifeEvent.user_id == uid))
+        assert event.reply_count == 1
+        # The synthetic answer carries no routing marker: unclear → no revival.
+        assert event.scene_status == 'closed'

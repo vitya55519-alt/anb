@@ -30,7 +30,7 @@ def test_fitter_keeps_hands_quality_and_chain():
 def test_undress_tail_keeps_both_hands_free():
     import main
     assert 'exactly two arms and two hands' in main.UNDRESS_TAIL
-    assert 'no device and no arm reaching toward the camera' in main.UNDRESS_TAIL
+    assert 'no device and no arm reaching toward the camera' in main.UNDRESS_TAIL.lower()
     assert 'holds' not in main.UNDRESS_TAIL.lower()
 
 

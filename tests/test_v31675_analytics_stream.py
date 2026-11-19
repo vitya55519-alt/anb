@@ -76,7 +76,7 @@ def test_a_line_she_wrote_first_carries_its_rail():
     assert 'origin: Mapped[str | None]' in (ROOT / 'models' / 'app_models.py').read_text(encoding='utf-8')
     assert 'origin=origin' in (ROOT / 'services' / 'memory_service.py').read_text(encoding='utf-8')
     # весь scheduler идёт через одну точку — и по умолчанию это её ход
-    assert 'def _to_app_chat(uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN, actions=None)' in SCHED
+    assert 'def _to_app_chat(uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN, actions=None, *, life_context=None)' in SCHED
     assert SCHED.count('_to_app_chat(') > SCHED.count('origin=LIFE_ORIGIN')   # остальные — 'push'
     assert 'origin=LIFE_ORIGIN' in SCHED and 'origin=LIFE_ORIGIN' in LIVE
 

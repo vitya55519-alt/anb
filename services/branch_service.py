@@ -82,7 +82,7 @@ def choose(uid: int, character_id: str, branch: str, *, taken: bool = False) -> 
         return None
     reply = (CHOSEN_REPLY_TAKEN if taken else CHOSEN_REPLY)[branch]
     try:
-        save_message(uid, character_id, 'user', FORK_OPTIONS[branch])
+        save_message(uid, character_id, 'user', FORK_OPTIONS[branch], origin='user_input')
         save_message(uid, character_id, 'assistant', reply)
     except Exception:
         logger.exception('fork answer save failed user=%s character=%s', uid, character_id)

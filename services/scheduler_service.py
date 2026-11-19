@@ -130,7 +130,7 @@ async def _reminders(bot):
             logger.info('reminder dropped (user blocked bot) id=%s', r.id)
         except Exception: logger.exception('reminder failed id=%s', r.id if r else None)
 
-def _to_app_chat(uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN, actions=None) -> int | None:
+def _to_app_chat(uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN, actions=None, *, life_context=None) -> int | None:
     """Persist the app message before notifying; a failed save never counts as delivery."""
     try:
         from services.memory_service import save_message
@@ -143,14 +143,14 @@ def _to_app_chat(uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN, actio
             filename = webapp_service.save_chat_media(int(tg_id), data, ext, ctype)
             media_kind, media_url = ('video' if moving else 'photo'), f'/webapp/media/{filename}'
         return save_message(uid, char_id, 'assistant', text, media_kind=media_kind, media_url=media_url,
-                            origin=origin, actions=actions)
+                            origin=origin, actions=actions, life_context=life_context)
     except Exception:
         logger.exception('proactive app-chat persist failed user=%s', uid)
         return None
 
 
-def _app_delivery(bot, uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN, actions=None) -> int | None:
-    mid = _to_app_chat(uid, tg_id, char_id, text, shot, origin, actions)
+def _app_delivery(bot, uid, tg_id, char_id, text, shot=None, origin=PUSH_ORIGIN, actions=None, *, life_context=None) -> int | None:
+    mid = _to_app_chat(uid, tg_id, char_id, text, shot, origin, actions, life_context=life_context)
     if mid:
         try:
             from services import app_ping
@@ -1517,7 +1517,8 @@ async def _life_events(bot):
             text = moment['text']
             photo = moment.get('photo')
             if not _app_delivery(bot, uid, tg_id, char_id, text, photo, origin=LIFE_ORIGIN,
-                                 actions=_life_actions(moment.get('options'), char_id)):
+                                 actions=moment.get('actions') or _life_actions(moment.get('options'), char_id),
+                                 life_context=moment.get('experiment')):
                 continue
             # V3.167.5 §9 (владелец ТЗ): имя события из ТЗ — по нему считается
             # DoD «≥70% аккаунтов получили ≥1 событие в первые сутки».
@@ -1589,6 +1590,35 @@ async def _weekly_report(bot):
             await bot.send_message(admin_id, text)
         except Exception:
             logger.exception('weekly report send failed admin=%s', admin_id)
+
+
+async def _life_review(bot):
+    """One admin-only message exactly when the 14-day enrollment ends.
+
+    The weekly report also carries the numbers, but the owner asked for the
+    two-week check itself — this claims the review once, after day 14, and
+    never sends it twice even across restarts. No user-facing push."""
+    from config import ADMIN_TELEGRAM_IDS
+    from services import life_experiment as life
+    try:
+        if not await asyncio.to_thread(life.review_due):
+            return
+        data = await asyncio.to_thread(life.collect_report)
+        text = 'Итог двух недель «её день»:\n' + life.render_report(data)
+    except Exception:
+        logger.exception('life experiment review failed'); return
+    sent = False
+    for admin_id in ADMIN_TELEGRAM_IDS:
+        try:
+            await bot.send_message(admin_id, text)
+            sent = True
+        except Exception:
+            logger.exception('life review send failed admin=%s', admin_id)
+    if sent:
+        try:
+            await asyncio.to_thread(life.mark_review_sent)
+        except Exception:
+            logger.exception('life review mark failed')
 
 
 async def _first_minutes(bot):
@@ -1980,6 +2010,8 @@ def start_scheduler(bot):
     # V3.68.0: channel bonus after the hold.
     scheduler.add_job(_channel_bonus_holds,'interval',hours=1,args=[bot],id='channel_bonus_holds',replace_existing=True)
     scheduler.add_job(_weekly_report,'cron',day_of_week='mon',hour=6,minute=0,args=[bot],id='weekly_report',replace_existing=True)
+    # The two-week «её день» check: one admin message after day 14, never twice.
+    scheduler.add_job(_life_review,'interval',hours=1,args=[bot],id='life_review',replace_existing=True)
     # V3.159.1: просроченные подписки получают честный статус перед бэкапом.
     scheduler.add_job(_ledger_housekeeping,'cron',hour=0,minute=25,args=[bot],id='ledger_housekeeping',replace_existing=True)
     # V3.82.0: daily DB backup to the admins (00:30 UTC = 03:30 MSK, quiet hours).

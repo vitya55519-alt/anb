@@ -139,7 +139,7 @@ def test_reply_wires_the_upsell_block_and_the_tag_parser():
     assert 'invite_funnel.upsell_rule(_fn)' in CHAT
     # the tag is stripped BEFORE the answer is saved into history
     apply_at = CHAT.index('invite_funnel.apply(answer, user_id, character_id, duo=duo_chat')
-    save_at = CHAT.index('save_message(db_user_id, character_id, "user", user_text)')
+    save_at = CHAT.index('save_message(db_user_id, character_id, "assistant", answer,')
     assert apply_at < save_at
 
 

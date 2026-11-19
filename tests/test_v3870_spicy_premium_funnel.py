@@ -61,7 +61,8 @@ def test_free_selfie_then_undress_tease():
     # «покажи себя» stays a free selfie (not a spicy scene)…
     assert "'покажи себя'" in PS
     # …and her first photo in a chat is followed by «🔥 Раздеть её» on that photo
+    # V3.167.17: но только если кадр не голый — под голым «Раздеть» не предлагается.
     assert 'function undressTease(mediaUrl) {' in INDEX
     assert 'undressTease(j.photo_url);' in INDEX
-    assert "if (kind === 'photo') undressTease(j.url);" in INDEX
+    assert "if (kind === 'photo' && !j.nude) undressTease(j.url);" in INDEX
     assert INDEX.count('undress_tease_btn:') >= 2

@@ -35,7 +35,9 @@ def test_paid_frames_pass_the_action_gate():
     gate = _block('async def _webapp_api_photo_action(', "'credits', 402")
     assert "her_frames = ('photo', 'hot', 'cosplay')" in gate
     assert "kinds = her_frames + ('room',) if action == 'animate' else her_frames" in gate
-    assert 'if not _her_photo(uid, kinds):' in gate
+    # V3.167.17: _her_photo теперь возвращает (found, frame_nude), и гейт проверяет found.
+    assert 'found, frame_nude = _her_photo(uid, kinds)' in gate
+    assert 'if not found:' in gate
     # единственная виденная раньше пометка не перечисляется больше нигде в гейте
     assert "('photo',)" not in gate
     # деньги не тронуты: та же лестница цен стоит под гейтом
@@ -44,27 +46,28 @@ def test_paid_frames_pass_the_action_gate():
 
 def test_the_spa_already_lays_the_chips_under_a_paid_frame():
     # правка была только серверная: под любым её кадром, кроме интерьера
-    # «🏠 Дом», «Раздеть» и «Оживить» рисуются и так.
+    # «🏠 Дом» и голого кадра, «Раздеть» и «Оживить» рисуются и так.
     row = _block("      const room = m.media_kind === ", "else body = `<img", SPA)
     assert 'data-pact="undress"' in row
     assert 'data-pact="animate"' in row
-    assert 'room ? ' in row
+    assert 'bare ? ' in row
 
 
 # ── 2. анатомия — первая строка промпта «Раздеть» ─────────────────────────
 
 def test_the_anatomy_lock_leads_the_undress_prompt():
-    lock = _block('UNDRESS_ANATOMY_LOCK = (\n', 'UNDRESS_SAME_FRAME_LOCK = (')
+    lock = _block('UNDRESS_ANATOMY_LOCK = (\n', 'UNDRESS_NEW_SHOT_LOCK = (')
     assert lock.startswith("UNDRESS_ANATOMY_LOCK = (\n    'HANDS:")
     assert 'exactly two arms and two hands' in lock
     assert 'five correct fingers on each hand' in lock
     assert 'Never a third hand or arm' in lock
-    # рука, уже лежащая в первом кадре, не получает права на третью
-    assert 'a free third one' in lock
-    assembly = _block('    prompt, secret = (UNDRESS_SAME_FRAME_LOCK', '\n    try:')
-    # V3.167.4: порядок склейки — кадр, анатомия, место, сам промпт.
-    assert "UNDRESS_SAME_FRAME_LOCK + '\\n' + UNDRESS_ANATOMY_LOCK + '\\n' + UNDRESS_PLACE_LOCK + '\\n" in assembly
-    assert "+ UNDRESS_PROMPT + reveal" in assembly
+    # V3.167.17: порядок склейки — NEW SHOT LOCK, SHOT PLACE, SHOT POSE, анатомия, промпт.
+    assembly = _block('    prompt, secret = (\'\\n\'.join((UNDRESS_NEW_SHOT_LOCK,', '\n    try:')
+    assert "UNDRESS_NEW_SHOT_LOCK," in assembly
+    assert "UNDRESS_SHOT_PLACE.format(place=place)," in assembly
+    assert "UNDRESS_SHOT_POSE.format(pose=pose)," in assembly
+    assert "UNDRESS_ANATOMY_LOCK))" in assembly
+    assert "+ '\\nUNDRESS REVEAL:' + UNDRESS_PROMPT + reveal" in assembly
     # хвост по-прежнему идёт после всего — но анатомии в нём больше нет
     assert assembly.index('UNDRESS_ANATOMY_LOCK') < assembly.index('UNDRESS_TAIL')
 

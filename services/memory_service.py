@@ -37,7 +37,7 @@ def message_actions(value) -> list[dict]:
     return out
 
 
-def save_message(user_id, character_id, role, content, media_kind=None, media_url=None, draft_text=None, image_prompt=None, origin=None, actions=None):
+def save_message(user_id, character_id, role, content, media_kind=None, media_url=None, draft_text=None, image_prompt=None, origin=None, actions=None, media_nude=False, *, life_context=None, life_scene_context=None):
     """Store one chat line and return its id. V3.152.0: `draft_text` is the
     erased draft of THIS answer — paid text, kept out of `content` so neither
     the history endpoint nor the prompt can ship it to him for free.
@@ -45,16 +45,32 @@ def save_message(user_id, character_id, role, content, media_kind=None, media_ur
     English scene never reaches the client, only the plate that offers it.
     V3.167.5: `origin` marks the line SHE wrote first ('push' / 'life' /
     'digest') — the accumulation cap and the answer-rate read it, so a normal
-    answer to his message is no longer counted as an unanswered push."""
+    answer to his message is no longer counted as an unanswered push.
+    V3.167.17: `media_nude` marks a frame that is already naked — the app hides
+    «Раздеть» under it and the endpoint refuses to charge for it again."""
     with SessionLocal() as s:
+        # Serialize event delivery/accepted replies BEFORE inserting the message.
+        # Their identity and attribution commit together or not at all.
+        if origin in ('life', 'user_input') or life_scene_context:
+            s.execute(update(User).where(User.id == user_id).values(chat_used=User.chat_used))
         row = Message(user_id=user_id, character_id=character_id, role=role, content=content,
                       media_kind=media_kind, media_url=media_url, draft_text=draft_text,
-                      image_prompt=image_prompt, origin=origin,
+                      image_prompt=image_prompt, origin=origin, media_nude=bool(media_nude),
                       actions_json=json.dumps(message_actions(actions), ensure_ascii=False) if actions else None)
         s.add(row)
         if role == "user":
             user=s.get(User,user_id)
             if user: user.last_active_at=_now()
+        if origin in ('life', 'user_input') or life_scene_context:
+            s.flush()
+            from services import life_experiment, life_scene
+            if role == 'assistant' and origin == 'life':
+                life_experiment.record_delivery(s, row, life_context)
+            elif role == 'user' and origin == 'user_input':
+                life_experiment.record_reply(s, row)
+                life_scene.note_user_stop(s, row)
+            if life_scene_context:
+                life_scene.remember_turn(s, row, life_scene_context)
         s.commit()
         return row.id
 
@@ -72,6 +88,13 @@ def reset_conversation(user_id:int, character_id:str):
         s.execute(delete(Message).where(Message.user_id==user_id,Message.character_id==character_id))
         s.execute(delete(Memory).where(Memory.user_id==user_id,Memory.character_id==character_id))
         s.execute(delete(CommunicationProfile).where(CommunicationProfile.user_id==user_id,CommunicationProfile.character_id==character_id))
+        # A wiped dialog must not offer to continue a scene whose lines are gone.
+        # Measurement rows stay (they are counts, not chat text).
+        from models.app_models import LifeEvent
+        s.execute(update(LifeEvent).where(LifeEvent.user_id==user_id,LifeEvent.character_id==character_id,
+                                          LifeEvent.scene_status!='closed')
+                  .values(scene_status='closed',closed_reason='conversation_reset'),
+                  execution_options={'synchronize_session': False})
         s.commit()
 
 def _extract_json(text):
