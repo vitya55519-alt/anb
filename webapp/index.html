@@ -526,6 +526,22 @@
     background: linear-gradient(180deg, #150a1e 0%, var(--bg2) 100%);
   }
   #modeScreen.open { display: flex; }
+  /* V3.167.21: 18+ confirmation sheet shown when he picks the 18+ mode. */
+  #ageGate {
+    position: fixed; inset: 0; z-index: 60; display: none;
+    align-items: flex-end; justify-content: center; background: rgba(10,5,14,.7);
+  }
+  #ageGate.open { display: flex; }
+  #ageGate .box {
+    width: min(420px, 100vw); background: var(--card); border-radius: 20px 20px 0 0;
+    padding: 22px 18px 26px; text-align: center;
+  }
+  #ageGate .emo { font-size: 42px; }
+  #ageGate h3 { margin: 6px 0 8px; font-size: 18px; color: var(--text); }
+  #ageGate p { margin: 0 0 16px; font-size: 13px; color: var(--muted); line-height: 1.45; }
+  #ageGate button { width: 100%; border: 0; border-radius: 14px; padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  #ageGate .yes { background: var(--accent); color: #fff; margin-bottom: 8px; }
+  #ageGate .no { background: var(--card2); color: var(--muted); }
   #modeScreen h2 { font-size: 21px; color: var(--text); text-align: center; }
   #modeScreen .ms-sub { font-size: 12.5px; color: var(--muted); text-align: center; margin-top: -6px; }
   /* V3.166.2 (Блок 1): the entry cards are full-bleed 3:4 portraits, one under
@@ -1508,6 +1524,15 @@
      writes the account flag at once and takes him to the heroines. There is no
      other switch: the Settings row, the main-screen banner, the bot tile and
      the «Честно о нас» card are all gone. -->
+<div id="ageGate">
+  <div class="box">
+    <div class="emo">🔞</div>
+    <h3 id="agTitle"></h3>
+    <p id="agText"></p>
+    <button class="yes" id="agYes"></button>
+    <button class="no" id="agNo"></button>
+  </div>
+</div>
 <div id="modeScreen">
   <h2 id="msTitle"></h2>
   <div class="ms-sub" id="msSub"></div>
@@ -2248,6 +2273,10 @@ const L_EN = {
   sch_club: 'on the dance floor', sch_personal: 'lace and candles, only for you', sch_lingerie: 'bold lingerie boudoir',
   sch_private_fashion: 'a sheer kimono, warm light',
   adult_confirm_needed: 'Confirm 18+ in the bot chat first',
+  ag_title: 'Adults only 18+',
+  ag_text: 'This mode has explicit chats and uncensored photos. By tapping the button you confirm you are 18 or older.',
+  ag_yes: 'I am 18 or older',
+  ag_no: 'No, go back',
 };
 
 // V3.43.5: the full Russian dictionary stays the base; five more interface
@@ -2588,6 +2617,10 @@ const L_RU = {
   sch_club: 'на танцполе, вечеринка', sch_personal: 'кружево и свечи, только тебе', sch_lingerie: 'дерзкий будуар в белье',
   sch_private_fashion: 'полупрозрачное кимоно, тёплый свет',
   adult_confirm_needed: 'Сначала подтверди 18+ в чате бота',
+  ag_title: 'Только для взрослых 18+',
+  ag_text: 'В этом режиме откровенные разговоры и фото без цензуры. Нажимая кнопку, ты подтверждаешь, что тебе уже исполнилось 18 лет.',
+  ag_yes: 'Мне есть 18 лет',
+  ag_no: 'Нет, назад',
 };
 
 // V3.43.5: partial UI dictionaries — everything missing falls back to the
@@ -8529,25 +8562,46 @@ function openModeScreen() {
   });
   document.getElementById('modeScreen').classList.add('open');
 }
+function askAdult() {
+  return new Promise(res => {
+    const g = document.getElementById('ageGate');
+    document.getElementById('agTitle').textContent = L.ag_title;
+    document.getElementById('agText').textContent = L.ag_text;
+    const y = document.getElementById('agYes'), n = document.getElementById('agNo');
+    y.textContent = L.ag_yes; n.textContent = L.ag_no;
+    const done = v => { g.classList.remove('open'); y.onclick = n.onclick = null; res(v); };
+    y.onclick = () => done(true); n.onclick = () => done(false);
+    g.classList.add('open');
+  });
+}
+async function postMode(on, adultConfirm) {
+  const r = await fetch('/webapp/api/spicy?init_data=' + encodeURIComponent(tg.initData || ''), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(adultConfirm ? { spicy: !!on, adult_confirm: true } : { spicy: !!on }),
+  });
+  if (r.status === 403) return 'adult';
+  const j = await r.json().catch(() => ({}));
+  if (ME && typeof j.spicy_mode === 'boolean') ME.spicy_mode = j.spicy_mode;
+  return 'ok';
+}
 async function chooseMode(on) {
   const prev = !!(ME && ME.spicy_mode);
   document.querySelectorAll('#msCards .modecard').forEach(b =>
     b.classList.toggle('on', (b.dataset.mode === '1') === on));
-  let adultBlocked = false;
+  // V3.167.21: the 18+ mode needs his tap on «Мне есть 18 лет» — the sheet
+  // writes adult_confirmed on the server together with the mode.
   try {
-    const r = await fetch('/webapp/api/spicy?init_data=' + encodeURIComponent(tg.initData || ''), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spicy: !!on }),
-    });
-    if (r.status === 403) adultBlocked = true;
-    else {
-      const j = await r.json().catch(() => ({}));
-      if (ME && typeof j.spicy_mode === 'boolean') ME.spicy_mode = j.spicy_mode;
+    let res = await postMode(on, false);
+    if (res === 'adult') {
+      if (await askAdult()) res = await postMode(on, true);
+      if (res !== 'ok') {
+        if (ME) ME.spicy_mode = prev;
+        document.querySelectorAll('#msCards .modecard').forEach(b =>
+          b.classList.toggle('on', (b.dataset.mode === '1') === prev));
+        return;  // stay on the mode screen
+      }
     }
   } catch (e) {}
-  // Turning it on needs the 18+ confirmation; #107 replaces this toast with
-  // the «Только 18+» sheet, so the flag is not written silently here.
-  if (adultBlocked) { if (ME) ME.spicy_mode = prev; toast(L.adult_confirm_needed); }
   document.getElementById('modeScreen').classList.remove('open');
   showTab('characters');
 }

@@ -105,9 +105,11 @@ def test_profile_screen_carries_the_settings_section():
     assert '${esc(L.spicy_title)}' not in INDEX
     # the entry cards post the tapped value to the endpoint and honour its
     # verdicts: the 18+ answer stays separate from a network failure.
-    assert "body: JSON.stringify({ spicy: !!on })," in INDEX
-    assert "if (r.status === 403) adultBlocked = true;" in INDEX
-    assert "toast(L.adult_confirm_needed);" in INDEX
+    # V3.167.21: a 403 opens the «Мне есть 18 лет» sheet instead of a toast.
+    assert "{ spicy: !!on, adult_confirm: true } : { spicy: !!on }" in INDEX
+    assert "if (r.status === 403) return 'adult';" in INDEX
+    assert "if (await askAdult()) res = await postMode(on, true);" in INDEX
+    assert 'id="ageGate"' in INDEX
     assert "ME.spicy_mode = j.spicy_mode;" in INDEX
     # Premium is no longer the price of the mode
     assert "if (!ME.spicy_mode && !ME.premium) { toast(L.spicy_prem); showTab('shop'); return; }" not in INDEX

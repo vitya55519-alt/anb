@@ -431,6 +431,30 @@ POSE_POOL = [
 # V3.43.4: boudoir posing for the private/intimate scenes only — the everyday
 # POSE_POOL stays neutral for public venues. Sultrier posture notes make the
 # lingerie frames actually feel like boudoir instead of a catalog try-on.
+# V3.167.21 (владелец 19.11): позы для «Без цензуры 18+» — соблазнительные,
+# каждая заметно отличается от соседней; работают в любой сцене (место решает
+# кнопка сцены, поза — только положение тела). Только взрослая, по согласию.
+SPICY_POSE_POOL = [
+    'standing with her back half-turned to the camera, looking over her shoulder with a teasing smile, one hand on her hip',
+    'leaning forward with both hands on a surface in front of her, back arched, looking up into the lens',
+    'sitting on the edge of a seat with legs crossed high, leaning back on one hand, chin slightly lowered',
+    'kneeling upright, hands sliding through her hair, chest open to the camera, eyes half-closed',
+    'lying on her side propped on one elbow, top leg bent forward, the curve of her hip as the main line of the frame',
+    'lying on her stomach, chin resting on her folded hands, legs bent up and crossed at the ankles behind her',
+    'leaning her shoulder blades against a wall, one knee raised, fingers pulling the edge of her outfit playfully',
+    'mirror selfie from a three-quarter angle, hip pushed to one side, phone held high, lips slightly parted',
+    'sitting with knees drawn up and apart, arms resting loosely on them, direct confident gaze into the lens',
+    'standing in profile, arching her back and stretching her arms up, emphasizing the S-curve of her figure',
+    'bending slightly at the waist adjusting a strap, glancing sideways at the camera with a sly smile',
+    'lying on her back with her head toward the camera, hair spread out, one arm above her head, looking up into the lens',
+]
+SPICY_FIGURE_LOCK = (
+    'FIGURE LOCK (18+): the revealing outfit and the seductive pose never change her body. '
+    'Keep exactly the declared BODY IDENTITY: same height, waist, hips, legs, shoulder width and bust size as in her other photos; '
+    'no exaggerated curves, no thinner or thicker figure, no longer legs, no changed proportions. '
+    'Anatomically correct body, realistic skin, natural fit of the clothing on this exact figure.'
+)
+
 PRIVATE_POSE_POOL = [
     'lying on her side on the bed, propped on one elbow, looking into the camera',
     'seated on the edge of the bed with her back softly arched',
@@ -2997,10 +3021,13 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
         poses = list(PASSION_PUBLIC_POSE_POOL)
     elif tender and request.scene not in {'personal', 'lingerie', 'private_fashion', 'tease'}:
         poses = list(TENDER_POSE_POOL)
+    if spicy_level > 0 and not pinned_outfit:
+        poses = list(SPICY_POSE_POOL)
     random.shuffle(poses)
     pose_rotation = tuple(request.pose_rotation) or (
         _ordinary_pose_rotation(telegram_id, character_id)
-        if ordinary_style and not passion and not tender and not request.angle else tuple(poses)
+        if ordinary_style and not passion and not tender and not request.angle and not (spicy_level > 0 and not pinned_outfit)
+        else tuple(poses)
     )
     # V3.167.14: логирование выбранных тегов для отладки разнообразия генерации.
     logging.info(
@@ -3121,6 +3148,8 @@ def _build_prompt(request: PhotoRequest, shot_index: int, seedream: bool = False
             _age = 25
         adult_lock = ADULT_ONLY_LOCK.replace('adult woman', f'adult woman, {_age} years old', 1)
     body_reinforcement = BODY_REINFORCEMENT if (character_id == 'anna_01' and not seedream and request.scene in BODY_REINFORCEMENT_SCENES) else ''
+    if spicy_frame:
+        body_reinforcement = (body_reinforcement + '\n' if body_reinforcement else '') + SPICY_FIGURE_LOCK
     figure_note = (
         'Use tasteful fashion fit and waist definition while preserving the underlying slim body proportions. ' if seedream else
         'Use a well-fitted outfit that preserves the person\u2019s physique and proportions. Use a natural everyday pose with the visual focus on the person, outfit and environment. '
