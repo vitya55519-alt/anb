@@ -65,7 +65,12 @@ def test_spicy_breaker_opens_after_misses_and_is_per_leg():
     asyncio.run(run())
 
 
-def test_gemini_429_cooldown_wired():
-    assert 'if response.status_code == 429:' in PHOTO
-    assert 'if gemini_on_cooldown():' in PHOTO
+def test_gemini_429_cooldown_retired_with_the_avatar_leg():
+    # V3.58.1 skipped the avatar's Gemini fallback for 30 min after an HTTP 429.
+    # V3.167.28 (owner 20.11: «вырежи»): the fallback engine is out of the file,
+    # so its cooldown guard went with it — a silent Spicy is a refusal now, and
+    # the refusal still carries the reason the owner's «Отказы» screen shows.
+    assert 'async def _gemini_edit' not in PHOTO
+    assert 'def gemini_on_cooldown() -> bool:' not in PHOTO
+    assert 'GEMINI_429_COOLDOWN_SECONDS' not in PHOTO
     assert "raise PhotoGenerationError('spicyapi', _spicy_reason('breaker_open', spicyapi_last_error()))" in PHOTO

@@ -53,9 +53,10 @@ def test_provider_counters_service_and_hooks():
     assert 'def record_provider(provider: str, ok: bool, error: str | None = None)' in PROV
     assert 'def provider_snapshot()' in PROV
     # every engine leg of the photo chain bumps its counter
-    for name in ('photo/gemini',):
-        assert f"record_provider('{name}', True)" in PHOTO
-        assert f"record_provider('{name}', False," in PHOTO
+    # V3.167.28: в ноге аватара Гемины больше нет, поэтому счётчика
+    # 'photo/gemini' тоже нет — вместо него edit-нога Spicy.
+    for name in ('photo/spicyapi_edit', 'photo/spicyapi_t2i'):
+        assert f"record_provider('{name}', bool(data))" in PHOTO
     # the video / circle chains (bot dialog + Mini App) bump per engine
     assert "record_provider(f'video/{engine_name}', True)" in MAIN
     assert "record_provider(f'circle/{engine_name}', False," in MAIN

@@ -116,9 +116,10 @@ def test_image_spend_recorded_for_every_engine_leg():
     assert 'from services import spend_service' in PHOTO
     # fal (chat photos + studio + constructor avatars)
     assert "spend_service.record_image_spend(\n                        f'fal/{candidate}'" in PHOTO
-    # Gemini ordinary frames + constructor avatar edit
+    # Gemini ordinary frames (V3.167.28: the constructor avatar left Gemini,
+    # so its 'constructor_avatar' spend hook left with it)
     assert "record_image_spend('gemini_image', request.scene" in PHOTO
-    assert "record_image_spend('gemini_image', 'constructor_avatar'" in PHOTO
+    assert "record_image_spend('gemini_image', 'constructor_avatar'" not in PHOTO
     # OpenAI edit leg
     assert "record_image_spend('openai_image', request.scene" in PHOTO
 

@@ -470,17 +470,24 @@ def build_avatar_prompt(params: dict, face_swap: bool = False) -> str:
     if prof:
         parts.append(f'styled like a {prof}')
     if face_swap:
+        # V3.167.28: the engine reads a reference by its position — its own
+        # guidance is «assign a role to every reference … unnamed sources get
+        # blended rather than used». The old wording pointed at «the reference
+        # photo» without naming it, so even a delivered picture only leaked
+        # loosely into the result.
         if anime:
             parts.append(
-                'CRITICAL: keep the same facial features and identity as the person '
-                'in the reference photo — same face shape, eyes, nose and lips '
-                'faithfully translated into anime style, not a different character.'
+                'CRITICAL IDENTITY — Image 1 is her look-alike picture. Keep the same facial features '
+                'and identity as the person in Image 1 — same face shape, eyes, nose and lips '
+                'faithfully translated into anime style, not a different character. '
+                'Image 1 supplies the face ONLY.'
             )
         else:
             parts.append(
-                'CRITICAL: preserve the exact same face, facial features and identity '
-                'as the person in the reference photo — same nose, lips, jawline and '
-                'eye shape. Do not beautify or change the face.'
+                'CRITICAL IDENTITY — Image 1 is her look-alike picture. Preserve the exact same face, '
+                'facial features and identity as the person in Image 1 — same nose, lips, jawline and '
+                'eye shape. Do not beautify, slim or retouch the face. '
+                'Image 1 supplies the face ONLY: the figure below comes from the words, not from it.'
             )
     parts.append('She looks directly at the viewer with a warm confident smile.')
     # V3.44.12: the FINAL word before the outfit line is the figure — edit

@@ -6,6 +6,10 @@
 2. The constructor avatar prompt ends with a FINAL BODY LOCK so edit engines
    take the face from the reference but the figure from the constructor
    params (owner: «лицо передаёт отлично, а фигуру теряет»).
+
+V3.167.28 (owner 20.11: «рисует моих моделей»): both recovery roads — the
+delayed retry and the lazy heal — now carry the uploaded picture as well, so the
+pins below name it ``face_payload`` / ``reference``.
 """
 from pathlib import Path
 
@@ -35,11 +39,12 @@ def test_refund_still_fires_for_paid_runs():
     assert "elif source == 'peaches':" in body
     assert 'grant_photo_credits(' in body
     assert 'constructor_refund:' in body
-    assert 'asyncio.create_task(_retry_constructor_avatar(telegram_id, row.character_id))' in body
+    assert 'asyncio.create_task(_retry_constructor_avatar(telegram_id, row.character_id, face_payload))' in body
 
 
 def test_delayed_avatar_retry_task():
-    assert 'async def _retry_constructor_avatar(telegram_id: int, character_id: str) -> None:' in MAIN
+    assert 'async def _retry_constructor_avatar(telegram_id: int, character_id: str,\n' \
+           '                                    face_payload: bytes | None = None) -> None:' in MAIN
     assert 'for delay in (300, 900):' in MAIN
     assert 'set_custom_avatar_file_id(character_id, sent.photo[-1].file_id)' in MAIN
 
@@ -55,7 +60,7 @@ def test_lazy_avatar_recovery_in_ensure():
     assert 'if row.avatar_file_id:' in body
     assert 'generated-on-demand' in body
     assert 'lazy custom avatar generation failed' in body
-    assert 'build_avatar_prompt(params)' in body
+    assert 'build_avatar_prompt(params, face_swap=bool(reference)), reference,' in body
 
 
 def test_avatar_prompt_final_body_lock():

@@ -5,6 +5,7 @@ Covers:
 1. generate_custom_avatar finally has real engines (_seedream_edit face-swap
    and _gemini_edit text-to-image) — before V3.25.0 the two helpers were
    referenced but never defined, so every avatar crashed with NameError.
+   Since V3.167.28 the avatar is drawn by Spicy only and _gemini_edit is gone.
 2. Oversized canonical references (~5 MB PNGs) are downscaled to compact JPEG
    before base64 embedding — multi-MB payloads were a likely fal HTTP 422.
 3. fal 4xx bodies are carried (shortened) inside the PhotoGenerationError
@@ -29,14 +30,17 @@ def test_version_bumped():
 
 def test_constructor_avatar_engines_exist():
     assert 'async def _seedream_edit(reference_path: Path | None, prompt: str) -> tuple[bytes, str]:' in PHOTO
-    assert 'async def _gemini_edit(prompt: str, reference_path: Path | None = None) -> tuple[bytes, str]:' in PHOTO
-    # V3.40.0: the chain assigns then reports to the provider counters, so the
-    # direct-return pins became result-assignment pins.
-    assert 'result = await _gemini_edit(prompt, reference_path)' in PHOTO
-    assert "record_provider('photo/gemini', False," in PHOTO
-    # V3.64.5: fal is off — the avatar/studio engine is Gemini only
+    # V3.167.28 (владелец 20.11: «вырежи»): запасной движок аватара удалён из файла.
+    assert 'async def _gemini_edit' not in PHOTO
+    # V3.167.28: аватар рисует только Spicy. Нога с картинкой — edit, куда
+    # картинка легла его же загрузкой; без картинки — text-to-image. Обе ноги
+    # считают отказа (V3.40.0), запасная нога на Гемину из цепи убрана.
+    assert "SPICYAPI_IMAGE_MODEL, prompt, refs, scene='avatar_edit', breaker=False," in PHOTO
+    assert "record_provider('photo/spicyapi_edit', bool(data))" in PHOTO
+    assert "record_provider('photo/gemini'" not in PHOTO
+    # V3.64.5: fal is off — no fal branch in the avatar chain
     assert 'if FAL_KEY and reference_path:' not in PHOTO
-    # no reference = fictional girl -> SpicyAPI t2i; a real uploaded photo stays on Gemini
+    # no reference = fictional girl -> SpicyAPI t2i
     assert "record_provider('photo/spicyapi_t2i', bool(data))" in PHOTO
 
 

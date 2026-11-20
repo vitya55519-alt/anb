@@ -224,10 +224,12 @@ def test_custom_character_model_and_cleanup():
 def test_faceswap_uploads_reference_and_locks_identity():
     photo_service_src = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
     assert 'async def generate_custom_avatar' in photo_service_src
-    # V3.167.4: с V3.64.5 загруженное настоящее лицо идёт через цензурированный
-    # Gemini-edit (без цензурного движка на фото реального человека), а
-    # выдуманная девушка без референса — через Spicy text-to-image с замком.
-    assert '_gemini_edit(prompt, reference_path)' in photo_service_src
+    # V3.167.28 (владелец 20.11: «рисует спайси а не гемини», и картинка — не
+    # человек, а сгенерированная модель): фото уезжает в Spicy-edit его же
+    # загрузкой (spicy://f/…), а не base64-строкой, которую движок не читает.
+    # Выдуманная девушка без картинки — Spicy text-to-image с замком.
+    assert 'refs = [await spicy_jobs.upload(base64.b64decode(encoded), mime)]' in photo_service_src
+    assert '_gemini_edit(prompt, reference_path)' not in photo_service_src
     assert 'HARD SUBJECT LOCK: a fictional adult woman (21+). Never depict minors.' in photo_service_src
     # Wizard offers the face upload step and stores the bytes for generation.
     assert 'cbuild:face_upload' in MAIN

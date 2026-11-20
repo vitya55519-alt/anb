@@ -10738,19 +10738,29 @@ async def _show_my_character(chat_id: int, telegram_id: int):
         await bot.send_message(chat_id, '\n'.join(lines), reply_markup=markup)
 
 
-async def _retry_constructor_avatar(telegram_id: int, character_id: str) -> None:
+async def _retry_constructor_avatar(telegram_id: int, character_id: str,
+                                    face_payload: bytes | None = None) -> None:
     """V3.44.12: creation-time providers were down — retry the avatar after
     five and fifteen minutes so she gets a face without any user action. The
-    first photo request also heals her (ensure_custom_avatar_cached)."""
+    first photo request also heals her (ensure_custom_avatar_cached).
+    V3.167.28: the retry now draws the picture she was built to look like
+    instead of a face invented from the words — the bytes handed over at
+    creation are put back on disk first (a redeploy wipes that folder, and only
+    a bot-side upload leaves a Telegram file_id behind to re-download)."""
+    from services.photo_service import custom_face_reference, remember_custom_face_reference
     for delay in (300, 900):
         await asyncio.sleep(delay)
         try:
             row = get_custom_character_by_id(character_id)
             if not row or row.avatar_file_id:
                 return
+            if face_payload:
+                await remember_custom_face_reference(character_id, face_payload)
+            reference = await custom_face_reference(bot, character_id)
             params, name = custom_character_params(character_id)
             avatar_bytes, _mime = await asyncio.wait_for(
-                generate_custom_avatar(build_avatar_prompt(params)), timeout=260,
+                generate_custom_avatar(build_avatar_prompt(params, face_swap=bool(reference)), reference),
+                timeout=260,
             )
             sent = await bot.send_photo(telegram_id, BufferedInputFile(avatar_bytes, filename='avatar.jpg'))
             from services.photo_service import _custom_reference_dir
@@ -10949,6 +10959,15 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             face_path = None
     # Use photo_reference as the primary identity anchor if available.
     identity_anchor = photo_reference_path or face_path
+    # V3.167.28: read the picture once and keep it — it used to exist only as
+    # this temp file and be erased after the attempt, so the delayed retry and
+    # the lazy heal had nothing to copy and drew a stranger from the words.
+    face_payload = None
+    if identity_anchor and identity_anchor.exists():
+        try:
+            face_payload = identity_anchor.read_bytes()
+        except OSError:
+            logger.exception('constructor face reference unreadable user=%s', telegram_id)
     # V3.44.12/14: two attempts 20s apart, each capped by wait_for — when fal
     # hangs on every candidate one attempt could otherwise eat ~30 minutes
     # (3 routes × 3 retries × 210s) and the persona never reached the save.
@@ -11022,7 +11041,11 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             # V3.45.28: a community submit is NOT auto-published — she waits in
             # the moderation queue, so the storefront flag stays off for now.
             community_published=False,
-            photo_reference_file_id=photo_reference_file_id or None,
+            # V3.167.28: 'base64_pending' is the Mini App marker, not a Telegram
+            # file — storing it as a file_id made every later heal try to fetch a
+            # picture that never existed there.
+            photo_reference_file_id=(None if photo_reference_file_id == 'base64_pending'
+                                     else photo_reference_file_id) or None,
             # V3.45.28: sanitized free-text tags for the storefront + filter.
             tags=normalize_tags(params.get('tags', '')),
             moderation_status='pending' if is_community else 'none',
@@ -11065,6 +11088,16 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             (avatar_folder / 'avatar.jpg').write_bytes(avatar_bytes)
         except Exception:
             logger.exception('constructor avatar disk save failed user=%s', telegram_id)
+    # V3.167.28 (владелец: «рисует моих моделей»): keep the picture she was
+    # built from next to her avatar. Before this it was erased in the finally
+    # block below, so the delayed retry and the lazy heal had no face to copy
+    # and drew an invented one while the counters stayed clean.
+    if face_payload:
+        try:
+            from services.photo_service import remember_custom_face_reference
+            await remember_custom_face_reference(row.character_id, face_payload)
+        except Exception:
+            logger.exception('constructor face reference save failed user=%s', telegram_id)
     # V3.31.8: creating a persona selects her immediately. Before this the
     # selection stayed on the previous character (Anna by default), so a user
     # who built their own girl and pressed «💕 Свидание» got a date with Anna.
@@ -11176,7 +11209,7 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
             except Exception:
                 logger.exception('constructor peaches refund failed user=%s', telegram_id)
                 await bot.send_message(chat_id, f'аватар не получился 😕 напиши /support — вернём {CONSTRUCTOR_COST_PEACHES} 🍑.')
-        asyncio.create_task(_retry_constructor_avatar(telegram_id, row.character_id))
+        asyncio.create_task(_retry_constructor_avatar(telegram_id, row.character_id, face_payload))
     # V3.44.13: her draft is complete — the startup scan must not resume her.
     try:
         finish_constructor_draft(telegram_id)

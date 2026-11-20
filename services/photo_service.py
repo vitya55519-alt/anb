@@ -33,7 +33,6 @@ from config import (
     SPICYAPI_KEY, SPICYAPI_IMAGE_MODEL, SPICYAPI_ESTIMATED_COST_USD, PHOTO_SPICY_FIRST,
     PUBLIC_BASE_URL,
     GEMINI_API_KEY, GEMINI_IMAGE_ENABLED, GEMINI_IMAGE_MODEL, GEMINI_IMAGE_TIMEOUT_SECONDS, GEMINI_IMAGE_ESTIMATED_COST_USD, GEMINI_IMAGE_ASPECT_RATIO, GEMINI_IMAGE_SIZE,
-    GEMINI_VIDEO_BASE_URL,
     COMMUNITY_POOL_ENABLED, COMMUNITY_POOL_FIRST,
 )
 from models.app_models import ProductEvent, User
@@ -2488,6 +2487,14 @@ def _seedream_reference_path(character: dict) -> Path:
 # row (name/age/appearance) and anchors it on the avatar that was generated
 # (and, when provided, face-swapped) at construction time.
 
+# V3.167.28 (владелец 20.11: «рисует моих моделей»): the uploaded look-alike
+# picture is kept next to her avatar under this name. The frame pipeline never
+# reads it — every reference address in the identity profile names 'avatar.jpg',
+# and the gallery lists that one file too — so the source picture can neither
+# land in a chat frame nor reach a public URL.
+CUSTOM_FACE_FILE = 'face_source.jpg'
+
+
 def _custom_reference_dir(character_id: str) -> Path:
     return Path(__file__).resolve().parents[1] / 'data' / 'custom_references' / character_id
 
@@ -2580,15 +2587,62 @@ async def ensure_custom_avatar_cached(bot, character_id: str) -> Path | None:
         return target
     try:
         params, _name = custom_character_params(character_id)
-        avatar_bytes, _mime = await generate_custom_avatar(build_avatar_prompt(params))
+        # V3.167.28: heal her from the picture she was built to look like when
+        # we still have it — drawing her from the words alone is what made a
+        # created character «вообще не похожа» while the counters stayed clean.
+        reference = await custom_face_reference(bot, character_id)
+        avatar_bytes, _mime = await generate_custom_avatar(
+            build_avatar_prompt(params, face_swap=bool(reference)), reference,
+        )
         folder.mkdir(parents=True, exist_ok=True)
         target.write_bytes(avatar_bytes)
         marker.write_text('generated-on-demand', encoding='utf-8')
-        logger.info('custom avatar drawn on demand character=%s', character_id)
+        logger.info('custom avatar drawn on demand character=%s reference=%s',
+                    character_id, bool(reference))
         return target
     except Exception:
         logger.exception('lazy custom avatar generation failed character=%s', character_id)
         return None
+
+
+async def remember_custom_face_reference(character_id: str, payload: bytes | None) -> Path | None:
+    """V3.167.28: keep the uploaded look-alike picture next to her avatar, so
+    the delayed retry and the lazy heal draw the same face instead of inventing
+    a new one from the words. Nothing here is ever served to the app."""
+    if not payload:
+        return None
+    try:
+        folder = _custom_reference_dir(character_id)
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / CUSTOM_FACE_FILE
+        target.write_bytes(payload)
+        return target
+    except OSError:
+        logger.exception('custom face reference save failed character=%s', character_id)
+        return None
+
+
+async def custom_face_reference(bot, character_id: str) -> Path | None:
+    """Her look-alike picture as a file: the copy on disk, or the one Telegram
+    still holds under the file_id saved at creation (a bot-side upload).
+    None means she was built from words only."""
+    folder = _custom_reference_dir(character_id)
+    target = folder / CUSTOM_FACE_FILE
+    if target.exists():
+        return target
+    row = get_custom_character_by_id(character_id)
+    file_id = str(getattr(row, 'photo_reference_file_id', '') or '') or str(getattr(row, 'face_file_id', '') or '')
+    # 'base64_pending' is what the Mini App put in that field before this build —
+    # it names no file, and asking Telegram for it fails on every heal.
+    if not row or not file_id or file_id == 'base64_pending':
+        return None
+    try:
+        data = await bot.download(file_id)
+        payload = data.read() if hasattr(data, 'read') else bytes(data)
+    except Exception:
+        logger.exception('custom face reference download failed character=%s', character_id)
+        return None
+    return await remember_custom_face_reference(character_id, payload or None)
 
 
 # ── V3.19.0: custom character constructor avatar ─────────────────────────
@@ -2600,9 +2654,19 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
     renders on SpicyAPI text-to-image (V3.64.5: «вообще все генерации через
     Spicy», fal dead since 15.10).
     V3.167.26 (owner 19.11: «вместо Гимины рисует Спайси»): an uploaded face
-    reference now rides SpicyAPI's edit engine FIRST — Gemini kept drifting
-    the identity («лицо не похоже на фотопромпт») and beautified it. Gemini
-    stays only as the fallback leg when Spicy returns nothing.
+    reference now rides SpicyAPI's edit engine FIRST.
+    V3.167.28 (owner 20.11: «пусть фото используется как референс, и рисует
+    Спайси а не Гемини, и рисует моих моделей»): the reference is finally sent
+    the way the engine reads it. ``image_urls`` is documented as «one to ten
+    publicly fetchable URLs», and the avatar was the only caller in the repo
+    pushing a base64 ``data:`` string into it — so the picture never arrived,
+    Seedream drew a face from the words, and every later frame of hers inherited
+    that stranger (they anchor on this avatar). The bytes now go through
+    SpicyAPI's own free upload — the ``spicy://f/…`` route the wardrobe room
+    already uses — and the Gemini fallback leg is deleted from this file (owner
+    20.11: «вырежи»): it was the leg that beautified the face away from the
+    reference. A reference draw that Spicy refuses now says so instead of
+    quietly substituting another engine.
     Every engine attempt bumps the provider counters (V3.40.0), so the admin
     «Отказы» screen shows which leg of the chain is flaky, and the whole
     failure chain is carried into the studio toast (V3.44.3).
@@ -2621,11 +2685,23 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
     from services.private_photo_service import (
         SPICYAPI_IMAGE_MODEL, _spicyapi_render, spicyapi_last_error,
     )
+    encoded, mime = _image_b64(reference_path)
+    refs: list[str] = []
+    try:
+        from services import spicy_jobs
+        refs = [await spicy_jobs.upload(base64.b64decode(encoded), mime)]
+    except Exception as exc:
+        # The upload endpoint itself is down: fall back to the inline picture,
+        # which is what every avatar before this build carried.
+        chain_errors.append(f'upload/{type(exc).__name__}')
+        logger.warning('avatar reference upload failed character_file=%s: %s', reference_path.name, exc)
+        refs = [f'data:{mime};base64,{encoded}']
     data = None
     try:
+        # breaker=False: this is a draw the user pressed and waits on (V3.61.12)
+        # — another girl's broken edit leg must not skip her face for 15 minutes.
         data = await _spicyapi_render(
-            SPICYAPI_IMAGE_MODEL, prompt, [_file_data_uri(reference_path)],
-            scene='avatar_edit',
+            SPICYAPI_IMAGE_MODEL, prompt, refs, scene='avatar_edit', breaker=False,
         )
     except Exception as exc:
         chain_errors.append(f'spicy/{type(exc).__name__}')
@@ -2634,17 +2710,7 @@ async def generate_custom_avatar(prompt: str, reference_path: Path | None = None
         return data, 'image/jpeg'
     if not any(e.startswith('spicy/') for e in chain_errors):
         chain_errors.append(f'spicy/{spicyapi_last_error() or "empty_result"}')
-    if gemini_on_cooldown():
-        chain_errors.append('gemini/skipped: http_429 cooldown')
-        raise PhotoGenerationError('custom_avatar', ' → '.join(chain_errors))
-    try:
-        result = await _gemini_edit(prompt, reference_path)
-        record_provider('photo/gemini', True)
-        return result
-    except Exception as exc:
-        record_provider('photo/gemini', False, f'{type(exc).__name__}: {str(exc)[:120]}')
-        chain_errors.append(f'gemini/{type(exc).__name__}: {str(exc)[:120]}')
-        raise PhotoGenerationError('custom_avatar', ' → '.join(chain_errors)) from exc
+    raise PhotoGenerationError('custom_avatar', ' → '.join(chain_errors))
 
 
 async def _seedream_t2i(prompt: str, allow_adult: bool = False) -> tuple[bytes, str]:
@@ -2693,47 +2759,12 @@ async def _seedream_edit(reference_path: Path | None, prompt: str) -> tuple[byte
     return download.content, download.headers.get('content-type', 'image/jpeg')
 
 
-# V3.58.1: Gemini image answers HTTP 429 (quota exhausted) for hours at a
-# time — the owner's «Отказы» screen showed 0 ✅ / 29 ❌. Every studio render
-# then paid a wasted round-trip and a ❌. After a 429 the leg is skipped for
-# GEMINI_429_COOLDOWN_SECONDS.
-GEMINI_429_COOLDOWN_SECONDS = 1800
-_gemini_cooldown_until = 0.0
-
-
-def gemini_on_cooldown() -> bool:
-    return time.monotonic() < _gemini_cooldown_until
-
-
-async def _gemini_edit(prompt: str, reference_path: Path | None = None) -> tuple[bytes, str]:
-    """V3.25.0: constructor avatar via Gemini image (text-to-image, optional face ref)."""
-    global _gemini_cooldown_until
-    if not GEMINI_API_KEY or not GEMINI_IMAGE_ENABLED:
-        raise PhotoGenerationError('gemini_image', 'not_configured')
-    parts: list[dict] = [{'text': prompt + '\nPhotorealistic portrait of one person, natural skin, soft studio light.'}]
-    if reference_path and reference_path.exists():
-        data, mime = _image_b64(reference_path)
-        parts.append({'inline_data': {'mime_type': mime, 'data': data}})
-    payload = {'contents': [{'parts': parts}], 'generationConfig': {'responseModalities': ['IMAGE']}}
-    headers = {'x-goog-api-key': GEMINI_API_KEY, 'Content-Type': 'application/json'}
-    async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=20.0)) as client:
-        response = await client.post(
-            f'{GEMINI_VIDEO_BASE_URL}/models/{GEMINI_IMAGE_MODEL}:generateContent',
-            headers=headers, json=payload,
-        )
-    if response.status_code >= 400:
-        logger.warning('constructor avatar Gemini HTTP %s body=%s', response.status_code, response.text[:400])
-        if response.status_code == 429:
-            _gemini_cooldown_until = time.monotonic() + GEMINI_429_COOLDOWN_SECONDS
-        raise PhotoGenerationError('gemini_image', f'http_{response.status_code}')
-    # V3.44.18: the call is billed from here on, even if no image comes back.
-    spend_service.record_image_spend('gemini_image', 'constructor_avatar', GEMINI_IMAGE_ESTIMATED_COST_USD)
-    data = response.json()
-    for part in ((data.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []:
-        inline = part.get('inlineData') or part.get('inline_data') or {}
-        if inline.get('data'):
-            return base64.b64decode(inline['data']), inline.get('mimeType') or inline.get('mime_type') or 'image/png'
-    raise PhotoGenerationError('gemini_image', 'no_image')
+# V3.167.28 (owner 20.11: «рисует спайси а не гемини», then «вырежи»): the
+# constructor avatar's Gemini fallback leg — `_gemini_edit`, its HTTP 429
+# cooldown guard (V3.58.1) and its spend hook — is gone. It was the leg that
+# beautified the face away from the reference, and once Spicy started receiving
+# the picture the way it reads references, nothing called it any more. Ordinary
+# Gemini frames (`_gemini_image_one_frame`, the photo router) are untouched.
 
 
 def _pick_nonrepeat(options: list[str], previous: str | None) -> str:
