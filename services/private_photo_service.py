@@ -918,6 +918,35 @@ def _spicyapi_note_result(leg: str, ok: bool) -> None:
                      leg, SPICYAPI_BREAKER_FAILURES, SPICYAPI_BREAKER_COOLDOWN_SECONDS)
 
 
+# V3.167.27: a createTask that timed out on our side may still have been created
+# by the provider; the retry of the SAME payload must reuse the same
+# Idempotency-Key so it returns that task instead of billing a second one. The
+# key is forgotten as soon as the provider gives any definite answer, so a
+# deliberate regeneration after a failure still starts a fresh task.
+_spicy_pending_keys: Dict[str, str] = {}
+
+
+def _idempotency_key(model: str, input_block: Dict[str, Any]) -> str:
+    import hashlib, json as _json
+    digest = hashlib.sha256(_json.dumps(
+        [model, input_block, spend_service._spend_user.get()], sort_keys=True, default=str).encode()).hexdigest()
+    if len(_spicy_pending_keys) > 500:
+        _spicy_pending_keys.clear()
+    return _spicy_pending_keys.setdefault(digest, str(uuid.uuid4()))
+
+
+# V3.167.27: sources that spend the shared free-photo money. When the account-wide
+# free budget is spent they must not call the API at all.
+def _free_source_blocked() -> bool:
+    if spend_service.current_spend_source() not in spend_service.FREE_SPEND_SOURCES:
+        return False
+    try:
+        from services.chat_photo_allowance import free_photo_budget_spent
+        return free_photo_budget_spent()
+    except Exception:
+        return False
+
+
 async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private', *,
                            return_url: bool = False, breaker: bool = True):
     """Breaker-guarded entry point; see ``_spicyapi_render_once`` for the flow.
@@ -957,7 +986,12 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
     if not SPICYAPI_KEY:
         logger.error("SPICYAPI_KEY not configured")
         return (None, None) if return_url else None
+    if _free_source_blocked():
+        logger.info('SpicyAPI skipped: free-photo budget spent source=%s scene=%s',
+                    spend_service.current_spend_source(), scene)
+        return (None, None) if return_url else None
     result: Optional[bytes] = None
+    task_accepted = False
     result_url: Optional[str] = None
     _spicy_note_error('')
     try:
@@ -979,11 +1013,14 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
             input_block["image_urls"] = image_urls
         if _spicy_thinking_override.get(model) is not None:
             input_block["enable_thinking"] = _spicy_thinking_override[model]
-        logger.info(f"SpicyAPI: creating task, model={model}, refs={len(image_urls) if image_urls else 0}")
+        logger.info(f"SpicyAPI: creating task, source={spend_service.current_spend_source()} "
+                    f"scene={scene} user={spend_service._spend_user.get()} model={model}, "
+                    f"refs={len(image_urls) if image_urls else 0}")
+        idem_key = _idempotency_key(model, input_block)
         try:
             task_data = await _spicyapi_call(
                 "POST", "/jobs/createTask",
-                headers={"Idempotency-Key": str(uuid.uuid4())},
+                headers={"Idempotency-Key": idem_key},
                 json={"model": model, "input": input_block},
             )
         except RuntimeError as exc:
@@ -996,17 +1033,21 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
             logger.warning('SpicyAPI refused enable_thinking=%s for %s, retrying with %s',
                            input_block.get("enable_thinking"), model, flipped)
             input_block["enable_thinking"] = flipped
+            _spicy_pending_keys.pop(idem_key, None)
+            idem_key = _idempotency_key(model, input_block)
             task_data = await _spicyapi_call(
                 "POST", "/jobs/createTask",
-                headers={"Idempotency-Key": str(uuid.uuid4())},
+                headers={"Idempotency-Key": idem_key},
                 json={"model": model, "input": input_block},
             )
             _spicy_thinking_override[model] = flipped
         task_id = task_data.get("taskId")
+        _spicy_pending_keys.pop(idem_key, None)  # the provider answered: not ambiguous any more
         if not task_id:
             logger.error(f"No taskId in SpicyAPI response: {task_data}")
             _spicy_note_error('no_task_id')
             return (None, None) if return_url else None
+        task_accepted = True
         logger.info(f"SpicyAPI task: {task_id}")
         # Money is committed the moment the task is accepted — ledger it before
         # polling so a later timeout/failure still counts against the budget.
@@ -1046,7 +1087,7 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
     # A task that reached createTask is billed regardless of the outcome.
     spend_service.record_image_spend(
         'spicyapi', scene, SPICYAPI_ESTIMATED_COST_USD,
-        billed=True, success=bool(result),
+        billed=task_accepted, success=bool(result),
     )
     if return_url:
         return (result, result_url if result else None)

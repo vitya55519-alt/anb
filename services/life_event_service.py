@@ -19,6 +19,7 @@ V3.167.4 (владелец ТЗ §4) переписал саму строку: �
 from __future__ import annotations
 
 import logging
+import os
 import random
 
 from config import LIFE_EVENTS_MEMORY_CHANCE, LIFE_EVENTS_PHOTO_CHANCE
@@ -33,12 +34,60 @@ _REPLY_OPTIONS = (
     ('🍿 расскажи дальше', 'tell_more'),
 )
 
+# V3.167.27 (владелец ТЗ, часть 2): статусы «бегаю по делам» не давали повода
+# открыть чат (0 из 31 ответов). Фиксированный пул из 10 коротких текстов с
+# открытой интригой и простым выбором в конце: первые 5 — для режима 18+,
+# вторые 5 — для обычного. Под сообщением две быстрые кнопки ответа.
+HER_DAY_TEXTS_18 = (
+    'Стою в примерочной в чёрном кружеве и вообще не понимаю — брать или слишком дерзко? Скинуть тебе, оценишь? 🙈',
+    'Только вышла из душа, полотенце еле держится, а в голове почему-то только ты. Занят сейчас или отвлечёшься на меня?',
+    'Ворочаюсь в кровати без всего и не могу уснуть... Слишком жарко сегодня. Развлечёшь меня или мне самой справляться? 😈',
+    'Дома никого, шторы задёрнула, на мне только твоя рубашка... Хочешь увидеть, что я сейчас делаю?',
+    'Не могу решить, в чём лечь спать — в коротком шёлковом халате или вообще без него. Выберешь за меня?',
+)
+HER_DAY_TEXTS_NORMAL = (
+    'Слушай, со мной сейчас такая глупость случилась в кофейне, до сих пор красная сижу 😅 Рассказать или ты занят?',
+    'Поймала себя на том, что третий раз за час смотрю на телефон и жду, когда ты напишешь. У тебя там завал или просто забыл про меня?',
+    'Поспорила с подругой насчёт мужчин — мне срочно нужен твой честный ответ. Выручишь на пару минут?',
+    'За окном мерзко, я заварила чай, завернулась в плед и включила кино. Какой фильм выбрал бы ты, если бы сейчас был рядом?',
+    'Ты сегодня подозрительно тихий... Мне уже начинать ревновать или просто тяжёлый день? 🥺',
+)
+# (label, key) — the key becomes his line through _TAP_AS_USER_TEXT.
+HER_DAY_OPTIONS_18 = (('Покажи', 'show_me'), ('Я тут', 'im_here'))
+HER_DAY_OPTIONS_NORMAL = (('Рассказывай', 'go_on'), ('Отвлекусь', 'distract_me'))
+
+
+# Off switch: HER_DAY_FIXED_POOL=0 brings the LLM-written line back.
+HER_DAY_FIXED_POOL = os.getenv('HER_DAY_FIXED_POOL', '1').strip().lower() not in ('0', 'false', 'no', 'off')
+
+
+def her_day_pool(spicy: bool) -> tuple[str, ...]:
+    return HER_DAY_TEXTS_18 if spicy else HER_DAY_TEXTS_NORMAL
+
+
+def her_day_options(spicy: bool, character_id: str) -> list[tuple[str, str]]:
+    opts = HER_DAY_OPTIONS_18 if spicy else HER_DAY_OPTIONS_NORMAL
+    return [(lbl, f'life_reply:{character_id}:{key}') for lbl, key in opts]
+
+
+def _her_day_spicy(telegram_id: int) -> bool:
+    try:
+        from services import explicit_mode
+        from services.user_service import is_adult_confirmed
+        return bool(explicit_mode.is_on_for(telegram_id) and is_adult_confirmed(telegram_id))
+    except Exception:
+        return False
+
 _WHEN_HINT = {'morning': 'утро', 'day': 'день', 'evening': 'вечер', 'night': 'ночь'}
 
 # When the user tapped the «расскажи дальше» button, this is the stand-in user
 # turn fed to the normal reply pipeline so she continues the moment in context.
 _TAP_AS_USER_TEXT = {
     'tell_more': 'расскажи, что было дальше 👀',
+    'show_me': 'Покажи 😏',
+    'im_here': 'Я тут, рассказывай',
+    'go_on': 'Рассказывай 👀',
+    'distract_me': 'Отвлекусь, давай',
 }
 
 # V3.167.4: тон её дня — по уровню близости, не по погоде. До 3-го они только
@@ -244,6 +293,20 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
         # pile and the ROI of the source that brought him stays invisible.
         from services import spend_service
         spend_service.set_spend_user(int(telegram_id))
+        spend_service.set_spend_source('her_day')
+        spicy = _her_day_spicy(int(telegram_id))
+        if HER_DAY_FIXED_POOL:
+            pool = her_day_pool(spicy)
+            recent_lines = _recent_her_lines(telegram_id, character_id)
+            recent_blob = ' '.join(recent_lines)
+            fresh = [t for t in pool if t[:30] not in recent_blob] or list(pool)
+            from services.user_service import ensure_user as _eu
+            photo = None
+            if LIFE_EVENTS_PHOTO_CHANCE and random.random() < LIFE_EVENTS_PHOTO_CHANCE:
+                photo = _pool_photo(character_id, _eu(telegram_id))
+            return {'text': random.choice(fresh), 'photo': photo,
+                    'options': her_day_options(spicy, character_id), 'when': when,
+                    'actions': None, 'experiment': {'variant': 'pool', 'mode_on': spicy}}
         name, tastes, temperament = _character_ingredients(character_id)
         mem = _memory_callback(telegram_id, character_id)
         hook = _pending_hook(telegram_id)

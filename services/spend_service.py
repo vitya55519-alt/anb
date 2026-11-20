@@ -53,6 +53,22 @@ AUX_PURPOSES = frozenset({
 _spend_user: ContextVar[int] = ContextVar('spend_user', default=0)
 
 
+# V3.167.27: who asked for the image. Every ledger row carries it as a
+# «source:» prefix of ``scene`` so the admin sees who burns the image budget.
+SPEND_SOURCES = ('chat_paid', 'chat_free', 'greeting', 'her_day', 'constructor', 'admin', 'undress', 'other')
+FREE_SPEND_SOURCES = ('chat_free', 'greeting', 'her_day')
+_spend_source: ContextVar[str] = ContextVar('spend_source', default='other')
+
+
+def set_spend_source(source: str | None) -> None:
+    src = str(source or 'other')
+    _spend_source.set(src if src in SPEND_SOURCES else 'other')
+
+
+def current_spend_source() -> str:
+    return _spend_source.get()
+
+
 def set_spend_user(telegram_id: int | None) -> None:
     try:
         _spend_user.set(int(telegram_id or 0))
@@ -108,7 +124,7 @@ def record_image_spend(engine: str, scene: str, cost_usd: float, *,
             s.add(ImageSpend(
                 day=utcnow().date(),
                 engine=str(engine)[:48],
-                scene=str(scene or '-')[:48],
+                scene=f"{_spend_source.get()}:{scene or '-'}"[:48],
                 billed=bool(billed),
                 success=bool(success),
                 cost_usd=max(0.0, float(cost_usd or 0.0)),
@@ -162,7 +178,7 @@ def spend_snapshot() -> dict:
         'image_fail_usd': _sum_today(ImageSpend, ImageSpend.cost_usd, day=day, billed=True, success=False),
         'llm_budget': SPEND_LLM_DAILY_BUDGET_USD,
         'image_budget': SPEND_IMAGE_DAILY_BUDGET_USD,
-        'llm_calls': 0, 'by_purpose': [], 'by_engine': [],
+        'llm_calls': 0, 'by_purpose': [], 'by_engine': [], 'by_source': [],
         'reasoning_tokens': 0, 'prompt_tokens': 0, 'completion_tokens': 0,
     }
     try:
@@ -181,6 +197,15 @@ def spend_snapshot() -> dict:
                              .group_by(ImageSpend.engine)
                              .order_by(func.sum(ImageSpend.cost_usd).desc()).limit(4)).all()
             out['by_engine'] = [(str(e), float(c or 0.0), int(n or 0)) for e, c, n in rows]
+            rows = s.execute(select(ImageSpend.scene, func.sum(ImageSpend.cost_usd), func.count(ImageSpend.id))
+                             .where(ImageSpend.day == day, ImageSpend.billed.is_(True))
+                             .group_by(ImageSpend.scene)).all()
+            agg: dict = {}
+            for sc, c, n in rows:
+                key = str(sc).split(':', 1)[0] if ':' in str(sc) else 'other'
+                a = agg.setdefault(key, [0.0, 0])
+                a[0] += float(c or 0.0); a[1] += int(n or 0)
+            out['by_source'] = sorted(((k, v[0], v[1]) for k, v in agg.items()), key=lambda x: -x[1])
     except Exception:
         logger.warning('spend snapshot failed', exc_info=True)
     return out
@@ -200,6 +225,9 @@ def format_spend_lines(snap: dict) -> list[str]:
     if snap.get('by_engine'):
         parts = [f'{e} ${c:.3f}/{n}' for e, c, n in snap['by_engine']]
         lines.append('· картинки по движкам: ' + ' · '.join(parts))
+    if snap.get('by_source'):
+        parts = [f'{k} ${c:.3f}/{n}' for k, c, n in snap['by_source']]
+        lines.append('· картинки по источникам: ' + ' · '.join(parts))
     lines.append(
         f'· токены: вход {snap.get("prompt_tokens", 0)} · выход {snap.get("completion_tokens", 0)} '
         f'· reasoning {snap.get("reasoning_tokens", 0)}'
