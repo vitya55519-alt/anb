@@ -249,14 +249,15 @@ def test_cached_starter_shares_cap_across_girls_and_denial_is_handled(quota, mon
     assert quota.A.free_chat_photos_used(1) == 0
 
 
-def test_generated_first_starter_keeps_existing_entitlement(quota, monkeypatch):
+def test_generated_first_starter_counts_against_the_shared_cap(quota, monkeypatch):
+    # V3.167.27: a fresh teaser render is spicyapi money — it spends the same
+    # daily frame cap and is skipped once the cap is gone.
     route, scope, provider = starter_route(quota, monkeypatch, cached=False)
     assert quota.A.use_push_frame(1, 'girl_a') and quota.A.use_push_frame(1, 'girl_b')
-    result = json.loads(asyncio.run(route(101, {}, 'girl_c', 'show')).body)
-    assert result['photo_url'] == '/webapp/starter/8'
-    provider.assert_awaited_once()
+    result = asyncio.run(route(101, {}, 'girl_c', 'show'))
+    assert result is None
+    provider.assert_not_awaited()
     assert quota.A.count_today(1, quota.A.PUSH_EVENT) == 2
-    assert quota.A.free_chat_photos_used(1) == 0
 
 
 def test_starter_failed_before_photo_releases_without_render_fallback(quota, monkeypatch):

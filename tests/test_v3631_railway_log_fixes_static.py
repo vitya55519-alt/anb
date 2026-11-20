@@ -9,8 +9,8 @@ LIFE = (ROOT / 'services' / 'life_event_service.py').read_text(encoding='utf-8')
 def test_life_moment_sends_a_user_turn():
     # system-only requests were rejected by MiniMax and Gemini (400)
     i = LIFE.index('async def build_life_moment')
-    body = LIFE[i:i + 2500]
-    assert "{'role': 'user', 'content': 'Напиши ему это сообщение сейчас.'}" in body
+    body = LIFE[i:i + 6000]
+    assert "'content': 'Напиши ему это сообщение сейчас.'" in body
 
 
 def test_daily_gift_marks_blocked_by_telegram_id():

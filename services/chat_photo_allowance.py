@@ -16,7 +16,7 @@ import logging
 import re
 from datetime import datetime, time, timedelta, timezone
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 
 from config import (CHAT_FREE_PHOTOS_PER_DAY, CHAT_POOL_PHOTOS_PER_DAY, CHAT_PREMIUM_PHOTOS_PER_DAY,
                     FREE_PHOTO_COST_USD, FREE_PHOTO_DAILY_BUDGET_USD, FREE_FRAMES_PER_DAY)
@@ -244,8 +244,9 @@ def note_today(uid: int, event: str, character_id: str) -> None:
 
 def free_photo_spend_today() -> float:
     """V3.81.0: what today's RENDERED free chat photos cost, all users together.
-    V3.162.0: a pool-served photo writes only POOL_EVENT now, so the bill is
-    simply what was rendered."""
+    V3.167.27: the ledger is the second witness — teaser (greeting) and her-day
+    renders used to bypass this counter, so the larger of the two numbers wins
+    and every free source counts against the same daily ceiling."""
     try:
         with SessionLocal() as session:
             rendered = int(session.scalar(
@@ -255,7 +256,19 @@ def free_photo_spend_today() -> float:
             ) or 0)
     except Exception:
         return 0.0
-    return max(0, rendered) * FREE_PHOTO_COST_USD
+    by_events = max(0, rendered) * FREE_PHOTO_COST_USD
+    try:
+        from models.app_models import ImageSpend
+        from services.spend_service import FREE_SPEND_SOURCES
+        with SessionLocal() as session:
+            cond = [ImageSpend.scene.like(f'{src}:%') for src in FREE_SPEND_SOURCES]
+            by_ledger = float(session.scalar(
+                select(func.coalesce(func.sum(ImageSpend.cost_usd), 0.0)).where(
+                    ImageSpend.day == _day_start().date(), ImageSpend.billed.is_(True), or_(*cond))
+            ) or 0.0)
+    except Exception:
+        by_ledger = 0.0
+    return max(by_events, by_ledger)
 
 
 def free_photo_budget_spent() -> bool:

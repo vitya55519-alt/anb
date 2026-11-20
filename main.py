@@ -2235,6 +2235,7 @@ async def handle_photo_request(chat_id: int, telegram_id: int, request: PhotoReq
                                undress_credit: bool = False, text: str = ''):
     from services import spend_service
     spend_service.set_spend_user(telegram_id)
+    getattr(spend_service, 'set_spend_source', lambda _s: None)('admin' if telegram_id in ADMIN_TELEGRAM_IDS else 'chat_paid')
     db_uid = ensure_user(telegram_id)
     if not has_accepted(telegram_id):
         await bot.send_message(chat_id, 'Сначала подтверди 18+ и условия через /start.', reply_markup=consent_keyboard())
@@ -10884,6 +10885,10 @@ async def _finish_constructor(chat_id: int, charge: str | None, telegram_id: int
     V3.44.10: ``source`` tells a no-charge run how it was paid ('peaches') so
     a failed avatar generation can refund peaches instead of going silent.
     """
+    from services import spend_service as _sp
+    getattr(_sp, 'set_spend_source', lambda _s: None)('constructor')
+    if telegram_id:
+        _sp.set_spend_user(telegram_id)
     # V3.24.0: the admin free path used to pass the callback message, whose
     # from_user is the BOT — the session must be looked up by the real user id.
     if telegram_id is None:
@@ -15608,6 +15613,17 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
         cache_id = await asyncio.to_thread(starter_photo_service.pick, character_id, greeting_id)
         cached = bool(cache_id)  # only ready stock spends the shared pool cap
         if not cache_id:
+            # V3.167.27: a fresh teaser render is $0.039 that no counter saw. It
+            # now spends the same shared daily frame cap, and is skipped (the tap
+            # stays an ordinary message) once his cap or the free budget is spent.
+            def _may_render():
+                from services.chat_photo_allowance import frames_left, free_photo_budget_spent
+                _uid = ensure_user(telegram_id, user_info.get('first_name') or '',
+                                   language_code=user_info.get('language_code'))
+                return frames_left(_uid) > 0 and not free_photo_budget_spent()
+            if not await asyncio.to_thread(_may_render):
+                logger.info('starter render skipped: free cap spent user=%s greeting=%s', telegram_id, greeting_id)
+                return None
             try:
                 data, _mime, _ext = await _webapp_pipeline_photo(
                     telegram_id, character_id,
@@ -15625,6 +15641,7 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
                 cache_id = await asyncio.to_thread(starter_photo_service.pick, character_id, greeting_id)
             if not cache_id:
                 return None
+            cached = True  # V3.167.27: the fresh frame is counted like a stock one
 
         def _deliver():
             uid = ensure_user(telegram_id, user_info.get('first_name') or '',
@@ -15737,7 +15754,9 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
     # parsing and before the model: the words he pressed are known to us, so
     # guessing them from a regex («похоже, он просит фото») is not needed, and
     # the scene she promised must not be rewritten into a generic selfie.
+    getattr(spend_service, 'set_spend_source', lambda _s: None)('greeting')  # V3.167.27: the teaser/starter frame is its own source
     starter = await _starter_frame_turn(telegram_id, user_info, character_id, text)
+    getattr(spend_service, 'set_spend_source', lambda _s: None)('chat_paid')
     if starter is not None:
         return starter
     # V3.35.0: a message typed in the app goes through the exact pipeline the
@@ -15820,6 +15839,17 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         # V3.139.0: a joint request never takes from the pool — a single girl
         # is not what he asked for.
         guest_id = getattr(req, 'with_guest', '') if req is not None else ''
+        try:
+            from services.chat_photo_allowance import free_chat_photos_left as _fcl
+            if telegram_id in ADMIN_TELEGRAM_IDS:
+                getattr(spend_service, 'set_spend_source', lambda _s: None)('admin')
+            elif pay in ('undress_credit', 'undress_peaches', 'explicit_peaches'):
+                getattr(spend_service, 'set_spend_source', lambda _s: None)('chat_paid')
+            else:
+                getattr(spend_service, 'set_spend_source', lambda _s: None)(
+                    'chat_free' if _fcl(uid, premium=is_premium(telegram_id)) > 0 else 'chat_paid')
+        except Exception:
+            logger.debug('spend source mark failed', exc_info=True)
         pooled = None if (pay in ('undress_credit', 'undress_peaches', 'explicit_peaches')
                           or guest_id) else await asyncio.to_thread(
             _free_photo_from_pool, telegram_id, uid, character_id)
@@ -17949,6 +17979,7 @@ async def _webapp_api_picture_generate(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
     from services import spend_service
     spend_service.set_spend_user(telegram_id)
+    getattr(spend_service, 'set_spend_source', lambda _s: None)('admin' if telegram_id in ADMIN_TELEGRAM_IDS else 'constructor')
     try:
         body = await request.json()
     except Exception:
@@ -19101,6 +19132,7 @@ async def _webapp_api_chat_media(request: web.Request) -> web.Response:
         return web.json_response({'ok': False, 'error': 'auth'}, status=401)
     from services import spend_service
     spend_service.set_spend_user(telegram_id)
+    getattr(spend_service, 'set_spend_source', lambda _s: None)('admin' if telegram_id in ADMIN_TELEGRAM_IDS else 'undress')
     try:
         body = await request.json()
     except Exception:
@@ -20489,6 +20521,7 @@ async def _series_run(telegram_id: int, uid: int, character_id: str, scene: str)
     """
     from services import spend_service
     spend_service.set_spend_user(telegram_id)
+    getattr(spend_service, 'set_spend_source', lambda _s: None)('admin' if telegram_id in ADMIN_TELEGRAM_IDS else 'chat_paid')
     delivered = 0
     try:
         for _ in range(PHOTO_SERIES_FRAMES):

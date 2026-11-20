@@ -49,7 +49,7 @@ def test_render_ledgers_every_billed_job():
     assert 'from services import spend_service' in PPS
     assert 'SPICYAPI_ESTIMATED_COST_USD,' in PPS
     assert "spend_service.record_image_spend(\n        'spicyapi', scene, SPICYAPI_ESTIMATED_COST_USD," in RENDER
-    assert 'billed=True, success=bool(result),' in RENDER
+    assert 'billed=task_accepted, success=bool(result),' in RENDER
     # a missing key / no-taskId must NOT be billed (both return before the ledger)
     assert RENDER.index('if not SPICYAPI_KEY:') < RENDER.index('record_image_spend')
     assert RENDER.index('if not task_id:') < RENDER.index('record_image_spend')
