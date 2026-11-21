@@ -64,10 +64,11 @@ def collect(days: int = 7) -> dict:
             StarTransaction.created_at >= since, StarTransaction.transaction_type == 'purchase',
             StarTransaction.provider != 'manual').group_by(StarTransaction.product)).all()
         out['by_product'] = sorted(((p, int(n)) for p, n in by_product), key=lambda x: -x[1])
-        for key in ('speak_premium_wall', 'speak_free', 'chat_sleep_block', 'vip_offer_shown',
+        for key in ('speak_premium_wall', 'speak_free', 'chat_sleep_block', 'chat_limit_wall', 'vip_offer_shown',
                     'trial_followup_sent', 'morning_callback_sent', 'first_minutes_nudge_sent',
                     'paywall_view', 'webapp_pay_link', 'referral_qualified', 'daily_mission_claimed',
-                    'paid_welcome_sent', 'paid_day1_sent', 'renewal_care_sent', 'memory_gift_used'):
+                    'paid_welcome_sent', 'paid_day1_sent', 'renewal_care_sent', 'memory_gift_used',
+                    'adult_nudge_sent', 'onboarding_catalog_opened', 'onboarding_character_selected'):
             out[key] = _events(s, since, key)
         out['girlday_msgs'] = int(s.scalar(select(func.count(ProductEvent.id)).where(
             ProductEvent.created_at >= since, ProductEvent.event_name == 'webapp_chat_message',
@@ -114,7 +115,7 @@ def render(d: dict, name_of=lambda cid: cid) -> str:
         '',
         '🧪 как работают новинки:',
         f'· голос бесплатно: {ev("speak_free")} · стена голоса: {ev("speak_premium_wall")}',
-        f'· «уснула» (лимит): {ev("chat_sleep_block")} · месяц −50% показан: {ev("vip_offer_shown")}',
+        f'· «уснула» (лимит): {ev("chat_limit_wall") + ev("chat_sleep_block")} · месяц −50% показан: {ev("vip_offer_shown")}',
         f'· открыли оплату: {ev("webapp_pay_link")} · видели предложение: {ev("paywall_view")}',
         f'· письмо о конце пробника: {ev("trial_followup_sent")}',
         f'· после оплаты: «что открыто» {ev("paid_welcome_sent")} · на след. день {ev("paid_day1_sent")}',
@@ -122,6 +123,8 @@ def render(d: dict, name_of=lambda cid: cid) -> str:
         f'· она сама вспомнила о нём: {ev("memory_gift_used")}',
         f'· утро про вчерашний разговор: {ev("morning_callback_sent")}',
         f'· дожим в первые минуты: {ev("first_minutes_nudge_sent")}',
+        f'· дожим через 90 с после 18+: {ev("adult_nudge_sent")}',
+        f'· воронка: каталог открыт {ev("onboarding_catalog_opened")} · героиня выбрана {ev("onboarding_character_selected")}',
         f'· Девушка дня: {d["girlday_msgs"]} сообщений в приложении',
         f'· Агата: {d["agata"][0]} сообщений ({d["agata"][1]} чел.)',
         f'· рефералы дошли до 10 сообщений: {ev("referral_qualified")} · миссии: {ev("daily_mission_claimed")}',

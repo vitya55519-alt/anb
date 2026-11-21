@@ -850,7 +850,7 @@ MARKETING_PUSH_ENABLED = os.getenv("MARKETING_PUSH_ENABLED", "true").strip().low
 # проходят через её же диету пушей (services/push_governor), поэтому «два пуша
 # в сутки» и тишина с 23 до 7 на них действуют так же, как на остальное.
 PUSH_RAILS_DEFAULT = ('life_events,rituals,proactive,day1_hook,daily_gift,scenario_cards,first_minutes,'
-                      'first_offer,heavy_offer')
+                      'first_offer,heavy_offer,renewal_care,paid_day1,trial_followup')
 PUSH_RAILS = {r.strip().lower() for r in os.getenv("PUSH_RAILS", PUSH_RAILS_DEFAULT).split(',') if r.strip()}
 
 

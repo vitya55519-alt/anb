@@ -2629,6 +2629,7 @@ async def onboarding_character_select(cq: types.CallbackQuery):
     # Active or premium-unlocked character: allow selection
     set_user_character(cq.from_user.id, character_id)
     track_event(uid, 'character_selected', metadata={'character_id': character_id})
+    _track_once(uid, 'onboarding_character_selected', {'character_id': character_id, 'source': 'bot'})
     await cq.answer(f'{card.display_name} выбрана')
     await _send_onboarding_character_card(cq.message.chat.id, character_id, cq.from_user.id)
     sel_lang = user_lang(cq.from_user.id)
@@ -6628,6 +6629,7 @@ async def buy_premium_vip(cq: types.CallbackQuery):
         await cq.answer('это предложение уже закончилось 💗', show_alert=True); return
     await cq.answer()
     track_event(ensure_user(cq.from_user.id), 'paywall_view', metadata={'product': vip_offer.PRODUCT, 'stars': vinfo['stars']})
+    track_event(ensure_user(cq.from_user.id), 'vip_offer_shown', metadata={'stars': vinfo['stars']})
     await send_stars_invoice(cq.message.chat.id, 'Anna Premium', f'Premium на 30 дней −{vinfo["percent"]}% — только для тебя',
                              vip_offer.PRODUCT, vinfo['stars'])
 
@@ -13527,6 +13529,30 @@ async def _webapp_api_me(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'me': me})
 
 
+_onboarding_once_memo: set = set()
+
+
+def _track_once(uid, name: str, metadata=None) -> None:
+    """V3.168.0: a funnel marker that is written once per user, ever (the storefront
+    endpoint is hit on every grid refresh; the memo keeps it to one query each)."""
+    key = (uid, name)
+    if not uid or key in _onboarding_once_memo:
+        return
+    try:
+        from sqlalchemy import func as _f, select as _sel
+        from models.app_models import ProductEvent as _PE
+        from services.db import SessionLocal as _SL
+        with _SL() as _s:
+            seen = _s.scalar(_sel(_f.count(_PE.id)).where(_PE.user_id == uid, _PE.event_name == name))
+        if not seen:
+            track_event(uid, name, metadata=metadata)
+        if len(_onboarding_once_memo) > 50000:
+            _onboarding_once_memo.clear()
+        _onboarding_once_memo.add(key)
+    except Exception:
+        logger.debug('track_once failed %s', name, exc_info=True)
+
+
 async def _webapp_api_characters(request: web.Request) -> web.Response:
     # Public storefront data (same cards the bot shows). With valid initData
     # the grid also learns which girl the caller has selected — V3.34.0, the
@@ -13542,6 +13568,12 @@ async def _webapp_api_characters(request: web.Request) -> web.Response:
     # V3.57.2: the whole SQLAlchemy read runs off the event loop — one slow
     # storefront query must never freeze every other request in the process.
     characters = await asyncio.to_thread(webapp_service.api_characters, telegram_id)
+    if telegram_id:
+        try:
+            _uid_cat = await asyncio.to_thread(ensure_user, telegram_id)
+            await asyncio.to_thread(_track_once, _uid_cat, 'onboarding_catalog_opened')
+        except Exception:
+            logger.debug('catalog event failed', exc_info=True)
     return web.json_response({'ok': True, 'characters': characters},
                              headers={'Cache-Control': 'no-store'})
 
@@ -14650,6 +14682,7 @@ async def _webapp_api_select(request: web.Request) -> web.Response:
         uid = ensure_user(telegram_id, user_info.get('first_name') or '', language_code=user_info.get('language_code'))
         set_user_character(telegram_id, character_id)
         track_event(uid, 'character_selected', metadata={'character_id': character_id, 'source': 'webapp'})
+        _track_once(uid, 'onboarding_character_selected', {'character_id': character_id, 'source': 'webapp'})
         return {'me': webapp_service.api_me(telegram_id),
                 'characters': webapp_service.api_characters(telegram_id)}
 
@@ -16708,6 +16741,13 @@ async def _webapp_api_chat_speak(request: web.Request) -> web.Response:
         voices.reserve, telegram_id, character_id, message_id, part=part,
         allow_paid=body.get('allow_paid') is True, quoted_price=quoted_price)
     if not reservation.get('ok'):
+        if reservation.get('error') in ('payment_required', 'insufficient_peaches'):
+            # V3.168.0: the voice wall was never counted (weekly report: 0)
+            try:
+                await asyncio.to_thread(track_event, ensure_user(telegram_id), 'speak_premium_wall',
+                                        metadata={'error': reservation.get('error')})
+            except Exception:
+                logger.debug('speak wall event failed', exc_info=True)
         status = {'payment_required': 402, 'insufficient_peaches': 402,
                   'voice_pending': 409, 'not_found': 404}.get(reservation.get('error'), 400)
         return web.json_response(reservation, status=status, headers={'Cache-Control': 'no-store'})
