@@ -107,4 +107,4 @@ def test_proactive_never_sends_half_a_sentence():
     pro = src[src.index('async def proactive_reply('):src.index('async def story_reaction(')]
     assert 'finish_or_drop(raw' in pro and "get_retention_text('miss', character_id)" in pro
     life = (ROOT / 'services' / 'life_event_service.py').read_text(encoding='utf-8')
-    assert "finish_or_drop(text, getattr(r, 'complete', True))" in life
+    assert "finish_or_drop(out, getattr(r, 'complete', True))" in life

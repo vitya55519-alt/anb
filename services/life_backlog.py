@@ -144,7 +144,42 @@ def note_replied(uid: int, character_id: str) -> int:
 
 
 def is_capped(uid: int, character_id: str) -> bool:
-    return len(unanswered(uid, character_id, LIFE_EVENTS_UNANSWERED_MAX)) >= LIFE_EVENTS_UNANSWERED_MAX
+    """V3.168 (ТЗ блок 4): the ignore counter is PER RAIL. Only her life lines
+    (life / digest) count against the life rail — an ignored ritual or marketing
+    push used to freeze it (119 'unanswered' holds at 0% replies). Three ignored
+    life lines pause THIS rail for RAIL_MUTE_HOURS after the last one, then a
+    probe goes out; any reply of his clears it (his message is newer than them)."""
+    from config import RAIL_MUTE_ENABLED, RAIL_MUTE_HOURS
+    if not RAIL_MUTE_ENABLED:
+        return len(unanswered(uid, character_id, LIFE_EVENTS_UNANSWERED_MAX)) >= LIFE_EVENTS_UNANSWERED_MAX
+    rows = [r for r in _pushed(uid, character_id, 50)
+            if r[2] in (LIFE_ORIGIN, DIGEST_ORIGIN)]
+    if len(rows) < LIFE_EVENTS_UNANSWERED_MAX:
+        return False
+    muted = (_utcnow() - rows[-1][1]).total_seconds() < RAIL_MUTE_HOURS * 3600
+    if muted:
+        _note_muted(uid, 'life', rows[-1][1])
+    return muted
+
+
+_muted_memo: dict[tuple[int, str], str] = {}
+
+
+def _note_muted(uid: int, rail: str, since) -> None:
+    """rail_muted(rail), once per mute (keyed by the ignored line that triggered it)."""
+    key = (int(uid), rail)
+    stamp = since.isoformat() if hasattr(since, 'isoformat') else str(since)
+    if _muted_memo.get(key) == stamp:
+        return
+    try:
+        from services.analytics_service import track_event
+        from config import RAIL_MUTE_HOURS
+        track_event(int(uid), 'rail_muted', metadata={'rail': rail, 'hours': RAIL_MUTE_HOURS})
+        if len(_muted_memo) > 20000:
+            _muted_memo.clear()
+        _muted_memo[key] = stamp
+    except Exception:
+        logger.debug('rail_muted event failed user=%s', uid, exc_info=True)
 
 
 def _short(text: str, cap: int = 90) -> str:

@@ -47,7 +47,9 @@ def test_life_moment_sees_her_recent_lines_and_skips_repeat(monkeypatch):
     monkeypatch.setattr(life_event_service, '_memory_callback', lambda *a: '')
     monkeypatch.setattr(life_event_service, '_pending_hook', lambda *a: '')
     monkeypatch.setattr(life_event_service, '_recent_her_lines', lambda *a, **k: [VIKA])
-    assert asyncio.run(life_event_service.build_life_moment(1, 'vika')) == {}
+    res = asyncio.run(life_event_service.build_life_moment(1, 'vika'))
+    # V3.168: a repeat is regenerated once, then the validated template goes out instead of nothing
+    assert res.get('text') and res['text'] != VIKA
     assert VIKA[:20] in seen['system']
 
 

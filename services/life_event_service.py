@@ -59,6 +59,69 @@ HER_DAY_OPTIONS_NORMAL = (('Рассказывай', 'go_on'), ('Отвлеку�
 
 # Off switch: HER_DAY_FIXED_POOL=0 brings the LLM-written line back.
 HER_DAY_FIXED_POOL = os.getenv('HER_DAY_FIXED_POOL', '1').strip().lower() not in ('0', 'false', 'no', 'off')
+# V3.168 (ТЗ блок 3): 0 replies of 48 is a FORMAT defect. The fixed pool asked two
+# questions in one breath and had no anchor, so format v2 supersedes it: one
+# concrete detail, one hook, one question at most, a fact of his (or place and
+# time of day), one reply button, and an output validator with one regeneration
+# and then a template. LIFE_FORMAT_V2=0 returns the previous behaviour.
+LIFE_FORMAT_V2 = os.getenv('LIFE_FORMAT_V2', '1').strip().lower() not in ('0', 'false', 'no', 'off')
+
+import re as _re
+_EMOJI_RE = _re.compile('[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B50\u2764\uFE0F]')
+_HOOK_ENDS = ('?', '\u2026', '...', ':')
+_LIFE_MAX_CHARS = 230
+
+
+def validate_life_text(text: str) -> tuple[bool, str]:
+    """V3.168 (ТЗ 3.2/3.5): ('' means valid). Length, a hook at the end, at most
+    one question, at most two emoji, no paragraph over three lines, no more
+    than three sentences."""
+    s = (text or '').strip()
+    if len(s) < 12:
+        return False, 'short'
+    if len(s) > _LIFE_MAX_CHARS:
+        return False, 'long'
+    if any(len(p.splitlines()) > 3 for p in s.split('\n\n')):
+        return False, 'paragraph'
+    if s.count('?') > 1:
+        return False, 'two_questions'
+    if len(_EMOJI_RE.findall(s)) > 2:
+        return False, 'emoji'
+    if len([x for x in _re.split(r'(?<=[.!?\u2026])\s+', s) if x.strip()]) > 3:
+        return False, 'sentences'
+    if not s.endswith(_HOOK_ENDS) and not s.rstrip(' )\U0001F300-\U0001FAFF').endswith(_HOOK_ENDS):
+        return False, 'no_hook'
+    return True, ''
+
+
+_PLACE_TEMPLATES = {
+    'morning': ('Сижу на кухне с кофе, за окном ещё тихо. Угадаешь, о чём я думаю?',
+                'Проснулась раньше будильника и лежу, смотрю на потолок. Расскажу, что мне снилось…'),
+    'day': ('Забежала в кофейню, тут пахнет корицей и играет что-то из твоих любимых. Расскажу, кого тут встретила…',
+            'Села на лавочку у реки с мороженым, солнце прямо в глаза. Хочешь узнать, о ком я вспомнила?'),
+    'evening': ('Вернулась домой, скинула каблуки и села с чаем у окна. Хочешь, расскажу про мой вечер?',
+                'Стою на балконе, внизу огни и тихо. Тут один момент, который я пока не рассказала…'),
+    'night': ('Не спится, лежу и смотрю, как свет с улицы ползёт по стене. Ты ещё не спишь?',
+              'Включила ночник и никак не могу отпустить этот день. Хочешь, поделюсь одной мыслью…'),
+}
+_PLACE_TEMPLATES_18 = {
+    'morning': ('Проснулась в твоей футболке и никак не вылезу из кровати. Угадаешь, что я тут придумала?',),
+    'day': ('Примеряла новое бельё и никак не решу, смелое оно или слишком. Хочешь, расскажу какое…',),
+    'evening': ('Вернулась домой и сбросила всё лишнее, в комнате тепло и тихо. Хочешь знать, что на мне сейчас?',),
+    'night': ('Лежу без сна, простыня совсем не помогает. Скажу, о чём думаю, если ещё не спишь…',),
+}
+
+
+def template_life_text(when: str, fact: str = '', spicy: bool = False) -> tuple[str, str]:
+    """(text, anchor). A fact of his wins; otherwise place and time of day."""
+    fact = ' '.join(str(fact or '').split())
+    if fact:
+        short = fact if len(fact) <= 70 else fact[:67].rsplit(' ', 1)[0] + '…'
+        cand = f'Вспомнила про тебя: «{short}». Расскажешь подробнее?'
+        if validate_life_text(cand)[0]:
+            return cand, 'fact'
+    bank = (_PLACE_TEMPLATES_18 if spicy else _PLACE_TEMPLATES).get(when) or _PLACE_TEMPLATES['day']
+    return random.choice(bank), 'place'
 
 
 def her_day_pool(spicy: bool) -> tuple[str, ...]:
@@ -297,7 +360,7 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
         spend_service.set_spend_user(int(telegram_id))
         spend_service.set_spend_source('her_day')
         spicy = _her_day_spicy(int(telegram_id))
-        if HER_DAY_FIXED_POOL:
+        if HER_DAY_FIXED_POOL and not LIFE_FORMAT_V2:
             pool = her_day_pool(spicy)
             recent_lines = _recent_her_lines(telegram_id, character_id)
             recent_blob = ' '.join(recent_lines)
@@ -329,30 +392,48 @@ async def build_life_moment(telegram_id: int, character_id: str, when: str = 'da
         # V3.63.1: a system-only request is rejected by MiniMax («chat content
         # is empty») and Gemini («contents is not specified») — every life
         # moment failed. The user turn carries the ask.
-        r = await generate_text([{'role': 'system', 'content': system},
-                                 {'role': 'user', 'content': 'Напиши ему это сообщение сейчас.'}],
-                                max_tokens=160 if participation else 90,
-                                temperature=0.95, purpose='life_event')
-        text = (getattr(r, 'text', '') or '').strip().strip('"').strip()
-        actions = None
-        if participation:
-            from services.life_scene import parse_moment
-            text, actions = parse_moment(text)
-            if not text:
-                return {}
-        # V3.63.15: same chat polish as replies (no em dash, no emoji tic) and
-        # nothing she already said; a pure repeat skips the slot.
         from services.dialogue_guard_service import finish_or_drop, polish_first_message
-        text = finish_or_drop(text, getattr(r, 'complete', True))
-        text = polish_first_message(text, recent)
-        if len(text) < 8:
+        anchor = 'fact' if (mem or (hook and not participation)) else 'place'
+
+        async def _gen(extra: str = ''):
+            ask = 'Напиши ему это сообщение сейчас.' + extra
+            r = await generate_text([{'role': 'system', 'content': system},
+                                     {'role': 'user', 'content': ask}],
+                                    max_tokens=160 if participation else 90,
+                                    temperature=0.95, purpose='life_event')
+            out = (getattr(r, 'text', '') or '').strip().strip('"').strip()
+            acts = None
+            if participation:
+                from services.life_scene import parse_moment
+                out, acts = parse_moment(out)
+                if not out:
+                    return '', None
+            # V3.63.15: same chat polish as replies (no em dash, no emoji tic) and
+            # nothing she already said; a pure repeat skips the slot.
+            out = finish_or_drop(out, getattr(r, 'complete', True))
+            out = polish_first_message(out, recent)
+            return out, acts
+
+        text, actions = await _gen()
+        if LIFE_FORMAT_V2:
+            # V3.168 (ТЗ 3.5): validator on the way out — one regeneration, then a template.
+            ok, why = validate_life_text(text)
+            if not ok:
+                text, actions = await _gen(' Коротко: 1-2 предложения, одна бытовая деталь, не больше одного '
+                                           'вопроса, в конце крючок или недосказанность, не больше двух эмодзи.')
+                ok, why = validate_life_text(text)
+            if not ok:
+                logger.info('life text failed validation (%s), template used user=%s', why, telegram_id)
+                text, anchor = template_life_text(when, mem or hook, spicy=spicy)
+                actions = None
+        elif len(text) < 8:
             return {}
         photo = None
         if LIFE_EVENTS_PHOTO_CHANCE and random.random() < LIFE_EVENTS_PHOTO_CHANCE:
             photo = _pool_photo(character_id, uid)
         options = [(lbl, f'life_reply:{character_id}:{key}') for lbl, key in _REPLY_OPTIONS]
         return {'text': text, 'photo': photo, 'options': options, 'when': when,
-                'actions': actions, 'experiment': experiment}
+                'actions': actions, 'experiment': experiment, 'anchor': anchor}
     except Exception:
         logger.exception('build_life_moment failed user=%s char=%s', telegram_id, character_id)
         return {}

@@ -52,6 +52,8 @@ def test_two_a_day_and_the_noise_rails_are_off():
 
 
 def test_each_rail_family_spends_its_own_day(monkeypatch):
+    import config
+    monkeypatch.setattr(config, 'RAIL_MUTE_ENABLED', False)   # this test is about the day budgets, not the mute
     # V3.162.0 counted every first write in one bucket, so 2149 «жизнь без тебя»
     # drank her morning and evening line dry. V3.167.0: the budgets are split —
     # a full life day says nothing about the ritual day.

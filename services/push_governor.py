@@ -180,6 +180,41 @@ def night_pass_used(db_user_id: int) -> bool:
         return True
 
 
+def rail_muted(db_user_id: int, rail: str) -> bool:
+    """V3.168 (ТЗ блок 4): 3 pushes of THIS rail in a row without any reply of his
+    mute only this rail for RAIL_MUTE_HOURS after the last one. A reply (any chat
+    message) is newer than those pushes, so it clears every rail at once. Derived
+    from events and messages — nothing to migrate or to forget to clear."""
+    from config import RAIL_MUTE_AFTER, RAIL_MUTE_ENABLED, RAIL_MUTE_HOURS
+    if not RAIL_MUTE_ENABLED or not db_user_id or rail == 'life':   # life: life_backlog.is_capped
+        return False
+    names = FAMILY_EVENTS.get(rail)
+    if not names:
+        return False
+    try:
+        from models.app_models import Message
+        with SessionLocal() as s:
+            last_his = s.scalar(select(func.max(Message.created_at)).where(
+                Message.user_id == int(db_user_id), Message.role == 'user'))
+            q = select(ProductEvent.created_at).where(
+                ProductEvent.user_id == int(db_user_id), ProductEvent.event_name.in_(names))
+            if last_his:
+                q = q.where(ProductEvent.created_at > last_his)
+            rows = s.scalars(q.order_by(ProductEvent.created_at.desc()).limit(RAIL_MUTE_AFTER + 2)).all()
+    except Exception:
+        return False
+    if len(rows) < RAIL_MUTE_AFTER:
+        return False
+    muted = (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - rows[0]).total_seconds() < RAIL_MUTE_HOURS * 3600
+    if muted:
+        try:
+            from services.life_backlog import _note_muted
+            _note_muted(int(db_user_id), rail, rows[0])
+        except Exception:
+            pass
+    return muted
+
+
 def allow_push(db_user_id: int, tz_name, rail: str, *, account_hours=None, hour=None) -> tuple[bool, str]:
     """(ok, reason). reason is 'night' | 'burst' | 'daily' | '' — every refusal
     is logged with the rail, his local hour and tz. V3.168: `rail` is required
@@ -196,6 +231,8 @@ def allow_push(db_user_id: int, tz_name, rail: str, *, account_hours=None, hour=
                 and not night_pass_used(int(db_user_id or 0))):
             return True, ''     # the caller stamps night=1 on its life_event_sent
         return _deny(db_user_id, rail, 'night', tz_name, hour)
+    if rail_muted(int(db_user_id or 0), rail):
+        return _deny(db_user_id, rail, 'muted', tz_name, hour)
     if rail not in PUSH_RAIL_SPACING_EXEMPT and PUSH_MAX_IN_WINDOW > 0 and not young_account(account_hours) \
             and pushes_in_window(int(db_user_id or 0)) >= PUSH_MAX_IN_WINDOW:
         return _deny(db_user_id, rail, 'burst', tz_name, hour)

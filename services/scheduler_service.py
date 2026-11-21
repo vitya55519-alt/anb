@@ -7,7 +7,7 @@ from config import (
     RITUAL_EVENING_START_HOUR, RITUAL_EVENING_END_HOUR, RITUAL_MAX_INACTIVE_DAYS,
     DONATION_LINK, DONATION_REMINDER_ENABLED,
     RETENTION_NUDGE_INTERVAL_HOURS, RETENTION_MAX_NUDGES,
-    PROACTIVE_MAX_INACTIVE_DAYS,
+    PROACTIVE_MAX_INACTIVE_DAYS, NEW_USER_PRIORITY_HOURS,
     DAY1_HOOK_MAX_ACCOUNT_HOURS, DAY1_HOOK_MIN_INACTIVE_HOURS, PUBLIC_BASE_URL,
     LIFE_EVENTS_ENABLED, LIFE_EVENTS_MAX_PER_DAY, LIFE_EVENTS_SCAN_MINUTES,
     LIFE_EVENTS_ACTIVE_WINDOW_DAYS, LIFE_EVENTS_QUIET_START_HOUR, LIFE_EVENTS_QUIET_END_HOUR,
@@ -22,6 +22,7 @@ from services.reminder_service import due_reminders, mark_after_send
 from services.chat_service import proactive_reply
 from services.analytics_service import track_event
 from services import retention_service
+from services import new_user_first_event
 from services import donation_service
 from services import partner_service
 from services import retention_features_service
@@ -949,6 +950,18 @@ async def _ritual_line_push(bot, uid: int, tg_id: int, char_id: str, kind: str, 
     # own budget and never the marketing one, and the burst window skips it
     # because morning and evening are anchored to the clock, not to each other.
     ok, reason = await asyncio.to_thread(allow_push, uid, tz, 'ritual')
+    if ok and NEW_USER_PRIORITY_HOURS > 0:
+        # V3.168 (ТЗ 5.3): in the first 24 hours her day and her ritual do not
+        # double up — if the life rail already wrote today the ritual waits.
+        try:
+            with SessionLocal() as s:
+                _born = s.scalar(select(User.created_at).where(User.id == uid))
+            if _born and (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - _born).total_seconds() < NEW_USER_PRIORITY_HOURS * 3600 \
+                    and await asyncio.to_thread(new_user_first_event.life_event_today, uid, tz):
+                logger.info('ritual line skipped (life event today, first day) user=%s kind=%s', tg_id, kind)
+                return False
+        except Exception:
+            logger.debug('ritual first-day check failed user=%s', uid, exc_info=True)
     if not ok:
         logger.info('ritual line held user=%s kind=%s reason=%s', tg_id, kind, reason)
         return False
@@ -1483,6 +1496,9 @@ async def _life_events(bot):
             if not gov_ok:
                 continue
             night_flag = 1 if _in_quiet_hours(local_hour) else 0
+            # V3.168 (ТЗ 5.2): an account still waiting for its first event is
+            # guaranteed one inside NEW_USER_FIRST_EVENT_HOURS of consent.
+            first_state = await asyncio.to_thread(new_user_first_event.state, uid, account_hours)
             # V3.167.4 #173 (владелец ТЗ §6): он вернулся, а за его спиной
             # накопились её дни. Догонять их по одной смс уже поздно — вместо
             # этого приходит одна сводка, что у неё было. Слот суток она не
@@ -1515,7 +1531,7 @@ async def _life_events(bot):
                 continue
             # Sprinkle sends across the scan window instead of firing at the
             # boundary for everyone at once (also keeps the LLM load flat).
-            if random.random() > 0.35:
+            if random.random() > 0.35 and first_state != 'force':
                 continue
             # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации». Sometimes the slice
             # of her day is a place with a photo she is about to take: that one
@@ -1538,6 +1554,8 @@ async def _life_events(bot):
                             metadata={'character_id': char_id, 'when': part, 'live': 1})
                 track_event(uid, 'life_event_sent',
                             metadata={'character_id': char_id, 'when': part, 'live': 1, 'night': night_flag})
+                if first_state:
+                    await asyncio.to_thread(new_user_first_event.note_first_event, uid, account_hours)
                 continue
             moment = await build_life_moment(tg_id, char_id, when=part)
             # Consume the slot whether or not text came back, so an empty/no-LLM
@@ -1556,8 +1574,12 @@ async def _life_events(bot):
             # DoD «≥70% аккаунтов получили ≥1 событие в первые сутки».
             # Прежнее life_event_sent остаётся: на него смотрит push-губернатор.
             track_event(uid, 'life_event_shown',
-                        metadata={'character_id': char_id, 'when': part, 'has_photo': bool(photo)})
-            track_event(uid, 'life_event_sent', metadata={'character_id': char_id, 'when': part, 'has_photo': bool(photo), 'night': night_flag})
+                        metadata={'character_id': char_id, 'when': part, 'has_photo': bool(photo),
+                                  'anchor': moment.get('anchor') or ''})
+            track_event(uid, 'life_event_sent', metadata={'character_id': char_id, 'when': part, 'has_photo': bool(photo), 'night': night_flag,
+                                                           'anchor': moment.get('anchor') or ''})
+            if first_state:
+                await asyncio.to_thread(new_user_first_event.note_first_event, uid, account_hours)
         except TelegramForbiddenError:
             # V3.55.9: blocked — the slot is already consumed above; take the
             # whole proactive rail off so no LLM money goes to this user.
