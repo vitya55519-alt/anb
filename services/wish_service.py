@@ -51,8 +51,13 @@ def _today() -> str:
 
 
 def free_available(telegram_id: int) -> bool:
-    """The day's free frame is still untouched (per account, not per girl)."""
+    """The day's free frame is still untouched (per account, not per girl).
+    V3.168.1 (owner 21.11): the free daily frame belongs to Premium only; everyone
+    else pays peaches or gets the buy-or-Premium window."""
     try:
+        from services.access_service import is_premium
+        if not is_premium(int(telegram_id)):
+            return False
         return str(_day.get(int(telegram_id)) or '') != _today()
     except Exception:
         logger.exception('wish free-slot read failed user=%s', telegram_id)

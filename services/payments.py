@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from services.db import SessionLocal
 from models.app_models import Subscription, StarTransaction, User
 from config import PREMIUM_TRIAL_STARS, PREMIUM_TRIAL_DAYS, PREMIUM_MONTHLY_STARS, PREMIUM_MONTHLY_PHOTO_CREDITS, PREMIUM_WEEKLY_STARS, PREMIUM_WEEKLY_PHOTO_CREDITS, PREMIUM_QUARTERLY_STARS, PREMIUM_QUARTERLY_PHOTO_CREDITS, PHOTO_COST_STARS, CUSTOM_PHOTO_COST_STARS, VIDEO_COST_STARS, VIDEO_PREMIUM_FREE_DAILY, PREMIUM_DISCOUNT_STARS, PEACH_PACK_10_STARS, PEACH_PACK_30_STARS, PEACH_PACK_100_STARS, PEACH_PACK_CREDITS, PEACH_SCALE, PEACH_CUSTOM_UNIT, BONUS_PHOTO_ENABLED
+from config import STARTER_PACK_STARS
 from services.access_service import is_premium
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,25 @@ def _bonus_plus(amount):
     """V3.123.0: same atomic «+amount» for the bonus wallet."""
     return func.coalesce(User.bonus_peaches, 0) + int(amount)
 
-PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"premium_week":PREMIUM_WEEKLY_STARS,"premium_trial":PREMIUM_TRIAL_STARS,"premium_quarter":PREMIUM_QUARTERLY_STARS,"video":VIDEO_COST_STARS,"peach_pack_10":PEACH_PACK_10_STARS,"peach_pack_30":PEACH_PACK_30_STARS,"peach_pack_100":PEACH_PACK_100_STARS}
+PRODUCTS={"photo":PHOTO_COST_STARS,"custom_photo":CUSTOM_PHOTO_COST_STARS,"premium_month":PREMIUM_MONTHLY_STARS,"premium_month_discount":PREMIUM_DISCOUNT_STARS,"premium_week":PREMIUM_WEEKLY_STARS,"premium_trial":PREMIUM_TRIAL_STARS,"premium_quarter":PREMIUM_QUARTERLY_STARS,"video":VIDEO_COST_STARS,"peach_pack_10":PEACH_PACK_10_STARS,"peach_pack_30":PEACH_PACK_30_STARS,"peach_pack_100":PEACH_PACK_100_STARS,"starter_pack":STARTER_PACK_STARS}
+
+def starter_pack_eligible(telegram_id: int) -> bool:
+    """V3.168.1: the 15 ⭐ starter pack is one per account, ever (Stars or Platega
+    — both write a 'purchase' row with product 'starter_pack')."""
+    try:
+        from config import STARTER_PACK_ENABLED
+        if not STARTER_PACK_ENABLED:
+            return False
+        with SessionLocal() as s:
+            uid = s.scalar(select(User.id).where(User.telegram_id == str(telegram_id)))
+            if not uid:
+                return True
+            return not s.scalar(select(func.count(StarTransaction.id)).where(
+                StarTransaction.user_id == uid, StarTransaction.transaction_type == 'purchase',
+                StarTransaction.product == 'starter_pack'))
+    except Exception:
+        return False
+
 
 def trial_eligible(telegram_id: int) -> bool:
     """V3.88.0: the 3-day trial is for people who never bought Premium and
@@ -103,6 +122,12 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
             logger.info('duplicate payment ignored charge=%s', charge_id)
             return
         payer_user_id = user.id
+    if product == 'starter_pack':
+        try:
+            from services.analytics_service import track_event
+            track_event(payer_user_id, 'starter_pack_bought', value=stars, metadata={'provider': provider})
+        except Exception:
+            logger.debug('starter pack event failed', exc_info=True)
     if product == "undress_one":
         from services import undress_credits
         undress_credits.add(telegram_id, 1)

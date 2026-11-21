@@ -68,7 +68,7 @@ def collect(days: int = 7) -> dict:
                     'trial_followup_sent', 'morning_callback_sent', 'first_minutes_nudge_sent',
                     'paywall_view', 'webapp_pay_link', 'referral_qualified', 'daily_mission_claimed',
                     'paid_welcome_sent', 'paid_day1_sent', 'renewal_care_sent', 'memory_gift_used',
-                    'adult_nudge_sent', 'onboarding_catalog_opened', 'onboarding_character_selected'):
+                    'adult_nudge_sent', 'starter_pack_bought', 'starter_pack_checkout', 'onboarding_catalog_opened', 'onboarding_character_selected'):
             out[key] = _events(s, since, key)
         out['girlday_msgs'] = int(s.scalar(select(func.count(ProductEvent.id)).where(
             ProductEvent.created_at >= since, ProductEvent.event_name == 'webapp_chat_message',
@@ -123,6 +123,7 @@ def render(d: dict, name_of=lambda cid: cid) -> str:
         f'· она сама вспомнила о нём: {ev("memory_gift_used")}',
         f'· утро про вчерашний разговор: {ev("morning_callback_sent")}',
         f'· дожим в первые минуты: {ev("first_minutes_nudge_sent")}',
+        f'· стартовый пак 15 ⭐: счетов {ev("starter_pack_checkout")} · куплен {ev("starter_pack_bought")}',
         f'· дожим через 90 с после 18+: {ev("adult_nudge_sent")}',
         f'· воронка: каталог открыт {ev("onboarding_catalog_opened")} · героиня выбрана {ev("onboarding_character_selected")}',
         f'· Девушка дня: {d["girlday_msgs"]} сообщений в приложении',

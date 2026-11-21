@@ -49,7 +49,8 @@ def test_scale_constants():
     assert config.PEACH_SCALE == 100
     assert config.CHAT_PHOTO_PEACH_COST == 300
     assert config.DAILY_GIFT_DAY_AMOUNT == 100
-    assert config.PEACH_PACK_CREDITS == {'peach_pack_10': 1000, 'peach_pack_30': 3000, 'peach_pack_100': 10000}
+    assert {k: v for k, v in config.PEACH_PACK_CREDITS.items() if k != 'starter_pack'} == {'peach_pack_10': 1000, 'peach_pack_30': 3000, 'peach_pack_100': 10000}
+    assert config.PEACH_PACK_CREDITS['starter_pack'] == 500
     # the bulk discount told as a gift: 125⭐ buys 2500 at the small rate, 350⭐ buys 7000
     assert config.PEACH_PACK_BONUS == {'peach_pack_10': 0, 'peach_pack_30': 500, 'peach_pack_100': 3000}
     assert config.REFERRAL_BONUS_TIERS[0] == (3, 1000, 0)
