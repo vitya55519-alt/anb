@@ -879,11 +879,11 @@ def _hydrate_ritual_sent(now) -> None:
         start=dt.datetime(now.year, now.month, now.day)
         with SessionLocal() as s:
             rows=s.execute(select(ProductEvent.user_id, ProductEvent.event_name).where(
-                ProductEvent.event_name.in_(('ritual_morning_sent','ritual_evening_sent')),
+                ProductEvent.event_name.in_(('ritual_morning_sent','ritual_evening_sent','morning_callback_sent')),
                 ProductEvent.created_at>=start)).all()
         for uid, name in rows:
             if uid:
-                _ritual_sent.add((uid, name.split('_')[1], day))
+                _ritual_sent.add((uid, 'morning' if name.startswith('morning') else name.split('_')[1], day))
         _ritual_hydrated.add(day)
         logger.info('ritual sent-guard restored day=%s rows=%s', day, len(rows))
     except Exception:
@@ -936,6 +936,9 @@ def _chat_open_markup(char_id: str, lang: str):
     return InlineKeyboardMarkup(inline_keyboard=[[button]])
 
 
+MORNING_CALLBACK_ENABLED = _os.getenv('MORNING_CALLBACK_ENABLED', 'true').strip().lower() not in ('0', 'false', 'no', 'off')
+
+
 async def _ritual_line_push(bot, uid: int, tg_id: int, char_id: str, kind: str, tz) -> bool:
     """V3.162.0: the two pushes a day the owner asked for — her plain morning /
     evening line in his own language and the button into her dialog. False =
@@ -952,7 +955,27 @@ async def _ritual_line_push(bot, uid: int, tg_id: int, char_id: str, kind: str, 
     from services.ui_lang import full_user_lang, ritual_line
     lang = await asyncio.to_thread(full_user_lang, tg_id)
     text = ritual_line(kind, lang)
-    return bool(_app_delivery(bot, uid, tg_id, char_id, text))
+    # V3.168.0: the morning picks up yesterday's talk. The live path used to
+    # return before the callback code ever ran (weekly report: 0 vs 12 recalls).
+    # One line replaces the template; it is counted as morning_callback_sent
+    # INSTEAD of ritual_morning_sent so the day budget is spent once.
+    used_cb = False
+    if kind == 'morning' and MORNING_CALLBACK_ENABLED:
+        try:
+            from services.chat_service import morning_callback
+            with SessionLocal() as s:
+                _u = s.get(User, uid)
+                _nm = (getattr(_u, 'name', '') or '') if _u else ''
+            cb = await morning_callback(int(tg_id), _nm, 'en' if lang == 'en' else 'ru', char_id)
+            if cb:
+                text, used_cb = cb, True
+        except Exception:
+            logger.exception('morning callback failed user=%s', uid)
+    sent = bool(_app_delivery(bot, uid, tg_id, char_id, text))
+    if sent and used_cb:
+        track_event(uid, 'morning_callback_sent', character_id=char_id)
+        return 'callback'
+    return sent
 
 
 async def _rituals(bot, only_tg=None, force_kind=None):
@@ -1002,10 +1025,12 @@ async def _rituals(bot, only_tg=None, force_kind=None):
                     continue
                 if (uid, text_kind, today_key) in _ritual_sent:
                     continue
-                if await _ritual_line_push(bot, uid, int(tg_id),
-                                           sel_char or CHARACTER_ID or 'anna_01', text_kind, tz):
+                _res = await _ritual_line_push(bot, uid, int(tg_id),
+                                               sel_char or CHARACTER_ID or 'anna_01', text_kind, tz)
+                if _res:
                     _ritual_sent.add((uid, text_kind, today_key))
-                    track_event(uid, f'ritual_{text_kind}_sent', metadata={'streak': streak, 'tz': tz})
+                    if _res != 'callback':
+                        track_event(uid, f'ritual_{text_kind}_sent', metadata={'streak': streak, 'tz': tz})
                 continue
             if preview:
                 kind=force_kind
@@ -1031,9 +1056,11 @@ async def _rituals(bot, only_tg=None, force_kind=None):
                 # media ritual (photo + voice + gift button) stays in his
                 # kitchen. Text costs nothing, so it does not wait for the
                 # daily approval either.
-                if await _ritual_line_push(bot, uid, int(tg_id), char_id, kind, tz):
+                _res = await _ritual_line_push(bot, uid, int(tg_id), char_id, kind, tz)
+                if _res:
                     _ritual_sent.add(guard)
-                    track_event(uid, f'ritual_{kind}_sent', metadata={'streak': streak, 'tz': tz})
+                    if _res != 'callback':
+                        track_event(uid, f'ritual_{kind}_sent', metadata={'streak': streak, 'tz': tz})
                 continue
             text=retention_features_service.get_retention_text(kind, char_id)
             # V3.64.8: her words and the service promo no longer share one
@@ -1659,6 +1686,30 @@ async def _first_minutes(bot):
             logger.exception('first minutes nudge failed user=%s', uid)
 
 
+async def _adult_nudge(bot):
+    """V3.168.0: 90 s after the 18+ tap, silent -> one short teasing line in her
+    app chat with two one-tap replies (services/first_minutes.py). No governor:
+    not counted against unanswered / day norm, and not held for the night."""
+    from services import first_minutes as fm
+    if not fm.ADULT_NUDGE_ENABLED:
+        return
+    try:
+        rows = await asyncio.to_thread(fm.adult_nudge_candidates)
+    except Exception:
+        logger.exception('adult nudge scan failed'); return
+    for uid, telegram_id, char_id in rows:
+        char_id = char_id or CHARACTER_ID
+        try:
+            track_event(uid, fm.ADULT_NUDGE_EVENT, character_id=char_id)  # burn the slot first
+            actions = [{'type': 'reply', 'label': lbl, 'text': __import__('services.life_event_service', fromlist=['x']).tap_reply_text(key)}
+                       for lbl, key in fm.ADULT_NUDGE_OPTIONS]
+            _app_delivery(bot, uid, telegram_id, char_id, fm.ADULT_NUDGE_TEXT, actions=actions)
+        except TelegramForbiddenError:
+            _mark_blocked(uid)
+        except Exception:
+            logger.exception('adult nudge failed user=%s', uid)
+
+
 async def _heavy_offer(bot):
     """V3.111.0: one honest Premium offer for a long-time free user
     (services/heavy_offer.py) — once in his life, daytime Moscow only."""
@@ -1803,6 +1854,14 @@ def _msk_daytime(now: dt.datetime | None = None) -> bool:
     return 9 <= (now.hour + 3) % 24 <= 22
 
 
+def _care_daytime(now: dt.datetime | None = None) -> bool:
+    """V3.168.0: 10:00–22:59 Moscow. Care messages (renewal, 18+ nudge) that fall
+    on the night are not cancelled — nothing is marked, the 15-minute scan picks
+    them up at 10:00."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    return 10 <= (now.hour + 3) % 24 <= 22
+
+
 async def _paid_day1(bot):
     """V3.104.0: the day after he paid she writes first about something he told
     her (services/paid_welcome.py). Once per payment; skipped while he is here."""
@@ -1841,7 +1900,7 @@ async def _renewal_care(bot):
     """V3.104.0: a day before his paid week/month ends she remembers their talks
     and asks him to stay; once more after it ran out (services/renewal_care.py)."""
     from services import renewal_care as rc
-    if not (rc.ENABLED and _msk_daytime()):
+    if not (rc.ENABLED and _care_daytime()):
         return
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
     from services.ui_lang import user_lang, EN
@@ -1854,6 +1913,8 @@ async def _renewal_care(bot):
         char_id = char_id or CHARACTER_ID
         try:
             await asyncio.to_thread(rc.mark, uid, stage, char_id)
+            if stage == 'ended':
+                await asyncio.to_thread(rc.open_winback_bonus, uid)
             lang = 'en' if user_lang(telegram_id) == EN else 'ru'
             en = lang == 'en'
             text = await paid_moment(telegram_id, '', 'renew_soon' if stage == 'soon' else 'renew_ended',
@@ -2041,6 +2102,7 @@ def start_scheduler(bot):
             scheduler.add_job(_renewal_care,'interval',minutes=15,args=[bot],id='renewal_care',replace_existing=True)
         if push_rail_on('first_minutes'):
             scheduler.add_job(_first_minutes,'interval',minutes=3,args=[bot],id='first_minutes',replace_existing=True)
+            scheduler.add_job(_adult_nudge,'interval',seconds=30,args=[bot],id='adult_nudge',replace_existing=True)
         # V3.75.0: scenario cards — scans often, one card a day per user at most.
         if push_rail_on('scenario_cards'):
             scheduler.add_job(_scenario_cards,'interval',minutes=20,args=[bot],id='scenario_cards',replace_existing=True)

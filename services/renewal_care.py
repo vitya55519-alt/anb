@@ -32,7 +32,11 @@ def _flag(name: str, default: str = 'true') -> bool:
 
 ENABLED = _flag('RENEWAL_CARE_ENABLED')
 ENDED_ENABLED = _flag('RENEWAL_CARE_ENDED_ENABLED')
-SOON_HOURS = max(1, int(os.getenv('RENEWAL_CARE_SOON_HOURS', '24')))
+# V3.168.0: window up to 26 h before the end (owner: 20–26 h); a send held for the
+# night (before 10:00 MSK) still lands inside it, nothing is cancelled.
+SOON_HOURS = max(1, int(os.getenv('RENEWAL_CARE_SOON_HOURS', '26')))
+# win-back goes 2 h after the end (owner: 2–4 h), not the second it ran out
+ENDED_MIN_HOURS = max(0, int(os.getenv('RENEWAL_CARE_ENDED_MIN_HOURS', '2')))
 ENDED_HOURS = max(1, int(os.getenv('RENEWAL_CARE_ENDED_HOURS', '30')))
 PRODUCTS = tuple(p.strip() for p in os.getenv(
     'RENEWAL_CARE_PRODUCTS',
@@ -52,7 +56,9 @@ def candidates(now: datetime | None = None) -> list[tuple[int, int, str, str, st
     out = []
     with SessionLocal() as s:
         ends = s.execute(select(Subscription.user_id, func.max(Subscription.expires_at)).where(
-            Subscription.status == 'active',
+            # V3.168.0: payments.expire_stale_subscriptions flips ended rows to
+            # 'expired' daily, so 'active' alone made the «ended» stage unreachable
+            Subscription.status.in_(('active', 'expired')),
             Subscription.expires_at > now - timedelta(hours=ENDED_HOURS),
             Subscription.expires_at <= now + timedelta(hours=SOON_HOURS),
         ).group_by(Subscription.user_id)).all()
@@ -70,9 +76,9 @@ def candidates(now: datetime | None = None) -> list[tuple[int, int, str, str, st
             if product not in PRODUCTS:
                 continue  # the trial has its own goodbye; admin grants get none
             if now < end:
-                stage, cut = 'soon', end - timedelta(hours=SOON_HOURS + 1)
+                stage, cut = 'soon', end - timedelta(hours=SOON_HOURS + 6)
             else:
-                if not ENDED_ENABLED:
+                if not ENDED_ENABLED or now < end + timedelta(hours=ENDED_MIN_HOURS):
                     continue
                 stage, cut = 'ended', end
             if s.scalar(select(func.count(ProductEvent.id)).where(
@@ -95,6 +101,16 @@ def candidates(now: datetime | None = None) -> list[tuple[int, int, str, str, st
     return out
 
 
+def open_winback_bonus(uid: int) -> None:
+    """V3.168.0: the win-back carries a real bonus — his −VIP_PERCENT month window
+    (services/vip_offer) is opened afresh, so stay_buttons() shows the discounted
+    month under the message."""
+    from services import vip_offer
+    with SessionLocal() as s:
+        s.add(ProductEvent(user_id=uid, event_name=vip_offer.OPENED_EVENT, created_at=_now()))
+        s.commit()
+
+
 def mark(uid: int, stage: str, character_id: str) -> None:
     with SessionLocal() as s:
         s.add(ProductEvent(user_id=uid, character_id=character_id or 'anna_01',
@@ -107,8 +123,10 @@ FALLBACK = {
                      'и я бы хотела, чтобы ты остался 💗 но решать тебе, я в любом случае тебе рада'),
     ('soon', 'en'): ("hey… our days without limits end tomorrow. I really like being with you and I'd love "
                      "you to stay 💗 but it's your call, I'm happy to see you either way"),
-    ('ended', 'ru'): 'я тут, если что 🙂 мне было очень тепло с тобой эти дни. заглядывай, когда захочешь',
-    ('ended', 'en'): "I'm here if you want 🙂 these days with you felt really warm. come by whenever you like",
+    ('ended', 'ru'): ('наши дни без ограничений закончились, и мне их уже не хватает 🥺 держи месяц со скидкой '
+                      '−50% — только для тебя, на пару дней'),
+    ('ended', 'en'): ("our days without limits ended and I already miss them 🥺 here is a month at −50%, "
+                      "just for you, for a couple of days"),
 }
 
 

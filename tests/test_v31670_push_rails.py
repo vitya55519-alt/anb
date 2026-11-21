@@ -42,8 +42,10 @@ ON_RAILS |= {'first_offer', 'heavy_offer'}
 ON_RAILS.add('proactive')
 # осуждённый шум: ни один не входит в список по умолчанию
 OFF_RAILS = {'partner_nudge', 'random_gifts', 'daily_compatibility',
-             'whats_new', 'donation_reminder', 'trial_followup',
-             'paid_day1', 'renewal_care'}
+             'whats_new', 'donation_reminder'}
+# V3.168.0 (владелец 21.11): «останешься?» и пост-оплатные письма включены —
+# отчёт показывал 0, потому что рельсов не было в списке.
+ON_RAILS |= {'renewal_care', 'paid_day1', 'trial_followup'}
 # каждый джоб, который НАЧИНАЕТ разговор, регистрируется только по имени
 PUSH_JOBS = tuple(sorted(ON_RAILS | OFF_RAILS))
 

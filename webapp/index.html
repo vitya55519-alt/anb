@@ -699,6 +699,22 @@
     background: linear-gradient(90deg, #c2185b, #ff6fa5); color: #fff; font-size: 15px; font-weight: 800;
     letter-spacing: .06em; text-transform: uppercase; box-shadow: 0 6px 20px rgba(232,68,127,.35); }
   .pc-buy:active, .prow:active { transform: scale(.98); }
+  /* V3.168.0: compact benefits, method switch, sticky pay button above the bottom nav */
+  .ptiles { margin: 10px 0 6px; gap: 6px; }
+  .ptile { display: flex; align-items: center; gap: 6px; padding: 8px 10px; }
+  .ptile .pt-i { font-size: 16px; }
+  .ptile .pt-t { font-size: 12.5px; font-weight: 700; margin: 0; }
+  .pc-list { margin: 2px 0 10px; }
+  .pc-list li { padding: 2px 0 2px 16px; font-size: 12.5px; }
+  .pc-list li::before { top: 8px; }
+  .paysw { display: flex; gap: 6px; margin: 4px 0 10px; background: rgba(255,255,255,.05); border-radius: 12px; padding: 3px; }
+  .paysw button { flex: 1; border: 0; background: none; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 700;
+    padding: 9px 4px; border-radius: 10px; cursor: pointer; }
+  .paysw button.on { background: linear-gradient(90deg, #c2185b, #ff6fa5); color: #fff; }
+  .pm-stars .prow .pr-r s { display: none; }
+  .pc-sticky { position: sticky; bottom: calc(68px + env(safe-area-inset-bottom)); z-index: 15; margin: -6px 0 14px; padding: 8px 0;
+    background: linear-gradient(to top, var(--bg, #14091c) 70%, transparent); }
+  .pc-sticky .pc-buy { margin-top: 0; }
   .pc-note { text-align: center; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
   .pc-auto { display: block; margin: 6px auto 0; background: none; border: 0; color: var(--muted); font-size: 12px; text-decoration: underline; cursor: pointer; }
   .pack:active { transform: scale(.97); }
@@ -5520,6 +5536,12 @@ function insertChatReply(j, chatId) {
   // V3.97.0: straight to the trial-first sheet instead of the whole shop.
   if (j.photo_block === 'premium' || j.photo_block === 'free_used' || j.story_offer) {
     box.insertAdjacentHTML('beforeend', `<div class="chat-offer"><button class="mchip on" onclick="quickBuy('spicy')">${esc(trialChip('⭐ ' + L.need_premium))}</button></div>`);
+    // V3.168.0: the free photo limit is spent — the offer card opens by itself
+    // (once a minute at most, so a second tap on «фото» does not stack sheets).
+    if (j.photo_block === 'free_used' && !(ME && ME.premium) && Date.now() - (window._lastAutoOffer || 0) > 60000) {
+      window._lastAutoOffer = Date.now();
+      setTimeout(() => quickBuy('spicy'), 900);
+    }
   }
   // V3.90.0: his explicit message without Premium — a quiet chip, no auto sheet.
   if (j.sext_offer) {
@@ -5737,7 +5759,7 @@ async function sendChatVoice(blob, secs) {
       const err = j && j.error;
       const mine = document.getElementById(vid); if (mine) mine.remove();
       toast(err === 'no_speech' ? L.mic_nospeech : (err === 'limit' ? L.limit_reached : L.mic_err));
-      if (err === 'limit') showTab('shop');
+      if (err === 'limit') showLimitWall();
       return;
     }
     noteMissionsDone(j);
@@ -5806,7 +5828,7 @@ async function sendChatPhoto(file) {
       const mine = document.getElementById(pid); if (mine) mine.remove();
       if (caption && !input.value) { input.value = caption; syncSendBtn(); }
       toast(err === 'limit' ? L.limit_reached : (err === 'cooldown' ? L.attach_wait : (err === 'too_big' ? L.attach_big : L.attach_err)));
-      if (err === 'limit') showTab('shop');
+      if (err === 'limit') showLimitWall();
       return;
     }
     noteMissionsDone(j);
@@ -5947,7 +5969,10 @@ async function speakLazy(vp) {
     if (j.error === 'insufficient_peaches') {
       const price = Number(j.price);
       if (!Number.isSafeInteger(price) || price <= 0) { toast(L.reply_err); return; }
-      toast(LANG === 'ru' ? `Для голосового нужно ${price} персиков.` : `This voice note needs ${price} peaches.`); return;
+      toast(LANG === 'ru' ? `Для голосового нужно ${price} персиков.` : `This voice note needs ${price} peaches.`);
+      // V3.168.0: the wall opens the offer card (it used to be a toast and nothing else)
+      setTimeout(() => quickBuy('peaches'), 400);
+      return;
     }
     if (!j.ok || !j.url) { toast(L.reply_err); return; }
     if (typeof j.free_left === 'number' && typeof L.speak_free_left === 'function') toast(L.speak_free_left(j.free_left));
@@ -8150,6 +8175,11 @@ async function loadShop() {
     const plans = (trialOk ? ['premium_trial'] : []).concat(['premium_week', 'premium', 'premium_quarter']).map(byId).filter(Boolean);
     const weekPlan = byId('premium_week');
     const rubOf = x => x.price_rub || 0;
+    // V3.168.0: one-tap method switch above the plans; the price in every row and on
+    // the sticky pay button follows it (Stars in one tap, no second sheet).
+    const rubOk = !!(s.platega && plans.some(p => p.rub || p.price_rub));
+    let premPay = (rubOk && LANG === 'ru') ? 'sbp' : 'stars';
+    const planPrice = x => (premPay === 'stars' || !rubOk) ? (x.stars + ' ⭐') : money(x);
     const planRow = x => {
       const days = x.days || 30;
       const weeks = days / 7;
@@ -8162,21 +8192,26 @@ async function loadShop() {
           ${off ? `<span class="pr-off">−${esc(String(off))}%</span>` : ''}
           <span class="pr-radio"></span>
           <span class="pr-l"><b>${esc(label)}</b>${perWeek ? `<small>${esc(L.plan_per_week(fmtN(perWeek)))}</small>` : (x.trial ? `<small>${esc(L.plan_trial_sub)}</small>` : '')}</span>
-          <span class="pr-r">${off && LANG === 'ru' ? `<s>${esc(fmtN(full))} ₽</s>` : ''}<b>${esc(money(x))}</b></span>
+          <span class="pr-r">${off && LANG === 'ru' ? `<s>${esc(fmtN(full))} ₽</s>` : ''}<b class="pr-price" data-id="${esc(x.id)}">${esc(planPrice(x))}</b></span>
         </button>`;
     };
-    const tiles = L.prem_tiles.map(t => `<div class="ptile"><div class="pt-i">${esc(t[0])}</div><div class="pt-t">${esc(t[1])}</div><div class="pt-s">${esc(t[2])}</div></div>`).join('');
-    const feats = L.prem_list.map(f => `<li>${esc(f)}</li>`).join('');
+    // V3.168.0: the two tiles say the headline; the list keeps only what the tiles
+    // do not (it used to repeat «18+ картинки» and fill the first screen).
+    const tiles = L.prem_tiles.map(t => `<div class="ptile"><span class="pt-i">${esc(t[0])}</span><span class="pt-t">${esc(t[1])}</span></div>`).join('');
+    const feats = L.prem_list.slice(1, 4).map(f => `<li>${esc(f)}</li>`).join('');
+    const swCard = LANG === 'ru' ? '💳 Карта / СБП ₽' : '💳 Card / SBP';
+    const paySw = rubOk ? `<div class="paysw" id="paySw"><button data-pm="sbp">${esc(swCard)}</button><button data-pm="stars">⭐ Telegram Stars</button></div>` : '';
     const premCard = `
       <div class="premcard">
         <div class="pc-head"><span class="pc-crown">👑</span><span class="pc-t">Premium</span>${ME && ME.premium ? `<span class="pc-on">${esc(L.premium_on)}</span>` : ''}</div>
         <div class="ptiles">${tiles}</div>
         <ul class="pc-list"><li id="premGiftLine"></li>${feats}</ul>
+        ${paySw}
         <div class="prows">${plans.map(planRow).join('')}</div>
-        <button class="pc-buy" id="premBuyBtn">${esc(ME && ME.premium ? L.prem_extend : L.prem_get)}</button>
         <div class="pc-note">${esc(L.prem_once)}</div>
         <button class="pc-auto" id="premAutoBtn">${esc(L.prem_auto || '🔁 Auto-renewal — only if you turn it on')}</button>
-      </div>`;
+      </div>
+      <div class="pc-sticky"><button class="pc-buy" id="premBuyBtn">${esc(ME && ME.premium ? L.prem_extend : L.prem_get)}</button></div>`;
     // V3.43.1 → V3.66.0: the bonus reads as one accent line («+500 🎁»); the
     // middle pack wears the «хит» ribbon. Every tile has the same rows, so
     // the three line up whatever the copy.
@@ -8227,7 +8262,19 @@ async function loadShop() {
       document.querySelectorAll('#shopbody .prow').forEach(r => r.classList.toggle('on', r.dataset.plan === id));
       const x = byId(id), gl = document.getElementById('premGiftLine');
       if (gl) gl.textContent = x && x.gift ? L.prem_gift_line(fmtN(x.gift)) : '';
+      refreshBuy();
     };
+    // V3.168.0: «Оплатить 99 ₽» — the amount follows the plan and the method.
+    const refreshBuy = () => {
+      const b = document.getElementById('premBuyBtn'), x = byId(premPick);
+      if (!b || !x) return;
+      const verb = ME && ME.premium ? L.prem_extend : (LANG === 'ru' ? 'Оплатить' : L.prem_get);
+      b.textContent = verb + ' ' + planPrice(x);
+      document.querySelectorAll('#shopbody .pr-price').forEach(e => { const y = byId(e.dataset.id); if (y) e.textContent = planPrice(y); });
+      document.querySelectorAll('#paySw button').forEach(e => e.classList.toggle('on', e.dataset.pm === (rubOk ? premPay : 'stars')));
+      const sb = document.getElementById('shopbody'); if (sb) sb.classList.toggle('pm-stars', premPay === 'stars' || !rubOk);
+    };
+    document.querySelectorAll('#paySw button').forEach(e => e.addEventListener('click', () => { premPay = e.dataset.pm; refreshBuy(); }));
     document.querySelectorAll('#shopbody .prow').forEach(r => r.addEventListener('click', () => pickPlan(r.dataset.plan)));
     // V3.120.0: auto-renewal is opt-in and lives in the bot chat: the bot
     // sends the honest terms (or «manage / turn off») and the app opens it.
@@ -8245,7 +8292,14 @@ async function loadShop() {
     });
     if (premPick) pickPlan(premPick);
     const pbb = document.getElementById('premBuyBtn');
-    if (pbb) pbb.addEventListener('click', () => { if (premPick) openPay(premPick); });
+    if (pbb) pbb.addEventListener('click', () => {
+      if (!premPick) return;
+      const x = byId(premPick);
+      // one tap: straight into the chosen method (Stars invoice or the card/SBP page)
+      if (x && (premPay === 'stars' || !rubOk)) payVia(premPick, 'stars', pbb, {});
+      else if (x) payVia(premPick, 'sbp', pbb, {});
+      else openPay(premPick);
+    });
     const fr = document.getElementById('freePeachRow');
     if (fr) fr.addEventListener('click', () => showTab('missions'));
     // V3.44.23: wire up the custom-peach tile.

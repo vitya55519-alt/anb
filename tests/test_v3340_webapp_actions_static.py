@@ -257,7 +257,7 @@ def test_no_unescaped_backend_strings_in_templates():
             "d.claimable ? ' ready' : ''", "d.claimed ? ' done' : ''", "d.done ? '' : ' tappable'",
             'd.done ? \'\' : \' data-cta="chats"\'', "daily.map(dRow).join('')", 'right', 'span', "x.id === 'peach_pack_30' ? ' data-hot=\"1\"' : ''",
             "planBtn(byId('premium'), L.plan_month, true)", "planBtn(byId('premium_week'), L.plan_week, false)",
-            'premCard',
+            'premCard', 'paySw',
             # V3.67.0: Premium plan rows + perk tiles — local fragments, every
             # field esc()'d where built.
             "plans.map(planRow).join('')", 'tiles',

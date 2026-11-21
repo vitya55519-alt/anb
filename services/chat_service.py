@@ -1501,7 +1501,7 @@ async def morning_callback(user_id: int, user_name: str, language_code: str | No
     spend_service.set_spend_user(user_id)
     history = get_recent_messages(db_user_id, character_id, 12)
     mine = [m for m in history if m.role == 'user']
-    if len(mine) < 3:
+    if len(mine) < 2:  # V3.168.0: was 3 — a day-1 user rarely has more
         return ''
     last = getattr(mine[-1], 'created_at', None)
     if last is not None and (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - last) > dt.timedelta(hours=72 if evening else 36):
@@ -1646,8 +1646,8 @@ PAID_MOMENT_LINES = {
     ),
     'renew_ended': (
         "Ваши дни без ограничений закончились. Напиши ему первой без упрёков: тебе было хорошо с ним, вспомни одну "
-        "конкретную вещь о нём, и ты здесь, если он захочет. Без давления и чувства вины, не называй цен. "
-        "Одно-два коротких предложения."
+        "конкретную вещь о нём, и скажи, что для него под сообщением месяц со скидкой −50%, на пару дней. Без "
+        "давления и чувства вины, не называй цифр цены. Два коротких предложения."
     ),
 }
 
