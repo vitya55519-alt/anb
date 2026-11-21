@@ -2,7 +2,7 @@ import json, re
 import logging
 import math
 from datetime import datetime, timezone
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, delete, update, func
 from services.db import SessionLocal
 from models.app_models import Memory, Message, User, CommunicationProfile
 from config import CHARACTER_ID
@@ -120,7 +120,52 @@ _MEMORY_TYPES = {'fact', 'preference', 'promise', 'inside_joke', 'pending', 'wor
 _logger = logging.getLogger(__name__)
 
 
+def _extraction_plan(user_id:int, character_id:str, user_text:str):
+    """V3.168 (ТЗ 6.1): which text to send to the extractor, or '' to skip.
+    Every MEMORY_EVERY_N_MESSAGES-th message extracts over the batch since the
+    last run (facts in the skipped ones are not lost); the first message always
+    runs (names); a message that opens a new session (gap >= MEMORY_SESSION_GAP_MINUTES)
+    first flushes the tail of the previous one."""
+    from config import MEMORY_EVERY_N_MESSAGES as N, MEMORY_SESSION_GAP_MINUTES
+    if N <= 1:
+        return user_text
+    try:
+        with SessionLocal() as s:
+            rows = s.execute(select(Message.content, Message.created_at).where(
+                Message.user_id==user_id, Message.character_id==character_id, Message.role=='user'
+            ).order_by(Message.created_at.desc()).limit(N + 2)).all()
+            total = s.scalar(select(func.count(Message.id)).where(
+                Message.user_id==user_id, Message.character_id==character_id, Message.role=='user')) or 0
+    except Exception:
+        return user_text
+    texts = [str(r[0] or '') for r in rows]
+    saved = bool(texts) and texts[0].strip() == user_text.strip()
+    n = int(total) if saved else int(total) + 1                 # the current message is number n
+    prior = texts[1:] if saved else texts                        # earlier ones, newest first
+    prior_when = (rows[1][1] if saved and len(rows) > 1 else (rows[0][1] if (rows and not saved) else None))
+    if n <= 1:
+        return user_text
+    pending = (n - 1) % N                                         # earlier lines not extracted yet
+    gap = bool(prior_when) and (_now() - prior_when).total_seconds() >= MEMORY_SESSION_GAP_MINUTES * 60
+    if n % N == 0:
+        batch = [user_text] + prior[:N - 1]
+        return '\n'.join(reversed([b for b in batch if b.strip()]))
+    if gap and pending:
+        return '\n'.join(reversed([b for b in prior[:pending] if b.strip()]))
+    return ''
+
+
 async def extract_memory(user_id:int, character_id:str, user_text:str, *, previous_question:str=''):
+    if not user_text.strip():
+        return
+    planned = _extraction_plan(user_id, character_id, user_text)
+    if not planned.strip():
+        return
+    user_text = planned
+    return await _extract_memory_now(user_id, character_id, user_text, previous_question=previous_question)
+
+
+async def _extract_memory_now(user_id:int, character_id:str, user_text:str, *, previous_question:str=''):
     if not user_text.strip():
         return
     observed_at = _now()

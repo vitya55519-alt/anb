@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from zoneinfo import ZoneInfo
-from config import CHARACTER_ID
+from config import CHARACTER_ID, HISTORY_TURNS_IN_PROMPT
 from services.llm_provider_service import generate_text, LLMResult
 from services.character_service import get_character, build_system_prompt, stop_sequences
 from services.memory_service import get_recent_messages, get_memories, save_message, extract_memory
@@ -727,7 +727,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         character = get_character(character_id)
     premium = is_premium(user_id)
     memories = get_memories(db_user_id, character_id, 40 if premium else 14)
-    history = get_recent_messages(db_user_id, character_id, 30 if premium else 16)
+    history = get_recent_messages(db_user_id, character_id, min(HISTORY_TURNS_IN_PROMPT, 30 if premium else 16))
     # V3.141.0: owner ТЗ (Фаза 2, Задача 1) — the 5th/7th message of a new
     # non-Premium user's first dialog is scripted: a prepared line + one
     # pre-saved selfie, no LLM call at all (zero credits). Once per user.

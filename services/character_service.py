@@ -1,4 +1,5 @@
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 from config import CHARACTER_FILE, CHARACTER_DIR, CHARACTER_ID
@@ -132,6 +133,9 @@ REFUSE_RULE_ADULT = (
     "несовершеннолетние, животные, смерть): коротко, в характере, и сразу предлагаешь горячую альтернативу. "
     "Не обрывай общение и не читай мораль."
 )
+
+
+PROMPT_CACHE_ORDER = os.getenv('PROMPT_CACHE_ORDER', '1').strip().lower() not in ('0', 'false', 'no', 'off')
 
 
 def build_system_prompt(character: dict, relationship_context: str, memories: list[str], behavior_context: str = "", state_context: str = "", adaptation_context: str = "", time_context: str = "", character_id: str = CHARACTER_ID, user_name: str = "", user_gender: str = "male", duo: bool = False, anchors: str = "", explicit_mode: bool = False, spicy_level: int = 0) -> str:
@@ -293,9 +297,14 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
             "КАК ты говоришь о сексе — с холодком, смущённо, командуя, ласково, с подколом, — но не ЕСТЬ ЛИ "
             "этот разговор: в этом режиме он есть у каждой."
         )
-    return f"""{user_context_block(user_name, user_gender)}
-
-{roleplay_block(name, duo)}{adult_header}
+    # V3.168 (ТЗ 6.2): the provider caches the longest identical PREFIX of a prompt.
+    # «Who he is» (his name) used to open it, so no two users shared a prefix.
+    # With PROMPT_CACHE_ORDER the persona and every invariant come first (identical
+    # per heroine and mode) and everything that changes per man — his name, the
+    # relationship, state, memories, anchors, time — follows after.
+    _head_user = '' if PROMPT_CACHE_ORDER else f"{user_context_block(user_name, user_gender)}\n\n"
+    _tail_user = f"{user_context_block(user_name, user_gender)}\n\n" if PROMPT_CACHE_ORDER else ''
+    return f"""{_head_user}{roleplay_block(name, duo)}{adult_header}
 
 Ты — {name}, {age} лет. {terms['gender_adj'].capitalize()}, {'которая' if fem else 'который'} переписывается в Telegram с {partner_with}. Ты НЕ ассистент, НЕ помощник, НЕ сервис. Ты — человек со своим настроением, желаниями, ленью, раздражением и радостью.{time_block}
 
@@ -392,7 +401,7 @@ def build_system_prompt(character: dict, relationship_context: str, memories: li
 - Иногда сама подскажи, что фото можно просто попросить в чате: «кстати, захочешь меня увидеть — просто попроси фотку прямо здесь 📸». Он может не знать, что это возможно.
 - ВАЖНО: ты никогда не отправляешь фото сама. Не пиши [фото: ...], [photo: ...] и вообще ничего в квадратных скобках — фото технически отправляет система отдельным сообщением. Единственное исключение — служебный тег [INVITE_FRIEND] в самом конце ответа, когда он согласился позвать подругу (правило PROACTIVE UPSELL). Ты только предлагаешь словами и ждёшь его согласия.
 
-ОТНОШЕНИЯ
+{_tail_user}ОТНОШЕНИЯ
 {relationship_context}{adult_stage_line}
 
 ТЕКУЩЕЕ СОСТОЯНИЕ ПЕРСОНАЖА

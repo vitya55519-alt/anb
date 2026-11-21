@@ -663,7 +663,15 @@ FAL_VIDEO_TIMEOUT_SECONDS = max(120, min(900, int(os.getenv("FAL_VIDEO_TIMEOUT_S
 # Per-user adaptive communication profile. The model never rewrites its own code/prompt;
 # it only learns bounded style signals and recurring expressions into PostgreSQL.
 ADAPTATION_ENABLED = os.getenv("ADAPTATION_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
-ADAPTATION_ANALYZE_EVERY = max(3, min(20, int(os.getenv("ADAPTATION_ANALYZE_EVERY", "5"))))
+# V3.168 (ТЗ блок 6): the style analysis ran every 5 messages; once per 10 is enough.
+ADAPTATION_ANALYZE_EVERY = max(3, min(30, int(os.getenv("ADAPTATION_ANALYZE_EVERY", "10"))))
+# V3.168 (ТЗ блок 6): memory extraction was one LLM call per user message (189 of
+# 497 calls/day). Now one per N messages over the batch, plus the tail of a
+# session when he comes back after MEMORY_SESSION_GAP_MINUTES of silence.
+MEMORY_EVERY_N_MESSAGES = max(1, min(10, int(os.getenv("MEMORY_EVERY_N_MESSAGES", "3"))))
+MEMORY_SESSION_GAP_MINUTES = max(5, int(os.getenv("MEMORY_SESSION_GAP_MINUTES", "30")))
+# Turns of raw history in the dialogue prompt (the old cap was 30 for Premium).
+HISTORY_TURNS_IN_PROMPT = max(6, min(60, int(os.getenv("HISTORY_TURNS_IN_PROMPT", "20"))))
 ADAPTATION_MAX_EXPRESSIONS = max(3, min(20, int(os.getenv("ADAPTATION_MAX_EXPRESSIONS", "12"))))
 
 # V3.166.2: the published ceiling of the free tier — the legal card, the shop
