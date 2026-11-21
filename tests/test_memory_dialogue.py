@@ -200,7 +200,9 @@ def test_blank_input_does_not_call_provider(memory_env, text):
 
 
 @pytest.mark.parametrize('onboarding', [False, True], ids=['regular', 'onboarding'])
-def test_one_word_uses_last_assistant_visible_question_not_private_drafts(memory_env, onboarding):
+def test_one_word_uses_last_assistant_visible_question_not_private_drafts(memory_env, onboarding, monkeypatch):
+    import config
+    monkeypatch.setattr(config, 'MEMORY_EVERY_N_MESSAGES', 1)   # V3.168 batching is tested elsewhere
     env = memory_env
     base = datetime(2026, 1, 1)
     with env.sessions() as session:

@@ -24,12 +24,12 @@ def _prompt(**kw):
 
 def test_he_is_named_before_her_character_card():
     t = _prompt(user_name='Виктор')
-    assert t.startswith('[USER CONTEXT]')
+    # V3.168: the persona leads (cacheable prefix); his block sits before ОТНОШЕНИЯ
+    assert '[USER CONTEXT]' in t and t.index('[USER CONTEXT]') < t.index('ОТНОШЕНИЯ')
     assert 'User Gender: Male (Мужчина)' in t
     assert 'Твоя задача — обращаться к пользователю строго в мужском роде. ' \
            'Никогда не путай пол пользователя.' in t
     assert 'Имя пользователя: Виктор' in t
-    assert t.index('[USER CONTEXT]') < t.index(f'Ты — {NAME}')
 
 
 def test_the_gender_follows_the_account_not_a_guess():

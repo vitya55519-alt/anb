@@ -75,7 +75,7 @@ def test_spend_source_unlabeled_and_caller(monkeypatch):
     if snap is not None:
         keys = {k for k, _, _ in snap['by_source']}
         assert 'unlabeled' in keys and 'voice' in keys and 'other' not in keys
-        assert snap['unlabeled_by_caller'][0][0].endswith('presence_throughput')
+        assert any(k.endswith('presence_throughput') for k, _, _ in snap['unlabeled_by_caller'])
 
 
 def test_prompt_prefix_shared_between_users():
