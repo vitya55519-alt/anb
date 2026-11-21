@@ -836,6 +836,10 @@ class ImageSpend(Base):
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     # V3.141.0: whose render burned this money (0 = unattributed / legacy rows).
     telegram_id: Mapped[int] = mapped_column(BigInteger, default=0, index=True)
+    # V3.168 (ТЗ блок 7): who asked for the render, as its own column. A missing
+    # label is 'unlabeled' (never 'other'); `caller` names the module that wrote it.
+    source: Mapped[str] = mapped_column(String(24), default='unlabeled', index=True)
+    caller: Mapped[str] = mapped_column(String(64), default='')
 
 
 class ChatGuest(Base):

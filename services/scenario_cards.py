@@ -464,7 +464,8 @@ async def render_cover(s: Scenario, still: bytes | None = None) -> tuple[bytes, 
     finally:
         if billed:
             spend_service.record_image_spend('spicyapi_scenario_cover', 'scenario_cover',
-                                             SCENARIO_COVER_COST_USD, billed=True, success=ok)
+                                             SCENARIO_COVER_COST_USD, billed=True, success=ok,
+                                             source='scenario_cover')
     try:
         from services.mp4_faststart import faststart_bytes
         video = faststart_bytes(video) or video

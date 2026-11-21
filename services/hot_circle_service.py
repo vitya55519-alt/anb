@@ -148,4 +148,5 @@ async def render(frame_jpeg: bytes, lang: str = 'ru', duo: bool = False) -> byte
         raise
     finally:
         spend_service.record_image_spend('spicyapi_hot_circle', 'hot_circle',
-                                         SPICYAPI_HOT_CIRCLE_COST_USD, billed=billed, success=ok)
+                                         SPICYAPI_HOT_CIRCLE_COST_USD, billed=billed, success=ok,
+                                         source='hot_circle')
