@@ -218,7 +218,7 @@ def tariffs_text(lang: str = 'ru') -> str:
     studio_video_peaches = webapp_service.WEBAPP_VIDEO_COST_CREDITS
     pack_lines = [
         f'• {PEACH_PACK_CREDITS[pid]} 🍑 — {stars}⭐{fiat_suffix(stars, rub=PEACH_PACK_RUB[pid], rub_enabled=rub_lines)}'
-        for pid, stars in PEACH_PACK_STARS.items()
+        for pid, stars in PEACH_PACK_STARS.items() if pid != 'starter_pack'
     ]
     donation_variants = ', '.join(f'{amount} ₽' for amount in DONATION_AMOUNTS_RUB)
     # V3.57.6: tariff lines must not hardcode the chat ceiling — it is the same

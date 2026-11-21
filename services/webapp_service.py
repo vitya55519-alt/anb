@@ -66,6 +66,8 @@ from config import (
     PEACH_CUSTOM_RUB_PER_UNIT,
     PEACH_CUSTOM_UNIT,
     PEACH_PACK_BONUS,
+    STARTER_PACK_RUB,
+    STARTER_PACK_STARS,
     PEACH_PACK_CREDITS,
     PEACH_SCALE,
     PHOTO_COST_STARS,
@@ -366,6 +368,14 @@ def _user_row(telegram_id: int) -> User | None:
         return session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
 
 
+def _starter_pack_eligible(telegram_id: int) -> bool:
+    try:
+        from services.payments import starter_pack_eligible
+        return starter_pack_eligible(telegram_id)
+    except Exception:
+        return False
+
+
 def _trial_eligible(telegram_id: int) -> bool:
     try:
         from services.payments import trial_eligible
@@ -411,6 +421,7 @@ def api_me(telegram_id: int) -> dict:
         'premium': premium,
         # V3.88.0: the 99 ₽ / 3-day first-purchase trial is on offer
         'trial_eligible': _trial_eligible(telegram_id),
+        'starter_pack_eligible': _starter_pack_eligible(telegram_id),
         # V3.132.0: one «Раздеть» without Premium — the price on her photo button.
         'undress_one_rub': UNDRESS_ONE_PRICE_RUB if UNDRESS_ONE_ENABLED else 0,
         # V3.138.0: owner — «Раздеть» is priced in peaches only. V3.154.0: 400 🍑 ≈ 40 ₽.
@@ -965,6 +976,7 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
         _peach_pack_item('peach_pack_10', PEACH_PACK_10_STARS, PEACH_PACK_10_RUB, en),
         _peach_pack_item('peach_pack_30', PEACH_PACK_30_STARS, PEACH_PACK_30_RUB, en),
         _peach_pack_item('peach_pack_100', PEACH_PACK_100_STARS, PEACH_PACK_100_RUB, en),
+        _peach_pack_item('starter_pack', STARTER_PACK_STARS, STARTER_PACK_RUB, en),
         # V3.44.23: the custom-peach tile — the user types how many peaches
         # they want; the Stars and rub prices are computed per unit.
         {

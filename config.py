@@ -710,6 +710,17 @@ PEACH_PACK_BONUS = {
     key: max(0, credits - (PEACH_PACK_STARS[key] * PEACH_PACK_CREDITS["peach_pack_10"]) // max(1, PEACH_PACK_10_STARS))
     for key, credits in PEACH_PACK_CREDITS.items()
 }
+# V3.168.1 (owner 21.11): «Стартовый пак 15 ⭐» — the first purchase at the
+# moment of desire (blurred photo, locked voice): 15 ⭐ / 30 ₽ for 500 🍑, once
+# per account. It rides the peach-pack payment paths (invoice, pre_checkout,
+# Platega, record_payment) under its own key; the shop grid does not list it.
+STARTER_PACK_ENABLED = os.getenv("STARTER_PACK_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
+STARTER_PACK_STARS = max(1, int(os.getenv("STARTER_PACK_STARS", "15")))
+STARTER_PACK_RUB = max(1, int(os.getenv("STARTER_PACK_RUB", "30")))
+STARTER_PACK_PEACHES = max(1, int(os.getenv("STARTER_PACK_PEACHES", "5"))) * PEACH_SCALE
+PEACH_PACK_STARS["starter_pack"] = STARTER_PACK_STARS
+PEACH_PACK_RUB["starter_pack"] = STARTER_PACK_RUB
+PEACH_PACK_CREDITS["starter_pack"] = STARTER_PACK_PEACHES
 # V3.44.23: the custom-peach tile — the user types how many peaches they want,
 # and pays at the small-pack per-unit rate (no bulk discount).
 # V3.65.0: one unit is PEACH_CUSTOM_UNIT (100) peaches. The order key

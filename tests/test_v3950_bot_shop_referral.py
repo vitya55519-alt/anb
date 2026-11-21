@@ -38,7 +38,7 @@ def test_peach_shop_keyboard_has_every_pack():
     main.ensure_user(5550333)
     kb = main.peach_shop_keyboard(5550333)
     data = [b.callback_data for row in kb.inline_keyboard for b in row if b.callback_data]
-    for key in PEACH_PACK_CREDITS:
+    for key in [k for k in PEACH_PACK_CREDITS if k != 'starter_pack']:
         assert f'buy:{key}' in data
     assert 'premium:view' in data
 

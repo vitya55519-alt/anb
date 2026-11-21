@@ -6,8 +6,8 @@
 * панель над «✨ Возможности», по умолчанию открыта, сворачивается (и сама
   полоса «Возможности» тоже — «сделай чтобы кнопка возможности тоже
   сварачивалась»);
-* 1 кадр бесплатно в сутки на аккаунт, дальше — та же цена голого кадра
-  (EXPLICIT_PHOTO_PEACH_COST), одинаково для Premium и без него;
+* 1 кадр бесплатно в сутки — ТОЛЬКО для Premium (V3.168.1), дальше и без
+  Premium — та же цена голого кадра (EXPLICIT_PHOTO_PEACH_COST);
 * деньги списываются только после доставленного кадра: сбой и отказ генератора
   не стоят ни персика и не сжигают бесплатный слот;
 * фильтров с нашей стороны нет — только несъёмные жёсткие пределы генератора;
@@ -28,6 +28,37 @@ PPS = (ROOT / 'services' / 'private_photo_service.py').read_text(encoding='utf-8
 PHS = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 
 MSK = timezone(timedelta(hours=3))
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _premium_account(monkeypatch):
+    # V3.168.1: the free daily frame is Premium-only; these tests exercise that slot.
+    import services.access_service as acc
+    monkeypatch.setattr(acc, 'is_premium', lambda tid: True)
+
+
+def test_a_non_premium_account_has_no_free_frame_and_pays_peaches(monkeypatch):
+    import sys
+    import services.access_service as acc
+    monkeypatch.setattr(acc, 'is_premium', lambda tid: False)
+    payments = types.ModuleType('services.payments')
+    spent: list = []
+    payments.spend_peaches = lambda tid, amount, paid_only=False: (spent.append(amount) or True)
+    saved = sys.modules.get('services.payments')
+    sys.modules['services.payments'] = payments
+    try:
+        tid = _tid()
+        assert wish_service.free_available(tid) is False
+        assert wish_service.settle(tid) == 'paid'
+        assert spent == [wish_service.cost()]
+    finally:
+        if saved is not None:
+            sys.modules['services.payments'] = saved
+        else:
+            del sys.modules['services.payments']
 
 
 def _tid() -> int:
@@ -216,7 +247,7 @@ def test_the_panel_talks_to_its_own_door():
     assert "'/webapp/api/chat/wish?init_data='" in fn
     assert 'character_id: chatId' in fn
     assert 'if (!sameChat(chatId)) return;' in fn
-    assert "r.status === 402" in fn and "quickBuy('peaches', wishSend)" in fn
+    assert "r.status === 402" in fn and "quickBuy('wish', wishSend)" in fn
     assert 'L.wish_refused' in fn
     # полоса ввода кадра не занята, пока он печатает — свой busy-флаг тот же
     assert 'if (mediaBusy) { toast(L.media_busy); return; }' in fn

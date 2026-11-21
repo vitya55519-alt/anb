@@ -81,7 +81,7 @@ from services.photo_idea_service import (
 )
 from config import PREMIUM_TRIAL_DAYS, PREMIUM_TRIAL_STARS, PLATEGA_PREMIUM_TRIAL_PRICE_RUB  # V3.88.0
 from config import UNDRESS_ONE_ENABLED, UNDRESS_ONE_PRICE_RUB, UNDRESS_ONE_STARS  # V3.132.0
-from services.payments import trial_eligible  # V3.88.0
+from services.payments import trial_eligible, starter_pack_eligible  # V3.88.0 / V3.168.1
 from services.payments import record_payment, get_photo_credits, get_paid_peaches, record_refund, grant_premium, revoke_premium, consume_photo_credit, grant_photo_credits, has_credit_grant, revoke_photo_credits, spend_peaches, photo_peaches_ready, spend_photo_peaches
 from services.bot_description import apply_bot_descriptions
 from services import seo_landing
@@ -7275,6 +7275,8 @@ async def platega_pay(cq: types.CallbackQuery):
         from services import vip_offer
         if not vip_offer.is_active(cq.from_user.id):
             await cq.answer('это предложение уже закончилось 💗', show_alert=True); return
+    if product == 'starter_pack' and not starter_pack_eligible(cq.from_user.id):
+        await cq.answer('the starter pack is already used' if _en else 'стартовый пак уже использован', show_alert=True); return
     amount = _platega_amount_for(product)
     await cq.answer('creating the invoice…' if _en else 'создаю счёт…')
     order_id = platega_service.create_order(cq.from_user.id, product, str(amount))
@@ -8108,6 +8110,8 @@ async def pre_checkout(query: types.PreCheckoutQuery):
     elif payload in PEACH_PACK_STARS:
         # V3.43.1: the peach pack ladder — 10/30/100 credits, bulk discount.
         ok=amount==PEACH_PACK_STARS[payload]
+        if ok and payload == 'starter_pack':
+            ok = starter_pack_eligible(query.from_user.id)
     elif payload.startswith('peach_custom_'):
         # V3.44.23: custom peach amount — the count is encoded in the payload.
         try:
@@ -9802,6 +9806,8 @@ def peach_shop_keyboard(telegram_id: int, lang: str = 'ru') -> InlineKeyboardMar
     rows = []
     card_ok = PLATEGA_ENABLED and is_button_enabled('platega_rub')
     for key, credits in PEACH_PACK_CREDITS.items():
+        if key == 'starter_pack':
+            continue  # sold at the walls only, never in the plain pack list
         bonus = PEACH_PACK_BONUS.get(key, 0)
         gift = f' (+{peach_num(bonus)} 🎁)' if bonus else ''
         if card_ok:
@@ -14499,6 +14505,9 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
     if product_id == 'premium_trial' and not await asyncio.to_thread(trial_eligible, telegram_id):
         # V3.88.0: the trial is a one-time first purchase.
         return web.json_response({'ok': False, 'error': 'trial_used'}, status=409)
+    if product_id == 'starter_pack' and not await asyncio.to_thread(starter_pack_eligible, telegram_id):
+        # V3.168.1: one starter pack per account.
+        return web.json_response({'ok': False, 'error': 'offer_over'}, status=409)
     if product_id == 'premium_vip':
         from services import vip_offer
         if not await asyncio.to_thread(vip_offer.is_active, telegram_id):
@@ -14516,6 +14525,8 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
         ensure_user, telegram_id, user_info.get('first_name') or '',
         language_code=user_info.get('language_code'))
     await asyncio.to_thread(track_event, uid, 'webapp_invoice_created', metadata={'product': product_id})
+    if product_id == 'starter_pack':
+        await asyncio.to_thread(track_event, uid, 'starter_pack_checkout', metadata={'method': 'stars'})
     try:
         link = await bot.create_invoice_link(
             title=product['title'],
@@ -14594,6 +14605,9 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     if product_id == 'premium_trial' and not await asyncio.to_thread(trial_eligible, telegram_id):
         # V3.88.0: the trial is a one-time first purchase.
         return web.json_response({'ok': False, 'error': 'trial_used'}, status=409)
+    if product_id == 'starter_pack' and not await asyncio.to_thread(starter_pack_eligible, telegram_id):
+        # V3.168.1: one starter pack per account.
+        return web.json_response({'ok': False, 'error': 'offer_over'}, status=409)
     if product_id == 'premium_vip':
         from services import vip_offer
         if not await asyncio.to_thread(vip_offer.is_active, telegram_id):
@@ -14624,6 +14638,8 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
     uid = await asyncio.to_thread(
         ensure_user, telegram_id, user_info.get('first_name') or '',
         language_code=user_info.get('language_code'))
+    if product_id == 'starter_pack':
+        await asyncio.to_thread(track_event, uid, 'starter_pack_checkout', metadata={'method': method})
     if method == 'sbp' or method == 'platega_crypto':
         # V3.107.0: 'platega_crypto' is the «💎 Криптовалюта» row — the same
         # Platega payment page (the payer picks crypto there), tracked apart.

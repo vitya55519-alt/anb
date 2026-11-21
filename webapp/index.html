@@ -6259,10 +6259,10 @@ async function wishSend() {
     });
     if (r.status === 401) { toast(L.auth_short); return; }
     if (r.status === 400) { toast(L.wish_refused); return; }
-    if (r.status === 402) { quickBuy('peaches', wishSend); return; }
+    if (r.status === 402) { quickBuy('wish', wishSend); return; }
     if (r.status === 403) {
       const j = await r.json().catch(() => ({}));
-      if (j.error === 'premium_required') { quickBuy('spicy', wishSend); return; }
+      if (j.error === 'premium_required') { quickBuy('wish', wishSend); return; }
       toast(j.error === 'consent' ? L.consent_needed : L.locked);
       return;
     }
@@ -8165,7 +8165,7 @@ async function loadShop() {
     const byId = id => purchases.find(x => x.id === id);
     // V3.44.23: the custom-peach tile renders separately from the fixed packs.
     const customItem = purchases.find(x => x.custom);
-    const regularPurchases = purchases.filter(x => !x.custom).filter(x => x.credits);
+    const regularPurchases = purchases.filter(x => !x.custom).filter(x => x.credits).filter(x => x.id !== 'starter_pack');
     const fmtN = n => String(n || 0).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
     // V3.67.0: owner — «как у конкурентов»: two perk tiles, a short list,
     // the plans as radio rows (week / month / 3 months) with the honest
@@ -8512,14 +8512,18 @@ async function quickBuy(kind, retry) {
   // V3.97.0: his personal one-time −50% month (the limit answer says vip:true).
   // V3.166.2: the personal −50% month row is gone with the VIP offer — the wall
   // sells one thing: Premium.
-  const want = kind === 'month' ? ['premium', 'premium_quarter']
+  // V3.168.1: the one-time 15 ⭐ / 30 ₽ starter pack goes first at the moment of desire.
+  const starterFirst = (ME && ME.starter_pack_eligible && !ME.premium && kind !== 'month' && kind !== 'limit') ? ['starter_pack'] : [];
+  const want0 = kind === 'month' ? ['premium', 'premium_quarter']
+    : kind === 'wish' ? ['peach_pack_10'].concat(trialFirst, ['premium_week', 'premium'])
     : kind === 'undress' ? ['peach_pack_30', 'peach_pack_100'].concat(trialFirst, ['premium_week'])
     : ((kind === 'limit' || kind === 'voice' || kind === 'spicy') ? trialFirst.concat(['premium_week', 'premium'])
       : (kind === 'photo' ? ['peach_pack_30', 'peach_pack_100', 'peach_pack_10'] : ['peach_pack_10', 'peach_pack_30', 'premium']));
+  const want = starterFirst.concat(want0);
   const items = want.map(id => (s.purchases || []).find(p => p.id === id)).filter(Boolean);
   if (!items.length) { showTab('shop'); return; }
-  document.getElementById('payEmo').textContent = kind === 'month' ? '🎬' : kind === 'limit' ? '💜' : (kind === 'voice' ? '🎙' : ((kind === 'spicy' || kind === 'undress') ? '🔥' : '🍑'));
-  document.getElementById('payTitle').textContent = kind === 'month' ? (L.video_month || L.qb_limit) : kind === 'limit' ? L.qb_limit : (kind === 'voice' ? L.qb_voice : ((kind === 'spicy' || kind === 'undress') ? L.qb_spicy : (kind === 'photo' ? L.qb_photo : L.qb_peaches)));
+  document.getElementById('payEmo').textContent = kind === 'month' ? '🎬' : kind === 'limit' ? '💜' : (kind === 'voice' ? '🎙' : ((kind === 'spicy' || kind === 'undress' || kind === 'wish') ? '🔥' : '🍑'));
+  document.getElementById('payTitle').textContent = kind === 'month' ? (L.video_month || L.qb_limit) : kind === 'limit' ? L.qb_limit : (kind === 'voice' ? L.qb_voice : ((kind === 'spicy' || kind === 'undress' || kind === 'wish') ? L.qb_spicy : (kind === 'photo' ? L.qb_photo : L.qb_peaches)));
   // V3.166.2: the free 3-hour demo row left the wall with the mechanic itself —
   // Premium is the only answer to the ceiling.
   const rows = [];
