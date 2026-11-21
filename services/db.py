@@ -178,6 +178,25 @@ def _migrate_engagement_logs() -> None:
                    users, events, life, denials, backfilled)
 
 
+def reverse_presence_migration() -> None:
+    """V3.168 rollback of the additive columns (image_spend.source/caller,
+    users.first_life_event_at). Never called by startup; the forward path is the
+    idempotent model auto-migration. rail_mute has no table: it is derived from
+    events, so there is nothing to reverse."""
+    cols = (('image_spend', 'source'), ('image_spend', 'caller'), ('users', 'first_life_event_at'))
+    with engine.begin() as conn:
+        _begin_sqlite_ddl(conn)
+        _ensure_migration_ledger(conn)
+        for table, col in cols:
+            try:
+                conn.execute(text(f'ALTER TABLE {table} DROP COLUMN IF EXISTS {col}'))
+            except Exception:
+                logger.warning('presence reverse: cannot drop %s.%s', table, col, exc_info=True)
+            conn.execute(text('DELETE FROM app_migrations WHERE name = :n'),
+                         {'n': f'schema:{table}:{col}'})
+    logger.warning('presence migration reversed')
+
+
 def reverse_engagement_logs_migration() -> None:
     """Explicit rollback of named log views; never called by startup."""
     with engine.begin() as conn:

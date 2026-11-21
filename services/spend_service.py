@@ -151,6 +151,14 @@ def record_image_spend(engine: str, scene: str, cost_usd: float, *,
                 telegram_id=_spend_user.get(),
             ))
             s.commit()
+        tg = _spend_user.get()
+        if tg:
+            from services.analytics_service import track_event
+            from models.app_models import User
+            with SessionLocal() as s2:
+                uid = s2.scalar(select(User.id).where(User.telegram_id == int(tg)))
+            if uid:
+                track_event(int(uid), 'image_source', metadata={'source': src, 'engine': str(engine)[:48]})
     except Exception:
         logger.warning('image spend record failed engine=%s scene=%s', engine, scene, exc_info=True)
 

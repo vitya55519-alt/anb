@@ -67,6 +67,16 @@ def note_first_event(uid: int, account_hours: float) -> None:
     """Once per account, at the first delivered life event."""
     try:
         from services.analytics_service import track_event
+        try:
+            from sqlalchemy import update as _upd
+            from models.app_models import User as _U
+            from models.app_models import utcnow as _now
+            with SessionLocal() as s:
+                s.execute(_upd(_U).where(_U.id == int(uid), _U.first_life_event_at.is_(None))
+                          .values(first_life_event_at=_now()))
+                s.commit()
+        except Exception:
+            logger.debug('first_life_event_at stamp failed user=%s', uid, exc_info=True)
         track_event(int(uid), FIRST_EVENT, metadata={
             'hours_since_consent': round(hours_since_consent(uid, account_hours), 2),
             'account_hours': round(float(account_hours or 0.0), 2)})

@@ -829,6 +829,9 @@ NEW_USER_PRIORITY_HOURS = max(0, int(os.getenv("NEW_USER_PRIORITY_HOURS", "24"))
 NEW_USER_FIRST_EVENT_HOURS = max(1, int(os.getenv("NEW_USER_FIRST_EVENT_HOURS", "6")))
 # Per-rail ignore mute: 3 unanswered pushes in a row mute THAT rail; his reply unmutes all.
 RAIL_MUTE_HOURS = max(1, int(os.getenv("RAIL_MUTE_HOURS", "48")))
+# V3.168 (блок 8): ceiling of the src_tagio_b share of new traffic (config only;
+# the landing redirect is not wired in this release).
+TAGIO_SHARE_CAP = max(0.0, min(1.0, float(os.getenv("TAGIO_SHARE_CAP", "0.35"))))
 RAIL_MUTE_AFTER = max(1, int(os.getenv("RAIL_MUTE_AFTER", "3")))
 RAIL_MUTE_ENABLED = os.getenv("RAIL_MUTE_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}
 # V3.167.4 #173 (владелец ТЗ §6): сколько её «жёлтых цветов» он ещё готов
