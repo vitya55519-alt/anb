@@ -88,21 +88,21 @@ def test_an_offer_spends_his_two_marketing_pushes_a_day(monkeypatch):
     monkeypatch.setattr(pg, 'local_hour', lambda tz: 12)
     monkeypatch.setattr(pg, 'PUSH_SPACING_WINDOW_MINUTES', 0)   # только дневной кап
     uid = _free_talker(ho.MIN_MESSAGES)
-    assert pg.allow_push(uid, 'Europe/Moscow') == (True, '')
+    assert pg.allow_push(uid, 'Europe/Moscow', 'marketing') == (True, '')
     with SessionLocal() as s:
         for name in ('first_offer_sent', 'heavy_offer_sent_ok'):
             s.add(ProductEvent(user_id=uid, character_id='anna_01', event_name=name,
                                value=0.0, created_at=_now(), metadata_json='{}'))
         s.commit()
-    assert pg.pushes_today(uid, 'Europe/Moscow') == 2
-    assert pg.allow_push(uid, 'Europe/Moscow') == (False, 'daily')
+    assert pg.pushes_today(uid, 'Europe/Moscow', 'marketing') == 2
+    assert pg.allow_push(uid, 'Europe/Moscow', 'marketing') == (False, 'daily')
 
 
 def test_an_offer_never_wakes_him_up(monkeypatch):
     init_db()
     monkeypatch.setattr(pg, 'local_hour', lambda tz: 3)
     uid = _free_talker(ho.MIN_MESSAGES)
-    assert pg.allow_push(uid, 'Europe/Moscow') == (False, 'night')
+    assert pg.allow_push(uid, 'Europe/Moscow', 'marketing') == (False, 'night')
 
 
 # ── 2. порог и окно ─────────────────────────────────────────────────────────

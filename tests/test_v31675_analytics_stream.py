@@ -123,7 +123,7 @@ def test_push_sent_is_derived_not_threaded_through_twenty_four_calls():
     uid = _uid()
     AN.track_event(uid, 'retention_push_sent', metadata={'hours_inactive': 48})
     rows = _events(uid, AN.PUSH_SENT_EVENT)
-    assert len(rows) == 1 and '"rail": "marketing"' in rows[0].metadata_json
+    assert len(rows) == 1 and '"rail": "silence"' in rows[0].metadata_json
     assert '"kind": "retention_push_sent"' in rows[0].metadata_json
     assert '"hours_inactive": 48' in rows[0].metadata_json    # метаданные не потерялись
     AN.track_event(uid, 'chat_user_message')
@@ -144,8 +144,8 @@ def test_the_refusal_is_visible_and_quiet():
     orig = G.in_quiet_hours
     G.in_quiet_hours = lambda hour: True
     try:
-        assert G.allow_push(uid, 'UTC', family='life') == (False, 'night')
-        assert G.allow_push(uid, 'UTC', family='life') == (False, 'night')
+        assert G.allow_push(uid, 'Asia/Dhaka', 'life') == (False, 'night')
+        assert G.allow_push(uid, 'Asia/Dhaka', 'life') == (False, 'night')
     finally:
         G.in_quiet_hours = orig
     rows = _events(uid, G.DENIAL_EVENT)

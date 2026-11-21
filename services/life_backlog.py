@@ -56,7 +56,8 @@ def local_day(tz_name=None, now: dt.datetime | None = None) -> tuple[str, dt.dat
     utc = now or _utcnow()
     utc = utc.replace(tzinfo=dt.timezone.utc) if utc.tzinfo is None else utc
     try:
-        local = utc.astimezone(ZoneInfo(tz_name or 'UTC'))
+        from services.push_governor import resolve_tz
+        local = utc.astimezone(ZoneInfo(resolve_tz(tz_name)))
     except Exception:
         local = utc.astimezone(dt.timezone.utc)
     start = local.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -89,7 +90,9 @@ def note_denial(uid: int, rail: str, reason: str, tz_name=None) -> None:
                       == (rail, reason) for raw in prior)
             if not hit:
                 from services.analytics_service import track_event
-                track_event(int(uid), 'push_denied', metadata={'rail': rail, 'reason': reason})
+                from services.push_governor import local_hour, resolve_tz
+                track_event(int(uid), 'push_denied', metadata={'rail': rail, 'reason': reason,
+                                                               'local_hour': local_hour(tz_name), 'tz': resolve_tz(tz_name)})
             if len(_denial_memo) > 20000:
                 _denial_memo.clear()
             _denial_memo[key] = today

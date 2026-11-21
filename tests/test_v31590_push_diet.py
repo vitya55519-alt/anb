@@ -46,25 +46,27 @@ def _events(uid: int, names) -> None:
 
 
 def test_the_sleeping_window_wraps_around_midnight():
-    assert (LIFE_EVENTS_QUIET_START_HOUR, LIFE_EVENTS_QUIET_END_HOUR) == (23, 7)
-    for h in (23, 0, 3, 6):
+    assert (LIFE_EVENTS_QUIET_START_HOUR, LIFE_EVENTS_QUIET_END_HOUR) == (1, 8)
+    for h in (1, 2, 5, 7):
         assert pg.in_quiet_hours(h), h
-    for h in (7, 12, 21, 22):
+    for h in (0, 8, 12, 21, 23):
         assert not pg.in_quiet_hours(h), h
 
 
 def test_the_clock_is_his_not_the_servers():
     from zoneinfo import ZoneInfo
-    for tz in ('Asia/Kolkata', 'America/New_York', 'UTC'):
+    for tz in ('Asia/Kolkata', 'America/New_York', 'Africa/Abidjan'):
         assert pg.local_hour(tz) == dt.datetime.now(ZoneInfo(tz)).hour
     # битая строка в профиле не роняет рельс — откат на UTC
     assert pg.local_hour('Mars/Olympus') == dt.datetime.now(dt.timezone.utc).hour
+    # V3.168: «UTC» из БД по умолчанию = часы не заданы -> Москва
+    assert pg.local_hour('UTC') == pg.local_hour('Europe/Moscow')
 
 
 def test_a_man_asleep_is_not_written_to(monkeypatch):
     uid = ensure_user(771590001, 'Тест')
     monkeypatch.setattr(pg, 'local_hour', lambda tz: 4)
-    assert pg.allow_push(uid, 'Europe/Moscow') == (False, 'night')
+    assert pg.allow_push(uid, 'Europe/Moscow', 'marketing') == (False, 'night')
 
 
 def test_the_third_scan_push_in_one_window_is_one_too_many(monkeypatch):
@@ -75,10 +77,10 @@ def test_the_third_scan_push_in_one_window_is_one_too_many(monkeypatch):
     assert pg.pushes_in_window(uid) == 0
     _events(uid, ['ritual_morning_sent', 'life_event_sent'])
     assert pg.pushes_in_window(uid) == 1
-    assert pg.allow_push(uid, 'Europe/Moscow') == (True, '')
+    assert pg.allow_push(uid, 'Europe/Moscow', 'marketing') == (True, '')
     _events(uid, ['proactive_sent', 'day1_hook_sent', 'whats_new_sent_ok'])
     assert pg.pushes_in_window(uid) == 4
-    assert pg.allow_push(uid, 'Europe/Moscow') == (False, 'burst')
+    assert pg.allow_push(uid, 'Europe/Moscow', 'marketing') == (False, 'burst')
     assert pg.allow_push(uid, 'Europe/Moscow', 'ritual') == (True, '')
 
 
@@ -98,13 +100,13 @@ def test_the_timing_is_two_knobs_not_a_wheel(monkeypatch):
     uid = ensure_user(771590004, 'Тест')
     monkeypatch.setattr(pg, 'local_hour', lambda tz: 9)
     monkeypatch.setattr(pg, 'PUSH_MAX_IN_WINDOW', 0)
-    monkeypatch.setattr(pg, 'PUSH_MAX_PER_DAY', 0)   # V3.162.0 added a third knob
+    monkeypatch.setattr(pg, 'PUSH_RAIL_BUDGET', {**pg.PUSH_RAIL_BUDGET, 'marketing': 0})
     _events(uid, [n for n in pg.SPACED_PUSHES[:4]])
-    assert pg.allow_push(uid, 'Europe/Moscow') == (True, '')
+    assert pg.allow_push(uid, 'Europe/Moscow', 'marketing') == (True, '')
     monkeypatch.setattr(pg, 'PUSH_MAX_IN_WINDOW', 2)
     monkeypatch.setattr(pg, 'PUSH_SPACING_WINDOW_MINUTES', 0)
     assert pg.pushes_in_window(uid) == 0
-    assert pg.allow_push(uid, 'Europe/Moscow') == (True, '')
+    assert pg.allow_push(uid, 'Europe/Moscow', 'marketing') == (True, '')
     assert PUSH_SPACING_WINDOW_MINUTES == 90 and PUSH_MAX_IN_WINDOW == 3
 
 

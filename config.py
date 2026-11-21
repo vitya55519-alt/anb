@@ -787,7 +787,7 @@ LIFE_EVENTS_ENABLED = os.getenv("LIFE_EVENTS_ENABLED", "true").strip().lower() i
 # V3.167.0 (owner 16.11 «разрешаю по пушам»): life moments get their own budget
 # of three a day instead of eating the two ritual lines that used to be all she
 # was allowed to write.
-LIFE_EVENTS_MAX_PER_DAY = max(0, min(4, int(os.getenv("LIFE_EVENTS_MAX_PER_DAY", "3"))))
+LIFE_EVENTS_MAX_PER_DAY = max(0, min(4, int(os.getenv("LIFE_EVENTS_MAX_PER_DAY", "4"))))
 LIFE_EVENTS_SCAN_MINUTES = max(10, min(120, int(os.getenv("LIFE_EVENTS_SCAN_MINUTES", "20"))))
 # Only users active within this window get life events (reward showing up, not
 # chasing the churned — that path is _proactive/retention).
@@ -806,8 +806,23 @@ LIFE_EVENTS_YOUNG_ACCOUNT_HOURS = max(1, int(os.getenv("LIFE_EVENTS_YOUNG_ACCOUN
 LIFE_EVENTS_YOUNG_SILENCE_HOURS = max(0.5, min(24, float(os.getenv("LIFE_EVENTS_YOUNG_SILENCE_HOURS", "1.5"))))
 LIFE_EVENTS_YOUNG_MAX_PER_DAY = max(1, min(4, int(os.getenv("LIFE_EVENTS_YOUNG_MAX_PER_DAY", "4"))))
 # Never write during the user's local quiet hours [start, end) (wrap-aware).
-LIFE_EVENTS_QUIET_START_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_START_HOUR", "23"))))
-LIFE_EVENTS_QUIET_END_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_END_HOUR", "7"))))
+# V3.168 (ТЗ блок 2): 248 of 385 holds were «ночь» on a 23→7 window read from the
+# DB-default UTC. The window is now 01→08 on HIS clock (Moscow when he never set one).
+LIFE_EVENTS_QUIET_START_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_START_HOUR", "1"))))
+LIFE_EVENTS_QUIET_END_HOUR = max(0, min(23, int(os.getenv("LIFE_EVENTS_QUIET_END_HOUR", "8"))))
+# Accounts that never set a timezone carry the DB default 'UTC'; read them on
+# this clock instead (empty string = keep UTC).
+PUSH_TZ_FALLBACK = os.getenv("PUSH_TZ_FALLBACK", "Europe/Moscow").strip()
+# A man younger than this gets ONE night push on the life rail (flag NEW_USER_NIGHT_PUSH).
+NEW_USER_NIGHT_PUSH = os.getenv("NEW_USER_NIGHT_PUSH", "1").strip().lower() in {"1", "true", "yes", "on"}
+NEW_USER_NIGHT_PASS_HOURS = max(1, int(os.getenv("NEW_USER_NIGHT_PASS_HOURS", "72")))
+# Accounts under this age: life budget 4 and no burst-window spacing (first day is the funnel).
+NEW_USER_PRIORITY_HOURS = max(0, int(os.getenv("NEW_USER_PRIORITY_HOURS", "24")))
+NEW_USER_FIRST_EVENT_HOURS = max(1, int(os.getenv("NEW_USER_FIRST_EVENT_HOURS", "6")))
+# Per-rail ignore mute: 3 unanswered pushes in a row mute THAT rail; his reply unmutes all.
+RAIL_MUTE_HOURS = max(1, int(os.getenv("RAIL_MUTE_HOURS", "48")))
+RAIL_MUTE_AFTER = max(1, int(os.getenv("RAIL_MUTE_AFTER", "3")))
+RAIL_MUTE_ENABLED = os.getenv("RAIL_MUTE_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}
 # V3.167.4 #173 (владелец ТЗ §6): сколько её «жёлтых цветов» он ещё готов
 # накопить, не ответив. Четвёртый неотвеченный читается как рассылка, и после
 # него он перестаёт открывать пуши вообще — рельса встаёт и ждёт его реплики.
@@ -843,6 +858,19 @@ PUSH_MAX_IN_WINDOW = max(0, min(5, int(os.getenv("PUSH_MAX_IN_WINDOW", "3"))))
 # scenario card have their own caps, and the life budget stays
 # LIFE_EVENTS_MAX_PER_DAY (one knob, not a second copy of it).
 PUSH_MAX_PER_DAY = max(0, min(5, int(os.getenv("PUSH_MAX_PER_DAY", "2"))))
+# V3.168 (ТЗ блок 1): one env line for every rail's daily money.
+_RAIL_BUDGET_DEFAULT = {"life": 4, "silence": 2, "ritual": 3, "scenario": 1, "marketing": 2, "default": 1}
+def _parse_rail_budget(raw: str) -> dict:
+    out = dict(_RAIL_BUDGET_DEFAULT)
+    for part in (raw or "").split(","):
+        name, _, val = part.partition(":")
+        name = name.strip().lower()
+        if name in out and val.strip().isdigit():
+            out[name] = max(0, min(9, int(val.strip())))
+    return out
+PUSH_RAIL_BUDGET = _parse_rail_budget(os.getenv("PUSH_RAIL_BUDGET", ""))
+# Rails that never spend the burst window (clock-anchored lines).
+PUSH_RAIL_SPACING_EXEMPT = tuple(x.strip().lower() for x in os.getenv("PUSH_RAIL_SPACING_EXEMPT", "ritual").split(",") if x.strip())
 RITUAL_BUDGET_PER_DAY = max(0, min(5, int(os.getenv("RITUAL_BUDGET_PER_DAY", "2"))))
 SCENARIO_BUDGET_PER_DAY = max(0, min(5, int(os.getenv("SCENARIO_BUDGET_PER_DAY", "1"))))
 # V3.162.0: the marketing rails went dark (owner review of the 13.11 dump).

@@ -61,15 +61,15 @@ def test_each_rail_family_spends_its_own_day(monkeypatch):
     monkeypatch.setattr(pg, 'local_hour', lambda tz: 12)
     monkeypatch.setattr(pg, 'PUSH_SPACING_WINDOW_MINUTES', 0)   # only the day caps
     assert pg.allow_push(uid, 'Europe/Moscow', 'ritual') == (True, '')
-    _events(uid, ['ritual_morning_sent', 'ritual_evening_sent'])
-    assert pg.pushes_today(uid, 'Europe/Moscow', 'ritual') == 2
+    _events(uid, ['ritual_morning_sent', 'ritual_evening_sent', 'morning_voice_sent'])
+    assert pg.pushes_today(uid, 'Europe/Moscow', 'ritual') == 3
     assert pg.allow_push(uid, 'Europe/Moscow', 'ritual') == (False, 'daily')
     # her two lines are out, and the marketing rails are untouched by that
-    assert pg.pushes_today(uid, 'Europe/Moscow') == 0
-    assert pg.allow_push(uid, 'Europe/Moscow') == (True, '')
+    assert pg.pushes_today(uid, 'Europe/Moscow', 'marketing') == 0
+    assert pg.allow_push(uid, 'Europe/Moscow', 'marketing') == (True, '')
     # the life rail pays with its own money too (LIFE_EVENTS_MAX_PER_DAY)
-    assert pg.rail_budget('life') == pg.LIFE_EVENTS_MAX_PER_DAY == 3
-    _events(uid, ['life_event_sent'] * 3)
+    assert pg.rail_budget('life') == 4
+    _events(uid, ['life_event_sent'] * 4)
     assert pg.allow_push(uid, 'Europe/Moscow', 'life') == (False, 'daily')
 
 
@@ -84,7 +84,7 @@ def test_a_refusal_names_the_rail_and_the_man(caplog, monkeypatch):
     monkeypatch.setattr(pg, 'local_hour', lambda tz: 12)
     with caplog.at_level(logging.INFO, logger='services.push_governor'):
         pg.allow_push(uid, 'Europe/Moscow', 'scenario')
-        _events(uid, ['scenario_card_sent'] * pg.SCENARIO_BUDGET_PER_DAY)
+        _events(uid, ['scenario_card_sent'] * pg.rail_budget('scenario'))
         assert pg.allow_push(uid, 'Europe/Moscow', 'scenario') == (False, 'daily')
     held = [r.getMessage() for r in caplog.records if 'push held' in r.getMessage()]
     assert any(f'user={uid}' in line and 'rail=scenario' in line and 'reason=daily' in line
@@ -97,7 +97,7 @@ def test_the_day_is_his_not_the_servers():
     expect = dt.datetime.now(ZoneInfo('Asia/Kolkata')).replace(
         hour=0, minute=0, second=0, microsecond=0).astimezone(dt.timezone.utc).replace(tzinfo=None)
     assert abs((start - expect).total_seconds()) < 5
-    assert pg._local_day_start('Mars/Olympus') == pg._local_day_start('UTC')
+    assert pg._local_day_start('Mars/Olympus') == pg._local_day_start('Africa/Abidjan')
 
 
 @pytest.mark.parametrize('kind', ('morning', 'evening'))
