@@ -172,7 +172,7 @@ async def animate_image_spicy(
         # billed on accept, whatever comes back
         spend_service.record_image_spend(
             'spicyapi_video', scene, SPICYAPI_VIDEO_COST_PER_SECOND_USD * seconds,
-            billed=True, success=bool(video),
+            billed=True, success=bool(video), source='video',
         )
     if not video:
         raise CloudVideoError(f'spicyapi_video_{error or "timeout_" + str(state)}'[:200])

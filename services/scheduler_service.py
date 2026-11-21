@@ -7,7 +7,7 @@ from config import (
     RITUAL_EVENING_START_HOUR, RITUAL_EVENING_END_HOUR, RITUAL_MAX_INACTIVE_DAYS,
     DONATION_LINK, DONATION_REMINDER_ENABLED,
     RETENTION_NUDGE_INTERVAL_HOURS, RETENTION_MAX_NUDGES,
-    PROACTIVE_MAX_INACTIVE_DAYS,
+    PROACTIVE_MAX_INACTIVE_DAYS, NEW_USER_PRIORITY_HOURS,
     DAY1_HOOK_MAX_ACCOUNT_HOURS, DAY1_HOOK_MIN_INACTIVE_HOURS, PUBLIC_BASE_URL,
     LIFE_EVENTS_ENABLED, LIFE_EVENTS_MAX_PER_DAY, LIFE_EVENTS_SCAN_MINUTES,
     LIFE_EVENTS_ACTIVE_WINDOW_DAYS, LIFE_EVENTS_QUIET_START_HOUR, LIFE_EVENTS_QUIET_END_HOUR,
@@ -22,6 +22,7 @@ from services.reminder_service import due_reminders, mark_after_send
 from services.chat_service import proactive_reply
 from services.analytics_service import track_event
 from services import retention_service
+from services import new_user_first_event
 from services import donation_service
 from services import partner_service
 from services import retention_features_service
@@ -41,13 +42,13 @@ PUSH_ORIGIN = life_backlog.PUSH_ORIGIN
 LIFE_ORIGIN = life_backlog.LIFE_ORIGIN
 
 
-def _push_ok(uid: int, tz_name=None) -> bool:
+def _push_ok(uid: int, tz_name, rail: str) -> bool:
     """V3.159.0: one gate for every rail that writes first (services/push_governor)."""
     try:
         if tz_name is None:
             with SessionLocal() as s:
                 tz_name = s.scalar(select(User.timezone).where(User.id == uid))
-        ok, _reason = push_governor.allow_push(uid, tz_name)
+        ok, _reason = push_governor.allow_push(uid, tz_name, rail)
         return ok
     except Exception:
         logger.exception('push gate failed user=%s', uid)
@@ -201,7 +202,7 @@ async def _proactive(bot):
                 # arrived in the same two hours as a ritual. The gate runs
                 # before any state is spent, so a skipped night keeps the
                 # nudge ladder for the morning instead of burning a slot.
-                if not await asyncio.to_thread(_push_ok, uid, getattr(u, 'timezone', None)):
+                if not await asyncio.to_thread(_push_ok, uid, getattr(u, 'timezone', None), 'silence'):
                     continue
                 # V3.59.0: the push comes from the girl this user actually talks
                 # to — it used to always be the default heroine, so someone
@@ -349,7 +350,7 @@ async def _day1_hook(bot):
                 continue
             # V3.159.0: the gate runs before the LLM call — a hook that would
             # land at 04:00 stays unspent and goes out on the next day scan.
-            if not await asyncio.to_thread(_push_ok, uid):
+            if not await asyncio.to_thread(_push_ok, uid, None, 'marketing'):
                 continue
             with SessionLocal() as s:
                 _u=s.get(User,uid)
@@ -608,7 +609,7 @@ async def _first_offer(bot):
             # раньше она шла мимо диеты (её очередь была просто темна). Теперь
             # сначала ворота: ночью и когда его два пуша на сегодня уже вышли,
             # слот не сжигается — скан через 10 минут попробует снова.
-            if not await asyncio.to_thread(_push_ok, uid): continue
+            if not await asyncio.to_thread(_push_ok, uid, None, 'marketing'): continue
             # consume the slot first — a failed send must not re-fire every scan
             fos.mark_offered(telegram_id)
             lang=user_lang(telegram_id)
@@ -949,6 +950,18 @@ async def _ritual_line_push(bot, uid: int, tg_id: int, char_id: str, kind: str, 
     # own budget and never the marketing one, and the burst window skips it
     # because morning and evening are anchored to the clock, not to each other.
     ok, reason = await asyncio.to_thread(allow_push, uid, tz, 'ritual')
+    if ok and NEW_USER_PRIORITY_HOURS > 0:
+        # V3.168 (ТЗ 5.3): in the first 24 hours her day and her ritual do not
+        # double up — if the life rail already wrote today the ritual waits.
+        try:
+            with SessionLocal() as s:
+                _born = s.scalar(select(User.created_at).where(User.id == uid))
+            if _born and (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - _born).total_seconds() < NEW_USER_PRIORITY_HOURS * 3600 \
+                    and await asyncio.to_thread(new_user_first_event.life_event_today, uid, tz):
+                logger.info('ritual line skipped (life event today, first day) user=%s kind=%s', tg_id, kind)
+                return False
+        except Exception:
+            logger.debug('ritual first-day check failed user=%s', uid, exc_info=True)
     if not ok:
         logger.info('ritual line held user=%s kind=%s reason=%s', tg_id, kind, reason)
         return False
@@ -1265,7 +1278,7 @@ async def _donation_reminder(bot):
             # V3.159.0: 40% of the donation pings arrived at night. The ping is
             # only stamped after a real send, so a skipped night moves it into
             # the next daytime scan instead of losing it.
-            if not await asyncio.to_thread(_push_ok, uid): continue
+            if not await asyncio.to_thread(_push_ok, uid, None, 'marketing'): continue
             await bot.send_message(int(tg_id), donation_service.donation_appeal(lang), reply_markup=donation_service.donation_keyboard(lang))
             await asyncio.to_thread(donation_service.mark_donation_ping_sent, uid, now)
             track_event(uid, 'donation_reminder_sent', metadata={'lang': lang})
@@ -1291,7 +1304,7 @@ async def _partner_nudge(bot):
         try:
             # V3.159.0: the coarse 8–19 UTC window is a Moscow window; for a man
             # in Manila it is the middle of the night. His own clock decides.
-            if not await asyncio.to_thread(_push_ok, uid): continue
+            if not await asyncio.to_thread(_push_ok, uid, None, 'marketing'): continue
             link=referral_link(me.username or 'bot', tg_id)
             kb=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text='📤 Share the link' if lang=='en' else '📤 Поделиться ссылкой', url=partner_service.partner_share_url(lang, link))],
@@ -1315,7 +1328,7 @@ async def _random_gifts(bot):
     # Random 10% of users get a gift each run
     for uid,tg_id,char_id,tz in snapshot:
         if random.random() > 0.1: continue  # 10% chance
-        if not await asyncio.to_thread(_push_ok, uid, tz): continue
+        if not await asyncio.to_thread(_push_ok, uid, tz, 'marketing'): continue
         try:
             msg=retention_features_service.get_character_gift(char_id)
             await bot.send_message(int(tg_id), msg)
@@ -1337,7 +1350,7 @@ async def _daily_compatibility(bot):
             if guard in _ritual_sent: continue
             # V3.159.0: 42% of the forecasts used to wake men up. The docstring
             # always promised a morning window; now the clock actually checks it.
-            if not await asyncio.to_thread(_push_ok, uid, tz): continue
+            if not await asyncio.to_thread(_push_ok, uid, tz, 'marketing'): continue
             forecast=retention_features_service.get_daily_compatibility()
             await bot.send_message(int(tg_id), forecast)
             _ritual_sent.add(guard)
@@ -1415,7 +1428,7 @@ def _user_local_hour_simple(tz_name) -> int | None:
     loaded the User row is already closed when the life-events loop runs)."""
     try:
         from zoneinfo import ZoneInfo
-        return dt.datetime.now(ZoneInfo(tz_name or 'UTC')).hour
+        return dt.datetime.now(ZoneInfo(push_governor.resolve_tz(tz_name))).hour
     except Exception:
         return dt.datetime.now(dt.timezone.utc).hour
 
@@ -1475,9 +1488,17 @@ async def _life_events(bot):
                 continue
             today_key = life_backlog.local_day(tz, now)[0]
             local_hour = _user_local_hour_simple(tz)
-            if _in_quiet_hours(local_hour):
-                life_backlog.note_denial(uid, 'life', 'night', tz)
+            # V3.168 (ТЗ блоки 1-2): one governor for the life rail too — night on
+            # HIS clock (Moscow when unset), a one-time night pass under 72 h,
+            # the 90-minute spacing (young accounts exempt) and the rail budget.
+            gov_ok, _gov_why = await asyncio.to_thread(
+                push_governor.allow_push, uid, tz, 'life', account_hours=account_hours, hour=local_hour)
+            if not gov_ok:
                 continue
+            night_flag = 1 if _in_quiet_hours(local_hour) else 0
+            # V3.168 (ТЗ 5.2): an account still waiting for its first event is
+            # guaranteed one inside NEW_USER_FIRST_EVENT_HOURS of consent.
+            first_state = await asyncio.to_thread(new_user_first_event.state, uid, account_hours)
             # V3.167.4 #173 (владелец ТЗ §6): он вернулся, а за его спиной
             # накопились её дни. Догонять их по одной смс уже поздно — вместо
             # этого приходит одна сводка, что у неё было. Слот суток она не
@@ -1488,7 +1509,7 @@ async def _life_events(bot):
             # a man younger than 72 hours the rail runs hotter, an older one
             # keeps the calm profile.
             young = account_hours < LIFE_EVENTS_YOUNG_ACCOUNT_HOURS
-            per_day = LIFE_EVENTS_YOUNG_MAX_PER_DAY if young else LIFE_EVENTS_MAX_PER_DAY
+            per_day = max(LIFE_EVENTS_YOUNG_MAX_PER_DAY, push_governor.rail_budget('life')) if young else min(LIFE_EVENTS_MAX_PER_DAY, push_governor.rail_budget('life'))
             part = _daypart(local_hour)
             prior = _life_events_store.get(tg_id) or {}
             slots = list(prior.get('slots') or []) if prior.get('date') == today_key else []
@@ -1510,7 +1531,7 @@ async def _life_events(bot):
                 continue
             # Sprinkle sends across the scan window instead of firing at the
             # boundary for everyone at once (also keeps the LLM load flat).
-            if random.random() > 0.35:
+            if random.random() > 0.35 and first_state != 'force':
                 continue
             # V3.156.0: owner ТЗ (Фогель) — «Живые ситуации». Sometimes the slice
             # of her day is a place with a photo she is about to take: that one
@@ -1532,7 +1553,9 @@ async def _life_events(bot):
                 track_event(uid, 'life_event_shown',
                             metadata={'character_id': char_id, 'when': part, 'live': 1})
                 track_event(uid, 'life_event_sent',
-                            metadata={'character_id': char_id, 'when': part, 'live': 1})
+                            metadata={'character_id': char_id, 'when': part, 'live': 1, 'night': night_flag})
+                if first_state:
+                    await asyncio.to_thread(new_user_first_event.note_first_event, uid, account_hours)
                 continue
             moment = await build_life_moment(tg_id, char_id, when=part)
             # Consume the slot whether or not text came back, so an empty/no-LLM
@@ -1551,8 +1574,12 @@ async def _life_events(bot):
             # DoD «≥70% аккаунтов получили ≥1 событие в первые сутки».
             # Прежнее life_event_sent остаётся: на него смотрит push-губернатор.
             track_event(uid, 'life_event_shown',
-                        metadata={'character_id': char_id, 'when': part, 'has_photo': bool(photo)})
-            track_event(uid, 'life_event_sent', metadata={'character_id': char_id, 'when': part, 'has_photo': bool(photo)})
+                        metadata={'character_id': char_id, 'when': part, 'has_photo': bool(photo),
+                                  'anchor': moment.get('anchor') or ''})
+            track_event(uid, 'life_event_sent', metadata={'character_id': char_id, 'when': part, 'has_photo': bool(photo), 'night': night_flag,
+                                                           'anchor': moment.get('anchor') or ''})
+            if first_state:
+                await asyncio.to_thread(new_user_first_event.note_first_event, uid, account_hours)
         except TelegramForbiddenError:
             # V3.55.9: blocked — the slot is already consumed above; take the
             # whole proactive rail off so no LLM money goes to this user.
@@ -1733,7 +1760,7 @@ async def _heavy_offer(bot):
                 continue
             # V3.167.12: то же самое, что и для карточки с замком, — диету
             # пушей не обходит ни одна очередь, которая начинает разговор.
-            if not await asyncio.to_thread(_push_ok, uid): continue
+            if not await asyncio.to_thread(_push_ok, uid, None, 'marketing'): continue
             # the slot first — a failed send must not re-fire every scan
             await asyncio.to_thread(ho.mark, uid, char_id or CHARACTER_ID, count)
             en = user_lang(telegram_id) == EN
@@ -1774,7 +1801,7 @@ async def _whats_new(bot):
             cid = char_id or CHARACTER_ID
             # V3.159.0: the gate comes before wn.mark — a round marked at
             # night and never sent would be lost for good.
-            if not await asyncio.to_thread(_push_ok, uid): continue
+            if not await asyncio.to_thread(_push_ok, uid, None, 'marketing'): continue
             await asyncio.to_thread(wn.mark, uid, cid)
             lang = 'en' if user_lang(telegram_id) == EN else 'ru'
             text = wn.text(_char_name(cid), lang)

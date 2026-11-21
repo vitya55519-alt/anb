@@ -55,14 +55,28 @@ _spend_user: ContextVar[int] = ContextVar('spend_user', default=0)
 
 # V3.167.27: who asked for the image. Every ledger row carries it as a
 # «source:» prefix of ``scene`` so the admin sees who burns the image budget.
-SPEND_SOURCES = ('chat_paid', 'chat_free', 'greeting', 'her_day', 'constructor', 'admin', 'undress', 'other')
+SPEND_SOURCES = ('chat_paid', 'chat_free', 'greeting', 'her_day', 'constructor', 'admin', 'undress',
+                 'hot_circle', 'scenario_cover', 'video', 'voice', 'studio', 'gift', 'unlabeled')
 FREE_SPEND_SOURCES = ('chat_free', 'greeting', 'her_day')
-_spend_source: ContextVar[str] = ContextVar('spend_source', default='other')
+_spend_source: ContextVar[str] = ContextVar('spend_source', default='unlabeled')
 
 
 def set_spend_source(source: str | None) -> None:
-    src = str(source or 'other')
-    _spend_source.set(src if src in SPEND_SOURCES else 'other')
+    # V3.168: an unknown / missing label is 'unlabeled', not a friendly 'other'.
+    src = str(source or 'unlabeled')
+    _spend_source.set(src if src in SPEND_SOURCES else 'unlabeled')
+
+
+def _calling_module() -> str:
+    """First frame outside this module — names who forgot the label."""
+    try:
+        import sys
+        f = sys._getframe(2)
+        while f and f.f_globals.get('__name__') == __name__:
+            f = f.f_back
+        return str(f.f_globals.get('__name__', '?'))[:64] if f else '?'
+    except Exception:
+        return '?'
 
 
 def current_spend_source() -> str:
@@ -116,21 +130,35 @@ def record_llm_usage(purpose: str, provider: str, model: str, *,
 
 
 def record_image_spend(engine: str, scene: str, cost_usd: float, *,
-                       billed: bool = True, success: bool = True) -> None:
+                       billed: bool = True, success: bool = True, source: str | None = None) -> None:
     """One ledger row per image API call that the provider may charge for —
     including the ones whose picture we later threw away."""
+    src = str(source or _spend_source.get() or 'unlabeled')
+    if src not in SPEND_SOURCES:
+        src = 'unlabeled'
+    caller = _calling_module() if src == 'unlabeled' else ''
     try:
         with SessionLocal() as s:
             s.add(ImageSpend(
                 day=utcnow().date(),
                 engine=str(engine)[:48],
-                scene=f"{_spend_source.get()}:{scene or '-'}"[:48],
+                source=src,
+                caller=caller,
+                scene=f"{src}:{scene or '-'}"[:48],
                 billed=bool(billed),
                 success=bool(success),
                 cost_usd=max(0.0, float(cost_usd or 0.0)),
                 telegram_id=_spend_user.get(),
             ))
             s.commit()
+        tg = _spend_user.get()
+        if tg:
+            from services.analytics_service import track_event
+            from models.app_models import User
+            with SessionLocal() as s2:
+                uid = s2.scalar(select(User.id).where(User.telegram_id == int(tg)))
+            if uid:
+                track_event(int(uid), 'image_source', metadata={'source': src, 'engine': str(engine)[:48]})
     except Exception:
         logger.warning('image spend record failed engine=%s scene=%s', engine, scene, exc_info=True)
 
@@ -197,15 +225,27 @@ def spend_snapshot() -> dict:
                              .group_by(ImageSpend.engine)
                              .order_by(func.sum(ImageSpend.cost_usd).desc()).limit(4)).all()
             out['by_engine'] = [(str(e), float(c or 0.0), int(n or 0)) for e, c, n in rows]
-            rows = s.execute(select(ImageSpend.scene, func.sum(ImageSpend.cost_usd), func.count(ImageSpend.id))
+            rows = s.execute(select(ImageSpend.source, ImageSpend.scene, ImageSpend.caller,
+                                    func.sum(ImageSpend.cost_usd), func.count(ImageSpend.id))
                              .where(ImageSpend.day == day, ImageSpend.billed.is_(True))
-                             .group_by(ImageSpend.scene)).all()
+                             .group_by(ImageSpend.source, ImageSpend.scene, ImageSpend.caller)).all()
             agg: dict = {}
-            for sc, c, n in rows:
-                key = str(sc).split(':', 1)[0] if ':' in str(sc) else 'other'
+            unl: dict = {}
+            for src, sc, caller, c, n in rows:
+                # rows written before the column existed carry the label in `scene`
+                key = str(src or '') or (str(sc).split(':', 1)[0] if ':' in str(sc) else 'unlabeled')
+                if key == 'other':
+                    key = 'unlabeled'
                 a = agg.setdefault(key, [0.0, 0])
                 a[0] += float(c or 0.0); a[1] += int(n or 0)
+                if key == 'unlabeled':
+                    u = unl.setdefault(str(caller or 'legacy'), [0.0, 0])
+                    u[0] += float(c or 0.0); u[1] += int(n or 0)
             out['by_source'] = sorted(((k, v[0], v[1]) for k, v in agg.items()), key=lambda x: -x[1])
+            out['unlabeled_by_caller'] = sorted(((k, v[0], v[1]) for k, v in unl.items()), key=lambda x: -x[1])
+            dn = int(s.scalar(select(func.count(LlmUsage.id)).where(LlmUsage.day == day, LlmUsage.purpose == 'dialogue')) or 0)
+            dt_ = int(s.scalar(select(func.coalesce(func.sum(LlmUsage.prompt_tokens), 0)).where(LlmUsage.day == day, LlmUsage.purpose == 'dialogue')) or 0)
+            out['dialogue_avg_in'] = int(dt_ / dn) if dn else 0
     except Exception:
         logger.warning('spend snapshot failed', exc_info=True)
     return out
@@ -228,6 +268,11 @@ def format_spend_lines(snap: dict) -> list[str]:
     if snap.get('by_source'):
         parts = [f'{k} ${c:.3f}/{n}' for k, c, n in snap['by_source']]
         lines.append('· картинки по источникам: ' + ' · '.join(parts))
+    if snap.get('unlabeled_by_caller'):
+        parts = [f'{k} ${c:.3f}/{n}' for k, c, n in snap['unlabeled_by_caller'][:5]]
+        lines.append('· без метки по модулям: ' + ' · '.join(parts))
+    if snap.get('dialogue_avg_in'):
+        lines.append(f'· диалог: в среднем {snap["dialogue_avg_in"]} токенов на вызов (цель ≤3000)')
     lines.append(
         f'· токены: вход {snap.get("prompt_tokens", 0)} · выход {snap.get("completion_tokens", 0)} '
         f'· reasoning {snap.get("reasoning_tokens", 0)}'

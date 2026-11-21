@@ -109,7 +109,7 @@ def test_the_reason_carries_both_signs_and_tokens(monkeypatch):
 
 
 def test_the_history_window_is_still_measured_in_lines():
-    assert 'get_recent_messages(db_user_id, character_id, 30 if premium else 16)' in CHAT_SRC
+    assert 'get_recent_messages(db_user_id, character_id, min(HISTORY_TURNS_IN_PROMPT, 30 if premium else 16))' in CHAT_SRC
 
 
 def test_his_stub_line_is_the_one_on_both_platforms():

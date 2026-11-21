@@ -26,14 +26,16 @@ import logging
 from sqlalchemy import func, select
 
 from config import (
-    LIFE_EVENTS_MAX_PER_DAY,
     LIFE_EVENTS_QUIET_END_HOUR,
     LIFE_EVENTS_QUIET_START_HOUR,
+    NEW_USER_NIGHT_PASS_HOURS,
+    NEW_USER_NIGHT_PUSH,
+    NEW_USER_PRIORITY_HOURS,
     PUSH_MAX_IN_WINDOW,
-    PUSH_MAX_PER_DAY,
+    PUSH_RAIL_BUDGET,
+    PUSH_RAIL_SPACING_EXEMPT,
     PUSH_SPACING_WINDOW_MINUTES,
-    RITUAL_BUDGET_PER_DAY,
-    SCENARIO_BUDGET_PER_DAY,
+    PUSH_TZ_FALLBACK,
 )
 from models.app_models import ProductEvent
 from services.db import SessionLocal
@@ -46,36 +48,49 @@ RITUAL_PUSHES = ('ritual_morning_sent', 'ritual_evening_sent', 'morning_voice_se
                  'morning_callback_sent', 'evening_callback_sent')
 LIFE_PUSHES = ('life_event_sent',)
 SCENARIO_PUSHES = ('scenario_card_sent',)
-MARKETING_PUSHES = ('proactive_sent', 'retention_push_sent', 'donation_reminder_sent',
+SILENCE_PUSHES = ('proactive_sent', 'retention_push_sent')
+MARKETING_PUSHES = ('donation_reminder_sent',
                     'story_hook_sent', 'random_gift_sent', 'whats_new_sent', 'whats_new_sent_ok',
                     'compatibility_forecast_sent', 'welcome_selfie_sent', 'voice_cast_sent',
                     'partner_nudge_sent', 'day1_hook_sent', 'care_followup_sent', 'first_offer_sent',
                     'trial_followup_sent', 'heavy_offer_sent_ok', 'renewal_care_sent',
                     'first_minutes_nudge_sent')
 
-PUSH_EVENTS = RITUAL_PUSHES + LIFE_PUSHES + SCENARIO_PUSHES + MARKETING_PUSHES
-FAMILY_EVENTS = {'ritual': RITUAL_PUSHES, 'life': LIFE_PUSHES,
+PUSH_EVENTS = RITUAL_PUSHES + LIFE_PUSHES + SCENARIO_PUSHES + SILENCE_PUSHES + MARKETING_PUSHES
+#: V3.168: six rails — life, silence, ritual, scenario, marketing, default.
+RAILS = ('life', 'silence', 'ritual', 'scenario', 'marketing', 'default')
+FAMILY_EVENTS = {'ritual': RITUAL_PUSHES, 'life': LIFE_PUSHES, 'silence': SILENCE_PUSHES,
                  'scenario': SCENARIO_PUSHES, 'marketing': MARKETING_PUSHES}
-# Her two lines are hour-anchored, so they never spend anyone's burst window.
-SPACED_PUSHES = tuple(e for e in PUSH_EVENTS if e not in RITUAL_PUSHES)
+# Exempt rails (default: her two clock-anchored lines) never spend the burst window.
+SPACED_PUSHES = tuple(e for rail, names in FAMILY_EVENTS.items()
+                      if rail not in PUSH_RAIL_SPACING_EXEMPT for e in names)
+
+
+def rail_of_event(event_name: str) -> str:
+    for rail, names in FAMILY_EVENTS.items():
+        if event_name in names:
+            return rail
+    return 'default'
+
+
+def resolve_tz(tz_name) -> str:
+    """V3.168: the DB default 'UTC' means «never set» — read that man on the
+    fallback clock (Moscow) instead of treating UTC midnight as his night."""
+    name = (tz_name or '').strip()
+    if name in ('', 'UTC', 'Etc/UTC', 'GMT') and PUSH_TZ_FALLBACK:
+        return PUSH_TZ_FALLBACK
+    return name or 'UTC'
 
 
 def rail_budget(family: str) -> int:
-    """Today's money for one rail family (module globals, so tests and the
-    kitchen can move a single knob without touching the others)."""
-    if family == 'ritual':
-        return RITUAL_BUDGET_PER_DAY
-    if family == 'life':
-        return LIFE_EVENTS_MAX_PER_DAY
-    if family == 'scenario':
-        return SCENARIO_BUDGET_PER_DAY
-    return PUSH_MAX_PER_DAY
+    """Today's money for one rail (PUSH_RAIL_BUDGET env, one counter per rail)."""
+    return int(PUSH_RAIL_BUDGET.get(family, PUSH_RAIL_BUDGET.get('default', 1)))
 
 
 def local_hour(tz_name) -> int:
     try:
         from zoneinfo import ZoneInfo
-        return dt.datetime.now(ZoneInfo(tz_name or 'UTC')).hour
+        return dt.datetime.now(ZoneInfo(resolve_tz(tz_name))).hour
     except Exception:
         return dt.datetime.now(dt.timezone.utc).hour
 
@@ -115,7 +130,7 @@ def _local_day_start(tz_name) -> dt.datetime:
     utc = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     try:
         from zoneinfo import ZoneInfo
-        local = utc.replace(tzinfo=dt.timezone.utc).astimezone(ZoneInfo(tz_name or 'UTC'))
+        local = utc.replace(tzinfo=dt.timezone.utc).astimezone(ZoneInfo(resolve_tz(tz_name)))
         return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(
             dt.timezone.utc).replace(tzinfo=None)
     except Exception:
@@ -142,24 +157,93 @@ def pushes_today(db_user_id: int, tz_name=None, family: str = 'marketing') -> in
         return 0
 
 
-def allow_push(db_user_id: int, tz_name=None, family: str = 'marketing') -> tuple[bool, str]:
+def young_account(account_hours) -> bool:
+    return account_hours is not None and NEW_USER_PRIORITY_HOURS > 0 \
+        and float(account_hours) < NEW_USER_PRIORITY_HOURS
+
+
+def night_pass_used(db_user_id: int) -> bool:
+    """The one night push a young account may get on the life rail: a
+    life_event_sent stamped night=1 in the last 14 hours."""
+    if not db_user_id:
+        return True
+    since = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - dt.timedelta(hours=14)
+    try:
+        with SessionLocal() as s:
+            return bool(s.scalar(select(ProductEvent.id).where(
+                ProductEvent.user_id == int(db_user_id),
+                ProductEvent.event_name.in_(LIFE_PUSHES),
+                ProductEvent.created_at >= since,
+                ProductEvent.metadata_json.like('%"night": 1%'),
+            ).limit(1)))
+    except Exception:
+        return True
+
+
+def rail_muted(db_user_id: int, rail: str) -> bool:
+    """V3.168 (ТЗ блок 4): 3 pushes of THIS rail in a row without any reply of his
+    mute only this rail for RAIL_MUTE_HOURS after the last one. A reply (any chat
+    message) is newer than those pushes, so it clears every rail at once. Derived
+    from events and messages — nothing to migrate or to forget to clear."""
+    from config import RAIL_MUTE_AFTER, RAIL_MUTE_ENABLED, RAIL_MUTE_HOURS
+    if not RAIL_MUTE_ENABLED or not db_user_id or rail == 'life':   # life: life_backlog.is_capped
+        return False
+    names = FAMILY_EVENTS.get(rail)
+    if not names:
+        return False
+    try:
+        from models.app_models import Message
+        with SessionLocal() as s:
+            last_his = s.scalar(select(func.max(Message.created_at)).where(
+                Message.user_id == int(db_user_id), Message.role == 'user'))
+            q = select(ProductEvent.created_at).where(
+                ProductEvent.user_id == int(db_user_id), ProductEvent.event_name.in_(names))
+            if last_his:
+                q = q.where(ProductEvent.created_at > last_his)
+            rows = s.scalars(q.order_by(ProductEvent.created_at.desc()).limit(RAIL_MUTE_AFTER + 2)).all()
+    except Exception:
+        return False
+    if len(rows) < RAIL_MUTE_AFTER:
+        return False
+    muted = (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - rows[0]).total_seconds() < RAIL_MUTE_HOURS * 3600
+    if muted:
+        try:
+            from services.life_backlog import _note_muted
+            _note_muted(int(db_user_id), rail, rows[0])
+        except Exception:
+            pass
+    return muted
+
+
+def allow_push(db_user_id: int, tz_name, rail: str, *, account_hours=None, hour=None) -> tuple[bool, str]:
     """(ok, reason). reason is 'night' | 'burst' | 'daily' | '' — every refusal
-    is logged with the rail and the man, so «the governor held it» is no longer
-    indistinguishable from «the job never ran»."""
-    hour = local_hour(tz_name)
+    is logged with the rail, his local hour and tz. V3.168: `rail` is required
+    (a silent default is how the life rail used to be counted as marketing);
+    a young account (< NEW_USER_PRIORITY_HOURS) skips the burst window and spends
+    the life budget at its ceiling; under NEW_USER_NIGHT_PASS_HOURS the life rail
+    may write ONE night push."""
+    if rail not in RAILS:
+        rail = 'default'
+    hour = local_hour(tz_name) if hour is None else hour
     if in_quiet_hours(hour):
-        return _deny(db_user_id, family, 'night')
-    if family != 'ritual' and PUSH_MAX_IN_WINDOW > 0 \
+        if (rail == 'life' and NEW_USER_NIGHT_PUSH and account_hours is not None
+                and float(account_hours) < NEW_USER_NIGHT_PASS_HOURS
+                and not night_pass_used(int(db_user_id or 0))):
+            return True, ''     # the caller stamps night=1 on its life_event_sent
+        return _deny(db_user_id, rail, 'night', tz_name, hour)
+    if rail_muted(int(db_user_id or 0), rail):
+        return _deny(db_user_id, rail, 'muted', tz_name, hour)
+    if rail not in PUSH_RAIL_SPACING_EXEMPT and PUSH_MAX_IN_WINDOW > 0 and not young_account(account_hours) \
             and pushes_in_window(int(db_user_id or 0)) >= PUSH_MAX_IN_WINDOW:
-        return _deny(db_user_id, family, 'burst')
-    if rail_budget(family) > 0 and pushes_today(int(db_user_id or 0), tz_name, family) >= rail_budget(family):
-        return _deny(db_user_id, family, 'daily')
+        return _deny(db_user_id, rail, 'burst', tz_name, hour)
+    if rail_budget(rail) > 0 and pushes_today(int(db_user_id or 0), tz_name, rail) >= rail_budget(rail):
+        return _deny(db_user_id, rail, 'daily', tz_name, hour)
     return True, ''
 
 
-def _deny(db_user_id, family: str, reason: str) -> tuple[bool, str]:
-    logger.info('push held user=%s rail=%s reason=%s', db_user_id, family, reason)
-    _note_denial(db_user_id, family, reason)
+def _deny(db_user_id, rail: str, reason: str, tz_name=None, hour=None) -> tuple[bool, str]:
+    logger.info('push held user=%s rail=%s reason=%s hour=%s tz=%s', db_user_id, rail, reason, hour, tz_name)
+    _note_denial(db_user_id, rail, reason, tz_name, hour)
     return False, reason
 
 
@@ -198,7 +282,7 @@ def _remember_denial(db_user_id: int, family: str, reason: str, today: str) -> N
     _denial_memo[(db_user_id, family, reason)] = today
 
 
-def _note_denial(db_user_id, family: str, reason: str) -> None:
+def _note_denial(db_user_id, family: str, reason: str, tz_name=None, hour=None) -> None:
     uid = int(db_user_id or 0)
     if uid <= 0:
         return
@@ -207,7 +291,8 @@ def _note_denial(db_user_id, family: str, reason: str) -> None:
         if _already_denied(uid, family, reason, today):
             return
         from services.analytics_service import track_event
-        track_event(uid, DENIAL_EVENT, metadata={'rail': family, 'reason': reason})
+        track_event(uid, DENIAL_EVENT, metadata={'rail': family, 'reason': reason,
+                                                 'local_hour': hour, 'tz': resolve_tz(tz_name)})
         _remember_denial(uid, family, reason, today)
     except Exception:
         logger.debug('push denial journal failed user=%s', uid, exc_info=True)

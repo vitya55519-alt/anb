@@ -366,7 +366,7 @@ def test_pool_denials_are_recorded_once_without_generating(fresh_db, monkeypatch
     with fresh_db.sessions() as s:
         events = s.scalars(select(ProductEvent).where(ProductEvent.event_name == 'push_denied')).all()
         assert len(events) == 1
-        assert json.loads(events[0].metadata_json) == {'rail': rail, 'reason': 'photo_cap'}
+        assert {k: v for k, v in json.loads(events[0].metadata_json).items() if k in ('rail', 'reason')} == {'rail': rail, 'reason': 'photo_cap'}
 
 
 def test_digest_saved_and_deduped_even_if_notification_raises(fresh_db, monkeypatch):
@@ -416,9 +416,13 @@ def prepare_life(env, monkeypatch):
 def test_life_denials_are_before_providers_and_do_not_scan_spam(fresh_db, monkeypatch, reason):
     live, build = prepare_life(fresh_db, monkeypatch)
     if reason == 'night':
-        monkeypatch.setattr(S, '_user_local_hour_simple', lambda tz: 0)
+        monkeypatch.setattr(S, '_user_local_hour_simple', lambda tz: 3)
+        # V3.168: a young account gets one night pass — this test is about the settled one
+        with fresh_db.sessions() as s:
+            s.get(User, fresh_db.uid).created_at = fresh_db.now - timedelta(hours=400)
+            s.commit()
     elif reason == 'daily':
-        S._life_events_store[TG] = {'date': B.local_day('UTC')[0], 'slots': ['morning', 'day', 'evening']}
+        S._life_events_store[TG] = {'date': B.local_day('UTC')[0], 'slots': ['morning', 'day', 'evening', 'night']}
     else:
         monkeypatch.setattr(B, 'is_capped', lambda *args: True)
     bot = fake_bot()
@@ -429,7 +433,7 @@ def test_life_denials_are_before_providers_and_do_not_scan_spam(fresh_db, monkey
     bot.send_message.assert_not_called()
     with fresh_db.sessions() as s:
         events = list(s.scalars(select(ProductEvent).where(ProductEvent.event_name == 'push_denied')))
-        assert len(events) == 1 and json.loads(events[0].metadata_json) == {'rail': 'life', 'reason': reason}
+        assert len(events) == 1 and {k: v for k, v in json.loads(events[0].metadata_json).items() if k in ('rail', 'reason')} == {'rail': 'life', 'reason': reason}
 
 
 @pytest.mark.parametrize('live_branch', [False, True])
@@ -539,13 +543,13 @@ def test_marketing_still_has_two_per_day_gate(fresh_db, monkeypatch):
     from services import push_governor as G
     monkeypatch.setattr(G, 'local_hour', lambda tz: 12)
     monkeypatch.setattr(G, 'PUSH_MAX_IN_WINDOW', 0)
-    monkeypatch.setattr(G, 'PUSH_MAX_PER_DAY', 2)
-    assert S._push_ok(fresh_db.uid, 'UTC')
+    monkeypatch.setattr(G, 'PUSH_RAIL_BUDGET', {**G.PUSH_RAIL_BUDGET, 'silence': 2})
+    assert S._push_ok(fresh_db.uid, 'UTC', 'silence')
     with fresh_db.sessions() as s:
         for _ in range(2):
             s.add(ProductEvent(user_id=fresh_db.uid, event_name='retention_push_sent'))
         s.commit()
-    assert not S._push_ok(fresh_db.uid, 'UTC')
+    assert not S._push_ok(fresh_db.uid, 'UTC', 'silence')
 
 
 def test_day1_continuation_lands_only_in_app(fresh_db, monkeypatch):

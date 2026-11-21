@@ -78,8 +78,8 @@ def test_the_pile_is_three_of_her_lines_after_his_last_word():
     tid, uid = _user()
     _line(uid, 'user', 'привет', timedelta(days=6))
     assert B.unanswered(uid, CHAR) == []
-    for i, day in enumerate((5, 4, 3)):
-        _line(uid, 'assistant', f'её строка {i}', timedelta(days=day))
+    for i, hours in enumerate((30, 20, 10)):   # V3.168: the mute lasts 48 h after the last ignored line
+        _line(uid, 'assistant', f'её строка {i}', timedelta(hours=hours))
     assert [t for t, _ in B.unanswered(uid, CHAR)] == ['её строка 0', 'её строка 1', 'её строка 2']
     assert B.is_capped(uid, CHAR) is True          # четвёртая была бы рассылкой
     _line(uid, 'user', 'ого, и что дальше?', timedelta(hours=2))

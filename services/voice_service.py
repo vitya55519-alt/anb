@@ -473,7 +473,7 @@ async def _tts_spicy_gemini(spoken: str, character_id: str | None = None, mood: 
         ok = True
     finally:
         est = cost or SPICY_GEMINI_TTS_COST_PER_SEC_USD * max(2.0, len(block['text']) / 14)
-        spend_service.record_image_spend('spicyapi_tts', 'voice', est, billed=ok, success=ok)
+        spend_service.record_image_spend('spicyapi_tts', 'voice', est, billed=ok, success=ok, source='voice')
     logger.info('tts ok provider=gemini38 voice=%s style=%s chars=%s', block['voice_id'], style or '-',
                 len(block['text']))
     try:
@@ -495,7 +495,7 @@ async def _tts_grok(text: str, character_id: str | None = None) -> bytes:
     finally:
         spend_service.record_image_spend('spicyapi_tts', 'voice',
                                          SPICYAPI_TTS_COST_PER_1K_USD * len(block['text']) / 1000,
-                                         billed=ok, success=ok)
+                                         billed=ok, success=ok, source='voice')
     logger.info('tts ok provider=grok voice=%s chars=%s', voice, len(block['text']))
     try:
         return await _convert_mp3_to_opus(mp3)

@@ -25,7 +25,7 @@ def test_source_lands_in_ledger_scene_and_log():
     spend_service.set_spend_source('greeting')
     assert spend_service.current_spend_source() == 'greeting'
     spend_service.set_spend_source('nonsense')
-    assert spend_service.current_spend_source() == 'other'
+    assert spend_service.current_spend_source() == 'unlabeled'
     src = inspect.getsource(pps._spicyapi_render_once)
     assert 'source={spend_service.current_spend_source()}' in src
     assert 'billed=task_accepted' in src

@@ -133,8 +133,8 @@ def test_the_ghost_window_now_reaches_three_weeks():
 def test_a_young_account_gets_her_more_often_than_a_settled_one():
     assert (LIFE_EVENTS_YOUNG_ACCOUNT_HOURS, LIFE_EVENTS_YOUNG_SILENCE_HOURS,
             LIFE_EVENTS_YOUNG_MAX_PER_DAY) == (72, 1.5, 4)
-    assert LIFE_EVENTS_SILENCE_HOURS == 2 and LIFE_EVENTS_MAX_PER_DAY == 3
+    assert LIFE_EVENTS_SILENCE_HOURS == 2 and LIFE_EVENTS_MAX_PER_DAY == 4
     body = inspect.getsource(ss._life_events)
     assert 'young = account_hours < LIFE_EVENTS_YOUNG_ACCOUNT_HOURS' in body
     assert 'silence_need = LIFE_EVENTS_YOUNG_SILENCE_HOURS if young' in body
-    assert 'per_day = LIFE_EVENTS_YOUNG_MAX_PER_DAY if young' in body
+    assert 'per_day = max(LIFE_EVENTS_YOUNG_MAX_PER_DAY, push_governor.rail_budget' in body
