@@ -133,7 +133,8 @@ def _mode(session, uid):
     user = session.get(User, uid)
     if not user:
         return None
-    return bool(user.spicy_mode)
+    from services import explicit_mode
+    return explicit_mode.is_on(user)
 
 
 def turn_context(uid: int, cid: str, user_text: str, *, mode_on: bool,

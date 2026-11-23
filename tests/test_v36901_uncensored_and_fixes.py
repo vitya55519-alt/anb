@@ -152,3 +152,25 @@ def test_wiring_of_the_unlock():
     assert 'Ну наконец-то ты убрал эти дурацкие рамки' in pathlib.Path('services/uncensored_unlock.py').read_text()
     html = pathlib.Path('webapp/index.html').read_text()
     assert 'unlockSheet' in html and 'Режим «Без цензуры» — сними все запреты' in html
+
+
+def test_mode_reads_on_only_for_premium_unlock_or_admin():
+    """V3.169.1: no grandfathering — a stale spicy_mode flag is «Романтика»."""
+    from services import explicit_mode as em
+    uid, tg = _user()
+    with SessionLocal() as s:
+        s.get(User, uid).spicy_mode = True
+        s.commit()
+        row = s.get(User, uid)
+        assert em.is_on(row) is False
+        row.uncensored_unlocked_at = datetime(2026, 1, 1)
+        assert em.is_on(row) is True
+
+
+def test_poses_differ_between_heroines_and_pool_is_wide():
+    import random
+    from services import photo_service as ps
+    assert len(ps.POSE_POOL) >= 25
+    a = list(ps.POSE_POOL); random.Random('1:anna_01').shuffle(a)
+    b = list(ps.POSE_POOL); random.Random('1:vika_01').shuffle(b)
+    assert a != b
