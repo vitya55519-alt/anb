@@ -174,3 +174,25 @@ def test_poses_differ_between_heroines_and_pool_is_wide():
     a = list(ps.POSE_POOL); random.Random('1:anna_01').shuffle(a)
     b = list(ps.POSE_POOL); random.Random('1:vika_01').shuffle(b)
     assert a != b
+
+
+def test_crypto_dollar_price_and_languages():
+    import pathlib
+    import config
+    from services import uncensored_unlock as uu
+    assert config.UNCENSORED_UNLOCK_USD == 1.0
+    assert 'usd' in uu.prices() and 'crypto' in uu.prices()
+    html = pathlib.Path('webapp/index.html').read_text()
+    for code in ('ru', 'en', 'es', 'it', 'fr', 'zh', 'ja', 'bn'):
+        assert f"\n  {code}: {{\n    title:" in html, code
+    assert "id=\"ulCrypto\"" in html and "'platega_crypto'" in html
+    main = pathlib.Path('main.py').read_text()
+    assert 'amount_usd=_usd' in main and 'UNCENSORED_UNLOCK_USD * ROI_USD_RUB' in main
+
+
+def test_more_sexy_poses_and_outfits():
+    from services import photo_service as ps
+    assert len(ps.SPICY_POSE_POOL) >= 24
+    for lvl in range(1, 11):
+        v = ps.SPICY_OUTFIT_LEVELS[lvl]
+        assert len(v) >= 48 and len(set(v)) == len(v)

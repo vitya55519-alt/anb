@@ -470,6 +470,19 @@ SPICY_POSE_POOL = [
     'standing in profile, arching her back and stretching her arms up, emphasizing the S-curve of her figure',
     'bending slightly at the waist adjusting a strap, glancing sideways at the camera with a sly smile',
     'lying on her back with her head toward the camera, hair spread out, one arm above her head, looking up into the lens',
+    # V3.170 (владелец: «добавь позы и наряды сексуальные в режим без цензуры»)
+    'on all fours on a bed, looking back over her shoulder at the lens, back arched, hair falling to one side',
+    'straddling a chair backwards, forearms on the backrest, chin lowered, a hungry stare into the camera',
+    'sitting on a countertop with her knees apart and her hands braced behind her, head tipped back, lips parted',
+    'standing with one leg raised and resting on a chair, one hand sliding slowly up her thigh, eyes on the lens',
+    'lying on her back with her knees bent and parted, one hand gripping the sheet, her head turned to the camera',
+    'kneeling on the edge of a bed, sitting back on her heels, both hands pushing her hair up, chest lifted',
+    'leaning against a doorframe, one strap slipping from her shoulder, biting her lip, eyes half-lowered',
+    'curled on her side hugging a pillow between her knees, glancing up with a slow smile, hip as the main line',
+    'standing at a window in profile, one arm braced above her head, back arched, the light on her skin',
+    'sitting on the floor with her legs stretched out and slightly apart, leaning back on her hands, chin up',
+    'bent over a table with her forearms flat on it, looking back at the camera with a dare in her eyes',
+    'lying on her stomach across the bed with her feet up behind her, one hand reaching toward the lens',
 ]
 SPICY_FIGURE_LOCK = (
     'FIGURE LOCK (18+): the revealing outfit and the seductive pose never change her body. '
@@ -1217,6 +1230,44 @@ SPICY_OUTFIT_LEVELS = {
         'nude, only wet skin and water droplets, barefoot',  # V3.167.26 not only skirts
     ],
 }
+
+# V3.170 (владелец): ещё сексуальных нарядов в «Без цензуры» — три полосы
+# откровенности добавляются ко всем уровням, прежние 40 остаются на месте.
+_SPICY_EXTRA = {
+    (1, 3): [
+        'a tight satin mini dress with a deep neckline and a high slit, strappy heels; cocktail bar, low amber light',
+        'a lace-trimmed silk camisole and matching short shorts, bare feet; bedroom, soft morning light',
+        'a backless halter mini dress, thin straps tied low, stiletto sandals; rooftop terrace, blue hour',
+        'a cropped knit top slipping off one shoulder, a leather mini skirt, ankle boots; evening street, warm streetlights',
+        'a fitted white tank, a tiny pleated skirt, knee socks and sneakers; sunny campus steps, playful',
+        'a plunging wrap dress tied at the hip, bare legs, heels; dinner terrace, candlelight',
+        'a mesh-panel crop top over a bralette, high-waisted vinyl shorts, platform boots; night market, neon',
+        'a satin robe loosely tied over a lace bodysuit, bare feet; hotel room, golden lamplight',
+    ],
+    (4, 7): [
+        'a see-through black mesh dress over a lace thong, no bra, stiletto heels; hotel corridor, low light',
+        'a wet white t-shirt clinging to her bare chest and tiny briefs, barefoot; pool edge, midday sun',
+        'a plunging satin slip pulled up high on the thigh, sheer thigh-high stockings, no bra; velvet sofa, candles',
+        'an open silk shirt with nothing underneath, a lace garter belt, high heels; hotel bed, warm lamp',
+        'a fishnet bodysuit over bare skin with a strappy harness, thigh-high boots; neon club, haze',
+        'a micro bikini with thin side strings, oiled skin, sunglasses pushed up; yacht deck, bright sun',
+        'a lace bralette and a sheer wrap skirt open at the front, bare feet; bedroom window, morning haze',
+        'a latex-look mini dress zipped low at the chest, stiletto heels; rooftop club, laser lights',
+    ],
+    (8, 10): [
+        'nude under an open trench coat, a belt hanging loose, stiletto heels; rainy night street, wet pavement shine',
+        'nude except for a thin gold body chain and heels; dim bedroom, warm candlelight',
+        'a crystal-studded harness set over bare skin and nothing else, thigh-high boots; studio, hard rim light',
+        'nude, wrapped in a sheer white curtain that clings to her, barefoot; bedroom window, backlight',
+        'only a lace garter belt, sheer stockings and heels, bare chest; velvet chair, low red light',
+        'nude, wearing his open shirt as the only cover, one shoulder bare; kitchen counter, morning light',
+        'a wet white tee soaked transparent, nothing below, barefoot; shower steam, dripping skin',
+        'nude, only a silk scarf draped loosely across her hips, heels; mirror wall, soft spotlight',
+    ],
+}
+for _band, _items in _SPICY_EXTRA.items():
+    for _lvl in range(_band[0], _band[1] + 1):
+        SPICY_OUTFIT_LEVELS[_lvl] = SPICY_OUTFIT_LEVELS[_lvl] + [x for x in _items if x not in SPICY_OUTFIT_LEVELS[_lvl]]
 
 # V3.167.14: обувь для разнообразия
 SHOES_POOL = [

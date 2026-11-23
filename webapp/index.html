@@ -1591,6 +1591,7 @@
     <p class="lead" id="ulLead"></p>
     <ul id="ulBullets"></ul>
     <button class="rub" id="ulRub" type="button"></button>
+    <button class="stars" id="ulCrypto" type="button"></button>
     <button class="stars" id="ulStars" type="button"></button>
     <button class="no" id="ulNo" type="button"></button>
   </div>
@@ -5625,9 +5626,11 @@ function insertChatReply(j, chatId) {
   // the note carries the way out — her card, the same as the wall.
   // V3.169: soft «Без цензуры» hint (≤1 per session, server decides)
   if (j.uncensored_hint) {
-    const T = UNLOCK_T[LANG === 'ru' ? 'ru' : 'en'];
-    box.insertAdjacentHTML('beforeend', '<div class="modenote">' + esc(LANG === 'ru' ? 'Хочешь без стеснения? Открой режим «Без цензуры».' : 'Want it without the shyness? Unlock Uncensored mode.') +
-      '<button type="button" class="mn-b ul-b">' + esc(T.rub.replace('{rub}', j.uncensored_hint.rub).replace('{stars}', j.uncensored_hint.stars).replace(' ₽', ' ₽')) + '</button></div>');
+    const T = UNLOCK_T[LANG] || UNLOCK_T.en;
+    const _hp = j.uncensored_hint;
+    const _lbl = (LANG === 'ru' && _hp.platega !== false ? T.rub : T.stars).replace('{rub}', _hp.rub).replace('{stars}', _hp.stars);
+    box.insertAdjacentHTML('beforeend', '<div class="modenote">' + esc(T.hint) +
+      '<button type="button" class="mn-b ul-b">' + esc(_lbl) + '</button></div>');
     const ub = box.lastElementChild.querySelector('.ul-b');
     if (ub) ub.addEventListener('click', () => openUnlockSheet(j.uncensored_hint, 'chat_hint'));
   }
@@ -8830,8 +8833,9 @@ const UNLOCK_T = {
       'Никаких «я стесняюсь» и стоп-слов — отвечает прямо, смело и без цензуры',
       'Любые твои сценарии и фантазии — подхватывает игру, а не уходит от темы',
       'Жаркий флирт и откровенные признания — говорит так, как не скажет в обычном чате',
-      'Открывается навсегда — один раз за {rub} ₽ / {stars} ⭐️, без подписок'],
-    rub: '🔓 Открыть за {rub} ₽', stars: '⭐️ Открыть за {stars} ⭐️', no: 'Остаться в «Романтике»' },
+      'Открывается навсегда — один раз, без подписок: {rub} ₽ / {stars} ⭐️ / ${usd}'],
+    rub: '🔓 Открыть за {rub} ₽', stars: '⭐️ Открыть за {stars} ⭐️', crypto: '💎 Крипта · ${usd}', no: 'Остаться в «Романтике»',
+    hint: 'Хочешь без стеснения? Открой режим «Без цензуры».' },
   en: {
     title: '🔥 Uncensored mode — drop every limit',
     lead: 'In Romance she is sweet and shy. Switch the filters off and she stops hesitating, picking her words and hiding what she wants.',
@@ -8839,29 +8843,95 @@ const UNLOCK_T = {
       'No «I am shy» and no stop-words — she answers directly, boldly, uncensored',
       'Any scenario and fantasy of yours — she plays along instead of changing the subject',
       'Hot flirting and frank confessions — the way she would never say it in a regular chat',
-      'Unlocked for good — one payment of {stars} ⭐️, no subscriptions'],
-    rub: '🔓 Unlock for {rub} ₽', stars: '⭐️ Unlock for {stars} ⭐️', no: 'Stay in Romance' },
+      'Unlocked for good, no subscription: {stars} ⭐️ / ${usd}'],
+    rub: '🔓 Unlock for {rub} ₽', stars: '⭐️ Unlock for {stars} ⭐️', crypto: '💎 Crypto · ${usd}', no: 'Stay in Romance',
+    hint: 'Want it without the shyness? Unlock Uncensored mode.' },
+  es: {
+    title: '🔥 Modo «Sin censura» — quita todos los límites',
+    lead: 'En «Romance» es dulce y tímida. Quita los filtros y deja de avergonzarse, de medir sus palabras y de esconder lo que desea.',
+    bullets: [
+      'Nada de «me da vergüenza» ni palabras prohibidas: responde directa, atrevida y sin censura',
+      'Cualquier escenario o fantasía tuya: sigue el juego en vez de cambiar de tema',
+      'Coqueteo ardiente y confesiones sinceras: dice lo que no diría en un chat normal',
+      'Se abre para siempre, sin suscripción: {stars} ⭐️ / ${usd}'],
+    rub: '🔓 Abrir por {rub} ₽', stars: '⭐️ Abrir por {stars} ⭐️', crypto: '💎 Cripto · ${usd}', no: 'Quedarme en «Romance»',
+    hint: '¿Lo quieres sin timidez? Abre el modo «Sin censura».' },
+  it: {
+    title: '🔥 Modalità «Senza censura» — via ogni limite',
+    lead: 'In «Romance» è dolce e timida. Spegni i filtri e smette di vergognarsi, di scegliere le parole e di nascondere i suoi desideri.',
+    bullets: [
+      'Niente «mi vergogno» né parole vietate: risponde diretta, audace e senza censura',
+      'Ogni tuo scenario e fantasia: sta al gioco invece di cambiare discorso',
+      'Flirt bollente e confessioni sincere: dice ciò che in una chat normale non direbbe',
+      'Si sblocca per sempre, senza abbonamento: {stars} ⭐️ / ${usd}'],
+    rub: '🔓 Sblocca per {rub} ₽', stars: '⭐️ Sblocca per {stars} ⭐️', crypto: '💎 Cripto · ${usd}', no: 'Resta in «Romance»',
+    hint: 'La vuoi senza timidezza? Sblocca la modalità «Senza censura».' },
+  fr: {
+    title: '🔥 Mode « Sans censure » — plus aucune limite',
+    lead: 'En « Romance », elle est douce et timide. Coupe les filtres : elle arrête de se gêner, de peser ses mots et de cacher ses envies.',
+    bullets: [
+      'Plus de « je suis gênée » ni de mots interdits : elle répond franchement, sans censure',
+      'Tous tes scénarios et fantasmes : elle joue le jeu au lieu de changer de sujet',
+      'Flirt brûlant et aveux sincères : elle dit ce qu’elle ne dirait pas dans un chat normal',
+      'Débloqué pour toujours, sans abonnement : {stars} ⭐️ / ${usd}'],
+    rub: '🔓 Débloquer pour {rub} ₽', stars: '⭐️ Débloquer pour {stars} ⭐️', crypto: '💎 Crypto · ${usd}', no: 'Rester en « Romance »',
+    hint: 'Tu la veux sans timidité ? Débloque le mode « Sans censure ».' },
+  zh: {
+    title: '🔥「无审查」模式 —— 解除所有限制',
+    lead: '在「浪漫」模式里她温柔又害羞。关掉过滤后，她不再扭捏、不再斟酌字句，也不再隐藏自己的渴望。',
+    bullets: [
+      '没有「我害羞」和禁词——她直接、大胆、毫无审查地回答',
+      '你的任何场景和幻想——她会接住并陪你玩下去，而不是转移话题',
+      '火热的调情与坦白——说出普通聊天里不会说的话',
+      '一次解锁，永久有效，无需订阅：{stars} ⭐️ / ${usd}'],
+    rub: '🔓 {rub} ₽ 解锁', stars: '⭐️ {stars} ⭐️ 解锁', crypto: '💎 加密货币 · ${usd}', no: '留在「浪漫」模式',
+    hint: '想让她不再害羞？解锁「无审查」模式。' },
+  ja: {
+    title: '🔥「無検閲」モード — すべての制限を外す',
+    lead: '「ロマンス」では彼女は優しく恥ずかしがり屋。フィルターを外すと、ためらわず、言葉を選ばず、望みを隠さなくなります。',
+    bullets: [
+      '「恥ずかしい」やNGワードはなし——率直に、大胆に、検閲なしで答えます',
+      'あなたのどんなシナリオや妄想も——話をそらさず、乗ってくれます',
+      '熱いフラートと正直な告白——普通のチャットでは言わないことを口にします',
+      '一度の購入でずっと解放、サブスクなし：{stars} ⭐️ / ${usd}'],
+    rub: '🔓 {rub} ₽ で解放', stars: '⭐️ {stars} ⭐️ で解放', crypto: '💎 暗号資産 · ${usd}', no: '「ロマンス」のままにする',
+    hint: '恥ずかしがらない彼女がいい？「無検閲」モードを解放しよう。' },
+  bn: {
+    title: '🔥 «সেন্সরহীন» মোড — সব বাধা সরিয়ে দাও',
+    lead: '«রোমান্স» মোডে সে মিষ্টি ও লাজুক। ফিল্টার বন্ধ করলে সে আর লজ্জা পায় না, শব্দ বেছে বলে না, নিজের ইচ্ছাও লুকোয় না।',
+    bullets: [
+      '«আমি লজ্জা পাই» বা নিষিদ্ধ শব্দ নেই — সে সরাসরি, সাহসী ও সেন্সর ছাড়া উত্তর দেয়',
+      'তোমার যেকোনো দৃশ্য ও ফ্যান্টাসি — বিষয় না পাল্টে সে খেলায় যোগ দেয়',
+      'উষ্ণ ফ্লার্ট ও খোলামেলা স্বীকারোক্তি — সাধারণ চ্যাটে যা বলে না, তাই বলে',
+      'চিরতরে খোলা, কোনো সাবস্ক্রিপশন নেই: {stars} ⭐️ / ${usd}'],
+    rub: '🔓 {rub} ₽-এ খুলুন', stars: '⭐️ {stars} ⭐️-এ খুলুন', crypto: '💎 ক্রিপ্টো · ${usd}', no: '«রোমান্স»-এ থাকুন',
+    hint: 'লজ্জা ছাড়া চাও? «সেন্সরহীন» মোড খুলে নাও।' },
 };
 function openUnlockSheet(p, source) {
   return new Promise(res => {
     p = p || {};
     const rub = p.rub || (ME && ME.uncensored_rub) || 50;
     const stars = p.stars || (ME && ME.uncensored_stars) || 50;
-    const T = UNLOCK_T[LANG === 'ru' ? 'ru' : 'en'];
-    const f = s => s.replace('{rub}', rub).replace('{stars}', stars);
+    const usd = p.usd || (ME && ME.uncensored_usd) || 1;
+    const crypto = p.crypto !== undefined ? p.crypto : (ME && ME.uncensored_crypto);
+    const T = UNLOCK_T[LANG] || UNLOCK_T.en;
+    const f = s => s.replace('{rub}', rub).replace('{stars}', stars).replace('{usd}', usd);
     const sheet = document.getElementById('unlockSheet');
     document.getElementById('ulTitle').textContent = T.title;
     document.getElementById('ulLead').textContent = T.lead;
     document.getElementById('ulBullets').innerHTML = T.bullets.map(b => '<li>' + esc(f(b)) + '</li>').join('');
     const bRub = document.getElementById('ulRub'), bSt = document.getElementById('ulStars'), bNo = document.getElementById('ulNo');
-    bRub.textContent = f(T.rub); bSt.textContent = f(T.stars); bNo.textContent = T.no;
+    const bCr = document.getElementById('ulCrypto');
+    bRub.textContent = f(T.rub); bSt.textContent = f(T.stars); bNo.textContent = T.no; bCr.textContent = f(T.crypto);
+    bCr.style.display = crypto ? '' : 'none';
     const rubOk = LANG === 'ru' && p.platega !== false;
     bRub.style.display = rubOk ? '' : 'none';
-    const close = v => { sheet.classList.remove('open'); bRub.onclick = bSt.onclick = bNo.onclick = null; res(v); };
+    const close = v => { sheet.classList.remove('open'); bRub.onclick = bSt.onclick = bNo.onclick = bCr.onclick = null; res(v); };
     // paid: switch the mode on (the server also turns it on) and tell the caller
     const paid = async () => { close(true); await loadMe(); };
     bSt.onclick = () => { sheet.classList.remove('open'); buy('uncensored_unlock', bSt, {}, paid); res(false); };
     bRub.onclick = () => { payVia('uncensored_unlock', 'sbp', bRub, {}, null, false); sheet.classList.remove('open'); res(false); };
+    bCr.onclick = () => { payVia('uncensored_unlock', crypto === 'wallet' ? 'crypto' : 'platega_crypto', bCr, {}, null, false); sheet.classList.remove('open'); res(false); };
     bNo.onclick = () => close(false);
     sheet.classList.add('open');
   });

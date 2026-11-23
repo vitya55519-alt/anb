@@ -40,13 +40,15 @@ async def create_invoice(
     stars_amount: int,
     description: str,
     payload: str | None = None,
+    amount_usd: float | None = None,
 ) -> dict | None:
-    """Create a Wallet Pay invoice. Returns dict with payment_link and invoice_id."""
+    """Create a Wallet Pay invoice. Returns dict with payment_link and invoice_id.
+    ``amount_usd`` pins a flat dollar price (V3.170: the 1 USD unlock)."""
     if not WALLET_PAY_TOKEN:
         logger.warning("Wallet Pay token not configured")
         return None
 
-    amount_usd = round(stars_amount * 0.02, 2)
+    amount_usd = round(float(amount_usd), 2) if amount_usd else round(stars_amount * 0.02, 2)
     if amount_usd < 0.01:
         amount_usd = 0.01
 

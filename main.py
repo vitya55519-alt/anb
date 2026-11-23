@@ -14757,6 +14757,11 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
         if not PLATEGA_ENABLED or not product.get('rub'):
             return web.json_response({'ok': False, 'error': 'method_off'}, status=400)
         amount = str(product['rub'])
+        if product_id == 'uncensored_unlock' and method == 'platega_crypto':
+            # V3.170: the crypto row is a flat 1 USD, shown in rubles at the env rate.
+            import math
+            from config import UNCENSORED_UNLOCK_USD, ROI_USD_RUB
+            amount = str(max(1, math.ceil(UNCENSORED_UNLOCK_USD * ROI_USD_RUB)))
         order_id = await asyncio.to_thread(platega_service.create_order, telegram_id, order_product, amount)
         link = await platega_service.create_payment(
             order_id, amount, telegram_id=telegram_id,
@@ -14771,8 +14776,13 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
         if not WALLET_PAY_ENABLED:
             return web.json_response({'ok': False, 'error': 'method_off'}, status=400)
         from services.wallet_pay_service import create_invoice
+        _usd = None
+        if product_id == 'uncensored_unlock':
+            from config import UNCENSORED_UNLOCK_USD
+            _usd = UNCENSORED_UNLOCK_USD
         invoice = await create_invoice(
             telegram_id, order_product, product['stars'], product['description'],
+            amount_usd=_usd,
         )
         if not invoice:
             return web.json_response({'ok': False, 'error': 'invoice'}, status=502)

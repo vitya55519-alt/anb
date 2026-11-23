@@ -628,6 +628,8 @@ PLATEGA_PREMIUM_TRIAL_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_TRIAL_PR
 UNCENSORED_UNLOCK_ENABLED = os.getenv("UNCENSORED_UNLOCK_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
 UNCENSORED_UNLOCK_RUB = max(1, int(os.getenv("UNCENSORED_UNLOCK_RUB", "50")))
 UNCENSORED_UNLOCK_STARS = max(1, int(os.getenv("UNCENSORED_UNLOCK_STARS", "50")))
+# V3.170: the same unlock paid in crypto — a flat dollar price.
+UNCENSORED_UNLOCK_USD = max(0.5, float(os.getenv("UNCENSORED_UNLOCK_USD", "1")))
 UNDRESS_ONE_ENABLED = os.getenv("UNDRESS_ONE_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
 UNDRESS_ONE_PRICE_RUB = max(1, int(os.getenv("UNDRESS_ONE_PRICE_RUB", "50")))
 UNDRESS_ONE_STARS = max(1, int(os.getenv("UNDRESS_ONE_STARS", "40")))

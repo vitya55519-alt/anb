@@ -61,7 +61,15 @@ def prices() -> dict:
         from config import PLATEGA_ENABLED
     except Exception:
         PLATEGA_ENABLED = False
+    try:
+        from config import UNCENSORED_UNLOCK_USD, WALLET_PAY_ENABLED
+    except Exception:
+        UNCENSORED_UNLOCK_USD, WALLET_PAY_ENABLED = 1.0, False
+    # crypto: Platega's page has a working callback, so it goes first; Wallet Pay
+    # (exact USD) is the fallback when only that is configured.
+    crypto = 'platega' if PLATEGA_ENABLED else ('wallet' if WALLET_PAY_ENABLED else None)
     return {'rub': UNCENSORED_UNLOCK_RUB, 'stars': UNCENSORED_UNLOCK_STARS,
+            'usd': UNCENSORED_UNLOCK_USD, 'crypto': crypto,
             'platega': bool(PLATEGA_ENABLED)}
 
 
