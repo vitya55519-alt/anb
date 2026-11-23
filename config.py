@@ -302,14 +302,16 @@ PHOTO_SERIES_FRAMES = max(2, min(6, int(os.getenv("PHOTO_SERIES_FRAMES", "4"))))
 # V3.58.2: «seedream-5.0-lite» is gone from the SpicyAPI catalog — every job
 # with the old id was refused (spicyapi 0 ✅ / 39 ❌ in «Отказы»). Pro ids are
 # the ones on spicyapi.ai/models/seedream-5-0-pro (uncensored, no filter).
-SPICYAPI_IMAGE_MODEL = os.getenv("SPICYAPI_IMAGE_MODEL", "bytedance/seedream-5.0-pro/edit").strip()
+# V3.170 (владелец): Seedream 5.5 — $0.02 за кадр на 1k против $0.036 у 5.0 Pro, тоже без фильтра.
+# Вернуть старую: SPICYAPI_IMAGE_MODEL=bytedance/seedream-5.0-pro/edit и SPICYAPI_T2I_MODEL=…/text-to-image.
+SPICYAPI_IMAGE_MODEL = os.getenv("SPICYAPI_IMAGE_MODEL", "bytedance/seedream-5.5/edit").strip()
 # V3.46.1: the nude «Наедине» categories must render text-to-image (no clothed
 # reference — i2i keeps a clothed subject clothed, V3.45.23) on the UNCENSORED
 # SpicyAPI engine, because the fal Seedream route is censored and refuses full
 # nudity. The exact t2i model id is provider-specific, so it is env-overridable;
 # if the default is wrong the admin toast now shows the real SpicyAPI error and
 # this can be corrected from Railway without a redeploy.
-SPICYAPI_T2I_MODEL = os.getenv("SPICYAPI_T2I_MODEL", "bytedance/seedream-5.0-pro/text-to-image").strip()
+SPICYAPI_T2I_MODEL = os.getenv("SPICYAPI_T2I_MODEL", "bytedance/seedream-5.5/text-to-image").strip()
 # V3.64.4: 90s cut off live jobs. Logs 17–19.10: successful Seedream 5.0 Pro
 # edits took 34–75s, and the failed one was still «running» at 91s while the
 # provider allows 30 min. The job is billed once accepted, so waiting longer is
@@ -328,7 +330,8 @@ SPICYAPI_ENABLE_THINKING = os.getenv("SPICYAPI_ENABLE_THINKING", "0") == "1"
 # not the image comes back, so this is ledgered on the createTask event — the
 # old blind spot that made /stats report «картинки $0.080» while the balance
 # actually drained ~$3-4/day.
-SPICYAPI_ESTIMATED_COST_USD = float(os.getenv("SPICYAPI_ESTIMATED_COST_USD", "0.036"))
+# V3.170: Seedream 5.5 at 1k is $0.02 + a small per-reference charge.
+SPICYAPI_ESTIMATED_COST_USD = float(os.getenv("SPICYAPI_ESTIMATED_COST_USD", "0.025"))
 # V3.69.0: every video/circle renders on SpicyAPI (MiniMax H3 image-to-video,
 # voice included). The «spicy» model is for her own frames; a frame the user
 # uploaded (admin-only) goes to the regular model with a clothed prompt.

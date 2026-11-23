@@ -1026,6 +1026,10 @@ async def _spicyapi_render_once(model: str, prompt: str, image_urls: Optional[Li
             "output_format": "jpeg",
             "enable_thinking": SPICYAPI_ENABLE_THINKING,
         }
+        # V3.170: Seedream 5.5 documents no enable_thinking field — leave it out
+        # there (a rollback to 5.0 Pro via env keeps sending it as before).
+        if model.startswith('bytedance/seedream-5.5'):
+            input_block.pop("enable_thinking", None)
         if image_urls:
             input_block["image_urls"] = image_urls
         if _spicy_thinking_override.get(model) is not None:

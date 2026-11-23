@@ -15,8 +15,9 @@ PHOTO = (ROOT / 'services' / 'photo_service.py').read_text(encoding='utf-8')
 
 
 def test_defaults_are_pro_model_ids():
-    assert '"bytedance/seedream-5.0-pro/edit"' in CONFIG
-    assert '"bytedance/seedream-5.0-pro/text-to-image"' in CONFIG
+    # V3.170: Seedream 5.5 is the default ($0.02/frame); 5.0 Pro stays an env rollback
+    assert '"bytedance/seedream-5.5/edit"' in CONFIG
+    assert '"bytedance/seedream-5.5/text-to-image"' in CONFIG
     assert '"bytedance/seedream-5.0-lite' not in CONFIG
 
 

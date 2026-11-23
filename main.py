@@ -20403,7 +20403,7 @@ async def _render_home(telegram_id: int, character_id: str, uid: int, *, item_id
         path = await asyncio.to_thread(webapp_service.chat_media_file_path, telegram_id, home['image'])
         if path:
             prev = await asyncio.to_thread(path.read_bytes)
-    block = {'aspect_ratio': '4:3', 'resolution': '1k', 'output_format': 'png', 'enable_thinking': True}
+    block = {'aspect_ratio': '4:3', 'resolution': '1k', 'output_format': 'png'}
     data = None
     ok, cost = False, 0.0
     try:

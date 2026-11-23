@@ -196,3 +196,28 @@ def test_more_sexy_poses_and_outfits():
     for lvl in range(1, 11):
         v = ps.SPICY_OUTFIT_LEVELS[lvl]
         assert len(v) >= 48 and len(set(v)) == len(v)
+
+
+def test_seedream_55_drops_enable_thinking_only_for_5_5():
+    import asyncio
+    from services import private_photo_service as pps
+    pps._spicy_thinking_override.clear()
+    sent = []
+
+    async def fake_call(method, path, headers=None, **kw):
+        if path == '/jobs/createTask':
+            sent.append(dict(kw['json']['input']))
+            return {'taskId': 't1'}
+        return {'state': 'failed', 'errorMessage': 'x'}
+
+    import pytest
+    mp = pytest.MonkeyPatch()
+    mp.setattr(pps, 'SPICYAPI_KEY', 'k'); mp.setattr(pps, 'SPICYAPI_IMAGE_TIMEOUT', 2)
+    mp.setattr(pps, '_spicyapi_call', fake_call)
+    try:
+        asyncio.run(pps._spicyapi_render_once('bytedance/seedream-5.5/edit', 'p', ['u']))
+        asyncio.run(pps._spicyapi_render_once('bytedance/seedream-5.0-pro/edit', 'p', ['u']))
+    finally:
+        mp.undo()
+    assert 'enable_thinking' not in sent[0] and sent[0]['resolution'] == '1k'
+    assert sent[1]['enable_thinking'] is False
