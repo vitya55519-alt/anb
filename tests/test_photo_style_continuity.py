@@ -284,8 +284,11 @@ def test_pose_rotation_counts_only_confirmed_deliveries_for_pair(env):
                                       delivery_type='free', telegram_file_id=file_id,
                                       image_url='https://example.invalid/attempt', full_resolution_bytes=data))
         session.commit()
-    assert resolve().pose_rotation[0] == ps.POSE_POOL[1]
-    assert resolve(cid='new_pair').pose_rotation[0] == ps.POSE_POOL[0]
+    import random as _r
+    order = list(ps.POSE_POOL); _r.Random(f'{uid}:{CID}').shuffle(order)
+    assert resolve().pose_rotation[0] == order[1]     # one confirmed delivery for this pair
+    order2 = list(ps.POSE_POOL); _r.Random(f'{uid}:new_pair').shuffle(order2)
+    assert resolve(cid='new_pair').pose_rotation[0] == order2[0]
     explicit = ('my precise pose', 'my second pose')
     assert resolve(ps.PhotoRequest(scene='fashion', pose_rotation=explicit)).pose_rotation == explicit
 
@@ -307,6 +310,11 @@ def test_app_only_success_advances_pose_but_failed_delivery_does_not(env):
     bot = SimpleNamespace()
     received = []
 
+    def _order(cid=CID):
+        import random as _r
+        o = list(ps.POSE_POOL); _r.Random(f'{us.ensure_user(TG)}:{cid}').shuffle(o)
+        return o
+
     async def delivered(data, mime, row_id, caption):
         received.append(row_id)
 
@@ -318,22 +326,22 @@ def test_app_only_success_advances_pose_but_failed_delivery_does_not(env):
             bot, tid, 'fashion', 'free', callback,
             data=b'\xff\xd8\xffsynthetic-image', character_id=cid))
 
-    assert resolve().pose_rotation[0] == ps.POSE_POOL[0]
+    assert resolve().pose_rotation[0] == _order()[0]
     with pytest.raises(ps.PhotoAppDeliveryError):
         send(failed)
-    assert resolve().pose_rotation[0] == ps.POSE_POOL[0]
+    assert resolve().pose_rotation[0] == _order()[0]
     for index in (1, 2):
         send(delivered)
-        assert resolve().pose_rotation[0] == ps.POSE_POOL[index]
+        assert resolve().pose_rotation[0] == _order()[index]
     send(delivered, cid=OTHER)
     send(delivered, tid=TG + 1)
-    assert resolve().pose_rotation[0] == ps.POSE_POOL[2]
+    assert resolve().pose_rotation[0] == _order()[2]
     # Telegram replay of the same frame must not count twice.
     ps._attach_delivery_file(received[0], 'synthetic-telegram-file')
-    assert resolve().pose_rotation[0] == ps.POSE_POOL[2]
+    assert resolve().pose_rotation[0] == _order()[2]
     with pytest.raises(ps.PhotoAppDeliveryError):
         send(failed)
-    assert resolve().pose_rotation[0] == ps.POSE_POOL[2]
+    assert resolve().pose_rotation[0] == _order()[2]
 
 
 @pytest.mark.parametrize('scene', sorted(ps.SEEDREAM_ADULT_SCENES | ps.ADULT_SCENES | {'peek', 'dressing'}))

@@ -510,8 +510,7 @@ def _is_admin(telegram_id: int) -> bool:
 
 def _uncensored_block(user_id: int, mode_on: bool) -> str:
     """V3.169: the «Без цензуры» block replaces the romance restraint for an adult who
-    switched the mode on (Premium or the one-time unlock; accounts that had it on
-    before the unlock existed keep it until they switch it off)."""
+    switched the mode on (Premium or the one-time unlock; nobody else keeps it)."""
     try:
         if mode_on and _adult_ok(user_id):
             from services.uncensored_unlock import PROMPT_BLOCK

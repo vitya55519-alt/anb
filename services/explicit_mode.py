@@ -38,7 +38,25 @@ MODE_NAME_EN = 'After Midnight'
 
 
 def is_on(user_row) -> bool:
-    return bool(user_row is not None and getattr(user_row, 'spicy_mode', False))
+    """V3.169.1 (owner): the mode counts as ON only for Premium, a bought unlock
+    or an admin. A stale flag on any other account reads as «Романтика»."""
+    if user_row is None or not getattr(user_row, 'spicy_mode', False):
+        return False
+    try:
+        from config import ADMIN_TELEGRAM_IDS, UNCENSORED_UNLOCK_ENABLED
+        if not UNCENSORED_UNLOCK_ENABLED or getattr(user_row, 'uncensored_unlocked_at', None):
+            return True
+        if int(getattr(user_row, 'telegram_id', 0) or 0) in ADMIN_TELEGRAM_IDS:
+            return True
+        from sqlalchemy import func
+        from models.app_models import Subscription
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        with SessionLocal() as s:
+            return bool(s.scalar(select(func.count()).select_from(Subscription).where(
+                Subscription.user_id == user_row.id, Subscription.status == 'active',
+                Subscription.expires_at > now)))
+    except Exception:
+        return True      # a read error must not strip a paying user's mode
 
 
 def is_on_for(telegram_id: int) -> bool:

@@ -15076,7 +15076,8 @@ async def _webapp_api_spicy(request: web.Request) -> web.Response:
 
     def _set():
         user = get_user(telegram_id)
-        current = bool(getattr(user, 'spicy_mode', False)) if user else False
+        from services import explicit_mode as _em0
+        current = _em0.is_on(user)
         new = current if wanted is None else bool(wanted)
         if new and adult_tap and not is_adult_confirmed(telegram_id):
             set_adult_confirmed(telegram_id, True)

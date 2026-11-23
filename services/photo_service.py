@@ -434,6 +434,21 @@ POSE_POOL = [
     'both hands holding a cup in front of her',
     'fingers lightly touching her chin or cheek',
     'arms loosely crossed with a relaxed confident stance',
+    # V3.169.1 (владелец: «одна и та же поза»): 11 поз на 50 героинь — мало.
+    'laughing candidly, eyes crinkled, head tilted slightly back',
+    'crouching down to tie a lace or pet something at her feet, glancing up at the camera',
+    'sitting sideways on a chair with her forearms on the backrest, chin resting on them',
+    'tucking a strand of hair behind her ear, looking just past the camera with a small smile',
+    'stretching both arms overhead with a happy sleepy expression',
+    'walking toward the camera, mid-laugh, one hand lifting windblown hair from her face',
+    'sitting on the floor against a sofa with knees up, a mug warming her hands',
+    'perched on a windowsill in profile, looking out and then turning her face to the lens',
+    'standing with her weight on one leg, thumbs hooked into her pockets, playful squint',
+    'holding the strap of her bag with one hand, the other waving lightly at the camera',
+    'leaning on her elbows over a table or counter, chin on her hands, a teasing look',
+    'spinning slightly so the hem of her outfit swings, caught mid-turn with a grin',
+    'lying on her stomach on a bed or grass, feet in the air, propped up on her elbows',
+    'adjusting her sleeve or collar while looking down, then glancing up under her lashes',
 ]
 
 # V3.43.4: boudoir posing for the private/intimate scenes only — the everyday
@@ -2952,8 +2967,14 @@ def _ordinary_pose_rotation(telegram_id: int, character_id: str) -> tuple[str, .
             PhotoDelivery.user_id == uid, PhotoDelivery.character_id == character_id,
             telegram_delivered | app_delivered,
         )) or 0
-    start = delivered % len(POSE_POOL)
-    return tuple(POSE_POOL[start:] + POSE_POOL[:start])
+    # V3.169.1: the order used to be the same for every user and every heroine
+    # (start = delivered count), so photo #1 was the same pose across all 50.
+    # A (user, heroine) seeded shuffle gives each pair its own sequence; it is
+    # stable, so poses still do not repeat until the whole pool is used.
+    order = list(POSE_POOL)
+    random.Random(f'{uid}:{character_id}').shuffle(order)
+    start = delivered % len(order)
+    return tuple(order[start:] + order[:start])
 
 
 def _choose_progression_outfits(telegram_id: int, request: PhotoRequest, season: str, *, character_id: str = CHARACTER_ID, ordinary_style: bool | None = None) -> tuple[str, ...]:
