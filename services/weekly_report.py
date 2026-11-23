@@ -101,6 +101,12 @@ def render(d: dict, name_of=lambda cid: cid) -> str:
     def ev(key):
         n, u = d.get(key, (0, 0))
         return f'{n} ({u} чел.)'
+    def ev_sum(*keys):
+        # V3.169: two str results were glued with «+» («47 (9 чел.)0 (0 чел.)»);
+        # people are summed per key (an upper bound — the same man can hit both).
+        n = sum(d.get(k, (0, 0))[0] for k in keys)
+        u = sum(d.get(k, (0, 0))[1] for k in keys)
+        return f'{n} ({u} чел.)'
     lines = [
         f'📈 Неделя в боте (последние {d["days"]} дней)',
         '',
@@ -115,7 +121,7 @@ def render(d: dict, name_of=lambda cid: cid) -> str:
         '',
         '🧪 как работают новинки:',
         f'· голос бесплатно: {ev("speak_free")} · стена голоса: {ev("speak_premium_wall")}',
-        f'· «уснула» (лимит): {ev("chat_limit_wall") + ev("chat_sleep_block")} · месяц −50% показан: {ev("vip_offer_shown")}',
+        f'· «уснула» (лимит): {ev_sum("chat_limit_wall", "chat_sleep_block")} · месяц −50% показан: {ev("vip_offer_shown")}',
         f'· открыли оплату: {ev("webapp_pay_link")} · видели предложение: {ev("paywall_view")}',
         f'· письмо о конце пробника: {ev("trial_followup_sent")}',
         f'· после оплаты: «что открыто» {ev("paid_welcome_sent")} · на след. день {ev("paid_day1_sent")}',

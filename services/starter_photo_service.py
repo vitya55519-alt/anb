@@ -64,6 +64,21 @@ def pick(character_id: str, greeting_id: int) -> int | None:
     return random.choice(rows) if rows else None
 
 
+def pick_any(character_id: str) -> int | None:
+    """V3.169: a stock frame of the same girl from ANY of her scenarios — the $0
+    stand-in when the exact pair has none, instead of a live SpicyAPI render."""
+    try:
+        with SessionLocal() as s:
+            rows = list(s.execute(
+                select(StarterPhotoCache.id).where(
+                    StarterPhotoCache.character_id == character_id,
+                    StarterPhotoCache.photo_bytes.is_not(None))).scalars().all())
+    except Exception:
+        logger.warning('starter cache pick_any failed girl=%s', character_id)
+        return None
+    return random.choice(rows) if rows else None
+
+
 def save(character_id: str, greeting_id: int, photo_bytes: bytes, file_id: str = '') -> int | None:
     """Положить нарисованный кадр в пару; сверх четвёрки не кладём никогда."""
     if not photo_bytes or not character_id or not int(greeting_id):

@@ -255,6 +255,17 @@ def _bot_callback_character(cq: types.CallbackQuery) -> str | None:
 async def app_only_callback(cq: types.CallbackQuery):
     # gift:claim is the daily wallet bonus, not a gift/reaction scene.
     await cq.answer()
+    if str(cq.data or '').startswith('life_reply:'):
+        # V3.169: the tap under her day push IS the reply (it opens her chat).
+        try:
+            def _tap_reply():
+                from services import life_backlog as _lb
+                u = get_user(cq.from_user.id)
+                if u:
+                    _lb.note_replied(u.id, _bot_callback_character(cq) or get_user_character(cq.from_user.id), via='tap')
+            await asyncio.to_thread(_tap_reply)
+        except Exception:
+            pass
     await _redirect_bot_chat(cq.message, cq.from_user, _bot_callback_character(cq))
 
 
@@ -549,9 +560,33 @@ def get_user_character(telegram_id: int) -> str:
     return CHARACTER_ID
 
 
+_selected_noted: set = set()
+
+
+def _note_character_selected(telegram_id: int, character_id: str, source: str) -> None:
+    """V3.169: onboarding_character_selected (once per user) used to be written
+    by only two handlers (the bot's onboarding card and the Mini App «select»
+    POST). A card tap in the catalog that opens the chat, a deep link and a first
+    message all pick a girl without either — 1 selection against 56 catalog
+    opens and 87 writers. Every path that sets or reuses a girl lands here."""
+    if not telegram_id or not character_id or telegram_id in _selected_noted:
+        return
+    try:
+        user = get_user(telegram_id)
+        if user:
+            _track_once(user.id, 'onboarding_character_selected',
+                        {'character_id': character_id, 'source': source})
+            if len(_selected_noted) > 50000:
+                _selected_noted.clear()
+            _selected_noted.add(telegram_id)
+    except Exception:
+        logger.debug('character selected note failed', exc_info=True)
+
+
 def set_user_character(telegram_id: int, character_id: str) -> None:
     """Select a character and persist it so it survives restarts."""
     _user_character[telegram_id] = character_id
+    _note_character_selected(telegram_id, character_id, 'select')
     try:
         update_user_settings(telegram_id, selected_character=character_id)
     except Exception:
@@ -564,6 +599,8 @@ def _remember_character(telegram_id: int, character_id: str) -> None:
     «последнюю активную», а не дефолт — без этой записи они говорили с той,
     кого он последний раз менял в самом боте. Пишем только когда изменилось:
     ходов в день много, а selected_character — обычный UPDATE строки."""
+    if character_id:
+        _note_character_selected(telegram_id, character_id, 'chat')
     if not character_id or get_user_character(telegram_id) == character_id:
         return
     set_user_character(telegram_id, character_id)
@@ -15660,7 +15697,14 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
             return None
         greeting_id = int(offer['greeting_id'])
         cache_id = await asyncio.to_thread(starter_photo_service.pick, character_id, greeting_id)
+        if not cache_id:
+            # V3.169: greeting frames come from the stored stock ($0). Another
+            # scenario of the same girl beats a live render.
+            cache_id = await asyncio.to_thread(starter_photo_service.pick_any, character_id)
         cached = bool(cache_id)  # only ready stock spends the shared pool cap
+        if not cache_id and os.getenv('STARTER_LIVE_RENDER', '0').strip().lower() not in ('1', 'true', 'yes', 'on'):
+            logger.info('starter frame: no stock and live render off girl=%s greeting=%s', character_id, greeting_id)
+            return None
         if not cache_id:
             # V3.167.27: a fresh teaser render is $0.039 that no counter saw. It
             # now spends the same shared daily frame cap, and is skipped (the tap
@@ -15827,6 +15871,15 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         except Exception:
             _gd = False
         track_event(uid, 'webapp_chat_message', metadata={'character_id': character_id, 'girlday': _gd})
+        # V3.169: life_backlog.note_replied was written in V3.167.5 and never
+        # called, so «ответы на её день» stayed 0 for every push. It must run
+        # BEFORE his line lands in the dialogue (the tail of her pushes is
+        # defined as «after his last message»).
+        try:
+            from services import life_backlog as _lb
+            _lb.note_replied(uid, character_id)
+        except Exception:
+            pass
         # V3.51.0: a photo request typed in the Mini App chat used to be answered
         # with text only («держи 📸» and nothing attached) because this endpoint
         # never ran the bot's photo-intent routing (main.py chat handler). Parse it

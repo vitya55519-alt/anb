@@ -949,6 +949,23 @@ def _free_source_blocked() -> bool:
 
 async def _spicyapi_render(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private', *,
                            return_url: bool = False, breaker: bool = True):
+    """V3.169: a caller that set no source (a $0.036 row showed up as 'unlabeled')
+    is labeled 'private_photo' for this call only. An explicit label — greeting,
+    her_day, chat_free (free sources, which the free-photo budget and cap count) —
+    is never overridden."""
+    token = None
+    if spend_service.current_spend_source() == 'unlabeled':
+        token = spend_service._spend_source.set('private_photo')
+    try:
+        return await _spicyapi_render_labeled(model, prompt, image_urls, scene,
+                                              return_url=return_url, breaker=breaker)
+    finally:
+        if token is not None:
+            spend_service._spend_source.reset(token)
+
+
+async def _spicyapi_render_labeled(model: str, prompt: str, image_urls: Optional[List[str]], scene: str = 'private', *,
+                                   return_url: bool = False, breaker: bool = True):
     """Breaker-guarded entry point; see ``_spicyapi_render_once`` for the flow.
 
     V3.61.12: ``breaker=False`` (a button the user pressed and waits on, like

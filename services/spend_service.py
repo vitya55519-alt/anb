@@ -56,7 +56,7 @@ _spend_user: ContextVar[int] = ContextVar('spend_user', default=0)
 # V3.167.27: who asked for the image. Every ledger row carries it as a
 # «source:» prefix of ``scene`` so the admin sees who burns the image budget.
 SPEND_SOURCES = ('chat_paid', 'chat_free', 'greeting', 'her_day', 'constructor', 'admin', 'undress',
-                 'hot_circle', 'scenario_cover', 'video', 'voice', 'studio', 'gift', 'unlabeled')
+                 'private_photo', 'hot_circle', 'scenario_cover', 'video', 'voice', 'studio', 'gift', 'unlabeled')
 FREE_SPEND_SOURCES = ('chat_free', 'greeting', 'her_day')
 _spend_source: ContextVar[str] = ContextVar('spend_source', default='unlabeled')
 
