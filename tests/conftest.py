@@ -14,3 +14,16 @@ def _her_day_llm_path(request, monkeypatch):
         except Exception:
             pass
     yield
+
+
+@_pytest.fixture(autouse=True)
+def _uncensored_gate_off_for_legacy(request, monkeypatch):
+    """V3.169.1: the mode now needs Premium or the unlock. Older tests that set
+    the flag on a plain account predate that and run with the gate off."""
+    if request.node.fspath.basename != 'test_v36901_uncensored_and_fixes.py':
+        try:
+            import config
+            monkeypatch.setattr(config, 'UNCENSORED_UNLOCK_ENABLED', False)
+        except Exception:
+            pass
+    yield

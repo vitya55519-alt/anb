@@ -72,7 +72,8 @@ def is_unlocked(user_row) -> bool:
 def entitled(user_row, premium: bool) -> bool:
     """Premium has the mode included; the rest need the one-time unlock. The
     whole gate is off with UNCENSORED_UNLOCK_ENABLED=0."""
-    if not UNCENSORED_UNLOCK_ENABLED:
+    import config
+    if not config.UNCENSORED_UNLOCK_ENABLED:
         return True
     return bool(premium) or is_unlocked(user_row)
 
