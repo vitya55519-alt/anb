@@ -86,3 +86,69 @@ def test_private_photo_unlabeled_gets_private_tag():
     assert 'private_photo' in ss.SPEND_SOURCES
     import pathlib
     assert '_spicyapi_render_labeled' in pathlib.Path('services/private_photo_service.py').read_text()
+
+
+# ── «Без цензуры» ────────────────────────────────────────────────────────────
+def test_unlock_prices_are_env_driven_and_default_50():
+    import config
+    assert config.UNCENSORED_UNLOCK_RUB == 50 and config.UNCENSORED_UNLOCK_STARS == 50
+
+
+def test_entitlement_premium_or_unlocked_only():
+    from services import uncensored_unlock as uu
+    user = type('U', (), {'uncensored_unlocked_at': None})()
+    assert not uu.entitled(user, premium=False)
+    assert uu.entitled(user, premium=True)
+    user.uncensored_unlocked_at = datetime(2026, 1, 1)
+    assert uu.entitled(user, premium=False)
+
+
+def test_payment_unlocks_once_and_counts_rub_and_stars_apart():
+    from services.payments import record_payment
+    from models.app_models import ProductEvent
+    uid, tg = _user()
+    record_payment(tg, 'uncensored_unlock', 0, f'platega:u{uid}', provider='platega',
+                   provider_payload='amount=50')
+    record_payment(tg, 'uncensored_unlock', 0, f'platega:u{uid}', provider='platega',
+                   provider_payload='amount=50')          # duplicate webhook
+    with SessionLocal() as s:
+        assert s.get(User, uid).uncensored_unlocked_at is not None
+        rows = s.query(ProductEvent).filter_by(user_id=uid, event_name='uncensored_bought').all()
+    assert len(rows) == 1 and '"currency": "RUB"' in rows[0].metadata_json
+    uid2, tg2 = _user()
+    record_payment(tg2, 'uncensored_unlock', 50, f'stars:u{uid2}')
+    with SessionLocal() as s:
+        row = s.query(ProductEvent).filter_by(user_id=uid2, event_name='uncensored_bought').one()
+    assert '"currency": "XTR"' in row.metadata_json
+
+
+def test_prompt_block_after_character_and_style_tail_last():
+    from services import character_service as cs
+    from services.uncensored_unlock import PROMPT_BLOCK
+    ch = {'name': 'Анна', 'age': 26, 'personality': {}}
+    p = cs.build_system_prompt(ch, 'rel', [], user_name='И', uncensored_block=PROMPT_BLOCK)
+    assert p.index('ХАРАКТЕР') < p.index('[РЕЖИМ: БЕЗ ЦЕНЗУРЫ (18+)') < p.index('ГЛАВНОЕ ПРАВИЛО')
+    assert 'только взрослые' in PROMPT_BLOCK            # the hard limits stay in the mode
+    plain = cs.build_system_prompt(ch, 'rel', [], user_name='И')
+    assert '[РЕЖИМ: БЕЗ ЦЕНЗУРЫ' not in plain
+    for text in (p, plain):
+        assert text.rstrip().endswith('но никогда не предлагай купить фото напрямую.')
+        assert text.index('[СТИЛЬ И РИТМ ПЕРЕПИСКИ]') < text.index('[ПАМЯТЬ И ЭМОЦИОНАЛЬНАЯ ИНЕРЦИЯ]') \
+            < text.index('[ПРИСУТСТВИЕ В МОМЕНТЕ]')
+
+
+def test_wiring_of_the_unlock():
+    import pathlib
+    main = pathlib.Path('main.py').read_text()
+    assert "payload=='uncensored_unlock'" in main and "payload == 'uncensored_unlock'" in main
+    assert "'uncensored_unlock': 'uncensored_unlock'" in main
+    assert 'uncensored_checkout' in main and "error': 'uncensored_locked'" in main
+    assert 'uncensored_hint' in main
+    from services import webapp_service
+    ids = [p['id'] for p in webapp_service.api_invoice_products('ru')]
+    assert 'uncensored_unlock' in ids
+    rpt = pathlib.Path('services/weekly_report.py').read_text()
+    assert 'uncensored_offer_shown' in rpt and 'uncensored_bought' in rpt
+    assert 'Ну наконец-то ты убрал эти дурацкие рамки' in pathlib.Path('services/uncensored_unlock.py').read_text()
+    html = pathlib.Path('webapp/index.html').read_text()
+    assert 'unlockSheet' in html and 'Режим «Без цензуры» — сними все запреты' in html

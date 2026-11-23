@@ -68,8 +68,19 @@ def collect(days: int = 7) -> dict:
                     'trial_followup_sent', 'morning_callback_sent', 'first_minutes_nudge_sent',
                     'paywall_view', 'webapp_pay_link', 'referral_qualified', 'daily_mission_claimed',
                     'paid_welcome_sent', 'paid_day1_sent', 'renewal_care_sent', 'memory_gift_used',
-                    'adult_nudge_sent', 'starter_pack_bought', 'starter_pack_checkout', 'onboarding_catalog_opened', 'onboarding_character_selected'):
+                    'adult_nudge_sent', 'starter_pack_bought', 'starter_pack_checkout', 'onboarding_catalog_opened', 'onboarding_character_selected',
+                    'uncensored_offer_shown', 'uncensored_checkout'):
             out[key] = _events(s, since, key)
+        # V3.169: «Без цензуры» funnel — purchases split by currency
+        out['uncensored_bought'] = {'RUB': (0, 0), 'XTR': (0, 0)}
+        for cur in ('RUB', 'XTR'):
+            n = int(s.scalar(select(func.count(ProductEvent.id)).where(
+                ProductEvent.created_at >= since, ProductEvent.event_name == 'uncensored_bought',
+                ProductEvent.metadata_json.like(f'%"currency": "{cur}"%'))) or 0)
+            u = int(s.scalar(select(func.count(func.distinct(ProductEvent.user_id))).where(
+                ProductEvent.created_at >= since, ProductEvent.event_name == 'uncensored_bought',
+                ProductEvent.metadata_json.like(f'%"currency": "{cur}"%'))) or 0)
+            out['uncensored_bought'][cur] = (n, u)
         out['girlday_msgs'] = int(s.scalar(select(func.count(ProductEvent.id)).where(
             ProductEvent.created_at >= since, ProductEvent.event_name == 'webapp_chat_message',
             ProductEvent.metadata_json.like('%"girlday": true%'))) or 0)
@@ -130,6 +141,9 @@ def render(d: dict, name_of=lambda cid: cid) -> str:
         f'· утро про вчерашний разговор: {ev("morning_callback_sent")}',
         f'· дожим в первые минуты: {ev("first_minutes_nudge_sent")}',
         f'· стартовый пак 15 ⭐: счетов {ev("starter_pack_checkout")} · куплен {ev("starter_pack_bought")}',
+        f'· «Без цензуры»: показ карточки {ev("uncensored_offer_shown")} · счетов {ev("uncensored_checkout")} · '
+        f'куплено {d.get("uncensored_bought", {}).get("RUB", (0, 0))[0]} ₽ ({d.get("uncensored_bought", {}).get("RUB", (0, 0))[1]} чел.) / '
+        f'{d.get("uncensored_bought", {}).get("XTR", (0, 0))[0]} ⭐ ({d.get("uncensored_bought", {}).get("XTR", (0, 0))[1]} чел.)',
         f'· дожим через 90 с после 18+: {ev("adult_nudge_sent")}',
         f'· воронка: каталог открыт {ev("onboarding_catalog_opened")} · героиня выбрана {ev("onboarding_character_selected")}',
         f'· Девушка дня: {d["girlday_msgs"]} сообщений в приложении',

@@ -527,6 +527,23 @@
   }
   #modeScreen.open { display: flex; }
   /* V3.167.21: 18+ confirmation sheet shown when he picks the 18+ mode. */
+  #unlockSheet {
+    position: fixed; inset: 0; z-index: 61; display: none;
+    align-items: flex-end; justify-content: center; background: rgba(10,5,14,.7);
+  }
+  #unlockSheet.open { display: flex; }
+  #unlockSheet .box {
+    width: min(420px, 100vw); max-height: 100vh; overflow: hidden; background: var(--card);
+    border-radius: 20px 20px 0 0; padding: 18px 16px 18px; text-align: left;
+  }
+  #unlockSheet h3 { margin: 0 0 6px; font-size: 17px; line-height: 1.25; color: var(--text); }
+  #unlockSheet .lead { margin: 0 0 8px; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+  #unlockSheet ul { margin: 0 0 12px; padding: 0 0 0 16px; font-size: 12.5px; color: var(--text); line-height: 1.4; }
+  #unlockSheet li { margin-bottom: 4px; }
+  #unlockSheet button { width: 100%; border: 0; border-radius: 14px; padding: 13px; font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 7px; }
+  #unlockSheet .rub { background: var(--accent); color: #fff; }
+  #unlockSheet .stars { background: var(--card2); color: var(--text); }
+  #unlockSheet .no { background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; margin-bottom: 0; padding: 8px; }
   #ageGate {
     position: fixed; inset: 0; z-index: 60; display: none;
     align-items: flex-end; justify-content: center; background: rgba(10,5,14,.7);
@@ -1567,6 +1584,17 @@
      writes the account flag at once and takes him to the heroines. There is no
      other switch: the Settings row, the main-screen banner, the bot tile and
      the «Честно о нас» card are all gone. -->
+<!-- V3.169: «Без цензуры» one-time unlock card. One screen, no scroll. -->
+<div id="unlockSheet">
+  <div class="box">
+    <h3 id="ulTitle"></h3>
+    <p class="lead" id="ulLead"></p>
+    <ul id="ulBullets"></ul>
+    <button class="rub" id="ulRub" type="button"></button>
+    <button class="stars" id="ulStars" type="button"></button>
+    <button class="no" id="ulNo" type="button"></button>
+  </div>
+</div>
 <div id="ageGate">
   <div class="box">
     <div class="emo">🔞</div>
@@ -5595,6 +5623,14 @@ function insertChatReply(j, chatId) {
   // V3.166.2: the thin line about today's account ceiling (both modes). The
   // server counts the turn and writes the line; on the last message of the day
   // the note carries the way out — her card, the same as the wall.
+  // V3.169: soft «Без цензуры» hint (≤1 per session, server decides)
+  if (j.uncensored_hint) {
+    const T = UNLOCK_T[LANG === 'ru' ? 'ru' : 'en'];
+    box.insertAdjacentHTML('beforeend', '<div class="modenote">' + esc(LANG === 'ru' ? 'Хочешь без стеснения? Открой режим «Без цензуры».' : 'Want it without the shyness? Unlock Uncensored mode.') +
+      '<button type="button" class="mn-b ul-b">' + esc(T.rub.replace('{rub}', j.uncensored_hint.rub).replace('{stars}', j.uncensored_hint.stars).replace(' ₽', ' ₽')) + '</button></div>');
+    const ub = box.lastElementChild.querySelector('.ul-b');
+    if (ub) ub.addEventListener('click', () => openUnlockSheet(j.uncensored_hint, 'chat_hint'));
+  }
   if (j.chat_hint && (j.chat_hint.text || '').trim()) {
     const h = j.chat_hint;
     box.insertAdjacentHTML('beforeend', '<div class="modenote">' + esc(h.text) +
@@ -8785,6 +8821,51 @@ function openModeScreen() {
   });
   document.getElementById('modeScreen').classList.add('open');
 }
+// V3.169: «Без цензуры» is a one-time purchase (Premium has it included).
+const UNLOCK_T = {
+  ru: {
+    title: '🔥 Режим «Без цензуры» — сними все запреты',
+    lead: 'В «Романтике» она милая и скромная. Но стоит выключить фильтры — и она перестаёт стесняться, подбирать слова и прятать свои желания.',
+    bullets: [
+      'Никаких «я стесняюсь» и стоп-слов — отвечает прямо, смело и без цензуры',
+      'Любые твои сценарии и фантазии — подхватывает игру, а не уходит от темы',
+      'Жаркий флирт и откровенные признания — говорит так, как не скажет в обычном чате',
+      'Открывается навсегда — один раз за {rub} ₽ / {stars} ⭐️, без подписок'],
+    rub: '🔓 Открыть за {rub} ₽', stars: '⭐️ Открыть за {stars} ⭐️', no: 'Остаться в «Романтике»' },
+  en: {
+    title: '🔥 Uncensored mode — drop every limit',
+    lead: 'In Romance she is sweet and shy. Switch the filters off and she stops hesitating, picking her words and hiding what she wants.',
+    bullets: [
+      'No «I am shy» and no stop-words — she answers directly, boldly, uncensored',
+      'Any scenario and fantasy of yours — she plays along instead of changing the subject',
+      'Hot flirting and frank confessions — the way she would never say it in a regular chat',
+      'Unlocked for good — one payment of {stars} ⭐️, no subscriptions'],
+    rub: '🔓 Unlock for {rub} ₽', stars: '⭐️ Unlock for {stars} ⭐️', no: 'Stay in Romance' },
+};
+function openUnlockSheet(p, source) {
+  return new Promise(res => {
+    p = p || {};
+    const rub = p.rub || (ME && ME.uncensored_rub) || 50;
+    const stars = p.stars || (ME && ME.uncensored_stars) || 50;
+    const T = UNLOCK_T[LANG === 'ru' ? 'ru' : 'en'];
+    const f = s => s.replace('{rub}', rub).replace('{stars}', stars);
+    const sheet = document.getElementById('unlockSheet');
+    document.getElementById('ulTitle').textContent = T.title;
+    document.getElementById('ulLead').textContent = T.lead;
+    document.getElementById('ulBullets').innerHTML = T.bullets.map(b => '<li>' + esc(f(b)) + '</li>').join('');
+    const bRub = document.getElementById('ulRub'), bSt = document.getElementById('ulStars'), bNo = document.getElementById('ulNo');
+    bRub.textContent = f(T.rub); bSt.textContent = f(T.stars); bNo.textContent = T.no;
+    const rubOk = LANG === 'ru' && p.platega !== false;
+    bRub.style.display = rubOk ? '' : 'none';
+    const close = v => { sheet.classList.remove('open'); bRub.onclick = bSt.onclick = bNo.onclick = null; res(v); };
+    // paid: switch the mode on (the server also turns it on) and tell the caller
+    const paid = async () => { close(true); await loadMe(); };
+    bSt.onclick = () => { sheet.classList.remove('open'); buy('uncensored_unlock', bSt, {}, paid); res(false); };
+    bRub.onclick = () => { payVia('uncensored_unlock', 'sbp', bRub, {}, null, false); sheet.classList.remove('open'); res(false); };
+    bNo.onclick = () => close(false);
+    sheet.classList.add('open');
+  });
+}
 function askAdult() {
   return new Promise(res => {
     const g = document.getElementById('ageGate');
@@ -8797,12 +8878,14 @@ function askAdult() {
     g.classList.add('open');
   });
 }
+let UNLOCK_P = null;
 async function postMode(on, adultConfirm) {
   const r = await fetch('/webapp/api/spicy?init_data=' + encodeURIComponent(tg.initData || ''), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(adultConfirm ? { spicy: !!on, adult_confirm: true } : { spicy: !!on }),
   });
   if (r.status === 403) return 'adult';
+  if (r.status === 402) { UNLOCK_P = await r.json().catch(() => ({})); return 'locked'; }
   const j = await r.json().catch(() => ({}));
   if (ME && typeof j.spicy_mode === 'boolean') ME.spicy_mode = j.spicy_mode;
   return 'ok';
@@ -8815,6 +8898,14 @@ async function chooseMode(on) {
   // writes adult_confirmed on the server together with the mode.
   try {
     let res = await postMode(on, false);
+    if (res === 'locked') {
+      // V3.169: Premium or the one-time unlock; the card has both payment buttons.
+      if (ME) ME.spicy_mode = prev;
+      document.querySelectorAll('#msCards .modecard').forEach(b =>
+        b.classList.toggle('on', (b.dataset.mode === '1') === prev));
+      await openUnlockSheet(UNLOCK_P, 'mode');
+      return;  // stay on the mode screen; a paid unlock switches the mode on server-side
+    }
     if (res === 'adult') {
       if (await askAdult()) res = await postMode(on, true);
       if (res !== 'ok') {

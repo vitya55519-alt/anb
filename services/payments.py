@@ -99,6 +99,10 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
         elif product == "undress_one":
             # V3.132.0: one «Раздеть» bought on its own (committed below with the ledger row).
             pass
+        elif product == "uncensored_unlock":
+            # V3.169: «Без цензуры» for good — granted in the same commit as the ledger row.
+            if not user.uncensored_unlocked_at:
+                user.uncensored_unlocked_at = now
         elif product in {"photo","custom_photo"}:
             # V3.65.0: one photo credit is PEACH_SCALE peaches now.
             user.photo_credits=_credits_plus(PEACH_SCALE)
@@ -128,6 +132,20 @@ def record_payment(telegram_id:int, product:str, stars:int, charge_id:str, provi
             track_event(payer_user_id, 'starter_pack_bought', value=stars, metadata={'provider': provider})
         except Exception:
             logger.debug('starter pack event failed', exc_info=True)
+    if product == "uncensored_unlock":
+        try:
+            from services.analytics_service import track_event
+            _rub = None
+            if provider == 'platega':
+                import re as _re
+                _m = _re.search(r'amount=([0-9.]+)', provider_payload or '')
+                _rub = float(_m.group(1)) if _m else None
+            track_event(payer_user_id, 'uncensored_bought',
+                        value=float(stars or 0) if provider != 'platega' else float(_rub or 0),
+                        metadata={'provider': provider,
+                                  'currency': 'RUB' if provider == 'platega' else 'XTR'})
+        except Exception:
+            logger.debug('uncensored bought event failed', exc_info=True)
     if product == "undress_one":
         from services import undress_credits
         undress_credits.add(telegram_id, 1)
