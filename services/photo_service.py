@@ -1442,6 +1442,9 @@ BODY_SPECS = {
     'amira_01': 'a curvy hourglass build with a slim waist, very wide hips, a large round butt and large, full, round and firm augmented silicone breasts',
     'ayla_01': 'a very curvy toned hourglass build with a slim fit waist, wide round hips, toned thighs, a round firm lifted athletic gym-toned butt and a full natural bust (D cup)',
     'priya_01': 'a very curvy toned hourglass build with a slim fit waist, wide round hips, toned thighs, a round firm lifted athletic gym-toned butt and a large full natural bust (E cup)',
+    'alina_01': 'a soft feminine hourglass build with a narrow waist, gentle round hips and a natural medium bust (Russian size 3, C cup)',
+    'lilit_01': 'a curvy feminine hourglass build with a narrow waist, round hips and a full natural-looking bust (Russian size 4, D cup)',
+    'regina_01': 'a very curvy hourglass build with a narrow waist, wide round hips and a full natural-looking bust (Russian size 5, E cup)',
 }
 DEFAULT_FEMALE_BODY_SPEC = (
     'a curvy feminine hourglass build with a wasp waist, round lifted hips '
