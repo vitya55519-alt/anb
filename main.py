@@ -255,7 +255,7 @@ def _bot_callback_character(cq: types.CallbackQuery) -> str | None:
 async def app_only_callback(cq: types.CallbackQuery):
     # gift:claim is the daily wallet bonus, not a gift/reaction scene.
     await cq.answer()
-    if str(cq.data or '').startswith('life_reply:'):
+    if str(getattr(cq, 'data', '') or '').startswith('life_reply:'):
         # V3.169: the tap under her day push IS the reply (it opens her chat).
         try:
             def _tap_reply():
@@ -6954,6 +6954,22 @@ def _uncensored_hint_due(telegram_id: int) -> bool:
     if len(_uncensored_hint_seen) > 50000:
         _uncensored_hint_seen.clear()
     return _time.time() - _uncensored_hint_seen.get(telegram_id, 0) > 6 * 3600
+
+
+async def _uncensored_hint(telegram_id: int, text: str):
+    """Prices for the soft hint when a Romance user asks for something explicit."""
+    try:
+        from services import intimacy_gate as _ig, explicit_mode as _xm2, uncensored_unlock as _uu
+        if (_ig.wants_sext(text) and _uncensored_hint_due(telegram_id)
+                and not await asyncio.to_thread(_xm2.is_on_for, telegram_id)
+                and not await asyncio.to_thread(_uu.entitled_for, telegram_id)
+                and await asyncio.to_thread(is_adult_confirmed, telegram_id)):
+            _uncensored_hint_seen[telegram_id] = _time.time()
+            await asyncio.to_thread(_uu.offer_payload, telegram_id, 'chat_hint')
+            return _uu.prices()
+    except Exception:
+        logger.warning('uncensored hint failed user=%s', telegram_id, exc_info=True)
+    return None
 
 
 async def _after_uncensored_paid(telegram_id: int) -> None:
@@ -16312,19 +16328,10 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                 payload['sext_offer'] = True
         except Exception:
             logger.warning('sext offer failed user=%s', telegram_id, exc_info=True)
-    # V3.169: the soft «Без цензуры» hint — an explicit ask in «Романтика» from
-    # someone who has not unlocked the mode; at most once per session (6 h).
-    try:
-        from services import intimacy_gate as _ig, explicit_mode as _xm2, uncensored_unlock as _uu
-        if (_ig.wants_sext(text) and _uncensored_hint_due(telegram_id)
-                and not await asyncio.to_thread(_xm2.is_on_for, telegram_id)
-                and not await asyncio.to_thread(_uu.entitled_for, telegram_id)
-                and await asyncio.to_thread(is_adult_confirmed, telegram_id)):
-            _uncensored_hint_seen[telegram_id] = _time.time()
-            await asyncio.to_thread(_uu.offer_payload, telegram_id, 'chat_hint')
-            payload['uncensored_hint'] = _uu.prices()
-    except Exception:
-        logger.warning('uncensored hint failed user=%s', telegram_id, exc_info=True)
+    # V3.169: soft hint for the one-time mode purchase (helper keeps this turn lean).
+    _hint = await _uncensored_hint(telegram_id, text)
+    if _hint:
+        payload['uncensored_hint'] = _hint
     # V3.166.2: the thin line under her answer — today's account ceiling (both
     # modes, both platforms). reply() already burned the turn; the app reads the
     # event once ('осталось N' / the wall she hit).
