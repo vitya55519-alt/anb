@@ -3346,7 +3346,9 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     card_scene = scene_card_service.scene_for(telegram_id, character_id)
     if request.customized and request.location:
         location = request.location
-    elif card_scene:
+    elif card_scene and request.scene in ('selfie', '', None):
+        # V3.171.1: a place button (park, beach, ...) is her explicit pick; a
+        # leftover chat scene card must not swap it for a kitchen.
         location = f'PLACE FROM HER MESSAGE: {card_scene}'
     elif request.location:
         location = request.location
