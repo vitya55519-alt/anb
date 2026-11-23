@@ -508,6 +508,19 @@ def _is_admin(telegram_id: int) -> bool:
         return False
 
 
+def _uncensored_block(user_id: int, mode_on: bool) -> str:
+    """V3.169: the «Без цензуры» block replaces the romance restraint for an adult who
+    switched the mode on (Premium or the one-time unlock; accounts that had it on
+    before the unlock existed keep it until they switch it off)."""
+    try:
+        if mode_on and _adult_ok(user_id):
+            from services.uncensored_unlock import PROMPT_BLOCK
+            return PROMPT_BLOCK
+    except Exception:
+        pass
+    return ''
+
+
 def _adult_ok(telegram_id: int) -> bool:
     try:
         from services.user_service import is_adult_confirmed
@@ -1007,6 +1020,7 @@ async def reply(user_id: int, user_name: str, user_text: str, language_code: str
         anchors=anchors,
         explicit_mode=bool(mode_on and _adult_ok(user_id)),
         spicy_level=spicy_confidence.current_level(user_id, character_id),
+        uncensored_block=_uncensored_block(user_id, mode_on),
     )
     messages = [{"role": "system", "content": system}]
     # V3.167.9: её запасные фразы в промпт не идут — в них диалог и застревал.

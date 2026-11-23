@@ -623,6 +623,11 @@ PLATEGA_PREMIUM_TRIAL_PRICE_RUB = max(1, int(os.getenv("PLATEGA_PREMIUM_TRIAL_PR
 # V3.132.0: owner — «раздеть можно и за 50 руб»: one «Раздеть» bought on its
 # own, without Premium (an impulse buy for men not ready for a plan).
 # Cost per render ≈ 3.6 ₽, so 50 ₽ (≈ 45 ₽ after fees) never loses money.
+# V3.169: «Без цензуры» (the 18+ mode) is a one-time purchase per account; Premium has it
+# included. Romance stays free. The ruble price goes through Platega, the other is Stars.
+UNCENSORED_UNLOCK_ENABLED = os.getenv("UNCENSORED_UNLOCK_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
+UNCENSORED_UNLOCK_RUB = max(1, int(os.getenv("UNCENSORED_UNLOCK_RUB", "50")))
+UNCENSORED_UNLOCK_STARS = max(1, int(os.getenv("UNCENSORED_UNLOCK_STARS", "50")))
 UNDRESS_ONE_ENABLED = os.getenv("UNDRESS_ONE_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
 UNDRESS_ONE_PRICE_RUB = max(1, int(os.getenv("UNDRESS_ONE_PRICE_RUB", "50")))
 UNDRESS_ONE_STARS = max(1, int(os.getenv("UNDRESS_ONE_STARS", "40")))

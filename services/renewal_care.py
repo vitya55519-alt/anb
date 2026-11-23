@@ -70,9 +70,17 @@ def candidates(now: datetime | None = None) -> list[tuple[int, int, str, str, st
                 Subscription.user_id == uid, Subscription.status == 'active'))
             if later and later > end:
                 continue
+            # V3.169: the ending subscription must be one he PAID for — a Stars or a
+            # Platega (card / SBP, provider='platega', stars=0) purchase. An admin
+            # grant ends without a payment, whatever he bought before it.
+            end_charge = s.scalar(select(Subscription.telegram_charge_id).where(
+                Subscription.user_id == uid, Subscription.expires_at == end).limit(1)) or ''
+            if str(end_charge).startswith('admin_grant'):
+                continue
             product = s.scalar(select(StarTransaction.product).where(
                 StarTransaction.user_id == uid, StarTransaction.transaction_type == 'purchase',
-                StarTransaction.product.like('premium%')).order_by(StarTransaction.created_at.desc()).limit(1))
+                StarTransaction.product.like('premium%'),
+                func.coalesce(StarTransaction.provider, 'stars') != 'manual').order_by(StarTransaction.created_at.desc()).limit(1))
             if product not in PRODUCTS:
                 continue  # the trial has its own goodbye; admin grants get none
             if now < end:

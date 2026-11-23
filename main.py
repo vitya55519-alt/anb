@@ -255,6 +255,17 @@ def _bot_callback_character(cq: types.CallbackQuery) -> str | None:
 async def app_only_callback(cq: types.CallbackQuery):
     # gift:claim is the daily wallet bonus, not a gift/reaction scene.
     await cq.answer()
+    if str(getattr(cq, 'data', '') or '').startswith('life_reply:'):
+        # V3.169: the tap under her day push IS the reply (it opens her chat).
+        try:
+            def _tap_reply():
+                from services import life_backlog as _lb
+                u = get_user(cq.from_user.id)
+                if u:
+                    _lb.note_replied(u.id, _bot_callback_character(cq) or get_user_character(cq.from_user.id), via='tap')
+            await asyncio.to_thread(_tap_reply)
+        except Exception:
+            pass
     await _redirect_bot_chat(cq.message, cq.from_user, _bot_callback_character(cq))
 
 
@@ -549,9 +560,33 @@ def get_user_character(telegram_id: int) -> str:
     return CHARACTER_ID
 
 
+_selected_noted: set = set()
+
+
+def _note_character_selected(telegram_id: int, character_id: str, source: str) -> None:
+    """V3.169: onboarding_character_selected (once per user) used to be written
+    by only two handlers (the bot's onboarding card and the Mini App «select»
+    POST). A card tap in the catalog that opens the chat, a deep link and a first
+    message all pick a girl without either — 1 selection against 56 catalog
+    opens and 87 writers. Every path that sets or reuses a girl lands here."""
+    if not telegram_id or not character_id or telegram_id in _selected_noted:
+        return
+    try:
+        user = get_user(telegram_id)
+        if user:
+            _track_once(user.id, 'onboarding_character_selected',
+                        {'character_id': character_id, 'source': source})
+            if len(_selected_noted) > 50000:
+                _selected_noted.clear()
+            _selected_noted.add(telegram_id)
+    except Exception:
+        logger.debug('character selected note failed', exc_info=True)
+
+
 def set_user_character(telegram_id: int, character_id: str) -> None:
     """Select a character and persist it so it survives restarts."""
     _user_character[telegram_id] = character_id
+    _note_character_selected(telegram_id, character_id, 'select')
     try:
         update_user_settings(telegram_id, selected_character=character_id)
     except Exception:
@@ -564,6 +599,8 @@ def _remember_character(telegram_id: int, character_id: str) -> None:
     «последнюю активную», а не дефолт — без этой записи они говорили с той,
     кого он последний раз менял в самом боте. Пишем только когда изменилось:
     ходов в день много, а selected_character — обычный UPDATE строки."""
+    if character_id:
+        _note_character_selected(telegram_id, character_id, 'chat')
     if not character_id or get_user_character(telegram_id) == character_id:
         return
     set_user_character(telegram_id, character_id)
@@ -6909,6 +6946,50 @@ async def first_offer_open_cb(cq: types.CallbackQuery):
     await cq.message.answer(premium_pitch_text(cq.from_user.id), reply_markup=premium_keyboard(discount_info(cq.from_user.id), telegram_id=cq.from_user.id))
 
 
+_uncensored_hint_seen: dict = {}
+
+
+def _uncensored_hint_due(telegram_id: int) -> bool:
+    """One hint per session: a session is 6 hours of silence about it."""
+    if len(_uncensored_hint_seen) > 50000:
+        _uncensored_hint_seen.clear()
+    return _time.time() - _uncensored_hint_seen.get(telegram_id, 0) > 6 * 3600
+
+
+async def _uncensored_hint(telegram_id: int, text: str):
+    """Prices for the soft hint when a Romance user asks for something explicit."""
+    try:
+        from services import intimacy_gate as _ig, explicit_mode as _xm2, uncensored_unlock as _uu
+        if (_ig.wants_sext(text) and _uncensored_hint_due(telegram_id)
+                and not await asyncio.to_thread(_xm2.is_on_for, telegram_id)
+                and not await asyncio.to_thread(_uu.entitled_for, telegram_id)
+                and await asyncio.to_thread(is_adult_confirmed, telegram_id)):
+            _uncensored_hint_seen[telegram_id] = _time.time()
+            await asyncio.to_thread(_uu.offer_payload, telegram_id, 'chat_hint')
+            return _uu.prices()
+    except Exception:
+        logger.warning('uncensored hint failed user=%s', telegram_id, exc_info=True)
+    return None
+
+
+async def _after_uncensored_paid(telegram_id: int) -> None:
+    """V3.169: the second the payment is confirmed (Stars or Platega webhook) the
+    current heroine writes first — into the Mini App dialog and into the bot chat."""
+    try:
+        from services import uncensored_unlock
+        uid = await asyncio.to_thread(ensure_user, telegram_id)
+        # the mode turns on with the purchase: he paid to switch it on
+        if await asyncio.to_thread(is_adult_confirmed, telegram_id):
+            from services import explicit_mode
+            await asyncio.to_thread(explicit_mode.set_mode, telegram_id, True)
+        character_id = await asyncio.to_thread(get_user_character, telegram_id)
+        text = uncensored_unlock.PAID_LINE_RU
+        await asyncio.to_thread(save_message, uid, character_id, 'assistant', text, origin='uncensored_unlock')
+        await bot.send_message(telegram_id, text)
+    except Exception:
+        logger.exception('uncensored paid line failed user=%s', telegram_id)
+
+
 def _platega_amount_for(product: str) -> int:
     """V3.44.21: price lookup behind the platega: callback buttons."""
     if product == 'premium_month':
@@ -6923,6 +7004,10 @@ def _platega_amount_for(product: str) -> int:
         # V3.97.0: the one-time −50% month (platega_pay re-checks the window).
         from services import vip_offer
         return vip_offer.VIP_RUB
+    if product == 'uncensored_unlock':
+        # V3.169: «Без цензуры» for good.
+        from config import UNCENSORED_UNLOCK_RUB
+        return UNCENSORED_UNLOCK_RUB
     if product == 'premium_quarter':
         # V3.43.0: the 3-month plan is card/SBP-purchasable too.
         return PLATEGA_PREMIUM_QUARTERLY_PRICE_RUB
@@ -7277,6 +7362,9 @@ async def platega_pay(cq: types.CallbackQuery):
             await cq.answer('это предложение уже закончилось 💗', show_alert=True); return
     if product == 'starter_pack' and not starter_pack_eligible(cq.from_user.id):
         await cq.answer('the starter pack is already used' if _en else 'стартовый пак уже использован', show_alert=True); return
+    if product == 'uncensored_unlock':
+        await asyncio.to_thread(track_event, ensure_user(cq.from_user.id), 'uncensored_checkout',
+                                metadata={'method': 'platega', 'source': 'bot'})
     amount = _platega_amount_for(product)
     await cq.answer('creating the invoice…' if _en else 'создаю счёт…')
     order_id = platega_service.create_order(cq.from_user.id, product, str(amount))
@@ -7306,6 +7394,8 @@ async def platega_pay(cq: types.CallbackQuery):
     elif product == 'premium_quarter':
         # V3.43.0: the 3-month card/SBP invoice.
         title = f'💳 Premium на 3 месяца — {amount} ₽'
+    elif product == 'uncensored_unlock':
+        title = f'🔓 Режим «Без цензуры» — {amount} ₽'
     elif product == 'constructor_rub':
         title = f'🎭 Персонаж — {amount} ₽'
     elif product == 'photo':
@@ -8107,6 +8197,10 @@ async def pre_checkout(query: types.PreCheckoutQuery):
     elif payload=='photo_pack':
         # V3.34.0: standalone +1 photo credit purchased from the Mini App shop.
         ok=amount==PHOTO_COST_STARS
+    elif payload=='uncensored_unlock':
+        # V3.169: «Без цензуры» for good — adults only, price from the env.
+        from config import UNCENSORED_UNLOCK_STARS
+        ok=amount==UNCENSORED_UNLOCK_STARS and is_adult_confirmed(query.from_user.id)
     elif payload in PEACH_PACK_STARS:
         # V3.43.1: the peach pack ladder — 10/30/100 credits, bulk discount.
         ok=amount==PEACH_PACK_STARS[payload]
@@ -8199,6 +8293,12 @@ async def successful_payment(message: types.Message):
         return
     if payload in PAID_PREMIUM_PRODUCTS:
         _spawn_background(_after_premium_paid(message.from_user.id, payload))
+    if payload == 'uncensored_unlock':
+        record_payment(message.from_user.id, 'uncensored_unlock', payment.total_amount, charge)
+        track_event(ensure_user(message.from_user.id), 'stars_purchase', value=payment.total_amount,
+                    metadata={'product': 'uncensored_unlock'})
+        await _after_uncensored_paid(int(message.from_user.id))
+        return
     if payload in PEACH_PACK_STARS:
         # V3.43.1: a peach pack — same record path as the single credit, the
         # payments layer grants the whole pack size in one go.
@@ -13176,6 +13276,9 @@ async def _platega_callback(request: web.Request) -> web.Response:
             elif product == 'undress_one':
                 # V3.132.0: one «Раздеть» paid by card/SBP — record_payment below grants it.
                 confirm = '🔥 Оплата прошла! Одно «Раздеть» твоё — сейчас сделаю фото.'
+            elif product == 'uncensored_unlock':
+                # V3.169: ruble-paid «Без цензуры»; her own line follows below.
+                confirm = '🔓 Оплата прошла! Режим «Без цензуры» открыт навсегда.'
             elif product == 'premium_trial':
                 # V3.88.0: ruble-paid first-purchase trial.
                 confirm = f'💖 Оплата прошла! Premium включён на {PREMIUM_TRIAL_DAYS} дня — тебе открыто всё 🔥'
@@ -13211,6 +13314,9 @@ async def _platega_callback(request: web.Request) -> web.Response:
                 if product in PAID_PREMIUM_PRODUCTS:
                     # V3.104.0: the card follows the confirmation below.
                     _spawn_background(_after_premium_paid(int(order['telegram_id']), product))
+                if product == 'uncensored_unlock':
+                    # V3.169: her first line, sent right after the confirmation.
+                    _spawn_background(_after_uncensored_paid(int(order['telegram_id'])))
             except Exception:
                 logger.exception('Platega grant failed order=%s', order['id'])
             try:
@@ -14527,6 +14633,8 @@ async def _webapp_api_invoice(request: web.Request) -> web.Response:
     await asyncio.to_thread(track_event, uid, 'webapp_invoice_created', metadata={'product': product_id})
     if product_id == 'starter_pack':
         await asyncio.to_thread(track_event, uid, 'starter_pack_checkout', metadata={'method': 'stars'})
+    if product_id == 'uncensored_unlock':
+        await asyncio.to_thread(track_event, uid, 'uncensored_checkout', metadata={'method': 'stars'})
     try:
         link = await bot.create_invoice_link(
             title=product['title'],
@@ -14625,7 +14733,8 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
                      'premium_vip': 'premium_month_vip',
                      'premium_quarter': 'premium_quarter',
                      'photo_credit': 'photo',
-                     'undress_one': 'undress_one'}.get(product_id)
+                     'undress_one': 'undress_one',
+                     'uncensored_unlock': 'uncensored_unlock'}.get(product_id)
     if not order_product and product_id in PEACH_PACK_STARS:
         # V3.43.1: peach packs — the order key is the payload itself, so the
         # Platega callback and the Wallet Pay webhook grant the pack size.
@@ -14640,6 +14749,8 @@ async def _webapp_api_pay_link(request: web.Request) -> web.Response:
         language_code=user_info.get('language_code'))
     if product_id == 'starter_pack':
         await asyncio.to_thread(track_event, uid, 'starter_pack_checkout', metadata={'method': method})
+    if product_id == 'uncensored_unlock':
+        await asyncio.to_thread(track_event, uid, 'uncensored_checkout', metadata={'method': method})
     if method == 'sbp' or method == 'platega_crypto':
         # V3.107.0: 'platega_crypto' is the «💎 Криптовалюта» row — the same
         # Platega payment page (the payer picks crypto there), tracked apart.
@@ -14973,10 +15084,20 @@ async def _webapp_api_spicy(request: web.Request) -> web.Response:
             return current
         if new and not is_adult_confirmed(telegram_id):
             return 'adult_confirm'
+        if new and not current:
+            # V3.169: «Без цензуры» is Premium or a one-time unlock; «Романтика» is free.
+            from services import uncensored_unlock
+            if not uncensored_unlock.entitled_for(telegram_id):
+                uncensored_unlock.offer_payload(telegram_id, 'mode')
+                return 'locked'
         from services import explicit_mode
         return explicit_mode.set_mode(telegram_id, new)
 
     result = await asyncio.to_thread(_set)
+    if result == 'locked':
+        from services import uncensored_unlock
+        return web.json_response({'ok': False, 'error': 'uncensored_locked',
+                                  **uncensored_unlock.prices()}, status=402)
     if result == 'adult_confirm':
         return web.json_response({'ok': False, 'error': 'adult_confirm'}, status=403)
     return web.json_response({'ok': True, 'spicy_mode': bool(result)},
@@ -15660,7 +15781,14 @@ async def _starter_frame_turn(telegram_id: int, user_info: dict, character_id: s
             return None
         greeting_id = int(offer['greeting_id'])
         cache_id = await asyncio.to_thread(starter_photo_service.pick, character_id, greeting_id)
+        if not cache_id:
+            # V3.169: greeting frames come from the stored stock ($0). Another
+            # scenario of the same girl beats a live render.
+            cache_id = await asyncio.to_thread(starter_photo_service.pick_any, character_id)
         cached = bool(cache_id)  # only ready stock spends the shared pool cap
+        if not cache_id and os.getenv('STARTER_LIVE_RENDER', '0').strip().lower() not in ('1', 'true', 'yes', 'on'):
+            logger.info('starter frame: no stock and live render off girl=%s greeting=%s', character_id, greeting_id)
+            return None
         if not cache_id:
             # V3.167.27: a fresh teaser render is $0.039 that no counter saw. It
             # now spends the same shared daily frame cap, and is skipped (the tap
@@ -15827,6 +15955,15 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
         except Exception:
             _gd = False
         track_event(uid, 'webapp_chat_message', metadata={'character_id': character_id, 'girlday': _gd})
+        # V3.169: life_backlog.note_replied was written in V3.167.5 and never
+        # called, so «ответы на её день» stayed 0 for every push. It must run
+        # BEFORE his line lands in the dialogue (the tail of her pushes is
+        # defined as «after his last message»).
+        try:
+            from services import life_backlog as _lb
+            _lb.note_replied(uid, character_id)
+        except Exception:
+            pass
         # V3.51.0: a photo request typed in the Mini App chat used to be answered
         # with text only («держи 📸» and nothing attached) because this endpoint
         # never ran the bot's photo-intent routing (main.py chat handler). Parse it
@@ -16191,6 +16328,10 @@ async def _webapp_chat_turn(telegram_id: int, user_info: dict, character_id: str
                 payload['sext_offer'] = True
         except Exception:
             logger.warning('sext offer failed user=%s', telegram_id, exc_info=True)
+    # V3.169: soft hint for the one-time mode purchase (helper keeps this turn lean).
+    _hint = await _uncensored_hint(telegram_id, text)
+    if _hint:
+        payload['uncensored_hint'] = _hint
     # V3.166.2: the thin line under her answer — today's account ceiling (both
     # modes, both platforms). reply() already burned the turn; the app reads the
     # event once ('осталось N' / the wall she hit).

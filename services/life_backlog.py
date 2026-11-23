@@ -124,7 +124,7 @@ def unanswered(uid: int, character_id: str, limit: int = 6) -> list[tuple[str, d
     return [(text, when) for text, when, _origin in _pushed(uid, character_id, limit)]
 
 
-def note_replied(uid: int, character_id: str) -> int:
+def note_replied(uid: int, character_id: str, via: str = 'message') -> int:
     """V3.167.5 §9: «ответы на её день ≥12%» из DoD владельца. Вызывается на
     ЕГО ходу, до того как его сообщение легло в диалог, — иначе хвост уже пуст и
     ответить не на что. Считает только её строки жизни и сводки: ответ на
@@ -134,9 +134,19 @@ def note_replied(uid: int, character_id: str) -> int:
         life = sum(1 for _t, _w, origin in rows if origin in (LIFE_ORIGIN, DIGEST_ORIGIN))
         if not life:
             return 0
+        # one reply per unanswered tail: a tap followed by a typed line counts once
+        from sqlalchemy import select as _sel
+        from models.app_models import ProductEvent
+        from services.db import SessionLocal
+        first_life = min(w for _t, w, o in rows if o in (LIFE_ORIGIN, DIGEST_ORIGIN))
+        with SessionLocal() as s:
+            if s.scalar(_sel(ProductEvent.id).where(
+                    ProductEvent.user_id == int(uid), ProductEvent.event_name == 'life_event_replied',
+                    ProductEvent.created_at >= first_life).limit(1)):
+                return 0
         from services.analytics_service import track_event
         track_event(int(uid), 'life_event_replied',
-                    metadata={'character_id': character_id, 'unanswered': len(rows), 'life': life})
+                    metadata={'character_id': character_id, 'unanswered': len(rows), 'life': life, 'via': via})
         return life
     except Exception:
         logger.debug('life reply track failed user=%s', uid, exc_info=True)

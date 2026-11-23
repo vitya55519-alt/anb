@@ -368,6 +368,14 @@ def _user_row(telegram_id: int) -> User | None:
         return session.scalar(select(User).where(User.telegram_id == str(telegram_id)))
 
 
+def _uncensored_entitled(telegram_id: int, premium: bool) -> bool:
+    try:
+        from services import uncensored_unlock
+        return uncensored_unlock.entitled_for(telegram_id) if not premium else True
+    except Exception:
+        return True
+
+
 def _starter_pack_eligible(telegram_id: int) -> bool:
     try:
         from services.payments import starter_pack_eligible
@@ -422,6 +430,9 @@ def api_me(telegram_id: int) -> dict:
         # V3.88.0: the 99 ₽ / 3-day first-purchase trial is on offer
         'trial_eligible': _trial_eligible(telegram_id),
         'starter_pack_eligible': _starter_pack_eligible(telegram_id),
+        # V3.169: «Без цензуры» — Premium has it, the rest unlock once (RUB / Stars)
+        'uncensored_entitled': _uncensored_entitled(telegram_id, premium),
+        'uncensored_rub': UNCENSORED_UNLOCK_RUB, 'uncensored_stars': UNCENSORED_UNLOCK_STARS,
         # V3.132.0: one «Раздеть» without Premium — the price on her photo button.
         'undress_one_rub': UNDRESS_ONE_PRICE_RUB if UNDRESS_ONE_ENABLED else 0,
         # V3.138.0: owner — «Раздеть» is priced in peaches only. V3.154.0: 400 🍑 ≈ 40 ₽.
@@ -837,6 +848,7 @@ def api_characters(telegram_id: int | None = None) -> list[dict]:
 
 
 from config import UNDRESS_ONE_ENABLED, UNDRESS_ONE_PRICE_RUB, UNDRESS_ONE_STARS  # V3.132.0
+from config import UNCENSORED_UNLOCK_RUB, UNCENSORED_UNLOCK_STARS  # V3.169
 
 
 def api_invoice_products(lang: str = 'ru') -> list[dict]:
@@ -899,6 +911,20 @@ def api_invoice_products(lang: str = 'ru') -> list[dict]:
             'rub': PLATEGA_PREMIUM_TRIAL_PRICE_RUB if PLATEGA_ENABLED else None,
             'usd': PREMIUM_TRIAL_PRICE_USD,
             'trial': True,
+        },
+        # V3.169: «Без цензуры» for good (sold from the mode screen's unlock card;
+        # no ``credits`` key, so the shop grid never shows it).
+        {
+            'id': 'uncensored_unlock',
+            'emoji': '🔓',
+            'title': 'Режим «Без цензуры»' if not en else 'Uncensored mode',
+            'description': ('открывается навсегда, один раз, без подписки' if not en
+                            else 'unlocked for good, one time, no subscription'),
+            'gift': 0,
+            'stars': UNCENSORED_UNLOCK_STARS,
+            'payload': 'uncensored_unlock',
+            'rub': UNCENSORED_UNLOCK_RUB if PLATEGA_ENABLED else None,
+            'usd': None,
         },
         # V3.132.0: one «Раздеть» without Premium (sold from the button under her
         # photo; no ``credits`` key, so the shop grid never shows it).
