@@ -247,7 +247,9 @@ def test_exhausted_outfit_history_still_has_fallback(env, monkeypatch):
 
 @pytest.mark.parametrize('source', ['wardrobe', 'gift', 'custom', 'pack'])
 def test_explicit_and_gift_outfits_beat_auto_variations_and_keep_scene_card(env, monkeypatch, source):
-    monkeypatch.setattr(ps.spicy_confidence, 'current_level', lambda *a: 6)
+    # V3.167.17: at spicy level > 0 the level itself picks the outfit; an explicit
+    # outfit is pinned only on the ordinary (level 0) branch, which this test covers.
+    monkeypatch.setattr(ps.spicy_confidence, 'current_level', lambda *a: 0)
     monkeypatch.setattr(wardrobe_service, 'photo_overrides', lambda *a: {'clothing': 'wardrobe linen suit'})
     monkeypatch.setattr(gift_shop_service, 'photo_overrides', lambda *a: {'clothing': 'gift cotton dress'})
     scene_card_service.remember(TG, CID, 'где=кафе | рядом=нет | сцена=a cafe by the river')
