@@ -2112,6 +2112,16 @@ class GeneratedPhoto:
     estimated_cost_usd: float = 0.0
 
 
+# V3.171.1: scenes whose button names a concrete place; a leftover chat scene
+# card must not replace it (studio-style scenes like «fashion» still take it).
+PLACE_BUTTON_SCENES = frozenset({
+    'park', 'cafe', 'street', 'restaurant', 'cinema', 'embankment', 'beach', 'pool', 'yacht',
+    'garden', 'forest', 'bridge', 'rooftop', 'balcony', 'subway', 'shop', 'gym', 'car',
+    'sunset', 'snow', 'rain', 'bar', 'karaoke', 'club', 'concert', 'festival', 'library',
+    'office', 'spa', 'yoga', 'hotel', 'kitchen', 'bedroom', 'shower', 'bath',
+})
+
+
 @dataclass(frozen=True)
 class PhotoRequest:
     scene: str = 'selfie'
@@ -3346,7 +3356,7 @@ def _resolve_request(telegram_id: int, request: PhotoRequest, *, character_id: s
     card_scene = scene_card_service.scene_for(telegram_id, character_id)
     if request.customized and request.location:
         location = request.location
-    elif card_scene and request.scene in ('selfie', '', None):
+    elif card_scene and request.scene not in PLACE_BUTTON_SCENES:
         # V3.171.1: a place button (park, beach, ...) is her explicit pick; a
         # leftover chat scene card must not swap it for a kitchen.
         location = f'PLACE FROM HER MESSAGE: {card_scene}'

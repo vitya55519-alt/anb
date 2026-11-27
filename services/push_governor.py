@@ -20,6 +20,7 @@ UTC cron simply never looked at the man's timezone.
 """
 from __future__ import annotations
 
+import os
 import datetime as dt
 import logging
 
@@ -186,6 +187,10 @@ def rail_muted(db_user_id: int, rail: str) -> bool:
     message) is newer than those pushes, so it clears every rail at once. Derived
     from events and messages — nothing to migrate or to forget to clear."""
     from config import RAIL_MUTE_AFTER, RAIL_MUTE_ENABLED, RAIL_MUTE_HOURS
+    # V3.171.3 (владелец: «для всех отправлялось, кому не нравится — заблокируют»):
+    # the evening/morning ritual is never muted by unanswered pushes.
+    if rail == 'ritual' and os.getenv('RITUAL_IGNORE_MUTE', '1').strip().lower() in {'1', 'true', 'yes', 'on'}:
+        return False
     if not RAIL_MUTE_ENABLED or not db_user_id or rail == 'life':   # life: life_backlog.is_capped
         return False
     names = FAMILY_EVENTS.get(rail)
