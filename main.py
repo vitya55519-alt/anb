@@ -14941,7 +14941,8 @@ async def _webapp_api_storyline_start(request: web.Request) -> web.Response:
 
     def _apply():
         card = get_card(plot.character_id)
-        if not card or not card.is_visible or card.status not in ('active', 'premium'):
+        if not storylines.is_custom(plot.character_id) and (
+                not card or not card.is_visible or card.status not in ('active', 'premium')):
             return 'locked'
         if telegram_id not in ADMIN_TELEGRAM_IDS and not is_premium(telegram_id):
             return 'premium_required'
